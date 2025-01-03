@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SDF Renderer</title>
+    <link rel="icon" href="data:;base64,=">
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas {
+            display: block;
+            position: "fixed";
+            top: "0";
+            left: "0";
+            width: "100vw";
+            height: "100vh";
+        }
+    </style>
+</head>
+<body>
+    <canvas id="preview" oncontextmenu="return false;"></canvas>
+    <script type="module">
+        import { SDFRenderer } from './sdf.js';
+        
+        const renderer = new SDFRenderer(document.getElementById("preview"));
+    </script>
+</body>
+</html>

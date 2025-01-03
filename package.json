@@ -1,0 +1,16 @@
+{
+  "name": "galaxycad",
+  "description": "Experimental SDF-based code-as-CAD",
+  "version": "0.0.1",
+  "author": "Matthew Olenik",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "serve": "make serve",
+    "build": "make build"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {}
+}

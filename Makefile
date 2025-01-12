@@ -1,15 +1,17 @@
-serve:
-	npx esbuild sdf.ts --watch --outfile=sdf.js --servedir=.
+DIST := dist/
+
+default: build
+
+serve: build
+	cd $(DIST) && python3 -m http.server
 
 open:
 	open http://localhost:8000/sdf.html
 
-dist/sdf.js: sdf.ts
-	npx esbuild $^ --outfile=$@
+build:
+	@mkdir -p $(DIST)
+	cp -f *.html $(DIST)
+	npx tsx build.mts
 
-dist/sdf.html: sdf.html
-	cp -f $^ dist/
-
-dist: dist/sdf.js dist/sdf.html
-
-build: dist
+clean:
+	rm -rf $(DIST)

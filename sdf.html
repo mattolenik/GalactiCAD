@@ -1,10 +1,15 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>SDF Renderer</title>
     <link rel="icon" href="data:;base64,=">
     <style>
-        body { margin: 0; overflow: hidden; }
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
         canvas {
             display: block;
             position: fixed;
@@ -13,14 +18,28 @@
             bottom: 0;
             right: 0;
         }
+
+        #toolbar {
+            position: fixed;
+            top: 0;
+            bottom: 2cm;
+            left: 0;
+            right: 0;
+        }
     </style>
 </head>
+
 <body>
+    <div id="toolbar">
+        <button id="reload-button">Reload</button>
+    </div>
     <canvas id="preview" oncontextmenu="return false;"></canvas>
     <script type="module">
         import { SDFRenderer } from './sdf.js';
-        
+
         const renderer = new SDFRenderer(document.getElementById("preview"));
+        document.getElementById("reload-button").onclick = () => renderer.reloadShaders( "vec3(0.2f, 0.0f, 0.4f)");
     </script>
 </body>
+
 </html>

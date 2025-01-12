@@ -1,5 +1,7 @@
 DIST := dist/
 
+HTML_SRC := sdf.html
+
 default: build
 
 serve: build
@@ -10,8 +12,11 @@ open:
 
 build:
 	@mkdir -p $(DIST)
-	cp -f *.html $(DIST)
+	cp -f $(HTML_SRC) $(DIST)
 	npx tsx build.mts
+
+release:
+	PRODUCTION=1 make build
 
 clean:
 	rm -rf $(DIST)

@@ -1,22 +1,23 @@
+import { ShaderProgram } from "./shaderprogram.mjs";
 import sdfFragmentShader from "./shaders/sdf_fragment.glsl";
 import sdfVertexShader from "./shaders/sdf_vertex.glsl";
 
 export class SDFRenderer {
   private canvas: HTMLCanvasElement;
   private gl: WebGL2RenderingContext;
-  private program: WebGLProgram;
+  private program!: WebGLProgram;
 
   // Buffers
   private positionBuffer: WebGLBuffer;
-  private positionLoc: number;
+  private positionLoc!: number;
 
   // Uniforms
-  private resolutionLoc: WebGLUniformLocation;
-  private timeLoc: WebGLUniformLocation;
-  private cameraLoc: WebGLUniformLocation;
-  private forwardLoc: WebGLUniformLocation;
-  private rightLoc: WebGLUniformLocation;
-  private upLoc: WebGLUniformLocation;
+  private resolutionLoc!: WebGLUniformLocation;
+  private timeLoc!: WebGLUniformLocation;
+  private cameraLoc!: WebGLUniformLocation;
+  private forwardLoc!: WebGLUniformLocation;
+  private rightLoc!: WebGLUniformLocation;
+  private upLoc!: WebGLUniformLocation;
 
   // Animation
   private startTime: number;
@@ -39,6 +40,8 @@ export class SDFRenderer {
   private lastMouseX = 0;
   private lastMouseY = 0;
 
+  private shaderProgram: ShaderProgram;
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
 
@@ -46,16 +49,8 @@ export class SDFRenderer {
     if (!gl) throw new Error("Browser must support WebGL2");
     this.gl = gl;
 
-    this.program = this.createProgram(gl, sdfVertexShader, sdfFragmentShader);
-    gl.useProgram(this.program);
-
-    this.positionLoc = gl.getAttribLocation(this.program, "aPosition");
-    this.resolutionLoc = gl.getUniformLocation(this.program, "uResolution")!;
-    this.timeLoc = gl.getUniformLocation(this.program, "uTime")!;
-    this.cameraLoc = gl.getUniformLocation(this.program, "uCamera")!;
-    this.forwardLoc = gl.getUniformLocation(this.program, "uForward")!;
-    this.rightLoc = gl.getUniformLocation(this.program, "uRight")!;
-    this.upLoc = gl.getUniformLocation(this.program, "uUp")!;
+    this.shaderProgram = new ShaderProgram(this.gl);
+    this.reloadShaders(this.color);
 
     // Full-screen quad
     this.positionBuffer = gl.createBuffer()!;
@@ -86,6 +81,28 @@ export class SDFRenderer {
     this.startTime = performance.now();
     this.renderLoop = this.renderLoop.bind(this);
     this.requestId = requestAnimationFrame(this.renderLoop);
+  }
+
+  private color = "vec3(0.2f, 0.8f, 0.4f)";
+
+  public reloadShaders(color: string) {
+    console.log("reloading shaders");
+    this.program = this.shaderProgram.reload(
+      sdfVertexShader,
+      sdfFragmentShader.replace(this.color, color)
+    );
+    this.color = color;
+
+    this.positionLoc = this.gl.getAttribLocation(this.program, "aPosition");
+    this.resolutionLoc = this.gl.getUniformLocation(
+      this.program,
+      "uResolution"
+    )!;
+    this.timeLoc = this.gl.getUniformLocation(this.program, "uTime")!;
+    this.cameraLoc = this.gl.getUniformLocation(this.program, "uCamera")!;
+    this.forwardLoc = this.gl.getUniformLocation(this.program, "uForward")!;
+    this.rightLoc = this.gl.getUniformLocation(this.program, "uRight")!;
+    this.upLoc = this.gl.getUniformLocation(this.program, "uUp")!;
   }
 
   private onMouseDown(e: MouseEvent) {

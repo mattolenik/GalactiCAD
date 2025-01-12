@@ -43,7 +43,7 @@ export class SDFRenderer {
     this.canvas = canvas;
 
     const gl = this.canvas.getContext("webgl2");
-    if (!gl) throw new Error("WebGL2 not supported.");
+    if (!gl) throw new Error("Browser must support WebGL2");
     this.gl = gl;
 
     this.program = this.createProgram(gl, sdfVertexShader, sdfFragmentShader);

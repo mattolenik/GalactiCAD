@@ -36,13 +36,12 @@ export class ShaderProgram {
     const source = fragmentSource.replace(
       mapSceneReplacementString,
       `
-    float d = 1e10;
-    vec3 q = p - vec3(1.0,0.0,1.0);
-    vec4 w = opElongate( q, vec3(1.2,0.0,1.3) );
+    vec4 w = opElongate(p, vec3(0.0,0.2,0.0) );
     float d1 = sdSphere(w.xyz, 1.0);
-    float d2 = sdBox(w.xyz - vec3(1.1, 0.0, 0.0), vec3(0.5));
-    //return min(d0, min(d1, d2));
-    return min(d, w.w + opSmoothSubtraction(d1, d2, 0.3));
+    float d2 = sdBox(w.xyz - vec3(1.2, 0.0, 0.0), vec3(0.5));
+    float du = opSmoothUnion(d1, d2, 0.3);
+    //return min(d1, d2);
+    return du;
 `
     );
     const newFragmentShader = this.compileShader(

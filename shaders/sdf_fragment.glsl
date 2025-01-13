@@ -1,3 +1,4 @@
+#version 300 es
 precision highp float;
 
 uniform vec2 uResolution;
@@ -23,18 +24,18 @@ float opXor(float d1, float d2) {
 }
 
 float opSmoothUnion(float d1, float d2, float k) {
-    float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
-    return mix(d2, d1, h) - k * h * (1.0 - h);
+    float h = clamp(0.5f + 0.5f * (d2 - d1) / k, 0.0f, 1.0f);
+    return mix(d2, d1, h) - k * h * (1.0f - h);
 }
 
 float opSmoothSubtraction(float d1, float d2, float k) {
-    float h = clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);
-    return mix(d2, -d1, h) + k * h * (1.0 - h);
+    float h = clamp(0.5f - 0.5f * (d2 + d1) / k, 0.0f, 1.0f);
+    return mix(d2, -d1, h) + k * h * (1.0f - h);
 }
 
 float opSmoothIntersection(float d1, float d2, float k) {
-    float h = clamp(0.5 - 0.5 * (d2 - d1) / k, 0.0, 1.0);
-    return mix(d2, d1, h) + k * h * (1.0 - h);
+    float h = clamp(0.5f - 0.5f * (d2 - d1) / k, 0.0f, 1.0f);
+    return mix(d2, d1, h) + k * h * (1.0f - h);
 }
 
 float sdSphere(vec3 p, float r) {
@@ -43,53 +44,50 @@ float sdSphere(vec3 p, float r) {
 
 float sdBox(vec3 p, vec3 b) {
     vec3 d = abs(p) - b;
-    return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);
+    return length(max(d, 0.0f)) + min(max(d.x, max(d.y, d.z)), 0.0f);
 }
 
 float mapScene(vec3 p) {
-    float d1 = sdSphere(p, 1.0);
-    float d2 = sdBox(p - vec3(1.4, 0.0, 0.0), vec3(0.5));
-    //return min(d0, min(d1, d2));
-    return opSmoothUnion(d1, d2, 0.3);
+    return -123456890.0987654321f;
 }
 
 float rayMarch(vec3 ro, vec3 rd) {
-    float t = 0.0;
-    for(int i = 0; i < 100; i++) {
+    float t = 0.0f;
+    for (int i = 0; i < 100; i++) {
         vec3 pos = ro + rd * t;
         float dist = mapScene(pos);
-        if(dist < 0.001)
+        if (dist < 0.001f)
             return t;
         t += dist;
-        if(t > 100.)
+        if (t > 100.f)
             break;
     }
-    return -1.0;
+    return -1.0f;
 }
 
 vec3 calcNormal(vec3 p) {
     float d = mapScene(p);
-    float e = 0.001;
-    return normalize(vec3(mapScene(p + vec3(e, 0.0, 0.0)) - d, mapScene(p + vec3(0.0, e, 0.0)) - d, mapScene(p + vec3(0.0, 0.0, e)) - d));
+    float e = 0.001f;
+    return normalize(vec3(mapScene(p + vec3(e, 0.0f, 0.0f)) - d, mapScene(p + vec3(0.0f, e, 0.0f)) - d, mapScene(p + vec3(0.0f, 0.0f, e)) - d));
 }
 
 void main() {
-    vec2 uv = (gl_FragCoord.xy / uResolution) * 2.0 - 1.0;
+    vec2 uv = (gl_FragCoord.xy / uResolution) * 2.0f - 1.0f;
     uv.x *= uResolution.x / uResolution.y;
 
-    float fov = 1.0;
+    float fov = 1.0f;
     vec3 ro = uCamera;
     vec3 rd = normalize(uRight * uv.x + uUp * uv.y + uForward * fov);
 
     float dist = rayMarch(ro, rd);
-    if(dist > 0.0) {
+    if (dist > 0.0f) {
         vec3 p = ro + rd * dist;
         vec3 n = calcNormal(p);
-        vec3 lightDir = normalize(vec3(0.5, 1.0, 0.2));
-        float diff = max(dot(n, lightDir), 0.0);
-        vec3 col = vec3(0.2, 0.8, 0.4) * diff + 0.1;
-        outColor = vec4(col, 1.0);
+        vec3 lightDir = normalize(vec3(0.5f, 1.0f, 0.2f));
+        float diff = max(dot(n, lightDir), 0.0f);
+        vec3 col = vec3(0.2f, 0.8f, 0.4f) * diff + 0.1f;
+        outColor = vec4(col, 1.0f);
     } else {
-        outColor = vec4(0.0, 0.0, 0.0, 1.0);
+        outColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     }
 }

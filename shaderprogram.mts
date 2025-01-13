@@ -32,8 +32,17 @@ export class ShaderProgram {
       vertexSource,
       this.gl.VERTEX_SHADER
     );
+    const source = fragmentSource.replace(
+      "return -123456890.0987654321f;",
+      `
+    float d1 = sdSphere(p, 1.0);
+    float d2 = sdBox(p - vec3(1.4, 0.0, 0.0), vec3(0.5));
+    //return min(d0, min(d1, d2));
+    return opSmoothUnion(d1, d2, 0.3);
+`
+    );
     const newFragmentShader = this.compileShader(
-      fragmentSource,
+      source,
       this.gl.FRAGMENT_SHADER
     );
 

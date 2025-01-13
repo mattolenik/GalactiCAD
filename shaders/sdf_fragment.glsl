@@ -38,6 +38,13 @@ float opSmoothIntersection(float d1, float d2, float k) {
     return mix(d2, d1, h) + k * h * (1.0f - h);
 }
 
+vec4 opElongate(in vec3 p, in vec3 h) {
+    //return vec4( p-clamp(p,-h,h), 0.0 ); // faster, but produces zero in the interior elongated box
+
+    vec3 q = abs(p) - h;
+    return vec4(max(q, 0.0f), min(max(q.x, max(q.y, q.z)), 0.0f));
+}
+
 float sdSphere(vec3 p, float r) {
     return length(p) - r;
 }

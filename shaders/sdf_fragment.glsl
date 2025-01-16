@@ -54,9 +54,7 @@ float sdBox(vec3 p, vec3 b) {
     return length(max(d, 0.0f)) + min(max(d.x, max(d.y, d.z)), 0.0f);
 }
 
-float mapScene(vec3 p) {
-    return -123456890.0987654321f;
-}
+float mapScene(vec3 p);
 
 float rayMarch(vec3 ro, vec3 rd) {
     float t = 0.0f;

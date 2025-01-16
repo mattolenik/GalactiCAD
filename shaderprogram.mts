@@ -28,17 +28,19 @@ export class ShaderProgram {
     }
 
     reload(vertexSource: string, fragmentSource: string): WebGLProgram {
-        const mapSceneReplacementString = "return -123456890.0987654321f;"
+        const mapSceneReplacementString = "float mapScene(vec3 p);"
         const newVertexShader = this.compileShader(vertexSource, this.gl.VERTEX_SHADER)
         const source = fragmentSource.replace(
             mapSceneReplacementString,
             `
+float mapScene(vec3 p) {
     vec4 w = opElongate(p, vec3(0.0,0.2,0.0) );
     float d1 = sdSphere(w.xyz, 1.0);
     float d2 = sdBox(w.xyz - vec3(1.2, 0.0, 0.0), vec3(0.5));
     float du = opSmoothUnion(d1, d2, 0.3);
     //return min(d1, d2);
     return du;
+}
 `
         )
         const newFragmentShader = this.compileShader(source, this.gl.FRAGMENT_SHADER)

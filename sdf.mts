@@ -1,6 +1,6 @@
 import { ShaderProgram } from "./shaderprogram.mjs"
-import sdfFragmentShader from "./shaders/sdf_fragment.glsl"
-import sdfVertexShader from "./shaders/sdf_vertex.glsl"
+import sdfFragmentShader from "./shaders/sdf.frag"
+import sdfVertexShader from "./shaders/sdf.vert"
 
 export class SDFRenderer {
     private canvas: HTMLCanvasElement

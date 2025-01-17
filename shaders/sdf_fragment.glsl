@@ -1,4 +1,15 @@
 #version 300 es
+// #define OP_UNION            0
+// #define OP_SUBTRACT         1
+// #define OP_INTERSECT        2
+// #define OP_SMOOTH_UNION     3
+// #define OP_SMOOTH_SUBTRACT  4
+// #define OP_SMOOTH_INTERSECT 5
+// #define OP_XOR              6
+// #define OP_ELONGATE         7
+// #define SHAPE_SPHERE      100
+// #define SHAPE_BOX         110
+
 precision highp float;
 
 uniform vec2 uResolution;
@@ -9,16 +20,18 @@ uniform vec3 uRight;
 uniform vec3 uUp;
 
 out vec4 outColor;
-
 float opUnion(float d1, float d2) {
     return min(d1, d2);
 }
+
 float opSubtraction(float d1, float d2) {
     return max(-d1, d2);
 }
+
 float opIntersection(float d1, float d2) {
     return max(d1, d2);
 }
+
 float opXor(float d1, float d2) {
     return max(min(d1, d2), -max(d1, d2));
 }
@@ -42,7 +55,8 @@ vec4 opElongate(in vec3 p, in vec3 h) {
     //return vec4( p-clamp(p,-h,h), 0.0 ); // faster, but produces zero in the interior elongated box
 
     vec3 q = abs(p) - h;
-    return vec4(max(q, 0.0f), min(max(q.x, max(q.y, q.z)), 0.0f));
+    // return vec4(max(q, 0.0f), min(max(q.x, max(q.y, q.z)), 0.0f));
+    return vec4(sign(p) * max(q, 0.0f), min(max(q.x, max(q.y, q.z)), 0.0f));
 }
 
 float sdSphere(vec3 p, float r) {
@@ -53,6 +67,17 @@ float sdBox(vec3 p, vec3 b) {
     vec3 d = abs(p) - b;
     return length(max(d, 0.0f)) + min(max(d.x, max(d.y, d.z)), 0.0f);
 }
+
+struct scene_element {
+    uint type;
+    uint num_children;
+    vec3[2] args;
+};
+
+// layout (std140) uniform scene_data {
+//     uint num_elements;
+//     scene_element elements[128];
+// };
 
 float mapScene(vec3 p);
 

@@ -1,3 +1,5 @@
+// #include "sdf.wgsl"
+
 struct Particle {
     position: vec4f,
     mass: f32,

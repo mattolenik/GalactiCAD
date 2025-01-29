@@ -254,6 +254,11 @@
   dependencies:
     undici-types "~6.20.0"
 
+"@webgpu/types@^0.1.53":
+  version "0.1.53"
+  resolved "https://registry.yarnpkg.com/@webgpu/types/-/types-0.1.53.tgz#19a607eceefe90dadb49209a5fbd0fd60289fffa"
+  integrity sha512-x+BLw/opaz9LiVyrMsP75nO1Rg0QfrACUYIbVSfGwY/w0DiWIPYYrpte6us//KZXinxFAOJl0+C17L1Vi2vmDw==
+
 esbuild@^0.24.2:
   version "0.24.2"
   resolved "https://registry.yarnpkg.com/esbuild/-/esbuild-0.24.2.tgz#b5b55bee7de017bff5fb8a4e3e44f2ebe2c3567d"
@@ -326,6 +331,11 @@ get-tsconfig@^4.7.5:
   integrity sha512-k9PN+cFBmaLWtVz29SkUoqU5O0slLuHJXt/2P+tMVFT+phsSGXGkp9t3rQIqdz0e+06EHNGs3oM6ZX1s2zHxRg==
   dependencies:
     resolve-pkg-maps "^1.0.0"
+
+reflect-metadata@^0.2.2:
+  version "0.2.2"
+  resolved "https://registry.yarnpkg.com/reflect-metadata/-/reflect-metadata-0.2.2.tgz#400c845b6cba87a21f2c65c4aeb158f4fa4d9c5b"
+  integrity sha512-urBwgfrvVP/eAyXx4hluJivBKzuEbSQs9rKWCrCkbSxNv8mxPcUZKeuoF3Uy4mJl3Lwprp6yy5/39VWigZ4K6Q==
 
 resolve-pkg-maps@^1.0.0:
   version "1.0.0"

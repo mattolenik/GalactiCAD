@@ -1,250 +1,186 @@
-import { ShaderProgram } from "./shaderprogram.mjs"
-import sdfFragmentShader from "./shaders/sdf.frag"
-import sdfVertexShader from "./shaders/sdf.vert"
+import "reflect-metadata"
+
+import previewShader from "./shaders/preview.wgsl"
+
+// Decorators for WGSL struct layout
+function vec4f(target: any, propertyKey: string) {
+    Reflect.defineMetadata("wgsl:size", 16, target, propertyKey)
+    Reflect.defineMetadata("wgsl:align", 16, target, propertyKey)
+}
+
+function f32(target: any, propertyKey: string) {
+    Reflect.defineMetadata("wgsl:size", 4, target, propertyKey)
+    Reflect.defineMetadata("wgsl:align", 4, target, propertyKey)
+}
+
+// Helper to calculate struct size
+function getStructSize(target: any): number {
+    let size = 0
+    let maxAlign = 0
+
+    for (const prop of Object.getOwnPropertyNames(target)) {
+        const align = Reflect.getMetadata("wgsl:align", target, prop) || 0
+        const fieldSize = Reflect.getMetadata("wgsl:size", target, prop) || 0
+
+        maxAlign = Math.max(maxAlign, align)
+        size = Math.ceil(size / align) * align + fieldSize
+    }
+
+    return Math.ceil(size / maxAlign) * maxAlign
+}
+
+class Particle {
+    [key: string]: any
+    @vec4f position = new Float32Array([0, 0, 0, 1])
+    @f32 mass = new Float32Array([1.0])
+}
+
+class Uniforms {
+    [key: string]: any
+    @vec4f color = new Float32Array([1.0, 0.0, 0.0, 1.0])
+    @f32 radius = new Float32Array([0.25])
+}
 
 export class SDFRenderer {
     private canvas: HTMLCanvasElement
-    private gl: WebGL2RenderingContext
-    private program!: WebGLProgram
+    private device!: GPUDevice
+    private context!: GPUCanvasContext
+    private pipeline!: GPURenderPipeline
+    private bindGroup!: GPUBindGroup
+    private uniformBuffer!: GPUBuffer
+    private storageBuffer!: GPUBuffer
+    private numParticles = 100
+    private particles: Particle[] = []
 
-    // Buffers
-    private positionBuffer: WebGLBuffer
-    private positionLoc!: number
-
-    // Uniforms
-    private resolutionLoc!: WebGLUniformLocation
-    private timeLoc!: WebGLUniformLocation
-    private cameraLoc!: WebGLUniformLocation
-    private forwardLoc!: WebGLUniformLocation
-    private rightLoc!: WebGLUniformLocation
-    private upLoc!: WebGLUniformLocation
-
-    // Animation
-    private startTime: number
-    private requestId: number | null = null
-
-    // Camera spherical parameters
-    private radius = 5
-    private target = [0, 0, 0]
-    private theta = 0
-    private phi = Math.PI * 0.5
-
-    // Speeds
-    private rotateSpeed = 0.005
-    private zoomSpeed = 0.1
-    private panSpeed = 1.0
-
-    // Mouse state
-    private isRotating = false
-    private isPanning = false
-    private lastMouseX = 0
-    private lastMouseY = 0
-
-    private shaderProgram: ShaderProgram
+    private uniforms = new Uniforms()
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas
+    }
 
-        const gl = this.canvas.getContext("webgl2")
-        if (!gl) throw new Error("Browser must support WebGL2")
-        this.gl = gl
+    async initialize(): Promise<void> {
+        const adapter = await navigator.gpu.requestAdapter()
+        if (!adapter) throw new Error("No GPU adapter found")
 
-        this.shaderProgram = new ShaderProgram(this.gl)
-        this.reloadShaders(this.color)
+        this.device = await adapter.requestDevice()
+        this.context = this.canvas.getContext("webgpu") as GPUCanvasContext
 
-        // Full-screen quad
-        this.positionBuffer = gl.createBuffer()!
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer)
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW)
-        gl.enableVertexAttribArray(this.positionLoc)
-        gl.vertexAttribPointer(this.positionLoc, 2, gl.FLOAT, false, 0, 0)
-
-        this.onResize()
-        window.addEventListener("resize", () => this.onResize())
-
-        // Disable context menu on right-click
-        this.canvas.addEventListener("contextmenu", (e) => e.preventDefault())
-
-        this.canvas.addEventListener("mousedown", (e) => this.onMouseDown(e))
-        this.canvas.addEventListener("mousemove", (e) => this.onMouseMove(e))
-        this.canvas.addEventListener("mouseup", () => this.resetMouse())
-        this.canvas.addEventListener("mouseleave", () => this.resetMouse())
-
-        this.canvas.addEventListener("wheel", (e) => this.onWheel(e), {
-            passive: false,
+        const format = navigator.gpu.getPreferredCanvasFormat()
+        this.context.configure({
+            device: this.device,
+            format,
+            alphaMode: "premultiplied",
         })
 
-        this.startTime = performance.now()
-        this.renderLoop = this.renderLoop.bind(this)
-        this.requestId = requestAnimationFrame(this.renderLoop)
-    }
-
-    private color = "vec3(0.2f, 0.8f, 0.4f)"
-
-    public reloadShaders(color: string) {
-        console.log("reloading shaders")
-        this.program = this.shaderProgram.reload(sdfVertexShader, sdfFragmentShader.replace(this.color, color))
-        this.color = color
-
-        this.positionLoc = this.gl.getAttribLocation(this.program, "aPosition")
-        this.resolutionLoc = this.gl.getUniformLocation(this.program, "uResolution")!
-        this.timeLoc = this.gl.getUniformLocation(this.program, "uTime")!
-        this.cameraLoc = this.gl.getUniformLocation(this.program, "uCamera")!
-        this.forwardLoc = this.gl.getUniformLocation(this.program, "uForward")!
-        this.rightLoc = this.gl.getUniformLocation(this.program, "uRight")!
-        this.upLoc = this.gl.getUniformLocation(this.program, "uUp")!
-    }
-
-    private onMouseDown(e: MouseEvent) {
-        e.preventDefault()
-        this.lastMouseX = e.clientX
-        this.lastMouseY = e.clientY
-        if (e.button === 2) {
-            // Right-click => pan
-            this.isPanning = true
-            this.isRotating = false
-        } else if (e.button === 0) {
-            // Left-click => rotate
-            this.isRotating = true
-            this.isPanning = false
+        // Initialize particles
+        for (let i = 0; i < this.numParticles; i++) {
+            const particle = new Particle()
+            particle.position = new Float32Array([Math.random() * 2 - 1, Math.random() * 2 - 1, 0, 1])
+            particle.mass = new Float32Array([Math.random() * 0.5 + 0.5])
+            this.particles.push(particle)
         }
-    }
 
-    private resetMouse() {
-        this.isRotating = false
-        this.isPanning = false
-    }
+        // Create storage buffer
+        const particleSize = getStructSize(new Particle())
+        const storageSize = particleSize * this.numParticles
 
-    private onMouseMove(e: MouseEvent) {
-        if (!this.isRotating && !this.isPanning) return
+        this.storageBuffer = this.device.createBuffer({
+            size: storageSize,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        })
 
-        const dx = e.clientX - this.lastMouseX
-        const dy = e.clientY - this.lastMouseY
-        this.lastMouseX = e.clientX
-        this.lastMouseY = e.clientY
+        const shaderModule = this.device.createShaderModule({
+            label: "SDF shader",
+            code: previewShader,
+        })
 
-        if (this.isRotating) {
-            this.theta -= dx * this.rotateSpeed
-            this.phi -= dy * this.rotateSpeed
-            const EPS = 0.001
-            if (this.phi < EPS) this.phi = EPS
-            if (this.phi > Math.PI - EPS) this.phi = Math.PI - EPS
-        } else if (this.isPanning) {
-            // One-to-one pan
-            const fov = 1.0 // ~57 degrees
-            const w = this.canvas.width
-            const h = this.canvas.height
-            const aspect = w / h
+        // Create uniform buffer with calculated size
+        const uniformsSize = getStructSize(this.uniforms)
+        this.uniformBuffer = this.device.createBuffer({
+            size: uniformsSize,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        })
 
-            // Size of view plane at current radius
-            const viewPlaneHeight = 2.0 * Math.tan(fov * 0.5) * this.radius
-            const viewPlaneWidth = viewPlaneHeight * aspect
+        // Create bind group
+        // Update storage buffer
+        let storageOffset = 0
+        for (const particle of this.particles) {
+            for (const prop of Object.getOwnPropertyNames(particle)) {
+                const align = Reflect.getMetadata("wgsl:align", particle, prop)
+                storageOffset = Math.ceil(storageOffset / align) * align
 
-            // Pixel -> world
-            const worldMoveX = (dx / w) * viewPlaneWidth
-            // Invert the sign for dy so up is up:
-            const worldMoveY = -(dy / h) * viewPlaneHeight
+                this.device.queue.writeBuffer(this.storageBuffer, storageOffset, particle[prop])
 
-            const camPos = this.getCameraPosition()
-            const forward = this.normalize([this.target[0] - camPos[0], this.target[1] - camPos[1], this.target[2] - camPos[2]])
-            const right = this.normalize(this.cross(forward, [0, 1, 0]))
-            const up = this.normalize(this.cross(right, forward))
-
-            this.target[0] -= (right[0] * worldMoveX + up[0] * worldMoveY) * this.panSpeed
-            this.target[1] -= (right[1] * worldMoveX + up[1] * worldMoveY) * this.panSpeed
-            this.target[2] -= (right[2] * worldMoveX + up[2] * worldMoveY) * this.panSpeed
+                storageOffset += Reflect.getMetadata("wgsl:size", particle, prop)
+            }
         }
+
+        this.pipeline = this.device.createRenderPipeline({
+            label: "SDF pipeline",
+            layout: "auto",
+            vertex: {
+                module: shaderModule,
+                entryPoint: "vertexMain",
+            },
+            fragment: {
+                module: shaderModule,
+                entryPoint: "fragmentMain",
+                targets: [
+                    {
+                        format,
+                    },
+                ],
+            },
+            primitive: {
+                topology: "triangle-strip",
+                stripIndexFormat: "uint32",
+            },
+        })
+
+        this.bindGroup = this.device.createBindGroup({
+            layout: this.pipeline.getBindGroupLayout(0),
+            entries: [
+                {
+                    binding: 0,
+                    resource: { buffer: this.uniformBuffer },
+                },
+                {
+                    binding: 1,
+                    resource: { buffer: this.storageBuffer },
+                },
+            ],
+        })
     }
 
-    private onWheel(e: WheelEvent) {
-        e.preventDefault()
-        const delta = e.deltaY > 0 ? 1 : -1
-        this.radius *= 1 + delta * this.zoomSpeed
-        if (this.radius < 0.2) this.radius = 0.2
-    }
+    render(): void {
+        const commandEncoder = this.device.createCommandEncoder()
+        const renderPass = commandEncoder.beginRenderPass({
+            colorAttachments: [
+                {
+                    view: this.context.getCurrentTexture().createView(),
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                    loadOp: "clear",
+                    storeOp: "store",
+                },
+            ],
+        })
 
-    private onResize() {
-        this.canvas.width = window.innerWidth
-        this.canvas.height = window.innerHeight
-        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height)
-    }
+        // Update uniform buffer using offsets from metadata
+        let offset = 0
+        for (const prop of Object.getOwnPropertyNames(this.uniforms)) {
+            const align = Reflect.getMetadata("wgsl:align", this.uniforms, prop)
+            offset = Math.ceil(offset / align) * align
 
-    private renderLoop(now: number) {
-        const gl = this.gl
-        const time = (now - this.startTime) * 0.001
+            this.device.queue.writeBuffer(this.uniformBuffer, offset, this.uniforms[prop])
 
-        gl.uniform2f(this.resolutionLoc, this.canvas.width, this.canvas.height)
-        gl.uniform1f(this.timeLoc, time)
-
-        // Spherical -> Cartesian
-        const camPos = this.getCameraPosition()
-        gl.uniform3f(this.cameraLoc, camPos[0], camPos[1], camPos[2])
-
-        // forward, right, up
-        const forward = this.normalize([this.target[0] - camPos[0], this.target[1] - camPos[1], this.target[2] - camPos[2]])
-        const right = this.normalize(this.cross(forward, [0, 1, 0]))
-        const up = this.normalize(this.cross(right, forward))
-
-        gl.uniform3f(this.forwardLoc, forward[0], forward[1], forward[2])
-        gl.uniform3f(this.rightLoc, right[0], right[1], right[2])
-        gl.uniform3f(this.upLoc, up[0], up[1], up[2])
-
-        gl.clearColor(0, 0, 0, 1)
-        gl.clear(gl.COLOR_BUFFER_BIT)
-        gl.drawArrays(gl.TRIANGLES, 0, 6)
-
-        this.requestId = requestAnimationFrame(this.renderLoop)
-    }
-
-    public dispose() {
-        if (this.requestId) cancelAnimationFrame(this.requestId)
-        if (this.canvas.parentNode) this.canvas.parentNode.removeChild(this.canvas)
-    }
-
-    private getCameraPosition(): [number, number, number] {
-        const sinPhi = Math.sin(this.phi)
-        const x = this.target[0] + this.radius * sinPhi * Math.cos(this.theta)
-        const y = this.target[1] + this.radius * Math.cos(this.phi)
-        const z = this.target[2] + this.radius * sinPhi * Math.sin(this.theta)
-        return [x, y, z]
-    }
-
-    private normalize(v: number[]): number[] {
-        const len = Math.hypot(v[0], v[1], v[2])
-        if (len < 1e-8) return [0, 0, 0]
-        return [v[0] / len, v[1] / len, v[2] / len]
-    }
-
-    private cross(a: number[], b: number[]): number[] {
-        return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-    }
-
-    private createProgram(gl: WebGL2RenderingContext, vsSrc: string, fsSrc: string): WebGLProgram {
-        const vs = this.createShader(gl, gl.VERTEX_SHADER, vsSrc)
-        const fs = this.createShader(gl, gl.FRAGMENT_SHADER, fsSrc)
-        const prog = gl.createProgram()!
-        gl.attachShader(prog, vs)
-        gl.attachShader(prog, fs)
-        gl.linkProgram(prog)
-        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-            const info = gl.getProgramInfoLog(prog)
-            gl.deleteProgram(prog)
-            throw new Error("Link error: " + info)
+            offset += Reflect.getMetadata("wgsl:size", this.uniforms, prop)
         }
-        gl.deleteShader(vs)
-        gl.deleteShader(fs)
-        return prog
-    }
 
-    private createShader(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
-        const sh = gl.createShader(type)!
-        gl.shaderSource(sh, src)
-        gl.compileShader(sh)
-        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-            const info = gl.getShaderInfoLog(sh)
-            gl.deleteShader(sh)
-            throw new Error("Compile error: " + info)
-        }
-        return sh
+        renderPass.setPipeline(this.pipeline)
+        renderPass.setBindGroup(0, this.bindGroup)
+        renderPass.draw(4)
+        renderPass.end()
+
+        this.device.queue.submit([commandEncoder.finish()])
     }
 }

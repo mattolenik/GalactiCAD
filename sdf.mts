@@ -1,5 +1,4 @@
 import "reflect-metadata"
-
 import previewShader from "./shaders/preview.wgsl"
 
 // Decorators for WGSL struct layout

@@ -4,9 +4,9 @@ import { assetBundler } from "./asset-bundler.mjs"
 import { wgslLoader } from "./wgsl-loader.mjs"
 
 const isProd = !!process.env.PRODUCTION
-const isWatch = process.argv.includes("-w")
+const ts = () => new Date().toLocaleTimeString()
 
-const assets = ["sdf.html"]
+const assets = ["*.html", "*.css"]
 const entryPoints = ["./sdf.mts"]
 const outdir = "./dist"
 
@@ -22,14 +22,16 @@ async function build() {
             sourcemap: !isProd,
             target: "es2020",
         })
-        console.log("🌱🐢")
+        console.log("🌱🐢\n")
     } catch {
         /* do nothing — esbuild already nicely writes to stdout for us */
     }
 }
 
+console.log(`[${ts()}] Building`)
 await build()
 
+const isWatch = process.argv.includes("-w")
 if (isWatch) {
     const location = "."
     chokidar
@@ -42,7 +44,7 @@ if (isWatch) {
             persistent: true,
         })
         .on("all", async (event, path) => {
-            console.log(`Rebuild triggered by ${event}: ${path}`)
+            console.log(`[${ts()}] Build triggered by ${event}: ${path}`)
             await build()
         })
 }

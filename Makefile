@@ -12,7 +12,7 @@ open:
 .PHONY: build
 build:
 	@mkdir -p $(DIST)
-	npx tsx build/build.mts $(BUILD_FLAGS)
+	npx tsx --no-warnings build/build.mts $(BUILD_FLAGS)
 
 watch: BUILD_FLAGS=-w
 watch: build

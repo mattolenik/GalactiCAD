@@ -1,16 +1,14 @@
 import chokidar from "chokidar"
 import * as esbuild from "esbuild"
-import { assetBundler } from "./asset-bundler.mjs"
-import { wgslLoader } from "./wgsl-loader.mjs"
-
-const isProd = !!process.env.PRODUCTION
-const ts = () => new Date().toLocaleTimeString()
+import assetBundler from "./asset-bundler.mjs"
+import wgslLoader from "./wgsl-loader.mjs"
 
 const assets = ["*.html", "*.css"]
 const entryPoints = ["./sdf.mts"]
 const outdir = "./dist"
 
 async function build() {
+    const isProd = !!process.env.PRODUCTION
     try {
         await esbuild.build({
             bundle: true,
@@ -28,11 +26,7 @@ async function build() {
     }
 }
 
-console.log(`[${ts()}] Building`)
-await build()
-
-const isWatch = process.argv.includes("-w")
-if (isWatch) {
+function watch() {
     const location = "."
     chokidar
         .watch(location, {
@@ -44,7 +38,19 @@ if (isWatch) {
             persistent: true,
         })
         .on("all", async (event, path) => {
-            console.log(`[${ts()}] Build triggered by ${event}: ${path}`)
+            log(`Build triggered by ${event}: ${path}`)
             await build()
         })
+}
+
+log("Building")
+await build()
+
+if (process.argv.includes("-w")) {
+    log("Watching for changes")
+    watch()
+}
+
+function log(msg: string) {
+    console.log(`[${new Date().toLocaleTimeString()}] ${msg}`)
 }

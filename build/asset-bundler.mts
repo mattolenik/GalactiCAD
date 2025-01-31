@@ -2,14 +2,16 @@ import type { Plugin, PluginBuild } from "esbuild"
 import { default as fs, default as glob } from "fs/promises"
 import * as path from "path"
 
+const pluginName = "asset-bundler"
+
 // esbuild plugin for bundling (copying, for now) assets like HTML, CSS, etc
-export function assetBundler(filesOrGlobs: string[] | string): Plugin {
+export default function assetBundler(filesOrGlobs: string[] | string): Plugin {
     return {
-        name: "asset-bundler",
+        name: pluginName,
         setup(build: PluginBuild) {
             build.onStart(async () => {
                 if (!build.initialOptions.outdir) {
-                    throw new Error("asset-bundler requires that outdir be set")
+                    throw new Error(`${pluginName} requires that outdir be set`)
                 }
 
                 for await (const file of glob.glob(filesOrGlobs)) {

@@ -13,7 +13,7 @@ import type { Plugin, PluginBuild } from "esbuild"
 // * Supports recursive #include in the form of `#include "path/to/file.wgsl"`
 //                                        or of `// #include "path/to/file.wgsl"`
 //
-export function wgslLoader(includeCommentedLines = true, extensions = ["wgsl"]): Plugin {
+export default function wgslLoader(includeCommentedLines = true, extensions = ["wgsl"]): Plugin {
     if (extensions.length === 0) {
         throw new Error("must specify at least one file extension for WGSL shaders")
     }

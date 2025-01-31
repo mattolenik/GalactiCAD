@@ -2,6 +2,7 @@
   "name": "GalactiCAD",
   "description": "Experimental SDF-based code-as-CAD",
   "version": "0.0.1",
+  "homepage": "https://galacticad.app",
   "author": "Matthew Olenik",
   "license": "AGPL-3.0-only",
   "scripts": {

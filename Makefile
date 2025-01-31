@@ -1,4 +1,5 @@
-DIST := dist/
+BUILD := build
+DIST  := dist
 
 HTML_SRC := sdf.html
 
@@ -10,10 +11,15 @@ serve: build
 open:
 	open http://localhost:8000/sdf.html
 
-build:
+_build_prep:
 	@mkdir -p $(DIST)
-	cp -f $(HTML_SRC) $(DIST)
-	npx tsx build.mts
+	cp -f $(HTML_SRC) $(DIST)/
+
+build: _build_prep
+	npx tsx build/build.mts
+
+watch: _build_prep
+	npx tsx build/build.mts -w
 
 release:
 	PRODUCTION=1 make build

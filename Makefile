@@ -1,28 +1,25 @@
-BUILD := build
-DIST  := dist
-
-HTML_SRC := sdf.html
+DIST := dist
 
 default: build
 
 serve: build
 	cd $(DIST) && python3 -m http.server
 
+.PHONY: open
 open:
 	open http://localhost:8000/sdf.html
 
-_build_prep:
+.PHONY: build
+build:
 	@mkdir -p $(DIST)
-	cp -f $(HTML_SRC) $(DIST)/
+	npx tsx build/build.mts $(BUILD_FLAGS)
 
-build: _build_prep
-	npx tsx build/build.mts
-
-watch: _build_prep
-	npx tsx build/build.mts -w
+watch: BUILD_FLAGS=-w
+watch: build
 
 release:
 	PRODUCTION=1 make build
 
+.PHONY: clean
 clean:
 	rm -rf $(DIST)

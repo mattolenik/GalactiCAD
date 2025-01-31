@@ -1,21 +1,22 @@
-import * as esbuild from "esbuild"
-import { wgslLoader } from "./wgsl-loader.mjs"
-import { assetBundler } from "./asset-bundler.mjs"
 import chokidar from "chokidar"
+import * as esbuild from "esbuild"
+import { assetBundler } from "./asset-bundler.mjs"
+import { wgslLoader } from "./wgsl-loader.mjs"
 
 const isProd = !!process.env.PRODUCTION
-
 const isWatch = process.argv.includes("-w")
 
 const assets = ["sdf.html"]
+const entryPoints = ["./sdf.mts"]
+const outdir = "./dist"
 
 async function build() {
     try {
         await esbuild.build({
             bundle: true,
-            entryPoints: ["./sdf.mts"],
+            entryPoints: entryPoints,
             minify: isProd,
-            outdir: "./dist",
+            outdir: outdir,
             platform: "neutral",
             plugins: [wgslLoader(), assetBundler(assets)],
             sourcemap: !isProd,

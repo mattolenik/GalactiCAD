@@ -12,22 +12,25 @@ const assets = ["sdf.html"]
 async function build() {
     try {
         await esbuild.build({
-            plugins: [wgslLoader(), assetBundler(assets)],
-            outdir: "./dist",
-            entryPoints: ["./sdf.mts"],
             bundle: true,
-            platform: "neutral",
-            target: "es2020",
-            sourcemap: !isProd,
+            entryPoints: ["./sdf.mts"],
             minify: isProd,
+            outdir: "./dist",
+            platform: "neutral",
+            plugins: [wgslLoader(), assetBundler(assets)],
+            sourcemap: !isProd,
+            target: "es2020",
         })
         console.log("🌱🐢")
-    } catch {}
+    } catch {
+        /* do nothing — esbuild already nicely writes to stdout for us */
+    }
 }
+
+await build()
 
 if (isWatch) {
     const location = "."
-    await build()
     chokidar
         .watch(location, {
             atomic: true,
@@ -41,6 +44,4 @@ if (isWatch) {
             console.log(`Rebuild triggered by ${event}: ${path}`)
             await build()
         })
-} else {
-    await build()
 }

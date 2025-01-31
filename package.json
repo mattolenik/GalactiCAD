@@ -1,5 +1,5 @@
 {
-  "name": "GalactiCAD",
+  "name": "galacticad",
   "description": "Experimental SDF-based code-as-CAD",
   "version": "0.0.1",
   "homepage": "https://galacticad.app",
@@ -13,6 +13,7 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@webgpu/types": "^0.1.53",
+    "chokidar": "^4.0.3",
     "esbuild": "^0.24.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"

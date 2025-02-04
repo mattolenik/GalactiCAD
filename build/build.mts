@@ -1,11 +1,11 @@
 import chokidar from "chokidar"
 import * as esbuild from "esbuild"
+import fs from "fs/promises"
 import http from "http"
+import path from "path"
+import WebSocket, { WebSocketServer } from "ws"
 import assetBundler from "./asset-bundler.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
-import path from "path"
-import fs from "fs/promises"
-import { createReadStream } from "fs"
 
 const assets = ["*.html", "*.css"]
 const entryPoints = ["./sdf.mts"]
@@ -30,7 +30,7 @@ async function build() {
     }
 }
 
-function watch(location: string) {
+function watch(location: string, onRebuild: () => void) {
     return chokidar
         .watch(location, {
             atomic: true,
@@ -43,10 +43,11 @@ function watch(location: string) {
         .on("all", async (event, path) => {
             log(`Build triggered by ${event}: ${path}`)
             await build()
+            onRebuild()
         })
 }
 
-function serve(dir: string, port: number) {
+function serve(port: number, dir: string, defaultPath = "index.html") {
     const contentType: Record<string, string> = {
         ".css": "text/css",
         ".gif": "image/gif",
@@ -58,9 +59,19 @@ function serve(dir: string, port: number) {
         ".png": "image/png",
         ".svg": "image/svg+xml",
     }
+    const clientScript = `
+    <script type="module">
+        const ws = new WebSocket("ws://localhost:6909");
+        ws.addEventListener("message", (event) => {
+            if (event.data === "reload") {
+                ws.close();
+                window.location.reload();
+            }
+        });
+    </script>`
     const defaultContentType = "application/octet-stream"
-    const defaultPath = "index.html"
     console.log(`Serving at http://localhost:${port}`)
+
     return http
         .createServer(async (req, res) => {
             console.log(`${req.method} ${req.url}`)
@@ -70,22 +81,35 @@ function serve(dir: string, port: number) {
                 if (stats.isDirectory()) {
                     file = defaultPath
                 }
-                const data = await fs.readFile(file)
-                res.writeHead(200, { "content-type": contentType[path.extname(file) || defaultContentType] })
+                let data = await fs.readFile(file)
+                res.writeHead(200, { "content-type": contentType[path.extname(file)] || defaultContentType })
+                if (path.extname(file) === ".html") {
+                    const doc = data.toString().replace("</body>", clientScript + "</body>")
+                    data = Buffer.from(doc)
+                }
                 res.write(data)
-                createReadStream(file).pipe(res)
+                res.end()
             } catch (err: any) {
                 if (err.code === "ENOENT") {
                     res.writeHead(404, { "content-type": "text/plain" })
                     res.end("404 not found")
-                    return
                 }
                 res.writeHead(500, { "content-type": "text/plain" })
                 res.end("500 unknown server error")
-                return
             }
         })
         .listen(port)
+}
+
+function livereload() {
+    const port = 6909
+    const wss = new WebSocketServer({ port })
+
+    return wss.on("connection", (ws: WebSocket) => {
+        ws.on("error", (error: Error) => {
+            console.error("WebSocket error:", error)
+        })
+    })
 }
 
 log("Building")
@@ -93,12 +117,14 @@ await build()
 
 if (process.argv.includes("-w")) {
     log("Watching for changes")
-    let server = serve("./dist", 6900)
-    let watcher = watch(".")
+    let server = serve(6900, "./dist")
+    let lrServer = livereload()
+    let watcher = watch(".", () => lrServer.clients.forEach((client) => client.send("reload")))
 
     process.on("SIGINT", async () => {
         server.closeAllConnections()
         await watcher.close()
+        lrServer.close()
         process.exit(0)
     })
 }

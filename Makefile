@@ -2,9 +2,6 @@ DIST := dist
 
 default: build
 
-serve: build
-	cd $(DIST) && python3 -m http.server
-
 .PHONY: open
 open:
 	open http://localhost:8000/sdf.html
@@ -16,6 +13,7 @@ build:
 
 watch: BUILD_FLAGS=-w
 watch: build
+serve: watch
 
 release:
 	PRODUCTION=1 make build

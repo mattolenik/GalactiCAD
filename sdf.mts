@@ -7,6 +7,16 @@ function vec4f(target: any, propertyKey: string) {
     Reflect.defineMetadata("wgsl:align", 16, target, propertyKey)
 }
 
+function vec3f(target: any, propertyKey: string) {
+    Reflect.defineMetadata("wgsl:size", 12, target, propertyKey)
+    Reflect.defineMetadata("wgsl:align", 12, target, propertyKey)
+}
+
+function vec2f(target: any, propertyKey: string) {
+    Reflect.defineMetadata("wgsl:size", 8, target, propertyKey)
+    Reflect.defineMetadata("wgsl:align", 8, target, propertyKey)
+}
+
 function f32(target: any, propertyKey: string) {
     Reflect.defineMetadata("wgsl:size", 4, target, propertyKey)
     Reflect.defineMetadata("wgsl:align", 4, target, propertyKey)
@@ -28,7 +38,7 @@ function getStructSize(target: any): number {
     return Math.ceil(size / maxAlign) * maxAlign
 }
 
-class Particle {
+class Shape {
     [key: string]: any
     @vec4f position = new Float32Array([0, 0, 0, 1])
     @f32 mass = new Float32Array([1.0])
@@ -49,7 +59,7 @@ export class SDFRenderer {
     private uniformBuffer!: GPUBuffer
     private storageBuffer!: GPUBuffer
     private numParticles = 100
-    private particles: Particle[] = []
+    private shapes: Shape[] = []
 
     private uniforms = new Uniforms()
 
@@ -73,14 +83,14 @@ export class SDFRenderer {
 
         // Initialize particles
         for (let i = 0; i < this.numParticles; i++) {
-            const particle = new Particle()
+            const particle = new Shape()
             particle.position = new Float32Array([Math.random() * 2 - 1, Math.random() * 2 - 1, 0, 1])
             particle.mass = new Float32Array([Math.random() * 0.5 + 0.5])
-            this.particles.push(particle)
+            this.shapes.push(particle)
         }
 
         // Create storage buffer
-        const particleSize = getStructSize(new Particle())
+        const particleSize = getStructSize(new Shape())
         const storageSize = particleSize * this.numParticles
 
         this.storageBuffer = this.device.createBuffer({
@@ -89,7 +99,7 @@ export class SDFRenderer {
         })
 
         const shaderModule = this.device.createShaderModule({
-            label: "SDF shader",
+            label: "SDF Preview",
             code: previewShader,
         })
 
@@ -103,14 +113,14 @@ export class SDFRenderer {
         // Create bind group
         // Update storage buffer
         let storageOffset = 0
-        for (const particle of this.particles) {
-            for (const prop of Object.getOwnPropertyNames(particle)) {
-                const align = Reflect.getMetadata("wgsl:align", particle, prop)
+        for (const shape of this.shapes) {
+            for (const prop of Object.getOwnPropertyNames(shape)) {
+                const align = Reflect.getMetadata("wgsl:align", shape, prop)
                 storageOffset = Math.ceil(storageOffset / align) * align
 
-                this.device.queue.writeBuffer(this.storageBuffer, storageOffset, particle[prop])
+                this.device.queue.writeBuffer(this.storageBuffer, storageOffset, shape[prop])
 
-                storageOffset += Reflect.getMetadata("wgsl:size", particle, prop)
+                storageOffset += Reflect.getMetadata("wgsl:size", shape, prop)
             }
         }
 

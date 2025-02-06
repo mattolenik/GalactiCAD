@@ -1,25 +1,30 @@
 import "reflect-metadata"
 import previewShader from "./shaders/preview.wgsl"
 
+const Metadata = {
+    SIZE: Symbol("wgsl:size"),
+    ALIGN: Symbol("wgsl:align"),
+}
+
 // Decorators for WGSL struct layout
 function vec4f(target: any, propertyKey: string) {
-    Reflect.defineMetadata("wgsl:size", 16, target, propertyKey)
-    Reflect.defineMetadata("wgsl:align", 16, target, propertyKey)
+    Reflect.defineMetadata(Metadata.SIZE, 16, target, propertyKey)
+    Reflect.defineMetadata(Metadata.ALIGN, 16, target, propertyKey)
 }
 
 function vec3f(target: any, propertyKey: string) {
-    Reflect.defineMetadata("wgsl:size", 12, target, propertyKey)
-    Reflect.defineMetadata("wgsl:align", 12, target, propertyKey)
+    Reflect.defineMetadata(Metadata.SIZE, 12, target, propertyKey)
+    Reflect.defineMetadata(Metadata.ALIGN, 12, target, propertyKey)
 }
 
 function vec2f(target: any, propertyKey: string) {
-    Reflect.defineMetadata("wgsl:size", 8, target, propertyKey)
-    Reflect.defineMetadata("wgsl:align", 8, target, propertyKey)
+    Reflect.defineMetadata(Metadata.SIZE, 8, target, propertyKey)
+    Reflect.defineMetadata(Metadata.ALIGN, 8, target, propertyKey)
 }
 
 function f32(target: any, propertyKey: string) {
-    Reflect.defineMetadata("wgsl:size", 4, target, propertyKey)
-    Reflect.defineMetadata("wgsl:align", 4, target, propertyKey)
+    Reflect.defineMetadata(Metadata.SIZE, 4, target, propertyKey)
+    Reflect.defineMetadata(Metadata.ALIGN, 4, target, propertyKey)
 }
 
 // Helper to calculate struct size
@@ -28,8 +33,8 @@ function getStructSize(target: any): number {
     let maxAlign = 0
 
     for (const prop of Object.getOwnPropertyNames(target)) {
-        const align = Reflect.getMetadata("wgsl:align", target, prop) || 0
-        const fieldSize = Reflect.getMetadata("wgsl:size", target, prop) || 0
+        const align = Reflect.getMetadata(Metadata.ALIGN, target, prop) || 0
+        const fieldSize = Reflect.getMetadata(Metadata.SIZE, target, prop) || 0
 
         maxAlign = Math.max(maxAlign, align)
         size = Math.ceil(size / align) * align + fieldSize
@@ -46,8 +51,6 @@ class Shape {
 
 class Uniforms {
     [key: string]: any
-    @vec4f color = new Float32Array([1.0, 0.0, 0.0, 1.0])
-    @f32 radius = new Float32Array([0.25])
 }
 
 export class SDFRenderer {
@@ -115,12 +118,12 @@ export class SDFRenderer {
         let storageOffset = 0
         for (const shape of this.shapes) {
             for (const prop of Object.getOwnPropertyNames(shape)) {
-                const align = Reflect.getMetadata("wgsl:align", shape, prop)
+                const align = Reflect.getMetadata(Metadata.ALIGN, shape, prop)
                 storageOffset = Math.ceil(storageOffset / align) * align
 
                 this.device.queue.writeBuffer(this.storageBuffer, storageOffset, shape[prop])
 
-                storageOffset += Reflect.getMetadata("wgsl:size", shape, prop)
+                storageOffset += Reflect.getMetadata(Metadata.SIZE, shape, prop)
             }
         }
 
@@ -177,12 +180,12 @@ export class SDFRenderer {
         // Update uniform buffer using offsets from metadata
         let offset = 0
         for (const prop of Object.getOwnPropertyNames(this.uniforms)) {
-            const align = Reflect.getMetadata("wgsl:align", this.uniforms, prop)
+            const align = Reflect.getMetadata(Metadata.ALIGN, this.uniforms, prop)
             offset = Math.ceil(offset / align) * align
 
             this.device.queue.writeBuffer(this.uniformBuffer, offset, this.uniforms[prop])
 
-            offset += Reflect.getMetadata("wgsl:size", this.uniforms, prop)
+            offset += Reflect.getMetadata(Metadata.SIZE, this.uniforms, prop)
         }
 
         renderPass.setPipeline(this.pipeline)

@@ -11,6 +11,19 @@ const assets = ["*.html", "*.css"]
 const entryPoints = ["./sdf.mts"]
 const outdir = "./dist"
 
+const port = parseInt(process.env.PORT || "6900", 10)
+const portLiveReload = parseInt(process.env.PORT_LIVERELOAD || "6909", 10)
+
+switch (process.argv[2]) {
+    case "port":
+        console.log(port)
+        process.exit()
+
+    case "portLiveReload":
+        console.log(portLiveReload)
+        process.exit()
+}
+
 async function build() {
     const isProd = !!process.env.PRODUCTION
     try {
@@ -102,8 +115,7 @@ function serve(port: number, dir: string, defaultPath = "index.html") {
 }
 
 function livereload() {
-    const port = 6909
-    const wss = new WebSocketServer({ port })
+    const wss = new WebSocketServer({ port: portLiveReload })
 
     return wss.on("connection", (ws: WebSocket) => {
         ws.on("error", (error: Error) => {
@@ -117,7 +129,7 @@ await build()
 
 if (process.argv.includes("-w")) {
     log("Watching for changes")
-    let server = serve(6900, "./dist")
+    let server = serve(port, "./dist")
     let lrServer = livereload()
     let watcher = watch(".", () => lrServer.clients.forEach((client) => client.send("reload")))
 

@@ -1,6 +1,6 @@
+import type { Plugin, PluginBuild } from "esbuild"
 import fs from "fs/promises"
 import * as path from "path"
-import type { Plugin, PluginBuild } from "esbuild"
 
 // esbuild plugin for loading WGSL files
 //
@@ -10,10 +10,10 @@ import type { Plugin, PluginBuild } from "esbuild"
 // It will be a string value holding the contents of the shader.
 //
 // Features:
-// * Supports recursive #include in the form of `#include "path/to/file.wgsl"`
-//                                        or of `// #include "path/to/file.wgsl"`
+// * Supports recursive include in the form of `//- include "path/to/file.wgsl"`
+//                                       or of `//-include "path/to/file.wgsl"`
 //
-export default function wgslLoader(includeCommentedLines = true, extensions = ["wgsl"]): Plugin {
+export default function wgslLoader(extensions = ["wgsl"]): Plugin {
     if (extensions.length === 0) {
         throw new Error("must specify at least one file extension for WGSL shaders")
     }
@@ -38,20 +38,14 @@ export default function wgslLoader(includeCommentedLines = true, extensions = ["
  * @param visited The paths already visited
  * @returns The file text with any #include statements inlined.
  */
-async function load(filePath: string, visited = new Set<string>()): Promise<string> {
-    // Resolve filePath to an absolute path so we track visited files consistently.
+async function load(filePath: string, visited = new Set<string>()): Promise<string | undefined> {
     const absPath = path.resolve(filePath)
 
-    // If we’ve already visited this file, skip to prevent infinite recursion
-    // from circular includes.
     if (visited.has(absPath)) {
-        // You might prefer to throw an error instead. For example:
-        // throw new Error(`Circular include detected: ${absPath}`);
-        return ""
+        return undefined
     }
     visited.add(absPath)
 
-    // Read file contents
     let content: string
     try {
         content = await fs.readFile(absPath, "utf8")
@@ -59,10 +53,9 @@ async function load(filePath: string, visited = new Set<string>()): Promise<stri
         throw new Error(`Failed to read file "${absPath}": ${err}`)
     }
 
-    // Directory of this file, so #includes can be resolved relative to it.
+    // Directory of this file, so includes can be resolved relative to it
     const dirOfFile = path.dirname(absPath)
 
-    // Split into lines and process each line
     const lines = content.split(/\r?\n/)
     let result = ""
 
@@ -72,7 +65,6 @@ async function load(filePath: string, visited = new Set<string>()): Promise<stri
     for (const line of lines) {
         const includeMatch = line.match(pattern)
         if (includeMatch) {
-            // We have an #include line with a relative path
             const includePath = includeMatch[1]
             const nestedFile = path.resolve(dirOfFile, includePath)
 

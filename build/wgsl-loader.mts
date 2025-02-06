@@ -1,4 +1,4 @@
-import fs from "fs"
+import fs from "fs/promises"
 import * as path from "path"
 import type { Plugin, PluginBuild } from "esbuild"
 
@@ -22,8 +22,8 @@ export default function wgslLoader(includeCommentedLines = true, extensions = ["
     return {
         name: "wgsl-loader",
         setup(build: PluginBuild) {
-            build.onLoad({ filter: pattern, namespace: "file" }, (args) => {
-                const contents = load(args.path, includeCommentedLines)
+            build.onLoad({ filter: pattern, namespace: "file" }, async (args) => {
+                const contents = await load(args.path, includeCommentedLines)
                 return { contents, loader: "text" }
             })
         },
@@ -39,7 +39,7 @@ export default function wgslLoader(includeCommentedLines = true, extensions = ["
  * @param visited  A set of absolute paths already visited (to prevent circular includes).
  * @returns The file text with any #include statements inlined.
  */
-function load(filePath: string, commentedInclude = true, visited = new Set<string>()): string {
+async function load(filePath: string, commentedInclude = true, visited = new Set<string>()): Promise<string> {
     // Resolve filePath to an absolute path so we track visited files consistently.
     const absPath = path.resolve(filePath)
 
@@ -55,7 +55,7 @@ function load(filePath: string, commentedInclude = true, visited = new Set<strin
     // Read file contents
     let content: string
     try {
-        content = fs.readFileSync(absPath, "utf8")
+        content = await fs.readFile(absPath, "utf8")
     } catch (err) {
         throw new Error(`Failed to read file "${absPath}": ${err}`)
     }

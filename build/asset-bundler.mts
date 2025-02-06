@@ -4,7 +4,7 @@ import * as path from "path"
 
 const pluginName = "asset-bundler"
 
-// esbuild plugin for bundling (copying, for now) assets like HTML, CSS, etc
+// esbuild plugin for bundling (copying, for now) assets like HTML, CSS, images, etc
 export default function assetBundler(filesOrGlobs: string[] | string): Plugin {
     return {
         name: pluginName,

@@ -1,15 +1,19 @@
 DIST := dist
 
+BUILD := npx tsx --no-warnings build/build.mts
+
+PORT ?= $(shell $(BUILD) port)
+
 default: build
 
 .PHONY: open
 open:
-	open http://localhost:8000/sdf.html
+	open http://localhost:$(PORT)
 
 .PHONY: build
 build:
 	@mkdir -p $(DIST)
-	npx tsx --no-warnings build/build.mts $(BUILD_FLAGS)
+	$(BUILD) $(BUILD_FLAGS)
 
 watch: BUILD_FLAGS=-w
 watch: build

@@ -27,6 +27,7 @@ switch (process.argv[2]) {
 async function build() {
     const isProd = !!process.env.PRODUCTION
     try {
+        const startTime = performance.now()
         await esbuild.build({
             bundle: true,
             entryPoints: entryPoints,
@@ -37,7 +38,8 @@ async function build() {
             sourcemap: !isProd,
             target: "es2020",
         })
-        console.log("🌱🐢\n")
+        const elapsed = performance.now() - startTime
+        console.log(`🌱🐢 ${elapsed.toFixed(2)}ms\n`)
     } catch {
         /* do nothing — esbuild already nicely writes to stdout for us */
     }

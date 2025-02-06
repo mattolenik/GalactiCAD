@@ -23,7 +23,7 @@ export default function wgslLoader(includeCommentedLines = true, extensions = ["
         name: "wgsl-loader",
         setup(build: PluginBuild) {
             build.onLoad({ filter: pattern, namespace: "file" }, async (args) => {
-                const contents = await load(args.path, includeCommentedLines)
+                const contents = await load(args.path)
                 return { contents, loader: "text" }
             })
         },
@@ -35,11 +35,10 @@ export default function wgslLoader(includeCommentedLines = true, extensions = ["
  * #include "relative/path.ext"
  *
  * @param filePath Absolute or relative path to the file to load.
- * @param commentedInclude Whether or not to process #include statements that are on commented lines, e.g. // #include "file.txt"
- * @param visited  A set of absolute paths already visited (to prevent circular includes).
+ * @param visited The paths already visited
  * @returns The file text with any #include statements inlined.
  */
-async function load(filePath: string, commentedInclude = true, visited = new Set<string>()): Promise<string> {
+async function load(filePath: string, visited = new Set<string>()): Promise<string> {
     // Resolve filePath to an absolute path so we track visited files consistently.
     const absPath = path.resolve(filePath)
 
@@ -67,19 +66,18 @@ async function load(filePath: string, commentedInclude = true, visited = new Set
     const lines = content.split(/\r?\n/)
     let result = ""
 
-    const normalPattern = /^\s*#include\s+"([^"]+)"\s*$/
-    const commentedPattern = /^\s*(?:\/\/)?\s*#include\s+"([^"]+)"\s*$/
-    const includePattern = commentedInclude ? commentedPattern : normalPattern
+    // Matches the style of:  //- include "file.ext"
+    const pattern = /^\/\/-\s*include\s+"([^"]+)"\s*$/
 
     for (const line of lines) {
-        const includeMatch = line.match(includePattern)
+        const includeMatch = line.match(pattern)
         if (includeMatch) {
             // We have an #include line with a relative path
             const includePath = includeMatch[1]
             const nestedFile = path.resolve(dirOfFile, includePath)
 
             // Recursively load and inline
-            const nestedContent = load(nestedFile, commentedInclude, visited)
+            const nestedContent = load(nestedFile, visited)
             result += nestedContent + "\n"
         } else {
             // Ordinary line, just copy it

@@ -1,4 +1,4 @@
-// #include "sdf.wgsl"
+//- include "sdf.wgsl"
 
 struct Particle {
     position: vec4f,

@@ -37,8 +37,12 @@ export class DevServer {
         })
     }
 
+    public command(cmd: string) {
+        this.LRServer.clients.forEach((client) => client.send(cmd))
+    }
+
     public reload() {
-        this.LRServer.clients.forEach((client) => client.send("reload"))
+        this.command("reload")
     }
 
     public close() {

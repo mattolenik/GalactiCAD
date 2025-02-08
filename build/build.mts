@@ -4,7 +4,7 @@ import assetBundler from "./asset-bundler.mjs"
 import { DevServer } from "./server.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
 
-const assets = ["src/*.html", "src/*.css"]
+const assets = ["src/**/*.html", "src/**/*.css"]
 const entryPoints = ["./src/sdf.mts"]
 const outdir = "./dist"
 

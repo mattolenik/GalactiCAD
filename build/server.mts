@@ -3,7 +3,51 @@ import http from "http"
 import path from "path"
 import WebSocket, { WebSocketServer } from "ws"
 
-export function devServer(port: number, dir: string, defaultPath = "index.html") {
+export class DevServer {
+    public ServeRoot: string
+    public Port: number
+    public LiveReloadPort: number
+    public IndexFileName: string
+
+    public Server: http.Server
+    public LRServer: WebSocketServer
+
+    constructor(serveRoot: string, port: number, liveReloadPort: number, indexFileName = "index.html") {
+        this.ServeRoot = serveRoot
+        this.Port = port
+        this.LiveReloadPort = liveReloadPort
+        this.IndexFileName = indexFileName
+
+        const clientScript = `
+        <script type="module">
+            const ws = new WebSocket("ws://localhost:${liveReloadPort}");
+            ws.addEventListener("message", (event) => {
+                if (event.data === "reload") {
+                    ws.close();
+                    window.location.reload();
+                }
+            });
+        </script>`
+
+        this.Server = httpServer(serveRoot, port, clientScript, indexFileName)
+        this.LRServer = new WebSocketServer({ port: liveReloadPort }).on("connection", (ws: WebSocket) => {
+            ws.on("error", (error: Error) => {
+                console.error("WebSocket error:", error)
+            })
+        })
+    }
+
+    public reload() {
+        this.LRServer.clients.forEach((client) => client.send("reload"))
+    }
+
+    public close() {
+        this.Server.closeAllConnections()
+        this.LRServer.close()
+    }
+}
+
+function httpServer(dir: string, port: number, clientScript = "", indexFileName = "index.html") {
     const contentType: Record<string, string> = {
         ".css": "text/css",
         ".gif": "image/gif",
@@ -15,16 +59,7 @@ export function devServer(port: number, dir: string, defaultPath = "index.html")
         ".png": "image/png",
         ".svg": "image/svg+xml",
     }
-    const clientScript = `
-    <script type="module">
-        const ws = new WebSocket("ws://localhost:6909");
-        ws.addEventListener("message", (event) => {
-            if (event.data === "reload") {
-                ws.close();
-                window.location.reload();
-            }
-        });
-    </script>`
+
     const defaultContentType = "application/octet-stream"
     console.log(`Serving at http://localhost:${port}`)
 
@@ -35,7 +70,7 @@ export function devServer(port: number, dir: string, defaultPath = "index.html")
             try {
                 const stats = await fs.stat(file)
                 if (stats.isDirectory()) {
-                    file = defaultPath
+                    file = path.join(dir, indexFileName)
                 }
                 let data = await fs.readFile(file)
                 res.writeHead(200, { "content-type": contentType[path.extname(file)] || defaultContentType })
@@ -49,20 +84,11 @@ export function devServer(port: number, dir: string, defaultPath = "index.html")
                 if (err.code === "ENOENT") {
                     res.writeHead(404, { "content-type": "text/plain" })
                     res.end("404 not found")
+                } else {
+                    res.writeHead(500, { "content-type": "text/plain" })
+                    res.end("500 unknown server error")
                 }
-                res.writeHead(500, { "content-type": "text/plain" })
-                res.end("500 unknown server error")
             }
         })
         .listen(port)
-}
-
-export function liveReload(port: number) {
-    const wss = new WebSocketServer({ port })
-
-    return wss.on("connection", (ws: WebSocket) => {
-        ws.on("error", (error: Error) => {
-            console.error("WebSocket error:", error)
-        })
-    })
 }

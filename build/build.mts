@@ -1,15 +1,17 @@
 import chokidar from "chokidar"
 import * as esbuild from "esbuild"
 import assetBundler from "./asset-bundler.mjs"
-import { devServer, liveReload } from "./server.mjs"
+import { DevServer } from "./server.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
 
-const assets = ["*.html", "*.css"]
-const entryPoints = ["./sdf.mts"]
+const assets = ["src/*.html", "src/*.css"]
+const entryPoints = ["./src/sdf.mts"]
 const outdir = "./dist"
 
 const port = parseInt(process.env.PORT || "6900", 10)
-const portLiveReload = parseInt(process.env.PORT_LIVERELOAD || "6909", 10)
+const liveReloadPort = parseInt(process.env.PORT_LIVERELOAD || "6909", 10)
+
+const log = (msg: any) => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`)
 
 async function build() {
     const isProd = !!process.env.PRODUCTION
@@ -26,13 +28,13 @@ async function build() {
             target: "es2020",
         })
         const elapsed = performance.now() - startTime
-        console.log(`🌱🐢 ${elapsed.toFixed(2)}ms\n`)
+        log(`🌱🐢 ${elapsed.toFixed(2)}ms\n`)
     } catch {
         /* do nothing — esbuild already nicely writes to stdout for us */
     }
 }
 
-function watch(location: string, onRebuild: () => void) {
+function watch(location: string, onChange: () => Promise<void>) {
     return chokidar
         .watch(location, {
             atomic: true,
@@ -44,13 +46,8 @@ function watch(location: string, onRebuild: () => void) {
         })
         .on("all", async (event, path) => {
             log(`Build triggered by ${event}: ${path}`)
-            await build()
-            onRebuild()
+            onChange()
         })
-}
-
-function log(msg: string) {
-    console.log(`[${new Date().toLocaleTimeString()}] ${msg}`)
 }
 
 switch (process.argv[2]) {
@@ -64,14 +61,15 @@ await build()
 
 if (process.argv.includes("-w")) {
     log("Watching for changes")
-    let server = devServer(port, "./dist")
-    let lrServer = liveReload(portLiveReload)
-    let watcher = watch(".", () => lrServer.clients.forEach((client) => client.send("reload")))
+    let server = new DevServer(outdir, port, liveReloadPort)
+    let watcher = watch(".", async () => {
+        await build()
+        server.reload()
+    })
 
     process.on("SIGINT", async () => {
-        server.closeAllConnections()
         await watcher.close()
-        lrServer.close()
+        server.close()
         process.exit(0)
     })
 }

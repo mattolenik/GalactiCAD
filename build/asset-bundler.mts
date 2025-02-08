@@ -23,7 +23,7 @@ export default function assetBundler(filesOrGlobs: string[] | string): Plugin {
                         destMtimeMs = (await fs.stat(dest)).mtimeMs
                     } catch {}
                     if (fileMtimeMs > destMtimeMs) {
-                        fs.copyFile(file, dest).then(() => console.log(`  ‣ Copied ${file} to ${dest}`))
+                        fs.copyFile(file, dest).then(() => console.log(`           ‣ Copied ${file} to ${dest}`))
                     }
                 }
             })

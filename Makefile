@@ -1,14 +1,13 @@
-DIST := dist
-
-BUILD := npx tsx --no-warnings build/build.mts
-
-PORT ?= $(shell $(BUILD) port)
+DIST    := dist
+BUILD   := npx tsx --no-warnings build/build.mts
+PORT    ?= $(shell $(BUILD) port)
+BROWSER ?= chromium
 
 default: build
 
 .PHONY: open
 open:
-	open http://localhost:$(PORT)
+	$(BROWSER) http://localhost:$(PORT)
 
 .PHONY: build
 build:

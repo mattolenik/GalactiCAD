@@ -5,7 +5,7 @@ import * as path from "path"
 const pluginName = "asset-bundler"
 
 // esbuild plugin for bundling (copying, for now) assets like HTML, CSS, images, etc
-export default function assetBundler(filesOrGlobs: string[] | string): Plugin {
+export default function assetBundler(filesOrGlobs: string[] | string, log = console.log): Plugin {
     return {
         name: pluginName,
         setup(build: PluginBuild) {
@@ -23,7 +23,7 @@ export default function assetBundler(filesOrGlobs: string[] | string): Plugin {
                         destMtimeMs = (await fs.stat(dest)).mtimeMs
                     } catch {}
                     if (fileMtimeMs > destMtimeMs) {
-                        fs.copyFile(file, dest).then(() => console.log(`           ‣ Copied ${file} to ${dest}`))
+                        fs.copyFile(file, dest).then(() => log(`‣ Copied ${file} to ${dest}`))
                     }
                 }
             })

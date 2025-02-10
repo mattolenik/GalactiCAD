@@ -23,7 +23,7 @@ async function build() {
             minify: isProd,
             outdir: outdir,
             platform: "neutral",
-            plugins: [wgslLoader(), assetBundler(assets)],
+            plugins: [wgslLoader(), assetBundler(assets, log)],
             sourcemap: !isProd,
             target: "es2020",
         })

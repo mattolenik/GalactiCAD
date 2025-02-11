@@ -1,15 +1,20 @@
 import "reflect-metadata"
 import previewShader from "./shaders/preview.wgsl"
-import { vec4f, f32, getStructSize, Metadata } from "./wgsl.mjs"
+import { array, getStructSize, Metadata, u32, vec3f, vec4f } from "./wgsl.mjs"
 
-class Shape {
+export class SDConstruct {
     [key: string]: any
-    @vec4f position = new Float32Array([0, 0, 0, 1])
-    @f32 mass = new Float32Array([1.0])
+    @u32 type = 0
+    @u32 numChildren = 0
+    @u32 treeLevel = 0
+    @vec3f position = new Float32Array([0, 0, 0])
+    @vec4f args1 = new Float32Array([0, 0, 0, 0])
+    @vec4f args2 = new Float32Array([0, 0, 0, 0])
 }
 
 class Uniforms {
     [key: string]: any
+    @array(50, getStructSize(new SDConstruct())) scene: SDConstruct[50]
 }
 
 export class SDFRenderer {
@@ -19,9 +24,7 @@ export class SDFRenderer {
     private pipeline!: GPURenderPipeline
     private bindGroup!: GPUBindGroup
     private uniformBuffer!: GPUBuffer
-    private storageBuffer!: GPUBuffer
-    private numParticles = 100
-    private shapes: Shape[] = []
+    // private storageBuffer!: GPUBuffer
 
     private uniforms = new Uniforms()
 
@@ -43,27 +46,15 @@ export class SDFRenderer {
             alphaMode: "premultiplied",
         })
 
-        // Initialize particles
-        for (let i = 0; i < this.numParticles; i++) {
-            const particle = new Shape()
-            particle.position = new Float32Array([Math.random() * 2 - 1, Math.random() * 2 - 1, 0, 1])
-            particle.mass = new Float32Array([Math.random() * 0.5 + 0.5])
-            this.shapes.push(particle)
-        }
+        // // Create storage buffer
+        // const shapeSize = getStructSize(new SDConstruct())
+        // const storageSize = shapeSize * this.shapes.length
 
-        // Create storage buffer
-        const particleSize = getStructSize(new Shape())
-        const storageSize = particleSize * this.numParticles
-
-        this.storageBuffer = this.device.createBuffer({
-            size: storageSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        })
-
-        const shaderModule = this.device.createShaderModule({
-            label: "SDF Preview",
-            code: previewShader,
-        })
+        // this.storageBuffer = this.device.createBuffer({
+        //     size: storageSize,
+        //     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        // })
+        // this.updateBuffer(this.storageBuffer, this.shapes)
 
         // Create uniform buffer with calculated size
         const uniformsSize = getStructSize(this.uniforms)
@@ -72,19 +63,10 @@ export class SDFRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         })
 
-        // Create bind group
-        // Update storage buffer
-        let storageOffset = 0
-        for (const shape of this.shapes) {
-            for (const prop of Object.getOwnPropertyNames(shape)) {
-                const align = Reflect.getMetadata(Metadata.ALIGN, shape, prop)
-                storageOffset = Math.ceil(storageOffset / align) * align
-
-                this.device.queue.writeBuffer(this.storageBuffer, storageOffset, shape[prop])
-
-                storageOffset += Reflect.getMetadata(Metadata.SIZE, shape, prop)
-            }
-        }
+        const shaderModule = this.device.createShaderModule({
+            label: "SDF Preview",
+            code: previewShader,
+        })
 
         this.pipeline = this.device.createRenderPipeline({
             label: "SDF pipeline",
@@ -115,10 +97,10 @@ export class SDFRenderer {
                     binding: 0,
                     resource: { buffer: this.uniformBuffer },
                 },
-                {
-                    binding: 1,
-                    resource: { buffer: this.storageBuffer },
-                },
+                // {
+                //     binding: 1,
+                //     resource: { buffer: this.storageBuffer },
+                // },
             ],
         })
     }
@@ -136,16 +118,7 @@ export class SDFRenderer {
             ],
         })
 
-        // Update uniform buffer using offsets from metadata
-        let offset = 0
-        for (const prop of Object.getOwnPropertyNames(this.uniforms)) {
-            const align = Reflect.getMetadata(Metadata.ALIGN, this.uniforms, prop)
-            offset = Math.ceil(offset / align) * align
-
-            this.device.queue.writeBuffer(this.uniformBuffer, offset, this.uniforms[prop])
-
-            offset += Reflect.getMetadata(Metadata.SIZE, this.uniforms, prop)
-        }
+        this.updateBuffer(this.uniformBuffer, this.uniforms)
 
         renderPass.setPipeline(this.pipeline)
         renderPass.setBindGroup(0, this.bindGroup)
@@ -153,5 +126,21 @@ export class SDFRenderer {
         renderPass.end()
 
         this.device.queue.submit([commandEncoder.finish()])
+    }
+
+    updateBuffer(buffer: GPUBuffer, obj: any) {
+        let offset = 0
+        for (const prop of Object.getOwnPropertyNames(obj)) {
+            const align = Reflect.getMetadata(Metadata.ALIGN, obj, prop)
+            const size = Reflect.getMetadata(Metadata.SIZE, obj, prop)
+
+            if (align === undefined || size === undefined) continue
+
+            offset = Math.ceil(offset / align) * align
+
+            this.device.queue.writeBuffer(buffer, offset, obj[prop])
+
+            offset += size
+        }
     }
 }

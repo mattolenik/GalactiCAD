@@ -26,6 +26,7 @@ const e = -a;          // should transform to: a.negate()
 const compilerOptions: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ES2022,
+    incremental: true,
 }
 
 // In-memory source file name.
@@ -174,37 +175,36 @@ function customOperatorTransformer(program: ts.Program): ts.TransformerFactory<t
     }
 }
 
-const program = ts.createProgram([sourceFileName], compilerOptions, compilerHost)
-
-// const { emitSkipped, diagnostics } = program.emit(undefined, undefined, undefined, false, { before: [customOperatorTransformer(program)] })
-
-// if (emitSkipped) {
-//     console.error("Emit skipped due to diagnostics:")
-//     diagnostics.forEach((d) => {
-//         console.error(ts.flattenDiagnosticMessageText(d.messageText, "\n"))
-//     })
-// } else {
-//     console.log("Transformation complete. Check the emitted output above.")
-// }
-
 const startTime = performance.now()
-// Get the source file from the program.
+const program = ts.createProgram([sourceFileName], compilerOptions, compilerHost)
 const sourceFile = program.getSourceFile(sourceFileName)
-if (sourceFile) {
-    // Apply your custom transformer.
-    const transformationResult = ts.transform(sourceFile, [customOperatorTransformer(program)])
-    const transformedSourceFile = transformationResult.transformed[0] as ts.SourceFile
 
-    // Create a printer and print the transformed AST back to a string.
-    const printer = ts.createPrinter()
-    const outputText = printer.printFile(transformedSourceFile)
+const { emitSkipped, diagnostics } = program.emit(sourceFile, undefined, undefined, false, { before: [customOperatorTransformer(program)] })
 
-    console.log("Emitted TypeScript:\n" + outputText)
-
-    transformationResult.dispose()
+if (emitSkipped) {
+    console.error("Emit skipped due to diagnostics:")
+    diagnostics.forEach((d) => {
+        console.error(ts.flattenDiagnosticMessageText(d.messageText, "\n"))
+    })
 } else {
-    console.error("Source file not found.")
+    console.log("Transformation complete. Check the emitted output above.")
 }
+
+// const sourceFile = program.getSourceFile(sourceFileName)
+// if (sourceFile) {
+//     const transformationResult = ts.transform(sourceFile, [customOperatorTransformer(program)])
+//     const transformedSourceFile = transformationResult.transformed[0] as ts.SourceFile
+
+//     // Create a printer and print the transformed AST back to a string.
+//     const printer = ts.createPrinter()
+//     const outputText = printer.printFile(transformedSourceFile)
+
+//     console.log("Emitted TypeScript:\n" + outputText)
+
+//     transformationResult.dispose()
+// } else {
+//     console.error("Source file not found.")
+// }
 
 const elapsed = performance.now() - startTime
 console.log(`${elapsed.toFixed(2)}ms\n`)

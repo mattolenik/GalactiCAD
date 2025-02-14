@@ -2,7 +2,7 @@ import "reflect-metadata"
 import previewShader from "./shaders/preview.wgsl"
 import { array, getStructSize, Metadata, u32, vec3f, vec4f } from "./wgsl.mjs"
 
-export class SDConstruct {
+class SDConstruct {
     [key: string]: any
     @u32 type = 0
     @u32 numChildren = 0

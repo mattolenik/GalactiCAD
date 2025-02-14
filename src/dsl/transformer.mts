@@ -176,9 +176,9 @@ function customOperatorTransformer(program: ts.Program): ts.TransformerFactory<t
 }
 
 const startTime = performance.now()
+
 const program = ts.createProgram([sourceFileName], compilerOptions, compilerHost)
 const sourceFile = program.getSourceFile(sourceFileName)
-
 const { emitSkipped, diagnostics } = program.emit(sourceFile, undefined, undefined, false, { before: [customOperatorTransformer(program)] })
 
 if (emitSkipped) {
@@ -186,25 +186,7 @@ if (emitSkipped) {
     diagnostics.forEach((d) => {
         console.error(ts.flattenDiagnosticMessageText(d.messageText, "\n"))
     })
-} else {
-    console.log("Transformation complete. Check the emitted output above.")
 }
-
-// const sourceFile = program.getSourceFile(sourceFileName)
-// if (sourceFile) {
-//     const transformationResult = ts.transform(sourceFile, [customOperatorTransformer(program)])
-//     const transformedSourceFile = transformationResult.transformed[0] as ts.SourceFile
-
-//     // Create a printer and print the transformed AST back to a string.
-//     const printer = ts.createPrinter()
-//     const outputText = printer.printFile(transformedSourceFile)
-
-//     console.log("Emitted TypeScript:\n" + outputText)
-
-//     transformationResult.dispose()
-// } else {
-//     console.error("Source file not found.")
-// }
 
 const elapsed = performance.now() - startTime
 console.log(`${elapsed.toFixed(2)}ms\n`)

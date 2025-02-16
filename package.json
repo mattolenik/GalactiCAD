@@ -7,7 +7,8 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "serve": "make serve",
-    "build": "make build"
+    "build": "make build",
+    "test": "make test"
   },
   "type": "module",
   "devDependencies": {

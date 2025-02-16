@@ -15,8 +15,8 @@ const log = (msg: any) => console.log(`[${new Date().toLocaleTimeString()}] ${ms
 
 async function build() {
     const isProd = !!process.env.PRODUCTION
+    const startTime = performance.now()
     try {
-        const startTime = performance.now()
         await esbuild.build({
             bundle: true,
             entryPoints: entryPoints,
@@ -25,12 +25,16 @@ async function build() {
             platform: "neutral",
             plugins: [wgslLoader(), assetBundler(assets, log)],
             sourcemap: !isProd,
-            target: "es2020",
+            target: "es2022",
         })
         const elapsed = performance.now() - startTime
-        log(`🌱🐢 ${elapsed.toFixed(2)}ms\n`)
-    } catch {
-        /* do nothing — esbuild already nicely writes to stdout for us */
+        log(`🌱🐢 ${elapsed.toFixed(2)}ms`)
+        return true
+    } catch (e) {
+        const elapsed = performance.now() - startTime
+        console.log(e)
+        log(`❌🐢 ${elapsed.toFixed(2)}ms`)
+        return false
     }
 }
 
@@ -57,7 +61,9 @@ switch (process.argv[2]) {
 }
 
 log("Building")
-await build()
+if (!(await build())) {
+    process.exit(1)
+}
 
 if (process.argv.includes("-w")) {
     log("Watching for changes")

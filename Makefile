@@ -1,8 +1,9 @@
-DIST     := dist
-BUILD    := npx tsx --no-warnings build/build.mts
-PORT     ?= $(shell $(BUILD) port)
 BROWSER  ?= chromium
-TEST_SRC := $(shell find src/ -type f -name '*_test.mts')
+DIST     := dist
+TSX      ?= npx tsx
+PORT     ?= $(shell $(BUILD) port)
+BUILD    := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
+VERSION  := $(shell echo $$(ver=$$(git tag -l --points-at HEAD) && [ -z $$ver ] && ver=$$(git describe --always --dirty); printf $$ver))
 
 default: build test
 
@@ -12,18 +13,22 @@ open:
 
 .PHONY: build
 build:
+	echo $(VERSION)
 	@mkdir -p $(DIST)
-	@$(BUILD) $(BUILD_FLAGS)
+	$(BUILD) $(BUILD_FLAGS)
 
+.PHONY: test
 test:
-	npx tsx --test $(TEST_SRC)
+	$(TSX) --test
 
 watch: BUILD_FLAGS=-w
 watch: build
 serve: watch
 
-release: test
-	PRODUCTION=1 make build
+.PHONY: release
+release: export PRODUCTION=1
+release: test build
+	jq '.version="$(VERSION)"' package.json | sponge package.json
 
 .PHONY: clean
 clean:

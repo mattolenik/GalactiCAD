@@ -22,7 +22,6 @@
     "ws": "^8.18.0"
   },
   "dependencies": {
-    "reflect-metadata": "^0.2.2",
-    "ts-morph": "^25.0.1"
+    "reflect-metadata": "^0.2.2"
   }
 }

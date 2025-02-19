@@ -25,7 +25,7 @@ async function build() {
             platform: "neutral",
             plugins: [wgslLoader(), assetBundler(assets, log)],
             sourcemap: !isProd,
-            target: "es2022",
+            target: "es2023",
         })
         const elapsed = performance.now() - startTime
         log(`🌱🐢 ${elapsed.toFixed(2)}ms`)

@@ -73,9 +73,11 @@ if (process.argv.includes("-w")) {
         server.reload()
     })
 
-    process.on("SIGINT", async () => {
+    const shutdown = async () => {
         await watcher.close()
         server.close()
         process.exit(0)
-    })
+    }
+    process.on("SIGINT", shutdown)
+    process.on("SIGTERM", shutdown)
 }

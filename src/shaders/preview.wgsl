@@ -3,7 +3,7 @@
 struct Scene {
 }
 
-@group(0) @binding(1) var<storage> scene: Scene;
+@group(0) @binding(1) var<uniform> scene: Scene;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,

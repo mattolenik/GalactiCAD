@@ -1,9 +1,10 @@
+SHELL    := bash
 BROWSER  ?= chromium
 DIST     := dist
 TSX      ?= npx tsx
 PORT     ?= $(shell $(BUILD) port)
 BUILD    := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
-VERSION  := $(shell echo $$(ver=$$(git tag -l --points-at HEAD) && [ -z $$ver ] && ver=$$(git describe --always --dirty); printf $$ver))
+VERSION  := $(shell echo $$(ver=$$(git tag -l --points-at HEAD) && [[ -z $$ver ]] && ver=$$(git describe --always --dirty); printf $$ver))
 
 default: build test
 
@@ -13,7 +14,6 @@ open:
 
 .PHONY: build
 build:
-	echo $(VERSION)
 	@mkdir -p $(DIST)
 	$(BUILD) $(BUILD_FLAGS)
 
@@ -27,8 +27,8 @@ serve: watch
 
 .PHONY: release
 release: export PRODUCTION=1
-release: test build
-	jq '.version="$(VERSION)"' package.json | sponge package.json
+release: build test
+	jq '.version="$(VERSION)"' <<< "$$(< package.json)" > package.json
 
 .PHONY: clean
 clean:

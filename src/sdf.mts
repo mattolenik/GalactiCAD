@@ -13,7 +13,7 @@ export class SDFRenderer {
         this.canvas = canvas
     }
 
-    async initialize(): Promise<void> {
+    async initialize() {
         const adapter = await navigator.gpu.requestAdapter()
         if (!adapter) throw new Error("No GPU adapter found")
 
@@ -99,7 +99,7 @@ export class SDFRenderer {
             ],
         })
 
-        // this.updateBuffer(this.uniformBuffer, this.uniforms)
+        // this.device.queue.writeBuffer(buffer, offset, obj[prop])
 
         renderPass.setPipeline(this.pipeline)
         renderPass.setBindGroup(0, this.bindGroup)
@@ -107,9 +107,5 @@ export class SDFRenderer {
         renderPass.end()
 
         this.device.queue.submit([commandEncoder.finish()])
-    }
-
-    updateBuffer(buffer: GPUBuffer, obj: any) {
-        // this.device.queue.writeBuffer(buffer, offset, obj[prop])
     }
 }

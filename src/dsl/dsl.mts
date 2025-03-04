@@ -1,4 +1,4 @@
-import { Vec3 } from "../vecmat/vecmat.mjs"
+import { Vec2, Vec3 } from "../vecmat/vecmat.mjs"
 import { rOrD } from "./geom.mjs"
 
 type Constructor<T = {}> = new (...args: any[]) => T
@@ -53,11 +53,21 @@ export class IndexMapping {
 
 export class SceneArgsUniform {
     float: Float32Array
+    vec2: Vec2[]
     vec3: Vec3[]
 
-    constructor(numFloatArgs: number, numVec3Args: number) {
+    constructor(numFloatArgs: number, numVec2Args: number, numVec3Args: number) {
         this.float = new Float32Array(numFloatArgs)
+        this.vec2 = new Array(numVec2Args)
         this.vec3 = new Array(numVec3Args)
+    }
+
+    get bufferSize(): number {
+        return (
+            this.float.byteLength +
+            (this.vec2[0]?.elements?.byteLength ?? 0) * this.vec2.length +
+            (this.vec3[0]?.elements?.byteLength ?? 0) * this.vec3.length
+        )
     }
 }
 
@@ -68,7 +78,7 @@ export class Node {
     uniformCopy(args: SceneArgsUniform) {
         throw new Error("Method not implemented.")
     }
-    mapUniformArgs(im: IndexMapping) {
+    uniformSetup(im: IndexMapping) {
         throw new Error("Method not implemented.")
     }
 }
@@ -79,9 +89,9 @@ export class Group extends WithChildren(Node) {
             child.uniformCopy(args)
         }
     }
-    override mapUniformArgs(im: IndexMapping) {
+    override uniformSetup(im: IndexMapping) {
         for (let child of this.children) {
-            child.mapUniformArgs(im)
+            child.uniformSetup(im)
         }
     }
     override compile(): string {
@@ -97,8 +107,8 @@ export abstract class UnaryOperator extends Node {
     override uniformCopy(args: SceneArgsUniform) {
         this.arg.uniformCopy(args)
     }
-    override mapUniformArgs(im: IndexMapping) {
-        this.arg.mapUniformArgs(im)
+    override uniformSetup(im: IndexMapping) {
+        this.arg.uniformSetup(im)
     }
     constructor(public arg: Node) {
         super()
@@ -110,9 +120,9 @@ export abstract class BinaryOperator extends Node {
         this.lh.uniformCopy(args)
         this.rh.uniformCopy(args)
     }
-    override mapUniformArgs(im: IndexMapping) {
-        this.lh.mapUniformArgs(im)
-        this.rh.mapUniformArgs(im)
+    override uniformSetup(im: IndexMapping) {
+        this.lh.uniformSetup(im)
+        this.rh.uniformSetup(im)
     }
     constructor(public lh: Node, public rh: Node) {
         super()
@@ -155,7 +165,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         args.vec3[this.idx.pos] = this.pos
         args.float.set([this.r], this.idx.r)
     }
-    override mapUniformArgs(im: IndexMapping): void {
+    override uniformSetup(im: IndexMapping): void {
         this.idx.pos = im.topVec3++
         this.idx.r = im.topFloat++
     }

@@ -1,21 +1,4 @@
-import "reflect-metadata"
 import previewShader from "./shaders/preview.wgsl"
-import { array, getStructSize, Metadata, u32, vec3f, vec4f } from "./wgsl.mjs"
-
-class SDConstruct {
-    [key: string]: any
-    @u32 type = 0
-    @u32 numChildren = 0
-    @u32 treeLevel = 0
-    @vec3f position = new Float32Array([0, 0, 0])
-    @vec4f args1 = new Float32Array([0, 0, 0, 0])
-    @vec4f args2 = new Float32Array([0, 0, 0, 0])
-}
-
-class Uniforms {
-    [key: string]: any
-    @array(50, getStructSize(new SDConstruct())) scene: SDConstruct[50]
-}
 
 export class SDFRenderer {
     private canvas: HTMLCanvasElement
@@ -25,8 +8,6 @@ export class SDFRenderer {
     private bindGroup!: GPUBindGroup
     private uniformBuffer!: GPUBuffer
     // private storageBuffer!: GPUBuffer
-
-    private uniforms = new Uniforms()
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas
@@ -57,7 +38,7 @@ export class SDFRenderer {
         // this.updateBuffer(this.storageBuffer, this.shapes)
 
         // Create uniform buffer with calculated size
-        const uniformsSize = getStructSize(this.uniforms)
+        const uniformsSize = 690 // TODO: nonsense
         this.uniformBuffer = this.device.createBuffer({
             size: uniformsSize,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -118,7 +99,7 @@ export class SDFRenderer {
             ],
         })
 
-        this.updateBuffer(this.uniformBuffer, this.uniforms)
+        // this.updateBuffer(this.uniformBuffer, this.uniforms)
 
         renderPass.setPipeline(this.pipeline)
         renderPass.setBindGroup(0, this.bindGroup)
@@ -129,18 +110,6 @@ export class SDFRenderer {
     }
 
     updateBuffer(buffer: GPUBuffer, obj: any) {
-        let offset = 0
-        for (const prop of Object.getOwnPropertyNames(obj)) {
-            const align = Reflect.getMetadata(Metadata.ALIGN, obj, prop)
-            const size = Reflect.getMetadata(Metadata.SIZE, obj, prop)
-
-            if (align === undefined || size === undefined) continue
-
-            offset = Math.ceil(offset / align) * align
-
-            this.device.queue.writeBuffer(buffer, offset, obj[prop])
-
-            offset += size
-        }
+        // this.device.queue.writeBuffer(buffer, offset, obj[prop])
     }
 }

@@ -1,6 +1,6 @@
-import { Group, SceneInitState, SceneArgsUniform as SceneUniform, Sphere } from "./scene/scene.mjs"
+import { Group, SceneArgsUniform as SceneUniform, Sphere } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
-import { vec3, Vec3 } from "./vecmat/vecmat.mjs"
+import { vec3 } from "./vecmat/vector.mjs"
 
 export class SDFRenderer {
     private canvas: HTMLCanvasElement
@@ -10,7 +10,6 @@ export class SDFRenderer {
     private bindGroup!: GPUBindGroup
     private uniformBuffer!: GPUBuffer
     private scene!: SceneUniform
-    // private storageBuffer!: GPUBuffer
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas
@@ -30,11 +29,10 @@ export class SDFRenderer {
             alphaMode: "premultiplied",
         })
 
-        const initState = new SceneInitState()
         const sceneRoot = new Group([new Sphere({ pos: vec3(0, 0, 0), r: 10 })])
 
-        sceneRoot.uniformSetup(initState)
-        this.scene = new SceneUniform(initState)
+        sceneRoot.sceneSetup()
+        this.scene = new SceneUniform(sceneRoot.scene.numArgs)
 
         const uniformsSize = this.scene.bufferSize
         this.uniformBuffer = this.device.createBuffer({

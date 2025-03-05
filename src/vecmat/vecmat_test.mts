@@ -1,4 +1,3 @@
-// test-suite.ts
 import test from "node:test"
 import assert from "node:assert/strict"
 import { Vec2, Vec3, Vec4, Mat2, Mat3, Mat4 } from "./vecmat.mjs"

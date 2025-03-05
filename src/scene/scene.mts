@@ -1,5 +1,6 @@
-import { Vec2, Vec3 } from "../vecmat/vecmat.mjs"
-import { rOrD } from "./geom.mjs"
+import { Vec4Array } from "../vecmat/arrays.mjs"
+import { asVec4, Vec2, vec3, Vec3, Vec4 } from "../vecmat/vecmat.mjs"
+import { asRadius } from "./geom.mjs"
 
 type Constructor<T = {}> = new (...args: any[]) => T
 
@@ -11,7 +12,7 @@ function WithChildren<TBase extends Constructor>(base: TBase) {
 
 function WithPos<TBase extends Constructor>(base: TBase) {
     return class extends base {
-        pos: Vec3 = new Vec3(0, 0, 0)
+        pos: Vec3 = vec3(0, 0, 0)
     }
 }
 
@@ -45,29 +46,26 @@ function WithRaD<TBase extends Constructor>(base: TBase) {
     }
 }
 
-export class IndexMapping {
-    topVec2 = -1
-    topVec3 = -1
-    topFloat = -1
+export class SceneInitState {
+    numArgs = 0
+    addArg() {
+        return this.numArgs++
+    }
 }
 
 export class SceneArgsUniform {
-    float: Float32Array
-    vec2: Vec2[]
-    vec3: Vec3[]
+    args: Vec4Array
 
-    constructor(numFloatArgs: number, numVec2Args: number, numVec3Args: number) {
-        this.float = new Float32Array(numFloatArgs)
-        this.vec2 = new Array(numVec2Args)
-        this.vec3 = new Array(numVec3Args)
+    constructor(state: SceneInitState) {
+        this.args = new Vec4Array(state.numArgs)
     }
 
     get bufferSize(): number {
-        return (
-            this.float.byteLength +
-            (this.vec2[0]?.elements?.byteLength ?? 0) * this.vec2.length +
-            (this.vec3[0]?.elements?.byteLength ?? 0) * this.vec3.length
-        )
+        return this.args.byteLength
+    }
+
+    writeBuffer(device: GPUDevice, buffer: GPUBuffer) {
+        device.queue.writeBuffer(buffer, 0, this.args.data)
     }
 }
 
@@ -78,7 +76,7 @@ export class Node {
     uniformCopy(args: SceneArgsUniform) {
         throw new Error("Method not implemented.")
     }
-    uniformSetup(im: IndexMapping) {
+    uniformSetup(im: SceneInitState) {
         throw new Error("Method not implemented.")
     }
 }
@@ -89,13 +87,13 @@ export class Group extends WithChildren(Node) {
             child.uniformCopy(args)
         }
     }
-    override uniformSetup(im: IndexMapping) {
+    override uniformSetup(state: SceneInitState) {
         for (let child of this.children) {
-            child.uniformSetup(im)
+            child.uniformSetup(state)
         }
     }
     override compile(): string {
-        return this.children.map((c) => c.compile()).join(";\n")
+        return this.children.map((c) => c.compile()).join(";\n") + ";\n"
     }
     constructor(children: Node[] = []) {
         super()
@@ -107,8 +105,8 @@ export abstract class UnaryOperator extends Node {
     override uniformCopy(args: SceneArgsUniform) {
         this.arg.uniformCopy(args)
     }
-    override uniformSetup(im: IndexMapping) {
-        this.arg.uniformSetup(im)
+    override uniformSetup(state: SceneInitState) {
+        this.arg.uniformSetup(state)
     }
     constructor(public arg: Node) {
         super()
@@ -120,9 +118,9 @@ export abstract class BinaryOperator extends Node {
         this.lh.uniformCopy(args)
         this.rh.uniformCopy(args)
     }
-    override uniformSetup(im: IndexMapping) {
-        this.lh.uniformSetup(im)
-        this.rh.uniformSetup(im)
+    override uniformSetup(state: SceneInitState) {
+        this.lh.uniformSetup(state)
+        this.rh.uniformSetup(state)
     }
     constructor(public lh: Node, public rh: Node) {
         super()
@@ -135,7 +133,7 @@ export class Union extends BinaryOperator {
             ? `opUnion( ${this.lh.compile()}, ${this.rh.compile()} )`
             : `opSmoothUnion( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
-    constructor(lh: Node, rh: Node, public radius: number | undefined = undefined) {
+    constructor(lh: Node, rh: Node, public radius?: number) {
         super(lh, rh)
     }
 }
@@ -146,7 +144,7 @@ export class Subtract extends BinaryOperator {
             ? `opSubtract( ${this.lh.compile()}, ${this.rh.compile()} )`
             : `opSmoothSubtract( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
-    constructor(lh: Node, rh: Node, public radius: number | undefined = undefined) {
+    constructor(lh: Node, rh: Node, public radius?: number) {
         super(lh, rh)
     }
 }
@@ -156,20 +154,20 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         pos: 0,
         r: 0,
     }
-    constructor({ pos, r, d }: { pos: Vec3; r: number | undefined; d: number | undefined }) {
+    constructor({ pos, r, d }: { pos: Vec3; r?: number; d?: number }) {
         super()
         this.pos = pos
-        this.r = rOrD(r, d)
+        this.r = asRadius(r, d)
     }
     override uniformCopy(args: SceneArgsUniform): void {
-        args.vec3[this.idx.pos] = this.pos
-        args.float.set([this.r], this.idx.r)
+        args.args.set(this.idx.pos, this.pos.xyz0)
+        args.args.set(this.idx.r, asVec4(this.r))
     }
-    override uniformSetup(im: IndexMapping): void {
-        this.idx.pos = im.topVec3++
-        this.idx.r = im.topFloat++
+    override uniformSetup(state: SceneInitState): void {
+        this.idx.pos = state.addArg()
+        this.idx.r = state.addArg()
     }
     override compile(): string {
-        return `sdSphere( scene.vec3[${this.idx.pos}], scene.float[${this.idx.r}] )`
+        return `sdSphere( args[${this.idx.pos}].xyz, args[${this.idx.r}].x )`
     }
 }

@@ -1,4 +1,6 @@
+import { Group, SceneInitState, SceneArgsUniform as SceneUniform, Sphere } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
+import { vec3, Vec3 } from "./vecmat/vecmat.mjs"
 
 export class SDFRenderer {
     private canvas: HTMLCanvasElement
@@ -7,6 +9,7 @@ export class SDFRenderer {
     private pipeline!: GPURenderPipeline
     private bindGroup!: GPUBindGroup
     private uniformBuffer!: GPUBuffer
+    private scene!: SceneUniform
     // private storageBuffer!: GPUBuffer
 
     constructor(canvas: HTMLCanvasElement) {
@@ -27,26 +30,27 @@ export class SDFRenderer {
             alphaMode: "premultiplied",
         })
 
-        // // Create storage buffer
-        // const shapeSize = getStructSize(new SDConstruct())
-        // const storageSize = shapeSize * this.shapes.length
+        const initState = new SceneInitState()
+        const sceneRoot = new Group([new Sphere({ pos: vec3(0, 0, 0), r: 10 })])
 
-        // this.storageBuffer = this.device.createBuffer({
-        //     size: storageSize,
-        //     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        // })
-        // this.updateBuffer(this.storageBuffer, this.shapes)
+        sceneRoot.uniformSetup(initState)
+        this.scene = new SceneUniform(initState)
 
-        // Create uniform buffer with calculated size
-        const uniformsSize = 690 // TODO: nonsense
+        const uniformsSize = this.scene.bufferSize
         this.uniformBuffer = this.device.createBuffer({
             size: uniformsSize,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         })
 
+        let shader = previewShader
+            .replace(/NUM_ARGS\s*=\s*\d+/, `NUM_ARGS = ${this.scene.args.length}`)
+            .replace("// COMPILEDHERE", sceneRoot.compile())
+
+        console.log(shader)
+
         const shaderModule = this.device.createShaderModule({
             label: "SDF Preview",
-            code: previewShader,
+            code: shader,
         })
 
         this.pipeline = this.device.createRenderPipeline({
@@ -78,10 +82,6 @@ export class SDFRenderer {
                     binding: 0,
                     resource: { buffer: this.uniformBuffer },
                 },
-                // {
-                //     binding: 1,
-                //     resource: { buffer: this.storageBuffer },
-                // },
             ],
         })
     }
@@ -99,7 +99,7 @@ export class SDFRenderer {
             ],
         })
 
-        // this.device.queue.writeBuffer(buffer, offset, obj[prop])
+        this.scene.writeBuffer(this.device, this.uniformBuffer)
 
         renderPass.setPipeline(this.pipeline)
         renderPass.setBindGroup(0, this.bindGroup)

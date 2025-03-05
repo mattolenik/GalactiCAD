@@ -1,13 +1,17 @@
-//- include "sdf.wgsl"
+////- include "sdf.wgsl"
 
-struct Scene {
-}
+// replaced at runtime
+const NUM_ARGS = 0;
 
-@group(0) @binding(1) var<uniform> scene: Scene;
+@group(0) @binding(0) var<uniform> args: array<vec4f, NUM_ARGS>;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
+}
+
+fn sdSphere(p: vec3f, r: f32) -> f32 {
+    return length(p) - r;
 }
 
 @vertex
@@ -22,6 +26,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @fragment
 fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
+    // COMPILEDHERE
     var color = vec4f(0.0);
     return color;
 }

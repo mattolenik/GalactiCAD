@@ -13,6 +13,9 @@ export class SDFRenderer {
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas
+        const dpr = window.devicePixelRatio || 1
+        canvas.width = canvas.clientWidth * dpr
+        canvas.height = canvas.clientHeight * dpr
     }
 
     async initialize() {
@@ -29,8 +32,8 @@ export class SDFRenderer {
             alphaMode: "premultiplied",
         })
 
-        const sceneRoot = new Group([new Sphere({ pos: vec3(0, 0, 0), r: 10 })]).init()
-        this.scene = new SceneUniform(sceneRoot.scene.numArgs)
+        const sceneRoot = new Group([new Sphere({ pos: vec3(0, 0, 20), r: 10 })]).init()
+        this.scene = new SceneUniform(sceneRoot)
 
         this.uniformBuffer = this.device.createBuffer({
             size: Math.max(this.scene.bufferSize, 128),
@@ -38,8 +41,8 @@ export class SDFRenderer {
         })
 
         let shader = previewShader
-            .replace(/NUM_ARGS\s*=\s*\d+/, `NUM_ARGS = ${this.scene.args.length}`)
-            .replace("// COMPILEDHERE", sceneRoot.compile())
+            .replace(/const\s+NUM_ARGS(\s*:\s*u32)?\s*=\s*\d+.*/, `const NUM_ARGS: u32 = ${this.scene.args.length};`)
+            .replace("0 // COMPILEDHERE", sceneRoot.compile())
 
         console.log(shader)
 
@@ -94,6 +97,7 @@ export class SDFRenderer {
             ],
         })
 
+        this.scene.root.uniformCopy(this.scene)
         this.scene.writeBuffer(this.device, this.uniformBuffer)
 
         renderPass.setPipeline(this.pipeline)

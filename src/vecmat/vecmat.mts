@@ -300,6 +300,9 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.y
             this.elements[2] = value.z
         }
+        get xyzw(): Vec4 {
+            return new Vec4(this.elements[0], this.elements[1], this.elements[2], 1)
+        }
         get xzx(): BaseVec3 {
             return new Vec3(this.elements[0], this.elements[2], this.elements[0])
         }

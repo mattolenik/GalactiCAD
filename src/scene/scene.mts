@@ -1,5 +1,5 @@
 import { Vec4Array } from "../vecmat/arrays.mjs"
-import { asVec4, Vec2, vec3, Vec3, Vec4 } from "../vecmat/vecmat.mjs"
+import { Vec3, Vec4 } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 type Constructor<T = {}> = new (...args: any[]) => T
@@ -12,7 +12,7 @@ function WithChildren<TBase extends Constructor>(base: TBase) {
 
 function WithPos<TBase extends Constructor>(base: TBase) {
     return class extends base {
-        pos: Vec3 = vec3(0, 0, 0)
+        pos: Vec3 = new Vec3(0, 0, 0)
     }
 }
 
@@ -46,18 +46,11 @@ function WithRaD<TBase extends Constructor>(base: TBase) {
     }
 }
 
-export class SceneInitState {
-    numArgs = 0
-    addArg() {
-        return this.numArgs++
-    }
-}
-
 export class SceneArgsUniform {
     args: Vec4Array
 
-    constructor(state: SceneInitState) {
-        this.args = new Vec4Array(state.numArgs)
+    constructor(numArgs: number) {
+        this.args = new Vec4Array(numArgs)
     }
 
     get bufferSize(): number {
@@ -69,14 +62,30 @@ export class SceneArgsUniform {
     }
 }
 
+export class SceneInfo {
+    numArgs = 0
+    addArg(): number {
+        return this.numArgs++
+    }
+}
+
 export class Node {
+    root!: Node
+    _scene: SceneInfo
+    get scene() {
+        return this.root._scene
+    }
+    constructor() {
+        this.root = this
+        this._scene = new SceneInfo()
+    }
     compile() {
         throw new Error("Method not implemented.")
     }
     uniformCopy(args: SceneArgsUniform) {
         throw new Error("Method not implemented.")
     }
-    uniformSetup(im: SceneInitState) {
+    sceneSetup() {
         throw new Error("Method not implemented.")
     }
 }
@@ -87,9 +96,9 @@ export class Group extends WithChildren(Node) {
             child.uniformCopy(args)
         }
     }
-    override uniformSetup(state: SceneInitState) {
+    override sceneSetup() {
         for (let child of this.children) {
-            child.uniformSetup(state)
+            child.sceneSetup()
         }
     }
     override compile(): string {
@@ -97,7 +106,12 @@ export class Group extends WithChildren(Node) {
     }
     constructor(children: Node[] = []) {
         super()
-        this.children = children
+        children.forEach((c) => this.add(c))
+    }
+    add(child: Node) {
+        child.root = this.root
+        child._scene = this.root._scene
+        this.children.push(child)
     }
 }
 
@@ -105,11 +119,13 @@ export abstract class UnaryOperator extends Node {
     override uniformCopy(args: SceneArgsUniform) {
         this.arg.uniformCopy(args)
     }
-    override uniformSetup(state: SceneInitState) {
-        this.arg.uniformSetup(state)
+    override sceneSetup() {
+        this.arg.sceneSetup()
     }
     constructor(public arg: Node) {
         super()
+        arg.root = this.root
+        arg._scene = this._scene
     }
 }
 
@@ -118,12 +134,14 @@ export abstract class BinaryOperator extends Node {
         this.lh.uniformCopy(args)
         this.rh.uniformCopy(args)
     }
-    override uniformSetup(state: SceneInitState) {
-        this.lh.uniformSetup(state)
-        this.rh.uniformSetup(state)
+    override sceneSetup() {
+        this.lh.sceneSetup()
+        this.rh.sceneSetup()
     }
     constructor(public lh: Node, public rh: Node) {
         super()
+        lh.root = rh.root = this.root
+        lh._scene = rh._scene = this._scene
     }
 }
 
@@ -154,18 +172,21 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         pos: 0,
         r: 0,
     }
+    private args!: Vec4Array
+
     constructor({ pos, r, d }: { pos: Vec3; r?: number; d?: number }) {
         super()
         this.pos = pos
         this.r = asRadius(r, d)
     }
     override uniformCopy(args: SceneArgsUniform): void {
-        args.args.set(this.idx.pos, this.pos.xyz0)
-        args.args.set(this.idx.r, asVec4(this.r))
+        this.args = args.args
+        this.args.set(this.idx.pos, this.pos)
+        this.args.set(this.idx.r, this.r)
     }
-    override uniformSetup(state: SceneInitState): void {
-        this.idx.pos = state.addArg()
-        this.idx.r = state.addArg()
+    override sceneSetup(): void {
+        this.idx.pos = this.scene.addArg()
+        this.idx.r = this.scene.addArg()
     }
     override compile(): string {
         return `sdSphere( args[${this.idx.pos}].xyz, args[${this.idx.r}].x )`

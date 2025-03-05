@@ -12,9 +12,9 @@ test("Vec4Array basic set and get", () => {
     vecArray.set(1, vector1)
     vecArray.set(2, vector2)
 
-    assert.deepEqual(vecArray.get(0), vector0, "Vector at index 0 should match")
-    assert.deepEqual(vecArray.get(1), vector1, "Vector at index 1 should match")
-    assert.deepEqual(vecArray.get(2), vector2, "Vector at index 2 should match")
+    assert.deepEqual(vecArray.get(0).elements, vector0, "Vector at index 0 should match")
+    assert.deepEqual(vecArray.get(1).elements, vector1, "Vector at index 1 should match")
+    assert.deepEqual(vecArray.get(2).elements, vector2, "Vector at index 2 should match")
 })
 
 test("Vec4Array should throw error for invalid vector length", () => {

@@ -10,8 +10,8 @@ type Constructor<T = {}> = new (...args: any[]) => T
 
 class BaseVec2 {
     public elements: Float32Array
-    constructor(x: number, y: number) {
-        this.elements = new Float32Array([x, y])
+    constructor(elements: Float32Array) {
+        this.elements = elements
     }
     get x(): number {
         return this.elements[0]
@@ -27,7 +27,7 @@ class BaseVec2 {
     }
 
     clone(): BaseVec2 {
-        return new (this.constructor as any)(this.x, this.y)
+        return vec2(this.x, this.y)
     }
     copy(v: BaseVec2): this {
         this.x = v.x
@@ -43,16 +43,16 @@ class BaseVec2 {
         return this.x === v.x && this.y === v.y
     }
     add(v: BaseVec2): BaseVec2 {
-        return new (this.constructor as any)(this.x + v.x, this.y + v.y)
+        return vec2(this.x + v.x, this.y + v.y)
     }
     subtract(v: BaseVec2): BaseVec2 {
-        return new (this.constructor as any)(this.x - v.x, this.y - v.y)
+        return vec2(this.x - v.x, this.y - v.y)
     }
     multiply<T extends number | BaseVec2>(arg: T): BaseVec2 {
         if (typeof arg === "number") {
-            return new (this.constructor as any)(this.x * arg, this.y * arg)
+            return vec2(this.x * arg, this.y * arg)
         } else {
-            return new (this.constructor as any)(this.x * arg.x, this.y * arg.y)
+            return vec2(this.x * arg.x, this.y * arg.y)
         }
     }
     dot(v: BaseVec2): number {
@@ -69,8 +69,8 @@ class BaseVec2 {
 
 class BaseVec3 {
     public elements: Float32Array
-    constructor(x: number, y: number, z: number) {
-        this.elements = new Float32Array([x, y, z])
+    constructor(elements: Float32Array) {
+        this.elements = elements
     }
     get x(): number {
         return this.elements[0]
@@ -92,7 +92,7 @@ class BaseVec3 {
     }
 
     clone(): BaseVec3 {
-        return new (this.constructor as any)(this.x, this.y, this.z)
+        return vec3(this.x, this.y, this.z)
     }
     copy(v: BaseVec3): this {
         this.x = v.x
@@ -110,23 +110,23 @@ class BaseVec3 {
         return this.x === v.x && this.y === v.y && this.z === v.z
     }
     add(v: BaseVec3): BaseVec3 {
-        return new (this.constructor as any)(this.x + v.x, this.y + v.y, this.z + v.z)
+        return vec3(this.x + v.x, this.y + v.y, this.z + v.z)
     }
     subtract(v: BaseVec3): BaseVec3 {
-        return new (this.constructor as any)(this.x - v.x, this.y - v.y, this.z - v.z)
+        return vec3(this.x - v.x, this.y - v.y, this.z - v.z)
     }
     multiply<T extends number | BaseVec3>(arg: T): BaseVec3 {
         if (typeof arg === "number") {
-            return new (this.constructor as any)(this.x * arg, this.y * arg, this.z * arg)
+            return vec3(this.x * arg, this.y * arg, this.z * arg)
         } else {
-            return new (this.constructor as any)(this.x * arg.x, this.y * arg.y, this.z * arg.z)
+            return vec3(this.x * arg.x, this.y * arg.y, this.z * arg.z)
         }
     }
     dot(v: BaseVec3): number {
         return this.x * v.x + this.y * v.y + this.z * v.z
     }
     cross(v: BaseVec3): BaseVec3 {
-        return new (this.constructor as any)(this.y * v.z - this.z * v.y, this.z * v.x - this.x * v.z, this.x * v.y - this.y * v.x)
+        return vec3(this.y * v.z - this.z * v.y, this.z * v.x - this.x * v.z, this.x * v.y - this.y * v.x)
     }
     length(): number {
         return Math.sqrt(this.dot(this))
@@ -139,8 +139,11 @@ class BaseVec3 {
 
 class BaseVec4 {
     public elements: Float32Array
-    constructor(x: number, y: number, z: number, w: number) {
-        this.elements = new Float32Array([x, y, z, w])
+    // constructor(x: number, y: number, z: number, w: number) {
+    //     this.elements = new Float32Array([x, y, z, w])
+    // }
+    constructor(elements: Float32Array) {
+        this.elements = elements
     }
     get x(): number {
         return this.elements[0]
@@ -168,7 +171,7 @@ class BaseVec4 {
     }
 
     clone(): BaseVec4 {
-        return new (this.constructor as any)(this.x, this.y, this.z, this.w)
+        return vec4(this.x, this.y, this.z, this.w)
     }
     copy(v: BaseVec4): this {
         this.x = v.x
@@ -188,16 +191,16 @@ class BaseVec4 {
         return this.x === v.x && this.y === v.y && this.z === v.z && this.w === v.w
     }
     add(v: BaseVec4): BaseVec4 {
-        return new (this.constructor as any)(this.x + v.x, this.y + v.y, this.z + v.z, this.w + v.w)
+        return vec4(this.x + v.x, this.y + v.y, this.z + v.z, this.w + v.w)
     }
     subtract(v: BaseVec4): BaseVec4 {
-        return new (this.constructor as any)(this.x - v.x, this.y - v.y, this.z - v.z, this.w - v.w)
+        return vec4(this.x - v.x, this.y - v.y, this.z - v.z, this.w - v.w)
     }
     multiply<T extends number | BaseVec4>(arg: T): BaseVec4 {
         if (typeof arg === "number") {
-            return new (this.constructor as any)(this.x * arg, this.y * arg, this.z * arg, this.w * arg)
+            return vec4(this.x * arg, this.y * arg, this.z * arg, this.w * arg)
         } else {
-            return new (this.constructor as any)(this.x * arg.x, this.y * arg.y, this.z * arg.z, this.w * arg.w)
+            return vec4(this.x * arg.x, this.y * arg.y, this.z * arg.z, this.w * arg.w)
         }
     }
     dot(v: BaseVec4): number {
@@ -219,28 +222,28 @@ class BaseVec4 {
 function Swizzle2<TBase extends Constructor<{ elements: Float32Array }>>(Base: TBase) {
     return class extends Base {
         get xx(): BaseVec2 {
-            return new Vec2(this.elements[0], this.elements[0])
+            return vec2(this.elements[0], this.elements[0])
         }
         set xx(value: BaseVec2) {
             this.elements[0] = value.x
             this.elements[0] = value.y
         }
         get xy(): BaseVec2 {
-            return new Vec2(this.elements[0], this.elements[1])
+            return vec2(this.elements[0], this.elements[1])
         }
         set xy(value: BaseVec2) {
             this.elements[0] = value.x
             this.elements[1] = value.y
         }
         get yx(): BaseVec2 {
-            return new Vec2(this.elements[1], this.elements[0])
+            return vec2(this.elements[1], this.elements[0])
         }
         set yx(value: BaseVec2) {
             this.elements[1] = value.x
             this.elements[0] = value.y
         }
         get yy(): BaseVec2 {
-            return new Vec2(this.elements[1], this.elements[1])
+            return vec2(this.elements[1], this.elements[1])
         }
         set yy(value: BaseVec2) {
             this.elements[1] = value.x
@@ -253,7 +256,7 @@ function Swizzle2<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
 function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: TBase) {
     return class extends Swizzle2(Base) {
         get xxx(): BaseVec3 {
-            return new Vec3(this.elements[0], this.elements[0], this.elements[0])
+            return vec3(this.elements[0], this.elements[0], this.elements[0])
         }
         set xxx(value: BaseVec3) {
             this.elements[0] = value.x
@@ -261,7 +264,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[0] = value.z
         }
         get xxy(): BaseVec3 {
-            return new Vec3(this.elements[0], this.elements[0], this.elements[1])
+            return vec3(this.elements[0], this.elements[0], this.elements[1])
         }
         set xxy(value: BaseVec3) {
             this.elements[0] = value.x
@@ -269,7 +272,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.z
         }
         get xxz(): BaseVec3 {
-            return new Vec3(this.elements[0], this.elements[0], this.elements[2])
+            return vec3(this.elements[0], this.elements[0], this.elements[2])
         }
         set xxz(value: BaseVec3) {
             this.elements[0] = value.x
@@ -277,7 +280,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[2] = value.z
         }
         get xyx(): BaseVec3 {
-            return new Vec3(this.elements[0], this.elements[1], this.elements[0])
+            return vec3(this.elements[0], this.elements[1], this.elements[0])
         }
         set xyx(value: BaseVec3) {
             this.elements[0] = value.x
@@ -285,7 +288,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[0] = value.z
         }
         get xyy(): BaseVec3 {
-            return new Vec3(this.elements[0], this.elements[1], this.elements[1])
+            return vec3(this.elements[0], this.elements[1], this.elements[1])
         }
         set xyy(value: BaseVec3) {
             this.elements[0] = value.x
@@ -293,7 +296,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.z
         }
         get xyz(): BaseVec3 {
-            return new Vec3(this.elements[0], this.elements[1], this.elements[2])
+            return vec3(this.elements[0], this.elements[1], this.elements[2])
         }
         set xyz(value: BaseVec3) {
             this.elements[0] = value.x
@@ -301,10 +304,13 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[2] = value.z
         }
         get xyzw(): Vec4 {
-            return new Vec4(this.elements[0], this.elements[1], this.elements[2], 1)
+            return vec4(this.elements[0], this.elements[1], this.elements[2], 1)
+        }
+        get xyz0(): Vec4 {
+            return vec4(this.elements[0], this.elements[1], this.elements[2], 0)
         }
         get xzx(): BaseVec3 {
-            return new Vec3(this.elements[0], this.elements[2], this.elements[0])
+            return vec3(this.elements[0], this.elements[2], this.elements[0])
         }
         set xzx(value: BaseVec3) {
             this.elements[0] = value.x
@@ -312,7 +318,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[0] = value.z
         }
         get xzy(): BaseVec3 {
-            return new Vec3(this.elements[0], this.elements[2], this.elements[1])
+            return vec3(this.elements[0], this.elements[2], this.elements[1])
         }
         set xzy(value: BaseVec3) {
             this.elements[0] = value.x
@@ -320,7 +326,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.z
         }
         get xzz(): BaseVec3 {
-            return new Vec3(this.elements[0], this.elements[2], this.elements[2])
+            return vec3(this.elements[0], this.elements[2], this.elements[2])
         }
         set xzz(value: BaseVec3) {
             this.elements[0] = value.x
@@ -329,7 +335,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
         }
 
         get yxx(): BaseVec3 {
-            return new Vec3(this.elements[1], this.elements[0], this.elements[0])
+            return vec3(this.elements[1], this.elements[0], this.elements[0])
         }
         set yxx(value: BaseVec3) {
             this.elements[1] = value.x
@@ -337,7 +343,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[0] = value.z
         }
         get yxy(): BaseVec3 {
-            return new Vec3(this.elements[1], this.elements[0], this.elements[1])
+            return vec3(this.elements[1], this.elements[0], this.elements[1])
         }
         set yxy(value: BaseVec3) {
             this.elements[1] = value.x
@@ -345,7 +351,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.z
         }
         get yxz(): BaseVec3 {
-            return new Vec3(this.elements[1], this.elements[0], this.elements[2])
+            return vec3(this.elements[1], this.elements[0], this.elements[2])
         }
         set yxz(value: BaseVec3) {
             this.elements[1] = value.x
@@ -353,7 +359,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[2] = value.z
         }
         get yyx(): BaseVec3 {
-            return new Vec3(this.elements[1], this.elements[1], this.elements[0])
+            return vec3(this.elements[1], this.elements[1], this.elements[0])
         }
         set yyx(value: BaseVec3) {
             this.elements[1] = value.x
@@ -361,7 +367,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[0] = value.z
         }
         get yyy(): BaseVec3 {
-            return new Vec3(this.elements[1], this.elements[1], this.elements[1])
+            return vec3(this.elements[1], this.elements[1], this.elements[1])
         }
         set yyy(value: BaseVec3) {
             this.elements[1] = value.x
@@ -369,7 +375,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.z
         }
         get yyz(): BaseVec3 {
-            return new Vec3(this.elements[1], this.elements[1], this.elements[2])
+            return vec3(this.elements[1], this.elements[1], this.elements[2])
         }
         set yyz(value: BaseVec3) {
             this.elements[1] = value.x
@@ -377,7 +383,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[2] = value.z
         }
         get yzx(): BaseVec3 {
-            return new Vec3(this.elements[1], this.elements[2], this.elements[0])
+            return vec3(this.elements[1], this.elements[2], this.elements[0])
         }
         set yzx(value: BaseVec3) {
             this.elements[1] = value.x
@@ -385,7 +391,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[0] = value.z
         }
         get yzy(): BaseVec3 {
-            return new Vec3(this.elements[1], this.elements[2], this.elements[1])
+            return vec3(this.elements[1], this.elements[2], this.elements[1])
         }
         set yzy(value: BaseVec3) {
             this.elements[1] = value.x
@@ -393,7 +399,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.z
         }
         get yzz(): BaseVec3 {
-            return new Vec3(this.elements[1], this.elements[2], this.elements[2])
+            return vec3(this.elements[1], this.elements[2], this.elements[2])
         }
         set yzz(value: BaseVec3) {
             this.elements[1] = value.x
@@ -402,7 +408,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
         }
 
         get zxx(): BaseVec3 {
-            return new Vec3(this.elements[2], this.elements[0], this.elements[0])
+            return vec3(this.elements[2], this.elements[0], this.elements[0])
         }
         set zxx(value: BaseVec3) {
             this.elements[2] = value.x
@@ -410,7 +416,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[0] = value.z
         }
         get zxy(): BaseVec3 {
-            return new Vec3(this.elements[2], this.elements[0], this.elements[1])
+            return vec3(this.elements[2], this.elements[0], this.elements[1])
         }
         set zxy(value: BaseVec3) {
             this.elements[2] = value.x
@@ -418,7 +424,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.z
         }
         get zxz(): BaseVec3 {
-            return new Vec3(this.elements[2], this.elements[0], this.elements[2])
+            return vec3(this.elements[2], this.elements[0], this.elements[2])
         }
         set zxz(value: BaseVec3) {
             this.elements[2] = value.x
@@ -426,7 +432,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[2] = value.z
         }
         get zyx(): BaseVec3 {
-            return new Vec3(this.elements[2], this.elements[1], this.elements[0])
+            return vec3(this.elements[2], this.elements[1], this.elements[0])
         }
         set zyx(value: BaseVec3) {
             this.elements[2] = value.x
@@ -434,7 +440,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[0] = value.z
         }
         get zyy(): BaseVec3 {
-            return new Vec3(this.elements[2], this.elements[1], this.elements[1])
+            return vec3(this.elements[2], this.elements[1], this.elements[1])
         }
         set zyy(value: BaseVec3) {
             this.elements[2] = value.x
@@ -442,7 +448,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.z
         }
         get zyz(): BaseVec3 {
-            return new Vec3(this.elements[2], this.elements[1], this.elements[2])
+            return vec3(this.elements[2], this.elements[1], this.elements[2])
         }
         set zyz(value: BaseVec3) {
             this.elements[2] = value.x
@@ -450,7 +456,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[2] = value.z
         }
         get zzx(): BaseVec3 {
-            return new Vec3(this.elements[2], this.elements[2], this.elements[0])
+            return vec3(this.elements[2], this.elements[2], this.elements[0])
         }
         set zzx(value: BaseVec3) {
             this.elements[2] = value.x
@@ -458,7 +464,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[0] = value.z
         }
         get zzy(): BaseVec3 {
-            return new Vec3(this.elements[2], this.elements[2], this.elements[1])
+            return vec3(this.elements[2], this.elements[2], this.elements[1])
         }
         set zzy(value: BaseVec3) {
             this.elements[2] = value.x
@@ -466,7 +472,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
             this.elements[1] = value.z
         }
         get zzz(): BaseVec3 {
-            return new Vec3(this.elements[2], this.elements[2], this.elements[2])
+            return vec3(this.elements[2], this.elements[2], this.elements[2])
         }
         set zzz(value: BaseVec3) {
             this.elements[2] = value.x
@@ -483,7 +489,7 @@ function Swizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: T
 function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Base: TBase) {
     return class extends Base {
         get xxxq(): BaseVec4 {
-            return new Vec4(this.elements[0], this.elements[0], this.elements[0], this.elements[3])
+            return vec4(this.elements[0], this.elements[0], this.elements[0], this.elements[3])
         }
         set xxxq(value: BaseVec4) {
             this.elements[0] = value.x
@@ -492,7 +498,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get xxyq(): BaseVec4 {
-            return new Vec4(this.elements[0], this.elements[0], this.elements[1], this.elements[3])
+            return vec4(this.elements[0], this.elements[0], this.elements[1], this.elements[3])
         }
         set xxyq(value: BaseVec4) {
             this.elements[0] = value.x
@@ -501,7 +507,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get xxzq(): BaseVec4 {
-            return new Vec4(this.elements[0], this.elements[0], this.elements[2], this.elements[3])
+            return vec4(this.elements[0], this.elements[0], this.elements[2], this.elements[3])
         }
         set xxzq(value: BaseVec4) {
             this.elements[0] = value.x
@@ -510,7 +516,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get xyxq(): BaseVec4 {
-            return new Vec4(this.elements[0], this.elements[1], this.elements[0], this.elements[3])
+            return vec4(this.elements[0], this.elements[1], this.elements[0], this.elements[3])
         }
         set xyxq(value: BaseVec4) {
             this.elements[0] = value.x
@@ -519,7 +525,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get xyyq(): BaseVec4 {
-            return new Vec4(this.elements[0], this.elements[1], this.elements[1], this.elements[3])
+            return vec4(this.elements[0], this.elements[1], this.elements[1], this.elements[3])
         }
         set xyyq(value: BaseVec4) {
             this.elements[0] = value.x
@@ -528,7 +534,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get xyzq(): BaseVec4 {
-            return new Vec4(this.elements[0], this.elements[1], this.elements[2], this.elements[3])
+            return vec4(this.elements[0], this.elements[1], this.elements[2], this.elements[3])
         }
         set xyzq(value: BaseVec4) {
             this.elements[0] = value.x
@@ -537,7 +543,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get xzxq(): BaseVec4 {
-            return new Vec4(this.elements[0], this.elements[2], this.elements[0], this.elements[3])
+            return vec4(this.elements[0], this.elements[2], this.elements[0], this.elements[3])
         }
         set xzxq(value: BaseVec4) {
             this.elements[0] = value.x
@@ -546,7 +552,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get xzyq(): BaseVec4 {
-            return new Vec4(this.elements[0], this.elements[2], this.elements[1], this.elements[3])
+            return vec4(this.elements[0], this.elements[2], this.elements[1], this.elements[3])
         }
         set xzyq(value: BaseVec4) {
             this.elements[0] = value.x
@@ -555,7 +561,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get xzzq(): BaseVec4 {
-            return new Vec4(this.elements[0], this.elements[2], this.elements[2], this.elements[3])
+            return vec4(this.elements[0], this.elements[2], this.elements[2], this.elements[3])
         }
         set xzzq(value: BaseVec4) {
             this.elements[0] = value.x
@@ -564,7 +570,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get yxxq(): BaseVec4 {
-            return new Vec4(this.elements[1], this.elements[0], this.elements[0], this.elements[3])
+            return vec4(this.elements[1], this.elements[0], this.elements[0], this.elements[3])
         }
         set yxxq(value: BaseVec4) {
             this.elements[1] = value.x
@@ -573,7 +579,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get yxyq(): BaseVec4 {
-            return new Vec4(this.elements[1], this.elements[0], this.elements[1], this.elements[3])
+            return vec4(this.elements[1], this.elements[0], this.elements[1], this.elements[3])
         }
         set yxyq(value: BaseVec4) {
             this.elements[1] = value.x
@@ -582,7 +588,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get yxzq(): BaseVec4 {
-            return new Vec4(this.elements[1], this.elements[0], this.elements[2], this.elements[3])
+            return vec4(this.elements[1], this.elements[0], this.elements[2], this.elements[3])
         }
         set yxzq(value: BaseVec4) {
             this.elements[1] = value.x
@@ -591,7 +597,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get yyxq(): BaseVec4 {
-            return new Vec4(this.elements[1], this.elements[1], this.elements[0], this.elements[3])
+            return vec4(this.elements[1], this.elements[1], this.elements[0], this.elements[3])
         }
         set yyxq(value: BaseVec4) {
             this.elements[1] = value.x
@@ -600,7 +606,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get yyyq(): BaseVec4 {
-            return new Vec4(this.elements[1], this.elements[1], this.elements[1], this.elements[3])
+            return vec4(this.elements[1], this.elements[1], this.elements[1], this.elements[3])
         }
         set yyyq(value: BaseVec4) {
             this.elements[1] = value.x
@@ -609,7 +615,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get yyzq(): BaseVec4 {
-            return new Vec4(this.elements[1], this.elements[1], this.elements[2], this.elements[3])
+            return vec4(this.elements[1], this.elements[1], this.elements[2], this.elements[3])
         }
         set yyzq(value: BaseVec4) {
             this.elements[1] = value.x
@@ -618,7 +624,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get yzxq(): BaseVec4 {
-            return new Vec4(this.elements[1], this.elements[2], this.elements[0], this.elements[3])
+            return vec4(this.elements[1], this.elements[2], this.elements[0], this.elements[3])
         }
         set yzxq(value: BaseVec4) {
             this.elements[1] = value.x
@@ -627,7 +633,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get yzyq(): BaseVec4 {
-            return new Vec4(this.elements[1], this.elements[2], this.elements[1], this.elements[3])
+            return vec4(this.elements[1], this.elements[2], this.elements[1], this.elements[3])
         }
         set yzyq(value: BaseVec4) {
             this.elements[1] = value.x
@@ -636,7 +642,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get yzzq(): BaseVec4 {
-            return new Vec4(this.elements[1], this.elements[2], this.elements[2], this.elements[3])
+            return vec4(this.elements[1], this.elements[2], this.elements[2], this.elements[3])
         }
         set yzzq(value: BaseVec4) {
             this.elements[1] = value.x
@@ -645,7 +651,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get zxxq(): BaseVec4 {
-            return new Vec4(this.elements[2], this.elements[0], this.elements[0], this.elements[3])
+            return vec4(this.elements[2], this.elements[0], this.elements[0], this.elements[3])
         }
         set zxxq(value: BaseVec4) {
             this.elements[2] = value.x
@@ -654,7 +660,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get zxyq(): BaseVec4 {
-            return new Vec4(this.elements[2], this.elements[0], this.elements[1], this.elements[3])
+            return vec4(this.elements[2], this.elements[0], this.elements[1], this.elements[3])
         }
         set zxyq(value: BaseVec4) {
             this.elements[2] = value.x
@@ -663,7 +669,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get zxzq(): BaseVec4 {
-            return new Vec4(this.elements[2], this.elements[0], this.elements[2], this.elements[3])
+            return vec4(this.elements[2], this.elements[0], this.elements[2], this.elements[3])
         }
         set zxzq(value: BaseVec4) {
             this.elements[2] = value.x
@@ -672,7 +678,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get zyxq(): BaseVec4 {
-            return new Vec4(this.elements[2], this.elements[1], this.elements[0], this.elements[3])
+            return vec4(this.elements[2], this.elements[1], this.elements[0], this.elements[3])
         }
         set zyxq(value: BaseVec4) {
             this.elements[2] = value.x
@@ -681,7 +687,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get zyyq(): BaseVec4 {
-            return new Vec4(this.elements[2], this.elements[1], this.elements[1], this.elements[3])
+            return vec4(this.elements[2], this.elements[1], this.elements[1], this.elements[3])
         }
         set zyyq(value: BaseVec4) {
             this.elements[2] = value.x
@@ -690,7 +696,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get zyzq(): BaseVec4 {
-            return new Vec4(this.elements[2], this.elements[1], this.elements[2], this.elements[3])
+            return vec4(this.elements[2], this.elements[1], this.elements[2], this.elements[3])
         }
         set zyzq(value: BaseVec4) {
             this.elements[2] = value.x
@@ -699,7 +705,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get zzxq(): BaseVec4 {
-            return new Vec4(this.elements[2], this.elements[2], this.elements[0], this.elements[3])
+            return vec4(this.elements[2], this.elements[2], this.elements[0], this.elements[3])
         }
         set zzxq(value: BaseVec4) {
             this.elements[2] = value.x
@@ -708,7 +714,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get zzyq(): BaseVec4 {
-            return new Vec4(this.elements[2], this.elements[2], this.elements[1], this.elements[3])
+            return vec4(this.elements[2], this.elements[2], this.elements[1], this.elements[3])
         }
         set zzyq(value: BaseVec4) {
             this.elements[2] = value.x
@@ -717,7 +723,7 @@ function Swizzle4WithQ<TBase extends Constructor<{ elements: Float32Array }>>(Ba
             this.elements[3] = value.w
         }
         get zzzq(): BaseVec4 {
-            return new Vec4(this.elements[2], this.elements[2], this.elements[2], this.elements[3])
+            return vec4(this.elements[2], this.elements[2], this.elements[2], this.elements[3])
         }
         set zzzq(value: BaseVec4) {
             this.elements[2] = value.x
@@ -744,6 +750,34 @@ export class Vec3 extends Vec3WithSwizzle {
 const Vec4WithSwizzleQ = Swizzle4WithQ(BaseVec4)
 export class Vec4 extends Vec4WithSwizzleQ {
     // Additional Vec4 methods can be added here.
+}
+
+export function vec2(x: number, y: number): Vec2 {
+    return new Vec2(new Float32Array([x, y]))
+}
+
+export function vec3(x: number, y: number, z: number): Vec3 {
+    return new Vec3(new Float32Array([x, y, z]))
+}
+
+export function vec4(x: number, y: number, z: number, w: number): Vec4 {
+    return new Vec4(new Float32Array([x, y, z, w]))
+}
+
+export function asVec4(val: number | [number, number] | [number, number, number] | [number, number, number, number]) {
+    if (typeof val === "number") {
+        return vec4(val, 0, 0, 0)
+    }
+    switch (val.length) {
+        case 2:
+            return vec4(val[0], val[1], 0, 0)
+        case 3:
+            return vec4(val[0], val[1], val[2], 0)
+        case 4:
+            return vec4(val[0], val[1], val[2], val[3])
+        default:
+            throw new Error("Invalid vector length")
+    }
 }
 
 // =========================================
@@ -811,7 +845,7 @@ export class Mat2 {
     }
     transform(v: Vec2): Vec2 {
         const [a, b, c, d] = this.elements
-        return new Vec2(a * v.x + c * v.y, b * v.x + d * v.y)
+        return vec2(a * v.x + c * v.y, b * v.x + d * v.y)
     }
 }
 
@@ -890,7 +924,7 @@ export class Mat3 {
     }
     transform(v: Vec3): Vec3 {
         const m = this.elements
-        return new Vec3(m[0] * v.x + m[3] * v.y + m[6] * v.z, m[1] * v.x + m[4] * v.y + m[7] * v.z, m[2] * v.x + m[5] * v.y + m[8] * v.z)
+        return vec3(m[0] * v.x + m[3] * v.y + m[6] * v.z, m[1] * v.x + m[4] * v.y + m[7] * v.z, m[2] * v.x + m[5] * v.y + m[8] * v.z)
     }
 }
 
@@ -1171,7 +1205,7 @@ export class Mat4 {
     // Transform a 4D vector.
     transform(v: Vec4): Vec4 {
         const m = this.elements
-        return new Vec4(
+        return vec4(
             m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12] * v.w,
             m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13] * v.w,
             m[2] * v.x + m[6] * v.y + m[10] * v.z + m[14] * v.w,
@@ -1180,12 +1214,12 @@ export class Mat4 {
     }
     // Transform a 3D point (assumes w = 1 and then does perspective divide).
     transformPoint(v: Vec3): Vec3 {
-        const result = this.transform(new Vec4(v.x, v.y, v.z, 1))
-        return new Vec3(result.x / result.w, result.y / result.w, result.z / result.w)
+        const result = this.transform(vec4(v.x, v.y, v.z, 1))
+        return vec3(result.x / result.w, result.y / result.w, result.z / result.w)
     }
     // Transform a 3D vector (assumes w = 0).
     transformVector(v: Vec3): Vec3 {
-        const result = this.transform(new Vec4(v.x, v.y, v.z, 0))
-        return new Vec3(result.x, result.y, result.z)
+        const result = this.transform(vec4(v.x, v.y, v.z, 0))
+        return vec3(result.x, result.y, result.z)
     }
 }

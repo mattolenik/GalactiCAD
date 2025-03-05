@@ -12,16 +12,11 @@
         }
 
         canvas {
-            display: block;
-            position: fixed;
-            top: 2cm;
-            left: 0;
-            bottom: 0;
-            right: 0;
+            width: 8in;
+            height: 8in;
         }
 
         #toolbar {
-            position: fixed;
             top: 0;
             bottom: 2cm;
             left: 0;
@@ -31,9 +26,6 @@
 </head>
 
 <body>
-    <div id="toolbar">
-        <button id="reload-button">Reload</button>
-    </div>
     <canvas id="preview" oncontextmenu="return false;"></canvas>
     <script type="module">
         import { SDFRenderer } from './sdf.js';
@@ -42,6 +34,9 @@
         await renderer.initialize();
         renderer.render();
     </script>
+    <div id="toolbar">
+        <button id="reload-button">Reload</button>
+    </div>
 </body>
 
 </html>

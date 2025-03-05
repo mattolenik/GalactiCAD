@@ -6,9 +6,11 @@ type Constructor<T = {}> = new (...args: any[]) => T
 
 export class SceneUniform {
     args: Vec4Array
+    root: Node
 
-    constructor(numArgs: number) {
-        this.args = new Vec4Array(numArgs)
+    constructor(root: Node) {
+        this.root = root
+        this.args = new Vec4Array(this.root.scene.numArgs)
     }
 
     get bufferSize(): number {
@@ -17,6 +19,7 @@ export class SceneUniform {
 
     writeBuffer(device: GPUDevice, buffer: GPUBuffer) {
         device.queue.writeBuffer(buffer, 0, this.args.data)
+        console.log(this.args.data)
     }
 }
 
@@ -189,7 +192,6 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         pos: 0,
         r: 0,
     }
-    private args!: Vec4Array
 
     constructor({ pos, r, d }: { pos: Vec3; r?: number; d?: number }) {
         super()
@@ -197,9 +199,8 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         this.r = asRadius(r, d)
     }
     override uniformCopy(args: SceneUniform): void {
-        this.args = args.args
-        this.args.set(this.idx.pos, this.pos)
-        this.args.set(this.idx.r, this.r)
+        args.args.set(this.idx.pos, this.pos)
+        args.args.set(this.idx.r, this.r)
     }
     override init(): Sphere {
         this.idx.pos = this.scene.nextArgIndex()
@@ -207,6 +208,6 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         return this
     }
     override compile(): string {
-        return `sdSphere( args[${this.idx.pos}].xyz, args[${this.idx.r}].x )`
+        return `sdSphere( p - args[${this.idx.pos}].xyz, args[${this.idx.r}].x )`
     }
 }

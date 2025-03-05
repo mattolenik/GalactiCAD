@@ -77,7 +77,7 @@ fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
          let normal = estimateNormal(p);
          let lightDir = normalize(vec3f(0.5, 0.8, -1.0));
          let diffuse = clamp(dot(normal, lightDir), 0.0, 1.0);
-         let baseColor = vec3f(1.0, 0.5, 0.2); // Example sphere color
+         let baseColor = vec3f(0.7, 0.7, 0.9); // Example sphere color
          let shadedColor = baseColor * diffuse;
          return vec4f(shadedColor, 1.0);
     } else {

@@ -4,10 +4,16 @@
 
 export function asRadius(r?: number, d?: number): number {
     if (r && !d) {
+        if (r < 0) {
+            throw new Error("radius must be positive")
+        }
         return r
     }
     if (d && !r) {
+        if (d < 0) {
+            throw new Error("diameter must be positive")
+        }
         return d / 2
     }
-    throw new Error("must pass a non-zero radius or diameter")
+    throw new Error("must pass a positive radius or diameter")
 }

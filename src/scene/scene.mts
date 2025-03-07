@@ -24,24 +24,35 @@ export class SceneUniform {
 }
 
 export class SceneInfo {
+    private nodeByID = new Map<number, Node>()
     numArgs = 0
+    numNodes = 0
     nextArgIndex(): number {
         return this.numArgs++
+    }
+    add(node: Node) {
+        node.id = this.numNodes++
+        this.nodeByID.set(node.id, node)
+    }
+    get<T extends Node>(id: number): T {
+        return this.nodeByID.get(id) as T
     }
 }
 
 export class Node {
-    root!: Node
-    private _scene: SceneInfo
+    id!: number
+    root: Node
+    private _scene!: SceneInfo
+
     get scene() {
         return this.root._scene
     }
     set scene(si: SceneInfo) {
         this.root._scene = si
     }
+
     constructor() {
         this.root = this
-        this._scene = new SceneInfo()
     }
     compile() {
         throw new Error("Method not implemented.")
@@ -50,7 +61,8 @@ export class Node {
         throw new Error("Method not implemented.")
     }
     init(): Node {
-        throw new Error("Method not implemented.")
+        this.scene.add(this)
+        return this
     }
 }
 
@@ -103,9 +115,9 @@ export class Group extends WithChildren(Node) {
         }
     }
     override init(): Group {
+        super.init()
         for (let child of this.children) {
             child.root = this.root
-            child.scene = this.scene
             child.init()
         }
         return this
@@ -118,7 +130,6 @@ export class Group extends WithChildren(Node) {
         this.children = children
         for (let child of children) {
             child.root = this.root
-            child.scene = this.root.scene
         }
     }
 }
@@ -128,8 +139,8 @@ export abstract class UnaryOperator extends Node {
         this.arg.uniformCopy(args)
     }
     override init(): UnaryOperator {
+        super.init()
         this.arg.root = this.root
-        this.arg.scene = this.scene
         this.arg.init()
         return this
     }
@@ -144,10 +155,9 @@ export abstract class BinaryOperator extends Node {
         this.rh.uniformCopy(args)
     }
     override init(): BinaryOperator {
+        super.init()
         this.lh.root = this.root
         this.rh.root = this.root
-        this.lh.scene = this.scene
-        this.rh.scene = this.scene
         this.lh.init()
         this.rh.init()
         return this

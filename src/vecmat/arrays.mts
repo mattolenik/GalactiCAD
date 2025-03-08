@@ -1,17 +1,15 @@
 import { Vec2, Vec3, Vec4 } from "./vector.mjs"
 
-export class Vec4Array {
+export class ArgArray {
     data: Float32Array
 
-    constructor(numVectors: number) {
-        this.data = new Float32Array(numVectors * 4)
+    constructor(numArgs: number) {
+        this.data = new Float32Array(numArgs * 4)
     }
 
     set(index: number, val: number | Float32Array | Vec2 | Vec3 | Vec4): void {
-        const offset = index * 4
-        if (offset < 0 || offset + 4 > this.data.length) {
-            throw new Error("Index out of bounds")
-        }
+        const offset = this.offset(index)
+
         if (typeof val === "number") {
             val = new Float32Array([val, 0, 0, 0])
         } else if (val instanceof Vec2) {
@@ -27,12 +25,12 @@ export class Vec4Array {
         this.data.set(val, offset)
     }
 
-    get(index: number): Vec4 {
+    private offset(index: number) {
         const offset = index * 4
         if (offset < 0 || offset + 4 > this.data.length) {
             throw new Error("Index out of bounds")
         }
-        return new Vec4(this.data.slice(offset, offset + 4))
+        return offset
     }
 
     get byteLength(): number {

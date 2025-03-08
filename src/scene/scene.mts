@@ -1,16 +1,16 @@
-import { Vec4Array } from "../vecmat/arrays.mjs"
+import { ArgArray } from "../vecmat/arrays.mjs"
 import { Vec3 } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 type Constructor<T = {}> = new (...args: any[]) => T
 
 export class SceneUniform {
-    args: Vec4Array
+    args: ArgArray
     root: Node
 
     constructor(root: Node) {
         this.root = root
-        this.args = new Vec4Array(this.root.scene.numArgs)
+        this.args = new ArgArray(this.root.scene.numArgs)
     }
 
     get bufferSize(): number {

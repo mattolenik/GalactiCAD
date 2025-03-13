@@ -1,4 +1,4 @@
-import { Group, SceneUniform as SceneUniform, Sphere } from "./scene/scene.mjs"
+import { Group, SceneInfo, SceneUniform, Sphere } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { vec3 } from "./vecmat/vector.mjs"
 
@@ -32,7 +32,8 @@ export class SDFRenderer {
             alphaMode: "premultiplied",
         })
 
-        const sceneRoot = new Group([new Sphere({ pos: vec3(0, 0, 20), r: 10 })]).init()
+        const si = new SceneInfo()
+        const sceneRoot = new Group(new Sphere({ pos: vec3(0, 0, 20), r: 10 })).init(si)
         this.scene = new SceneUniform(sceneRoot)
 
         this.uniformBuffer = this.device.createBuffer({

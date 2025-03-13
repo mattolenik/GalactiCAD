@@ -25,13 +25,19 @@ export class SceneUniform {
 
 export class SceneInfo {
     private nodeByID = new Map<number, Node>()
+    private nodes = new Set<Node>()
+
     numArgs = 0
     numNodes = 0
     nextArgIndex(): number {
+        this.nodeByID.values
         return this.numArgs++
     }
     add(node: Node) {
+        if (this.nodes.has(node)) return
+
         node.id = this.numNodes++
+        this.nodes.add(node)
         this.nodeByID.set(node.id, node)
     }
     get<T extends Node>(id: number): T {
@@ -60,7 +66,8 @@ export class Node {
     uniformCopy(args: SceneUniform) {
         throw new Error("Method not implemented.")
     }
-    init(): Node {
+    init(si: SceneInfo): Node {
+        this.scene = si
         this.scene.add(this)
         return this
     }
@@ -114,18 +121,18 @@ export class Group extends WithChildren(Node) {
             child.uniformCopy(args)
         }
     }
-    override init(): Group {
-        super.init()
+    override init(si: SceneInfo): Group {
+        super.init(si)
         for (let child of this.children) {
             child.root = this.root
-            child.init()
+            child.init(si)
         }
         return this
     }
     override compile(): string {
         return this.children.map((c) => c.compile()).join(";\n") + ";\n"
     }
-    constructor(children: Node[] = []) {
+    constructor(...children: Node[]) {
         super()
         this.children = children
         for (let child of children) {
@@ -138,10 +145,10 @@ export abstract class UnaryOperator extends Node {
     override uniformCopy(args: SceneUniform) {
         this.arg.uniformCopy(args)
     }
-    override init(): UnaryOperator {
-        super.init()
+    override init(si: SceneInfo): UnaryOperator {
+        super.init(si)
         this.arg.root = this.root
-        this.arg.init()
+        this.arg.init(si)
         return this
     }
     constructor(public arg: Node) {
@@ -154,12 +161,12 @@ export abstract class BinaryOperator extends Node {
         this.lh.uniformCopy(args)
         this.rh.uniformCopy(args)
     }
-    override init(): BinaryOperator {
-        super.init()
+    override init(si: SceneInfo): BinaryOperator {
+        super.init(si)
         this.lh.root = this.root
         this.rh.root = this.root
-        this.lh.init()
-        this.rh.init()
+        this.lh.init(si)
+        this.rh.init(si)
         return this
     }
     constructor(public lh: Node, public rh: Node) {
@@ -173,8 +180,8 @@ export class Union extends BinaryOperator {
             ? `opUnion( ${this.lh.compile()}, ${this.rh.compile()} )`
             : `opSmoothUnion( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
-    override init(): Union {
-        super.init()
+    override init(si: SceneInfo): Union {
+        super.init(si)
         return this
     }
     constructor(lh: Node, rh: Node, public radius?: number) {
@@ -188,8 +195,8 @@ export class Subtract extends BinaryOperator {
             ? `opSubtract( ${this.lh.compile()}, ${this.rh.compile()} )`
             : `opSmoothSubtract( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
-    override init(): Subtract {
-        super.init()
+    override init(si: SceneInfo): Subtract {
+        super.init(si)
         return this
     }
     constructor(lh: Node, rh: Node, public radius?: number) {
@@ -212,7 +219,8 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         args.args.set(this.idx.pos, this.pos)
         args.args.set(this.idx.r, this.r)
     }
-    override init(): Sphere {
+    override init(si: SceneInfo): Sphere {
+        super.init(si)
         this.idx.pos = this.scene.nextArgIndex()
         this.idx.r = this.scene.nextArgIndex()
         return this

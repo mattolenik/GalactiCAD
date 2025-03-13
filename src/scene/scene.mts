@@ -67,7 +67,9 @@ export class Node {
         throw new Error("Method not implemented.")
     }
     init(si: SceneInfo): Node {
-        this.scene = si
+        if (!this.scene) {
+            this.scene = si
+        }
         this.scene.add(this)
         return this
     }

@@ -9,7 +9,7 @@ function expectedVec3FromSwizzle(v: Vec3, swizzle: string): Vec3 {
 }
 
 function expectedVec4FromSwizzle(v: Vec4, swizzle: string): Vec4 {
-    const mapping: Record<string, number> = { x: v.x, y: v.y, z: v.z, q: v.w }
+    const mapping: Record<string, number> = { x: v.x, y: v.y, z: v.z, w: v.w }
     const components = swizzle.split("").map((c) => mapping[c]) as [number, number, number, number]
     return new Vec4(components)
 }
@@ -139,7 +139,7 @@ test("Vec4 swizzle getters", () => {
     for (const a of ["x", "y", "z"]) {
         for (const b of ["x", "y", "z"]) {
             for (const c of ["x", "y", "z"]) {
-                keys.push(a + b + c + "q")
+                keys.push(a + b + c + "w")
             }
         }
     }
@@ -159,12 +159,12 @@ test("Vec4 swizzle setters", () => {
     for (const a of ["x", "y", "z"]) {
         for (const b of ["x", "y", "z"]) {
             for (const c of ["x", "y", "z"]) {
-                keys.push(a + b + c + "q")
+                keys.push(a + b + c + "w")
             }
         }
     }
     const newVal = new Vec4(10, 20, 30, 40)
-    const mapping: Record<string, number> = { x: 0, y: 1, z: 2, q: 3 }
+    const mapping: Record<string, number> = { x: 0, y: 1, z: 2, w: 3 }
     keys.forEach((key) => {
         const v = new Vec4(1, 2, 3, 4)
         ;(v as any)[key] = newVal

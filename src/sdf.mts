@@ -112,5 +112,6 @@ export class SDFRenderer {
         renderPass.end()
 
         this.device.queue.submit([commandEncoder.finish()])
+        requestAnimationFrame((time) => this.update(time))
     }
 }

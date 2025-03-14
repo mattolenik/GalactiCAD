@@ -69,7 +69,7 @@ async function load(filePath: string, visited = new Set<string>()): Promise<stri
             const nestedFile = path.resolve(dirOfFile, includePath)
 
             // Recursively load and inline
-            const nestedContent = load(nestedFile, visited)
+            const nestedContent = await load(nestedFile, visited)
             result += nestedContent + "\n"
         } else {
             // Ordinary line, just copy it

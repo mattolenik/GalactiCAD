@@ -182,8 +182,8 @@ export abstract class BinaryOperator extends Node {
 export class Union extends BinaryOperator {
     override compile(): string {
         return !this.radius
-            ? `opUnion( ${this.lh.compile()}, ${this.rh.compile()} )`
-            : `opUnionRound( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
+            ? `min( ${this.lh.compile()}, ${this.rh.compile()} )`
+            : `fOpUnionRound( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
     override init(si?: SceneInfo): Union {
         super.init(si)
@@ -197,8 +197,8 @@ export class Union extends BinaryOperator {
 export class Subtract extends BinaryOperator {
     override compile(): string {
         return this.radius === undefined
-            ? `opSubtract( ${this.lh.compile()}, ${this.rh.compile()} )`
-            : `opSubtractSmooth( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
+            ? `max( ${this.lh.compile()}, ${this.rh.compile()} )`
+            : `fOpDifferenceRound( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
     override init(si?: SceneInfo): Subtract {
         super.init(si)
@@ -231,6 +231,6 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         return this
     }
     override compile(): string {
-        return `sdSphere( p - args[${this.idx.pos}].xyz, args[${this.idx.r}].x )`
+        return `fSphere( p - args[${this.idx.pos}].xyz, args[${this.idx.r}].x )`
     }
 }

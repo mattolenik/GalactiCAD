@@ -188,58 +188,58 @@ fn fCone(p: vec3<f32>, radius: f32, height: f32) -> f32 {
 //   GENERALIZED DISTANCE FUNCTIONS (POLYHEDRA)
 //////////////////////////////////////////////
 
-const GDFVectors: array<vec3<f32>, 19> = array<vec3<f32>, 19>(normalize(vec3<f32>(1.0, 0.0, 0.0)), normalize(vec3<f32>(0.0, 1.0, 0.0)), normalize(vec3<f32>(0.0, 0.0, 1.0)), normalize(vec3<f32>(1.0, 1.0, 1.0)), normalize(vec3<f32>(-1.0, 1.0, 1.0)), normalize(vec3<f32>(1.0, -1.0, 1.0)), normalize(vec3<f32>(1.0, 1.0, -1.0)), normalize(vec3<f32>(0.0, 1.0, PHI + 1.0)), normalize(vec3<f32>(0.0, -1.0, PHI + 1.0)), normalize(vec3<f32>(PHI + 1.0, 0.0, 1.0)), normalize(vec3<f32>(-PHI - 1.0, 0.0, 1.0)), normalize(vec3<f32>(1.0, PHI + 1.0, 0.0)), normalize(vec3<f32>(-1.0, PHI + 1.0, 0.0)), normalize(vec3<f32>(0.0, PHI, 1.0)), normalize(vec3<f32>(0.0, -PHI, 1.0)), normalize(vec3<f32>(1.0, 0.0, PHI)), normalize(vec3<f32>(-1.0, 0.0, PHI)), normalize(vec3<f32>(PHI, 1.0, 0.0)), normalize(vec3<f32>(-PHI, 1.0, 0.0)));
+// const GDFVectors: array<vec3<f32>, 19> = array<vec3<f32>, 19>(normalize(vec3<f32>(1.0, 0.0, 0.0)), normalize(vec3<f32>(0.0, 1.0, 0.0)), normalize(vec3<f32>(0.0, 0.0, 1.0)), normalize(vec3<f32>(1.0, 1.0, 1.0)), normalize(vec3<f32>(-1.0, 1.0, 1.0)), normalize(vec3<f32>(1.0, -1.0, 1.0)), normalize(vec3<f32>(1.0, 1.0, -1.0)), normalize(vec3<f32>(0.0, 1.0, PHI + 1.0)), normalize(vec3<f32>(0.0, -1.0, PHI + 1.0)), normalize(vec3<f32>(PHI + 1.0, 0.0, 1.0)), normalize(vec3<f32>(-PHI - 1.0, 0.0, 1.0)), normalize(vec3<f32>(1.0, PHI + 1.0, 0.0)), normalize(vec3<f32>(-1.0, PHI + 1.0, 0.0)), normalize(vec3<f32>(0.0, PHI, 1.0)), normalize(vec3<f32>(0.0, -PHI, 1.0)), normalize(vec3<f32>(1.0, 0.0, PHI)), normalize(vec3<f32>(-1.0, 0.0, PHI)), normalize(vec3<f32>(PHI, 1.0, 0.0)), normalize(vec3<f32>(-PHI, 1.0, 0.0)));
 
-// Exponent version
-fn fGDFExp(p: vec3<f32>, r: f32, e: f32, begin: i32, end: i32) -> f32 {
-    var d = 0.0;
-    for (var i = begin; i <= end; i = i + 1) {
-        d = d + pow(abs(dot(p, GDFVectors[i])), e);
-    }
-    return pow(d, 1.0 / e) - r;
-}
+// // Exponent version
+// fn fGDFExp(p: vec3<f32>, r: f32, e: f32, begin: i32, end: i32) -> f32 {
+//     var d = 0.0;
+//     for (var i = begin; i <= end; i = i + 1) {
+//         d = d + pow(abs(dot(p, GDFVectors[i])), e);
+//     }
+//     return pow(d, 1.0 / e) - r;
+// }
 
-// Non-exponent version (sharp edges)
-fn fGDF(p: vec3<f32>, r: f32, begin: i32, end: i32) -> f32 {
-    var d = 0.0;
-    for (var i = begin; i <= end; i = i + 1) {
-        d = max(d, abs(dot(p, GDFVectors[i])));
-    }
-    return d - r;
-}
+// // Non-exponent version (sharp edges)
+// fn fGDF(p: vec3<f32>, r: f32, begin: i32, end: i32) -> f32 {
+//     var d = 0.0;
+//     for (var i = begin; i <= end; i = i + 1) {
+//         d = max(d, abs(dot(p, GDFVectors[i])));
+//     }
+//     return d - r;
+// }
 
-// Sample polyhedra
-fn fOctahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
-    return fGDFExp(p, r, e, 3, 6);
-}
-fn fDodecahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
-    return fGDFExp(p, r, e, 13, 18);
-}
-fn fIcosahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
-    return fGDFExp(p, r, e, 3, 12);
-}
-fn fTruncatedOctahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
-    return fGDFExp(p, r, e, 0, 6);
-}
-fn fTruncatedIcosahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
-    return fGDFExp(p, r, e, 3, 18);
-}
+// // Sample polyhedra
+// fn fOctahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
+//     return fGDFExp(p, r, e, 3, 6);
+// }
+// fn fDodecahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
+//     return fGDFExp(p, r, e, 13, 18);
+// }
+// fn fIcosahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
+//     return fGDFExp(p, r, e, 3, 12);
+// }
+// fn fTruncatedOctahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
+//     return fGDFExp(p, r, e, 0, 6);
+// }
+// fn fTruncatedIcosahedronExp(p: vec3<f32>, r: f32, e: f32) -> f32 {
+//     return fGDFExp(p, r, e, 3, 18);
+// }
 
-fn fOctahedron(p: vec3<f32>, r: f32) -> f32 {
-    return fGDF(p, r, 3, 6);
-}
-fn fDodecahedron(p: vec3<f32>, r: f32) -> f32 {
-    return fGDF(p, r, 13, 18);
-}
-fn fIcosahedron(p: vec3<f32>, r: f32) -> f32 {
-    return fGDF(p, r, 3, 12);
-}
-fn fTruncatedOctahedron(p: vec3<f32>, r: f32) -> f32 {
-    return fGDF(p, r, 0, 6);
-}
-fn fTruncatedIcosahedron(p: vec3<f32>, r: f32) -> f32 {
-    return fGDF(p, r, 3, 18);
-}
+// fn fOctahedron(p: vec3<f32>, r: f32) -> f32 {
+//     return fGDF(p, r, 3, 6);
+// }
+// fn fDodecahedron(p: vec3<f32>, r: f32) -> f32 {
+//     return fGDF(p, r, 13, 18);
+// }
+// fn fIcosahedron(p: vec3<f32>, r: f32) -> f32 {
+//     return fGDF(p, r, 3, 12);
+// }
+// fn fTruncatedOctahedron(p: vec3<f32>, r: f32) -> f32 {
+//     return fGDF(p, r, 0, 6);
+// }
+// fn fTruncatedIcosahedron(p: vec3<f32>, r: f32) -> f32 {
+//     return fGDF(p, r, 3, 18);
+// }
 
 //////////////////////////////////////////////
 //   DOMAIN MANIPULATION (POINTER-BASED)
@@ -319,42 +319,42 @@ fn pModPolar(p: ptr<function, vec2<f32>>, repetitions: f32) -> f32 {
     return c;
 }
 
-// 2D repeat
-fn pMod2(p: ptr<function, vec2<f32>>, size: vec2<f32>) -> vec2<f32> {
-    let halfSize = size * 0.5;
-    let c = floor(((*p) + halfSize) / size);
-    (*p) = modF((*p) + halfSize, size) - halfSize;
-    return c;
-}
+// // 2D repeat
+// fn pMod2(p: ptr<function, vec2<f32>>, size: vec2<f32>) -> vec2<f32> {
+//     let halfSize = size * 0.5;
+//     let c = floor(((*p) + halfSize) / size);
+//     (*p) = modF((*p) + halfSize, size) - halfSize;
+//     return c;
+// }
 
-// Mirror every second cell so boundaries match
-fn pModMirror2(p: ptr<function, vec2<f32>>, size: vec2<f32>) -> vec2<f32> {
-    let halfSize = size * 0.5;
-    let c = floor(((*p) + halfSize) / size);
-    let t = modF((*p) + halfSize, size) - halfSize;
-    let mirrorFactor = select(vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0),(c % vec2<f32>(2.0, 2.0)) != vec2<f32>(0.0, 0.0));
-    (*p) = t * mirrorFactor;
-    return c;
-}
+// // Mirror every second cell so boundaries match
+// fn pModMirror2(p: ptr<function, vec2<f32>>, size: vec2<f32>) -> vec2<f32> {
+//     let halfSize = size * 0.5;
+//     let c = floor(((*p) + halfSize) / size);
+//     let t = modF((*p) + halfSize, size) - halfSize;
+//     let mirrorFactor = select(vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0),(c % vec2<f32>(2.0, 2.0)) != vec2<f32>(0.0, 0.0));
+//     (*p) = t * mirrorFactor;
+//     return c;
+// }
 
-// Combined mirroring
-fn pModGrid2(p: ptr<function, vec2<f32>>, size: vec2<f32>) -> vec2<f32> {
-    // Original version from your snippet
-    let halfSize = size * 0.5;
-    var c = floor(((*p) + halfSize) / size);
-    (*p) = modF((*p) + halfSize, size) - halfSize;
-    (*p) = (*p)
-        * (select(vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0),(c % vec2<f32>(2.0, 2.0)) != vec2<f32>(0.0, 0.0)))
-        * 2.0
-        - vec2<f32>(1.0, 1.0);
+// // Combined mirroring
+// fn pModGrid2(p: ptr<function, vec2<f32>>, size: vec2<f32>) -> vec2<f32> {
+//     // Original version from your snippet
+//     let halfSize = size * 0.5;
+//     var c = floor(((*p) + halfSize) / size);
+//     (*p) = modF((*p) + halfSize, size) - halfSize;
+//     (*p) = (*p)
+//         * (select(vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0),(c % vec2<f32>(2.0, 2.0)) != vec2<f32>(0.0, 0.0)))
+//         * 2.0
+//         - vec2<f32>(1.0, 1.0);
 
-    // subtract size / 2.0
-    (*p) = (*p) - halfSize;
-    if ((*p).x > (*p).y) {
-        (*p) = vec2<f32>((*p).y,(*p).x);
-    }
-    return floor(c / 2.0);
-}
+//     // subtract size / 2.0
+//     (*p) = (*p) - halfSize;
+//     if ((*p).x > (*p).y) {
+//         (*p) = vec2<f32>((*p).y,(*p).x);
+//     }
+//     return floor(c / 2.0);
+// }
 
 // 3D repeat
 fn pMod3(p: ptr<function, vec3<f32>>, size: vec3<f32>) -> vec3<f32> {

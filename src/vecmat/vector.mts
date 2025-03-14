@@ -1,5 +1,7 @@
 type Constructor<T = {}> = new (...args: any[]) => T
 
+var ToStringPrecision = 2
+
 class BaseVec2 {
     public elements: Float32Array
 
@@ -477,244 +479,244 @@ function WithSwizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Bas
 
 function WithSwizzle4<TBase extends Constructor<{ elements: Float32Array }>>(Base: TBase) {
     return class extends Base {
-        get xxxq(): BaseVec4 {
+        get xxxw(): BaseVec4 {
             return vec4(this.elements[0], this.elements[0], this.elements[0], this.elements[3])
         }
-        set xxxq(value: BaseVec4) {
+        set xxxw(value: BaseVec4) {
             this.elements[0] = value.x
             this.elements[0] = value.y
             this.elements[0] = value.z
             this.elements[3] = value.w
         }
-        get xxyq(): BaseVec4 {
+        get xxyw(): BaseVec4 {
             return vec4(this.elements[0], this.elements[0], this.elements[1], this.elements[3])
         }
-        set xxyq(value: BaseVec4) {
+        set xxyw(value: BaseVec4) {
             this.elements[0] = value.x
             this.elements[0] = value.y
             this.elements[1] = value.z
             this.elements[3] = value.w
         }
-        get xxzq(): BaseVec4 {
+        get xxzw(): BaseVec4 {
             return vec4(this.elements[0], this.elements[0], this.elements[2], this.elements[3])
         }
-        set xxzq(value: BaseVec4) {
+        set xxzw(value: BaseVec4) {
             this.elements[0] = value.x
             this.elements[0] = value.y
             this.elements[2] = value.z
             this.elements[3] = value.w
         }
-        get xyxq(): BaseVec4 {
+        get xyxw(): BaseVec4 {
             return vec4(this.elements[0], this.elements[1], this.elements[0], this.elements[3])
         }
-        set xyxq(value: BaseVec4) {
+        set xyxw(value: BaseVec4) {
             this.elements[0] = value.x
             this.elements[1] = value.y
             this.elements[0] = value.z
             this.elements[3] = value.w
         }
-        get xyyq(): BaseVec4 {
+        get xyyw(): BaseVec4 {
             return vec4(this.elements[0], this.elements[1], this.elements[1], this.elements[3])
         }
-        set xyyq(value: BaseVec4) {
+        set xyyw(value: BaseVec4) {
             this.elements[0] = value.x
             this.elements[1] = value.y
             this.elements[1] = value.z
             this.elements[3] = value.w
         }
-        get xyzq(): BaseVec4 {
+        get xyzw(): BaseVec4 {
             return vec4(this.elements[0], this.elements[1], this.elements[2], this.elements[3])
         }
-        set xyzq(value: BaseVec4) {
+        set xyzw(value: BaseVec4) {
             this.elements[0] = value.x
             this.elements[1] = value.y
             this.elements[2] = value.z
             this.elements[3] = value.w
         }
-        get xzxq(): BaseVec4 {
+        get xzxw(): BaseVec4 {
             return vec4(this.elements[0], this.elements[2], this.elements[0], this.elements[3])
         }
-        set xzxq(value: BaseVec4) {
+        set xzxw(value: BaseVec4) {
             this.elements[0] = value.x
             this.elements[2] = value.y
             this.elements[0] = value.z
             this.elements[3] = value.w
         }
-        get xzyq(): BaseVec4 {
+        get xzyw(): BaseVec4 {
             return vec4(this.elements[0], this.elements[2], this.elements[1], this.elements[3])
         }
-        set xzyq(value: BaseVec4) {
+        set xzyw(value: BaseVec4) {
             this.elements[0] = value.x
             this.elements[2] = value.y
             this.elements[1] = value.z
             this.elements[3] = value.w
         }
-        get xzzq(): BaseVec4 {
+        get xzzw(): BaseVec4 {
             return vec4(this.elements[0], this.elements[2], this.elements[2], this.elements[3])
         }
-        set xzzq(value: BaseVec4) {
+        set xzzw(value: BaseVec4) {
             this.elements[0] = value.x
             this.elements[2] = value.y
             this.elements[2] = value.z
             this.elements[3] = value.w
         }
-        get yxxq(): BaseVec4 {
+        get yxxw(): BaseVec4 {
             return vec4(this.elements[1], this.elements[0], this.elements[0], this.elements[3])
         }
-        set yxxq(value: BaseVec4) {
+        set yxxw(value: BaseVec4) {
             this.elements[1] = value.x
             this.elements[0] = value.y
             this.elements[0] = value.z
             this.elements[3] = value.w
         }
-        get yxyq(): BaseVec4 {
+        get yxyw(): BaseVec4 {
             return vec4(this.elements[1], this.elements[0], this.elements[1], this.elements[3])
         }
-        set yxyq(value: BaseVec4) {
+        set yxyw(value: BaseVec4) {
             this.elements[1] = value.x
             this.elements[0] = value.y
             this.elements[1] = value.z
             this.elements[3] = value.w
         }
-        get yxzq(): BaseVec4 {
+        get yxzw(): BaseVec4 {
             return vec4(this.elements[1], this.elements[0], this.elements[2], this.elements[3])
         }
-        set yxzq(value: BaseVec4) {
+        set yxzw(value: BaseVec4) {
             this.elements[1] = value.x
             this.elements[0] = value.y
             this.elements[2] = value.z
             this.elements[3] = value.w
         }
-        get yyxq(): BaseVec4 {
+        get yyxw(): BaseVec4 {
             return vec4(this.elements[1], this.elements[1], this.elements[0], this.elements[3])
         }
-        set yyxq(value: BaseVec4) {
+        set yyxw(value: BaseVec4) {
             this.elements[1] = value.x
             this.elements[1] = value.y
             this.elements[0] = value.z
             this.elements[3] = value.w
         }
-        get yyyq(): BaseVec4 {
+        get yyyw(): BaseVec4 {
             return vec4(this.elements[1], this.elements[1], this.elements[1], this.elements[3])
         }
-        set yyyq(value: BaseVec4) {
+        set yyyw(value: BaseVec4) {
             this.elements[1] = value.x
             this.elements[1] = value.y
             this.elements[1] = value.z
             this.elements[3] = value.w
         }
-        get yyzq(): BaseVec4 {
+        get yyzw(): BaseVec4 {
             return vec4(this.elements[1], this.elements[1], this.elements[2], this.elements[3])
         }
-        set yyzq(value: BaseVec4) {
+        set yyzw(value: BaseVec4) {
             this.elements[1] = value.x
             this.elements[1] = value.y
             this.elements[2] = value.z
             this.elements[3] = value.w
         }
-        get yzxq(): BaseVec4 {
+        get yzxw(): BaseVec4 {
             return vec4(this.elements[1], this.elements[2], this.elements[0], this.elements[3])
         }
-        set yzxq(value: BaseVec4) {
+        set yzxw(value: BaseVec4) {
             this.elements[1] = value.x
             this.elements[2] = value.y
             this.elements[0] = value.z
             this.elements[3] = value.w
         }
-        get yzyq(): BaseVec4 {
+        get yzyw(): BaseVec4 {
             return vec4(this.elements[1], this.elements[2], this.elements[1], this.elements[3])
         }
-        set yzyq(value: BaseVec4) {
+        set yzyw(value: BaseVec4) {
             this.elements[1] = value.x
             this.elements[2] = value.y
             this.elements[1] = value.z
             this.elements[3] = value.w
         }
-        get yzzq(): BaseVec4 {
+        get yzzw(): BaseVec4 {
             return vec4(this.elements[1], this.elements[2], this.elements[2], this.elements[3])
         }
-        set yzzq(value: BaseVec4) {
+        set yzzw(value: BaseVec4) {
             this.elements[1] = value.x
             this.elements[2] = value.y
             this.elements[2] = value.z
             this.elements[3] = value.w
         }
-        get zxxq(): BaseVec4 {
+        get zxxw(): BaseVec4 {
             return vec4(this.elements[2], this.elements[0], this.elements[0], this.elements[3])
         }
-        set zxxq(value: BaseVec4) {
+        set zxxw(value: BaseVec4) {
             this.elements[2] = value.x
             this.elements[0] = value.y
             this.elements[0] = value.z
             this.elements[3] = value.w
         }
-        get zxyq(): BaseVec4 {
+        get zxyw(): BaseVec4 {
             return vec4(this.elements[2], this.elements[0], this.elements[1], this.elements[3])
         }
-        set zxyq(value: BaseVec4) {
+        set zxyw(value: BaseVec4) {
             this.elements[2] = value.x
             this.elements[0] = value.y
             this.elements[1] = value.z
             this.elements[3] = value.w
         }
-        get zxzq(): BaseVec4 {
+        get zxzw(): BaseVec4 {
             return vec4(this.elements[2], this.elements[0], this.elements[2], this.elements[3])
         }
-        set zxzq(value: BaseVec4) {
+        set zxzw(value: BaseVec4) {
             this.elements[2] = value.x
             this.elements[0] = value.y
             this.elements[2] = value.z
             this.elements[3] = value.w
         }
-        get zyxq(): BaseVec4 {
+        get zyxw(): BaseVec4 {
             return vec4(this.elements[2], this.elements[1], this.elements[0], this.elements[3])
         }
-        set zyxq(value: BaseVec4) {
+        set zyxw(value: BaseVec4) {
             this.elements[2] = value.x
             this.elements[1] = value.y
             this.elements[0] = value.z
             this.elements[3] = value.w
         }
-        get zyyq(): BaseVec4 {
+        get zyyw(): BaseVec4 {
             return vec4(this.elements[2], this.elements[1], this.elements[1], this.elements[3])
         }
-        set zyyq(value: BaseVec4) {
+        set zyyw(value: BaseVec4) {
             this.elements[2] = value.x
             this.elements[1] = value.y
             this.elements[1] = value.z
             this.elements[3] = value.w
         }
-        get zyzq(): BaseVec4 {
+        get zyzw(): BaseVec4 {
             return vec4(this.elements[2], this.elements[1], this.elements[2], this.elements[3])
         }
-        set zyzq(value: BaseVec4) {
+        set zyzw(value: BaseVec4) {
             this.elements[2] = value.x
             this.elements[1] = value.y
             this.elements[2] = value.z
             this.elements[3] = value.w
         }
-        get zzxq(): BaseVec4 {
+        get zzxw(): BaseVec4 {
             return vec4(this.elements[2], this.elements[2], this.elements[0], this.elements[3])
         }
-        set zzxq(value: BaseVec4) {
+        set zzxw(value: BaseVec4) {
             this.elements[2] = value.x
             this.elements[2] = value.y
             this.elements[0] = value.z
             this.elements[3] = value.w
         }
-        get zzyq(): BaseVec4 {
+        get zzyw(): BaseVec4 {
             return vec4(this.elements[2], this.elements[2], this.elements[1], this.elements[3])
         }
-        set zzyq(value: BaseVec4) {
+        set zzyw(value: BaseVec4) {
             this.elements[2] = value.x
             this.elements[2] = value.y
             this.elements[1] = value.z
             this.elements[3] = value.w
         }
-        get zzzq(): BaseVec4 {
+        get zzzw(): BaseVec4 {
             return vec4(this.elements[2], this.elements[2], this.elements[2], this.elements[3])
         }
-        set zzzq(value: BaseVec4) {
+        set zzzw(value: BaseVec4) {
             this.elements[2] = value.x
             this.elements[2] = value.y
             this.elements[2] = value.z
@@ -723,7 +725,11 @@ function WithSwizzle4<TBase extends Constructor<{ elements: Float32Array }>>(Bas
     }
 }
 
-export class Vec2 extends WithSwizzle2(BaseVec2) {}
+export class Vec2 extends WithSwizzle2(BaseVec2) {
+    override toString(): string {
+        return `[${this.x.toFixed(ToStringPrecision)}, ${this.y.toFixed(ToStringPrecision)}]`
+    }
+}
 
 export class Vec3 extends WithSwizzle3(BaseVec3) {
     /**
@@ -732,9 +738,18 @@ export class Vec3 extends WithSwizzle3(BaseVec3) {
     get xyzw(): Vec4 {
         return vec4(this.elements[0], this.elements[1], this.elements[2], 1)
     }
+    override toString(): string {
+        return `[${this.x.toFixed(ToStringPrecision)}, ${this.y.toFixed(ToStringPrecision)}, ${this.z.toFixed(ToStringPrecision)}]`
+    }
 }
 
-export class Vec4 extends WithSwizzle4(BaseVec4) {}
+export class Vec4 extends WithSwizzle4(BaseVec4) {
+    override toString(): string {
+        return `[${this.x.toFixed(ToStringPrecision)}, ${this.y.toFixed(ToStringPrecision)}, ${this.z.toFixed(
+            ToStringPrecision
+        )}, ${this.w.toFixed(ToStringPrecision)}]`
+    }
+}
 
 export function vec2(x: number, y: number): Vec2 {
     return new Vec2(new Float32Array([x, y]))

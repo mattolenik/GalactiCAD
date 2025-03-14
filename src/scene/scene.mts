@@ -17,8 +17,9 @@ export class SceneUniform {
         return this.args.byteLength
     }
 
-    setCameraPosition(pos: Vec3) {
+    setCameraPosition(pos: Vec3, target: Vec3) {
         this.args.set(0, pos)
+        this.args.set(1, target)
     }
 
     writeBuffer(device: GPUDevice, buffer: GPUBuffer) {
@@ -31,7 +32,7 @@ export class SceneInfo {
     private nodeByID = new Map<number, Node>()
     private nodes = new Set<Node>()
 
-    numArgs = 1 // reserved for camera
+    numArgs = 2 // reserved for camera
     numNodes = 0
     nextArgIndex(): number {
         return this.numArgs++

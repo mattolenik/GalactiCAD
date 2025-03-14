@@ -102,7 +102,7 @@ export class SDFRenderer {
 
         this.controls.updateCamera()
         // console.log(`camera ${this.controls.cameraPosition}`)
-        this.scene.setCameraPosition(this.controls.cameraPosition)
+        this.scene.setCameraPosition(this.controls.cameraPosition, vec3(0, 0, 0))
         this.scene.root.uniformCopy(this.scene)
         this.scene.writeBuffer(this.device, this.uniformBuffer)
 

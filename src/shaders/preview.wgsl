@@ -57,21 +57,41 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @fragment
 fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
-    var rayOrigin = args[0].xyz;
-    var rayDir = normalize(vec3f(uv * 2.0 - 1.0, 1.0));
+    // Get the camera information from the uniform:
+    // args[0].xyz is the camera position.
+    // args[1].xyz is the point the camera is looking at.
+    let cameraPos = args[0].xyz;
+    let cameraTarget = args[1].xyz;
 
-    let t = raymarch(rayOrigin, rayDir);
+    // Compute the camera's forward vector.
+    let forward = normalize(cameraTarget - cameraPos);
+
+    // Create a simple camera coordinate system.
+    // We use a fixed world up direction.
+    let worldUp = vec3f(0.0, 1.0, 0.0);
+    let right = normalize(cross(forward, worldUp));
+    let up = cross(right, forward);
+
+    // Map UV coordinates from [0, 1] to screen space [-1, 1].
+    let screenPos = uv * 2.0 - 1.0;
+
+    // Compute the ray direction by offsetting the forward vector
+    // by the horizontal (right) and vertical (up) components.
+    // For a more realistic perspective, you could add an FOV multiplier.
+    let rayDir = normalize(forward + screenPos.x * right + screenPos.y * up);
+
+    // Use the camera position and computed ray direction in the raymarching function.
+    let t = raymarch(cameraPos, rayDir);
 
     if (t > 0.0) {
-        let p = rayOrigin + t * rayDir;
+        let p = cameraPos + t * rayDir;
         let normal = estimateNormal(p);
         let lightDir = normalize(vec3f(0.5, 0.8, -1.0));
         let diffuse = clamp(dot(normal, lightDir), 0.0, 1.0);
-        let baseColor = vec3f(0.7, 0.7, 0.9); // Example sphere color
+        let baseColor = vec3f(1.0, 0.5, 0.2);
         let shadedColor = baseColor * diffuse;
         return vec4f(shadedColor, 1.0);
     } else {
-        // Background gradient
         return vec4f(uv, 0.5, 1.0);
     }
 }

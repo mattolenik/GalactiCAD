@@ -36,7 +36,7 @@ export class SDFRenderer {
         })
 
         const sceneRoot = new Group(
-            new Union(new Sphere({ pos: vec3(0, 0, 20), r: 10 }), new Sphere({ pos: vec3(10, 0, 20), r: 6 }), 2)
+            new Union(new Sphere({ pos: vec3(0, 0, 20), r: 10 }), new Sphere({ pos: vec3(10, 0, 20), r: 6 }), 1)
         ).init()
 
         this.scene = new SceneUniform(sceneRoot)
@@ -101,7 +101,7 @@ export class SDFRenderer {
         })
 
         this.controls.updateCamera()
-        console.log(`camera ${this.controls.cameraPosition}`)
+        // console.log(`camera ${this.controls.cameraPosition}`)
         this.scene.setCameraPosition(this.controls.cameraPosition)
         this.scene.root.uniformCopy(this.scene)
         this.scene.writeBuffer(this.device, this.uniformBuffer)

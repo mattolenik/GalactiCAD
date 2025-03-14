@@ -23,6 +23,53 @@ fn opUnionSmooth(a: f32, b: f32, r: f32) -> f32 {
     return min(a, b) - e * e * 0.25 / r;
 }
 
+fn opUnion(a: f32, b: f32) -> f32 {
+    return min(a, b);
+}
+
+// Chamfer
+fn opUnionChamfer(a: f32, b: f32, r: f32) -> f32 {
+    return min(min(a, b),(a - r + b) * sqrt(0.5));
+}
+fn opIntersectionChamfer(a: f32, b: f32, r: f32) -> f32 {
+    return max(max(a, b),(a + r + b) * sqrt(0.5));
+}
+fn opDifferenceChamfer(a: f32, b: f32, r: f32) -> f32 {
+    return opIntersectionChamfer(a, -b, r);
+}
+
+// Round
+fn opUnionRound(a: f32, b: f32, r: f32) -> f32 {
+    let u = max(vec2<f32>(r - a, r - b), vec2<f32>(0.0, 0.0));
+    return max(r, min(a, b)) - length(u);
+}
+
+fn modF(x: f32, y: f32) -> f32 {
+    // Emulates GLSL mod() for negative values.
+    // WGSL % is a remainder operator, which differs from GLSL mod.
+    return x - y * floor(x / y);
+}
+
+// Columns
+fn opUnionColumns(a: f32, b: f32, r: f32, n: f32) -> f32 {
+    if (a < r) && (b < r) {
+        var p = vec2<f32>(a, b);
+        let columnradius = r * sqrt(2.0) / ((n - 1.0) * 2.0 + sqrt(2.0));
+        // rotate by 45
+        let tmp = p + vec2<f32>(p.y, -p.x);
+        p = tmp * sqrt(0.5);
+        p.x = p.x - sqrt(0.5) * r + columnradius * sqrt(2.0);
+        if (n % 2.0) != 0.0 {
+            p.y = p.y + columnradius;
+        }
+        let py = modF(p.y, columnradius * 2.0);
+        let dist = length(vec2<f32>(p.x, py)) - columnradius;
+        let res = min(min(dist, p.x), a);
+        return min(res, b);
+    }
+    return min(a, b);
+}
+
 fn sceneSDF(p: vec3f) -> f32 {
     return 0; // COMPILEDHERE
 }

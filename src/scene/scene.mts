@@ -23,7 +23,7 @@ export class SceneUniform {
 
     writeBuffer(device: GPUDevice, buffer: GPUBuffer) {
         device.queue.writeBuffer(buffer, 0, this.args.data)
-        console.log("Buffer: ", this.args.data)
+        // console.log("Buffer: ", this.args.data)
     }
 }
 
@@ -181,9 +181,9 @@ export abstract class BinaryOperator extends Node {
 
 export class Union extends BinaryOperator {
     override compile(): string {
-        return this.radius === undefined
+        return !this.radius
             ? `opUnion( ${this.lh.compile()}, ${this.rh.compile()} )`
-            : `opUnionSmooth( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
+            : `opUnionRound( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
     override init(si?: SceneInfo): Union {
         super.init(si)

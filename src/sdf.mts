@@ -1,21 +1,24 @@
-import { Group, SceneInfo, SceneUniform, Sphere } from "./scene/scene.mjs"
+import { OrbitControls } from "./orbitcontrols.mjs"
+import { Group, SceneInfo, SceneUniform, Sphere, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { vec3 } from "./vecmat/vector.mjs"
 
 export class SDFRenderer {
-    private canvas: HTMLCanvasElement
-    private device!: GPUDevice
-    private context!: GPUCanvasContext
-    private pipeline!: GPURenderPipeline
     private bindGroup!: GPUBindGroup
-    private uniformBuffer!: GPUBuffer
+    private canvas: HTMLCanvasElement
+    private context!: GPUCanvasContext
+    private controls: OrbitControls
+    private device!: GPUDevice
+    private pipeline!: GPURenderPipeline
     private scene!: SceneUniform
+    private uniformBuffer!: GPUBuffer
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas
         const dpr = window.devicePixelRatio || 1
         canvas.width = canvas.clientWidth * dpr
         canvas.height = canvas.clientHeight * dpr
+        this.controls = new OrbitControls(canvas, vec3(0, 0, 0), 10, Math.PI / 4, Math.PI / 8)
     }
 
     async initialize() {
@@ -32,18 +35,21 @@ export class SDFRenderer {
             alphaMode: "premultiplied",
         })
 
-        const si = new SceneInfo()
-        const sceneRoot = new Group(new Sphere({ pos: vec3(0, 0, 20), r: 10 })).init(si)
+        const sceneRoot = new Group(
+            new Union(new Sphere({ pos: vec3(0, 0, 20), r: 10 }), new Sphere({ pos: vec3(10, 0, 20), r: 6 }), 2)
+        ).init()
+
         this.scene = new SceneUniform(sceneRoot)
 
         this.uniformBuffer = this.device.createBuffer({
-            size: Math.max(this.scene.bufferSize, 128),
+            size: Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2),
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "scene",
         })
 
         let shader = previewShader
             .replace(/const\s+NUM_ARGS(\s*:\s*u32)?\s*=\s*\d+.*/, `const NUM_ARGS: u32 = ${this.scene.args.length};`)
-            .replace("0 // COMPILEDHERE", sceneRoot.compile())
+            .replace("0; // COMPILEDHERE", sceneRoot.compile())
 
         console.log(shader)
 
@@ -62,11 +68,7 @@ export class SDFRenderer {
             fragment: {
                 module: shaderModule,
                 entryPoint: "fragmentMain",
-                targets: [
-                    {
-                        format,
-                    },
-                ],
+                targets: [{ format }],
             },
             primitive: {
                 topology: "triangle-strip",
@@ -85,7 +87,7 @@ export class SDFRenderer {
         })
     }
 
-    render(): void {
+    update(time: number): void {
         const commandEncoder = this.device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({
             colorAttachments: [
@@ -98,6 +100,9 @@ export class SDFRenderer {
             ],
         })
 
+        this.controls.updateCamera()
+        console.log(`camera ${this.controls.cameraPosition}`)
+        this.scene.setCameraPosition(this.controls.cameraPosition)
         this.scene.root.uniformCopy(this.scene)
         this.scene.writeBuffer(this.device, this.uniformBuffer)
 

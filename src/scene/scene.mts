@@ -1,5 +1,5 @@
 import { ArgArray } from "../vecmat/arrays.mjs"
-import { Vec3 } from "../vecmat/vector.mjs"
+import { vec3, Vec3 } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 type Constructor<T = {}> = new (...args: any[]) => T
@@ -17,9 +17,13 @@ export class SceneUniform {
         return this.args.byteLength
     }
 
+    setCameraPosition(pos: Vec3) {
+        this.args.set(0, pos)
+    }
+
     writeBuffer(device: GPUDevice, buffer: GPUBuffer) {
         device.queue.writeBuffer(buffer, 0, this.args.data)
-        console.log(this.args.data)
+        console.log("Buffer: ", this.args.data)
     }
 }
 
@@ -27,10 +31,9 @@ export class SceneInfo {
     private nodeByID = new Map<number, Node>()
     private nodes = new Set<Node>()
 
-    numArgs = 0
+    numArgs = 1 // reserved for camera
     numNodes = 0
     nextArgIndex(): number {
-        this.nodeByID.values
         return this.numArgs++
     }
     add(node: Node) {
@@ -66,9 +69,9 @@ export class Node {
     uniformCopy(args: SceneUniform) {
         throw new Error("Method not implemented.")
     }
-    init(si: SceneInfo): Node {
+    init(si?: SceneInfo): Node {
         if (!this.scene) {
-            this.scene = si
+            this.scene = si || new SceneInfo()
         }
         this.scene.add(this)
         return this
@@ -123,11 +126,11 @@ export class Group extends WithChildren(Node) {
             child.uniformCopy(args)
         }
     }
-    override init(si: SceneInfo): Group {
+    override init(si?: SceneInfo): Group {
         super.init(si)
         for (let child of this.children) {
             child.root = this.root
-            child.init(si)
+            child.init()
         }
         return this
     }
@@ -147,10 +150,10 @@ export abstract class UnaryOperator extends Node {
     override uniformCopy(args: SceneUniform) {
         this.arg.uniformCopy(args)
     }
-    override init(si: SceneInfo): UnaryOperator {
+    override init(si?: SceneInfo): UnaryOperator {
         super.init(si)
         this.arg.root = this.root
-        this.arg.init(si)
+        this.arg.init()
         return this
     }
     constructor(public arg: Node) {
@@ -163,12 +166,12 @@ export abstract class BinaryOperator extends Node {
         this.lh.uniformCopy(args)
         this.rh.uniformCopy(args)
     }
-    override init(si: SceneInfo): BinaryOperator {
+    override init(si?: SceneInfo): BinaryOperator {
         super.init(si)
         this.lh.root = this.root
         this.rh.root = this.root
-        this.lh.init(si)
-        this.rh.init(si)
+        this.lh.init()
+        this.rh.init()
         return this
     }
     constructor(public lh: Node, public rh: Node) {
@@ -180,9 +183,9 @@ export class Union extends BinaryOperator {
     override compile(): string {
         return this.radius === undefined
             ? `opUnion( ${this.lh.compile()}, ${this.rh.compile()} )`
-            : `opSmoothUnion( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
+            : `opUnionSmooth( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
-    override init(si: SceneInfo): Union {
+    override init(si?: SceneInfo): Union {
         super.init(si)
         return this
     }
@@ -195,9 +198,9 @@ export class Subtract extends BinaryOperator {
     override compile(): string {
         return this.radius === undefined
             ? `opSubtract( ${this.lh.compile()}, ${this.rh.compile()} )`
-            : `opSmoothSubtract( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
+            : `opSubtractSmooth( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
-    override init(si: SceneInfo): Subtract {
+    override init(si?: SceneInfo): Subtract {
         super.init(si)
         return this
     }
@@ -221,7 +224,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         args.args.set(this.idx.pos, this.pos)
         args.args.set(this.idx.r, this.r)
     }
-    override init(si: SceneInfo): Sphere {
+    override init(si?: SceneInfo): Sphere {
         super.init(si)
         this.idx.pos = this.scene.nextArgIndex()
         this.idx.r = this.scene.nextArgIndex()

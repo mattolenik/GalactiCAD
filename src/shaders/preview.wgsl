@@ -17,22 +17,28 @@ fn sdSphere(p: vec3f, r: f32) -> f32 {
     return length(p) - r;
 }
 
+// Soft union
+fn opUnionSmooth(a: f32, b: f32, r: f32) -> f32 {
+    let e = max(r - abs(a - b), 0.0);
+    return min(a, b) - e * e * 0.25 / r;
+}
+
 fn sceneSDF(p: vec3f) -> f32 {
-    return 0 // COMPILEDHERE
+    return 0; // COMPILEDHERE
 }
 
 fn raymarch(origin: vec3f, dir: vec3f) -> f32 {
     var t: f32 = 0.0;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
-         let p = origin + t * dir;
-         let d = sceneSDF(p);
-         if (d < SURF_DIST) {
-             return t;
-         }
-         t = t + d;
-         if (t >= MAX_DIST) {
-             break;
-         }
+        let p = origin + t * dir;
+        let d = sceneSDF(p);
+        if (d < SURF_DIST) {
+            return t;
+        }
+        t = t + d;
+        if (t >= MAX_DIST) {
+            break;
+        }
     }
     return -1.0;
 }
@@ -52,12 +58,7 @@ fn estimateNormal(p: vec3f) -> vec3f {
 
 @vertex
 fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var pos = array(
-        vec2f(-1.0, -1.0),
-        vec2f( 1.0, -1.0),
-        vec2f(-1.0,  1.0),
-        vec2f( 1.0,  1.0)
-    );
+    var pos = array(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(1.0, 1.0));
     var output: VertexOutput;
     output.position = vec4f(pos[vertexIndex], 0.0, 1.0);
     output.uv = (pos[vertexIndex] + vec2f(1.0)) * 0.5;
@@ -66,22 +67,21 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @fragment
 fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
-    // Set up a basic camera: located at (0, 0, -3) and pointing towards positive z
-    var rayOrigin = vec3f(0.0, 0.0, -3.0);
+    var rayOrigin = args[0].xyz;
     var rayDir = normalize(vec3f(uv * 2.0 - 1.0, 1.0));
 
     let t = raymarch(rayOrigin, rayDir);
 
     if (t > 0.0) {
-         let p = rayOrigin + t * rayDir;
-         let normal = estimateNormal(p);
-         let lightDir = normalize(vec3f(0.5, 0.8, -1.0));
-         let diffuse = clamp(dot(normal, lightDir), 0.0, 1.0);
-         let baseColor = vec3f(0.7, 0.7, 0.9); // Example sphere color
-         let shadedColor = baseColor * diffuse;
-         return vec4f(shadedColor, 1.0);
+        let p = rayOrigin + t * rayDir;
+        let normal = estimateNormal(p);
+        let lightDir = normalize(vec3f(0.5, 0.8, -1.0));
+        let diffuse = clamp(dot(normal, lightDir), 0.0, 1.0);
+        let baseColor = vec3f(0.7, 0.7, 0.9); // Example sphere color
+        let shadedColor = baseColor * diffuse;
+        return vec4f(shadedColor, 1.0);
     } else {
-         // Background gradient
-         return vec4f(uv, 0.5, 1.0);
+        // Background gradient
+        return vec4f(uv, 0.5, 1.0);
     }
 }

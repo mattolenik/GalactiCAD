@@ -107,7 +107,7 @@ class BaseVec3 {
         this.elements[2] = val
     }
 
-    clone(): BaseVec3 {
+    clone(): Vec3 {
         return vec3(this.x, this.y, this.z)
     }
     copy(v: BaseVec3): this {
@@ -125,13 +125,13 @@ class BaseVec3 {
     equals(v: BaseVec3): boolean {
         return this.x === v.x && this.y === v.y && this.z === v.z
     }
-    add(v: BaseVec3): BaseVec3 {
+    add(v: BaseVec3): Vec3 {
         return vec3(this.x + v.x, this.y + v.y, this.z + v.z)
     }
-    subtract(v: BaseVec3): BaseVec3 {
+    subtract(v: BaseVec3): Vec3 {
         return vec3(this.x - v.x, this.y - v.y, this.z - v.z)
     }
-    multiply<T extends number | BaseVec3>(arg: T): BaseVec3 {
+    multiply<T extends number | BaseVec3>(arg: T): Vec3 {
         if (typeof arg === "number") {
             return vec3(this.x * arg, this.y * arg, this.z * arg)
         } else {
@@ -141,13 +141,13 @@ class BaseVec3 {
     dot(v: BaseVec3): number {
         return this.x * v.x + this.y * v.y + this.z * v.z
     }
-    cross(v: BaseVec3): BaseVec3 {
+    cross(v: BaseVec3): Vec3 {
         return vec3(this.y * v.z - this.z * v.y, this.z * v.x - this.x * v.z, this.x * v.y - this.y * v.x)
     }
     length(): number {
         return Math.sqrt(this.dot(this))
     }
-    normalize(): BaseVec3 {
+    normalize(): Vec3 {
         const len = this.length()
         return len === 0 ? this.clone() : this.multiply(1 / len)
     }

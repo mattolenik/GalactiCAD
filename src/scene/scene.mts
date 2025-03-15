@@ -1,8 +1,10 @@
 import { ArgArray } from "../vecmat/arrays.mjs"
-import { vec3, Vec3 } from "../vecmat/vector.mjs"
+import { Vec2, vec3, Vec3 } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 type Constructor<T = {}> = new (...args: any[]) => T
+
+const ReservedArgs = 3
 
 export class SceneUniform {
     args: ArgArray
@@ -17,9 +19,10 @@ export class SceneUniform {
         return this.args.byteLength
     }
 
-    setCameraPosition(pos: Vec3, target: Vec3) {
+    updateCamera(pos: Vec3, target: Vec3, ortho: Vec2) {
         this.args.set(0, pos)
         this.args.set(1, target)
+        this.args.set(2, ortho)
     }
 
     writeBuffer(device: GPUDevice, buffer: GPUBuffer) {
@@ -32,7 +35,7 @@ export class SceneInfo {
     private nodeByID = new Map<number, Node>()
     private nodes = new Set<Node>()
 
-    numArgs = 2 // reserved for camera
+    numArgs = ReservedArgs
     numNodes = 0
     nextArgIndex(): number {
         return this.numArgs++

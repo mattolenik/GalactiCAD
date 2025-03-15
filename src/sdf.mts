@@ -1,5 +1,5 @@
 import { OrbitControls } from "./orbitcontrols.mjs"
-import { Group, SceneInfo, SceneUniform, Sphere, Union } from "./scene/scene.mjs"
+import { Group, SceneUniform, Sphere, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { vec3 } from "./vecmat/vector.mjs"
 
@@ -18,7 +18,7 @@ export class SDFRenderer {
         const dpr = window.devicePixelRatio || 1
         canvas.width = canvas.clientWidth * dpr
         canvas.height = canvas.clientHeight * dpr
-        this.controls = new OrbitControls(canvas, vec3(0, 0, 0), 10, Math.PI / 4, Math.PI / 8)
+        this.controls = new OrbitControls(canvas, vec3(0, 0, 0), 10, Math.PI / 1, Math.PI / 8)
     }
 
     async initialize() {
@@ -101,8 +101,7 @@ export class SDFRenderer {
         })
 
         this.controls.updateCamera()
-        // console.log(`camera ${this.controls.cameraPosition}`)
-        this.scene.setCameraPosition(this.controls.cameraPosition, vec3(0, 0, 0))
+        this.scene.updateCamera(this.controls.cameraPosition, this.controls.cameraTarget, this.controls.ortho)
         this.scene.root.uniformCopy(this.scene)
         this.scene.writeBuffer(this.device, this.uniformBuffer)
 

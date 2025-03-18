@@ -735,6 +735,19 @@ export class Vec2f extends WithSwizzle2(BaseVec2) {
     override toString(): string {
         return `[${this.x.toFixed(ToStringPrecision)}, ${this.y.toFixed(ToStringPrecision)}]`
     }
+    toStorage(): string {
+        return this.x + "," + this.y
+    }
+    static fromStorage(val: string | null): Vec2f {
+        if (!val) {
+            return new Vec2f(0, 0)
+        }
+        const parts = val.split(",")
+        if (parts.length != 2) {
+            throw new Error(`invalid vec2f: '${val}'`)
+        }
+        return new Vec2f(parseFloat(parts[0]), parseFloat(parts[1]))
+    }
 }
 
 export class Vec3f extends WithSwizzle3(BaseVec3) {
@@ -750,6 +763,19 @@ export class Vec3f extends WithSwizzle3(BaseVec3) {
     override toString(): string {
         return `[${this.x.toFixed(ToStringPrecision)}, ${this.y.toFixed(ToStringPrecision)}, ${this.z.toFixed(ToStringPrecision)}]`
     }
+    toStorage(): string {
+        return this.x + "," + this.y + "," + this.z
+    }
+    static fromStorage(val: string | null): Vec3f {
+        if (!val) {
+            return new Vec3f(0, 0, 0)
+        }
+        const parts = val.split(",")
+        if (parts.length != 3) {
+            throw new Error(`invalid vec3f: '${val}'`)
+        }
+        return new Vec3f(parseFloat(parts[0]), parseFloat(parts[1]), parseFloat(parts[2]))
+    }
 }
 
 export class Vec4f extends WithSwizzle4(BaseVec4) {
@@ -761,6 +787,19 @@ export class Vec4f extends WithSwizzle4(BaseVec4) {
         return `[${this.x.toFixed(ToStringPrecision)}, ${this.y.toFixed(ToStringPrecision)}, ${this.z.toFixed(
             ToStringPrecision
         )}, ${this.w.toFixed(ToStringPrecision)}]`
+    }
+    toStorage(): string {
+        return this.x + "," + this.y + "," + this.z + "," + this.w
+    }
+    static fromStorage(val: string | null): Vec4f {
+        if (!val) {
+            return new Vec4f(0, 0, 0, 0)
+        }
+        const parts = val.split(",")
+        if (parts.length != 4) {
+            throw new Error(`invalid vec4f: '${val}'`)
+        }
+        return new Vec4f(parseFloat(parts[0]), parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3]))
     }
 }
 

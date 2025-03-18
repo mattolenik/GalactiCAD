@@ -1,5 +1,5 @@
 import { OrbitControls } from "./orbitcontrols.mjs"
-import { Box, Group, Node, SceneUniform, Sphere, Union } from "./scene/scene.mjs"
+import { Box, Group, Node, SceneUniform, Sphere, Subtract, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { Mat4x4f } from "./vecmat/matrix.mjs"
 import { vec3, Vec4f } from "./vecmat/vector.mjs"
@@ -38,7 +38,7 @@ export class SDFRenderer {
             new Group(
                 new Union(
                     new Box({ pos: vec3(10, -10, 4), l: 30, w: 5, h: 3 }),
-                    new Union(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10),
+                    new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
                     3
                 )
             ).init()
@@ -164,7 +164,7 @@ export class SDFRenderer {
         // this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform,0, this.controls.sceneTransform.elements)
 
         this.device.queue.writeBuffer(this.uniformBuffers.inverseSceneTransform, 0, this.controls.invSceneTransform.elements)
-        this.device.queue.writeBuffer(this.uniformBuffers.cameraPosition, 0, this.controls.cameraPosition.xyzw.data)
+        this.device.queue.writeBuffer(this.uniformBuffers.cameraPosition, 0, this.controls.cameraPosition.data)
         this.device.queue.writeBuffer(this.uniformBuffers.orthoScale, 0, new Float32Array([this.controls.orthoScale]))
 
         renderPass.setPipeline(this.pipeline)

@@ -1,4 +1,4 @@
-import { vec3, Vec3f } from "./vecmat/vector.mjs"
+import { Vec3f } from "./vecmat/vector.mjs"
 import { Mat4x4f } from "./vecmat/matrix.mjs"
 
 export class OrbitControls {
@@ -33,6 +33,9 @@ export class OrbitControls {
 
     // Stored camera position computed from orbit parameters.
     cameraPosition: Vec3f
+    lastCameraUpdate: number = 0
+
+    workerInterval: NodeJS.Timeout
 
     constructor(canvas: HTMLCanvasElement, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2) {
         this.canvas = canvas
@@ -50,6 +53,7 @@ export class OrbitControls {
         this.initEvents()
         this.loadCameraState()
         this.updateTransforms()
+        this.workerInterval = setInterval(() => this.saveCameraState(), 500)
     }
 
     private initEvents() {
@@ -111,7 +115,6 @@ export class OrbitControls {
         }
 
         this.updateTransforms()
-        this.saveCameraState()
     }
 
     private onPointerUp(e: PointerEvent) {
@@ -163,33 +166,23 @@ export class OrbitControls {
         this.cameraPosition = camPos
     }
 
-    private static readonly STORAGE_KEY: string = "orbitControlsState"
-
     // Call this method to save the current camera state.
     saveCameraState(): void {
-        const state = {
-            // Save the orbit parameters that determine the camera position.
-            pivot: [this.pivot.x, this.pivot.y, this.pivot.z],
-            radius: this.radius,
-            theta: this.theta,
-            phi: this.phi,
-            cameraPosition: [this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z],
-        }
-        localStorage.setItem(OrbitControls.STORAGE_KEY, JSON.stringify(state))
+        localStorage.setItem("camera.position", this.cameraPosition.toStorage())
+        localStorage.setItem("camera.pivot", this.pivot.toStorage())
+        localStorage.setItem("camera.radius", this.radius.toString())
+        localStorage.setItem("camera.theta", this.theta.toString())
+        localStorage.setItem("camera.phi", this.phi.toString())
     }
 
     // Call this method on initialization to restore the camera state.
     loadCameraState(): void {
-        const stateStr = localStorage.getItem(OrbitControls.STORAGE_KEY)
-        if (stateStr) {
-            const state = JSON.parse(stateStr)
-            this.pivot = new Vec3f(state.pivot)
-            this.radius = state.radius
-            this.theta = state.theta
-            this.phi = state.phi
-            this.cameraPosition = new Vec3f(state.cameraPosition)
-            this.updateTransforms()
-        }
+        this.cameraPosition = Vec3f.fromStorage(localStorage.getItem("camera.position"))
+        this.pivot = Vec3f.fromStorage(localStorage.getItem("camera.pivot"))
+        this.radius = parseFloat(localStorage.getItem("camera.radius") || "10")
+        this.theta = parseFloat(localStorage.getItem("camera.theta") || "10")
+        this.phi = parseFloat(localStorage.getItem("camera.phi") || "10")
+        this.updateTransforms()
     }
 }
 

@@ -1,4 +1,4 @@
-import { Vec2, Vec3, Vec4 } from "./vector.mjs"
+import { Vec2f, Vec3f, Vec4f } from "./vector.mjs"
 
 export class ArgArray {
     data: Float32Array
@@ -7,17 +7,17 @@ export class ArgArray {
         this.data = new Float32Array(numArgs * 4)
     }
 
-    set(index: number, val: number | Float32Array | Vec2 | Vec3 | Vec4): void {
+    set(index: number, val: number | Float32Array | Vec2f | Vec3f | Vec4f): void {
         const offset = this.offset(index)
 
         if (typeof val === "number") {
             val = new Float32Array([val, 0, 0, 0])
-        } else if (val instanceof Vec2) {
-            val = new Float32Array([val.elements[0], val.elements[1], 0, 0])
-        } else if (val instanceof Vec3) {
-            val = new Float32Array([val.elements[0], val.elements[1], val.elements[2], 0])
-        } else if (val instanceof Vec4) {
-            val = val.elements
+        } else if (val instanceof Vec2f) {
+            val = new Float32Array([val.data[0], val.data[1], 0, 0])
+        } else if (val instanceof Vec3f) {
+            val = new Float32Array([val.data[0], val.data[1], val.data[2], 1])
+        } else if (val instanceof Vec4f) {
+            val = val.data
         }
         if (val.length !== 4) {
             throw new Error("Input vector must have exactly 4 elements")

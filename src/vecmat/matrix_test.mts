@@ -1,12 +1,12 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { Mat2, Mat3, Mat4 } from "./matrix.mjs"
-import { Vec2, Vec3, Vec4 } from "./vector.mjs"
+import { Mat2x2f, Mat3x3f, Mat4x4f } from "./matrix.mjs"
+import { Vec2f, Vec3f, Vec4f } from "./vector.mjs"
 
 test("Mat2 operations", () => {
     // Mat2 is column‑major: elements order is [m00, m10, m01, m11]
-    const m1 = new Mat2(new Float32Array([1, 2, 3, 4]))
-    const m2 = new Mat2(new Float32Array([5, 6, 7, 8]))
+    const m1 = new Mat2x2f(new Float32Array([1, 2, 3, 4]))
+    const m2 = new Mat2x2f(new Float32Array([5, 6, 7, 8]))
     assert.deepStrictEqual(m1.add(m2).elements, new Float32Array([6, 8, 10, 12]), "Mat2 add failed")
     assert.deepStrictEqual(m2.subtract(m1).elements, new Float32Array([4, 4, 4, 4]), "Mat2 subtract failed")
     assert.deepStrictEqual(m1.multiply(2).elements, new Float32Array([2, 4, 6, 8]), "Mat2 scalar multiply failed")
@@ -15,16 +15,16 @@ test("Mat2 operations", () => {
     assert.strictEqual(m1.determinant(), 1 * 4 - 2 * 3, "Mat2 determinant failed")
 
     const m1Inv = m1.inverse()
-    const expectedInv = new Float32Array([4, -2, -3, 1]).map((v) => v / (1 * 4 - 2 * 3))
+    const expectedInv = new Float32Array([4, -2, -3, 1]).map(v => v / (1 * 4 - 2 * 3))
     assert.deepStrictEqual(m1Inv.elements, expectedInv, "Mat2 inverse failed")
     assert.deepStrictEqual(m1.transpose().elements, new Float32Array([1, 3, 2, 4]), "Mat2 transpose failed")
 
-    const v = new Vec2(1, 1)
-    assert.deepStrictEqual(m1.transform(v).elements, new Vec2(1 * 1 + 3 * 1, 2 * 1 + 4 * 1).elements, "Mat2 transform failed")
+    const v = new Vec2f(1, 1)
+    assert.deepStrictEqual(m1.transform(v).data, new Vec2f(1 * 1 + 3 * 1, 2 * 1 + 4 * 1).data, "Mat2 transform failed")
 })
 
 test("Mat3 operations", () => {
-    const m = new Mat3(new Float32Array([1, 2, 3, 0, 1, 4, 5, 6, 0]))
+    const m = new Mat3x3f(new Float32Array([1, 2, 3, 0, 1, 4, 5, 6, 0]))
     // In column‑major, m = [1,0,5; 2,1,6; 3,4,0]
     const det = 1 * (1 * 0 - 6 * 4) - 0 * (2 * 0 - 6 * 3) + 5 * (2 * 4 - 1 * 3)
     assert.strictEqual(m.determinant(), det, "Mat3 determinant failed")
@@ -32,45 +32,45 @@ test("Mat3 operations", () => {
     const expectedTranspose = new Float32Array([1, 0, 5, 2, 1, 6, 3, 4, 0])
     assert.deepStrictEqual(Array.from(m.transpose().elements), Array.from(expectedTranspose), "Mat3 transpose failed")
 
-    const v = new Vec3(1, 2, 3)
+    const v = new Vec3f(1, 2, 3)
     // m * v = [1*1+0*2+5*3, 2*1+1*2+6*3, 3*1+4*2+0*3] = [16,22,11]
-    assert.deepStrictEqual(m.transform(v).elements, new Vec3(16, 22, 11).elements, "Mat3 transform failed")
+    assert.deepStrictEqual(m.transform(v).data, new Vec3f(16, 22, 11).data, "Mat3 transform failed")
 
     // Singular matrix: should throw on inverse.
-    const singular = new Mat3(new Float32Array([1, 2, 3, 2, 4, 6, 3, 6, 9]))
+    const singular = new Mat3x3f(new Float32Array([1, 2, 3, 2, 4, 6, 3, 6, 9]))
     assert.throws(() => singular.inverse(), "Mat3 inverse did not throw on singular matrix")
 })
 
 test("Mat4 operations", () => {
     // Identity: transforming a vector should yield the same vector.
-    const id = Mat4.identity()
-    const v4 = new Vec4(1, 2, 3, 1)
+    const id = Mat4x4f.identity()
+    const v4 = new Vec4f(1, 2, 3, 1)
     assert.deepStrictEqual(id.transform(v4).elements, v4.elements, "Mat4 identity transform failed")
 
     // Translation.
-    const translation = Mat4.translation(1, 2, 3)
-    const point = new Vec4(4, 5, 6, 1)
-    assert.deepStrictEqual(translation.transform(point).elements, new Vec4(5, 7, 9, 1).elements, "Mat4 translation transform failed")
-    assert.deepStrictEqual(translation.transformPoint(new Vec3(4, 5, 6)).elements, new Vec3(5, 7, 9).elements, "Mat4 transformPoint failed")
+    const translation = Mat4x4f.translation(1, 2, 3)
+    const point = new Vec4f(4, 5, 6, 1)
+    assert.deepStrictEqual(translation.transform(point).elements, new Vec4f(5, 7, 9, 1).elements, "Mat4 translation transform failed")
+    assert.deepStrictEqual(translation.transformPoint(new Vec3f(4, 5, 6)).data, new Vec3f(5, 7, 9).data, "Mat4 transformPoint failed")
 
     // Rotation around X axis.
     const angle = Math.PI / 2
-    const rotX = Mat4.rotationX(angle)
-    const vRot = new Vec4(0, 1, 0, 1)
+    const rotX = Mat4x4f.rotationX(angle)
+    const vRot = new Vec4f(0, 1, 0, 1)
     const resultX = rotX.transform(vRot)
     assert.ok(Math.abs(resultX.y) < 1e-6 && Math.abs(resultX.z - 1) < 1e-6, "Mat4 rotationX failed")
 
     // Scaling.
-    const scaling = Mat4.scaling(2, 3, 4)
-    const vScale = new Vec4(1, 1, 1, 1)
-    assert.deepStrictEqual(scaling.transform(vScale).elements, new Vec4(2, 3, 4, 1).elements, "Mat4 scaling failed")
+    const scaling = Mat4x4f.scaling(2, 3, 4)
+    const vScale = new Vec4f(1, 1, 1, 1)
+    assert.deepStrictEqual(scaling.transform(vScale).elements, new Vec4f(2, 3, 4, 1).elements, "Mat4 scaling failed")
 
     // Perspective.
-    const perspective = Mat4.perspective(Math.PI / 2, 1.0, 0.1, 100)
-    const pTransformed = perspective.transform(new Vec4(1, 2, -5, 1))
+    const perspective = Mat4x4f.perspective(Math.PI / 2, 1.0, 0.1, 100)
+    const pTransformed = perspective.transform(new Vec4f(1, 2, -5, 1))
     assert.ok(Number.isFinite(pTransformed.x) && Number.isFinite(pTransformed.y), "Mat4 perspective transform produced non-finite values")
 
     // Inversion of a singular matrix should throw.
-    const singularMat4 = new Mat4(new Float32Array([1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12, 4, 8, 12, 16]))
+    const singularMat4 = new Mat4x4f(new Float32Array([1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12, 4, 8, 12, 16]))
     assert.throws(() => singularMat4.inverse(), "Mat4 inverse did not throw on singular matrix")
 })

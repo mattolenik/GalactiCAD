@@ -85,9 +85,9 @@ fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
     let transformedDir = normalize((inverseSceneTransform * vec4f(rayDirCamera, 0.0)).xyz);
 
     // Use the transformed ray for raymarching.
-    let t = raymarch(transformedOrigin, transformedDir) + 0.01;
+    let t = raymarch(transformedOrigin, transformedDir);
 
-    if (t > 0.0) {
+    if (t >= 0) {
         let p = transformedOrigin + t * transformedDir;
         let normal = estimateNormal(p);
         let lightDir = normalize(vec3f(0.5, 0.8, -1.0));

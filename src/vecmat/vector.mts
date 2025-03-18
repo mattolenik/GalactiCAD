@@ -3,32 +3,32 @@ type Constructor<T = {}> = new (...args: any[]) => T
 var ToStringPrecision = 2
 
 class BaseVec2 {
-    public elements: Float32Array
+    public data: Float32Array
 
     constructor(x: Float32Array | [number, number] | number, y?: number) {
         if (typeof x === "number") {
             if (y === undefined) {
                 throw new Error("invalid vector size, must be 2")
             }
-            this.elements = new Float32Array([x, y])
+            this.data = new Float32Array([x, y])
         } else {
             if (x.length != 2) {
                 throw new Error("invalid vector size, must be 2")
             }
-            this.elements = x instanceof Float32Array ? x : new Float32Array(x)
+            this.data = x instanceof Float32Array ? x : new Float32Array(x)
         }
     }
     get x(): number {
-        return this.elements[0]
+        return this.data[0]
     }
     set x(val: number) {
-        this.elements[0] = val
+        this.data[0] = val
     }
     get y(): number {
-        return this.elements[1]
+        return this.data[1]
     }
     set y(val: number) {
-        this.elements[1] = val
+        this.data[1] = val
     }
 
     clone(): BaseVec2 {
@@ -73,41 +73,41 @@ class BaseVec2 {
 }
 
 class BaseVec3 {
-    public elements: Float32Array
+    public data: Float32Array
 
     constructor(x: Float32Array | [number, number, number] | number, y?: number, z?: number) {
         if (typeof x === "number") {
             if (y === undefined || z === undefined) {
                 throw new Error("invalid vector size, must be 3")
             }
-            this.elements = new Float32Array([x, y, z])
+            this.data = new Float32Array([x, y, z])
         } else {
             if (x.length != 3) {
                 throw new Error("invalid vector size, must be 3")
             }
-            this.elements = x instanceof Float32Array ? x : new Float32Array(x)
+            this.data = x instanceof Float32Array ? x : new Float32Array(x)
         }
     }
     get x(): number {
-        return this.elements[0]
+        return this.data[0]
     }
     set x(val: number) {
-        this.elements[0] = val
+        this.data[0] = val
     }
     get y(): number {
-        return this.elements[1]
+        return this.data[1]
     }
     set y(val: number) {
-        this.elements[1] = val
+        this.data[1] = val
     }
     get z(): number {
-        return this.elements[2]
+        return this.data[2]
     }
     set z(val: number) {
-        this.elements[2] = val
+        this.data[2] = val
     }
 
-    clone(): Vec3 {
+    clone(): Vec3f {
         return vec3(this.x, this.y, this.z)
     }
     copy(v: BaseVec3): this {
@@ -125,72 +125,75 @@ class BaseVec3 {
     equals(v: BaseVec3): boolean {
         return this.x === v.x && this.y === v.y && this.z === v.z
     }
-    add(v: BaseVec3): Vec3 {
+    add(v: BaseVec3): Vec3f {
         return vec3(this.x + v.x, this.y + v.y, this.z + v.z)
     }
-    subtract(v: BaseVec3): Vec3 {
+    subtract(v: BaseVec3): Vec3f {
         return vec3(this.x - v.x, this.y - v.y, this.z - v.z)
     }
-    multiply<T extends number | BaseVec3>(arg: T): Vec3 {
+    multiply<T extends number | BaseVec3>(arg: T): Vec3f {
         if (typeof arg === "number") {
             return vec3(this.x * arg, this.y * arg, this.z * arg)
         } else {
             return vec3(this.x * arg.x, this.y * arg.y, this.z * arg.z)
         }
     }
+    scale(arg: number): Vec3f {
+        return this.multiply(arg)
+    }
     dot(v: BaseVec3): number {
         return this.x * v.x + this.y * v.y + this.z * v.z
     }
-    cross(v: BaseVec3): Vec3 {
+    cross(v: BaseVec3): Vec3f {
         return vec3(this.y * v.z - this.z * v.y, this.z * v.x - this.x * v.z, this.x * v.y - this.y * v.x)
     }
     length(): number {
         return Math.sqrt(this.dot(this))
     }
-    normalize(): Vec3 {
+    normalize(): Vec3f {
         const len = this.length()
         return len === 0 ? this.clone() : this.multiply(1 / len)
     }
 }
 
 class BaseVec4 {
-    public elements: Float32Array
+    public data: Float32Array
     constructor(x: Float32Array | [number, number, number, number] | number, y?: number, z?: number, w?: number) {
         if (typeof x === "number") {
             if (y === undefined || z === undefined || w === undefined) {
                 throw new Error("invalid vector size, must be 4")
             }
-            this.elements = new Float32Array([x, y, z, w])
+            this.data = new Float32Array([x, y, z, w])
         } else {
             if (x.length != 4) {
                 throw new Error("invalid vector size, must be 4")
             }
-            this.elements = x instanceof Float32Array ? x : new Float32Array(x)
+            this.data = x instanceof Float32Array ? x : new Float32Array(x)
         }
     }
     get x(): number {
-        return this.elements[0]
+        return this.data[0]
     }
     set x(val: number) {
-        this.elements[0] = val
+        this.data[0] = val
     }
     get y(): number {
-        return this.elements[1]
+        return this.data[1]
     }
     set y(val: number) {
-        this.elements[1] = val
+        this.data[1] = val
     }
     get z(): number {
-        return this.elements[2]
+        return this.data[2]
     }
     set z(val: number) {
-        this.elements[2] = val
+        this.data[2] = val
     }
     get w(): number {
-        return this.elements[3]
+        return this.data[3]
     }
     set w(val: number) {
-        this.elements[3] = val
+        this.data[3] = val
     }
 
     clone(): BaseVec4 {
@@ -221,544 +224,554 @@ class BaseVec4 {
     }
 }
 
-function WithSwizzle2<TBase extends Constructor<{ elements: Float32Array }>>(Base: TBase) {
+function WithSwizzle2<TBase extends Constructor<{ data: Float32Array }>>(Base: TBase) {
     return class extends Base {
         get xx(): BaseVec2 {
-            return vec2(this.elements[0], this.elements[0])
+            return vec2(this.data[0], this.data[0])
         }
         set xx(value: BaseVec2) {
-            this.elements[0] = value.x
-            this.elements[0] = value.y
+            this.data[0] = value.x
+            this.data[0] = value.y
         }
         get xy(): BaseVec2 {
-            return vec2(this.elements[0], this.elements[1])
+            return vec2(this.data[0], this.data[1])
         }
         set xy(value: BaseVec2) {
-            this.elements[0] = value.x
-            this.elements[1] = value.y
+            this.data[0] = value.x
+            this.data[1] = value.y
         }
         get yx(): BaseVec2 {
-            return vec2(this.elements[1], this.elements[0])
+            return vec2(this.data[1], this.data[0])
         }
         set yx(value: BaseVec2) {
-            this.elements[1] = value.x
-            this.elements[0] = value.y
+            this.data[1] = value.x
+            this.data[0] = value.y
         }
         get yy(): BaseVec2 {
-            return vec2(this.elements[1], this.elements[1])
+            return vec2(this.data[1], this.data[1])
         }
         set yy(value: BaseVec2) {
-            this.elements[1] = value.x
-            this.elements[1] = value.y
+            this.data[1] = value.x
+            this.data[1] = value.y
         }
     }
 }
 
-function WithSwizzle3<TBase extends Constructor<{ elements: Float32Array }>>(Base: TBase) {
+function WithSwizzle3<TBase extends Constructor<{ data: Float32Array }>>(Base: TBase) {
     return class extends WithSwizzle2(Base) {
         get xxx(): BaseVec3 {
-            return vec3(this.elements[0], this.elements[0], this.elements[0])
+            return vec3(this.data[0], this.data[0], this.data[0])
         }
         set xxx(value: BaseVec3) {
-            this.elements[0] = value.x
-            this.elements[0] = value.y
-            this.elements[0] = value.z
+            this.data[0] = value.x
+            this.data[0] = value.y
+            this.data[0] = value.z
         }
         get xxy(): BaseVec3 {
-            return vec3(this.elements[0], this.elements[0], this.elements[1])
+            return vec3(this.data[0], this.data[0], this.data[1])
         }
         set xxy(value: BaseVec3) {
-            this.elements[0] = value.x
-            this.elements[0] = value.y
-            this.elements[1] = value.z
+            this.data[0] = value.x
+            this.data[0] = value.y
+            this.data[1] = value.z
         }
         get xxz(): BaseVec3 {
-            return vec3(this.elements[0], this.elements[0], this.elements[2])
+            return vec3(this.data[0], this.data[0], this.data[2])
         }
         set xxz(value: BaseVec3) {
-            this.elements[0] = value.x
-            this.elements[0] = value.y
-            this.elements[2] = value.z
+            this.data[0] = value.x
+            this.data[0] = value.y
+            this.data[2] = value.z
         }
         get xyx(): BaseVec3 {
-            return vec3(this.elements[0], this.elements[1], this.elements[0])
+            return vec3(this.data[0], this.data[1], this.data[0])
         }
         set xyx(value: BaseVec3) {
-            this.elements[0] = value.x
-            this.elements[1] = value.y
-            this.elements[0] = value.z
+            this.data[0] = value.x
+            this.data[1] = value.y
+            this.data[0] = value.z
         }
         get xyy(): BaseVec3 {
-            return vec3(this.elements[0], this.elements[1], this.elements[1])
+            return vec3(this.data[0], this.data[1], this.data[1])
         }
         set xyy(value: BaseVec3) {
-            this.elements[0] = value.x
-            this.elements[1] = value.y
-            this.elements[1] = value.z
+            this.data[0] = value.x
+            this.data[1] = value.y
+            this.data[1] = value.z
         }
         get xyz(): BaseVec3 {
-            return vec3(this.elements[0], this.elements[1], this.elements[2])
+            return vec3(this.data[0], this.data[1], this.data[2])
         }
         set xyz(value: BaseVec3) {
-            this.elements[0] = value.x
-            this.elements[1] = value.y
-            this.elements[2] = value.z
+            this.data[0] = value.x
+            this.data[1] = value.y
+            this.data[2] = value.z
         }
         get xzx(): BaseVec3 {
-            return vec3(this.elements[0], this.elements[2], this.elements[0])
+            return vec3(this.data[0], this.data[2], this.data[0])
         }
         set xzx(value: BaseVec3) {
-            this.elements[0] = value.x
-            this.elements[2] = value.y
-            this.elements[0] = value.z
+            this.data[0] = value.x
+            this.data[2] = value.y
+            this.data[0] = value.z
         }
         get xzy(): BaseVec3 {
-            return vec3(this.elements[0], this.elements[2], this.elements[1])
+            return vec3(this.data[0], this.data[2], this.data[1])
         }
         set xzy(value: BaseVec3) {
-            this.elements[0] = value.x
-            this.elements[2] = value.y
-            this.elements[1] = value.z
+            this.data[0] = value.x
+            this.data[2] = value.y
+            this.data[1] = value.z
         }
         get xzz(): BaseVec3 {
-            return vec3(this.elements[0], this.elements[2], this.elements[2])
+            return vec3(this.data[0], this.data[2], this.data[2])
         }
         set xzz(value: BaseVec3) {
-            this.elements[0] = value.x
-            this.elements[2] = value.y
-            this.elements[2] = value.z
+            this.data[0] = value.x
+            this.data[2] = value.y
+            this.data[2] = value.z
         }
 
         get yxx(): BaseVec3 {
-            return vec3(this.elements[1], this.elements[0], this.elements[0])
+            return vec3(this.data[1], this.data[0], this.data[0])
         }
         set yxx(value: BaseVec3) {
-            this.elements[1] = value.x
-            this.elements[0] = value.y
-            this.elements[0] = value.z
+            this.data[1] = value.x
+            this.data[0] = value.y
+            this.data[0] = value.z
         }
         get yxy(): BaseVec3 {
-            return vec3(this.elements[1], this.elements[0], this.elements[1])
+            return vec3(this.data[1], this.data[0], this.data[1])
         }
         set yxy(value: BaseVec3) {
-            this.elements[1] = value.x
-            this.elements[0] = value.y
-            this.elements[1] = value.z
+            this.data[1] = value.x
+            this.data[0] = value.y
+            this.data[1] = value.z
         }
         get yxz(): BaseVec3 {
-            return vec3(this.elements[1], this.elements[0], this.elements[2])
+            return vec3(this.data[1], this.data[0], this.data[2])
         }
         set yxz(value: BaseVec3) {
-            this.elements[1] = value.x
-            this.elements[0] = value.y
-            this.elements[2] = value.z
+            this.data[1] = value.x
+            this.data[0] = value.y
+            this.data[2] = value.z
         }
         get yyx(): BaseVec3 {
-            return vec3(this.elements[1], this.elements[1], this.elements[0])
+            return vec3(this.data[1], this.data[1], this.data[0])
         }
         set yyx(value: BaseVec3) {
-            this.elements[1] = value.x
-            this.elements[1] = value.y
-            this.elements[0] = value.z
+            this.data[1] = value.x
+            this.data[1] = value.y
+            this.data[0] = value.z
         }
         get yyy(): BaseVec3 {
-            return vec3(this.elements[1], this.elements[1], this.elements[1])
+            return vec3(this.data[1], this.data[1], this.data[1])
         }
         set yyy(value: BaseVec3) {
-            this.elements[1] = value.x
-            this.elements[1] = value.y
-            this.elements[1] = value.z
+            this.data[1] = value.x
+            this.data[1] = value.y
+            this.data[1] = value.z
         }
         get yyz(): BaseVec3 {
-            return vec3(this.elements[1], this.elements[1], this.elements[2])
+            return vec3(this.data[1], this.data[1], this.data[2])
         }
         set yyz(value: BaseVec3) {
-            this.elements[1] = value.x
-            this.elements[1] = value.y
-            this.elements[2] = value.z
+            this.data[1] = value.x
+            this.data[1] = value.y
+            this.data[2] = value.z
         }
         get yzx(): BaseVec3 {
-            return vec3(this.elements[1], this.elements[2], this.elements[0])
+            return vec3(this.data[1], this.data[2], this.data[0])
         }
         set yzx(value: BaseVec3) {
-            this.elements[1] = value.x
-            this.elements[2] = value.y
-            this.elements[0] = value.z
+            this.data[1] = value.x
+            this.data[2] = value.y
+            this.data[0] = value.z
         }
         get yzy(): BaseVec3 {
-            return vec3(this.elements[1], this.elements[2], this.elements[1])
+            return vec3(this.data[1], this.data[2], this.data[1])
         }
         set yzy(value: BaseVec3) {
-            this.elements[1] = value.x
-            this.elements[2] = value.y
-            this.elements[1] = value.z
+            this.data[1] = value.x
+            this.data[2] = value.y
+            this.data[1] = value.z
         }
         get yzz(): BaseVec3 {
-            return vec3(this.elements[1], this.elements[2], this.elements[2])
+            return vec3(this.data[1], this.data[2], this.data[2])
         }
         set yzz(value: BaseVec3) {
-            this.elements[1] = value.x
-            this.elements[2] = value.y
-            this.elements[2] = value.z
+            this.data[1] = value.x
+            this.data[2] = value.y
+            this.data[2] = value.z
         }
 
         get zxx(): BaseVec3 {
-            return vec3(this.elements[2], this.elements[0], this.elements[0])
+            return vec3(this.data[2], this.data[0], this.data[0])
         }
         set zxx(value: BaseVec3) {
-            this.elements[2] = value.x
-            this.elements[0] = value.y
-            this.elements[0] = value.z
+            this.data[2] = value.x
+            this.data[0] = value.y
+            this.data[0] = value.z
         }
         get zxy(): BaseVec3 {
-            return vec3(this.elements[2], this.elements[0], this.elements[1])
+            return vec3(this.data[2], this.data[0], this.data[1])
         }
         set zxy(value: BaseVec3) {
-            this.elements[2] = value.x
-            this.elements[0] = value.y
-            this.elements[1] = value.z
+            this.data[2] = value.x
+            this.data[0] = value.y
+            this.data[1] = value.z
         }
         get zxz(): BaseVec3 {
-            return vec3(this.elements[2], this.elements[0], this.elements[2])
+            return vec3(this.data[2], this.data[0], this.data[2])
         }
         set zxz(value: BaseVec3) {
-            this.elements[2] = value.x
-            this.elements[0] = value.y
-            this.elements[2] = value.z
+            this.data[2] = value.x
+            this.data[0] = value.y
+            this.data[2] = value.z
         }
         get zyx(): BaseVec3 {
-            return vec3(this.elements[2], this.elements[1], this.elements[0])
+            return vec3(this.data[2], this.data[1], this.data[0])
         }
         set zyx(value: BaseVec3) {
-            this.elements[2] = value.x
-            this.elements[1] = value.y
-            this.elements[0] = value.z
+            this.data[2] = value.x
+            this.data[1] = value.y
+            this.data[0] = value.z
         }
         get zyy(): BaseVec3 {
-            return vec3(this.elements[2], this.elements[1], this.elements[1])
+            return vec3(this.data[2], this.data[1], this.data[1])
         }
         set zyy(value: BaseVec3) {
-            this.elements[2] = value.x
-            this.elements[1] = value.y
-            this.elements[1] = value.z
+            this.data[2] = value.x
+            this.data[1] = value.y
+            this.data[1] = value.z
         }
         get zyz(): BaseVec3 {
-            return vec3(this.elements[2], this.elements[1], this.elements[2])
+            return vec3(this.data[2], this.data[1], this.data[2])
         }
         set zyz(value: BaseVec3) {
-            this.elements[2] = value.x
-            this.elements[1] = value.y
-            this.elements[2] = value.z
+            this.data[2] = value.x
+            this.data[1] = value.y
+            this.data[2] = value.z
         }
         get zzx(): BaseVec3 {
-            return vec3(this.elements[2], this.elements[2], this.elements[0])
+            return vec3(this.data[2], this.data[2], this.data[0])
         }
         set zzx(value: BaseVec3) {
-            this.elements[2] = value.x
-            this.elements[2] = value.y
-            this.elements[0] = value.z
+            this.data[2] = value.x
+            this.data[2] = value.y
+            this.data[0] = value.z
         }
         get zzy(): BaseVec3 {
-            return vec3(this.elements[2], this.elements[2], this.elements[1])
+            return vec3(this.data[2], this.data[2], this.data[1])
         }
         set zzy(value: BaseVec3) {
-            this.elements[2] = value.x
-            this.elements[2] = value.y
-            this.elements[1] = value.z
+            this.data[2] = value.x
+            this.data[2] = value.y
+            this.data[1] = value.z
         }
         get zzz(): BaseVec3 {
-            return vec3(this.elements[2], this.elements[2], this.elements[2])
+            return vec3(this.data[2], this.data[2], this.data[2])
         }
         set zzz(value: BaseVec3) {
-            this.elements[2] = value.x
-            this.elements[2] = value.y
-            this.elements[2] = value.z
+            this.data[2] = value.x
+            this.data[2] = value.y
+            this.data[2] = value.z
         }
     }
 }
 
-function WithSwizzle4<TBase extends Constructor<{ elements: Float32Array }>>(Base: TBase) {
+function WithSwizzle4<TBase extends Constructor<{ data: Float32Array }>>(Base: TBase) {
     return class extends Base {
         get xxxw(): BaseVec4 {
-            return vec4(this.elements[0], this.elements[0], this.elements[0], this.elements[3])
+            return vec4(this.data[0], this.data[0], this.data[0], this.data[3])
         }
         set xxxw(value: BaseVec4) {
-            this.elements[0] = value.x
-            this.elements[0] = value.y
-            this.elements[0] = value.z
-            this.elements[3] = value.w
+            this.data[0] = value.x
+            this.data[0] = value.y
+            this.data[0] = value.z
+            this.data[3] = value.w
         }
         get xxyw(): BaseVec4 {
-            return vec4(this.elements[0], this.elements[0], this.elements[1], this.elements[3])
+            return vec4(this.data[0], this.data[0], this.data[1], this.data[3])
         }
         set xxyw(value: BaseVec4) {
-            this.elements[0] = value.x
-            this.elements[0] = value.y
-            this.elements[1] = value.z
-            this.elements[3] = value.w
+            this.data[0] = value.x
+            this.data[0] = value.y
+            this.data[1] = value.z
+            this.data[3] = value.w
         }
         get xxzw(): BaseVec4 {
-            return vec4(this.elements[0], this.elements[0], this.elements[2], this.elements[3])
+            return vec4(this.data[0], this.data[0], this.data[2], this.data[3])
         }
         set xxzw(value: BaseVec4) {
-            this.elements[0] = value.x
-            this.elements[0] = value.y
-            this.elements[2] = value.z
-            this.elements[3] = value.w
+            this.data[0] = value.x
+            this.data[0] = value.y
+            this.data[2] = value.z
+            this.data[3] = value.w
         }
         get xyxw(): BaseVec4 {
-            return vec4(this.elements[0], this.elements[1], this.elements[0], this.elements[3])
+            return vec4(this.data[0], this.data[1], this.data[0], this.data[3])
         }
         set xyxw(value: BaseVec4) {
-            this.elements[0] = value.x
-            this.elements[1] = value.y
-            this.elements[0] = value.z
-            this.elements[3] = value.w
+            this.data[0] = value.x
+            this.data[1] = value.y
+            this.data[0] = value.z
+            this.data[3] = value.w
         }
         get xyyw(): BaseVec4 {
-            return vec4(this.elements[0], this.elements[1], this.elements[1], this.elements[3])
+            return vec4(this.data[0], this.data[1], this.data[1], this.data[3])
         }
         set xyyw(value: BaseVec4) {
-            this.elements[0] = value.x
-            this.elements[1] = value.y
-            this.elements[1] = value.z
-            this.elements[3] = value.w
+            this.data[0] = value.x
+            this.data[1] = value.y
+            this.data[1] = value.z
+            this.data[3] = value.w
         }
         get xyzw(): BaseVec4 {
-            return vec4(this.elements[0], this.elements[1], this.elements[2], this.elements[3])
+            return vec4(this.data[0], this.data[1], this.data[2], this.data[3])
         }
         set xyzw(value: BaseVec4) {
-            this.elements[0] = value.x
-            this.elements[1] = value.y
-            this.elements[2] = value.z
-            this.elements[3] = value.w
+            this.data[0] = value.x
+            this.data[1] = value.y
+            this.data[2] = value.z
+            this.data[3] = value.w
         }
         get xzxw(): BaseVec4 {
-            return vec4(this.elements[0], this.elements[2], this.elements[0], this.elements[3])
+            return vec4(this.data[0], this.data[2], this.data[0], this.data[3])
         }
         set xzxw(value: BaseVec4) {
-            this.elements[0] = value.x
-            this.elements[2] = value.y
-            this.elements[0] = value.z
-            this.elements[3] = value.w
+            this.data[0] = value.x
+            this.data[2] = value.y
+            this.data[0] = value.z
+            this.data[3] = value.w
         }
         get xzyw(): BaseVec4 {
-            return vec4(this.elements[0], this.elements[2], this.elements[1], this.elements[3])
+            return vec4(this.data[0], this.data[2], this.data[1], this.data[3])
         }
         set xzyw(value: BaseVec4) {
-            this.elements[0] = value.x
-            this.elements[2] = value.y
-            this.elements[1] = value.z
-            this.elements[3] = value.w
+            this.data[0] = value.x
+            this.data[2] = value.y
+            this.data[1] = value.z
+            this.data[3] = value.w
         }
         get xzzw(): BaseVec4 {
-            return vec4(this.elements[0], this.elements[2], this.elements[2], this.elements[3])
+            return vec4(this.data[0], this.data[2], this.data[2], this.data[3])
         }
         set xzzw(value: BaseVec4) {
-            this.elements[0] = value.x
-            this.elements[2] = value.y
-            this.elements[2] = value.z
-            this.elements[3] = value.w
+            this.data[0] = value.x
+            this.data[2] = value.y
+            this.data[2] = value.z
+            this.data[3] = value.w
         }
         get yxxw(): BaseVec4 {
-            return vec4(this.elements[1], this.elements[0], this.elements[0], this.elements[3])
+            return vec4(this.data[1], this.data[0], this.data[0], this.data[3])
         }
         set yxxw(value: BaseVec4) {
-            this.elements[1] = value.x
-            this.elements[0] = value.y
-            this.elements[0] = value.z
-            this.elements[3] = value.w
+            this.data[1] = value.x
+            this.data[0] = value.y
+            this.data[0] = value.z
+            this.data[3] = value.w
         }
         get yxyw(): BaseVec4 {
-            return vec4(this.elements[1], this.elements[0], this.elements[1], this.elements[3])
+            return vec4(this.data[1], this.data[0], this.data[1], this.data[3])
         }
         set yxyw(value: BaseVec4) {
-            this.elements[1] = value.x
-            this.elements[0] = value.y
-            this.elements[1] = value.z
-            this.elements[3] = value.w
+            this.data[1] = value.x
+            this.data[0] = value.y
+            this.data[1] = value.z
+            this.data[3] = value.w
         }
         get yxzw(): BaseVec4 {
-            return vec4(this.elements[1], this.elements[0], this.elements[2], this.elements[3])
+            return vec4(this.data[1], this.data[0], this.data[2], this.data[3])
         }
         set yxzw(value: BaseVec4) {
-            this.elements[1] = value.x
-            this.elements[0] = value.y
-            this.elements[2] = value.z
-            this.elements[3] = value.w
+            this.data[1] = value.x
+            this.data[0] = value.y
+            this.data[2] = value.z
+            this.data[3] = value.w
         }
         get yyxw(): BaseVec4 {
-            return vec4(this.elements[1], this.elements[1], this.elements[0], this.elements[3])
+            return vec4(this.data[1], this.data[1], this.data[0], this.data[3])
         }
         set yyxw(value: BaseVec4) {
-            this.elements[1] = value.x
-            this.elements[1] = value.y
-            this.elements[0] = value.z
-            this.elements[3] = value.w
+            this.data[1] = value.x
+            this.data[1] = value.y
+            this.data[0] = value.z
+            this.data[3] = value.w
         }
         get yyyw(): BaseVec4 {
-            return vec4(this.elements[1], this.elements[1], this.elements[1], this.elements[3])
+            return vec4(this.data[1], this.data[1], this.data[1], this.data[3])
         }
         set yyyw(value: BaseVec4) {
-            this.elements[1] = value.x
-            this.elements[1] = value.y
-            this.elements[1] = value.z
-            this.elements[3] = value.w
+            this.data[1] = value.x
+            this.data[1] = value.y
+            this.data[1] = value.z
+            this.data[3] = value.w
         }
         get yyzw(): BaseVec4 {
-            return vec4(this.elements[1], this.elements[1], this.elements[2], this.elements[3])
+            return vec4(this.data[1], this.data[1], this.data[2], this.data[3])
         }
         set yyzw(value: BaseVec4) {
-            this.elements[1] = value.x
-            this.elements[1] = value.y
-            this.elements[2] = value.z
-            this.elements[3] = value.w
+            this.data[1] = value.x
+            this.data[1] = value.y
+            this.data[2] = value.z
+            this.data[3] = value.w
         }
         get yzxw(): BaseVec4 {
-            return vec4(this.elements[1], this.elements[2], this.elements[0], this.elements[3])
+            return vec4(this.data[1], this.data[2], this.data[0], this.data[3])
         }
         set yzxw(value: BaseVec4) {
-            this.elements[1] = value.x
-            this.elements[2] = value.y
-            this.elements[0] = value.z
-            this.elements[3] = value.w
+            this.data[1] = value.x
+            this.data[2] = value.y
+            this.data[0] = value.z
+            this.data[3] = value.w
         }
         get yzyw(): BaseVec4 {
-            return vec4(this.elements[1], this.elements[2], this.elements[1], this.elements[3])
+            return vec4(this.data[1], this.data[2], this.data[1], this.data[3])
         }
         set yzyw(value: BaseVec4) {
-            this.elements[1] = value.x
-            this.elements[2] = value.y
-            this.elements[1] = value.z
-            this.elements[3] = value.w
+            this.data[1] = value.x
+            this.data[2] = value.y
+            this.data[1] = value.z
+            this.data[3] = value.w
         }
         get yzzw(): BaseVec4 {
-            return vec4(this.elements[1], this.elements[2], this.elements[2], this.elements[3])
+            return vec4(this.data[1], this.data[2], this.data[2], this.data[3])
         }
         set yzzw(value: BaseVec4) {
-            this.elements[1] = value.x
-            this.elements[2] = value.y
-            this.elements[2] = value.z
-            this.elements[3] = value.w
+            this.data[1] = value.x
+            this.data[2] = value.y
+            this.data[2] = value.z
+            this.data[3] = value.w
         }
         get zxxw(): BaseVec4 {
-            return vec4(this.elements[2], this.elements[0], this.elements[0], this.elements[3])
+            return vec4(this.data[2], this.data[0], this.data[0], this.data[3])
         }
         set zxxw(value: BaseVec4) {
-            this.elements[2] = value.x
-            this.elements[0] = value.y
-            this.elements[0] = value.z
-            this.elements[3] = value.w
+            this.data[2] = value.x
+            this.data[0] = value.y
+            this.data[0] = value.z
+            this.data[3] = value.w
         }
         get zxyw(): BaseVec4 {
-            return vec4(this.elements[2], this.elements[0], this.elements[1], this.elements[3])
+            return vec4(this.data[2], this.data[0], this.data[1], this.data[3])
         }
         set zxyw(value: BaseVec4) {
-            this.elements[2] = value.x
-            this.elements[0] = value.y
-            this.elements[1] = value.z
-            this.elements[3] = value.w
+            this.data[2] = value.x
+            this.data[0] = value.y
+            this.data[1] = value.z
+            this.data[3] = value.w
         }
         get zxzw(): BaseVec4 {
-            return vec4(this.elements[2], this.elements[0], this.elements[2], this.elements[3])
+            return vec4(this.data[2], this.data[0], this.data[2], this.data[3])
         }
         set zxzw(value: BaseVec4) {
-            this.elements[2] = value.x
-            this.elements[0] = value.y
-            this.elements[2] = value.z
-            this.elements[3] = value.w
+            this.data[2] = value.x
+            this.data[0] = value.y
+            this.data[2] = value.z
+            this.data[3] = value.w
         }
         get zyxw(): BaseVec4 {
-            return vec4(this.elements[2], this.elements[1], this.elements[0], this.elements[3])
+            return vec4(this.data[2], this.data[1], this.data[0], this.data[3])
         }
         set zyxw(value: BaseVec4) {
-            this.elements[2] = value.x
-            this.elements[1] = value.y
-            this.elements[0] = value.z
-            this.elements[3] = value.w
+            this.data[2] = value.x
+            this.data[1] = value.y
+            this.data[0] = value.z
+            this.data[3] = value.w
         }
         get zyyw(): BaseVec4 {
-            return vec4(this.elements[2], this.elements[1], this.elements[1], this.elements[3])
+            return vec4(this.data[2], this.data[1], this.data[1], this.data[3])
         }
         set zyyw(value: BaseVec4) {
-            this.elements[2] = value.x
-            this.elements[1] = value.y
-            this.elements[1] = value.z
-            this.elements[3] = value.w
+            this.data[2] = value.x
+            this.data[1] = value.y
+            this.data[1] = value.z
+            this.data[3] = value.w
         }
         get zyzw(): BaseVec4 {
-            return vec4(this.elements[2], this.elements[1], this.elements[2], this.elements[3])
+            return vec4(this.data[2], this.data[1], this.data[2], this.data[3])
         }
         set zyzw(value: BaseVec4) {
-            this.elements[2] = value.x
-            this.elements[1] = value.y
-            this.elements[2] = value.z
-            this.elements[3] = value.w
+            this.data[2] = value.x
+            this.data[1] = value.y
+            this.data[2] = value.z
+            this.data[3] = value.w
         }
         get zzxw(): BaseVec4 {
-            return vec4(this.elements[2], this.elements[2], this.elements[0], this.elements[3])
+            return vec4(this.data[2], this.data[2], this.data[0], this.data[3])
         }
         set zzxw(value: BaseVec4) {
-            this.elements[2] = value.x
-            this.elements[2] = value.y
-            this.elements[0] = value.z
-            this.elements[3] = value.w
+            this.data[2] = value.x
+            this.data[2] = value.y
+            this.data[0] = value.z
+            this.data[3] = value.w
         }
         get zzyw(): BaseVec4 {
-            return vec4(this.elements[2], this.elements[2], this.elements[1], this.elements[3])
+            return vec4(this.data[2], this.data[2], this.data[1], this.data[3])
         }
         set zzyw(value: BaseVec4) {
-            this.elements[2] = value.x
-            this.elements[2] = value.y
-            this.elements[1] = value.z
-            this.elements[3] = value.w
+            this.data[2] = value.x
+            this.data[2] = value.y
+            this.data[1] = value.z
+            this.data[3] = value.w
         }
         get zzzw(): BaseVec4 {
-            return vec4(this.elements[2], this.elements[2], this.elements[2], this.elements[3])
+            return vec4(this.data[2], this.data[2], this.data[2], this.data[3])
         }
         set zzzw(value: BaseVec4) {
-            this.elements[2] = value.x
-            this.elements[2] = value.y
-            this.elements[2] = value.z
-            this.elements[3] = value.w
+            this.data[2] = value.x
+            this.data[2] = value.y
+            this.data[2] = value.z
+            this.data[3] = value.w
         }
     }
 }
 
-export class Vec2 extends WithSwizzle2(BaseVec2) {
+export class Vec2f extends WithSwizzle2(BaseVec2) {
+    static get byteLength(): number {
+        return 8
+    }
     override toString(): string {
         return `[${this.x.toFixed(ToStringPrecision)}, ${this.y.toFixed(ToStringPrecision)}]`
     }
 }
 
-export class Vec3 extends WithSwizzle3(BaseVec3) {
+export class Vec3f extends WithSwizzle3(BaseVec3) {
+    static get byteLength(): number {
+        return 12
+    }
     /**
      * xyzw converts to homogenous xyzw vector
      */
-    get xyzw(): Vec4 {
-        return vec4(this.elements[0], this.elements[1], this.elements[2], 1)
+    get xyzw(): Vec4f {
+        return vec4(this.data[0], this.data[1], this.data[2], 1)
     }
     override toString(): string {
         return `[${this.x.toFixed(ToStringPrecision)}, ${this.y.toFixed(ToStringPrecision)}, ${this.z.toFixed(ToStringPrecision)}]`
     }
 }
 
-export class Vec4 extends WithSwizzle4(BaseVec4) {
+export class Vec4f extends WithSwizzle4(BaseVec4) {
+    static get byteLength(): number {
+        return 16
+    }
     override toString(): string {
+        this.data.byteLength
         return `[${this.x.toFixed(ToStringPrecision)}, ${this.y.toFixed(ToStringPrecision)}, ${this.z.toFixed(
             ToStringPrecision
         )}, ${this.w.toFixed(ToStringPrecision)}]`
     }
 }
 
-export function vec2(x: number, y: number): Vec2 {
-    return new Vec2(new Float32Array([x, y]))
+export function vec2(x: number, y: number): Vec2f {
+    return new Vec2f(new Float32Array([x, y]))
 }
 
-export function vec3(x: number, y: number, z: number): Vec3 {
-    return new Vec3(new Float32Array([x, y, z]))
+export function vec3(x: number, y: number, z: number): Vec3f {
+    return new Vec3f(new Float32Array([x, y, z]))
 }
 
-export function vec4(x: number, y: number, z: number, w: number): Vec4 {
-    return new Vec4(new Float32Array([x, y, z, w]))
+export function vec4(x: number, y: number, z: number, w: number): Vec4f {
+    return new Vec4f(new Float32Array([x, y, z, w]))
 }

@@ -1,7 +1,17 @@
 import { OrbitControls } from "./orbitcontrols.mjs"
-import { Group, SceneUniform, Sphere, Union } from "./scene/scene.mjs"
+import { Group, Node, SceneUniform, Sphere, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
-import { vec3 } from "./vecmat/vector.mjs"
+import { Mat4x4f } from "./vecmat/matrix.mjs"
+import { vec3, Vec4f } from "./vecmat/vector.mjs"
+
+class UniformBuffers {
+    cameraPosition!: GPUBuffer
+    scene!: GPUBuffer
+    orthoScale!: GPUBuffer
+    sceneTransform!: GPUBuffer
+    inverseSceneTransform!: GPUBuffer
+    group = 0
+}
 
 export class SDFRenderer {
     private bindGroup!: GPUBindGroup
@@ -11,17 +21,24 @@ export class SDFRenderer {
     private device!: GPUDevice
     private pipeline!: GPURenderPipeline
     private scene!: SceneUniform
-    private uniformBuffer!: GPUBuffer
+    private uniformBuffers: UniformBuffers
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas
         const dpr = window.devicePixelRatio || 1
         canvas.width = canvas.clientWidth * dpr
         canvas.height = canvas.clientHeight * dpr
-        this.controls = new OrbitControls(canvas, vec3(0, 0, 0), 10, Math.PI / 1, Math.PI / 8)
+        this.controls = new OrbitControls(canvas, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
+        this.uniformBuffers = new UniformBuffers()
     }
 
-    async initialize() {
+    async testScene() {
+        await this.initialize(
+            new Group(new Union(new Sphere({ pos: vec3(0, 0, 0), r: 10 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10)).init()
+        )
+    }
+
+    async initialize(sceneRoot: Node) {
         const adapter = await navigator.gpu.requestAdapter()
         if (!adapter) throw new Error("No GPU adapter found")
 
@@ -35,21 +52,42 @@ export class SDFRenderer {
             alphaMode: "premultiplied",
         })
 
-        const sceneRoot = new Group(
-            new Union(new Sphere({ pos: vec3(0, 0, 20), r: 10 }), new Sphere({ pos: vec3(10, 0, 20), r: 6 }), 1)
-        ).init()
-
         this.scene = new SceneUniform(sceneRoot)
 
-        this.uniformBuffer = this.device.createBuffer({
+        console.log(Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2))
+        this.uniformBuffers.scene = this.device.createBuffer({
             size: Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2),
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "scene",
         })
 
+        // this.uniformBuffers.sceneTransform = this.device.createBuffer({
+        //     size: Mat4x4f.byteLength,
+        //     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        //     label: "sceneTransform",
+        // })
+
+        this.uniformBuffers.inverseSceneTransform = this.device.createBuffer({
+            size: Mat4x4f.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "inverseSceneTransform",
+        })
+
+        this.uniformBuffers.cameraPosition = this.device.createBuffer({
+            size: Vec4f.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "cameraPosition",
+        })
+
+        this.uniformBuffers.orthoScale = this.device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "orthoScale",
+        })
+
         let shader = previewShader
             .replace(/const\s+NUM_ARGS(\s*:\s*u32)?\s*=\s*\d+.*/, `const NUM_ARGS: u32 = ${this.scene.args.length};`)
-            .replace("0; // COMPILEDHERE", sceneRoot.compile())
+            .replace("0; // COMPILEDHERE", this.scene.root.compile())
 
         console.log(shader)
 
@@ -81,7 +119,19 @@ export class SDFRenderer {
             entries: [
                 {
                     binding: 0,
-                    resource: { buffer: this.uniformBuffer },
+                    resource: { buffer: this.uniformBuffers.scene },
+                },
+                {
+                    binding: 1,
+                    resource: { buffer: this.uniformBuffers.inverseSceneTransform },
+                },
+                {
+                    binding: 2,
+                    resource: { buffer: this.uniformBuffers.cameraPosition },
+                },
+                {
+                    binding: 3,
+                    resource: { buffer: this.uniformBuffers.orthoScale },
                 },
             ],
         })
@@ -100,10 +150,15 @@ export class SDFRenderer {
             ],
         })
 
-        this.controls.updateCamera()
-        this.scene.updateCamera(this.controls.cameraPosition, this.controls.cameraTarget, this.controls.ortho)
         this.scene.root.uniformCopy(this.scene)
-        this.scene.writeBuffer(this.device, this.uniformBuffer)
+
+        this.device.queue.writeBuffer(this.uniformBuffers.scene, 0, this.scene.args.data)
+
+        // this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform,0, this.controls.sceneTransform.elements)
+
+        this.device.queue.writeBuffer(this.uniformBuffers.inverseSceneTransform, 0, this.controls.invSceneTransform.elements)
+        this.device.queue.writeBuffer(this.uniformBuffers.cameraPosition, 0, this.controls.cameraPosition.xyzw.data)
+        this.device.queue.writeBuffer(this.uniformBuffers.orthoScale, 0, new Float32Array([this.controls.orthoScale]))
 
         renderPass.setPipeline(this.pipeline)
         renderPass.setBindGroup(0, this.bindGroup)
@@ -111,6 +166,6 @@ export class SDFRenderer {
         renderPass.end()
 
         this.device.queue.submit([commandEncoder.finish()])
-        requestAnimationFrame((time) => this.update(time))
+        requestAnimationFrame(time => this.update(time))
     }
 }

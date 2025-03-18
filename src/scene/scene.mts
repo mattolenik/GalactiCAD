@@ -1,10 +1,8 @@
 import { ArgArray } from "../vecmat/arrays.mjs"
-import { Vec2, vec3, Vec3 } from "../vecmat/vector.mjs"
+import { Vec2f, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 type Constructor<T = {}> = new (...args: any[]) => T
-
-const ReservedArgs = 3
 
 export class SceneUniform {
     args: ArgArray
@@ -19,15 +17,10 @@ export class SceneUniform {
         return this.args.byteLength
     }
 
-    updateCamera(pos: Vec3, target: Vec3, ortho: Vec2) {
+    updateCamera(pos: Vec3f, target: Vec3f, ortho: Vec2f) {
         this.args.set(0, pos)
         this.args.set(1, target)
         this.args.set(2, ortho)
-    }
-
-    writeBuffer(device: GPUDevice, buffer: GPUBuffer) {
-        device.queue.writeBuffer(buffer, 0, this.args.data)
-        // console.log("Buffer: ", this.args.data)
     }
 }
 
@@ -35,7 +28,7 @@ export class SceneInfo {
     private nodeByID = new Map<number, Node>()
     private nodes = new Set<Node>()
 
-    numArgs = ReservedArgs
+    numArgs = 0
     numNodes = 0
     nextArgIndex(): number {
         return this.numArgs++
@@ -67,7 +60,7 @@ export class Node {
     constructor() {
         this.root = this
     }
-    compile() {
+    compile(): string {
         throw new Error("Method not implemented.")
     }
     uniformCopy(args: SceneUniform) {
@@ -90,7 +83,7 @@ function WithChildren<TBase extends Constructor>(base: TBase) {
 
 function WithPos<TBase extends Constructor>(base: TBase) {
     return class extends base {
-        pos: Vec3 = new Vec3(0, 0, 0)
+        pos: Vec3f = new Vec3f(0, 0, 0)
     }
 }
 
@@ -139,7 +132,7 @@ export class Group extends WithChildren(Node) {
         return this
     }
     override compile(): string {
-        return this.children.map((c) => c.compile()).join(";\n") + ";\n"
+        return this.children.map(c => c.compile()).join(";\n") + ";\n"
     }
     constructor(...children: Node[]) {
         super()
@@ -219,7 +212,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         r: 0,
     }
 
-    constructor({ pos, r, d }: { pos: Vec3; r?: number; d?: number }) {
+    constructor({ pos, r, d }: { pos: Vec3f; r?: number; d?: number }) {
         super()
         this.pos = pos
         this.r = asRadius(r, d)

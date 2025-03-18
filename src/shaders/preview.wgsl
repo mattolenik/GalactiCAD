@@ -21,7 +21,7 @@ fn sceneSDF(p: vec3f) -> f32 {
 }
 
 fn raymarch(origin: vec3f, dir: vec3f) -> f32 {
-    var t: f32 = 0.0;
+    var t: f32 = 0.001;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
         let d = sceneSDF(p);
@@ -67,7 +67,7 @@ fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
     let offsetX = (uv.x * 2.0 - 1.0) * orthoScale;
     let offsetY = (uv.y * 2.0 - 1.0) * orthoScale;
     // For an orthographic camera, the ray origin in camera space is camPos offset in x and y.
-    return camPos + vec3f(offsetX, offsetY, 10.0);
+    return camPos + vec3f(offsetX, offsetY, 100.00);
 }
 
 @fragment
@@ -87,7 +87,7 @@ fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
     // Use the transformed ray for raymarching.
     let t = raymarch(transformedOrigin, transformedDir);
 
-    if (t >= 0) {
+    if (t > 0) {
         let p = transformedOrigin + t * transformedDir;
         let normal = estimateNormal(p);
         let lightDir = normalize(vec3f(0.5, 0.8, -1.0));

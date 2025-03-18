@@ -1,5 +1,5 @@
 import { ArgArray } from "../vecmat/arrays.mjs"
-import { Vec2f, Vec3f } from "../vecmat/vector.mjs"
+import { Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 type Constructor<T = {}> = new (...args: any[]) => T
@@ -117,6 +117,45 @@ function WithRaD<TBase extends Constructor>(base: TBase) {
     }
 }
 
+function WithSize<TBase extends Constructor>(base: TBase) {
+    return class extends base {
+        /**
+         * size
+         */
+        size = new Vec3f(0, 0, 0)
+
+        /**
+         * length
+         */
+        get l(): number {
+            return this.size.x
+        }
+        set l(length: number) {
+            this.size.x = length
+        }
+
+        /**
+         * width
+         */
+        get w(): number {
+            return this.size.y
+        }
+        set w(length: number) {
+            this.size.y = length
+        }
+
+        /**
+         * height
+         */
+        get h(): number {
+            return this.size.z
+        }
+        set h(length: number) {
+            this.size.z = length
+        }
+    }
+}
+
 export class Group extends WithChildren(Node) {
     override uniformCopy(args: SceneUniform) {
         for (let child of this.children) {
@@ -229,5 +268,31 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
     }
     override compile(): string {
         return `fSphere( p - args[${this.idx.pos}].xyz, args[${this.idx.r}].x )`
+    }
+}
+
+export class Box extends WithSize(WithPos(Node)) {
+    idx = {
+        pos: 0,
+        size: 0,
+    }
+
+    constructor({ pos, l, w, h }: { pos: Vec3f; l: number; w: number; h: number }) {
+        super()
+        this.pos = pos
+        this.size = vec3(l, w, h)
+    }
+    override uniformCopy(args: SceneUniform): void {
+        args.args.set(this.idx.pos, this.pos)
+        args.args.set(this.idx.size, vec3(this.l, this.w, this.h))
+    }
+    override init(si?: SceneInfo): Box {
+        super.init(si)
+        this.idx.pos = this.scene.nextArgIndex()
+        this.idx.size = this.scene.nextArgIndex()
+        return this
+    }
+    override compile(): string {
+        return `fBox( p - args[${this.idx.pos}].xyz, args[${this.idx.size}].xyz )`
     }
 }

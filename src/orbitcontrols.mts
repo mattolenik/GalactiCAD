@@ -19,7 +19,7 @@ export class OrbitControls {
     rotateSensitivity: number = 0.005
     panSensitivity: number = 1 // 1:1 mapping with screen space (tweak as needed)
     zoomSensitivity: number = 0.05
-    orthoScale: number = 10
+    orthoScale: number = 40
 
     // Limits:
     minRadius: number = 10

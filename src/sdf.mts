@@ -1,5 +1,5 @@
 import { OrbitControls } from "./orbitcontrols.mjs"
-import { Group, Node, SceneUniform, Sphere, Union } from "./scene/scene.mjs"
+import { Box, Group, Node, SceneUniform, Sphere, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { Mat4x4f } from "./vecmat/matrix.mjs"
 import { vec3, Vec4f } from "./vecmat/vector.mjs"
@@ -34,7 +34,14 @@ export class SDFRenderer {
 
     async testScene() {
         await this.initialize(
-            new Group(new Union(new Sphere({ pos: vec3(0, 0, 0), r: 10 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10)).init()
+            // new Group(new Union(new Sphere({ pos: vec3(0, 0, 0), r: 10 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10)).init()
+            new Group(
+                new Union(
+                    new Box({ pos: vec3(10, -10, 4), l: 30, w: 5, h: 3 }),
+                    new Union(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10),
+                    10
+                )
+            ).init()
         )
     }
 

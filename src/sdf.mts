@@ -39,7 +39,7 @@ export class SDFRenderer {
                 new Union(
                     new Box({ pos: vec3(10, -10, 4), l: 30, w: 5, h: 3 }),
                     new Union(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10),
-                    10
+                    3
                 )
             ).init()
         )

@@ -48,6 +48,7 @@ export class OrbitControls {
         this.cameraPosition = new Vec3f([0, 0, 0])
 
         this.initEvents()
+        this.loadCameraState()
         this.updateTransforms()
     }
 
@@ -110,6 +111,7 @@ export class OrbitControls {
         }
 
         this.updateTransforms()
+        this.saveCameraState()
     }
 
     private onPointerUp(e: PointerEvent) {
@@ -159,6 +161,35 @@ export class OrbitControls {
         this.invSceneTransform = view
         // Store the computed camera position.
         this.cameraPosition = camPos
+    }
+
+    private static readonly STORAGE_KEY: string = "orbitControlsState"
+
+    // Call this method to save the current camera state.
+    saveCameraState(): void {
+        const state = {
+            // Save the orbit parameters that determine the camera position.
+            pivot: [this.pivot.x, this.pivot.y, this.pivot.z],
+            radius: this.radius,
+            theta: this.theta,
+            phi: this.phi,
+            cameraPosition: [this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z],
+        }
+        localStorage.setItem(OrbitControls.STORAGE_KEY, JSON.stringify(state))
+    }
+
+    // Call this method on initialization to restore the camera state.
+    loadCameraState(): void {
+        const stateStr = localStorage.getItem(OrbitControls.STORAGE_KEY)
+        if (stateStr) {
+            const state = JSON.parse(stateStr)
+            this.pivot = new Vec3f(state.pivot)
+            this.radius = state.radius
+            this.theta = state.theta
+            this.phi = state.phi
+            this.cameraPosition = new Vec3f(state.cameraPosition)
+            this.updateTransforms()
+        }
     }
 }
 

@@ -1,38 +1,39 @@
-import { vec3, Vec3f } from "./vecmat/vector.mjs"
+import { Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import * as ls from "./storage/storage.mjs"
 
 export class OrbitControls {
     canvas: HTMLCanvasElement
-    // Orbit parameters:
-    pivot: Vec3f // The point to orbit around (camera target)
+    pivot: Vec3f
     radius: number
-    sceneRotY: number // Horizontal angle in radians
-    sceneRotX: number // Vertical angle in radians
+    sceneRotY: number
+    sceneRotX: number
 
-    // Interaction state:
-    isDragging: boolean = false
+    _isDragging = false
+    get isDragging() {
+        return this._isDragging
+    }
+    set isDragging(val: boolean) {
+        this._isDragging = val
+        this.canvas.style.cursor = val ? "grab" : "auto"
+    }
+
     dragMode: "rotate" | "pan" | null = null
     lastX: number = 0
     lastY: number = 0
+    cursorDelta: Vec3f
 
-    // Sensitivities:
     rotateSensitivity: number = 0.005
-    panSensitivity: number = 1 // 1:1 mapping with screen space (tweak as needed)
+    panSensitivity: number = 0.1
     zoomSensitivity: number = 0.05
-    orthoScale: number = 40
+    orthoZoom: number = 40
 
-    // Limits:
     minRadius: number = 10
     maxRadius: number = 100
 
-    // Computed matrices:
-    // sceneTransform: the transform to apply to the scene so it appears to orbit around a fixed camera.
-    // invSceneTransform: the view matrix (inverse of sceneTransform)
     sceneTransform: Mat4x4f
-
-    // Stored camera position computed from orbit parameters.
     cameraPosition: Vec3f
+    cameraTranslation: Vec3f
     lastCameraUpdate: number = 0
 
     workerInterval: NodeJS.Timeout
@@ -43,10 +44,12 @@ export class OrbitControls {
         this.radius = radius
         this.sceneRotY = initialTheta
         this.sceneRotX = initialPhi
+        this.cursorDelta = Vec3f.zero
 
         this.sceneTransform = new Mat4x4f(new Float32Array(16))
 
-        this.cameraPosition = new Vec3f([0, 0, 0])
+        this.cameraPosition = Vec3f.zero
+        this.cameraTranslation = Vec3f.zero
 
         this.initEvents()
         this.loadCameraState()
@@ -87,28 +90,17 @@ export class OrbitControls {
             return
         }
 
-        const deltaX = e.clientX - this.lastX
-        const deltaY = e.clientY - this.lastY
+        this.cursorDelta.x = e.clientX - this.lastX
+        this.cursorDelta.y = e.clientY - this.lastY
         this.lastX = e.clientX
         this.lastY = e.clientY
 
         if (this.dragMode === "rotate") {
-            this.sceneRotY += deltaX * this.rotateSensitivity
-            this.sceneRotX -= deltaY * this.rotateSensitivity
+            this.sceneRotY -= this.cursorDelta.x * this.rotateSensitivity
+            this.sceneRotX -= this.cursorDelta.y * this.rotateSensitivity
         } else if (this.dragMode === "pan") {
-            // Compute what the camera position would be from the current spherical coordinates.
-            const camPos = this.computeCameraPosition()
-            // Compute the forward vector (from camera position to pivot).
-            const forward = this.pivot.subtract(camPos).normalize()
-            // Use a fixed world up vector.
-            const worldUp = new Vec3f([0, 1, 0])
-            // Right vector: cross(worldUp, forward).
-            const right = worldUp.cross(forward).normalize()
-            // True up vector: cross(forward, right).
-            const up = forward.cross(right).normalize()
-            // Compute pan offset based on mouse delta.
-            const panOffset = right.scale(-deltaX * this.panSensitivity).add(up.scale(deltaY * this.panSensitivity))
-            this.pivot = this.pivot.add(panOffset)
+            this.cameraTranslation.x -= this.cursorDelta.x * this.panSensitivity
+            this.cameraTranslation.y += this.cursorDelta.y * this.panSensitivity
         }
 
         this.updateTransforms()
@@ -127,23 +119,24 @@ export class OrbitControls {
     private onWheel(e: WheelEvent) {
         e.preventDefault()
         this.radius += e.deltaY * this.zoomSensitivity
-        this.orthoScale += e.deltaY * this.zoomSensitivity
+        this.orthoZoom += e.deltaY * this.zoomSensitivity
         this.radius = clamp(this.radius, this.minRadius, this.maxRadius)
         this.updateTransforms()
     }
 
     private computeCameraPosition(): Vec3f {
-        return this.pivot.add(vec3(0, 0, -10))
+        return this.pivot.add(vec3(0, 0, 1))
     }
 
     // Updates the scene transform matrices.
     // The view matrix is computed as if the camera were orbiting the pivot.
     // The scene transform is the inverse of that view matrix.
     private updateTransforms() {
-        this.cameraPosition = this.pivot.add(vec3(0, 0, 10))
+        this.cameraPosition = this.computeCameraPosition()
         // Use a fixed up vector (world up) for constructing the view matrix.
         const up = new Vec3f([0, 1, 0])
         let view = lookAt(this.cameraPosition, this.pivot, up)
+        view = Mat4x4f.translation(this.cameraTranslation).multiply(view)
         view = Mat4x4f.rotationX(this.sceneRotX).multiply(view)
         view = Mat4x4f.rotationY(this.sceneRotY).multiply(view)
         this.sceneTransform = view
@@ -152,8 +145,9 @@ export class OrbitControls {
     // Call this method to save the current camera state.
     saveCameraState(): void {
         ls.setVec3f("camera.position", this.cameraPosition)
+        ls.setVec3f("camera.translation", this.cameraTranslation)
         ls.setVec3f("camera.pivot", this.pivot)
-        ls.setFloat("camera.radius", this.radius)
+        ls.setFloat("camera.orthoZoom", this.orthoZoom)
         ls.setFloat("camera.sceneRotX", this.sceneRotX)
         ls.setFloat("camera.sceneRotY", this.sceneRotY)
     }
@@ -161,10 +155,11 @@ export class OrbitControls {
     // Call this method on initialization to restore the camera state.
     loadCameraState(): void {
         this.cameraPosition = ls.getVec3f("camera.position") ?? Vec3f.zero
+        this.cameraTranslation = ls.getVec3f("camera.translation") ?? Vec3f.zero
         this.pivot = ls.getVec3f("camera.pivot") ?? Vec3f.zero
-        this.radius = ls.getFloat("camera.radius") || 10
-        this.sceneRotY = ls.getFloat("camera.theta") || 10
-        this.sceneRotX = ls.getFloat("camera.phi") || 10
+        this.orthoZoom = ls.getFloat("camera.orthoZoom") || 10
+        this.sceneRotX = ls.getFloat("camera.sceneRotX") || 10
+        this.sceneRotY = ls.getFloat("camera.sceneRotY") || 10
         this.updateTransforms()
     }
 }

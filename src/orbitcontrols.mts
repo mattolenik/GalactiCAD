@@ -15,7 +15,7 @@ export class OrbitControls {
     }
     set isDragging(val: boolean) {
         this._isDragging = val
-        this.canvas.style.cursor = val ? "grab" : "auto"
+        this.canvas.style.cursor = val ? "grabbing" : "auto"
     }
 
     dragMode: "rotate" | "pan" | null = null

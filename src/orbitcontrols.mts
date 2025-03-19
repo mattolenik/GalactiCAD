@@ -1,5 +1,5 @@
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
-import { Mat4x4f } from "./vecmat/matrix.mjs"
+import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import * as ls from "./storage/storage.mjs"
 
 export class OrbitControls {
@@ -7,8 +7,8 @@ export class OrbitControls {
     // Orbit parameters:
     pivot: Vec3f // The point to orbit around (camera target)
     radius: number
-    theta: number // Horizontal angle in radians
-    phi: number // Vertical angle in radians
+    sceneRotY: number // Horizontal angle in radians
+    sceneRotX: number // Vertical angle in radians
 
     // Interaction state:
     isDragging: boolean = false
@@ -28,9 +28,8 @@ export class OrbitControls {
 
     // Computed matrices:
     // sceneTransform: the transform to apply to the scene so it appears to orbit around a fixed camera.
-    sceneTransform: Mat4x4f
     // invSceneTransform: the view matrix (inverse of sceneTransform)
-    invSceneTransform: Mat4x4f
+    sceneTransform: Mat4x4f
 
     // Stored camera position computed from orbit parameters.
     cameraPosition: Vec3f
@@ -42,12 +41,10 @@ export class OrbitControls {
         this.canvas = canvas
         this.pivot = pivot
         this.radius = radius
-        this.theta = initialTheta
-        this.phi = initialPhi
+        this.sceneRotY = initialTheta
+        this.sceneRotX = initialPhi
 
-        // Initialize matrices (assumed to be identity/dummy initially).
         this.sceneTransform = new Mat4x4f(new Float32Array(16))
-        this.invSceneTransform = new Mat4x4f(new Float32Array(16))
 
         this.cameraPosition = new Vec3f([0, 0, 0])
 
@@ -96,9 +93,8 @@ export class OrbitControls {
         this.lastY = e.clientY
 
         if (this.dragMode === "rotate") {
-            this.theta += deltaX * this.rotateSensitivity
-            this.phi -= deltaY * this.rotateSensitivity
-            // Full 360° orbit is allowed; no clamping here.
+            this.sceneRotY += deltaX * this.rotateSensitivity
+            this.sceneRotX -= deltaY * this.rotateSensitivity
         } else if (this.dragMode === "pan") {
             // Compute what the camera position would be from the current spherical coordinates.
             const camPos = this.computeCameraPosition()
@@ -136,35 +132,21 @@ export class OrbitControls {
         this.updateTransforms()
     }
 
-    // Computes the camera position based on the current orbit parameters.
     private computeCameraPosition(): Vec3f {
-        // Standard spherical-to-Cartesian conversion:
-        // x = radius * sin(phi) * sin(theta)
-        // y = radius * cos(phi)
-        // z = radius * sin(phi) * cos(theta)
-        const sinPhi = Math.sin(this.phi)
-        const cosPhi = Math.cos(this.phi)
-        const sinTheta = Math.sin(this.theta)
-        const cosTheta = Math.cos(this.theta)
-        const x = this.radius * sinPhi * sinTheta
-        const y = this.radius * cosPhi
-        const z = this.radius * sinPhi * cosTheta
-        return this.pivot.add(new Vec3f([x, y, z]))
+        return this.pivot.add(vec3(0, 0, -10))
     }
 
     // Updates the scene transform matrices.
     // The view matrix is computed as if the camera were orbiting the pivot.
     // The scene transform is the inverse of that view matrix.
     private updateTransforms() {
-        const camPos = this.computeCameraPosition()
+        this.cameraPosition = this.pivot.add(vec3(0, 0, 10))
         // Use a fixed up vector (world up) for constructing the view matrix.
         const up = new Vec3f([0, 1, 0])
-        const view = lookAt(camPos, this.pivot, up)
-        // The scene transform is the inverse of the view matrix.
-        this.sceneTransform = view.inverse()
-        this.invSceneTransform = view
-        // Store the computed camera position.
-        this.cameraPosition = camPos
+        let view = lookAt(this.cameraPosition, this.pivot, up)
+        view = Mat4x4f.rotationX(this.sceneRotX).multiply(view)
+        view = Mat4x4f.rotationY(this.sceneRotY).multiply(view)
+        this.sceneTransform = view
     }
 
     // Call this method to save the current camera state.
@@ -172,8 +154,8 @@ export class OrbitControls {
         ls.setVec3f("camera.position", this.cameraPosition)
         ls.setVec3f("camera.pivot", this.pivot)
         ls.setFloat("camera.radius", this.radius)
-        ls.setFloat("camera.theta", this.theta)
-        ls.setFloat("camera.phi", this.phi)
+        ls.setFloat("camera.sceneRotX", this.sceneRotX)
+        ls.setFloat("camera.sceneRotY", this.sceneRotY)
     }
 
     // Call this method on initialization to restore the camera state.
@@ -181,44 +163,11 @@ export class OrbitControls {
         this.cameraPosition = ls.getVec3f("camera.position") ?? Vec3f.zero
         this.pivot = ls.getVec3f("camera.pivot") ?? Vec3f.zero
         this.radius = ls.getFloat("camera.radius") || 10
-        this.theta = ls.getFloat("camera.theta") || 10
-        this.phi = ls.getFloat("camera.phi") || 10
+        this.sceneRotY = ls.getFloat("camera.theta") || 10
+        this.sceneRotX = ls.getFloat("camera.phi") || 10
         this.updateTransforms()
     }
 }
-
-// Helper: Compute a LookAt matrix in column-major order.
-// Returns a Mat4x4f representing the view matrix.
-function lookAt(eye: Vec3f, center: Vec3f, up: Vec3f): Mat4x4f {
-    const f = center.subtract(eye).normalize() // forward
-    const s = f.cross(up).normalize() // side/right
-    const u = s.cross(f) // recalculated up
-
-    const m = new Float32Array(16)
-    // Column 0
-    m[0] = s.x
-    m[1] = u.x
-    m[2] = -f.x
-    m[3] = 0
-    // Column 1
-    m[4] = s.y
-    m[5] = u.y
-    m[6] = -f.y
-    m[7] = 0
-    // Column 2
-    m[8] = s.z
-    m[9] = u.z
-    m[10] = -f.z
-    m[11] = 0
-    // Column 3
-    m[12] = -s.dot(eye)
-    m[13] = -u.dot(eye)
-    m[14] = f.dot(eye)
-    m[15] = 1
-
-    return new Mat4x4f(m)
-}
-
 function clamp(x: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, x))
 }

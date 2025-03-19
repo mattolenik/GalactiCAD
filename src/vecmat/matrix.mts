@@ -448,3 +448,33 @@ export class Mat4x4f {
         return new Vec3f([result.x, result.y, result.z])
     }
 }
+
+export function lookAt(eye: Vec3f, center: Vec3f, up: Vec3f): Mat4x4f {
+    const f = center.subtract(eye).normalize() // forward
+    const s = f.cross(up).normalize() // side/right
+    const u = s.cross(f) // recalculated up
+
+    const m = new Float32Array(16)
+    // Column 0
+    m[0] = s.x
+    m[1] = u.x
+    m[2] = -f.x
+    m[3] = 0
+    // Column 1
+    m[4] = s.y
+    m[5] = u.y
+    m[6] = -f.y
+    m[7] = 0
+    // Column 2
+    m[8] = s.z
+    m[9] = u.z
+    m[10] = -f.z
+    m[11] = 0
+    // Column 3
+    m[12] = -s.dot(eye)
+    m[13] = -u.dot(eye)
+    m[14] = f.dot(eye)
+    m[15] = 1
+
+    return new Mat4x4f(m)
+}

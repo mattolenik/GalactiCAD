@@ -7,7 +7,7 @@ const SURF_DIST: f32 = 0.001;
 const NORMAL_EPS: f32 = 0.001;
 
 @group(0) @binding(0) var<uniform> args: array<vec4f, NUM_ARGS>;
-@group(0) @binding(1) var<uniform> inverseSceneTransform: mat4x4f;
+@group(0) @binding(1) var<uniform> sceneTransform: mat4x4f;
 @group(0) @binding(2) var<uniform> cameraPosition: vec4f;
 @group(0) @binding(3) var<uniform> orthoScale: f32;
 
@@ -81,8 +81,8 @@ fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
 
     // Transform the ray from camera space into scene space.
     // sceneTransform here is V⁻¹, which takes points from camera space to world (scene) space.
-    let transformedOrigin = (inverseSceneTransform * vec4f(rayOriginCamera, 1.0)).xyz;
-    let transformedDir = normalize((inverseSceneTransform * vec4f(rayDirCamera, 0.0)).xyz);
+    let transformedOrigin = (sceneTransform * vec4f(rayOriginCamera, 1.0)).xyz;
+    let transformedDir = normalize((sceneTransform * vec4f(rayDirCamera, 0.0)).xyz);
 
     // Use the transformed ray for raymarching.
     let t = raymarch(transformedOrigin, transformedDir);

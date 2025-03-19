@@ -160,9 +160,6 @@ export class SDFRenderer {
         this.scene.root.uniformCopy(this.scene)
 
         this.device.queue.writeBuffer(this.uniformBuffers.scene, 0, this.scene.args.data)
-
-        // this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform,0, this.controls.sceneTransform.elements)
-
         this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform, 0, this.controls.sceneTransform.elements)
         this.device.queue.writeBuffer(this.uniformBuffers.cameraPosition, 0, this.controls.cameraPosition.data)
         this.device.queue.writeBuffer(this.uniformBuffers.orthoScale, 0, new Float32Array([this.controls.orthoZoom]))

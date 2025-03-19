@@ -729,6 +729,9 @@ function WithSwizzle4<TBase extends Constructor<{ data: Float32Array }>>(Base: T
 }
 
 export class Vec2f extends WithSwizzle2(BaseVec2) {
+    static get zero(): Vec2f {
+        return new Vec2f(0, 0)
+    }
     static get byteLength(): number {
         return 8
     }
@@ -738,9 +741,9 @@ export class Vec2f extends WithSwizzle2(BaseVec2) {
     toStorage(): string {
         return this.x + "," + this.y
     }
-    static fromStorage(val: string | null): Vec2f {
+    static fromStorage(val: string | null): Vec2f | null {
         if (!val) {
-            return new Vec2f(0, 0)
+            return null
         }
         const parts = val.split(",")
         if (parts.length != 2) {
@@ -751,6 +754,9 @@ export class Vec2f extends WithSwizzle2(BaseVec2) {
 }
 
 export class Vec3f extends WithSwizzle3(BaseVec3) {
+    static get zero(): Vec3f {
+        return new Vec3f(0, 0, 0)
+    }
     static get byteLength(): number {
         return 12
     }
@@ -766,9 +772,9 @@ export class Vec3f extends WithSwizzle3(BaseVec3) {
     toStorage(): string {
         return this.x + "," + this.y + "," + this.z
     }
-    static fromStorage(val: string | null): Vec3f {
+    static fromStorage(val: string | null): Vec3f | null {
         if (!val) {
-            return new Vec3f(0, 0, 0)
+            return null
         }
         const parts = val.split(",")
         if (parts.length != 3) {
@@ -779,6 +785,9 @@ export class Vec3f extends WithSwizzle3(BaseVec3) {
 }
 
 export class Vec4f extends WithSwizzle4(BaseVec4) {
+    static get zero(): Vec4f {
+        return new Vec4f(0, 0, 0, 0)
+    }
     static get byteLength(): number {
         return 16
     }
@@ -791,9 +800,9 @@ export class Vec4f extends WithSwizzle4(BaseVec4) {
     toStorage(): string {
         return this.x + "," + this.y + "," + this.z + "," + this.w
     }
-    static fromStorage(val: string | null): Vec4f {
+    static fromStorage(val: string | null): Vec4f | null {
         if (!val) {
-            return new Vec4f(0, 0, 0, 0)
+            return null
         }
         const parts = val.split(",")
         if (parts.length != 4) {

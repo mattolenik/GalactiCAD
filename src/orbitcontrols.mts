@@ -1,5 +1,6 @@
-import { Vec3f } from "./vecmat/vector.mjs"
+import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { Mat4x4f } from "./vecmat/matrix.mjs"
+import * as ls from "./storage/storage.mjs"
 
 export class OrbitControls {
     canvas: HTMLCanvasElement
@@ -168,20 +169,20 @@ export class OrbitControls {
 
     // Call this method to save the current camera state.
     saveCameraState(): void {
-        localStorage.setItem("camera.position", this.cameraPosition.toStorage())
-        localStorage.setItem("camera.pivot", this.pivot.toStorage())
-        localStorage.setItem("camera.radius", this.radius.toString())
-        localStorage.setItem("camera.theta", this.theta.toString())
-        localStorage.setItem("camera.phi", this.phi.toString())
+        ls.setVec3f("camera.position", this.cameraPosition)
+        ls.setVec3f("camera.pivot", this.pivot)
+        ls.setFloat("camera.radius", this.radius)
+        ls.setFloat("camera.theta", this.theta)
+        ls.setFloat("camera.phi", this.phi)
     }
 
     // Call this method on initialization to restore the camera state.
     loadCameraState(): void {
-        this.cameraPosition = Vec3f.fromStorage(localStorage.getItem("camera.position"))
-        this.pivot = Vec3f.fromStorage(localStorage.getItem("camera.pivot"))
-        this.radius = parseFloat(localStorage.getItem("camera.radius") || "10")
-        this.theta = parseFloat(localStorage.getItem("camera.theta") || "10")
-        this.phi = parseFloat(localStorage.getItem("camera.phi") || "10")
+        this.cameraPosition = ls.getVec3f("camera.position") ?? Vec3f.zero
+        this.pivot = ls.getVec3f("camera.pivot") ?? Vec3f.zero
+        this.radius = ls.getFloat("camera.radius") || 10
+        this.theta = ls.getFloat("camera.theta") || 10
+        this.phi = ls.getFloat("camera.phi") || 10
         this.updateTransforms()
     }
 }

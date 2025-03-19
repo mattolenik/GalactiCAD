@@ -64,16 +64,17 @@ export class OrbitControls {
         this.canvas.addEventListener("pointercancel", this.onPointerUp.bind(this))
         this.canvas.addEventListener("pointerleave", this.onPointerLeave.bind(this))
         this.canvas.addEventListener("wheel", this.onWheel.bind(this))
-        // Prevent context menu on right click.
         this.canvas.addEventListener("contextmenu", e => e.preventDefault())
     }
 
     private onPointerDown(e: PointerEvent) {
         e.preventDefault()
-        if (e.button === 0) {
+        if (e.button === 2) {
             this.dragMode = "rotate"
-        } else if (e.button === 2) {
+        } else if (e.button === 1) {
             this.dragMode = "pan"
+        } else {
+            return
         }
         this.isDragging = true
         this.lastX = e.clientX

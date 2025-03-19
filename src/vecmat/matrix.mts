@@ -161,8 +161,8 @@ export class Mat4x4f {
     static identity(): Mat4x4f {
         return new Mat4x4f()
     }
-    static translation(tx: number, ty: number, tz: number): Mat4x4f {
-        return new Mat4x4f(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, tx, ty, tz, 1]))
+    static translation(v: Vec3f): Mat4x4f {
+        return new Mat4x4f(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, v.x, v.y, v.z, 1]))
     }
     static rotationX(angle: number): Mat4x4f {
         const c = Math.cos(angle),
@@ -179,8 +179,8 @@ export class Mat4x4f {
             s = Math.sin(angle)
         return new Mat4x4f(new Float32Array([c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]))
     }
-    static scaling(sx: number, sy: number, sz: number): Mat4x4f {
-        return new Mat4x4f(new Float32Array([sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0, 0, 0, 0, 1]))
+    static scaling(v: Vec3f): Mat4x4f {
+        return new Mat4x4f(new Float32Array([v.x, 0, 0, 0, 0, v.y, 0, 0, 0, 0, v.z, 0, 0, 0, 0, 1]))
     }
     static perspective(fov: number, aspect: number, near: number, far: number): Mat4x4f {
         const f = 1 / Math.tan(fov / 2)

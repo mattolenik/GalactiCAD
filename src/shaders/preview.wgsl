@@ -1,7 +1,7 @@
 //- include "sdf.wgsl"
 
 const NUM_ARGS: u32 = 0;
-const MAX_STEPS: i32 = 100;
+const MAX_STEPS: i32 = 5000;
 const MAX_DIST: f32 = 500.0;
 const SURF_DIST: f32 = 0.001;
 const NORMAL_EPS: f32 = 0.001;

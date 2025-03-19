@@ -165,7 +165,7 @@ export class SDFRenderer {
 
         this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform, 0, this.controls.sceneTransform.elements)
         this.device.queue.writeBuffer(this.uniformBuffers.cameraPosition, 0, this.controls.cameraPosition.data)
-        this.device.queue.writeBuffer(this.uniformBuffers.orthoScale, 0, new Float32Array([this.controls.orthoScale]))
+        this.device.queue.writeBuffer(this.uniformBuffers.orthoScale, 0, new Float32Array([this.controls.orthoZoom]))
 
         renderPass.setPipeline(this.pipeline)
         renderPass.setBindGroup(0, this.bindGroup)

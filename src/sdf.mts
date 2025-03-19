@@ -68,17 +68,17 @@ export class SDFRenderer {
             label: "scene",
         })
 
-        // this.uniformBuffers.sceneTransform = this.device.createBuffer({
+        this.uniformBuffers.sceneTransform = this.device.createBuffer({
+            size: Mat4x4f.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "sceneTransform",
+        })
+
+        // this.uniformBuffers.inverseSceneTransform = this.device.createBuffer({
         //     size: Mat4x4f.byteLength,
         //     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         //     label: "sceneTransform",
         // })
-
-        this.uniformBuffers.inverseSceneTransform = this.device.createBuffer({
-            size: Mat4x4f.byteLength,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "inverseSceneTransform",
-        })
 
         this.uniformBuffers.cameraPosition = this.device.createBuffer({
             size: Vec4f.byteLength,
@@ -130,7 +130,7 @@ export class SDFRenderer {
                 },
                 {
                     binding: 1,
-                    resource: { buffer: this.uniformBuffers.inverseSceneTransform },
+                    resource: { buffer: this.uniformBuffers.sceneTransform },
                 },
                 {
                     binding: 2,
@@ -163,7 +163,7 @@ export class SDFRenderer {
 
         // this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform,0, this.controls.sceneTransform.elements)
 
-        this.device.queue.writeBuffer(this.uniformBuffers.inverseSceneTransform, 0, this.controls.invSceneTransform.elements)
+        this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform, 0, this.controls.sceneTransform.elements)
         this.device.queue.writeBuffer(this.uniformBuffers.cameraPosition, 0, this.controls.cameraPosition.data)
         this.device.queue.writeBuffer(this.uniformBuffers.orthoScale, 0, new Float32Array([this.controls.orthoScale]))
 

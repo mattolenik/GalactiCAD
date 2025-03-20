@@ -17,6 +17,10 @@ build:
 	@mkdir -p $(DIST)
 	$(BUILD) $(BUILD_FLAGS)
 
+grammar: src/dsl/grammar.mts
+src/dsl/grammar.mts: src/dsl/grammar.peg
+	npx tspeg $? $@
+
 .PHONY: test
 test:
 	$(TSX) --test

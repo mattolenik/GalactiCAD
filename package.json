@@ -18,10 +18,10 @@
     "@webgpu/types": "^0.1.54",
     "chokidar": "^4.0.3",
     "esbuild": "^0.25.0",
+    "tspeg": "^3.3.2",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "ws": "^8.18.1"
   },
-  "dependencies": {
-  }
+  "dependencies": {}
 }

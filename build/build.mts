@@ -3,6 +3,7 @@ import * as esbuild from "esbuild"
 import assetBundler from "./asset-bundler.mjs"
 import { DevServer } from "./server.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
+import { spawn } from "child_process"
 
 const assets = ["src/**/*.html", "src/**/*.css"]
 const entryPoints = ["./src/sdf.mts"]
@@ -17,6 +18,8 @@ async function build() {
     const isProd = !!process.env.PRODUCTION
     const startTime = performance.now()
     try {
+        await sh("make grammar")
+
         await esbuild.build({
             bundle: true,
             entryPoints: entryPoints,
@@ -52,6 +55,22 @@ function watch(location: string, onChange: () => Promise<void>) {
             log(`Build triggered by ${event}: ${path}`)
             onChange()
         })
+}
+
+async function sh(command: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        spawn("bash", ["-c", command], { stdio: "inherit" })
+            .on("error", err => {
+                reject(err)
+            })
+            .on("close", (exitCode: number) => {
+                if (exitCode !== 0) {
+                    reject(new Error(`command failed with exit code ${exitCode}`))
+                } else {
+                    resolve()
+                }
+            })
+    })
 }
 
 switch (process.argv[2]) {

@@ -66,33 +66,38 @@ export class OrbitControls {
         this.canvas.addEventListener("wheel", this.onWheel.bind(this))
         this.canvas.addEventListener("contextmenu", e => e.preventDefault())
         this.canvas.addEventListener("keypress", this.onKeyPress.bind(this))
-        const onKeyPress = this.onKeyPress.bind(this)
-        let lastDownTarget: any, canvas: any
-        window.onload = function () {
-            canvas = document.getElementById("canvas")
-
-            /* For mouse event */
-            document.addEventListener("mousedown", event => (lastDownTarget = event.target), false)
-
-            /* For keyboard event */
-            document.addEventListener(
-                "keydown",
-                event => {
-                    if (lastDownTarget == canvas) {
-                        onKeyPress(event)
-                    }
-                },
-                false
-            )
-        }
+        document.addEventListener("keydown", this.onKeyPress.bind(this), false)
     }
 
     private onKeyPress(e: KeyboardEvent) {
         console.log(e)
         if (e.key >= "1" && e.key <= "6") {
             e.preventDefault()
-            this.sceneRotX = 0
-            this.sceneRotY = 0
+
+            if (e.key === "1") {
+                this.sceneRotX = 0
+                this.sceneRotY = 0
+            }
+            if (e.key === "2") {
+                this.sceneRotX = 90
+                this.sceneRotY = 90
+            }
+            if (e.key === "3") {
+                this.sceneRotX = 0
+                this.sceneRotY = 0
+            }
+            if (e.key === "4") {
+                this.sceneRotX = 0
+                this.sceneRotY = 0
+            }
+            if (e.key === "5") {
+                this.sceneRotX = 0
+                this.sceneRotY = 0
+            }
+            if (e.key === "6") {
+                this.sceneRotX = 0
+                this.sceneRotY = 0
+            }
             this.updateTransforms()
         }
     }

@@ -1,8 +1,8 @@
-import { Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"
-import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import * as ls from "./storage/storage.mjs"
+import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
+import { vec3, Vec3f } from "./vecmat/vector.mjs"
 
-export class OrbitControls {
+export class Controls {
     canvas: HTMLCanvasElement
     pivot: Vec3f
     radius: number
@@ -75,28 +75,28 @@ export class OrbitControls {
             e.preventDefault()
 
             if (e.key === "1") {
-                this.sceneRotX = 0
-                this.sceneRotY = 0
+                this.sceneRotX = -1 * Math.PI
+                this.sceneRotY = -1 * Math.PI
             }
             if (e.key === "2") {
-                this.sceneRotX = 90
-                this.sceneRotY = 90
+                this.sceneRotX = -1 * Math.PI
+                this.sceneRotY = 0
             }
             if (e.key === "3") {
                 this.sceneRotX = 0
-                this.sceneRotY = 0
+                this.sceneRotY = (1 / 2) * Math.PI
             }
             if (e.key === "4") {
                 this.sceneRotX = 0
-                this.sceneRotY = 0
+                this.sceneRotY = (-1 / 2) * Math.PI
             }
             if (e.key === "5") {
-                this.sceneRotX = 0
-                this.sceneRotY = 0
+                this.sceneRotX = (-1 / 2) * Math.PI
+                this.sceneRotY = 1 * Math.PI
             }
             if (e.key === "6") {
-                this.sceneRotX = 0
-                this.sceneRotY = 0
+                this.sceneRotX = (1 / 2) * Math.PI
+                this.sceneRotY = 1 * Math.PI
             }
             this.updateTransforms()
         }
@@ -172,9 +172,9 @@ export class OrbitControls {
         // Use a fixed up vector (world up) for constructing the view matrix.
         const up = new Vec3f([0, 1, 0])
         let view = lookAt(this.cameraPosition, this.pivot, up)
-        view = Mat4x4f.translation(this.cameraTranslation).multiply(view)
         view = Mat4x4f.rotationX(this.sceneRotX).multiply(view)
         view = Mat4x4f.rotationY(this.sceneRotY).multiply(view)
+        view = Mat4x4f.translation(this.cameraTranslation).multiply(view)
         this.sceneTransform = view
     }
 

@@ -1,4 +1,4 @@
-import { OrbitControls } from "./orbitcontrols.mjs"
+import { Controls } from "./controls.mjs"
 import { Box, Group, Node, SceneUniform, Sphere, Subtract, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { Mat4x4f } from "./vecmat/matrix.mjs"
@@ -17,7 +17,7 @@ export class SDFRenderer {
     private bindGroup!: GPUBindGroup
     private canvas: HTMLCanvasElement
     private context!: GPUCanvasContext
-    private controls: OrbitControls
+    private controls: Controls
     private device!: GPUDevice
     private pipeline!: GPURenderPipeline
     private scene!: SceneUniform
@@ -29,7 +29,7 @@ export class SDFRenderer {
         canvas.width = canvas.clientWidth * dpr
         canvas.height = canvas.clientHeight * dpr
         canvas.tabIndex = 1
-        this.controls = new OrbitControls(canvas, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
+        this.controls = new Controls(canvas, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
         this.uniformBuffers = new UniformBuffers()
     }
 

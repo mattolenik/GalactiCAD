@@ -65,13 +65,43 @@ export class OrbitControls {
         this.canvas.addEventListener("pointerleave", this.onPointerLeave.bind(this))
         this.canvas.addEventListener("wheel", this.onWheel.bind(this))
         this.canvas.addEventListener("contextmenu", e => e.preventDefault())
+        this.canvas.addEventListener("keypress", this.onKeyPress.bind(this))
+        const onKeyPress = this.onKeyPress.bind(this)
+        let lastDownTarget: any, canvas: any
+        window.onload = function () {
+            canvas = document.getElementById("canvas")
+
+            /* For mouse event */
+            document.addEventListener("mousedown", event => (lastDownTarget = event.target), false)
+
+            /* For keyboard event */
+            document.addEventListener(
+                "keydown",
+                event => {
+                    if (lastDownTarget == canvas) {
+                        onKeyPress(event)
+                    }
+                },
+                false
+            )
+        }
+    }
+
+    private onKeyPress(e: KeyboardEvent) {
+        console.log(e)
+        if (e.key >= "1" && e.key <= "6") {
+            e.preventDefault()
+            this.sceneRotX = 0
+            this.sceneRotY = 0
+            this.updateTransforms()
+        }
     }
 
     private onPointerDown(e: PointerEvent) {
         e.preventDefault()
-        if (e.button === 2) {
+        if (e.button === 0) {
             this.dragMode = "rotate"
-        } else if (e.button === 1) {
+        } else if (e.button === 2) {
             this.dragMode = "pan"
         } else {
             return
@@ -158,9 +188,9 @@ export class OrbitControls {
         this.cameraPosition = ls.getVec3f("camera.position") ?? Vec3f.zero
         this.cameraTranslation = ls.getVec3f("camera.translation") ?? Vec3f.zero
         this.pivot = ls.getVec3f("camera.pivot") ?? Vec3f.zero
-        this.orthoZoom = ls.getFloat("camera.orthoZoom") || 10
-        this.sceneRotX = ls.getFloat("camera.sceneRotX") || 10
-        this.sceneRotY = ls.getFloat("camera.sceneRotY") || 10
+        this.orthoZoom = ls.getFloat("camera.orthoZoom") ?? 10
+        this.sceneRotX = ls.getFloat("camera.sceneRotX") ?? 10
+        this.sceneRotY = ls.getFloat("camera.sceneRotY") ?? 10
         this.updateTransforms()
     }
 }

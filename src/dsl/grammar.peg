@@ -1,5 +1,12 @@
+NUMBER := m='-'? i=INT f=FRAC?
+    .value = number { return parseFloat((this.m??'') + this.i + (this.f??'')); }
+
+INT := '0|[1-9][0-9]*'
+FRAC := '\.[0-9]+'
+
 CHARS := '([^"\\\u0000-\u001F]|\\["\\/bfnrt])*'u
 
 // Whitespace
-_ := '\s+'
+_ := '\s*'
+__ := '\s+'
 

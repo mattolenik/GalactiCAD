@@ -26,13 +26,15 @@
 </head>
 
 <body>
-    <canvas id="preview" oncontextmenu="return false;"></canvas>
+    <canvas id="preview" oncontextmenu="return false;" tabindex="1"></canvas>
     <script type="module">
         import { SDFRenderer } from './sdf.js';
 
         const renderer = new SDFRenderer(document.getElementById("preview"));
+
         await renderer.testScene();
         requestAnimationFrame(time => renderer.update(time));
+
     </script>
     <div id="toolbar">
         <button id="reload-button">Reload</button>

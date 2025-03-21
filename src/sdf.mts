@@ -28,6 +28,7 @@ export class SDFRenderer {
         const dpr = window.devicePixelRatio || 1
         canvas.width = canvas.clientWidth * dpr
         canvas.height = canvas.clientHeight * dpr
+        canvas.tabIndex = 1
         this.controls = new OrbitControls(canvas, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
         this.uniformBuffers = new UniformBuffers()
     }

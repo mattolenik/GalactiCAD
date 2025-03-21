@@ -5,9 +5,15 @@ import { vec3, Vec3f } from "./vecmat/vector.mjs"
 export class Controls {
     canvas: HTMLCanvasElement
     pivot: Vec3f
-    radius: number
     sceneRotY: number
     sceneRotX: number
+    private _radius: number = 1
+    get radius() {
+        return this._radius
+    }
+    set radius(r: number) {
+        this._radius = clamp(r, 2, 150)
+    }
 
     _isDragging = false
     get isDragging() {
@@ -28,9 +34,6 @@ export class Controls {
     zoomSensitivity: number = 0.05
     orthoZoom: number = 40
 
-    minRadius: number = 10
-    maxRadius: number = 100
-
     sceneTransform: Mat4x4f
     cameraPosition: Vec3f
     cameraTranslation: Vec3f
@@ -44,12 +47,12 @@ export class Controls {
         this.radius = radius
         this.sceneRotY = initialTheta
         this.sceneRotX = initialPhi
-        this.cursorDelta = Vec3f.zero
+        this.cursorDelta = Vec3f.ZERO
 
         this.sceneTransform = new Mat4x4f(new Float32Array(16))
 
-        this.cameraPosition = Vec3f.zero
-        this.cameraTranslation = Vec3f.zero
+        this.cameraPosition = Vec3f.ZERO
+        this.cameraTranslation = Vec3f.ZERO
 
         this.initEvents()
         this.loadCameraState()
@@ -71,35 +74,38 @@ export class Controls {
 
     private onKeyPress(e: KeyboardEvent) {
         console.log(e)
-        if (e.key >= "1" && e.key <= "6") {
-            e.preventDefault()
 
-            if (e.key === "1") {
-                this.sceneRotX = -1 * Math.PI
-                this.sceneRotY = -1 * Math.PI
-            }
-            if (e.key === "2") {
-                this.sceneRotX = -1 * Math.PI
-                this.sceneRotY = 0
-            }
-            if (e.key === "3") {
-                this.sceneRotX = 0
-                this.sceneRotY = (1 / 2) * Math.PI
-            }
-            if (e.key === "4") {
-                this.sceneRotX = 0
-                this.sceneRotY = (-1 / 2) * Math.PI
-            }
-            if (e.key === "5") {
-                this.sceneRotX = (-1 / 2) * Math.PI
-                this.sceneRotY = 1 * Math.PI
-            }
-            if (e.key === "6") {
-                this.sceneRotX = (1 / 2) * Math.PI
-                this.sceneRotY = 1 * Math.PI
-            }
-            this.updateTransforms()
+        if (e.code === "Digit1") {
+            this.sceneRotX = -1 * Math.PI
+            this.sceneRotY = -1 * Math.PI
         }
+        if (e.code === "Digit2") {
+            this.sceneRotX = -1 * Math.PI
+            this.sceneRotY = 0
+        }
+        if (e.code === "Digit3") {
+            this.sceneRotX = 0
+            this.sceneRotY = (1 / 2) * Math.PI
+        }
+        if (e.code === "Digit4") {
+            this.sceneRotX = 0
+            this.sceneRotY = (-1 / 2) * Math.PI
+        }
+        if (e.code === "Digit5") {
+            this.sceneRotX = (-1 / 2) * Math.PI
+            this.sceneRotY = 1 * Math.PI
+        }
+        if (e.code === "Digit6") {
+            this.sceneRotX = (1 / 2) * Math.PI
+            this.sceneRotY = 1 * Math.PI
+        }
+        if (e.code === "Backquote") {
+            this.sceneRotX = -Math.PI / 8
+            this.sceneRotY = Math.PI * (5 / 4)
+            this.cameraTranslation = Vec3f.ZERO
+        }
+        e.preventDefault()
+        this.updateTransforms()
     }
 
     private onPointerDown(e: PointerEvent) {
@@ -155,13 +161,12 @@ export class Controls {
     private onWheel(e: WheelEvent) {
         e.preventDefault()
         this.radius += e.deltaY * this.zoomSensitivity
-        this.orthoZoom += e.deltaY * this.zoomSensitivity
-        this.radius = clamp(this.radius, this.minRadius, this.maxRadius)
+        this.orthoZoom = this.radius
         this.updateTransforms()
     }
 
     private computeCameraPosition(): Vec3f {
-        return this.pivot.add(vec3(0, 0, 1))
+        return this.pivot.add(Vec3f.FWD)
     }
 
     // Updates the scene transform matrices.
@@ -170,8 +175,7 @@ export class Controls {
     private updateTransforms() {
         this.cameraPosition = this.computeCameraPosition()
         // Use a fixed up vector (world up) for constructing the view matrix.
-        const up = new Vec3f([0, 1, 0])
-        let view = lookAt(this.cameraPosition, this.pivot, up)
+        let view = lookAt(this.cameraPosition, this.pivot, Vec3f.UP)
         view = Mat4x4f.rotationX(this.sceneRotX).multiply(view)
         view = Mat4x4f.rotationY(this.sceneRotY).multiply(view)
         view = Mat4x4f.translation(this.cameraTranslation).multiply(view)
@@ -190,12 +194,12 @@ export class Controls {
 
     // Call this method on initialization to restore the camera state.
     loadCameraState(): void {
-        this.cameraPosition = ls.getVec3f("camera.position") ?? Vec3f.zero
-        this.cameraTranslation = ls.getVec3f("camera.translation") ?? Vec3f.zero
-        this.pivot = ls.getVec3f("camera.pivot") ?? Vec3f.zero
-        this.orthoZoom = ls.getFloat("camera.orthoZoom") ?? 10
-        this.sceneRotX = ls.getFloat("camera.sceneRotX") ?? 10
-        this.sceneRotY = ls.getFloat("camera.sceneRotY") ?? 10
+        this.cameraPosition = ls.getVec3f("camera.position") ?? Vec3f.ZERO
+        this.cameraTranslation = ls.getVec3f("camera.translation") ?? Vec3f.ZERO
+        this.pivot = ls.getVec3f("camera.pivot") ?? Vec3f.ZERO
+        this.orthoZoom = ls.getFloat("camera.orthoZoom") ?? 20
+        this.sceneRotX = ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
+        this.sceneRotY = ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
         this.updateTransforms()
     }
 }

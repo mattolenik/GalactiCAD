@@ -754,7 +754,13 @@ export class Vec2f extends WithSwizzle2(BaseVec2) {
 }
 
 export class Vec3f extends WithSwizzle3(BaseVec3) {
-    static get zero(): Vec3f {
+    static get UP(): Vec3f {
+        return new Vec3f(0, 1, 0)
+    }
+    static get FWD(): Vec3f {
+        return new Vec3f(0, 0, 1)
+    }
+    static get ZERO(): Vec3f {
         return new Vec3f(0, 0, 0)
     }
     static get byteLength(): number {

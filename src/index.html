@@ -26,7 +26,6 @@
 </head>
 
 <body>
-    <canvas id="preview" oncontextmenu="return false;"></canvas>
     <script type="module">
         import { SDFRenderer } from './sdf.js';
 
@@ -39,6 +38,7 @@
     <div id="toolbar">
         <button id="reload-button">Reload</button>
     </div>
+    <canvas id="preview" oncontextmenu="return false;" tabindex="1"></canvas>
 </body>
 
 </html>

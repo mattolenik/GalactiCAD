@@ -79,44 +79,70 @@ export class Controls {
         this.canvas.addEventListener("pointerleave", this.onPointerLeave.bind(this))
         this.canvas.addEventListener("wheel", this.onWheel.bind(this))
         this.canvas.addEventListener("contextmenu", e => e.preventDefault())
-        this.canvas.addEventListener("keypress", this.onKeyPress.bind(this))
-        document.addEventListener("keydown", this.onKeyPress.bind(this), false)
+        document.addEventListener("keypress", this.onKeyPress.bind(this))
     }
 
-    private onKeyPress(e: KeyboardEvent) {
-        console.log(e)
+    private keyMap = new Map([
+        [
+            "Digit1",
+            () => {
+                this.sceneRotX = -Math.PI
+                this.sceneRotY = -Math.PI
+            },
+        ],
+        [
+            "Digit2",
+            () => {
+                this.sceneRotX = -Math.PI
+                this.sceneRotY = 0
+            },
+        ],
+        [
+            "Digit3",
+            () => {
+                this.sceneRotX = 0
+                this.sceneRotY = Math.PI / 2
+            },
+        ],
+        [
+            "Digit4",
+            () => {
+                this.sceneRotX = 0
+                this.sceneRotY = -Math.PI / 2
+            },
+        ],
+        [
+            "Digit5",
+            () => {
+                this.sceneRotX = -Math.PI / 2
+                this.sceneRotY = Math.PI
+            },
+        ],
+        [
+            "Digit6",
+            () => {
+                this.sceneRotX = Math.PI / 2
+                this.sceneRotY = Math.PI
+            },
+        ],
+        [
+            "Backquote",
+            () => {
+                this.sceneRotX = -Math.PI / 8
+                this.sceneRotY = Math.PI * (5 / 4)
+                this.cameraTranslation = Vec3f.ZERO
+            },
+        ],
+    ])
 
-        if (e.code === "Digit1") {
-            this.sceneRotX = -1 * Math.PI
-            this.sceneRotY = -1 * Math.PI
+    private onKeyPress(e: KeyboardEvent) {
+        // console.log(e)
+        const fn = this.keyMap.get(e.code)
+        if (fn) {
+            fn()
+            e.preventDefault()
+            this.updateTransforms()
         }
-        if (e.code === "Digit2") {
-            this.sceneRotX = -1 * Math.PI
-            this.sceneRotY = 0
-        }
-        if (e.code === "Digit3") {
-            this.sceneRotX = 0
-            this.sceneRotY = (1 / 2) * Math.PI
-        }
-        if (e.code === "Digit4") {
-            this.sceneRotX = 0
-            this.sceneRotY = (-1 / 2) * Math.PI
-        }
-        if (e.code === "Digit5") {
-            this.sceneRotX = (-1 / 2) * Math.PI
-            this.sceneRotY = 1 * Math.PI
-        }
-        if (e.code === "Digit6") {
-            this.sceneRotX = (1 / 2) * Math.PI
-            this.sceneRotY = 1 * Math.PI
-        }
-        if (e.code === "Backquote") {
-            this.sceneRotX = -Math.PI / 8
-            this.sceneRotY = Math.PI * (5 / 4)
-            this.cameraTranslation = Vec3f.ZERO
-        }
-        e.preventDefault()
-        this.updateTransforms()
     }
 
     private onPointerDown(e: PointerEvent) {
@@ -180,9 +206,7 @@ export class Controls {
         return this.pivot.add(Vec3f.FWD)
     }
 
-    // Updates the scene transform matrices.
-    // The view matrix is computed as if the camera were orbiting the pivot.
-    // The scene transform is the inverse of that view matrix.
+    // The view matrix is computed as if the camera were orbiting the pivot
     private updateTransforms() {
         this.cameraPosition = this.computeCameraPosition()
         // Use a fixed up vector (world up) for constructing the view matrix.
@@ -193,7 +217,6 @@ export class Controls {
         this.sceneTransform = view
     }
 
-    // Call this method to save the current camera state.
     saveCameraState(): void {
         ls.setVec3f("camera.position", this.cameraPosition)
         ls.setVec3f("camera.translation", this.cameraTranslation)
@@ -203,7 +226,6 @@ export class Controls {
         ls.setFloat("camera.sceneRotY", this.sceneRotY)
     }
 
-    // Call this method on initialization to restore the camera state.
     loadCameraState(): void {
         this.cameraPosition = ls.getVec3f("camera.position") ?? Vec3f.ZERO
         this.cameraTranslation = ls.getVec3f("camera.translation") ?? Vec3f.ZERO
@@ -211,6 +233,5 @@ export class Controls {
         this.orthoZoom = ls.getFloat("camera.orthoZoom") ?? 20
         this.sceneRotX = ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
         this.sceneRotY = ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
-        this.updateTransforms()
     }
 }

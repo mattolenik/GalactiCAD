@@ -1,12 +1,29 @@
+import { clamp, clampAngle } from "./math.mjs"
 import * as ls from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
-import { vec3, Vec3f } from "./vecmat/vector.mjs"
+import { Vec3f } from "./vecmat/vector.mjs"
 
 export class Controls {
     canvas: HTMLCanvasElement
     pivot: Vec3f
-    sceneRotY: number
-    sceneRotX: number
+
+    private _sceneRotX: number = 0
+    private _sceneRotY: number = 0
+
+    get sceneRotX() {
+        return this._sceneRotX
+    }
+    set sceneRotX(t: number) {
+        this._sceneRotX = clampAngle(t)
+    }
+
+    get sceneRotY() {
+        return this._sceneRotY
+    }
+    set sceneRotY(t: number) {
+        this._sceneRotY = clampAngle(t)
+    }
+
     private _radius: number = 1
     get radius() {
         return this._radius
@@ -27,16 +44,16 @@ export class Controls {
     dragMode: "rotate" | "pan" | null = null
     lastX: number = 0
     lastY: number = 0
-    cursorDelta: Vec3f
+    cursorDelta: Vec3f = Vec3f.ZERO
 
     rotateSensitivity: number = 0.005
     panSensitivity: number = 0.1
     zoomSensitivity: number = 0.05
     orthoZoom: number = 40
 
-    sceneTransform: Mat4x4f
-    cameraPosition: Vec3f
-    cameraTranslation: Vec3f
+    sceneTransform: Mat4x4f = new Mat4x4f(new Float32Array(16))
+    cameraPosition: Vec3f = Vec3f.ZERO
+    cameraTranslation: Vec3f = Vec3f.ZERO
     lastCameraUpdate: number = 0
 
     workerInterval: NodeJS.Timeout
@@ -47,12 +64,6 @@ export class Controls {
         this.radius = radius
         this.sceneRotY = initialTheta
         this.sceneRotX = initialPhi
-        this.cursorDelta = Vec3f.ZERO
-
-        this.sceneTransform = new Mat4x4f(new Float32Array(16))
-
-        this.cameraPosition = Vec3f.ZERO
-        this.cameraTranslation = Vec3f.ZERO
 
         this.initEvents()
         this.loadCameraState()
@@ -202,7 +213,4 @@ export class Controls {
         this.sceneRotY = ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
         this.updateTransforms()
     }
-}
-function clamp(x: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, x))
 }

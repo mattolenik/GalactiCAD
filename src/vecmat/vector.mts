@@ -158,7 +158,11 @@ class BaseVec3 {
 
 class BaseVec4 {
     public data: Float32Array
-    constructor(x: Float32Array | [number, number, number, number] | number, y?: number, z?: number, w?: number) {
+    constructor(x?: Float32Array | [number, number, number, number] | number, y?: number, z?: number, w?: number) {
+        if (x === undefined) {
+            this.data = new Float32Array([0, 0, 0, 0])
+            return
+        }
         if (typeof x === "number") {
             if (y === undefined || z === undefined || w === undefined) {
                 throw new Error("invalid vector size, must be 4")

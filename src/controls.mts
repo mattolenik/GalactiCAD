@@ -1,7 +1,20 @@
 import { clamp, clampAngle } from "./math.mjs"
+import { wgsl } from "./reflect/wgsl.mjs"
 import * as ls from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
-import { Vec3f } from "./vecmat/vector.mjs"
+import { Vec3f, Vec4f } from "./vecmat/vector.mjs"
+
+@wgsl.uniform
+export class CameraInfo {
+    @wgsl.bind({ size: Mat4x4f.byteLength })
+    sceneTransform = new Mat4x4f()
+
+    @wgsl.bind({ size: Vec4f.byteLength })
+    cameraPosition = new Vec4f()
+
+    @wgsl.bind({ size: 4 })
+    orthoScale: number = 1
+}
 
 export class Controls {
     canvas: HTMLCanvasElement

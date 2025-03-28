@@ -1,5 +1,5 @@
 import { clamp, clampAngle } from "./math.mjs"
-import { wgsl } from "./reflect/wgsl.mjs"
+import * as wgsl from "./reflect/wgsl.mjs"
 import * as ls from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import { Vec3f, Vec4f } from "./vecmat/vector.mjs"

@@ -2,11 +2,11 @@ import { MemoryShareable } from "../reflect/reflect.mjs"
 
 var ToStringPrecision = 2
 
+export type Vec2 = Vec2f | Float32Array | [number, number]
+
 class BaseVec2 implements MemoryShareable {
     public data: Float32Array
-    get size() {
-        return 8
-    }
+    byteLength = 8
 
     constructor(x: Float32Array | [number, number] | number, y?: number) {
         if (typeof x === "number") {
@@ -77,9 +77,7 @@ class BaseVec2 implements MemoryShareable {
 
 class BaseVec3 implements MemoryShareable {
     public data: Float32Array
-    get size() {
-        return 12
-    }
+    byteLength = 12
 
     constructor(x: Float32Array | [number, number, number] | number, y?: number, z?: number) {
         if (typeof x === "number") {
@@ -162,11 +160,9 @@ class BaseVec3 implements MemoryShareable {
     }
 }
 
-class BaseVec4 {
-    public data: Float32Array
-    get size() {
-        return 16
-    }
+class BaseVec4 implements MemoryShareable {
+    data: Float32Array
+    byteLength = 16
 
     constructor(x?: Float32Array | [number, number, number, number] | number, y?: number, z?: number, w?: number) {
         if (x === undefined) {

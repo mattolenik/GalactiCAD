@@ -4,7 +4,7 @@ import * as ls from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import { Vec3f, Vec4f } from "./vecmat/vector.mjs"
 
-export class CameraInfo extends wgsl.uniform(class {}) {
+export class CameraInfo extends wgsl.buffer(class {}) {
     @wgsl.bind()
     sceneTransform = new Mat4x4f()
 

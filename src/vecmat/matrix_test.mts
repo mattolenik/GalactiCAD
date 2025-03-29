@@ -7,17 +7,17 @@ test("Mat2 operations", () => {
     // Mat2 is column‑major: elements order is [m00, m10, m01, m11]
     const m1 = new Mat2x2f(new Float32Array([1, 2, 3, 4]))
     const m2 = new Mat2x2f(new Float32Array([5, 6, 7, 8]))
-    assert.deepStrictEqual(m1.add(m2).elements, new Float32Array([6, 8, 10, 12]), "Mat2 add failed")
-    assert.deepStrictEqual(m2.subtract(m1).elements, new Float32Array([4, 4, 4, 4]), "Mat2 subtract failed")
-    assert.deepStrictEqual(m1.multiply(2).elements, new Float32Array([2, 4, 6, 8]), "Mat2 scalar multiply failed")
+    assert.deepStrictEqual(m1.add(m2).data, new Float32Array([6, 8, 10, 12]), "Mat2 add failed")
+    assert.deepStrictEqual(m2.subtract(m1).data, new Float32Array([4, 4, 4, 4]), "Mat2 subtract failed")
+    assert.deepStrictEqual(m1.multiply(2).data, new Float32Array([2, 4, 6, 8]), "Mat2 scalar multiply failed")
     // Expected matrix multiplication: [1*5+3*6, 2*5+4*6, 1*7+3*8, 2*7+4*8] = [23,34,31,46]
-    assert.deepStrictEqual(m1.multiply(m2).elements, new Float32Array([23, 34, 31, 46]), "Mat2 matrix multiply failed")
+    assert.deepStrictEqual(m1.multiply(m2).data, new Float32Array([23, 34, 31, 46]), "Mat2 matrix multiply failed")
     assert.strictEqual(m1.determinant(), 1 * 4 - 2 * 3, "Mat2 determinant failed")
 
     const m1Inv = m1.inverse()
     const expectedInv = new Float32Array([4, -2, -3, 1]).map(v => v / (1 * 4 - 2 * 3))
-    assert.deepStrictEqual(m1Inv.elements, expectedInv, "Mat2 inverse failed")
-    assert.deepStrictEqual(m1.transpose().elements, new Float32Array([1, 3, 2, 4]), "Mat2 transpose failed")
+    assert.deepStrictEqual(m1Inv.data, expectedInv, "Mat2 inverse failed")
+    assert.deepStrictEqual(m1.transpose().data, new Float32Array([1, 3, 2, 4]), "Mat2 transpose failed")
 
     const v = new Vec2f(1, 1)
     assert.deepStrictEqual(m1.transform(v).data, new Vec2f(1 * 1 + 3 * 1, 2 * 1 + 4 * 1).data, "Mat2 transform failed")
@@ -30,7 +30,7 @@ test("Mat3 operations", () => {
     assert.strictEqual(m.determinant(), det, "Mat3 determinant failed")
 
     const expectedTranspose = new Float32Array([1, 0, 5, 2, 1, 6, 3, 4, 0])
-    assert.deepStrictEqual(Array.from(m.transpose().elements), Array.from(expectedTranspose), "Mat3 transpose failed")
+    assert.deepStrictEqual(Array.from(m.transpose().data), Array.from(expectedTranspose), "Mat3 transpose failed")
 
     const v = new Vec3f(1, 2, 3)
     // m * v = [1*1+0*2+5*3, 2*1+1*2+6*3, 3*1+4*2+0*3] = [16,22,11]
@@ -45,12 +45,12 @@ test("Mat4 operations", () => {
     // Identity: transforming a vector should yield the same vector.
     const id = Mat4x4f.identity()
     const v4 = new Vec4f(1, 2, 3, 1)
-    assert.deepStrictEqual(id.transform(v4).elements, v4.elements, "Mat4 identity transform failed")
+    assert.deepStrictEqual(id.transform(v4).data, v4.data, "Mat4 identity transform failed")
 
     // Translation.
-    const translation = Mat4x4f.translation(1, 2, 3)
+    const translation = Mat4x4f.translation(new Vec3f(1, 2, 3))
     const point = new Vec4f(4, 5, 6, 1)
-    assert.deepStrictEqual(translation.transform(point).elements, new Vec4f(5, 7, 9, 1).elements, "Mat4 translation transform failed")
+    assert.deepStrictEqual(translation.transform(point).data, new Vec4f(5, 7, 9, 1).data, "Mat4 translation transform failed")
     assert.deepStrictEqual(translation.transformPoint(new Vec3f(4, 5, 6)).data, new Vec3f(5, 7, 9).data, "Mat4 transformPoint failed")
 
     // Rotation around X axis.
@@ -61,9 +61,9 @@ test("Mat4 operations", () => {
     assert.ok(Math.abs(resultX.y) < 1e-6 && Math.abs(resultX.z - 1) < 1e-6, "Mat4 rotationX failed")
 
     // Scaling.
-    const scaling = Mat4x4f.scaling(2, 3, 4)
+    const scaling = Mat4x4f.scaling(new Vec3f(2, 3, 4))
     const vScale = new Vec4f(1, 1, 1, 1)
-    assert.deepStrictEqual(scaling.transform(vScale).elements, new Vec4f(2, 3, 4, 1).elements, "Mat4 scaling failed")
+    assert.deepStrictEqual(scaling.transform(vScale).data, new Vec4f(2, 3, 4, 1).data, "Mat4 scaling failed")
 
     // Perspective.
     const perspective = Mat4x4f.perspective(Math.PI / 2, 1.0, 0.1, 100)

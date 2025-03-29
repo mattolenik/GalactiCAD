@@ -1,7 +1,6 @@
 import { Controls } from "./controls.mjs"
 import { Box, Group, Node, SceneUniform, Sphere, Subtract, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
-import { Mat4x4f } from "./vecmat/matrix.mjs"
 import { vec3, Vec4f } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
@@ -70,16 +69,10 @@ export class SDFRenderer {
         })
 
         this.uniformBuffers.sceneTransform = this.device.createBuffer({
-            size: Mat4x4f.byteLength,
+            size: 64,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "sceneTransform",
         })
-
-        // this.uniformBuffers.inverseSceneTransform = this.device.createBuffer({
-        //     size: Mat4x4f.byteLength,
-        //     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        //     label: "sceneTransform",
-        // })
 
         this.uniformBuffers.cameraPosition = this.device.createBuffer({
             size: Vec4f.byteLength,
@@ -161,7 +154,7 @@ export class SDFRenderer {
         this.scene.root.uniformCopy(this.scene)
 
         this.device.queue.writeBuffer(this.uniformBuffers.scene, 0, this.scene.args.data)
-        this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform, 0, this.controls.sceneTransform.elements)
+        this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform, 0, this.controls.sceneTransform.data)
         this.device.queue.writeBuffer(this.uniformBuffers.cameraPosition, 0, this.controls.cameraPosition.data)
         this.device.queue.writeBuffer(this.uniformBuffers.orthoScale, 0, new Float32Array([this.controls.orthoZoom]))
 

@@ -1,8 +1,8 @@
 const globalMetadata = new WeakMap<object, Map<string | symbol, Map<any, any>>>()
 
 export interface MemoryShareable {
-    get data(): BufferSource | SharedArrayBuffer
-    get size(): number
+    data: BufferSource | SharedArrayBuffer
+    byteLength: number
 }
 
 export interface Decorated {
@@ -70,4 +70,14 @@ export function getDecoratedProperties<TMeta>(decoratorName: string, obj: any): 
         props.push([prop[0], prop[1]])
     }
     return props
+}
+
+export function getDecoratedPropertyValues<T>(decoratorName: string, obj: any): [string, T][] {
+    const props = getDecoratedProperties(decoratorName, obj)
+    const values: [string, T][] = []
+    for (const [name] of props) {
+        const value = Reflect.get(obj, name)
+        values.push([name, value])
+    }
+    return values
 }

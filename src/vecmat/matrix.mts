@@ -1,43 +1,54 @@
+import { MemoryShareable } from "../reflect/reflect.mjs"
 import { Vec2f, Vec3f, Vec4f } from "./vector.mjs"
 
-export class Mat2x2f {
-    static get byteLength(): number {
-        return 16
-    }
-    public elements: Float32Array
-    constructor(elements?: Float32Array) {
-        this.elements = elements ? new Float32Array(elements) : new Float32Array([1, 0, 0, 1])
+export type Mat2x2 = Mat2x2f | Float32Array | [number, number, number, number]
+export type Mat3x3 = Mat3x3f | Float32Array | [number, number, number, number, number, number, number, number, number]
+export type Mat4x4 =
+    | Mat4x4f
+    | Float32Array
+    | [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]
+
+export class Mat2x2f implements MemoryShareable {
+    data: Float32Array
+    byteLength = 16
+    length = 4
+    constructor(elements: Mat2x2 = [1, 0, 0, 1]) {
+        if (elements.length != this.length) {
+            throw new Error(`size mismatch, expected incoming elements to have length of ${this.length}, got ${elements.length}`)
+        }
+        this.data = new Float32Array(this.length)
+        this.data.set(elements instanceof Mat2x2f ? elements.data : elements)
     }
     clone(): Mat2x2f {
-        return new Mat2x2f(this.elements)
+        return new Mat2x2f(this)
     }
     copy(m: Mat2x2f): this {
-        this.elements.set(m.elements)
+        this.data.set(m.data)
         return this
     }
     equals(m: Mat2x2f): boolean {
         for (let i = 0; i < 4; i++) {
-            if (this.elements[i] !== m.elements[i]) return false
+            if (this.data[i] !== m.data[i]) return false
         }
         return true
     }
     add(m: Mat2x2f): Mat2x2f {
-        const e = this.elements,
-            f = m.elements
+        const e = this.data,
+            f = m.data
         return new Mat2x2f(new Float32Array([e[0] + f[0], e[1] + f[1], e[2] + f[2], e[3] + f[3]]))
     }
     subtract(m: Mat2x2f): Mat2x2f {
-        const e = this.elements,
-            f = m.elements
+        const e = this.data,
+            f = m.data
         return new Mat2x2f(new Float32Array([e[0] - f[0], e[1] - f[1], e[2] - f[2], e[3] - f[3]]))
     }
     multiply<T extends number | Mat2x2f>(arg: T): Mat2x2f {
         if (typeof arg === "number") {
-            const e = this.elements
+            const e = this.data
             return new Mat2x2f(new Float32Array([e[0] * arg, e[1] * arg, e[2] * arg, e[3] * arg]))
         } else {
-            const a = this.elements,
-                b = arg.elements
+            const a = this.data,
+                b = arg.data
             return new Mat2x2f(
                 new Float32Array([
                     a[0] * b[0] + a[2] * b[1],
@@ -49,64 +60,67 @@ export class Mat2x2f {
         }
     }
     determinant(): number {
-        const [a, b, c, d] = this.elements
+        const [a, b, c, d] = this.data
         return a * d - b * c
     }
     inverse(): Mat2x2f {
         const det = this.determinant()
         if (det === 0) throw new Error("Matrix is not invertible")
-        const [a, b, c, d] = this.elements
+        const [a, b, c, d] = this.data
         return new Mat2x2f(new Float32Array([d / det, -b / det, -c / det, a / det]))
     }
     transpose(): Mat2x2f {
-        const [a, b, c, d] = this.elements
+        const [a, b, c, d] = this.data
         return new Mat2x2f(new Float32Array([a, c, b, d]))
     }
     transform(v: Vec2f): Vec2f {
-        const [a, b, c, d] = this.elements
+        const [a, b, c, d] = this.data
         return new Vec2f([a * v.x + c * v.y, b * v.x + d * v.y])
     }
 }
 
-export class Mat3x3f {
-    static get byteLength(): number {
-        return 36
-    }
-    public elements: Float32Array
-    constructor(elements?: Float32Array) {
-        this.elements = elements ? new Float32Array(elements) : new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1])
+export class Mat3x3f implements MemoryShareable {
+    data: Float32Array
+    byteLength = 36
+    length = 9
+    constructor(elements: Mat3x3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]) {
+        if (elements.length != this.length) {
+            throw new Error(`size mismatch, expected incoming elements to have length of ${this.length}, got ${elements.length}`)
+        }
+        this.data = new Float32Array(this.length)
+        this.data.set(elements instanceof Mat3x3f ? elements.data : elements)
     }
     clone(): Mat3x3f {
-        return new Mat3x3f(this.elements)
+        return new Mat3x3f(this.data)
     }
     copy(m: Mat3x3f): this {
-        this.elements.set(m.elements)
+        this.data.set(m.data)
         return this
     }
     equals(m: Mat3x3f): boolean {
         for (let i = 0; i < 9; i++) {
-            if (this.elements[i] !== m.elements[i]) return false
+            if (this.data[i] !== m.data[i]) return false
         }
         return true
     }
     add(m: Mat3x3f): Mat3x3f {
         const result = new Float32Array(9)
-        for (let i = 0; i < 9; i++) result[i] = this.elements[i] + m.elements[i]
+        for (let i = 0; i < 9; i++) result[i] = this.data[i] + m.data[i]
         return new Mat3x3f(result)
     }
     subtract(m: Mat3x3f): Mat3x3f {
         const result = new Float32Array(9)
-        for (let i = 0; i < 9; i++) result[i] = this.elements[i] - m.elements[i]
+        for (let i = 0; i < 9; i++) result[i] = this.data[i] - m.data[i]
         return new Mat3x3f(result)
     }
     multiply<T extends number | Mat3x3f>(arg: T): Mat3x3f {
         if (typeof arg === "number") {
             const result = new Float32Array(9)
-            for (let i = 0; i < 9; i++) result[i] = this.elements[i] * arg
+            for (let i = 0; i < 9; i++) result[i] = this.data[i] * arg
             return new Mat3x3f(result)
         } else {
-            const a = this.elements,
-                b = arg.elements
+            const a = this.data,
+                b = arg.data
             const result = new Float32Array(9)
             for (let col = 0; col < 3; col++) {
                 for (let row = 0; row < 3; row++) {
@@ -121,11 +135,11 @@ export class Mat3x3f {
         }
     }
     determinant(): number {
-        const m = this.elements
+        const m = this.data
         return m[0] * (m[4] * m[8] - m[7] * m[5]) - m[3] * (m[1] * m[8] - m[7] * m[2]) + m[6] * (m[1] * m[5] - m[4] * m[2])
     }
     inverse(): Mat3x3f {
-        const m = this.elements
+        const m = this.data
         const det = this.determinant()
         if (det === 0) throw new Error("Matrix not invertible")
         const inv = new Float32Array(9)
@@ -141,28 +155,31 @@ export class Mat3x3f {
         return new Mat3x3f(inv)
     }
     transpose(): Mat3x3f {
-        const m = this.elements
+        const m = this.data
         return new Mat3x3f(new Float32Array([m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]]))
     }
     transform(v: Vec3f): Vec3f {
-        const m = this.elements
+        const m = this.data
         return new Vec3f([m[0] * v.x + m[3] * v.y + m[6] * v.z, m[1] * v.x + m[4] * v.y + m[7] * v.z, m[2] * v.x + m[5] * v.y + m[8] * v.z])
     }
 }
 
-export class Mat4x4f {
-    static get byteLength(): number {
-        return 64
-    }
-    public elements: Float32Array
-    constructor(elements?: Float32Array) {
-        this.elements = elements ? new Float32Array(elements) : new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+export class Mat4x4f implements MemoryShareable {
+    data: Float32Array
+    byteLength = 64
+    length = 16
+    constructor(elements: Mat4x4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) {
+        if (elements.length != this.length) {
+            throw new Error(`size mismatch, expected incoming elements to have length of ${this.length}, got ${elements.length}`)
+        }
+        this.data = new Float32Array(this.length)
+        this.data.set(elements instanceof Mat4x4f ? elements.data : elements)
     }
     static identity(): Mat4x4f {
         return new Mat4x4f()
     }
     static translation(v: Vec3f): Mat4x4f {
-        return new Mat4x4f(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, v.x, v.y, v.z, 1]))
+        return new Mat4x4f(new Float32Array([]))
     }
     static rotationX(angle: number): Mat4x4f {
         const c = Math.cos(angle),
@@ -191,58 +208,56 @@ export class Mat4x4f {
         const lr = 1 / (left - right)
         const bt = 1 / (bottom - top)
         const nf = 1 / (near - far)
-        return new Mat4x4f(
-            new Float32Array([
-                -2 * lr,
-                0,
-                0,
-                0,
-                0,
-                -2 * bt,
-                0,
-                0,
-                0,
-                0,
-                2 * nf,
-                0,
-                (left + right) * lr,
-                (top + bottom) * bt,
-                (far + near) * nf,
-                1,
-            ])
-        )
+        return new Mat4x4f([
+            -2 * lr,
+            0,
+            0,
+            0,
+            0,
+            -2 * bt,
+            0,
+            0,
+            0,
+            0,
+            2 * nf,
+            0,
+            (left + right) * lr,
+            (top + bottom) * bt,
+            (far + near) * nf,
+            1,
+        ])
     }
     clone(): Mat4x4f {
-        return new Mat4x4f(this.elements)
+        return new Mat4x4f(this)
     }
     copy(m: Mat4x4f): this {
-        this.elements.set(m.elements)
+        this.data.set(m.data)
         return this
     }
     equals(m: Mat4x4f): boolean {
         for (let i = 0; i < 16; i++) {
-            if (this.elements[i] !== m.elements[i]) return false
+            if (this.data[i] !== m.data[i]) return false
         }
         return true
     }
     add(m: Mat4x4f): Mat4x4f {
         const result = new Float32Array(16)
-        for (let i = 0; i < 16; i++) result[i] = this.elements[i] + m.elements[i]
+        for (let i = 0; i < 16; i++) result[i] = this.data[i] + m.data[i]
         return new Mat4x4f(result)
     }
     subtract(m: Mat4x4f): Mat4x4f {
         const result = new Float32Array(16)
-        for (let i = 0; i < 16; i++) result[i] = this.elements[i] - m.elements[i]
+        for (let i = 0; i < 16; i++) result[i] = this.data[i] - m.data[i]
         return new Mat4x4f(result)
     }
     multiply<T extends number | Mat4x4f>(arg: T): Mat4x4f {
         if (typeof arg === "number") {
             const result = new Float32Array(16)
-            for (let i = 0; i < 16; i++) result[i] = this.elements[i] * arg
+            for (let i = 0; i < 16; i++) result[i] = this.data[i] * arg
             return new Mat4x4f(result)
         } else {
-            const a = this.elements,
-                b = arg.elements
+            const a = this.data,
+                b = arg.data
             const result = new Float32Array(16)
             for (let i = 0; i < 4; i++) {
                 // row
@@ -259,7 +274,7 @@ export class Mat4x4f {
         }
     }
     determinant(): number {
-        const m = this.elements
+        const m = this.data
         const m0 = m[0],
             m1 = m[1],
             m2 = m[2],
@@ -304,7 +319,7 @@ export class Mat4x4f {
         )
     }
     inverse(): Mat4x4f {
-        const m = this.elements
+        const m = this.data
         const inv = new Float32Array(16)
         inv[0] =
             m[5] * m[10] * m[15] -
@@ -422,14 +437,14 @@ export class Mat4x4f {
         return new Mat4x4f(inv)
     }
     transpose(): Mat4x4f {
-        const m = this.elements
+        const m = this.data
         return new Mat4x4f(
             new Float32Array([m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14], m[3], m[7], m[11], m[15]])
         )
     }
     // Transform a 4D vector.
     transform(v: Vec4f): Vec4f {
-        const m = this.elements
+        const m = this.data
         return new Vec4f([
             m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12] * v.w,
             m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13] * v.w,

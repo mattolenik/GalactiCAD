@@ -50,15 +50,15 @@ test("Vec2 swizzle setters", () => {
 test("Vec2 arithmetic", () => {
     const v1 = new Vec2f(1, 2)
     const v2 = new Vec2f(3, 4)
-    assert.deepStrictEqual(v1.add(v2).elements, new Vec2f(4, 6).data, "Vec2 add failed")
-    assert.deepStrictEqual(v2.subtract(v1).elements, new Vec2f(2, 2).data, "Vec2 subtract failed")
-    assert.deepStrictEqual(v1.multiply(2).elements, new Vec2f(2, 4).data, "Vec2 scalar multiply failed")
-    assert.deepStrictEqual(v1.multiply(v2).elements, new Vec2f(3, 8).data, "Vec2 component-wise multiply failed")
+    assert.deepStrictEqual(v1.add(v2).data, new Vec2f(4, 6).data, "Vec2 add failed")
+    assert.deepStrictEqual(v2.subtract(v1).data, new Vec2f(2, 2).data, "Vec2 subtract failed")
+    assert.deepStrictEqual(v1.multiply(2).data, new Vec2f(2, 4).data, "Vec2 scalar multiply failed")
+    assert.deepStrictEqual(v1.multiply(v2).data, new Vec2f(3, 8).data, "Vec2 component-wise multiply failed")
     assert.strictEqual(v1.dot(v2), 11, "Vec2 dot failed")
 
     // Normalizing a zero vector should return a zero vector.
     const zero = new Vec2f(0, 0)
-    assert.deepStrictEqual(zero.normalize().elements, zero.data, "Vec2 normalization of zero failed")
+    assert.deepStrictEqual(zero.normalize().data, zero.data, "Vec2 normalization of zero failed")
 })
 
 // -----------------------------------------------------------------------------
@@ -142,11 +142,7 @@ test("Vec4 swizzle getters", () => {
     keys.forEach(key => {
         const expected = expectedVec4FromSwizzle(v, key)
         const actual = (v as any)[key] as Vec4f
-        assert.deepStrictEqual(
-            actual.elements,
-            expected.elements,
-            `Vec4.${key} getter failed: expected [${expected.elements}], got [${actual.elements}]`
-        )
+        assert.deepStrictEqual(actual.data, expected.data, `Vec4.${key} getter failed: expected [${expected.data}], got [${actual.data}]`)
     })
 })
 
@@ -167,12 +163,12 @@ test("Vec4 swizzle setters", () => {
         const expected: number[] = [1, 2, 3, 4]
         for (let i = 0; i < key.length; i++) {
             const idx = mapping[key[i]]
-            expected[idx] = newVal.elements[i]
+            expected[idx] = newVal.data[i]
         }
         assert.deepStrictEqual(
-            Array.from(v.elements),
+            Array.from(v.data),
             expected,
-            `Vec4.${key} setter failed: expected [${expected}], got [${Array.from(v.elements)}]`
+            `Vec4.${key} setter failed: expected [${expected}], got [${Array.from(v.data)}]`
         )
     })
 })
@@ -180,12 +176,12 @@ test("Vec4 swizzle setters", () => {
 test("Vec4 arithmetic", () => {
     const v1 = new Vec4f(1, 2, 3, 4)
     const v2 = new Vec4f(5, 6, 7, 8)
-    assert.deepStrictEqual(v1.add(v2).elements, new Vec4f(6, 8, 10, 12).elements, "Vec4 add failed")
-    assert.deepStrictEqual(v2.subtract(v1).elements, new Vec4f(4, 4, 4, 4).elements, "Vec4 subtract failed")
-    assert.deepStrictEqual(v1.multiply(2).elements, new Vec4f(2, 4, 6, 8).elements, "Vec4 scalar multiply failed")
-    assert.deepStrictEqual(v1.multiply(v2).elements, new Vec4f(5, 12, 21, 32).elements, "Vec4 component-wise multiply failed")
+    assert.deepStrictEqual(v1.add(v2).data, new Vec4f(6, 8, 10, 12).data, "Vec4 add failed")
+    assert.deepStrictEqual(v2.subtract(v1).data, new Vec4f(4, 4, 4, 4).data, "Vec4 subtract failed")
+    assert.deepStrictEqual(v1.multiply(2).data, new Vec4f(2, 4, 6, 8).data, "Vec4 scalar multiply failed")
+    assert.deepStrictEqual(v1.multiply(v2).data, new Vec4f(5, 12, 21, 32).data, "Vec4 component-wise multiply failed")
     assert.strictEqual(v1.dot(v2), 70, "Vec4 dot failed")
 
     const zero = new Vec4f(0, 0, 0, 0)
-    assert.deepStrictEqual(zero.normalize().elements, zero.elements, "Vec4 normalization of zero failed")
+    assert.deepStrictEqual(zero.normalize().data, zero.data, "Vec4 normalization of zero failed")
 })

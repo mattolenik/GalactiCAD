@@ -11,8 +11,8 @@ const NORMAL_EPS: f32 = 0.001;
 @group(0) @binding(2) var<uniform> cameraPosition: vec4f;
 @group(0) @binding(3) var<uniform> orthoScale: f32;
 
-struct CameraInfo {
-}
+// struct CameraInfo {
+// }
 
 struct VertexOutput {
     @builtin(position) position: vec4f,

@@ -1,7 +1,7 @@
 const globalMetadata = new WeakMap<object, Map<string | symbol, Map<any, any>>>()
 
 export interface Decorated {
-    decoratorMetadata: DecoratorMetadata
+    get decoratorMetadata(): DecoratorMetadata
 }
 
 export class DecoratorMetadata {

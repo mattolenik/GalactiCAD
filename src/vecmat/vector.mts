@@ -1,5 +1,3 @@
-type Constructor<T = {}> = new (...args: any[]) => T
-
 var ToStringPrecision = 2
 
 class BaseVec2 {

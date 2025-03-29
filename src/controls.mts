@@ -4,8 +4,8 @@ import * as ls from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import { Vec3f, Vec4f } from "./vecmat/vector.mjs"
 
-@wgsl.uniform
-export class CameraInfo {
+class CameraInfoBase {}
+export class CameraInfo extends wgsl.uniform(CameraInfoBase) {
     @wgsl.bind({ size: Mat4x4f.byteLength })
     sceneTransform = new Mat4x4f()
 
@@ -151,8 +151,8 @@ export class Controls {
 
         const rect = this.canvas.getBoundingClientRect()
         if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
-            this.isDragging = false
-            this.dragMode = null
+            // this.isDragging = false
+            // this.dragMode = null
             return
         }
 

@@ -2,17 +2,23 @@ import { Decorated, DecoratorMetadata, getDecoratedProperties } from "./reflect.
 
 export function bind({ size, offset = 0 }: { size: number; offset?: number }) {
     return function (target: any, propertyKey: string): void {
-        if (target?.meta instanceof DecoratorMetadata) {
-            target.meta.set("bind", { size, offset }, target, propertyKey)
+        console.log(target)
+        console.log(target.decoratorMetadata)
+        if (target?.decoratorMetadata instanceof DecoratorMetadata) {
+            target.decoratorMetadata.set("bind", { size, offset }, target, propertyKey)
         } else {
             throw new Error("the bind decorator can only be applied to properties on classes which have the @uniform decorator")
         }
     }
 }
 
-export function uniform<T extends { new (...args: any[]): {} }>(constructor: T) {
-    return class extends constructor implements Decorated {
-        decoratorMetadata = new DecoratorMetadata(this)
+export function uniform<T extends Constructor>(base: T) {
+    return class extends base implements Decorated {
+        _meta!: DecoratorMetadata
+        get decoratorMetadata() {
+            this._meta = this._meta ?? new DecoratorMetadata(this)
+            return this._meta
+        }
         write(queue: GPUQueue, buffer: GPUBuffer) {
             const props = getDecoratedProperties<{ size: number; offset: number }>("bind", this)
             let written = 0

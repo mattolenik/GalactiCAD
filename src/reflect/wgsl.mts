@@ -1,11 +1,9 @@
-import { Decorated, DecoratorMetadata, getDecoratedProperties } from "./reflect.mjs"
+import { Decorated, DecoratorMetadata, getDecoratedProperties, MemoryShareable } from "./reflect.mjs"
 
-export function bind({ size, offset = 0 }: { size: number; offset?: number }) {
+export function bind() {
     return function (target: any, propertyKey: string): void {
-        console.log(target)
-        console.log(target.decoratorMetadata)
         if (target?.decoratorMetadata instanceof DecoratorMetadata) {
-            target.decoratorMetadata.set("bind", { size, offset }, target, propertyKey)
+            target.decoratorMetadata.set("bind", undefined, target, propertyKey)
         } else {
             throw new Error("the bind decorator can only be applied to properties on classes which have the @uniform decorator")
         }
@@ -14,22 +12,28 @@ export function bind({ size, offset = 0 }: { size: number; offset?: number }) {
 
 export function uniform<T extends Constructor>(base: T) {
     return class extends base implements Decorated {
-        _meta!: DecoratorMetadata
+        private meta!: DecoratorMetadata
         get decoratorMetadata() {
-            this._meta = this._meta ?? new DecoratorMetadata(this)
-            return this._meta
+            this.meta = this.meta ?? new DecoratorMetadata(this)
+            return this.meta
         }
         write(queue: GPUQueue, buffer: GPUBuffer) {
-            const props = getDecoratedProperties<{ size: number; offset: number }>("bind", this)
+            const props = getDecoratedProperties("bind", this)
             let written = 0
-            for (const prop of props) {
-                const propValue = Reflect.get(this, prop[0]) as { data: Float32Array }
-                if (!(propValue?.data instanceof Float32Array)) {
-                    // TODO: use interface instead, or in addition to? Is this even a good pattern of convention here?
-                    throw new Error("must provide data property of type Float32Array")
+            for (const [name] of props) {
+                const propValue = Reflect.get(this, name, this) as any
+                const data: Float32Array =
+                    propValue instanceof Float32Array
+                        ? propValue
+                        : typeof propValue === "number"
+                        ? new Float32Array([propValue as number])
+                        : propValue?.data
+                if (!(data instanceof Float32Array)) {
+                    throw new Error("@bind properties must implement the MemoryShareable interface or be a Float32Array or a number")
                 }
-                console.trace("writing prop", prop[0])
-                queue.writeBuffer(buffer, written, propValue.data, prop[1]?.offset, prop[1]?.size)
+                console.trace("writing prop", name)
+                queue.writeBuffer(buffer, written, data)
+                written += data.byteLength
             }
         }
     }

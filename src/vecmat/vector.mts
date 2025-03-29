@@ -1,7 +1,12 @@
+import { MemoryShareable } from "../reflect/reflect.mjs"
+
 var ToStringPrecision = 2
 
-class BaseVec2 {
+class BaseVec2 implements MemoryShareable {
     public data: Float32Array
+    get size() {
+        return 8
+    }
 
     constructor(x: Float32Array | [number, number] | number, y?: number) {
         if (typeof x === "number") {
@@ -70,8 +75,11 @@ class BaseVec2 {
     }
 }
 
-class BaseVec3 {
+class BaseVec3 implements MemoryShareable {
     public data: Float32Array
+    get size() {
+        return 12
+    }
 
     constructor(x: Float32Array | [number, number, number] | number, y?: number, z?: number) {
         if (typeof x === "number") {
@@ -156,6 +164,10 @@ class BaseVec3 {
 
 class BaseVec4 {
     public data: Float32Array
+    get size() {
+        return 16
+    }
+
     constructor(x?: Float32Array | [number, number, number, number] | number, y?: number, z?: number, w?: number) {
         if (x === undefined) {
             this.data = new Float32Array([0, 0, 0, 0])

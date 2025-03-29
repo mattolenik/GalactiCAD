@@ -1,5 +1,10 @@
 const globalMetadata = new WeakMap<object, Map<string | symbol, Map<any, any>>>()
 
+export interface MemoryShareable {
+    get data(): BufferSource | SharedArrayBuffer
+    get size(): number
+}
+
 export interface Decorated {
     get decoratorMetadata(): DecoratorMetadata
 }
@@ -45,16 +50,16 @@ export class DecoratorMetadata {
 }
 
 export function getDecoratedProperties<TMeta>(decoratorName: string, obj: any): [string, TMeta | undefined][] {
-    if (!(obj?.meta instanceof DecoratorMetadata)) {
+    const decObj = obj as Decorated
+    if (!(decObj.decoratorMetadata instanceof DecoratorMetadata)) {
         throw new Error("this function only works on objects implementing Decorated")
     }
-    const meta = obj.meta as DecoratorMetadata
     const propMap = new Map<string, TMeta | undefined>()
     let prototype = Object.getPrototypeOf(obj)
     while (prototype && prototype !== Object.prototype) {
         for (const propName of Object.getOwnPropertyNames(prototype)) {
             if (!propMap.has(propName)) {
-                const val = meta.get(decoratorName, prototype, propName) as TMeta | undefined
+                const val = decObj.decoratorMetadata.get(decoratorName, prototype, propName) as TMeta | undefined
                 propMap.set(propName, val)
             }
         }

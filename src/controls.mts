@@ -4,15 +4,14 @@ import * as ls from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import { Vec3f, Vec4f } from "./vecmat/vector.mjs"
 
-class CameraInfoBase {}
-export class CameraInfo extends wgsl.uniform(CameraInfoBase) {
-    @wgsl.bind({ size: Mat4x4f.byteLength })
+export class CameraInfo extends wgsl.uniform(class {}) {
+    @wgsl.bind()
     sceneTransform = new Mat4x4f()
 
-    @wgsl.bind({ size: Vec4f.byteLength })
+    @wgsl.bind()
     cameraPosition = new Vec4f()
 
-    @wgsl.bind({ size: 4 })
+    @wgsl.bind()
     orthoScale: number = 1
 }
 

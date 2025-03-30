@@ -83,7 +83,7 @@ function WithChildren<TBase extends Constructor>(base: TBase) {
 
 function WithPos<TBase extends Constructor>(base: TBase) {
     return class extends base {
-        pos: Vec3f = new Vec3f(0, 0, 0)
+        pos: Vec3f = new Vec3f()
     }
 }
 
@@ -122,7 +122,7 @@ function WithSize<TBase extends Constructor>(base: TBase) {
         /**
          * size
          */
-        size = new Vec3f(0, 0, 0)
+        size = new Vec3f()
 
         /**
          * length

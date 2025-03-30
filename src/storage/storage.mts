@@ -1,5 +1,10 @@
 import { Vec2f, Vec3f, Vec4f } from "../vecmat/vector.mjs"
 
+export interface Storable {
+    toStorage(): string
+    loadStorage(s: string): void
+}
+
 export function setFloat(key: string, value: number) {
     localStorage.setItem(key, value.toString())
 }
@@ -28,22 +33,22 @@ export function setVec2f(key: string, value: Vec2f) {
     localStorage.setItem(key, value.toStorage())
 }
 
-export function getVec2f(key: string): Vec2f | null {
-    return Vec2f.fromStorage(localStorage.getItem(key))
+export function getVec2f(key: string): Vec2f {
+    return new Vec2f(localStorage.getItem(key))
 }
 
 export function setVec3f(key: string, value: Vec3f) {
     localStorage.setItem(key, value.toStorage())
 }
 
-export function getVec3f(key: string): Vec3f | null {
-    return Vec3f.fromStorage(localStorage.getItem(key))
+export function getVec3f(key: string): Vec3f {
+    return new Vec3f(localStorage.getItem(key))
 }
 
 export function setVec4f(key: string, value: Vec4f) {
     localStorage.setItem(key, value.toStorage())
 }
 
-export function getVec4f(key: string): Vec4f | null {
-    return Vec4f.fromStorage(localStorage.getItem(key))
+export function getVec4f(key: string): Vec4f {
+    return new Vec4f(localStorage.getItem(key))
 }

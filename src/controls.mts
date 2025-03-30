@@ -2,7 +2,7 @@ import { clamp, clampAngle } from "./math.mjs"
 import * as wgsl from "./reflect/wgsl.mjs"
 import * as ls from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
-import { Vec3f, Vec4f } from "./vecmat/vector.mjs"
+import { vec3, Vec3f, Vec4f } from "./vecmat/vector.mjs"
 
 export class CameraInfo extends wgsl.buffer(class {}) {
     @wgsl.bind()
@@ -56,7 +56,7 @@ export class Controls {
     dragMode: "rotate" | "pan" | null = null
     lastX: number = 0
     lastY: number = 0
-    cursorDelta: Vec3f = Vec3f.ZERO
+    cursorDelta: Vec3f = new Vec3f()
 
     rotateSensitivity: number = 0.005
     panSensitivity: number = 0.1
@@ -64,8 +64,8 @@ export class Controls {
     orthoZoom: number = 40
 
     sceneTransform: Mat4x4f = new Mat4x4f(new Float32Array(16))
-    cameraPosition: Vec3f = Vec3f.ZERO
-    cameraTranslation: Vec3f = Vec3f.ZERO
+    cameraPosition: Vec3f = new Vec3f()
+    cameraTranslation: Vec3f = new Vec3f()
     lastCameraUpdate: number = 0
 
     workerInterval: NodeJS.Timeout
@@ -125,7 +125,7 @@ export class Controls {
         if (e.code === "Backquote") {
             this.sceneRotX = -Math.PI / 8
             this.sceneRotY = Math.PI * (5 / 4)
-            this.cameraTranslation = Vec3f.ZERO
+            this.cameraTranslation = new Vec3f()
         }
         e.preventDefault()
         this.updateTransforms()
@@ -189,7 +189,7 @@ export class Controls {
     }
 
     private computeCameraPosition(): Vec3f {
-        return this.pivot.add(Vec3f.FWD)
+        return this.pivot.add(vec3(0, 0, 1))
     }
 
     // Updates the scene transform matrices.
@@ -198,7 +198,7 @@ export class Controls {
     private updateTransforms() {
         this.cameraPosition = this.computeCameraPosition()
         // Use a fixed up vector (world up) for constructing the view matrix.
-        let view = lookAt(this.cameraPosition, this.pivot, Vec3f.UP)
+        let view = lookAt(this.cameraPosition, this.pivot, vec3(0, 1, 0))
         view = Mat4x4f.rotationX(this.sceneRotX).multiply(view)
         view = Mat4x4f.rotationY(this.sceneRotY).multiply(view)
         view = Mat4x4f.translation(this.cameraTranslation).multiply(view)
@@ -217,9 +217,9 @@ export class Controls {
 
     // Call this method on initialization to restore the camera state.
     loadCameraState(): void {
-        this.cameraPosition = ls.getVec3f("camera.position") ?? Vec3f.ZERO
-        this.cameraTranslation = ls.getVec3f("camera.translation") ?? Vec3f.ZERO
-        this.pivot = ls.getVec3f("camera.pivot") ?? Vec3f.ZERO
+        this.cameraPosition = ls.getVec3f("camera.position")
+        this.cameraTranslation = ls.getVec3f("camera.translation")
+        this.pivot = ls.getVec3f("camera.pivot")
         this.orthoZoom = ls.getFloat("camera.orthoZoom") ?? 20
         this.sceneRotX = ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
         this.sceneRotY = ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI

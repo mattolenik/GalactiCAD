@@ -179,7 +179,7 @@ export class Mat4x4f implements MemoryShareable {
         return new Mat4x4f()
     }
     static translation(v: Vec3f): Mat4x4f {
-        return new Mat4x4f(new Float32Array([]))
+        return new Mat4x4f(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, v.x, v.y, v.z, 1]))
     }
     static rotationX(angle: number): Mat4x4f {
         const c = Math.cos(angle),

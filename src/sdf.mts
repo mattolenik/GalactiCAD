@@ -75,7 +75,7 @@ export class SDFRenderer {
         })
 
         this.uniformBuffers.cameraPosition = this.device.createBuffer({
-            size: Vec4f.byteLength,
+            size: 16,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "cameraPosition",
         })

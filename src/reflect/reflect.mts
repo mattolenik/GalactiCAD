@@ -1,8 +1,8 @@
 const globalMetadata = new WeakMap<object, Map<string | symbol, Map<any, any>>>()
 
 export interface MemoryShareable {
-    data: BufferSource | SharedArrayBuffer
-    byteLength: number
+    get data(): BufferSource | SharedArrayBuffer
+    get byteLength(): number
 }
 
 export interface Decorated {

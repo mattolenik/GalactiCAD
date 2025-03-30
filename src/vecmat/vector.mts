@@ -1,3 +1,4 @@
+import { toNumberMust } from "../math.mjs"
 import { MemoryShareable } from "../reflect/reflect.mjs"
 import { Storable } from "../storage/storage.mjs"
 
@@ -756,8 +757,8 @@ function parseVec(v: string, expectedLength?: number): [number, number] | [numbe
             .replace(/[\}\]\)]$/, "")
             .split(/,\s*/)
             .map(e => toNumberMust(e))
-    } catch {
-        throw new Error(`invalid vector string: ${v}`)
+    } catch (e) {
+        throw new Error(`invalid vector string '${v}': ${e}`)
     }
     if (expectedLength) {
         if (expectedLength < 2 || expectedLength > 4) {

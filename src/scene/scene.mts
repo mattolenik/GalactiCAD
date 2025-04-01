@@ -25,8 +25,8 @@ export class SceneUniform {
 }
 
 export class SceneInfo {
-    private nodeByID = new Map<number, Node>()
-    private nodes = new Set<Node>()
+    #nodeByID = new Map<number, Node>()
+    #nodes = new Set<Node>()
 
     numArgs = 0
     numNodes = 0
@@ -34,27 +34,27 @@ export class SceneInfo {
         return this.numArgs++
     }
     add(node: Node) {
-        if (this.nodes.has(node)) return
+        if (this.#nodes.has(node)) return
 
         node.id = this.numNodes++
-        this.nodes.add(node)
-        this.nodeByID.set(node.id, node)
+        this.#nodes.add(node)
+        this.#nodeByID.set(node.id, node)
     }
     get<T extends Node>(id: number): T {
-        return this.nodeByID.get(id) as T
+        return this.#nodeByID.get(id) as T
     }
 }
 
 export class Node {
     id!: number
     root: Node
-    private _scene!: SceneInfo
+    #scene!: SceneInfo
 
     get scene() {
-        return this.root._scene
+        return this.root.#scene
     }
     set scene(si: SceneInfo) {
-        this.root._scene = si
+        this.root.#scene = si
     }
 
     constructor() {

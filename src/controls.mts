@@ -1,21 +1,16 @@
 import { clamp, clampAngle } from "./math.mjs"
-import * as wgsl from "./reflect/wgsl.mjs"
 import * as ls from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
-import { vec3, Vec3f, Vec4f } from "./vecmat/vector.mjs"
+import { vec3, Vec3f } from "./vecmat/vector.mjs"
 
-export class CameraInfo extends wgsl.buffer(class {}) {
-    @wgsl.bind()
+export class CameraInfo {
     sceneTransform = new Mat4x4f()
-
-    @wgsl.bind()
-    cameraPosition = new Vec4f()
-
-    @wgsl.bind()
-    orthoScale: number = 1
+    position = new Vec3f()
+    orthoScale: number = 40
 }
 
 export class Controls {
+    camera = new CameraInfo()
     canvas: HTMLCanvasElement
     pivot: Vec3f
 
@@ -61,10 +56,7 @@ export class Controls {
     rotateSensitivity: number = 0.005
     panSensitivity: number = 0.1
     zoomSensitivity: number = 0.05
-    orthoZoom: number = 40
 
-    sceneTransform: Mat4x4f = new Mat4x4f(new Float32Array(16))
-    cameraPosition: Vec3f = new Vec3f()
     cameraTranslation: Vec3f = new Vec3f()
     lastCameraUpdate: number = 0
 
@@ -184,7 +176,7 @@ export class Controls {
     private onWheel(e: WheelEvent) {
         e.preventDefault()
         this.radius += e.deltaY * this.zoomSensitivity
-        this.orthoZoom = this.radius
+        this.camera.orthoScale = this.radius
         this.updateTransforms()
     }
 
@@ -192,35 +184,30 @@ export class Controls {
         return this.pivot.add(vec3(0, 0, 1))
     }
 
-    // Updates the scene transform matrices.
-    // The view matrix is computed as if the camera were orbiting the pivot.
-    // The scene transform is the inverse of that view matrix.
     private updateTransforms() {
-        this.cameraPosition = this.computeCameraPosition()
+        this.camera.position = this.computeCameraPosition()
         // Use a fixed up vector (world up) for constructing the view matrix.
-        let view = lookAt(this.cameraPosition, this.pivot, vec3(0, 1, 0))
+        let view = lookAt(this.camera.position, this.pivot, vec3(0, 1, 0))
         view = Mat4x4f.rotationX(this.sceneRotX).multiply(view)
         view = Mat4x4f.rotationY(this.sceneRotY).multiply(view)
         view = Mat4x4f.translation(this.cameraTranslation).multiply(view)
-        this.sceneTransform = view
+        this.camera.sceneTransform = view
     }
 
-    // Call this method to save the current camera state.
     saveCameraState(): void {
-        ls.setVec3f("camera.position", this.cameraPosition)
+        ls.setVec3f("camera.position", this.camera.position)
         ls.setVec3f("camera.translation", this.cameraTranslation)
         ls.setVec3f("camera.pivot", this.pivot)
-        ls.setFloat("camera.orthoZoom", this.orthoZoom)
+        ls.setFloat("camera.orthoScale", this.camera.orthoScale)
         ls.setFloat("camera.sceneRotX", this.sceneRotX)
         ls.setFloat("camera.sceneRotY", this.sceneRotY)
     }
 
-    // Call this method on initialization to restore the camera state.
     loadCameraState(): void {
-        this.cameraPosition = ls.getVec3f("camera.position")
+        this.camera.position = ls.getVec3f("camera.position")
         this.cameraTranslation = ls.getVec3f("camera.translation")
         this.pivot = ls.getVec3f("camera.pivot")
-        this.orthoZoom = ls.getFloat("camera.orthoZoom") ?? 20
+        this.camera.orthoScale = ls.getFloat("camera.orthoScale") ?? 20
         this.sceneRotX = ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
         this.sceneRotY = ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
         this.updateTransforms()

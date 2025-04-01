@@ -1,4 +1,3 @@
-import { MemoryShareable } from "../reflect/reflect.mjs"
 import { Vec2f, Vec3f, Vec4f } from "./vector.mjs"
 
 export type Mat2x2 = Mat2x2f | Float32Array | [number, number, number, number]
@@ -8,7 +7,7 @@ export type Mat4x4 =
     | Float32Array
     | [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]
 
-export class Mat2x2f implements MemoryShareable {
+export class Mat2x2f {
     data: Float32Array
     byteLength = 16
     length = 4
@@ -79,7 +78,7 @@ export class Mat2x2f implements MemoryShareable {
     }
 }
 
-export class Mat3x3f implements MemoryShareable {
+export class Mat3x3f {
     data: Float32Array
     byteLength = 36
     length = 9
@@ -164,7 +163,7 @@ export class Mat3x3f implements MemoryShareable {
     }
 }
 
-export class Mat4x4f implements MemoryShareable {
+export class Mat4x4f {
     data: Float32Array
     byteLength = 64
     length = 16

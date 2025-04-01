@@ -1,5 +1,4 @@
 import { toNumberMust } from "../math.mjs"
-import { MemoryShareable } from "../reflect/reflect.mjs"
 import { Storable } from "../storage/storage.mjs"
 
 export type Vec2 = Vec2f | Float32Array | [number, number] | string
@@ -19,7 +18,7 @@ export function vec4(x: number, y: number, z: number, w: number): Vec4f {
     return new Vec4f([x, y, z, w])
 }
 
-export abstract class Vecf implements MemoryShareable, Storable {
+export abstract class Vecf implements Storable {
     public static StringPrecision = 2
     private _data: Float32Array
     get data() {

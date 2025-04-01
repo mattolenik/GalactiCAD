@@ -88,7 +88,7 @@ export class SDFRenderer {
 
         let shader = previewShader
             .replace(/const\s+NUM_ARGS(\s*:\s*u32)?\s*=\s*\d+.*/, `const NUM_ARGS: u32 = ${this.scene.args.length};`)
-            .replace("0; // COMPILEDHERE", this.scene.root.compile())
+            .replace(/.*SCENE_SDF_PLACEHOLDER/, "return " + this.scene.root.compile())
 
         console.log(shader)
 
@@ -116,24 +116,13 @@ export class SDFRenderer {
         })
 
         this.bindGroup = this.device.createBindGroup({
+            label: "scene",
             layout: this.pipeline.getBindGroupLayout(0),
             entries: [
-                {
-                    binding: 0,
-                    resource: { buffer: this.uniformBuffers.scene },
-                },
-                {
-                    binding: 1,
-                    resource: { buffer: this.uniformBuffers.sceneTransform },
-                },
-                {
-                    binding: 2,
-                    resource: { buffer: this.uniformBuffers.cameraPosition },
-                },
-                {
-                    binding: 3,
-                    resource: { buffer: this.uniformBuffers.orthoScale },
-                },
+                { binding: 0, resource: { buffer: this.uniformBuffers.scene } },
+                { binding: 1, resource: { buffer: this.uniformBuffers.sceneTransform } },
+                { binding: 2, resource: { buffer: this.uniformBuffers.cameraPosition } },
+                { binding: 3, resource: { buffer: this.uniformBuffers.orthoScale } },
             ],
         })
     }

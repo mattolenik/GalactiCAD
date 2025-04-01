@@ -20,7 +20,7 @@ struct VertexOutput {
 }
 
 fn sceneSDF(p: vec3f) -> f32 {
-    return 0; // COMPILEDHERE
+    return 0; // SCENE_SDF_PLACEHOLDER
 }
 
 fn raymarch(origin: vec3f, dir: vec3f) -> f32 {

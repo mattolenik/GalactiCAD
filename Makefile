@@ -6,7 +6,8 @@ PORT     ?= $(shell $(BUILD) port)
 BUILD    := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 VERSION  := $(shell echo $$(ver=$$(git tag -l --points-at HEAD) && [[ -z $$ver ]] && ver=$$(git describe --always --dirty); printf $$ver))
 
- export RETRY_STATUS := 100
+# exporting this enables rebuild, where the build is restarted entirely when changes to the build dir are detected
+export REBUILD_STATUS := 100
 
 default: build test
 
@@ -17,7 +18,7 @@ open:
 .PHONY: build
 build:
 	@mkdir -p $(DIST)
-	@(exit $(RETRY_STATUS)); until (( $$? != $(RETRY_STATUS) )); do \
+	@(exit $(REBUILD_STATUS)); until (( $$? != $(REBUILD_STATUS) )); do \
 		$(BUILD) $(BUILD_FLAGS); \
 	done;
 

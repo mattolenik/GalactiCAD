@@ -17,12 +17,12 @@ export default function wgslLoader(extensions = ["wgsl"]): Plugin {
     if (extensions.length === 0) {
         throw new Error("must specify at least one file extension for WGSL shaders")
     }
-    var extsPattern = extensions.map((e) => `(${e})`).join("|")
+    var extsPattern = extensions.map(e => `(${e})`).join("|")
     const pattern = new RegExp(`\.${extsPattern}$`, "g")
     return {
         name: "wgsl-loader",
         setup(build: PluginBuild) {
-            build.onLoad({ filter: pattern, namespace: "file" }, async (args) => {
+            build.onLoad({ filter: pattern, namespace: "file" }, async args => {
                 const contents = await load(args.path)
                 return { contents, loader: "text" }
             })
@@ -59,8 +59,8 @@ async function load(filePath: string, visited = new Set<string>()): Promise<stri
     const lines = content.split(/\r?\n/)
     let result = ""
 
-    // Matches the style of:  //- include "file.ext"
-    const pattern = /^\/\/-\s*include\s+"([^"]+)"\s*$/
+    // Matches the style of:  //:) include "file.ext"
+    const pattern = /^\/\/:\)\s*include\s+"([^"]+)"\s*$/
 
     for (const line of lines) {
         const includeMatch = line.match(pattern)

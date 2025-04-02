@@ -3,10 +3,13 @@ import * as esbuild from "esbuild"
 import assetBundler from "./asset-bundler.mjs"
 import { DevServer } from "./server.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
+import path from "path"
 
-const assets = ["src/**/*.html", "src/**/*.css"]
-const entryPoints = ["./src/sdf.mts"]
-const outdir = "./dist"
+const ASSETS = ["src/**/*.html", "src/**/*.css"]
+const ENTRY_POINTS = ["./src/sdf.mts"]
+const OUT_DIR = "./dist"
+const IS_PROD = !!process.env.PRODUCTION
+const BUILD_DIR = "./build"
 
 const port = parseInt(process.env.PORT || "6900", 10)
 const liveReloadPort = parseInt(process.env.PORT_LIVERELOAD || "6909", 10)
@@ -14,17 +17,16 @@ const liveReloadPort = parseInt(process.env.PORT_LIVERELOAD || "6909", 10)
 const log = (msg: any) => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`)
 
 async function build() {
-    const isProd = !!process.env.PRODUCTION
     const startTime = performance.now()
     try {
         await esbuild.build({
             bundle: true,
-            entryPoints: entryPoints,
-            minify: isProd,
-            outdir: outdir,
+            entryPoints: ENTRY_POINTS,
+            minify: IS_PROD,
+            outdir: OUT_DIR,
             platform: "neutral",
-            plugins: [wgslLoader(), assetBundler(assets, log)],
-            sourcemap: !isProd,
+            plugins: [wgslLoader(), assetBundler(ASSETS, log)],
+            sourcemap: !IS_PROD,
             target: "es2023",
         })
         const elapsed = performance.now() - startTime
@@ -44,12 +46,18 @@ function watch(location: string, onChange: () => Promise<void>) {
             atomic: true,
             cwd: ".",
             followSymlinks: true,
-            ignored: [".git", "dist", "node_modules"],
+            ignored: [".DS_Store", ".hg", ".git", OUT_DIR, "node_modules"],
             ignoreInitial: true,
             persistent: true,
         })
-        .on("all", async (event, path) => {
-            log(`Build triggered by ${event}: ${path}`)
+        .on("all", async (event, fpath) => {
+            const relBuildDir = path.basename(path.join(fpath, BUILD_DIR))
+            if (fpath.startsWith(relBuildDir)) {
+                const ec = process.env.RETRY_STATUS ?? 1
+                log(`Rebuild triggered by ${event}: ${fpath} — exiting with status code ${ec} (retry)`)
+                process.exit(ec)
+            }
+            log(`Build triggered by ${event}: ${fpath}`)
             onChange()
         })
 }
@@ -60,6 +68,8 @@ switch (process.argv[2]) {
         process.exit()
 }
 
+log(`PID ${process.pid}`)
+
 log("Building")
 if (!(await build())) {
     process.exit(1)
@@ -67,7 +77,7 @@ if (!(await build())) {
 
 if (process.argv.includes("-w")) {
     log("Watching for changes")
-    let server = new DevServer(outdir, port, liveReloadPort)
+    let server = new DevServer(OUT_DIR, port, liveReloadPort)
     let watcher = watch(".", async () => {
         await build()
         server.reload()

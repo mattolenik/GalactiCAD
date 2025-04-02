@@ -87,8 +87,8 @@ export class SDFRenderer {
         })
 
         let shader = previewShader
-            .replace(/const\s+NUM_ARGS(\s*:\s*u32)?\s*=\s*\d+.*/, `const NUM_ARGS: u32 = ${this.scene.args.length};`)
-            .replace(/.*SCENE_SDF_PLACEHOLDER/, "return " + this.scene.root.compile())
+            .replace(/NUM_ARGS.*\/\:\) replace/, `NUM_ARGS: u32 = ${this.scene.args.length};`)
+            .replace(/.*\/\/:\) insert sceneSDF/, "    return " + this.scene.root.compile())
 
         console.log(shader)
 

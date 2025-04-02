@@ -51,8 +51,8 @@ function watch(location: string, onChange: () => Promise<void>) {
             persistent: true,
         })
         .on("all", async (event, fpath) => {
-            // Only rebuild if RETRY_STATUS is set, which defines the exit code to use
-            const retryExitCode = process.env.RETRY_STATUS
+            // Only rebuild if REBUILD_STATUS is set, which defines the exit code to use
+            const retryExitCode = process.env.REBUILD_STATUS
             if (retryExitCode) {
                 const relBuildDir = path.basename(path.join(fpath, BUILD_DIR))
                 if (fpath.startsWith(relBuildDir)) {
@@ -66,32 +66,36 @@ function watch(location: string, onChange: () => Promise<void>) {
         })
 }
 
-switch (process.argv[2]) {
-    case "port":
-        console.log(port)
-        process.exit()
-}
-
-log(`PID ${process.pid}`)
-
-log("Building")
-if (!(await build())) {
-    process.exit(1)
-}
-
-if (process.argv.includes("-w")) {
-    log("Watching for changes")
-    let server = new DevServer(OUT_DIR, port, liveReloadPort)
-    let watcher = watch(".", async () => {
-        await build()
-        server.reload()
-    })
-
-    const shutdown = async () => {
-        await watcher.close()
-        server.close()
-        process.exit(0)
+async function main() {
+    switch (process.argv[2]) {
+        case "port":
+            console.log(port)
+            process.exit()
     }
-    process.on("SIGINT", shutdown)
-    process.on("SIGTERM", shutdown)
+
+    log(`PID ${process.pid}`)
+
+    log("Building")
+    if (!(await build())) {
+        process.exit(1)
+    }
+
+    if (process.argv.includes("-w")) {
+        log("Watching for changes")
+        let server = new DevServer(OUT_DIR, port, liveReloadPort)
+        let watcher = watch(".", async () => {
+            await build()
+            server.reload()
+        })
+
+        const shutdown = async () => {
+            await watcher.close()
+            server.close()
+            process.exit(0)
+        }
+        process.on("SIGINT", shutdown)
+        process.on("SIGTERM", shutdown)
+    }
 }
+
+main()

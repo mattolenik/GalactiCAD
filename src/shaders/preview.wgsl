@@ -1,6 +1,6 @@
-//- include "sdf.wgsl"
+//:) include "sdf.wgsl"
 
-const NUM_ARGS: u32 = 0;
+const NUM_ARGS: u32 = 0; //:) replace
 const MAX_STEPS: i32 = 5000;
 const MAX_DIST: f32 = 500.0;
 const SURF_DIST: f32 = 0.001;
@@ -11,16 +11,13 @@ const NORMAL_EPS: f32 = 0.001;
 @group(0) @binding(2) var<uniform> cameraPosition: vec4f;
 @group(0) @binding(3) var<uniform> orthoScale: f32;
 
-// struct CameraInfo {
-// }
-
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
 }
 
 fn sceneSDF(p: vec3f) -> f32 {
-    return 0; // SCENE_SDF_PLACEHOLDER
+    return 0; //:) insert sceneSDF
 }
 
 fn raymarch(origin: vec3f, dir: vec3f) -> f32 {

@@ -51,12 +51,16 @@ function watch(location: string, onChange: () => Promise<void>) {
             persistent: true,
         })
         .on("all", async (event, fpath) => {
-            const relBuildDir = path.basename(path.join(fpath, BUILD_DIR))
-            if (fpath.startsWith(relBuildDir)) {
-                const ec = process.env.RETRY_STATUS ?? 1
-                log(`Rebuild triggered by ${event}: ${fpath} — exiting with status code ${ec} (retry)`)
-                process.exit(ec)
+            // Only rebuild if RETRY_STATUS is set, which defines the exit code to use
+            const retryExitCode = process.env.RETRY_STATUS
+            if (retryExitCode) {
+                const relBuildDir = path.basename(path.join(fpath, BUILD_DIR))
+                if (fpath.startsWith(relBuildDir)) {
+                    log(`Rebuild triggered by ${event}: ${fpath} — exiting with status code ${retryExitCode} (retry)`)
+                    process.exit(retryExitCode)
+                }
             }
+
             log(`Build triggered by ${event}: ${fpath}`)
             onChange()
         })

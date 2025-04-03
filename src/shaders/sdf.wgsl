@@ -1,3 +1,5 @@
+// Translated from https://mercury.sexy/hg_sdf
+
 //////////////////////////////
 //          CONSTANTS
 //////////////////////////////
@@ -35,11 +37,6 @@ fn sgn(x: f32) -> f32 {
 fn sgnVec2(v: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(sgn(v.x), sgn(v.y));
 }
-
-// Squaring, overloaded
-fn square(x: f32) -> f32 { return x * x; }
-fn square2(v: vec2<f32>) -> vec2<f32> { return v * v; }
-fn square3(v: vec3<f32>) -> vec3<f32> { return v * v; }
 
 fn lengthSqr(v: vec3<f32>) -> f32 {
     return dot(v, v);

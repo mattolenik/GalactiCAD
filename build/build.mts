@@ -55,7 +55,7 @@ function watch(location: string, onChange: () => Promise<void>) {
             const retryExitCode = process.env.REBUILD_STATUS
             if (retryExitCode) {
                 const relBuildDir = path.basename(path.join(fpath, BUILD_DIR))
-                if (fpath.startsWith(relBuildDir)) {
+                if (fpath.startsWith(relBuildDir) || fpath.endsWith(".lock") || fpath.endsWith("tsconfig.json")) {
                     log(`Rebuild triggered by ${event}: ${fpath} — exiting with status code ${retryExitCode} (retry)`)
                     process.exit(retryExitCode)
                 }

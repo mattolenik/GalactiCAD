@@ -1,5 +1,5 @@
 import { Controls } from "./controls.mjs"
-import { Box, Group, Node, SceneUniform, Sphere, Subtract, Union } from "./scene/scene.mjs"
+import { Box, Group, Node, SceneInfo, Sphere, Subtract, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { vec3, Vec4f } from "./vecmat/vector.mjs"
 
@@ -19,7 +19,7 @@ export class SDFRenderer {
     private controls: Controls
     private device!: GPUDevice
     private pipeline!: GPURenderPipeline
-    private scene!: SceneUniform
+    private scene!: SceneInfo
     private uniformBuffers: UniformBuffers
 
     constructor(canvas: HTMLCanvasElement) {
@@ -41,7 +41,7 @@ export class SDFRenderer {
                     new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
                     3
                 )
-            ).init()
+            ).build()
         )
     }
 
@@ -59,7 +59,7 @@ export class SDFRenderer {
             alphaMode: "premultiplied",
         })
 
-        this.scene = new SceneUniform(sceneRoot)
+        this.scene = new SceneInfo(sceneRoot)
 
         console.log(Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2))
         this.uniformBuffers.scene = this.device.createBuffer({
@@ -140,7 +140,7 @@ export class SDFRenderer {
             ],
         })
 
-        this.scene.root.uniformCopy(this.scene)
+        this.scene.root.updateScene()
 
         this.device.queue.writeBuffer(this.uniformBuffers.scene, 0, this.scene.args.data)
         this.device.queue.writeBuffer(this.uniformBuffers.sceneTransform, 0, this.controls.camera.sceneTransform.data)

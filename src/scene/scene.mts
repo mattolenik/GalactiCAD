@@ -1,35 +1,19 @@
 import { ArgArray } from "../vecmat/arrays.mjs"
-import { Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
+import { vec3, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 type Constructor<T = {}> = new (...args: any[]) => T
 
-export class SceneUniform {
+export class SceneInfo {
     args: ArgArray
     root: Node
 
-    constructor(root: Node) {
-        this.root = root
-        this.args = new ArgArray(this.root.scene.numArgs)
-    }
+    numArgs = 0
+    numNodes = 0
 
-    get bufferSize(): number {
-        return this.args.byteLength
-    }
-
-    updateCamera(pos: Vec3f, target: Vec3f, ortho: Vec2f) {
-        this.args.set(0, pos)
-        this.args.set(1, target)
-        this.args.set(2, ortho)
-    }
-}
-
-export class SceneInfo {
     #nodeByID = new Map<number, Node>()
     #nodes = new Set<Node>()
 
-    numArgs = 0
-    numNodes = 0
     nextArgIndex(): number {
         return this.numArgs++
     }
@@ -42,6 +26,17 @@ export class SceneInfo {
     }
     get<T extends Node>(id: number): T {
         return this.#nodeByID.get(id) as T
+    }
+
+    constructor(root: Node) {
+        this.root = root
+        this.root.scene = this
+        this.root.build()
+        this.args = new ArgArray(this.root.scene.numArgs)
+    }
+
+    get bufferSize(): number {
+        return this.args.byteLength
     }
 }
 
@@ -63,15 +58,11 @@ export class Node {
     compile(): string {
         throw new Error("Method not implemented.")
     }
-    uniformCopy(args: SceneUniform) {
+    updateScene() {
         throw new Error("Method not implemented.")
     }
-    init(si?: SceneInfo): Node {
-        if (!this.scene) {
-            this.scene = si || new SceneInfo()
-        }
+    build() {
         this.scene.add(this)
-        return this
     }
 }
 
@@ -101,7 +92,7 @@ function WithRaD<TBase extends Constructor>(base: TBase) {
         /**
          * radius
          */
-        r: number = -1
+        accessor r: number = -1
         /**
          * diameter
          */
@@ -122,7 +113,7 @@ function WithSize<TBase extends Constructor>(base: TBase) {
         /**
          * size
          */
-        size = new Vec3f()
+        accessor size: Vec3f = new Vec3f()
 
         /**
          * length
@@ -157,18 +148,17 @@ function WithSize<TBase extends Constructor>(base: TBase) {
 }
 
 export class Group extends WithChildren(Node) {
-    override uniformCopy(args: SceneUniform) {
+    override updateScene() {
         for (let child of this.children) {
-            child.uniformCopy(args)
+            child.updateScene()
         }
     }
-    override init(si?: SceneInfo): Group {
-        super.init(si)
+    override build() {
+        super.build()
         for (let child of this.children) {
             child.root = this.root
-            child.init()
+            child.build()
         }
-        return this
     }
     override compile(): string {
         return this.children.map(c => c.compile()).join(";\n") + ";\n"
@@ -176,21 +166,17 @@ export class Group extends WithChildren(Node) {
     constructor(...children: Node[]) {
         super()
         this.children = children
-        for (let child of children) {
-            child.root = this.root
-        }
     }
 }
 
 export abstract class UnaryOperator extends Node {
-    override uniformCopy(args: SceneUniform) {
-        this.arg.uniformCopy(args)
+    override updateScene() {
+        this.arg.updateScene()
     }
-    override init(si?: SceneInfo): UnaryOperator {
-        super.init(si)
+    override build() {
+        super.build()
         this.arg.root = this.root
-        this.arg.init()
-        return this
+        this.arg.build()
     }
     constructor(public arg: Node) {
         super()
@@ -198,17 +184,16 @@ export abstract class UnaryOperator extends Node {
 }
 
 export abstract class BinaryOperator extends Node {
-    override uniformCopy(args: SceneUniform) {
-        this.lh.uniformCopy(args)
-        this.rh.uniformCopy(args)
+    override updateScene() {
+        this.lh.updateScene()
+        this.rh.updateScene()
     }
-    override init(si?: SceneInfo): BinaryOperator {
-        super.init(si)
+    override build() {
+        super.build()
         this.lh.root = this.root
         this.rh.root = this.root
-        this.lh.init()
-        this.rh.init()
-        return this
+        this.lh.build()
+        this.rh.build()
     }
     constructor(public lh: Node, public rh: Node) {
         super()
@@ -221,10 +206,6 @@ export class Union extends BinaryOperator {
             ? `min( ${this.lh.compile()}, ${this.rh.compile()} )`
             : `fOpUnionRound( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
-    override init(si?: SceneInfo): Union {
-        super.init(si)
-        return this
-    }
     constructor(lh: Node, rh: Node, public radius?: number) {
         super(lh, rh)
     }
@@ -236,17 +217,13 @@ export class Subtract extends BinaryOperator {
             ? `max( ${this.lh.compile()}, ${this.rh.compile()} )`
             : `fOpDifferenceRound( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
     }
-    override init(si?: SceneInfo): Subtract {
-        super.init(si)
-        return this
-    }
     constructor(lh: Node, rh: Node, public radius?: number) {
         super(lh, rh)
     }
 }
 
 export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
-    idx = {
+    argIndex = {
         pos: 0,
         r: 0,
     }
@@ -256,23 +233,22 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         this.pos = pos
         this.r = asRadius(r, d)
     }
-    override uniformCopy(args: SceneUniform): void {
-        args.args.set(this.idx.pos, this.pos)
-        args.args.set(this.idx.r, this.r)
+    override updateScene(): void {
+        this.scene.args.set(this.argIndex.pos, this.pos)
+        this.scene.args.set(this.argIndex.r, this.r)
     }
-    override init(si?: SceneInfo): Sphere {
-        super.init(si)
-        this.idx.pos = this.scene.nextArgIndex()
-        this.idx.r = this.scene.nextArgIndex()
-        return this
+    override build() {
+        super.build()
+        this.argIndex.pos = this.scene.nextArgIndex()
+        this.argIndex.r = this.scene.nextArgIndex()
     }
     override compile(): string {
-        return `fSphere( p - args[${this.idx.pos}].xyz, args[${this.idx.r}].x )`
+        return `fSphere( p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.r}].x )`
     }
 }
 
 export class Box extends WithSize(WithPos(Node)) {
-    idx = {
+    argIndex = {
         pos: 0,
         size: 0,
     }
@@ -282,17 +258,16 @@ export class Box extends WithSize(WithPos(Node)) {
         this.pos = pos
         this.size = vec3(l, w, h)
     }
-    override uniformCopy(args: SceneUniform): void {
-        args.args.set(this.idx.pos, this.pos)
-        args.args.set(this.idx.size, vec3(this.l, this.w, this.h))
+    override updateScene(): void {
+        this.scene.args.set(this.argIndex.pos, this.pos)
+        this.scene.args.set(this.argIndex.size, vec3(this.l, this.w, this.h))
     }
-    override init(si?: SceneInfo): Box {
-        super.init(si)
-        this.idx.pos = this.scene.nextArgIndex()
-        this.idx.size = this.scene.nextArgIndex()
-        return this
+    override build() {
+        super.build()
+        this.argIndex.pos = this.scene.nextArgIndex()
+        this.argIndex.size = this.scene.nextArgIndex()
     }
     override compile(): string {
-        return `fBox( p - args[${this.idx.pos}].xyz, args[${this.idx.size}].xyz )`
+        return `fBox( p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.size}].xyz )`
     }
 }

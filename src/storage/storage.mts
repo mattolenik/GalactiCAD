@@ -9,10 +9,10 @@ export function setFloat(key: string, value: number) {
     localStorage.setItem(key, value.toString())
 }
 
-export function getFloat(key: string): number | null {
+export function getFloat(key: string): number | undefined {
     const item = localStorage.getItem(key)
     if (item === null) {
-        return null
+        return undefined
     }
     return parseFloat(item)
 }
@@ -21,10 +21,10 @@ export function setInt(key: string, value: number) {
     localStorage.setItem(key, value.toFixed(0))
 }
 
-export function getInt(key: string): number | null {
+export function getInt(key: string): number | undefined {
     const item = localStorage.getItem(key)
     if (item === null) {
-        return null
+        return undefined
     }
     return parseInt(item, 10)
 }

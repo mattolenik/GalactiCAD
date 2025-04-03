@@ -41,7 +41,7 @@ export class SDFRenderer {
                     new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
                     3
                 )
-            ).build()
+            )
         )
     }
 

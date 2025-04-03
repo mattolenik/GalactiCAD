@@ -1,7 +1,7 @@
 import { clamp, clampAngle } from "./math.mjs"
 import * as ls from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
-import { vec3, Vec3f } from "./vecmat/vector.mjs"
+import { vec2, Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"
 
 export class CameraInfo {
     sceneTransform = new Mat4x4f()
@@ -14,53 +14,48 @@ export class Controls {
     canvas: HTMLCanvasElement
     pivot: Vec3f
 
-    private _sceneRotX: number = 0
-    private _sceneRotY: number = 0
-
+    #sceneRotX: number = 0
     get sceneRotX() {
-        return this._sceneRotX
+        return this.#sceneRotX
     }
     set sceneRotX(t: number) {
-        this._sceneRotX = clampAngle(t)
+        this.#sceneRotX = clampAngle(t)
     }
 
+    #sceneRotY: number = 0
     get sceneRotY() {
-        return this._sceneRotY
+        return this.#sceneRotY
     }
     set sceneRotY(t: number) {
-        this._sceneRotY = clampAngle(t)
+        this.#sceneRotY = clampAngle(t)
     }
 
-    private _radius: number = 1
+    #radius: number = 1
     get radius() {
-        return this._radius
+        return this.#radius
     }
     set radius(r: number) {
-        this._radius = clamp(r, 2, 150)
+        this.#radius = clamp(r, 2, 150)
     }
 
-    _isDragging = false
+    #isDragging = false
     get isDragging() {
-        return this._isDragging
+        return this.#isDragging
     }
     set isDragging(val: boolean) {
-        this._isDragging = val
+        this.#isDragging = val
         this.canvas.style.cursor = val ? "grabbing" : "auto"
     }
 
-    dragMode: "rotate" | "pan" | null = null
-    lastX: number = 0
-    lastY: number = 0
-    cursorDelta: Vec3f = new Vec3f()
+    #last = new Vec2f()
+    #cursorDelta = new Vec2f()
+    #lastCameraSave = 0
 
+    dragMode: "rotate" | "pan" | null = null
     rotateSensitivity: number = 0.005
     panSensitivity: number = 0.1
     zoomSensitivity: number = 0.05
-
     cameraTranslation: Vec3f = new Vec3f()
-    lastCameraUpdate: number = 0
-
-    workerInterval: NodeJS.Timeout
 
     constructor(canvas: HTMLCanvasElement, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2) {
         this.canvas = canvas
@@ -69,25 +64,24 @@ export class Controls {
         this.sceneRotY = initialTheta
         this.sceneRotX = initialPhi
 
-        this.initEvents()
+        this.#initEvents()
         this.loadCameraState()
-        this.updateTransforms()
-        this.workerInterval = setInterval(() => this.saveCameraState(), 500)
+        this.#updateTransforms()
     }
 
-    private initEvents() {
-        this.canvas.addEventListener("pointerdown", this.onPointerDown.bind(this))
-        this.canvas.addEventListener("pointermove", this.onPointerMove.bind(this))
-        this.canvas.addEventListener("pointerup", this.onPointerUp.bind(this))
-        this.canvas.addEventListener("pointercancel", this.onPointerUp.bind(this))
-        this.canvas.addEventListener("pointerleave", this.onPointerLeave.bind(this))
-        this.canvas.addEventListener("wheel", this.onWheel.bind(this))
+    #initEvents() {
+        this.canvas.addEventListener("pointerdown", this.#onPointerDown.bind(this))
+        this.canvas.addEventListener("pointermove", this.#onPointerMove.bind(this))
+        this.canvas.addEventListener("pointerup", this.#onPointerUp.bind(this))
+        this.canvas.addEventListener("pointercancel", this.#onPointerUp.bind(this))
+        this.canvas.addEventListener("pointerleave", this.#onPointerUp.bind(this))
+        this.canvas.addEventListener("wheel", this.#onWheel.bind(this))
         this.canvas.addEventListener("contextmenu", e => e.preventDefault())
-        this.canvas.addEventListener("keypress", this.onKeyPress.bind(this))
-        document.addEventListener("keydown", this.onKeyPress.bind(this), false)
+        this.canvas.addEventListener("keypress", this.#onKeyPress.bind(this))
+        document.addEventListener("keydown", this.#onKeyPress.bind(this), false)
     }
 
-    private onKeyPress(e: KeyboardEvent) {
+    #onKeyPress(e: KeyboardEvent) {
         console.log(e)
 
         if (e.code === "Digit1") {
@@ -120,10 +114,10 @@ export class Controls {
             this.cameraTranslation = new Vec3f()
         }
         e.preventDefault()
-        this.updateTransforms()
+        this.#updateTransforms()
     }
 
-    private onPointerDown(e: PointerEvent) {
+    #onPointerDown(e: PointerEvent) {
         e.preventDefault()
         if (e.button === 0) {
             this.dragMode = "rotate"
@@ -133,11 +127,10 @@ export class Controls {
             return
         }
         this.isDragging = true
-        this.lastX = e.clientX
-        this.lastY = e.clientY
+        this.#last = vec2(e.clientX, e.clientY)
     }
 
-    private onPointerMove(e: PointerEvent) {
+    #onPointerMove(e: PointerEvent) {
         if (!this.isDragging) return
 
         const rect = this.canvas.getBoundingClientRect()
@@ -146,55 +139,54 @@ export class Controls {
             // this.dragMode = null
             return
         }
-
-        this.cursorDelta.x = e.clientX - this.lastX
-        this.cursorDelta.y = e.clientY - this.lastY
-        this.lastX = e.clientX
-        this.lastY = e.clientY
+        const pvec = vec2(e.clientX, e.clientY)
+        this.#cursorDelta.set(pvec.subtract(this.#last))
+        this.#last.set(pvec)
 
         if (this.dragMode === "rotate") {
-            this.sceneRotY -= this.cursorDelta.x * this.rotateSensitivity
-            this.sceneRotX -= this.cursorDelta.y * this.rotateSensitivity
+            this.sceneRotY -= this.#cursorDelta.x * this.rotateSensitivity
+            this.sceneRotX -= this.#cursorDelta.y * this.rotateSensitivity
         } else if (this.dragMode === "pan") {
-            this.cameraTranslation.x -= this.cursorDelta.x * this.panSensitivity
-            this.cameraTranslation.y += this.cursorDelta.y * this.panSensitivity
+            this.cameraTranslation.x -= this.#cursorDelta.x * this.panSensitivity
+            this.cameraTranslation.y += this.#cursorDelta.y * this.panSensitivity
         }
 
-        this.updateTransforms()
+        this.#updateTransforms()
     }
 
-    private onPointerUp(e: PointerEvent) {
+    #onPointerUp(e: PointerEvent) {
         this.isDragging = false
         this.dragMode = null
+        this.saveCameraState(true)
     }
 
-    private onPointerLeave(e: PointerEvent) {
-        this.isDragging = false
-        this.dragMode = null
-    }
-
-    private onWheel(e: WheelEvent) {
+    #onWheel(e: WheelEvent) {
         e.preventDefault()
         this.radius += e.deltaY * this.zoomSensitivity
         this.camera.orthoScale = this.radius
-        this.updateTransforms()
+        this.#updateTransforms()
     }
 
-    private computeCameraPosition(): Vec3f {
+    #computeCameraPosition(): Vec3f {
         return this.pivot.add(vec3(0, 0, 1))
     }
 
-    private updateTransforms() {
-        this.camera.position = this.computeCameraPosition()
+    #updateTransforms() {
+        this.camera.position = this.#computeCameraPosition()
         // Use a fixed up vector (world up) for constructing the view matrix.
         let view = lookAt(this.camera.position, this.pivot, vec3(0, 1, 0))
         view = Mat4x4f.rotationX(this.sceneRotX).multiply(view)
         view = Mat4x4f.rotationY(this.sceneRotY).multiply(view)
         view = Mat4x4f.translation(this.cameraTranslation).multiply(view)
         this.camera.sceneTransform = view
+        this.saveCameraState()
     }
 
-    saveCameraState(): void {
+    saveCameraState(always = false): void {
+        if (!always && Date.now() - this.#lastCameraSave < 100) {
+            return
+        }
+        this.#lastCameraSave = Date.now()
         ls.setVec3f("camera.position", this.camera.position)
         ls.setVec3f("camera.translation", this.cameraTranslation)
         ls.setVec3f("camera.pivot", this.pivot)
@@ -210,6 +202,6 @@ export class Controls {
         this.camera.orthoScale = ls.getFloat("camera.orthoScale") ?? 20
         this.sceneRotX = ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
         this.sceneRotY = ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
-        this.updateTransforms()
+        this.#updateTransforms()
     }
 }

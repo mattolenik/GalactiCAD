@@ -1,9 +1,13 @@
 import { toNumberMust } from "../math.mjs"
 import { Storable } from "../storage/storage.mjs"
 
-export type Vec2 = Vec2f | Float32Array | [number, number] | string
-export type Vec3 = Vec3f | Float32Array | [number, number, number] | string
-export type Vec4 = Vec4f | Float32Array | [number, number, number, number] | string
+export type Vec2n = Vec2f | Float32Array | [number, number]
+export type Vec2 = Vec2n | string
+export type Vec3n = Vec3f | Float32Array | [number, number, number]
+export type Vec3 = Vec3n | string
+export type Vec4n = Vec4f | Float32Array | [number, number, number, number]
+export type Vec4 = Vec4n | string
+export type Vecn = Vec2n | Vec3n | Vec4n
 export type Vec = Vec2 | Vec3 | Vec4
 
 export function vec2(x: number, y: number): Vec2f {
@@ -18,14 +22,14 @@ export function vec4(x: number, y: number, z: number, w: number): Vec4f {
     return new Vec4f([x, y, z, w])
 }
 
-export abstract class Vecf implements Storable {
+export abstract class Vecf<TVec extends Vecn> implements Storable {
     public static StringPrecision = 2
-    private _data: Float32Array
+    #elements: Float32Array
     get data() {
-        return this._data
+        return this.#elements
     }
     get byteLength() {
-        return this._data.byteLength
+        return this.#elements.byteLength
     }
     constructor(elements: Vec, expectedLength?: number) {
         let src: Float32Array | number[]
@@ -52,23 +56,27 @@ export abstract class Vecf implements Storable {
             }
         }
 
-        this._data = new Float32Array(src.length)
-        this._data.set(src)
+        this.#elements = new Float32Array(src.length)
+        this.#elements.set(src)
     }
     toStorage(): string {
-        return Array.from(this._data).join(",")
+        return Array.from(this.#elements).join(",")
     }
     loadStorage(s: string): void {
-        this._data.set(parseVec(s, this._data.length))
+        this.#elements.set(parseVec(s, this.#elements.length))
     }
     toString(): string {
-        return `[${Array.from(this._data)
+        return `[${Array.from(this.#elements)
             .map(e => e.toFixed(Vecf.StringPrecision))
             .join(", ")}]`
     }
+
+    set(vec: TVec): void {
+        this.data.set(vec instanceof Vecf ? vec.data : vec)
+    }
 }
 
-export class Vec2f extends Vecf {
+export class Vec2f extends Vecf<Vec2n> {
     /**
      * Creates a new vector, clones an existing vector, or parses a vector from a string
      * @param elements the elements of the vector. May be a tuple/array, Float32Array, another vector, or a string
@@ -95,10 +103,7 @@ export class Vec2f extends Vecf {
     copy(v: Vec2f) {
         this.data.set(v.data)
     }
-    set(x: number, y: number) {
-        this.x = x
-        this.y = y
-    }
+
     equals(v: Vec2f): boolean {
         return this.x === v.x && this.y === v.y
     }
@@ -129,34 +134,21 @@ export class Vec2f extends Vecf {
     get xx(): Vec2f {
         return vec2(this.data[0], this.data[0])
     }
-    set xx(value: Vec2f) {
-        this.data[0] = value.x
-        this.data[0] = value.y
-    }
     get xy(): Vec2f {
         return vec2(this.data[0], this.data[1])
     }
     set xy(value: Vec2f) {
-        this.data[0] = value.x
-        this.data[1] = value.y
+        this.set(value)
     }
     get yx(): Vec2f {
         return vec2(this.data[1], this.data[0])
     }
-    set yx(value: Vec2f) {
-        this.data[1] = value.x
-        this.data[0] = value.y
-    }
     get yy(): Vec2f {
         return vec2(this.data[1], this.data[1])
     }
-    set yy(value: Vec2f) {
-        this.data[1] = value.x
-        this.data[1] = value.y
-    }
 }
 
-export class Vec3f extends Vecf {
+export class Vec3f extends Vecf<Vec3n> {
     constructor(elements?: Vec3 | null) {
         super(elements ?? [0, 0, 0], 3)
     }
@@ -178,6 +170,36 @@ export class Vec3f extends Vecf {
     set z(val: number) {
         this.data[2] = val
     }
+    set xy(v: Vec2f) {
+        this.set([v.x, v.y, this.z])
+    }
+    set xyz(value: Vec3n) {
+        this.set(value)
+    }
+    get r() {
+        return this.x
+    }
+    set r(v: number) {
+        this.x = v
+    }
+    get g() {
+        return this.y
+    }
+    set g(v: number) {
+        this.y = v
+    }
+    get b() {
+        return this.z
+    }
+    set b(v: number) {
+        this.z = v
+    }
+    set rgb(v: Vec3f) {
+        this.xyz = v
+    }
+    get rgb() {
+        return this.xyz
+    }
 
     clone(): Vec3f {
         return vec3(this.x, this.y, this.z)
@@ -186,12 +208,6 @@ export class Vec3f extends Vecf {
         this.x = v.x
         this.y = v.y
         this.z = v.z
-        return this
-    }
-    set(x: number, y: number, z: number): this {
-        this.x = x
-        this.y = y
-        this.z = z
         return this
     }
     equals(v: Vec3f): boolean {
@@ -229,224 +245,88 @@ export class Vec3f extends Vecf {
     get xxx(): Vec3f {
         return vec3(this.data[0], this.data[0], this.data[0])
     }
-    set xxx(value: Vec3f) {
-        this.data[0] = value.x
-        this.data[0] = value.y
-        this.data[0] = value.z
-    }
     get xxy(): Vec3f {
         return vec3(this.data[0], this.data[0], this.data[1])
-    }
-    set xxy(value: Vec3f) {
-        this.data[0] = value.x
-        this.data[0] = value.y
-        this.data[1] = value.z
     }
     get xxz(): Vec3f {
         return vec3(this.data[0], this.data[0], this.data[2])
     }
-    set xxz(value: Vec3f) {
-        this.data[0] = value.x
-        this.data[0] = value.y
-        this.data[2] = value.z
-    }
     get xyx(): Vec3f {
         return vec3(this.data[0], this.data[1], this.data[0])
-    }
-    set xyx(value: Vec3f) {
-        this.data[0] = value.x
-        this.data[1] = value.y
-        this.data[0] = value.z
     }
     get xyy(): Vec3f {
         return vec3(this.data[0], this.data[1], this.data[1])
     }
-    set xyy(value: Vec3f) {
-        this.data[0] = value.x
-        this.data[1] = value.y
-        this.data[1] = value.z
-    }
     get xyz(): Vec3f {
         return vec3(this.data[0], this.data[1], this.data[2])
-    }
-    set xyz(value: Vec3f) {
-        this.data[0] = value.x
-        this.data[1] = value.y
-        this.data[2] = value.z
     }
     get xzx(): Vec3f {
         return vec3(this.data[0], this.data[2], this.data[0])
     }
-    set xzx(value: Vec3f) {
-        this.data[0] = value.x
-        this.data[2] = value.y
-        this.data[0] = value.z
-    }
     get xzy(): Vec3f {
         return vec3(this.data[0], this.data[2], this.data[1])
-    }
-    set xzy(value: Vec3f) {
-        this.data[0] = value.x
-        this.data[2] = value.y
-        this.data[1] = value.z
     }
     get xzz(): Vec3f {
         return vec3(this.data[0], this.data[2], this.data[2])
     }
-    set xzz(value: Vec3f) {
-        this.data[0] = value.x
-        this.data[2] = value.y
-        this.data[2] = value.z
-    }
-
     get yxx(): Vec3f {
         return vec3(this.data[1], this.data[0], this.data[0])
-    }
-    set yxx(value: Vec3f) {
-        this.data[1] = value.x
-        this.data[0] = value.y
-        this.data[0] = value.z
     }
     get yxy(): Vec3f {
         return vec3(this.data[1], this.data[0], this.data[1])
     }
-    set yxy(value: Vec3f) {
-        this.data[1] = value.x
-        this.data[0] = value.y
-        this.data[1] = value.z
-    }
     get yxz(): Vec3f {
         return vec3(this.data[1], this.data[0], this.data[2])
-    }
-    set yxz(value: Vec3f) {
-        this.data[1] = value.x
-        this.data[0] = value.y
-        this.data[2] = value.z
     }
     get yyx(): Vec3f {
         return vec3(this.data[1], this.data[1], this.data[0])
     }
-    set yyx(value: Vec3f) {
-        this.data[1] = value.x
-        this.data[1] = value.y
-        this.data[0] = value.z
-    }
     get yyy(): Vec3f {
         return vec3(this.data[1], this.data[1], this.data[1])
-    }
-    set yyy(value: Vec3f) {
-        this.data[1] = value.x
-        this.data[1] = value.y
-        this.data[1] = value.z
     }
     get yyz(): Vec3f {
         return vec3(this.data[1], this.data[1], this.data[2])
     }
-    set yyz(value: Vec3f) {
-        this.data[1] = value.x
-        this.data[1] = value.y
-        this.data[2] = value.z
-    }
     get yzx(): Vec3f {
         return vec3(this.data[1], this.data[2], this.data[0])
-    }
-    set yzx(value: Vec3f) {
-        this.data[1] = value.x
-        this.data[2] = value.y
-        this.data[0] = value.z
     }
     get yzy(): Vec3f {
         return vec3(this.data[1], this.data[2], this.data[1])
     }
-    set yzy(value: Vec3f) {
-        this.data[1] = value.x
-        this.data[2] = value.y
-        this.data[1] = value.z
-    }
     get yzz(): Vec3f {
         return vec3(this.data[1], this.data[2], this.data[2])
-    }
-    set yzz(value: Vec3f) {
-        this.data[1] = value.x
-        this.data[2] = value.y
-        this.data[2] = value.z
     }
 
     get zxx(): Vec3f {
         return vec3(this.data[2], this.data[0], this.data[0])
     }
-    set zxx(value: Vec3f) {
-        this.data[2] = value.x
-        this.data[0] = value.y
-        this.data[0] = value.z
-    }
     get zxy(): Vec3f {
         return vec3(this.data[2], this.data[0], this.data[1])
-    }
-    set zxy(value: Vec3f) {
-        this.data[2] = value.x
-        this.data[0] = value.y
-        this.data[1] = value.z
     }
     get zxz(): Vec3f {
         return vec3(this.data[2], this.data[0], this.data[2])
     }
-    set zxz(value: Vec3f) {
-        this.data[2] = value.x
-        this.data[0] = value.y
-        this.data[2] = value.z
-    }
     get zyx(): Vec3f {
         return vec3(this.data[2], this.data[1], this.data[0])
-    }
-    set zyx(value: Vec3f) {
-        this.data[2] = value.x
-        this.data[1] = value.y
-        this.data[0] = value.z
     }
     get zyy(): Vec3f {
         return vec3(this.data[2], this.data[1], this.data[1])
     }
-    set zyy(value: Vec3f) {
-        this.data[2] = value.x
-        this.data[1] = value.y
-        this.data[1] = value.z
-    }
     get zyz(): Vec3f {
         return vec3(this.data[2], this.data[1], this.data[2])
-    }
-    set zyz(value: Vec3f) {
-        this.data[2] = value.x
-        this.data[1] = value.y
-        this.data[2] = value.z
     }
     get zzx(): Vec3f {
         return vec3(this.data[2], this.data[2], this.data[0])
     }
-    set zzx(value: Vec3f) {
-        this.data[2] = value.x
-        this.data[2] = value.y
-        this.data[0] = value.z
-    }
     get zzy(): Vec3f {
         return vec3(this.data[2], this.data[2], this.data[1])
-    }
-    set zzy(value: Vec3f) {
-        this.data[2] = value.x
-        this.data[2] = value.y
-        this.data[1] = value.z
     }
     get zzz(): Vec3f {
         return vec3(this.data[2], this.data[2], this.data[2])
     }
-    set zzz(value: Vec3f) {
-        this.data[2] = value.x
-        this.data[2] = value.y
-        this.data[2] = value.z
-    }
 }
 
-export class Vec4f extends Vecf {
+export class Vec4f extends Vecf<Vec4n> {
     constructor(elements?: Vec4 | null) {
         super(elements ?? [0, 0, 0, 0], 4)
     }
@@ -474,6 +354,51 @@ export class Vec4f extends Vecf {
     }
     set w(val: number) {
         this.data[3] = val
+    }
+    set xy(v: Vec2f) {
+        this.set([v.x, v.y, this.z, this.w])
+    }
+    set xyz(v: Vec3f) {
+        this.set([v.x, v.y, v.z, this.w])
+    }
+    set xyzw(v: Vec4f) {
+        this.set(v)
+    }
+    get r() {
+        return this.x
+    }
+    set r(v: number) {
+        this.x = v
+    }
+    get g() {
+        return this.y
+    }
+    set g(v: number) {
+        this.y = v
+    }
+    get b() {
+        return this.z
+    }
+    set b(v: number) {
+        this.z = v
+    }
+    get a() {
+        return this.w
+    }
+    set a(v: number) {
+        this.w = v
+    }
+    set rgb(v: Vec3f) {
+        this.xyz = v
+    }
+    get rgb() {
+        return this.xyz
+    }
+    set rgba(v: Vec4f) {
+        this.xyzw = v
+    }
+    get rgba() {
+        return this.xyzw
     }
 
     clone(): Vec4f {
@@ -505,245 +430,83 @@ export class Vec4f extends Vecf {
     get xxxw(): Vec4f {
         return vec4(this.data[0], this.data[0], this.data[0], this.data[3])
     }
-    set xxxw(value: Vec4f) {
-        this.data[0] = value.x
-        this.data[0] = value.y
-        this.data[0] = value.z
-        this.data[3] = value.w
-    }
     get xxyw(): Vec4f {
         return vec4(this.data[0], this.data[0], this.data[1], this.data[3])
-    }
-    set xxyw(value: Vec4f) {
-        this.data[0] = value.x
-        this.data[0] = value.y
-        this.data[1] = value.z
-        this.data[3] = value.w
     }
     get xxzw(): Vec4f {
         return vec4(this.data[0], this.data[0], this.data[2], this.data[3])
     }
-    set xxzw(value: Vec4f) {
-        this.data[0] = value.x
-        this.data[0] = value.y
-        this.data[2] = value.z
-        this.data[3] = value.w
-    }
     get xyxw(): Vec4f {
         return vec4(this.data[0], this.data[1], this.data[0], this.data[3])
-    }
-    set xyxw(value: Vec4f) {
-        this.data[0] = value.x
-        this.data[1] = value.y
-        this.data[0] = value.z
-        this.data[3] = value.w
     }
     get xyyw(): Vec4f {
         return vec4(this.data[0], this.data[1], this.data[1], this.data[3])
     }
-    set xyyw(value: Vec4f) {
-        this.data[0] = value.x
-        this.data[1] = value.y
-        this.data[1] = value.z
-        this.data[3] = value.w
-    }
     get xyzw(): Vec4f {
         return vec4(this.data[0], this.data[1], this.data[2], this.data[3])
-    }
-    set xyzw(value: Vec4f) {
-        this.data[0] = value.x
-        this.data[1] = value.y
-        this.data[2] = value.z
-        this.data[3] = value.w
     }
     get xzxw(): Vec4f {
         return vec4(this.data[0], this.data[2], this.data[0], this.data[3])
     }
-    set xzxw(value: Vec4f) {
-        this.data[0] = value.x
-        this.data[2] = value.y
-        this.data[0] = value.z
-        this.data[3] = value.w
-    }
     get xzyw(): Vec4f {
         return vec4(this.data[0], this.data[2], this.data[1], this.data[3])
-    }
-    set xzyw(value: Vec4f) {
-        this.data[0] = value.x
-        this.data[2] = value.y
-        this.data[1] = value.z
-        this.data[3] = value.w
     }
     get xzzw(): Vec4f {
         return vec4(this.data[0], this.data[2], this.data[2], this.data[3])
     }
-    set xzzw(value: Vec4f) {
-        this.data[0] = value.x
-        this.data[2] = value.y
-        this.data[2] = value.z
-        this.data[3] = value.w
-    }
     get yxxw(): Vec4f {
         return vec4(this.data[1], this.data[0], this.data[0], this.data[3])
-    }
-    set yxxw(value: Vec4f) {
-        this.data[1] = value.x
-        this.data[0] = value.y
-        this.data[0] = value.z
-        this.data[3] = value.w
     }
     get yxyw(): Vec4f {
         return vec4(this.data[1], this.data[0], this.data[1], this.data[3])
     }
-    set yxyw(value: Vec4f) {
-        this.data[1] = value.x
-        this.data[0] = value.y
-        this.data[1] = value.z
-        this.data[3] = value.w
-    }
     get yxzw(): Vec4f {
         return vec4(this.data[1], this.data[0], this.data[2], this.data[3])
-    }
-    set yxzw(value: Vec4f) {
-        this.data[1] = value.x
-        this.data[0] = value.y
-        this.data[2] = value.z
-        this.data[3] = value.w
     }
     get yyxw(): Vec4f {
         return vec4(this.data[1], this.data[1], this.data[0], this.data[3])
     }
-    set yyxw(value: Vec4f) {
-        this.data[1] = value.x
-        this.data[1] = value.y
-        this.data[0] = value.z
-        this.data[3] = value.w
-    }
     get yyyw(): Vec4f {
         return vec4(this.data[1], this.data[1], this.data[1], this.data[3])
-    }
-    set yyyw(value: Vec4f) {
-        this.data[1] = value.x
-        this.data[1] = value.y
-        this.data[1] = value.z
-        this.data[3] = value.w
     }
     get yyzw(): Vec4f {
         return vec4(this.data[1], this.data[1], this.data[2], this.data[3])
     }
-    set yyzw(value: Vec4f) {
-        this.data[1] = value.x
-        this.data[1] = value.y
-        this.data[2] = value.z
-        this.data[3] = value.w
-    }
     get yzxw(): Vec4f {
         return vec4(this.data[1], this.data[2], this.data[0], this.data[3])
-    }
-    set yzxw(value: Vec4f) {
-        this.data[1] = value.x
-        this.data[2] = value.y
-        this.data[0] = value.z
-        this.data[3] = value.w
     }
     get yzyw(): Vec4f {
         return vec4(this.data[1], this.data[2], this.data[1], this.data[3])
     }
-    set yzyw(value: Vec4f) {
-        this.data[1] = value.x
-        this.data[2] = value.y
-        this.data[1] = value.z
-        this.data[3] = value.w
-    }
     get yzzw(): Vec4f {
         return vec4(this.data[1], this.data[2], this.data[2], this.data[3])
-    }
-    set yzzw(value: Vec4f) {
-        this.data[1] = value.x
-        this.data[2] = value.y
-        this.data[2] = value.z
-        this.data[3] = value.w
     }
     get zxxw(): Vec4f {
         return vec4(this.data[2], this.data[0], this.data[0], this.data[3])
     }
-    set zxxw(value: Vec4f) {
-        this.data[2] = value.x
-        this.data[0] = value.y
-        this.data[0] = value.z
-        this.data[3] = value.w
-    }
     get zxyw(): Vec4f {
         return vec4(this.data[2], this.data[0], this.data[1], this.data[3])
-    }
-    set zxyw(value: Vec4f) {
-        this.data[2] = value.x
-        this.data[0] = value.y
-        this.data[1] = value.z
-        this.data[3] = value.w
     }
     get zxzw(): Vec4f {
         return vec4(this.data[2], this.data[0], this.data[2], this.data[3])
     }
-    set zxzw(value: Vec4f) {
-        this.data[2] = value.x
-        this.data[0] = value.y
-        this.data[2] = value.z
-        this.data[3] = value.w
-    }
     get zyxw(): Vec4f {
         return vec4(this.data[2], this.data[1], this.data[0], this.data[3])
-    }
-    set zyxw(value: Vec4f) {
-        this.data[2] = value.x
-        this.data[1] = value.y
-        this.data[0] = value.z
-        this.data[3] = value.w
     }
     get zyyw(): Vec4f {
         return vec4(this.data[2], this.data[1], this.data[1], this.data[3])
     }
-    set zyyw(value: Vec4f) {
-        this.data[2] = value.x
-        this.data[1] = value.y
-        this.data[1] = value.z
-        this.data[3] = value.w
-    }
     get zyzw(): Vec4f {
         return vec4(this.data[2], this.data[1], this.data[2], this.data[3])
-    }
-    set zyzw(value: Vec4f) {
-        this.data[2] = value.x
-        this.data[1] = value.y
-        this.data[2] = value.z
-        this.data[3] = value.w
     }
     get zzxw(): Vec4f {
         return vec4(this.data[2], this.data[2], this.data[0], this.data[3])
     }
-    set zzxw(value: Vec4f) {
-        this.data[2] = value.x
-        this.data[2] = value.y
-        this.data[0] = value.z
-        this.data[3] = value.w
-    }
     get zzyw(): Vec4f {
         return vec4(this.data[2], this.data[2], this.data[1], this.data[3])
     }
-    set zzyw(value: Vec4f) {
-        this.data[2] = value.x
-        this.data[2] = value.y
-        this.data[1] = value.z
-        this.data[3] = value.w
-    }
     get zzzw(): Vec4f {
         return vec4(this.data[2], this.data[2], this.data[2], this.data[3])
-    }
-    set zzzw(value: Vec4f) {
-        this.data[2] = value.x
-        this.data[2] = value.y
-        this.data[2] = value.z
-        this.data[3] = value.w
     }
 }
 

@@ -33,20 +33,6 @@ test("Vec2 swizzle getters", () => {
     })
 })
 
-test("Vec2 swizzle setters", () => {
-    const cases = [
-        { prop: "xy", initial: vec2(1, 2), value: vec2(10, 20), expected: [10, 20] },
-        { prop: "xx", initial: vec2(1, 2), value: vec2(10, 20), expected: [20, 2] },
-        { prop: "yx", initial: vec2(1, 2), value: vec2(10, 20), expected: [20, 10] },
-        { prop: "yy", initial: vec2(1, 2), value: vec2(10, 20), expected: [1, 20] },
-    ]
-
-    cases.forEach(({ prop, initial, value, expected }) => {
-        ;(initial as any)[prop] = value
-        assert.deepStrictEqual(Array.from(initial.data), expected, `Vec2.${prop} setter failed`)
-    })
-})
-
 test("Vec2 arithmetic", () => {
     const v1 = vec2(1, 2)
     const v2 = vec2(3, 4)
@@ -79,34 +65,6 @@ test("Vec3 swizzle getters", () => {
         const expected = expectedVec3FromSwizzle(v, key)
         const actual = (v as any)[key] as Vec3f
         assert.deepStrictEqual(actual.data, expected.data, `Vec3.${key} getter failed: expected [${expected.data}], got [${actual.data}]`)
-    })
-})
-
-test("Vec3 swizzle setters", () => {
-    const keys: string[] = []
-    for (const a of ["x", "y", "z"]) {
-        for (const b of ["x", "y", "z"]) {
-            for (const c of ["x", "y", "z"]) {
-                keys.push(a + b + c)
-            }
-        }
-    }
-    const newVal = vec3(10, 20, 30)
-    const mapping: Record<string, number> = { x: 0, y: 1, z: 2 }
-    keys.forEach(key => {
-        const v = vec3(1, 2, 3)
-        ;(v as any)[key] = newVal
-        // Simulate sequential assignment:
-        const expected: number[] = [1, 2, 3]
-        for (let i = 0; i < key.length; i++) {
-            const idx = mapping[key[i]]
-            expected[idx] = newVal.data[i]
-        }
-        assert.deepStrictEqual(
-            Array.from(v.data),
-            expected,
-            `Vec3.${key} setter failed: expected [${expected}], got [${Array.from(v.data)}]`
-        )
     })
 })
 
@@ -143,33 +101,6 @@ test("Vec4 swizzle getters", () => {
         const expected = expectedVec4FromSwizzle(v, key)
         const actual = (v as any)[key] as Vec4f
         assert.deepStrictEqual(actual.data, expected.data, `Vec4.${key} getter failed: expected [${expected.data}], got [${actual.data}]`)
-    })
-})
-
-test("Vec4 swizzle setters", () => {
-    const keys: string[] = []
-    for (const a of ["x", "y", "z"]) {
-        for (const b of ["x", "y", "z"]) {
-            for (const c of ["x", "y", "z"]) {
-                keys.push(a + b + c + "w")
-            }
-        }
-    }
-    const newVal = vec4(10, 20, 30, 40)
-    const mapping: Record<string, number> = { x: 0, y: 1, z: 2, w: 3 }
-    keys.forEach(key => {
-        const v = vec4(1, 2, 3, 4)
-        ;(v as any)[key] = newVal
-        const expected: number[] = [1, 2, 3, 4]
-        for (let i = 0; i < key.length; i++) {
-            const idx = mapping[key[i]]
-            expected[idx] = newVal.data[i]
-        }
-        assert.deepStrictEqual(
-            Array.from(v.data),
-            expected,
-            `Vec4.${key} setter failed: expected [${expected}], got [${Array.from(v.data)}]`
-        )
     })
 })
 

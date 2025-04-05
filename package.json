@@ -1,6 +1,6 @@
 {
   "name": "galacticad",
-  "description": "Experimental SDF-based code-as-CAD",
+  "description": "New generation of GPU powered CAD, driven by SDFs and built from code",
   "version": "0.0.1",
   "homepage": "https://galacticad.app",
   "author": "Matthew Olenik",
@@ -13,7 +13,6 @@
   "type": "module",
   "devDependencies": {
     "@types/node": "^22.13.9",
-    "@types/quaternion": "^1.3.3",
     "@types/ws": "^8.5.14",
     "@webgpu/types": "^0.1.54",
     "chokidar": "^4.0.3",
@@ -22,6 +21,5 @@
     "typescript": "^5.8.2",
     "ws": "^8.18.1"
   },
-  "dependencies": {
-  }
+  "dependencies": {}
 }

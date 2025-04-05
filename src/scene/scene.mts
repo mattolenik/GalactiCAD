@@ -2,7 +2,12 @@ import { ArgArray } from "../vecmat/arrays.mjs"
 import { vec3, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
-type Constructor<T = {}> = new (...args: any[]) => T
+export type CompilerResult = {
+    funcName?: string
+    funcDef?: string
+    varName?: string
+    text?: string
+}
 
 export class SceneInfo {
     args: ArgArray
@@ -55,7 +60,7 @@ export class Node {
     constructor() {
         this.root = this
     }
-    compile(): string {
+    compile(): CompilerResult {
         throw new Error("Method not implemented.")
     }
     updateScene() {
@@ -160,8 +165,12 @@ export class Group extends WithChildren(Node) {
             child.build()
         }
     }
-    override compile(): string {
-        return this.children.map(c => c.compile()).join(";\n") + ";\n"
+    override compile(): CompilerResult {
+        const res = this.children[0].compile()
+        return {
+            text: res.text,
+            varName: res.varName,
+        }
     }
     constructor(...children: Node[]) {
         super()
@@ -201,10 +210,20 @@ export abstract class BinaryOperator extends Node {
 }
 
 export class Union extends BinaryOperator {
-    override compile(): string {
-        return !this.radius
-            ? `min( ${this.lh.compile()}, ${this.rh.compile()} )`
-            : `fOpUnionRound( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
+    override compile(): CompilerResult {
+        let text = ""
+        const lhResult = this.lh.compile()
+        const rhResult = this.rh.compile()
+        if (lhResult.text) text += lhResult.text + "\n"
+        if (rhResult.text) text += rhResult.text + "\n"
+        const varName = `union_${lhResult.varName}_${rhResult.varName}`
+        text += `let ${varName} = `
+        if (this.radius) {
+            text += `fOpUnionRound( ${lhResult.varName}, ${rhResult.varName}, ${this.radius} );`
+        } else {
+            text = `max( ${lhResult.varName}, ${rhResult.varName} )`
+        }
+        return { text, varName }
     }
     constructor(lh: Node, rh: Node, public radius?: number) {
         super(lh, rh)
@@ -212,10 +231,19 @@ export class Union extends BinaryOperator {
 }
 
 export class Subtract extends BinaryOperator {
-    override compile(): string {
-        return this.radius === undefined
-            ? `max( ${this.lh.compile()}, ${this.rh.compile()} )`
-            : `fOpDifferenceRound( ${this.lh.compile()}, ${this.rh.compile()}, ${this.radius} )`
+    override compile(): CompilerResult {
+        let text = ""
+        const lhResult = this.lh.compile()
+        const rhResult = this.rh.compile()
+        if (lhResult.text) text += lhResult.text + "\n"
+        if (rhResult.text) text += rhResult.text + "\n"
+        const varName = `diffr_${lhResult.varName}_${rhResult.varName}`
+        if (this.radius) {
+            text += `let ${varName} = fOpDifferenceRound( ${lhResult.varName}, ${rhResult.varName}, ${this.radius} );`
+        } else {
+            text += `let ${varName} = max( ${lhResult.varName}, ${rhResult.varName} )`
+        }
+        return { text, varName }
     }
     constructor(lh: Node, rh: Node, public radius?: number) {
         super(lh, rh)
@@ -242,8 +270,18 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         this.argIndex.pos = this.scene.nextArgIndex()
         this.argIndex.r = this.scene.nextArgIndex()
     }
-    override compile(): string {
-        return `fSphere( p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.r}].x )`
+    override compile(): CompilerResult {
+        const funcName = `Sphere${this.id}`
+        const varName = `result${funcName}`
+        return {
+            funcName,
+            varName,
+            funcDef: `
+fn ${funcName}(p: vec3f) -> f32 {
+    return fSphere( p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.r}].x )
+}`,
+            text: `let ${varName} = ${funcName}();`,
+        }
     }
 }
 
@@ -267,7 +305,17 @@ export class Box extends WithSize(WithPos(Node)) {
         this.argIndex.pos = this.scene.nextArgIndex()
         this.argIndex.size = this.scene.nextArgIndex()
     }
-    override compile(): string {
-        return `fBox( p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.size}].xyz )`
+    override compile(): CompilerResult {
+        const funcName = `Box${this.id}`
+        const varName = `result${funcName}`
+        return {
+            funcName,
+            varName,
+            funcDef: `
+fn ${funcName}(p: vec3f) -> f32 {
+    return fBox( p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.size}].xyz );
+}`,
+            text: `let ${varName} = ${funcName}();`,
+        }
     }
 }

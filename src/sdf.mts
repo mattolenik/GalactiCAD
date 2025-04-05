@@ -86,11 +86,14 @@ export class SDFRenderer {
             label: "orthoScale",
         })
 
+        const compiledResult = this.scene.root.compile()
+        let compiledText = compiledResult.text
+        compiledText += `\nreturn ${compiledResult.varName};\n`
         let shader = previewShader
             .replace(/NUM_ARGS.*\/\:\) replace/, `NUM_ARGS: u32 = ${this.scene.args.length};`)
-            .replace(/.*\/\/:\) insert sceneSDF/, "    return " + this.scene.root.compile())
+            .replace(/.*\/\/:\) insert sceneSDF/, "    " + compiledText)
 
-        console.log(shader)
+        console.log(compiledText)
 
         const shaderModule = this.device.createShaderModule({
             label: "SDF Preview",

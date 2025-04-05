@@ -23,7 +23,7 @@ export class SDFRenderer {
     #scene!: SceneInfo
     #uniformBuffers: UniformBuffers
     #shader!: PreviewShader
-    #initializePromise: Promise<void> | null
+    #initializing: Promise<void> | null
 
     constructor(canvas: HTMLCanvasElement) {
         this.#canvas = canvas
@@ -33,13 +33,12 @@ export class SDFRenderer {
         canvas.tabIndex = 1
         this.#controls = new Controls(canvas, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
         this.#uniformBuffers = new UniformBuffers()
-        this.#initializePromise = this.initialize()
+        this.#initializing = this.initialize()
     }
 
     async testScene() {
         await this.ready() // MUST be called before building the scene
 
-        // new Group(new Union(new Sphere({ pos: vec3(0, 0, 0), r: 10 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10)).init()
         const sceneInfo = new SceneInfo(
             new Group(
                 new Union(
@@ -68,9 +67,9 @@ export class SDFRenderer {
     }
 
     async ready() {
-        if (this.#initializePromise) {
-            await this.#initializePromise
-            this.#initializePromise = null
+        if (this.#initializing) {
+            await this.#initializing
+            this.#initializing = null
         }
     }
 

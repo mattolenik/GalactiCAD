@@ -88,12 +88,23 @@ export class SDFRenderer {
 
         const compiledResult = this.scene.root.compile()
         let compiledText = compiledResult.text
+        if (!compiledText) {
+            throw new Error("compilation returned no result")
+        }
         compiledText += `\nreturn ${compiledResult.varName};\n`
-        let shader = previewShader
-            .replace(/NUM_ARGS.*\/\:\) replace/, `NUM_ARGS: u32 = ${this.scene.args.length};`)
-            .replace(/.*\/\/:\) insert sceneSDF/, "    " + compiledText)
 
-        console.log(compiledText)
+        let symbol = `\\/\\/:\\)` // matches this:  //:)
+        const replaceDirective = (directive: string, text: string, searchString: string, replaceString: string) => {
+            const pattern = new RegExp(`${searchString}.*${symbol}\\s*${directive}`, "g")
+            return text.replaceAll(pattern, replaceString)
+        }
+
+        let shader = previewShader
+        shader = replaceDirective("replace", shader, "NUM_ARGS", `NUM_ARGS: u32 = ${this.scene.args.length};`)
+        shader = replaceDirective("insert.*sceneSDF", shader, "", compiledText)
+
+        // console.log(compiledText)
+        console.log(shader)
 
         const shaderModule = this.device.createShaderModule({
             label: "SDF Preview",

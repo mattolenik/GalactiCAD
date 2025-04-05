@@ -1,3 +1,4 @@
+import { promisify } from "util"
 import { Controls } from "./controls.mjs"
 import { Box, Group, Node, SceneInfo, Sphere, Subtract, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
@@ -23,6 +24,7 @@ export class SDFRenderer {
     private scene!: SceneInfo
     private uniformBuffers: UniformBuffers
     private shader!: PreviewShader
+    #initializePromise: Promise<void> | null
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas
@@ -32,24 +34,26 @@ export class SDFRenderer {
         canvas.tabIndex = 1
         this.controls = new Controls(canvas, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
         this.uniformBuffers = new UniformBuffers()
+        this.#initializePromise = this.initialize()
     }
 
     async testScene() {
-        await this.initialize(
-            // new Group(new Union(new Sphere({ pos: vec3(0, 0, 0), r: 10 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10)).init()
-            new SceneInfo(
-                new Group(
-                    new Union(
-                        new Box({ pos: vec3(1, -4, 4), l: 30, w: 5, h: 3 }),
-                        new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
-                        3
-                    )
+        await this.ready() // MUST be called before building the scene
+
+        // new Group(new Union(new Sphere({ pos: vec3(0, 0, 0), r: 10 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10)).init()
+        const sceneInfo = new SceneInfo(
+            new Group(
+                new Union(
+                    new Box({ pos: vec3(1, -4, 4), l: 30, w: 5, h: 3 }),
+                    new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
+                    3
                 )
             )
         )
+        await this.buildScene(sceneInfo)
     }
 
-    async initialize(sceneInfo: SceneInfo) {
+    async initialize() {
         const adapter = await navigator.gpu.requestAdapter()
         if (!adapter) throw new Error("No GPU adapter found")
 
@@ -62,71 +66,80 @@ export class SDFRenderer {
             format,
             alphaMode: "premultiplied",
         })
-        this.build(sceneInfo)
+    }
+
+    async ready() {
+        if (this.#initializePromise) {
+            await this.#initializePromise
+            this.#initializePromise = null
+        }
     }
 
     // rebuild/refresh from the scene
-    build(sceneInfo: SceneInfo) {
-        this.scene = sceneInfo
-        const bufSize = Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2)
-        console.log(bufSize)
-        this.uniformBuffers.scene = this.device.createBuffer({
-            size: bufSize,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "scene",
-        })
+    async buildScene(sceneInfo: SceneInfo): Promise<void> {
+        return new Promise((resolve): void => {
+            this.scene = sceneInfo
+            const bufSize = Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2)
+            console.log(bufSize)
+            this.uniformBuffers.scene = this.device.createBuffer({
+                size: bufSize,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                label: "scene",
+            })
 
-        this.uniformBuffers.sceneTransform = this.device.createBuffer({
-            size: 64,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "sceneTransform",
-        })
+            this.uniformBuffers.sceneTransform = this.device.createBuffer({
+                size: 64,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                label: "sceneTransform",
+            })
 
-        this.uniformBuffers.cameraPosition = this.device.createBuffer({
-            size: 16,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "cameraPosition",
-        })
+            this.uniformBuffers.cameraPosition = this.device.createBuffer({
+                size: 16,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                label: "cameraPosition",
+            })
 
-        this.uniformBuffers.orthoScale = this.device.createBuffer({
-            size: 16,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "orthoScale",
-        })
+            this.uniformBuffers.orthoScale = this.device.createBuffer({
+                size: 16,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                label: "orthoScale",
+            })
 
-        this.shader = new PreviewShader(previewShader, "Preview Window")
-            .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.scene.args.length};`)
-            .replace("insert", "sceneSDF", this.scene.compile())
-        console.log(this.shader.text)
-        const shaderModule = this.shader.createModule(this.device)
+            this.shader = new PreviewShader(previewShader, "Preview Window")
+                .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.scene.args.length};`)
+                .replace("insert", "sceneSDF", this.scene.compile())
+            console.log(this.shader.text)
+            const shaderModule = this.shader.createModule(this.device)
 
-        const format = this.context.getConfiguration()?.format!
-        this.pipeline = this.device.createRenderPipeline({
-            label: "Preview Pipeline",
-            layout: "auto",
-            vertex: {
-                module: shaderModule,
-                entryPoint: "vertexMain",
-            },
-            fragment: {
-                module: shaderModule,
-                entryPoint: "fragmentMain",
-                targets: [{ format }],
-            },
-            primitive: {
-                topology: "triangle-strip",
-                stripIndexFormat: "uint32",
-            },
-        })
-        this.bindGroup = this.device.createBindGroup({
-            label: "scene",
-            layout: this.pipeline.getBindGroupLayout(0),
-            entries: [
-                { binding: 0, resource: { buffer: this.uniformBuffers.scene } },
-                { binding: 1, resource: { buffer: this.uniformBuffers.sceneTransform } },
-                { binding: 2, resource: { buffer: this.uniformBuffers.cameraPosition } },
-                { binding: 3, resource: { buffer: this.uniformBuffers.orthoScale } },
-            ],
+            const format = this.context.getConfiguration()?.format!
+            this.pipeline = this.device.createRenderPipeline({
+                label: "Preview Pipeline",
+                layout: "auto",
+                vertex: {
+                    module: shaderModule,
+                    entryPoint: "vertexMain",
+                },
+                fragment: {
+                    module: shaderModule,
+                    entryPoint: "fragmentMain",
+                    targets: [{ format }],
+                },
+                primitive: {
+                    topology: "triangle-strip",
+                    stripIndexFormat: "uint32",
+                },
+            })
+            this.bindGroup = this.device.createBindGroup({
+                label: "scene",
+                layout: this.pipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: { buffer: this.uniformBuffers.scene } },
+                    { binding: 1, resource: { buffer: this.uniformBuffers.sceneTransform } },
+                    { binding: 2, resource: { buffer: this.uniformBuffers.cameraPosition } },
+                    { binding: 3, resource: { buffer: this.uniformBuffers.orthoScale } },
+                ],
+            })
+            resolve()
         })
     }
 

@@ -1,7 +1,7 @@
-export class CompiledShader {
+export class ShaderCompiler {
     symbol = `\\/\\/:\\)` // matches this:  //:)
     constructor(public text: string, public label: string) {}
-    replace(directive: string, name: string, replaceString: string): CompiledShader {
+    replace(directive: string, name: string, replaceString: string): ShaderCompiler {
         const pattern = new RegExp(`.*${this.symbol}\\s*${directive}\\s*${name}`, "g")
         this.text = this.text.replaceAll(pattern, replaceString)
         return this

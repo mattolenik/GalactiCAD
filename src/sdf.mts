@@ -37,7 +37,7 @@ export class SDFRenderer {
             // new Group(new Union(new Sphere({ pos: vec3(0, 0, 0), r: 10 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10)).init()
             new Group(
                 new Union(
-                    new Box({ pos: vec3(10, -10, 4), l: 30, w: 5, h: 3 }),
+                    new Box({ pos: vec3(1, -4, 4), l: 30, w: 5, h: 3 }),
                     new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
                     3
                 )

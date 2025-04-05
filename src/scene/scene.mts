@@ -4,7 +4,6 @@ import { asRadius } from "./geom.mjs"
 
 export type CompilerResult = {
     funcName?: string
-    funcDef?: string
     varName?: string
     text?: string
 }
@@ -219,7 +218,7 @@ export class Union extends BinaryOperator {
         const varName = `union_${lhResult.varName}_${rhResult.varName}`
         text += `let ${varName} = `
         if (this.radius) {
-            text += `fOpUnionRound( ${lhResult.varName}, ${rhResult.varName}, ${this.radius} );`
+            text += `fOpUnionRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
         } else {
             text = `max( ${lhResult.varName}, ${rhResult.varName} )`
         }
@@ -239,7 +238,7 @@ export class Subtract extends BinaryOperator {
         if (rhResult.text) text += rhResult.text + "\n"
         const varName = `diffr_${lhResult.varName}_${rhResult.varName}`
         if (this.radius) {
-            text += `let ${varName} = fOpDifferenceRound( ${lhResult.varName}, ${rhResult.varName}, ${this.radius} );`
+            text += `let ${varName} = fOpDifferenceRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
         } else {
             text += `let ${varName} = max( ${lhResult.varName}, ${rhResult.varName} )`
         }
@@ -276,11 +275,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         return {
             funcName,
             varName,
-            funcDef: `
-fn ${funcName}(p: vec3f) -> f32 {
-    return fSphere( p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.r}].x )
-}`,
-            text: `let ${varName} = ${funcName}();`,
+            text: `let ${varName} = fSphere(p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.r}].x);`,
         }
     }
 }
@@ -311,11 +306,7 @@ export class Box extends WithSize(WithPos(Node)) {
         return {
             funcName,
             varName,
-            funcDef: `
-fn ${funcName}(p: vec3f) -> f32 {
-    return fBox( p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.size}].xyz );
-}`,
-            text: `let ${varName} = ${funcName}();`,
+            text: `let ${varName} = fBox(p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.size}].xyz);`,
         }
     }
 }

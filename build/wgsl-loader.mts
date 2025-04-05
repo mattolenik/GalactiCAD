@@ -10,15 +10,15 @@ import * as path from "path"
 // It will be a string value holding the contents of the shader.
 //
 // Features:
-// * Supports recursive include in the form of `//- include "path/to/file.wgsl"`
-//                                       or of `//-include "path/to/file.wgsl"`
+// * Supports recursive include in the form of `//:) include "path/to/file.wgsl"`
+//                                       or of `//:)include "path/to/file.wgsl"`
 //
 export default function wgslLoader(extensions = ["wgsl"]): Plugin {
     if (extensions.length === 0) {
         throw new Error("must specify at least one file extension for WGSL shaders")
     }
     var extsPattern = extensions.map(e => `(${e})`).join("|")
-    const pattern = new RegExp(`\.${extsPattern}$`, "g")
+    const pattern = new RegExp(`\.${extsPattern}$`, "")
     return {
         name: "wgsl-loader",
         setup(build: PluginBuild) {

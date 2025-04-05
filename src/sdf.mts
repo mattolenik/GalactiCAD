@@ -1,7 +1,7 @@
 import { Controls } from "./controls.mjs"
 import { Box, Group, SceneInfo, Sphere, Subtract, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
-import { CompiledShader as PreviewShader } from "./shaders/shader.mjs"
+import { ShaderCompiler as PreviewShader } from "./shaders/shader.mjs"
 import { vec3 } from "./vecmat/vector.mjs"
 
 class UniformBuffers {

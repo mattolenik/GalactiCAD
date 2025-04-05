@@ -27,7 +27,7 @@ test:
 	$(TSX) --test
 
 watch: BUILD_FLAGS=-w
-watch: build
+watch: clean build
 serve: watch
 
 .PHONY: release

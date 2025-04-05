@@ -37,18 +37,19 @@ export class SDFRenderer {
     async testScene() {
         await this.initialize(
             // new Group(new Union(new Sphere({ pos: vec3(0, 0, 0), r: 10 }), new Sphere({ pos: vec3(0, 0, -14), r: 6 }), 10)).init()
-            new Group(
-                new Union(
-                    new Box({ pos: vec3(1, -4, 4), l: 30, w: 5, h: 3 }),
-                    new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
-                    3
+            new SceneInfo(
+                new Group(
+                    new Union(
+                        new Box({ pos: vec3(1, -4, 4), l: 30, w: 5, h: 3 }),
+                        new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
+                        3
+                    )
                 )
             )
         )
     }
 
-    async initialize(sceneRoot: Node) {
-        this.scene = new SceneInfo(sceneRoot)
+    async initialize(sceneInfo: SceneInfo) {
         const adapter = await navigator.gpu.requestAdapter()
         if (!adapter) throw new Error("No GPU adapter found")
 
@@ -61,11 +62,12 @@ export class SDFRenderer {
             format,
             alphaMode: "premultiplied",
         })
-        this.build(format)
+        this.build(sceneInfo)
     }
 
     // rebuild/refresh from the scene
-    build(format: GPUTextureFormat) {
+    build(sceneInfo: SceneInfo) {
+        this.scene = sceneInfo
         const bufSize = Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2)
         console.log(bufSize)
         this.uniformBuffers.scene = this.device.createBuffer({
@@ -98,6 +100,7 @@ export class SDFRenderer {
         console.log(this.shader.text)
         const shaderModule = this.shader.createModule(this.device)
 
+        const format = this.context.getConfiguration()?.format!
         this.pipeline = this.device.createRenderPipeline({
             label: "Preview Pipeline",
             layout: "auto",

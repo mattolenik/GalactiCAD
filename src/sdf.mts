@@ -1,6 +1,7 @@
 import { Controls } from "./controls.mjs"
 import { Box, Group, Node, SceneInfo, Sphere, Subtract, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
+import { CompiledShader as PreviewShader } from "./shaders/shader.mjs"
 import { vec3, Vec4f } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
@@ -21,6 +22,7 @@ export class SDFRenderer {
     private pipeline!: GPURenderPipeline
     private scene!: SceneInfo
     private uniformBuffers: UniformBuffers
+    private shader!: PreviewShader
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas
@@ -46,6 +48,7 @@ export class SDFRenderer {
     }
 
     async initialize(sceneRoot: Node) {
+        this.scene = new SceneInfo(sceneRoot)
         const adapter = await navigator.gpu.requestAdapter()
         if (!adapter) throw new Error("No GPU adapter found")
 
@@ -58,12 +61,15 @@ export class SDFRenderer {
             format,
             alphaMode: "premultiplied",
         })
+        this.build(format)
+    }
 
-        this.scene = new SceneInfo(sceneRoot)
-
-        console.log(Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2))
+    // rebuild/refresh from the scene
+    build(format: GPUTextureFormat) {
+        const bufSize = Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2)
+        console.log(bufSize)
         this.uniformBuffers.scene = this.device.createBuffer({
-            size: Math.max(this.scene.bufferSize, this.device.limits.minUniformBufferOffsetAlignment * 2),
+            size: bufSize,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "scene",
         })
@@ -86,33 +92,14 @@ export class SDFRenderer {
             label: "orthoScale",
         })
 
-        const compiledResult = this.scene.root.compile()
-        let compiledText = compiledResult.text
-        if (!compiledText) {
-            throw new Error("compilation returned no result")
-        }
-        compiledText += `\nreturn ${compiledResult.varName};\n`
-
-        let symbol = `\\/\\/:\\)` // matches this:  //:)
-        const replaceDirective = (directive: string, text: string, searchString: string, replaceString: string) => {
-            const pattern = new RegExp(`${searchString}.*${symbol}\\s*${directive}`, "g")
-            return text.replaceAll(pattern, replaceString)
-        }
-
-        let shader = previewShader
-        shader = replaceDirective("replace", shader, "NUM_ARGS", `NUM_ARGS: u32 = ${this.scene.args.length};`)
-        shader = replaceDirective("insert.*sceneSDF", shader, "", compiledText)
-
-        // console.log(compiledText)
-        console.log(shader)
-
-        const shaderModule = this.device.createShaderModule({
-            label: "SDF Preview",
-            code: shader,
-        })
+        this.shader = new PreviewShader(previewShader, "Preview Window")
+            .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.scene.args.length};`)
+            .replace("insert", "sceneSDF", this.scene.compile())
+        console.log(this.shader.text)
+        const shaderModule = this.shader.createModule(this.device)
 
         this.pipeline = this.device.createRenderPipeline({
-            label: "SDF pipeline",
+            label: "Preview Pipeline",
             layout: "auto",
             vertex: {
                 module: shaderModule,
@@ -128,7 +115,6 @@ export class SDFRenderer {
                 stripIndexFormat: "uint32",
             },
         })
-
         this.bindGroup = this.device.createBindGroup({
             label: "scene",
             layout: this.pipeline.getBindGroupLayout(0),

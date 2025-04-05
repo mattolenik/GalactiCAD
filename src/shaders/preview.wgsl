@@ -1,6 +1,6 @@
 //:) include "hg_sdf.wgsl"
 
-const NUM_ARGS: u32 = 0; //:) replace
+const NUM_ARGS: u32 = 0; //:) replace NUM_ARGS
 const MAX_STEPS: i32 = 5000;
 const MAX_DIST: f32 = 500.0;
 const SURF_DIST: f32 = 0.001;

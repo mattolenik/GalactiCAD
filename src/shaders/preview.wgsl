@@ -1,4 +1,4 @@
-//:) include "sdf.wgsl"
+//:) include "hg_sdf.wgsl"
 
 const NUM_ARGS: u32 = 0; //:) replace
 const MAX_STEPS: i32 = 5000;

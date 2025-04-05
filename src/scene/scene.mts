@@ -42,6 +42,16 @@ export class SceneInfo {
     get bufferSize(): number {
         return this.args.byteLength
     }
+
+    compile(): string {
+        const compiledResult = this.root.compile()
+        let compiledText = compiledResult.text
+        if (!compiledText) {
+            throw new Error("compilation returned no result")
+        }
+        compiledText += `\nreturn ${compiledResult.varName};\n`
+        return compiledText
+    }
 }
 
 export class Node {

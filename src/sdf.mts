@@ -2,7 +2,7 @@ import { Controls } from "./controls.mjs"
 import { Box, Group, SceneInfo, Sphere, Subtract, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler as PreviewShader } from "./shaders/shader.mjs"
-import { vec3 } from "./vecmat/vector.mjs"
+import { vec3, Vec3f } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
     cameraPosition!: GPUBuffer
@@ -39,15 +39,23 @@ export class SDFRenderer {
     async testScene() {
         await this.ready() // MUST be called before building the scene
 
-        const types = [Group, Union, Box, Subtract, Sphere]
         const sceneInfo = new SceneInfo(
-            eval(`new Group(
+            new Function(
+                "Group",
+                "Union",
+                "Box",
+                "Subtract",
+                "Sphere",
+                "Vec3f",
+                "vec3",
+                `return new Group(
                 new Union(
                     new Box({ pos: vec3(1, -4, 4), l: 30, w: 5, h: 3 }),
                     new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
                     3
                 )
-            )`)
+            )`
+            )(Group, Union, Box, Subtract, Sphere, Vec3f, vec3)
         )
         await this.buildScene(sceneInfo)
     }

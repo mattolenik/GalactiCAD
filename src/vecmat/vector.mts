@@ -11,7 +11,7 @@ export type Vecn = Vec2n | Vec3n | Vec4n
 export type Vec = Vec2 | Vec3 | Vec4
 
 export abstract class Vecf<TVec extends Vecn> implements Storable {
-    public static StringPrecision = 2
+    public static StringPrecision = 3
     #elements: Float32Array
     get data() {
         return this.#elements

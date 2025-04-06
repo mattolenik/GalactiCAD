@@ -1,4 +1,4 @@
-import { toNumberMust } from "../math.mjs"
+import { numbersAreDefined, toNumberMust } from "../math.mjs"
 import { Storable } from "../storage/storage.mjs"
 
 export type Vec2n = Vec2f | Float32Array | [number, number]
@@ -9,18 +9,6 @@ export type Vec4n = Vec4f | Float32Array | [number, number, number, number]
 export type Vec4 = Vec4n | string
 export type Vecn = Vec2n | Vec3n | Vec4n
 export type Vec = Vec2 | Vec3 | Vec4
-
-export function vec2(x: number, y: number): Vec2f {
-    return new Vec2f([x, y])
-}
-
-export function vec3(x: number, y: number, z: number): Vec3f {
-    return new Vec3f([x, y, z])
-}
-
-export function vec4(x: number, y: number, z: number, w: number): Vec4f {
-    return new Vec4f([x, y, z, w])
-}
 
 export abstract class Vecf<TVec extends Vecn> implements Storable {
     public static StringPrecision = 2
@@ -540,4 +528,79 @@ function parseVec(v: string, expectedLength?: number): [number, number] | [numbe
         return [elements[0], elements[1], elements[2], elements[3]]
     }
     throw new Error(`invalid vector size ${elements.length}`)
+}
+
+export function vec2(vec: Vec2 | number, y?: number): Vec2f {
+    if (typeof vec === "number") {
+        if (y === undefined || y === null) {
+            throw new Error("if X is specified as a number, y must also be specified")
+        }
+        return new Vec2f([vec, y])
+    }
+    if (numbersAreDefined(y)) {
+        throw new Error("y cannot be specified if the first argument is a vector")
+    }
+    if (typeof vec === "string") {
+        return new Vec2f(parseVec(vec, 2) as [number, number])
+    }
+    if (Array.isArray(vec)) {
+        if (vec.length !== 2) {
+            throw new Error(`invalid vector length, expected 2, got: ${(vec as any).length}`)
+        }
+        return new Vec2f(vec)
+    }
+    if (vec instanceof Vec2f) {
+        return vec
+    }
+    throw new Error("unsupported vec2 type")
+}
+
+export function vec3(vec: Vec3 | number, y?: number, z?: number): Vec3f {
+    if (typeof vec === "number") {
+        if (!numbersAreDefined(vec, y, z)) {
+            throw new Error("if X is specified as a number, y, and z must also be specified")
+        }
+        return new Vec3f([vec, y!, z!])
+    }
+    if (numbersAreDefined(y, z)) {
+        throw new Error("y and z cannot be specified if the first argument is a vector")
+    }
+    if (typeof vec === "string") {
+        return new Vec3f(parseVec(vec, 3) as [number, number, number])
+    }
+    if (Array.isArray(vec)) {
+        if (vec.length !== 3) {
+            throw new Error(`invalid vector length, expected 3, got: ${(vec as any).length}`)
+        }
+        return new Vec3f(vec)
+    }
+    if (vec instanceof Vec3f) {
+        return vec
+    }
+    throw new Error("unsupported vec3 type")
+}
+
+export function vec4(vec: Vec4 | number, y?: number, z?: number, w?: number): Vec4f {
+    if (typeof vec === "number") {
+        if (!numbersAreDefined(vec, y, z, w)) {
+            throw new Error("if X is specified as a number, y, z, and w must also be specified")
+        }
+        return new Vec4f([vec, y!, z!, w!])
+    }
+    if (numbersAreDefined(y, z, w)) {
+        throw new Error("y and z cannot be specified if the first argument is a vector")
+    }
+    if (typeof vec === "string") {
+        return new Vec4f(parseVec(vec, 4) as [number, number, number, number])
+    }
+    if (Array.isArray(vec)) {
+        if (vec.length !== 4) {
+            throw new Error(`invalid vector length, expected 4, got: ${(vec as any).length}`)
+        }
+        return new Vec4f(vec)
+    }
+    if (vec instanceof Vec4f) {
+        return vec
+    }
+    throw new Error("unsupported vec4 type")
 }

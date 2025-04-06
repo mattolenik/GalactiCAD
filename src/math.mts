@@ -21,3 +21,15 @@ export function toNumber(num: string | number): number | undefined {
     const isNum = !isNaN(num as any) && !isNaN(parsed)
     return !isNum ? undefined : parsed
 }
+
+export function numbersAreDefined(...nums: (number | undefined | null)[]): boolean {
+    if (nums.length === 0) {
+        throw new Error("expected at least 1 argument")
+    }
+    for (const n of nums) {
+        if (n === undefined || n === null || !Number.isFinite(n)) {
+            return false
+        }
+    }
+    return true
+}

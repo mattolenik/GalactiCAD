@@ -46,16 +46,14 @@ export class SDFRenderer {
                 "Box",
                 "Subtract",
                 "Sphere",
-                "Vec3f",
-                "vec3",
                 `return new Group(
                 new Union(
-                    new Box({ pos: vec3(1, -4, 4), l: 30, w: 5, h: 3 }),
-                    new Subtract(new Box({ pos: vec3(0, 0, 0), l: 10, w: 20, h: 8 }), new Sphere({ pos: vec3(0, 0, -8), r: 6 }), 1),
+                    new Box({ pos: [1,-4,4], l: 30, w: 5, h: 3 }),
+                    new Subtract(new Box({ pos: [0,0,0], l: 10, w: 20, h: 8 }), new Sphere({ pos: [0,0,-8], r: 6 }), 1),
                     3
                 )
             )`
-            )(Group, Union, Box, Subtract, Sphere, Vec3f, vec3)
+            )(Group, Union, Box, Subtract, Sphere)
         )
         await this.buildScene(sceneInfo)
     }

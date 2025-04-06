@@ -88,17 +88,21 @@ export class Vec2f extends Vecf<Vec2n> {
     clone(): Vec2f {
         return new Vec2f(this)
     }
-    copy(v: Vec2f) {
+    copy(v: Vec2) {
+        v = vec2(v)
         this.data.set(v.data)
     }
 
-    equals(v: Vec2f): boolean {
+    equals(v: Vec2): boolean {
+        v = vec2(v)
         return this.x === v.x && this.y === v.y
     }
-    add(v: Vec2f): Vec2f {
+    add(v: Vec2): Vec2f {
+        v = vec2(v)
         return vec2(this.x + v.x, this.y + v.y)
     }
-    subtract(v: Vec2f): Vec2f {
+    subtract(v: Vec2): Vec2f {
+        v = vec2(v)
         return vec2(this.x - v.x, this.y - v.y)
     }
     multiply<T extends number | Vec2f>(arg: T): Vec2f {
@@ -108,7 +112,8 @@ export class Vec2f extends Vecf<Vec2n> {
             return vec2(this.x * arg.x, this.y * arg.y)
         }
     }
-    dot(v: Vec2f): number {
+    dot(v: Vec2): number {
+        v = vec2(v)
         return this.x * v.x + this.y * v.y
     }
     length(): number {
@@ -125,8 +130,8 @@ export class Vec2f extends Vecf<Vec2n> {
     get xy(): Vec2f {
         return vec2(this.data[0], this.data[1])
     }
-    set xy(value: Vec2f) {
-        this.set(value)
+    set xy(v: Vec2) {
+        this.set(vec2(v))
     }
     get yx(): Vec2f {
         return vec2(this.data[1], this.data[0])
@@ -158,11 +163,9 @@ export class Vec3f extends Vecf<Vec3n> {
     set z(val: number) {
         this.data[2] = val
     }
-    set xy(v: Vec2f) {
+    set xy(v: Vec2) {
+        v = vec2(v)
         this.set([v.x, v.y, this.z])
-    }
-    set xyz(value: Vec3n) {
-        this.set(value)
     }
     get r() {
         return this.x
@@ -182,8 +185,8 @@ export class Vec3f extends Vecf<Vec3n> {
     set b(v: number) {
         this.z = v
     }
-    set rgb(v: Vec3f) {
-        this.xyz = v
+    set rgb(v: Vec3) {
+        this.set(vec3(v))
     }
     get rgb() {
         return this.xyz
@@ -192,35 +195,42 @@ export class Vec3f extends Vecf<Vec3n> {
     clone(): Vec3f {
         return vec3(this.x, this.y, this.z)
     }
-    copy(v: Vec3f): this {
+    copy(v: Vec3): this {
+        v = vec3(v)
         this.x = v.x
         this.y = v.y
         this.z = v.z
         return this
     }
-    equals(v: Vec3f): boolean {
+    equals(v: Vec3): boolean {
+        v = vec3(v)
         return this.x === v.x && this.y === v.y && this.z === v.z
     }
-    add(v: Vec3f): Vec3f {
+    add(v: Vec3): Vec3f {
+        v = vec3(v)
         return vec3(this.x + v.x, this.y + v.y, this.z + v.z)
     }
-    subtract(v: Vec3f): Vec3f {
+    subtract(v: Vec3): Vec3f {
+        v = vec3(v)
         return vec3(this.x - v.x, this.y - v.y, this.z - v.z)
     }
-    multiply<T extends number | Vec3f>(arg: T): Vec3f {
+    multiply<T extends number | Vec3>(arg: T): Vec3f {
         if (typeof arg === "number") {
             return vec3(this.x * arg, this.y * arg, this.z * arg)
         } else {
-            return vec3(this.x * arg.x, this.y * arg.y, this.z * arg.z)
+            const v = vec3(arg)
+            return vec3(this.x * v.x, this.y * v.y, this.z * v.z)
         }
     }
     scale(arg: number): Vec3f {
         return this.multiply(arg)
     }
-    dot(v: Vec3f): number {
+    dot(v: Vec3): number {
+        v = vec3(v)
         return this.x * v.x + this.y * v.y + this.z * v.z
     }
-    cross(v: Vec3f): Vec3f {
+    cross(v: Vec3): Vec3f {
+        v = vec3(v)
         return vec3(this.y * v.z - this.z * v.y, this.z * v.x - this.x * v.z, this.x * v.y - this.y * v.x)
     }
     length(): number {
@@ -284,7 +294,6 @@ export class Vec3f extends Vecf<Vec3n> {
     get yzz(): Vec3f {
         return vec3(this.data[1], this.data[2], this.data[2])
     }
-
     get zxx(): Vec3f {
         return vec3(this.data[2], this.data[0], this.data[0])
     }
@@ -343,13 +352,19 @@ export class Vec4f extends Vecf<Vec4n> {
     set w(val: number) {
         this.data[3] = val
     }
-    set xy(v: Vec2f) {
+    set xy(v: Vec2) {
+        v = vec2(v)
         this.set([v.x, v.y, this.z, this.w])
     }
-    set xyz(v: Vec3f) {
+    get xyz(): Vec3f {
+        return vec3(this.x, this.y, this.z)
+    }
+    set xyz(v: Vec3) {
+        v = vec3(v)
         this.set([v.x, v.y, v.z, this.w])
     }
-    set xyzw(v: Vec4f) {
+    set xyzw(v: Vec4) {
+        v = vec4(v)
         this.set(v)
     }
     get r() {
@@ -376,13 +391,15 @@ export class Vec4f extends Vecf<Vec4n> {
     set a(v: number) {
         this.w = v
     }
-    set rgb(v: Vec3f) {
+    set rgb(v: Vec3) {
+        v = vec3(v)
         this.xyz = v
     }
     get rgb() {
         return this.xyz
     }
-    set rgba(v: Vec4f) {
+    set rgba(v: Vec4) {
+        v = vec4(v)
         this.xyzw = v
     }
     get rgba() {
@@ -392,20 +409,24 @@ export class Vec4f extends Vecf<Vec4n> {
     clone(): Vec4f {
         return vec4(this.x, this.y, this.z, this.w)
     }
-    add(v: Vec4f): Vec4f {
+    add(v: Vec4): Vec4f {
+        v = vec4(v)
         return vec4(this.x + v.x, this.y + v.y, this.z + v.z, this.w + v.w)
     }
-    subtract(v: Vec4f): Vec4f {
+    subtract(v: Vec4): Vec4f {
+        v = vec4(v)
         return vec4(this.x - v.x, this.y - v.y, this.z - v.z, this.w - v.w)
     }
     multiply<T extends number | Vec4f>(arg: T): Vec4f {
         if (typeof arg === "number") {
             return vec4(this.x * arg, this.y * arg, this.z * arg, this.w * arg)
         } else {
-            return vec4(this.x * arg.x, this.y * arg.y, this.z * arg.z, this.w * arg.w)
+            const v = vec4(arg)
+            return vec4(this.x * v.x, this.y * v.y, this.z * v.z, this.w * v.w)
         }
     }
-    dot(v: Vec4f): number {
+    dot(v: Vec4): number {
+        v = vec4(v)
         return this.x * v.x + this.y * v.y + this.z * v.z + this.w * v.w
     }
     length(): number {
@@ -530,6 +551,8 @@ function parseVec(v: string, expectedLength?: number): [number, number] | [numbe
     throw new Error(`invalid vector size ${elements.length}`)
 }
 
+export function vec2(x: number, y: number): Vec2f
+export function vec2(vec: Vec2): Vec2f
 export function vec2(vec: Vec2 | number, y?: number): Vec2f {
     if (typeof vec === "number") {
         if (y === undefined || y === null) {
@@ -555,6 +578,8 @@ export function vec2(vec: Vec2 | number, y?: number): Vec2f {
     throw new Error("unsupported vec2 type")
 }
 
+export function vec3(x: number, y: number, z: number): Vec3f
+export function vec3(vec: Vec3): Vec3f
 export function vec3(vec: Vec3 | number, y?: number, z?: number): Vec3f {
     if (typeof vec === "number") {
         if (!numbersAreDefined(vec, y, z)) {
@@ -580,6 +605,8 @@ export function vec3(vec: Vec3 | number, y?: number, z?: number): Vec3f {
     throw new Error("unsupported vec3 type")
 }
 
+export function vec4(x: number, y: number, z: number, w: number): Vec4f
+export function vec4(vec: Vec4): Vec4f
 export function vec4(vec: Vec4 | number, y?: number, z?: number, w?: number): Vec4f {
     if (typeof vec === "number") {
         if (!numbersAreDefined(vec, y, z, w)) {

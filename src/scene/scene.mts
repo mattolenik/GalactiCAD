@@ -1,5 +1,5 @@
 import { ArgArray } from "../vecmat/arrays.mjs"
-import { vec3, Vec3f } from "../vecmat/vector.mjs"
+import { Vec3, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 export type CompilerResult = {
@@ -265,9 +265,9 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         r: 0,
     }
 
-    constructor({ pos, r, d }: { pos: Vec3f; r?: number; d?: number }) {
+    constructor({ pos, r, d }: { pos: Vec3; r?: number; d?: number }) {
         super()
-        this.pos = pos
+        this.pos = vec3(pos)
         this.r = asRadius(r, d)
     }
     override updateScene(): void {
@@ -296,9 +296,9 @@ export class Box extends WithSize(WithPos(Node)) {
         size: 0,
     }
 
-    constructor({ pos, l, w, h }: { pos: Vec3f; l: number; w: number; h: number }) {
+    constructor({ pos, l, w, h }: { pos: Vec3; l: number; w: number; h: number }) {
         super()
-        this.pos = pos
+        this.pos = vec3(pos)
         this.size = vec3(l, w, h)
     }
     override updateScene(): void {

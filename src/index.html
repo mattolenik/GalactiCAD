@@ -34,8 +34,11 @@
 
         await renderer.testScene();
         requestAnimationFrame(time => renderer.update(time));
-
+        document.getElementById("reload-button").onclick = async (ev)=>await renderer.testScene()
     </script>
+    <div id="toolbar">
+        <button id="reload-button">Reload</button>
+    </div>
 </body>
 
 </html>

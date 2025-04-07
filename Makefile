@@ -38,7 +38,3 @@ release: build test
 .PHONY: clean
 clean:
 	rm -rf $(DIST)
-
-
-asdf:
-	@(bash -c "exit 123"); echo $$?

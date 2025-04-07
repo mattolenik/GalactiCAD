@@ -526,7 +526,7 @@ function parseVec(v: string, expectedLength?: number): [number, number] | [numbe
             .trim()
             .replace(/^[\{\[\(]/, "")
             .replace(/[\}\]\)]$/, "")
-            .split(/,\s*/)
+            .split(/(?:\s*,\s*)|\s+/)
             .map(e => toNumberMust(e))
     } catch (e) {
         throw new Error(`invalid vector string '${v}': ${e}`)

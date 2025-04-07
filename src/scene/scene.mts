@@ -265,7 +265,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         r: 0,
     }
 
-    constructor({ pos, r, d }: { pos: Vec3; r?: number; d?: number }) {
+    constructor(pos: Vec3, { r, d }: { r?: number; d?: number }) {
         super()
         this.pos = vec3(pos)
         this.r = asRadius(r, d)
@@ -296,10 +296,10 @@ export class Box extends WithSize(WithPos(Node)) {
         size: 0,
     }
 
-    constructor({ pos, l, w, h }: { pos: Vec3; l: number; w: number; h: number }) {
+    constructor(pos: Vec3, size: Vec3) {
         super()
         this.pos = vec3(pos)
-        this.size = vec3(l, w, h)
+        this.size = vec3(size)
     }
     override updateScene(): void {
         this.scene.args.set(this.argIndex.pos, this.pos)

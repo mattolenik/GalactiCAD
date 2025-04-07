@@ -48,8 +48,8 @@ export class SDFRenderer {
                 "Sphere",
                 `return new Group(
                 new Union(
-                    new Box({ pos: [1,-4,4], l: 30, w: 5, h: 3 }),
-                    new Subtract(new Box({ pos: [0,0,0], l: 10, w: 20, h: 8 }), new Sphere({ pos: [0,0,-8], r: 6 }), 1),
+                    new Box([1,-4,4], [30, 5, 3]),
+                    new Subtract( new Box( [0,0,0], [10,20,8] ), new Sphere( [0,0,-10], {r:6} ), 2),
                     3
                 )
             )`

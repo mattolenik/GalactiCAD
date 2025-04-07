@@ -1,7 +1,7 @@
 SHELL    := bash
 BROWSER  ?= chromium
 DIST     := dist
-TSX      ?= npx tsx
+TSX      ?= ./node_modules/.bin/tsx
 PORT     ?= $(shell $(BUILD) port)
 BUILD    := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 VERSION  := $(shell echo $$(ver=$$(git tag -l --points-at HEAD) && [[ -z $$ver ]] && ver=$$(git describe --always --dirty); printf $$ver))

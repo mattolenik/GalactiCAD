@@ -94,9 +94,9 @@ async function main() {
                 server.reload()
             },
             async (event, path) => {
+                log(`REBUILD triggered by ${event}: ${path}`)
                 const args = [TSX_PATH, "--disable-warning=ExperimentalWarning"]
                 args.push(...process.argv.slice(1))
-                log(`REBUILD triggered by ${event}: ${path}`)
                 // must cast to any as the current @types/node does not have a definition for execve (added in node v23.11.0)
                 ;(process as any).execve(TSX_PATH, args, process.env)
             }

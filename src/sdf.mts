@@ -24,6 +24,7 @@ export class SDFRenderer {
     #uniformBuffers: UniformBuffers
     #shader!: PreviewShader
     #initializing: Promise<void> | null
+    #format!: GPUTextureFormat
 
     constructor(canvas: HTMLCanvasElement) {
         this.#canvas = canvas
@@ -65,10 +66,10 @@ export class SDFRenderer {
         this.#device = await adapter.requestDevice()
         this.#context = this.#canvas.getContext("webgpu") as GPUCanvasContext
 
-        const format = navigator.gpu.getPreferredCanvasFormat()
+        this.#format = navigator.gpu.getPreferredCanvasFormat()
         this.#context.configure({
             device: this.#device,
-            format,
+            format: this.#format,
             alphaMode: "premultiplied",
         })
     }
@@ -116,7 +117,7 @@ export class SDFRenderer {
             console.log(this.#shader.text)
             const shaderModule = this.#shader.createModule(this.#device)
 
-            const format = this.#context.getConfiguration()?.format!
+            const format = this.#format
             this.#pipeline = this.#device.createRenderPipeline({
                 label: "Preview Pipeline",
                 layout: "auto",

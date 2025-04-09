@@ -19,10 +19,11 @@ export class DevServer {
         // the browser from having to refresh to get the new port.
         const liveReloadPort = parseInt(process.env.LRPORT ?? "0") || ephemeralPort()
         process.env.LRPORT = liveReloadPort.toString()
+        const wsURL = `ws://localhost:${liveReloadPort}`
 
         const clientScript = `
         <script type="module">
-            const ws = new WebSocket("ws://localhost:${liveReloadPort}");
+            const ws = new WebSocket("${wsURL}");
             ws.addEventListener("message", (event) => {
                 if (event.data === "reload") {
                     ws.close();
@@ -39,7 +40,7 @@ export class DevServer {
                 })
             })
             .on("listening", () => {
-                log("Live reload on port " + liveReloadPort)
+                log("Live reload at " + wsURL)
             })
     }
 
@@ -99,6 +100,7 @@ function httpServer(dir: string, port: number, clientScript = "", indexFileName 
                     res.writeHead(404, { "content-type": "text/plain" })
                     res.end("404 not found")
                 } else {
+                    err(`Internal error: ${err}`)
                     res.writeHead(500, { "content-type": "text/plain" })
                     res.end("500 unknown server error")
                 }

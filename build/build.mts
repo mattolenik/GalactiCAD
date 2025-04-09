@@ -2,7 +2,7 @@ import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
 import assetBundler from "./asset-bundler.mjs"
-import { DevServer } from "./server.mjs"
+import { DevServer } from "./devserver.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
 
 const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
@@ -24,7 +24,6 @@ const WatchOptions = {
 
 const ServerOptions = {
     port: parseInt(process.env.PORT || "6900", 10),
-    liveReloadPort: parseInt(process.env.PORT_LIVERELOAD || "6909", 10),
 }
 
 async function build() {
@@ -90,7 +89,7 @@ async function main() {
 
     if (process.argv.includes("-w")) {
         log("Watching for changes")
-        let server = new DevServer(Options.outDir, ServerOptions.port, ServerOptions.liveReloadPort, "index.html", log, err)
+        let server = new DevServer(Options.outDir, ServerOptions.port, "index.html", log, err)
         let watcher = watch(
             ".",
             async (event, path) => {
@@ -101,10 +100,8 @@ async function main() {
             async (event, path) => {
                 const tsxPath = process.env.TSX ?? "./node_modules/.bin/tsx"
                 log(`REBUILD triggered by ${event}: ${path}`)
-                const args = [tsxPath, "--disable-warning=ExperimentalWarning"]
-                args.push(...process.argv.slice(1))
-                // must cast to any as the current @types/node does not have a definition for execve (added in node v23.11.0)
-                ;(process as any).execve(tsxPath, args, process.env)
+                const args = [tsxPath, "--disable-warning=ExperimentalWarning"].concat(process.argv.slice(1))
+                process.execve(tsxPath, args, process.env)
             }
         )
 

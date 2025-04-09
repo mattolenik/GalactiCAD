@@ -4,26 +4,21 @@ import path from "path"
 import WebSocket, { WebSocketServer } from "ws"
 
 export class DevServer {
-    public ServeRoot: string
-    public Port: number
-    public LiveReloadPort: number
-    public IndexFileName: string
-
-    public Server: http.Server
-    public LRServer: WebSocketServer
+    httpServer: http.Server
+    wsServer: WebSocketServer
 
     constructor(
-        serveRoot: string,
-        port: number,
-        liveReloadPort: number,
-        indexFileName = "index.html",
+        public serveRoot: string,
+        public port: number,
+        public indexFileName = "index.html",
         log = console.log,
         err = console.error
     ) {
-        this.ServeRoot = serveRoot
-        this.Port = port
-        this.LiveReloadPort = liveReloadPort
-        this.IndexFileName = indexFileName
+        // Use an ephemeral port for live reload, but, store it in the environment
+        // so that upon rebuild (an execve call), the port can be reused, preventing
+        // the browser from having to refresh to get the new port.
+        const liveReloadPort = parseInt(process.env.LRPORT ?? "0") || ephemeralPort()
+        process.env.LRPORT = liveReloadPort.toString()
 
         const clientScript = `
         <script type="module">
@@ -36,16 +31,20 @@ export class DevServer {
             });
         </script>`
 
-        this.Server = httpServer(serveRoot, port, clientScript, indexFileName, log, err)
-        this.LRServer = new WebSocketServer({ port: liveReloadPort }).on("connection", (ws: WebSocket) => {
-            ws.on("error", (error: Error) => {
-                err("WebSocket error:", error)
+        this.httpServer = httpServer(serveRoot, port, clientScript, indexFileName, log, err)
+        this.wsServer = new WebSocketServer({ port: liveReloadPort })
+            .on("connection", (ws: WebSocket) => {
+                ws.on("error", (error: Error) => {
+                    err("WebSocket error: ", error)
+                })
             })
-        })
+            .on("listening", () => {
+                log("Live reload on port " + liveReloadPort)
+            })
     }
 
     public command(cmd: string) {
-        this.LRServer.clients.forEach(client => client.send(cmd))
+        this.wsServer.clients.forEach(client => client.send(cmd))
     }
 
     public reload() {
@@ -53,9 +52,13 @@ export class DevServer {
     }
 
     public close() {
-        this.Server.closeAllConnections()
-        this.LRServer.close()
+        this.httpServer.closeAllConnections()
+        this.wsServer.close()
     }
+}
+
+function ephemeralPort() {
+    return 49152 + Math.floor(Math.random() * (65535 - 49152))
 }
 
 function httpServer(dir: string, port: number, clientScript = "", indexFileName = "index.html", log = console.log, err = console.error) {

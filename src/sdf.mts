@@ -2,7 +2,7 @@ import { Controls } from "./controls.mjs"
 import { Box, Group, SceneInfo, Sphere, Subtract, Union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler as PreviewShader } from "./shaders/shader.mjs"
-import { vec3, Vec3f } from "./vecmat/vector.mjs"
+import { vec3 } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
     cameraPosition!: GPUBuffer

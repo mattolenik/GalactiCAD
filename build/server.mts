@@ -12,7 +12,14 @@ export class DevServer {
     public Server: http.Server
     public LRServer: WebSocketServer
 
-    constructor(serveRoot: string, port: number, liveReloadPort: number, indexFileName = "index.html") {
+    constructor(
+        serveRoot: string,
+        port: number,
+        liveReloadPort: number,
+        indexFileName = "index.html",
+        log = console.log,
+        err = console.error
+    ) {
         this.ServeRoot = serveRoot
         this.Port = port
         this.LiveReloadPort = liveReloadPort
@@ -29,10 +36,10 @@ export class DevServer {
             });
         </script>`
 
-        this.Server = httpServer(serveRoot, port, clientScript, indexFileName)
+        this.Server = httpServer(serveRoot, port, clientScript, indexFileName, log, err)
         this.LRServer = new WebSocketServer({ port: liveReloadPort }).on("connection", (ws: WebSocket) => {
             ws.on("error", (error: Error) => {
-                console.error("WebSocket error:", error)
+                err("WebSocket error:", error)
             })
         })
     }
@@ -51,7 +58,7 @@ export class DevServer {
     }
 }
 
-function httpServer(dir: string, port: number, clientScript = "", indexFileName = "index.html") {
+function httpServer(dir: string, port: number, clientScript = "", indexFileName = "index.html", log = console.log, err = console.error) {
     const contentType: Record<string, string> = {
         ".css": "text/css",
         ".gif": "image/gif",
@@ -65,11 +72,11 @@ function httpServer(dir: string, port: number, clientScript = "", indexFileName 
     }
 
     const defaultContentType = "application/octet-stream"
-    console.log(`Serving at http://localhost:${port}`)
+    log(`Serving at http://localhost:${port}`)
 
     return http
         .createServer(async (req, res) => {
-            console.log(`${req.method} ${req.url}`)
+            log(`${req.method} ${req.url}`)
             let file = path.normalize(path.join(dir, "." + req.url))
             try {
                 const stats = await fs.stat(file)

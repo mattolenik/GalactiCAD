@@ -1,41 +1,48 @@
 import chokidar from "chokidar"
+import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
 import assetBundler from "./asset-bundler.mjs"
 import { DevServer } from "./server.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
-import { EventName } from "chokidar/handler.js"
 
-const ASSETS = ["src/**/*.html", "src/**/*.css"]
-const ENTRY_POINTS = ["./src/sdf.mts"]
-const OUT_DIR = "./dist"
-const IS_PROD = !!process.env.PRODUCTION
+const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
+const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 
-const TSX_PATH = process.env.TSX ?? "./node_modules/.bin/tsx"
+const Assets = ["src/**/*.html", "src/**/*.css"]
 
-const watchIgnorePatterns = [".DS_Store", ".hg", ".git", OUT_DIR, "node_modules"]
-const rebuildPatterns = [/^build\//, /\.lock$/, /tsconfig\.json$/]
+const Options = {
+    entryPoints: ["./src/sdf.mts"],
+    plugins: [wgslLoader(), assetBundler(Assets, log)],
+    outDir: "./dist",
+    isProd: !!process.env.PRODUCTION,
+}
 
-const port = parseInt(process.env.PORT || "6900", 10)
-const liveReloadPort = parseInt(process.env.PORT_LIVERELOAD || "6909", 10)
+const WatchOptions = {
+    ignored: [".DS_Store", ".hg", ".git", Options.outDir, "node_modules"],
+    causesRebuild: [/^build\//, /\.lock$/, /tsconfig\.json$/],
+}
 
-const log = (msg: any) => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`)
+const ServerOptions = {
+    port: parseInt(process.env.PORT || "6900", 10),
+    liveReloadPort: parseInt(process.env.PORT_LIVERELOAD || "6909", 10),
+}
 
 async function build() {
     const startTime = performance.now()
     try {
-        await esbuild.build({
+        const results = await esbuild.build({
             bundle: true,
-            entryPoints: ENTRY_POINTS,
-            minify: IS_PROD,
-            outdir: OUT_DIR,
+            entryPoints: Options.entryPoints,
+            minify: Options.isProd,
+            outdir: Options.outDir,
             platform: "neutral",
-            plugins: [wgslLoader(), assetBundler(ASSETS, log)],
-            sourcemap: !IS_PROD,
+            plugins: Options.plugins,
+            sourcemap: !Options.isProd,
             target: "es2023",
         })
         const elapsed = performance.now() - startTime
         log(`🌱🐢 ${elapsed.toFixed(2)}ms`)
-        return true
+        return results.errors.length === 0
     } catch (e) {
         const elapsed = performance.now() - startTime
         console.log(e)
@@ -49,19 +56,17 @@ function watch(
     onChange: (event: EventName, path: string) => Promise<void>,
     onRebuild: (event: EventName, path: string) => Promise<void>
 ) {
-    const isRebuildPath = (p: string) => rebuildPatterns.map(re => !!p.match(re)).reduce((p, c) => p || c, false)
-
     return chokidar
         .watch(location, {
             atomic: true,
             cwd: ".",
             followSymlinks: true,
-            ignored: watchIgnorePatterns,
+            ignored: WatchOptions.ignored,
             ignoreInitial: true,
             persistent: true,
         })
         .on("all", async (event, fpath) => {
-            if (isRebuildPath(fpath)) {
+            if (WatchOptions.causesRebuild.some(re => fpath.match(re))) {
                 await onRebuild(event, fpath)
             } else {
                 await onChange(event, fpath)
@@ -72,7 +77,7 @@ function watch(
 async function main() {
     switch (process.argv[2]) {
         case "port":
-            console.log(port)
+            console.log(ServerOptions.port)
             process.exit()
     }
 
@@ -85,7 +90,7 @@ async function main() {
 
     if (process.argv.includes("-w")) {
         log("Watching for changes")
-        let server = new DevServer(OUT_DIR, port, liveReloadPort)
+        let server = new DevServer(Options.outDir, ServerOptions.port, ServerOptions.liveReloadPort, "index.html", log, err)
         let watcher = watch(
             ".",
             async (event, path) => {
@@ -94,11 +99,12 @@ async function main() {
                 server.reload()
             },
             async (event, path) => {
+                const tsxPath = process.env.TSX ?? "./node_modules/.bin/tsx"
                 log(`REBUILD triggered by ${event}: ${path}`)
-                const args = [TSX_PATH, "--disable-warning=ExperimentalWarning"]
+                const args = [tsxPath, "--disable-warning=ExperimentalWarning"]
                 args.push(...process.argv.slice(1))
                 // must cast to any as the current @types/node does not have a definition for execve (added in node v23.11.0)
-                ;(process as any).execve(TSX_PATH, args, process.env)
+                ;(process as any).execve(tsxPath, args, process.env)
             }
         )
 

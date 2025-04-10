@@ -1,16 +1,14 @@
 import { Controls } from "./controls.mjs"
-import { Box, Group, SceneInfo, Sphere, Subtract, Union } from "./scene/scene.mjs"
+import { box, group, SceneInfo, sphere, subtract, union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler as PreviewShader } from "./shaders/shader.mjs"
 import { vec3 } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
     cameraPosition!: GPUBuffer
-    scene!: GPUBuffer
     orthoScale!: GPUBuffer
+    scene!: GPUBuffer
     sceneTransform!: GPUBuffer
-    inverseSceneTransform!: GPUBuffer
-    group = 0
 }
 
 export class SDFRenderer {
@@ -19,12 +17,12 @@ export class SDFRenderer {
     #context!: GPUCanvasContext
     #controls: Controls
     #device!: GPUDevice
+    #format!: GPUTextureFormat
+    #initializing: Promise<void> | null
     #pipeline!: GPURenderPipeline
     #scene!: SceneInfo
-    #uniformBuffers: UniformBuffers
     #shader!: PreviewShader
-    #initializing: Promise<void> | null
-    #format!: GPUTextureFormat
+    #uniformBuffers: UniformBuffers
 
     constructor(canvas: HTMLCanvasElement) {
         this.#canvas = canvas
@@ -42,19 +40,19 @@ export class SDFRenderer {
 
         const sceneInfo = new SceneInfo(
             new Function(
-                "Group",
-                "Union",
-                "Box",
-                "Subtract",
-                "Sphere",
-                `return new Group(
-                new Union(
-                    new Box([1,-4,4], [30, 5, 3]),
-                    new Subtract( new Box( [0,0,0], [10,20,8] ), new Sphere( [0,0,-10], {r:6} ), 2),
-                    3
-                )
-            )`
-            )(Group, Union, Box, Subtract, Sphere)
+                "box",
+                "group",
+                "sphere",
+                "subtract",
+                "union",
+                `return group(
+                    union(
+                            box( [1,-4,4], [30,5,3] ),
+                            subtract( box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), 2),
+                        3
+                    )
+                )`
+            )(box, group, sphere, subtract, union)
         )
         await this.buildScene(sceneInfo)
     }

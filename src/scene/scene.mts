@@ -1,5 +1,5 @@
 import { ArgArray } from "../vecmat/arrays.mjs"
-import { Vec3, vec3, Vec3f } from "../vecmat/vector.mjs"
+import { Vec2, Vec3, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 export type CompilerResult = {
@@ -319,4 +319,24 @@ export class Box extends WithSize(WithPos(Node)) {
             text: `let ${varName} = fBox(p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.size}].xyz);`,
         }
     }
+}
+
+export function group(...nodes: Node[]): Group {
+    return new Group(...nodes)
+}
+
+export function union(lh: Node, rh: Node, radius = 0): Union {
+    return new Union(lh, rh, radius)
+}
+
+export function subtract(lh: Node, rh: Node, radius = 0): Subtract {
+    return new Subtract(lh, rh, radius)
+}
+
+export function box(pos: Vec3, size: Vec3): Box {
+    return new Box(pos, size)
+}
+
+export function sphere(pos: Vec3, { r, d }: { r?: number; d?: number }): Sphere {
+    return new Sphere(pos, { r, d })
 }

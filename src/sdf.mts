@@ -47,9 +47,9 @@ export class SDFRenderer {
                 "union",
                 `return group(
                     union(1,
-                            box( [1,-4,4], [30,5,3] ),
-                            box( [1,7,4], [30,5,3] ),
-                            subtract( box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), 2),
+                          box( [1,-4,4], [30,5,3] ),
+                          box( [1, 7,4], [30,5,3] ),
+                          subtract(box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), box([0,5,30], [5,2,40])),
                     )
                 )`
             )(box, group, sphere, subtract, union)
@@ -83,7 +83,7 @@ export class SDFRenderer {
     async buildScene(sceneInfo: SceneInfo): Promise<void> {
         return new Promise((resolve): void => {
             this.#scene = sceneInfo
-            const bufSize = Math.max(this.#scene.bufferSize, this.#device.limits.minUniformBufferOffsetAlignment * 2)
+            const bufSize = Math.max(this.#scene.bufferSize, this.#device.limits.minUniformBufferOffsetAlignment * 4)
             console.log(bufSize)
             this.#uniformBuffers.scene = this.#device.createBuffer({
                 size: bufSize,

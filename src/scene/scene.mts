@@ -247,14 +247,10 @@ export class Subtract extends BinaryOperator {
         if (lhResult.text) text += lhResult.text + "\n"
         if (rhResult.text) text += rhResult.text + "\n"
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        if (this.radius) {
-            text += `let ${varName} = fOpDifferenceRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
-        } else {
-            text += `let ${varName} = max( ${lhResult.varName}, ${rhResult.varName} );`
-        }
+        text += `let ${varName} = fOpDifferenceRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
         return { text, varName }
     }
-    constructor(lh: Node, rh: Node, public radius?: number) {
+    constructor(lh: Node, rh: Node, public radius: number = 0) {
         super(lh, rh)
     }
 }
@@ -348,8 +344,24 @@ export function union(...args: any[]): Union {
     return result
 }
 
-export function subtract(lh: Node, rh: Node, radius = 0): Subtract {
-    return new Subtract(lh, rh, radius)
+export function subtract(radius: number, ...parts: Node[]): Subtract
+export function subtract(...parts: Node[]): Subtract
+export function subtract(...args: any[]): Subtract {
+    let radius: number | undefined = undefined
+    if (typeof args[0] === "number") {
+        radius = args[0] as number
+        args.shift()
+    }
+    if (args.length < 2) {
+        throw new Error("subtract requires at least two arguments")
+    }
+    args.reverse()
+    while (args.length > 1) {
+        args.push(new Subtract(args.pop(), args.pop(), radius))
+    }
+    const result = args[0] as Subtract
+    if (!(result instanceof Subtract)) throw new Error("unexpected type during subtract stacking")
+    return result
 }
 
 export function box(pos: Vec3, size: Vec3): Box {

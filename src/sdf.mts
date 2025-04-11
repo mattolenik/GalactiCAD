@@ -24,8 +24,13 @@ export class SDFRenderer {
     #shader!: PreviewShader
     #uniformBuffers: UniformBuffers
 
-    constructor(canvas: HTMLCanvasElement) {
+    #averageFramerate: number[] = []
+    #lastRenderTime: number = 0
+    #fps: HTMLSpanElement
+
+    constructor(canvas: HTMLCanvasElement, fps: HTMLSpanElement) {
         this.#canvas = canvas
+        this.#fps = fps
         const dpr = window.devicePixelRatio || 1
         canvas.width = canvas.clientWidth * dpr
         canvas.height = canvas.clientHeight * dpr
@@ -81,73 +86,70 @@ export class SDFRenderer {
 
     // rebuild/refresh from the scene
     async buildScene(sceneInfo: SceneInfo): Promise<void> {
-        return new Promise((resolve): void => {
-            this.#scene = sceneInfo
-            const bufSize = Math.max(this.#scene.bufferSize, this.#device.limits.minUniformBufferOffsetAlignment * 4)
-            console.log(bufSize)
-            this.#uniformBuffers.scene = this.#device.createBuffer({
-                size: bufSize,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                label: "scene",
-            })
+        this.#scene = sceneInfo
+        this.#uniformBuffers.scene = this.#device.createBuffer({
+            size: 16384,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "scene",
+        })
 
-            this.#uniformBuffers.sceneTransform = this.#device.createBuffer({
-                size: 64,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                label: "sceneTransform",
-            })
+        this.#uniformBuffers.sceneTransform = this.#device.createBuffer({
+            size: 64,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "sceneTransform",
+        })
 
-            this.#uniformBuffers.cameraPosition = this.#device.createBuffer({
-                size: 16,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                label: "cameraPosition",
-            })
+        this.#uniformBuffers.cameraPosition = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "cameraPosition",
+        })
 
-            this.#uniformBuffers.orthoScale = this.#device.createBuffer({
-                size: 16,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                label: "orthoScale",
-            })
+        this.#uniformBuffers.orthoScale = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "orthoScale",
+        })
 
-            this.#shader = new PreviewShader(previewShader, "Preview Window")
-                .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.#scene.args.length};`)
-                .replace("insert", "sceneSDF", this.#scene.compile())
-            console.log(this.#shader.text)
-            const shaderModule = this.#shader.createModule(this.#device)
+        this.#shader = new PreviewShader(previewShader, "Preview Window")
+            .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.#scene.args.length};`)
+            .replace("insert", "sceneSDF", this.#scene.compile())
+        console.log(this.#shader.text)
+        const shaderModule = this.#shader.createModule(this.#device)
 
-            const format = this.#format
-            this.#pipeline = this.#device.createRenderPipeline({
-                label: "Preview Pipeline",
-                layout: "auto",
-                vertex: {
-                    module: shaderModule,
-                    entryPoint: "vertexMain",
-                },
-                fragment: {
-                    module: shaderModule,
-                    entryPoint: "fragmentMain",
-                    targets: [{ format }],
-                },
-                primitive: {
-                    topology: "triangle-strip",
-                    stripIndexFormat: "uint32",
-                },
-            })
-            this.#bindGroup = this.#device.createBindGroup({
-                label: "scene",
-                layout: this.#pipeline.getBindGroupLayout(0),
-                entries: [
-                    { binding: 0, resource: { buffer: this.#uniformBuffers.scene } },
-                    { binding: 1, resource: { buffer: this.#uniformBuffers.sceneTransform } },
-                    { binding: 2, resource: { buffer: this.#uniformBuffers.cameraPosition } },
-                    { binding: 3, resource: { buffer: this.#uniformBuffers.orthoScale } },
-                ],
-            })
-            resolve()
+        const format = this.#format
+        this.#pipeline = this.#device.createRenderPipeline({
+            label: "Preview Pipeline",
+            layout: "auto",
+            vertex: {
+                module: shaderModule,
+                entryPoint: "vertexMain",
+            },
+            fragment: {
+                module: shaderModule,
+                entryPoint: "fragmentMain",
+                targets: [{ format }],
+            },
+            primitive: {
+                topology: "triangle-strip",
+                stripIndexFormat: "uint32",
+            },
+        })
+        this.#bindGroup = this.#device.createBindGroup({
+            label: "scene",
+            layout: this.#pipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.#uniformBuffers.scene } },
+                { binding: 1, resource: { buffer: this.#uniformBuffers.sceneTransform } },
+                { binding: 2, resource: { buffer: this.#uniformBuffers.cameraPosition } },
+                { binding: 3, resource: { buffer: this.#uniformBuffers.orthoScale } },
+            ],
         })
     }
 
     update(time: number): void {
+        this.updateFPS(time)
+
         const commandEncoder = this.#device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({
             colorAttachments: [
@@ -174,5 +176,16 @@ export class SDFRenderer {
 
         this.#device.queue.submit([commandEncoder.finish()])
         requestAnimationFrame(time => this.update(time))
+    }
+
+    private updateFPS(time: number) {
+        const deltaTime = time - this.#lastRenderTime
+        this.#lastRenderTime = time
+        this.#averageFramerate.push(1000 / deltaTime)
+        if (this.#averageFramerate.length > 10) {
+            this.#averageFramerate.shift()
+        }
+        const framerate = this.#averageFramerate.reduce((p, c) => p + c, 0) / this.#averageFramerate.length
+        this.#fps.textContent = framerate.toFixed(0)
     }
 }

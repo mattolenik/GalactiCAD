@@ -230,7 +230,7 @@ export class Union extends BinaryOperator {
         if (this.radius) {
             text += `fOpUnionRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
         } else {
-            text = `max( ${lhResult.varName}, ${rhResult.varName} )`
+            text += `min( ${lhResult.varName}, ${rhResult.varName} );`
         }
         return { text, varName }
     }
@@ -250,7 +250,7 @@ export class Subtract extends BinaryOperator {
         if (this.radius) {
             text += `let ${varName} = fOpDifferenceRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
         } else {
-            text += `let ${varName} = max( ${lhResult.varName}, ${rhResult.varName} )`
+            text += `let ${varName} = max( ${lhResult.varName}, ${rhResult.varName} );`
         }
         return { text, varName }
     }
@@ -325,8 +325,23 @@ export function group(...nodes: Node[]): Group {
     return new Group(...nodes)
 }
 
-export function union(lh: Node, rh: Node, radius = 0): Union {
-    return new Union(lh, rh, radius)
+export function union(radius: number, ...parts: Node[]): Union
+export function union(...parts: Node[]): Union
+export function union(...args: any[]): Union {
+    let radius: number | undefined = undefined
+    if (typeof args[0] === "number") {
+        radius = args[0] as number
+        args.shift()
+    }
+    if (args.length < 2) {
+        throw new Error("union requires at least two things to union together")
+    }
+    while (args.length > 1) {
+        args.push(new Union(args.pop(), args.pop(), radius))
+    }
+    const result = args[0] as Union
+    if (!(result instanceof Union)) throw new Error("unexpected type during union stacking")
+    return result
 }
 
 export function subtract(lh: Node, rh: Node, radius = 0): Subtract {

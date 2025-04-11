@@ -46,10 +46,10 @@ export class SDFRenderer {
                 "subtract",
                 "union",
                 `return group(
-                    union(
+                    union(1,
                             box( [1,-4,4], [30,5,3] ),
+                            box( [1,7,4], [30,5,3] ),
                             subtract( box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), 2),
-                        3
                     )
                 )`
             )(box, group, sphere, subtract, union)

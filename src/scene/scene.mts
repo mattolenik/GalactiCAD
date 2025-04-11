@@ -44,7 +44,7 @@ export class SceneInfo {
     }
 
     compile(): string {
-        const compiledResult = this.root.compile()
+        const compiledResult = this.root.compile(1)
         let compiledText = compiledResult.text
         if (!compiledText) {
             throw new Error("compilation returned no result")
@@ -69,7 +69,7 @@ export class Node {
     constructor() {
         this.root = this
     }
-    compile(): CompilerResult {
+    compile(indentLevel = 0): CompilerResult {
         throw new Error("Method not implemented.")
     }
     updateScene() {
@@ -219,13 +219,13 @@ export abstract class BinaryOperator extends Node {
 }
 
 export class Union extends BinaryOperator {
-    override compile(): CompilerResult {
+    override compile(indentLevel = 0): CompilerResult {
         let text = ""
         const lhResult = this.lh.compile()
         const rhResult = this.rh.compile()
         if (lhResult.text) text += lhResult.text + "\n"
         if (rhResult.text) text += rhResult.text + "\n"
-        const varName = `union_${lhResult.varName}_${rhResult.varName}`
+        const varName = `u_${lhResult.varName}__${rhResult.varName}`
         text += `let ${varName} = `
         if (this.radius) {
             text += `fOpUnionRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
@@ -240,13 +240,13 @@ export class Union extends BinaryOperator {
 }
 
 export class Subtract extends BinaryOperator {
-    override compile(): CompilerResult {
+    override compile(indentLevel = 0): CompilerResult {
         let text = ""
-        const lhResult = this.lh.compile()
-        const rhResult = this.rh.compile()
+        const lhResult = this.lh.compile(indentLevel)
+        const rhResult = this.rh.compile(indentLevel)
         if (lhResult.text) text += lhResult.text + "\n"
         if (rhResult.text) text += rhResult.text + "\n"
-        const varName = `diffr_${lhResult.varName}_${rhResult.varName}`
+        const varName = `d_${lhResult.varName}__${rhResult.varName}`
         if (this.radius) {
             text += `let ${varName} = fOpDifferenceRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
         } else {
@@ -279,9 +279,9 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         this.argIndex.pos = this.scene.nextArgIndex()
         this.argIndex.r = this.scene.nextArgIndex()
     }
-    override compile(): CompilerResult {
+    override compile(indentLevel = 0): CompilerResult {
         const funcName = `Sphere${this.id}`
-        const varName = `result${funcName}`
+        const varName = `${decapitalize(funcName)}`
         return {
             funcName,
             varName,
@@ -310,15 +310,19 @@ export class Box extends WithSize(WithPos(Node)) {
         this.argIndex.pos = this.scene.nextArgIndex()
         this.argIndex.size = this.scene.nextArgIndex()
     }
-    override compile(): CompilerResult {
+    override compile(indentLevel = 0): CompilerResult {
         const funcName = `Box${this.id}`
-        const varName = `result${funcName}`
+        const varName = `${decapitalize(funcName)}`
         return {
             funcName,
             varName,
             text: `let ${varName} = fBox(p - args[${this.argIndex.pos}].xyz, args[${this.argIndex.size}].xyz);`,
         }
     }
+}
+
+function decapitalize(s: string) {
+    return s[0].toLowerCase() + s.slice(1)
 }
 
 export function group(...nodes: Node[]): Group {

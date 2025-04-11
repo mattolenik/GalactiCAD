@@ -30,7 +30,7 @@
     <script type="module">
         import { SDFRenderer } from './sdf.js';
 
-        const renderer = new SDFRenderer(document.getElementById("preview"));
+        const renderer = new SDFRenderer(document.getElementById("preview"), document.getElementById("fps_counter"));
 
         await renderer.testScene();
         requestAnimationFrame(time => renderer.update(time));
@@ -38,6 +38,7 @@
     </script>
     <div id="toolbar">
         <button id="reload-button">Reload</button>
+        <span id="fps_counter"></span>
     </div>
 </body>
 

@@ -1,7 +1,7 @@
 import { Controls } from "./controls.mjs"
 import { box, group, SceneInfo, sphere, subtract, union } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
-import { ShaderCompiler as PreviewShader } from "./shaders/shader.mjs"
+import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec3 } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
@@ -21,7 +21,7 @@ export class SDFRenderer {
     #initializing: Promise<void> | null
     #pipeline!: GPURenderPipeline
     #scene!: SceneInfo
-    #shader!: PreviewShader
+    #sceneShader!: ShaderCompiler
     #uniformBuffers: UniformBuffers
 
     #averageFramerate: number[] = []
@@ -41,9 +41,7 @@ export class SDFRenderer {
     }
 
     async testScene() {
-        await this.ready() // MUST be called before building the scene
-
-        const sceneInfo = new SceneInfo(
+        this.#scene = new SceneInfo(
             new Function(
                 "box",
                 "group",
@@ -59,7 +57,12 @@ export class SDFRenderer {
                 )`
             )(box, group, sphere, subtract, union)
         )
-        await this.buildScene(sceneInfo)
+        this.#sceneShader = new ShaderCompiler(previewShader, "Preview Window")
+            .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.#scene.args.length};`)
+            .replace("insert", "sceneSDF", this.#scene.compile())
+
+        this.buildPipeline()
+        console.log(this.#sceneShader.text)
     }
 
     async initialize() {
@@ -82,11 +85,10 @@ export class SDFRenderer {
             await this.#initializing
             this.#initializing = null
         }
+        return this
     }
 
-    // rebuild/refresh from the scene
-    async buildScene(sceneInfo: SceneInfo): Promise<void> {
-        this.#scene = sceneInfo
+    buildPipeline() {
         this.#uniformBuffers.scene = this.#device.createBuffer({
             size: 16384,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -111,11 +113,7 @@ export class SDFRenderer {
             label: "orthoScale",
         })
 
-        this.#shader = new PreviewShader(previewShader, "Preview Window")
-            .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.#scene.args.length};`)
-            .replace("insert", "sceneSDF", this.#scene.compile())
-        console.log(this.#shader.text)
-        const shaderModule = this.#shader.createModule(this.#device)
+        const shaderModule = this.#sceneShader.createModule(this.#device)
 
         const format = this.#format
         this.#pipeline = this.#device.createRenderPipeline({

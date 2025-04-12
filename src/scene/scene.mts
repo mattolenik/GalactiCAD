@@ -1,5 +1,6 @@
+import { BijectiveMap } from "../collections/bijectiveMap.mjs"
 import { ArgArray } from "../vecmat/arrays.mjs"
-import { Vec2, Vec3, vec3, Vec3f } from "../vecmat/vector.mjs"
+import { Vec3, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
 export type CompilerResult = {
@@ -9,34 +10,30 @@ export type CompilerResult = {
 }
 
 export class SceneInfo {
-    args: ArgArray
-    root: Node
-
-    numArgs = 0
-    numNodes = 0
-
-    #nodeByID = new Map<number, Node>()
-    #nodes = new Set<Node>()
+    readonly args: ArgArray
+    readonly root: Node
+    #numArgs = 0
+    #nodes = new BijectiveMap<number, Node>()
 
     nextArgIndex(): number {
-        return this.numArgs++
+        return this.#numArgs++
     }
-    add(node: Node) {
-        if (this.#nodes.has(node)) return
 
-        node.id = this.numNodes++
-        this.#nodes.add(node)
-        this.#nodeByID.set(node.id, node)
+    add(node: Node) {
+        if (this.#nodes.hasValue(node)) return
+        node.id = this.#nodes.size
+        this.#nodes.set(node.id, node)
     }
+
     get<T extends Node>(id: number): T {
-        return this.#nodeByID.get(id) as T
+        return this.#nodes.get(id) as T
     }
 
     constructor(root: Node) {
         this.root = root
         this.root.scene = this
         this.root.build()
-        this.args = new ArgArray(this.root.scene.numArgs)
+        this.args = new ArgArray(this.root.scene.#numArgs)
     }
 
     get bufferSize(): number {

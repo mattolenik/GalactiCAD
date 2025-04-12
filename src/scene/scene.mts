@@ -3,7 +3,7 @@ import { ArgArray } from "../vecmat/arrays.mjs"
 import { Vec3, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
-export type CompilerResult = {
+export type CompileResult = {
     funcName?: string
     varName?: string
     text?: string
@@ -66,7 +66,7 @@ export class Node {
     constructor() {
         this.root = this
     }
-    compile(indentLevel = 0): CompilerResult {
+    compile(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
     updateScene() {
@@ -171,7 +171,7 @@ export class Group extends WithChildren(Node) {
             child.build()
         }
     }
-    override compile(): CompilerResult {
+    override compile(): CompileResult {
         const res = this.children[0].compile()
         return {
             text: res.text,
@@ -216,7 +216,7 @@ export abstract class BinaryOperator extends Node {
 }
 
 export class Union extends BinaryOperator {
-    override compile(indentLevel = 0): CompilerResult {
+    override compile(indentLevel = 0): CompileResult {
         let text = ""
         const lhResult = this.lh.compile()
         const rhResult = this.rh.compile()
@@ -237,7 +237,7 @@ export class Union extends BinaryOperator {
 }
 
 export class Subtract extends BinaryOperator {
-    override compile(indentLevel = 0): CompilerResult {
+    override compile(indentLevel = 0): CompileResult {
         let text = ""
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
@@ -272,7 +272,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         this.argIndex.pos = this.scene.nextArgIndex()
         this.argIndex.r = this.scene.nextArgIndex()
     }
-    override compile(indentLevel = 0): CompilerResult {
+    override compile(indentLevel = 0): CompileResult {
         const funcName = `Sphere${this.id}`
         const varName = `${decapitalize(funcName)}`
         return {
@@ -303,7 +303,7 @@ export class Box extends WithSize(WithPos(Node)) {
         this.argIndex.pos = this.scene.nextArgIndex()
         this.argIndex.size = this.scene.nextArgIndex()
     }
-    override compile(indentLevel = 0): CompilerResult {
+    override compile(indentLevel = 0): CompileResult {
         const funcName = `Box${this.id}`
         const varName = `${decapitalize(funcName)}`
         return {

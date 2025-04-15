@@ -21,5 +21,7 @@
     "typescript": "^5.8.2",
     "ws": "^8.18.1"
   },
-  "dependencies": {}
+  "dependencies": {
+    "monaco-editor": "^0.52.2"
+  }
 }

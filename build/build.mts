@@ -4,6 +4,7 @@ import * as esbuild from "esbuild"
 import assetBundler from "./asset-bundler.mjs"
 import { DevServer } from "./devserver.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
+import monacoEditorPlugin from "./monaco-plugin.mjs"
 
 const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
@@ -11,8 +12,8 @@ const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigat
 const Assets = ["src/**/*.html", "src/**/*.css"]
 
 const Options = {
-    entryPoints: ["./src/sdf.mts"],
-    plugins: [wgslLoader(), assetBundler(Assets, log)],
+    entryPoints: ["./src/sdf.mts", "./src/app.mts", "./src/preview-window.mts"],
+    plugins: [wgslLoader(), assetBundler(Assets, log), monacoEditorPlugin()],
     outDir: "./dist",
     isProd: !!process.env.PRODUCTION,
 }
@@ -34,7 +35,14 @@ async function build() {
             entryPoints: Options.entryPoints,
             minify: Options.isProd,
             outdir: Options.outDir,
-            platform: "neutral",
+            platform: "browser",
+            format: "esm",
+            mainFields: ["module", "main"],
+            loader: {
+                ".ttf": "file",
+                ".woff": "file",
+                ".woff2": "file",
+            },
             plugins: Options.plugins,
             sourcemap: !Options.isProd,
             target: "es2023",

@@ -28,16 +28,23 @@
 
 <body>
     <!-- <canvas id="preview" oncontextmenu="return false;"></canvas> -->
-    <preview-window id="preview"></preview-window>
+    <preview-window id="preview" showFPS="true">
+        return group(
+            union(1,
+                    box( [1,-4,4], [30,5,3] ),
+                    box( [1, 7,4], [30,5,3] ),
+                    subtract(box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), box([0,5,30], [5,2,40])),
+            )
+        )
+    </preview-window>
     <div id="toolbar">
         <button id="reload-button">Reload</button>
-        <span id="fps-counter"></span>
     </div>
     <div id="editor"></div>
     <script type="module" src="./preview-window.js"></script>
     <script type="module">
         import App from './app.js';
-        const app = new App("preview", "editor", "fps-counter", "reload-button");
+        const app = new App("preview", "editor", "reload-button");
     </script>
 </body>
 

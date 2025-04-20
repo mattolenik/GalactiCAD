@@ -29,8 +29,13 @@ export class SceneInfo {
         return this.#nodes.get(id) as T
     }
 
-    constructor(root: Node) {
-        this.root = root
+    constructor(src: string)
+    constructor(root: Node | string) {
+        if (typeof root === "string") {
+            this.root = new Function("box", "group", "sphere", "subtract", "union", root.trim())(box, group, sphere, subtract, union)
+        } else {
+            this.root = root
+        }
         this.root.scene = this
         this.root.build()
         this.args = new ArgArray(this.root.scene.#numArgs)

@@ -50,6 +50,7 @@ export class Controls {
     #last = new Vec2f()
     #cursorDelta = new Vec2f()
     #lastCameraSave = 0
+    #lastFocused: Element | null = null
 
     dragMode: "rotate" | "pan" | null = null
     rotateSensitivity: number = 0.005
@@ -79,41 +80,54 @@ export class Controls {
         this.canvas.addEventListener("contextmenu", e => e.preventDefault())
         this.canvas.addEventListener("keypress", this.#onKeyPress.bind(this))
         document.addEventListener("keydown", this.#onKeyPress.bind(this), false)
+
+        // track clicks
+        document.addEventListener("click", e => {
+            this.#lastFocused = e.target as Element
+        })
+
+        // track focus changes
+        document.addEventListener("focusin", e => {
+            this.#lastFocused = e.target as Element
+        })
     }
 
     #onKeyPress(e: KeyboardEvent) {
-        // console.log(e)
-        // if (e.code === "Digit1") {
-        //     this.sceneRotX = -1 * Math.PI
-        //     this.sceneRotY = -1 * Math.PI
-        // }
-        // if (e.code === "Digit2") {
-        //     this.sceneRotX = -1 * Math.PI
-        //     this.sceneRotY = 0
-        // }
-        // if (e.code === "Digit3") {
-        //     this.sceneRotX = 0
-        //     this.sceneRotY = (1 / 2) * Math.PI
-        // }
-        // if (e.code === "Digit4") {
-        //     this.sceneRotX = 0
-        //     this.sceneRotY = (-1 / 2) * Math.PI
-        // }
-        // if (e.code === "Digit5") {
-        //     this.sceneRotX = (-1 / 2) * Math.PI
-        //     this.sceneRotY = 1 * Math.PI
-        // }
-        // if (e.code === "Digit6") {
-        //     this.sceneRotX = (1 / 2) * Math.PI
-        //     this.sceneRotY = 1 * Math.PI
-        // }
-        // if (e.code === "Backquote") {
-        //     this.sceneRotX = -Math.PI / 8
-        //     this.sceneRotY = Math.PI * (5 / 4)
-        //     this.cameraTranslation = new Vec3f()
-        // }
-        // e.preventDefault()
-        // this.#updateTransforms()
+        // TODO: Attach control events to the shadow DOM instead? This id match is brittle
+
+        if (this.#lastFocused!.id !== "preview") return
+        console.log(e)
+        if (e.code === "Digit1") {
+            this.sceneRotX = -1 * Math.PI
+            this.sceneRotY = -1 * Math.PI
+        }
+        if (e.code === "Digit2") {
+            this.sceneRotX = -1 * Math.PI
+            this.sceneRotY = 0
+        }
+        if (e.code === "Digit3") {
+            this.sceneRotX = 0
+            this.sceneRotY = (1 / 2) * Math.PI
+        }
+        if (e.code === "Digit4") {
+            this.sceneRotX = 0
+            this.sceneRotY = (-1 / 2) * Math.PI
+        }
+        if (e.code === "Digit5") {
+            this.sceneRotX = (-1 / 2) * Math.PI
+            this.sceneRotY = 1 * Math.PI
+        }
+        if (e.code === "Digit6") {
+            this.sceneRotX = (1 / 2) * Math.PI
+            this.sceneRotY = 1 * Math.PI
+        }
+        if (e.code === "Backquote") {
+            this.sceneRotX = -Math.PI / 8
+            this.sceneRotY = Math.PI * (5 / 4)
+            this.cameraTranslation = new Vec3f()
+        }
+        e.preventDefault()
+        this.#updateTransforms()
     }
 
     #onPointerDown(e: PointerEvent) {

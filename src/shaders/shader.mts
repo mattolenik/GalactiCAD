@@ -1,5 +1,3 @@
-import previewShader from "./preview.wgsl"
-
 export class ShaderCompiler {
     symbol = `\\/\\/:\\)` // matches this:  //:)
 

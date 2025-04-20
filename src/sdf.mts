@@ -1,5 +1,5 @@
 import { Controls } from "./controls.mjs"
-import { box, group, SceneInfo, sphere, subtract, union } from "./scene/scene.mjs"
+import { SceneInfo } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec3 } from "./vecmat/vector.mjs"
@@ -26,11 +26,11 @@ export class SDFRenderer {
 
     #averageFramerate: number[] = []
     #lastRenderTime: number = 0
-    #fps: HTMLSpanElement
+    #framerateChanged?: (fps: number) => void
 
-    constructor(canvas: HTMLCanvasElement, fps: HTMLSpanElement) {
+    constructor(canvas: HTMLCanvasElement, framerateChanged?: (fps: number) => void) {
         this.#canvas = canvas
-        this.#fps = fps
+        this.#framerateChanged = framerateChanged
         const dpr = window.devicePixelRatio || 1
         canvas.width = canvas.clientWidth * dpr
         canvas.height = canvas.clientHeight * dpr
@@ -40,23 +40,8 @@ export class SDFRenderer {
         this.#initializing = this.initialize()
     }
 
-    async testScene() {
-        this.#scene = new SceneInfo(
-            new Function(
-                "box",
-                "group",
-                "sphere",
-                "subtract",
-                "union",
-                `return group(
-                    union(1,
-                          box( [1,-4,4], [30,5,3] ),
-                          box( [1, 7,4], [30,5,3] ),
-                          subtract(box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), box([0,5,30], [5,2,40])),
-                    )
-                )`
-            )(box, group, sphere, subtract, union)
-        )
+    async build(src: string) {
+        this.#scene = new SceneInfo(src)
         this.#sceneShader = new ShaderCompiler(previewShader, "Preview Window")
             .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.#scene.args.length};`)
             .replace("insert", "sceneSDF", this.#scene.compile())
@@ -184,6 +169,6 @@ export class SDFRenderer {
             this.#averageFramerate.shift()
         }
         const framerate = this.#averageFramerate.reduce((p, c) => p + c, 0) / this.#averageFramerate.length
-        this.#fps.textContent = framerate.toFixed(0)
+        this.#framerateChanged?.(framerate)
     }
 }

@@ -9,7 +9,7 @@ import monacoEditorPlugin from "./monaco-plugin.mjs"
 const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 
-const Assets = ["src/**/*.html", "src/**/*.css", "src/favicon/*"]
+const Assets = ["src/**/*.html", "src/**/*.css", "src/favicon/*", "src/site.webmanifest"]
 
 const Options = {
     entryPoints: ["./src/sdf.mts", "./src/app.mts", "./src/preview-window.mts"],

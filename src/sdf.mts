@@ -40,7 +40,7 @@ export class SDFRenderer {
         this.#initializing = this.initialize()
     }
 
-    async build(src: string) {
+    build(src: string) {
         this.#scene = new SceneInfo(src)
         this.#sceneShader = new ShaderCompiler(previewShader, "Preview Window")
             .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.#scene.args.length};`)

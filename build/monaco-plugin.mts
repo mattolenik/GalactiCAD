@@ -1,17 +1,13 @@
-// monacoEditorPlugin.ts
 import path from "path"
 import { build as esbuildBuild, Plugin } from "esbuild"
 import { createRequire } from "module"
-// Create a require function in an ESM context.
 const require = createRequire(import.meta.url)
 
 export interface MonacoEditorPluginOptions {
     /**
-     * A public path to prefix the worker URLs.
-     * For example, if your assets are served from "/static/",
-     * then set publicPath to "/static/".
+     * URL prefix for workers, e.g. "/editor"
      */
-    publicPath?: string
+    urlPrefix?: string
 }
 
 // Define the default Monaco worker entry points using require.resolve.
@@ -24,7 +20,7 @@ const defaultWorkers: Record<string, string> = {
 }
 
 export function monacoEditorPlugin(options: MonacoEditorPluginOptions = {}): Plugin {
-    const publicPath = options.publicPath || ""
+    const urlPrefix = options.urlPrefix ?? "/"
     // This object will map worker names to their output URLs.
     const workerFiles: Record<string, string> = {}
 
@@ -39,7 +35,8 @@ export function monacoEditorPlugin(options: MonacoEditorPluginOptions = {}): Plu
             // 1. Pre-build the Monaco worker files in parallel.
             await Promise.all(
                 Object.entries(defaultWorkers).map(async ([workerName, entryPoint]) => {
-                    const outfile = path.join(outdir, workerName + ".js")
+                    const workerPath = path.join(urlPrefix, workerName + ".js")
+                    const outfile = path.join(outdir, workerPath)
                     await esbuildBuild({
                         entryPoints: [entryPoint],
                         bundle: true,
@@ -49,7 +46,7 @@ export function monacoEditorPlugin(options: MonacoEditorPluginOptions = {}): Plu
                         format: "esm",
                     })
                     // Record the emitted worker file URL.
-                    workerFiles[workerName] = publicPath + workerName + ".js"
+                    workerFiles[workerName] = workerPath
                 })
             )
 
@@ -63,27 +60,27 @@ export function monacoEditorPlugin(options: MonacoEditorPluginOptions = {}): Plu
 
             build.onLoad({ filter: /.*/, namespace: "monaco-env" }, () => {
                 const contents = `
-          if (typeof self === 'undefined') {
-            throw new Error('Monaco Editor requires a browser environment.');
-          }
-          self.MonacoEnvironment = self.MonacoEnvironment || {};
-          self.MonacoEnvironment.getWorkerUrl = function(moduleId, label) {
-            if (label === 'json') {
-              return '${workerFiles["json.worker"]}';
-            }
-            if (label === 'css' || label === 'scss' || label === 'less') {
-              return '${workerFiles["css.worker"]}';
-            }
-            if (label === 'html' || label === 'handlebars' || label === 'razor') {
-              return '${workerFiles["html.worker"]}';
-            }
-            if (label === 'typescript' || label === 'javascript') {
-              return '${workerFiles["ts.worker"]}';
-            }
-            return '${workerFiles["editor.worker"]}';
-          };
-          export default self.MonacoEnvironment;
-        `
+                if (typeof self === 'undefined') {
+                    throw new Error('Monaco Editor requires a browser environment.');
+                }
+                self.MonacoEnvironment = self.MonacoEnvironment ?? {};
+                self.MonacoEnvironment.getWorkerUrl = function(moduleId, label) {
+                    if (label === 'json') {
+                        return '${workerFiles["json.worker"]}';
+                    }
+                    if (label === 'css' || label === 'scss' || label === 'less') {
+                        return '${workerFiles["css.worker"]}';
+                    }
+                    if (label === 'html' || label === 'handlebars' || label === 'razor') {
+                        return '${workerFiles["html.worker"]}';
+                    }
+                    if (label === 'typescript' || label === 'javascript') {
+                        return '${workerFiles["ts.worker"]}';
+                    }
+                    return '${workerFiles["editor.worker"]}';
+                };
+                export default self.MonacoEnvironment;
+                `
                 return { contents, loader: "ts" }
             })
         },

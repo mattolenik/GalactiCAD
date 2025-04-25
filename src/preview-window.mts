@@ -37,7 +37,7 @@ export class PreviewWindow extends HTMLElement {
         this.#showFps = !!(this.getAttribute("showFPS")?.toLocaleLowerCase() === "true")
 
         // observe size changes on the host element
-        this.#resizeObserver = new ResizeObserver(() => this.#updateSize())
+        this.#resizeObserver = new ResizeObserver(this.#updateSize.bind(this))
     }
 
     updateFps(fps: number) {

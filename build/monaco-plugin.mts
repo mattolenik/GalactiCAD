@@ -12,11 +12,11 @@ export interface MonacoEditorPluginOptions {
 
 // Define the default Monaco worker entry points using require.resolve.
 const defaultWorkers: Record<string, string> = {
-    "editor.worker": require.resolve("monaco-editor/esm/vs/editor/editor.worker"),
-    "json.worker": require.resolve("monaco-editor/esm/vs/language/json/json.worker"),
-    "css.worker": require.resolve("monaco-editor/esm/vs/language/css/css.worker"),
-    "html.worker": require.resolve("monaco-editor/esm/vs/language/html/html.worker"),
-    "ts.worker": require.resolve("monaco-editor/esm/vs/language/typescript/ts.worker"),
+    css: require.resolve("monaco-editor/esm/vs/language/css/css.worker"),
+    editor: require.resolve("monaco-editor/esm/vs/editor/editor.worker"),
+    html: require.resolve("monaco-editor/esm/vs/language/html/html.worker"),
+    json: require.resolve("monaco-editor/esm/vs/language/json/json.worker"),
+    ts: require.resolve("monaco-editor/esm/vs/language/typescript/ts.worker"),
 }
 
 export function monacoEditorPlugin(options: MonacoEditorPluginOptions = {}): Plugin {
@@ -66,18 +66,18 @@ export function monacoEditorPlugin(options: MonacoEditorPluginOptions = {}): Plu
                 self.MonacoEnvironment = self.MonacoEnvironment ?? {};
                 self.MonacoEnvironment.getWorkerUrl = function(moduleId, label) {
                     if (label === 'json') {
-                        return '${workerFiles["json.worker"]}';
+                        return '${workerFiles["json"]}';
                     }
                     if (label === 'css' || label === 'scss' || label === 'less') {
-                        return '${workerFiles["css.worker"]}';
+                        return '${workerFiles["css"]}';
                     }
                     if (label === 'html' || label === 'handlebars' || label === 'razor') {
-                        return '${workerFiles["html.worker"]}';
+                        return '${workerFiles["html"]}';
                     }
                     if (label === 'typescript' || label === 'javascript') {
-                        return '${workerFiles["ts.worker"]}';
+                        return '${workerFiles["ts"]}';
                     }
-                    return '${workerFiles["editor.worker"]}';
+                    return '${workerFiles["editor"]}';
                 };
                 export default self.MonacoEnvironment;
                 `

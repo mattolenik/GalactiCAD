@@ -5,6 +5,7 @@ import assetBundler from "./asset-bundler.mjs"
 import { DevServer } from "./devserver.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
+import { rm } from "fs"
 
 const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
@@ -13,7 +14,7 @@ const Assets = ["src/**/*.html", "src/**/*.css", "src/favicon/*", "src/site.webm
 
 const Options = {
     entryPoints: ["./src/sdf.mts", "./src/app.mts", "./src/preview-window.mts"],
-    plugins: [wgslLoader(), assetBundler(Assets, log), monacoEditorPlugin()],
+    plugins: [wgslLoader(), assetBundler(Assets, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
     outDir: "./dist",
     isProd: !!process.env.PRODUCTION,
 }
@@ -108,6 +109,8 @@ async function main() {
             async (event, path) => {
                 const tsxPath = process.env.TSX ?? "./node_modules/.bin/tsx"
                 log(`REBUILD triggered by ${event}: ${path}`)
+                log(`Cleaning ${Options.outDir}`)
+                rm(Options.outDir, { recursive: true, force: true }, err => console.error(`Error cleaning ${Options.outDir}: ${err}`))
                 const args = [tsxPath, "--disable-warning=ExperimentalWarning"].concat(process.argv.slice(1))
                 process.execve(tsxPath, args, process.env)
             }

@@ -15,11 +15,11 @@ class App {
         this.renderer = new SDFRenderer(this.preview.canvas, fps => this.preview.updateFps(fps))
         this.renderer
             .ready()
-            .then(async renderer => {
+            .then(renderer => {
                 const sceneSource = "return " + this.preview.textContent!.trim()
-                await renderer.build(sceneSource)
-                this.reloadButton.onclick = async () => await renderer.build(sceneSource)
+                renderer.build(sceneSource)
                 requestAnimationFrame(time => renderer.update(time))
+                this.reloadButton.onclick = () => renderer.build(sceneSource)
             })
             .catch(err => console.error(`UNEXPECTED ERROR: ${err}`))
     }

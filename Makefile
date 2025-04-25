@@ -15,6 +15,8 @@ open:
 .PHONY: build
 build:
 	@mkdir -p $(DIST)
+	rm -rf $(DIST)/vs
+	cp -af node_modules/monaco-editor/min/vs $(DIST)/
 	$(BUILD) $(BUILD_FLAGS)
 
 .PHONY: test

@@ -17,6 +17,9 @@ class App {
         monaco.editor.create(this.editor, {
             value: ["function x() {", '\tconsole.log("Hello world!");', "}"].join("\n"),
             language: "javascript",
+            automaticLayout: true,
+            theme: "vs-dark",
+            minimap: { enabled: false },
         })
         this.renderer = new SDFRenderer(this.preview.canvas, fps => this.preview.updateFps(fps))
         this.renderer

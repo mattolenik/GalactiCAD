@@ -5,7 +5,7 @@ import assetBundler from "./asset-bundler.mjs"
 import { DevServer } from "./devserver.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
-import { rm } from "fs"
+import { rm } from "fs/promises"
 
 const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
@@ -40,6 +40,7 @@ async function build() {
             format: "esm",
             mainFields: ["module", "main"],
             loader: {
+                ".css": "css",
                 ".ttf": "file",
                 ".woff": "file",
                 ".woff2": "file",
@@ -109,8 +110,8 @@ async function main() {
             async (event, path) => {
                 const tsxPath = process.env.TSX ?? "./node_modules/.bin/tsx"
                 log(`REBUILD triggered by ${event}: ${path}`)
-                log(`Cleaning ${Options.outDir}`)
-                rm(Options.outDir, { recursive: true, force: true }, err => console.error(`Error cleaning ${Options.outDir}: ${err}`))
+                // log(`Cleaning ${Options.outDir}`)
+                // await rm(Options.outDir, { recursive: true, force: true })
                 const args = [tsxPath, "--disable-warning=ExperimentalWarning"].concat(process.argv.slice(1))
                 process.execve(tsxPath, args, process.env)
             }

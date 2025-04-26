@@ -10,6 +10,7 @@ const NORMAL_EPS: f32 = 0.001;
 @group(0) @binding(1) var<uniform> sceneTransform: mat4x4f;
 @group(0) @binding(2) var<uniform> cameraPosition: vec4f;
 @group(0) @binding(3) var<uniform> orthoScale: f32;
+@group(0) @binding(4) var<uniform> canvasRes: vec2f;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -72,6 +73,14 @@ fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
 
 @fragment
 fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
+    let minRes = min(canvasRes.x, canvasRes.y);
+    // let offset = 0.5 * (canvasRes - vec2f(minRes));
+    // let localPos = _uv.xy - offset;
+    // // outside the inscribed square? -> background (cropped)
+    // if (any(localPos < vec2<f32>(0.0)) || any(localPos > vec2<f32>(minRes))) {
+    //     return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    // }
+
     // Get the fixed camera position from uniform.
     let camPos = cameraPosition.xyz;
 

@@ -8,48 +8,58 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link rel="manifest" href="/site.webmanifest">
     <link rel="stylesheet" href="/vs/editor/editor.main.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
+        div, span {
+            margin: 0;
+            padding: 0;
+        }
         body {
             margin: 0;
-            overflow: hidden;
+            padding: 0;
+            height: 100vh;
             background-color: #333;
+            scrollbar-width: none;
         }
 
         #preview {
             display: block;
-            width: 100%;
-            max-width: 740px;
-            height: auto;
             aspect-ratio: 1/1;
         }
 
         #toolbar {
-            top: 0;
-            bottom: 2cm;
-            left: 0;
-            right: 0;
+            height: 80px;
         }
 
         #editor {
-            height: 40vh;
-            width: 100%;
+            /* height: 100%; */
+        }
+
+        #workspace {
+            height: 100%;
+            display: grid;
+            grid-template-rows: auto minmax(0,1fr) auto;
+            max-width: 900px;
+        }
+        #workspace > * {
+            min-width: 0;
         }
     </style>
 </head>
 
 <body>
-    <preview-window id="preview" showFPS="false">
-        group(
-            union(1,
-                    box( [1,-4,4], [30,5,3] ),
-                    box( [1, 7,4], [30,5,3] ),
-                    subtract(box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), box([0,5,30], [5,2,40])),
+    <div id="workspace">
+        <preview-window id="preview" showFPS="false">
+            group(
+                union(1,
+                        box( [1,-4,4], [30,5,3] ),
+                        box( [1, 7,4], [30,5,3] ),
+                        subtract(box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), box([0,5,30], [5,2,40])),
+                )
             )
-        )
-    </preview-window>
-    <div id="editor"></div>
-    <div id="toolbar">
-        <button id="reload-button">Reload</button>
+        </preview-window>
+        <div id="editor"></div>
+        <div id="toolbar">...</div>
     </div>
     <script type="module" src="./preview-window.js"></script>
     <script type="module">

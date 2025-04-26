@@ -2,13 +2,14 @@ import { Controls } from "./controls.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
-import { vec3 } from "./vecmat/vector.mjs"
+import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
     cameraPosition!: GPUBuffer
     orthoScale!: GPUBuffer
     scene!: GPUBuffer
     sceneTransform!: GPUBuffer
+    canvasRes!: GPUBuffer
 }
 
 export class SDFRenderer {
@@ -24,20 +25,35 @@ export class SDFRenderer {
     #sceneShader!: ShaderCompiler
     #uniformBuffers: UniformBuffers
 
+    #cameraRes!: Vec2f
     #averageFramerate: number[] = []
     #lastRenderTime: number = 0
     #framerateChanged?: (fps: number) => void
 
     constructor(canvas: HTMLCanvasElement, framerateChanged?: (fps: number) => void) {
         this.#canvas = canvas
+        this.#canvas.tabIndex = 1
         this.#framerateChanged = framerateChanged
-        const dpr = window.devicePixelRatio || 1
-        canvas.width = canvas.clientWidth * dpr
-        canvas.height = canvas.clientHeight * dpr
-        canvas.tabIndex = 1
         this.#controls = new Controls(canvas, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
         this.#uniformBuffers = new UniformBuffers()
         this.#initializing = this.initialize()
+        this.#cameraRes = vec2(this.#canvas.clientWidth, this.#canvas.clientHeight)
+
+        const observer = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                const width = entry.devicePixelContentBoxSize?.[0].inlineSize || entry.contentBoxSize[0].inlineSize * devicePixelRatio
+                const height = entry.devicePixelContentBoxSize?.[0].blockSize || entry.contentBoxSize[0].blockSize * devicePixelRatio
+                const canvas = entry.target as HTMLCanvasElement
+                canvas.width = width
+                canvas.height = height
+                this.#cameraRes = vec2(canvas.width, canvas.height)
+            }
+        })
+        try {
+            observer.observe(this.#canvas, { box: "device-pixel-content-box" })
+        } catch {
+            observer.observe(this.#canvas, { box: "content-box" })
+        }
     }
 
     build(src: string) {
@@ -98,6 +114,12 @@ export class SDFRenderer {
             label: "orthoScale",
         })
 
+        this.#uniformBuffers.canvasRes = this.#device.createBuffer({
+            size: 8,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "canvasRes",
+        })
+
         const shaderModule = this.#sceneShader.createModule(this.#device)
 
         const format = this.#format
@@ -126,12 +148,15 @@ export class SDFRenderer {
                 { binding: 1, resource: { buffer: this.#uniformBuffers.sceneTransform } },
                 { binding: 2, resource: { buffer: this.#uniformBuffers.cameraPosition } },
                 { binding: 3, resource: { buffer: this.#uniformBuffers.orthoScale } },
+                { binding: 4, resource: { buffer: this.#uniformBuffers.canvasRes } },
             ],
         })
     }
 
     update(time: number): void {
         this.updateFPS(time)
+
+        this.#scene.root.updateScene()
 
         const commandEncoder = this.#device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({
@@ -145,12 +170,11 @@ export class SDFRenderer {
             ],
         })
 
-        this.#scene.root.updateScene()
-
         this.#device.queue.writeBuffer(this.#uniformBuffers.scene, 0, this.#scene.args.data)
         this.#device.queue.writeBuffer(this.#uniformBuffers.sceneTransform, 0, this.#controls.camera.sceneTransform.data)
         this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.camera.position.data)
         this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.camera.orthoScale]))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.canvasRes, 0, this.#cameraRes.data)
 
         renderPass.setPipeline(this.#pipeline)
         renderPass.setBindGroup(0, this.#bindGroup)

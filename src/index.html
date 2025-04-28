@@ -44,20 +44,20 @@
         #workspace > * {
             min-width: 0;
         }
+        canvas {
+            /* disable all built-in touch gestures/selection on the element */
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
     </style>
 </head>
 
 <body>
     <div id="workspace">
-        <preview-window id="preview" showFPS="false">
-            group(
-                union(1,
-                        box( [1,-4,4], [30,5,3] ),
-                        box( [1, 7,4], [30,5,3] ),
-                        subtract(box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), box([0,5,30], [5,2,40])),
-                )
-            )
-        </preview-window>
+        <preview-window id="preview" showFPS="false"></preview-window>
         <div id="editor"></div>
         <div id="toolbar">...</div>
     </div>

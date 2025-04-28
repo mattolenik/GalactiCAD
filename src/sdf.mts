@@ -93,7 +93,7 @@ export class SDFRenderer {
         requestAnimationFrame(this.update.bind(this))
     }
 
-    buildPipeline() {
+    private buildPipeline() {
         this.#uniformBuffers.scene = this.#device.createBuffer({
             size: 16384,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,

@@ -89,6 +89,10 @@ export class SDFRenderer {
         return this
     }
 
+    startLoop() {
+        requestAnimationFrame(this.update.bind(this))
+    }
+
     buildPipeline() {
         this.#uniformBuffers.scene = this.#device.createBuffer({
             size: 16384,

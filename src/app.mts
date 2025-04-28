@@ -29,7 +29,7 @@ class App {
             .then(renderer => {
                 const sceneSource = this.editor.getValue().trim()
                 renderer.build(sceneSource)
-                requestAnimationFrame(time => renderer.update(time))
+                renderer.startLoop()
             })
             .catch(err => console.error(`UNEXPECTED ERROR: ${err}`))
     }

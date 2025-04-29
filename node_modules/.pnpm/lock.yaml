@@ -16,25 +16,25 @@ importers:
         version: 7.8.2
     devDependencies:
       '@types/node':
-        specifier: ^22.14.0
+        specifier: ^22.15.3
         version: 22.15.3
       '@types/ws':
-        specifier: ^8.5.14
+        specifier: ^8.18.1
         version: 8.18.1
       '@webgpu/types':
-        specifier: ^0.1.54
+        specifier: ^0.1.60
         version: 0.1.60
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
       esbuild:
-        specifier: ^0.25.0
+        specifier: ^0.25.3
         version: 0.25.3
       tsx:
         specifier: ^4.19.3
         version: 4.19.3
       typescript:
-        specifier: ^5.8.2
+        specifier: ^5.8.3
         version: 5.8.3
       ws:
         specifier: ^8.18.1

@@ -3,9 +3,8 @@ import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
 import assetBundler from "./asset-bundler.mjs"
 import { DevServer } from "./devserver.mjs"
-import wgslLoader from "./wgsl-loader.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
-import { rm } from "fs/promises"
+import wgslLoader from "./wgsl-loader.mjs"
 
 const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
@@ -108,6 +107,9 @@ async function main() {
                 server.reload()
             },
             async (event, path) => {
+                if (!process.execve) {
+                    throw new Error("rebuild only supported on Node v23.11.0 or higher")
+                }
                 const tsxPath = process.env.TSX ?? "./node_modules/.bin/tsx"
                 log(`REBUILD triggered by ${event}: ${path}`)
                 // log(`Cleaning ${Options.outDir}`)

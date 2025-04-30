@@ -93,9 +93,7 @@ export class Controls {
     }
 
     #onKeyPress(e: KeyboardEvent) {
-        // TODO: Attach control events to the shadow DOM instead? This id match is brittle
-
-        if (this.#lastFocused?.id !== "preview") return
+        if (this.#lastFocused?.id !== this.canvas.id) return
         console.log(e)
         if (e.code === "Digit1") {
             this.sceneRotX = -1 * Math.PI

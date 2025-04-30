@@ -57,6 +57,7 @@ export class SDFRenderer {
     }
 
     build(src: string) {
+        src = "return " + src.trim().replace(/return\s+/, "")
         this.#scene = new SceneInfo(src)
         this.#sceneShader = new ShaderCompiler(previewShader, "Preview Window")
             .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.#scene.args.length};`)
@@ -160,7 +161,14 @@ export class SDFRenderer {
     update(time: number): void {
         this.updateFPS(time)
 
-        this.#scene.root.updateScene()
+        if (this.#scene.root) {
+            this.#scene.root.updateScene()
+            this.#device.queue.writeBuffer(this.#uniformBuffers.scene, 0, this.#scene.args.data)
+            this.#device.queue.writeBuffer(this.#uniformBuffers.sceneTransform, 0, this.#controls.camera.sceneTransform.data)
+            this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.camera.position.data)
+            this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.camera.orthoScale]))
+            this.#device.queue.writeBuffer(this.#uniformBuffers.canvasRes, 0, this.#cameraRes.data)
+        }
 
         const commandEncoder = this.#device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({
@@ -173,12 +181,6 @@ export class SDFRenderer {
                 },
             ],
         })
-
-        this.#device.queue.writeBuffer(this.#uniformBuffers.scene, 0, this.#scene.args.data)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.sceneTransform, 0, this.#controls.camera.sceneTransform.data)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.camera.position.data)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.camera.orthoScale]))
-        this.#device.queue.writeBuffer(this.#uniformBuffers.canvasRes, 0, this.#cameraRes.data)
 
         renderPass.setPipeline(this.#pipeline)
         renderPass.setBindGroup(0, this.#bindGroup)

@@ -26,11 +26,19 @@ class App {
         this.renderer
             .ready()
             .then(renderer => {
-                const sceneSource = this.editor.getValue().trim()
-                this.renderer.build(sceneSource)
+                const sceneSource = this.editor.getValue()
                 renderer.startLoop()
+                this.renderer.build(sceneSource)
             })
-            .catch(err => console.error(`UNEXPECTED ERROR: ${err}`))
+            .catch((err: Error) => {
+                console.error(`UNEXPECTED ERROR: ${err}`)
+                const msg = document.createElement("p")
+                msg.textContent =
+                    err.name === "NotSupportedError"
+                        ? "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera, or Firefox Nightly."
+                        : err.message
+                this.preview.replaceWith(msg)
+            })
 
         const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
             h => this.editor.onDidChangeModelContent(h),
@@ -47,9 +55,8 @@ class App {
                     this.renderer.build(this.editor.getValue())
                     this.log.innerText = ""
                 } catch (err) {
-                    this.log.innerText = `${err}`
+                    this.log.innerText = `💢 ${err}`
                 }
-                // events is an array of all change events in the last 100ms
                 console.log(`Batched ${events.length} changes`)
             })
     }
@@ -58,11 +65,9 @@ class App {
 export default App
 
 const sample = `
-return group(
-    union(1,
-            box( [1,-4,4], [30,5,3] ),
-            box( [1, 7,4], [30,5,3] ),
-            subtract(box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} ), box([0,5,30], [5,2,40])),
-    )
+union(1,
+    box( [2,-4,4], [20,3,3] ),
+    box( [0,5,4], [20,3,3] ),
+    subtract(0.5, box( [0,0,0], [10,20,8] ), sphere( [0,0,-10], {r:6} )),
 )
 `

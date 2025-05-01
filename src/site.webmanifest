@@ -1,7 +1,7 @@
 {
     "name": "GalactiCAD",
     "short_name": "GalactiCAD",
-    "categories": ["productivity", "engineering", "cad", "3d-printing"],
+    "categories": ["productivity", "engineering", "cad", "3d printing"],
     "icons": [
         {
             "src": "/android-chrome-192x192.png",
@@ -20,7 +20,7 @@
     "start_url": "/",
     "file_handlers": [
         {
-            "action": "/open-file",
+            "action": "/#open",
             "accept": {
                 "text/plain": [".galcad"]
             }

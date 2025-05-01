@@ -33,3 +33,37 @@ export function numbersAreDefined(...nums: (number | undefined | null)[]): boole
     }
     return true
 }
+
+export function clampedAngle<
+    D extends {
+        get?: () => number
+        set?: (v: number) => void
+    }
+>(descriptor: D, context: ClassAccessorDecoratorContext): D {
+    if (context.kind !== "accessor") {
+        throw new Error("@clampedAngle can only be applied to an accessor")
+    }
+    return {
+        get: descriptor.get,
+        set(this: any, raw: number) {
+            descriptor.set!.call(this, clampAngle(raw))
+        },
+    } as D
+}
+
+export function clamped(min: number, max: number) {
+    return function <D extends { get?: () => number; set?: (v: number) => void }>(
+        descriptor: D,
+        context: ClassAccessorDecoratorContext
+    ): D {
+        if (context.kind !== "accessor") {
+            throw new Error("@clamped can only be applied to accessors")
+        }
+        return {
+            get: descriptor.get,
+            set(this: any, raw: number) {
+                descriptor.set!.call(this, clamp(raw, min, max))
+            },
+        } as D
+    }
+}

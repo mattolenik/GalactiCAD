@@ -1,4 +1,5 @@
 import { Controls } from "./controls.mjs"
+import { PreviewWindow } from "./preview-window.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
@@ -30,11 +31,11 @@ export class SDFRenderer {
     #lastRenderTime: number = 0
     #framerateChanged?: (fps: number) => void
 
-    constructor(canvas: HTMLCanvasElement, framerateChanged?: (fps: number) => void) {
-        this.#canvas = canvas
+    constructor(preview: PreviewWindow, framerateChanged?: (fps: number) => void) {
+        this.#canvas = preview.canvas
         this.#canvas.tabIndex = 1
         this.#framerateChanged = framerateChanged
-        this.#controls = new Controls(canvas, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
+        this.#controls = new Controls(preview, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
         this.#uniformBuffers = new UniformBuffers()
         this.#initializing = this.initialize()
         this.#cameraRes = vec2(this.#canvas.clientWidth, this.#canvas.clientHeight)
@@ -164,9 +165,9 @@ export class SDFRenderer {
         if (this.#scene.root) {
             this.#scene.root.updateScene()
             this.#device.queue.writeBuffer(this.#uniformBuffers.scene, 0, this.#scene.args.data)
-            this.#device.queue.writeBuffer(this.#uniformBuffers.sceneTransform, 0, this.#controls.camera.sceneTransform.data)
-            this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.camera.position.data)
-            this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.camera.orthoScale]))
+            this.#device.queue.writeBuffer(this.#uniformBuffers.sceneTransform, 0, this.#controls.sceneTransform.data)
+            this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.cameraPosition.data)
+            this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.orthoScale]))
             this.#device.queue.writeBuffer(this.#uniformBuffers.canvasRes, 0, this.#cameraRes.data)
         }
 

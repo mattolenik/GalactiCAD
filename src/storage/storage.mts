@@ -5,50 +5,96 @@ export interface Storable {
     loadStorage(s: string): void
 }
 
-export function setFloat(key: string, value: number) {
-    localStorage.setItem(key, value.toString())
-}
-
-export function getFloat(key: string): number | undefined {
-    const item = localStorage.getItem(key)
-    if (item === null) {
-        return undefined
+export class LocalStorage {
+    getItem(key: string) {
+        return this.#store.getItem(key)
     }
-    return parseFloat(item)
-}
-
-export function setInt(key: string, value: number) {
-    localStorage.setItem(key, value.toFixed(0))
-}
-
-export function getInt(key: string): number | undefined {
-    const item = localStorage.getItem(key)
-    if (item === null) {
-        return undefined
+    setItem(key: string, val: string) {
+        this.#store.setItem(key, val)
     }
-    return parseInt(item, 10)
+    removeItem(key: string) {
+        this.#store.removeItem(key)
+    }
+    #prefix: string
+    #store: Storage
+
+    constructor(store: Storage = localStorage, namespace: string = "") {
+        this.#store = store
+        this.#prefix = namespace ? `${namespace}:` : ""
+    }
+
+    setFloat(key: string, value: number): void {
+        this.#store.setItem(this.#prefix + key, value.toString())
+    }
+
+    getFloat(key: string): number | undefined {
+        const item = this.#store.getItem(this.#prefix + key)
+        if (item === null) return undefined
+        return parseFloat(item)
+    }
+
+    setInt(key: string, value: number): void {
+        this.#store.setItem(this.#prefix + key, value.toFixed(0))
+    }
+
+    getInt(key: string): number | undefined {
+        const item = this.#store.getItem(this.#prefix + key)
+        if (item === null) return undefined
+        return parseInt(item, 10)
+    }
+
+    getVec2f(key: string): Vec2f {
+        return new Vec2f(this.#store.getItem(this.#prefix + key))
+    }
+
+    setVec3f(key: string, value: Vec3f): void {
+        this.#store.setItem(this.#prefix + key, value.toStorage())
+    }
+
+    getVec3f(key: string): Vec3f {
+        return new Vec3f(this.#store.getItem(this.#prefix + key))
+    }
+
+    setVec4f(key: string, value: Vec4f): void {
+        this.#store.setItem(this.#prefix + key, value.toStorage())
+    }
+
+    getVec4f(key: string): Vec4f {
+        return new Vec4f(this.#store.getItem(this.#prefix + key))
+    }
 }
 
-export function setVec2f(key: string, value: Vec2f) {
-    localStorage.setItem(key, value.toStorage())
-}
+export function locallyStored<T extends Storable>(storage: LocalStorage, key: string, defaultValue: T) {
+    return function (
+        target: ClassAccessorDecoratorTarget<unknown, T>,
+        context: ClassAccessorDecoratorContext<unknown, T>
+    ): ClassAccessorDecoratorResult<unknown, T> {
+        return {
+            // runs once on instance construction
+            init(initialValue: T): T {
+                const raw = storage.getItem(key)
+                if (raw === null) return defaultValue
+                if (typeof initialValue === "object" && "loadStorage" in initialValue) {
+                    initialValue.loadStorage(raw)
+                    return initialValue
+                } else {
+                    return JSON.parse(initialValue)
+                }
+            },
 
-export function getVec2f(key: string): Vec2f {
-    return new Vec2f(localStorage.getItem(key))
-}
+            // subsequent reads return the in-memory slot
+            get(this: unknown): T {
+                return context.access.get(this)
+            },
 
-export function setVec3f(key: string, value: Vec3f) {
-    localStorage.setItem(key, value.toStorage())
-}
-
-export function getVec3f(key: string): Vec3f {
-    return new Vec3f(localStorage.getItem(key))
-}
-
-export function setVec4f(key: string, value: Vec4f) {
-    localStorage.setItem(key, value.toStorage())
-}
-
-export function getVec4f(key: string): Vec4f {
-    return new Vec4f(localStorage.getItem(key))
+            // writes persist and update the slot
+            set(this: unknown, value: T) {
+                if (value === null || value === undefined) {
+                    storage.removeItem(key)
+                }
+                storage.setItem(key, value?.toStorage() ?? JSON.stringify(value))
+                context.access.set(this, value)
+            },
+        }
+    }
 }

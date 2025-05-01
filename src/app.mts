@@ -1,8 +1,8 @@
 import * as monaco from "monaco-editor"
 import "monaco-editor-env" // used at runtime, do not remove
+import { bufferTime, filter, fromEventPattern } from "rxjs"
 import { PreviewWindow } from "./preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
-import { fromEventPattern, bufferTime, filter } from "rxjs"
 
 class App {
     preview: PreviewWindow
@@ -22,7 +22,7 @@ class App {
             minimap: { enabled: false },
         })
 
-        this.renderer = new SDFRenderer(this.preview.canvas, fps => this.preview.updateFps(fps))
+        this.renderer = new SDFRenderer(this.preview, fps => this.preview.updateFps(fps))
         this.renderer
             .ready()
             .then(renderer => {

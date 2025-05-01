@@ -519,38 +519,6 @@ export class Vec4f extends Vecf<Vec4n> {
     }
 }
 
-function parseVec(v: string, expectedLength?: number): [number, number] | [number, number, number] | [number, number, number, number] {
-    let elements: number[]
-    try {
-        elements = v
-            .trim()
-            .replace(/^[\{\[\(]/, "")
-            .replace(/[\}\]\)]$/, "")
-            .split(/(?:\s*,\s*)|\s+/)
-            .map(e => toNumberMust(e))
-    } catch (e) {
-        throw new Error(`invalid vector string '${v}': ${e}`)
-    }
-    if (expectedLength) {
-        if (expectedLength < 2 || expectedLength > 4) {
-            throw new Error("expectedLength must be a valid vector length: 2, 3, or 4")
-        }
-        if (elements.length != expectedLength) {
-            throw new Error(`vector length mismatch, expected ${expectedLength} but input string has ${elements.length}`)
-        }
-    }
-    if (elements.length === 2) {
-        return [elements[0], elements[1]]
-    }
-    if (elements.length === 3) {
-        return [elements[0], elements[1], elements[2]]
-    }
-    if (elements.length === 4) {
-        return [elements[0], elements[1], elements[2], elements[3]]
-    }
-    throw new Error(`invalid vector size ${elements.length}`)
-}
-
 export function vec2(x: number, y: number): Vec2f
 export function vec2(vec: Vec2): Vec2f
 export function vec2(vec: Vec2 | number, y?: number): Vec2f {
@@ -630,4 +598,36 @@ export function vec4(vec: Vec4 | number, y?: number, z?: number, w?: number): Ve
         return vec
     }
     throw new Error("unsupported vec4 type")
+}
+
+function parseVec(v: string, expectedLength?: number): [number, number] | [number, number, number] | [number, number, number, number] {
+    let elements: number[]
+    try {
+        elements = v
+            .trim()
+            .replace(/^[\{\[\(]/, "")
+            .replace(/[\}\]\)]$/, "")
+            .split(/(?:\s*,\s*)|\s+/)
+            .map(e => toNumberMust(e))
+    } catch (e) {
+        throw new Error(`invalid vector string '${v}': ${e}`)
+    }
+    if (expectedLength) {
+        if (expectedLength < 2 || expectedLength > 4) {
+            throw new Error("expectedLength must be a valid vector length: 2, 3, or 4")
+        }
+        if (elements.length != expectedLength) {
+            throw new Error(`vector length mismatch, expected ${expectedLength} but input string has ${elements.length}`)
+        }
+    }
+    if (elements.length === 2) {
+        return [elements[0], elements[1]]
+    }
+    if (elements.length === 3) {
+        return [elements[0], elements[1], elements[2]]
+    }
+    if (elements.length === 4) {
+        return [elements[0], elements[1], elements[2], elements[3]]
+    }
+    throw new Error(`invalid vector size ${elements.length}`)
 }

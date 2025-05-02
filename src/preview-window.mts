@@ -20,6 +20,7 @@ export class PreviewWindow extends HTMLElement {
             -webkit-user-select: none;     /* no text select */
             user-select: none;
             -webkit-tap-highlight-color: transparent;
+            overscroll-behavior: none;
         }
 `
         this.canvas = document.createElement("canvas")

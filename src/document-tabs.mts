@@ -17,7 +17,6 @@ export class DocumentTabs extends HTMLElement {
         super()
         this.#editor = editor
 
-        // setup shadow DOM
         this.attachShadow({ mode: "open" })
 
         const tabHeight = "40px"

@@ -17,10 +17,13 @@ export class PreviewWindow extends HTMLElement {
             width: 100%;
             height: 100%;
             touch-action: none;            /* no scrolling/pinch-zoom */
-            -webkit-user-select: none;     /* no text select */
-            user-select: none;
             -webkit-tap-highlight-color: transparent;
             overscroll-behavior: none;
+            touch-action: none;             /* no page pan/zoom */
+            -webkit-user-select: none;      /* no text selection */
+            user-select: none;
+            -webkit-touch-callout: none;    /* no long-press callout */
+            -webkit-user-drag: none;        /* no “drag” highlight */
         }
 `
         this.canvas = document.createElement("canvas")

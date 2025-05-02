@@ -6,6 +6,8 @@ export interface Storable {
 }
 
 export class LocalStorage {
+    static instance: LocalStorage = new LocalStorage()
+
     getItem(key: string) {
         return this.#store.getItem(key)
     }

@@ -1,3 +1,4 @@
+import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
 import { Controls } from "./controls.mjs"
 import { PreviewWindow } from "./preview-window.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
@@ -14,31 +15,28 @@ class UniformBuffers {
 }
 
 export class SDFRenderer {
+    #framerate = new AveragedBuffer(4)
     #bindGroup!: GPUBindGroup
-    #canvas: HTMLCanvasElement
+    #cameraRes!: Vec2f
     #context!: GPUCanvasContext
     #controls: Controls
     #device!: GPUDevice
     #format!: GPUTextureFormat
     #initializing: Promise<void> | null
+    #lastRenderTime: number = 0
     #pipeline!: GPURenderPipeline
+    #preview: PreviewWindow
     #scene!: SceneInfo
     #sceneShader!: ShaderCompiler
     #uniformBuffers: UniformBuffers
 
-    #cameraRes!: Vec2f
-    #averageFramerate: number[] = []
-    #lastRenderTime: number = 0
-    #framerateChanged?: (fps: number) => void
-
-    constructor(preview: PreviewWindow, framerateChanged?: (fps: number) => void) {
-        this.#canvas = preview.canvas
-        this.#canvas.tabIndex = 1
-        this.#framerateChanged = framerateChanged
-        this.#controls = new Controls(preview, vec3(0, 0, 0), 50) //, Math.PI / 1, Math.PI / 8)
+    constructor(preview: PreviewWindow) {
+        this.#preview = preview
+        // this.#preview.canvas.tabIndex = 1
+        this.#controls = new Controls(preview, vec3(0, 0, 0), 50)
         this.#uniformBuffers = new UniformBuffers()
         this.#initializing = this.initialize()
-        this.#cameraRes = vec2(this.#canvas.clientWidth, this.#canvas.clientHeight)
+        this.#cameraRes = vec2(this.#preview.canvas.clientWidth, this.#preview.canvas.clientHeight)
 
         const observer = new ResizeObserver(entries => {
             for (const entry of entries) {
@@ -51,9 +49,9 @@ export class SDFRenderer {
             }
         })
         try {
-            observer.observe(this.#canvas, { box: "device-pixel-content-box" })
+            observer.observe(this.#preview.canvas, { box: "device-pixel-content-box" })
         } catch {
-            observer.observe(this.#canvas, { box: "content-box" })
+            observer.observe(this.#preview.canvas, { box: "content-box" })
         }
     }
 
@@ -73,7 +71,7 @@ export class SDFRenderer {
         if (!adapter) throw new Error("No GPU adapter found")
 
         this.#device = await adapter.requestDevice()
-        this.#context = this.#canvas.getContext("webgpu") as GPUCanvasContext
+        this.#context = this.#preview.canvas.getContext("webgpu") as GPUCanvasContext
 
         this.#format = navigator.gpu.getPreferredCanvasFormat()
         this.#context.configure({
@@ -195,11 +193,7 @@ export class SDFRenderer {
     private updateFPS(time: number) {
         const deltaTime = time - this.#lastRenderTime
         this.#lastRenderTime = time
-        this.#averageFramerate.push(1000 / deltaTime)
-        if (this.#averageFramerate.length > 10) {
-            this.#averageFramerate.shift()
-        }
-        const framerate = this.#averageFramerate.reduce((p, c) => p + c, 0) / this.#averageFramerate.length
-        this.#framerateChanged?.(framerate)
+        this.#framerate.update(1000 / deltaTime)
+        this.#preview.updateFps(this.#framerate.average)
     }
 }

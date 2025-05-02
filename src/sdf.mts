@@ -28,6 +28,7 @@ export class SDFRenderer {
     #preview: PreviewWindow
     #scene!: SceneInfo
     #sceneShader!: ShaderCompiler
+    #started = false
     #uniformBuffers: UniformBuffers
 
     constructor(preview: PreviewWindow) {
@@ -63,7 +64,7 @@ export class SDFRenderer {
             .replace("insert", "sceneSDF", this.#scene.compile())
 
         this.buildPipeline()
-        console.log(this.#sceneShader.text)
+        // console.log(this.#sceneShader.text)
     }
 
     async initialize() {
@@ -89,10 +90,9 @@ export class SDFRenderer {
         return this
     }
 
-    started = false
     startLoop() {
-        if (this.started) return
-        this.started = true
+        if (this.#started) return
+        this.#started = true
         requestAnimationFrame(this.update.bind(this))
     }
 

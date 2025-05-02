@@ -106,6 +106,6 @@ fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
         return vec4f(shadedColor, 1.0);
     } else {
         // Background gradient.
-        return vec4f(uv, 0.5, 1.0);
+        return vec4f(0);
     }
 }

@@ -22,6 +22,7 @@ export class DocumentTabs extends HTMLElement {
 
         const tabHeight = "40px"
         const closeButtonSize = "24px"
+        const cornerRadius = "0.5rem"
 
         // inject styles
         const style = document.createElement("style")
@@ -40,18 +41,24 @@ export class DocumentTabs extends HTMLElement {
                 height: ${tabHeight};
                 display: flex;
                 align-items: center;
-                padding: 3px 8px;
+                padding: 0px 12px;
                 border-top: 2px solid #888;
                 border-right: 2px solid #888;
                 background: none;
+                opacity: 0.6;
                 cursor: pointer;
                 white-space: nowrap;
-                color: #888;
-                border-radius: 0.8rem 0.8rem 0 0;
+                color: #ccc;
+                border-radius: ${cornerRadius} ${cornerRadius} 0 0;
                 font-size: large;
             }
+            .tab-button:hover {
+                opacity: 1;
+            }
             .tab-button.active {
+                opacity: 1;
                 box-sizing: border-box;
+                background-color: var(--active-bg);
                 border-width: 4px 2px 0 0;
                 border-color: #007acc;
                 padding-top: 1px;
@@ -76,9 +83,14 @@ export class DocumentTabs extends HTMLElement {
             }
             .add-button {
                 padding: 4px 8px;
-                border: 1px solid #ccc;
+                margin-left: 6px;
+                border: 1px solid #888;
+                border-radius: 6px;
                 background: none;
                 cursor: pointer;
+            }
+            .add-button:hover {
+                background: rgba(0, 0, 0, 0.5);
             }
         `
         this.shadowRoot!.appendChild(style)

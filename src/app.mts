@@ -52,6 +52,11 @@ class App {
         document.getElementById(tabsID)?.replaceWith(this.#tabs)
         this.#tabs.restore()
 
+        setTimeout(() => {
+            const bg = getComputedStyle(document.querySelector(".monaco-editor")!).getPropertyValue("--vscode-editor-background")
+            this.#tabs.style.setProperty("--active-bg", bg)
+        }, 1)
+
         this.renderer = new SDFRenderer(this.preview)
         this.renderer
             .ready()

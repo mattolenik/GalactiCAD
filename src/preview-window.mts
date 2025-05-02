@@ -12,15 +12,7 @@ export class PreviewWindow extends HTMLElement {
         const shadow = this.attachShadow({ mode: "open" })
         const style = document.createElement("style")
         style.textContent = `
-  :host { display: inline-block; position: relative; }
   canvas { display: block; width: 100%; height: 100%; }
-  .overlay {
-    position: absolute;
-    bottom: 10px;
-    right: 10px;
-    pointer-events: none;
-    z-index: 1;
-  }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"

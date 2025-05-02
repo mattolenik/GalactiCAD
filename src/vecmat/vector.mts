@@ -192,6 +192,10 @@ export class Vec3f extends Vecf<Vec3n> {
         return this.xyz
     }
 
+    get rgba() {
+        return vec4(this.r, this.g, this.b, 1.0)
+    }
+
     clone(): Vec3f {
         return vec3(this.x, this.y, this.z)
     }

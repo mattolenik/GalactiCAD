@@ -11,6 +11,7 @@ const NORMAL_EPS: f32 = 0.001;
 @group(0) @binding(2) var<uniform> cameraPosition: vec4f;
 @group(0) @binding(3) var<uniform> orthoScale: f32;
 @group(0) @binding(4) var<uniform> canvasRes: vec2f;
+@group(0) @binding(5) var<uniform> bgColor: vec4f;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -106,6 +107,6 @@ fn fragmentMain(@location(0) uv: vec2f) -> @location(0) vec4f {
         return vec4f(shadedColor, 1.0);
     } else {
         // Background gradient.
-        return vec4f(0);
+        return bgColor;
     }
 }

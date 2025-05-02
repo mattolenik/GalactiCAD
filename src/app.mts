@@ -1,10 +1,11 @@
 import * as monaco from "monaco-editor"
 import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
+import { DocumentTabs } from "./document-tabs.mjs"
 import { PreviewWindow } from "./preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { LocalStorage } from "./storage/storage.mjs"
-import { DocumentTabs } from "./document-tabs.mjs"
+import { hexToRgb } from "./color.mjs"
 
 class App {
     preview: PreviewWindow
@@ -58,6 +59,7 @@ class App {
         }, 1)
 
         this.renderer = new SDFRenderer(this.preview)
+        this.renderer.bgColor = hexToRgb("#333").rgba
         this.renderer
             .ready()
             .then(renderer => {

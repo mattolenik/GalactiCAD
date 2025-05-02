@@ -19,13 +19,36 @@ export class DocumentTabs extends HTMLElement {
 
         // setup shadow DOM
         this.attachShadow({ mode: "open" })
+
+        // inject styles
+        const style = document.createElement("style")
+        style.textContent = `
+            .tabs-container {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-bottom: 8px;
+            }
+            .tab-button {
+                padding: 4px 8px;
+                border: 1px solid #ccc;
+                background: none;
+                cursor: pointer;
+            }
+            .tab-button.active {
+                border: 2px solid #007acc;
+            }
+            .add-button {
+                padding: 4px 8px;
+                border: 1px solid #ccc;
+                background: none;
+                cursor: pointer;
+            }
+        `
+        this.shadowRoot!.appendChild(style)
+
         this.#tabContainer = document.createElement("div")
-        Object.assign(this.#tabContainer.style, {
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            marginBottom: "8px",
-        })
+        this.#tabContainer.classList.add("tabs-container")
         this.shadowRoot!.appendChild(this.#tabContainer)
 
         this.#renderTabs()
@@ -171,9 +194,8 @@ export class DocumentTabs extends HTMLElement {
                 this.#switchTo(next)
             } else {
                 this.#active = undefined
-                this.#editor.setModel(null!)
-                // notify subscribers of activeTabChanged to undefined
                 this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: undefined }))
+                this.#editor.setModel(null!)
                 this.#renderTabs()
             }
         }
@@ -184,7 +206,6 @@ export class DocumentTabs extends HTMLElement {
         if (!model) return
         this.#active = name
         this.#editor.setModel(model)
-        // fire event when active tab changes
         this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: name }))
         this.#renderTabs()
     }
@@ -199,32 +220,30 @@ export class DocumentTabs extends HTMLElement {
 
     #renderTabs() {
         this.#tabContainer.innerHTML = ""
-        for (const oldName of this.#docs.keys()) {
+        for (const name of this.#docs.keys()) {
             const btn = document.createElement("button")
-            btn.textContent = oldName
-            Object.assign(btn.style, {
-                padding: "4px 8px",
-                border: oldName === this.#active ? "2px solid #007acc" : "1px solid #ccc",
-            })
-            btn.addEventListener("click", () => this.#switchTo(oldName))
+            btn.textContent = name
+            btn.classList.add("tab-button")
+            if (name === this.#active) btn.classList.add("active")
+            btn.addEventListener("click", () => this.#switchTo(name))
 
             // middle click to close
             btn.addEventListener("auxclick", e => {
                 if (e.button !== 1) return
                 e.preventDefault()
-                const model = this.#docs.get(oldName)
+                const model = this.#docs.get(name)
                 if (!model) return
                 const isEmpty = model.getValue() === "" && model.getAlternativeVersionId() === 1
                 if (isEmpty) {
-                    this.#closeTab(oldName)
-                } else if (window.confirm(`Close "${oldName}"? Unsaved changes will be lost.`)) {
-                    this.#closeTab(oldName)
+                    this.#closeTab(name)
+                } else if (window.confirm(`Close "${name}"? Unsaved changes will be lost.`)) {
+                    this.#closeTab(name)
                 }
             })
 
             // double-click to rename
             btn.addEventListener("dblclick", () => {
-                const oldKey = oldName
+                const oldKey = name
                 const newName = window.prompt(`Rename "${oldKey}" to:`, oldKey)?.trim()
                 if (newName && newName !== oldKey) {
                     const model = this.#docs.get(oldKey)
@@ -236,12 +255,12 @@ export class DocumentTabs extends HTMLElement {
                     this.#docs.delete(oldKey)
                     this.#docs.set(newName, model)
 
-                    const oldKeyStorage = `document:${oldKey}`
-                    const newKeyStorage = `document:${newName}`
-                    const content = localStorage.getItem(oldKeyStorage)
+                    const oldStorage = `document:${oldKey}`
+                    const newStorage = `document:${newName}`
+                    const content = localStorage.getItem(oldStorage)
                     if (content !== null) {
-                        localStorage.setItem(newKeyStorage, content)
-                        localStorage.removeItem(oldKeyStorage)
+                        localStorage.setItem(newStorage, content)
+                        localStorage.removeItem(oldStorage)
                     }
 
                     this.#watchModel(newName, model)
@@ -257,12 +276,8 @@ export class DocumentTabs extends HTMLElement {
         // new-document button
         const addBtn = document.createElement("button")
         addBtn.textContent = "+"
+        addBtn.classList.add("add-button")
         addBtn.title = "New Document"
-        Object.assign(addBtn.style, {
-            padding: "4px 8px",
-            border: "1px solid #ccc",
-            cursor: "pointer",
-        })
         addBtn.addEventListener("click", () => this.newDocument())
         this.#tabContainer.appendChild(addBtn)
     }

@@ -89,7 +89,10 @@ export class SDFRenderer {
         return this
     }
 
+    started = false
     startLoop() {
+        if (this.started) return
+        this.started = true
         requestAnimationFrame(this.update.bind(this))
     }
 

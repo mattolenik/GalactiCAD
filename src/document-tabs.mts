@@ -20,9 +20,15 @@ export class DocumentTabs extends HTMLElement {
         // setup shadow DOM
         this.attachShadow({ mode: "open" })
 
+        const tabHeight = "40px"
+        const closeButtonSize = "24px"
+
         // inject styles
         const style = document.createElement("style")
         style.textContent = `
+            button {
+                color: whitesmoke;
+            }
             .tabs-container {
                 display: flex;
                 align-items: center;
@@ -30,27 +36,37 @@ export class DocumentTabs extends HTMLElement {
                 margin-bottom: 8px;
             }
             .tab-button {
+                border: none;
+                height: ${tabHeight};
                 display: flex;
                 align-items: center;
-                padding: 4px 8px;
-                border: 1px solid #ccc;
+                padding: 3px 8px;
+                border-top: 2px solid #888;
+                border-right: 2px solid #888;
                 background: none;
                 cursor: pointer;
                 white-space: nowrap;
+                color: #888;
+                border-radius: 0.8rem 0.8rem 0 0;
+                font-size: large;
             }
             .tab-button.active {
-                border: 2px solid #007acc;
+                box-sizing: border-box;
+                border-width: 4px 2px 0 0;
+                border-color: #007acc;
+                padding-top: 1px;
+                color: whitesmoke;
             }
             .close-btn {
-                margin-left: 4px;
-                font-size: 12px;
+                margin-left: 10px;
+                font-size: ${closeButtonSize};
                 cursor: pointer;
                 color: #888;
                 background: none;
                 border: none;
-                width: 16px;
-                height: 16px;
-                line-height: 16px;
+                width: ${closeButtonSize};
+                height: ${closeButtonSize};
+                line-height: ${closeButtonSize};
                 border-radius: 5px;
                 transition: background 0.2s;
             }

@@ -14,6 +14,16 @@ class App {
     #ls: LocalStorage
     #tabs: DocumentTabs
 
+    build() {
+        try {
+            this.renderer.build(this.editor.getValue())
+            this.renderer.startLoop()
+            this.log.innerText = ""
+        } catch (err) {
+            this.log.innerText = `💢 ${err}`
+        }
+    }
+
     constructor({
         previewWindowID,
         tabsID,
@@ -38,9 +48,7 @@ class App {
         })
 
         this.#tabs = new DocumentTabs(this.editor)
-        this.#tabs.addEventListener("activeTabChanged", e => {
-            this.renderer.build(this.editor.getValue())
-        })
+        this.#tabs.addEventListener("activeTabChanged", e => this.build())
         document.getElementById(tabsID)?.replaceWith(this.#tabs)
         this.#tabs.restore()
 
@@ -48,9 +56,7 @@ class App {
         this.renderer
             .ready()
             .then(renderer => {
-                const sceneSource = this.editor.getValue()
-                renderer.startLoop()
-                this.renderer.build(sceneSource)
+                this.build()
             })
             .catch((err: Error) => {
                 console.error(`UNEXPECTED ERROR: ${err}`)
@@ -73,12 +79,7 @@ class App {
                 filter(arr => arr.length > 0)
             )
             .subscribe(events => {
-                try {
-                    this.renderer.build(this.editor.getValue())
-                    this.log.innerText = ""
-                } catch (err) {
-                    this.log.innerText = `💢 ${err}`
-                }
+                this.build()
                 console.log(`Batched ${events.length} changes`)
             })
     }

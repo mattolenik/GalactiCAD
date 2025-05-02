@@ -27,25 +27,26 @@
         #preview {
             display: block;
             aspect-ratio: 1/1;
+            max-height: 70vh;
+            min-height: 40vh;
         }
 
         #toolbar {
-            height: 80px;
+            height: 1.6rem;
         }
 
         #log {
-            margin: 0.5rem;
+            font-size: 1rem;
         }
 
         #tabs {
-            display: "block";
-            height: "30px";
+            display: inline-block;
         }
 
         #workspace {
             height: 100%;
             display: grid;
-            grid-template-rows: auto minmax(0,1fr) 30px auto;
+            grid-template-rows: auto 40px minmax(0,1fr) auto;
             max-width: 900px;
         }
         #workspace > * {
@@ -65,8 +66,8 @@
 <body>
     <div id="workspace">
         <preview-window id="preview" showFPS="true"></preview-window>
-        <div id="editor"></div>
         <div id="tabs"></div>
+        <div id="editor"></div>
         <div id="toolbar">
             <div id="log"></div>
         </div>

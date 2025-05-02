@@ -3,26 +3,48 @@ import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
 import { PreviewWindow } from "./preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
+import { LocalStorage } from "./storage/storage.mjs"
+import { DocumentTabs } from "./document-tabs.mjs"
 
 class App {
     preview: PreviewWindow
     editor: monaco.editor.IStandaloneCodeEditor
     renderer: SDFRenderer
     log: HTMLDivElement
+    #ls: LocalStorage
+    #tabs: DocumentTabs
 
-    constructor(previewWindowID: string, editorContainerID: string, logID: string) {
+    constructor({
+        previewWindowID,
+        tabsID,
+        editorContainerID,
+        logID,
+    }: {
+        previewWindowID: string
+        tabsID: string
+        editorContainerID: string
+        logID: string
+    }) {
+        this.#ls = LocalStorage.instance
         this.preview = document.getElementById(previewWindowID) as PreviewWindow
         this.log = document.getElementById(logID) as HTMLDivElement
 
         this.editor = monaco.editor.create(document.getElementById(editorContainerID) as HTMLDivElement, {
-            value: sample,
             language: "javascript",
             automaticLayout: true,
             theme: "vs-dark",
             minimap: { enabled: false },
+            model: null,
         })
 
-        this.renderer = new SDFRenderer(this.preview, fps => this.preview.updateFps(fps))
+        this.#tabs = new DocumentTabs(this.editor)
+        this.#tabs.addEventListener("activeTabChanged", e => {
+            this.renderer.build(this.editor.getValue())
+        })
+        document.getElementById(tabsID)?.replaceWith(this.#tabs)
+        this.#tabs.restore()
+
+        this.renderer = new SDFRenderer(this.preview)
         this.renderer
             .ready()
             .then(renderer => {

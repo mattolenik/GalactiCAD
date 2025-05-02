@@ -4,9 +4,8 @@ import { locallyStored, LocalStorage } from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"
 
-export var ls = new LocalStorage()
-
 export class Controls {
+    #ls: LocalStorage
     #preview: PreviewWindow
     pivot: Vec3f
     sceneTransform = new Mat4x4f()
@@ -17,7 +16,7 @@ export class Controls {
     accessor sceneRotX: number = 0
 
     @clampedAngle
-    // @locallyStored(ls, "camera.sceneRotY", 0)
+    //@locallyStored(ls, "camera.sceneRotY", 0)
     accessor sceneRotY: number = 0
 
     @clamped(2, 150)
@@ -44,6 +43,7 @@ export class Controls {
     cameraTranslation: Vec3f = new Vec3f()
 
     constructor(preview: PreviewWindow, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2) {
+        this.#ls = LocalStorage.instance
         this.#preview = preview
         this.pivot = pivot
         this.radius = radius
@@ -183,21 +183,21 @@ export class Controls {
             return
         }
         this.#lastCameraSave = Date.now()
-        ls.setVec3f("camera.position", this.cameraPosition)
-        ls.setVec3f("camera.translation", this.cameraTranslation)
-        ls.setVec3f("camera.pivot", this.pivot)
-        ls.setFloat("camera.orthoScale", this.orthoScale)
-        ls.setFloat("camera.sceneRotX", this.sceneRotX)
-        ls.setFloat("camera.sceneRotY", this.sceneRotY)
+        this.#ls.setVec3f("camera.position", this.cameraPosition)
+        this.#ls.setVec3f("camera.translation", this.cameraTranslation)
+        this.#ls.setVec3f("camera.pivot", this.pivot)
+        this.#ls.setFloat("camera.orthoScale", this.orthoScale)
+        this.#ls.setFloat("camera.sceneRotX", this.sceneRotX)
+        this.#ls.setFloat("camera.sceneRotY", this.sceneRotY)
     }
 
     loadCameraState(): void {
-        this.cameraPosition = ls.getVec3f("camera.position")
-        this.cameraTranslation = ls.getVec3f("camera.translation")
-        this.pivot = ls.getVec3f("camera.pivot")
-        this.orthoScale = ls.getFloat("camera.orthoScale") ?? 20
-        this.sceneRotX = ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
-        this.sceneRotY = ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
+        this.cameraPosition = this.#ls.getVec3f("camera.position")
+        this.cameraTranslation = this.#ls.getVec3f("camera.translation")
+        this.pivot = this.#ls.getVec3f("camera.pivot")
+        this.orthoScale = this.#ls.getFloat("camera.orthoScale") ?? 20
+        this.sceneRotX = this.#ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
+        this.sceneRotY = this.#ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
         this.#updateTransforms()
     }
 }

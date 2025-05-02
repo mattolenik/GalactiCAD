@@ -30,13 +30,33 @@ export class DocumentTabs extends HTMLElement {
                 margin-bottom: 8px;
             }
             .tab-button {
+                display: flex;
+                align-items: center;
                 padding: 4px 8px;
                 border: 1px solid #ccc;
                 background: none;
                 cursor: pointer;
+                white-space: nowrap;
             }
             .tab-button.active {
                 border: 2px solid #007acc;
+            }
+            .close-btn {
+                margin-left: 4px;
+                font-size: 12px;
+                cursor: pointer;
+                color: #888;
+                background: none;
+                border: none;
+                width: 16px;
+                height: 16px;
+                line-height: 16px;
+                border-radius: 5px;
+                transition: background 0.2s;
+            }
+            .close-btn:hover {
+                background: rgba(0, 0, 0, 0.5);
+                color: whitesmoke;
             }
             .add-button {
                 padding: 4px 8px;
@@ -54,31 +74,22 @@ export class DocumentTabs extends HTMLElement {
         this.#renderTabs()
     }
 
-    /**
-     * Current active document name (if any)
-     */
+    /** Current active document name (if any) */
     get active(): string | undefined {
         return this.#active
     }
 
-    /**
-     * Retrieve a model by filename
-     */
+    /** Retrieve a model by filename */
     getByName(name: string): monaco.editor.ITextModel | undefined {
         return this.#docs.get(name)
     }
 
-    /**
-     * All documents in insertion order
-     */
+    /** All documents in insertion order */
     get allDocuments(): Iterable<monaco.editor.ITextModel> {
         return this.#docs.values()
     }
 
-    /**
-     * Create a new untitled document, start watching its changes, switch to it,
-     * and update stored order.
-     */
+    /** Create a new untitled document, start watching, switch, update order */
     newDocument(content = "group(sphere('0 0 0', {r:5}))", language = "javascript"): string {
         const name = `untitled-${untitledCount++}`
         const uri = monaco.Uri.parse(`inmemory://model/${name}`)
@@ -90,26 +101,19 @@ export class DocumentTabs extends HTMLElement {
         return name
     }
 
-    /**
-     * Restore tabs from saved order or from localStorage keys.
-     * Clears existing tabs, loads models in correct order,
-     * or creates a default if none found.
-     */
+    /** Restore tabs from saved order or localStorage, or default */
     restore(): void {
-        // clear existing docs and subscriptions
+        // clear existing
         for (const name of Array.from(this.#docs.keys())) {
             const sub = this.#subscriptions.get(name)
             if (sub) sub.unsubscribe()
             this.#subscriptions.delete(name)
             this.#docs.delete(name)
         }
-
-        // determine restore order
         const prefix = "document:"
         const storedOrder = JSON.parse(localStorage.getItem("documents") || "[]") as string[]
         const loaded = new Set<string>()
-
-        // load in stored order
+        // load in order
         for (const name of storedOrder) {
             const key = `${prefix}${name}`
             const content = localStorage.getItem(key)
@@ -121,8 +125,7 @@ export class DocumentTabs extends HTMLElement {
                 loaded.add(name)
             }
         }
-
-        // fallback: any keys not in storedOrder
+        // load leftovers
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i)
             if (key?.startsWith(prefix)) {
@@ -136,49 +139,32 @@ export class DocumentTabs extends HTMLElement {
                 }
             }
         }
-
-        // if none, create default
+        // default if empty
         if (this.#docs.keys().next().done) {
             this.newDocument()
             return
         }
-
-        // activate first restored document
+        // activate first
         const first = this.#docs.keys().next().value
-        if (first) {
-            this.#switchTo(first)
-        }
-
+        if (first) this.#switchTo(first)
         this.#updateStoredOrder()
     }
 
-    /**
-     * Observe model changes and save content debounced
-     */
+    /** Observe model changes and save debounced */
     #watchModel(name: string, model: monaco.editor.ITextModel) {
         const existing = this.#subscriptions.get(name)
-        if (existing) {
-            existing.unsubscribe()
-        }
-
+        if (existing) existing.unsubscribe()
         const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
             handler => model.onDidChangeContent(handler),
             (_handler, subscription) => (subscription as monaco.IDisposable).dispose()
         ).pipe(bufferTime(1000))
-
-        const sub = change$.subscribe(() => {
-            localStorage.setItem(`document:${name}`, model.getValue())
-        })
+        const sub = change$.subscribe(() => localStorage.setItem(`document:${name}`, model.getValue()))
         this.#subscriptions.set(name, sub)
-
-        // initial save
+        // initial
         localStorage.setItem(`document:${name}`, model.getValue())
     }
 
-    /**
-     * Close a tab, switch, rerender, and update order
-     * Does NOT remove from localStorage
-     */
+    /** Close a tab and update */
     #closeTab(name: string) {
         const wasActive = name === this.#active
         const sub = this.#subscriptions.get(name)
@@ -187,12 +173,10 @@ export class DocumentTabs extends HTMLElement {
         this.#docs.delete(name)
         this.#renderTabs()
         this.#updateStoredOrder()
-
         if (wasActive) {
             const next = this.#docs.keys().next().value
-            if (next) {
-                this.#switchTo(next)
-            } else {
+            if (next) this.#switchTo(next)
+            else {
                 this.#active = undefined
                 this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: undefined }))
                 this.#editor.setModel(null!)
@@ -210,70 +194,34 @@ export class DocumentTabs extends HTMLElement {
         this.#renderTabs()
     }
 
-    /**
-     * Update the serialized documents order in localStorage
-     */
+    /** Update serialized order */
     #updateStoredOrder() {
-        const order = Array.from(this.#docs.keys())
-        localStorage.setItem("documents", JSON.stringify(order))
+        localStorage.setItem("documents", JSON.stringify(Array.from(this.#docs.keys())))
     }
 
     #renderTabs() {
         this.#tabContainer.innerHTML = ""
         for (const name of this.#docs.keys()) {
             const btn = document.createElement("button")
-            btn.textContent = name
             btn.classList.add("tab-button")
             if (name === this.#active) btn.classList.add("active")
             btn.addEventListener("click", () => this.#switchTo(name))
-
-            // middle click to close
-            btn.addEventListener("auxclick", e => {
-                if (e.button !== 1) return
-                e.preventDefault()
-                const model = this.#docs.get(name)
-                if (!model) return
-                const isEmpty = model.getValue() === "" && model.getAlternativeVersionId() === 1
-                if (isEmpty) {
-                    this.#closeTab(name)
-                } else if (window.confirm(`Close "${name}"? Unsaved changes will be lost.`)) {
-                    this.#closeTab(name)
-                }
+            // label
+            const label = document.createElement("span")
+            label.textContent = name
+            btn.appendChild(label)
+            // close icon
+            const closeBtn = document.createElement("span")
+            closeBtn.classList.add("close-btn")
+            closeBtn.textContent = "×"
+            closeBtn.addEventListener("click", e => {
+                e.stopPropagation()
+                this.#closeTab(name)
             })
-
-            // double-click to rename
-            btn.addEventListener("dblclick", () => {
-                const oldKey = name
-                const newName = window.prompt(`Rename "${oldKey}" to:`, oldKey)?.trim()
-                if (newName && newName !== oldKey) {
-                    const model = this.#docs.get(oldKey)
-                    if (!model) return
-                    const sub = this.#subscriptions.get(oldKey)
-                    if (sub) sub.unsubscribe()
-                    this.#subscriptions.delete(oldKey)
-
-                    this.#docs.delete(oldKey)
-                    this.#docs.set(newName, model)
-
-                    const oldStorage = `document:${oldKey}`
-                    const newStorage = `document:${newName}`
-                    const content = localStorage.getItem(oldStorage)
-                    if (content !== null) {
-                        localStorage.setItem(newStorage, content)
-                        localStorage.removeItem(oldStorage)
-                    }
-
-                    this.#watchModel(newName, model)
-                    if (this.#active === oldKey) this.#active = newName
-                    this.#renderTabs()
-                    this.#updateStoredOrder()
-                }
-            })
-
+            btn.appendChild(closeBtn)
             this.#tabContainer.appendChild(btn)
         }
-
-        // new-document button
+        // add button
         const addBtn = document.createElement("button")
         addBtn.textContent = "+"
         addBtn.classList.add("add-button")

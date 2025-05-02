@@ -16,6 +16,8 @@ export class PreviewWindow extends HTMLElement {
             display: block;
             width: 100%;
             height: 100%;
+        }
+        :host {
             touch-action: none;            /* no scrolling/pinch-zoom */
             -webkit-tap-highlight-color: transparent;
             overscroll-behavior: none;

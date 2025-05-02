@@ -4,7 +4,7 @@ import { PreviewWindow } from "./preview-window.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
-import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
+import { vec2, Vec2f, vec3, Vec4f } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
     cameraPosition!: GPUBuffer
@@ -12,6 +12,7 @@ class UniformBuffers {
     scene!: GPUBuffer
     sceneTransform!: GPUBuffer
     canvasRes!: GPUBuffer
+    bgColor!: GPUBuffer
 }
 
 export class SDFRenderer {
@@ -30,6 +31,7 @@ export class SDFRenderer {
     #sceneShader!: ShaderCompiler
     #started = false
     #uniformBuffers: UniformBuffers
+    bgColor = new Vec4f([0, 0, 0, 0])
 
     constructor(preview: PreviewWindow) {
         this.#preview = preview
@@ -127,6 +129,12 @@ export class SDFRenderer {
             label: "canvasRes",
         })
 
+        this.#uniformBuffers.bgColor = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "bgColor",
+        })
+
         const shaderModule = this.#sceneShader.createModule(this.#device)
 
         const format = this.#format
@@ -156,6 +164,7 @@ export class SDFRenderer {
                 { binding: 2, resource: { buffer: this.#uniformBuffers.cameraPosition } },
                 { binding: 3, resource: { buffer: this.#uniformBuffers.orthoScale } },
                 { binding: 4, resource: { buffer: this.#uniformBuffers.canvasRes } },
+                { binding: 5, resource: { buffer: this.#uniformBuffers.bgColor } },
             ],
         })
     }
@@ -170,6 +179,7 @@ export class SDFRenderer {
             this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.cameraPosition.data)
             this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.orthoScale]))
             this.#device.queue.writeBuffer(this.#uniformBuffers.canvasRes, 0, this.#cameraRes.data)
+            this.#device.queue.writeBuffer(this.#uniformBuffers.bgColor, 0, this.bgColor.data)
         }
 
         const commandEncoder = this.#device.createCommandEncoder()

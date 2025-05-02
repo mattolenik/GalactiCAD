@@ -85,7 +85,6 @@ class App {
             )
             .subscribe(events => {
                 this.build()
-                console.log(`Batched ${events.length} changes`)
             })
     }
 }

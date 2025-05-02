@@ -301,7 +301,7 @@ export class Box extends WithSize(WithPos(Node)) {
     }
     override updateScene(): void {
         this.scene.args.set(this.argIndex.pos, this.pos)
-        this.scene.args.set(this.argIndex.size, vec3(this.l, this.w, this.h))
+        this.scene.args.set(this.argIndex.size, this.size)
     }
     override build() {
         super.build()

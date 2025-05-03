@@ -12,7 +12,7 @@ export class PreviewWindow extends HTMLElement {
         const shadow = this.attachShadow({ mode: "open" })
         const style = document.createElement("style")
         style.textContent = `
-        canvas {
+        :host, canvas {
             display: block;
             width: 100%;
             height: 100%;

@@ -1,11 +1,10 @@
 import * as monaco from "monaco-editor"
 import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
+import { hexToRgb } from "./color.mjs"
 import { DocumentTabs } from "./document-tabs.mjs"
 import { PreviewWindow } from "./preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
-import { LocalStorage } from "./storage/storage.mjs"
-import { hexToRgb } from "./color.mjs"
 
 class App {
     preview: PreviewWindow

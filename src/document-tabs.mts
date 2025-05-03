@@ -50,7 +50,6 @@ export class DocumentTabs extends HTMLElement {
                 color: #aaa;
                 border-radius: 0 0 ${cornerRadius} ${cornerRadius};
                 font-size: large;
-                background-color: var(--active-bg);
             }
             .tab-button:hover {
                 opacity: 1;
@@ -78,7 +77,7 @@ export class DocumentTabs extends HTMLElement {
                 transition: background 0.2s;
             }
             .close-btn:hover {
-                background: rgba(0, 0, 0, 0.5);
+                background: #444;
                 color: whitesmoke;
             }
             .add-button {
@@ -88,6 +87,7 @@ export class DocumentTabs extends HTMLElement {
                 border-radius: 6px;
                 background: none;
                 cursor: pointer;
+                color: #888;
             }
             .add-button:hover {
                 background: rgba(0, 0, 0, 0.5);

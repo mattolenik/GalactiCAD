@@ -1,12 +1,11 @@
 //:) include "hg_sdf.wgsl"
 
-const NUM_ARGS: u32 = 0; //:) replace NUM_ARGS
 const MAX_STEPS: i32 = 5000;
 const MAX_DIST: f32 = 500.0;
 const SURF_DIST: f32 = 0.001;
 const NORMAL_EPS: f32 = 0.001;
 
-@group(0) @binding(0) var<uniform> args: array<vec4f, NUM_ARGS>;
+@group(0) @binding(0) var<uniform> args: array<vec4f, 1024>;
 @group(0) @binding(1) var<uniform> sceneTransform: mat4x4f;
 @group(0) @binding(2) var<uniform> cameraPosition: vec4f;
 @group(0) @binding(3) var<uniform> orthoScale: f32;

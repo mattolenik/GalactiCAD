@@ -46,6 +46,7 @@ class App {
             theme: "vs-dark",
             minimap: { enabled: false },
             model: null,
+            scrollBeyondLastLine: false,
         })
 
         this.#tabs = new DocumentTabs(this.editor)

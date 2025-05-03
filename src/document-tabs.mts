@@ -33,7 +33,7 @@ export class DocumentTabs extends HTMLElement {
                 display: flex;
                 align-items: center;
                 gap: 4px;
-                margin-bottom: 8px;
+                margin-top: -1px;
             }
             .tab-button {
                 border: none;
@@ -41,15 +41,16 @@ export class DocumentTabs extends HTMLElement {
                 display: flex;
                 align-items: center;
                 padding: 0px 12px;
-                border-top: 2px solid #888;
+                border-bottom: 2px solid #888;
                 border-right: 2px solid #888;
                 background: none;
                 opacity: 0.6;
                 cursor: pointer;
                 white-space: nowrap;
-                color: #ccc;
-                border-radius: ${cornerRadius} ${cornerRadius} 0 0;
+                color: #aaa;
+                border-radius: 0 0 ${cornerRadius} ${cornerRadius};
                 font-size: large;
+                background-color: var(--active-bg);
             }
             .tab-button:hover {
                 opacity: 1;
@@ -58,7 +59,7 @@ export class DocumentTabs extends HTMLElement {
                 opacity: 1;
                 box-sizing: border-box;
                 background-color: var(--active-bg);
-                border-width: 4px 2px 0 0;
+                border-width: 0 2px 4px 0;
                 border-color: #007acc;
                 padding-top: 1px;
                 color: whitesmoke;

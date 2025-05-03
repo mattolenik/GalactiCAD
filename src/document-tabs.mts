@@ -66,7 +66,6 @@ export class DocumentTabs extends HTMLElement {
             .close-btn {
                 margin-left: 10px;
                 font-size: ${closeButtonSize};
-                cursor: pointer;
                 color: #888;
                 background: none;
                 border: none;

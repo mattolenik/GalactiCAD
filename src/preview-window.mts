@@ -12,11 +12,11 @@ export class PreviewWindow extends HTMLElement {
         const shadow = this.attachShadow({ mode: "open" })
         const style = document.createElement("style")
         style.textContent = `
-        :host, canvas {
+        canvas {
             display: block;
             width: 100%;
             height: 100%;
-            touch-action: manipulate;            /* no scrolling/pinch-zoom */
+            touch-action: none;            /* no scrolling/pinch-zoom */
             -webkit-tap-highlight-color: transparent;
             overscroll-behavior: none;
             -webkit-user-select: none;      /* no text selection */

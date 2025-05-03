@@ -24,6 +24,14 @@ export class PreviewWindow extends HTMLElement {
             -webkit-touch-callout: none;    /* no long-press callout */
             -webkit-user-drag: none;        /* no “drag” highlight */
         }
+        :host { display: inline-block; position: relative; }
+        .overlay {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            pointer-events: none;
+            z-index: 1;
+        }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"

@@ -48,7 +48,7 @@
         #workspace {
             height: 100%;
             display: grid;
-            grid-template-rows: auto 40px minmax(0,1fr) auto;
+            grid-template-rows: minmax(0,1fr) 40px auto auto;
             max-width: 850px;
             margin: auto;
         }
@@ -68,12 +68,12 @@
 
 <body>
     <div id="workspace">
-        <preview-window id="preview" showFPS="true"></preview-window>
-        <div id="tabs"></div>
         <div id="editor"></div>
+        <div id="tabs"></div>
         <div id="toolbar">
             <div id="log"></div>
         </div>
+        <preview-window id="preview" showFPS="true"></preview-window>
     </div>
     <script type="module" src="./preview-window.js"></script>
     <script type="module">

@@ -41,6 +41,15 @@
             font-size: 1rem;
         }
 
+        #editor {
+            background-image: url('/logo1.png');
+            background-size: 100%;
+            background-position: center;
+        }
+        .monaco-editor {
+            opacity: 0.98;
+        }
+
         #tabs {
             display: inline-block;
         }
@@ -51,6 +60,7 @@
             /* grid-template-rows: minmax(0,1fr) 40px auto auto; */
             grid-template-rows: 2fr 40px auto 5fr;
             max-width: 850px;
+            min-width: 400px;
             margin: auto;
         }
         #workspace > * {

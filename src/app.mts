@@ -39,11 +39,16 @@ class App {
         this.log = document.getElementById(logID) as HTMLDivElement
 
         this.editor = monaco.editor.create(document.getElementById(editorContainerID) as HTMLDivElement, {
+            autoClosingBrackets: "beforeWhitespace",
+            autoClosingDelete: "always",
+            autoClosingOvertype: "always",
+            autoClosingQuotes: "beforeWhitespace",
+            autoIndent: "advanced",
             automaticLayout: true,
+            copyWithSyntaxHighlighting: false,
             detectIndentation: false,
             folding: false,
-            fontFamily: "monospace",
-            fontSize: 14,
+            fontSize: 16,
             formatOnPaste: true,
             formatOnType: true,
             language: "javascript",
@@ -52,10 +57,13 @@ class App {
             model: null,
             scrollBeyondLastLine: false,
             showFoldingControls: "always",
+            stickyTabStops: true,
+            tabSize: 3,
+            theme: "vs-dark",
+            useTabStops: true,
             wordWrap: "on",
             wrappingIndent: "indent",
             wrappingStrategy: "advanced",
-            theme: "vs-dark",
         })
 
         this.#tabs = new DocumentTabs(this.editor)

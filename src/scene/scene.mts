@@ -1,5 +1,4 @@
 import { BijectiveMap } from "../collections/bijectiveMap.mjs"
-import { ArgArray } from "../vecmat/arrays.mjs"
 import { Vec3, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
@@ -10,13 +9,12 @@ export type CompileResult = {
 }
 
 export class SceneInfo {
-    readonly args: ArgArray
     readonly root: Node
-    #numArgs = 0
+    numArgs = 0
     #nodes = new BijectiveMap<number, Node>()
 
     nextArgIndex(): number {
-        return this.#numArgs++
+        return this.numArgs++
     }
 
     add(node: Node) {
@@ -29,20 +27,10 @@ export class SceneInfo {
         return this.#nodes.get(id) as T
     }
 
-    constructor(src: string)
-    constructor(root: Node | string) {
-        if (typeof root === "string") {
-            this.root = new Function("box", "group", "sphere", "subtract", "union", root.trim())(box, group, sphere, subtract, union)
-        } else {
-            this.root = root
-        }
+    constructor(src: string) {
+        this.root = new Function("box", "group", "sphere", "subtract", "union", src)(box, group, sphere, subtract, union)
         this.root.scene = this
         this.root.build()
-        this.args = new ArgArray(this.root.scene.#numArgs)
-    }
-
-    get bufferSize(): number {
-        return this.args.byteLength
     }
 
     compile(): string {
@@ -74,7 +62,7 @@ export class Node {
     compile(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
-    updateScene() {
+    updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         throw new Error("Method not implemented.")
     }
     build() {
@@ -164,9 +152,9 @@ function WithSize<TBase extends Constructor>(base: TBase) {
 }
 
 export class Group extends WithChildren(Node) {
-    override updateScene() {
+    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         for (let child of this.children) {
-            child.updateScene()
+            child.updateScene(writeBuffer)
         }
     }
     override build() {
@@ -190,8 +178,8 @@ export class Group extends WithChildren(Node) {
 }
 
 export abstract class UnaryOperator extends Node {
-    override updateScene() {
-        this.arg.updateScene()
+    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
+        this.arg.updateScene(writeBuffer)
     }
     override build() {
         super.build()
@@ -204,9 +192,9 @@ export abstract class UnaryOperator extends Node {
 }
 
 export abstract class BinaryOperator extends Node {
-    override updateScene() {
-        this.lh.updateScene()
-        this.rh.updateScene()
+    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
+        this.lh.updateScene(writeBuffer)
+        this.rh.updateScene(writeBuffer)
     }
     override build() {
         super.build()
@@ -268,9 +256,9 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         this.pos = vec3(pos)
         this.r = asRadius(r, d)
     }
-    override updateScene(): void {
-        this.scene.args.set(this.argIndex.pos, this.pos)
-        this.scene.args.set(this.argIndex.r, this.r)
+    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
+        writeBuffer(this.argIndex.pos, this.pos.data)
+        writeBuffer(this.argIndex.r, new Float32Array([this.r]))
     }
     override build() {
         super.build()
@@ -299,9 +287,9 @@ export class Box extends WithSize(WithPos(Node)) {
         this.pos = vec3(pos)
         this.size = vec3(size)
     }
-    override updateScene(): void {
-        this.scene.args.set(this.argIndex.pos, this.pos)
-        this.scene.args.set(this.argIndex.size, this.size)
+    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
+        writeBuffer(this.argIndex.pos, this.pos.data)
+        writeBuffer(this.argIndex.size, this.size.data)
     }
     override build() {
         super.build()

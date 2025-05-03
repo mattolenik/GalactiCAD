@@ -59,14 +59,16 @@ export class SDFRenderer {
     }
 
     build(src: string) {
-        src = "return " + src.trim().replace(/return\s+/, "")
-        this.#scene = new SceneInfo(src)
-        this.#sceneShader = new ShaderCompiler(previewShader, "Preview Window")
-            .replace("replace", "NUM_ARGS", `const NUM_ARGS: u32 = ${this.#scene.args.length};`)
-            .replace("insert", "sceneSDF", this.#scene.compile())
-
-        this.buildPipeline()
+        this.#scene = new SceneInfo(src.trim())
+        const compiledScene = this.#scene.compile()
+        this.#sceneShader = new ShaderCompiler(previewShader, "Preview Window").replace("insert", "sceneSDF", compiledScene)
         // console.log(this.#sceneShader.text)
+        console.log(compiledScene)
+        this.#buildPipeline()
+
+        this.#scene.root.updateScene((index, data) => {
+            this.#device.queue.writeBuffer(this.#uniformBuffers.scene, index * 16, data)
+        })
     }
 
     async initialize() {
@@ -82,6 +84,7 @@ export class SDFRenderer {
             format: this.#format,
             alphaMode: "premultiplied",
         })
+        this.#createBuffers()
     }
 
     async ready() {
@@ -98,7 +101,7 @@ export class SDFRenderer {
         requestAnimationFrame(this.update.bind(this))
     }
 
-    private buildPipeline() {
+    #createBuffers() {
         this.#uniformBuffers.scene = this.#device.createBuffer({
             size: 16384,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -134,7 +137,9 @@ export class SDFRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "bgColor",
         })
+    }
 
+    #buildPipeline() {
         const shaderModule = this.#sceneShader.createModule(this.#device)
 
         const format = this.#format
@@ -172,15 +177,11 @@ export class SDFRenderer {
     update(time: number): void {
         this.updateFPS(time)
 
-        if (this.#scene.root) {
-            this.#scene.root.updateScene()
-            this.#device.queue.writeBuffer(this.#uniformBuffers.scene, 0, this.#scene.args.data)
-            this.#device.queue.writeBuffer(this.#uniformBuffers.sceneTransform, 0, this.#controls.sceneTransform.data)
-            this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.cameraPosition.data)
-            this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.orthoScale]))
-            this.#device.queue.writeBuffer(this.#uniformBuffers.canvasRes, 0, this.#cameraRes.data)
-            this.#device.queue.writeBuffer(this.#uniformBuffers.bgColor, 0, this.bgColor.data)
-        }
+        this.#device.queue.writeBuffer(this.#uniformBuffers.sceneTransform, 0, this.#controls.sceneTransform.data)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.cameraPosition.data)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.orthoScale]))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.canvasRes, 0, this.#cameraRes.data)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.bgColor, 0, this.bgColor.data)
 
         const commandEncoder = this.#device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({

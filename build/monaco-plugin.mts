@@ -10,12 +10,11 @@ export interface MonacoEditorPluginOptions {
     urlPrefix?: string
 }
 
-// Define the default Monaco worker entry points using require.resolve.
-const defaultWorkers: Record<string, string> = {
-    css: require.resolve("monaco-editor/esm/vs/language/css/css.worker"),
+const workers: Record<string, string> = {
+    // css: require.resolve("monaco-editor/esm/vs/language/css/css.worker"),
     editor: require.resolve("monaco-editor/esm/vs/editor/editor.worker"),
-    html: require.resolve("monaco-editor/esm/vs/language/html/html.worker"),
-    json: require.resolve("monaco-editor/esm/vs/language/json/json.worker"),
+    // html: require.resolve("monaco-editor/esm/vs/language/html/html.worker"),
+    // json: require.resolve("monaco-editor/esm/vs/language/json/json.worker"),
     ts: require.resolve("monaco-editor/esm/vs/language/typescript/ts.worker"),
 }
 
@@ -34,7 +33,7 @@ export function monacoEditorPlugin(options: MonacoEditorPluginOptions = {}): Plu
 
             // 1. Pre-build the Monaco worker files in parallel.
             await Promise.all(
-                Object.entries(defaultWorkers).map(async ([workerName, entryPoint]) => {
+                Object.entries(workers).map(async ([workerName, entryPoint]) => {
                     const workerPath = path.join(urlPrefix, workerName + ".js")
                     const outfile = path.join(outdir, workerPath)
                     await esbuildBuild({

@@ -12,7 +12,6 @@ class App {
     editor: monaco.editor.IStandaloneCodeEditor
     renderer: SDFRenderer
     log: HTMLDivElement
-    #ls: LocalStorage
     #tabs: DocumentTabs
 
     build() {
@@ -36,17 +35,27 @@ class App {
         editorContainerID: string
         logID: string
     }) {
-        this.#ls = LocalStorage.instance
         this.preview = document.getElementById(previewWindowID) as PreviewWindow
         this.log = document.getElementById(logID) as HTMLDivElement
 
         this.editor = monaco.editor.create(document.getElementById(editorContainerID) as HTMLDivElement, {
-            language: "javascript",
             automaticLayout: true,
-            theme: "vs-dark",
+            detectIndentation: false,
+            folding: false,
+            fontFamily: "monospace",
+            fontSize: 14,
+            formatOnPaste: true,
+            formatOnType: true,
+            language: "javascript",
+            lineNumbers: "off",
             minimap: { enabled: false },
             model: null,
             scrollBeyondLastLine: false,
+            showFoldingControls: "always",
+            wordWrap: "on",
+            wrappingIndent: "indent",
+            wrappingStrategy: "advanced",
+            theme: "vs-dark",
         })
 
         this.#tabs = new DocumentTabs(this.editor)

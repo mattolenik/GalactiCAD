@@ -81,13 +81,17 @@ export class DocumentTabs extends HTMLElement {
                 color: whitesmoke;
             }
             .add-button {
-                padding: 4px 8px;
+                padding: 0px;
+                width: ${closeButtonSize};
+                height: ${closeButtonSize};
+                line-height: ${closeButtonSize};
                 margin-left: 6px;
                 border: 1px solid #888;
                 border-radius: 6px;
                 background: none;
                 cursor: pointer;
                 color: #888;
+                font-size: ${closeButtonSize};
             }
             .add-button:hover {
                 background: rgba(0, 0, 0, 0.5);

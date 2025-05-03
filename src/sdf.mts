@@ -12,7 +12,6 @@ class UniformBuffers {
     scene!: GPUBuffer
     sceneTransform!: GPUBuffer
     canvasRes!: GPUBuffer
-    bgColor!: GPUBuffer
 }
 
 export class SDFRenderer {
@@ -31,7 +30,6 @@ export class SDFRenderer {
     #sceneShader!: ShaderCompiler
     #started = false
     #uniformBuffers: UniformBuffers
-    bgColor = new Vec4f([0, 0, 0, 0])
 
     constructor(preview: PreviewWindow) {
         this.#preview = preview
@@ -131,12 +129,6 @@ export class SDFRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "canvasRes",
         })
-
-        this.#uniformBuffers.bgColor = this.#device.createBuffer({
-            size: 16,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "bgColor",
-        })
     }
 
     #buildPipeline() {
@@ -169,7 +161,6 @@ export class SDFRenderer {
                 { binding: 2, resource: { buffer: this.#uniformBuffers.cameraPosition } },
                 { binding: 3, resource: { buffer: this.#uniformBuffers.orthoScale } },
                 { binding: 4, resource: { buffer: this.#uniformBuffers.canvasRes } },
-                { binding: 5, resource: { buffer: this.#uniformBuffers.bgColor } },
             ],
         })
     }
@@ -181,14 +172,12 @@ export class SDFRenderer {
         this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.cameraPosition.data)
         this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.orthoScale]))
         this.#device.queue.writeBuffer(this.#uniformBuffers.canvasRes, 0, this.#cameraRes.data)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.bgColor, 0, this.bgColor.data)
 
         const commandEncoder = this.#device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({
             colorAttachments: [
                 {
                     view: this.#context.getCurrentTexture().createView(),
-                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
                     loadOp: "clear",
                     storeOp: "store",
                 },

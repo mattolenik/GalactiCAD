@@ -76,7 +76,6 @@ class App {
         }, 1)
 
         this.renderer = new SDFRenderer(this.preview)
-        this.renderer.bgColor = hexToRgb("#333").rgba
         this.renderer
             .ready()
             .then(renderer => {

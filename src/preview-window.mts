@@ -1,4 +1,5 @@
 export class PreviewWindow extends HTMLElement {
+    displayThreshold: number = 50 // hide FPS display until there's a significant drop
     static get observedAttributes() {
         return ["showFPS"]
     }
@@ -52,8 +53,12 @@ export class PreviewWindow extends HTMLElement {
     }
 
     updateFps(fps: number) {
-        if (this.#showFps) {
+        if (!this.#showFps) return
+
+        if (fps <= this.displayThreshold) {
             this.#counter.textContent = fps.toFixed(0)
+        } else {
+            this.#counter.textContent = ""
         }
     }
 

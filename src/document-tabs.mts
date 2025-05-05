@@ -23,66 +23,75 @@ export class DocumentTabs extends HTMLElement {
         const tabHeight = "34px"
         const closeButtonSize = "22px"
         const newButtonSize = "20px"
-        const cornerRadius = "0"
         const transitionSpeed = "0.3s"
+        const __active_bg = "--active-bg"
+        const __fg_color = "--fg-color"
+        const __tone_1 = "--tone-1"
+        const __tone_2 = "--tone-2"
+        const __tone_3 = "--tone-3"
+        const __tone_accent = " --tone-accent"
 
         // inject styles
         const style = document.createElement("style")
         style.textContent = `
+            :host {
+                ${__fg_color}: whitesmoke;
+                ${__tone_1}: #888;
+                ${__tone_2}: #444;
+                ${__tone_3}: #666;
+                ${__tone_accent}: #007acc;
+            }
             button {
-                color: whitesmoke;
+                color: var(${__fg_color});
             }
             .tabs-container {
                 display: flex;
                 align-items: center;
                 gap: 0;
             }
-            .tab-button {
-                border: none;
-                height: ${tabHeight};
-                display: flex;
+            .tab {
                 align-items: center;
-                padding: 0 0 0 1rem;
-                border-bottom: 2px solid #888;
                 background: none;
-                opacity: 0.6;
+                border: none;
+                border-bottom: 2px solid var(${__tone_1});
+                color: var(${__tone_1});
                 cursor: pointer;
-                white-space: nowrap;
-                color: #aaa;
-                border-radius: 0 0 ${cornerRadius} ${cornerRadius};
+                display: flex;
                 font-size: medium;
-                padding-bottom: 0.2rem;
+                height: ${tabHeight};
+                opacity: 0.8;
+                padding: 0 0 0 1rem;
                 position: relative;
                 transition: opacity ${transitionSpeed};
             }
-            .tab-button:hover {
+            .tab:hover {
+                background-color: rgb(from var(${__active_bg}) r g b / 0.3);
                 opacity: 1;
-                background-color: rgb(from var(--active-bg) r g b / 0.3);
                 transition: opacity ${transitionSpeed};
             }
-            .tab-button.active {
+            .tab.active {
                 opacity: 1;
                 box-sizing: border-box;
-                background-color: var(--active-bg);
+                background-color: var(${__active_bg});
                 border-width: 0 0px 4px 0;
-                border-color: #007acc;
+                border-color: var(${__tone_accent});
                 padding-top: 1px;
-                color: whitesmoke;
+                color: var(${__fg_color});
             }
-            .tab-button:not(.active, :hover)+.tab-button:not(.active, :hover)::after {
+            .tab:not(.active, :hover)+.tab:not(.active, :hover)::after {
                 content: "";
-                background: #666;
+                background: var(${__tone_3});
                 position: absolute;
                 top: 27%;
                 bottom: 27%;
                 left: 0;
                 width: 1px;
             }
-            .close-btn {
+            .close {
                 margin: 0 0.5rem 0 0.5rem;
                 padding: 0;
                 font-size: ${closeButtonSize};
-                color: #888;
+                color: var(${__tone_1});
                 background: none;
                 border: none;
                 text-align: center;
@@ -92,28 +101,28 @@ export class DocumentTabs extends HTMLElement {
                 border-radius: 6px;
                 transition: background ${transitionSpeed};
             }
-            .close-btn:hover {
-                background: #444;
-                color: whitesmoke;
+            .close:hover {
+                background: var(${__tone_2});
+                color: var(${__fg_color});
             }
-            .add-button {
+            .add {
                 padding: 0;
                 float: right;
                 margin-top: -0.2rem;
                 margin-left: 0.3rem;
                 border: none;
                 border-radius: 6px;
-                background: #444;
+                background: var(${__tone_2});
                 cursor: pointer;
-                color: #888;
+                color: var(${__tone_1});
                 width: ${newButtonSize};
                 height: ${newButtonSize};
                 line-height: ${newButtonSize};
                 font-size: calc(${newButtonSize} + 1px);
                 transition: background ${transitionSpeed};
             }
-            .add-button:hover {
-                background: rgba(0, 0, 0, 0.5);
+            .add:hover {
+                background: var(${__tone_3});
             }
         `
         this.shadowRoot!.appendChild(style)
@@ -254,7 +263,7 @@ export class DocumentTabs extends HTMLElement {
         this.#tabContainer.innerHTML = ""
         for (const name of this.#docs.keys()) {
             const tab = document.createElement("button")
-            tab.classList.add("tab-button")
+            tab.classList.add("tab")
             if (name === this.#active) tab.classList.add("active")
             tab.addEventListener("click", () => this.#switchTo(name))
 
@@ -263,7 +272,7 @@ export class DocumentTabs extends HTMLElement {
             tab.appendChild(label)
 
             const close = document.createElement("button")
-            close.classList.add("close-btn")
+            close.classList.add("close")
             close.textContent = "×"
             close.addEventListener("click", e => {
                 e.stopPropagation()
@@ -274,7 +283,7 @@ export class DocumentTabs extends HTMLElement {
         }
         const addBtn = document.createElement("button")
         addBtn.textContent = "+"
-        addBtn.classList.add("add-button")
+        addBtn.classList.add("add")
         addBtn.title = "New Document"
         addBtn.addEventListener("click", () => this.newDocument())
         this.#tabContainer.appendChild(addBtn)

@@ -3,9 +3,7 @@ import { fromEventPattern, Subscription } from "rxjs"
 import { bufferTime } from "rxjs/operators"
 import { OrderedMap } from "./collections/orderedMap.mjs"
 import { nanoid } from "nanoid"
-
-// global counter for untitled docs
-let untitledCount = 1
+import { __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent, __active_bg } from "./style/style.mjs"
 
 export class DocumentTabs extends HTMLElement {
     #editor: monaco.editor.IStandaloneCodeEditor
@@ -13,6 +11,7 @@ export class DocumentTabs extends HTMLElement {
     #subscriptions = new Map<string, Subscription>()
     #active?: string
     #tabContainer: HTMLElement
+    topUntitledIndex: number = 0
 
     constructor(editor: monaco.editor.IStandaloneCodeEditor) {
         super()
@@ -21,17 +20,9 @@ export class DocumentTabs extends HTMLElement {
         this.attachShadow({ mode: "open" })
 
         const tabHeight = "34px"
-        const closeButtonSize = "22px"
-        const newButtonSize = "20px"
+        const closeButtonSize = "20px"
         const transitionSpeed = "0.3s"
-        const __active_bg = "--active-bg"
-        const __fg_color = "--fg-color"
-        const __tone_1 = "--tone-1"
-        const __tone_2 = "--tone-2"
-        const __tone_3 = "--tone-3"
-        const __tone_accent = " --tone-accent"
 
-        // inject styles
         const style = document.createElement("style")
         style.textContent = `
             :host {
@@ -48,9 +39,13 @@ export class DocumentTabs extends HTMLElement {
                 display: flex;
                 align-items: center;
                 gap: 0;
+                flex-wrap: wrap;
+                max-width: 90%;
             }
             .tab {
+                flex: 1 1 auto;
                 align-items: center;
+                max-width: 30%;
                 background: none;
                 border: none;
                 border-bottom: 2px solid var(${__tone_1});
@@ -60,7 +55,7 @@ export class DocumentTabs extends HTMLElement {
                 font-size: medium;
                 height: ${tabHeight};
                 opacity: 0.8;
-                padding: 0 0 0 1rem;
+                padding: 0 1rem 0 1rem;
                 position: relative;
                 transition: opacity ${transitionSpeed};
             }
@@ -70,59 +65,47 @@ export class DocumentTabs extends HTMLElement {
                 transition: opacity ${transitionSpeed};
             }
             .tab.active {
-                opacity: 1;
-                box-sizing: border-box;
                 background-color: var(${__active_bg});
-                border-width: 0 0px 4px 0;
                 border-color: var(${__tone_accent});
-                padding-top: 1px;
+                border-width: 0 0px 4px 0;
+                box-sizing: border-box;
                 color: var(${__fg_color});
+                opacity: 1;
+                padding-top: 1px;
             }
             .tab:not(.active, :hover)+.tab:not(.active, :hover)::after {
-                content: "";
                 background: var(${__tone_3});
+                bottom: 27%;
+                content: "";
+                left: 0;
                 position: absolute;
                 top: 27%;
-                bottom: 27%;
-                left: 0;
                 width: 1px;
             }
             .close {
-                margin: 0 0.5rem 0 0.5rem;
-                padding: 0;
-                font-size: ${closeButtonSize};
-                color: var(${__tone_1});
                 background: none;
+                border-radius: 6px;
                 border: none;
-                text-align: center;
-                width: ${closeButtonSize};
+                color: var(${__tone_1});
+                font-size: ${closeButtonSize};
                 height: ${closeButtonSize};
                 line-height: ${closeButtonSize};
-                border-radius: 6px;
+                margin: 0;
+                opacity: 0;
+                padding: 0;
+                position: absolute;
+                right: 0.3rem;
+                text-align: center;
                 transition: background ${transitionSpeed};
+                transition: opacity ${transitionSpeed};
+                width: ${closeButtonSize};
+            }
+            .tab:hover > .close {
+                opacity: 1;
             }
             .close:hover {
                 background: var(${__tone_2});
                 color: var(${__fg_color});
-            }
-            .add {
-                padding: 0;
-                float: right;
-                margin-top: -0.2rem;
-                margin-left: 0.3rem;
-                border: none;
-                border-radius: 6px;
-                background: var(${__tone_2});
-                cursor: pointer;
-                color: var(${__tone_1});
-                width: ${newButtonSize};
-                height: ${newButtonSize};
-                line-height: ${newButtonSize};
-                font-size: calc(${newButtonSize} + 1px);
-                transition: background ${transitionSpeed};
-            }
-            .add:hover {
-                background: var(${__tone_3});
             }
         `
         this.shadowRoot!.appendChild(style)
@@ -151,7 +134,12 @@ export class DocumentTabs extends HTMLElement {
 
     /** Create a new untitled document, start watching, switch, update order */
     newDocument(content = sample, language = "javascript"): string {
-        const name = `untitled-${untitledCount++}`
+        this.topUntitledIndex =
+            Array.from(this.#docs.keys())
+                .map(s => parseInt(s.match(/^untitled-(\d+)$/)?.map((v, i, arr) => arr[i])[1]!))
+                .reduce((p, c) => Math.max(p, c), 0) + 1
+        console.log(this.topUntitledIndex)
+        const name = `untitled-${this.topUntitledIndex}`
         const uri = monaco.Uri.parse(`inmemory://model/${name}`)
         const model = monaco.editor.createModel(content, language, uri)
         this.#docs.set(name, model)
@@ -281,12 +269,6 @@ export class DocumentTabs extends HTMLElement {
             tab.appendChild(close)
             this.#tabContainer.appendChild(tab)
         }
-        const addBtn = document.createElement("button")
-        addBtn.textContent = "+"
-        addBtn.classList.add("add")
-        addBtn.title = "New Document"
-        addBtn.addEventListener("click", () => this.newDocument())
-        this.#tabContainer.appendChild(addBtn)
     }
 }
 

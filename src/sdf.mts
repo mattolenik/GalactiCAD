@@ -4,7 +4,7 @@ import { PreviewWindow } from "./preview-window.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
-import { vec2, Vec2f, vec3, Vec4f } from "./vecmat/vector.mjs"
+import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
     cameraPosition!: GPUBuffer

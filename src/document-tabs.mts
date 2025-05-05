@@ -19,9 +19,9 @@ export class DocumentTabs extends HTMLElement {
 
         this.attachShadow({ mode: "open" })
 
-        const tabHeight = "40px"
+        const tabHeight = "34px"
         const closeButtonSize = "24px"
-        const cornerRadius = "0.5rem"
+        const cornerRadius = "50%"
 
         // inject styles
         const style = document.createElement("style")
@@ -32,15 +32,14 @@ export class DocumentTabs extends HTMLElement {
             .tabs-container {
                 display: flex;
                 align-items: center;
-                gap: 4px;
-                margin-top: -1px;
+                gap: 0;
             }
             .tab-button {
                 border: none;
                 height: ${tabHeight};
                 display: flex;
                 align-items: center;
-                padding: 0px 12px;
+                padding: 0 0 0 1rem;
                 border-bottom: 2px solid #888;
                 border-right: 2px solid #888;
                 background: none;
@@ -49,7 +48,8 @@ export class DocumentTabs extends HTMLElement {
                 white-space: nowrap;
                 color: #aaa;
                 border-radius: 0 0 ${cornerRadius} ${cornerRadius};
-                font-size: large;
+                font-size: medium;
+                padding-bottom: 0.2rem;
             }
             .tab-button:hover {
                 opacity: 1;
@@ -64,7 +64,7 @@ export class DocumentTabs extends HTMLElement {
                 color: whitesmoke;
             }
             .close-btn {
-                margin-left: 10px;
+                margin: 0 0.5rem 0 0.5rem;
                 font-size: ${closeButtonSize};
                 color: #888;
                 background: none;
@@ -82,9 +82,9 @@ export class DocumentTabs extends HTMLElement {
             .add-button {
                 padding: 0;
                 margin-left: 6px;
-                border: 1px solid #888;
+                border: none;
                 border-radius: 6px;
-                background: none;
+                background: #444;
                 cursor: pointer;
                 color: #888;
                 width: ${closeButtonSize};

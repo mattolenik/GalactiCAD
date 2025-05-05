@@ -11,6 +11,9 @@ importers:
       monaco-editor:
         specifier: ^0.52.2
         version: 0.52.2
+      nanoid:
+        specifier: ^5.1.5
+        version: 5.1.5
       rxjs:
         specifier: ^7.8.2
         version: 7.8.2
@@ -221,6 +224,11 @@ packages:
   monaco-editor@0.52.2:
     resolution: {integrity: sha512-GEQWEZmfkOGLdd3XK8ryrfWz3AIP8YymVXiPHEdewrUq7mh0qrKrfHLNCXcbB6sTnMLnOZ3ztSiKcciFUkIJwQ==}
 
+  nanoid@5.1.5:
+    resolution: {integrity: sha512-Ir/+ZpE9fDsNH0hQ3C68uyThDXzYcim2EqcZ8zn8Chtt1iylPT9xXJB0kPCnqzgcEGikO9RxSrh63MsmVCU7Fw==}
+    engines: {node: ^18 || >=20}
+    hasBin: true
+
   readdirp@4.1.2:
     resolution: {integrity: sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==}
     engines: {node: '>= 14.18.0'}
@@ -386,6 +394,8 @@ snapshots:
       resolve-pkg-maps: 1.0.0
 
   monaco-editor@0.52.2: {}
+
+  nanoid@5.1.5: {}
 
   readdirp@4.1.2: {}
 

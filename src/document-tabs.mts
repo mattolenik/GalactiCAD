@@ -2,6 +2,7 @@ import * as monaco from "monaco-editor"
 import { fromEventPattern, Subscription } from "rxjs"
 import { bufferTime } from "rxjs/operators"
 import { OrderedMap } from "./collections/orderedMap.mjs"
+import { nanoid } from "nanoid"
 
 // global counter for untitled docs
 let untitledCount = 1
@@ -20,8 +21,10 @@ export class DocumentTabs extends HTMLElement {
         this.attachShadow({ mode: "open" })
 
         const tabHeight = "34px"
-        const closeButtonSize = "24px"
-        const cornerRadius = "50%"
+        const closeButtonSize = "22px"
+        const newButtonSize = "20px"
+        const cornerRadius = "0"
+        const transitionSpeed = "0.3s"
 
         // inject styles
         const style = document.createElement("style")
@@ -41,7 +44,6 @@ export class DocumentTabs extends HTMLElement {
                 align-items: center;
                 padding: 0 0 0 1rem;
                 border-bottom: 2px solid #888;
-                border-right: 2px solid #888;
                 background: none;
                 opacity: 0.6;
                 cursor: pointer;
@@ -50,30 +52,45 @@ export class DocumentTabs extends HTMLElement {
                 border-radius: 0 0 ${cornerRadius} ${cornerRadius};
                 font-size: medium;
                 padding-bottom: 0.2rem;
+                position: relative;
+                transition: opacity ${transitionSpeed};
             }
             .tab-button:hover {
                 opacity: 1;
+                background-color: rgb(from var(--active-bg) r g b / 0.3);
+                transition: opacity ${transitionSpeed};
             }
             .tab-button.active {
                 opacity: 1;
                 box-sizing: border-box;
                 background-color: var(--active-bg);
-                border-width: 0 2px 4px 0;
+                border-width: 0 0px 4px 0;
                 border-color: #007acc;
                 padding-top: 1px;
                 color: whitesmoke;
             }
+            .tab-button:not(.active, :hover)+.tab-button:not(.active, :hover)::after {
+                content: "";
+                background: #666;
+                position: absolute;
+                top: 27%;
+                bottom: 27%;
+                left: 0;
+                width: 1px;
+            }
             .close-btn {
                 margin: 0 0.5rem 0 0.5rem;
+                padding: 0;
                 font-size: ${closeButtonSize};
                 color: #888;
                 background: none;
                 border: none;
+                text-align: center;
                 width: ${closeButtonSize};
                 height: ${closeButtonSize};
                 line-height: ${closeButtonSize};
-                border-radius: 5px;
-                transition: background 0.2s;
+                border-radius: 6px;
+                transition: background ${transitionSpeed};
             }
             .close-btn:hover {
                 background: #444;
@@ -81,16 +98,19 @@ export class DocumentTabs extends HTMLElement {
             }
             .add-button {
                 padding: 0;
-                margin-left: 6px;
+                float: right;
+                margin-top: -0.2rem;
+                margin-left: 0.3rem;
                 border: none;
                 border-radius: 6px;
                 background: #444;
                 cursor: pointer;
                 color: #888;
-                width: ${closeButtonSize};
-                height: ${closeButtonSize};
-                line-height: 0;
-                font-size: ${closeButtonSize};
+                width: ${newButtonSize};
+                height: ${newButtonSize};
+                line-height: ${newButtonSize};
+                font-size: calc(${newButtonSize} + 1px);
+                transition: background ${transitionSpeed};
             }
             .add-button:hover {
                 background: rgba(0, 0, 0, 0.5);
@@ -149,7 +169,7 @@ export class DocumentTabs extends HTMLElement {
             const key = `${prefix}${name}`
             const content = localStorage.getItem(key)
             if (content !== null) {
-                const uri = monaco.Uri.parse(`inmemory://model/${name}`)
+                const uri = monaco.Uri.parse(`inmemory://model/${nanoid()}`)
                 const model = monaco.editor.createModel(content, "javascript", uri)
                 this.#docs.set(name, model)
                 this.#watchModel(name, model)
@@ -163,7 +183,7 @@ export class DocumentTabs extends HTMLElement {
                 const name = key.substring(prefix.length)
                 if (!loaded.has(name)) {
                     const content = localStorage.getItem(key) || ""
-                    const uri = monaco.Uri.parse(`inmemory://model/${name}`)
+                    const uri = monaco.Uri.parse(`inmemory://model/${nanoid()}`)
                     const model = monaco.editor.createModel(content, "javascript", uri)
                     this.#docs.set(name, model)
                     this.#watchModel(name, model)
@@ -233,26 +253,25 @@ export class DocumentTabs extends HTMLElement {
     #renderTabs() {
         this.#tabContainer.innerHTML = ""
         for (const name of this.#docs.keys()) {
-            const btn = document.createElement("button")
-            btn.classList.add("tab-button")
-            if (name === this.#active) btn.classList.add("active")
-            btn.addEventListener("click", () => this.#switchTo(name))
-            // label
+            const tab = document.createElement("button")
+            tab.classList.add("tab-button")
+            if (name === this.#active) tab.classList.add("active")
+            tab.addEventListener("click", () => this.#switchTo(name))
+
             const label = document.createElement("span")
             label.textContent = name
-            btn.appendChild(label)
-            // close icon
-            const closeBtn = document.createElement("span")
-            closeBtn.classList.add("close-btn")
-            closeBtn.textContent = "×"
-            closeBtn.addEventListener("click", e => {
+            tab.appendChild(label)
+
+            const close = document.createElement("button")
+            close.classList.add("close-btn")
+            close.textContent = "×"
+            close.addEventListener("click", e => {
                 e.stopPropagation()
                 this.#closeTab(name)
             })
-            btn.appendChild(closeBtn)
-            this.#tabContainer.appendChild(btn)
+            tab.appendChild(close)
+            this.#tabContainer.appendChild(tab)
         }
-        // add button
         const addBtn = document.createElement("button")
         addBtn.textContent = "+"
         addBtn.classList.add("add-button")
@@ -262,7 +281,6 @@ export class DocumentTabs extends HTMLElement {
     }
 }
 
-// register the custom element
 customElements.define("document-tabs", DocumentTabs)
 
 const sample = `

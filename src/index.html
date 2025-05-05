@@ -112,8 +112,13 @@
     <script type="module" src="./preview-window.js"></script>
     <script type="module">
         import App from './app.js';
-        document.getElementById("editor")?.classList.add("visible");
-        const app = new App({ previewWindowID: "preview", tabsID: "tabs", editorContainerID: "editor", logID: "log" });
+        const editor = document.getElementById("editor")
+        editor.classList.add("visible")
+        const app = new App(
+            document.getElementById("preview"),
+            document.getElementById("tabs"),
+            editor,
+            document.getElementById("log" ))
     </script>
 </body>
 

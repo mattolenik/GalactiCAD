@@ -1,16 +1,13 @@
 import * as monaco from "monaco-editor"
 import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
-import { hexToRgb } from "./color.mjs"
 import { DocumentTabs } from "./document-tabs.mjs"
 import { PreviewWindow } from "./preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 
 class App {
-    preview: PreviewWindow
     editor: monaco.editor.IStandaloneCodeEditor
     renderer: SDFRenderer
-    log: HTMLDivElement
     #tabs: DocumentTabs
 
     build() {
@@ -23,21 +20,13 @@ class App {
         }
     }
 
-    constructor({
-        previewWindowID,
-        tabsID,
-        editorContainerID,
-        logID,
-    }: {
-        previewWindowID: string
-        tabsID: string
-        editorContainerID: string
-        logID: string
-    }) {
-        this.preview = document.getElementById(previewWindowID) as PreviewWindow
-        this.log = document.getElementById(logID) as HTMLDivElement
-
-        this.editor = monaco.editor.create(document.getElementById(editorContainerID) as HTMLDivElement, {
+    constructor(
+        public preview: PreviewWindow,
+        public tabs: HTMLDivElement,
+        public editorContainer: HTMLDivElement,
+        public log: HTMLDivElement
+    ) {
+        this.editor = monaco.editor.create(editorContainer, {
             autoClosingBrackets: "beforeWhitespace",
             autoClosingDelete: "always",
             autoClosingOvertype: "always",
@@ -67,7 +56,7 @@ class App {
 
         this.#tabs = new DocumentTabs(this.editor)
         this.#tabs.addEventListener("activeTabChanged", e => this.build())
-        document.getElementById(tabsID)?.replaceWith(this.#tabs)
+        this.tabs.replaceWith(this.#tabs)
         this.#tabs.restore()
 
         setTimeout(() => {

@@ -4,6 +4,7 @@ import { bufferTime, filter, fromEventPattern } from "rxjs"
 import { DocumentTabs } from "./document-tabs.mjs"
 import { PreviewWindow } from "./preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
+import { __fg_color, __tone_1, __tone_2, __tone_3 } from "./style/style.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -20,12 +21,7 @@ class App {
         }
     }
 
-    constructor(
-        public preview: PreviewWindow,
-        public tabs: HTMLDivElement,
-        public editorContainer: HTMLDivElement,
-        public log: HTMLDivElement
-    ) {
+    constructor(preview: PreviewWindow, tabs: HTMLDivElement, editorContainer: HTMLDivElement, private log: HTMLDivElement) {
         this.editor = monaco.editor.create(editorContainer, {
             autoClosingBrackets: "beforeWhitespace",
             autoClosingDelete: "always",
@@ -56,20 +52,50 @@ class App {
 
         this.#tabs = new DocumentTabs(this.editor)
         this.#tabs.addEventListener("activeTabChanged", e => this.build())
-        this.tabs.replaceWith(this.#tabs)
+        tabs.replaceWith(this.#tabs)
         this.#tabs.restore()
+
+        const newButtonSize = "30px"
+        const transitionSpeed = "0.3s"
+
+        const style = document.createElement("style")
+        style.textContent = `
+            :root {
+                ${__fg_color}: whitesmoke;
+                ${__tone_1}: #888;
+                ${__tone_2}: #444;
+                ${__tone_3}: #666;
+            }
+            #newDoc {
+                padding: 0;
+                margin-top: 0.2rem;
+                border: none;
+                border-radius: 6px;
+                background: var(${__tone_2});
+                cursor: pointer;
+                color: var(${__fg_color});
+                width: ${newButtonSize};
+                height: ${newButtonSize};
+                line-height: ${newButtonSize};
+                font-size: 1.4rem;
+                transition: background ${transitionSpeed};
+            }
+            #newDoc:hover {
+                background: var(${__tone_3});
+            }`
+        document.body.appendChild(style)
+        const addButton = document.getElementById("newDoc") as HTMLButtonElement
+        addButton.onclick = () => this.#tabs.newDocument()
 
         setTimeout(() => {
             const bg = getComputedStyle(document.querySelector(".monaco-editor")!).getPropertyValue("--vscode-editor-background")
             this.#tabs.style.setProperty("--active-bg", bg)
         }, 1)
 
-        this.renderer = new SDFRenderer(this.preview)
+        this.renderer = new SDFRenderer(preview)
         this.renderer
             .ready()
-            .then(renderer => {
-                this.build()
-            })
+            .then(renderer => this.build())
             .catch((err: Error) => {
                 console.error(`UNEXPECTED ERROR: ${err}`)
                 const msg = document.createElement("p")
@@ -77,7 +103,7 @@ class App {
                     err.name === "NotSupportedError"
                         ? "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera, or Firefox Nightly."
                         : err.message
-                this.preview.replaceWith(msg)
+                preview.replaceWith(msg)
             })
 
         const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(

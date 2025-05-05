@@ -1,0 +1,6 @@
+export const __active_bg = "--active-bg"
+export const __fg_color = "--fg-color"
+export const __tone_1 = "--tone-1"
+export const __tone_2 = "--tone-2"
+export const __tone_3 = "--tone-3"
+export const __tone_accent = " --tone-accent"

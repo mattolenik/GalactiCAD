@@ -35,8 +35,9 @@
         }
 
         #toolbar {
-            height: 2rem;
-            padding: 0.2rem;
+            margin: 0;
+            padding: 0;
+            display: inline-block;
         }
 
         #log {
@@ -44,9 +45,6 @@
         }
 
         #editor {
-            /* background-image: url('/logo1.png');
-            background-size: 100%;
-            background-position: center; */
             z-index: 0;
             position:relative;
         }
@@ -71,16 +69,18 @@
         .monaco-editor {
             opacity: 0.99;
         }
-
-        #tabs {
-            display: inline-block;
+        
+        #toolbar {
+            display: grid;
+            width: 100%;
+            grid-template-columns: auto 2rem;
         }
 
         #workspace {
             height: 100vh;
             display: grid;
-            grid-template-rows: 2fr auto auto 5fr;
-            max-width: 850px;
+            grid-template-rows: 2fr auto 5fr;
+            max-width: 900px;
             min-width: 400px;
             margin: auto;
         }
@@ -103,8 +103,9 @@
 <body>
     <div id="workspace">
         <div id="editor"></div>
-        <div id="tabs"></div>
         <div id="toolbar">
+            <div id="tabs"></div>
+            <button id="newDoc">+</button>
             <div id="log"></div>
         </div>
         <preview-window id="preview" showFPS="true"></preview-window>

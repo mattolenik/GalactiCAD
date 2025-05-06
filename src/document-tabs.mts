@@ -140,11 +140,11 @@ export class DocumentTabs extends HTMLElement {
                 .reduce((p, c) => Math.max(p, c), 0) + 1
         console.log(this.topUntitledIndex)
         const name = `untitled-${this.topUntitledIndex}`
-        const uri = monaco.Uri.parse(`inmemory://model/${name}`)
+        const uri = monaco.Uri.parse(`inmemory://model/${nanoid()}`)
         const model = monaco.editor.createModel(content, language, uri)
         this.#docs.set(name, model)
         this.#watchModel(name, model)
-        this.#switchTo(name)
+        this.switchTo(name)
         this.#updateStoredOrder()
         return name
     }
@@ -194,26 +194,23 @@ export class DocumentTabs extends HTMLElement {
         }
         // activate first
         const first = this.#docs.keys().next().value
-        if (first) this.#switchTo(first)
+        if (first) this.switchTo(first)
         this.#updateStoredOrder()
     }
 
     /** Observe model changes and save debounced */
     #watchModel(name: string, model: monaco.editor.ITextModel) {
-        const existing = this.#subscriptions.get(name)
-        if (existing) existing.unsubscribe()
+        this.#subscriptions.get(name)?.unsubscribe()
         const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
             handler => model.onDidChangeContent(handler),
             (_handler, subscription) => (subscription as monaco.IDisposable).dispose()
         ).pipe(bufferTime(1000))
         const sub = change$.subscribe(() => localStorage.setItem(`document:${name}`, model.getValue()))
         this.#subscriptions.set(name, sub)
-        // initial
         localStorage.setItem(`document:${name}`, model.getValue())
     }
 
-    /** Close a tab and update */
-    #closeTab(name: string) {
+    closeTab(name: string) {
         const wasActive = name === this.#active
         const sub = this.#subscriptions.get(name)
         if (sub) sub.unsubscribe()
@@ -223,7 +220,7 @@ export class DocumentTabs extends HTMLElement {
         this.#updateStoredOrder()
         if (wasActive) {
             const next = this.#docs.keys().next().value
-            if (next) this.#switchTo(next)
+            if (next) this.switchTo(next)
             else {
                 this.#active = undefined
                 this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: undefined }))
@@ -233,7 +230,7 @@ export class DocumentTabs extends HTMLElement {
         }
     }
 
-    #switchTo(name: string) {
+    switchTo(name: string) {
         const model = this.#docs.get(name)
         if (!model) return
         this.#active = name
@@ -253,7 +250,7 @@ export class DocumentTabs extends HTMLElement {
             const tab = document.createElement("button")
             tab.classList.add("tab")
             if (name === this.#active) tab.classList.add("active")
-            tab.addEventListener("click", () => this.#switchTo(name))
+            tab.addEventListener("click", () => this.switchTo(name))
 
             const label = document.createElement("span")
             label.textContent = name
@@ -264,7 +261,7 @@ export class DocumentTabs extends HTMLElement {
             close.textContent = "×"
             close.addEventListener("click", e => {
                 e.stopPropagation()
-                this.#closeTab(name)
+                this.closeTab(name)
             })
             tab.appendChild(close)
             this.#tabContainer.appendChild(tab)
@@ -276,8 +273,8 @@ customElements.define("document-tabs", DocumentTabs)
 
 const sample = `
 return union(1,
-    box( [2,-4,4], [20,3,3] ),
-    box( [0,5,4], [20,3,3] ),
-    subtract(0.5, box( [0,0,0], [10,15,8] ), sphere( [0,0,-10], {r:6} )),
+   box('2 -4 4', '20 3 3'),
+   box('0  5 4', '20 3 3'),
+   subtract(0.5, box('0 0 0', '10 15 8'), sphere('0 0 -10', { r: 6 })),
 )
 `

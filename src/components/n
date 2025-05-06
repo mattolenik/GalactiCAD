@@ -1,0 +1,33 @@
+        :host {
+          position: relative;
+          display: inline-block;
+          --corner: 8px;
+        }
+
+        button {
+          display: inline-block;
+          cursor: pointer;
+          background: none;
+          line-height: 0;
+          padding-bottom: 10px;
+          height: var(${__toolbar_height});
+          width: var(${__toolbar_height});
+          border: 1px solid var(${__tone_1});
+          border-radius: var(--corner);
+          color: var(${__fg_color});
+          font-size: large;
+        }
+
+        .menu {
+          position: absolute;
+          top: 100%;
+          border: 1px solid var(${__tone_1});
+          padding: 0;
+          margin: 0;
+          list-style: none;
+          display: none;
+          min-width: 100%;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+          border-radius: var(--corner);
+          z-index: 100;
+        }

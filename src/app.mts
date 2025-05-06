@@ -4,7 +4,8 @@ import { bufferTime, filter, fromEventPattern } from "rxjs"
 import { DocumentTabs } from "./document-tabs.mjs"
 import { PreviewWindow } from "./preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
-import { __fg_color, __tone_1, __tone_2, __tone_3 } from "./style/style.mjs"
+import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
+import { MenuButton } from "./components/menu-button.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -21,7 +22,13 @@ class App {
         }
     }
 
-    constructor(preview: PreviewWindow, tabs: HTMLDivElement, editorContainer: HTMLDivElement, private log: HTMLDivElement) {
+    constructor(
+        preview: PreviewWindow,
+        tabs: HTMLDivElement,
+        editorContainer: HTMLDivElement,
+        private log: HTMLDivElement,
+        menu: HTMLElement
+    ) {
         this.editor = monaco.editor.create(editorContainer, {
             autoClosingBrackets: "beforeWhitespace",
             autoClosingDelete: "always",
@@ -55,42 +62,28 @@ class App {
         tabs.replaceWith(this.#tabs)
         this.#tabs.restore()
 
-        const newButtonSize = "30px"
         const transitionSpeed = "0.3s"
 
         const style = document.createElement("style")
         style.textContent = `
             :root {
                 ${__fg_color}: whitesmoke;
+                ${__bg_color}: #333;
+                ${__bg_color_dark}: #222;
                 ${__tone_1}: #888;
                 ${__tone_2}: #444;
                 ${__tone_3}: #666;
+                ${__toolbar_height}: 30px;
             }
-            #newDoc {
-                padding: 0;
-                margin-top: 0.2rem;
-                border: none;
-                border-radius: 6px;
-                background: var(${__tone_2});
-                cursor: pointer;
-                color: var(${__fg_color});
-                width: ${newButtonSize};
-                height: ${newButtonSize};
-                line-height: ${newButtonSize};
-                font-size: 1.4rem;
-                transition: background ${transitionSpeed};
-            }
-            #newDoc:hover {
-                background: var(${__tone_3});
-            }`
+        `
         document.body.appendChild(style)
-        const addButton = document.getElementById("newDoc") as HTMLButtonElement
-        addButton.onclick = () => this.#tabs.newDocument()
+        // const addButton = document.getElementById("newDoc") as HTMLButtonElement
+        // addButton.onclick = () => this.#tabs.newDocument()
 
-        setTimeout(() => {
+        requestAnimationFrame(() => {
             const bg = getComputedStyle(document.querySelector(".monaco-editor")!).getPropertyValue("--vscode-editor-background")
             this.#tabs.style.setProperty("--active-bg", bg)
-        }, 1)
+        })
 
         this.renderer = new SDFRenderer(preview)
         this.renderer
@@ -119,6 +112,19 @@ class App {
             .subscribe(events => {
                 this.build()
             })
+
+        const newItem = document.createElement("span")
+        newItem.innerHTML = "New Sketch"
+        const renameItem = document.createElement("span")
+        renameItem.innerHTML = "Rename"
+        const deleteItem = document.createElement("span")
+        deleteItem.innerHTML = "Delete"
+        const menuButton = new MenuButton([
+            { element: newItem, action: () => this.#tabs.newDocument() },
+            { element: renameItem, action: () => console.log("item2") },
+            { element: deleteItem, action: () => console.log("item2") },
+        ])
+        menu.replaceWith(menuButton)
     }
 }
 

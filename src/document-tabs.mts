@@ -22,6 +22,7 @@ export class DocumentTabs extends HTMLElement {
         const tabHeight = "34px"
         const closeButtonSize = "20px"
         const transitionSpeed = "0.3s"
+        const chamfer = "8px"
 
         const style = document.createElement("style")
         style.textContent = `
@@ -37,15 +38,11 @@ export class DocumentTabs extends HTMLElement {
             }
             .tabs-container {
                 display: flex;
-                align-items: center;
-                gap: 0;
                 flex-wrap: wrap;
-                max-width: 90%;
             }
             .tab {
                 flex: 1 1 auto;
                 align-items: center;
-                max-width: 30%;
                 background-color: var(${__bg_color});
                 border: none;
                 border-bottom: 2px solid var(${__tone_1});
@@ -58,11 +55,14 @@ export class DocumentTabs extends HTMLElement {
                 padding: 0 1rem 0 1rem;
                 position: relative;
                 transition: opacity ${transitionSpeed};
+                transition: color ${transitionSpeed};
             }
+
             .tab:hover {
-                background-color: rgb(from var(${__active_bg}) r g b / 0.3);
+                background-color: rgb(from var(${__active_bg}) r g b / 0.5);
                 opacity: 1;
                 transition: opacity ${transitionSpeed};
+                color: var(${__fg_color});
             }
             .tab.active {
                 background-color: var(${__active_bg});
@@ -94,7 +94,7 @@ export class DocumentTabs extends HTMLElement {
                 opacity: 0;
                 padding: 0;
                 position: absolute;
-                right: 0.3rem;
+                right: 0.5rem;
                 text-align: center;
                 transition: background ${transitionSpeed};
                 transition: opacity ${transitionSpeed};

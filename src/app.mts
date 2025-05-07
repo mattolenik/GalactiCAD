@@ -13,11 +13,13 @@ class App {
     #tabs: DocumentTabs
 
     build() {
+        if (!this.renderer) return
         try {
             this.renderer.build(this.editor.getValue())
             this.renderer.startLoop()
             this.log.innerText = ""
         } catch (err) {
+            console.log(err)
             this.log.innerText = `💢 ${err}`
         }
     }
@@ -30,6 +32,7 @@ class App {
         menu: HTMLElement
     ) {
         this.editor = monaco.editor.create(editorContainer, {
+            "semanticHighlighting.enabled": true,
             autoClosingBrackets: "beforeWhitespace",
             autoClosingDelete: "always",
             autoClosingOvertype: "always",
@@ -39,11 +42,13 @@ class App {
             copyWithSyntaxHighlighting: false,
             detectIndentation: false,
             folding: false,
+            fontLigatures: true,
             fontSize: 16,
+            fontVariations: true,
             formatOnPaste: true,
             formatOnType: true,
             language: "javascript",
-            lineNumbers: "off",
+            lineNumbers: "on",
             minimap: { enabled: false },
             model: null,
             scrollBeyondLastLine: false,
@@ -76,8 +81,6 @@ class App {
             }
         `
         document.body.appendChild(style)
-        // const addButton = document.getElementById("newDoc") as HTMLButtonElement
-        // addButton.onclick = () => this.#tabs.newDocument()
 
         requestAnimationFrame(() => {
             const bg = getComputedStyle(document.querySelector(".monaco-editor")!).getPropertyValue("--vscode-editor-background")

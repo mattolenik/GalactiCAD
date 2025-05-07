@@ -16,7 +16,6 @@ export class MenuButton extends HTMLElement {
         :host {
           position: relative;
           display: inline-block;
-          --corner: 6px;
         }
 
         button {
@@ -24,34 +23,30 @@ export class MenuButton extends HTMLElement {
           cursor: pointer;
           background: none;
           background: var(${__tone_2});
-          margin-top: 4px;
           line-height: 0;
-          padding-bottom: 10px;
-          height: calc(var(${__toolbar_height}) - 4px);
-          width: calc(var(${__toolbar_height}) - 4px);
-          border: 1px solid var(${__tone_3});
-          border-radius: var(--corner);
-          color: var(${__fg_color});
+          padding: 0 0 calc(var(${__toolbar_height}) / 2 - 4px) 0;
+          height: calc(var(${__toolbar_height}) + 4px);
+          width: calc(var(${__toolbar_height}) + 10px);
+          border: none;
+          color: rgb(from var(${__fg_color}) r g b / 0.6);
           font-size: large;
-          transition: background-color 0.2s;
+          transition: background-color 0.2s, color 0.2s;
         }
         
         button:hover {
           background: var(${__tone_3});
-          border: 1px solid var(${__tone_1});
+          color: var(${__fg_color});
         }
 
         .menu {
           position: absolute;
           top: 100%;
-          border: 1px solid var(${__tone_3});
           background: var(${__tone_2});
-          padding: 0;
           margin: 0;
+          padding: 0;
           list-style: none;
           width: max-content;
           box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-          border-radius: var(--corner);
           z-index: 100;
           visibility: hidden;
           opacity: 0;
@@ -66,10 +61,12 @@ export class MenuButton extends HTMLElement {
         .menu li {
           padding: 8px 12px;
           cursor: pointer;
-          transition: background-color 0.2s;
+          color: rgb(from var(${__fg_color}) r g b / 0.6);
+          transition: background-color 0.2s, color 0.2s;
         }
 
         .menu li:hover {
+          color: var(${__fg_color});
           background: var(${__tone_3})
         }
       </style>

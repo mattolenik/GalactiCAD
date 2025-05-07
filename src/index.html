@@ -38,6 +38,7 @@
             margin: 0;
             padding: 0;
             display: inline-block;
+            z-index: 2;
         }
 
         #log {
@@ -45,7 +46,7 @@
         }
 
         #editor {
-            z-index: 0;
+            z-index: 10;
             position:relative;
         }
 
@@ -69,17 +70,18 @@
         .monaco-editor {
             opacity: 0.99;
         }
-        
+
         #toolbar {
             display: grid;
             width: 100%;
             grid-template-columns: auto min-content;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
 
         #workspace {
             height: 100vh;
             display: grid;
-            grid-template-rows: 2fr auto 5fr;
+            grid-template-rows: 2fr auto min-content 5fr;
             max-width: 900px;
             min-width: 400px;
             margin: auto;
@@ -106,8 +108,8 @@
         <div id="toolbar">
             <div id="tabs"></div>
             <div id="menuButton"></div>
-            <div id="log"></div>
         </div>
+        <div id="log"></div>
         <preview-window id="preview" showFPS="true"></preview-window>
     </div>
     <script type="module" src="./preview-window.js"></script>

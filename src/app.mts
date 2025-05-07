@@ -60,9 +60,8 @@ class App {
         this.#tabs = new DocumentTabs(this.editor)
         this.#tabs.addEventListener("activeTabChanged", e => this.build())
         tabs.replaceWith(this.#tabs)
+        this.#tabs.id = tabs.id
         this.#tabs.restore()
-
-        const transitionSpeed = "0.3s"
 
         const style = document.createElement("style")
         style.textContent = `

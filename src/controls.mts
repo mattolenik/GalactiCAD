@@ -113,7 +113,6 @@ export class Controls {
     }
 
     #onPointerDown(e: PointerEvent) {
-        e.preventDefault()
         if (e.button === 0) {
             this.#dragMode = "rotate"
         } else if (e.button === 2) {

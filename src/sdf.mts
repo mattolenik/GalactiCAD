@@ -33,21 +33,22 @@ export class SDFRenderer {
 
     constructor(preview: PreviewWindow) {
         this.#preview = preview
-        // this.#preview.canvas.tabIndex = 1
         this.#controls = new Controls(preview, vec3(0, 0, 0), 50)
         this.#uniformBuffers = new UniformBuffers()
         this.#initializing = this.initialize()
         this.#cameraRes = vec2(this.#preview.canvas.clientWidth, this.#preview.canvas.clientHeight)
 
         const observer = new ResizeObserver(entries => {
-            for (const entry of entries) {
-                const width = entry.devicePixelContentBoxSize?.[0].inlineSize || entry.contentBoxSize[0].inlineSize * devicePixelRatio
-                const height = entry.devicePixelContentBoxSize?.[0].blockSize || entry.contentBoxSize[0].blockSize * devicePixelRatio
-                const canvas = entry.target as HTMLCanvasElement
-                canvas.width = width
-                canvas.height = height
-                this.#cameraRes = vec2(canvas.width, canvas.height)
-            }
+            requestAnimationFrame(() => {
+                for (const entry of entries) {
+                    const width = entry.devicePixelContentBoxSize?.[0].inlineSize || entry.contentBoxSize[0].inlineSize * devicePixelRatio
+                    const height = entry.devicePixelContentBoxSize?.[0].blockSize || entry.contentBoxSize[0].blockSize * devicePixelRatio
+                    const canvas = entry.target as HTMLCanvasElement
+                    canvas.width = width
+                    canvas.height = height
+                    this.#cameraRes = vec2(canvas.width, canvas.height)
+                }
+            })
         })
         try {
             observer.observe(this.#preview.canvas, { box: "device-pixel-content-box" })
@@ -119,7 +120,7 @@ export class SDFRenderer {
         })
 
         this.#uniformBuffers.orthoScale = this.#device.createBuffer({
-            size: 16,
+            size: 4,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "orthoScale",
         })

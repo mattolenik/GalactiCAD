@@ -1,10 +1,11 @@
+import { debounce, debounceTime, fromEventPattern } from "rxjs"
+
 export class PreviewWindow extends HTMLElement {
     displayThreshold: number = 50 // hide FPS display until there's a significant drop
     static get observedAttributes() {
         return ["showFPS"]
     }
     public readonly canvas: HTMLCanvasElement
-    #resizeObserver: ResizeObserver
     #counter: HTMLSpanElement
     #showFps: boolean
 
@@ -49,7 +50,6 @@ export class PreviewWindow extends HTMLElement {
         this.#showFps = !!(this.getAttribute("showFPS")?.toLocaleLowerCase() === "true")
 
         // observe size changes on the host element
-        this.#resizeObserver = new ResizeObserver(this.#updateSize.bind(this))
     }
 
     updateFps(fps: number) {
@@ -68,21 +68,6 @@ export class PreviewWindow extends HTMLElement {
             this.#showFps = !!(newVal?.toLocaleLowerCase() === "true")
             this.#counter.style.visibility = this.#showFps ? "visible" : "hidden"
         }
-    }
-
-    connectedCallback(): void {
-        this.#resizeObserver.observe(this)
-        this.#updateSize()
-    }
-
-    disconnectedCallback(): void {
-        this.#resizeObserver.disconnect()
-    }
-
-    #updateSize(): void {
-        const { width, height } = this.getBoundingClientRect()
-        this.canvas.width = Math.floor(width)
-        this.canvas.height = Math.floor(height)
     }
 }
 

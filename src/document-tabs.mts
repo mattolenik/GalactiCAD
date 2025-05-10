@@ -22,7 +22,6 @@ export class DocumentTabs extends HTMLElement {
         const tabHeight = "34px"
         const closeButtonSize = "20px"
         const transitionSpeed = "0.3s"
-        const chamfer = "8px"
 
         const style = document.createElement("style")
         style.textContent = `
@@ -54,8 +53,7 @@ export class DocumentTabs extends HTMLElement {
                 opacity: 0.8;
                 padding: 0 1rem 0 1rem;
                 position: relative;
-                transition: opacity ${transitionSpeed};
-                transition: color ${transitionSpeed};
+                transition: all ${transitionSpeed};
             }
 
             .tab:hover {
@@ -96,8 +94,7 @@ export class DocumentTabs extends HTMLElement {
                 position: absolute;
                 right: 0.5rem;
                 text-align: center;
-                transition: background ${transitionSpeed};
-                transition: opacity ${transitionSpeed};
+                transition: all ${transitionSpeed};
                 width: ${closeButtonSize};
             }
             .tab:hover > .close {

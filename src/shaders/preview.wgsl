@@ -2,8 +2,8 @@
 
 const MAX_STEPS: i32 = 500;
 const MAX_DIST: f32 = 300.0;
-const SURF_DIST: f32 = 0.01;
-const NORMAL_EPS: f32 = 0.01;
+const SURF_DIST: f32 = 0.001;
+const NORMAL_EPS: f32 = 0.001;
 
 @group(0) @binding(0) var<uniform> args: array<vec3f, 1024>;
 @group(0) @binding(1) var<uniform> sceneTransform: mat4x4f;
@@ -61,7 +61,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
     let offsetX = (uv.x * 2.0 - 1.0) * orthoScale;
     let offsetY = (uv.y * 2.0 - 1.0) * orthoScale;
-    return camPos + vec3f(offsetX, offsetY, -100.0);
+    return camPos + vec3f(offsetX, offsetY, 100.0);
 }
 
 @fragment
@@ -69,9 +69,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     let uv = fragCoord;
     let aspect = canvasRes.x / canvasRes.y;
 
-    // Get the fixed camera position from uniform.
-
-    let rayDir = vec3f(0.0, 0.0, 1.0);
+    let rayDir = vec3f(0.0, 0.0, -1.0);
     let rayOrigin = computeRayOrigin(vec2f(uv.x*aspect, uv.y), cameraPosition);
 
     // Transform the ray from camera space into scene space

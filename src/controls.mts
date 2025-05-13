@@ -1,5 +1,5 @@
 import { clamped, clampedAngle } from "./math.mjs"
-import { PreviewWindow } from "./preview-window.mjs"
+import { PreviewWindow } from "./components/preview-window.mjs"
 import { LocalStorage } from "./storage/storage.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"

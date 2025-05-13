@@ -1,16 +1,16 @@
-import { clamped, clampedAngle } from "./math.mjs"
-import { PreviewWindow } from "./components/preview-window.mjs"
-import { LocalStorage } from "./storage/storage.mjs"
-import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
-import { vec2, Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"
+import { PreviewWindow } from "../components/preview-window.mjs"
+import { clamped, clampedAngle } from "../math.mjs"
+import { LocalStorage } from "../storage/storage.mjs"
+import { lookAt, Mat4x4f } from "../vecmat/matrix.mjs"
+import { vec2, Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
+import { PinchZoomController } from "./pinchzoom-controller.mjs"
 
-export class Controls {
+export class CameraController {
     #ls: LocalStorage
-    #preview: PreviewWindow
     #pivot: Vec3f
-    sceneTransform = new Mat4x4f()
+    #preview: PreviewWindow
     cameraPosition = new Vec3f()
-    zoom: number = 40
+    viewTransform = new Mat4x4f()
 
     @clampedAngle
     accessor #sceneRotX: number = 0
@@ -19,7 +19,7 @@ export class Controls {
     accessor #sceneRotY: number = 0
 
     @clamped(2, 150)
-    accessor #radius: number = 1
+    accessor zoom: number = 40
 
     #isDragging = false
     get isDragging() {
@@ -38,14 +38,19 @@ export class Controls {
     #dragMode: "rotate" | "pan" | null = null
     #rotateSensitivity: number = 0.005
     #panSensitivity: number = 0.1
-    #zoomSensitivity: number = 0.05
     #cameraTranslation: Vec3f = new Vec3f()
+    #zoomController: PinchZoomController
 
     constructor(preview: PreviewWindow, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2) {
         this.#ls = LocalStorage.instance
         this.#preview = preview
         this.#pivot = pivot
-        this.#radius = radius
+        this.zoom = radius
+        this.#zoomController = new PinchZoomController(preview)
+        this.#zoomController.onZoom = zoom => {
+            this.zoom = zoom
+            this.#updateTransforms()
+        }
         this.#sceneRotY = initialTheta
         this.#sceneRotX = initialPhi
 
@@ -60,7 +65,6 @@ export class Controls {
         this.#preview.canvas.addEventListener("pointerup", this.#onPointerUp.bind(this))
         this.#preview.canvas.addEventListener("pointercancel", this.#onPointerUp.bind(this))
         this.#preview.canvas.addEventListener("pointerleave", this.#onPointerUp.bind(this))
-        this.#preview.canvas.addEventListener("wheel", this.#onWheel.bind(this))
         this.#preview.canvas.addEventListener("contextmenu", e => e.preventDefault())
         this.#preview.canvas.addEventListener("keypress", this.#onKeyPress.bind(this))
         document.addEventListener("keydown", this.#onKeyPress.bind(this), false)
@@ -77,7 +81,7 @@ export class Controls {
     }
 
     #onKeyPress(e: KeyboardEvent) {
-        if (this.#lastFocused!.id !== this.#preview.id) return
+        if (this.#lastFocused?.id !== this.#preview.id) return
         console.log(e)
         if (e.code === "Digit1") {
             this.#sceneRotX = -1 * Math.PI
@@ -151,15 +155,15 @@ export class Controls {
     #onPointerUp(e: PointerEvent) {
         this.isDragging = false
         this.#dragMode = null
-        this.saveCameraState(true)
+        this.#saveCameraState(true)
     }
 
-    #onWheel(e: WheelEvent) {
-        e.preventDefault()
-        this.#radius += e.deltaY * this.#zoomSensitivity
-        this.zoom = this.#radius
-        this.#updateTransforms()
-    }
+    // #onWheel(e: WheelEvent) {
+    //     e.preventDefault()
+    //     this.#radius += e.deltaY * this.#zoomSensitivity
+    // }
+    // this.zoom = this.#radius
+    // this.#updateTransforms()
 
     #computeCameraPosition(): Vec3f {
         return this.#pivot.add(vec3(0, 0, 1))
@@ -167,23 +171,23 @@ export class Controls {
 
     #updateTransforms() {
         this.cameraPosition = this.#computeCameraPosition()
-        // Use a fixed up vector (world up) for constructing the view matrix.
+        // Use a fixed up vector (world up) for constructing the view matrix
         let view = lookAt(this.cameraPosition, this.#pivot, vec3(0, 1, 0))
         view = Mat4x4f.rotationX(this.#sceneRotX).multiply(view)
         view = Mat4x4f.rotationY(this.#sceneRotY).multiply(view)
         view = Mat4x4f.translation(this.#cameraTranslation).multiply(view)
-        this.sceneTransform = view
-        this.saveCameraState()
+        this.viewTransform = view
+        this.#saveCameraState()
     }
 
-    saveCameraState(always = false): void {
+    #saveCameraState(always = false): void {
         if (!always && Date.now() - this.#lastCameraSave < 100) {
             return
         }
         this.#lastCameraSave = Date.now()
         this.#ls.setVec3f("camera.position", this.cameraPosition)
         this.#ls.setVec3f("camera.translation", this.#cameraTranslation)
-        this.#ls.setFloat("camera.orthoScale", this.zoom)
+        this.#ls.setFloat("camera.zoom", this.zoom)
         this.#ls.setFloat("camera.sceneRotX", this.#sceneRotX)
         this.#ls.setFloat("camera.sceneRotY", this.#sceneRotY)
     }
@@ -191,7 +195,7 @@ export class Controls {
     #loadCameraState(): void {
         this.cameraPosition = this.#ls.getVec3f("camera.position")
         this.#cameraTranslation = this.#ls.getVec3f("camera.translation")
-        this.zoom = this.#ls.getFloat("camera.orthoScale") ?? 20
+        this.zoom = this.#ls.getFloat("camera.zoom") ?? 20
         this.#sceneRotX = this.#ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
         this.#sceneRotY = this.#ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
         this.#updateTransforms()

@@ -6,10 +6,10 @@ import { OrderedMap } from "../collections/orderedMap.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 
 export class DocumentTabs extends HTMLElement {
-    #editor: monaco.editor.IStandaloneCodeEditor
-    #docs = new OrderedMap<string, monaco.editor.ITextModel>()
-    #subscriptions = new Map<string, Subscription>()
     #active?: string
+    #docs = new OrderedMap<string, monaco.editor.ITextModel>()
+    #editor: monaco.editor.IStandaloneCodeEditor
+    #subscriptions = new Map<string, Subscription>()
     #tabContainer: HTMLElement
     topUntitledIndex: number = 0
 
@@ -245,6 +245,7 @@ export class DocumentTabs extends HTMLElement {
         this.#tabContainer.innerHTML = ""
         for (const name of this.#docs.keys()) {
             const tab = document.createElement("button")
+            tab.addEventListener("contextmenu", ev => ev.preventDefault())
             tab.classList.add("tab")
             if (name === this.#active) tab.classList.add("active")
             tab.addEventListener("click", () => this.switchTo(name))

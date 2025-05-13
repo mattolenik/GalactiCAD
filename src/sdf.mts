@@ -1,6 +1,6 @@
 import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
-import { Controls } from "./controls.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
+import { CameraController } from "./controls/camera-controller.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
@@ -12,13 +12,13 @@ class UniformBuffers {
 }
 
 export class SDFRenderer {
-    #framerate = new AveragedBuffer(4)
     #bindGroup!: GPUBindGroup
     #cameraRes!: Vec2f
     #context!: GPUCanvasContext
-    #controls: Controls
+    #controls: CameraController
     #device!: GPUDevice
     #format!: GPUTextureFormat
+    #framerate = new AveragedBuffer(4)
     #initializing: Promise<void> | null
     #lastRenderTime: number = 0
     #pipeline!: GPURenderPipeline
@@ -30,7 +30,7 @@ export class SDFRenderer {
 
     constructor(preview: PreviewWindow) {
         this.#preview = preview
-        this.#controls = new Controls(preview, vec3(0, 0, 0), 50)
+        this.#controls = new CameraController(preview, vec3(0, 0, 0), 50)
         this.#uniformBuffers = new UniformBuffers()
         this.#initializing = this.initialize()
         this.#cameraRes = vec2(this.#preview.canvas.clientWidth, this.#preview.canvas.clientHeight)
@@ -145,7 +145,7 @@ export class SDFRenderer {
     update(time: number): void {
         this.#updateFPS(time)
 
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, this.#controls.sceneTransform.data)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, this.#controls.viewTransform.data)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraRes.data)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))

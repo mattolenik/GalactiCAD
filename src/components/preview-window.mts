@@ -14,16 +14,16 @@ export class PreviewWindow extends HTMLElement {
         const style = document.createElement("style")
         style.textContent = `
         canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-            touch-action: none;            /* no scrolling/pinch-zoom */
             -webkit-tap-highlight-color: transparent;
-            overscroll-behavior: none;
-            -webkit-user-select: none;      /* no text selection */
-            user-select: none;
             -webkit-touch-callout: none;    /* no long-press callout */
             -webkit-user-drag: none;        /* no “drag” highlight */
+            -webkit-user-select: none;      /* no text selection */
+            display: block;
+            height: 100%;
+            overscroll-behavior: none;
+            touch-action: none;             /* no scrolling/pinch zoom */
+            user-select: none;
+            width: 100%;
         }
         :host { display: inline-block; position: relative; }
         .overlay {

@@ -30,8 +30,8 @@ export class PinchZoomController {
     }
 
     #onTouchMove(e: TouchEvent) {
-        if (e.touches.length === 2 && this.#initialPinchDistance > 0) {
-            e.preventDefault()
+        if (e.touches.length === 2) {
+            // e.preventDefault()
             const currentDistance = this.#getDistance(e.touches)
             const delta = currentDistance - this.#initialPinchDistance
             this.#zoom = this.#initialZoom - delta * this.#zoomSensitivity

@@ -49,7 +49,6 @@ export class CameraController {
         this.#zoomController = new PinchZoomController(preview)
         this.#zoomController.onZoom = zoom => {
             this.zoom = zoom
-            this.#updateTransforms()
         }
         this.#sceneRotY = initialTheta
         this.#sceneRotX = initialPhi
@@ -117,9 +116,6 @@ export class CameraController {
     }
 
     #onPointerDown(e: PointerEvent) {
-        if (this.#zoomController.isZooming) {
-            return
-        }
         if (e.button === 0) {
             this.#dragMode = "rotate"
         } else if (e.button === 2) {

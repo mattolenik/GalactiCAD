@@ -2,10 +2,10 @@ import * as monaco from "monaco-editor"
 import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
 import { DocumentTabs } from "./components/document-tabs.mjs"
+import { MenuButton } from "./components/menu-button.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
-import { MenuButton } from "./components/menu-button.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor

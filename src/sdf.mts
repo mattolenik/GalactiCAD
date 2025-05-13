@@ -1,6 +1,6 @@
 import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
 import { Controls } from "./controls.mjs"
-import { PreviewWindow } from "./preview-window.mjs"
+import { PreviewWindow } from "./components/preview-window.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"

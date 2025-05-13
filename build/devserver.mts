@@ -100,7 +100,7 @@ function httpServer(dir: string, port: number, clientScript = "", indexFileName 
                     res.writeHead(404, { "content-type": "text/plain" })
                     res.end("404 not found")
                 } else {
-                    err(`Internal error: ${err}`)
+                    console.error(`Internal error: ${err}`)
                     res.writeHead(500, { "content-type": "text/plain" })
                     res.end("500 unknown server error")
                 }

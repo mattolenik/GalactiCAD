@@ -3,9 +3,9 @@
 
 <head>
     <title>GalactiCAD</title>
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
     <link rel="manifest" href="/site.webmanifest">
     <link rel="stylesheet" href="/vs/editor/editor.main.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -56,7 +56,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: url('/logo1.png') center/cover no-repeat;
+            background: url('/assets/logo1.png') center/cover no-repeat;
             opacity: 0;
             transition: opacity 1s ease;
             z-index: -1;
@@ -111,7 +111,7 @@
         <div id="log"></div>
         <preview-window id="preview" showFPS="true"></preview-window>
     </div>
-    <script type="module" src="./preview-window.js"></script>
+    <script type="module" src="./components/preview-window.js"></script>
     <script type="module">
         import App from './app.js';
         const editor = document.getElementById("editor")

@@ -1,5 +1,3 @@
-import { debounce, debounceTime, fromEventPattern } from "rxjs"
-
 export class PreviewWindow extends HTMLElement {
     displayThreshold: number = 50 // hide FPS display until there's a significant drop
     static get observedAttributes() {

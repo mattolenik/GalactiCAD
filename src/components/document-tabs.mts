@@ -2,8 +2,8 @@ import * as monaco from "monaco-editor"
 import { nanoid } from "nanoid"
 import { fromEventPattern, Subscription } from "rxjs"
 import { bufferTime } from "rxjs/operators"
-import { OrderedMap } from "./collections/orderedMap.mjs"
-import { __active_bg, __bg_color, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "./style/style.mjs"
+import { OrderedMap } from "../collections/orderedMap.mjs"
+import { __active_bg, __bg_color, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 
 export class DocumentTabs extends HTMLElement {
     #editor: monaco.editor.IStandaloneCodeEditor

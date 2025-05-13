@@ -1,25 +1,29 @@
 import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
-import assetBundler from "./asset-bundler.mjs"
 import { DevServer } from "./devserver.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
+import staticBundler from "./static-bundler.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
 
 const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 
-const Assets = ["src/**/*.html", "src/**/*.css", "src/assets/*", "src/site.webmanifest"]
+const Static = {
+    "src/index.html": "/",
+    "src/site.webmanifest": "/",
+    "src/assets/*": "/assets",
+}
 
 const Options = {
-    entryPoints: ["./src/sdf.mts", "./src/app.mts", "./src/preview-window.mts"],
-    plugins: [wgslLoader(), assetBundler(Assets, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
+    entryPoints: ["./src/app.mts", "./src/components/preview-window.mts"],
+    plugins: [wgslLoader(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
     outDir: "./dist",
     isProd: !!process.env.PRODUCTION,
 }
 
 const WatchOptions = {
-    ignored: [".DS_Store", ".hg", ".git", Options.outDir, "node_modules"],
+    ignored: [".DS_Store", ".git", "node_modules", "assets", Options.outDir],
     causesRebuild: [/^build\//, /\.lock$/, /tsconfig\.json$/],
 }
 
@@ -38,6 +42,7 @@ async function build() {
             platform: "browser",
             format: "esm",
             mainFields: ["module", "main"],
+            assetNames: "assets/[name]-[hash]",
             loader: {
                 ".css": "css",
                 ".ttf": "file",

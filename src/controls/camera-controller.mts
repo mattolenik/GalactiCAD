@@ -117,6 +117,9 @@ export class CameraController {
     }
 
     #onPointerDown(e: PointerEvent) {
+        if (this.#zoomController.isZooming) {
+            return
+        }
         if (e.button === 0) {
             this.#dragMode = "rotate"
         } else if (e.button === 2) {

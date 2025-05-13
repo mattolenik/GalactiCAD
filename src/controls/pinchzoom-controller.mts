@@ -3,6 +3,7 @@ export class PinchZoomController {
     #initialZoom = 0
     #zoom = 100
     #zoomSensitivity = 0.1
+    isZooming = false
 
     onZoom?: (zoom: number) => void
 
@@ -25,6 +26,7 @@ export class PinchZoomController {
             e.preventDefault()
             this.#initialPinchDistance = this.#getDistance(e.touches)
             this.#initialZoom = this.#zoom
+            this.isZooming = true
         }
     }
 
@@ -42,10 +44,11 @@ export class PinchZoomController {
         if (e.touches.length < 2) {
             this.#initialPinchDistance = 0
         }
+        this.isZooming = false
     }
 
     #emitZoom() {
-        if (this.onZoom) this.onZoom(this.#zoom)
+        this.onZoom?.(this.#zoom)
     }
 
     #getDistance(touches: TouchList): number {

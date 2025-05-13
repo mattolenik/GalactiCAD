@@ -46,7 +46,7 @@ export class CameraController {
         this.#preview = preview
         this.#pivot = pivot
         this.zoom = radius
-        this.#zoomController = new PinchZoomController(preview)
+        this.#zoomController = new PinchZoomController(preview, 40)
         this.#zoomController.onZoom = zoom => {
             this.zoom = zoom
         }
@@ -81,35 +81,30 @@ export class CameraController {
 
     #onKeyPress(e: KeyboardEvent) {
         if (this.#lastFocused?.id !== this.#preview.id) return
-        console.log(e)
         if (e.code === "Digit1") {
             this.#sceneRotX = -1 * Math.PI
             this.#sceneRotY = -1 * Math.PI
-        }
-        if (e.code === "Digit2") {
+        } else if (e.code === "Digit2") {
             this.#sceneRotX = -1 * Math.PI
             this.#sceneRotY = 0
-        }
-        if (e.code === "Digit3") {
+        } else if (e.code === "Digit3") {
             this.#sceneRotX = 0
             this.#sceneRotY = (1 / 2) * Math.PI
-        }
-        if (e.code === "Digit4") {
+        } else if (e.code === "Digit4") {
             this.#sceneRotX = 0
             this.#sceneRotY = (-1 / 2) * Math.PI
-        }
-        if (e.code === "Digit5") {
+        } else if (e.code === "Digit5") {
             this.#sceneRotX = (-1 / 2) * Math.PI
             this.#sceneRotY = 1 * Math.PI
-        }
-        if (e.code === "Digit6") {
+        } else if (e.code === "Digit6") {
             this.#sceneRotX = (1 / 2) * Math.PI
             this.#sceneRotY = 1 * Math.PI
-        }
-        if (e.code === "Backquote") {
+        } else if (e.code === "Backquote") {
             this.#sceneRotX = -Math.PI / 8
             this.#sceneRotY = Math.PI * (5 / 4)
             this.#cameraTranslation = new Vec3f()
+        } else {
+            return
         }
         e.preventDefault()
         this.#updateTransforms()

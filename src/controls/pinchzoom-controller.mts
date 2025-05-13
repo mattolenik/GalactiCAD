@@ -1,12 +1,13 @@
 export class PinchZoomController {
     #initialPinchDistance = 0
     #initialZoom = 0
-    #zoom = 100
+    #zoom: number
     #zoomSensitivity = 0.1
 
     onZoom?: (zoom: number) => void
 
-    constructor(el: HTMLElement) {
+    constructor(el: HTMLElement, defaultZoom: 40) {
+        this.#zoom = defaultZoom
         el.addEventListener("wheel", this.#onWheel.bind(this), { passive: false })
         el.addEventListener("touchstart", this.#onTouchStart.bind(this), { passive: false })
         el.addEventListener("touchmove", this.#onTouchMove.bind(this), { passive: false })

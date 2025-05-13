@@ -124,6 +124,7 @@ export class CameraController {
 
     #onPointerMove(e: PointerEvent) {
         if (!this.isDragging) return
+        if (this.#zoomController.isZooming) return
 
         const rect = this.#preview.canvas.getBoundingClientRect()
         if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {

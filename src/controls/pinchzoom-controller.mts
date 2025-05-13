@@ -34,7 +34,7 @@ export class PinchZoomController {
             // e.preventDefault()
             const currentDistance = this.#getDistance(e.touches)
             const delta = currentDistance - this.#initialPinchDistance
-            this.#zoom = Math.abs(this.#initialZoom - delta) * this.#zoomSensitivity
+            this.#zoom = Math.abs(this.#initialZoom - delta * this.#zoomSensitivity)
             this.#emitZoom()
         }
     }

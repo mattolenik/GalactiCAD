@@ -10,7 +10,7 @@ export class Controls {
     #pivot: Vec3f
     sceneTransform = new Mat4x4f()
     cameraPosition = new Vec3f()
-    orthoScale: number = 40
+    zoom: number = 40
 
     @clampedAngle
     accessor #sceneRotX: number = 0
@@ -157,7 +157,7 @@ export class Controls {
     #onWheel(e: WheelEvent) {
         e.preventDefault()
         this.#radius += e.deltaY * this.#zoomSensitivity
-        this.orthoScale = this.#radius
+        this.zoom = this.#radius
         this.#updateTransforms()
     }
 
@@ -183,7 +183,7 @@ export class Controls {
         this.#lastCameraSave = Date.now()
         this.#ls.setVec3f("camera.position", this.cameraPosition)
         this.#ls.setVec3f("camera.translation", this.#cameraTranslation)
-        this.#ls.setFloat("camera.orthoScale", this.orthoScale)
+        this.#ls.setFloat("camera.orthoScale", this.zoom)
         this.#ls.setFloat("camera.sceneRotX", this.#sceneRotX)
         this.#ls.setFloat("camera.sceneRotY", this.#sceneRotY)
     }
@@ -191,7 +191,7 @@ export class Controls {
     #loadCameraState(): void {
         this.cameraPosition = this.#ls.getVec3f("camera.position")
         this.#cameraTranslation = this.#ls.getVec3f("camera.translation")
-        this.orthoScale = this.#ls.getFloat("camera.orthoScale") ?? 20
+        this.zoom = this.#ls.getFloat("camera.orthoScale") ?? 20
         this.#sceneRotX = this.#ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
         this.#sceneRotY = this.#ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
         this.#updateTransforms()

@@ -7,11 +7,8 @@ import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
 
 class UniformBuffers {
-    cameraPosition!: GPUBuffer
-    orthoScale!: GPUBuffer
+    camera!: GPUBuffer
     scene!: GPUBuffer
-    sceneTransform!: GPUBuffer
-    canvasRes!: GPUBuffer
 }
 
 export class SDFRenderer {
@@ -107,28 +104,10 @@ export class SDFRenderer {
             label: "scene",
         })
 
-        this.#uniformBuffers.sceneTransform = this.#device.createBuffer({
-            size: 64,
+        this.#uniformBuffers.camera = this.#device.createBuffer({
+            size: 96,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "sceneTransform",
-        })
-
-        this.#uniformBuffers.cameraPosition = this.#device.createBuffer({
-            size: 16,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "cameraPosition",
-        })
-
-        this.#uniformBuffers.orthoScale = this.#device.createBuffer({
-            size: 4,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "orthoScale",
-        })
-
-        this.#uniformBuffers.canvasRes = this.#device.createBuffer({
-            size: 8,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "canvasRes",
+            label: "camera",
         })
     }
 
@@ -158,10 +137,7 @@ export class SDFRenderer {
             layout: this.#pipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: this.#uniformBuffers.scene } },
-                { binding: 1, resource: { buffer: this.#uniformBuffers.sceneTransform } },
-                { binding: 2, resource: { buffer: this.#uniformBuffers.cameraPosition } },
-                { binding: 3, resource: { buffer: this.#uniformBuffers.orthoScale } },
-                { binding: 4, resource: { buffer: this.#uniformBuffers.canvasRes } },
+                { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
             ],
         })
     }
@@ -169,10 +145,10 @@ export class SDFRenderer {
     update(time: number): void {
         this.updateFPS(time)
 
-        this.#device.queue.writeBuffer(this.#uniformBuffers.sceneTransform, 0, this.#controls.sceneTransform.data)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.cameraPosition, 0, this.#controls.cameraPosition.data)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.orthoScale, 0, new Float32Array([this.#controls.orthoScale]))
-        this.#device.queue.writeBuffer(this.#uniformBuffers.canvasRes, 0, this.#cameraRes.data)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, this.#controls.sceneTransform.data)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraRes.data)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, new Float32Array([this.#controls.orthoScale]))
 
         const commandEncoder = this.#device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({

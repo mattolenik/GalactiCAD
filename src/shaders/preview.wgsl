@@ -5,11 +5,15 @@ const MAX_DIST: f32 = 300.0;
 const SURF_DIST: f32 = 0.001;
 const NORMAL_EPS: f32 = 0.001;
 
+struct Camera {
+    transform: mat4x4f,
+    position: vec3f,
+    res: vec2f,
+    zoom: f32,
+};
+
 @group(0) @binding(0) var<uniform> args: array<vec3f, 1024>;
-@group(0) @binding(1) var<uniform> sceneTransform: mat4x4f;
-@group(0) @binding(2) var<uniform> cameraPosition: vec3f;
-@group(0) @binding(3) var<uniform> orthoScale: f32;
-@group(0) @binding(4) var<uniform> canvasRes: vec2f;
+@group(0) @binding(1) var<uniform> camera: Camera;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -59,22 +63,22 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 }
 
 fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
-    let offsetX = (uv.x * 2.0 - 1.0) * orthoScale;
-    let offsetY = (uv.y * 2.0 - 1.0) * orthoScale;
+    let offsetX = (uv.x * 2.0 - 1.0) * camera.zoom;
+    let offsetY = (uv.y * 2.0 - 1.0) * camera.zoom;
     return camPos + vec3f(offsetX, offsetY, 100.0);
 }
 
 @fragment
 fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     let uv = fragCoord;
-    let aspect = canvasRes.x / canvasRes.y;
+    let aspect = camera.res.x / camera.res.y;
 
     let rayDir = vec3f(0.0, 0.0, -1.0);
-    let rayOrigin = computeRayOrigin(vec2f(uv.x*aspect, uv.y), cameraPosition);
+    let rayOrigin = computeRayOrigin(vec2f(uv.x*aspect, uv.y), camera.position);
 
     // Transform the ray from camera space into scene space
-    let transformedOrigin = (sceneTransform * vec4f(rayOrigin, 1.0)).xyz;
-    let transformedDir = normalize((sceneTransform * vec4f(rayDir, 0.0)).xyz);
+    let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
+    let transformedDir = normalize((camera.transform * vec4f(rayDir, 0.0)).xyz);
 
     // Use the transformed ray for raymarching.
     let t = raymarch(transformedOrigin, transformedDir);

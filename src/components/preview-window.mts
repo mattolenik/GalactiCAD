@@ -1,10 +1,11 @@
 export class PreviewWindow extends HTMLElement {
-    displayThreshold: number = 50 // hide FPS display until there's a significant drop
     static get observedAttributes() {
         return ["showFPS"]
     }
-    public readonly canvas: HTMLCanvasElement
+    readonly canvas: HTMLCanvasElement
+
     #counter: HTMLSpanElement
+    #framerateThreshold: number = 50 // hide FPS display until there's a significant drop
     #showFps: boolean
 
     constructor() {
@@ -46,14 +47,12 @@ export class PreviewWindow extends HTMLElement {
         shadow.appendChild(this.#counter)
 
         this.#showFps = !!(this.getAttribute("showFPS")?.toLocaleLowerCase() === "true")
-
-        // observe size changes on the host element
     }
 
-    updateFps(fps: number) {
+    updateFPS(fps: number) {
         if (!this.#showFps) return
 
-        if (fps <= this.displayThreshold) {
+        if (fps <= this.#framerateThreshold) {
             this.#counter.textContent = fps.toFixed(0)
         } else {
             this.#counter.textContent = ""
@@ -61,7 +60,6 @@ export class PreviewWindow extends HTMLElement {
     }
 
     attributeChangedCallback(name: string, oldVal: string | null, newVal: string | null) {
-        console.log(name)
         if (name === "showFPS") {
             this.#showFps = !!(newVal?.toLocaleLowerCase() === "true")
             this.#counter.style.visibility = this.#showFps ? "visible" : "hidden"

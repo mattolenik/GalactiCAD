@@ -143,12 +143,12 @@ export class SDFRenderer {
     }
 
     update(time: number): void {
-        this.updateFPS(time)
+        this.#updateFPS(time)
 
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, this.#controls.sceneTransform.data)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraRes.data)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, new Float32Array([this.#controls.orthoScale]))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))
 
         const commandEncoder = this.#device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({
@@ -170,10 +170,10 @@ export class SDFRenderer {
         requestAnimationFrame(time => this.update(time))
     }
 
-    private updateFPS(time: number) {
+    #updateFPS(time: number) {
         const deltaTime = time - this.#lastRenderTime
         this.#lastRenderTime = time
         this.#framerate.update(1000 / deltaTime)
-        this.#preview.updateFps(this.#framerate.average)
+        this.#preview.updateFPS(this.#framerate.average)
     }
 }

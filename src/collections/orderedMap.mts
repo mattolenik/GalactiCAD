@@ -1,6 +1,6 @@
 export class OrderedMap<K, V> implements Iterable<[K, V]> {
-    private map = new Map<K, V>()
-    private order: K[] = []
+    #map = new Map<K, V>()
+    #order: K[] = []
 
     constructor(entries?: readonly (readonly [K, V])[] | null) {
         if (entries) {
@@ -10,57 +10,54 @@ export class OrderedMap<K, V> implements Iterable<[K, V]> {
         }
     }
 
-    // --- Map-like methods/properties ---
-
     set(key: K, value: V): this {
-        if (!this.map.has(key)) {
-            this.order.push(key)
+        if (!this.#map.has(key)) {
+            this.#order.push(key)
         }
-        this.map.set(key, value)
+        this.#map.set(key, value)
         return this
     }
 
     get(key: K): V | undefined {
-        return this.map.get(key)
+        return this.#map.get(key)
     }
 
     has(key: K): boolean {
-        return this.map.has(key)
+        return this.#map.has(key)
     }
 
     delete(key: K): boolean {
-        if (!this.map.has(key)) return false
-        this.map.delete(key)
-        const idx = this.order.indexOf(key)
-        if (idx !== -1) this.order.splice(idx, 1)
+        if (!this.#map.has(key)) return false
+        this.#map.delete(key)
+        const idx = this.#order.indexOf(key)
+        if (idx !== -1) this.#order.splice(idx, 1)
         return true
     }
 
     clear(): void {
-        this.map.clear()
-        this.order = []
+        this.#map.clear()
+        this.#order = []
     }
 
     get size(): number {
-        return this.map.size
+        return this.#map.size
     }
 
-    // --- Ordered iteration ---
-
+    // Ordered iteration
     *entries(): IterableIterator<[K, V]> {
-        for (const k of this.order) {
+        for (const k of this.#order) {
             // non-null because key was in map
-            yield [k, this.map.get(k)!]
+            yield [k, this.#map.get(k)!]
         }
     }
 
     *keys(): IterableIterator<K> {
-        yield* this.order
+        yield* this.#order
     }
 
     *values(): IterableIterator<V> {
-        for (const k of this.order) {
-            yield this.map.get(k)!
+        for (const k of this.#order) {
+            yield this.#map.get(k)!
         }
     }
 
@@ -69,8 +66,8 @@ export class OrderedMap<K, V> implements Iterable<[K, V]> {
     }
 
     forEach(callback: (value: V, key: K, map: OrderedMap<K, V>) => void, thisArg?: any): void {
-        for (const k of this.order) {
-            callback.call(thisArg, this.map.get(k)!, k, this)
+        for (const k of this.#order) {
+            callback.call(thisArg, this.#map.get(k)!, k, this)
         }
     }
 }

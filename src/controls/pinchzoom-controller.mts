@@ -4,6 +4,7 @@ export class PinchZoomController {
     #zoom: number
     #zoomSensitivity = 0.1
 
+    isZooming = false
     onZoom?: (zoom: number) => void
 
     constructor(el: HTMLElement, defaultZoom: 40) {
@@ -31,10 +32,11 @@ export class PinchZoomController {
 
     #onTouchMove(e: TouchEvent) {
         if (e.touches.length === 2) {
-            // e.preventDefault()
+            this.isZooming = true
+            e.preventDefault()
             const currentDistance = this.#getDistance(e.touches)
             const delta = currentDistance - this.#initialPinchDistance
-            this.#zoom = Math.abs(this.#initialZoom - delta * this.#zoomSensitivity)
+            this.#zoom = this.#initialZoom - delta * this.#zoomSensitivity
             this.#emitZoom()
         }
     }
@@ -42,6 +44,7 @@ export class PinchZoomController {
     #onTouchEnd(e: TouchEvent) {
         if (e.touches.length < 2) {
             this.#initialPinchDistance = 0
+            this.isZooming = false
         }
     }
 

@@ -4,6 +4,7 @@ import { fromEventPattern, Subscription } from "rxjs"
 import { bufferTime } from "rxjs/operators"
 import { OrderedMap } from "../collections/orderedMap.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
+import { YesNoDialog } from "./yesno-dialog.mjs"
 
 export class DocumentTabs extends HTMLElement {
     #active?: string
@@ -207,6 +208,10 @@ export class DocumentTabs extends HTMLElement {
         localStorage.setItem(`document:${name}`, model.getValue())
     }
 
+    closeCurrentTab() {
+        this.closeTab(this.#active!)
+    }
+
     closeTab(name: string) {
         const wasActive = name === this.#active
         const sub = this.#subscriptions.get(name)
@@ -224,6 +229,18 @@ export class DocumentTabs extends HTMLElement {
                 this.#editor.setModel(null!)
                 this.#renderTabs()
             }
+        }
+    }
+
+    async deleteCurrentTab() {
+        this.deleteTab(this.active!)
+    }
+
+    async deleteTab(name: string) {
+        const cntinue = await new YesNoDialog(`Are you sure you want to delete ${name}?`).show()
+        if (cntinue) {
+            localStorage.removeItem(`document:${name}`)
+            this.closeTab(name)
         }
     }
 

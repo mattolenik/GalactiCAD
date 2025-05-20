@@ -88,7 +88,6 @@ export class SDFRenderer {
             await this.#initializing
             this.#initializing = null
         }
-        return this
     }
 
     startLoop() {

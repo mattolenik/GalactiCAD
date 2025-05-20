@@ -13,7 +13,6 @@ class App {
     #tabs: DocumentTabs
 
     build() {
-        if (!this.renderer) return
         try {
             this.renderer.build(this.editor.getValue())
             this.renderer.startLoop()
@@ -90,43 +89,45 @@ class App {
         this.renderer = new SDFRenderer(preview)
         this.renderer
             .ready()
-            .then(renderer => this.build())
-            .catch((err: Error) => {
+            .then(() => {
+                this.build()
+
+                const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
+                    h => this.editor.onDidChangeModelContent(h),
+                    (_, disp) => disp.dispose()
+                )
+
+                change$
+                    .pipe(
+                        bufferTime(100),
+                        filter(arr => arr.length > 0)
+                    )
+                    .subscribe(events => {
+                        this.build()
+                    })
+
+                const newItem = document.createElement("span")
+                newItem.innerHTML = "New Sketch"
+                const renameItem = document.createElement("span")
+                renameItem.innerHTML = "Rename"
+                const deleteItem = document.createElement("span")
+                deleteItem.innerHTML = "Delete"
+                const menuButton = new MenuButton([
+                    { element: newItem, action: () => this.#tabs.newDocument() },
+                    { element: renameItem, action: () => console.log("TODO: rename") },
+                    { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
+                ])
+                menu.replaceWith(menuButton)
+            })
+            .catch(err => {
                 console.error(`UNEXPECTED ERROR: ${err}`)
                 const msg = document.createElement("p")
                 msg.textContent =
                     err.name === "NotSupportedError"
-                        ? "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera, or Firefox Nightly."
+                        ? "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
                         : err.message
                 preview.replaceWith(msg)
             })
-
-        const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
-            h => this.editor.onDidChangeModelContent(h),
-            (_, disp) => disp.dispose()
-        )
-
-        change$
-            .pipe(
-                bufferTime(100),
-                filter(arr => arr.length > 0)
-            )
-            .subscribe(events => {
-                this.build()
-            })
-
-        const newItem = document.createElement("span")
-        newItem.innerHTML = "New Sketch"
-        const renameItem = document.createElement("span")
-        renameItem.innerHTML = "Rename"
-        const deleteItem = document.createElement("span")
-        deleteItem.innerHTML = "Delete"
-        const menuButton = new MenuButton([
-            { element: newItem, action: () => this.#tabs.newDocument() },
-            { element: renameItem, action: () => console.log("item2") },
-            { element: deleteItem, action: () => console.log("item2") },
-        ])
-        menu.replaceWith(menuButton)
     }
 }
 

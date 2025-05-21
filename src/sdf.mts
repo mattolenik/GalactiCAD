@@ -71,7 +71,6 @@ export class SDFRenderer {
         const sceneSDF = this.#scene.compile()
         this.#sceneShader = new ShaderCompiler(previewShader, "Preview Window").replace("insert", "sceneSDF", sceneSDF)
         this.#exportShader = new ShaderCompiler(exportShader, "Export").replace("insert", "sceneSDF", sceneSDF)
-        console.log(this.#exportShader.text)
         this.#buildPreviewPipeline()
 
         this.#scene.root.updateScene((index, data) => {

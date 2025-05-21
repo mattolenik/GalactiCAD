@@ -6,6 +6,7 @@ import { MenuButton } from "./components/menu-button.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
+import { saveArrayBufferToDisk } from "./fs/fs.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -62,7 +63,6 @@ class App {
         })
 
         this.#tabs = new DocumentTabs(this.editor)
-        this.#tabs.addEventListener("activeTabChanged", e => this.build())
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
         this.#tabs.restore()
@@ -90,6 +90,7 @@ class App {
         this.renderer
             .ready()
             .then(() => {
+                this.#tabs.addEventListener("activeTabChanged", e => this.build())
                 this.build()
 
                 const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
@@ -112,10 +113,19 @@ class App {
                 renameItem.innerHTML = "Rename"
                 const deleteItem = document.createElement("span")
                 deleteItem.innerHTML = "Delete"
+                const exportItem = document.createElement("span")
+                exportItem.innerHTML = "Export to STL"
                 const menuButton = new MenuButton([
                     { element: newItem, action: () => this.#tabs.newDocument() },
                     { element: renameItem, action: () => console.log("TODO: rename") },
                     { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
+                    {
+                        element: exportItem,
+                        action: async () => {
+                            const stl = await this.renderer.exportSTL(this.editor.getValue())
+                            await saveArrayBufferToDisk(stl, `${this.#tabs.active}.stl`)
+                        },
+                    },
                 ])
                 menu.replaceWith(menuButton)
             })
@@ -130,5 +140,4 @@ class App {
             })
     }
 }
-
 export default App

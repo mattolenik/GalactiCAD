@@ -13,3 +13,28 @@ export function validateFilename(name: string) {
         throw new Error(`filename ${name} is invalid because it contains these characters: ${invalid.join(" ")}`)
     }
 }
+
+export async function saveArrayBufferToDisk(buffer: ArrayBuffer, suggestedName?: string, startIn = "desktop"): Promise<void> {
+    let handle: FileSystemFileHandle
+    try {
+        handle = await window.showSaveFilePicker({
+            suggestedName,
+            types: [
+                {
+                    description: "GalactiCAD file",
+                    accept: { "text/plain": [".gcad"] },
+                },
+            ],
+            excludeAcceptAllOption: false,
+        })
+    } catch (err) {
+        if (`${err}`.includes("AbortError")) {
+            return
+        }
+        throw err
+    }
+
+    const writable = await handle!.createWritable()
+    await writable.write(buffer)
+    await writable.close()
+}

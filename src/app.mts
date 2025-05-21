@@ -122,8 +122,7 @@ class App {
                     {
                         element: exportItem,
                         action: async () => {
-                            const stl = await this.renderer.exportSTL(this.editor.getValue())
-                            await saveArrayBufferToDisk(stl, `${this.#tabs.active}.stl`)
+                            await this.renderer.exportSTL(this.editor.getValue())
                         },
                     },
                 ])

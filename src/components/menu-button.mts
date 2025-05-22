@@ -16,6 +16,7 @@ export class MenuButton extends HTMLElement {
             :host {
                 position: relative;
                 display: inline-block;
+                user-select: none;
             }
 
             button {

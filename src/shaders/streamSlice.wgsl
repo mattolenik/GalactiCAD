@@ -4,7 +4,7 @@ struct RSParams {
     width: u32,
     cellSize: f32,
     z: f32,
-    y: u32,
+    y: u32
 };
 @group(0) @binding(0) var<uniform> params: RSParams;
 @group(0) @binding(1) var<storage, read_write> segments: array<vec2<f32>>;
@@ -12,7 +12,7 @@ struct RSParams {
 @group(0) @binding(3) var<uniform> args: array<vec3f, 1024>;
 
 fn sceneSDF(p: vec3<f32>) -> f32 {
-    return 0; //:) insert sceneSDF
+    return 0f; //:) insert sceneSDF
 }
 
 // sentinel for “no more edges”
@@ -135,7 +135,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let e = pairs[i];
         if e.x == NO_EDGE { continue; }
 
-    // linear interpolation in 2D
+        // linear interpolation in 2D
         let pa = interp(P[e.x], P[e.y], V[e.x], V[e.y]);
         let pb = interp(P[e.y], P[e.x], V[e.y], V[e.x]);
 

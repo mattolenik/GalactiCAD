@@ -1,18 +1,22 @@
-struct Params2 { maxSeg: u32, hashSize: u32, };
+struct Params2 {
+    maxSeg: u32,
+    hashSize: u32,
+}
+;
 @group(0) @binding(0) var<uniform> params: Params2;
-@group(0) @binding(1) var<storage, read>           segments:   array<vec2<f32>>;
-@group(0) @binding(2) var<storage, read_write>     segCount: atomic<u32>;
+@group(0) @binding(1) var<storage, read> segments: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read_write> segCount: atomic<u32>;
 // ← HEAD is now an array of atomic<i32>
-@group(0) @binding(3) var<storage, read_write>     head:       array<atomic<i32>>;
+@group(0) @binding(3) var<storage, read_write> head: array<atomic<i32>>;
 // NEXT remains plain i32
-@group(0) @binding(4) var<storage, read_write>     nextIdx:    array<i32>;
+@group(0) @binding(4) var<storage, read_write> nextIdx: array<i32>;
 // visited can stay as u32
-@group(0) @binding(5) var<storage, read_write>     visited:    array<u32>;
+@group(0) @binding(5) var<storage, read_write> visited: array<u32>;
 // loop buffers
-@group(0) @binding(6) var<storage, read_write>     loopSegs:   array<i32>;
-@group(0) @binding(7) var<storage, read_write>     loopStarts: array<i32>;
+@group(0) @binding(6) var<storage, read_write> loopSegs: array<i32>;
+@group(0) @binding(7) var<storage, read_write> loopStarts: array<i32>;
 // loopCount is already atomic<u32>
-@group(0) @binding(8) var<storage, read_write>     loopCount:  atomic<u32>;
+@group(0) @binding(8) var<storage, read_write> loopCount: atomic<u32>;
 
 
 fn hashPt(p: vec2<f32>) -> u32 {
@@ -37,7 +41,7 @@ fn buildHash(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(1)
 fn linkAll() {
     // one thread walks all loops
-    let total = atomicLoad(&segCount);  // from pass 2
+    let total = atomicLoad(&segCount); // from pass 2
     var outPos = 0;
     for (var start = 0u; start < total; start = start + 1u) {
         if visited[start] != 0u { continue; }

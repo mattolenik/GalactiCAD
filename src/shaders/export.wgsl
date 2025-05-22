@@ -28,7 +28,7 @@ fn isValidVertex(v: Vertex) -> bool {
 }
 
 fn sceneSDF(p: vec3f) -> f32 {
-    return 0; //:) insert sceneSDF
+    return 0f; //:) insert sceneSDF
 }
 
 // Approximate the gradient (normal) at a point using central differences

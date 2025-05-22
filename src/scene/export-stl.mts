@@ -20,11 +20,10 @@ export interface ExportOptions {
 export async function exportSDFToSTLGPU(
     device: GPUDevice,
     opts: ExportOptions,
-    /** WGSL code string defining `fn sceneSDF(p: vec3<f32>) -> f32 { … }` */
     sc: ShaderCompiler,
     sceneArgs: GPUBuffer,
     handle: FileSystemFileHandle
-): Promise<void> {
+) {
     const sliceModule = sc.compile(streamSliceShader, "streamSlice")
     const linkModule = sc.compile(linkLoopsShader, "linkLoops")
     const sideModule = sc.compile(capShader, "sidewall")

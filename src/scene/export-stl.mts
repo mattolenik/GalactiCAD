@@ -1,7 +1,6 @@
-import streamSliceWGSL from "../shaders/streamSlice.wgsl"
-import linkLoopsWGSL from "../shaders/linkLoops.wgsl"
-import sideWallWGSL from "../shaders/sidewall.wgsl"
-import capWGSL from "../shaders/cap.wgsl"
+import streamSliceShader from "../shaders/streamSlice.wgsl"
+import linkLoopsShader from "../shaders/linkLoops.wgsl"
+import capShader from "../shaders/cap.wgsl"
 import { ShaderCompiler } from "../shaders/shader.mjs"
 
 export interface ExportOptions {
@@ -26,10 +25,10 @@ export async function exportSDFToSTLGPU(
     sceneArgs: GPUBuffer,
     handle: FileSystemFileHandle
 ): Promise<void> {
-    const sliceModule = sc.compile(streamSliceWGSL, "streamSlice")
-    const linkModule = sc.compile(linkLoopsWGSL, "linkLoops")
-    const sideModule = sc.compile(sideWallWGSL, "sidewall")
-    const capModule = sc.compile(capWGSL, "sidewall")
+    const sliceModule = sc.compile(streamSliceShader, "streamSlice")
+    const linkModule = sc.compile(linkLoopsShader, "linkLoops")
+    const sideModule = sc.compile(capShader, "sidewall")
+    const capModule = sc.compile(capShader, "cap")
 
     const slicePipeline = await device.createComputePipelineAsync({
         layout: "auto",
@@ -149,7 +148,7 @@ export async function exportSDFToSTLGPU(
             dv.setFloat32(12, y, true)
             device.queue.writeBuffer(sliceUniform, 0, dv.buffer)
 
-            const pass = sliceEnc.beginComputePass()
+            const pass = sliceEnc.beginComputePass({ label: "slice" })
             pass.setPipeline(slicePipeline)
             pass.setBindGroup(
                 0,
@@ -167,18 +166,16 @@ export async function exportSDFToSTLGPU(
             pass.dispatchWorkgroups(Math.ceil(opts.width / 256))
             pass.end()
         }
-        device.queue.submit([sliceEnc.finish()])
 
         const segCountReadBuf = device.createBuffer({
             size: segCountBuf.size,
             label: "segCountRead",
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })
-        {
-            const ce = device.createCommandEncoder({ label: "segCountReadBuf" })
-            ce.copyBufferToBuffer(segCountBuf, 0, segCountReadBuf, 0, segCountBuf.size)
-            device.queue.submit([ce.finish()])
-        }
+        const scCE = device.createCommandEncoder({ label: "segCountReadBuf" })
+        scCE.copyBufferToBuffer(segCountBuf, 0, segCountReadBuf, 0, segCountBuf.size)
+        device.queue.submit([sliceEnc.finish(), scCE.finish()])
+
         await segCountReadBuf.mapAsync(GPUMapMode.READ)
         const segCount = new Uint32Array(segCountReadBuf.getMappedRange())[0]
         segCountReadBuf.unmap()
@@ -186,11 +183,11 @@ export async function exportSDFToSTLGPU(
 
         const nextBuf = device.createBuffer({
             label: "next",
-            size: segCount,
+            size: segCount * 4,
             usage: GPUBufferUsage.STORAGE,
         })
         const visitedBuf = device.createBuffer({
-            size: segCount,
+            size: segCount * 4,
             label: "visited",
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
         })
@@ -228,13 +225,13 @@ export async function exportSDFToSTLGPU(
             ],
         })
         // build hash‐chains
-        let passH = linkEnc.beginComputePass()
+        let passH = linkEnc.beginComputePass({ label: "hash" })
         passH.setPipeline(linkHashPipeline)
         passH.setBindGroup(0, linkBG)
         passH.dispatchWorkgroups(Math.ceil(maxSegments / 256))
         passH.end()
         // walk loops
-        let passL = linkEnc.beginComputePass()
+        let passL = linkEnc.beginComputePass({ label: "link" })
         passL.setPipeline(linkLoopPipeline)
         passL.setBindGroup(0, linkLoopBG)
         passL.dispatchWorkgroups(1)

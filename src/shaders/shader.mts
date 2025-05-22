@@ -1,20 +1,23 @@
+type TransformFunc = (text: string) => string
+
 export class ShaderCompiler {
     symbol = `\\/\\/:\\)` // matches this:  //:)
+    transforms: TransformFunc[] = []
 
-    constructor(public text: string, public label: string) {}
+    constructor(private device: GPUDevice) {}
 
     replace(directive: string, name: string, replaceString: string): ShaderCompiler {
-        const pattern = new RegExp(`.*${this.symbol}\\s*${directive}\\s*${name}`, "g")
-        this.text = this.text.replaceAll(pattern, replaceString)
+        this.transforms.push((text: string) => {
+            const pattern = new RegExp(`.*${this.symbol}\\s*${directive}\\s*${name}`, "g")
+            return text.replaceAll(pattern, replaceString)
+        })
         return this
     }
-    createModule(device: GPUDevice) {
-        return device.createShaderModule({
-            label: this.label,
-            code: this.text,
-        })
-    }
-    toString() {
-        return this.text
+
+    compile(code: string, label: string) {
+        for (const t of this.transforms) {
+            code = t(code)
+        }
+        return this.device.createShaderModule({ label, code })
     }
 }

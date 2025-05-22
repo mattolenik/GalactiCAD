@@ -1,6 +1,8 @@
 {
     "name": "GalactiCAD",
     "short_name": "GalactiCAD",
+    "id": "https://galactic.ad",
+    "description": "A new kind of CAD with SDFs",
     "categories": ["productivity", "engineering", "cad", "3d printing"],
     "icons": [
         {

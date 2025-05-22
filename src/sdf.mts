@@ -32,11 +32,12 @@ export class SDFRenderer {
     #pipeline!: GPURenderPipeline
     #preview: PreviewWindow
     #scene!: SceneInfo
-    #sceneShader!: ShaderCompiler
     #started = false
     #uniformBuffers: UniformBuffers
     #exportBuffers: ExportBuffers
-    #exportShader!: ShaderCompiler
+    #shaderCompiler!: ShaderCompiler
+    #sceneShader!: GPUShaderModule
+    #exportShader!: GPUShaderModule
 
     constructor(preview: PreviewWindow) {
         this.#preview = preview
@@ -69,9 +70,10 @@ export class SDFRenderer {
     build(src: string) {
         this.#scene = new SceneInfo(src.trim())
         const sceneSDF = this.#scene.compile()
-        this.#sceneShader = new ShaderCompiler(previewShader, "Preview Window").replace("insert", "sceneSDF", sceneSDF)
-        this.#exportShader = new ShaderCompiler(exportShader, "Export").replace("insert", "sceneSDF", sceneSDF)
-        console.log(this.#exportShader.text)
+        this.#shaderCompiler = new ShaderCompiler(this.#device).replace("insert", "sceneSDF", sceneSDF)
+        this.#sceneShader = this.#shaderCompiler.compile(previewShader, "Preview Window")
+        this.#exportShader = this.#shaderCompiler.compile(exportShader, "Export")
+        // console.log(this.#exportShader.text)
         this.#buildPreviewPipeline()
 
         this.#scene.root.updateScene((index, data) => {
@@ -131,18 +133,16 @@ export class SDFRenderer {
     #createExportBuffers() {}
 
     #buildPreviewPipeline() {
-        const shaderModule = this.#sceneShader.createModule(this.#device)
-
         const format = this.#format
         this.#pipeline = this.#device.createRenderPipeline({
             label: "Preview Pipeline",
             layout: "auto",
             vertex: {
-                module: shaderModule,
+                module: this.#sceneShader,
                 entryPoint: "vertexMain",
             },
             fragment: {
-                module: shaderModule,
+                module: this.#sceneShader,
                 entryPoint: "fragmentMain",
                 targets: [{ format }],
             },
@@ -218,7 +218,6 @@ export class SDFRenderer {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
             mappedAtCreation: false,
         })
-        const shaderModule = this.#exportShader.createModule(this.#device)
         const bindGroupLayout = this.#device.createBindGroupLayout({
             entries: [
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
@@ -233,7 +232,7 @@ export class SDFRenderer {
         const computePipeline = this.#device.createComputePipeline({
             layout: pipelineLayout,
             compute: {
-                module: shaderModule,
+                module: this.#exportShader,
                 entryPoint: "main",
             },
         })

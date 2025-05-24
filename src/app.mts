@@ -45,7 +45,6 @@ class App {
             folding: false,
             fontLigatures: true,
             fontSize: 16,
-            fontFamily: "Hack, monospace",
             fontVariations: true,
             formatOnPaste: true,
             formatOnType: true,

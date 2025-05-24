@@ -14,15 +14,16 @@ export function validateFilename(name: string) {
     }
 }
 
-export async function saveArrayBufferToDisk(buffer: ArrayBuffer, suggestedName?: string, startIn = "desktop"): Promise<void> {
+export async function saveSTLBufferToDisk(buffer: ArrayBuffer, suggestedName?: string, startIn = "desktop"): Promise<void> {
     let handle: FileSystemFileHandle
     try {
         handle = await window.showSaveFilePicker({
             suggestedName,
             types: [
                 {
-                    description: "GalactiCAD file",
-                    accept: { "text/plain": [".gcad"] },
+                    // TODO: not hardcode STL
+                    description: "STL file",
+                    accept: { "application/vnd.ms-pki.stl": [".stl"], "application/sla": [".stl"], "model/stl": [".stl"] },
                 },
             ],
             excludeAcceptAllOption: false,

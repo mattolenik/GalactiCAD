@@ -44,7 +44,6 @@ export class SDFRenderer {
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50)
         this.#uniformBuffers = new UniformBuffers()
         this.#exportBuffers = new ExportBuffers()
-        this.#createExportBuffers()
         this.#initializing = this.initialize()
         this.#cameraRes = vec2(this.#preview.canvas.clientWidth, this.#preview.canvas.clientHeight)
 
@@ -130,8 +129,6 @@ export class SDFRenderer {
         })
     }
 
-    #createExportBuffers() {}
-
     #buildPreviewPipeline() {
         const format = this.#format
         this.#pipeline = this.#device.createRenderPipeline({
@@ -199,7 +196,6 @@ export class SDFRenderer {
     async exportSTL(src: string): Promise<ArrayBuffer> {
         this.build(src)
         const bufferSize = 16777216 // 16 MB
-        console.log(this.#exportBuffers.scene)
 
         this.#exportBuffers.vertexBuffer = this.#device.createBuffer({
             size: bufferSize,
@@ -250,44 +246,44 @@ export class SDFRenderer {
         const readBufferSize = 16777216
 
         const readVertexBuffer = this.#device.createBuffer({
+            label: "readVertex",
             size: readBufferSize,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })
 
         const readTriangleBuffer = this.#device.createBuffer({
+            label: "readTriangle",
             size: readBufferSize,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })
 
         const readTriCountBuffer = this.#device.createBuffer({
+            label: "readTriCount",
             size: 4,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })
 
-        const computeCE = this.#device.createCommandEncoder()
-        const passEncoder = computeCE.beginComputePass()
+        const computeCE = this.#device.createCommandEncoder({ label: "compute" })
 
+        computeCE.copyBufferToBuffer(this.#uniformBuffers.scene, 0, this.#exportBuffers.scene, 0, this.#uniformBuffers.scene.size)
+
+        const passEncoder = computeCE.beginComputePass({ label: "compute" })
         passEncoder.setPipeline(computePipeline)
         passEncoder.setBindGroup(0, bindGroup)
-
-        passEncoder.dispatchWorkgroups(8, 8, 4)
-
+        passEncoder.dispatchWorkgroups(512, 512, 512)
         passEncoder.end()
 
-        const copyCE = this.#device.createCommandEncoder()
-        copyCE.copyBufferToBuffer(this.#uniformBuffers.scene, 0, this.#exportBuffers.scene, 0, this.#uniformBuffers.scene.size)
-        copyCE.copyBufferToBuffer(this.#exportBuffers.vertexBuffer, 0, readVertexBuffer, 0, readBufferSize)
-        copyCE.copyBufferToBuffer(this.#exportBuffers.triangleBuffer, 0, readTriangleBuffer, 0, readBufferSize)
-        copyCE.copyBufferToBuffer(this.#exportBuffers.triCountBuffer, 0, readTriCountBuffer, 0, 4)
+        computeCE.copyBufferToBuffer(this.#exportBuffers.vertexBuffer, 0, readVertexBuffer, 0, readBufferSize)
+        computeCE.copyBufferToBuffer(this.#exportBuffers.triangleBuffer, 0, readTriangleBuffer, 0, readBufferSize)
+        computeCE.copyBufferToBuffer(this.#exportBuffers.triCountBuffer, 0, readTriCountBuffer, 0, 4)
 
-        this.#device.queue.submit([computeCE.finish(), copyCE.finish()])
+        this.#device.queue.submit([computeCE.finish()])
 
         await Promise.allSettled([
             await readVertexBuffer.mapAsync(GPUMapMode.READ),
             await readTriangleBuffer.mapAsync(GPUMapMode.READ),
             await readTriCountBuffer.mapAsync(GPUMapMode.READ),
         ])
-        console.log(this.#exportBuffers.vertexBuffer)
 
         const vertices = new Float32Array(readVertexBuffer.getMappedRange())
         const triangles = new Uint32Array(readTriangleBuffer.getMappedRange())
@@ -298,7 +294,10 @@ export class SDFRenderer {
         const stlBuffer = new ArrayBuffer(stlSize)
         const dv = new DataView(stlBuffer)
 
-        console.log("vertices", vertices)
+        console.log("triCount", triCount, triCountArray)
+        console.log("vertices", readVertexBuffer)
+        console.log("triangles", readTriangleBuffer)
+        console.log("triCount", readTriCountBuffer)
         // 80-byte header (can be blank)
         let offset = 80
         dv.setUint32(offset, triCount, true)

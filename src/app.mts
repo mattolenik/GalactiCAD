@@ -6,7 +6,7 @@ import { MenuButton } from "./components/menu-button.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
-import { saveArrayBufferToDisk } from "./fs/fs.mjs"
+import { saveSTLBufferToDisk } from "./fs/fs.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -19,7 +19,6 @@ class App {
             this.renderer.startLoop()
             this.log.innerText = ""
         } catch (err) {
-            console.log(err)
             this.log.innerText = `💢 ${err}`
         }
     }
@@ -93,12 +92,10 @@ class App {
                 this.#tabs.addEventListener("activeTabChanged", e => this.build())
                 this.build()
 
-                const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
+                fromEventPattern<monaco.editor.IModelContentChangedEvent>(
                     h => this.editor.onDidChangeModelContent(h),
                     (_, disp) => disp.dispose()
                 )
-
-                change$
                     .pipe(
                         bufferTime(100),
                         filter(arr => arr.length > 0)
@@ -123,7 +120,7 @@ class App {
                         element: exportItem,
                         action: async () => {
                             const stl = await this.renderer.exportSTL(this.editor.getValue())
-                            await saveArrayBufferToDisk(stl, `${this.#tabs.active}.stl`)
+                            await saveSTLBufferToDisk(stl, `${this.#tabs.active}.stl`)
                         },
                     },
                 ])

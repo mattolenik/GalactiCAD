@@ -21,7 +21,7 @@ struct VertexOutput {
 }
 
 fn sceneSDF(p: vec3f) -> f32 {
-    return 0; //:) insert sceneSDF
+    return 0.0; //:) insert sceneSDF
 }
 
 fn raymarch(origin: vec3f, dir: vec3f) -> f32 {

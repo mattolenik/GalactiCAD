@@ -1,8 +1,8 @@
 //:) include "hg_sdf.wgsl"
 
 // Define the grid resolution and cell size
-const GRID_RES: u32 = 512;
-const CELL_SIZE: f32 = 10.0;
+const GRID_RES: u32 = 64;
+const CELL_SIZE: f32 = 0.1;
 
 // Output buffer for vertices and indices
 struct Vertex {
@@ -28,7 +28,7 @@ fn isValidVertex(v: Vertex) -> bool {
 }
 
 fn sceneSDF(p: vec3f) -> f32 {
-    return 0; //:) insert sceneSDF
+    return 0f; //:) insert sceneSDF
 }
 
 // Approximate the gradient (normal) at a point using central differences
@@ -60,44 +60,44 @@ fn findIntersection(p1: vec3<f32>, p2: vec3<f32>) -> vec3<f32> {
     return (a + b) * 0.5;
 }
 
-// fn solveQEF(intersections: array<vec3<f32>, 12>, normals: array<vec3<f32>, 12>, count: u32) -> vec3<f32> {
-//     var ata = mat3x3<f32>();
-//     var atb = vec3<f32>(0.0);
-
-//     for (var i = 0u; i < count; i += 1u) {
-//         let n = normals[i];
-//         let p = intersections[i];
-//         ata += mat3x3<f32>(
-//             n.x * n.x, n.x * n.y, n.x * n.z,
-//             n.y * n.x, n.y * n.y, n.y * n.z,
-//             n.z * n.x, n.z * n.y, n.z * n.z
-//         );
-//         atb += dot(n, p) * n;
-//     }
-
-//     // Solve ata * x = atb using Cramer's rule
-//     let det = determinant(ata);
-//     if (abs(det) < 1e-6) {
-//         // Near-singular case: fallback to average points
-//         var avg = vec3<f32>(0.0);
-//         for (var i = 0u; i < count; i += 1u) {
-//             avg += intersections[i];
-//         }
-//         return avg / f32(count);
-//     }
-
-//     let invAta = inverse3x3(ata, det);
-//     return invAta * atb;
-// }
-// Compute the QEF to determine the best-fit vertex position
 fn solveQEF(intersections: array<vec3<f32>, 12>, normals: array<vec3<f32>, 12>, count: u32) -> vec3<f32> {
-    // Placeholder implementation: average the intersection points
-    var sum = vec3<f32>(0.0, 0.0, 0.0);
-    for (var i = 0u; i < count; i = i + 1u) {
-        sum = sum + intersections[i];
+    var ata = mat3x3<f32>();
+    var atb = vec3<f32>(0.0);
+
+    for (var i = 0u; i < count; i += 1u) {
+        let n = normals[i];
+        let p = intersections[i];
+        ata += mat3x3<f32>(
+            n.x * n.x, n.x * n.y, n.x * n.z,
+            n.y * n.x, n.y * n.y, n.y * n.z,
+            n.z * n.x, n.z * n.y, n.z * n.z
+        );
+        atb += dot(n, p) * n;
     }
-    return sum / f32(count);
+
+    // Solve ata * x = atb using Cramer's rule
+    let det = determinant(ata);
+    if (abs(det) < 1e-6) {
+        // Near-singular case: fallback to average points
+        var avg = vec3<f32>(0.0);
+        for (var i = 0u; i < count; i += 1u) {
+            avg += intersections[i];
+        }
+        return avg / f32(count);
+    }
+
+    let invAta = inverse3x3(ata, det);
+    return invAta * atb;
 }
+// Compute the QEF to determine the best-fit vertex position
+// fn solveQEF(intersections: array<vec3<f32>, 12>, normals: array<vec3<f32>, 12>, count: u32) -> vec3<f32> {
+//     // Placeholder implementation: average the intersection points
+//     var sum = vec3<f32>(0.0, 0.0, 0.0);
+//     for (var i = 0u; i < count; i = i + 1u) {
+//         sum = sum + intersections[i];
+//     }
+//     return sum / f32(count);
+// }
 
 // Compute determinant explicitly
 fn determinant(m: mat3x3<f32>) -> f32 {

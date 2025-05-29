@@ -1,5 +1,4 @@
 import * as monaco from "monaco-editor"
-import { nanoid } from "nanoid"
 import { validateFilename } from "./fs/fs.mjs"
 
 export type DocumentCreatedCallback = (model: monaco.editor.ITextModel) => void
@@ -148,12 +147,12 @@ export class DocumentManager {
     async new(content = "", language = "javascript"): Promise<monaco.editor.ITextModel> {
         const topIndex =
             Array.from(this.#models.keys())
-                .map(s => parseInt(s.match(/^new sketch (\d+)$/)?.map((v, i, arr) => arr[i])[1] ?? "0"))
+                .map(s => parseInt(s.match(/^new sketch (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
                 .reduce((p, c) => Math.max(p, c), 0) + 1
 
-        const name = `new sketch ${topIndex}`
-
-        const uri = monaco.Uri.parse(`inmemory://model/${nanoid()}`)
+        const dflt = `new sketch ${topIndex}`
+        const name = window.prompt("Give the new sketch a name", dflt)?.trim() || dflt
+        const uri = monaco.Uri.parse(`inmemory://model/${name}`)
         const model = monaco.editor.createModel(content, language, uri)
         this.#models.set(name, model)
 
@@ -174,7 +173,7 @@ export class DocumentManager {
         const content = await file.text()
         const name = file.name
 
-        const uri = monaco.Uri.parse(`inmemory://model/${nanoid()}`)
+        const uri = monaco.Uri.parse(`inmemory://model/${name}`)
         const model = monaco.editor.createModel(content, language, uri)
         this.#models.set(name, model)
 

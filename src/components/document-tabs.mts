@@ -1,5 +1,4 @@
 import * as monaco from "monaco-editor"
-import { nanoid } from "nanoid"
 import { fromEventPattern, Subscription } from "rxjs"
 import { bufferTime } from "rxjs/operators"
 import { OrderedMap } from "../collections/orderedMap.mjs"
@@ -130,15 +129,17 @@ export class DocumentTabs extends HTMLElement {
         return this.#docs.values()
     }
 
-    /** Create a new untitled document, start watching, switch, update order */
-    newDocument(content = sample, language = "javascript"): string {
+    /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts */
+    newDocument(content = sample, language = "javascript"): string | undefined {
         this.topUntitledIndex =
             Array.from(this.#docs.keys())
-                .map(s => parseInt(s.match(/^untitled-(\d+)$/)?.map((v, i, arr) => arr[i])[1]!))
+                .map(s => parseInt(s.match(/^new sketch (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
                 .reduce((p, c) => Math.max(p, c), 0) + 1
-        console.log(this.topUntitledIndex)
-        const name = `untitled-${this.topUntitledIndex}`
-        const uri = monaco.Uri.parse(`inmemory://model/${nanoid()}`)
+
+        const name = window.prompt("Give the new sketch a name", `new sketch ${this.topUntitledIndex}`)?.trim()
+        if (!name) return
+
+        const uri = monaco.Uri.parse(`inmemory://model/${name}`)
         const model = monaco.editor.createModel(content, language, uri)
         this.#docs.set(name, model)
         this.#watchModel(name, model)
@@ -164,7 +165,7 @@ export class DocumentTabs extends HTMLElement {
             const key = `${prefix}${name}`
             const content = localStorage.getItem(key)
             if (content !== null) {
-                const uri = monaco.Uri.parse(`inmemory://model/${nanoid()}`)
+                const uri = monaco.Uri.parse(`inmemory://model/${name}`)
                 const model = monaco.editor.createModel(content, "javascript", uri)
                 this.#docs.set(name, model)
                 this.#watchModel(name, model)
@@ -178,7 +179,7 @@ export class DocumentTabs extends HTMLElement {
                 const name = key.substring(prefix.length)
                 if (!loaded.has(name)) {
                     const content = localStorage.getItem(key) || ""
-                    const uri = monaco.Uri.parse(`inmemory://model/${nanoid()}`)
+                    const uri = monaco.Uri.parse(`inmemory://model/${name}`)
                     const model = monaco.editor.createModel(content, "javascript", uri)
                     this.#docs.set(name, model)
                     this.#watchModel(name, model)
@@ -217,6 +218,7 @@ export class DocumentTabs extends HTMLElement {
         const sub = this.#subscriptions.get(name)
         if (sub) sub.unsubscribe()
         this.#subscriptions.delete(name)
+        this.#docs.get(name)?.dispose()
         this.#docs.delete(name)
         this.#renderTabs()
         this.#updateStoredOrder()

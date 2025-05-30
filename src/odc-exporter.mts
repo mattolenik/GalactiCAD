@@ -91,33 +91,37 @@ export class ODCExport {
 
         // 4. Pipeline setup
         const bindGroupLayout = this.device.createBindGroupLayout({
+            label: "odccompute",
             entries: [
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
                 { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                // { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
             ],
         })
         const pipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] })
         const classifyPipeline = this.device.createComputePipeline({
+            label: "classifyPass",
             layout: pipelineLayout,
             compute: { module: sceneShader, entryPoint: "classifyPass" },
         })
         const emitPipeline = this.device.createComputePipeline({
+            label: "emissionPass",
             layout: pipelineLayout,
             compute: { module: sceneShader, entryPoint: "emissionPass" },
         })
         const bindGroup = this.device.createBindGroup({
             layout: bindGroupLayout,
+            label: "copyback",
             entries: [
                 { binding: 0, resource: { buffer: uniformBuffer } },
                 { binding: 1, resource: { buffer: cellActiveBuffer } },
                 { binding: 2, resource: { buffer: triCountBuffer } },
                 { binding: 3, resource: { buffer: vertexBuffer } },
                 { binding: 4, resource: { buffer: indexBuffer } },
-                { binding: 5, resource: { buffer: sceneArgs } },
+                // { binding: 5, resource: { buffer: sceneArgs } },
             ],
         })
 

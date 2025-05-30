@@ -58,6 +58,7 @@ export abstract class Vecf<TVec extends Vecn> implements Storable {
             .map(e => e.toFixed(Vecf.StringPrecision))
             .join(", ")}]`
     }
+    abstract get wgsl(): string
 
     set(vec: TVec): void {
         this.data.set(vec instanceof Vecf ? vec.data : vec)
@@ -138,6 +139,9 @@ export class Vec2f extends Vecf<Vec2n> {
     }
     get yy(): Vec2f {
         return vec2(this.data[1], this.data[1])
+    }
+    override get wgsl(): string {
+        return `vec2f(${this.data[0]}, ${this.data[1]})`
     }
 }
 
@@ -324,6 +328,9 @@ export class Vec3f extends Vecf<Vec3n> {
     }
     get zzz(): Vec3f {
         return vec3(this.data[2], this.data[2], this.data[2])
+    }
+    override get wgsl(): string {
+        return `vec3f(${this.data[0]}, ${this.data[1]}, ${this.data[2]})`
     }
 }
 
@@ -520,6 +527,9 @@ export class Vec4f extends Vecf<Vec4n> {
     }
     get zzzw(): Vec4f {
         return vec4(this.data[2], this.data[2], this.data[2], this.data[3])
+    }
+    override get wgsl(): string {
+        return `vec4f(${this.data[0]}, ${this.data[1]}, ${this.data[2]})`
     }
 }
 

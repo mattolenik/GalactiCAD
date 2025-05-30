@@ -78,6 +78,7 @@ export class SDFRenderer {
 
         this.#scene.root.updateScene((index, data) => {
             this.#device.queue.writeBuffer(this.#uniformBuffers.scene, index * 16, data)
+            // this.#device.queue.writeBuffer(this.#exportBuffers.scene, index * 16, data)
         })
     }
 
@@ -150,10 +151,10 @@ export class SDFRenderer {
             },
         })
         this.#bindGroup = this.#device.createBindGroup({
-            label: "scene",
+            label: "scenePreview",
             layout: this.#pipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: this.#uniformBuffers.scene } },
+                // { binding: 0, resource: { buffer: this.#uniformBuffers.scene } },
                 { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
             ],
         })
@@ -205,6 +206,6 @@ export class SDFRenderer {
             maxTrisPerCell: 6,
         })
 
-        await exporter.export(this.#exportShader, this.#uniformBuffers.scene, handle)
+        await exporter.export(this.#exportShader, this.#exportBuffers.scene, handle)
     }
 }

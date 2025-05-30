@@ -18,6 +18,7 @@ export class ShaderCompiler {
         for (const t of this.transforms) {
             code = t(code)
         }
+        console.log(label, "\n", code)
         return this.device.createShaderModule({ label, code })
     }
 }

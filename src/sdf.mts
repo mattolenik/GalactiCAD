@@ -197,15 +197,16 @@ export class SDFRenderer {
 
     async exportSTL(src: string, handle: FileSystemHandle) {
         this.build(src)
+        const cs = 1 / 64
         const exporter = new ODCExport(this.#device, {
-            dimX: 100,
-            dimY: 100,
-            dimZ: 100,
-            boundsMin: [-20, -20, -20],
-            cellSize: [2 / 128, 2 / 128, 2 / 128],
+            dimX: 32,
+            dimY: 32,
+            dimZ: 32,
+            boundsMin: [-1, -1, -1],
+            cellSize: [0.01, 0.01, 0.01],
             maxTrisPerCell: 6,
         })
 
-        await exporter.export(this.#exportShader, this.#exportBuffers.scene, handle)
+        await exporter.export(this.#exportShader, handle)
     }
 }

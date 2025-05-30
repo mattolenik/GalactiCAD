@@ -136,7 +136,8 @@ export class DocumentTabs extends HTMLElement {
                 .map(s => parseInt(s.match(/^new sketch (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
                 .reduce((p, c) => Math.max(p, c), 0) + 1
 
-        const name = window.prompt("Give the new sketch a name", `new sketch ${this.topUntitledIndex}`)?.trim()
+        const defaultName = `new sketch ${this.topUntitledIndex}`
+        const name = this.#docs.size > 0 ? window.prompt("Give the new sketch a name", defaultName)?.trim() : defaultName
         if (!name) return
 
         const uri = monaco.Uri.parse(`inmemory://model/${name}`)

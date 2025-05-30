@@ -6,7 +6,6 @@ import { MenuButton } from "./components/menu-button.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
-import { saveSTLBufferToDisk } from "./fs/fs.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -122,8 +121,25 @@ class App {
                     {
                         element: exportItem,
                         action: async () => {
-                            const stl = await this.renderer.exportSTL(this.editor.getValue())
-                            await saveSTLBufferToDisk(stl, `${this.#tabs.active}.stl`)
+                            try {
+                                let handle = await window.showSaveFilePicker({
+                                    suggestedName: this.#tabs.active,
+                                    types: [
+                                        {
+                                            description: "STL file",
+                                            accept: {
+                                                "application/vnd.ms-pki.stl": [".stl"],
+                                            },
+                                        },
+                                    ],
+                                    excludeAcceptAllOption: false,
+                                })
+                                await this.renderer.exportSTL(this.editor.getValue(), handle)
+                            } catch (err) {
+                                if (!`${err}`.includes("AbortError")) {
+                                    throw err
+                                }
+                            }
                         },
                     },
                 ])

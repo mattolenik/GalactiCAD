@@ -35,7 +35,7 @@ struct Params {
 @group(0) @binding(2) var<storage, read_write> triCountBuffer   : array<u32>;  // [numCells]
 @group(0) @binding(3) var<storage, read_write> vertexBuffer     : array<vec3<f32>>; // [numCells]
 @group(0) @binding(4) var<storage, read_write> indexBuffer      : array<u32>;    // [numCells*maxTrisPerCell*3]
-@group(0) @binding(5) var<uniform> args: array<vec3f, 1024>;
+// @group(0) @binding(5) var<uniform> args: array<vec3f, 1024>;
 
 // ----------------------------
 // User’s SDF Stub (override at runtime)

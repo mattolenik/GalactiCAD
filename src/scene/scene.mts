@@ -271,7 +271,8 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         return {
             funcName,
             varName,
-            text: `let ${varName} = fSphere(p - args[${this.argIndex.pos}], args[${this.argIndex.r}].x);`,
+            // text: `let ${varName} = fSphere(p - args[${this.argIndex.pos}], args[${this.argIndex.r}].x);`,
+            text: `let ${varName} = fSphere(p - ${this.pos.wgsl}, ${this.r});`,
         }
     }
 }
@@ -302,7 +303,8 @@ export class Box extends WithSize(WithPos(Node)) {
         return {
             funcName,
             varName,
-            text: `let ${varName} = fBox(p - args[${this.argIndex.pos}], args[${this.argIndex.size}]);`,
+            // text: `let ${varName} = fBox(p - args[${this.argIndex.pos}], args[${this.argIndex.size}]);`,
+            text: `let ${varName} = fBox(p - ${this.pos.wgsl}, ${this.size.wgsl});`,
         }
     }
 }

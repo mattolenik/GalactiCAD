@@ -196,6 +196,10 @@ export class DocumentTabs extends HTMLElement {
         const first = this.#docs.keys().next().value
         if (first) this.switchTo(first)
         this.#updateStoredOrder()
+        const lastTab = localStorage.getItem("activeDocument") as string
+        if (lastTab) {
+            this.switchTo(lastTab)
+        }
     }
 
     /** Observe model changes and save debounced */
@@ -247,13 +251,16 @@ export class DocumentTabs extends HTMLElement {
         }
     }
 
-    switchTo(name: string) {
+    switchTo(name: string, save = false) {
         const model = this.#docs.get(name)
         if (!model) return
         this.#active = name
         this.#editor.setModel(model)
         this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: name }))
         this.#renderTabs()
+        if (save) {
+            localStorage.setItem("activeDocument", this.#active)
+        }
     }
 
     /** Update serialized order */
@@ -268,7 +275,7 @@ export class DocumentTabs extends HTMLElement {
             tab.addEventListener("contextmenu", ev => ev.preventDefault())
             tab.classList.add("tab")
             if (name === this.#active) tab.classList.add("active")
-            tab.addEventListener("click", () => this.switchTo(name))
+            tab.addEventListener("click", () => this.switchTo(name, true))
 
             const label = document.createElement("span")
             label.textContent = name

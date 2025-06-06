@@ -1,14 +1,20 @@
-export class GPUHelper {
-    #device: GPUDevice
+export class GPUHelper implements Disposable {
+    readonly device: GPUDevice
     #buffers: GPUBuffer[] = []
 
     private constructor(device: GPUDevice) {
-        this.#device = device
+        this.device = device
     }
 
     static async create(): Promise<GPUHelper | undefined> {
-        const adapter = await navigator.gpu.requestAdapter()
-        if (!adapter) return undefined
+        let adapter!: GPUAdapter | null
+        try {
+            adapter = await navigator.gpu.requestAdapter()
+            if (!adapter) return undefined
+        } catch (e) {
+            console.log(e)
+            return undefined
+        }
 
         const device = await adapter.requestDevice({
             requiredLimits: {
@@ -20,7 +26,7 @@ export class GPUHelper {
     }
 
     createBuffer(label: string, size: number, usage: GPUBufferUsageFlags, mappedAtCreation = true) {
-        const buffer = this.#device.createBuffer({
+        const buffer = this.device.createBuffer({
             label,
             mappedAtCreation,
             size,
@@ -37,7 +43,7 @@ export class GPUHelper {
         layout: GPUAutoLayoutMode = "auto",
         constants?: Record<string, GPUPipelineConstantValue>
     ) {
-        return this.#device.createComputePipeline({
+        return this.device.createComputePipeline({
             label,
             layout,
             compute: {
@@ -52,18 +58,18 @@ export class GPUHelper {
         groupID: number,
         label: string,
         pipeline: GPUComputePipeline | GPURenderPipeline,
-        bindings: Binding[]
+        ...bindings: [binding: number, buffer: GPUBuffer][]
     ): [groupID: number, bindgroup: GPUBindGroup] {
         return [
             groupID,
-            this.#device.createBindGroup({
+            this.device.createBindGroup({
                 label,
                 layout: pipeline.getBindGroupLayout(groupID),
-                entries: bindings.map(v => ({
-                    binding: v.binding,
+                entries: bindings.map(([binding, buffer]) => ({
+                    binding,
                     resource: {
-                        buffer: v.buffer,
-                        label: `group ${groupID} binding ${v.binding} ${label}`,
+                        buffer,
+                        label: `group ${groupID} binding ${binding} ${label}`,
                     },
                 })),
             }),
@@ -79,17 +85,17 @@ export class GPUHelper {
         return pass
     }
 
-    async readBufferData(buffer: GPUBuffer): Promise<ArrayBuffer> {
-        const readbackBuffer = this.#device.createBuffer({
+    async readBufferData(buffer: GPUBuffer, size = buffer.size): Promise<ArrayBuffer> {
+        const readbackBuffer = this.device.createBuffer({
             label: `${buffer.label}_readback`,
             mappedAtCreation: false,
-            size: buffer.size,
+            size,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })
 
-        const ce = this.#device.createCommandEncoder()
+        const ce = this.device.createCommandEncoder()
         ce.copyBufferToBuffer(buffer, 0, readbackBuffer, 0, buffer.size)
-        this.#device.queue.submit([ce.finish()])
+        this.device.queue.submit([ce.finish()])
 
         await readbackBuffer.mapAsync(GPUMapMode.READ)
         const data = readbackBuffer.getMappedRange().slice(0) // slice(0) creates a copy
@@ -103,6 +109,10 @@ export class GPUHelper {
             buffer.destroy()
         }
         this.#buffers = []
+    }
+
+    [Symbol.dispose](): void {
+        this.destroyAllBuffers()
     }
 }
 

@@ -122,19 +122,19 @@ class App {
                         element: exportItem,
                         action: async () => {
                             try {
-                                let handle = await window.showSaveFilePicker({
-                                    suggestedName: this.#tabs.active,
-                                    types: [
-                                        {
-                                            description: "STL file",
-                                            accept: {
-                                                "application/vnd.ms-pki.stl": [".stl"],
-                                            },
-                                        },
-                                    ],
-                                    excludeAcceptAllOption: false,
-                                })
-                                await this.renderer.exportSTL(this.editor.getValue(), handle)
+                                // let handle = await window.showSaveFilePicker({
+                                //     suggestedName: this.#tabs.active,
+                                //     types: [
+                                //         {
+                                //             description: "STL file",
+                                //             accept: {
+                                //                 "application/vnd.ms-pki.stl": [".stl"],
+                                //             },
+                                //         },
+                                //     ],
+                                //     excludeAcceptAllOption: false,
+                                // })
+                                await this.renderer.exportSTL(this.editor.getValue())
                             } catch (err) {
                                 if (!`${err}`.includes("AbortError")) {
                                     throw err
@@ -149,9 +149,7 @@ class App {
                 console.error(`UNEXPECTED ERROR: ${err}`)
                 const msg = document.createElement("p")
                 msg.textContent =
-                    err.name === "NotSupportedError"
-                        ? "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
-                        : err.message
+                    "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
                 preview.replaceWith(msg)
             })
     }

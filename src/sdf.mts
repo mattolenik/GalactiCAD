@@ -1,9 +1,10 @@
 import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
-import { ODCExport } from "./odc-exporter.mjs"
+import { GPUHelper } from "./gpu/helper.mjs"
+import { MDCParams, MDCExport } from "./mdc-exporter.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
-import exportShader from "./shaders/odc.wgsl"
+import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
@@ -39,6 +40,7 @@ export class SDFRenderer {
     #shaderCompiler!: ShaderCompiler
     #sceneShader!: GPUShaderModule
     #exportShader!: GPUShaderModule
+    #helper!: GPUHelper
 
     constructor(preview: PreviewWindow) {
         this.#preview = preview
@@ -76,17 +78,19 @@ export class SDFRenderer {
         // console.log(this.#exportShader.text)
         this.#buildPreviewPipeline()
 
-        this.#scene.root.updateScene((index, data) => {
-            this.#device.queue.writeBuffer(this.#uniformBuffers.scene, index * 16, data)
-            // this.#device.queue.writeBuffer(this.#exportBuffers.scene, index * 16, data)
-        })
+        // this.#scene.root.updateScene((index, data) => {
+        //     this.#device.queue.writeBuffer(this.#uniformBuffers.scene, index * 16, data)
+        //     // this.#device.queue.writeBuffer(this.#exportBuffers.scene, index * 16, data)
+        // })
     }
 
     async initialize() {
-        const adapter = await navigator.gpu.requestAdapter()
-        if (!adapter) throw new Error("No GPU adapter found")
-
-        this.#device = await adapter.requestDevice()
+        const helper = await GPUHelper.create()
+        if (!helper) {
+            throw new Error("No GPU adapter found", { cause: "unsupported" })
+        }
+        this.#helper = helper
+        this.#device = this.#helper.device
         this.#context = this.#preview.canvas.getContext("webgpu") as GPUCanvasContext
 
         this.#format = navigator.gpu.getPreferredCanvasFormat()
@@ -195,18 +199,20 @@ export class SDFRenderer {
         this.#preview.updateFPS(this.#framerate.average)
     }
 
-    async exportSTL(src: string, handle: FileSystemHandle) {
+    async exportSTL(src: string, handle?: FileSystemHandle) {
         this.build(src)
-        const cs = 1 / 64
-        const exporter = new ODCExport(this.#device, {
-            dimX: 32,
-            dimY: 32,
-            dimZ: 32,
-            boundsMin: [-1, -1, -1],
-            cellSize: [0.01, 0.01, 0.01],
-            maxTrisPerCell: 6,
-        })
+        const params: MDCParams = {
+            gridDimX: 32,
+            gridDimY: 32,
+            gridDimZ: 32,
+            isoValue: 0.0,
+            gridOffsetX: -16.0, // Example: center grid at origin if voxelSize is 1
+            gridOffsetY: -16.0,
+            gridOffsetZ: -16.0,
+            voxelSize: 1.0,
+        }
 
-        await exporter.export(this.#exportShader, handle)
+        const mdc = new MDCExport(this.#helper, params)
+        await mdc.export(this.#exportShader)
     }
 }

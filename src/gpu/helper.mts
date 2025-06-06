@@ -25,7 +25,7 @@ export class GPUHelper implements Disposable {
         return new GPUHelper(device)
     }
 
-    createBuffer(label: string, size: number, usage: GPUBufferUsageFlags, mappedAtCreation = true) {
+    createBuffer(label: string, size: number, usage: GPUBufferUsageFlags, mappedAtCreation?: boolean) {
         const buffer = this.device.createBuffer({
             label,
             mappedAtCreation,

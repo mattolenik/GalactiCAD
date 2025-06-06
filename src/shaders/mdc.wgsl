@@ -1,4 +1,4 @@
-//:) include "hg_sdf.wgsl" // Placeholder for actual SDF functions
+//:) include "hg_sdf.wgsl"
 
 // ============================== SHARED STRUCTS ==============================
 
@@ -74,9 +74,11 @@ struct QEFData {
 
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> f32 {
-    // Example: a sphere at origin with radius 1.0
-    // return length(p) - 1.0;
-    return 0.0; // Replace with your actual SDF
+    return 0.0; //:) insert sceneSDF
+}
+
+fn mix3f(a: vec3f, b: vec3f, t: f32) -> vec3f {
+    return a * (1.0f - t) + b * t;
 }
 
 fn gridPosToWorldPos(gridPos: vec3u) -> vec3f {
@@ -550,7 +552,7 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             let p1_world = cornerWorldPositions[c2_idx];
             
             let t = findEdgeIntersection(val0, val1);
-            let intersectionPos = mix(p0_world, p1_world, t);
+            let intersectionPos = mix3f(p0_world, p1_world, t);
             let normal = computeGradient(intersectionPos);
 
             qef.ATA[0] = qef.ATA[0] + normal * normal.x;
@@ -827,7 +829,7 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
         let v3_vert_idx = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 1u)); 
 
         if (v0_vert_idx >=0 && v1_vert_idx >=0 && v2_vert_idx >=0 && v3_vert_idx >=0) { 
-            let edge_mid_point = mix(cornerWorldPos_cell[0], cornerWorldPos_cell[1], 0.5); 
+            let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[1], 0.5); 
             let surface_gradient = computeGradient(edge_mid_point);
             let flip = dot(surface_gradient, vec3f(1.0, 0.0, 0.0)) < 0.0; 
             generateQuadIndices(current_triangle_base_write_idx, u32(v0_vert_idx), u32(v1_vert_idx), u32(v2_vert_idx), u32(v3_vert_idx), flip);
@@ -848,7 +850,7 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
         let v3_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 1u)); 
 
         if (v0_vert_idx >=0 && v1_vert_idx >=0 && v2_vert_idx >=0 && v3_vert_idx >=0) {
-            let edge_mid_point = mix(cornerWorldPos_cell[0], cornerWorldPos_cell[2], 0.5); 
+            let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[2], 0.5); 
             let surface_gradient = computeGradient(edge_mid_point);
             let flip = dot(surface_gradient, vec3f(0.0, 1.0, 0.0)) < 0.0;
             generateQuadIndices(current_triangle_base_write_idx, u32(v0_vert_idx), u32(v1_vert_idx), u32(v2_vert_idx), u32(v3_vert_idx), !flip); // Y often flips convention
@@ -869,7 +871,7 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
         let v3_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 1u, 0u)); 
 
         if (v0_vert_idx >=0 && v1_vert_idx >=0 && v2_vert_idx >=0 && v3_vert_idx >=0) {
-            let edge_mid_point = mix(cornerWorldPos_cell[0], cornerWorldPos_cell[4], 0.5); 
+            let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[4], 0.5); 
             let surface_gradient = computeGradient(edge_mid_point);
             let flip = dot(surface_gradient, vec3f(0.0, 0.0, 1.0)) < 0.0;
             generateQuadIndices(current_triangle_base_write_idx, u32(v0_vert_idx), u32(v1_vert_idx), u32(v2_vert_idx), u32(v3_vert_idx), flip);

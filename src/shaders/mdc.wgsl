@@ -33,41 +33,41 @@ struct QEFData {
 @group(0) @binding(0) var<uniform> uniforms: SharedUniforms;
 
 // Pass 1: Cell Classification
-@group(1) @binding(0) var<storage, read_write> activeCellFlags: array<u32>; // Bit-packed flags
+@group(0) @binding(1) var<storage, read_write> activeCellFlags: array<u32>; // Bit-packed flags
 
 // Pass 2: Active Cell Compaction
 // Pass 2a (Count) uses activeCellFlagsIn_compaction, writes counts to activeCellIndices_compaction
 // Pass 2b (Prefix Sum Workgroup) reads counts from activeCellIndices_compaction, writes partial sums and workgroup totals to activeCellIndices_compaction
 // Pass 2c (Add Offsets) reads partial sums and workgroup totals from activeCellIndices_compaction, writes exclusive prefix sums to activeCellIndices_compaction
 // Pass 2d (Expand) reads activeCellFlagsIn_compaction and exclusive prefix sums from activeCellIndices_compaction, writes expanded cell indices to activeCellIndices_compaction, writes total activeCellCount_compaction
-@group(2) @binding(0) var<storage, read> activeCellFlagsIn_compaction: array<u32>; // Input for 2a, 2d (this is 'activeCellFlags' from Pass 1)
-@group(2) @binding(1) var<storage, read_write> activeCellIndices_compaction: array<u32>; // Used for counts, prefix sums, and final compacted indices
-@group(2) @binding(2) var<storage, read_write> activeCellCount_compaction: u32; // Output of Pass 2d
+@group(0) @binding(2) var<storage, read> activeCellFlagsIn_compaction: array<u32>; // Input for 2a, 2d (this is 'activeCellFlags' from Pass 1)
+@group(0) @binding(3) var<storage, read_write> activeCellIndices_compaction: array<u32>; // Used for counts, prefix sums, and final compacted indices
+@group(0) @binding(4) var<storage, read_write> activeCellCount_compaction: u32; // Output of Pass 2d
 
 // Pass 3: Edge Detection
-@group(3) @binding(0) var<storage, read> activeCellIndicesIn_edge: array<u32>; // Compacted list of active cell indices (output of Pass 2d)
-@group(3) @binding(1) var<storage, read_write> edgeCrossingsX: array<EdgeCrossing>;
-@group(3) @binding(2) var<storage, read_write> edgeCrossingsY: array<EdgeCrossing>;
-@group(3) @binding(3) var<storage, read_write> edgeCrossingsZ: array<EdgeCrossing>;
-@group(3) @binding(4) var<storage, read_write> cellQEFData_edge: array<QEFData>; // QEF data per active cell
-@group(3) @binding(5) var<storage, read> activeCellCount_edgeInput: u32; // Total active cells (output of Pass 2d)
+@group(0) @binding(5) var<storage, read> activeCellIndicesIn_edge: array<u32>; // Compacted list of active cell indices (output of Pass 2d)
+@group(0) @binding(6) var<storage, read_write> edgeCrossingsX: array<EdgeCrossing>;
+@group(0) @binding(7) var<storage, read_write> edgeCrossingsY: array<EdgeCrossing>;
+@group(0) @binding(8) var<storage, read_write> edgeCrossingsZ: array<EdgeCrossing>;
+@group(0) @binding(9) var<storage, read_write> cellQEFData_edge: array<QEFData>; // QEF data per active cell
+@group(0) @binding(10) var<storage, read> activeCellCount_edgeInput: u32; // Total active cells (output of Pass 2d)
 
 // Pass 4: Vertex Generation
-@group(4) @binding(0) var<storage, read> activeCellIndicesIn_vertex: array<u32>; // Compacted list (not strictly needed if vertices map 1:1 to active cells)
-@group(4) @binding(1) var<storage, read> cellQEFDataIn_vertex: array<QEFData>;    // QEF data per active cell (output of Pass 3)
-@group(4) @binding(2) var<storage, read_write> vertices: array<Vertex>;          // Output vertices
-@group(4) @binding(3) var<storage, read> activeCellCount_vertexInput: u32;   // Total active cells (output of Pass 2d)
+@group(0) @binding(11) var<storage, read> activeCellIndicesIn_vertex: array<u32>; // Compacted list (not strictly needed if vertices map 1:1 to active cells)
+@group(0) @binding(12) var<storage, read> cellQEFDataIn_vertex: array<QEFData>;    // QEF data per active cell (output of Pass 3)
+@group(0) @binding(13) var<storage, read_write> vertices: array<Vertex>;          // Output vertices
+@group(0) @binding(14) var<storage, read> activeCellCount_vertexInput: u32;   // Total active cells (output of Pass 2d)
 
 // Pass 5: Face Generation
 // Pass 5a (Count Triangles) uses activeCellIndicesIn_face, activeCellFlagsInput_face, activeCellCount_faceInput, writes counts to triangleOffsets_face
 // Pass 5b (Prefix Sum Triangles) uses activeCellCount_faceInput, reads counts from triangleOffsets_face, writes prefix sums to triangleOffsets_face, writes total indexCount_face
 // Pass 5c (Generate Triangles) uses activeCellIndicesIn_face, activeCellFlagsInput_face, activeCellCount_faceInput, triangleOffsets_face, writes to indices
-@group(5) @binding(0) var<storage, read> activeCellIndicesIn_face: array<u32>;     // Compacted list of active cell indices
-@group(5) @binding(1) var<storage, read> activeCellFlagsInput_face: array<u32>; // Original cell flags (output of Pass 1)
-@group(5) @binding(2) var<storage, read_write> indices: array<u32>;              // Output triangle indices
-@group(5) @binding(3) var<storage, read_write> indexCount_face: u32;               // Total number of indices (output of Pass 5b)
-@group(5) @binding(4) var<storage, read_write> triangleOffsets_face: array<u32>;   // Per-cell triangle counts, then prefix sums
-@group(5) @binding(5) var<storage, read> activeCellCount_faceInput: u32;       // Total active cells (output of Pass 2d)
+@group(0) @binding(15) var<storage, read> activeCellIndicesIn_face: array<u32>;     // Compacted list of active cell indices
+@group(0) @binding(16) var<storage, read> activeCellFlagsInput_face: array<u32>; // Original cell flags (output of Pass 1)
+@group(0) @binding(17) var<storage, read_write> indices: array<u32>;              // Output triangle indices
+@group(0) @binding(18) var<storage, read_write> indexCount_face: u32;               // Total number of indices (output of Pass 5b)
+@group(0) @binding(19) var<storage, read_write> triangleOffsets_face: array<u32>;   // Per-cell triangle counts, then prefix sums
+@group(0) @binding(20) var<storage, read> activeCellCount_faceInput: u32;       // Total active cells (output of Pass 2d)
 
 
 // ============================== UTILITY FUNCTIONS ==============================

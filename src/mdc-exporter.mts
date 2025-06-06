@@ -198,106 +198,156 @@ export class MDCExport {
 
         // --- 3. Create Bind Groups ---
         // Bind Group 0 (Uniforms) - used by many passes, create once
-        const bindGroup0 = this.#helper.createBindGroup(0, "BindGroup0 Uniforms", p1_cellClassification, [0, uniformBuffer])
 
-        const bindGroupPass1 = this.#helper.createBindGroup(1, "BindGroup Pass1", p1_cellClassification, [0, activeCellFlagsBuffer])
+        const bindGroupPass1 = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass1",
+            p1_cellClassification,
+            [0, uniformBuffer],
+            [1, activeCellFlagsBuffer]
+        )
 
-        const bindGroupPass2 = this.#helper.createBindGroup(
-            2,
-            "BindGroup Pass2",
+        const bindGroupPass2a = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass2a",
             p2a_countActiveCells,
-            [0, activeCellFlagsBuffer], // activeCellFlagsIn_compaction
-            [1, activeCellIndicesCompactionBuffer], // activeCellIndices_compaction
-            [2, activeCellCountCompactionBuffer] // activeCellCount_compaction
+            [0, uniformBuffer],
+            [2, activeCellFlagsBuffer], // activeCellFlagsIn_compaction
+            [3, activeCellIndicesCompactionBuffer] // activeCellIndices_compaction
+        )
+        const bindGroupPass2b = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass2b",
+            p2b_prefixSumWorkgroup,
+            [0, uniformBuffer],
+            [3, activeCellIndicesCompactionBuffer] // activeCellIndices_compaction
+        )
+        const bindGroupPass2c = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass2c",
+            p2c_addWorkgroupOffsets,
+            [0, uniformBuffer],
+            [3, activeCellIndicesCompactionBuffer] // activeCellIndices_compaction
+        )
+        const bindGroupPass2d = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass2d",
+            p2d_expandActiveCells,
+            [0, uniformBuffer],
+            [2, activeCellFlagsBuffer], // activeCellFlagsIn_compaction
+            [3, activeCellIndicesCompactionBuffer], // activeCellIndices_compaction
+            [4, activeCellCountCompactionBuffer] // activeCellCount_compaction
         )
 
         const bindGroupPass3 = this.#helper.createBindGroup(
-            3,
+            0,
             "BindGroup Pass3",
             p3_edgeDetection,
-            [0, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_edge
-            [1, edgeCrossingsXBuffer],
-            [2, edgeCrossingsYBuffer],
-            [3, edgeCrossingsZBuffer],
-            [4, cellQEFDataBuffer], // cellQEFData_edge
-            [5, activeCellCountCompactionBuffer] // activeCellCount_edgeInput
+            [0, uniformBuffer],
+            [5, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_edge
+            [6, edgeCrossingsXBuffer],
+            [7, edgeCrossingsYBuffer],
+            [8, edgeCrossingsZBuffer],
+            [9, cellQEFDataBuffer], // cellQEFData_edge
+            [10, activeCellCountCompactionBuffer] // activeCellCount_edgeInput
         )
 
         const bindGroupPass4 = this.#helper.createBindGroup(
-            4,
+            0,
             "BindGroup Pass4",
             p4_vertexGeneration,
-            [0, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_vertex (can be same as edge)
-            [1, cellQEFDataBuffer], // cellQEFDataIn_vertex
-            [2, verticesBuffer],
-            [3, activeCellCountCompactionBuffer] // activeCellCount_vertexInput
+            // [10, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_vertex (can be same as edge)
+            [0, uniformBuffer],
+            [12, cellQEFDataBuffer], // cellQEFDataIn_vertex
+            [13, verticesBuffer],
+            [14, activeCellCountCompactionBuffer] // activeCellCount_vertexInput
         )
 
-        const bindGroupPass5 = this.#helper.createBindGroup(
-            5,
-            "BindGroup Pass5",
+        const bindGroupPass5a = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass5a",
             p5a_countTriangles,
-            [0, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_face
-            [1, activeCellFlagsBuffer], // activeCellFlagsInput_face
-            [2, indicesBuffer],
-            [3, indexCountFaceBuffer],
-            [4, triangleOffsetsBuffer],
-            [5, activeCellCountCompactionBuffer] // activeCellCount_faceInput
+            [0, uniformBuffer],
+            [15, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_face
+            [16, activeCellFlagsBuffer], // activeCellFlagsInput_face
+            // [16, indicesBuffer],
+            // [17, indexCountFaceBuffer],
+            [19, triangleOffsetsBuffer],
+            [20, activeCellCountCompactionBuffer] // activeCellCount_faceInput
         )
 
+        const bindGroupPass5b = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass5b",
+            p5b_prefixSumTriangles,
+            [18, indexCountFaceBuffer],
+            [19, triangleOffsetsBuffer],
+            [20, activeCellCountCompactionBuffer] // activeCellCount_faceInput
+        )
+        const bindGroupPass5c = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass5c",
+            p5c_generateTriangles,
+            [0, uniformBuffer],
+            [15, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_face
+            [16, activeCellFlagsBuffer], // activeCellFlagsInput_face
+            [17, indicesBuffer],
+            [19, triangleOffsetsBuffer],
+            [20, activeCellCountCompactionBuffer] // activeCellCount_faceInput
+        )
         // --- 4. Encode and Submit Commands ---
         const ce = this.#device.createCommandEncoder({ label: "computeMDC" })
 
         // Pass 1: Cell Classification
-        let passEncoder = this.#helper.beginComputePass(ce, p1_cellClassification, bindGroup0, bindGroupPass1)
+        let passEncoder = this.#helper.beginComputePass(ce, p1_cellClassification, bindGroupPass1)
         passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 32)) // WGSL has @workgroup_size(32,1,1) but totalGridCells / 32 dispatches. totalU32sInFlags is already totalGridCells/32 essentially.
         passEncoder.end()
 
         // Pass 2a: Count Active Cells
-        passEncoder = this.#helper.beginComputePass(ce, p2a_countActiveCells, bindGroup0, bindGroupPass2)
+        passEncoder = this.#helper.beginComputePass(ce, p2a_countActiveCells, bindGroupPass2a)
         passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 256))
         passEncoder.end()
 
         // Pass 2b: Prefix Sum Workgroup
-        passEncoder = this.#helper.beginComputePass(ce, p2b_prefixSumWorkgroup, bindGroup0, bindGroupPass2)
+        passEncoder = this.#helper.beginComputePass(ce, p2b_prefixSumWorkgroup, bindGroupPass2b)
         passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 256))
         passEncoder.end()
 
         // Pass 2c: Add Workgroup Offsets
         // Note: The WGSL for 2c has limitations for >256 blocks if not careful.
-        passEncoder = this.#helper.beginComputePass(ce, p2c_addWorkgroupOffsets, bindGroup0, bindGroupPass2)
+        passEncoder = this.#helper.beginComputePass(ce, p2c_addWorkgroupOffsets, bindGroupPass2c)
         passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 256))
         passEncoder.end()
 
         // Pass 2d: Expand Active Cells
-        passEncoder = this.#helper.beginComputePass(ce, p2d_expandActiveCells, bindGroup0, bindGroupPass2)
+        passEncoder = this.#helper.beginComputePass(ce, p2d_expandActiveCells, bindGroupPass2d)
         passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 256))
         passEncoder.end()
 
         // Pass 3: Edge Detection
         // Dispatching based on maxActiveCells. Shader should handle out-of-bounds if actual count is lower.
-        passEncoder = this.#helper.beginComputePass(ce, p3_edgeDetection, bindGroup0, bindGroupPass3)
+        passEncoder = this.#helper.beginComputePass(ce, p3_edgeDetection, bindGroupPass3)
         passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 64))
         passEncoder.end()
 
         // Pass 4: Vertex Generation
-        passEncoder = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroup0, bindGroupPass4)
+        passEncoder = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
         passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 64))
         passEncoder.end()
 
         // Pass 5a: Count Triangles
-        passEncoder = this.#helper.beginComputePass(ce, p5a_countTriangles, bindGroup0, bindGroupPass5)
+        passEncoder = this.#helper.beginComputePass(ce, p5a_countTriangles, bindGroupPass5a)
         passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 64))
         passEncoder.end()
 
         // Pass 5b: Prefix Sum Triangles
         // Note: WGSL for 5b also has limitations for >256 active cells if not part of a larger scan.
-        passEncoder = this.#helper.beginComputePass(ce, p5b_prefixSumTriangles, bindGroup0, bindGroupPass5)
+        passEncoder = this.#helper.beginComputePass(ce, p5b_prefixSumTriangles, bindGroupPass5b)
         passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 256))
         passEncoder.end()
 
         // Pass 5c: Generate Triangles
-        passEncoder = this.#helper.beginComputePass(ce, p5c_generateTriangles, bindGroup0, bindGroupPass5)
+        passEncoder = this.#helper.beginComputePass(ce, p5c_generateTriangles, bindGroupPass5c)
         passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 64))
         passEncoder.end()
 
@@ -341,19 +391,7 @@ export class MDCExport {
             console.log("No indices generated.")
         }
 
-        // --- Cleanup (Important for long-running apps) ---
-        uniformBuffer.destroy()
-        activeCellFlagsBuffer.destroy()
-        activeCellIndicesCompactionBuffer.destroy()
-        activeCellCountCompactionBuffer.destroy()
-        edgeCrossingsXBuffer.destroy()
-        edgeCrossingsYBuffer.destroy()
-        edgeCrossingsZBuffer.destroy()
-        cellQEFDataBuffer.destroy()
-        verticesBuffer.destroy()
-        triangleOffsetsBuffer.destroy()
-        indexCountFaceBuffer.destroy()
-        indicesBuffer.destroy()
+        this.#helper
 
         console.log("MDC export process finished.")
         console.log("MDC export process finished.")

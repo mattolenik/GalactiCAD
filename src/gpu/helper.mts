@@ -48,18 +48,35 @@ export class GPUHelper {
         })
     }
 
-    createBindGroup(groupID: number, label: string, pipeline: GPUComputePipeline | GPURenderPipeline, bindings: Binding[]) {
-        return this.#device.createBindGroup({
-            label,
-            layout: pipeline.getBindGroupLayout(groupID),
-            entries: bindings.map(v => ({
-                binding: v.binding,
-                resource: {
-                    buffer: v.buffer,
-                    label: `group ${groupID} binding ${v.binding} ${label}`,
-                },
-            })),
-        })
+    createBindGroup(
+        groupID: number,
+        label: string,
+        pipeline: GPUComputePipeline | GPURenderPipeline,
+        bindings: Binding[]
+    ): [groupID: number, bindgroup: GPUBindGroup] {
+        return [
+            groupID,
+            this.#device.createBindGroup({
+                label,
+                layout: pipeline.getBindGroupLayout(groupID),
+                entries: bindings.map(v => ({
+                    binding: v.binding,
+                    resource: {
+                        buffer: v.buffer,
+                        label: `group ${groupID} binding ${v.binding} ${label}`,
+                    },
+                })),
+            }),
+        ]
+    }
+
+    beginComputePass(ce: GPUCommandEncoder, pipeline: GPUComputePipeline, ...bindgroups: [number, GPUBindGroup][]) {
+        const pass = ce.beginComputePass({ label: pipeline.label })
+        pass.setPipeline(pipeline)
+        for (const [group, binding] of bindgroups) {
+            pass.setBindGroup(group, binding)
+        }
+        return pass
     }
 
     async readBufferData(buffer: GPUBuffer): Promise<ArrayBuffer> {

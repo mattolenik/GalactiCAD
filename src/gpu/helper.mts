@@ -115,8 +115,3 @@ export class GPUHelper implements Disposable {
         this.destroyAllBuffers()
     }
 }
-
-export type Binding = {
-    binding: number
-    buffer: GPUBuffer
-}

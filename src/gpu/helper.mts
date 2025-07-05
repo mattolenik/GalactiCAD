@@ -17,6 +17,7 @@ export class GPUHelper implements Disposable {
         }
 
         const device = await adapter.requestDevice({
+            label: "gpuHelperDevice",
             requiredLimits: {
                 maxStorageBuffersPerShaderStage: 10,
                 maxComputeInvocationsPerWorkgroup: 1024,
@@ -69,7 +70,7 @@ export class GPUHelper implements Disposable {
                     binding,
                     resource: {
                         buffer,
-                        label: `group ${groupID} binding ${binding} ${label}`,
+                        label: `group_${groupID}_binding_${binding}_${label}`,
                     },
                 })),
             }),

@@ -20,6 +20,7 @@ struct VertexOutput {
     @location(0) uv: vec2f,
 }
 
+// The contents of sceneSDF are replaced at runtime, do not modify this function.
 fn sceneSDF(p: vec3f) -> f32 {
     return 0.0; //:) insert sceneSDF
 }

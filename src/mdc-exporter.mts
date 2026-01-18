@@ -126,13 +126,14 @@ export class MDCExport {
         )
 
         // Pass 2 Buffers
-        // activeCellIndices_compaction needs to be large enough for:
-        // 1. Counts: totalU32sInFlags elements
-        // 2. Workgroup totals for prefix sum: ceil(totalU32sInFlags / 256) elements
-        // 3. Final compacted indices: maxActiveCells elements
-        const sizeForCountsAndTotals = (totalU32sInFlags + Math.ceil(totalU32sInFlags / 256)) * Uint32Array.BYTES_PER_ELEMENT
-        const sizeForCompactedIndices = maxActiveCells * Uint32Array.BYTES_PER_ELEMENT
-        const activeCellIndicesCompactionBufferSize = Math.max(sizeForCountsAndTotals, sizeForCompactedIndices)
+        // activeCellIndices_compaction layout (single buffer, non-overlapping regions):
+        // - [0 .. totalU32sInFlags)                         : counts / prefix sums (Pass 2a-2c)
+        // - [totalU32sInFlags .. totalU32sInFlags+numWg)    : workgroup totals (Pass 2b)
+        // - [baseOffset .. baseOffset+maxActiveCells)       : compacted active cell indices (Pass 2d)
+        const numWorkgroupsForCounts = Math.ceil(totalU32sInFlags / 256)
+        const baseOffsetU32 = totalU32sInFlags + numWorkgroupsForCounts
+        const activeCellIndicesCompactionBufferSize =
+            (baseOffsetU32 + maxActiveCells) * Uint32Array.BYTES_PER_ELEMENT
         const activeCellIndicesCompactionBuffer = this.#helper.createBuffer(
             "ActiveCellIndicesCompaction",
             activeCellIndicesCompactionBufferSize,
@@ -182,6 +183,11 @@ export class MDCExport {
             maxActiveCells * Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         )
+        const triangleWorkgroupOffsetsBuffer = this.#helper.createBuffer(
+            "TriangleWorkgroupOffsets",
+            Math.ceil(maxActiveCells / 256) * Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        )
         const indexCountFaceBuffer = this.#helper.createBuffer(
             "IndexCountFace",
             Uint32Array.BYTES_PER_ELEMENT,
@@ -202,6 +208,14 @@ export class MDCExport {
         const p4_vertexGeneration = this.#helper.createComputePipeline(mdcShaderModule, "vertexGeneration_Pass4")
         const p5a_countTriangles = this.#helper.createComputePipeline(mdcShaderModule, "countTriangles_Pass5a")
         const p5b_prefixSumTriangles = this.#helper.createComputePipeline(mdcShaderModule, "prefixSumTriangles_Pass5b")
+        const p5b2_prefixSumTriangleWorkgroups = this.#helper.createComputePipeline(
+            mdcShaderModule,
+            "prefixSumTriangleWorkgroups_Pass5b2"
+        )
+        const p5b3_addTriangleWorkgroupOffsets = this.#helper.createComputePipeline(
+            mdcShaderModule,
+            "addTriangleWorkgroupOffsets_Pass5b3"
+        )
         const p5c_generateTriangles = this.#helper.createComputePipeline(mdcShaderModule, "generateTriangles_Pass5c")
 
         // --- 3. Create Bind Groups ---
@@ -264,8 +278,8 @@ export class MDCExport {
             0,
             "BindGroup Pass4",
             p4_vertexGeneration,
-            // [10, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_vertex (can be same as edge)
             [0, uniformBuffer],
+            [11, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_vertex
             [12, cellQEFDataBuffer], // cellQEFDataIn_vertex
             [13, verticesBuffer],
             [14, activeCellCountCompactionBuffer] // activeCellCount_vertexInput
@@ -288,9 +302,25 @@ export class MDCExport {
             0,
             "BindGroup Pass5b",
             p5b_prefixSumTriangles,
-            [18, indexCountFaceBuffer],
             [19, triangleOffsetsBuffer],
-            [20, activeCellCountCompactionBuffer] // activeCellCount_faceInput
+            [20, activeCellCountCompactionBuffer], // activeCellCount_faceInput
+            [21, triangleWorkgroupOffsetsBuffer]
+        )
+        const bindGroupPass5b2 = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass5b2",
+            p5b2_prefixSumTriangleWorkgroups,
+            [18, indexCountFaceBuffer],
+            [20, activeCellCountCompactionBuffer], // activeCellCount_faceInput
+            [21, triangleWorkgroupOffsetsBuffer]
+        )
+        const bindGroupPass5b3 = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass5b3",
+            p5b3_addTriangleWorkgroupOffsets,
+            [19, triangleOffsetsBuffer],
+            [20, activeCellCountCompactionBuffer], // activeCellCount_faceInput
+            [21, triangleWorkgroupOffsetsBuffer]
         )
         const bindGroupPass5c = this.#helper.createBindGroup(
             0,
@@ -350,8 +380,17 @@ export class MDCExport {
         passEncoder.end()
 
         // Pass 5b: Prefix Sum Triangles
-        // Note: WGSL for 5b also has limitations for >256 active cells if not part of a larger scan.
+        // Multi-pass scan:
+        // - 5b:  per-workgroup scan of triangle counts; write per-workgroup totals
+        // - 5b2: scan workgroup totals; write indexCount
+        // - 5b3: add workgroup offsets to per-cell offsets
         passEncoder = this.#helper.beginComputePass(ce, p5b_prefixSumTriangles, bindGroupPass5b)
+        passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 256))
+        passEncoder.end()
+        passEncoder = this.#helper.beginComputePass(ce, p5b2_prefixSumTriangleWorkgroups, bindGroupPass5b2)
+        passEncoder.dispatchWorkgroups(1)
+        passEncoder.end()
+        passEncoder = this.#helper.beginComputePass(ce, p5b3_addTriangleWorkgroupOffsets, bindGroupPass5b3)
         passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 256))
         passEncoder.end()
 

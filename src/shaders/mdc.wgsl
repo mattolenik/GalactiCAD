@@ -68,6 +68,7 @@ struct QEFData {
 @group(0) @binding(18) var<storage, read_write> indexCount_face: u32;               // Total number of indices (output of Pass 5b)
 @group(0) @binding(19) var<storage, read_write> triangleOffsets_face: array<u32>;   // Per-cell triangle counts, then prefix sums
 @group(0) @binding(20) var<storage, read> activeCellCount_faceInput: u32;       // Total active cells (output of Pass 2d)
+@group(0) @binding(21) var<storage, read_write> triangleWorkgroupOffsets_face: array<u32>; // workgroup totals -> workgroup exclusive offsets
 
 
 // ============================== UTILITY FUNCTIONS ==============================
@@ -97,6 +98,21 @@ fn gridPosToIndex(pos: vec3u) -> u32 {
     // This function assumes valid pos.
     return pos.x + pos.y * uniforms.gridDimensions.x +
            pos.z * uniforms.gridDimensions.x * uniforms.gridDimensions.y;
+}
+
+fn totalU32sInFlags() -> u32 {
+    return (uniforms.gridDimensions.x * uniforms.gridDimensions.y * uniforms.gridDimensions.z + 31u) / 32u;
+}
+
+// Base offset into activeCellIndices_compaction where the compacted list is stored.
+// Layout is:
+// - [0 .. totalU32sInFlags)              : counts/prefix sums
+// - [totalU32sInFlags .. +numWorkgroups) : workgroup totals
+// - [baseOffset .. ]                      : compacted cell indices
+fn activeCellIndexListBaseOffset() -> u32 {
+    let n = totalU32sInFlags();
+    let wg = (n + 255u) / 256u;
+    return n + wg;
 }
 
 // Gets the grid coordinates of one of the 8 corners of a cell.
@@ -137,8 +153,8 @@ fn isCellActive(cellPos: vec3u) -> bool {
     let arrayIndex = cellIndex / 32u;
     let bitIndex = cellIndex % 32u;
 
-    let totalU32sInFlags = (uniforms.gridDimensions.x * uniforms.gridDimensions.y * uniforms.gridDimensions.z + 31u) / 32u;
-    if (arrayIndex >= totalU32sInFlags || arrayIndex >= arrayLength(&activeCellFlagsInput_face)) {
+    let nFlags = totalU32sInFlags();
+    if (arrayIndex >= nFlags || arrayIndex >= arrayLength(&activeCellFlagsInput_face)) {
         return false; // Out of bounds for the flags array
     }
     return (activeCellFlagsInput_face[arrayIndex] & (1u << bitIndex)) != 0u;
@@ -478,6 +494,7 @@ fn expandActiveCells_Pass2d(
 ) {
     let u32_block_id = globalId.x; 
     let num_u32_blocks_in_flags = (uniforms.gridDimensions.x * uniforms.gridDimensions.y * uniforms.gridDimensions.z + 31u) / 32u;
+    let baseOffset = activeCellIndexListBaseOffset();
 
     // Using activeCellFlagsIn_compaction as defined in bind group
     if (u32_block_id < num_u32_blocks_in_flags && 
@@ -496,9 +513,9 @@ fn expandActiveCells_Pass2d(
                 if ((flags_for_this_block & (1u << bit_pos)) != 0u) {
                     let actual_cell_flat_idx = first_cell_flat_idx_in_this_block + bit_pos;
                     if (actual_cell_flat_idx < uniforms.gridDimensions.x * uniforms.gridDimensions.y * uniforms.gridDimensions.z) {
-                        let final_compacted_array_write_idx = output_base_storage_idx + current_output_offset_within_block;
+                        let final_compacted_array_write_idx = baseOffset + output_base_storage_idx + current_output_offset_within_block;
                         if (final_compacted_array_write_idx < arrayLength(&activeCellIndices_compaction)) { 
-                             activeCellIndices_compaction[final_compacted_array_write_idx] = actual_cell_flat_idx;
+                            activeCellIndices_compaction[final_compacted_array_write_idx] = actual_cell_flat_idx;
                         }
                         current_output_offset_within_block = current_output_offset_within_block + 1u;
                     }
@@ -532,9 +549,11 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
     let active_cell_array_idx = globalId.x; 
 
     let totalActiveCells = activeCellCount_edgeInput; 
-    if (active_cell_array_idx >= totalActiveCells || active_cell_array_idx >= arrayLength(&activeCellIndicesIn_edge)) { return; }
+    let baseOffset = activeCellIndexListBaseOffset();
+    if (active_cell_array_idx >= totalActiveCells) { return; }
+    if (baseOffset + active_cell_array_idx >= arrayLength(&activeCellIndicesIn_edge)) { return; }
 
-    let cellFlatIndex = activeCellIndicesIn_edge[active_cell_array_idx];
+    let cellFlatIndex = activeCellIndicesIn_edge[baseOffset + active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
 
     var qef = QEFData(mat3x3f(), vec3f(0.0), vec3f(0.0), 0u);
@@ -612,7 +631,30 @@ fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
     if (active_cell_array_idx >= totalActiveCells || active_cell_array_idx >= arrayLength(&cellQEFDataIn_vertex)) { return; }
 
     let qef = cellQEFDataIn_vertex[active_cell_array_idx];
-    let vertexPos = solveQEF(qef);
+    // Constrain the QEF solution to this cell's bounds to avoid vertices drifting
+    // outside the cell (which causes overhanging/jutting polygons, especially on
+    // anisotropic shapes like rectangular prisms).
+    let baseOffset = activeCellIndexListBaseOffset();
+    if (baseOffset + active_cell_array_idx >= arrayLength(&activeCellIndicesIn_vertex)) { return; }
+    let cellFlatIndex = activeCellIndicesIn_vertex[baseOffset + active_cell_array_idx];
+    let cellPos = gridIndexTo3D(cellFlatIndex);
+    let cellMin = gridPosToWorldPos(cellPos);
+    let cellMax = cellMin + vec3f(uniforms.voxelSize);
+
+    var vertexPos = solveQEF(qef);
+    // Constrained DC strategy:
+    // - If the unconstrained QEF solution is inside the cell, keep it (best smoothness).
+    // - If it falls outside, DON'T hard-clamp it (that creates a voxel/cube look);
+    //   instead fall back to the cell mass point (average of edge intersections),
+    //   clamped to the cell bounds.
+    let outside = any(vertexPos < cellMin) || any(vertexPos > cellMax);
+    if (outside) {
+        var mp = cellMin + vec3f(uniforms.voxelSize * 0.5);
+        if (qef.numPoints > 0u) {
+            mp = qef.massPoint / f32(qef.numPoints);
+        }
+        vertexPos = clamp(mp, cellMin, cellMax);
+    }
     
     var vertexNormal = computeGradient(vertexPos); 
     if (qef.numPoints == 0u) { 
@@ -669,9 +711,10 @@ fn areFourCellsAroundZEdgeActive(cellPos: vec3u) -> bool {
 
 fn findVertexIndexForCell(targetCellPos: vec3u) -> i32 {
     let totalActive = activeCellCount_faceInput; 
+    let baseOffset = activeCellIndexListBaseOffset();
     for (var i = 0u; i < totalActive; i = i + 1u) {
-        if (i >= arrayLength(&activeCellIndicesIn_face)) { break; } 
-        let currentCellFlatIndex = activeCellIndicesIn_face[i];
+        if (baseOffset + i >= arrayLength(&activeCellIndicesIn_face)) { break; } 
+        let currentCellFlatIndex = activeCellIndicesIn_face[baseOffset + i];
         if (all(gridIndexTo3D(currentCellFlatIndex) == targetCellPos)) {
             return i32(i); 
         }
@@ -686,9 +729,11 @@ fn countTriangles_Pass5a(@builtin(global_invocation_id) globalId: vec3u) {
     let active_cell_array_idx = globalId.x;
 
     let totalActiveCells = activeCellCount_faceInput;
-    if (active_cell_array_idx >= totalActiveCells || active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }
+    let baseOffset = activeCellIndexListBaseOffset();
+    if (active_cell_array_idx >= totalActiveCells) { return; }
+    if (baseOffset + active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }
 
-    let cellFlatIndex = activeCellIndicesIn_face[active_cell_array_idx];
+    let cellFlatIndex = activeCellIndicesIn_face[baseOffset + active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
 
     var cornerSDFValues_cell: array<f32, 8>;
@@ -713,7 +758,10 @@ fn countTriangles_Pass5a(@builtin(global_invocation_id) globalId: vec3u) {
     }
 }
 
-// Pass 5b: Prefix sum on triangle counts
+// Pass 5b: Per-workgroup prefix sum on triangle counts.
+// Outputs:
+// - triangleOffsets_face: per-cell EXCLUSIVE offsets (within workgroup)
+// - triangleWorkgroupOffsets_face[workgroupId.x]: total triangles in this workgroup (will be scanned in 5b2)
 @compute @workgroup_size(256, 1, 1)
 fn prefixSumTriangles_Pass5b(
     @builtin(global_invocation_id) globalId: vec3u, 
@@ -745,28 +793,77 @@ fn prefixSumTriangles_Pass5b(
         exclusive_sum_val = workgroup_triangle_counts_ps[local_idx - 1u];
     }
     
-    // Simplified: This part needs proper multi-block scan logic if totalActiveCellsToProcess > 256
-    // For now, assuming it's handled by dispatching correctly for smaller sets or a more complex scan not shown here.
-    // Add offset from previous workgroups if this is part of a multi-block scan:
-    // var block_offset = 0u; if (workgroupId.x > 0u) { /* get sum of previous blocks' totals */ }
-    // exclusive_sum_val += block_offset;
-
-
     if (element_idx_global < totalActiveCellsToProcess && element_idx_global < arrayLength(&triangleOffsets_face)) {
         triangleOffsets_face[element_idx_global] = exclusive_sum_val; 
     }
 
-    // Determine if this workgroup is the one processing the last element
-    let numWorkgroups = (totalActiveCellsToProcess + 255u) / 256u;
-    if (workgroupId.x == numWorkgroups - 1u ) { 
-        // Determine if this thread is the one that processed the very last element
-        if (local_idx == (totalActiveCellsToProcess - 1u) % 256u && totalActiveCellsToProcess > 0u ) { 
-             let total_triangles = workgroup_triangle_counts_ps[local_idx]; 
-             indexCount_face = total_triangles * 3u;
+    // Store total triangle count for this workgroup (inclusive sum at lane 255)
+    if (local_idx == 255u) {
+        if (workgroupId.x < arrayLength(&triangleWorkgroupOffsets_face)) {
+            triangleWorkgroupOffsets_face[workgroupId.x] = workgroup_triangle_counts_ps[255u];
         }
     }
-    if (totalActiveCellsToProcess == 0u && element_idx_global == 0u) { 
-        indexCount_face = 0u;
+}
+
+// Pass 5b2: Scan workgroup totals (single workgroup, since maxActiveCells <= 32768 => <= 128 workgroups)
+// After this pass:
+// - triangleWorkgroupOffsets_face[i] becomes EXCLUSIVE prefix sum of totals for workgroup i
+// - indexCount_face is written
+@compute @workgroup_size(256, 1, 1)
+fn prefixSumTriangleWorkgroups_Pass5b2(
+    @builtin(local_invocation_id) localId: vec3u
+) {
+    let local_idx = localId.x;
+    let totalActiveCellsToProcess = activeCellCount_faceInput;
+    let numWorkgroups = (totalActiveCellsToProcess + 255u) / 256u;
+
+    var v = 0u;
+    if (local_idx < numWorkgroups && local_idx < arrayLength(&triangleWorkgroupOffsets_face)) {
+        v = triangleWorkgroupOffsets_face[local_idx];
+    }
+    workgroup_triangle_counts_ps[local_idx] = v;
+    workgroupBarrier();
+
+    for (var stride = 1u; stride < 256u; stride = stride << 1u) { 
+        let temp = workgroup_triangle_counts_ps[local_idx];
+        workgroupBarrier();
+        if (local_idx >= stride) {
+            workgroup_triangle_counts_ps[local_idx] = temp + workgroup_triangle_counts_ps[local_idx - stride];
+        }
+        workgroupBarrier();
+    }
+
+    // Write exclusive offsets back
+    if (local_idx < numWorkgroups && local_idx < arrayLength(&triangleWorkgroupOffsets_face)) {
+        var ex = 0u;
+        if (local_idx > 0u) { ex = workgroup_triangle_counts_ps[local_idx - 1u]; }
+        triangleWorkgroupOffsets_face[local_idx] = ex;
+    }
+
+    // Write total index count once
+    if (totalActiveCellsToProcess == 0u) {
+        if (local_idx == 0u) { indexCount_face = 0u; }
+    } else {
+        let last = numWorkgroups - 1u;
+        if (local_idx == last) {
+            let totalTriangles = workgroup_triangle_counts_ps[last];
+            indexCount_face = totalTriangles * 3u;
+        }
+    }
+}
+
+// Pass 5b3: Add workgroup offsets to per-cell offsets to get a global exclusive prefix sum
+@compute @workgroup_size(256, 1, 1)
+fn addTriangleWorkgroupOffsets_Pass5b3(
+    @builtin(global_invocation_id) globalId: vec3u
+) {
+    let element_idx_global = globalId.x;
+    let totalActiveCellsToProcess = activeCellCount_faceInput;
+    if (element_idx_global >= totalActiveCellsToProcess || element_idx_global >= arrayLength(&triangleOffsets_face)) { return; }
+
+    let block = element_idx_global / 256u;
+    if (block < arrayLength(&triangleWorkgroupOffsets_face)) {
+        triangleOffsets_face[element_idx_global] = triangleOffsets_face[element_idx_global] + triangleWorkgroupOffsets_face[block];
     }
 }
 
@@ -815,9 +912,12 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
     let active_cell_array_idx = globalId.x; 
 
     let totalActiveCells = activeCellCount_faceInput;
-    if (active_cell_array_idx >= totalActiveCells || active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face) || active_cell_array_idx >= arrayLength(&triangleOffsets_face)) { return; }
+    let baseOffset = activeCellIndexListBaseOffset();
+    if (active_cell_array_idx >= totalActiveCells) { return; }
+    if (baseOffset + active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }
+    if (active_cell_array_idx >= arrayLength(&triangleOffsets_face)) { return; }
 
-    let cellFlatIndex = activeCellIndicesIn_face[active_cell_array_idx];
+    let cellFlatIndex = activeCellIndicesIn_face[baseOffset + active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
 
     let output_triangle_start_offset_for_this_cell = triangleOffsets_face[active_cell_array_idx];

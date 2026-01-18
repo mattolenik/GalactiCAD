@@ -87,15 +87,19 @@ export class GPUHelper implements Disposable {
     }
 
     async readBufferData(buffer: GPUBuffer, size = buffer.size): Promise<ArrayBuffer> {
+        // WebGPU copy sizes must not exceed either buffer and must be 4-byte aligned.
+        // Callers often want just a prefix of a large SSBO (e.g. actualVertexCount * stride),
+        // so we must copy exactly `size`, not `buffer.size`.
+        const copySize = Math.min(size, buffer.size)
         const readbackBuffer = this.device.createBuffer({
             label: `${buffer.label}_readback`,
             mappedAtCreation: false,
-            size,
+            size: copySize,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })
 
         const ce = this.device.createCommandEncoder()
-        ce.copyBufferToBuffer(buffer, 0, readbackBuffer, 0, buffer.size)
+        ce.copyBufferToBuffer(buffer, 0, readbackBuffer, 0, copySize)
         this.device.queue.submit([ce.finish()])
 
         await readbackBuffer.mapAsync(GPUMapMode.READ)

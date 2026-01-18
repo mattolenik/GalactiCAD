@@ -155,6 +155,21 @@ fn findEdgeIntersection(p0_val: f32, p1_val: f32) -> f32 {
     return clamp((uniforms.isoValue - p0_val) / diff, 0.0, 1.0);
 }
 
+// Edge crossing predicate that is consistent with Pass 1's notion of "active".
+// Pass 1 treats values <= iso as "negative". If one endpoint is exactly on the iso,
+// we still want to treat that as a crossing (at t=0 or t=1) so QEF accumulation
+// doesn't end up with numPoints==0 for "active" cells.
+fn edgeCrossesIso(v0: f32, v1: f32) -> bool {
+    let a = v0 - uniforms.isoValue;
+    let b = v1 - uniforms.isoValue;
+    let eps = 1e-7;
+    let a0 = abs(a) < eps;
+    let b0 = abs(b) < eps;
+    if (a0 && b0) { return false; }        // both exactly on surface: ignore
+    if (a0 || b0) { return true; }         // touches surface at an endpoint
+    return a * b < 0.0;                    // proper sign change
+}
+
 // --- NaN/Inf Helper Functions ---
 fn isNan(x: f32) -> bool {
     let high = 100000000.0; // A large representable float
@@ -415,6 +430,7 @@ fn addWorkgroupOffsets_Pass2c(
 
     let numCountsToSum = (uniforms.gridDimensions.x * uniforms.gridDimensions.y * uniforms.gridDimensions.z + 31u) / 32u;
 
+    // Compute offset from all previous workgroups
     var offset_from_prev_workgroups = 0u;
     if (workgroupId.x > 0u) {
         for (var i = 0u; i < workgroupId.x; i = i + 1u) {
@@ -426,40 +442,31 @@ fn addWorkgroupOffsets_Pass2c(
     }
 
     if (global_idx < numCountsToSum && global_idx < arrayLength(&activeCellIndices_compaction)) {
-        // Read local inclusive sum (which was written by Pass2b to this global_idx)
-        let local_inclusive_sum_val = activeCellIndices_compaction[global_idx];
+        // After Pass 2b, activeCellIndices_compaction[global_idx] contains the INCLUSIVE sum
+        // within this workgroup (sum of elements 0..local_idx in this workgroup).
+        // We need to convert this to an EXCLUSIVE sum globally.
+        //
+        // For exclusive sum:
+        // - If local_idx == 0: exclusive_sum = sum of all previous workgroups only
+        // - If local_idx > 0: exclusive_sum = sum of all previous workgroups + inclusive_sum[global_idx-1]
+        //   (where global_idx-1 is in the same workgroup, so its inclusive sum is what we need)
         
-        var val_from_prev_element_in_wg_local_inclusive = 0u;
-        if (local_idx > 0u) {
-            // This should be the local inclusive sum of the element (global_idx - 1)
-            // As Pass2b wrote its output (local inclusive sums) to activeCellIndices_compaction[global_idx-1]
-            val_from_prev_element_in_wg_local_inclusive = activeCellIndices_compaction[global_idx - 1u];
-        }
-        
-        // The global exclusive sum = (sum of all prior workgroup totals) + (local exclusive sum within this workgroup)
-        // local exclusive sum for local_idx = (local_idx == 0) ? 0 : local_inclusive_sum_of_element[local_idx-1]
-        // However, activeCellIndices_compaction[global_idx-1] is the local inclusive sum of the *previous global element*,
-        // which is correct if global_idx-1 is in the same workgroup.
-        // If local_idx is 0, this previous element is from another workgroup, so its local inclusive sum isn't directly relevant.
-        // The logic should be: global_exclusive_sum[global_idx] = offset_from_prev_workgroups + (local_idx > 0 ? local_inclusive_sum[local_idx-1]_from_Pass2b_shared_mem : 0)
-        // This is where an intermediate buffer for local inclusive sums before adding offsets is cleaner.
-        // Given current structure, let's assume activeCellIndices_compaction[idx] contains local inclusive sums before this pass.
-        // And we are converting it to global exclusive sums.
         var local_exclusive_sum_component = 0u;
-        if(local_idx > 0u) {
-            // We need the local inclusive sum of the item at local_idx-1 from this workgroup's block
-            // This value *was* in workgroup_compaction_counts[local_idx-1] at the end of Pass2b.
-            // If activeCellIndices_compaction[global_idx-1] holds that (because global_idx-1 is in same wg), it's okay.
-            // This simplified approach relies on that assumption.
-             local_exclusive_sum_component = activeCellIndices_compaction[global_idx-1]; // local inclusive sum of previous element in WG
+        if (local_idx > 0u) {
+            // global_idx-1 is guaranteed to be in the same workgroup when local_idx > 0
+            // activeCellIndices_compaction[global_idx-1] contains the inclusive sum of elements
+            // 0..(local_idx-1) in this workgroup, which is exactly the exclusive sum component we need
+            local_exclusive_sum_component = activeCellIndices_compaction[global_idx - 1u];
         }
+        // If local_idx == 0, local_exclusive_sum_component stays 0, which is correct
 
         let global_exclusive_sum = offset_from_prev_workgroups + local_exclusive_sum_component;
         activeCellIndices_compaction[global_idx] = global_exclusive_sum;
+    }
 
-
-    } else if (global_idx == 0u && numCountsToSum > 0u) { 
-         activeCellIndices_compaction[0] = 0u;
+    // Handle the edge case where numCountsToSum == 0 (shouldn't happen in practice, but be safe)
+    if (numCountsToSum == 0u && global_idx == 0u) {
+        activeCellIndices_compaction[0] = 0u;
     }
 }
 
@@ -500,13 +507,21 @@ fn expandActiveCells_Pass2d(
         }
     }
 
-    if (globalId.x == num_u32_blocks_in_flags - 1u && num_u32_blocks_in_flags > 0u) {
-        let exclusive_sum_of_last_block = activeCellIndices_compaction[num_u32_blocks_in_flags - 1u];
-        // Using activeCellFlagsIn_compaction for count
-        let count_in_last_block = countOneBits(activeCellFlagsIn_compaction[num_u32_blocks_in_flags - 1u]);
-        activeCellCount_compaction = exclusive_sum_of_last_block + count_in_last_block;
-    } else if (num_u32_blocks_in_flags == 0u && globalId.x == 0u) { 
-         activeCellCount_compaction = 0u;
+    // Calculate total active cell count
+    // Only the thread processing the last block should write the final count
+    // to avoid race conditions
+    if (num_u32_blocks_in_flags > 0u) {
+        if (globalId.x == num_u32_blocks_in_flags - 1u) {
+            // We're processing the last block - calculate total count
+            let exclusive_sum_of_last_block = activeCellIndices_compaction[num_u32_blocks_in_flags - 1u];
+            let count_in_last_block = countOneBits(activeCellFlagsIn_compaction[num_u32_blocks_in_flags - 1u]);
+            activeCellCount_compaction = exclusive_sum_of_last_block + count_in_last_block;
+        }
+    } else {
+        // Edge case: no blocks at all
+        if (globalId.x == 0u) {
+            activeCellCount_compaction = 0u;
+        }
     }
 }
 
@@ -547,7 +562,7 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         let val0 = cornerSDFValues[c1_idx];
         let val1 = cornerSDFValues[c2_idx];
 
-        if ((val0 - uniforms.isoValue) * (val1 - uniforms.isoValue) < 0.0) {
+        if (edgeCrossesIso(val0, val1)) {
             let p0_world = cornerWorldPositions[c1_idx];
             let p1_world = cornerWorldPositions[c2_idx];
             
@@ -581,7 +596,7 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             }
         }
     }
-    
+
     if (active_cell_array_idx < arrayLength(&cellQEFData_edge)) {
         cellQEFData_edge[active_cell_array_idx] = qef;
     }
@@ -613,19 +628,19 @@ fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
 fn hasEdgeCrossingX(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
     let val0 = cornerSDFValues[0]; 
     let val1 = cornerSDFValues[1]; 
-    return (val0 - uniforms.isoValue) * (val1 - uniforms.isoValue) < 0.0;
+    return edgeCrossesIso(val0, val1);
 }
 
 fn hasEdgeCrossingY(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
     let val0 = cornerSDFValues[0]; 
     let val1 = cornerSDFValues[2]; 
-    return (val0 - uniforms.isoValue) * (val1 - uniforms.isoValue) < 0.0;
+    return edgeCrossesIso(val0, val1);
 }
 
 fn hasEdgeCrossingZ(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
     let val0 = cornerSDFValues[0]; 
     let val1 = cornerSDFValues[4]; 
-    return (val0 - uniforms.isoValue) * (val1 - uniforms.isoValue) < 0.0;
+    return edgeCrossesIso(val0, val1);
 }
 
 fn areFourCellsAroundXEdgeActive(cellPos: vec3u) -> bool {
@@ -857,7 +872,7 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
             current_triangle_base_write_idx = current_triangle_base_write_idx + 6u;
         }
     }
-    
+
     // Z-edge: C(x,y,z) to C(x,y,z+1). Quad vertices from cells:
     // v0_cell: C(x,y,z) (owner)
     // v1_cell: C(x-1,y,z)

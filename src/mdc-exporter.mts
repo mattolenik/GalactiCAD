@@ -1,3 +1,4 @@
+import { saveSTLBufferToDisk } from "./fs/fs.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 
 /**
@@ -15,7 +16,10 @@ interface Vertex {
     normal: [number, number, number]
 }
 
-const SIZEOF_VERTEX = 6 * Float32Array.BYTES_PER_ELEMENT // 24 bytes
+// WGSL storage-buffer layout: vec3f has Align=16, Size=12.
+// struct Vertex { position: vec3f; normal: vec3f; }
+// => position @0..11 (pad to 16), normal @16..27 (pad to 32) => 32-byte stride.
+const SIZEOF_VERTEX = 8 * Float32Array.BYTES_PER_ELEMENT // 32 bytes
 
 /**
  * Represents QEF data.
@@ -52,7 +56,8 @@ const SIZEOF_QEFDATA_STRUCT = 96
  * Total: 24 bytes. (Similar to Vertex, could be 32 if vec3s are padded to 16 byte alignment).
  * Assuming 24 bytes.
  */
-const SIZEOF_EDGECROSSING = 6 * Float32Array.BYTES_PER_ELEMENT // 24 bytes
+// Same alignment story as Vertex (two vec3f fields) => 32-byte stride in storage buffers.
+const SIZEOF_EDGECROSSING = 8 * Float32Array.BYTES_PER_ELEMENT // 32 bytes
 
 export interface MDCParams {
     gridDimX: number
@@ -87,23 +92,24 @@ export class MDCExport {
         const maxIndices = maxTriangles * 3
 
         // --- 1. Create Buffers ---
-        // Uniform Buffer
-        const uniformBufferSize = 16 + 4 + 4 + 16 + 4 + 4 // vec3u + f32 + pad + vec3f + f32 + pad (std140 alignment)
-        // gridDimensions: vec3u (align 16 in std140 due to vec3) -> 12 bytes, use 16
-        // isoValue: f32 (align 4) -> 4 bytes
-        // gridOffset: vec3f (align 16) -> 12 bytes, use 16
-        // voxelSize: f32 (align 4) -> 4 bytes
-        // Corrected UBO layout for std140:
-        // gridDimensions: vec3u (offset 0, size 12, baseAlign 16)
-        // isoValue: f32 (offset 16, size 4, baseAlign 4)
-        // gridOffset: vec3f (offset 32, size 12, baseAlign 16)
-        // voxelSize: f32 (offset 48, size 4, baseAlign 4)
-        // Total size: 52 bytes, padded to next multiple of 16 -> 64 bytes.
-        const uniformBufferData = new ArrayBuffer(64)
+        // Uniform Buffer layout MUST match WGSL "uniform address space layout" rules.
+        //
+        // WGSL types here:
+        // - vec3<u32>/vec3<f32>: Align 16, Size 12
+        // - f32: Align 4, Size 4
+        //
+        // For this struct:
+        // struct SharedUniforms {
+        //   gridDimensions: vec3u,  // offset 0,  size 12
+        //   isoValue: f32,          // offset 12, size 4
+        //   gridOffset: vec3f,      // offset 16, size 12
+        //   voxelSize: f32,         // offset 28, size 4
+        // } // total size rounds up to 32
+        const uniformBufferData = new ArrayBuffer(32)
         new Uint32Array(uniformBufferData, 0, 3).set([gridDimX, gridDimY, gridDimZ])
-        new Float32Array(uniformBufferData, 16, 1).set([isoValue])
-        new Float32Array(uniformBufferData, 32, 3).set([gridOffsetX, gridOffsetY, gridOffsetZ])
-        new Float32Array(uniformBufferData, 48, 1).set([voxelSize])
+        new Float32Array(uniformBufferData, 12, 1).set([isoValue])
+        new Float32Array(uniformBufferData, 16, 3).set([gridOffsetX, gridOffsetY, gridOffsetZ])
+        new Float32Array(uniformBufferData, 28, 1).set([voxelSize])
 
         const uniformBuffer = this.#helper.createBuffer(
             "Uniforms",
@@ -138,6 +144,8 @@ export class MDCExport {
             Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
+        // Explicitly initialize to 0 (though WebGPU buffers are zero-initialized by default)
+        this.#device.queue.writeBuffer(activeCellCountCompactionBuffer, 0, new Uint32Array([0]))
 
         // Pass 3 Buffers
         const edgeCrossingsXBuffer = this.#helper.createBuffer(
@@ -299,8 +307,9 @@ export class MDCExport {
         const ce = this.#device.createCommandEncoder({ label: "computeMDC" })
 
         // Pass 1: Cell Classification
+        // Each workgroup processes one u32 block (32 cells), so we need totalU32sInFlags workgroups
         let passEncoder = this.#helper.beginComputePass(ce, p1_cellClassification, bindGroupPass1)
-        passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 32)) // WGSL has @workgroup_size(32,1,1) but totalGridCells / 32 dispatches. totalU32sInFlags is already totalGridCells/32 essentially.
+        passEncoder.dispatchWorkgroups(totalU32sInFlags)
         passEncoder.end()
 
         // Pass 2a: Count Active Cells
@@ -357,6 +366,46 @@ export class MDCExport {
         // --- 5. Readback and Print Results ---
         console.log("Reading back data from GPU...")
 
+        // Debug: Check flags from Pass 1 to verify cells are being marked as active
+        const flagsData = await this.#helper.readBufferData(activeCellFlagsBuffer, totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT)
+        const flagsArray = new Uint32Array(flagsData)
+        const popcount32 = (v: number) => {
+            // force unsigned 32-bit
+            let x = v >>> 0
+            x = x - ((x >>> 1) & 0x55555555)
+            x = (x & 0x33333333) + ((x >>> 2) & 0x33333333)
+            return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+        }
+
+        // Summarize first few blocks (quick sanity), and compute totals across all blocks.
+        let nonzeroBlocksInFirst10 = 0
+        let activeCellsInFirst10 = 0
+        for (let i = 0; i < Math.min(flagsArray.length, 10); i++) {
+            const count = popcount32(flagsArray[i]!)
+            activeCellsInFirst10 += count
+            if (flagsArray[i] !== 0) {
+                nonzeroBlocksInFirst10++
+                console.log(`Flags block ${i}: 0x${(flagsArray[i]! >>> 0).toString(16)} (${count} bits set)`)
+            }
+        }
+
+        let totalActiveCellsFromFlags = 0
+        let firstNonzeroBlock = -1
+        for (let i = 0; i < flagsArray.length; i++) {
+            const v = flagsArray[i]!
+            if (v !== 0 && firstNonzeroBlock === -1) firstNonzeroBlock = i
+            totalActiveCellsFromFlags += popcount32(v)
+        }
+
+        console.log(`Flags blocks with set bits (first 10): ${nonzeroBlocksInFirst10} of ${Math.min(flagsArray.length, 10)}`)
+        console.log(`Active cells from flags (first 10 blocks): ${activeCellsInFirst10}`)
+        console.log(`Active cells from flags (ALL blocks): ${totalActiveCellsFromFlags}`)
+        if (firstNonzeroBlock === -1) {
+            console.warn("WARNING: No active cells found in Pass 1 flags buffer! Check sceneSDF and grid parameters.")
+        } else if (firstNonzeroBlock >= 10) {
+            console.log(`First nonzero flags block index: ${firstNonzeroBlock}`)
+        }
+
         const activeCountData = await this.#helper.readBufferData(activeCellCountCompactionBuffer)
         const actualActiveCellCount = new Uint32Array(activeCountData)[0]
         console.log(`Actual Active Cell Count: ${actualActiveCellCount}`)
@@ -365,17 +414,30 @@ export class MDCExport {
         const actualIndexCount = new Uint32Array(indexCountData)[0]
         console.log(`Actual Index Count: ${actualIndexCount}`)
 
+        let verts: Float32Array | null = null
         if (actualActiveCellCount > 0) {
             const verticesData = await this.#helper.readBufferData(verticesBuffer, actualActiveCellCount * SIZEOF_VERTEX)
-            const verts = new Float32Array(verticesData)
+            verts = new Float32Array(verticesData)
             console.log(`Vertices (first ${Math.min(10, actualActiveCellCount)} of ${actualActiveCellCount}):`)
-            for (let i = 0; i < Math.min(actualActiveCellCount * (SIZEOF_VERTEX / 4), 10 * (SIZEOF_VERTEX / 4)); i += SIZEOF_VERTEX / 4) {
+            const stride = SIZEOF_VERTEX / 4 // floats per vertex
+            let defaultVertexCount = 0
+            for (let i = 0; i < actualActiveCellCount * stride; i += stride) {
+                // Vertex storage layout: position.xyz at [0..2], padding at [3],
+                // normal.xyz at [4..6], padding at [7]
+                const px = verts[i]!
+                const py = verts[i + 1]!
+                const pz = verts[i + 2]!
+                const nx = verts[i + 4]!
+                const ny = verts[i + 5]!
+                const nz = verts[i + 6]!
+                if (px === 0 && py === 0 && pz === 0 && nx === 0 && ny === 1 && nz === 0) defaultVertexCount++
                 console.log(
-                    `  Vertex ${i / (SIZEOF_VERTEX / 4)}: P(x:${verts[i].toFixed(3)}, y:${verts[i + 1].toFixed(3)}, z:${verts[
-                        i + 2
-                    ].toFixed(3)}), N(x:${verts[i + 3].toFixed(3)}, y:${verts[i + 4].toFixed(3)}, z:${verts[i + 5].toFixed(3)})`
+                    `  Vertex ${i / stride}: P(x:${px.toFixed(3)}, y:${py.toFixed(3)}, z:${pz.toFixed(
+                        3
+                    )}), N(x:${nx.toFixed(3)}, y:${ny.toFixed(3)}, z:${nz.toFixed(3)})`
                 )
             }
+            console.log(`Default (0,0,0)/(0,1,0) vertices: ${defaultVertexCount} of ${actualActiveCellCount}`)
         } else {
             console.log("No active cells, so no vertices generated.")
         }
@@ -387,13 +449,61 @@ export class MDCExport {
             for (let i = 0; i < Math.min(actualIndexCount, 30); i += 3) {
                 console.log(`  Triangle ${i / 3}: (${tris[i]}, ${tris[i + 1]}, ${tris[i + 2]})`)
             }
+
+            // --- 6. Export ASCII STL ---
+            if (!verts) {
+                console.warn("Cannot export STL: vertex buffer was not read.")
+            } else {
+                const stride = SIZEOF_VERTEX / 4 // floats per vertex
+                const solidName = "galacticad"
+                const lines: string[] = []
+                lines.push(`solid ${solidName}`)
+
+                const vpos = (vidx: number) => {
+                    const base = vidx * stride
+                    return [verts![base]!, verts![base + 1]!, verts![base + 2]!] as const
+                }
+                const sub = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                    [a[0] - b[0], a[1] - b[1], a[2] - b[2]] as const
+                const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
+                const norm = (a: readonly [number, number, number]) => Math.hypot(a[0], a[1], a[2])
+                const normalize = (a: readonly [number, number, number]) => {
+                    const n = norm(a)
+                    if (!isFinite(n) || n === 0) return [0, 0, 0] as const
+                    return [a[0] / n, a[1] / n, a[2] / n] as const
+                }
+                const f3 = (n: number) => (Math.abs(n) < 1e-12 ? "0" : n.toString())
+
+                for (let i = 0; i < tris.length; i += 3) {
+                    const i0 = tris[i]!
+                    const i1 = tris[i + 1]!
+                    const i2 = tris[i + 2]!
+
+                    const p0 = vpos(i0)
+                    const p1 = vpos(i1)
+                    const p2 = vpos(i2)
+
+                    const nrm = normalize(cross(sub(p1, p0), sub(p2, p0)))
+
+                    lines.push(`  facet normal ${f3(nrm[0])} ${f3(nrm[1])} ${f3(nrm[2])}`)
+                    lines.push(`    outer loop`)
+                    lines.push(`      vertex ${f3(p0[0])} ${f3(p0[1])} ${f3(p0[2])}`)
+                    lines.push(`      vertex ${f3(p1[0])} ${f3(p1[1])} ${f3(p1[2])}`)
+                    lines.push(`      vertex ${f3(p2[0])} ${f3(p2[1])} ${f3(p2[2])}`)
+                    lines.push(`    endloop`)
+                    lines.push(`  endfacet`)
+                }
+
+                lines.push(`endsolid ${solidName}`)
+                const stlText = lines.join("\n") + "\n"
+                const stlBytes = new TextEncoder().encode(stlText)
+                await saveSTLBufferToDisk(stlBytes.buffer, `${solidName}.stl`)
+                console.log(`Wrote ASCII STL: ${tris.length / 3} triangles`)
+            }
         } else {
             console.log("No indices generated.")
         }
-
-        this.#helper
-
-        console.log("MDC export process finished.")
         console.log("MDC export process finished.")
     }
 }

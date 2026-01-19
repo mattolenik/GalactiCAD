@@ -201,15 +201,22 @@ export class SDFRenderer {
 
     async exportSTL(src: string, handle?: FileSystemHandle) {
         this.build(src)
+        // World units are millimeters (mm).
+        // Default export volume is a 1000mm cube centered at the origin: [-500, 500]^3.
+        const DEFAULT_BBOX_MM = 1000
+        const GRID_DIM = 512 // increase for higher resolution (cost grows ~ cubic)
+        const voxelSizeMm = DEFAULT_BBOX_MM / GRID_DIM
+        const half = DEFAULT_BBOX_MM / 2
+
         const params: MDCParams = {
-            gridDimX: 32,
-            gridDimY: 32,
-            gridDimZ: 32,
+            gridDimX: GRID_DIM,
+            gridDimY: GRID_DIM,
+            gridDimZ: GRID_DIM,
             isoValue: 0.0,
-            gridOffsetX: -16.0, // Example: center grid at origin if voxelSize is 1
-            gridOffsetY: -16.0,
-            gridOffsetZ: -16.0,
-            voxelSize: 1.0,
+            gridOffsetX: -half,
+            gridOffsetY: -half,
+            gridOffsetZ: -half,
+            voxelSize: voxelSizeMm,
         }
 
         const mdc = new MDCExport(this.#helper, params)

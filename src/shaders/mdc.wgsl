@@ -86,6 +86,11 @@ const EDGES_PER_CELL: u32 = 12u;
 // or 0xffffffff if that cube edge does not cross the isosurface.
 @group(0) @binding(22) var<storage, read_write> cellEdgeComponents: array<u32>;
 
+// Fast neighbor lookup:
+// Maps a cell flat index (same indexing as activeCellFlags) -> active cell array index,
+// or 0xffffffff when the cell is not active.
+@group(0) @binding(23) var<storage, read_write> cellToActiveIndex: array<u32>;
+
 
 // ============================== UTILITY FUNCTIONS ==============================
 
@@ -129,6 +134,16 @@ fn activeCellIndexListBaseOffset() -> u32 {
     let n = totalU32sInFlags();
     let wg = (n + 255u) / 256u;
     return n + wg;
+}
+
+fn activeIndexForCellPos(cellPos: vec3u) -> i32 {
+    // Cells live in [0 .. gridDimensions-2] in each axis.
+    if (any(cellPos >= uniforms.gridDimensions - 1u)) { return -1; }
+    let cellFlatIndex = gridPosToIndex(cellPos);
+    if (cellFlatIndex >= arrayLength(&cellToActiveIndex)) { return -1; }
+    let idx = cellToActiveIndex[cellFlatIndex];
+    if (idx == 0xffffffffu) { return -1; }
+    return i32(idx);
 }
 
 // Gets the grid coordinates of one of the 8 corners of a cell.
@@ -187,19 +202,37 @@ fn findEdgeIntersection(p0_val: f32, p1_val: f32) -> f32 {
     return clamp((uniforms.isoValue - p0_val) / diff, 0.0, 1.0);
 }
 
-// Edge crossing predicate that is consistent with Pass 1's notion of "active".
-// Pass 1 treats values <= iso as "negative". If one endpoint is exactly on the iso,
-// we still want to treat that as a crossing (at t=0 or t=1) so QEF accumulation
-// doesn't end up with numPoints==0 for "active" cells.
-fn edgeCrossesIso(v0: f32, v1: f32) -> bool {
-    let a = v0 - uniforms.isoValue;
-    let b = v1 - uniforms.isoValue;
-    let eps = 1e-7;
-    let a0 = abs(a) < eps;
-    let b0 = abs(b) < eps;
-    if (a0 && b0) { return false; }        // both exactly on surface: ignore
-    if (a0 || b0) { return true; }         // touches surface at an endpoint
-    return a * b < 0.0;                    // proper sign change
+// Robust grid-vertex classification (3-state) for topology decisions:
+// -1 = inside, +1 = outside, 0 = on-surface (within epsilon band)
+//
+// IMPORTANT: Avoid hash-based tie-breaks here. They are stable, but when many samples
+// fall into the epsilon band (common near CSG seams), they create spatially-correlated
+// alternation -> "checkerboard" missing polygons.
+fn vertexClassAtGridVertex(sdfValue: f32) -> i32 {
+    let d = sdfValue - uniforms.isoValue;
+    let eps = max(1e-7, uniforms.voxelSize * 1e-7);
+    if (d > eps) { return 1; }
+    if (d < -eps) { return -1; }
+    return 0;
+}
+
+fn vertexInsideForCases(sdfValue: f32) -> bool {
+    // Consistently treat "near zero" as inside to avoid cracks.
+    let d = sdfValue - uniforms.isoValue;
+    let eps = max(1e-7, uniforms.voxelSize * 1e-7);
+    return d <= eps;
+}
+
+fn edgeCrossesIso(v0: f32, g0: vec3u, v1: f32, g1: vec3u) -> bool {
+    // Use 3-state logic so "touching" the surface doesn't randomly disappear.
+    // (g0/g1 kept in signature for callsite consistency; not used here.)
+    _ = g0;
+    _ = g1;
+    let c0 = vertexClassAtGridVertex(v0);
+    let c1 = vertexClassAtGridVertex(v1);
+    if (c0 == 0 && c1 == 0) { return false; }
+    if (c0 == 0 || c1 == 0) { return true; }
+    return c0 != c1;
 }
 
 // --- NaN/Inf Helper Functions ---
@@ -432,8 +465,10 @@ fn cellClassification_Pass1(
                 let cornerGridPos = getCellCornerPos(cellPos, i); 
                 let cornerWorldPos = gridPosToWorldPos(cornerGridPos);
                 let sdfValue = sampleSDF(cornerWorldPos);
-                if (sdfValue > uniforms.isoValue) { hasPositive = true; }
-                else { hasNegative = true; }
+                let c = vertexClassAtGridVertex(sdfValue);
+                if (c > 0) { hasPositive = true; }
+                if (c < 0) { hasNegative = true; }
+                if (c == 0) { hasPositive = true; hasNegative = true; } // on-surface => definitely active
                 if (hasPositive && hasNegative) { break; }
             }
             if (hasPositive && hasNegative) {
@@ -626,6 +661,23 @@ fn expandActiveCells_Pass2d(
     }
 }
 
+// Pass 2e: Build cellFlatIndex -> activeCellIdx mapping for O(1) neighbor lookups.
+@compute @workgroup_size(256, 1, 1)
+fn buildCellToActiveIndex_Pass2e(@builtin(global_invocation_id) globalId: vec3u) {
+    let activeIdx = globalId.x;
+    let totalActive = activeCellCount_compaction;
+    if (activeIdx >= totalActive) { return; }
+
+    let baseOffset = activeCellIndexListBaseOffset();
+    let listIdx = baseOffset + activeIdx;
+    if (listIdx >= arrayLength(&activeCellIndices_compaction)) { return; }
+
+    let cellFlatIndex = activeCellIndices_compaction[listIdx];
+    if (cellFlatIndex < arrayLength(&cellToActiveIndex)) {
+        cellToActiveIndex[cellFlatIndex] = activeIdx;
+    }
+}
+
 
 // Pass 3: Edge Detection and QEF Accumulation
 @compute @workgroup_size(64, 1, 1)
@@ -642,8 +694,10 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
 
     var cornerSDFValues: array<f32, 8>;
     var cornerWorldPositions: array<vec3f, 8>;
+    var cornerGridPositions: array<vec3u, 8>;
     for (var i = 0u; i < 8u; i = i + 1u) {
         let cornerGridPos = getCellCornerPos(cellPos, i);
+        cornerGridPositions[i] = cornerGridPos;
         cornerWorldPositions[i] = gridPosToWorldPos(cornerGridPos);
         cornerSDFValues[i] = sampleSDF(cornerWorldPositions[i]);
     }
@@ -665,7 +719,11 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         let c2_idx = edges_info[e][1];
         let val0 = cornerSDFValues[c1_idx];
         let val1 = cornerSDFValues[c2_idx];
-        edgeCrossMask[e] = select(0u, 1u, edgeCrossesIso(val0, val1));
+        edgeCrossMask[e] = select(
+            0u,
+            1u,
+            edgeCrossesIso(val0, cornerGridPositions[c1_idx], val1, cornerGridPositions[c2_idx])
+        );
     }
 
     // Union edge-crossing nodes across faces.
@@ -694,10 +752,10 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             }
         } else if (cnt == 4u) {
             // Ambiguous marching-squares face (checkerboard). Disambiguate by sampling face center.
-            let s0: u32 = select(0u, 1u, cornerSDFValues[fc.x] <= uniforms.isoValue);
-            let s1: u32 = select(0u, 1u, cornerSDFValues[fc.y] <= uniforms.isoValue);
-            let s2: u32 = select(0u, 1u, cornerSDFValues[fc.z] <= uniforms.isoValue);
-            let s3: u32 = select(0u, 1u, cornerSDFValues[fc.w] <= uniforms.isoValue);
+            let s0: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.x]));
+            let s1: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.y]));
+            let s2: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.z]));
+            let s3: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.w]));
             let faceCase = s0 | (s1 << 1u) | (s2 << 2u) | (s3 << 3u);
 
             let faceCenterPos =
@@ -880,21 +938,21 @@ fn getEdgeComponent(activeCellIdx: u32, edgeIdx: u32) -> u32 {
 }
 
 fn hasEdgeCrossingX(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
-    let val0 = cornerSDFValues[0]; 
-    let val1 = cornerSDFValues[1]; 
-    return edgeCrossesIso(val0, val1);
+    let g0 = getCellCornerPos(cellPos, 0u);
+    let g1 = getCellCornerPos(cellPos, 1u);
+    return edgeCrossesIso(cornerSDFValues[0], g0, cornerSDFValues[1], g1);
 }
 
 fn hasEdgeCrossingY(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
-    let val0 = cornerSDFValues[0]; 
-    let val1 = cornerSDFValues[2]; 
-    return edgeCrossesIso(val0, val1);
+    let g0 = getCellCornerPos(cellPos, 0u);
+    let g1 = getCellCornerPos(cellPos, 2u);
+    return edgeCrossesIso(cornerSDFValues[0], g0, cornerSDFValues[2], g1);
 }
 
 fn hasEdgeCrossingZ(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
-    let val0 = cornerSDFValues[0]; 
-    let val1 = cornerSDFValues[4]; 
-    return edgeCrossesIso(val0, val1);
+    let g0 = getCellCornerPos(cellPos, 0u);
+    let g1 = getCellCornerPos(cellPos, 4u);
+    return edgeCrossesIso(cornerSDFValues[0], g0, cornerSDFValues[4], g1);
 }
 
 fn areFourCellsAroundXEdgeActive(cellPos: vec3u) -> bool {
@@ -921,18 +979,8 @@ fn areFourCellsAroundZEdgeActive(cellPos: vec3u) -> bool {
            isCellActive(cellPos - vec3u(1u, 1u, 0u));   
 }
 
-fn findVertexIndexForCell(targetCellPos: vec3u) -> i32 {
-    let totalActive = activeCellCount_faceInput; 
-    let baseOffset = activeCellIndexListBaseOffset();
-    for (var i = 0u; i < totalActive; i = i + 1u) {
-        if (baseOffset + i >= arrayLength(&activeCellIndicesIn_face)) { break; } 
-        let currentCellFlatIndex = activeCellIndicesIn_face[baseOffset + i];
-        if (all(gridIndexTo3D(currentCellFlatIndex) == targetCellPos)) {
-            return i32(i); 
-        }
-    }
-    return -1; 
-}
+// NOTE: previous implementation had an O(N) scan (`findVertexIndexForCell`) which caused
+// O(N^2) work in Pass 5 and can manifest as missing faces / incomplete meshes.
 
 
 // Pass 5a: Count triangles per active cell
@@ -957,9 +1005,9 @@ fn countTriangles_Pass5a(@builtin(global_invocation_id) globalId: vec3u) {
     var numTrianglesForThisCell = 0u;
     if (hasEdgeCrossingX(cellPos, cornerSDFValues_cell) && areFourCellsAroundXEdgeActive(cellPos)) {
         let a0 = i32(active_cell_array_idx);
-        let a1 = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 0u));
-        let a2 = findVertexIndexForCell(cellPos - vec3u(0u, 0u, 1u));
-        let a3 = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 1u));
+        let a1 = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 0u));
+        let a2 = activeIndexForCellPos(cellPos - vec3u(0u, 0u, 1u));
+        let a3 = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 1u));
         if (a0 >= 0 && a1 >= 0 && a2 >= 0 && a3 >= 0) {
             // Local cube edge indices around this X grid edge:
             // owner: (0-1)=0, y-1: (2-3)=1, z-1: (4-5)=2, y-1 z-1: (6-7)=3
@@ -974,9 +1022,9 @@ fn countTriangles_Pass5a(@builtin(global_invocation_id) globalId: vec3u) {
     }
     if (hasEdgeCrossingY(cellPos, cornerSDFValues_cell) && areFourCellsAroundYEdgeActive(cellPos)) {
         let a0 = i32(active_cell_array_idx);
-        let a1 = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 0u));
-        let a2 = findVertexIndexForCell(cellPos - vec3u(0u, 0u, 1u));
-        let a3 = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 1u));
+        let a1 = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 0u));
+        let a2 = activeIndexForCellPos(cellPos - vec3u(0u, 0u, 1u));
+        let a3 = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 1u));
         if (a0 >= 0 && a1 >= 0 && a2 >= 0 && a3 >= 0) {
             // Local cube edge indices around this Y grid edge:
             // owner: (0-2)=4, x-1: (1-3)=5, z-1: (4-6)=6, x-1 z-1: (5-7)=7
@@ -991,9 +1039,9 @@ fn countTriangles_Pass5a(@builtin(global_invocation_id) globalId: vec3u) {
     }
     if (hasEdgeCrossingZ(cellPos, cornerSDFValues_cell) && areFourCellsAroundZEdgeActive(cellPos)) {
         let a0 = i32(active_cell_array_idx);
-        let a1 = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 0u));
-        let a2 = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 0u));
-        let a3 = findVertexIndexForCell(cellPos - vec3u(1u, 1u, 0u));
+        let a1 = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 0u));
+        let a2 = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 0u));
+        let a3 = activeIndexForCellPos(cellPos - vec3u(1u, 1u, 0u));
         if (a0 >= 0 && a1 >= 0 && a2 >= 0 && a3 >= 0) {
             // Local cube edge indices around this Z grid edge:
             // owner: (0-4)=8, x-1: (1-5)=9, y-1: (2-6)=10, x-1 y-1: (3-7)=11
@@ -1195,9 +1243,9 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
     // v0_owner, v1_adj_ym, v2_adj_zm, v3_diag_ymzm
     if (hasEdgeCrossingX(cellPos, cornerSDFValues_cell) && areFourCellsAroundXEdgeActive(cellPos)) {
         let v0_vert_idx = i32(active_cell_array_idx); 
-        let v1_vert_idx = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 0u)); 
-        let v2_vert_idx = findVertexIndexForCell(cellPos - vec3u(0u, 0u, 1u)); 
-        let v3_vert_idx = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 1u)); 
+        let v1_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 0u)); 
+        let v2_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 0u, 1u)); 
+        let v3_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 1u)); 
 
         if (v0_vert_idx >=0 && v1_vert_idx >=0 && v2_vert_idx >=0 && v3_vert_idx >=0) { 
             let c0 = getEdgeComponent(u32(v0_vert_idx), 0u);
@@ -1229,9 +1277,9 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
     // v0_owner, v1_adj_xm, v2_adj_zm, v3_diag_xmzm
     if (hasEdgeCrossingY(cellPos, cornerSDFValues_cell) && areFourCellsAroundYEdgeActive(cellPos)) {
         let v0_vert_idx = i32(active_cell_array_idx); 
-        let v1_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 0u)); 
-        let v2_vert_idx = findVertexIndexForCell(cellPos - vec3u(0u, 0u, 1u)); 
-        let v3_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 1u)); 
+        let v1_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 0u)); 
+        let v2_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 0u, 1u)); 
+        let v3_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 1u)); 
 
         if (v0_vert_idx >=0 && v1_vert_idx >=0 && v2_vert_idx >=0 && v3_vert_idx >=0) {
             let c0 = getEdgeComponent(u32(v0_vert_idx), 4u);
@@ -1263,9 +1311,9 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
     // v0_owner, v1_adj_xm, v2_adj_ym, v3_diag_xmym
     if (hasEdgeCrossingZ(cellPos, cornerSDFValues_cell) && areFourCellsAroundZEdgeActive(cellPos)) {
         let v0_vert_idx = i32(active_cell_array_idx); 
-        let v1_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 0u)); 
-        let v2_vert_idx = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 0u)); 
-        let v3_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 1u, 0u)); 
+        let v1_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 0u)); 
+        let v2_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 0u)); 
+        let v3_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 1u, 0u)); 
 
         if (v0_vert_idx >=0 && v1_vert_idx >=0 && v2_vert_idx >=0 && v3_vert_idx >=0) {
             let c0 = getEdgeComponent(u32(v0_vert_idx), 8u);

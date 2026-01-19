@@ -158,6 +158,15 @@ export class MDCExport {
             maxActiveCells * 12 * Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE
         )
+        const cellToActiveIndexBuffer = this.#helper.createBuffer(
+            "CellToActiveIndex",
+            totalGridCells * Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        )
+        // Initialize mapping to 0xffffffff (invalid)
+        const cellToActiveInit = new Uint32Array(totalGridCells)
+        cellToActiveInit.fill(0xffffffff)
+        this.#device.queue.writeBuffer(cellToActiveIndexBuffer, 0, cellToActiveInit)
         const edgeCrossingsXBuffer = this.#helper.createBuffer(
             "EdgeCrossingsX",
             maxActiveCells * SIZEOF_EDGECROSSING,
@@ -213,6 +222,10 @@ export class MDCExport {
         const p2b_prefixSumWorkgroup = this.#helper.createComputePipeline(mdcShaderModule, "prefixSumWorkgroup_Pass2b")
         const p2c_addWorkgroupOffsets = this.#helper.createComputePipeline(mdcShaderModule, "addWorkgroupOffsets_Pass2c")
         const p2d_expandActiveCells = this.#helper.createComputePipeline(mdcShaderModule, "expandActiveCells_Pass2d")
+        const p2e_buildCellToActiveIndex = this.#helper.createComputePipeline(
+            mdcShaderModule,
+            "buildCellToActiveIndex_Pass2e"
+        )
         const p3_edgeDetection = this.#helper.createComputePipeline(mdcShaderModule, "edgeDetection_Pass3")
         const p4_vertexGeneration = this.#helper.createComputePipeline(mdcShaderModule, "vertexGeneration_Pass4")
         const p5a_countTriangles = this.#helper.createComputePipeline(mdcShaderModule, "countTriangles_Pass5a")
@@ -269,6 +282,15 @@ export class MDCExport {
             [3, activeCellIndicesCompactionBuffer], // activeCellIndices_compaction
             [4, activeCellCountCompactionBuffer] // activeCellCount_compaction
         )
+        const bindGroupPass2e = this.#helper.createBindGroup(
+            0,
+            "BindGroup Pass2e",
+            p2e_buildCellToActiveIndex,
+            [0, uniformBuffer],
+            [3, activeCellIndicesCompactionBuffer],
+            [4, activeCellCountCompactionBuffer],
+            [23, cellToActiveIndexBuffer]
+        )
 
         const bindGroupPass3 = this.#helper.createBindGroup(
             0,
@@ -277,6 +299,7 @@ export class MDCExport {
             [0, uniformBuffer],
             [5, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_edge
             [22, cellEdgeComponentsBuffer],
+            [23, cellToActiveIndexBuffer],
             [6, edgeCrossingsXBuffer],
             [7, edgeCrossingsYBuffer],
             [8, edgeCrossingsZBuffer],
@@ -303,6 +326,7 @@ export class MDCExport {
             [15, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_face
             [16, activeCellFlagsBuffer], // activeCellFlagsInput_face
             [22, cellEdgeComponentsBuffer],
+            [23, cellToActiveIndexBuffer],
             // [16, indicesBuffer],
             // [17, indexCountFaceBuffer],
             [19, triangleOffsetsBuffer],
@@ -341,6 +365,7 @@ export class MDCExport {
             [15, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_face
             [16, activeCellFlagsBuffer], // activeCellFlagsInput_face
             [22, cellEdgeComponentsBuffer],
+            [23, cellToActiveIndexBuffer],
             [17, indicesBuffer],
             [19, triangleOffsetsBuffer],
             [20, activeCellCountCompactionBuffer] // activeCellCount_faceInput
@@ -373,6 +398,11 @@ export class MDCExport {
         // Pass 2d: Expand Active Cells
         passEncoder = this.#helper.beginComputePass(ce, p2d_expandActiveCells, bindGroupPass2d)
         passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 256))
+        passEncoder.end()
+
+        // Pass 2e: Build cell->active index mapping
+        passEncoder = this.#helper.beginComputePass(ce, p2e_buildCellToActiveIndex, bindGroupPass2e)
+        passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 256))
         passEncoder.end()
 
         // Pass 3: Edge Detection

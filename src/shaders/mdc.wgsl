@@ -27,6 +27,16 @@ struct QEFData {
     numPoints: u32,
 }
 
+// ============================== MDC CONSTANTS ==============================
+// "Proper" Manifold Dual Contouring requires multiple vertices per cell
+// (one per connected surface component within the cell).
+//
+// Practical bound: for a single isosurface in a cube, you rarely need >4
+// components. We allocate a fixed maximum for simplicity and GPU-friendly
+// memory layout.
+const MAX_COMPONENTS_PER_CELL: u32 = 4u;
+const EDGES_PER_CELL: u32 = 12u;
+
 // ============================== BIND GROUPS ==============================
 
 // Group 0: Shared parameters across all passes
@@ -49,12 +59,12 @@ struct QEFData {
 @group(0) @binding(6) var<storage, read_write> edgeCrossingsX: array<EdgeCrossing>;
 @group(0) @binding(7) var<storage, read_write> edgeCrossingsY: array<EdgeCrossing>;
 @group(0) @binding(8) var<storage, read_write> edgeCrossingsZ: array<EdgeCrossing>;
-@group(0) @binding(9) var<storage, read_write> cellQEFData_edge: array<QEFData>; // QEF data per active cell
+@group(0) @binding(9) var<storage, read_write> cellQEFData_edge: array<QEFData>; // QEF data per (active cell * component)
 @group(0) @binding(10) var<storage, read> activeCellCount_edgeInput: u32; // Total active cells (output of Pass 2d)
 
 // Pass 4: Vertex Generation
 @group(0) @binding(11) var<storage, read> activeCellIndicesIn_vertex: array<u32>; // Compacted list (not strictly needed if vertices map 1:1 to active cells)
-@group(0) @binding(12) var<storage, read> cellQEFDataIn_vertex: array<QEFData>;    // QEF data per active cell (output of Pass 3)
+@group(0) @binding(12) var<storage, read> cellQEFDataIn_vertex: array<QEFData>;    // QEF data per (active cell * component) (output of Pass 3)
 @group(0) @binding(13) var<storage, read_write> vertices: array<Vertex>;          // Output vertices
 @group(0) @binding(14) var<storage, read> activeCellCount_vertexInput: u32;   // Total active cells (output of Pass 2d)
 
@@ -69,6 +79,12 @@ struct QEFData {
 @group(0) @binding(19) var<storage, read_write> triangleOffsets_face: array<u32>;   // Per-cell triangle counts, then prefix sums
 @group(0) @binding(20) var<storage, read> activeCellCount_faceInput: u32;       // Total active cells (output of Pass 2d)
 @group(0) @binding(21) var<storage, read_write> triangleWorkgroupOffsets_face: array<u32>; // workgroup totals -> workgroup exclusive offsets
+
+// Manifold DC connectivity:
+// For each active cell we store which surface component each of the 12 cube edges belongs to.
+// Layout: cellEdgeComponents[(activeCellIdx * 12) + edgeIdx] = componentIdx (0..MAX_COMPONENTS_PER_CELL-1),
+// or 0xffffffff if that cube edge does not cross the isosurface.
+@group(0) @binding(22) var<storage, read_write> cellEdgeComponents: array<u32>;
 
 
 // ============================== UTILITY FUNCTIONS ==============================
@@ -321,6 +337,74 @@ var<workgroup> workgroup_compaction_counts: array<u32, 256>; // For Pass 2b pref
 var<workgroup> workgroup_triangle_counts_ps: array<u32, 256>; // For Pass 5b prefix sum on triangle counts
 
 
+// ============================== MDC TOPOLOGY HELPERS ==============================
+
+// Cube corner indices follow getCellCornerPos bit convention:
+// 0:(0,0,0) 1:(1,0,0) 2:(0,1,0) 3:(1,1,0)
+// 4:(0,0,1) 5:(1,0,1) 6:(0,1,1) 7:(1,1,1)
+//
+// Cube edge indices follow Pass3 edges_info ordering:
+// X: (0-1)=0, (2-3)=1, (4-5)=2, (6-7)=3
+// Y: (0-2)=4, (1-3)=5, (4-6)=6, (5-7)=7
+// Z: (0-4)=8, (1-5)=9, (2-6)=10,(3-7)=11
+const FACE_CORNERS: array<vec4u, 6> = array<vec4u, 6>(
+    // z = 0
+    vec4u(0u, 1u, 3u, 2u),
+    // z = 1
+    vec4u(4u, 5u, 7u, 6u),
+    // y = 0
+    vec4u(0u, 1u, 5u, 4u),
+    // y = 1
+    vec4u(2u, 3u, 7u, 6u),
+    // x = 0
+    vec4u(0u, 2u, 6u, 4u),
+    // x = 1
+    vec4u(1u, 3u, 7u, 5u)
+);
+
+// For each face, the 4 corresponding cube edges in the same cyclic order as FACE_CORNERS.
+// Face edges are e0:(c0-c1), e1:(c1-c2), e2:(c2-c3), e3:(c3-c0).
+const FACE_EDGES: array<vec4u, 6> = array<vec4u, 6>(
+    // z = 0: (0-1)=0, (1-3)=5, (3-2)=1, (2-0)=4
+    vec4u(0u, 5u, 1u, 4u),
+    // z = 1: (4-5)=2, (5-7)=7, (7-6)=3, (6-4)=6
+    vec4u(2u, 7u, 3u, 6u),
+    // y = 0: (0-1)=0, (1-5)=9, (5-4)=2, (4-0)=8
+    vec4u(0u, 9u, 2u, 8u),
+    // y = 1: (2-3)=1, (3-7)=11,(7-6)=3, (6-2)=10
+    vec4u(1u, 11u, 3u, 10u),
+    // x = 0: (0-2)=4, (2-6)=10,(6-4)=6, (4-0)=8
+    vec4u(4u, 10u, 6u, 8u),
+    // x = 1: (1-3)=5, (3-7)=11,(7-5)=7, (5-1)=9
+    vec4u(5u, 11u, 7u, 9u)
+);
+
+fn ufFind(parent: ptr<function, array<u32, 12>>, x: u32) -> u32 {
+    var r = x;
+    loop {
+        let p = (*parent)[r];
+        if (p == r) { break; }
+        r = p;
+    }
+    // Path compression
+    var y = x;
+    loop {
+        let p = (*parent)[y];
+        if (p == r) { break; }
+        (*parent)[y] = r;
+        y = p;
+    }
+    return r;
+}
+
+fn ufUnion(parent: ptr<function, array<u32, 12>>, a: u32, b: u32) {
+    let ra = ufFind(parent, a);
+    let rb = ufFind(parent, b);
+    if (ra == rb) { return; }
+    (*parent)[rb] = ra;
+}
+
+
 // ============================== COMPUTE SHADERS ==============================
 
 // Pass 1: Cell Classification (Corrected for @workgroup_size(32,1,1) and atomic-free packing)
@@ -556,8 +640,6 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
     let cellFlatIndex = activeCellIndicesIn_edge[baseOffset + active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
 
-    var qef = QEFData(mat3x3f(), vec3f(0.0), vec3f(0.0), 0u);
-
     var cornerSDFValues: array<f32, 8>;
     var cornerWorldPositions: array<vec3f, 8>;
     for (var i = 0u; i < 8u; i = i + 1u) {
@@ -572,52 +654,175 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         vec4u(0u, 4u, 2u, 1u), vec4u(1u, 5u, 2u, 0u), vec4u(2u, 6u, 2u, 0u), vec4u(3u, 7u, 2u, 0u)
     );
 
-    for (var i = 0u; i < 12u; i = i + 1u) {
-        let c1_idx = edges_info[i][0];
-        let c2_idx = edges_info[i][1];
-        let axis_enum = edges_info[i][2]; 
-        let is_owned_edge = (edges_info[i][3] == 1u);
-
+    // Determine which of the 12 cube edges cross the isosurface.
+    // Then, using per-face marching-squares connectivity (with an asymptotic decider),
+    // we connect those edge crossings into connected surface components.
+    var edgeCrossMask: array<u32, 12>;
+    var parent: array<u32, 12>;
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        parent[e] = e;
+        let c1_idx = edges_info[e][0];
+        let c2_idx = edges_info[e][1];
         let val0 = cornerSDFValues[c1_idx];
         let val1 = cornerSDFValues[c2_idx];
+        edgeCrossMask[e] = select(0u, 1u, edgeCrossesIso(val0, val1));
+    }
 
-        if (edgeCrossesIso(val0, val1)) {
-            let p0_world = cornerWorldPositions[c1_idx];
-            let p1_world = cornerWorldPositions[c2_idx];
-            
-            let t = findEdgeIntersection(val0, val1);
-            let intersectionPos = mix3f(p0_world, p1_world, t);
-            let normal = computeGradient(intersectionPos);
+    // Union edge-crossing nodes across faces.
+    for (var f = 0u; f < 6u; f = f + 1u) {
+        let fc = FACE_CORNERS[f];
+        let fe = FACE_EDGES[f];
+        let e0 = fe.x;
+        let e1 = fe.y;
+        let e2 = fe.z;
+        let e3 = fe.w;
+        let m0 = edgeCrossMask[e0];
+        let m1 = edgeCrossMask[e1];
+        let m2 = edgeCrossMask[e2];
+        let m3 = edgeCrossMask[e3];
+        let cnt = m0 + m1 + m2 + m3;
 
-            qef.ATA[0] = qef.ATA[0] + normal * normal.x;
-            qef.ATA[1] = qef.ATA[1] + normal * normal.y;
-            qef.ATA[2] = qef.ATA[2] + normal * normal.z;
-            
-            let d_val = dot(normal, intersectionPos);
-            qef.ATb = qef.ATb + normal * d_val;
-            
-            qef.massPoint = qef.massPoint + intersectionPos;
-            qef.numPoints = qef.numPoints + 1u;
+        if (cnt == 2u) {
+            var a: u32 = 0xffffffffu;
+            var b: u32 = 0xffffffffu;
+            if (m0 == 1u) { if (a == 0xffffffffu) { a = e0; } else { b = e0; } }
+            if (m1 == 1u) { if (a == 0xffffffffu) { a = e1; } else { b = e1; } }
+            if (m2 == 1u) { if (a == 0xffffffffu) { a = e2; } else { b = e2; } }
+            if (m3 == 1u) { if (a == 0xffffffffu) { a = e3; } else { b = e3; } }
+            if (a != 0xffffffffu && b != 0xffffffffu) {
+                ufUnion(&parent, a, b);
+            }
+        } else if (cnt == 4u) {
+            // Ambiguous marching-squares face (checkerboard). Disambiguate by sampling face center.
+            let s0: u32 = select(0u, 1u, cornerSDFValues[fc.x] <= uniforms.isoValue);
+            let s1: u32 = select(0u, 1u, cornerSDFValues[fc.y] <= uniforms.isoValue);
+            let s2: u32 = select(0u, 1u, cornerSDFValues[fc.z] <= uniforms.isoValue);
+            let s3: u32 = select(0u, 1u, cornerSDFValues[fc.w] <= uniforms.isoValue);
+            let faceCase = s0 | (s1 << 1u) | (s2 << 2u) | (s3 << 3u);
 
-            if (is_owned_edge) {
-                let edgeCrossingData = EdgeCrossing(intersectionPos, normal);
-                var edgeStoreIdx: u32;
-                if (axis_enum == 0u) { 
-                    edgeStoreIdx = getEdgeIndexX(cellPos);
-                    if (edgeStoreIdx < arrayLength(&edgeCrossingsX)) { edgeCrossingsX[edgeStoreIdx] = edgeCrossingData; }
-                } else if (axis_enum == 1u) { 
-                    edgeStoreIdx = getEdgeIndexY(cellPos);
-                     if (edgeStoreIdx < arrayLength(&edgeCrossingsY)) { edgeCrossingsY[edgeStoreIdx] = edgeCrossingData; }
-                } else { 
-                    edgeStoreIdx = getEdgeIndexZ(cellPos);
-                     if (edgeStoreIdx < arrayLength(&edgeCrossingsZ)) { edgeCrossingsZ[edgeStoreIdx] = edgeCrossingData; }
+            let faceCenterPos =
+                (cornerWorldPositions[fc.x] + cornerWorldPositions[fc.y] + cornerWorldPositions[fc.z] + cornerWorldPositions[fc.w]) * 0.25;
+            let centerInside = sampleSDF(faceCenterPos) <= uniforms.isoValue;
+
+            // For faceCase 5 (0101): centerInside => pair (0-1) & (2-3), else pair (0-3) & (1-2)
+            // For faceCase 10 (1010): centerInside => pair (0-3) & (1-2), else pair (0-1) & (2-3)
+            if (faceCase == 5u) {
+                if (centerInside) {
+                    ufUnion(&parent, e0, e1);
+                    ufUnion(&parent, e2, e3);
+                } else {
+                    ufUnion(&parent, e0, e3);
+                    ufUnion(&parent, e1, e2);
                 }
+            } else if (faceCase == 10u) {
+                if (centerInside) {
+                    ufUnion(&parent, e0, e3);
+                    ufUnion(&parent, e1, e2);
+                } else {
+                    ufUnion(&parent, e0, e1);
+                    ufUnion(&parent, e2, e3);
+                }
+            } else {
+                // Not expected (cnt==4 implies checkerboard), but keep robust.
+                ufUnion(&parent, e0, e1);
+                ufUnion(&parent, e2, e3);
             }
         }
     }
 
-    if (active_cell_array_idx < arrayLength(&cellQEFData_edge)) {
-        cellQEFData_edge[active_cell_array_idx] = qef;
+    // Map union-find roots to component indices (0..MAX_COMPONENTS_PER_CELL-1)
+    // and store a per-edge component map for this active cell.
+    var compRoots: array<u32, 12>;
+    var compCount: u32 = 0u;
+    var edgeComponent: array<i32, 12>;
+    let edgeCompBase = active_cell_array_idx * EDGES_PER_CELL;
+
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        var compIdx: i32 = -1;
+        if (edgeCrossMask[e] == 1u) {
+            let root = ufFind(&parent, e);
+            // find/insert root in compRoots
+            for (var j = 0u; j < compCount; j = j + 1u) {
+                if (compRoots[j] == root) { compIdx = i32(j); }
+            }
+            if (compIdx < 0) {
+                if (compCount < MAX_COMPONENTS_PER_CELL) {
+                    compRoots[compCount] = root;
+                    compIdx = i32(compCount);
+                    compCount = compCount + 1u;
+                } else {
+                    // Overflow: merge into last component slot.
+                    compIdx = i32(MAX_COMPONENTS_PER_CELL - 1u);
+                }
+            }
+        }
+        edgeComponent[e] = compIdx;
+
+        // Write edge->component mapping for this cell.
+        if (edgeCompBase + e < arrayLength(&cellEdgeComponents)) {
+            var outComp = 0xffffffffu;
+            if (compIdx >= 0) { outComp = u32(compIdx); }
+            cellEdgeComponents[edgeCompBase + e] = outComp;
+        }
+    }
+
+    // Accumulate QEFs per component.
+    var qefs: array<QEFData, 4>;
+    for (var c = 0u; c < 4u; c = c + 1u) {
+        qefs[c] = QEFData(mat3x3f(), vec3f(0.0), vec3f(0.0), 0u);
+    }
+
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        if (edgeCrossMask[e] == 0u) { continue; }
+        let compIdx = edgeComponent[e];
+        if (compIdx < 0) { continue; }
+
+        let c1_idx = edges_info[e][0];
+        let c2_idx = edges_info[e][1];
+        let axis_enum = edges_info[e][2];
+        let is_owned_edge = (edges_info[e][3] == 1u);
+
+        let val0 = cornerSDFValues[c1_idx];
+        let val1 = cornerSDFValues[c2_idx];
+        let p0_world = cornerWorldPositions[c1_idx];
+        let p1_world = cornerWorldPositions[c2_idx];
+        let t = findEdgeIntersection(val0, val1);
+        let intersectionPos = mix3f(p0_world, p1_world, t);
+        let normal = computeGradient(intersectionPos);
+
+        let c = u32(compIdx);
+        qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
+        qefs[c].ATA[1] = qefs[c].ATA[1] + normal * normal.y;
+        qefs[c].ATA[2] = qefs[c].ATA[2] + normal * normal.z;
+        let d_val = dot(normal, intersectionPos);
+        qefs[c].ATb = qefs[c].ATb + normal * d_val;
+        qefs[c].massPoint = qefs[c].massPoint + intersectionPos;
+        qefs[c].numPoints = qefs[c].numPoints + 1u;
+
+        // Optional debug storage of owned edge crossings (not used for mesh stitching).
+        if (is_owned_edge) {
+            let edgeCrossingData = EdgeCrossing(intersectionPos, normal);
+            var edgeStoreIdx: u32;
+            if (axis_enum == 0u) { 
+                edgeStoreIdx = getEdgeIndexX(cellPos);
+                if (edgeStoreIdx < arrayLength(&edgeCrossingsX)) { edgeCrossingsX[edgeStoreIdx] = edgeCrossingData; }
+            } else if (axis_enum == 1u) { 
+                edgeStoreIdx = getEdgeIndexY(cellPos);
+                if (edgeStoreIdx < arrayLength(&edgeCrossingsY)) { edgeCrossingsY[edgeStoreIdx] = edgeCrossingData; }
+            } else { 
+                edgeStoreIdx = getEdgeIndexZ(cellPos);
+                if (edgeStoreIdx < arrayLength(&edgeCrossingsZ)) { edgeCrossingsZ[edgeStoreIdx] = edgeCrossingData; }
+            }
+        }
+    }
+
+    // Write per-component QEFs for this active cell.
+    let qefBase = active_cell_array_idx * MAX_COMPONENTS_PER_CELL;
+    for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
+        let outIdx = qefBase + c;
+        if (outIdx < arrayLength(&cellQEFData_edge)) {
+            cellQEFData_edge[outIdx] = qefs[c];
+        }
     }
 }
 
@@ -625,12 +830,15 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
 // Pass 4: Vertex Generation
 @compute @workgroup_size(64, 1, 1)
 fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
-    let active_cell_array_idx = globalId.x; 
-
+    // We generate up to MAX_COMPONENTS_PER_CELL vertices per active cell.
+    let vertexRecordIdx = globalId.x;
     let totalActiveCells = activeCellCount_vertexInput;
-    if (active_cell_array_idx >= totalActiveCells || active_cell_array_idx >= arrayLength(&cellQEFDataIn_vertex)) { return; }
+    let totalVertexRecords = totalActiveCells * MAX_COMPONENTS_PER_CELL;
+    if (vertexRecordIdx >= totalVertexRecords) { return; }
+    if (vertexRecordIdx >= arrayLength(&cellQEFDataIn_vertex) || vertexRecordIdx >= arrayLength(&vertices)) { return; }
 
-    let qef = cellQEFDataIn_vertex[active_cell_array_idx];
+    let active_cell_array_idx = vertexRecordIdx / MAX_COMPONENTS_PER_CELL;
+    let qef = cellQEFDataIn_vertex[vertexRecordIdx];
     // Constrain the QEF solution to this cell's bounds to avoid vertices drifting
     // outside the cell (which causes overhanging/jutting polygons, especially on
     // anisotropic shapes like rectangular prisms).
@@ -661,12 +869,16 @@ fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
         vertexNormal = vec3f(0.0,1.0,0.0); 
     }
     
-    if (active_cell_array_idx < arrayLength(&vertices)) {
-        vertices[active_cell_array_idx] = Vertex(vertexPos, vertexNormal);
-    }
+    vertices[vertexRecordIdx] = Vertex(vertexPos, vertexNormal);
 }
 
 // --- Triangle Generation Helper Functions (for Pass 5c) ---
+fn getEdgeComponent(activeCellIdx: u32, edgeIdx: u32) -> u32 {
+    let idx = activeCellIdx * EDGES_PER_CELL + edgeIdx;
+    if (idx >= arrayLength(&cellEdgeComponents)) { return 0xffffffffu; }
+    return cellEdgeComponents[idx];
+}
+
 fn hasEdgeCrossingX(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
     let val0 = cornerSDFValues[0]; 
     let val1 = cornerSDFValues[1]; 
@@ -744,13 +956,55 @@ fn countTriangles_Pass5a(@builtin(global_invocation_id) globalId: vec3u) {
 
     var numTrianglesForThisCell = 0u;
     if (hasEdgeCrossingX(cellPos, cornerSDFValues_cell) && areFourCellsAroundXEdgeActive(cellPos)) {
-        numTrianglesForThisCell = numTrianglesForThisCell + 2u;
+        let a0 = i32(active_cell_array_idx);
+        let a1 = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 0u));
+        let a2 = findVertexIndexForCell(cellPos - vec3u(0u, 0u, 1u));
+        let a3 = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 1u));
+        if (a0 >= 0 && a1 >= 0 && a2 >= 0 && a3 >= 0) {
+            // Local cube edge indices around this X grid edge:
+            // owner: (0-1)=0, y-1: (2-3)=1, z-1: (4-5)=2, y-1 z-1: (6-7)=3
+            let c0 = getEdgeComponent(u32(a0), 0u);
+            let c1 = getEdgeComponent(u32(a1), 1u);
+            let c2 = getEdgeComponent(u32(a2), 2u);
+            let c3 = getEdgeComponent(u32(a3), 3u);
+            if (c0 != 0xffffffffu && c1 != 0xffffffffu && c2 != 0xffffffffu && c3 != 0xffffffffu) {
+                numTrianglesForThisCell = numTrianglesForThisCell + 2u;
+            }
+        }
     }
     if (hasEdgeCrossingY(cellPos, cornerSDFValues_cell) && areFourCellsAroundYEdgeActive(cellPos)) {
-        numTrianglesForThisCell = numTrianglesForThisCell + 2u;
+        let a0 = i32(active_cell_array_idx);
+        let a1 = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 0u));
+        let a2 = findVertexIndexForCell(cellPos - vec3u(0u, 0u, 1u));
+        let a3 = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 1u));
+        if (a0 >= 0 && a1 >= 0 && a2 >= 0 && a3 >= 0) {
+            // Local cube edge indices around this Y grid edge:
+            // owner: (0-2)=4, x-1: (1-3)=5, z-1: (4-6)=6, x-1 z-1: (5-7)=7
+            let c0 = getEdgeComponent(u32(a0), 4u);
+            let c1 = getEdgeComponent(u32(a1), 5u);
+            let c2 = getEdgeComponent(u32(a2), 6u);
+            let c3 = getEdgeComponent(u32(a3), 7u);
+            if (c0 != 0xffffffffu && c1 != 0xffffffffu && c2 != 0xffffffffu && c3 != 0xffffffffu) {
+                numTrianglesForThisCell = numTrianglesForThisCell + 2u;
+            }
+        }
     }
     if (hasEdgeCrossingZ(cellPos, cornerSDFValues_cell) && areFourCellsAroundZEdgeActive(cellPos)) {
-        numTrianglesForThisCell = numTrianglesForThisCell + 2u;
+        let a0 = i32(active_cell_array_idx);
+        let a1 = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 0u));
+        let a2 = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 0u));
+        let a3 = findVertexIndexForCell(cellPos - vec3u(1u, 1u, 0u));
+        if (a0 >= 0 && a1 >= 0 && a2 >= 0 && a3 >= 0) {
+            // Local cube edge indices around this Z grid edge:
+            // owner: (0-4)=8, x-1: (1-5)=9, y-1: (2-6)=10, x-1 y-1: (3-7)=11
+            let c0 = getEdgeComponent(u32(a0), 8u);
+            let c1 = getEdgeComponent(u32(a1), 9u);
+            let c2 = getEdgeComponent(u32(a2), 10u);
+            let c3 = getEdgeComponent(u32(a3), 11u);
+            if (c0 != 0xffffffffu && c1 != 0xffffffffu && c2 != 0xffffffffu && c3 != 0xffffffffu) {
+                numTrianglesForThisCell = numTrianglesForThisCell + 2u;
+            }
+        }
     }
     
     if (active_cell_array_idx < arrayLength(&triangleOffsets_face)) {
@@ -873,22 +1127,23 @@ fn generateQuadIndices(
     v0_idx: u32, v1_idx: u32, v2_idx: u32, v3_idx: u32, 
     flipWinding: bool
 ) {
-    // Quad defined by v0, v1, v2, v3 in a specific order for DC.
-    // Standard: v0(owner), v1(adj1), v2(diag), v3(adj2) -> triangles (v0,v1,v2), (v0,v2,v3)
-    // The previous code used v0, v1, v3, v2 for the quad definition passed in.
-    // For quad v0,v1,v3,v2 (CCW): Tri1(v0,v1,v3), Tri2(v0,v3,v2)
+    // Quad triangulation:
+    // - Inputs are expected in this order: (v0, v1, v2, v3)
+    // - We emit triangles: (v0, v1, v3) and (v0, v3, v2)
+    //   which corresponds to the quad loop (v0 -> v1 -> v3 -> v2).
     if (flipWinding) {
-        // Tri1: v0, v2, v3 (was v0,v2,v3)
+        // Reverse the winding of BOTH triangles.
+        // Tri1: v0, v3, v1
         if (baseOutputIdx + 2u < arrayLength(&indices)) {
             indices[baseOutputIdx + 0u] = v0_idx;
-            indices[baseOutputIdx + 1u] = v3_idx; // Corrected based on CCW(v0,v3,v2)
-            indices[baseOutputIdx + 2u] = v2_idx; // Corrected
+            indices[baseOutputIdx + 1u] = v3_idx;
+            indices[baseOutputIdx + 2u] = v1_idx;
         }
-        // Tri2: v0, v3, v1 (was v0,v3,v1)
+        // Tri2: v0, v2, v3
         if (baseOutputIdx + 5u < arrayLength(&indices)) {
             indices[baseOutputIdx + 3u] = v0_idx; 
-            indices[baseOutputIdx + 4u] = v1_idx; // Corrected based on CCW(v0,v1,v3)
-            indices[baseOutputIdx + 5u] = v3_idx; // Corrected
+            indices[baseOutputIdx + 4u] = v2_idx;
+            indices[baseOutputIdx + 5u] = v3_idx;
         }
     } else { 
         // Tri1: v0, v1, v3
@@ -936,7 +1191,8 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
     // v1_cell: C(x,y-1,z)
     // v2_cell: C(x,y,z-1)
     // v3_cell: C(x,y-1,z-1) (diagonal to owner across the quad face)
-    // Quad face vertices in order for generateQuadIndices: v0_owner, v1_adj_ym, v3_diag_ymzm, v2_adj_zm
+    // Quad vertices for generateQuadIndices (v0, v1, v2, v3):
+    // v0_owner, v1_adj_ym, v2_adj_zm, v3_diag_ymzm
     if (hasEdgeCrossingX(cellPos, cornerSDFValues_cell) && areFourCellsAroundXEdgeActive(cellPos)) {
         let v0_vert_idx = i32(active_cell_array_idx); 
         let v1_vert_idx = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 0u)); 
@@ -944,11 +1200,23 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
         let v3_vert_idx = findVertexIndexForCell(cellPos - vec3u(0u, 1u, 1u)); 
 
         if (v0_vert_idx >=0 && v1_vert_idx >=0 && v2_vert_idx >=0 && v3_vert_idx >=0) { 
+            let c0 = getEdgeComponent(u32(v0_vert_idx), 0u);
+            let c1 = getEdgeComponent(u32(v1_vert_idx), 1u);
+            let c2 = getEdgeComponent(u32(v2_vert_idx), 2u);
+            let c3 = getEdgeComponent(u32(v3_vert_idx), 3u);
+            if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
+                // Topology mapping missing; skip.
+            } else {
             let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[1], 0.5); 
             let surface_gradient = computeGradient(edge_mid_point);
             let flip = dot(surface_gradient, vec3f(1.0, 0.0, 0.0)) < 0.0; 
-            generateQuadIndices(current_triangle_base_write_idx, u32(v0_vert_idx), u32(v1_vert_idx), u32(v2_vert_idx), u32(v3_vert_idx), flip);
+            let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
+            let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
+            let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
+            let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
+            generateQuadIndices(current_triangle_base_write_idx, vv0, vv1, vv2, vv3, flip);
             current_triangle_base_write_idx = current_triangle_base_write_idx + 6u; 
+            }
         }
     }
 
@@ -957,7 +1225,8 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
     // v1_cell: C(x-1,y,z)
     // v2_cell: C(x,y,z-1)
     // v3_cell: C(x-1,y,z-1) (diagonal)
-    // Quad face vertices order: v0_owner, v1_adj_xm, v3_diag_xmzm, v2_adj_zm
+    // Quad vertices for generateQuadIndices (v0, v1, v2, v3):
+    // v0_owner, v1_adj_xm, v2_adj_zm, v3_diag_xmzm
     if (hasEdgeCrossingY(cellPos, cornerSDFValues_cell) && areFourCellsAroundYEdgeActive(cellPos)) {
         let v0_vert_idx = i32(active_cell_array_idx); 
         let v1_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 0u)); 
@@ -965,11 +1234,23 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
         let v3_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 1u)); 
 
         if (v0_vert_idx >=0 && v1_vert_idx >=0 && v2_vert_idx >=0 && v3_vert_idx >=0) {
+            let c0 = getEdgeComponent(u32(v0_vert_idx), 4u);
+            let c1 = getEdgeComponent(u32(v1_vert_idx), 5u);
+            let c2 = getEdgeComponent(u32(v2_vert_idx), 6u);
+            let c3 = getEdgeComponent(u32(v3_vert_idx), 7u);
+            if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
+                // Topology mapping missing; skip.
+            } else {
             let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[2], 0.5); 
             let surface_gradient = computeGradient(edge_mid_point);
             let flip = dot(surface_gradient, vec3f(0.0, 1.0, 0.0)) < 0.0;
-            generateQuadIndices(current_triangle_base_write_idx, u32(v0_vert_idx), u32(v1_vert_idx), u32(v2_vert_idx), u32(v3_vert_idx), !flip); // Y often flips convention
+            let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
+            let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
+            let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
+            let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
+            generateQuadIndices(current_triangle_base_write_idx, vv0, vv1, vv2, vv3, !flip); // Y often flips convention
             current_triangle_base_write_idx = current_triangle_base_write_idx + 6u;
+            }
         }
     }
 
@@ -978,7 +1259,8 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
     // v1_cell: C(x-1,y,z)
     // v2_cell: C(x,y-1,z)
     // v3_cell: C(x-1,y-1,z) (diagonal)
-    // Quad face vertices order: v0_owner, v1_adj_xm, v3_diag_xmym, v2_adj_ym
+    // Quad vertices for generateQuadIndices (v0, v1, v2, v3):
+    // v0_owner, v1_adj_xm, v2_adj_ym, v3_diag_xmym
     if (hasEdgeCrossingZ(cellPos, cornerSDFValues_cell) && areFourCellsAroundZEdgeActive(cellPos)) {
         let v0_vert_idx = i32(active_cell_array_idx); 
         let v1_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 0u, 0u)); 
@@ -986,11 +1268,23 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
         let v3_vert_idx = findVertexIndexForCell(cellPos - vec3u(1u, 1u, 0u)); 
 
         if (v0_vert_idx >=0 && v1_vert_idx >=0 && v2_vert_idx >=0 && v3_vert_idx >=0) {
+            let c0 = getEdgeComponent(u32(v0_vert_idx), 8u);
+            let c1 = getEdgeComponent(u32(v1_vert_idx), 9u);
+            let c2 = getEdgeComponent(u32(v2_vert_idx), 10u);
+            let c3 = getEdgeComponent(u32(v3_vert_idx), 11u);
+            if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
+                // Topology mapping missing; skip.
+            } else {
             let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[4], 0.5); 
             let surface_gradient = computeGradient(edge_mid_point);
             let flip = dot(surface_gradient, vec3f(0.0, 0.0, 1.0)) < 0.0;
-            generateQuadIndices(current_triangle_base_write_idx, u32(v0_vert_idx), u32(v1_vert_idx), u32(v2_vert_idx), u32(v3_vert_idx), flip);
+            let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
+            let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
+            let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
+            let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
+            generateQuadIndices(current_triangle_base_write_idx, vv0, vv1, vv2, vv3, flip);
             current_triangle_base_write_idx = current_triangle_base_write_idx + 6u;
+            }
         }
     }
 }

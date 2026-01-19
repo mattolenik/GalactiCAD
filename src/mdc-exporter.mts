@@ -59,6 +59,10 @@ const SIZEOF_QEFDATA_STRUCT = 96
 // Same alignment story as Vertex (two vec3f fields) => 32-byte stride in storage buffers.
 const SIZEOF_EDGECROSSING = 8 * Float32Array.BYTES_PER_ELEMENT // 32 bytes
 
+// Proper Manifold Dual Contouring may require multiple vertices per active cell.
+// We use a fixed maximum for predictable GPU memory layout.
+const MAX_COMPONENTS_PER_CELL = 4
+
 export interface MDCParams {
     gridDimX: number
     gridDimY: number
@@ -149,6 +153,11 @@ export class MDCExport {
         this.#device.queue.writeBuffer(activeCellCountCompactionBuffer, 0, new Uint32Array([0]))
 
         // Pass 3 Buffers
+        const cellEdgeComponentsBuffer = this.#helper.createBuffer(
+            "CellEdgeComponents",
+            maxActiveCells * 12 * Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE
+        )
         const edgeCrossingsXBuffer = this.#helper.createBuffer(
             "EdgeCrossingsX",
             maxActiveCells * SIZEOF_EDGECROSSING,
@@ -166,14 +175,14 @@ export class MDCExport {
         )
         const cellQEFDataBuffer = this.#helper.createBuffer(
             "CellQEFData",
-            maxActiveCells * SIZEOF_QEFDATA_STRUCT,
+            maxActiveCells * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         )
 
         // Pass 4 Buffers
         const verticesBuffer = this.#helper.createBuffer(
             "Vertices",
-            maxActiveCells * SIZEOF_VERTEX,
+            maxActiveCells * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         )
 
@@ -267,6 +276,7 @@ export class MDCExport {
             p3_edgeDetection,
             [0, uniformBuffer],
             [5, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_edge
+            [22, cellEdgeComponentsBuffer],
             [6, edgeCrossingsXBuffer],
             [7, edgeCrossingsYBuffer],
             [8, edgeCrossingsZBuffer],
@@ -292,6 +302,7 @@ export class MDCExport {
             [0, uniformBuffer],
             [15, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_face
             [16, activeCellFlagsBuffer], // activeCellFlagsInput_face
+            [22, cellEdgeComponentsBuffer],
             // [16, indicesBuffer],
             // [17, indexCountFaceBuffer],
             [19, triangleOffsetsBuffer],
@@ -329,6 +340,7 @@ export class MDCExport {
             [0, uniformBuffer],
             [15, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_face
             [16, activeCellFlagsBuffer], // activeCellFlagsInput_face
+            [22, cellEdgeComponentsBuffer],
             [17, indicesBuffer],
             [19, triangleOffsetsBuffer],
             [20, activeCellCountCompactionBuffer] // activeCellCount_faceInput
@@ -371,7 +383,7 @@ export class MDCExport {
 
         // Pass 4: Vertex Generation
         passEncoder = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
-        passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 64))
+        passEncoder.dispatchWorkgroups(Math.ceil((maxActiveCells * MAX_COMPONENTS_PER_CELL) / 64))
         passEncoder.end()
 
         // Pass 5a: Count Triangles
@@ -455,12 +467,14 @@ export class MDCExport {
 
         let verts: Float32Array | null = null
         if (actualActiveCellCount > 0) {
-            const verticesData = await this.#helper.readBufferData(verticesBuffer, actualActiveCellCount * SIZEOF_VERTEX)
+            const actualVertexCount = actualActiveCellCount * MAX_COMPONENTS_PER_CELL
+            const verticesData = await this.#helper.readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
             verts = new Float32Array(verticesData)
-            console.log(`Vertices (first ${Math.min(10, actualActiveCellCount)} of ${actualActiveCellCount}):`)
+            const previewVertexCount = Math.min(10, actualVertexCount)
+            console.log(`Vertices (first ${previewVertexCount} of ${actualVertexCount}):`)
             const stride = SIZEOF_VERTEX / 4 // floats per vertex
             let defaultVertexCount = 0
-            for (let i = 0; i < actualActiveCellCount * stride; i += stride) {
+            for (let i = 0; i < actualVertexCount * stride; i += stride) {
                 // Vertex storage layout: position.xyz at [0..2], padding at [3],
                 // normal.xyz at [4..6], padding at [7]
                 const px = verts[i]!
@@ -470,13 +484,15 @@ export class MDCExport {
                 const ny = verts[i + 5]!
                 const nz = verts[i + 6]!
                 if (px === 0 && py === 0 && pz === 0 && nx === 0 && ny === 1 && nz === 0) defaultVertexCount++
-                console.log(
-                    `  Vertex ${i / stride}: P(x:${px.toFixed(3)}, y:${py.toFixed(3)}, z:${pz.toFixed(
-                        3
-                    )}), N(x:${nx.toFixed(3)}, y:${ny.toFixed(3)}, z:${nz.toFixed(3)})`
-                )
+                if (i / stride < previewVertexCount) {
+                    console.log(
+                        `  Vertex ${i / stride}: P(x:${px.toFixed(3)}, y:${py.toFixed(3)}, z:${pz.toFixed(
+                            3
+                        )}), N(x:${nx.toFixed(3)}, y:${ny.toFixed(3)}, z:${nz.toFixed(3)})`
+                    )
+                }
             }
-            console.log(`Default (0,0,0)/(0,1,0) vertices: ${defaultVertexCount} of ${actualActiveCellCount}`)
+            console.log(`Default (0,0,0)/(0,1,0) vertices: ${defaultVertexCount} of ${actualVertexCount}`)
         } else {
             console.log("No active cells, so no vertices generated.")
         }

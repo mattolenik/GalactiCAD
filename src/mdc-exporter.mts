@@ -84,16 +84,19 @@ export class MDCExport {
 
     async export(mdcShaderModule: GPUShaderModule): Promise<void> {
         const { gridDimX, gridDimY, gridDimZ, isoValue, gridOffsetX, gridOffsetY, gridOffsetZ, voxelSize } = this.params
+        console.log(
+            `MDCExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
+        )
 
         // Calculate grid totals
         const totalGridCells = gridDimX * gridDimY * gridDimZ
         const totalU32sInFlags = Math.ceil(totalGridCells / 32)
-
-        // Max possible active cells is totalGridCells. Used for initial buffer sizing.
-        const maxActiveCells = totalGridCells
-        // Max possible triangles: each active cell can (in theory) generate quads on 3 faces = 6 triangles.
-        const maxTriangles = maxActiveCells * 6
-        const maxIndices = maxTriangles * 3
+        const popcount32 = (v: number) => {
+            let x = v >>> 0
+            x = x - ((x >>> 1) & 0x55555555)
+            x = (x & 0x33333333) + ((x >>> 2) & 0x33333333)
+            return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+        }
 
         // --- 1. Create Buffers ---
         // Uniform Buffer layout MUST match WGSL "uniform address space layout" rules.
@@ -128,120 +131,7 @@ export class MDCExport {
             totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
-
-        // Pass 2 Buffers
-        // activeCellIndices_compaction layout (single buffer, non-overlapping regions):
-        // - [0 .. totalU32sInFlags)                         : counts / prefix sums (Pass 2a-2c)
-        // - [totalU32sInFlags .. totalU32sInFlags+numWg)    : workgroup totals (Pass 2b)
-        // - [baseOffset .. baseOffset+maxActiveCells)       : compacted active cell indices (Pass 2d)
-        const numWorkgroupsForCounts = Math.ceil(totalU32sInFlags / 256)
-        const baseOffsetU32 = totalU32sInFlags + numWorkgroupsForCounts
-        const activeCellIndicesCompactionBufferSize =
-            (baseOffsetU32 + maxActiveCells) * Uint32Array.BYTES_PER_ELEMENT
-        const activeCellIndicesCompactionBuffer = this.#helper.createBuffer(
-            "ActiveCellIndicesCompaction",
-            activeCellIndicesCompactionBufferSize,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        )
-
-        const activeCellCountCompactionBuffer = this.#helper.createBuffer(
-            "ActiveCellCountCompaction",
-            Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        )
-        // Explicitly initialize to 0 (though WebGPU buffers are zero-initialized by default)
-        this.#device.queue.writeBuffer(activeCellCountCompactionBuffer, 0, new Uint32Array([0]))
-
-        // Pass 3 Buffers
-        const cellEdgeComponentsBuffer = this.#helper.createBuffer(
-            "CellEdgeComponents",
-            maxActiveCells * 12 * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE
-        )
-        const cellToActiveIndexBuffer = this.#helper.createBuffer(
-            "CellToActiveIndex",
-            totalGridCells * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-        )
-        // Initialize mapping to 0xffffffff (invalid)
-        const cellToActiveInit = new Uint32Array(totalGridCells)
-        cellToActiveInit.fill(0xffffffff)
-        this.#device.queue.writeBuffer(cellToActiveIndexBuffer, 0, cellToActiveInit)
-        const edgeCrossingsXBuffer = this.#helper.createBuffer(
-            "EdgeCrossingsX",
-            maxActiveCells * SIZEOF_EDGECROSSING,
-            GPUBufferUsage.STORAGE
-        ) // Max possible, actual depends on grid dim
-        const edgeCrossingsYBuffer = this.#helper.createBuffer(
-            "EdgeCrossingsY",
-            maxActiveCells * SIZEOF_EDGECROSSING,
-            GPUBufferUsage.STORAGE
-        )
-        const edgeCrossingsZBuffer = this.#helper.createBuffer(
-            "EdgeCrossingsZ",
-            maxActiveCells * SIZEOF_EDGECROSSING,
-            GPUBufferUsage.STORAGE
-        )
-        const cellQEFDataBuffer = this.#helper.createBuffer(
-            "CellQEFData",
-            maxActiveCells * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-        )
-
-        // Pass 4 Buffers
-        const verticesBuffer = this.#helper.createBuffer(
-            "Vertices",
-            maxActiveCells * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-        )
-
-        // Pass 5 Buffers
-        const triangleOffsetsBuffer = this.#helper.createBuffer(
-            "TriangleOffsets",
-            maxActiveCells * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-        )
-        const triangleWorkgroupOffsetsBuffer = this.#helper.createBuffer(
-            "TriangleWorkgroupOffsets",
-            Math.ceil(maxActiveCells / 256) * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-        )
-        const indexCountFaceBuffer = this.#helper.createBuffer(
-            "IndexCountFace",
-            Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        )
-        const indicesBuffer = this.#helper.createBuffer(
-            "Indices",
-            maxIndices * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-        )
-
         const p1_cellClassification = this.#helper.createComputePipeline(mdcShaderModule, "cellClassification_Pass1")
-        const p2a_countActiveCells = this.#helper.createComputePipeline(mdcShaderModule, "countActiveCells_Pass2a")
-        const p2b_prefixSumWorkgroup = this.#helper.createComputePipeline(mdcShaderModule, "prefixSumWorkgroup_Pass2b")
-        const p2c_addWorkgroupOffsets = this.#helper.createComputePipeline(mdcShaderModule, "addWorkgroupOffsets_Pass2c")
-        const p2d_expandActiveCells = this.#helper.createComputePipeline(mdcShaderModule, "expandActiveCells_Pass2d")
-        const p2e_buildCellToActiveIndex = this.#helper.createComputePipeline(
-            mdcShaderModule,
-            "buildCellToActiveIndex_Pass2e"
-        )
-        const p3_edgeDetection = this.#helper.createComputePipeline(mdcShaderModule, "edgeDetection_Pass3")
-        const p4_vertexGeneration = this.#helper.createComputePipeline(mdcShaderModule, "vertexGeneration_Pass4")
-        const p5a_countTriangles = this.#helper.createComputePipeline(mdcShaderModule, "countTriangles_Pass5a")
-        const p5b_prefixSumTriangles = this.#helper.createComputePipeline(mdcShaderModule, "prefixSumTriangles_Pass5b")
-        const p5b2_prefixSumTriangleWorkgroups = this.#helper.createComputePipeline(
-            mdcShaderModule,
-            "prefixSumTriangleWorkgroups_Pass5b2"
-        )
-        const p5b3_addTriangleWorkgroupOffsets = this.#helper.createComputePipeline(
-            mdcShaderModule,
-            "addTriangleWorkgroupOffsets_Pass5b3"
-        )
-        const p5c_generateTriangles = this.#helper.createComputePipeline(mdcShaderModule, "generateTriangles_Pass5c")
-
-        // --- 3. Create Bind Groups ---
-        // Bind Group 0 (Uniforms) - used by many passes, create once
 
         const bindGroupPass1 = this.#helper.createBindGroup(
             0,
@@ -251,60 +141,159 @@ export class MDCExport {
             [1, activeCellFlagsBuffer]
         )
 
-        const bindGroupPass2a = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass2a",
-            p2a_countActiveCells,
-            [0, uniformBuffer],
-            [2, activeCellFlagsBuffer], // activeCellFlagsIn_compaction
-            [3, activeCellIndicesCompactionBuffer] // activeCellIndices_compaction
+        // --- Stage 1: classify cells into bit flags ---
+        {
+            const ce = this.#device.createCommandEncoder({ label: "mdc_pass1" })
+            const pass = this.#helper.beginComputePass(ce, p1_cellClassification, bindGroupPass1)
+
+            // Pass1 dispatch is in u32-blocks; for large grids totalU32sInFlags can exceed 65535,
+            // so dispatch in 2D and linearize in WGSL using @builtin(num_workgroups).
+            const dispatchX = Math.min(totalU32sInFlags, 65535)
+            const dispatchY = Math.ceil(totalU32sInFlags / dispatchX)
+            pass.dispatchWorkgroups(dispatchX, dispatchY)
+            pass.end()
+
+            this.#device.queue.submit([ce.finish()])
+            await this.#device.queue.onSubmittedWorkDone()
+        }
+
+        // Read back flags and build a compact list on CPU.
+        const flagsData = await this.#helper.readBufferData(
+            activeCellFlagsBuffer,
+            totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT
         )
-        const bindGroupPass2b = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass2b",
-            p2b_prefixSumWorkgroup,
-            [0, uniformBuffer],
-            [3, activeCellIndicesCompactionBuffer] // activeCellIndices_compaction
+        const flagsArray = new Uint32Array(flagsData)
+
+        let activeCellCount = 0
+        for (let i = 0; i < flagsArray.length; i++) activeCellCount += popcount32(flagsArray[i]!)
+
+        console.log(`Active cells from flags: ${activeCellCount}`)
+        if (activeCellCount === 0) {
+            console.warn("No active cells found; check grid bounds and scene.")
+            return
+        }
+
+        // Build sorted active cell index list.
+        const activeCellIndices = new Uint32Array(activeCellCount)
+        let write = 0
+        for (let block = 0; block < flagsArray.length; block++) {
+            let v = flagsArray[block]! >>> 0
+            if (v === 0) continue
+            while (v !== 0) {
+                const lsb = (v & -v) >>> 0
+                const bit = 31 - Math.clz32(lsb)
+                const cellFlatIndex = block * 32 + bit
+                if (cellFlatIndex >= totalGridCells) break
+                activeCellIndices[write++] = cellFlatIndex >>> 0
+                v = (v ^ lsb) >>> 0
+            }
+        }
+        if (write !== activeCellCount) {
+            // Should only differ in the final partial block.
+            activeCellCount = write
+            console.log(`Adjusted active cell count: ${activeCellCount}`)
+        }
+        const activeCellIndicesView = activeCellIndices.subarray(0, activeCellCount)
+
+        // Build a sparse hash table for neighbor lookup (cellFlatIndex -> activeIdx).
+        const targetEntries = Math.max(1024, activeCellCount * 2)
+        let tableEntries = 1
+        while (tableEntries < targetEntries) tableEntries <<= 1
+        const hashMask = tableEntries - 1
+        const cellToActiveHash = new Uint32Array(tableEntries * 2)
+        cellToActiveHash.fill(0xffffffff)
+        for (let i = 0; i < activeCellCount; i++) {
+            const key = activeCellIndicesView[i]!
+            let slot = (Math.imul(key, 2654435761) >>> 0) & hashMask
+            while (true) {
+                const base = slot * 2
+                const existing = cellToActiveHash[base]!
+                if (existing === 0xffffffff) {
+                    cellToActiveHash[base] = key
+                    cellToActiveHash[base + 1] = i
+                    break
+                }
+                if (existing === key) {
+                    cellToActiveHash[base + 1] = i
+                    break
+                }
+                slot = (slot + 1) & hashMask
+            }
+        }
+
+        // --- Stage 2: allocate buffers sized to active cells, then run MDC passes ---
+        const activeCellCountBuffer = this.#helper.createBuffer(
+            "ActiveCellCount",
+            Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
-        const bindGroupPass2c = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass2c",
-            p2c_addWorkgroupOffsets,
-            [0, uniformBuffer],
-            [3, activeCellIndicesCompactionBuffer] // activeCellIndices_compaction
+        this.#device.queue.writeBuffer(activeCellCountBuffer, 0, new Uint32Array([activeCellCount]))
+
+        const activeCellIndicesBuffer = this.#helper.createBuffer(
+            "ActiveCellIndices",
+            activeCellCount * Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         )
-        const bindGroupPass2d = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass2d",
-            p2d_expandActiveCells,
-            [0, uniformBuffer],
-            [2, activeCellFlagsBuffer], // activeCellFlagsIn_compaction
-            [3, activeCellIndicesCompactionBuffer], // activeCellIndices_compaction
-            [4, activeCellCountCompactionBuffer] // activeCellCount_compaction
+        this.#device.queue.writeBuffer(activeCellIndicesBuffer, 0, activeCellIndicesView)
+
+        const cellToActiveHashBuffer = this.#helper.createBuffer(
+            "CellToActiveHash",
+            cellToActiveHash.byteLength,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         )
-        const bindGroupPass2e = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass2e",
-            p2e_buildCellToActiveIndex,
-            [0, uniformBuffer],
-            [3, activeCellIndicesCompactionBuffer],
-            [4, activeCellCountCompactionBuffer],
-            [23, cellToActiveIndexBuffer]
+        this.#device.queue.writeBuffer(cellToActiveHashBuffer, 0, cellToActiveHash)
+
+        const cellEdgeComponentsBuffer = this.#helper.createBuffer(
+            "CellEdgeComponents",
+            activeCellCount * 12 * Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE
         )
+        // Edge crossings are optional debug outputs; keep tiny to avoid huge allocations.
+        const edgeCrossingsXBuffer = this.#helper.createBuffer("EdgeCrossingsX", SIZEOF_EDGECROSSING, GPUBufferUsage.STORAGE)
+        const edgeCrossingsYBuffer = this.#helper.createBuffer("EdgeCrossingsY", SIZEOF_EDGECROSSING, GPUBufferUsage.STORAGE)
+        const edgeCrossingsZBuffer = this.#helper.createBuffer("EdgeCrossingsZ", SIZEOF_EDGECROSSING, GPUBufferUsage.STORAGE)
+
+        const cellQEFDataBuffer = this.#helper.createBuffer(
+            "CellQEFData",
+            activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        )
+        const verticesBuffer = this.#helper.createBuffer(
+            "Vertices",
+            activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        )
+
+        const maxTriangles = activeCellCount * 6
+        const maxIndices = maxTriangles * 3
+        const indicesBuffer = this.#helper.createBuffer(
+            "Indices",
+            maxIndices * Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        )
+        const indexCountFaceBuffer = this.#helper.createBuffer(
+            "IndexCountFace",
+            Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+        )
+        this.#device.queue.writeBuffer(indexCountFaceBuffer, 0, new Uint32Array([0]))
+
+        const p3_edgeDetection = this.#helper.createComputePipeline(mdcShaderModule, "edgeDetection_Pass3")
+        const p4_vertexGeneration = this.#helper.createComputePipeline(mdcShaderModule, "vertexGeneration_Pass4")
+        const p5_generateTrianglesAtomic = this.#helper.createComputePipeline(mdcShaderModule, "generateTrianglesAtomic_Pass5")
 
         const bindGroupPass3 = this.#helper.createBindGroup(
             0,
             "BindGroup Pass3",
             p3_edgeDetection,
             [0, uniformBuffer],
-            [5, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_edge
+            [5, activeCellIndicesBuffer], // activeCellIndicesIn_edge
             [22, cellEdgeComponentsBuffer],
-            [23, cellToActiveIndexBuffer],
             [6, edgeCrossingsXBuffer],
             [7, edgeCrossingsYBuffer],
             [8, edgeCrossingsZBuffer],
-            [9, cellQEFDataBuffer], // cellQEFData_edge
-            [10, activeCellCountCompactionBuffer] // activeCellCount_edgeInput
+            [9, cellQEFDataBuffer],
+            [10, activeCellCountBuffer]
         )
 
         const bindGroupPass4 = this.#helper.createBindGroup(
@@ -312,192 +301,53 @@ export class MDCExport {
             "BindGroup Pass4",
             p4_vertexGeneration,
             [0, uniformBuffer],
-            [11, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_vertex
-            [12, cellQEFDataBuffer], // cellQEFDataIn_vertex
+            [11, activeCellIndicesBuffer], // activeCellIndicesIn_vertex
+            [12, cellQEFDataBuffer],
             [13, verticesBuffer],
-            [14, activeCellCountCompactionBuffer] // activeCellCount_vertexInput
+            [14, activeCellCountBuffer]
         )
 
-        const bindGroupPass5a = this.#helper.createBindGroup(
+        const bindGroupPass5 = this.#helper.createBindGroup(
             0,
-            "BindGroup Pass5a",
-            p5a_countTriangles,
+            "BindGroup Pass5 (atomic)",
+            p5_generateTrianglesAtomic,
             [0, uniformBuffer],
-            [15, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_face
-            [16, activeCellFlagsBuffer], // activeCellFlagsInput_face
-            [22, cellEdgeComponentsBuffer],
-            [23, cellToActiveIndexBuffer],
-            // [16, indicesBuffer],
-            // [17, indexCountFaceBuffer],
-            [19, triangleOffsetsBuffer],
-            [20, activeCellCountCompactionBuffer] // activeCellCount_faceInput
-        )
-
-        const bindGroupPass5b = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass5b",
-            p5b_prefixSumTriangles,
-            [19, triangleOffsetsBuffer],
-            [20, activeCellCountCompactionBuffer], // activeCellCount_faceInput
-            [21, triangleWorkgroupOffsetsBuffer]
-        )
-        const bindGroupPass5b2 = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass5b2",
-            p5b2_prefixSumTriangleWorkgroups,
-            [18, indexCountFaceBuffer],
-            [20, activeCellCountCompactionBuffer], // activeCellCount_faceInput
-            [21, triangleWorkgroupOffsetsBuffer]
-        )
-        const bindGroupPass5b3 = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass5b3",
-            p5b3_addTriangleWorkgroupOffsets,
-            [19, triangleOffsetsBuffer],
-            [20, activeCellCountCompactionBuffer], // activeCellCount_faceInput
-            [21, triangleWorkgroupOffsetsBuffer]
-        )
-        const bindGroupPass5c = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass5c",
-            p5c_generateTriangles,
-            [0, uniformBuffer],
-            [15, activeCellIndicesCompactionBuffer], // activeCellIndicesIn_face
-            [16, activeCellFlagsBuffer], // activeCellFlagsInput_face
-            [22, cellEdgeComponentsBuffer],
-            [23, cellToActiveIndexBuffer],
+            [15, activeCellIndicesBuffer], // activeCellIndicesIn_face
+            [16, activeCellFlagsBuffer], // activeCellFlagsInput_face (used for isCellActive)
             [17, indicesBuffer],
-            [19, triangleOffsetsBuffer],
-            [20, activeCellCountCompactionBuffer] // activeCellCount_faceInput
+            [18, indexCountFaceBuffer],
+            [20, activeCellCountBuffer],
+            [22, cellEdgeComponentsBuffer],
+            [23, cellToActiveHashBuffer]
         )
-        // --- 4. Encode and Submit Commands ---
-        const ce = this.#device.createCommandEncoder({ label: "computeMDC" })
 
-        // Pass 1: Cell Classification
-        // Each workgroup processes one u32 block (32 cells), so we need totalU32sInFlags workgroups
-        let passEncoder = this.#helper.beginComputePass(ce, p1_cellClassification, bindGroupPass1)
-        passEncoder.dispatchWorkgroups(totalU32sInFlags)
-        passEncoder.end()
+        {
+            const ce = this.#device.createCommandEncoder({ label: "mdc_pass3_5" })
+            let pass = this.#helper.beginComputePass(ce, p3_edgeDetection, bindGroupPass3)
+            pass.dispatchWorkgroups(Math.ceil(activeCellCount / 64))
+            pass.end()
 
-        // Pass 2a: Count Active Cells
-        passEncoder = this.#helper.beginComputePass(ce, p2a_countActiveCells, bindGroupPass2a)
-        passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 256))
-        passEncoder.end()
+            pass = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
+            pass.dispatchWorkgroups(Math.ceil((activeCellCount * MAX_COMPONENTS_PER_CELL) / 64))
+            pass.end()
 
-        // Pass 2b: Prefix Sum Workgroup
-        passEncoder = this.#helper.beginComputePass(ce, p2b_prefixSumWorkgroup, bindGroupPass2b)
-        passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 256))
-        passEncoder.end()
+            pass = this.#helper.beginComputePass(ce, p5_generateTrianglesAtomic, bindGroupPass5)
+            pass.dispatchWorkgroups(Math.ceil(activeCellCount / 64))
+            pass.end()
 
-        // Pass 2c: Add Workgroup Offsets
-        // Note: The WGSL for 2c has limitations for >256 blocks if not careful.
-        passEncoder = this.#helper.beginComputePass(ce, p2c_addWorkgroupOffsets, bindGroupPass2c)
-        passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 256))
-        passEncoder.end()
+            this.#device.queue.submit([ce.finish()])
+            await this.#device.queue.onSubmittedWorkDone()
+        }
 
-        // Pass 2d: Expand Active Cells
-        passEncoder = this.#helper.beginComputePass(ce, p2d_expandActiveCells, bindGroupPass2d)
-        passEncoder.dispatchWorkgroups(Math.ceil(totalU32sInFlags / 256))
-        passEncoder.end()
-
-        // Pass 2e: Build cell->active index mapping
-        passEncoder = this.#helper.beginComputePass(ce, p2e_buildCellToActiveIndex, bindGroupPass2e)
-        passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 256))
-        passEncoder.end()
-
-        // Pass 3: Edge Detection
-        // Dispatching based on maxActiveCells. Shader should handle out-of-bounds if actual count is lower.
-        passEncoder = this.#helper.beginComputePass(ce, p3_edgeDetection, bindGroupPass3)
-        passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 64))
-        passEncoder.end()
-
-        // Pass 4: Vertex Generation
-        passEncoder = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
-        passEncoder.dispatchWorkgroups(Math.ceil((maxActiveCells * MAX_COMPONENTS_PER_CELL) / 64))
-        passEncoder.end()
-
-        // Pass 5a: Count Triangles
-        passEncoder = this.#helper.beginComputePass(ce, p5a_countTriangles, bindGroupPass5a)
-        passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 64))
-        passEncoder.end()
-
-        // Pass 5b: Prefix Sum Triangles
-        // Multi-pass scan:
-        // - 5b:  per-workgroup scan of triangle counts; write per-workgroup totals
-        // - 5b2: scan workgroup totals; write indexCount
-        // - 5b3: add workgroup offsets to per-cell offsets
-        passEncoder = this.#helper.beginComputePass(ce, p5b_prefixSumTriangles, bindGroupPass5b)
-        passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 256))
-        passEncoder.end()
-        passEncoder = this.#helper.beginComputePass(ce, p5b2_prefixSumTriangleWorkgroups, bindGroupPass5b2)
-        passEncoder.dispatchWorkgroups(1)
-        passEncoder.end()
-        passEncoder = this.#helper.beginComputePass(ce, p5b3_addTriangleWorkgroupOffsets, bindGroupPass5b3)
-        passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 256))
-        passEncoder.end()
-
-        // Pass 5c: Generate Triangles
-        passEncoder = this.#helper.beginComputePass(ce, p5c_generateTriangles, bindGroupPass5c)
-        passEncoder.dispatchWorkgroups(Math.ceil(maxActiveCells / 64))
-        passEncoder.end()
-
-        this.#device.queue.submit([ce.finish()])
-        await this.#device.queue.onSubmittedWorkDone() // Wait for GPU to finish processing
-
-        // --- 5. Readback and Print Results ---
         console.log("Reading back data from GPU...")
-
-        // Debug: Check flags from Pass 1 to verify cells are being marked as active
-        const flagsData = await this.#helper.readBufferData(activeCellFlagsBuffer, totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT)
-        const flagsArray = new Uint32Array(flagsData)
-        const popcount32 = (v: number) => {
-            // force unsigned 32-bit
-            let x = v >>> 0
-            x = x - ((x >>> 1) & 0x55555555)
-            x = (x & 0x33333333) + ((x >>> 2) & 0x33333333)
-            return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
-        }
-
-        // Summarize first few blocks (quick sanity), and compute totals across all blocks.
-        let nonzeroBlocksInFirst10 = 0
-        let activeCellsInFirst10 = 0
-        for (let i = 0; i < Math.min(flagsArray.length, 10); i++) {
-            const count = popcount32(flagsArray[i]!)
-            activeCellsInFirst10 += count
-            if (flagsArray[i] !== 0) {
-                nonzeroBlocksInFirst10++
-                console.log(`Flags block ${i}: 0x${(flagsArray[i]! >>> 0).toString(16)} (${count} bits set)`)
-            }
-        }
-
-        let totalActiveCellsFromFlags = 0
-        let firstNonzeroBlock = -1
-        for (let i = 0; i < flagsArray.length; i++) {
-            const v = flagsArray[i]!
-            if (v !== 0 && firstNonzeroBlock === -1) firstNonzeroBlock = i
-            totalActiveCellsFromFlags += popcount32(v)
-        }
-
-        console.log(`Flags blocks with set bits (first 10): ${nonzeroBlocksInFirst10} of ${Math.min(flagsArray.length, 10)}`)
-        console.log(`Active cells from flags (first 10 blocks): ${activeCellsInFirst10}`)
-        console.log(`Active cells from flags (ALL blocks): ${totalActiveCellsFromFlags}`)
-        if (firstNonzeroBlock === -1) {
-            console.warn("WARNING: No active cells found in Pass 1 flags buffer! Check sceneSDF and grid parameters.")
-        } else if (firstNonzeroBlock >= 10) {
-            console.log(`First nonzero flags block index: ${firstNonzeroBlock}`)
-        }
-
-        const activeCountData = await this.#helper.readBufferData(activeCellCountCompactionBuffer)
-        const actualActiveCellCount = new Uint32Array(activeCountData)[0]
-        console.log(`Actual Active Cell Count: ${actualActiveCellCount}`)
-
         const indexCountData = await this.#helper.readBufferData(indexCountFaceBuffer)
-        const actualIndexCount = new Uint32Array(indexCountData)[0]
-        console.log(`Actual Index Count: ${actualIndexCount}`)
+        const rawIndexCount = new Uint32Array(indexCountData)[0]!
+        const actualIndexCount = Math.min(rawIndexCount, maxIndices)
+        console.log(`Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`)
 
         let verts: Float32Array | null = null
-        if (actualActiveCellCount > 0) {
-            const actualVertexCount = actualActiveCellCount * MAX_COMPONENTS_PER_CELL
+        if (activeCellCount > 0) {
+            const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
             const verticesData = await this.#helper.readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
             verts = new Float32Array(verticesData)
             const previewVertexCount = Math.min(10, actualVertexCount)
@@ -528,7 +378,10 @@ export class MDCExport {
         }
 
         if (actualIndexCount > 0) {
-            const indicesData = await this.#helper.readBufferData(indicesBuffer, actualIndexCount * Uint32Array.BYTES_PER_ELEMENT)
+            const indicesData = await this.#helper.readBufferData(
+                indicesBuffer,
+                actualIndexCount * Uint32Array.BYTES_PER_ELEMENT
+            )
             const tris = new Uint32Array(indicesData)
             console.log(`Triangle Indices (first ${Math.min(10, actualIndexCount / 3)} triangles of ${actualIndexCount / 3}):`)
             for (let i = 0; i < Math.min(actualIndexCount, 30); i += 3) {
@@ -584,7 +437,7 @@ export class MDCExport {
                 const stlText = lines.join("\n") + "\n"
                 const stlBytes = new TextEncoder().encode(stlText)
                 await saveSTLBufferToDisk(stlBytes.buffer, `${solidName}.stl`)
-                console.log(`Wrote ASCII STL: ${tris.length / 3} triangles`)
+                console.log(`Wrote ASCII STL: ${tris.length / 3} triangles (grid=${gridDimX} voxel=${voxelSize})`)
             }
         } else {
             console.log("No indices generated.")

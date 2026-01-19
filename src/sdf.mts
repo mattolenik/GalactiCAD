@@ -203,8 +203,12 @@ export class SDFRenderer {
         this.build(src)
         // World units are millimeters (mm).
         // Default export volume is a 1000mm cube centered at the origin: [-500, 500]^3.
-        const DEFAULT_BBOX_MM = 1000
-        const GRID_DIM = 512 // increase for higher resolution (cost grows ~ cubic)
+        const DEFAULT_BBOX_MM = 100
+        const GRID_DIM = 256  // increase for higher resolution (cost grows ~ cubic)
+        if (GRID_DIM < 2) {
+            console.warn(`GRID_DIM must be >= 2 for MDC export (got ${GRID_DIM}).`)
+            return
+        }
         const voxelSizeMm = DEFAULT_BBOX_MM / GRID_DIM
         const half = DEFAULT_BBOX_MM / 2
 
@@ -218,6 +222,9 @@ export class SDFRenderer {
             gridOffsetZ: -half,
             voxelSize: voxelSizeMm,
         }
+        console.log(
+            `MDC export params: dim=${GRID_DIM} bbox=${DEFAULT_BBOX_MM}mm voxel=${voxelSizeMm}mm offset=${-half}..${half}`
+        )
 
         const mdc = new MDCExport(this.#helper, params)
         await mdc.export(this.#exportShader)

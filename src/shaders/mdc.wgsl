@@ -75,7 +75,7 @@ const EDGES_PER_CELL: u32 = 12u;
 @group(0) @binding(15) var<storage, read> activeCellIndicesIn_face: array<u32>;     // Compacted list of active cell indices
 @group(0) @binding(16) var<storage, read> activeCellFlagsInput_face: array<u32>; // Original cell flags (output of Pass 1)
 @group(0) @binding(17) var<storage, read_write> indices: array<u32>;              // Output triangle indices
-@group(0) @binding(18) var<storage, read_write> indexCount_face: u32;               // Total number of indices (output of Pass 5b)
+@group(0) @binding(18) var<storage, read_write> indexCount_face: atomic<u32>;       // Total number of indices
 @group(0) @binding(19) var<storage, read_write> triangleOffsets_face: array<u32>;   // Per-cell triangle counts, then prefix sums
 @group(0) @binding(20) var<storage, read> activeCellCount_faceInput: u32;       // Total active cells (output of Pass 2d)
 @group(0) @binding(21) var<storage, read_write> triangleWorkgroupOffsets_face: array<u32>; // workgroup totals -> workgroup exclusive offsets
@@ -86,10 +86,12 @@ const EDGES_PER_CELL: u32 = 12u;
 // or 0xffffffff if that cube edge does not cross the isosurface.
 @group(0) @binding(22) var<storage, read_write> cellEdgeComponents: array<u32>;
 
-// Fast neighbor lookup:
-// Maps a cell flat index (same indexing as activeCellFlags) -> active cell array index,
-// or 0xffffffff when the cell is not active.
-@group(0) @binding(23) var<storage, read_write> cellToActiveIndex: array<u32>;
+// Fast neighbor lookup (sparse):
+// Open-addressing hash table stored as interleaved u32 pairs:
+//   cellToActiveHash[2*i + 0] = cellFlatIndex (key) or 0xffffffffu if empty
+//   cellToActiveHash[2*i + 1] = activeCellIdx  (value)
+// Table size MUST be a power of two, and should be >= 2 * activeCellCount for low probe counts.
+@group(0) @binding(23) var<storage, read> cellToActiveHash: array<u32>;
 
 
 // ============================== UTILITY FUNCTIONS ==============================
@@ -140,10 +142,27 @@ fn activeIndexForCellPos(cellPos: vec3u) -> i32 {
     // Cells live in [0 .. gridDimensions-2] in each axis.
     if (any(cellPos >= uniforms.gridDimensions - 1u)) { return -1; }
     let cellFlatIndex = gridPosToIndex(cellPos);
-    if (cellFlatIndex >= arrayLength(&cellToActiveIndex)) { return -1; }
-    let idx = cellToActiveIndex[cellFlatIndex];
-    if (idx == 0xffffffffu) { return -1; }
-    return i32(idx);
+
+    let len = arrayLength(&cellToActiveHash);
+    if (len < 2u) { return -1; }
+    let entries = len >> 1u;
+    let mask = entries - 1u;
+
+    // Knuth multiplicative hash
+    var slot = (cellFlatIndex * 2654435761u) & mask;
+    // Probe up to a small constant; table is sized to keep this tiny.
+    for (var probe = 0u; probe < 64u; probe = probe + 1u) {
+        let base = slot << 1u;
+        let key = cellToActiveHash[base + 0u];
+        if (key == cellFlatIndex) {
+            return i32(cellToActiveHash[base + 1u]);
+        }
+        if (key == 0xffffffffu) {
+            return -1;
+        }
+        slot = (slot + 1u) & mask;
+    }
+    return -1;
 }
 
 // Gets the grid coordinates of one of the 8 corners of a cell.
@@ -446,9 +465,10 @@ fn ufUnion(parent: ptr<function, array<u32, 12>>, a: u32, b: u32) {
 @compute @workgroup_size(32, 1, 1) // Workgroup size must be 32 for this packing logic
 fn cellClassification_Pass1(
     @builtin(local_invocation_id) localId: vec3u, // localId.x is bit_index_in_u32 (0-31)
-    @builtin(workgroup_id) workgroupId: vec3u    // workgroupId.x is u32_block_index
+    @builtin(workgroup_id) workgroupId: vec3u,   // u32 block index (linearized)
+    @builtin(num_workgroups) numWg: vec3u
 ) {
-    let u32_block_index = workgroupId.x; 
+    let u32_block_index = workgroupId.x + workgroupId.y * numWg.x + workgroupId.z * numWg.x * numWg.y;
     let bit_index_in_u32 = localId.x;   
 
     let cellFlatIndex = u32_block_index * 32u + bit_index_in_u32;
@@ -661,35 +681,17 @@ fn expandActiveCells_Pass2d(
     }
 }
 
-// Pass 2e: Build cellFlatIndex -> activeCellIdx mapping for O(1) neighbor lookups.
-@compute @workgroup_size(256, 1, 1)
-fn buildCellToActiveIndex_Pass2e(@builtin(global_invocation_id) globalId: vec3u) {
-    let activeIdx = globalId.x;
-    let totalActive = activeCellCount_compaction;
-    if (activeIdx >= totalActive) { return; }
-
-    let baseOffset = activeCellIndexListBaseOffset();
-    let listIdx = baseOffset + activeIdx;
-    if (listIdx >= arrayLength(&activeCellIndices_compaction)) { return; }
-
-    let cellFlatIndex = activeCellIndices_compaction[listIdx];
-    if (cellFlatIndex < arrayLength(&cellToActiveIndex)) {
-        cellToActiveIndex[cellFlatIndex] = activeIdx;
-    }
-}
-
-
 // Pass 3: Edge Detection and QEF Accumulation
 @compute @workgroup_size(64, 1, 1)
 fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
     let active_cell_array_idx = globalId.x; 
 
     let totalActiveCells = activeCellCount_edgeInput; 
-    let baseOffset = activeCellIndexListBaseOffset();
     if (active_cell_array_idx >= totalActiveCells) { return; }
-    if (baseOffset + active_cell_array_idx >= arrayLength(&activeCellIndicesIn_edge)) { return; }
+    if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_edge)) { return; }
 
-    let cellFlatIndex = activeCellIndicesIn_edge[baseOffset + active_cell_array_idx];
+    // activeCellIndicesIn_edge is a direct compact list of active cell flat indices.
+    let cellFlatIndex = activeCellIndicesIn_edge[active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
 
     var cornerSDFValues: array<f32, 8>;
@@ -900,9 +902,8 @@ fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
     // Constrain the QEF solution to this cell's bounds to avoid vertices drifting
     // outside the cell (which causes overhanging/jutting polygons, especially on
     // anisotropic shapes like rectangular prisms).
-    let baseOffset = activeCellIndexListBaseOffset();
-    if (baseOffset + active_cell_array_idx >= arrayLength(&activeCellIndicesIn_vertex)) { return; }
-    let cellFlatIndex = activeCellIndicesIn_vertex[baseOffset + active_cell_array_idx];
+    if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_vertex)) { return; }
+    let cellFlatIndex = activeCellIndicesIn_vertex[active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
     let cellMin = gridPosToWorldPos(cellPos);
     let cellMax = cellMin + vec3f(uniforms.voxelSize);
@@ -989,11 +990,10 @@ fn countTriangles_Pass5a(@builtin(global_invocation_id) globalId: vec3u) {
     let active_cell_array_idx = globalId.x;
 
     let totalActiveCells = activeCellCount_faceInput;
-    let baseOffset = activeCellIndexListBaseOffset();
     if (active_cell_array_idx >= totalActiveCells) { return; }
-    if (baseOffset + active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }
+    if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }
 
-    let cellFlatIndex = activeCellIndicesIn_face[baseOffset + active_cell_array_idx];
+    let cellFlatIndex = activeCellIndicesIn_face[active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
 
     var cornerSDFValues_cell: array<f32, 8>;
@@ -1144,12 +1144,12 @@ fn prefixSumTriangleWorkgroups_Pass5b2(
 
     // Write total index count once
     if (totalActiveCellsToProcess == 0u) {
-        if (local_idx == 0u) { indexCount_face = 0u; }
+        if (local_idx == 0u) { atomicStore(&indexCount_face, 0u); }
     } else {
         let last = numWorkgroups - 1u;
         if (local_idx == last) {
             let totalTriangles = workgroup_triangle_counts_ps[last];
-            indexCount_face = totalTriangles * 3u;
+            atomicStore(&indexCount_face, totalTriangles * 3u);
         }
     }
 }
@@ -1215,12 +1215,11 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
     let active_cell_array_idx = globalId.x; 
 
     let totalActiveCells = activeCellCount_faceInput;
-    let baseOffset = activeCellIndexListBaseOffset();
     if (active_cell_array_idx >= totalActiveCells) { return; }
-    if (baseOffset + active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }
+    if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }
     if (active_cell_array_idx >= arrayLength(&triangleOffsets_face)) { return; }
 
-    let cellFlatIndex = activeCellIndicesIn_face[baseOffset + active_cell_array_idx];
+    let cellFlatIndex = activeCellIndicesIn_face[active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
 
     let output_triangle_start_offset_for_this_cell = triangleOffsets_face[active_cell_array_idx];
@@ -1332,6 +1331,105 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
             let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
             generateQuadIndices(current_triangle_base_write_idx, vv0, vv1, vv2, vv3, flip);
             current_triangle_base_write_idx = current_triangle_base_write_idx + 6u;
+            }
+        }
+    }
+}
+
+// Pass 5 (scalable): Generate triangles using an atomic index counter.
+// This avoids prefix-sum limitations for large active cell counts.
+@compute @workgroup_size(64, 1, 1)
+fn generateTrianglesAtomic_Pass5(@builtin(global_invocation_id) globalId: vec3u) {
+    let active_cell_array_idx = globalId.x;
+    let totalActiveCells = activeCellCount_faceInput;
+    if (active_cell_array_idx >= totalActiveCells) { return; }
+    if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }
+
+    let cellFlatIndex = activeCellIndicesIn_face[active_cell_array_idx];
+    let cellPos = gridIndexTo3D(cellFlatIndex);
+
+    var cornerSDFValues_cell: array<f32, 8>;
+    var cornerWorldPos_cell: array<vec3f, 8>;
+    for (var i = 0u; i < 8u; i = i + 1u) {
+        let cgp = getCellCornerPos(cellPos, i);
+        cornerWorldPos_cell[i] = gridPosToWorldPos(cgp);
+        cornerSDFValues_cell[i] = sampleSDF(cornerWorldPos_cell[i]);
+    }
+
+    // X-edge quad
+    if (hasEdgeCrossingX(cellPos, cornerSDFValues_cell) && areFourCellsAroundXEdgeActive(cellPos)) {
+        let v0_vert_idx = i32(active_cell_array_idx);
+        let v1_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 0u));
+        let v2_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 0u, 1u));
+        let v3_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 1u));
+
+        if (v0_vert_idx >= 0 && v1_vert_idx >= 0 && v2_vert_idx >= 0 && v3_vert_idx >= 0) {
+            let c0 = getEdgeComponent(u32(v0_vert_idx), 0u);
+            let c1 = getEdgeComponent(u32(v1_vert_idx), 1u);
+            let c2 = getEdgeComponent(u32(v2_vert_idx), 2u);
+            let c3 = getEdgeComponent(u32(v3_vert_idx), 3u);
+            if (!(c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu)) {
+                let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[1], 0.5);
+                let surface_gradient = computeGradient(edge_mid_point);
+                let flip = dot(surface_gradient, vec3f(1.0, 0.0, 0.0)) < 0.0;
+                let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
+                let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
+                let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
+                let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
+                let base = atomicAdd(&indexCount_face, 6u);
+                generateQuadIndices(base, vv0, vv1, vv2, vv3, flip);
+            }
+        }
+    }
+
+    // Y-edge quad
+    if (hasEdgeCrossingY(cellPos, cornerSDFValues_cell) && areFourCellsAroundYEdgeActive(cellPos)) {
+        let v0_vert_idx = i32(active_cell_array_idx);
+        let v1_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 0u));
+        let v2_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 0u, 1u));
+        let v3_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 1u));
+
+        if (v0_vert_idx >= 0 && v1_vert_idx >= 0 && v2_vert_idx >= 0 && v3_vert_idx >= 0) {
+            let c0 = getEdgeComponent(u32(v0_vert_idx), 4u);
+            let c1 = getEdgeComponent(u32(v1_vert_idx), 5u);
+            let c2 = getEdgeComponent(u32(v2_vert_idx), 6u);
+            let c3 = getEdgeComponent(u32(v3_vert_idx), 7u);
+            if (!(c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu)) {
+                let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[2], 0.5);
+                let surface_gradient = computeGradient(edge_mid_point);
+                let flip = dot(surface_gradient, vec3f(0.0, 1.0, 0.0)) < 0.0;
+                let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
+                let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
+                let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
+                let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
+                let base = atomicAdd(&indexCount_face, 6u);
+                generateQuadIndices(base, vv0, vv1, vv2, vv3, !flip); // keep existing Y convention
+            }
+        }
+    }
+
+    // Z-edge quad
+    if (hasEdgeCrossingZ(cellPos, cornerSDFValues_cell) && areFourCellsAroundZEdgeActive(cellPos)) {
+        let v0_vert_idx = i32(active_cell_array_idx);
+        let v1_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 0u));
+        let v2_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 0u));
+        let v3_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 1u, 0u));
+
+        if (v0_vert_idx >= 0 && v1_vert_idx >= 0 && v2_vert_idx >= 0 && v3_vert_idx >= 0) {
+            let c0 = getEdgeComponent(u32(v0_vert_idx), 8u);
+            let c1 = getEdgeComponent(u32(v1_vert_idx), 9u);
+            let c2 = getEdgeComponent(u32(v2_vert_idx), 10u);
+            let c3 = getEdgeComponent(u32(v3_vert_idx), 11u);
+            if (!(c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu)) {
+                let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[4], 0.5);
+                let surface_gradient = computeGradient(edge_mid_point);
+                let flip = dot(surface_gradient, vec3f(0.0, 0.0, 1.0)) < 0.0;
+                let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
+                let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
+                let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
+                let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
+                let base = atomicAdd(&indexCount_face, 6u);
+                generateQuadIndices(base, vv0, vv1, vv2, vv3, flip);
             }
         }
     }

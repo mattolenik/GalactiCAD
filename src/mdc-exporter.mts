@@ -243,6 +243,13 @@ export class MDCExport {
         )
         this.#device.queue.writeBuffer(cellToActiveHashBuffer, 0, cellToActiveHash)
 
+        const debugSkipCountersBuffer = this.#helper.createBuffer(
+            "DebugSkipCounters",
+            2 * Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+        )
+        this.#device.queue.writeBuffer(debugSkipCountersBuffer, 0, new Uint32Array([0, 0]))
+
         const cellEdgeComponentsBuffer = this.#helper.createBuffer(
             "CellEdgeComponents",
             activeCellCount * 12 * Uint32Array.BYTES_PER_ELEMENT,
@@ -318,7 +325,8 @@ export class MDCExport {
             [18, indexCountFaceBuffer],
             [20, activeCellCountBuffer],
             [22, cellEdgeComponentsBuffer],
-            [23, cellToActiveHashBuffer]
+            [23, cellToActiveHashBuffer],
+            [24, debugSkipCountersBuffer]
         )
 
         {
@@ -340,6 +348,11 @@ export class MDCExport {
         }
 
         console.log("Reading back data from GPU...")
+        const debugCountsData = await this.#helper.readBufferData(debugSkipCountersBuffer, 2 * Uint32Array.BYTES_PER_ELEMENT)
+        const debugCounts = new Uint32Array(debugCountsData)
+        console.log(
+            `MDC debug: skippedQuads(neighborMissing)=${debugCounts[0]} skippedQuads(componentMissing)=${debugCounts[1]}`
+        )
         const indexCountData = await this.#helper.readBufferData(indexCountFaceBuffer)
         const rawIndexCount = new Uint32Array(indexCountData)[0]!
         const actualIndexCount = Math.min(rawIndexCount, maxIndices)

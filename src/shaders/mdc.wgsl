@@ -93,6 +93,11 @@ const EDGES_PER_CELL: u32 = 12u;
 // Table size MUST be a power of two, and should be >= 2 * activeCellCount for low probe counts.
 @group(0) @binding(23) var<storage, read> cellToActiveHash: array<u32>;
 
+// Debug counters (optional):
+// [0] = quads skipped because a neighbor cell was missing
+// [1] = quads skipped because component mapping was missing (0xffffffff)
+@group(0) @binding(24) var<storage, read_write> debugSkipCounters: array<atomic<u32>, 2>;
+
 
 // ============================== UTILITY FUNCTIONS ==============================
 
@@ -1389,12 +1394,16 @@ fn generateTrianglesAtomic_Pass5(@builtin(global_invocation_id) globalId: vec3u)
         let v2_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 0u, 1u));
         let v3_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 1u));
 
-        if (v0_vert_idx >= 0 && v1_vert_idx >= 0 && v2_vert_idx >= 0 && v3_vert_idx >= 0) {
+        if (v0_vert_idx < 0 || v1_vert_idx < 0 || v2_vert_idx < 0 || v3_vert_idx < 0) {
+            atomicAdd(&debugSkipCounters[0], 1u);
+        } else {
             let c0 = getEdgeComponent(u32(v0_vert_idx), 0u);
             let c1 = getEdgeComponent(u32(v1_vert_idx), 1u);
             let c2 = getEdgeComponent(u32(v2_vert_idx), 2u);
             let c3 = getEdgeComponent(u32(v3_vert_idx), 3u);
-            if (!(c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu)) {
+            if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
+                atomicAdd(&debugSkipCounters[1], 1u);
+            } else {
                 let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[1], 0.5);
                 let surface_gradient = computeGradient(edge_mid_point);
                 let flip = dot(surface_gradient, vec3f(1.0, 0.0, 0.0)) < 0.0;
@@ -1415,12 +1424,16 @@ fn generateTrianglesAtomic_Pass5(@builtin(global_invocation_id) globalId: vec3u)
         let v2_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 0u, 1u));
         let v3_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 0u, 1u));
 
-        if (v0_vert_idx >= 0 && v1_vert_idx >= 0 && v2_vert_idx >= 0 && v3_vert_idx >= 0) {
+        if (v0_vert_idx < 0 || v1_vert_idx < 0 || v2_vert_idx < 0 || v3_vert_idx < 0) {
+            atomicAdd(&debugSkipCounters[0], 1u);
+        } else {
             let c0 = getEdgeComponent(u32(v0_vert_idx), 4u);
             let c1 = getEdgeComponent(u32(v1_vert_idx), 5u);
             let c2 = getEdgeComponent(u32(v2_vert_idx), 6u);
             let c3 = getEdgeComponent(u32(v3_vert_idx), 7u);
-            if (!(c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu)) {
+            if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
+                atomicAdd(&debugSkipCounters[1], 1u);
+            } else {
                 let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[2], 0.5);
                 let surface_gradient = computeGradient(edge_mid_point);
                 let flip = dot(surface_gradient, vec3f(0.0, 1.0, 0.0)) < 0.0;
@@ -1441,12 +1454,16 @@ fn generateTrianglesAtomic_Pass5(@builtin(global_invocation_id) globalId: vec3u)
         let v2_vert_idx = activeIndexForCellPos(cellPos - vec3u(0u, 1u, 0u));
         let v3_vert_idx = activeIndexForCellPos(cellPos - vec3u(1u, 1u, 0u));
 
-        if (v0_vert_idx >= 0 && v1_vert_idx >= 0 && v2_vert_idx >= 0 && v3_vert_idx >= 0) {
+        if (v0_vert_idx < 0 || v1_vert_idx < 0 || v2_vert_idx < 0 || v3_vert_idx < 0) {
+            atomicAdd(&debugSkipCounters[0], 1u);
+        } else {
             let c0 = getEdgeComponent(u32(v0_vert_idx), 8u);
             let c1 = getEdgeComponent(u32(v1_vert_idx), 9u);
             let c2 = getEdgeComponent(u32(v2_vert_idx), 10u);
             let c3 = getEdgeComponent(u32(v3_vert_idx), 11u);
-            if (!(c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu)) {
+            if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
+                atomicAdd(&debugSkipCounters[1], 1u);
+            } else {
                 let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[4], 0.5);
                 let surface_gradient = computeGradient(edge_mid_point);
                 let flip = dot(surface_gradient, vec3f(0.0, 0.0, 1.0)) < 0.0;

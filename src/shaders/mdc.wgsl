@@ -337,14 +337,18 @@ fn solveQEF(qef: QEFData) -> vec3f {
     }
     
     var ATA_reg = qef.ATA;
-    let regularization = 0.001 * f32(qef.numPoints);
+    // Keep regularization extremely small to avoid rounding sharp features.
+    // Large regularization biases the solution toward the mass point and creates
+    // beveled/rounded edges on boxes and crisp CSG seams.
+    let regularization = 1e-5;
     ATA_reg[0][0] += regularization;
     ATA_reg[1][1] += regularization;
     ATA_reg[2][2] += regularization;
 
-    if (estimateConditionNumber(ATA_reg) > 10000.0) { 
-        return massPoint; 
-    }
+    // The field can be rank-deficient on planar regions (expected).
+    // Avoid bailing out too aggressively here; instead rely on clamping and surface projection later.
+    // Still bail out on *extreme* numerical instability.
+    if (estimateConditionNumber(ATA_reg) > 1e8) { return massPoint; }
 
     let solution = solveCholesky(ATA_reg, qef.ATb);
     
@@ -363,6 +367,14 @@ fn solveQEF(qef: QEFData) -> vec3f {
     }
     
     return solution;
+}
+
+// Evaluate the (constant-free) QEF quadratic form at x:
+// E(x) = x^T * ATA * x - 2 * x^T * ATb (+ const)
+// Lower is better. This lets us compare candidate vertex positions without storing all planes.
+fn qefCost(qef: QEFData, x: vec3f) -> f32 {
+    let Ax = qef.ATA * x;
+    return dot(x, Ax) - 2.0 * dot(x, qef.ATb);
 }
 
 
@@ -907,20 +919,34 @@ fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
     let cellPos = gridIndexTo3D(cellFlatIndex);
     let cellMin = gridPosToWorldPos(cellPos);
     let cellMax = cellMin + vec3f(uniforms.voxelSize);
+    let cellCenter = cellMin + vec3f(uniforms.voxelSize * 0.5);
 
     var vertexPos = solveQEF(qef);
-    // Constrained DC strategy:
-    // - If the unconstrained QEF solution is inside the cell, keep it (best smoothness).
-    // - If it falls outside, DON'T hard-clamp it (that creates a voxel/cube look);
-    //   instead fall back to the cell mass point (average of edge intersections),
-    //   clamped to the cell bounds.
-    let outside = any(vertexPos < cellMin) || any(vertexPos > cellMax);
-    if (outside) {
-        var mp = cellMin + vec3f(uniforms.voxelSize * 0.5);
-        if (qef.numPoints > 0u) {
-            mp = qef.massPoint / f32(qef.numPoints);
-        }
-        vertexPos = clamp(mp, cellMin, cellMax);
+    // Constrained MDC:
+    // Compare a few candidate positions and pick the one with lowest QEF error.
+    // This prevents pathological "corner clamping" from producing spikes.
+    let mp = clamp(qef.massPoint / max(1.0, f32(qef.numPoints)), cellMin, cellMax);
+    let x0 = clamp(vertexPos, cellMin, cellMax);
+    let x1 = mp;
+    let x2 = cellCenter;
+
+    var best = x0;
+    var bestCost = qefCost(qef, x0);
+
+    let c1 = qefCost(qef, x1);
+    if (c1 < bestCost) { bestCost = c1; best = x1; }
+
+    let c2 = qefCost(qef, x2);
+    if (c2 < bestCost) { bestCost = c2; best = x2; }
+
+    vertexPos = best;
+
+    // Project the chosen vertex onto the iso-surface (few safe steps).
+    for (var it = 0u; it < 3u; it = it + 1u) {
+        let d = sampleSDF(vertexPos) - uniforms.isoValue;
+        let n = computeGradient(vertexPos);
+        let step = clamp(d, -uniforms.voxelSize * 0.25, uniforms.voxelSize * 0.25);
+        vertexPos = clamp(vertexPos - n * step, cellMin, cellMax);
     }
     
     var vertexNormal = computeGradient(vertexPos); 

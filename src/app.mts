@@ -134,7 +134,7 @@ class App {
                                     ],
                                     excludeAcceptAllOption: false,
                                 })
-                                await this.renderer.exportSTL(documentName, documentName, handle)
+                                await this.renderer.exportSTL(documentName, this.editor.getValue(), handle)
                             } catch (err) {
                                 if (`${err}`.includes("AbortError")) {
                                     return

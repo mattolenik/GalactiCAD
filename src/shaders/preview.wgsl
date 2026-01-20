@@ -75,7 +75,9 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     let aspect = camera.res.x / camera.res.y;
 
     let rayDir = vec3f(0.0, 0.0, -1.0);
-    let rayOrigin = computeRayOrigin(vec2f(uv.x*aspect, uv.y), camera.position);
+    // Apply aspect correction about the center so the view stays centered.
+    let uvAspect = vec2f((uv.x - 0.5) * aspect + 0.5, uv.y);
+    let rayOrigin = computeRayOrigin(uvAspect, camera.position);
 
     // Transform the ray from camera space into scene space
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;

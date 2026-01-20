@@ -1,4 +1,5 @@
 import { GPUHelper } from "../gpu/helper.mjs"
+import { MeshData } from "./export.mjs"
 import { exportStlAscii } from "./stl.mjs"
 
 /**
@@ -72,11 +73,6 @@ export interface MDCParams {
     gridOffsetY: number
     gridOffsetZ: number
     voxelSize: number
-}
-
-export interface MeshData {
-    verts: Float32Array<ArrayBuffer>
-    tris: Uint32Array<ArrayBuffer>
 }
 
 export class MDCExport {

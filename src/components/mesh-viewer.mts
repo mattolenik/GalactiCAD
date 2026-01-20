@@ -146,6 +146,7 @@ export class MeshViewer extends HTMLElement {
             },
             primitive: {
                 topology: "triangle-list",
+                frontFace: "cw",
                 cullMode: "back",
             },
             depthStencil: {
@@ -310,10 +311,11 @@ fn vertexMain(v: VertexIn) -> VertexOut {
     let ndcX = p.x / (camera.zoom * aspect);
     let ndcY = p.y / camera.zoom;
 
-    // Depth: simple orthographic mapping (wide enough for typical CAD extents).
-    let near = -1000.0;
-    let far = 1000.0;
-    let ndcZ = ((p.z - near) / (far - near)) * 2.0 - 1.0;
+    // Depth: WebGPU NDC z is 0..1 (not -1..1 like OpenGL).
+    // Use a wide-ish orthographic range to avoid clipping.
+    let near = -10000.0;
+    let far = 10000.0;
+    let ndcZ = clamp((p.z - near) / (far - near), 0.0, 1.0);
 
     var out: VertexOut;
     out.position = vec4f(ndcX, ndcY, ndcZ, 1.0);

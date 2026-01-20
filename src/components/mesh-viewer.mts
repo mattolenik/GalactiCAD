@@ -1,6 +1,7 @@
 import { MeshData } from "../export/export.mjs"
 import { CameraController } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
+import { Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3 } from "../vecmat/vector.mjs"
 
 export class MeshViewer extends HTMLElement {
@@ -22,6 +23,10 @@ export class MeshViewer extends HTMLElement {
     #vertexBuffer: GPUBuffer | null = null
     #pendingMesh: MeshData | null = null
     #helper!: GPUHelper
+
+    get controls(): CameraController {
+        return this.#controls
+    }
 
     constructor() {
         super()
@@ -146,7 +151,9 @@ export class MeshViewer extends HTMLElement {
             },
             primitive: {
                 topology: "triangle-list",
-                frontFace: "cw",
+                // We flip X in clip-space to match PreviewWindow's screen convention,
+                // which also flips winding; keep backface culling correct.
+                frontFace: "ccw",
                 cullMode: "back",
             },
             depthStencil: {
@@ -239,7 +246,12 @@ export class MeshViewer extends HTMLElement {
             return
         }
 
-        this.#device.queue.writeBuffer(this.#uniformBuffer, 0, this.#controls.viewTransform.data as BufferSource)
+        // The raymarch preview uses `camera.transform` as a camera-space -> scene-space transform.
+        // For rasterizing scene-space vertices, we upload the inverse (scene-space -> camera-space).
+        const sceneToCamera = this.#controls.viewTransform.inverse()
+        // Rotate 180° to match PreviewWindow's handedness/orientation.
+        const rotated = Mat4x4f.rotationY(Math.PI).multiply(sceneToCamera)
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 0, rotated.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 64, this.#controls.cameraPosition.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 64 + 16, this.#cameraRes.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))
@@ -303,12 +315,17 @@ struct VertexOut {
 @vertex
 fn vertexMain(v: VertexIn) -> VertexOut {
     let aspect = camera.res.x / camera.res.y;
-    let p = (camera.transform * vec4f(v.position, 1.0)).xyz;
+    // camera.transform is scene-space -> camera-space (uploaded as inverse of PreviewWindow camera.transform).
+    let pCam = (camera.transform * vec4f(v.position, 1.0)).xyz;
+    // PreviewWindow's camera ray origin is (camera.position + vec3(offsetX, offsetY, 100.0)) in camera-space,
+    // so shift vertices by the same camera origin (offsetX/offsetY are handled by projection below).
+    let p = pCam - (camera.position + vec3f(0.0, 0.0, 100.0));
 
     // Match the raymarch preview's screen-space scaling:
     // x in [-zoom*aspect, zoom*aspect] maps to [-1, 1]
     // y in [-zoom, zoom] maps to [-1, 1]
-    let ndcX = p.x / (camera.zoom * aspect);
+    // Flip X so the mesh matches the raymarch preview orientation.
+    let ndcX = -p.x / (camera.zoom * aspect);
     let ndcY = p.y / camera.zoom;
 
     // Depth: WebGPU NDC z is 0..1 (not -1..1 like OpenGL).
@@ -319,7 +336,8 @@ fn vertexMain(v: VertexIn) -> VertexOut {
 
     var out: VertexOut;
     out.position = vec4f(ndcX, ndcY, ndcZ, 1.0);
-    out.normal = normalize((camera.transform * vec4f(v.normal, 0.0)).xyz);
+    // Keep lighting stable in world/scene space (same as PreviewWindow's SDF normal).
+    out.normal = normalize(v.normal);
     return out;
 }
 

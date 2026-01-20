@@ -52,6 +52,13 @@ export class PinchZoomController {
         this.onZoom?.(this.#zoom)
     }
 
+    setZoom(zoom: number, emit = false) {
+        this.#zoom = zoom
+        if (emit) {
+            this.#emitZoom()
+        }
+    }
+
     #getDistance(touches: TouchList): number {
         const [t1, t2] = touches
         const dx = t1.clientX - t2.clientX

@@ -5,6 +5,7 @@ import { DocumentTabs } from "./components/document-tabs.mjs"
 import { MenuButton } from "./components/menu-button.mjs"
 import type { MeshViewer } from "./components/mesh-viewer.mjs"
 import type { PreviewWindow } from "./components/preview-window.mjs"
+import type { CameraState } from "./controls/camera-controller.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
@@ -97,6 +98,31 @@ class App {
         })
 
         this.renderer = new SDFRenderer(preview)
+
+        // Keep mesh + preview cameras in sync (two-way).
+        // Guard against infinite loops by suppressing re-emits during propagation.
+        {
+            const previewControls = this.renderer.controls
+            const meshControls = this.#mesh.controls
+            let syncing = false
+
+            const push = (from: "preview" | "mesh", state: CameraState) => {
+                if (syncing) return
+                syncing = true
+                if (from === "preview") {
+                    meshControls.applyState(state, { emit: false })
+                } else {
+                    previewControls.applyState(state, { emit: false })
+                }
+                syncing = false
+            }
+
+            previewControls.onChange = state => push("preview", state)
+            meshControls.onChange = state => push("mesh", state)
+            // Ensure identical initial state even if load order differs.
+            meshControls.applyState(previewControls.state, { emit: false })
+        }
+
         this.renderer
             .ready()
             .then(() => {

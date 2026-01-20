@@ -45,6 +45,10 @@ export class SDFRenderer {
     #helper!: GPUHelper
     #builtSrc: string | null = null
 
+    get controls(): CameraController {
+        return this.#controls
+    }
+
     constructor(preview: PreviewWindow) {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50)

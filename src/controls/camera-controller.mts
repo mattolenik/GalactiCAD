@@ -8,6 +8,13 @@ export interface CameraHost extends HTMLElement {
     canvas: HTMLCanvasElement
 }
 
+export interface CameraState {
+    sceneRotX: number
+    sceneRotY: number
+    zoom: number
+    translation: Vec3f
+}
+
 export class CameraController {
     #ls: LocalStorage
     #pivot: Vec3f
@@ -43,15 +50,21 @@ export class CameraController {
     #panSensitivity: number = 0.1
     #cameraTranslation: Vec3f = new Vec3f()
     #zoomController: PinchZoomController
+    onChange?: (state: CameraState) => void
 
     constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2) {
         this.#ls = LocalStorage.instance
         this.#host = host
         this.#pivot = pivot
         this.zoom = radius
-        this.#zoomController = new PinchZoomController(host, 40)
+        this.#zoomController = new PinchZoomController(host, this.zoom)
         this.#zoomController.onZoom = zoom => {
             this.zoom = zoom
+            // Clamp may change the value; keep controller state aligned.
+            this.#zoomController.setZoom(this.zoom, false)
+            // Zoom doesn't affect viewTransform, but it *must* emit so other views stay synced.
+            this.#saveCameraState()
+            this.onChange?.(this.state)
         }
         this.#sceneRotY = initialTheta
         this.#sceneRotX = initialPhi
@@ -59,6 +72,25 @@ export class CameraController {
         this.#initEvents()
         this.#loadCameraState()
         this.#updateTransforms()
+    }
+
+    get state(): CameraState {
+        return {
+            sceneRotX: this.#sceneRotX,
+            sceneRotY: this.#sceneRotY,
+            zoom: this.zoom,
+            translation: this.#cameraTranslation.clone(),
+        }
+    }
+
+    applyState(state: CameraState, opts: { emit?: boolean } = {}): void {
+        const emit = opts.emit ?? true
+        this.#sceneRotX = state.sceneRotX
+        this.#sceneRotY = state.sceneRotY
+        this.zoom = state.zoom
+        this.#zoomController.setZoom(this.zoom, false)
+        this.#cameraTranslation = state.translation.clone()
+        this.#updateTransforms(emit)
     }
 
     #initEvents() {
@@ -167,7 +199,7 @@ export class CameraController {
         return this.#pivot.add(vec3(0, 0, 1))
     }
 
-    #updateTransforms() {
+    #updateTransforms(emit = true) {
         this.cameraPosition = this.#computeCameraPosition()
         // Use a fixed up vector (world up) for constructing the view matrix
         let view = lookAt(this.cameraPosition, this.#pivot, vec3(0, 1, 0))
@@ -176,6 +208,9 @@ export class CameraController {
         view = Mat4x4f.translation(this.#cameraTranslation).multiply(view)
         this.viewTransform = view
         this.#saveCameraState()
+        if (emit) {
+            this.onChange?.(this.state)
+        }
     }
 
     #saveCameraState(always = false): void {
@@ -194,6 +229,7 @@ export class CameraController {
         this.cameraPosition = this.#ls.getVec3f("camera.position")
         this.#cameraTranslation = this.#ls.getVec3f("camera.translation")
         this.zoom = this.#ls.getFloat("camera.zoom") ?? 20
+        this.#zoomController.setZoom(this.zoom, false)
         this.#sceneRotX = this.#ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
         this.#sceneRotY = this.#ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
         this.#updateTransforms()

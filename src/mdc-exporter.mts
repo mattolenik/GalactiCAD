@@ -164,18 +164,9 @@ export class MDCExport {
         )
         const flagsArray = new Uint32Array(flagsData)
 
-        let activeCellCount = 0
-        for (let i = 0; i < flagsArray.length; i++) activeCellCount += popcount32(flagsArray[i]!)
-
-        console.log(`Active cells from flags: ${activeCellCount}`)
-        if (activeCellCount === 0) {
-            console.warn("No active cells found; check grid bounds and scene.")
-            return
-        }
-
-        // Build sorted active cell index list.
-        const activeCellIndices = new Uint32Array(activeCellCount)
-        let write = 0
+        // Build a compact active cell index list directly from flags.
+        // This avoids any mismatch between count and enumeration.
+        const activeList: number[] = []
         for (let block = 0; block < flagsArray.length; block++) {
             let v = flagsArray[block]! >>> 0
             if (v === 0) continue
@@ -184,19 +175,23 @@ export class MDCExport {
                 const bit = 31 - Math.clz32(lsb)
                 const cellFlatIndex = block * 32 + bit
                 if (cellFlatIndex >= totalGridCells) break
-                activeCellIndices[write++] = cellFlatIndex >>> 0
+                activeList.push(cellFlatIndex >>> 0)
                 v = (v ^ lsb) >>> 0
             }
         }
-        if (write !== activeCellCount) {
-            // Should only differ in the final partial block.
-            activeCellCount = write
-            console.log(`Adjusted active cell count: ${activeCellCount}`)
+
+        let activeCellCount = activeList.length
+        console.log(`Active cells from flags: ${activeCellCount}`)
+        if (activeCellCount === 0) {
+            console.warn("No active cells found; check grid bounds and scene.")
+            return
         }
-        const activeCellIndicesView = activeCellIndices.subarray(0, activeCellCount)
+
+        const activeCellIndicesView = Uint32Array.from(activeList)
 
         // Build a sparse hash table for neighbor lookup (cellFlatIndex -> activeIdx).
-        const targetEntries = Math.max(1024, activeCellCount * 2)
+        // Over-allocate to keep load factor <= 0.25 (very low probe counts, no lookup failures).
+        const targetEntries = Math.max(1024, activeCellCount * 4)
         let tableEntries = 1
         while (tableEntries < targetEntries) tableEntries <<= 1
         const hashMask = tableEntries - 1

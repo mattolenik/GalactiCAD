@@ -155,8 +155,9 @@ fn activeIndexForCellPos(cellPos: vec3u) -> i32 {
 
     // Knuth multiplicative hash
     var slot = (cellFlatIndex * 2654435761u) & mask;
-    // Probe up to a small constant; table is sized to keep this tiny.
-    for (var probe = 0u; probe < 64u; probe = probe + 1u) {
+    // Probe up to a safe constant; with the CPU-sized table (<= 25% load) this should
+    // still be very small in practice, but we avoid false "missing neighbor" reports.
+    for (var probe = 0u; probe < 256u; probe = probe + 1u) {
         let base = slot << 1u;
         let key = cellToActiveHash[base + 0u];
         if (key == cellFlatIndex) {

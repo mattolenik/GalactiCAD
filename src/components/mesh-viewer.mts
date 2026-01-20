@@ -309,7 +309,7 @@ struct VertexIn {
 
 struct VertexOut {
     @builtin(position) position: vec4f,
-    @location(0) normal: vec3f,
+    @location(0) worldPos: vec3f,
 };
 
 @vertex
@@ -336,15 +336,24 @@ fn vertexMain(v: VertexIn) -> VertexOut {
 
     var out: VertexOut;
     out.position = vec4f(ndcX, ndcY, ndcZ, 1.0);
-    // Keep lighting stable in world/scene space (same as PreviewWindow's SDF normal).
-    out.normal = normalize(v.normal);
+    // Used to compute a per-triangle (flat) normal in the fragment shader.
+    out.worldPos = v.position;
     return out;
 }
 
 @fragment
-fn fragmentMain(v: VertexOut) -> @location(0) vec4f {
+fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4f {
+    // Flat shading: compute face normal from screen-space derivatives of world position.
+    // This yields a constant normal across the triangle.
+    let dx = dpdx(v.worldPos);
+    let dy = dpdy(v.worldPos);
+    var n = normalize(cross(dx, dy));
+    if (!frontFacing) {
+        n = -n;
+    }
+
     let lightDir = normalize(vec3f(0.5, 0.8, -1.0));
-    let diffuse = clamp(dot(normalize(v.normal), lightDir), 0.0, 1.0);
+    let diffuse = clamp(dot(n, lightDir), 0.0, 1.0);
     let baseColor = vec3f(0.9, 0.9, 0.95);
     let shaded = baseColor * (0.15 + 0.85 * diffuse);
     return vec4f(shaded, 1.0);

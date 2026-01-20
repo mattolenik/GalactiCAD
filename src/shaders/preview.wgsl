@@ -54,6 +54,34 @@ fn estimateNormal(p: vec3f) -> vec3f {
     return normalize(vec3f(nx, ny, nz));
 }
 
+fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
+    // "Wrapped" diffuse keeps surfaces lit from multiple angles.
+    return clamp((dot(n, l) + wrap) / (1.0 + wrap), 0.0, 1.0);
+}
+
+fn lighting(normalScene: vec3f) -> f32 {
+    // Define lights in camera-space so they move with the camera.
+    let lCam1 = normalize(vec3f(0.6, 0.7, -1.0));
+    let lCam2 = normalize(vec3f(-0.8, 0.2, -1.0));
+    let lCam3 = normalize(vec3f(0.2, -0.9, -1.0));
+    let lCamBack = normalize(vec3f(-0.2, 0.2, 1.0));
+
+    // Transform light directions into scene-space (same convention as rays).
+    let l1 = normalize((camera.transform * vec4f(lCam1, 0.0)).xyz);
+    let l2 = normalize((camera.transform * vec4f(lCam2, 0.0)).xyz);
+    let l3 = normalize((camera.transform * vec4f(lCam3, 0.0)).xyz);
+    let lb = normalize((camera.transform * vec4f(lCamBack, 0.0)).xyz);
+
+    let wrap = 0.25;
+    let key = 0.55 * diffuseWrap(normalScene, l1, wrap);
+    let fill = 0.30 * diffuseWrap(normalScene, l2, wrap);
+    let rim = 0.20 * diffuseWrap(normalScene, l3, wrap);
+    let back = 0.15 * diffuseWrap(normalScene, lb, 0.40);
+
+    let ambient = 0.18;
+    return clamp(ambient + key + fill + rim + back, 0.0, 1.3);
+}
+
 @vertex
 fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     var pos = array(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(1.0, 1.0));
@@ -89,8 +117,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     if (t > 0) {
         let p = transformedOrigin + t * transformedDir;
         let normal = estimateNormal(p);
-        let lightDir = normalize(vec3f(0.5, 0.8, -1.0));
-        let diffuse = clamp(dot(normal, lightDir), 0.0, 1.0);
+        let diffuse = lighting(normal);
         let baseColor = vec3f(1.0, 0.5, 0.2);
         let shadedColor = baseColor * diffuse;
         return vec4f(shadedColor, 1.0);

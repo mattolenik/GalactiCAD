@@ -119,7 +119,7 @@ export class MeshViewer extends HTMLElement {
 
         this.#uniformBuffer = this.#device.createBuffer({
             label: "meshViewer.camera",
-            size: 96,
+            size: 160,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         })
 
@@ -255,6 +255,9 @@ export class MeshViewer extends HTMLElement {
         this.#device.queue.writeBuffer(this.#uniformBuffer, 64, this.#controls.cameraPosition.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 64 + 16, this.#cameraRes.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))
+        // Provide camera-space -> scene-space so lighting can move with the camera (matching PreviewWindow).
+        const camToScene = rotated.inverse()
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 96, camToScene.data as BufferSource)
 
         const commandEncoder = this.#device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({
@@ -298,6 +301,7 @@ struct Camera {
     position: vec3f,
     res: vec2f,
     zoom: f32,
+    camToScene: mat4x4f,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -341,6 +345,33 @@ fn vertexMain(v: VertexIn) -> VertexOut {
     return out;
 }
 
+fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
+    return clamp((dot(n, l) + wrap) / (1.0 + wrap), 0.0, 1.0);
+}
+
+fn lighting(normalScene: vec3f) -> f32 {
+    // Same light rig as PreviewWindow, defined in camera-space so it moves with the camera.
+    let lCam1 = normalize(vec3f(0.6, 0.7, -1.0));
+    let lCam2 = normalize(vec3f(-0.8, 0.2, -1.0));
+    let lCam3 = normalize(vec3f(0.2, -0.9, -1.0));
+    let lCamBack = normalize(vec3f(-0.2, 0.2, 1.0));
+
+    // Convert to scene-space using camToScene (camera-space -> scene-space).
+    let l1 = normalize((camera.camToScene * vec4f(lCam1, 0.0)).xyz);
+    let l2 = normalize((camera.camToScene * vec4f(lCam2, 0.0)).xyz);
+    let l3 = normalize((camera.camToScene * vec4f(lCam3, 0.0)).xyz);
+    let lb = normalize((camera.camToScene * vec4f(lCamBack, 0.0)).xyz);
+
+    let wrap = 0.25;
+    let key = 0.55 * diffuseWrap(normalScene, l1, wrap);
+    let fill = 0.30 * diffuseWrap(normalScene, l2, wrap);
+    let rim = 0.20 * diffuseWrap(normalScene, l3, wrap);
+    let back = 0.15 * diffuseWrap(normalScene, lb, 0.40);
+
+    let ambient = 0.18;
+    return clamp(ambient + key + fill + rim + back, 0.0, 1.3);
+}
+
 @fragment
 fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4f {
     // Flat shading: compute face normal from screen-space derivatives of world position.
@@ -352,10 +383,9 @@ fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> @loca
         n = -n;
     }
 
-    let lightDir = normalize(vec3f(0.5, 0.8, -1.0));
-    let diffuse = clamp(dot(n, lightDir), 0.0, 1.0);
+    let diffuse = lighting(n);
     let baseColor = vec3f(0.9, 0.9, 0.95);
-    let shaded = baseColor * (0.15 + 0.85 * diffuse);
+    let shaded = baseColor * diffuse;
     return vec4f(shaded, 1.0);
 }
 `

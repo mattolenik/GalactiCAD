@@ -2,7 +2,8 @@ import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
-import { MDCParams, MDCExport } from "./mdc-exporter.mjs"
+import { MDCParams, MDCExport } from "./export/mdc.mjs"
+import { exportStlBinary } from "./export/stl.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
@@ -199,7 +200,7 @@ export class SDFRenderer {
         this.#preview.updateFPS(this.#framerate.average)
     }
 
-    async exportSTL(src: string, handle?: FileSystemHandle) {
+    async exportSTL(documentName: string, src: string, handle: FileSystemFileHandle) {
         this.build(src)
         // World units are millimeters (mm).
         // Default export volume is a 1000mm cube centered at the origin: [-500, 500]^3.
@@ -227,6 +228,7 @@ export class SDFRenderer {
         )
 
         const mdc = new MDCExport(this.#helper, params)
-        await mdc.export(this.#exportShader)
+        const mesh = await mdc.export(this.#exportShader)
+        await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
     }
 }

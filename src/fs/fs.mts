@@ -13,29 +13,3 @@ export function validateFilename(name: string) {
         throw new Error(`filename ${name} is invalid because it contains these characters: ${invalid.join(" ")}`)
     }
 }
-
-export async function saveSTLBufferToDisk(buffer: ArrayBuffer, suggestedName?: string, startIn = "desktop"): Promise<void> {
-    let handle: FileSystemFileHandle
-    try {
-        handle = await window.showSaveFilePicker({
-            suggestedName,
-            types: [
-                {
-                    // TODO: not hardcode STL
-                    description: "STL file",
-                    accept: { "application/vnd.ms-pki.stl": [".stl"], "application/sla": [".stl"], "model/stl": [".stl"] },
-                },
-            ],
-            excludeAcceptAllOption: false,
-        })
-    } catch (err) {
-        if (`${err}`.includes("AbortError")) {
-            return
-        }
-        throw err
-    }
-
-    const writable = await handle!.createWritable()
-    await writable.write(buffer)
-    await writable.close()
-}

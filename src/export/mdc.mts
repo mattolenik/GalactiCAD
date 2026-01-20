@@ -1,5 +1,5 @@
-import { saveSTLBufferToDisk } from "./fs/fs.mjs"
-import { GPUHelper } from "./gpu/helper.mjs"
+import { GPUHelper } from "../gpu/helper.mjs"
+import { exportStlAscii } from "./stl.mjs"
 
 /**
  * Represents a 3D vertex with position and normal.
@@ -19,7 +19,7 @@ interface Vertex {
 // WGSL storage-buffer layout: vec3f has Align=16, Size=12.
 // struct Vertex { position: vec3f; normal: vec3f; }
 // => position @0..11 (pad to 16), normal @16..27 (pad to 32) => 32-byte stride.
-const SIZEOF_VERTEX = 8 * Float32Array.BYTES_PER_ELEMENT // 32 bytes
+export const SIZEOF_VERTEX = 8 * Float32Array.BYTES_PER_ELEMENT // 32 bytes
 
 /**
  * Represents QEF data.
@@ -74,6 +74,11 @@ export interface MDCParams {
     voxelSize: number
 }
 
+export interface MeshData {
+    verts: Float32Array<ArrayBuffer>
+    tris: Uint32Array<ArrayBuffer>
+}
+
 export class MDCExport {
     #helper: GPUHelper
     #device: GPUDevice
@@ -82,7 +87,7 @@ export class MDCExport {
         this.#device = helper.device
     }
 
-    async export(mdcShaderModule: GPUShaderModule): Promise<void> {
+    async export(mdcShaderModule: GPUShaderModule): Promise<MeshData> {
         const { gridDimX, gridDimY, gridDimZ, isoValue, gridOffsetX, gridOffsetY, gridOffsetZ, voxelSize } = this.params
         console.log(
             `MDCExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
@@ -183,8 +188,7 @@ export class MDCExport {
         let activeCellCount = activeList.length
         console.log(`Active cells from flags: ${activeCellCount}`)
         if (activeCellCount === 0) {
-            console.warn("No active cells found; check grid bounds and scene.")
-            return
+            throw new Error("No active cells found, check grid bounds and scene")
         }
 
         const activeCellIndicesView = Uint32Array.from(activeList)
@@ -353,103 +357,17 @@ export class MDCExport {
         const actualIndexCount = Math.min(rawIndexCount, maxIndices)
         console.log(`Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`)
 
-        let verts: Float32Array | null = null
-        if (activeCellCount > 0) {
-            const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
-            const verticesData = await this.#helper.readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
-            verts = new Float32Array(verticesData)
-            const previewVertexCount = Math.min(10, actualVertexCount)
-            console.log(`Vertices (first ${previewVertexCount} of ${actualVertexCount}):`)
-            const stride = SIZEOF_VERTEX / 4 // floats per vertex
-            let defaultVertexCount = 0
-            for (let i = 0; i < actualVertexCount * stride; i += stride) {
-                // Vertex storage layout: position.xyz at [0..2], padding at [3],
-                // normal.xyz at [4..6], padding at [7]
-                const px = verts[i]!
-                const py = verts[i + 1]!
-                const pz = verts[i + 2]!
-                const nx = verts[i + 4]!
-                const ny = verts[i + 5]!
-                const nz = verts[i + 6]!
-                if (px === 0 && py === 0 && pz === 0 && nx === 0 && ny === 1 && nz === 0) defaultVertexCount++
-                if (i / stride < previewVertexCount) {
-                    console.log(
-                        `  Vertex ${i / stride}: P(x:${px.toFixed(3)}, y:${py.toFixed(3)}, z:${pz.toFixed(
-                            3
-                        )}), N(x:${nx.toFixed(3)}, y:${ny.toFixed(3)}, z:${nz.toFixed(3)})`
-                    )
-                }
-            }
-            console.log(`Default (0,0,0)/(0,1,0) vertices: ${defaultVertexCount} of ${actualVertexCount}`)
-        } else {
-            console.log("No active cells, so no vertices generated.")
-        }
+        const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
+        const verticesData = await this.#helper.readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
+        const verts = new Float32Array(verticesData)
 
-        if (actualIndexCount > 0) {
-            const indicesData = await this.#helper.readBufferData(
-                indicesBuffer,
-                actualIndexCount * Uint32Array.BYTES_PER_ELEMENT
-            )
-            const tris = new Uint32Array(indicesData)
-            console.log(`Triangle Indices (first ${Math.min(10, actualIndexCount / 3)} triangles of ${actualIndexCount / 3}):`)
-            for (let i = 0; i < Math.min(actualIndexCount, 30); i += 3) {
-                console.log(`  Triangle ${i / 3}: (${tris[i]}, ${tris[i + 1]}, ${tris[i + 2]})`)
-            }
-
-            // --- 6. Export ASCII STL ---
-            if (!verts) {
-                console.warn("Cannot export STL: vertex buffer was not read.")
-            } else {
-                const stride = SIZEOF_VERTEX / 4 // floats per vertex
-                const solidName = "galacticad"
-                const lines: string[] = []
-                lines.push(`solid ${solidName}`)
-
-                const vpos = (vidx: number) => {
-                    const base = vidx * stride
-                    return [verts![base]!, verts![base + 1]!, verts![base + 2]!] as const
-                }
-                const sub = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                    [a[0] - b[0], a[1] - b[1], a[2] - b[2]] as const
-                const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
-                const norm = (a: readonly [number, number, number]) => Math.hypot(a[0], a[1], a[2])
-                const normalize = (a: readonly [number, number, number]) => {
-                    const n = norm(a)
-                    if (!isFinite(n) || n === 0) return [0, 0, 0] as const
-                    return [a[0] / n, a[1] / n, a[2] / n] as const
-                }
-                const f3 = (n: number) => (Math.abs(n) < 1e-12 ? "0" : n.toString())
-
-                for (let i = 0; i < tris.length; i += 3) {
-                    const i0 = tris[i]!
-                    const i1 = tris[i + 1]!
-                    const i2 = tris[i + 2]!
-
-                    const p0 = vpos(i0)
-                    const p1 = vpos(i1)
-                    const p2 = vpos(i2)
-
-                    const nrm = normalize(cross(sub(p1, p0), sub(p2, p0)))
-
-                    lines.push(`  facet normal ${f3(nrm[0])} ${f3(nrm[1])} ${f3(nrm[2])}`)
-                    lines.push(`    outer loop`)
-                    lines.push(`      vertex ${f3(p0[0])} ${f3(p0[1])} ${f3(p0[2])}`)
-                    lines.push(`      vertex ${f3(p1[0])} ${f3(p1[1])} ${f3(p1[2])}`)
-                    lines.push(`      vertex ${f3(p2[0])} ${f3(p2[1])} ${f3(p2[2])}`)
-                    lines.push(`    endloop`)
-                    lines.push(`  endfacet`)
-                }
-
-                lines.push(`endsolid ${solidName}`)
-                const stlText = lines.join("\n") + "\n"
-                const stlBytes = new TextEncoder().encode(stlText)
-                await saveSTLBufferToDisk(stlBytes.buffer, `${solidName}.stl`)
-                console.log(`Wrote ASCII STL: ${tris.length / 3} triangles (grid=${gridDimX} voxel=${voxelSize})`)
-            }
-        } else {
-            console.log("No indices generated.")
-        }
-        console.log("MDC export process finished.")
+        const indicesData = await this.#helper.readBufferData(
+            indicesBuffer,
+            actualIndexCount * Uint32Array.BYTES_PER_ELEMENT
+        )
+        const tris = new Uint32Array(indicesData)
+        return { verts, tris }
     }
 }
+
+

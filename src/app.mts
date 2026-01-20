@@ -122,23 +122,24 @@ class App {
                         element: exportItem,
                         action: async () => {
                             try {
-                                // let handle = await window.showSaveFilePicker({
-                                //     suggestedName: this.#tabs.active,
-                                //     types: [
-                                //         {
-                                //             description: "STL file",
-                                //             accept: {
-                                //                 "application/vnd.ms-pki.stl": [".stl"],
-                                //             },
-                                //         },
-                                //     ],
-                                //     excludeAcceptAllOption: false,
-                                // })
-                                await this.renderer.exportSTL(this.editor.getValue())
+                                const documentName = this.#tabs.active!
+                                const handle = await window.showSaveFilePicker({
+                                    suggestedName: documentName,
+                                    startIn: "desktop",
+                                    types: [
+                                        {
+                                            description: "STL file",
+                                            accept: { "model/stl": [".stl"] },
+                                        },
+                                    ],
+                                    excludeAcceptAllOption: false,
+                                })
+                                await this.renderer.exportSTL(documentName, documentName, handle)
                             } catch (err) {
-                                if (!`${err}`.includes("AbortError")) {
-                                    throw err
+                                if (`${err}`.includes("AbortError")) {
+                                    return
                                 }
+                                throw err
                             }
                         },
                     },

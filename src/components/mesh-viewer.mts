@@ -1,0 +1,340 @@
+import { MeshData } from "../export/export.mjs"
+import { CameraController } from "../controls/camera-controller.mjs"
+import { GPUHelper } from "../gpu/helper.mjs"
+import { vec2, Vec2f, vec3 } from "../vecmat/vector.mjs"
+
+export class MeshViewer extends HTMLElement {
+    readonly canvas: HTMLCanvasElement
+
+    #bindGroup!: GPUBindGroup
+    #cameraRes: Vec2f
+    #context!: GPUCanvasContext
+    #controls: CameraController
+    #depthTexture: GPUTexture | null = null
+    #device!: GPUDevice
+    #format!: GPUTextureFormat
+    #indexCount = 0
+    #indexBuffer: GPUBuffer | null = null
+    #initializing: Promise<void> | null
+    #pipeline!: GPURenderPipeline
+    #started = false
+    #uniformBuffer: GPUBuffer | null = null
+    #vertexBuffer: GPUBuffer | null = null
+    #pendingMesh: MeshData | null = null
+    #helper!: GPUHelper
+
+    constructor() {
+        super()
+        const shadow = this.attachShadow({ mode: "open" })
+        const style = document.createElement("style")
+        style.textContent = `
+        canvas {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;    /* no long-press callout */
+            -webkit-user-drag: none;        /* no “drag” highlight */
+            -webkit-user-select: none;      /* no text selection */
+            display: block;
+            height: 100%;
+            overscroll-behavior: none;
+            touch-action: none;             /* no scrolling/pinch zoom */
+            user-select: none;
+            width: 100%;
+        }
+        :host { display: inline-block; position: relative; }
+        .overlay {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            pointer-events: none;
+            z-index: 1;
+        }
+`
+        this.canvas = document.createElement("canvas")
+        this.canvas.style.width = "100%"
+        this.canvas.style.height = "100%"
+        this.canvas.style.display = "inline-block"
+        shadow.appendChild(this.canvas)
+        shadow.append(style, this.canvas)
+
+        this.#cameraRes = vec2(this.canvas.clientWidth, this.canvas.clientHeight)
+        this.#controls = new CameraController(this, vec3(0, 0, 0), 50)
+        this.#initializing = this.#initialize()
+
+        const observer = new ResizeObserver(entries => {
+            requestAnimationFrame(() => {
+                for (const entry of entries) {
+                    const w =
+                        entry.devicePixelContentBoxSize?.[0].inlineSize ??
+                        Math.max(1, Math.round(entry.contentRect.width * devicePixelRatio))
+                    const h =
+                        entry.devicePixelContentBoxSize?.[0].blockSize ??
+                        Math.max(1, Math.round(entry.contentRect.height * devicePixelRatio))
+                    this.canvas.width = w
+                    this.canvas.height = h
+                    this.#cameraRes = vec2(w, h)
+                }
+                if (this.#device) {
+                    this.#recreateDepthTexture()
+                }
+            })
+        })
+        try {
+            observer.observe(this, { box: "device-pixel-content-box" })
+        } catch {
+            observer.observe(this, { box: "content-box" })
+        }
+    }
+
+    connectedCallback(): void {
+        this.startLoop()
+    }
+
+    async ready() {
+        if (this.#initializing) {
+            await this.#initializing
+            this.#initializing = null
+        }
+    }
+
+    async #initialize() {
+        const helper = await GPUHelper.create()
+        if (!helper) {
+            throw new Error("No GPU adapter found", { cause: "unsupported" })
+        }
+        this.#helper = helper
+        this.#device = helper.device
+        this.#context = this.canvas.getContext("webgpu") as GPUCanvasContext
+
+        this.#format = navigator.gpu.getPreferredCanvasFormat()
+        this.#context.configure({
+            device: this.#device,
+            format: this.#format,
+            alphaMode: "premultiplied",
+        })
+
+        this.#uniformBuffer = this.#device.createBuffer({
+            label: "meshViewer.camera",
+            size: 96,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        })
+
+        const shaderModule = this.#device.createShaderModule({
+            label: "meshViewer.shader",
+            code: MESH_SHADER,
+        })
+
+        this.#pipeline = this.#device.createRenderPipeline({
+            label: "MeshViewer Pipeline",
+            layout: "auto",
+            vertex: {
+                module: shaderModule,
+                entryPoint: "vertexMain",
+                buffers: [
+                    {
+                        arrayStride: 32,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0, format: "float32x3" }, // position
+                            { shaderLocation: 1, offset: 16, format: "float32x3" }, // normal
+                        ],
+                    },
+                ],
+            },
+            fragment: {
+                module: shaderModule,
+                entryPoint: "fragmentMain",
+                targets: [{ format: this.#format }],
+            },
+            primitive: {
+                topology: "triangle-list",
+                cullMode: "back",
+            },
+            depthStencil: {
+                format: "depth24plus",
+                depthWriteEnabled: true,
+                depthCompare: "less",
+            },
+        })
+
+        this.#bindGroup = this.#device.createBindGroup({
+            label: "meshViewer.bindGroup",
+            layout: this.#pipeline.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: { buffer: this.#uniformBuffer } }],
+        })
+
+        this.#recreateDepthTexture()
+
+        if (this.#pendingMesh) {
+            const mesh = this.#pendingMesh
+            this.#pendingMesh = null
+            this.#uploadMesh(mesh)
+        }
+    }
+
+    #recreateDepthTexture() {
+        this.#depthTexture?.destroy()
+        this.#depthTexture = this.#device.createTexture({
+            label: "meshViewer.depth",
+            size: { width: Math.max(1, this.canvas.width), height: Math.max(1, this.canvas.height) },
+            format: "depth24plus",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        })
+    }
+
+    async setMesh(mesh: MeshData) {
+        this.#pendingMesh = mesh
+        await this.ready()
+        if (!this.#pendingMesh) return
+
+        const meshToUpload = this.#pendingMesh
+        this.#pendingMesh = null
+        this.#uploadMesh(meshToUpload)
+    }
+
+    #uploadMesh(mesh: MeshData) {
+        const { verts, tris } = mesh
+
+        this.#indexCount = tris.length
+        if (this.#indexCount === 0 || verts.length === 0) {
+            this.#vertexBuffer?.destroy()
+            this.#indexBuffer?.destroy()
+            this.#vertexBuffer = null
+            this.#indexBuffer = null
+            this.#indexCount = 0
+            return
+        }
+
+        // Upload vertex buffer (layout: [px,py,pz,pad,nx,ny,nz,pad] * N).
+        if (!this.#vertexBuffer || this.#vertexBuffer.size !== verts.byteLength) {
+            this.#vertexBuffer?.destroy()
+            this.#vertexBuffer = this.#device.createBuffer({
+                label: "meshViewer.vertices",
+                size: verts.byteLength,
+                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            })
+        }
+        this.#device.queue.writeBuffer(this.#vertexBuffer, 0, verts)
+
+        // Upload index buffer.
+        if (!this.#indexBuffer || this.#indexBuffer.size !== tris.byteLength) {
+            this.#indexBuffer?.destroy()
+            this.#indexBuffer = this.#device.createBuffer({
+                label: "meshViewer.indices",
+                size: tris.byteLength,
+                usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+            })
+        }
+        this.#device.queue.writeBuffer(this.#indexBuffer, 0, tris)
+    }
+
+    startLoop() {
+        if (this.#started) return
+        this.#started = true
+        requestAnimationFrame(this.update.bind(this))
+    }
+
+    update(): void {
+        if (!this.#device || !this.#uniformBuffer) {
+            requestAnimationFrame(() => this.update())
+            return
+        }
+
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 0, this.#controls.viewTransform.data as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 64, this.#controls.cameraPosition.data as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 64 + 16, this.#cameraRes.data as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))
+
+        const commandEncoder = this.#device.createCommandEncoder()
+        const renderPass = commandEncoder.beginRenderPass({
+            colorAttachments: [
+                {
+                    view: this.#context.getCurrentTexture().createView(),
+                    loadOp: "clear",
+                    storeOp: "store",
+                    clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                },
+            ],
+            depthStencilAttachment: this.#depthTexture
+                ? {
+                    view: this.#depthTexture.createView(),
+                    depthClearValue: 1.0,
+                    depthLoadOp: "clear",
+                    depthStoreOp: "store",
+                }
+                : undefined,
+        })
+
+        renderPass.setPipeline(this.#pipeline)
+        renderPass.setBindGroup(0, this.#bindGroup)
+
+        if (this.#vertexBuffer && this.#indexBuffer && this.#indexCount > 0) {
+            renderPass.setVertexBuffer(0, this.#vertexBuffer)
+            renderPass.setIndexBuffer(this.#indexBuffer, "uint32")
+            renderPass.drawIndexed(this.#indexCount)
+        }
+
+        renderPass.end()
+        this.#device.queue.submit([commandEncoder.finish()])
+
+        requestAnimationFrame(() => this.update())
+    }
+}
+
+const MESH_SHADER = /* wgsl */ `
+struct Camera {
+    transform: mat4x4f,
+    position: vec3f,
+    res: vec2f,
+    zoom: f32,
+};
+
+@group(0) @binding(0) var<uniform> camera: Camera;
+
+struct VertexIn {
+    @location(0) position: vec3f,
+    @location(1) normal: vec3f,
+};
+
+struct VertexOut {
+    @builtin(position) position: vec4f,
+    @location(0) normal: vec3f,
+};
+
+@vertex
+fn vertexMain(v: VertexIn) -> VertexOut {
+    let aspect = camera.res.x / camera.res.y;
+    let p = (camera.transform * vec4f(v.position, 1.0)).xyz;
+
+    // Match the raymarch preview's screen-space scaling:
+    // x in [-zoom*aspect, zoom*aspect] maps to [-1, 1]
+    // y in [-zoom, zoom] maps to [-1, 1]
+    let ndcX = p.x / (camera.zoom * aspect);
+    let ndcY = p.y / camera.zoom;
+
+    // Depth: simple orthographic mapping (wide enough for typical CAD extents).
+    let near = -1000.0;
+    let far = 1000.0;
+    let ndcZ = ((p.z - near) / (far - near)) * 2.0 - 1.0;
+
+    var out: VertexOut;
+    out.position = vec4f(ndcX, ndcY, ndcZ, 1.0);
+    out.normal = normalize((camera.transform * vec4f(v.normal, 0.0)).xyz);
+    return out;
+}
+
+@fragment
+fn fragmentMain(v: VertexOut) -> @location(0) vec4f {
+    let lightDir = normalize(vec3f(0.5, 0.8, -1.0));
+    let diffuse = clamp(dot(normalize(v.normal), lightDir), 0.0, 1.0);
+    let baseColor = vec3f(0.9, 0.9, 0.95);
+    let shaded = baseColor * (0.15 + 0.85 * diffuse);
+    return vec4f(shaded, 1.0);
+}
+`
+
+customElements.define("mesh-viewer", MeshViewer)
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "mesh-viewer": MeshViewer
+    }
+}

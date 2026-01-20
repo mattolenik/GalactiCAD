@@ -3,19 +3,26 @@ import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
 import { DocumentTabs } from "./components/document-tabs.mjs"
 import { MenuButton } from "./components/menu-button.mjs"
-import { PreviewWindow } from "./components/preview-window.mjs"
+import type { MeshViewer } from "./components/mesh-viewer.mjs"
+import type { PreviewWindow } from "./components/preview-window.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
+import { exportStlBinary } from "./export/stl.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
     renderer: SDFRenderer
     #tabs: DocumentTabs
+    #mesh: MeshViewer
+    #meshUpdateToken = 0
+    #meshUpdateTimer: number | null = null
 
     build() {
         try {
-            this.renderer.build(this.editor.getValue())
+            const src = this.editor.getValue()
+            this.renderer.build(src)
             this.renderer.startLoop()
+            this.#scheduleMeshUpdate(src)
             this.log.innerText = ""
         } catch (err) {
             this.log.innerText = `💢 ${err}`
@@ -24,6 +31,7 @@ class App {
 
     constructor(
         preview: PreviewWindow,
+        mesh: MeshViewer,
         tabs: HTMLDivElement,
         editorContainer: HTMLDivElement,
         private log: HTMLDivElement,
@@ -67,6 +75,7 @@ class App {
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
         this.#tabs.restore()
+        this.#mesh = mesh
 
         const style = document.createElement("style")
         style.textContent = `
@@ -134,7 +143,8 @@ class App {
                                     ],
                                     excludeAcceptAllOption: false,
                                 })
-                                await this.renderer.exportSTL(documentName, this.editor.getValue(), handle)
+                                const mesh = await this.renderer.renderMesh(this.editor.getValue())
+                                await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
                             } catch (err) {
                                 if (`${err}`.includes("AbortError")) {
                                     return
@@ -153,6 +163,26 @@ class App {
                     "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
                 preview.replaceWith(msg)
             })
+    }
+
+    #scheduleMeshUpdate(src: string) {
+        // Meshing is expensive; debounce so we don't re-mesh on every keystroke.
+        if (this.#meshUpdateTimer !== null) {
+            clearTimeout(this.#meshUpdateTimer)
+            this.#meshUpdateTimer = null
+        }
+
+        const token = ++this.#meshUpdateToken
+        this.#meshUpdateTimer = window.setTimeout(async () => {
+            try {
+                const mesh = await this.renderer.renderMesh(src)
+                if (token !== this.#meshUpdateToken) return
+                await this.#mesh.setMesh(mesh)
+            } catch (err) {
+                // Mesh generation failing shouldn't break the live SDF preview.
+                console.error(`Mesh update failed: ${err}`)
+            }
+        }, 600)
     }
 }
 export default App

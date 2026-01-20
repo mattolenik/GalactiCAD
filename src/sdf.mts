@@ -9,6 +9,7 @@ import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
+import { MeshData } from "./export/export.mjs"
 
 class UniformBuffers {
     camera!: GPUBuffer
@@ -42,6 +43,7 @@ export class SDFRenderer {
     #sceneShader!: GPUShaderModule
     #exportShader!: GPUShaderModule
     #helper!: GPUHelper
+    #builtSrc: string | null = null
 
     constructor(preview: PreviewWindow) {
         this.#preview = preview
@@ -54,24 +56,29 @@ export class SDFRenderer {
         const observer = new ResizeObserver(entries => {
             requestAnimationFrame(() => {
                 for (const entry of entries) {
-                    const width = entry.devicePixelContentBoxSize?.[0].inlineSize || entry.contentBoxSize[0].inlineSize * devicePixelRatio
-                    const height = entry.devicePixelContentBoxSize?.[0].blockSize || entry.contentBoxSize[0].blockSize * devicePixelRatio
-                    const canvas = entry.target as HTMLCanvasElement
-                    canvas.width = width
-                    canvas.height = height
-                    this.#cameraRes = vec2(canvas.width, canvas.height)
+                    const w =
+                        entry.devicePixelContentBoxSize?.[0].inlineSize ??
+                        Math.max(1, Math.round(entry.contentRect.width * devicePixelRatio))
+                    const h =
+                        entry.devicePixelContentBoxSize?.[0].blockSize ??
+                        Math.max(1, Math.round(entry.contentRect.height * devicePixelRatio))
+                    this.#preview.canvas.width = w
+                    this.#preview.canvas.height = h
+                    this.#cameraRes = vec2(w, h)
                 }
             })
         })
         try {
-            observer.observe(this.#preview.canvas, { box: "device-pixel-content-box" })
+            observer.observe(this.#preview, { box: "device-pixel-content-box" })
         } catch {
-            observer.observe(this.#preview.canvas, { box: "content-box" })
+            observer.observe(this.#preview, { box: "content-box" })
         }
     }
 
     build(src: string) {
-        this.#scene = new SceneInfo(src.trim())
+        const trimmed = src.trim()
+        this.#builtSrc = trimmed
+        this.#scene = new SceneInfo(trimmed)
         const sceneSDF = this.#scene.compile()
         this.#shaderCompiler = new ShaderCompiler(this.#device).replace("insert", "sceneSDF", sceneSDF)
         this.#sceneShader = this.#shaderCompiler.compile(previewShader, "Preview Window")
@@ -200,16 +207,15 @@ export class SDFRenderer {
         this.#preview.updateFPS(this.#framerate.average)
     }
 
-    async exportSTL(documentName: string, src: string, handle: FileSystemFileHandle) {
-        this.build(src)
+    async renderMesh(src: string): Promise<MeshData> {
+        const trimmed = src.trim()
+        if (this.#builtSrc !== trimmed) {
+            this.build(trimmed)
+        }
         // World units are millimeters (mm).
         // Default export volume is a 1000mm cube centered at the origin: [-500, 500]^3.
         const DEFAULT_BBOX_MM = 100
         const GRID_DIM = 256  // increase for higher resolution (cost grows ~ cubic)
-        if (GRID_DIM < 2) {
-            console.warn(`GRID_DIM must be >= 2 for MDC export (got ${GRID_DIM}).`)
-            return
-        }
         const voxelSizeMm = DEFAULT_BBOX_MM / GRID_DIM
         const half = DEFAULT_BBOX_MM / 2
 
@@ -228,7 +234,6 @@ export class SDFRenderer {
         )
 
         const mdc = new MDCExport(this.#helper, params)
-        const mesh = await mdc.export(this.#exportShader)
-        await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
+        return await mdc.export(this.#exportShader)
     }
 }

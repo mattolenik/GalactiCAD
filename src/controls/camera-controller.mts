@@ -1,14 +1,17 @@
-import { PreviewWindow } from "../components/preview-window.mjs"
 import { clamped, clampedAngle } from "../math.mjs"
 import { LocalStorage } from "../storage/storage.mjs"
 import { lookAt, Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { PinchZoomController } from "./pinchzoom-controller.mjs"
 
+export interface CameraHost extends HTMLElement {
+    canvas: HTMLCanvasElement
+}
+
 export class CameraController {
     #ls: LocalStorage
     #pivot: Vec3f
-    #preview: PreviewWindow
+    #host: CameraHost
     cameraPosition = new Vec3f()
     viewTransform = new Mat4x4f()
 
@@ -27,7 +30,7 @@ export class CameraController {
     }
     set isDragging(val: boolean) {
         this.#isDragging = val
-        this.#preview.canvas.style.cursor = val ? "grabbing" : "auto"
+        this.#host.canvas.style.cursor = val ? "grabbing" : "auto"
     }
 
     #last = new Vec2f()
@@ -41,12 +44,12 @@ export class CameraController {
     #cameraTranslation: Vec3f = new Vec3f()
     #zoomController: PinchZoomController
 
-    constructor(preview: PreviewWindow, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2) {
+    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2) {
         this.#ls = LocalStorage.instance
-        this.#preview = preview
+        this.#host = host
         this.#pivot = pivot
         this.zoom = radius
-        this.#zoomController = new PinchZoomController(preview, 40)
+        this.#zoomController = new PinchZoomController(host, 40)
         this.#zoomController.onZoom = zoom => {
             this.zoom = zoom
         }
@@ -59,13 +62,13 @@ export class CameraController {
     }
 
     #initEvents() {
-        this.#preview.canvas.addEventListener("pointerdown", this.#onPointerDown.bind(this))
-        this.#preview.canvas.addEventListener("pointermove", this.#onPointerMove.bind(this))
-        this.#preview.canvas.addEventListener("pointerup", this.#onPointerUp.bind(this))
-        this.#preview.canvas.addEventListener("pointercancel", this.#onPointerUp.bind(this))
-        this.#preview.canvas.addEventListener("pointerleave", this.#onPointerUp.bind(this))
-        this.#preview.canvas.addEventListener("contextmenu", e => e.preventDefault())
-        this.#preview.canvas.addEventListener("keypress", this.#onKeyPress.bind(this))
+        this.#host.canvas.addEventListener("pointerdown", this.#onPointerDown.bind(this))
+        this.#host.canvas.addEventListener("pointermove", this.#onPointerMove.bind(this))
+        this.#host.canvas.addEventListener("pointerup", this.#onPointerUp.bind(this))
+        this.#host.canvas.addEventListener("pointercancel", this.#onPointerUp.bind(this))
+        this.#host.canvas.addEventListener("pointerleave", this.#onPointerUp.bind(this))
+        this.#host.canvas.addEventListener("contextmenu", e => e.preventDefault())
+        this.#host.canvas.addEventListener("keypress", this.#onKeyPress.bind(this))
         document.addEventListener("keydown", this.#onKeyPress.bind(this), false)
 
         // track clicks
@@ -80,7 +83,7 @@ export class CameraController {
     }
 
     #onKeyPress(e: KeyboardEvent) {
-        if (this.#lastFocused?.id !== this.#preview.id) return
+        if (this.#lastFocused?.id !== this.#host.id) return
         if (e.code === "Digit1") {
             this.#sceneRotX = -1 * Math.PI
             this.#sceneRotY = -1 * Math.PI
@@ -126,7 +129,7 @@ export class CameraController {
         if (!this.isDragging) return
         if (this.#zoomController.isZooming) return
 
-        const rect = this.#preview.canvas.getBoundingClientRect()
+        const rect = this.#host.canvas.getBoundingClientRect()
         if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
             // this.isDragging = false
             // this.dragMode = null

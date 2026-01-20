@@ -16,7 +16,7 @@ const Static = {
 }
 
 const Options = {
-    entryPoints: ["./src/app.mts", "./src/components/preview-window.mts"],
+    entryPoints: ["./src/app.mts", "./src/components/preview-window.mts", "./src/components/mesh-viewer.mts"],
     plugins: [wgslLoader(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
     outDir: "./dist",
     isProd: !!process.env.PRODUCTION,

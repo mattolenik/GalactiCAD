@@ -6,7 +6,7 @@ import { vec2, Vec2f, vec3 } from "../vecmat/vector.mjs"
 
 export class MeshViewer extends HTMLElement {
     static get observedAttributes() {
-        return ["translucentFaces"]
+        return ["translucentFaces", "wireframe"]
     }
     readonly canvas: HTMLCanvasElement
 
@@ -21,10 +21,13 @@ export class MeshViewer extends HTMLElement {
     #format!: GPUTextureFormat
     #indexCount = 0
     #indexBuffer: GPUBuffer | null = null
+    #edgeIndexCount = 0
+    #edgeIndexBuffer: GPUBuffer | null = null
     #initializing: Promise<void> | null
     #pipelineOpaque!: GPURenderPipeline
     #pipelineTranslucent!: GPURenderPipeline // weighted blended OIT pass
     #compositePipeline!: GPURenderPipeline
+    #pipelineWireframe!: GPURenderPipeline
     #started = false
     #uniformBuffer: GPUBuffer | null = null
     #vertexBuffer: GPUBuffer | null = null
@@ -38,6 +41,8 @@ export class MeshViewer extends HTMLElement {
 
     #translucentFaces = false
     #translucentCheckbox!: HTMLInputElement
+    #wireframe = false
+    #wireframeCheckbox!: HTMLInputElement
 
     get controls(): CameraController {
         return this.#controls
@@ -49,6 +54,7 @@ export class MeshViewer extends HTMLElement {
 
         // Initialize state from attribute (if present in HTML).
         this.#translucentFaces = (this.getAttribute("translucentFaces") ?? "").toLowerCase() === "true"
+        this.#wireframe = (this.getAttribute("wireframe") ?? "").toLowerCase() === "true"
 
         const style = document.createElement("style")
         style.textContent = `
@@ -106,10 +112,23 @@ export class MeshViewer extends HTMLElement {
         text.textContent = "Translucent faces"
         label.append(this.#translucentCheckbox, text)
         overlay.append(label)
+
+        const wireLabel = document.createElement("label")
+        wireLabel.style.marginTop = "6px"
+        this.#wireframeCheckbox = document.createElement("input")
+        this.#wireframeCheckbox.type = "checkbox"
+        this.#wireframeCheckbox.checked = this.#wireframe
+        const wireText = document.createElement("span")
+        wireText.textContent = "Wireframe"
+        wireLabel.append(this.#wireframeCheckbox, wireText)
+        overlay.append(wireLabel)
         shadow.appendChild(overlay)
 
         this.#translucentCheckbox.addEventListener("change", () => {
             this.translucentFaces = this.#translucentCheckbox.checked
+        })
+        this.#wireframeCheckbox.addEventListener("change", () => {
+            this.wireframe = this.#wireframeCheckbox.checked
         })
 
         this.#cameraRes = vec2(this.canvas.clientWidth, this.canvas.clientHeight)
@@ -201,6 +220,10 @@ export class MeshViewer extends HTMLElement {
             label: "meshViewer.shader.composite",
             code: COMPOSITE_SHADER,
         })
+        const shaderModuleWireframe = this.#device.createShaderModule({
+            label: "meshViewer.shader.wireframe",
+            code: MESH_SHADER_WIREFRAME,
+        })
 
         this.#pipelineOpaque = this.#device.createRenderPipeline({
             label: "MeshViewer Pipeline (opaque)",
@@ -227,6 +250,39 @@ export class MeshViewer extends HTMLElement {
                 topology: "triangle-list",
                 // We flip X in clip-space to match PreviewWindow's screen convention,
                 // which also flips winding; keep backface culling correct.
+                frontFace: "ccw",
+                cullMode: "none",
+            },
+            depthStencil: {
+                format: "depth24plus",
+                depthWriteEnabled: true,
+                depthCompare: "less",
+            },
+        })
+
+        this.#pipelineWireframe = this.#device.createRenderPipeline({
+            label: "MeshViewer Pipeline (wireframe)",
+            layout: this.#pipelineLayout,
+            vertex: {
+                module: shaderModuleWireframe,
+                entryPoint: "vertexMain",
+                buffers: [
+                    {
+                        arrayStride: 32,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0, format: "float32x3" }, // position
+                            { shaderLocation: 1, offset: 16, format: "float32x3" }, // normal
+                        ],
+                    },
+                ],
+            },
+            fragment: {
+                module: shaderModuleWireframe,
+                entryPoint: "fragmentMain",
+                targets: [{ format: this.#format }],
+            },
+            primitive: {
+                topology: "line-list",
                 frontFace: "ccw",
                 cullMode: "none",
             },
@@ -382,9 +438,12 @@ export class MeshViewer extends HTMLElement {
         if (this.#indexCount === 0 || verts.length === 0) {
             this.#vertexBuffer?.destroy()
             this.#indexBuffer?.destroy()
+            this.#edgeIndexBuffer?.destroy()
             this.#vertexBuffer = null
             this.#indexBuffer = null
+            this.#edgeIndexBuffer = null
             this.#indexCount = 0
+            this.#edgeIndexCount = 0
             return
         }
 
@@ -409,6 +468,32 @@ export class MeshViewer extends HTMLElement {
             })
         }
         this.#device.queue.writeBuffer(this.#indexBuffer, 0, tris)
+
+        // Build + upload edge index buffer for wireframe (line-list).
+        const triCount = Math.floor(tris.length / 3)
+        this.#edgeIndexCount = triCount * 6
+        const edges = new Uint32Array(this.#edgeIndexCount)
+        for (let t = 0; t < triCount; t++) {
+            const i0 = tris[t * 3]!
+            const i1 = tris[t * 3 + 1]!
+            const i2 = tris[t * 3 + 2]!
+            const o = t * 6
+            edges[o] = i0
+            edges[o + 1] = i1
+            edges[o + 2] = i1
+            edges[o + 3] = i2
+            edges[o + 4] = i2
+            edges[o + 5] = i0
+        }
+        if (!this.#edgeIndexBuffer || this.#edgeIndexBuffer.size !== edges.byteLength) {
+            this.#edgeIndexBuffer?.destroy()
+            this.#edgeIndexBuffer = this.#device.createBuffer({
+                label: "meshViewer.edgeIndices",
+                size: edges.byteLength,
+                usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+            })
+        }
+        this.#device.queue.writeBuffer(this.#edgeIndexBuffer, 0, edges)
     }
 
     startLoop() {
@@ -437,7 +522,35 @@ export class MeshViewer extends HTMLElement {
         this.#device.queue.writeBuffer(this.#uniformBuffer, 96, camToScene.data as BufferSource)
 
         const commandEncoder = this.#device.createCommandEncoder()
-        if (this.#translucentFaces) {
+        // Wireframe mode overrides face rendering.
+        if (this.#wireframe) {
+            const renderPass = commandEncoder.beginRenderPass({
+                colorAttachments: [
+                    {
+                        view: this.#context.getCurrentTexture().createView(),
+                        loadOp: "clear",
+                        storeOp: "store",
+                        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                    },
+                ],
+                depthStencilAttachment: this.#depthTexture
+                    ? {
+                        view: this.#depthTexture.createView(),
+                        depthClearValue: 1.0,
+                        depthLoadOp: "clear",
+                        depthStoreOp: "store",
+                    }
+                    : undefined,
+            })
+            renderPass.setPipeline(this.#pipelineWireframe)
+            renderPass.setBindGroup(0, this.#bindGroup)
+            if (this.#vertexBuffer && this.#edgeIndexBuffer && this.#edgeIndexCount > 0) {
+                renderPass.setVertexBuffer(0, this.#vertexBuffer)
+                renderPass.setIndexBuffer(this.#edgeIndexBuffer, "uint32")
+                renderPass.drawIndexed(this.#edgeIndexCount)
+            }
+            renderPass.end()
+        } else if (this.#translucentFaces) {
             if (!this.#oitAccumTexture || !this.#oitRevealTexture || !this.#compositeBindGroup) {
                 this.#recreateAttachments()
             }
@@ -535,13 +648,37 @@ export class MeshViewer extends HTMLElement {
         this.setAttribute("translucentFaces", next ? "true" : "false")
     }
 
+    get wireframe(): boolean {
+        return this.#wireframe
+    }
+
+    set wireframe(enabled: boolean) {
+        const next = !!enabled
+        if (next === this.#wireframe) return
+        this.#wireframe = next
+        if (this.#wireframeCheckbox) {
+            this.#wireframeCheckbox.checked = next
+        }
+        this.setAttribute("wireframe", next ? "true" : "false")
+    }
+
     attributeChangedCallback(name: string, oldVal: string | null, newVal: string | null) {
-        if (name !== "translucentFaces") return
-        const next = (newVal ?? "").toLowerCase() === "true"
-        if (next === this.#translucentFaces) return
-        this.#translucentFaces = next
-        if (this.#translucentCheckbox) {
-            this.#translucentCheckbox.checked = next
+        if (name === "translucentFaces") {
+            const next = (newVal ?? "").toLowerCase() === "true"
+            if (next === this.#translucentFaces) return
+            this.#translucentFaces = next
+            if (this.#translucentCheckbox) {
+                this.#translucentCheckbox.checked = next
+            }
+            return
+        }
+        if (name === "wireframe") {
+            const next = (newVal ?? "").toLowerCase() === "true"
+            if (next === this.#wireframe) return
+            this.#wireframe = next
+            if (this.#wireframeCheckbox) {
+                this.#wireframeCheckbox.checked = next
+            }
         }
     }
 }
@@ -675,6 +812,16 @@ fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> OitOu
     // Only alpha is used for revealage blending; keep it in .a.
     out.reveal = vec4f(0.0, 0.0, 0.0, a);
     return out;
+}
+`
+
+const MESH_SHADER_WIREFRAME = /* wgsl */ `
+${MESH_SHADER_COMMON}
+
+@fragment
+fn fragmentMain() -> @location(0) vec4f {
+    // Slightly translucent wire so dense meshes stay readable.
+    return vec4f(0.95, 0.95, 0.98, 0.9);
 }
 `
 

@@ -336,7 +336,13 @@ export function mergeCoplanar(mesh: MeshData): MeshData {
 
     // Build 2D projection basis on-demand per component (from first triangle normal).
     const project2 = (n: Vec3) => {
-        const ref: Vec3 = Math.abs(n[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]
+        // Find the component with smallest absolute value to avoid parallel reference
+        const absN = [Math.abs(n[0]), Math.abs(n[1]), Math.abs(n[2])]
+        let minIdx = 0
+        if (absN[1]! < absN[minIdx]!) minIdx = 1
+        if (absN[2]! < absN[minIdx]!) minIdx = 2
+
+        const ref: Vec3 = minIdx === 0 ? [1, 0, 0] : minIdx === 1 ? [0, 1, 0] : [0, 0, 1]
         const u = normalize3(cross3(n, ref))
         const v = cross3(n, u)
         return { u, v }

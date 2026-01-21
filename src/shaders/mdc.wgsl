@@ -364,7 +364,8 @@ fn solveQEF(qef: QEFData) -> vec3f {
     }
     
     var ATA_reg = qef.ATA;
-    // Keep regularization extremely small.
+    // Keep regularization extremely small, but scale it with voxel size to maintain
+    // consistent behavior across different grid resolutions.
     //
     // IMPORTANT: We *do* use the regularization to bias the solution toward the mass point
     // for rank-deficient QEFs (planar faces / edges). Without this, the solver can pick
@@ -374,7 +375,12 @@ fn solveQEF(qef: QEFData) -> vec3f {
     // We implement this as:
     //   (A + λI) x = b + λ m
     // where m is the mass point.
-    let regularization = 1e-5;
+    // Scale regularization with voxel size to prevent over-smoothing at high resolutions.
+    // The regularization should scale proportionally with voxel size so the relative
+    // smoothing effect remains constant across different grid resolutions.
+    // At GRID_DIM=64, voxelSize ≈ 1.5625mm, and we want regularization ≈ 1e-5,
+    // so we scale by voxelSize / 1.5625 to maintain the same ratio.
+    let regularization = max(1e-7, uniforms.voxelSize * 6.4e-6);
     ATA_reg[0][0] += regularization;
     ATA_reg[1][1] += regularization;
     ATA_reg[2][2] += regularization;
@@ -895,8 +901,13 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         // Improve hermite data: project the interpolated crossing onto the true iso-surface.
         // This reduces “beveling” and helps keep cube edges crisp.
         var normal = computeGradient(intersectionPos);
-        let d0 = sampleSDF(intersectionPos) - uniforms.isoValue;
-        intersectionPos = intersectionPos - normal * d0;
+        // Use iterative projection for high-curvature regions (e.g., rounded CSG transitions).
+        for (var iter = 0u; iter < 3u; iter = iter + 1u) {
+            let d = sampleSDF(intersectionPos) - uniforms.isoValue;
+            if (abs(d) < uniforms.voxelSize * 1e-5) { break; }
+            normal = computeGradient(intersectionPos);
+            intersectionPos = intersectionPos - normal * d;
+        }
         normal = computeGradient(intersectionPos);
 
         let c = u32(compIdx);
@@ -977,12 +988,30 @@ fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
 
     var vertexPos = best;
 
-    // Light projection to reduce tiny residuals (prevents pixel-sized holes),
-    // but keep the step small to avoid visible chamfers.
-    let d = sampleSDF(vertexPos) - uniforms.isoValue;
-    if (abs(d) > uniforms.voxelSize * 1e-3) {
+    // Iterative projection to ensure vertex is on the true iso-surface.
+    // This is critical for high-curvature regions (e.g., rounded CSG transitions)
+    // where a single projection step can leave vertices significantly off-surface,
+    // causing bunched clusters of triangles.
+    for (var iter = 0u; iter < 5u; iter = iter + 1u) {
+        let d = sampleSDF(vertexPos) - uniforms.isoValue;
+        if (abs(d) < uniforms.voxelSize * 1e-5) { break; }
         let n = computeGradient(vertexPos);
-        vertexPos = clamp(vertexPos - n * d, cellMin, cellMax);
+        var projected = vertexPos - n * d;
+        // Clamp to cell bounds, but allow slight relaxation for high-curvature surfaces
+        let margin = uniforms.voxelSize * 0.01;
+        let relaxedMin = cellMin - vec3f(margin);
+        let relaxedMax = cellMax + vec3f(margin);
+        projected = clamp(projected, relaxedMin, relaxedMax);
+        // If projection would move vertex too far, use a damped step
+        let step = projected - vertexPos;
+        let stepLen = length(step);
+        if (stepLen > uniforms.voxelSize * 0.5) {
+            vertexPos = vertexPos + step * (uniforms.voxelSize * 0.5 / stepLen);
+        } else {
+            vertexPos = projected;
+        }
+        // Final clamp to strict cell bounds
+        vertexPos = clamp(vertexPos, cellMin, cellMax);
     }
     
     var vertexNormal = computeGradient(vertexPos); 

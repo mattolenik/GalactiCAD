@@ -703,6 +703,9 @@ struct VertexOut {
     @builtin(position) position: vec4f,
     @location(0) worldPos: vec3f,
     @location(1) normal: vec3f,
+    // For wireframe: a per-primitive (flat) facing hint so edges don't split bright/dim mid-segment.
+    // Integer varyings are flat-interpolated by definition.
+    @location(2) @interpolate(flat) wireFront: u32,
 };
 
 @vertex
@@ -732,6 +735,10 @@ fn vertexMain(v: VertexIn) -> VertexOut {
     // Used to compute a per-triangle (flat) normal in the fragment shader.
     out.worldPos = v.position;
     out.normal = v.normal;
+    // Classify using camera-space normal Z. Sign convention is tricky here due to our camera conventions;
+    // empirically, nCam.z <= 0 corresponds to "facing the camera" in this viewer.
+    let nCam = normalize((camera.transform * vec4f(v.normal, 0.0)).xyz);
+    out.wireFront = select(0u, 1u, nCam.z <= 0.0);
     return out;
 }
 
@@ -822,16 +829,12 @@ ${MESH_SHADER_COMMON}
 
 @fragment
 fn fragmentMain(v: VertexOut) -> @location(0) vec4f {
-    // Approximate "backface" classification for wireframe:
-    // transform the interpolated vertex normal into camera-space and see if it points toward the camera.
-    //
-    // Note: line primitives don't have true front/back faces, but this gives a useful visual cue.
-    let nCam = normalize((camera.transform * vec4f(v.normal, 0.0)).xyz);
-    let isFront = nCam.z > 0.0;
-
+    // Note: line primitives don't have true front/back faces. We use a flat per-edge hint (wireFront)
+    // so an edge doesn't flip mid-segment as the interpolated normal changes.
+    let isFront = v.wireFront != 0u;
     let frontColor = vec3f(0.95, 0.95, 0.98);
     let backColor = frontColor * 0.35;
-    let c = select(backColor, frontColor, !isFront);
+    let c = select(backColor, frontColor, isFront);
     return vec4f(c, 0.9);
 }
 `

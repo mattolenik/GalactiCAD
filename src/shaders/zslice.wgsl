@@ -431,6 +431,11 @@ fn cellCountX() -> u32 { return gridX() - 1u; }
 fn cellCountY() -> u32 { return gridY() - 1u; }
 fn cellCountZ() -> u32 { return gridZ() - 1u; }
 
+fn cellRadius() -> f32 {
+    // Max distance from cell center to any point in the cell (half diagonal).
+    return 0.5 * length(vec3f(stepX(), stepY(), stepZ()));
+}
+
 @compute @workgroup_size(4, 4, 4)
 fn countAllSlabsTriangles3D(
     @builtin(local_invocation_id) lid: vec3u,
@@ -449,31 +454,94 @@ fn countAllSlabsTriangles3D(
         let dy = vec3f(0.0, stepY(), 0.0);
         let dz = vec3f(0.0, 0.0, stepZ());
 
-        let p0 = base;
-        let p1 = base + dx;
-        let p2 = base + dy;
-        let p3 = base + dx + dy;
-        let p4 = base + dz;
-        let p5 = base + dx + dz;
-        let p6 = base + dy + dz;
-        let p7 = base + dx + dy + dz;
+        // --- Narrow-band culling + simple adaptive refinement ---
+        // For a true SDF (Lipschitz <= 1), if |d(center)| > cellRadius, the surface cannot intersect the cell.
+        // This both speeds up meshing and lets us locally refine only near the surface.
+        let center = base + 0.5 * dx + 0.5 * dy + 0.5 * dz;
+        let vc = sampleSDF(center);
+        let rad = cellRadius();
+        if (abs(vc) <= rad * 1.05) {
+            // Refine by 2x near the surface band.
+            let refine2 = abs(vc) < rad * 0.25;
 
-        let v0 = sampleSDF(p0);
-        let v1 = sampleSDF(p1);
-        let v2 = sampleSDF(p2);
-        let v3 = sampleSDF(p3);
-        let v4 = sampleSDF(p4);
-        let v5 = sampleSDF(p5);
-        let v6 = sampleSDF(p6);
-        let v7 = sampleSDF(p7);
+            if (!refine2) {
+                let p0 = base;
+                let p1 = base + dx;
+                let p2 = base + dy;
+                let p3 = base + dx + dy;
+                let p4 = base + dz;
+                let p5 = base + dx + dz;
+                let p6 = base + dy + dz;
+                let p7 = base + dx + dy + dz;
 
-        // 6 tetrahedra: (0,1,3,7), (0,3,2,7), (0,2,6,7), (0,6,4,7), (0,4,5,7), (0,5,1,7)
-        t = t + tetraTriCount(v0, v1, v3, v7);
-        t = t + tetraTriCount(v0, v3, v2, v7);
-        t = t + tetraTriCount(v0, v2, v6, v7);
-        t = t + tetraTriCount(v0, v6, v4, v7);
-        t = t + tetraTriCount(v0, v4, v5, v7);
-        t = t + tetraTriCount(v0, v5, v1, v7);
+                let v0 = sampleSDF(p0);
+                let v1 = sampleSDF(p1);
+                let v2 = sampleSDF(p2);
+                let v3 = sampleSDF(p3);
+                let v4 = sampleSDF(p4);
+                let v5 = sampleSDF(p5);
+                let v6 = sampleSDF(p6);
+                let v7 = sampleSDF(p7);
+
+                // 6 tetrahedra
+                t = t + tetraTriCount(v0, v1, v3, v7);
+                t = t + tetraTriCount(v0, v3, v2, v7);
+                t = t + tetraTriCount(v0, v2, v6, v7);
+                t = t + tetraTriCount(v0, v6, v4, v7);
+                t = t + tetraTriCount(v0, v4, v5, v7);
+                t = t + tetraTriCount(v0, v5, v1, v7);
+            } else {
+                // Sample a 3x3x3 grid at half-step resolution within this cell, then run 8 sub-cells.
+                let dxh = 0.5 * dx;
+                let dyh = 0.5 * dy;
+                let dzh = 0.5 * dz;
+
+                var vg: array<f32, 27>;
+                // Fill vg[ix + 3*iy + 9*iz], where ix/iy/iz in {0,1,2} correspond to 0, 0.5, 1.0 along each axis.
+                for (var iz = 0u; iz < 3u; iz = iz + 1u) {
+                    for (var iy = 0u; iy < 3u; iy = iy + 1u) {
+                        for (var ix = 0u; ix < 3u; ix = ix + 1u) {
+                            let p = base + f32(ix) * dxh + f32(iy) * dyh + f32(iz) * dzh;
+                            vg[ix + 3u * iy + 9u * iz] = sampleSDF(p);
+                        }
+                    }
+                }
+
+                // Iterate 2x2x2 subcells.
+                for (var sz = 0u; sz < 2u; sz = sz + 1u) {
+                    for (var sy = 0u; sy < 2u; sy = sy + 1u) {
+                        for (var sx = 0u; sx < 2u; sx = sx + 1u) {
+                            // corners in vg at (sx,sy,sz) and (sx+1, sy+1, sz+1)
+                            let i000 = (sx + 0u) + 3u * (sy + 0u) + 9u * (sz + 0u);
+                            let i100 = (sx + 1u) + 3u * (sy + 0u) + 9u * (sz + 0u);
+                            let i010 = (sx + 0u) + 3u * (sy + 1u) + 9u * (sz + 0u);
+                            let i110 = (sx + 1u) + 3u * (sy + 1u) + 9u * (sz + 0u);
+                            let i001 = (sx + 0u) + 3u * (sy + 0u) + 9u * (sz + 1u);
+                            let i101 = (sx + 1u) + 3u * (sy + 0u) + 9u * (sz + 1u);
+                            let i011 = (sx + 0u) + 3u * (sy + 1u) + 9u * (sz + 1u);
+                            let i111 = (sx + 1u) + 3u * (sy + 1u) + 9u * (sz + 1u);
+
+                            let v0 = vg[i000];
+                            let v1 = vg[i100];
+                            let v2 = vg[i010];
+                            let v3 = vg[i110];
+                            let v4 = vg[i001];
+                            let v5 = vg[i101];
+                            let v6 = vg[i011];
+                            let v7 = vg[i111];
+
+                            // 6 tetrahedra within the subcell
+                            t = t + tetraTriCount(v0, v1, v3, v7);
+                            t = t + tetraTriCount(v0, v3, v2, v7);
+                            t = t + tetraTriCount(v0, v2, v6, v7);
+                            t = t + tetraTriCount(v0, v6, v4, v7);
+                            t = t + tetraTriCount(v0, v4, v5, v7);
+                            t = t + tetraTriCount(v0, v5, v1, v7);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     let li = lid.x + lid.y * 4u + lid.z * 16u; // 4*4*4 = 64
@@ -507,29 +575,93 @@ fn emitAllSlabsTriangles3D(@builtin(global_invocation_id) gid: vec3u) {
     let dy = vec3f(0.0, stepY(), 0.0);
     let dz = vec3f(0.0, 0.0, stepZ());
 
-    let p0 = base;
-    let p1 = base + dx;
-    let p2 = base + dy;
-    let p3 = base + dx + dy;
-    let p4 = base + dz;
-    let p5 = base + dx + dz;
-    let p6 = base + dy + dz;
-    let p7 = base + dx + dy + dz;
+    let center = base + 0.5 * dx + 0.5 * dy + 0.5 * dz;
+    let vc = sampleSDF(center);
+    let rad = cellRadius();
+    if (abs(vc) > rad * 1.05) { return; }
 
-    let v0 = sampleSDF(p0);
-    let v1 = sampleSDF(p1);
-    let v2 = sampleSDF(p2);
-    let v3 = sampleSDF(p3);
-    let v4 = sampleSDF(p4);
-    let v5 = sampleSDF(p5);
-    let v6 = sampleSDF(p6);
-    let v7 = sampleSDF(p7);
+    let refine2 = abs(vc) < rad * 0.25;
+    if (!refine2) {
+        let p0 = base;
+        let p1 = base + dx;
+        let p2 = base + dy;
+        let p3 = base + dx + dy;
+        let p4 = base + dz;
+        let p5 = base + dx + dz;
+        let p6 = base + dy + dz;
+        let p7 = base + dx + dy + dz;
 
-    emitTetra(p0, p1, p3, p7, v0, v1, v3, v7);
-    emitTetra(p0, p3, p2, p7, v0, v3, v2, v7);
-    emitTetra(p0, p2, p6, p7, v0, v2, v6, v7);
-    emitTetra(p0, p6, p4, p7, v0, v6, v4, v7);
-    emitTetra(p0, p4, p5, p7, v0, v4, v5, v7);
-    emitTetra(p0, p5, p1, p7, v0, v5, v1, v7);
+        let v0 = sampleSDF(p0);
+        let v1 = sampleSDF(p1);
+        let v2 = sampleSDF(p2);
+        let v3 = sampleSDF(p3);
+        let v4 = sampleSDF(p4);
+        let v5 = sampleSDF(p5);
+        let v6 = sampleSDF(p6);
+        let v7 = sampleSDF(p7);
+
+        emitTetra(p0, p1, p3, p7, v0, v1, v3, v7);
+        emitTetra(p0, p3, p2, p7, v0, v3, v2, v7);
+        emitTetra(p0, p2, p6, p7, v0, v2, v6, v7);
+        emitTetra(p0, p6, p4, p7, v0, v6, v4, v7);
+        emitTetra(p0, p4, p5, p7, v0, v4, v5, v7);
+        emitTetra(p0, p5, p1, p7, v0, v5, v1, v7);
+    } else {
+        let dxh = 0.5 * dx;
+        let dyh = 0.5 * dy;
+        let dzh = 0.5 * dz;
+
+        var vg: array<f32, 27>;
+        for (var iz = 0u; iz < 3u; iz = iz + 1u) {
+            for (var iy = 0u; iy < 3u; iy = iy + 1u) {
+                for (var ix = 0u; ix < 3u; ix = ix + 1u) {
+                    let p = base + f32(ix) * dxh + f32(iy) * dyh + f32(iz) * dzh;
+                    vg[ix + 3u * iy + 9u * iz] = sampleSDF(p);
+                }
+            }
+        }
+
+        for (var sz = 0u; sz < 2u; sz = sz + 1u) {
+            for (var sy = 0u; sy < 2u; sy = sy + 1u) {
+                for (var sx = 0u; sx < 2u; sx = sx + 1u) {
+                    let subBase = base + f32(sx) * dxh + f32(sy) * dyh + f32(sz) * dzh;
+
+                    let p0 = subBase;
+                    let p1 = subBase + dxh;
+                    let p2 = subBase + dyh;
+                    let p3 = subBase + dxh + dyh;
+                    let p4 = subBase + dzh;
+                    let p5 = subBase + dxh + dzh;
+                    let p6 = subBase + dyh + dzh;
+                    let p7 = subBase + dxh + dyh + dzh;
+
+                    let i000 = (sx + 0u) + 3u * (sy + 0u) + 9u * (sz + 0u);
+                    let i100 = (sx + 1u) + 3u * (sy + 0u) + 9u * (sz + 0u);
+                    let i010 = (sx + 0u) + 3u * (sy + 1u) + 9u * (sz + 0u);
+                    let i110 = (sx + 1u) + 3u * (sy + 1u) + 9u * (sz + 0u);
+                    let i001 = (sx + 0u) + 3u * (sy + 0u) + 9u * (sz + 1u);
+                    let i101 = (sx + 1u) + 3u * (sy + 0u) + 9u * (sz + 1u);
+                    let i011 = (sx + 0u) + 3u * (sy + 1u) + 9u * (sz + 1u);
+                    let i111 = (sx + 1u) + 3u * (sy + 1u) + 9u * (sz + 1u);
+
+                    let v0 = vg[i000];
+                    let v1 = vg[i100];
+                    let v2 = vg[i010];
+                    let v3 = vg[i110];
+                    let v4 = vg[i001];
+                    let v5 = vg[i101];
+                    let v6 = vg[i011];
+                    let v7 = vg[i111];
+
+                    emitTetra(p0, p1, p3, p7, v0, v1, v3, v7);
+                    emitTetra(p0, p3, p2, p7, v0, v3, v2, v7);
+                    emitTetra(p0, p2, p6, p7, v0, v2, v6, v7);
+                    emitTetra(p0, p6, p4, p7, v0, v6, v4, v7);
+                    emitTetra(p0, p4, p5, p7, v0, v4, v5, v7);
+                    emitTetra(p0, p5, p1, p7, v0, v5, v1, v7);
+                }
+            }
+        }
+    }
 }
 

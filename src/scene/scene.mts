@@ -218,7 +218,7 @@ export class Union extends BinaryOperator {
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
         text += `let ${varName} = `
         if (this.radius) {
-            text += `fOpUnionRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+            text += `fOpUnionChamfer(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
         } else {
             text += `min( ${lhResult.varName}, ${rhResult.varName} );`
         }

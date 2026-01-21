@@ -255,7 +255,10 @@ fn edgeCrossesIso(v0: f32, g0: vec3u, v1: f32, g1: vec3u) -> bool {
     _ = g1;
     let c0 = vertexClassAtGridVertex(v0);
     let c1 = vertexClassAtGridVertex(v1);
-    if (c0 == 0 && c1 == 0) { return false; }
+    // If both endpoints are on-surface, the surface lies along this grid edge.
+    // Treat that as a crossing so we don't get cracks on axis-aligned features
+    // (e.g. box edges that land exactly on the sampling grid).
+    if (c0 == 0 && c1 == 0) { return true; }
     if (c0 == 0 || c1 == 0) { return true; }
     return c0 != c1;
 }

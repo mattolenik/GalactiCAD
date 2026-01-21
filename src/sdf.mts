@@ -3,9 +3,11 @@ import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
+import { ZSliceExport } from "./export/zslice.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
+import zsliceShader from "./shaders/zslice.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
@@ -42,6 +44,7 @@ export class SDFRenderer {
     #shaderCompiler!: ShaderCompiler
     #sceneShader!: GPUShaderModule
     #exportShader!: GPUShaderModule
+    #zsliceShader!: GPUShaderModule
     #helper!: GPUHelper
     #builtSrc: string | null = null
 
@@ -87,6 +90,7 @@ export class SDFRenderer {
         this.#shaderCompiler = new ShaderCompiler(this.#device).replace("insert", "sceneSDF", sceneSDF)
         this.#sceneShader = this.#shaderCompiler.compile(previewShader, "Preview Window")
         this.#exportShader = this.#shaderCompiler.compile(exportShader, "Export")
+        this.#zsliceShader = this.#shaderCompiler.compile(zsliceShader, "Export (Z-slice)")
         // console.log(this.#exportShader.text)
         this.#buildPreviewPipeline()
 
@@ -239,5 +243,35 @@ export class SDFRenderer {
 
         const mdc = new MDCExport(this.#helper, params)
         return await mdc.export(this.#exportShader)
+    }
+
+    async renderMeshZSlice(src: string): Promise<MeshData> {
+        const trimmed = src.trim()
+        if (this.#builtSrc !== trimmed) {
+            this.build(trimmed)
+        }
+
+        // World units are millimeters (mm).
+        // Default export volume is a 100mm cube centered at the origin: [-50, 50]^3.
+        // NOTE: z-step defaults to 0.02mm as requested; this can get expensive for tall volumes.
+        const DEFAULT_BBOX_MM = 100
+        const half = DEFAULT_BBOX_MM / 2
+        const GRID_XY_CELLS = 256
+        const stepXY = DEFAULT_BBOX_MM / GRID_XY_CELLS
+        const stepZ = 0.02
+
+        const zs = new ZSliceExport(this.#helper, {
+            minX: -half,
+            minY: -half,
+            minZ: -half,
+            sizeX: DEFAULT_BBOX_MM,
+            sizeY: DEFAULT_BBOX_MM,
+            sizeZ: DEFAULT_BBOX_MM,
+            stepX: stepXY,
+            stepY: stepXY,
+            stepZ,
+            isoValue: 0.0,
+        })
+        return await zs.export(this.#zsliceShader)
     }
 }

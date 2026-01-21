@@ -408,6 +408,10 @@ fn fOpUnionRound(a: f32, b: f32, r: f32) -> f32 {
     let u = max(vec2<f32>(r - a, r - b), vec2<f32>(0.0, 0.0));
     return max(r, min(a, b)) - length(u);
 }
+fn fOpUnionSoft(a:f32, b:f32, r:f32) -> f32 {
+	let e = max(r - abs(a - b), 0);
+	return min(a, b) - e*e*0.25/r;
+}
 fn fOpIntersectionRound(a: f32, b: f32, r: f32) -> f32 {
     let u = max(vec2<f32>(r + a, r + b), vec2<f32>(0.0, 0.0));
     return min(-r, max(a, b)) + length(u);
@@ -471,12 +475,6 @@ fn fOpIntersectionStairs(a: f32, b: f32, r: f32, n: f32) -> f32 {
 }
 fn fOpDifferenceStairs(a: f32, b: f32, r: f32, n: f32) -> f32 {
     return -fOpUnionStairs(-a, b, r, n);
-}
-
-// Soft union
-fn fOpUnionSoft(a: f32, b: f32, r: f32) -> f32 {
-    let e = max(r - abs(a - b), 0.0);
-    return min(a, b) - e * e * 0.25 / r;
 }
 
 // Pipe (cylindrical hole at intersection)

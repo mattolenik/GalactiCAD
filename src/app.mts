@@ -149,6 +149,8 @@ class App {
                 deleteItem.innerHTML = "Delete"
                 const exportItem = document.createElement("span")
                 exportItem.innerHTML = "Export to STL"
+                const exportZSliceItem = document.createElement("span")
+                exportZSliceItem.innerHTML = "Export to STL (Z-slice)"
                 const menuButton = new MenuButton([
                     { element: newItem, action: () => this.#tabs.newDocument() },
                     { element: renameItem, action: () => console.log("TODO: rename") },
@@ -170,6 +172,32 @@ class App {
                                     excludeAcceptAllOption: false,
                                 })
                                 const mesh = await this.renderer.renderMesh(this.editor.getValue())
+                                await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
+                            } catch (err) {
+                                if (`${err}`.includes("AbortError")) {
+                                    return
+                                }
+                                throw err
+                            }
+                        },
+                    },
+                    {
+                        element: exportZSliceItem,
+                        action: async () => {
+                            try {
+                                const documentName = this.#tabs.active!
+                                const handle = await window.showSaveFilePicker({
+                                    suggestedName: `${documentName}-zslice`,
+                                    startIn: "desktop",
+                                    types: [
+                                        {
+                                            description: "STL file",
+                                            accept: { "model/stl": [".stl"] },
+                                        },
+                                    ],
+                                    excludeAcceptAllOption: false,
+                                })
+                                const mesh = await this.renderer.renderMeshZSlice(this.editor.getValue())
                                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
                             } catch (err) {
                                 if (`${err}`.includes("AbortError")) {
@@ -201,7 +229,7 @@ class App {
         const token = ++this.#meshUpdateToken
         this.#meshUpdateTimer = window.setTimeout(async () => {
             try {
-                const mesh = await this.renderer.renderMesh(src)
+                const mesh = await this.renderer.renderMeshZSlice(src)
                 if (token !== this.#meshUpdateToken) return
                 await this.#mesh.setMesh(mesh)
             } catch (err) {

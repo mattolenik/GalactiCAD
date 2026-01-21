@@ -1,6 +1,7 @@
 import { MeshData } from "../export/export.mjs"
 import { CameraController } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
+import { LocalStorage } from "../storage/storage.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3 } from "../vecmat/vector.mjs"
 
@@ -39,6 +40,7 @@ export class MeshViewer extends HTMLElement {
     #compositePipelineLayout!: GPUPipelineLayout
     #compositeBindGroup: GPUBindGroup | null = null
 
+    #ls: LocalStorage
     #translucentFaces = false
     #translucentCheckbox!: HTMLInputElement
     #wireframe = false
@@ -52,9 +54,12 @@ export class MeshViewer extends HTMLElement {
         super()
         const shadow = this.attachShadow({ mode: "open" })
 
-        // Initialize state from attribute (if present in HTML).
+        this.#ls = LocalStorage.instance
+
+        // Initialize state from attribute (if present in HTML), then load from storage.
         this.#translucentFaces = (this.getAttribute("translucentFaces") ?? "").toLowerCase() === "true"
         this.#wireframe = (this.getAttribute("wireframe") ?? "").toLowerCase() === "true"
+        this.#loadViewerState()
 
         const style = document.createElement("style")
         style.textContent = `
@@ -646,6 +651,7 @@ export class MeshViewer extends HTMLElement {
             this.#translucentCheckbox.checked = next
         }
         this.setAttribute("translucentFaces", next ? "true" : "false")
+        this.#saveViewerState()
     }
 
     get wireframe(): boolean {
@@ -660,6 +666,7 @@ export class MeshViewer extends HTMLElement {
             this.#wireframeCheckbox.checked = next
         }
         this.setAttribute("wireframe", next ? "true" : "false")
+        this.#saveViewerState()
     }
 
     attributeChangedCallback(name: string, oldVal: string | null, newVal: string | null) {
@@ -678,6 +685,30 @@ export class MeshViewer extends HTMLElement {
             this.#wireframe = next
             if (this.#wireframeCheckbox) {
                 this.#wireframeCheckbox.checked = next
+            }
+        }
+    }
+
+    #saveViewerState(): void {
+        this.#ls.setItem("meshViewer.translucentFaces", this.#translucentFaces ? "true" : "false")
+        this.#ls.setItem("meshViewer.wireframe", this.#wireframe ? "true" : "false")
+    }
+
+    #loadViewerState(): void {
+        const translucentFaces = this.#ls.getItem("meshViewer.translucentFaces")
+        if (translucentFaces !== null) {
+            this.#translucentFaces = translucentFaces.toLowerCase() === "true"
+            this.setAttribute("translucentFaces", this.#translucentFaces ? "true" : "false")
+            if (this.#translucentCheckbox) {
+                this.#translucentCheckbox.checked = this.#translucentFaces
+            }
+        }
+        const wireframe = this.#ls.getItem("meshViewer.wireframe")
+        if (wireframe !== null) {
+            this.#wireframe = wireframe.toLowerCase() === "true"
+            this.setAttribute("wireframe", this.#wireframe ? "true" : "false")
+            if (this.#wireframeCheckbox) {
+                this.#wireframeCheckbox.checked = this.#wireframe
             }
         }
     }

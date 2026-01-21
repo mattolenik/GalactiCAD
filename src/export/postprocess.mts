@@ -140,7 +140,7 @@ function buildBoundaryLoopFromComponent(componentTris: number[], tris: Uint32Arr
     // Build a single boundary loop (simple polygon) from a coplanar triangle component.
     // Returns vertex indices in order, or null if boundary is complex (holes, branches, etc).
     const edgeCounts = new Map<bigint, number>()
-    const edgeVerts = new Map<bigint, readonly [number, number]>()
+    const edgeVerts = new Map<bigint, [number, number]>()
 
     for (const t of componentTris) {
         const off = t * 3
@@ -163,7 +163,7 @@ function buildBoundaryLoopFromComponent(componentTris: number[], tris: Uint32Arr
     }
 
     // Boundary edges appear exactly once inside the component.
-    const boundaryEdges: readonly [number, number][] = []
+    const boundaryEdges: [number, number][] = []
     for (const [k, c] of edgeCounts) {
         if (c !== 1) continue
         const e = edgeVerts.get(k)

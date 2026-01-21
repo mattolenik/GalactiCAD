@@ -251,10 +251,15 @@ fn vertexClassAtGridVertex(sdfValue: f32) -> i32 {
 }
 
 fn vertexInsideForCases(sdfValue: f32) -> bool {
-    // Consistently treat "near zero" as inside to avoid cracks.
+    // IMPORTANT:
+    // Exact zero crossings (common for axis-aligned boxes landing on the sampling grid)
+    // cause topology ambiguity. A per-vertex tie-break creates checkerboard holes.
+    //
+    // Use a tiny *global* bias so "exactly on the surface" is classified consistently,
+    // avoiding missing triangles along sharp edges without introducing spatial alternation.
     let d = sdfValue - uniforms.isoValue;
-    let eps = max(1e-7, uniforms.voxelSize * 1e-7);
-    return d <= eps;
+    let bias = max(1e-9, uniforms.voxelSize * 1e-6);
+    return d < -bias;
 }
 
 fn edgeCrossesIso(v0: f32, g0: vec3u, v1: f32, g1: vec3u) -> bool {
@@ -267,8 +272,12 @@ fn edgeCrossesIso(v0: f32, g0: vec3u, v1: f32, g1: vec3u) -> bool {
     // the inside/outside state differs.
     _ = g0;
     _ = g1;
-    let s0 = vertexInsideForCases(v0);
-    let s1 = vertexInsideForCases(v1);
+    // Use the same globally-biased inside test as vertexInsideForCases.
+    let bias = max(1e-9, uniforms.voxelSize * 1e-6);
+    let d0 = (v0 - uniforms.isoValue);
+    let d1 = (v1 - uniforms.isoValue);
+    let s0 = d0 < -bias;
+    let s1 = d1 < -bias;
     return s0 != s1;
 }
 
@@ -948,11 +957,33 @@ fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
     let cellMin = gridPosToWorldPos(cellPos);
     let cellMax = cellMin + vec3f(uniforms.voxelSize);
 
-    // Use the (mass-point biased) QEF solution, clamped to the cell.
-    // NOTE: Do NOT do additional surface projection here; projecting with a numerical
-    // gradient near sharp features (box edges / corners) creates a small "chamfer"
-    // by pulling the solution away from the true plane intersection.
-    var vertexPos = clamp(solveQEF(qef), cellMin, cellMax);
+    // Robust in-cell candidate selection:
+    // Hard-clamping a drifting QEF solution can create spikes/pinholes near sharp features
+    // and CSG seams. Choose among stable candidates using the full QEF cost.
+    let mp = qef.massPoint / max(1.0, f32(qef.numPoints));
+    let vUnclamped = solveQEF(qef);
+    let vClamped = clamp(vUnclamped, cellMin, cellMax);
+    let vMp = clamp(mp, cellMin, cellMax);
+    let vCenter = (cellMin + cellMax) * 0.5;
+
+    var best = vClamped;
+    var bestCost = qefCost(qef, vClamped);
+
+    let cMp = qefCost(qef, vMp);
+    if (cMp < bestCost) { bestCost = cMp; best = vMp; }
+
+    let cC = qefCost(qef, vCenter);
+    if (cC < bestCost) { bestCost = cC; best = vCenter; }
+
+    var vertexPos = best;
+
+    // Light projection to reduce tiny residuals (prevents pixel-sized holes),
+    // but keep the step small to avoid visible chamfers.
+    let d = sampleSDF(vertexPos) - uniforms.isoValue;
+    if (abs(d) > uniforms.voxelSize * 1e-3) {
+        let n = computeGradient(vertexPos);
+        vertexPos = clamp(vertexPos - n * d, cellMin, cellMax);
+    }
     
     var vertexNormal = computeGradient(vertexPos); 
     if (qef.numPoints == 0u) { 

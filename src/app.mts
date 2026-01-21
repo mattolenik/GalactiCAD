@@ -229,7 +229,7 @@ class App {
         const token = ++this.#meshUpdateToken
         this.#meshUpdateTimer = window.setTimeout(async () => {
             try {
-                const mesh = await this.renderer.renderMeshZSlice(src)
+                const mesh = await this.renderer.renderMesh(src)
                 if (token !== this.#meshUpdateToken) return
                 await this.#mesh.setMesh(mesh)
             } catch (err) {

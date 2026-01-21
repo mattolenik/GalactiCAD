@@ -153,7 +153,7 @@ export class MeshViewer extends HTMLElement {
                 topology: "triangle-list",
                 // We flip X in clip-space to match PreviewWindow's screen convention,
                 // which also flips winding; keep backface culling correct.
-                frontFace: "cw",
+                frontFace: "ccw",
                 cullMode: "back",
             },
             depthStencil: {

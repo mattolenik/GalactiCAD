@@ -254,11 +254,11 @@ export class SDFRenderer {
         // World units are millimeters (mm).
         // Default export volume is a 100mm cube centered at the origin: [-50, 50]^3.
         // NOTE: z-step defaults to 0.02mm as requested; this can get expensive for tall volumes.
-        const DEFAULT_BBOX_MM = 100
+        const DEFAULT_BBOX_MM = 50
         const half = DEFAULT_BBOX_MM / 2
         const GRID_XY_CELLS = 256
         const stepXY = DEFAULT_BBOX_MM / GRID_XY_CELLS
-        const stepZ = 0.02
+        const stepZ = 0.01
 
         const zs = new ZSliceExport(this.#helper, {
             minX: -half,

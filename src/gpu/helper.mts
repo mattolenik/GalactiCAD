@@ -21,6 +21,8 @@ export class GPUHelper implements Disposable {
             requiredLimits: {
                 maxStorageBuffersPerShaderStage: 10,
                 maxComputeInvocationsPerWorkgroup: 1024,
+                maxStorageBufferBindingSize: 4294967292,
+                maxBufferSize: 4294967296,
             },
         })
         return new GPUHelper(device)

@@ -91,7 +91,13 @@ fn interpIso(p0: vec3f, p1: vec3f, v0: f32, v1: f32) -> vec3f {
         // For iso=0: t = v0 / (v0 - v1)
         t = clamp(v0 / denom, 0.0, 1.0);
     }
-    return mix3(p0, p1, t);
+    // Linear edge interpolation finds the isosurface of the *interpolated* scalar field.
+    // To reduce beveling/artifacts on sharp features (e.g. boxes), we do one SDF projection
+    // step onto the true implicit surface: p <- p - sdf(p) * grad(p).
+    var p = mix3(p0, p1, t);
+    let d = sampleSDF(p);
+    p = p - d * computeGradient(p);
+    return p;
 }
 
 fn computeGradient(p: vec3f) -> vec3f {

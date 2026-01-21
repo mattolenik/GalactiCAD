@@ -5,6 +5,9 @@ import { Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3 } from "../vecmat/vector.mjs"
 
 export class MeshViewer extends HTMLElement {
+    static get observedAttributes() {
+        return ["translucentFaces"]
+    }
     readonly canvas: HTMLCanvasElement
 
     #bindGroup!: GPUBindGroup
@@ -12,17 +15,29 @@ export class MeshViewer extends HTMLElement {
     #context!: GPUCanvasContext
     #controls: CameraController
     #depthTexture: GPUTexture | null = null
+    #oitAccumTexture: GPUTexture | null = null
+    #oitRevealTexture: GPUTexture | null = null
     #device!: GPUDevice
     #format!: GPUTextureFormat
     #indexCount = 0
     #indexBuffer: GPUBuffer | null = null
     #initializing: Promise<void> | null
-    #pipeline!: GPURenderPipeline
+    #pipelineOpaque!: GPURenderPipeline
+    #pipelineTranslucent!: GPURenderPipeline // weighted blended OIT pass
+    #compositePipeline!: GPURenderPipeline
     #started = false
     #uniformBuffer: GPUBuffer | null = null
     #vertexBuffer: GPUBuffer | null = null
     #pendingMesh: MeshData | null = null
     #helper!: GPUHelper
+    #bindGroupLayout!: GPUBindGroupLayout
+    #pipelineLayout!: GPUPipelineLayout
+    #compositeBindGroupLayout!: GPUBindGroupLayout
+    #compositePipelineLayout!: GPUPipelineLayout
+    #compositeBindGroup: GPUBindGroup | null = null
+
+    #translucentFaces = false
+    #translucentCheckbox!: HTMLInputElement
 
     get controls(): CameraController {
         return this.#controls
@@ -31,6 +46,10 @@ export class MeshViewer extends HTMLElement {
     constructor() {
         super()
         const shadow = this.attachShadow({ mode: "open" })
+
+        // Initialize state from attribute (if present in HTML).
+        this.#translucentFaces = (this.getAttribute("translucentFaces") ?? "").toLowerCase() === "true"
+
         const style = document.createElement("style")
         style.textContent = `
         canvas {
@@ -50,8 +69,24 @@ export class MeshViewer extends HTMLElement {
             position: absolute;
             bottom: 10px;
             right: 10px;
-            pointer-events: none;
+            pointer-events: auto;
             z-index: 1;
+        }
+        .overlay label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            background: color-mix(in srgb, var(--tone-2, #444) 92%, transparent);
+            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.85);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            user-select: none;
+        }
+        .overlay input[type="checkbox"] {
+            accent-color: var(--tone-accent, #88f);
         }
 `
         this.canvas = document.createElement("canvas")
@@ -60,6 +95,22 @@ export class MeshViewer extends HTMLElement {
         this.canvas.style.display = "inline-block"
         shadow.appendChild(this.canvas)
         shadow.append(style, this.canvas)
+
+        const overlay = document.createElement("div")
+        overlay.classList.add("overlay")
+        const label = document.createElement("label")
+        this.#translucentCheckbox = document.createElement("input")
+        this.#translucentCheckbox.type = "checkbox"
+        this.#translucentCheckbox.checked = this.#translucentFaces
+        const text = document.createElement("span")
+        text.textContent = "Translucent faces"
+        label.append(this.#translucentCheckbox, text)
+        overlay.append(label)
+        shadow.appendChild(overlay)
+
+        this.#translucentCheckbox.addEventListener("change", () => {
+            this.translucentFaces = this.#translucentCheckbox.checked
+        })
 
         this.#cameraRes = vec2(this.canvas.clientWidth, this.canvas.clientHeight)
         this.#controls = new CameraController(this, vec3(0, 0, 0), 50)
@@ -79,7 +130,7 @@ export class MeshViewer extends HTMLElement {
                     this.#cameraRes = vec2(w, h)
                 }
                 if (this.#device) {
-                    this.#recreateDepthTexture()
+                    this.#recreateAttachments()
                 }
             })
         })
@@ -123,16 +174,39 @@ export class MeshViewer extends HTMLElement {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         })
 
-        const shaderModule = this.#device.createShaderModule({
-            label: "meshViewer.shader",
-            code: MESH_SHADER,
+        this.#bindGroupLayout = this.#device.createBindGroupLayout({
+            label: "meshViewer.bindGroupLayout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                    buffer: { type: "uniform" },
+                },
+            ],
+        })
+        this.#pipelineLayout = this.#device.createPipelineLayout({
+            label: "meshViewer.pipelineLayout",
+            bindGroupLayouts: [this.#bindGroupLayout],
         })
 
-        this.#pipeline = this.#device.createRenderPipeline({
-            label: "MeshViewer Pipeline",
-            layout: "auto",
+        const shaderModuleOpaque = this.#device.createShaderModule({
+            label: "meshViewer.shader.opaque",
+            code: MESH_SHADER_OPAQUE,
+        })
+        const shaderModuleTranslucent = this.#device.createShaderModule({
+            label: "meshViewer.shader.translucent",
+            code: MESH_SHADER_TRANSLUCENT,
+        })
+        const shaderModuleComposite = this.#device.createShaderModule({
+            label: "meshViewer.shader.composite",
+            code: COMPOSITE_SHADER,
+        })
+
+        this.#pipelineOpaque = this.#device.createRenderPipeline({
+            label: "MeshViewer Pipeline (opaque)",
+            layout: this.#pipelineLayout,
             vertex: {
-                module: shaderModule,
+                module: shaderModuleOpaque,
                 entryPoint: "vertexMain",
                 buffers: [
                     {
@@ -145,7 +219,7 @@ export class MeshViewer extends HTMLElement {
                 ],
             },
             fragment: {
-                module: shaderModule,
+                module: shaderModuleOpaque,
                 entryPoint: "fragmentMain",
                 targets: [{ format: this.#format }],
             },
@@ -154,7 +228,7 @@ export class MeshViewer extends HTMLElement {
                 // We flip X in clip-space to match PreviewWindow's screen convention,
                 // which also flips winding; keep backface culling correct.
                 frontFace: "ccw",
-                cullMode: "back",
+                cullMode: "none",
             },
             depthStencil: {
                 format: "depth24plus",
@@ -163,13 +237,90 @@ export class MeshViewer extends HTMLElement {
             },
         })
 
+        this.#pipelineTranslucent = this.#device.createRenderPipeline({
+            label: "MeshViewer Pipeline (translucent)",
+            layout: this.#pipelineLayout,
+            vertex: {
+                module: shaderModuleTranslucent,
+                entryPoint: "vertexMain",
+                buffers: [
+                    {
+                        arrayStride: 32,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0, format: "float32x3" }, // position
+                            { shaderLocation: 1, offset: 16, format: "float32x3" }, // normal
+                        ],
+                    },
+                ],
+            },
+            fragment: {
+                module: shaderModuleTranslucent,
+                entryPoint: "fragmentMain",
+                targets: [
+                    {
+                        format: "rgba16float",
+                        // Accumulation buffer: additive blending.
+                        blend: {
+                            color: { operation: "add", srcFactor: "one", dstFactor: "one" },
+                            alpha: { operation: "add", srcFactor: "one", dstFactor: "one" },
+                        },
+                    },
+                    {
+                        format: "rgba16float",
+                        // Revealage buffer: multiplicative blending via dst *= (1 - srcAlpha).
+                        blend: {
+                            color: { operation: "add", srcFactor: "zero", dstFactor: "one-minus-src-alpha" },
+                            alpha: { operation: "add", srcFactor: "zero", dstFactor: "one-minus-src-alpha" },
+                        },
+                    },
+                ],
+            },
+            primitive: {
+                topology: "triangle-list",
+                frontFace: "ccw",
+                // Show both sides for an "x-ray" look; OIT keeps it stable.
+                cullMode: "none",
+            },
+        })
+
+        this.#compositeBindGroupLayout = this.#device.createBindGroupLayout({
+            label: "meshViewer.compositeBindGroupLayout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: { sampleType: "unfilterable-float" },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: { sampleType: "unfilterable-float" },
+                },
+            ],
+        })
+        this.#compositePipelineLayout = this.#device.createPipelineLayout({
+            label: "meshViewer.compositePipelineLayout",
+            bindGroupLayouts: [this.#compositeBindGroupLayout],
+        })
+        this.#compositePipeline = this.#device.createRenderPipeline({
+            label: "MeshViewer Pipeline (translucent composite)",
+            layout: this.#compositePipelineLayout,
+            vertex: { module: shaderModuleComposite, entryPoint: "vertexMain" },
+            fragment: {
+                module: shaderModuleComposite,
+                entryPoint: "fragmentMain",
+                targets: [{ format: this.#format }],
+            },
+            primitive: { topology: "triangle-list", cullMode: "none" },
+        })
+
         this.#bindGroup = this.#device.createBindGroup({
             label: "meshViewer.bindGroup",
-            layout: this.#pipeline.getBindGroupLayout(0),
+            layout: this.#bindGroupLayout,
             entries: [{ binding: 0, resource: { buffer: this.#uniformBuffer } }],
         })
 
-        this.#recreateDepthTexture()
+        this.#recreateAttachments()
 
         if (this.#pendingMesh) {
             const mesh = this.#pendingMesh
@@ -178,7 +329,7 @@ export class MeshViewer extends HTMLElement {
         }
     }
 
-    #recreateDepthTexture() {
+    #recreateAttachments() {
         this.#depthTexture?.destroy()
         this.#depthTexture = this.#device.createTexture({
             label: "meshViewer.depth",
@@ -186,6 +337,32 @@ export class MeshViewer extends HTMLElement {
             format: "depth24plus",
             usage: GPUTextureUsage.RENDER_ATTACHMENT,
         })
+
+        this.#oitAccumTexture?.destroy()
+        this.#oitRevealTexture?.destroy()
+        const size = { width: Math.max(1, this.canvas.width), height: Math.max(1, this.canvas.height) }
+        this.#oitAccumTexture = this.#device.createTexture({
+            label: "meshViewer.oitAccum",
+            size,
+            format: "rgba16float",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        })
+        this.#oitRevealTexture = this.#device.createTexture({
+            label: "meshViewer.oitReveal",
+            size,
+            format: "rgba16float",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        })
+        if (this.#compositeBindGroupLayout) {
+            this.#compositeBindGroup = this.#device.createBindGroup({
+                label: "meshViewer.compositeBindGroup",
+                layout: this.#compositeBindGroupLayout,
+                entries: [
+                    { binding: 0, resource: this.#oitAccumTexture.createView() },
+                    { binding: 1, resource: this.#oitRevealTexture.createView() },
+                ],
+            })
+        }
     }
 
     async setMesh(mesh: MeshData) {
@@ -260,42 +437,116 @@ export class MeshViewer extends HTMLElement {
         this.#device.queue.writeBuffer(this.#uniformBuffer, 96, camToScene.data as BufferSource)
 
         const commandEncoder = this.#device.createCommandEncoder()
-        const renderPass = commandEncoder.beginRenderPass({
-            colorAttachments: [
-                {
-                    view: this.#context.getCurrentTexture().createView(),
-                    loadOp: "clear",
-                    storeOp: "store",
-                    clearValue: { r: 0, g: 0, b: 0, a: 0 },
-                },
-            ],
-            depthStencilAttachment: this.#depthTexture
-                ? {
-                    view: this.#depthTexture.createView(),
-                    depthClearValue: 1.0,
-                    depthLoadOp: "clear",
-                    depthStoreOp: "store",
-                }
-                : undefined,
-        })
+        if (this.#translucentFaces) {
+            if (!this.#oitAccumTexture || !this.#oitRevealTexture || !this.#compositeBindGroup) {
+                this.#recreateAttachments()
+            }
 
-        renderPass.setPipeline(this.#pipeline)
-        renderPass.setBindGroup(0, this.#bindGroup)
+            // Pass 1: weighted blended OIT into offscreen buffers.
+            const oitPass = commandEncoder.beginRenderPass({
+                colorAttachments: [
+                    {
+                        view: this.#oitAccumTexture!.createView(),
+                        loadOp: "clear",
+                        storeOp: "store",
+                        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                    },
+                    {
+                        view: this.#oitRevealTexture!.createView(),
+                        loadOp: "clear",
+                        storeOp: "store",
+                        // Revealage starts at 1 and gets multiplied by (1 - alpha) per fragment.
+                        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                    },
+                ],
+            })
+            oitPass.setPipeline(this.#pipelineTranslucent)
+            oitPass.setBindGroup(0, this.#bindGroup)
+            if (this.#vertexBuffer && this.#indexBuffer && this.#indexCount > 0) {
+                oitPass.setVertexBuffer(0, this.#vertexBuffer)
+                oitPass.setIndexBuffer(this.#indexBuffer, "uint32")
+                oitPass.drawIndexed(this.#indexCount)
+            }
+            oitPass.end()
 
-        if (this.#vertexBuffer && this.#indexBuffer && this.#indexCount > 0) {
-            renderPass.setVertexBuffer(0, this.#vertexBuffer)
-            renderPass.setIndexBuffer(this.#indexBuffer, "uint32")
-            renderPass.drawIndexed(this.#indexCount)
+            // Pass 2: composite OIT buffers onto the canvas.
+            const compositePass = commandEncoder.beginRenderPass({
+                colorAttachments: [
+                    {
+                        view: this.#context.getCurrentTexture().createView(),
+                        loadOp: "clear",
+                        storeOp: "store",
+                        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                    },
+                ],
+            })
+            compositePass.setPipeline(this.#compositePipeline)
+            compositePass.setBindGroup(0, this.#compositeBindGroup)
+            compositePass.draw(3)
+            compositePass.end()
+        } else {
+            // Opaque pass (existing).
+            const renderPass = commandEncoder.beginRenderPass({
+                colorAttachments: [
+                    {
+                        view: this.#context.getCurrentTexture().createView(),
+                        loadOp: "clear",
+                        storeOp: "store",
+                        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                    },
+                ],
+                depthStencilAttachment: this.#depthTexture
+                    ? {
+                        view: this.#depthTexture.createView(),
+                        depthClearValue: 1.0,
+                        depthLoadOp: "clear",
+                        depthStoreOp: "store",
+                    }
+                    : undefined,
+            })
+
+            renderPass.setPipeline(this.#pipelineOpaque)
+            renderPass.setBindGroup(0, this.#bindGroup)
+
+            if (this.#vertexBuffer && this.#indexBuffer && this.#indexCount > 0) {
+                renderPass.setVertexBuffer(0, this.#vertexBuffer)
+                renderPass.setIndexBuffer(this.#indexBuffer, "uint32")
+                renderPass.drawIndexed(this.#indexCount)
+            }
+
+            renderPass.end()
         }
-
-        renderPass.end()
         this.#device.queue.submit([commandEncoder.finish()])
 
         requestAnimationFrame(() => this.update())
     }
+
+    get translucentFaces(): boolean {
+        return this.#translucentFaces
+    }
+
+    set translucentFaces(enabled: boolean) {
+        const next = !!enabled
+        if (next === this.#translucentFaces) return
+        this.#translucentFaces = next
+        if (this.#translucentCheckbox) {
+            this.#translucentCheckbox.checked = next
+        }
+        this.setAttribute("translucentFaces", next ? "true" : "false")
+    }
+
+    attributeChangedCallback(name: string, oldVal: string | null, newVal: string | null) {
+        if (name !== "translucentFaces") return
+        const next = (newVal ?? "").toLowerCase() === "true"
+        if (next === this.#translucentFaces) return
+        this.#translucentFaces = next
+        if (this.#translucentCheckbox) {
+            this.#translucentCheckbox.checked = next
+        }
+    }
 }
 
-const MESH_SHADER = /* wgsl */ `
+const MESH_SHADER_COMMON = /* wgsl */ `
 struct Camera {
     transform: mat4x4f,
     position: vec3f,
@@ -371,6 +622,10 @@ fn lighting(normalScene: vec3f) -> f32 {
     let ambient = 0.18;
     return clamp(ambient + key + fill + rim + back, 0.0, 1.3);
 }
+`
+
+const MESH_SHADER_OPAQUE = /* wgsl */ `
+${MESH_SHADER_COMMON}
 
 @fragment
 fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4f {
@@ -388,6 +643,74 @@ fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> @loca
     let baseColor = vec3f(0.9, 0.9, 0.95);
     let shaded = baseColor * diffuse;
     return vec4f(shaded, 1.0);
+}
+`
+
+// Weighted blended order-independent transparency (OIT).
+// We accumulate premultiplied color+alpha into one buffer, and "revealage" into another:
+// reveal *= (1 - alpha). Then composite in a fullscreen pass.
+const MESH_SHADER_TRANSLUCENT = /* wgsl */ `
+${MESH_SHADER_COMMON}
+
+struct OitOut {
+    @location(0) accum: vec4f,
+    @location(1) reveal: vec4f,
+};
+
+@fragment
+fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> OitOut {
+    let dx = dpdx(v.worldPos);
+    let dy = dpdy(v.worldPos);
+    var n = normalize(cross(dx, dy));
+    if (!frontFacing) {
+        n = -n;
+    }
+    let diffuse = lighting(n);
+    let baseColor = vec3f(0.9, 0.9, 0.95);
+    let shaded = baseColor * diffuse;
+
+    let a = 0.35;
+    var out: OitOut;
+    out.accum = vec4f(shaded * a, a);
+    // Only alpha is used for revealage blending; keep it in .a.
+    out.reveal = vec4f(0.0, 0.0, 0.0, a);
+    return out;
+}
+`
+
+const COMPOSITE_SHADER = /* wgsl */ `
+@group(0) @binding(0) var accumTex: texture_2d<f32>;
+@group(0) @binding(1) var revealTex: texture_2d<f32>;
+
+struct VsOut {
+    @builtin(position) pos: vec4f,
+};
+
+@vertex
+fn vertexMain(@builtin(vertex_index) i: u32) -> VsOut {
+    // Fullscreen triangle.
+    var pos = array<vec2f, 3>(
+        vec2f(-1.0, -1.0),
+        vec2f( 3.0, -1.0),
+        vec2f(-1.0,  3.0),
+    );
+    var out: VsOut;
+    out.pos = vec4f(pos[i], 0.0, 1.0);
+    return out;
+}
+
+@fragment
+fn fragmentMain(@builtin(position) p: vec4f) -> @location(0) vec4f {
+    let xy = vec2i(p.xy);
+    let accum = textureLoad(accumTex, xy, 0);
+    let reveal = textureLoad(revealTex, xy, 0);
+    let alpha = clamp(1.0 - reveal.a, 0.0, 1.0);
+    if (alpha <= 0.00001) {
+        return vec4f(0.0, 0.0, 0.0, 0.0);
+    }
+    let color = accum.rgb / max(accum.a, 0.00001);
+    // Canvas is configured with alphaMode: "premultiplied".
+    return vec4f(color * alpha, alpha);
 }
 `
 

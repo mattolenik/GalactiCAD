@@ -110,6 +110,12 @@ fn mix3f(a: vec3f, b: vec3f, t: f32) -> vec3f {
     return a * (1.0f - t) + b * t;
 }
 
+fn safeUnit3(v: vec3f) -> vec3f {
+    let l = length(v);
+    if (l > 1e-12) { return v / l; }
+    return vec3f(0.0, 0.0, 0.0);
+}
+
 fn gridPosToWorldPos(gridPos: vec3u) -> vec3f {
     return vec3f(gridPos) * uniforms.voxelSize + uniforms.gridOffset;
 }
@@ -187,7 +193,10 @@ fn sampleSDF(worldPos: vec3f) -> f32 {
 }
 
 fn computeGradient(p: vec3f) -> vec3f {
-    let eps = uniforms.voxelSize * 0.01; // Small epsilon for gradient calculation
+    // Finite-difference epsilon in world units.
+    // Keep this small to preserve sharp features (boxes, CSG seams), but not *too* small
+    // (avoid catastrophic cancellation / denorm noise).
+    let eps = max(1e-6, uniforms.voxelSize * 0.01);
     let dx = sampleSDF(p + vec3f(eps, 0.0, 0.0)) - sampleSDF(p - vec3f(eps, 0.0, 0.0));
     let dy = sampleSDF(p + vec3f(0.0, eps, 0.0)) - sampleSDF(p - vec3f(0.0, eps, 0.0));
     let dz = sampleSDF(p + vec3f(0.0, 0.0, eps)) - sampleSDF(p - vec3f(0.0, 0.0, eps));
@@ -249,18 +258,18 @@ fn vertexInsideForCases(sdfValue: f32) -> bool {
 }
 
 fn edgeCrossesIso(v0: f32, g0: vec3u, v1: f32, g1: vec3u) -> bool {
-    // Use 3-state logic so "touching" the surface doesn't randomly disappear.
-    // (g0/g1 kept in signature for callsite consistency; not used here.)
+    // IMPORTANT:
+    // Treating "on-surface" endpoints as automatic crossings creates lots of degenerate
+    // quads when the surface happens to align with the sampling grid (common for boxes).
+    // That manifests as cracks/holes (via inconsistent winding/culling) and distorted edges.
+    //
+    // Instead, classify endpoints with a consistent <= rule and only emit crossings when
+    // the inside/outside state differs.
     _ = g0;
     _ = g1;
-    let c0 = vertexClassAtGridVertex(v0);
-    let c1 = vertexClassAtGridVertex(v1);
-    // If both endpoints are on-surface, the surface lies along this grid edge.
-    // Treat that as a crossing so we don't get cracks on axis-aligned features
-    // (e.g. box edges that land exactly on the sampling grid).
-    if (c0 == 0 && c1 == 0) { return true; }
-    if (c0 == 0 || c1 == 0) { return true; }
-    return c0 != c1;
+    let s0 = vertexInsideForCases(v0);
+    let s1 = vertexInsideForCases(v1);
+    return s0 != s1;
 }
 
 // --- NaN/Inf Helper Functions ---
@@ -346,9 +355,16 @@ fn solveQEF(qef: QEFData) -> vec3f {
     }
     
     var ATA_reg = qef.ATA;
-    // Keep regularization extremely small to avoid rounding sharp features.
-    // Large regularization biases the solution toward the mass point and creates
-    // beveled/rounded edges on boxes and crisp CSG seams.
+    // Keep regularization extremely small.
+    //
+    // IMPORTANT: We *do* use the regularization to bias the solution toward the mass point
+    // for rank-deficient QEFs (planar faces / edges). Without this, the solver can pick
+    // arbitrary tangential coordinates (e.g. y=z=0 on an X-face), which shows up as
+    // wrinkled faces and non-90° edges.
+    //
+    // We implement this as:
+    //   (A + λI) x = b + λ m
+    // where m is the mass point.
     let regularization = 1e-5;
     ATA_reg[0][0] += regularization;
     ATA_reg[1][1] += regularization;
@@ -359,7 +375,8 @@ fn solveQEF(qef: QEFData) -> vec3f {
     // Still bail out on *extreme* numerical instability.
     if (estimateConditionNumber(ATA_reg) > 1e8) { return massPoint; }
 
-    let solution = solveCholesky(ATA_reg, qef.ATb);
+    let b_reg = qef.ATb + massPoint * regularization;
+    let solution = solveCholesky(ATA_reg, b_reg);
     
     // Corrected NaN/Inf check using vec3<bool> and any()
     let solution_is_nan = vec3<bool>(isNan(solution.x), isNan(solution.y), isNan(solution.z));
@@ -368,13 +385,6 @@ fn solveQEF(qef: QEFData) -> vec3f {
         return massPoint;
     }
 
-    let distToMassPoint = length(solution - massPoint);
-    let maxAllowedDist = uniforms.voxelSize * 1.5; 
-
-    if (distToMassPoint > maxAllowedDist) {
-        return massPoint + normalize(solution - massPoint) * maxAllowedDist;
-    }
-    
     return solution;
 }
 
@@ -573,24 +583,44 @@ fn prefixSumWorkgroup_Pass2b(
     workgroup_compaction_counts[local_idx] = value_to_sum;
     workgroupBarrier();
 
-    for (var stride = 1u; stride < 256u; stride = stride << 1u) {
-        let val_read_before_overwrite = workgroup_compaction_counts[local_idx]; 
-        workgroupBarrier(); 
-        if (local_idx >= stride) {
-            workgroup_compaction_counts[local_idx] = val_read_before_overwrite + workgroup_compaction_counts[local_idx - stride];
+    // Blelloch exclusive scan (race-free) over 256 elements.
+    // Up-sweep
+    for (var d = 1u; d < 256u; d = d << 1u) {
+        let idx = ((local_idx + 1u) * d * 2u) - 1u;
+        if (idx < 256u) {
+            workgroup_compaction_counts[idx] =
+                workgroup_compaction_counts[idx] + workgroup_compaction_counts[idx - d];
         }
-        workgroupBarrier(); 
+        workgroupBarrier();
     }
 
-    if (global_idx < numCountsToSum && global_idx < arrayLength(&activeCellIndices_compaction)) {
-        activeCellIndices_compaction[global_idx] = workgroup_compaction_counts[local_idx];
-    }
-
-    if (local_idx == 255u) { 
+    // Store workgroup total and prepare for exclusive down-sweep.
+    if (local_idx == 255u) {
         let workgroup_total_storage_idx = numCountsToSum + workgroupId.x;
         if (workgroup_total_storage_idx < arrayLength(&activeCellIndices_compaction)) {
-            activeCellIndices_compaction[workgroup_total_storage_idx] = workgroup_compaction_counts[255u]; 
+            activeCellIndices_compaction[workgroup_total_storage_idx] = workgroup_compaction_counts[255u];
         }
+        workgroup_compaction_counts[255u] = 0u;
+    }
+    workgroupBarrier();
+
+    // Down-sweep
+    var d2 = 128u;
+    loop {
+        let idx = ((local_idx + 1u) * d2 * 2u) - 1u;
+        if (idx < 256u) {
+            let t = workgroup_compaction_counts[idx - d2];
+            workgroup_compaction_counts[idx - d2] = workgroup_compaction_counts[idx];
+            workgroup_compaction_counts[idx] = workgroup_compaction_counts[idx] + t;
+        }
+        workgroupBarrier();
+        if (d2 == 1u) { break; }
+        d2 = d2 >> 1u;
+    }
+
+    // Write EXCLUSIVE scan results for this workgroup.
+    if (global_idx < numCountsToSum && global_idx < arrayLength(&activeCellIndices_compaction)) {
+        activeCellIndices_compaction[global_idx] = workgroup_compaction_counts[local_idx];
     }
 }
 
@@ -618,26 +648,10 @@ fn addWorkgroupOffsets_Pass2c(
     }
 
     if (global_idx < numCountsToSum && global_idx < arrayLength(&activeCellIndices_compaction)) {
-        // After Pass 2b, activeCellIndices_compaction[global_idx] contains the INCLUSIVE sum
-        // within this workgroup (sum of elements 0..local_idx in this workgroup).
-        // We need to convert this to an EXCLUSIVE sum globally.
-        //
-        // For exclusive sum:
-        // - If local_idx == 0: exclusive_sum = sum of all previous workgroups only
-        // - If local_idx > 0: exclusive_sum = sum of all previous workgroups + inclusive_sum[global_idx-1]
-        //   (where global_idx-1 is in the same workgroup, so its inclusive sum is what we need)
-        
-        var local_exclusive_sum_component = 0u;
-        if (local_idx > 0u) {
-            // global_idx-1 is guaranteed to be in the same workgroup when local_idx > 0
-            // activeCellIndices_compaction[global_idx-1] contains the inclusive sum of elements
-            // 0..(local_idx-1) in this workgroup, which is exactly the exclusive sum component we need
-            local_exclusive_sum_component = activeCellIndices_compaction[global_idx - 1u];
-        }
-        // If local_idx == 0, local_exclusive_sum_component stays 0, which is correct
-
-        let global_exclusive_sum = offset_from_prev_workgroups + local_exclusive_sum_component;
-        activeCellIndices_compaction[global_idx] = global_exclusive_sum;
+        // After Pass 2b, activeCellIndices_compaction[global_idx] contains the EXCLUSIVE sum
+        // within this workgroup. Add previous-workgroup totals to make it global.
+        _ = local_idx;
+        activeCellIndices_compaction[global_idx] = activeCellIndices_compaction[global_idx] + offset_from_prev_workgroups;
     }
 
     // Handle the edge case where numCountsToSum == 0 (shouldn't happen in practice, but be safe)
@@ -868,8 +882,13 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         let p0_world = cornerWorldPositions[c1_idx];
         let p1_world = cornerWorldPositions[c2_idx];
         let t = findEdgeIntersection(val0, val1);
-        let intersectionPos = mix3f(p0_world, p1_world, t);
-        let normal = computeGradient(intersectionPos);
+        var intersectionPos = mix3f(p0_world, p1_world, t);
+        // Improve hermite data: project the interpolated crossing onto the true iso-surface.
+        // This reduces “beveling” and helps keep cube edges crisp.
+        var normal = computeGradient(intersectionPos);
+        let d0 = sampleSDF(intersectionPos) - uniforms.isoValue;
+        intersectionPos = intersectionPos - normal * d0;
+        normal = computeGradient(intersectionPos);
 
         let c = u32(compIdx);
         qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
@@ -928,35 +947,12 @@ fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
     let cellPos = gridIndexTo3D(cellFlatIndex);
     let cellMin = gridPosToWorldPos(cellPos);
     let cellMax = cellMin + vec3f(uniforms.voxelSize);
-    let cellCenter = cellMin + vec3f(uniforms.voxelSize * 0.5);
 
-    var vertexPos = solveQEF(qef);
-    // Constrained MDC:
-    // Compare a few candidate positions and pick the one with lowest QEF error.
-    // This prevents pathological "corner clamping" from producing spikes.
-    let mp = clamp(qef.massPoint / max(1.0, f32(qef.numPoints)), cellMin, cellMax);
-    let x0 = clamp(vertexPos, cellMin, cellMax);
-    let x1 = mp;
-    let x2 = cellCenter;
-
-    var best = x0;
-    var bestCost = qefCost(qef, x0);
-
-    let c1 = qefCost(qef, x1);
-    if (c1 < bestCost) { bestCost = c1; best = x1; }
-
-    let c2 = qefCost(qef, x2);
-    if (c2 < bestCost) { bestCost = c2; best = x2; }
-
-    vertexPos = best;
-
-    // Project the chosen vertex onto the iso-surface (few safe steps).
-    for (var it = 0u; it < 3u; it = it + 1u) {
-        let d = sampleSDF(vertexPos) - uniforms.isoValue;
-        let n = computeGradient(vertexPos);
-        let step = clamp(d, -uniforms.voxelSize * 0.25, uniforms.voxelSize * 0.25);
-        vertexPos = clamp(vertexPos - n * step, cellMin, cellMax);
-    }
+    // Use the (mass-point biased) QEF solution, clamped to the cell.
+    // NOTE: Do NOT do additional surface projection here; projecting with a numerical
+    // gradient near sharp features (box edges / corners) creates a small "chamfer"
+    // by pulling the solution away from the true plane intersection.
+    var vertexPos = clamp(solveQEF(qef), cellMin, cellMax);
     
     var vertexNormal = computeGradient(vertexPos); 
     if (qef.numPoints == 0u) { 
@@ -1116,29 +1112,43 @@ fn prefixSumTriangles_Pass5b(
     workgroup_triangle_counts_ps[local_idx] = count_val;
     workgroupBarrier();
 
-    for (var stride = 1u; stride < 256u; stride = stride << 1u) { 
-        let temp = workgroup_triangle_counts_ps[local_idx];
-        workgroupBarrier();
-        if (local_idx >= stride) {
-            workgroup_triangle_counts_ps[local_idx] = temp + workgroup_triangle_counts_ps[local_idx - stride];
+    // Blelloch exclusive scan (race-free) over 256 elements.
+    // Up-sweep
+    for (var d = 1u; d < 256u; d = d << 1u) {
+        let idx = ((local_idx + 1u) * d * 2u) - 1u;
+        if (idx < 256u) {
+            workgroup_triangle_counts_ps[idx] =
+                workgroup_triangle_counts_ps[idx] + workgroup_triangle_counts_ps[idx - d];
         }
         workgroupBarrier();
     }
-    
-    var exclusive_sum_val = 0u;
-    if (local_idx > 0u) { 
-        exclusive_sum_val = workgroup_triangle_counts_ps[local_idx - 1u];
-    }
-    
-    if (element_idx_global < totalActiveCellsToProcess && element_idx_global < arrayLength(&triangleOffsets_face)) {
-        triangleOffsets_face[element_idx_global] = exclusive_sum_val; 
-    }
 
-    // Store total triangle count for this workgroup (inclusive sum at lane 255)
+    // Store workgroup total and prepare for exclusive down-sweep.
     if (local_idx == 255u) {
         if (workgroupId.x < arrayLength(&triangleWorkgroupOffsets_face)) {
             triangleWorkgroupOffsets_face[workgroupId.x] = workgroup_triangle_counts_ps[255u];
         }
+        workgroup_triangle_counts_ps[255u] = 0u;
+    }
+    workgroupBarrier();
+
+    // Down-sweep
+    var d2 = 128u;
+    loop {
+        let idx = ((local_idx + 1u) * d2 * 2u) - 1u;
+        if (idx < 256u) {
+            let t = workgroup_triangle_counts_ps[idx - d2];
+            workgroup_triangle_counts_ps[idx - d2] = workgroup_triangle_counts_ps[idx];
+            workgroup_triangle_counts_ps[idx] = workgroup_triangle_counts_ps[idx] + t;
+        }
+        workgroupBarrier();
+        if (d2 == 1u) { break; }
+        d2 = d2 >> 1u;
+    }
+
+    // Write per-cell EXCLUSIVE offsets (within this workgroup).
+    if (element_idx_global < totalActiveCellsToProcess && element_idx_global < arrayLength(&triangleOffsets_face)) {
+        triangleOffsets_face[element_idx_global] = workgroup_triangle_counts_ps[local_idx];
     }
 }
 
@@ -1154,6 +1164,12 @@ fn prefixSumTriangleWorkgroups_Pass5b2(
     let totalActiveCellsToProcess = activeCellCount_faceInput;
     let numWorkgroups = (totalActiveCellsToProcess + 255u) / 256u;
 
+    // If there are no cells, every lane takes this path (uniform), so it's safe to early-return.
+    if (totalActiveCellsToProcess == 0u) {
+        if (local_idx == 0u) { atomicStore(&indexCount_face, 0u); }
+        return;
+    }
+
     var v = 0u;
     if (local_idx < numWorkgroups && local_idx < arrayLength(&triangleWorkgroupOffsets_face)) {
         v = triangleWorkgroupOffsets_face[local_idx];
@@ -1161,31 +1177,41 @@ fn prefixSumTriangleWorkgroups_Pass5b2(
     workgroup_triangle_counts_ps[local_idx] = v;
     workgroupBarrier();
 
-    for (var stride = 1u; stride < 256u; stride = stride << 1u) { 
-        let temp = workgroup_triangle_counts_ps[local_idx];
-        workgroupBarrier();
-        if (local_idx >= stride) {
-            workgroup_triangle_counts_ps[local_idx] = temp + workgroup_triangle_counts_ps[local_idx - stride];
+    // Blelloch exclusive scan (race-free).
+    // Up-sweep
+    for (var d = 1u; d < 256u; d = d << 1u) {
+        let idx = ((local_idx + 1u) * d * 2u) - 1u;
+        if (idx < 256u) {
+            workgroup_triangle_counts_ps[idx] =
+                workgroup_triangle_counts_ps[idx] + workgroup_triangle_counts_ps[idx - d];
         }
         workgroupBarrier();
     }
 
-    // Write exclusive offsets back
+    // Total triangles is in lane 255 after up-sweep (zeros do not affect sum).
+    if (local_idx == 255u) {
+        atomicStore(&indexCount_face, workgroup_triangle_counts_ps[255u] * 3u);
+        workgroup_triangle_counts_ps[255u] = 0u;
+    }
+    workgroupBarrier();
+
+    // Down-sweep
+    var d2 = 128u;
+    loop {
+        let idx = ((local_idx + 1u) * d2 * 2u) - 1u;
+        if (idx < 256u) {
+            let t = workgroup_triangle_counts_ps[idx - d2];
+            workgroup_triangle_counts_ps[idx - d2] = workgroup_triangle_counts_ps[idx];
+            workgroup_triangle_counts_ps[idx] = workgroup_triangle_counts_ps[idx] + t;
+        }
+        workgroupBarrier();
+        if (d2 == 1u) { break; }
+        d2 = d2 >> 1u;
+    }
+
+    // Write exclusive offsets back.
     if (local_idx < numWorkgroups && local_idx < arrayLength(&triangleWorkgroupOffsets_face)) {
-        var ex = 0u;
-        if (local_idx > 0u) { ex = workgroup_triangle_counts_ps[local_idx - 1u]; }
-        triangleWorkgroupOffsets_face[local_idx] = ex;
-    }
-
-    // Write total index count once
-    if (totalActiveCellsToProcess == 0u) {
-        if (local_idx == 0u) { atomicStore(&indexCount_face, 0u); }
-    } else {
-        let last = numWorkgroups - 1u;
-        if (local_idx == last) {
-            let totalTriangles = workgroup_triangle_counts_ps[last];
-            atomicStore(&indexCount_face, totalTriangles * 3u);
-        }
+        triangleWorkgroupOffsets_face[local_idx] = workgroup_triangle_counts_ps[local_idx];
     }
 }
 
@@ -1210,38 +1236,154 @@ fn generateQuadIndices(
     v0_idx: u32, v1_idx: u32, v2_idx: u32, v3_idx: u32, 
     flipWinding: bool
 ) {
-    // Quad triangulation:
-    // - Inputs are expected in this order: (v0, v1, v2, v3)
-    // - We emit triangles: (v0, v1, v3) and (v0, v3, v2)
-    //   which corresponds to the quad loop (v0 -> v1 -> v3 -> v2).
-    if (flipWinding) {
-        // Reverse the winding of BOTH triangles.
-        // Tri1: v0, v3, v1
-        if (baseOutputIdx + 2u < arrayLength(&indices)) {
-            indices[baseOutputIdx + 0u] = v0_idx;
-            indices[baseOutputIdx + 1u] = v3_idx;
-            indices[baseOutputIdx + 2u] = v1_idx;
+    // Quad loop is (v0 -> v1 -> v3 -> v2).
+    // Choose diagonal and orient winding using generated vertex normals to reduce creases
+    // and avoid "missing" faces due to flipped winding/backface culling.
+    if (baseOutputIdx + 5u >= arrayLength(&indices)) { return; }
+    if (v0_idx >= arrayLength(&vertices) || v1_idx >= arrayLength(&vertices) ||
+        v2_idx >= arrayLength(&vertices) || v3_idx >= arrayLength(&vertices)) { return; }
+
+    let p0 = vertices[v0_idx].position;
+    let p1 = vertices[v1_idx].position;
+    let p2 = vertices[v2_idx].position;
+    let p3 = vertices[v3_idx].position;
+
+    // Score diagonal by how consistent the two triangle normals are (lower score = less crease).
+    let a0 = safeUnit3(cross(p1 - p0, p3 - p0));
+    let a1 = safeUnit3(cross(p3 - p0, p2 - p0));
+    let b0 = safeUnit3(cross(p1 - p0, p2 - p0));
+    let b1 = safeUnit3(cross(p3 - p1, p2 - p1));
+
+    let diag03Deg = dot(a0, a0) == 0.0 || dot(a1, a1) == 0.0;
+    let diag12Deg = dot(b0, b0) == 0.0 || dot(b1, b1) == 0.0;
+
+    var useDiag03 = false;
+    if (!diag03Deg && !diag12Deg) {
+        let score03 = 1.0 - dot(a0, a1);
+        let score12 = 1.0 - dot(b0, b1);
+        useDiag03 = score03 <= score12;
+    } else {
+        // Fallback: shorter diagonal.
+        useDiag03 = dot(p0 - p3, p0 - p3) <= dot(p1 - p2, p1 - p2);
+    }
+
+    // Winding: orient using SDF gradient at quad centroid (more robust than axis heuristics).
+    var needFlip = flipWinding;
+    let center = (p0 + p1 + p2 + p3) * 0.25;
+    let gn = computeGradient(center);
+    if (dot(gn, gn) > 1e-12) {
+        var faceN: vec3f;
+        if (useDiag03) {
+            faceN = cross(p1 - p0, p3 - p0);
+        } else {
+            faceN = cross(p1 - p0, p2 - p0);
         }
-        // Tri2: v0, v2, v3
-        if (baseOutputIdx + 5u < arrayLength(&indices)) {
-            indices[baseOutputIdx + 3u] = v0_idx; 
-            indices[baseOutputIdx + 4u] = v2_idx;
-            indices[baseOutputIdx + 5u] = v3_idx;
-        }
-    } else { 
-        // Tri1: v0, v1, v3
-         if (baseOutputIdx + 2u < arrayLength(&indices)) {
+        needFlip = dot(faceN, gn) < 0.0;
+    }
+
+    if (useDiag03) {
+        if (!needFlip) {
             indices[baseOutputIdx + 0u] = v0_idx;
             indices[baseOutputIdx + 1u] = v1_idx;
             indices[baseOutputIdx + 2u] = v3_idx;
-        }
-        // Tri2: v0, v3, v2
-         if (baseOutputIdx + 5u < arrayLength(&indices)) {
-            indices[baseOutputIdx + 3u] = v0_idx; 
+            indices[baseOutputIdx + 3u] = v0_idx;
             indices[baseOutputIdx + 4u] = v3_idx;
             indices[baseOutputIdx + 5u] = v2_idx;
+        } else {
+            indices[baseOutputIdx + 0u] = v0_idx;
+            indices[baseOutputIdx + 1u] = v3_idx;
+            indices[baseOutputIdx + 2u] = v1_idx;
+            indices[baseOutputIdx + 3u] = v0_idx;
+            indices[baseOutputIdx + 4u] = v2_idx;
+            indices[baseOutputIdx + 5u] = v3_idx;
+        }
+    } else {
+        if (!needFlip) {
+            indices[baseOutputIdx + 0u] = v0_idx;
+            indices[baseOutputIdx + 1u] = v1_idx;
+            indices[baseOutputIdx + 2u] = v2_idx;
+            indices[baseOutputIdx + 3u] = v1_idx;
+            indices[baseOutputIdx + 4u] = v3_idx;
+            indices[baseOutputIdx + 5u] = v2_idx;
+        } else {
+            indices[baseOutputIdx + 0u] = v0_idx;
+            indices[baseOutputIdx + 1u] = v2_idx;
+            indices[baseOutputIdx + 2u] = v1_idx;
+            indices[baseOutputIdx + 3u] = v1_idx;
+            indices[baseOutputIdx + 4u] = v2_idx;
+            indices[baseOutputIdx + 5u] = v3_idx;
         }
     }
+}
+
+struct TriPair {
+    t0: vec3u,
+    t1: vec3u,
+    valid: u32,
+}
+
+fn triArea2(p0: vec3f, p1: vec3f, p2: vec3f) -> f32 {
+    let n = cross(p1 - p0, p2 - p0);
+    return dot(n, n);
+}
+
+fn chooseQuadTris(v0_idx: u32, v1_idx: u32, v2_idx: u32, v3_idx: u32) -> TriPair {
+    // Returns 2 triangles for the quad loop (v0 -> v1 -> v3 -> v2), oriented outward,
+    // and avoids degenerate triangulations when possible.
+    if (v0_idx >= arrayLength(&vertices) || v1_idx >= arrayLength(&vertices) ||
+        v2_idx >= arrayLength(&vertices) || v3_idx >= arrayLength(&vertices)) {
+        return TriPair(vec3u(), vec3u(), 0u);
+    }
+
+    let p0 = vertices[v0_idx].position;
+    let p1 = vertices[v1_idx].position;
+    let p2 = vertices[v2_idx].position;
+    let p3 = vertices[v3_idx].position;
+
+    // Two triangulations:
+    // A: (0,1,3) + (0,3,2)   diagonal (0-3)
+    // B: (0,1,2) + (1,3,2)   diagonal (1-2)
+    let a0 = triArea2(p0, p1, p3);
+    let a1 = triArea2(p0, p3, p2);
+    let b0 = triArea2(p0, p1, p2);
+    let b1 = triArea2(p1, p3, p2);
+
+    let minA = min(a0, a1);
+    let minB = min(b0, b1);
+    // Always emit a triangulation to keep the surface watertight.
+    // Prefer the triangulation with the larger minimum triangle area (more stable).
+    let useA = minA >= minB;
+
+    var t0: vec3u;
+    var t1: vec3u;
+    if (useA) {
+        t0 = vec3u(v0_idx, v1_idx, v3_idx);
+        t1 = vec3u(v0_idx, v3_idx, v2_idx);
+    } else {
+        t0 = vec3u(v0_idx, v1_idx, v2_idx);
+        t1 = vec3u(v1_idx, v3_idx, v2_idx);
+    }
+
+    // Orient both triangles consistently using SDF gradient at quad center.
+    let center = (p0 + p1 + p2 + p3) * 0.25;
+    // Use field sampling along the triangle normal to decide outward orientation.
+    // This is more robust than gradient-based orientation on sharp features / CSG seams.
+    let faceN0 = cross(vertices[t0.y].position - vertices[t0.x].position,
+                       vertices[t0.z].position - vertices[t0.x].position);
+    let nHat = safeUnit3(faceN0);
+    if (dot(nHat, nHat) > 0.0) {
+        let probe = max(1e-4, uniforms.voxelSize * 0.5);
+        let dPlus = sampleSDF(center + nHat * probe) - uniforms.isoValue;
+        let dMinus = sampleSDF(center - nHat * probe) - uniforms.isoValue;
+        // Outside should be on the +normal side for outward-facing triangles.
+        if (dPlus < dMinus) {
+            // Flip BOTH triangles.
+            t0 = vec3u(t0.x, t0.z, t0.y);
+            t1 = vec3u(t1.x, t1.z, t1.y);
+        }
+    }
+
+    return TriPair(t0, t1, 1u);
 }
 
 
@@ -1408,15 +1550,22 @@ fn generateTrianglesAtomic_Pass5(@builtin(global_invocation_id) globalId: vec3u)
             if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
                 atomicAdd(&debugSkipCounters[1], 1u);
             } else {
-                let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[1], 0.5);
-                let surface_gradient = computeGradient(edge_mid_point);
-                let flip = dot(surface_gradient, vec3f(1.0, 0.0, 0.0)) < 0.0;
                 let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
                 let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
                 let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
                 let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
-                let base = atomicAdd(&indexCount_face, 6u);
-                generateQuadIndices(base, vv0, vv1, vv2, vv3, flip);
+                let tp = chooseQuadTris(vv0, vv1, vv2, vv3);
+                if (tp.valid != 0u) {
+                    let base = atomicAdd(&indexCount_face, 6u);
+                    if (base + 5u < arrayLength(&indices)) {
+                        indices[base + 0u] = tp.t0.x;
+                        indices[base + 1u] = tp.t0.y;
+                        indices[base + 2u] = tp.t0.z;
+                        indices[base + 3u] = tp.t1.x;
+                        indices[base + 4u] = tp.t1.y;
+                        indices[base + 5u] = tp.t1.z;
+                    }
+                }
             }
         }
     }
@@ -1438,15 +1587,22 @@ fn generateTrianglesAtomic_Pass5(@builtin(global_invocation_id) globalId: vec3u)
             if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
                 atomicAdd(&debugSkipCounters[1], 1u);
             } else {
-                let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[2], 0.5);
-                let surface_gradient = computeGradient(edge_mid_point);
-                let flip = dot(surface_gradient, vec3f(0.0, 1.0, 0.0)) < 0.0;
                 let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
                 let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
                 let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
                 let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
-                let base = atomicAdd(&indexCount_face, 6u);
-                generateQuadIndices(base, vv0, vv1, vv2, vv3, !flip); // keep existing Y convention
+                let tp = chooseQuadTris(vv0, vv1, vv2, vv3);
+                if (tp.valid != 0u) {
+                    let base = atomicAdd(&indexCount_face, 6u);
+                    if (base + 5u < arrayLength(&indices)) {
+                        indices[base + 0u] = tp.t0.x;
+                        indices[base + 1u] = tp.t0.y;
+                        indices[base + 2u] = tp.t0.z;
+                        indices[base + 3u] = tp.t1.x;
+                        indices[base + 4u] = tp.t1.y;
+                        indices[base + 5u] = tp.t1.z;
+                    }
+                }
             }
         }
     }
@@ -1468,15 +1624,22 @@ fn generateTrianglesAtomic_Pass5(@builtin(global_invocation_id) globalId: vec3u)
             if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
                 atomicAdd(&debugSkipCounters[1], 1u);
             } else {
-                let edge_mid_point = mix3f(cornerWorldPos_cell[0], cornerWorldPos_cell[4], 0.5);
-                let surface_gradient = computeGradient(edge_mid_point);
-                let flip = dot(surface_gradient, vec3f(0.0, 0.0, 1.0)) < 0.0;
                 let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
                 let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
                 let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
                 let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
-                let base = atomicAdd(&indexCount_face, 6u);
-                generateQuadIndices(base, vv0, vv1, vv2, vv3, flip);
+                let tp = chooseQuadTris(vv0, vv1, vv2, vv3);
+                if (tp.valid != 0u) {
+                    let base = atomicAdd(&indexCount_face, 6u);
+                    if (base + 5u < arrayLength(&indices)) {
+                        indices[base + 0u] = tp.t0.x;
+                        indices[base + 1u] = tp.t0.y;
+                        indices[base + 2u] = tp.t0.z;
+                        indices[base + 3u] = tp.t1.x;
+                        indices[base + 4u] = tp.t1.y;
+                        indices[base + 5u] = tp.t1.z;
+                    }
+                }
             }
         }
     }

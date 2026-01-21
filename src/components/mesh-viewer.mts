@@ -153,7 +153,7 @@ export class MeshViewer extends HTMLElement {
                 topology: "triangle-list",
                 // We flip X in clip-space to match PreviewWindow's screen convention,
                 // which also flips winding; keep backface culling correct.
-                frontFace: "ccw",
+                frontFace: "cw",
                 cullMode: "back",
             },
             depthStencil: {
@@ -379,6 +379,7 @@ fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> @loca
     let dx = dpdx(v.worldPos);
     let dy = dpdy(v.worldPos);
     var n = normalize(cross(dx, dy));
+    // Two-sided shading: keep normal consistent for back faces.
     if (!frontFacing) {
         n = -n;
     }

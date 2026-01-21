@@ -314,6 +314,7 @@ export class MDCExport {
             "BindGroup Pass5 (atomic)",
             p5_generateTrianglesAtomic,
             [0, uniformBuffer],
+            [13, verticesBuffer],
             [15, activeCellIndicesBuffer], // activeCellIndicesIn_face
             [16, activeCellFlagsBuffer], // activeCellFlagsInput_face (used for isCellActive)
             [17, indicesBuffer],
@@ -362,6 +363,216 @@ export class MDCExport {
             actualIndexCount * Uint32Array.BYTES_PER_ELEMENT
         )
         const tris = new Uint32Array(indicesData)
+
+        // Re-orient triangles to a consistent winding.
+        //
+        // A watertight manifold can still *look* like it has holes if triangle winding is inconsistent
+        // and the viewer uses backface culling. Dual contouring quad emission can produce locally
+        // inconsistent winding on sharp features / near-degenerate quads.
+        //
+        // This post-pass:
+        // - makes adjacent triangles traverse shared edges in opposite directions (consistent orientation)
+        // - then flips entire connected components to produce positive signed volume (outward by convention)
+        {
+            const stride = SIZEOF_VERTEX / 4 // floats per vertex
+            const triCount = Math.floor(tris.length / 3)
+            if (triCount > 0) {
+                type EdgeEntry = { t0: number; d0: number; t1: number; d1: number; count: number }
+                const edgeMap = new Map<bigint, EdgeEntry>()
+
+                const edgeKey = (a: number, b: number) => {
+                    const lo = a < b ? a : b
+                    const hi = a < b ? b : a
+                    return (BigInt(lo) << 32n) | BigInt(hi >>> 0)
+                }
+                const edgeDir = (a: number, b: number) => {
+                    // Direction of this edge in the triangle, relative to (min,max).
+                    // 0 => min->max, 1 => max->min
+                    return a < b ? 0 : 1
+                }
+
+                for (let t = 0; t < triCount; t++) {
+                    const i0 = tris[t * 3]!
+                    const i1 = tris[t * 3 + 1]!
+                    const i2 = tris[t * 3 + 2]!
+                    const edges: [number, number][] = [
+                        [i0, i1],
+                        [i1, i2],
+                        [i2, i0],
+                    ]
+                    for (const [a, b] of edges) {
+                        if (a === b) continue
+                        const k = edgeKey(a, b)
+                        const d = edgeDir(a, b)
+                        const e = edgeMap.get(k)
+                        if (!e) {
+                            edgeMap.set(k, { t0: t, d0: d, t1: -1, d1: 0, count: 1 })
+                        } else {
+                            e.count++
+                            if (e.t1 === -1) {
+                                e.t1 = t
+                                e.d1 = d
+                            }
+                        }
+                    }
+                }
+
+                const visited = new Uint8Array(triCount)
+                const flip = new Uint8Array(triCount)
+                const comps: number[][] = []
+
+                for (let seed = 0; seed < triCount; seed++) {
+                    if (visited[seed]) continue
+                    visited[seed] = 1
+                    flip[seed] = 0
+                    const stack = [seed]
+                    const comp: number[] = []
+
+                    while (stack.length) {
+                        const t = stack.pop()!
+                        comp.push(t)
+
+                        const i0 = tris[t * 3]!
+                        const i1 = tris[t * 3 + 1]!
+                        const i2 = tris[t * 3 + 2]!
+                        const edges: [number, number][] = [
+                            [i0, i1],
+                            [i1, i2],
+                            [i2, i0],
+                        ]
+
+                        for (const [a, b] of edges) {
+                            if (a === b) continue
+                            const k = edgeKey(a, b)
+                            const e = edgeMap.get(k)
+                            if (!e || e.count !== 2 || e.t1 === -1) continue
+                            const curIs0 = e.t0 === t
+                            const nt = curIs0 ? e.t1 : e.t0
+                            if (nt < 0) continue
+
+                            const dCur = curIs0 ? e.d0 : e.d1
+                            const dNei = curIs0 ? e.d1 : e.d0
+
+                            // Effective edge direction after flipping:
+                            // effDir = dOrig XOR flipTri
+                            // We need neighbor to traverse edge in opposite direction:
+                            // effNei = effCur XOR 1
+                            const desiredFlipNei = (dNei ^ dCur ^ flip[t] ^ 1) & 1
+
+                            if (!visited[nt]) {
+                                visited[nt] = 1
+                                flip[nt] = desiredFlipNei
+                                stack.push(nt)
+                            }
+                        }
+                    }
+                    comps.push(comp)
+                }
+
+                // Apply BFS-derived flips.
+                for (let t = 0; t < triCount; t++) {
+                    if (!flip[t]) continue
+                    const off = t * 3
+                    const tmp = tris[off + 1]!
+                    tris[off + 1] = tris[off + 2]!
+                    tris[off + 2] = tmp
+                }
+
+                // Flip whole components to get positive signed volume (outward by convention).
+                const vpos = (vidx: number) => {
+                    const base = vidx * stride
+                    return [verts[base]!, verts[base + 1]!, verts[base + 2]!] as const
+                }
+                const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
+                const dot = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+                const sub = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                    [a[0] - b[0], a[1] - b[1], a[2] - b[2]] as const
+
+                for (const comp of comps) {
+                    let vol6 = 0 // 6x signed volume
+                    for (const t of comp) {
+                        const off = t * 3
+                        const i0 = tris[off + 0]!
+                        const i1 = tris[off + 1]!
+                        const i2 = tris[off + 2]!
+                        const p0 = vpos(i0)
+                        const p1 = vpos(i1)
+                        const p2 = vpos(i2)
+                        // signed volume contribution: dot(p0, cross(p1, p2))
+                        vol6 += dot(p0, cross(p1, p2))
+                    }
+                    if (vol6 < 0) {
+                        // Flip all triangles in the component.
+                        for (const t of comp) {
+                            const off = t * 3
+                            const tmp = tris[off + 1]!
+                            tris[off + 1] = tris[off + 2]!
+                            tris[off + 2] = tmp
+                        }
+                    }
+                }
+            }
+        }
+
+        // Basic mesh sanity stats to help diagnose “holes”:
+        // - boundary edges (count==1) indicate actual holes / open surface
+        // - degenerate triangles can look like missing faces
+        {
+            const stride = SIZEOF_VERTEX / 4 // floats per vertex
+            const triCount = Math.floor(tris.length / 3)
+            const areaEpsSq = Math.pow(this.params.voxelSize * this.params.voxelSize * 1e-6, 2)
+            let degenerate = 0
+
+            const edgeCounts = new Map<bigint, number>()
+            const addEdge = (a: number, b: number) => {
+                if (a === b) return
+                const lo = a < b ? a : b
+                const hi = a < b ? b : a
+                const key = (BigInt(lo) << 32n) | BigInt(hi >>> 0)
+                edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1)
+            }
+
+            const vpos = (vidx: number) => {
+                const base = vidx * stride
+                return [verts[base]!, verts[base + 1]!, verts[base + 2]!] as const
+            }
+            const sub = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                [a[0] - b[0], a[1] - b[1], a[2] - b[2]] as const
+            const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
+
+            for (let t = 0; t < triCount; t++) {
+                const i0 = tris[t * 3]!
+                const i1 = tris[t * 3 + 1]!
+                const i2 = tris[t * 3 + 2]!
+
+                addEdge(i0, i1)
+                addEdge(i1, i2)
+                addEdge(i2, i0)
+
+                const p0 = vpos(i0)
+                const p1 = vpos(i1)
+                const p2 = vpos(i2)
+                const e0 = sub(p1, p0)
+                const e1 = sub(p2, p0)
+                const n = cross(e0, e1)
+                const a2 = n[0] * n[0] + n[1] * n[1] + n[2] * n[2]
+                if (!isFinite(a2) || a2 <= areaEpsSq) degenerate++
+            }
+
+            let boundaryEdges = 0
+            let nonManifoldEdges = 0
+            for (const c of edgeCounts.values()) {
+                if (c === 1) boundaryEdges++
+                else if (c !== 2) nonManifoldEdges++
+            }
+            console.log(
+                `MDC mesh stats: tris=${triCount} degenerateTris=${degenerate} boundaryEdges=${boundaryEdges} nonManifoldEdges=${nonManifoldEdges}`
+            )
+        }
+
         return { verts, tris }
     }
 }

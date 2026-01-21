@@ -19,10 +19,10 @@ export class GPUHelper implements Disposable {
         const device = await adapter.requestDevice({
             label: "gpuHelperDevice",
             requiredLimits: {
-                maxStorageBuffersPerShaderStage: 10,
-                maxComputeInvocationsPerWorkgroup: 1024,
-                maxStorageBufferBindingSize: 4294967292,
-                maxBufferSize: 4294967296,
+                maxStorageBuffersPerShaderStage: adapter.limits.maxStorageBuffersPerShaderStage,
+                maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
+                maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+                maxBufferSize: adapter.limits.maxBufferSize,
             },
         })
         return new GPUHelper(device)

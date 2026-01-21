@@ -9,6 +9,7 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
+import { mergeCoplanar } from "./export/postprocess.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor

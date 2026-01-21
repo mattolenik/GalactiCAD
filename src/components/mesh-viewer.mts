@@ -702,6 +702,7 @@ struct VertexIn {
 struct VertexOut {
     @builtin(position) position: vec4f,
     @location(0) worldPos: vec3f,
+    @location(1) normal: vec3f,
 };
 
 @vertex
@@ -730,6 +731,7 @@ fn vertexMain(v: VertexIn) -> VertexOut {
     out.position = vec4f(ndcX, ndcY, ndcZ, 1.0);
     // Used to compute a per-triangle (flat) normal in the fragment shader.
     out.worldPos = v.position;
+    out.normal = v.normal;
     return out;
 }
 
@@ -819,9 +821,18 @@ const MESH_SHADER_WIREFRAME = /* wgsl */ `
 ${MESH_SHADER_COMMON}
 
 @fragment
-fn fragmentMain() -> @location(0) vec4f {
-    // Slightly translucent wire so dense meshes stay readable.
-    return vec4f(0.95, 0.95, 0.98, 0.9);
+fn fragmentMain(v: VertexOut) -> @location(0) vec4f {
+    // Approximate "backface" classification for wireframe:
+    // transform the interpolated vertex normal into camera-space and see if it points toward the camera.
+    //
+    // Note: line primitives don't have true front/back faces, but this gives a useful visual cue.
+    let nCam = normalize((camera.transform * vec4f(v.normal, 0.0)).xyz);
+    let isFront = nCam.z > 0.0;
+
+    let frontColor = vec3f(0.95, 0.95, 0.98);
+    let backColor = frontColor * 0.35;
+    let c = select(backColor, frontColor, !isFront);
+    return vec4f(c, 0.9);
 }
 `
 

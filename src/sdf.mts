@@ -12,6 +12,7 @@ import previewShader from "./shaders/preview.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
+import { mergeCoplanar } from "./export/postprocess.mjs"
 
 class UniformBuffers {
     camera!: GPUBuffer
@@ -242,7 +243,8 @@ export class SDFRenderer {
         )
 
         const mdc = new MDCExport(this.#helper, params)
-        return await mdc.export(this.#exportShader)
+        const mesh = await mdc.export(this.#exportShader)
+        return await (async () => mergeCoplanar(mesh))()
     }
 
     async renderMeshZSlice(src: string): Promise<MeshData> {

@@ -802,6 +802,19 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             if (a != 0xffffffffu && b != 0xffffffffu) {
                 ufUnion(&parent, a, b);
             }
+        } else if (cnt == 3u) {
+            // 3 edge crossings on a face: typically occurs at CSG seam corners or near
+            // degenerate configurations. Connect all 3 crossing edges as one component.
+            // This forms a Y-junction topology which keeps the surface connected.
+            var edges3: array<u32, 3>;
+            var idx3 = 0u;
+            if (m0 == 1u) { edges3[idx3] = e0; idx3 = idx3 + 1u; }
+            if (m1 == 1u) { edges3[idx3] = e1; idx3 = idx3 + 1u; }
+            if (m2 == 1u) { edges3[idx3] = e2; idx3 = idx3 + 1u; }
+            if (m3 == 1u) { edges3[idx3] = e3; idx3 = idx3 + 1u; }
+            // Union all 3 together
+            if (idx3 >= 2u) { ufUnion(&parent, edges3[0], edges3[1]); }
+            if (idx3 >= 3u) { ufUnion(&parent, edges3[0], edges3[2]); }
         } else if (cnt == 4u) {
             // Ambiguous marching-squares face (checkerboard). Disambiguate by sampling face center.
             let s0: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.x]));

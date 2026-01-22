@@ -98,6 +98,21 @@ const EDGES_PER_CELL: u32 = 12u;
 // [1] = quads skipped because component mapping was missing (0xffffffff)
 @group(0) @binding(24) var<storage, read_write> debugSkipCounters: array<atomic<u32>, 2>;
 
+// Cross-cell union-find data:
+// Per-cell union-find parent array for each cube edge.
+// Layout: cellUFParent[(activeCellIdx * 12) + edgeIdx] = parent cube edge index (0-11),
+// or 0xffffffff if that cube edge does not cross the isosurface.
+@group(0) @binding(25) var<storage, read_write> cellUFParent: array<u32>;
+
+// Edge crossing positions for CPU-side QEF aggregation.
+// Layout: cellEdgeCrossingPos[(activeCellIdx * 12 + edgeIdx) * 4 + 0..2] = position xyz
+// (stored as vec4f for alignment, w unused)
+@group(0) @binding(26) var<storage, read_write> cellEdgeCrossingPos: array<vec4f>;
+
+// Edge crossing normals for CPU-side QEF aggregation.
+// Layout: cellEdgeCrossingNormal[(activeCellIdx * 12 + edgeIdx) * 4 + 0..2] = normal xyz
+@group(0) @binding(27) var<storage, read_write> cellEdgeCrossingNormal: array<vec4f>;
+
 
 // ============================== UTILITY FUNCTIONS ==============================
 
@@ -853,12 +868,70 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         }
     }
 
-    // Map union-find roots to component indices (0..MAX_COMPONENTS_PER_CELL-1)
-    // and store a per-edge component map for this active cell.
+    // Output per-cell union-find roots and edge crossing data for CPU global union-find.
+    let edgeCompBase = active_cell_array_idx * EDGES_PER_CELL;
+    var crossingPos: array<vec3f, 12>;
+    var crossingNormal: array<vec3f, 12>;
+    
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        let outIdx = edgeCompBase + e;
+        
+        // Write UF root (with path compression) for CPU global union-find
+        if (outIdx < arrayLength(&cellUFParent)) {
+            if (edgeCrossMask[e] == 1u) {
+                cellUFParent[outIdx] = ufFind(&parent, e);
+            } else {
+                cellUFParent[outIdx] = 0xffffffffu;
+            }
+        }
+        
+        // Compute and store crossing position/normal for CPU QEF aggregation
+        if (edgeCrossMask[e] == 1u) {
+            let c1_idx = edges_info[e][0];
+            let c2_idx = edges_info[e][1];
+            let val0 = cornerSDFValues[c1_idx];
+            let val1 = cornerSDFValues[c2_idx];
+            let p0_world = cornerWorldPositions[c1_idx];
+            let p1_world = cornerWorldPositions[c2_idx];
+            let t = findEdgeIntersection(val0, val1);
+            var intersectionPos = mix3f(p0_world, p1_world, t);
+            
+            // Project onto true iso-surface
+            var normal = computeGradient(intersectionPos);
+            for (var iter = 0u; iter < 3u; iter = iter + 1u) {
+                let d = sampleSDF(intersectionPos) - uniforms.isoValue;
+                if (abs(d) < uniforms.voxelSize * 1e-5) { break; }
+                normal = computeGradient(intersectionPos);
+                intersectionPos = intersectionPos - normal * d;
+            }
+            normal = computeGradient(intersectionPos);
+            
+            crossingPos[e] = intersectionPos;
+            crossingNormal[e] = normal;
+            
+            if (outIdx < arrayLength(&cellEdgeCrossingPos)) {
+                cellEdgeCrossingPos[outIdx] = vec4f(intersectionPos, 0.0);
+            }
+            if (outIdx < arrayLength(&cellEdgeCrossingNormal)) {
+                cellEdgeCrossingNormal[outIdx] = vec4f(normal, 0.0);
+            }
+        } else {
+            crossingPos[e] = vec3f(0.0);
+            crossingNormal[e] = vec3f(0.0);
+            if (outIdx < arrayLength(&cellEdgeCrossingPos)) {
+                cellEdgeCrossingPos[outIdx] = vec4f(0.0);
+            }
+            if (outIdx < arrayLength(&cellEdgeCrossingNormal)) {
+                cellEdgeCrossingNormal[outIdx] = vec4f(0.0);
+            }
+        }
+    }
+
+    // Map union-find roots to local component indices (0..MAX_COMPONENTS_PER_CELL-1).
+    // CPU will overwrite cellEdgeComponents with global component IDs.
     var compRoots: array<u32, 12>;
     var compCount: u32 = 0u;
     var edgeComponent: array<i32, 12>;
-    let edgeCompBase = active_cell_array_idx * EDGES_PER_CELL;
 
     for (var e = 0u; e < 12u; e = e + 1u) {
         var compIdx: i32 = -1;
@@ -900,28 +973,9 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         let compIdx = edgeComponent[e];
         if (compIdx < 0) { continue; }
 
-        let c1_idx = edges_info[e][0];
-        let c2_idx = edges_info[e][1];
-        let axis_enum = edges_info[e][2];
-        let is_owned_edge = (edges_info[e][3] == 1u);
-
-        let val0 = cornerSDFValues[c1_idx];
-        let val1 = cornerSDFValues[c2_idx];
-        let p0_world = cornerWorldPositions[c1_idx];
-        let p1_world = cornerWorldPositions[c2_idx];
-        let t = findEdgeIntersection(val0, val1);
-        var intersectionPos = mix3f(p0_world, p1_world, t);
-        // Improve hermite data: project the interpolated crossing onto the true iso-surface.
-        // This reduces “beveling” and helps keep cube edges crisp.
-        var normal = computeGradient(intersectionPos);
-        // Use iterative projection for high-curvature regions (e.g., rounded CSG transitions).
-        for (var iter = 0u; iter < 3u; iter = iter + 1u) {
-            let d = sampleSDF(intersectionPos) - uniforms.isoValue;
-            if (abs(d) < uniforms.voxelSize * 1e-5) { break; }
-            normal = computeGradient(intersectionPos);
-            intersectionPos = intersectionPos - normal * d;
-        }
-        normal = computeGradient(intersectionPos);
+        // Use pre-computed crossing data from earlier in this function
+        let intersectionPos = crossingPos[e];
+        let normal = crossingNormal[e];
 
         let c = u32(compIdx);
         qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
@@ -931,22 +985,6 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         qefs[c].ATb = qefs[c].ATb + normal * d_val;
         qefs[c].massPoint = qefs[c].massPoint + intersectionPos;
         qefs[c].numPoints = qefs[c].numPoints + 1u;
-
-        // Optional debug storage of owned edge crossings (not used for mesh stitching).
-        if (is_owned_edge) {
-            let edgeCrossingData = EdgeCrossing(intersectionPos, normal);
-            var edgeStoreIdx: u32;
-            if (axis_enum == 0u) { 
-                edgeStoreIdx = getEdgeIndexX(cellPos);
-                if (edgeStoreIdx < arrayLength(&edgeCrossingsX)) { edgeCrossingsX[edgeStoreIdx] = edgeCrossingData; }
-            } else if (axis_enum == 1u) { 
-                edgeStoreIdx = getEdgeIndexY(cellPos);
-                if (edgeStoreIdx < arrayLength(&edgeCrossingsY)) { edgeCrossingsY[edgeStoreIdx] = edgeCrossingData; }
-            } else { 
-                edgeStoreIdx = getEdgeIndexZ(cellPos);
-                if (edgeStoreIdx < arrayLength(&edgeCrossingsZ)) { edgeCrossingsZ[edgeStoreIdx] = edgeCrossingData; }
-            }
-        }
     }
 
     // Write per-component QEFs for this active cell.

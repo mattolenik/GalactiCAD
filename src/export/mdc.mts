@@ -248,12 +248,29 @@ export class MDCExport {
         const cellEdgeComponentsBuffer = this.#helper.createBuffer(
             "CellEdgeComponents",
             activeCellCount * 12 * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
         // Edge crossings are optional debug outputs; keep tiny to avoid huge allocations.
         const edgeCrossingsXBuffer = this.#helper.createBuffer("EdgeCrossingsX", SIZEOF_EDGECROSSING, GPUBufferUsage.STORAGE)
         const edgeCrossingsYBuffer = this.#helper.createBuffer("EdgeCrossingsY", SIZEOF_EDGECROSSING, GPUBufferUsage.STORAGE)
         const edgeCrossingsZBuffer = this.#helper.createBuffer("EdgeCrossingsZ", SIZEOF_EDGECROSSING, GPUBufferUsage.STORAGE)
+
+        // Cross-cell union-find buffers for CPU-side global component assignment
+        const cellUFParentBuffer = this.#helper.createBuffer(
+            "CellUFParent",
+            activeCellCount * 12 * Uint32Array.BYTES_PER_ELEMENT,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        )
+        const cellEdgeCrossingPosBuffer = this.#helper.createBuffer(
+            "CellEdgeCrossingPos",
+            activeCellCount * 12 * 4 * Float32Array.BYTES_PER_ELEMENT, // vec4f per edge
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        )
+        const cellEdgeCrossingNormalBuffer = this.#helper.createBuffer(
+            "CellEdgeCrossingNormal",
+            activeCellCount * 12 * 4 * Float32Array.BYTES_PER_ELEMENT, // vec4f per edge
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+        )
 
         const cellQEFDataBuffer = this.#helper.createBuffer(
             "CellQEFData",
@@ -263,7 +280,7 @@ export class MDCExport {
         const verticesBuffer = this.#helper.createBuffer(
             "Vertices",
             activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
 
         const maxTriangles = activeCellCount * 6
@@ -291,11 +308,11 @@ export class MDCExport {
             [0, uniformBuffer],
             [5, activeCellIndicesBuffer], // activeCellIndicesIn_edge
             [22, cellEdgeComponentsBuffer],
-            [6, edgeCrossingsXBuffer],
-            [7, edgeCrossingsYBuffer],
-            [8, edgeCrossingsZBuffer],
             [9, cellQEFDataBuffer],
-            [10, activeCellCountBuffer]
+            [10, activeCellCountBuffer],
+            [25, cellUFParentBuffer],
+            [26, cellEdgeCrossingPosBuffer],
+            [27, cellEdgeCrossingNormalBuffer]
         )
 
         const bindGroupPass4 = this.#helper.createBindGroup(
@@ -325,20 +342,70 @@ export class MDCExport {
             [24, debugSkipCountersBuffer]
         )
 
+        // === Pass 3: Edge detection and per-cell union-find ===
         {
-            const ce = this.#device.createCommandEncoder({ label: "mdc_pass3_5" })
-            let pass = this.#helper.beginComputePass(ce, p3_edgeDetection, bindGroupPass3)
+            const ce = this.#device.createCommandEncoder({ label: "mdc_pass3" })
+            const pass = this.#helper.beginComputePass(ce, p3_edgeDetection, bindGroupPass3)
             pass.dispatchWorkgroups(Math.ceil(activeCellCount / 64))
             pass.end()
+            this.#device.queue.submit([ce.finish()])
+            await this.#device.queue.onSubmittedWorkDone()
+        }
 
-            pass = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
-            pass.dispatchWorkgroups(Math.ceil((activeCellCount * MAX_COMPONENTS_PER_CELL) / 64))
-            pass.end()
+        // === CPU Global Union-Find ===
+        // Read back per-cell UF parents and edge crossing data
+        console.log("Reading per-cell connectivity for global union-find...")
+        const ufParentData = await this.#helper.readBufferData(
+            cellUFParentBuffer,
+            activeCellCount * 12 * Uint32Array.BYTES_PER_ELEMENT
+        )
+        const cellUFParent = new Uint32Array(ufParentData)
 
-            pass = this.#helper.beginComputePass(ce, p5_generateTrianglesAtomic, bindGroupPass5)
+        const crossingPosData = await this.#helper.readBufferData(
+            cellEdgeCrossingPosBuffer,
+            activeCellCount * 12 * 4 * Float32Array.BYTES_PER_ELEMENT
+        )
+        const cellEdgeCrossingPos = new Float32Array(crossingPosData)
+
+        const crossingNormalData = await this.#helper.readBufferData(
+            cellEdgeCrossingNormalBuffer,
+            activeCellCount * 12 * 4 * Float32Array.BYTES_PER_ELEMENT
+        )
+        const cellEdgeCrossingNormal = new Float32Array(crossingNormalData)
+
+        // Build global union-find across grid edges
+        // A grid edge is identified by (axis, x, y, z) where the edge runs from (x,y,z) to (x+dx,y+dy,z+dz)
+        // Each cube edge in a cell maps to a specific grid edge
+        const { globalComponentIds, globalVertices, globalVertexCount } = this.buildGlobalUnionFind(
+            activeCellCount,
+            activeCellIndicesView,
+            cellUFParent,
+            cellEdgeCrossingPos,
+            cellEdgeCrossingNormal,
+            gridDimX,
+            gridDimY,
+            gridDimZ,
+            voxelSize,
+            gridOffsetX,
+            gridOffsetY,
+            gridOffsetZ
+        )
+
+        console.log(`Global union-find complete: ${globalVertexCount} global components`)
+
+        // Write global component IDs back to GPU
+        this.#device.queue.writeBuffer(cellEdgeComponentsBuffer, 0, new Uint32Array(globalComponentIds))
+
+        // Write CPU-computed vertices to GPU
+        this.#device.queue.writeBuffer(verticesBuffer, 0, new Float32Array(globalVertices))
+
+        // === Pass 4 is now done on CPU, skip it ===
+        // === Pass 5: Triangle generation using global component IDs ===
+        {
+            const ce = this.#device.createCommandEncoder({ label: "mdc_pass5" })
+            const pass = this.#helper.beginComputePass(ce, p5_generateTrianglesAtomic, bindGroupPass5)
             pass.dispatchWorkgroups(Math.ceil(activeCellCount / 64))
             pass.end()
-
             this.#device.queue.submit([ce.finish()])
             await this.#device.queue.onSubmittedWorkDone()
         }
@@ -575,6 +642,392 @@ export class MDCExport {
 
         return { verts, tris }
     }
-}
 
+    /**
+     * Build global union-find across all cells to ensure consistent component assignment.
+     * 
+     * The algorithm:
+     * 1. Map each (activeCellIdx, cubeEdgeIdx) to a global grid edge index
+     * 2. For each cell, union grid edges that belong to the same local component
+     * 3. Assign a global component ID to each grid edge based on its UF root
+     * 4. Map back to (activeCellIdx, cubeEdgeIdx) -> globalComponentId
+     * 5. Aggregate QEF data per global component and solve for vertex positions
+     */
+    private buildGlobalUnionFind(
+        activeCellCount: number,
+        activeCellIndices: Uint32Array,
+        cellUFParent: Uint32Array,
+        cellEdgeCrossingPos: Float32Array,
+        cellEdgeCrossingNormal: Float32Array,
+        gridDimX: number,
+        gridDimY: number,
+        gridDimZ: number,
+        voxelSize: number,
+        gridOffsetX: number,
+        gridOffsetY: number,
+        gridOffsetZ: number
+    ): { globalComponentIds: Uint32Array; globalVertices: Float32Array; globalVertexCount: number } {
+        const EDGES_PER_CELL = 12
+
+        // Cube edge definitions: [corner0, corner1, axis, isOwned]
+        // Axis: 0=X, 1=Y, 2=Z
+        const CUBE_EDGES: [number, number, number][] = [
+            [0, 1, 0], [2, 3, 0], [4, 5, 0], [6, 7, 0], // X edges
+            [0, 2, 1], [1, 3, 1], [4, 6, 1], [5, 7, 1], // Y edges
+            [0, 4, 2], [1, 5, 2], [2, 6, 2], [3, 7, 2], // Z edges
+        ]
+
+        // Corner offsets from cell min corner
+        const CORNER_OFFSETS: [number, number, number][] = [
+            [0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0],
+            [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1],
+        ]
+
+        // Convert flat cell index to 3D position
+        const cellIndexTo3D = (flatIdx: number): [number, number, number] => {
+            const x = flatIdx % gridDimX
+            const y = Math.floor(flatIdx / gridDimX) % gridDimY
+            const z = Math.floor(flatIdx / (gridDimX * gridDimY))
+            return [x, y, z]
+        }
+
+        // Compute grid edge index from cell position and cube edge index
+        // Grid edges are enumerated as:
+        // X-edges: index = x + y*(gridDimX-1) + z*(gridDimX-1)*gridDimY
+        // Y-edges: offset by total X-edges
+        // Z-edges: offset by total X+Y edges
+        const totalXEdges = (gridDimX - 1) * gridDimY * gridDimZ
+        const totalYEdges = gridDimX * (gridDimY - 1) * gridDimZ
+        const totalZEdges = gridDimX * gridDimY * (gridDimZ - 1)
+        const totalGridEdges = totalXEdges + totalYEdges + totalZEdges
+
+        const getGridEdgeIndex = (cellX: number, cellY: number, cellZ: number, cubeEdge: number): number => {
+            const [c0, c1, axis] = CUBE_EDGES[cubeEdge]!
+            const [ox, oy, oz] = CORNER_OFFSETS[c0]!
+
+            // The grid edge starts at cell corner c0
+            const edgeX = cellX + ox
+            const edgeY = cellY + oy
+            const edgeZ = cellZ + oz
+
+            if (axis === 0) {
+                // X-edge at (edgeX, edgeY, edgeZ)
+                if (edgeX >= gridDimX - 1) return -1
+                return edgeX + edgeY * (gridDimX - 1) + edgeZ * (gridDimX - 1) * gridDimY
+            } else if (axis === 1) {
+                // Y-edge at (edgeX, edgeY, edgeZ)
+                if (edgeY >= gridDimY - 1) return -1
+                return totalXEdges + edgeY + edgeZ * (gridDimY - 1) + edgeX * (gridDimY - 1) * gridDimZ
+            } else {
+                // Z-edge at (edgeX, edgeY, edgeZ)
+                if (edgeZ >= gridDimZ - 1) return -1
+                return totalXEdges + totalYEdges + edgeX + edgeY * gridDimX + edgeZ * gridDimX * gridDimY
+            }
+        }
+
+        // Initialize global union-find for grid edges
+        const gridEdgeParent = new Int32Array(totalGridEdges)
+        for (let i = 0; i < totalGridEdges; i++) {
+            gridEdgeParent[i] = i
+        }
+
+        const ufFind = (x: number): number => {
+            let root = x
+            while (gridEdgeParent[root] !== root) {
+                root = gridEdgeParent[root]!
+            }
+            // Path compression
+            while (gridEdgeParent[x] !== root) {
+                const next = gridEdgeParent[x]!
+                gridEdgeParent[x] = root
+                x = next
+            }
+            return root
+        }
+
+        const ufUnion = (a: number, b: number): void => {
+            const ra = ufFind(a)
+            const rb = ufFind(b)
+            if (ra !== rb) {
+                gridEdgeParent[rb] = ra
+            }
+        }
+
+        // For each cell, union grid edges that have the same local UF root
+        for (let cellIdx = 0; cellIdx < activeCellCount; cellIdx++) {
+            const cellFlatIndex = activeCellIndices[cellIdx]!
+            const [cellX, cellY, cellZ] = cellIndexTo3D(cellFlatIndex)
+
+            // Group cube edges by their local UF root
+            const rootToGridEdges = new Map<number, number[]>()
+
+            for (let e = 0; e < EDGES_PER_CELL; e++) {
+                const ufIdx = cellIdx * EDGES_PER_CELL + e
+                const localRoot = cellUFParent[ufIdx]!
+
+                if (localRoot === 0xffffffff) continue // Edge doesn't cross
+
+                const gridEdge = getGridEdgeIndex(cellX, cellY, cellZ, e)
+                if (gridEdge < 0) continue // Out of bounds
+
+                if (!rootToGridEdges.has(localRoot)) {
+                    rootToGridEdges.set(localRoot, [])
+                }
+                rootToGridEdges.get(localRoot)!.push(gridEdge)
+            }
+
+            // Union all grid edges with the same local root
+            for (const gridEdges of rootToGridEdges.values()) {
+                if (gridEdges.length < 2) continue
+                const first = gridEdges[0]!
+                for (let i = 1; i < gridEdges.length; i++) {
+                    ufUnion(first, gridEdges[i]!)
+                }
+            }
+        }
+
+        // Assign global component IDs based on grid edge UF roots
+        const rootToGlobalId = new Map<number, number>()
+        let nextGlobalId = 0
+
+        const getGlobalId = (gridEdge: number): number => {
+            const root = ufFind(gridEdge)
+            if (!rootToGlobalId.has(root)) {
+                rootToGlobalId.set(root, nextGlobalId++)
+            }
+            return rootToGlobalId.get(root)!
+        }
+
+        // Build per-(cell,edge) -> localComponentIdx mapping
+        // The key insight: we need to map global component IDs to LOCAL indices (0-3)
+        // within each cell, but ensure that neighboring cells assign the SAME local index
+        // to edges that share a grid edge (and thus global component).
+        //
+        // To achieve consistency: for each cell, collect the global component IDs of its
+        // crossing edges, sort them, and assign local indices based on sorted order.
+        // Since global IDs are deterministic, cells sharing an edge will sort the same way.
+        const localComponentIds = new Uint32Array(activeCellCount * EDGES_PER_CELL)
+        localComponentIds.fill(0xffffffff)
+
+        // First pass: compute global component ID for each (cell, edge)
+        const edgeGlobalIds = new Int32Array(activeCellCount * EDGES_PER_CELL)
+        edgeGlobalIds.fill(-1)
+
+        for (let cellIdx = 0; cellIdx < activeCellCount; cellIdx++) {
+            const cellFlatIndex = activeCellIndices[cellIdx]!
+            const [cellX, cellY, cellZ] = cellIndexTo3D(cellFlatIndex)
+
+            for (let e = 0; e < EDGES_PER_CELL; e++) {
+                const ufIdx = cellIdx * EDGES_PER_CELL + e
+                const localRoot = cellUFParent[ufIdx]!
+
+                if (localRoot === 0xffffffff) continue
+
+                const gridEdge = getGridEdgeIndex(cellX, cellY, cellZ, e)
+                if (gridEdge < 0) continue
+
+                edgeGlobalIds[ufIdx] = getGlobalId(gridEdge)
+            }
+        }
+
+        const globalVertexCount = nextGlobalId
+        console.log(`Global components: ${globalVertexCount}`)
+
+        // Second pass: for each cell, map global IDs to local indices (0-3)
+        for (let cellIdx = 0; cellIdx < activeCellCount; cellIdx++) {
+            // Collect unique global IDs for this cell
+            const globalIdsInCell = new Set<number>()
+            for (let e = 0; e < EDGES_PER_CELL; e++) {
+                const ufIdx = cellIdx * EDGES_PER_CELL + e
+                const gid = edgeGlobalIds[ufIdx]!
+                if (gid >= 0) {
+                    globalIdsInCell.add(gid)
+                }
+            }
+
+            // Sort global IDs to get consistent local indices
+            const sortedGlobalIds = Array.from(globalIdsInCell).sort((a, b) => a - b)
+            const globalToLocal = new Map<number, number>()
+            for (let i = 0; i < sortedGlobalIds.length && i < MAX_COMPONENTS_PER_CELL; i++) {
+                globalToLocal.set(sortedGlobalIds[i]!, i)
+            }
+
+            // Assign local component indices
+            for (let e = 0; e < EDGES_PER_CELL; e++) {
+                const ufIdx = cellIdx * EDGES_PER_CELL + e
+                const gid = edgeGlobalIds[ufIdx]!
+                if (gid >= 0 && globalToLocal.has(gid)) {
+                    localComponentIds[ufIdx] = globalToLocal.get(gid)!
+                }
+            }
+        }
+
+        // Aggregate QEF data per (cell, localComponent) - this is the standard DC approach
+        // Each cell gets its own vertices, but with consistent component indices across cells
+        interface QEFData {
+            ATA: number[][] // 3x3 matrix
+            ATb: number[]   // 3-vector
+            massPoint: number[] // 3-vector
+            numPoints: number
+        }
+
+        // QEF per (cellIdx * MAX_COMPONENTS_PER_CELL + localComponentIdx)
+        const totalVertexSlots = activeCellCount * MAX_COMPONENTS_PER_CELL
+        const qefData: QEFData[] = []
+        for (let i = 0; i < totalVertexSlots; i++) {
+            qefData.push({
+                ATA: [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+                ATb: [0, 0, 0],
+                massPoint: [0, 0, 0],
+                numPoints: 0,
+            })
+        }
+
+        for (let cellIdx = 0; cellIdx < activeCellCount; cellIdx++) {
+            for (let e = 0; e < EDGES_PER_CELL; e++) {
+                const ufIdx = cellIdx * EDGES_PER_CELL + e
+                const localCompIdx = localComponentIds[ufIdx]!
+                if (localCompIdx === 0xffffffff) continue
+
+                const posIdx = ufIdx * 4
+                const px = cellEdgeCrossingPos[posIdx]!
+                const py = cellEdgeCrossingPos[posIdx + 1]!
+                const pz = cellEdgeCrossingPos[posIdx + 2]!
+
+                const nx = cellEdgeCrossingNormal[posIdx]!
+                const ny = cellEdgeCrossingNormal[posIdx + 1]!
+                const nz = cellEdgeCrossingNormal[posIdx + 2]!
+
+                // Skip zero normals (invalid crossings)
+                if (nx === 0 && ny === 0 && nz === 0) continue
+
+                const vertexSlot = cellIdx * MAX_COMPONENTS_PER_CELL + localCompIdx
+                const qef = qefData[vertexSlot]!
+
+                // ATA += n * n^T
+                qef.ATA[0]![0]! += nx * nx
+                qef.ATA[0]![1]! += nx * ny
+                qef.ATA[0]![2]! += nx * nz
+                qef.ATA[1]![0]! += ny * nx
+                qef.ATA[1]![1]! += ny * ny
+                qef.ATA[1]![2]! += ny * nz
+                qef.ATA[2]![0]! += nz * nx
+                qef.ATA[2]![1]! += nz * ny
+                qef.ATA[2]![2]! += nz * nz
+
+                // ATb += n * dot(n, p)
+                const d = nx * px + ny * py + nz * pz
+                qef.ATb[0]! += nx * d
+                qef.ATb[1]! += ny * d
+                qef.ATb[2]! += nz * d
+
+                // massPoint += p
+                qef.massPoint[0]! += px
+                qef.massPoint[1]! += py
+                qef.massPoint[2]! += pz
+                qef.numPoints++
+            }
+        }
+
+        // Solve QEF for each (cell, localComponent) to get vertex positions
+        const perCellVertices = new Float32Array(totalVertexSlots * 8) // 8 floats per vertex
+        perCellVertices.fill(0)
+
+        // Helper to solve QEF
+        const solveQEF = (qef: QEFData): { pos: number[]; normal: number[] } => {
+            if (qef.numPoints === 0) {
+                return { pos: [0, 0, 0], normal: [0, 1, 0] }
+            }
+
+            const mp = [
+                qef.massPoint[0]! / qef.numPoints,
+                qef.massPoint[1]! / qef.numPoints,
+                qef.massPoint[2]! / qef.numPoints,
+            ]
+
+            let vertexPos: number[]
+
+            if (qef.numPoints < 3) {
+                vertexPos = mp
+            } else {
+                const lambda = 1e-6
+                const A = [
+                    [qef.ATA[0]![0]! + lambda, qef.ATA[0]![1]!, qef.ATA[0]![2]!],
+                    [qef.ATA[1]![0]!, qef.ATA[1]![1]! + lambda, qef.ATA[1]![2]!],
+                    [qef.ATA[2]![0]!, qef.ATA[2]![1]!, qef.ATA[2]![2]! + lambda],
+                ]
+                const b = [
+                    qef.ATb[0]! + lambda * mp[0]!,
+                    qef.ATb[1]! + lambda * mp[1]!,
+                    qef.ATb[2]! + lambda * mp[2]!,
+                ]
+
+                const det = (m: number[][]) =>
+                    m[0]![0]! * (m[1]![1]! * m[2]![2]! - m[1]![2]! * m[2]![1]!) -
+                    m[0]![1]! * (m[1]![0]! * m[2]![2]! - m[1]![2]! * m[2]![0]!) +
+                    m[0]![2]! * (m[1]![0]! * m[2]![1]! - m[1]![1]! * m[2]![0]!)
+
+                const detA = det(A)
+                if (Math.abs(detA) < 1e-12) {
+                    vertexPos = mp
+                } else {
+                    const Ax = [[b[0]!, A[0]![1]!, A[0]![2]!], [b[1]!, A[1]![1]!, A[1]![2]!], [b[2]!, A[2]![1]!, A[2]![2]!]]
+                    const Ay = [[A[0]![0]!, b[0]!, A[0]![2]!], [A[1]![0]!, b[1]!, A[1]![2]!], [A[2]![0]!, b[2]!, A[2]![2]!]]
+                    const Az = [[A[0]![0]!, A[0]![1]!, b[0]!], [A[1]![0]!, A[1]![1]!, b[1]!], [A[2]![0]!, A[2]![1]!, b[2]!]]
+                    vertexPos = [det(Ax) / detA, det(Ay) / detA, det(Az) / detA]
+
+                    if (!isFinite(vertexPos[0]!) || !isFinite(vertexPos[1]!) || !isFinite(vertexPos[2]!)) {
+                        vertexPos = mp
+                    }
+                }
+            }
+
+            return { pos: vertexPos, normal: [0, 1, 0] } // Normal will be computed from gradient
+        }
+
+        // Solve QEF for each vertex slot
+        for (let cellIdx = 0; cellIdx < activeCellCount; cellIdx++) {
+            for (let comp = 0; comp < MAX_COMPONENTS_PER_CELL; comp++) {
+                const vertexSlot = cellIdx * MAX_COMPONENTS_PER_CELL + comp
+                const qef = qefData[vertexSlot]!
+
+                if (qef.numPoints === 0) continue
+
+                const { pos } = solveQEF(qef)
+
+                // Compute average normal from crossing normals
+                let avgNormal = [0, 0, 0]
+                for (let e = 0; e < EDGES_PER_CELL; e++) {
+                    const ufIdx = cellIdx * EDGES_PER_CELL + e
+                    if (localComponentIds[ufIdx] !== comp) continue
+
+                    const posIdx = ufIdx * 4
+                    avgNormal[0] += cellEdgeCrossingNormal[posIdx]!
+                    avgNormal[1] += cellEdgeCrossingNormal[posIdx + 1]!
+                    avgNormal[2] += cellEdgeCrossingNormal[posIdx + 2]!
+                }
+                const len = Math.sqrt(avgNormal[0]! ** 2 + avgNormal[1]! ** 2 + avgNormal[2]! ** 2)
+                if (len > 1e-12) {
+                    avgNormal[0]! /= len
+                    avgNormal[1]! /= len
+                    avgNormal[2]! /= len
+                } else {
+                    avgNormal = [0, 1, 0]
+                }
+
+                const vertexBase = vertexSlot * 8
+                perCellVertices[vertexBase + 0] = pos[0]!
+                perCellVertices[vertexBase + 1] = pos[1]!
+                perCellVertices[vertexBase + 2] = pos[2]!
+                perCellVertices[vertexBase + 3] = 0
+                perCellVertices[vertexBase + 4] = avgNormal[0]!
+                perCellVertices[vertexBase + 5] = avgNormal[1]!
+                perCellVertices[vertexBase + 6] = avgNormal[2]!
+                perCellVertices[vertexBase + 7] = 0
+            }
+        }
+
+        return { globalComponentIds: localComponentIds, globalVertices: perCellVertices, globalVertexCount }
+    }
+}
 

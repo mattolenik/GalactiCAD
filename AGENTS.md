@@ -10,3 +10,5 @@ code for rendering the SDF scene, which will then be injected into the shader co
 
 Rendering is done with ray marching in preview.wgsl and related files. Keep in mind all rendering is done manually with
 this fragment shader, so no traditional rendering techniques with polygons will work, we must handle it all.
+
+When doing shader programming, remember that this is WebGPU and so the language is WGSL, not HLSL or GLSL. Keep in mind the syntactic and semantic differences between WGSL and other shading languages.

@@ -8,6 +8,18 @@ struct SharedUniforms {
     // gridScale: vec3f, // Not used in the provided code, can be removed if not needed elsewhere
     gridOffset: vec3f,
     voxelSize: f32,
+    // MDC tuning knobs (packed to preserve 16-byte alignment rules for uniforms)
+    //
+    // mdcF0: x=activeEpsScale, y=activeEpsMin, z=insideBiasScale, w=insideBiasMin
+    // mdcF1: x=gradEpsScale,   y=gradEpsMin,   z=edgeProjTolScale, w=vertexProjTolScale
+    // mdcF2: x=vertexProjMarginScale, y=vertexProjMaxStepScale, z=qefRegScale, w=qefRegMin
+    // mdcF3: x=qefCondCutoff, y=orientationProbeScale, z=orientationProbeMin, w=reserved
+    // mdcU0: x=edgeProjIters, y=vertexProjIters, z=reserved, w=reserved
+    mdcF0: vec4f,
+    mdcF1: vec4f,
+    mdcF2: vec4f,
+    mdcF3: vec4f,
+    mdcU0: vec4u,
 }
 
 struct Vertex {
@@ -188,7 +200,7 @@ fn computeGradient(p: vec3f) -> vec3f {
     // Finite-difference epsilon in world units.
     // Keep this small to preserve sharp features (boxes, CSG seams), but not *too* small
     // (avoid catastrophic cancellation / denorm noise).
-    let eps = max(1e-6, uniforms.voxelSize * 0.01);
+    let eps = max(uniforms.mdcF1.y, uniforms.voxelSize * uniforms.mdcF1.x);
     let dx = sampleSDF(p + vec3f(eps, 0.0, 0.0)) - sampleSDF(p - vec3f(eps, 0.0, 0.0));
     let dy = sampleSDF(p + vec3f(0.0, eps, 0.0)) - sampleSDF(p - vec3f(0.0, eps, 0.0));
     let dz = sampleSDF(p + vec3f(0.0, 0.0, eps)) - sampleSDF(p - vec3f(0.0, 0.0, eps));
@@ -236,7 +248,7 @@ fn findEdgeIntersection(p0_val: f32, p1_val: f32) -> f32 {
 // alternation -> "checkerboard" missing polygons.
 fn vertexClassAtGridVertex(sdfValue: f32) -> i32 {
     let d = sdfValue - uniforms.isoValue;
-    let eps = max(1e-7, uniforms.voxelSize * 1e-7);
+    let eps = max(uniforms.mdcF0.y, uniforms.voxelSize * uniforms.mdcF0.x);
     if (d > eps) { return 1; }
     if (d < -eps) { return -1; }
     return 0;
@@ -250,7 +262,7 @@ fn vertexInsideForCases(sdfValue: f32) -> bool {
     // Use a tiny *global* bias so "exactly on the surface" is classified consistently,
     // avoiding missing triangles along sharp edges without introducing spatial alternation.
     let d = sdfValue - uniforms.isoValue;
-    let bias = max(1e-9, uniforms.voxelSize * 1e-6);
+    let bias = max(uniforms.mdcF0.w, uniforms.voxelSize * uniforms.mdcF0.z);
     return d < -bias;
 }
 
@@ -265,7 +277,7 @@ fn edgeCrossesIso(v0: f32, g0: vec3u, v1: f32, g1: vec3u) -> bool {
     _ = g0;
     _ = g1;
     // Use the same globally-biased inside test as vertexInsideForCases.
-    let bias = max(1e-9, uniforms.voxelSize * 1e-6);
+    let bias = max(uniforms.mdcF0.w, uniforms.voxelSize * uniforms.mdcF0.z);
     let d0 = (v0 - uniforms.isoValue);
     let d1 = (v1 - uniforms.isoValue);
     let s0 = d0 < -bias;
@@ -372,7 +384,7 @@ fn solveQEF(qef: QEFData) -> vec3f {
     // smoothing effect remains constant across different grid resolutions.
     // At GRID_DIM=64, voxelSize ≈ 1.5625mm, and we want regularization ≈ 1e-5,
     // so we scale by voxelSize / 1.5625 to maintain the same ratio.
-    let regularization = max(1e-7, uniforms.voxelSize * 6.4e-6);
+    let regularization = max(uniforms.mdcF2.w, uniforms.voxelSize * uniforms.mdcF2.z);
     ATA_reg[0][0] += regularization;
     ATA_reg[1][1] += regularization;
     ATA_reg[2][2] += regularization;
@@ -380,7 +392,7 @@ fn solveQEF(qef: QEFData) -> vec3f {
     // The field can be rank-deficient on planar regions (expected).
     // Avoid bailing out too aggressively here; instead rely on clamping and surface projection later.
     // Still bail out on *extreme* numerical instability.
-    if (estimateConditionNumber(ATA_reg) > 1e8) { return massPoint; }
+    if (estimateConditionNumber(ATA_reg) > uniforms.mdcF3.x) { return massPoint; }
 
     let b_reg = qef.ATb + massPoint * regularization;
     let solution = solveCholesky(ATA_reg, b_reg);
@@ -850,9 +862,9 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             
             // Project onto true iso-surface
             var normal = computeGradient(intersectionPos);
-            for (var iter = 0u; iter < 3u; iter = iter + 1u) {
+            for (var iter = 0u; iter < uniforms.mdcU0.x; iter = iter + 1u) {
                 let d = sampleSDF(intersectionPos) - uniforms.isoValue;
-                if (abs(d) < uniforms.voxelSize * 1e-5) { break; }
+                if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.z) { break; }
                 normal = computeGradient(intersectionPos);
                 intersectionPos = intersectionPos - normal * d;
             }
@@ -981,21 +993,22 @@ fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
     // This is critical for high-curvature regions (e.g., rounded CSG transitions)
     // where a single projection step can leave vertices significantly off-surface,
     // causing bunched clusters of triangles.
-    for (var iter = 0u; iter < 5u; iter = iter + 1u) {
+    for (var iter = 0u; iter < uniforms.mdcU0.y; iter = iter + 1u) {
         let d = sampleSDF(vertexPos) - uniforms.isoValue;
-        if (abs(d) < uniforms.voxelSize * 1e-5) { break; }
+        if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { break; }
         let n = computeGradient(vertexPos);
         var projected = vertexPos - n * d;
         // Clamp to cell bounds, but allow slight relaxation for high-curvature surfaces
-        let margin = uniforms.voxelSize * 0.01;
+        let margin = uniforms.voxelSize * uniforms.mdcF2.x;
         let relaxedMin = cellMin - vec3f(margin);
         let relaxedMax = cellMax + vec3f(margin);
         projected = clamp(projected, relaxedMin, relaxedMax);
         // If projection would move vertex too far, use a damped step
         let step = projected - vertexPos;
         let stepLen = length(step);
-        if (stepLen > uniforms.voxelSize * 0.5) {
-            vertexPos = vertexPos + step * (uniforms.voxelSize * 0.5 / stepLen);
+        let maxStep = uniforms.voxelSize * uniforms.mdcF2.y;
+        if (stepLen > maxStep) {
+            vertexPos = vertexPos + step * (maxStep / stepLen);
         } else {
             vertexPos = projected;
         }
@@ -1421,7 +1434,7 @@ fn chooseQuadTris(v0_idx: u32, v1_idx: u32, v2_idx: u32, v3_idx: u32) -> TriPair
                        vertices[t0.z].position - vertices[t0.x].position);
     let nHat = safeUnit3(faceN0);
     if (dot(nHat, nHat) > 0.0) {
-        let probe = max(1e-4, uniforms.voxelSize * 0.5);
+        let probe = max(uniforms.mdcF3.z, uniforms.voxelSize * uniforms.mdcF3.y);
         let dPlus = sampleSDF(center + nHat * probe) - uniforms.isoValue;
         let dMinus = sampleSDF(center - nHat * probe) - uniforms.isoValue;
         // Outside should be on the +normal side for outward-facing triangles.

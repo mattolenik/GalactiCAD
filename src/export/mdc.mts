@@ -62,6 +62,30 @@ export interface MDCParams {
     gridOffsetY: number
     gridOffsetZ: number
     voxelSize: number
+
+    // --- MDC tuning knobs (optional; defaults preserve current behavior) ---
+    activeEpsScale?: number
+    activeEpsMin?: number
+    insideBiasScale?: number
+    insideBiasMin?: number
+
+    gradEpsScale?: number
+    gradEpsMin?: number
+
+    edgeProjTolScale?: number
+    edgeProjIters?: number
+
+    vertexProjTolScale?: number
+    vertexProjIters?: number
+    vertexProjMarginScale?: number
+    vertexProjMaxStepScale?: number
+
+    qefRegScale?: number
+    qefRegMin?: number
+    qefCondCutoff?: number
+
+    orientationProbeScale?: number
+    orientationProbeMin?: number
 }
 
 export class MDCExport {
@@ -73,7 +97,40 @@ export class MDCExport {
     }
 
     async export(mdcShaderModule: GPUShaderModule): Promise<MeshData> {
-        const { gridDimX, gridDimY, gridDimZ, isoValue, gridOffsetX, gridOffsetY, gridOffsetZ, voxelSize } = this.params
+        const {
+            gridDimX,
+            gridDimY,
+            gridDimZ,
+            isoValue,
+            gridOffsetX,
+            gridOffsetY,
+            gridOffsetZ,
+            voxelSize,
+
+            // Defaults match previous hard-coded shader constants.
+            activeEpsScale = 1e-7,
+            activeEpsMin = 1e-7,
+            insideBiasScale = 1e-6,
+            insideBiasMin = 1e-9,
+
+            gradEpsScale = 0.01,
+            gradEpsMin = 1e-6,
+
+            edgeProjTolScale = 1e-5,
+            edgeProjIters = 3,
+
+            vertexProjTolScale = 1e-5,
+            vertexProjIters = 5,
+            vertexProjMarginScale = 0.01,
+            vertexProjMaxStepScale = 0.5,
+
+            qefRegScale = 6.4e-6,
+            qefRegMin = 1e-7,
+            qefCondCutoff = 1e8,
+
+            orientationProbeScale = 0.5,
+            orientationProbeMin = 1e-4,
+        } = this.params
         console.log(
             `MDCExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
         )
@@ -95,18 +152,38 @@ export class MDCExport {
         // - vec3<u32>/vec3<f32>: Align 16, Size 12
         // - f32: Align 4, Size 4
         //
-        // For this struct:
+        // For this struct (see `src/shaders/mdc.wgsl`):
         // struct SharedUniforms {
-        //   gridDimensions: vec3u,  // offset 0,  size 12
+        //   gridDimensions: vec3u,  // offset 0,  size 12 (align 16)
         //   isoValue: f32,          // offset 12, size 4
-        //   gridOffset: vec3f,      // offset 16, size 12
+        //   gridOffset: vec3f,      // offset 16, size 12 (align 16)
         //   voxelSize: f32,         // offset 28, size 4
-        // } // total size rounds up to 32
-        const uniformBufferData = new ArrayBuffer(32)
+        //   mdcF0: vec4f,           // offset 32, size 16
+        //   mdcF1: vec4f,           // offset 48, size 16
+        //   mdcF2: vec4f,           // offset 64, size 16
+        //   mdcF3: vec4f,           // offset 80, size 16
+        //   mdcU0: vec4u,           // offset 96, size 16
+        // } // total size = 112
+        const uniformBufferData = new ArrayBuffer(112)
         new Uint32Array(uniformBufferData, 0, 3).set([gridDimX, gridDimY, gridDimZ])
         new Float32Array(uniformBufferData, 12, 1).set([isoValue])
         new Float32Array(uniformBufferData, 16, 3).set([gridOffsetX, gridOffsetY, gridOffsetZ])
         new Float32Array(uniformBufferData, 28, 1).set([voxelSize])
+        // mdcF0
+        new Float32Array(uniformBufferData, 32, 4).set([activeEpsScale, activeEpsMin, insideBiasScale, insideBiasMin])
+        // mdcF1
+        new Float32Array(uniformBufferData, 48, 4).set([gradEpsScale, gradEpsMin, edgeProjTolScale, vertexProjTolScale])
+        // mdcF2
+        new Float32Array(uniformBufferData, 64, 4).set([vertexProjMarginScale, vertexProjMaxStepScale, qefRegScale, qefRegMin])
+        // mdcF3
+        new Float32Array(uniformBufferData, 80, 4).set([qefCondCutoff, orientationProbeScale, orientationProbeMin, 0])
+        // mdcU0
+        new Uint32Array(uniformBufferData, 96, 4).set([
+            Math.max(0, edgeProjIters) >>> 0,
+            Math.max(0, vertexProjIters) >>> 0,
+            0,
+            0,
+        ])
 
         const uniformBuffer = this.#helper.createBuffer(
             "Uniforms",

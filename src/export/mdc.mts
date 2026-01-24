@@ -161,7 +161,7 @@ export class MDCExport {
             vertexProjMarginScale = 0.01,
             vertexProjMaxStepScale = 0.5,
 
-            qefRegScale = 6.4e-1,
+            qefRegScale = 6.4e-2,
             qefRegMin = 1e-7,
             qefCondCutoff = 1e8,
 

@@ -512,7 +512,7 @@ export class SDFRenderer {
         }
 
         // Slightly inflate bounds so we don't clip due to sampling/quantization.
-        const pad = voxelSizeMm * 40
+        const pad = 5
         const minX = bounds.min[0] - pad
         const minY = bounds.min[1] - pad
         const minZ = bounds.min[2] - pad
@@ -570,35 +570,5 @@ export class SDFRenderer {
             this.#logMeshEdgeStats(merged, "renderMesh:postMerge")
         }
         return merged
-    }
-
-    async renderMeshZSlice(src: string): Promise<MeshData> {
-        const trimmed = src.trim()
-        if (this.#builtSrc !== trimmed) {
-            this.build(trimmed)
-        }
-
-        // World units are millimeters (mm).
-        // Default export volume is a 100mm cube centered at the origin: [-50, 50]^3.
-        // NOTE: z-step defaults to 0.02mm as requested; this can get expensive for tall volumes.
-        const DEFAULT_BBOX_MM = 50
-        const half = DEFAULT_BBOX_MM / 2
-        const GRID_XY_CELLS = 256
-        const stepXY = DEFAULT_BBOX_MM / GRID_XY_CELLS
-        const stepZ = 0.01
-
-        const zs = new ZSliceExport(this.#helper, {
-            minX: -half,
-            minY: -half,
-            minZ: -half,
-            sizeX: DEFAULT_BBOX_MM,
-            sizeY: DEFAULT_BBOX_MM,
-            sizeZ: DEFAULT_BBOX_MM,
-            stepX: stepXY,
-            stepY: stepXY,
-            stepZ,
-            isoValue: 0.0,
-        })
-        return await zs.export(this.#zsliceShader)
     }
 }

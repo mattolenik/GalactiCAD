@@ -15,11 +15,6 @@ struct Vertex {
     normal: vec3f,
 }
 
-struct EdgeCrossing {
-    position: vec3f,
-    normal: vec3f,
-}
-
 struct QEFData {
     ATA: mat3x3f,  // 3x3 symmetric matrix for QEF
     ATb: vec3f,    // Right hand side of QEF equation
@@ -56,9 +51,6 @@ const EDGES_PER_CELL: u32 = 12u;
 
 // Pass 3: Edge Detection
 @group(0) @binding(5) var<storage, read> activeCellIndicesIn_edge: array<u32>; // Compacted list of active cell indices (output of Pass 2d)
-@group(0) @binding(6) var<storage, read_write> edgeCrossingsX: array<EdgeCrossing>;
-@group(0) @binding(7) var<storage, read_write> edgeCrossingsY: array<EdgeCrossing>;
-@group(0) @binding(8) var<storage, read_write> edgeCrossingsZ: array<EdgeCrossing>;
 @group(0) @binding(9) var<storage, read_write> cellQEFData_edge: array<QEFData>; // QEF data per (active cell * component)
 @group(0) @binding(10) var<storage, read> activeCellCount_edgeInput: u32; // Total active cells (output of Pass 2d)
 
@@ -97,21 +89,6 @@ const EDGES_PER_CELL: u32 = 12u;
 // [0] = quads skipped because a neighbor cell was missing
 // [1] = quads skipped because component mapping was missing (0xffffffff)
 @group(0) @binding(24) var<storage, read_write> debugSkipCounters: array<atomic<u32>, 2>;
-
-// Cross-cell union-find data:
-// Per-cell union-find parent array for each cube edge.
-// Layout: cellUFParent[(activeCellIdx * 12) + edgeIdx] = parent cube edge index (0-11),
-// or 0xffffffff if that cube edge does not cross the isosurface.
-@group(0) @binding(25) var<storage, read_write> cellUFParent: array<u32>;
-
-// Edge crossing positions for CPU-side QEF aggregation.
-// Layout: cellEdgeCrossingPos[(activeCellIdx * 12 + edgeIdx) * 4 + 0..2] = position xyz
-// (stored as vec4f for alignment, w unused)
-@group(0) @binding(26) var<storage, read_write> cellEdgeCrossingPos: array<vec4f>;
-
-// Edge crossing normals for CPU-side QEF aggregation.
-// Layout: cellEdgeCrossingNormal[(activeCellIdx * 12 + edgeIdx) * 4 + 0..2] = normal xyz
-@group(0) @binding(27) var<storage, read_write> cellEdgeCrossingNormal: array<vec4f>;
 
 
 // ============================== UTILITY FUNCTIONS ==============================
@@ -817,19 +794,6 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             if (a != 0xffffffffu && b != 0xffffffffu) {
                 ufUnion(&parent, a, b);
             }
-        } else if (cnt == 3u) {
-            // 3 edge crossings on a face: typically occurs at CSG seam corners or near
-            // degenerate configurations. Connect all 3 crossing edges as one component.
-            // This forms a Y-junction topology which keeps the surface connected.
-            var edges3: array<u32, 3>;
-            var idx3 = 0u;
-            if (m0 == 1u) { edges3[idx3] = e0; idx3 = idx3 + 1u; }
-            if (m1 == 1u) { edges3[idx3] = e1; idx3 = idx3 + 1u; }
-            if (m2 == 1u) { edges3[idx3] = e2; idx3 = idx3 + 1u; }
-            if (m3 == 1u) { edges3[idx3] = e3; idx3 = idx3 + 1u; }
-            // Union all 3 together
-            if (idx3 >= 2u) { ufUnion(&parent, edges3[0], edges3[1]); }
-            if (idx3 >= 3u) { ufUnion(&parent, edges3[0], edges3[2]); }
         } else if (cnt == 4u) {
             // Ambiguous marching-squares face (checkerboard). Disambiguate by sampling face center.
             let s0: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.x]));
@@ -868,24 +832,12 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         }
     }
 
-    // Output per-cell union-find roots and edge crossing data for CPU global union-find.
+    // Compute per-edge Hermite samples for this cell (position + normal).
     let edgeCompBase = active_cell_array_idx * EDGES_PER_CELL;
     var crossingPos: array<vec3f, 12>;
     var crossingNormal: array<vec3f, 12>;
     
     for (var e = 0u; e < 12u; e = e + 1u) {
-        let outIdx = edgeCompBase + e;
-        
-        // Write UF root (with path compression) for CPU global union-find
-        if (outIdx < arrayLength(&cellUFParent)) {
-            if (edgeCrossMask[e] == 1u) {
-                cellUFParent[outIdx] = ufFind(&parent, e);
-            } else {
-                cellUFParent[outIdx] = 0xffffffffu;
-            }
-        }
-        
-        // Compute and store crossing position/normal for CPU QEF aggregation
         if (edgeCrossMask[e] == 1u) {
             let c1_idx = edges_info[e][0];
             let c2_idx = edges_info[e][1];
@@ -908,27 +860,13 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             
             crossingPos[e] = intersectionPos;
             crossingNormal[e] = normal;
-            
-            if (outIdx < arrayLength(&cellEdgeCrossingPos)) {
-                cellEdgeCrossingPos[outIdx] = vec4f(intersectionPos, 0.0);
-            }
-            if (outIdx < arrayLength(&cellEdgeCrossingNormal)) {
-                cellEdgeCrossingNormal[outIdx] = vec4f(normal, 0.0);
-            }
         } else {
             crossingPos[e] = vec3f(0.0);
             crossingNormal[e] = vec3f(0.0);
-            if (outIdx < arrayLength(&cellEdgeCrossingPos)) {
-                cellEdgeCrossingPos[outIdx] = vec4f(0.0);
-            }
-            if (outIdx < arrayLength(&cellEdgeCrossingNormal)) {
-                cellEdgeCrossingNormal[outIdx] = vec4f(0.0);
-            }
         }
     }
 
     // Map union-find roots to local component indices (0..MAX_COMPONENTS_PER_CELL-1).
-    // CPU will overwrite cellEdgeComponents with global component IDs.
     var compRoots: array<u32, 12>;
     var compCount: u32 = 0u;
     var edgeComponent: array<i32, 12>;

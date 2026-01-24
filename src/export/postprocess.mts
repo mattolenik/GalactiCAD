@@ -272,6 +272,26 @@ export function mergeCoplanar(mesh: MeshData): MeshData {
     const distEps = Math.max(1e-6, diag * 1e-5)
     const cosTol = 0.9999
 
+    // Track undirected edge incidence counts for the *whole mesh*.
+    // Base meshes from MDC should be manifold: every edge count <= 2.
+    // We maintain counts as we accept/reject merges to guarantee we never introduce
+    // non-manifold edges (count > 2) via retriangulation diagonals or cross-component interactions.
+    const globalEdgeCounts = new Map<bigint, number>()
+    const incEdge = (a: number, b: number, delta: number) => {
+        if (a === b) return
+        const k = edgeKey(a, b)
+        globalEdgeCounts.set(k, (globalEdgeCounts.get(k) ?? 0) + delta)
+    }
+    for (let t = 0; t < triCount; t++) {
+        const off = t * 3
+        const i0 = tris[off + 0]!
+        const i1 = tris[off + 1]!
+        const i2 = tris[off + 2]!
+        incEdge(i0, i1, 1)
+        incEdge(i1, i2, 1)
+        incEdge(i2, i0, 1)
+    }
+
     // Precompute triangle planes.
     const nrm: Vec3[] = new Array(triCount)
     const d = new Float64Array(triCount)
@@ -292,7 +312,11 @@ export function mergeCoplanar(mesh: MeshData): MeshData {
         const nA = nrm[tA]!
         const nB = nrm[tB]!
         if (isDegenerateNormal(nA) || isDegenerateNormal(nB)) return false
-        const nd = Math.abs(dot3(nA, nB))
+        // IMPORTANT:
+        // Do NOT merge triangles with opposite orientation.
+        // Using abs(dot) can merge back-to-back surfaces (opposite normals) which can
+        // introduce non-manifold edges when retriangulating.
+        const nd = dot3(nA, nB)
         if (!isFinite(nd) || nd < cosTol) return false
 
         // Symmetric plane distance check (independent of normal sign).
@@ -386,6 +410,27 @@ export function mergeCoplanar(mesh: MeshData): MeshData {
             const loop = buildBoundaryLoopFromComponent(comp, tris)
             const n = nrm[seed]!
             if (loop && !isDegenerateNormal(n)) {
+                // Build component-local edge incidence counts (undirected).
+                // We'll use this to ensure we don't introduce non-manifold edges by
+                // creating new diagonals that already exist elsewhere in the mesh.
+                const compEdgeCounts = new Map<bigint, number>()
+                for (const t of comp) {
+                    const off = t * 3
+                    const i0 = tris[off + 0]!
+                    const i1 = tris[off + 1]!
+                    const i2 = tris[off + 2]!
+                    const edges: [number, number][] = [
+                        [i0, i1],
+                        [i1, i2],
+                        [i2, i0],
+                    ]
+                    for (const [a, b] of edges) {
+                        if (a === b) continue
+                        const k = edgeKey(a, b)
+                        compEdgeCounts.set(k, (compEdgeCounts.get(k) ?? 0) + 1)
+                    }
+                }
+
                 const { u, v } = project2(n)
 
                 // pts2 is indexed by original vertex index; sparse fill for loop vertices.
@@ -397,6 +442,59 @@ export function mergeCoplanar(mesh: MeshData): MeshData {
 
                 const merged = triangulateSimplePolygon(loop, pts2)
                 if (merged && merged.length >= 3) {
+                    // Validate against global edge incidence counts:
+                    // Apply the merge "virtually" and reject if it would make any edge count > 2.
+                    //
+                    // This catches:
+                    // - new diagonals that collide with existing edges elsewhere
+                    // - interactions between multiple merged components (since we update globalEdgeCounts as we accept merges)
+                    const delta = new Map<bigint, number>()
+                    const addDelta = (a: number, b: number, d: number) => {
+                        if (a === b) return
+                        const k = edgeKey(a, b)
+                        delta.set(k, (delta.get(k) ?? 0) + d)
+                    }
+
+                    // Remove original component triangles.
+                    for (const t of comp) {
+                        const off = t * 3
+                        const i0 = tris[off + 0]!
+                        const i1 = tris[off + 1]!
+                        const i2 = tris[off + 2]!
+                        addDelta(i0, i1, -1)
+                        addDelta(i1, i2, -1)
+                        addDelta(i2, i0, -1)
+                    }
+
+                    // Add merged triangles.
+                    for (let i = 0; i < merged.length; i += 3) {
+                        const a = merged[i]!
+                        const b = merged[i + 1]!
+                        const c = merged[i + 2]!
+                        addDelta(a, b, 1)
+                        addDelta(b, c, 1)
+                        addDelta(c, a, 1)
+                    }
+
+                    let ok = true
+                    for (const [k, dlt] of delta) {
+                        const cur = globalEdgeCounts.get(k) ?? 0
+                        const next = cur + dlt
+                        if (next < 0 || next > 2) {
+                            ok = false
+                            break
+                        }
+                    }
+                    if (!ok) continue
+
+                    // Apply accepted delta to globalEdgeCounts.
+                    for (const [k, dlt] of delta) {
+                        const cur = globalEdgeCounts.get(k) ?? 0
+                        const next = cur + dlt
+                        if (next === 0) globalEdgeCounts.delete(k)
+                        else globalEdgeCounts.set(k, next)
+                    }
+
                     for (const t of comp) consumed[t] = 1
                     outTris.push(...merged)
                     continue

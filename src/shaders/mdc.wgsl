@@ -950,9 +950,14 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
 
 // Pass 4: Vertex Generation
 @compute @workgroup_size(64, 1, 1)
-fn vertexGeneration_Pass4(@builtin(global_invocation_id) globalId: vec3u) {
+fn vertexGeneration_Pass4(
+    @builtin(local_invocation_id) localId: vec3u,
+    @builtin(workgroup_id) workgroupId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u
+) {
     // We generate up to MAX_COMPONENTS_PER_CELL vertices per active cell.
-    let vertexRecordIdx = globalId.x;
+    let wgLinear = workgroupId.x + workgroupId.y * numWg.x + workgroupId.z * numWg.x * numWg.y;
+    let vertexRecordIdx = wgLinear * 64u + localId.x;
     let totalActiveCells = activeCellCount_vertexInput;
     let totalVertexRecords = totalActiveCells * MAX_COMPONENTS_PER_CELL;
     if (vertexRecordIdx >= totalVertexRecords) { return; }

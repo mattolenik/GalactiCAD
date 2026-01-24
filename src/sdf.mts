@@ -9,6 +9,7 @@ import { SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import zsliceShader from "./shaders/zslice.wgsl"
 import previewShader from "./shaders/preview.wgsl"
+import boundsShader from "./shaders/bounds.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
@@ -46,6 +47,7 @@ export class SDFRenderer {
     #sceneShader!: GPUShaderModule
     #exportShader!: GPUShaderModule
     #zsliceShader!: GPUShaderModule
+    #boundsShader!: GPUShaderModule
     #helper!: GPUHelper
     #builtSrc: string | null = null
 
@@ -235,6 +237,7 @@ export class SDFRenderer {
         this.#sceneShader = this.#shaderCompiler.compile(previewShader, "Preview Window")
         this.#exportShader = this.#shaderCompiler.compile(exportShader, "Export")
         this.#zsliceShader = this.#shaderCompiler.compile(zsliceShader, "Export (Z-slice)")
+        this.#boundsShader = this.#shaderCompiler.compile(boundsShader, "Bounds (scene bbox)")
         // console.log(this.#exportShader.text)
         this.#buildPreviewPipeline()
 
@@ -359,30 +362,186 @@ export class SDFRenderer {
         this.#preview.updateFPS(this.#framerate.average)
     }
 
+    async #computeSceneBounds(searchMin: [number, number, number], searchMax: [number, number, number], stepMm: number) {
+        // Quantize to microns for integer reduction.
+        const SCALE = 1000
+
+        const dimsX = Math.max(1, Math.ceil((searchMax[0] - searchMin[0]) / stepMm) + 1)
+        const dimsY = Math.max(1, Math.ceil((searchMax[1] - searchMin[1]) / stepMm) + 1)
+        const dimsZ = Math.max(1, Math.ceil((searchMax[2] - searchMin[2]) / stepMm) + 1)
+
+        // Must match WGSL uniform layout for `BoundsUniforms` in `bounds.wgsl`.
+        // Layout (uniform address space):
+        // - searchMinStep: vec4f  @0   size 16
+        // - searchMaxIso : vec4f  @16  size 16
+        // - dims         : vec4u  @32  size 16
+        // - scale        : f32    @48  size 4
+        // - _pad0        : vec3f  @64  size 12 (but occupies 16 due to alignment)
+        // Total size = 80 bytes.
+        const uniformsData = new ArrayBuffer(80)
+        // searchMinStep vec4f @0
+        new Float32Array(uniformsData, 0, 4).set([searchMin[0], searchMin[1], searchMin[2], stepMm])
+        // searchMaxIso vec4f @16
+        new Float32Array(uniformsData, 16, 4).set([searchMax[0], searchMax[1], searchMax[2], 0.0])
+        // dims vec4u @32
+        new Uint32Array(uniformsData, 32, 4).set([dimsX >>> 0, dimsY >>> 0, dimsZ >>> 0, 0])
+        // scale f32 @48
+        new Float32Array(uniformsData, 48, 1).set([SCALE])
+
+        const uniformBuffer = this.#helper.createBuffer(
+            "BoundsUniforms",
+            uniformsData.byteLength,
+            GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        )
+        this.#device.queue.writeBuffer(uniformBuffer, 0, uniformsData)
+
+        // Output is one record per dispatched workgroup (see `TileBounds` in `bounds.wgsl`):
+        //   minQ: vec4i (16) + maxQ: vec4i (16) + anyInside: u32 (4) + pad u32*3 (12) = 48 bytes
+        const TILE_STRIDE_BYTES = 48
+
+        const totalSamples = dimsX * dimsY * dimsZ
+        const totalWorkgroups = Math.ceil(totalSamples / 256)
+        const dispatchX = Math.min(totalWorkgroups, 65535)
+        const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
+        const dispatchedWorkgroups = dispatchX * dispatchY
+
+        const outSize = dispatchedWorkgroups * TILE_STRIDE_BYTES
+        if (!Number.isFinite(outSize) || outSize <= 0) {
+            throw new Error(
+                `Bounds compute: invalid out buffer size (dims=${dimsX}x${dimsY}x${dimsZ} step=${stepMm} -> outSize=${outSize})`
+            )
+        }
+        if (outSize > this.#device.limits.maxBufferSize) {
+            throw new Error(
+                `Bounds compute: out buffer too large (${outSize} bytes) for device maxBufferSize=${this.#device.limits.maxBufferSize}. Try increasing bounds step.`
+            )
+        }
+
+        const outBuffer = this.#helper.createBuffer(
+            "BoundsTiles",
+            outSize,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+        )
+        // No initialization needed: each dispatched workgroup writes exactly one record.
+
+        const pipeline = this.#helper.createComputePipeline(this.#boundsShader, "computeBounds", "Bounds (compute)")
+        const [, bindGroup] = this.#helper.createBindGroup(
+            0,
+            "Bounds BG",
+            pipeline,
+            [0, uniformBuffer],
+            [1, outBuffer]
+        )
+
+        const ce = this.#device.createCommandEncoder({ label: "bounds_compute" })
+        const pass = this.#helper.beginComputePass(ce, pipeline, [0, bindGroup])
+        pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+        pass.end()
+        this.#device.queue.submit([ce.finish()])
+        await this.#device.queue.onSubmittedWorkDone()
+
+        const outData = await this.#helper.readBufferData(outBuffer, outSize)
+        const dv = new DataView(outData)
+
+        let any = false
+        let minXq = 2147483647
+        let minYq = 2147483647
+        let minZq = 2147483647
+        let maxXq = -2147483648
+        let maxYq = -2147483648
+        let maxZq = -2147483648
+
+        for (let t = 0; t < dispatchedWorkgroups; t++) {
+            const base = t * TILE_STRIDE_BYTES
+            const anyInside = dv.getUint32(base + 32, true)
+            if (!anyInside) continue
+            any = true
+
+            const txMinX = dv.getInt32(base + 0, true)
+            const txMinY = dv.getInt32(base + 4, true)
+            const txMinZ = dv.getInt32(base + 8, true)
+            const txMaxX = dv.getInt32(base + 16, true)
+            const txMaxY = dv.getInt32(base + 20, true)
+            const txMaxZ = dv.getInt32(base + 24, true)
+
+            if (txMinX < minXq) minXq = txMinX
+            if (txMinY < minYq) minYq = txMinY
+            if (txMinZ < minZq) minZq = txMinZ
+            if (txMaxX > maxXq) maxXq = txMaxX
+            if (txMaxY > maxYq) maxYq = txMaxY
+            if (txMaxZ > maxZq) maxZq = txMaxZ
+        }
+
+        if (!any) return null
+
+        const minX = minXq / SCALE
+        const minY = minYq / SCALE
+        const minZ = minZq / SCALE
+        const maxX = maxXq / SCALE
+        const maxY = maxYq / SCALE
+        const maxZ = maxZq / SCALE
+
+        return { min: [minX, minY, minZ] as const, max: [maxX, maxY, maxZ] as const }
+    }
+
+    async #computeSceneBoundsRefined() {
+        // Coarse search over a generous region, then refine around result.
+        const COARSE_HALF = 250
+        const coarse = await this.#computeSceneBounds([-COARSE_HALF, -COARSE_HALF, -COARSE_HALF], [COARSE_HALF, COARSE_HALF, COARSE_HALF], 2.0)
+        if (!coarse) return null
+
+        const inflate = 4.0
+        const min = [coarse.min[0] - inflate, coarse.min[1] - inflate, coarse.min[2] - inflate] as const
+        const max = [coarse.max[0] + inflate, coarse.max[1] + inflate, coarse.max[2] + inflate] as const
+        const refined = await this.#computeSceneBounds([min[0], min[1], min[2]], [max[0], max[1], max[2]], 0.5)
+        return refined ?? coarse
+    }
+
     async renderMesh(src: string): Promise<MeshData> {
         const trimmed = src.trim()
         if (this.#builtSrc !== trimmed) {
             this.build(trimmed)
         }
+
         // World units are millimeters (mm).
-        // Default export volume is a 1000mm cube centered at the origin: [-500, 500]^3.
-        const DEFAULT_BBOX_MM = 50
-        const GRID_DIM = 512  // increase for higher resolution (cost grows ~ cubic)
-        const voxelSizeMm = DEFAULT_BBOX_MM / GRID_DIM
-        const half = DEFAULT_BBOX_MM / 2
+        // Voxel size is fixed; grid dimensions are derived from a computed scene AABB.
+        const voxelSizeMm = 0.1
+        const bounds = await this.#computeSceneBoundsRefined()
+        if (!bounds) {
+            throw new Error("Bounds compute found no inside samples; is the SDF empty or far from origin?")
+        }
+
+        // Slightly inflate bounds so we don't clip due to sampling/quantization.
+        const pad = voxelSizeMm * 40
+        const minX = bounds.min[0] - pad
+        const minY = bounds.min[1] - pad
+        const minZ = bounds.min[2] - pad
+        const maxX = bounds.max[0] + pad
+        const maxY = bounds.max[1] + pad
+        const maxZ = bounds.max[2] + pad
+
+        const sizeX = Math.max(voxelSizeMm, maxX - minX)
+        const sizeY = Math.max(voxelSizeMm, maxY - minY)
+        const sizeZ = Math.max(voxelSizeMm, maxZ - minZ)
+
+        const gridDimX = Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1)
+        const gridDimY = Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1)
+        const gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelSizeMm) + 1)
 
         const params: MDCParams = {
-            gridDimX: GRID_DIM,
-            gridDimY: GRID_DIM,
-            gridDimZ: GRID_DIM,
+            gridDimX,
+            gridDimY,
+            gridDimZ,
             isoValue: 0.0,
-            gridOffsetX: -half,
-            gridOffsetY: -half,
-            gridOffsetZ: -half,
+            gridOffsetX: minX,
+            gridOffsetY: minY,
+            gridOffsetZ: minZ,
             voxelSize: voxelSizeMm,
         }
         console.log(
-            `MDC export params: dim=${GRID_DIM} bbox=${DEFAULT_BBOX_MM}mm voxel=${voxelSizeMm}mm offset=${-half}..${half}`
+            `MDC export params: dim=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSizeMm}mm bbox=[${minX.toFixed(
+                3
+            )},${minY.toFixed(3)},${minZ.toFixed(3)}]..[${maxX.toFixed(3)},${maxY.toFixed(3)},${maxZ.toFixed(3)}]`
         )
 
         const mdc = new MDCExport(this.#helper, params)

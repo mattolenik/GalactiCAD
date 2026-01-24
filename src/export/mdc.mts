@@ -97,6 +97,43 @@ export class MDCExport {
     }
 
     async export(mdcShaderModule: GPUShaderModule): Promise<MeshData> {
+        const perfNow = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now())
+        const t0 = perfNow()
+
+        const fmtBytes = (bytes: number) => {
+            const abs = Math.abs(bytes)
+            if (abs < 1024) return `${bytes} B`
+            if (abs < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+            if (abs < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GiB`
+        }
+
+        let estimatedGpuBufferBytes = 0
+        let estimatedGpuReadbackBytes = 0
+
+        const createBuffer = (label: string, size: number, usage: GPUBufferUsageFlags, mappedAtCreation?: boolean) => {
+            estimatedGpuBufferBytes += size
+            return this.#helper.createBuffer(label, size, usage, mappedAtCreation)
+        }
+
+        const readBufferData = async (buffer: GPUBuffer, size = buffer.size) => {
+            // Note: WebGPU doesn’t expose real device memory usage. This is an estimate of
+            // temporary MAP_READ buffers allocated during readback.
+            estimatedGpuReadbackBytes += Math.min(size, buffer.size)
+            return await this.#helper.readBufferData(buffer, size)
+        }
+
+        const logDiag = (phase: string, extra?: Record<string, unknown>) => {
+            const elapsedMs = perfNow() - t0
+            console.log(`[mdc-export] ${phase}`, {
+                elapsedMs: Math.round(elapsedMs * 1000) / 1000,
+                estimatedGpuBuffers: fmtBytes(estimatedGpuBufferBytes),
+                estimatedGpuReadback: fmtBytes(estimatedGpuReadbackBytes),
+                estimatedGpuTotal: fmtBytes(estimatedGpuBufferBytes + estimatedGpuReadbackBytes),
+                ...extra,
+            })
+        }
+
         const {
             gridDimX,
             gridDimY,
@@ -134,6 +171,11 @@ export class MDCExport {
         console.log(
             `MDCExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
         )
+        logDiag("start", {
+            maxBufferSize: this.#device.limits.maxBufferSize,
+            maxStorageBufferBindingSize: this.#device.limits.maxStorageBufferBindingSize,
+            maxComputeInvocationsPerWorkgroup: this.#device.limits.maxComputeInvocationsPerWorkgroup,
+        })
 
         // Calculate grid totals
         const totalGridCells = gridDimX * gridDimY * gridDimZ
@@ -185,7 +227,7 @@ export class MDCExport {
             0,
         ])
 
-        const uniformBuffer = this.#helper.createBuffer(
+        const uniformBuffer = createBuffer(
             "Uniforms",
             uniformBufferData.byteLength,
             GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -193,7 +235,7 @@ export class MDCExport {
         this.#device.queue.writeBuffer(uniformBuffer, 0, uniformBufferData)
 
         // Pass 1 Buffers
-        const activeCellFlagsBuffer = this.#helper.createBuffer(
+        const activeCellFlagsBuffer = createBuffer(
             "ActiveCellFlags",
             totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
@@ -223,9 +265,10 @@ export class MDCExport {
             this.#device.queue.submit([ce.finish()])
             await this.#device.queue.onSubmittedWorkDone()
         }
+        logDiag("after pass1 (cell classification)")
 
         // Read back flags and build a compact list on CPU.
-        const flagsData = await this.#helper.readBufferData(
+        const flagsData = await readBufferData(
             activeCellFlagsBuffer,
             totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT
         )
@@ -252,6 +295,7 @@ export class MDCExport {
         if (activeCellCount === 0) {
             throw new Error("No active cells found, check grid bounds and scene")
         }
+        logDiag("after flags readback + active list build", { activeCellCount })
 
         const activeCellIndicesView = Uint32Array.from(activeList)
 
@@ -281,48 +325,49 @@ export class MDCExport {
                 slot = (slot + 1) & hashMask
             }
         }
+        logDiag("after CPU neighbor hash build", { hashEntries: tableEntries })
 
         // --- Stage 2: allocate buffers sized to active cells, then run MDC passes ---
-        const activeCellCountBuffer = this.#helper.createBuffer(
+        const activeCellCountBuffer = createBuffer(
             "ActiveCellCount",
             Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
         this.#device.queue.writeBuffer(activeCellCountBuffer, 0, new Uint32Array([activeCellCount]))
 
-        const activeCellIndicesBuffer = this.#helper.createBuffer(
+        const activeCellIndicesBuffer = createBuffer(
             "ActiveCellIndices",
             activeCellCount * Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         )
         this.#device.queue.writeBuffer(activeCellIndicesBuffer, 0, activeCellIndicesView)
 
-        const cellToActiveHashBuffer = this.#helper.createBuffer(
+        const cellToActiveHashBuffer = createBuffer(
             "CellToActiveHash",
             cellToActiveHash.byteLength,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         )
         this.#device.queue.writeBuffer(cellToActiveHashBuffer, 0, cellToActiveHash)
 
-        const debugSkipCountersBuffer = this.#helper.createBuffer(
+        const debugSkipCountersBuffer = createBuffer(
             "DebugSkipCounters",
             2 * Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
         this.#device.queue.writeBuffer(debugSkipCountersBuffer, 0, new Uint32Array([0, 0]))
 
-        const cellEdgeComponentsBuffer = this.#helper.createBuffer(
+        const cellEdgeComponentsBuffer = createBuffer(
             "CellEdgeComponents",
             activeCellCount * 12 * Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
 
-        const cellQEFDataBuffer = this.#helper.createBuffer(
+        const cellQEFDataBuffer = createBuffer(
             "CellQEFData",
             activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         )
-        const verticesBuffer = this.#helper.createBuffer(
+        const verticesBuffer = createBuffer(
             "Vertices",
             activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
@@ -330,17 +375,18 @@ export class MDCExport {
 
         const maxTriangles = activeCellCount * 6
         const maxIndices = maxTriangles * 3
-        const indicesBuffer = this.#helper.createBuffer(
+        const indicesBuffer = createBuffer(
             "Indices",
             maxIndices * Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
         )
-        const indexCountFaceBuffer = this.#helper.createBuffer(
+        const indexCountFaceBuffer = createBuffer(
             "IndexCountFace",
             Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
         this.#device.queue.writeBuffer(indexCountFaceBuffer, 0, new Uint32Array([0]))
+        logDiag("after GPU buffer allocations", { maxTriangles, maxIndices })
 
         const p3_edgeDetection = this.#helper.createComputePipeline(mdcShaderModule, "edgeDetection_Pass3")
         const p4_vertexGeneration = this.#helper.createComputePipeline(mdcShaderModule, "vertexGeneration_Pass4")
@@ -393,6 +439,7 @@ export class MDCExport {
             this.#device.queue.submit([ce.finish()])
             await this.#device.queue.onSubmittedWorkDone()
         }
+        logDiag("after pass3 (edge detection)", { activeCellCount })
 
         // === Pass 4: Vertex generation (per-cell, per-component) ===
         // We intentionally do NOT do any cross-cell/global connectivity here.
@@ -401,11 +448,15 @@ export class MDCExport {
             const totalVertexRecords = activeCellCount * MAX_COMPONENTS_PER_CELL
             const ce = this.#device.createCommandEncoder({ label: "mdc_pass4" })
             const pass = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
-            pass.dispatchWorkgroups(Math.ceil(totalVertexRecords / 64))
+            const totalWorkgroups = Math.ceil(totalVertexRecords / 64)
+            const dispatchX = Math.min(totalWorkgroups, 65535)
+            const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
+            pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
             pass.end()
             this.#device.queue.submit([ce.finish()])
             await this.#device.queue.onSubmittedWorkDone()
         }
+        logDiag("after pass4 (vertex generation)")
 
         // === Pass 5: Triangle generation using local component IDs ===
         {
@@ -416,27 +467,33 @@ export class MDCExport {
             this.#device.queue.submit([ce.finish()])
             await this.#device.queue.onSubmittedWorkDone()
         }
+        logDiag("after pass5 (triangle generation)")
 
         console.log("Reading back data from GPU...")
-        const debugCountsData = await this.#helper.readBufferData(debugSkipCountersBuffer, 2 * Uint32Array.BYTES_PER_ELEMENT)
+        const debugCountsData = await readBufferData(debugSkipCountersBuffer, 2 * Uint32Array.BYTES_PER_ELEMENT)
         const debugCounts = new Uint32Array(debugCountsData)
         console.log(
             `MDC debug: skippedQuads(neighborMissing)=${debugCounts[0]} skippedQuads(componentMissing)=${debugCounts[1]}`
         )
-        const indexCountData = await this.#helper.readBufferData(indexCountFaceBuffer)
+        const indexCountData = await readBufferData(indexCountFaceBuffer)
         const rawIndexCount = new Uint32Array(indexCountData)[0]!
         const actualIndexCount = Math.min(rawIndexCount, maxIndices)
         console.log(`Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`)
 
         const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
-        const verticesData = await this.#helper.readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
+        const verticesData = await readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
         const verts = new Float32Array(verticesData)
 
-        const indicesData = await this.#helper.readBufferData(
+        const indicesData = await readBufferData(
             indicesBuffer,
             actualIndexCount * Uint32Array.BYTES_PER_ELEMENT
         )
         const tris = new Uint32Array(indicesData)
+        logDiag("after GPU readback", {
+            actualIndexCount,
+            actualVertexCount,
+            triCount: Math.floor(tris.length / 3),
+        })
 
         // Re-orient triangles to a consistent winding.
         //
@@ -647,6 +704,7 @@ export class MDCExport {
             )
         }
 
+        logDiag("done")
         return { verts, tris }
     }
 }

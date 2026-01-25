@@ -154,10 +154,10 @@ export class MDCExport {
             gradEpsMin = 1e-6,
 
             edgeProjTolScale = 1e-5,
-            edgeProjIters = 2,
+            edgeProjIters = 5,
 
             vertexProjTolScale = 1e-5,
-            vertexProjIters = 3,
+            vertexProjIters = 8,
             vertexProjMarginScale = 0.01,
             vertexProjMaxStepScale = 0.5,
 

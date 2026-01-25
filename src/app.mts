@@ -182,32 +182,6 @@ class App {
                             }
                         },
                     },
-                    {
-                        element: exportZSliceItem,
-                        action: async () => {
-                            try {
-                                const documentName = this.#tabs.active!
-                                const handle = await window.showSaveFilePicker({
-                                    suggestedName: `${documentName}-zslice`,
-                                    startIn: "desktop",
-                                    types: [
-                                        {
-                                            description: "STL file",
-                                            accept: { "model/stl": [".stl"] },
-                                        },
-                                    ],
-                                    excludeAcceptAllOption: false,
-                                })
-                                const mesh = await this.renderer.renderMeshZSlice(this.editor.getValue())
-                                await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
-                            } catch (err) {
-                                if (`${err}`.includes("AbortError")) {
-                                    return
-                                }
-                                throw err
-                            }
-                        },
-                    },
                 ])
                 menu.replaceWith(menuButton)
             })

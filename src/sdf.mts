@@ -505,14 +505,14 @@ export class SDFRenderer {
 
         // World units are millimeters (mm).
         // Voxel size is fixed; grid dimensions are derived from a computed scene AABB.
-        const voxelSizeMm = 0.1
+        const voxelSizeMm = 0.12
         const bounds = await this.#computeSceneBoundsRefined()
         if (!bounds) {
             throw new Error("Bounds compute found no inside samples; is the SDF empty or far from origin?")
         }
 
         // Slightly inflate bounds so we don't clip due to sampling/quantization.
-        const pad = 5
+        const pad = 3.2
         const minX = bounds.min[0] - pad
         const minY = bounds.min[1] - pad
         const minZ = bounds.min[2] - pad

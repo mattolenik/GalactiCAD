@@ -110,6 +110,12 @@ fn sceneSDF(p: vec3f) -> f32 {
     return 0.0; //:) insert sceneSDF
 }
 
+// Extended scene SDF that returns gradient magnitude alongside distance.
+// This is used for gradient-magnitude-aware projection in smooth CSG regions.
+fn sceneSDFEx(p: vec3f) -> SDFResult {
+    return sdfTrue(0.0); //:) insert sceneSDFEx
+}
+
 fn mix3f(a: vec3f, b: vec3f, t: f32) -> vec3f {
     return a * (1.0f - t) + b * t;
 }
@@ -845,6 +851,7 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
     }
 
     // Compute per-edge Hermite samples for this cell (position + normal).
+    // Uses gradient-magnitude-aware projection and bisection refinement for smooth CSG regions.
     let edgeCompBase = active_cell_array_idx * EDGES_PER_CELL;
     var crossingPos: array<vec3f, 12>;
     var crossingNormal: array<vec3f, 12>;
@@ -857,16 +864,59 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             let val1 = cornerSDFValues[c2_idx];
             let p0_world = cornerWorldPositions[c1_idx];
             let p1_world = cornerWorldPositions[c2_idx];
+            
+            // Start with linear interpolation
             let t = findEdgeIntersection(val0, val1);
             var intersectionPos = mix3f(p0_world, p1_world, t);
             
-            // Project onto true iso-surface
+            // Check if we're in a smooth blend region (gradient magnitude < 1)
+            let initialSdf = sceneSDFEx(intersectionPos);
+            let inBlendRegion = initialSdf.g < 0.95;
+            
+            if (inBlendRegion) {
+                // Use bisection for accurate edge intersection in blend regions
+                // where the SDF is non-linear along the edge
+                var pA = p0_world;
+                var pB = p1_world;
+                var dA = val0 - uniforms.isoValue;
+                var dB = val1 - uniforms.isoValue;
+                
+                // Bisection refinement (8 iterations = 1/256 accuracy)
+                for (var bisect = 0u; bisect < 8u; bisect = bisect + 1u) {
+                    let pMid = mix3f(pA, pB, 0.5);
+                    let dMid = sampleSDF(pMid) - uniforms.isoValue;
+                    
+                    // Use same tolerance as edge projection (uniforms.mdcF1.z)
+                    if (abs(dMid) < uniforms.voxelSize * uniforms.mdcF1.z) {
+                        intersectionPos = pMid;
+                        break;
+                    }
+                    
+                    if (dMid * dA < 0.0) {
+                        pB = pMid;
+                        dB = dMid;
+                    } else {
+                        pA = pMid;
+                        dA = dMid;
+                    }
+                    intersectionPos = mix3f(pA, pB, 0.5);
+                }
+            }
+            
+            // Final projection with gradient-magnitude correction
             var normal = computeGradient(intersectionPos);
             for (var iter = 0u; iter < uniforms.mdcU0.x; iter = iter + 1u) {
-                let d = sampleSDF(intersectionPos) - uniforms.isoValue;
+                let sdfResult = sceneSDFEx(intersectionPos);
+                let d = sdfResult.d - uniforms.isoValue;
                 if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.z) { break; }
                 normal = computeGradient(intersectionPos);
-                intersectionPos = intersectionPos - normal * d;
+                // Correct step by gradient magnitude (lower floor for blend regions)
+                let gradScale = max(sdfResult.g, 0.15);
+                let correctedStep = d / gradScale;
+                // Tighter step limit in blend regions to avoid oscillation
+                let maxStep = uniforms.voxelSize * select(0.75, 0.4, sdfResult.g < 0.8);
+                let clampedStep = clamp(correctedStep, -maxStep, maxStep);
+                intersectionPos = intersectionPos - normal * clampedStep;
             }
             normal = computeGradient(intersectionPos);
             
@@ -995,23 +1045,30 @@ fn vertexGeneration_Pass4(
     var vertexPos = best;
 
     // Iterative projection to ensure vertex is on the true iso-surface.
-    // This is critical for high-curvature regions (e.g., rounded CSG transitions)
-    // where a single projection step can leave vertices significantly off-surface,
-    // causing bunched clusters of triangles.
+    // Uses gradient-magnitude-aware stepping to handle smooth CSG regions
+    // where |∇f| < 1 and naive projection overshoots.
     for (var iter = 0u; iter < uniforms.mdcU0.y; iter = iter + 1u) {
-        let d = sampleSDF(vertexPos) - uniforms.isoValue;
+        let sdfResult = sceneSDFEx(vertexPos);
+        let d = sdfResult.d - uniforms.isoValue;
         if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { break; }
         let n = computeGradient(vertexPos);
-        var projected = vertexPos - n * d;
+        
+        // Correct step by gradient magnitude (lower floor for blend regions)
+        let gradScale = max(sdfResult.g, 0.15);
+        let correctedD = d / gradScale;
+        
+        var projected = vertexPos - n * correctedD;
         // Clamp to cell bounds, but allow slight relaxation for high-curvature surfaces
         let margin = uniforms.voxelSize * uniforms.mdcF2.x;
         let relaxedMin = cellMin - vec3f(margin);
         let relaxedMax = cellMax + vec3f(margin);
         projected = clamp(projected, relaxedMin, relaxedMax);
         // If projection would move vertex too far, use a damped step
+        // Use smaller steps in blend regions to avoid oscillation
         let step = projected - vertexPos;
         let stepLen = length(step);
-        let maxStep = uniforms.voxelSize * uniforms.mdcF2.y;
+        let baseMaxStep = uniforms.voxelSize * uniforms.mdcF2.y;
+        let maxStep = baseMaxStep * select(1.0, 0.5, sdfResult.g < 0.8);
         if (stepLen > maxStep) {
             vertexPos = vertexPos + step * (maxStep / stepLen);
         } else {

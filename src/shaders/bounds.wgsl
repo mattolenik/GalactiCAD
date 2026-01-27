@@ -86,7 +86,7 @@ fn computeBounds(
     var maxx = -2147483648;
     var maxy = -2147483648;
     var maxz = -2147483648;
-    var any = 0u;
+    var foundInside = 0u;
 
     if (i < total) {
         let gid = linearToGrid(i, dims);
@@ -102,7 +102,7 @@ fn computeBounds(
                 let iz = i32(round(p.z * s));
                 minx = ix; miny = iy; minz = iz;
                 maxx = ix; maxy = iy; maxz = iz;
-                any = 1u;
+                foundInside = 1u;
             }
         }
     }
@@ -113,7 +113,7 @@ fn computeBounds(
     wgMaxX[lane] = maxx;
     wgMaxY[lane] = maxy;
     wgMaxZ[lane] = maxz;
-    wgAny[lane] = any;
+    wgAny[lane] = foundInside;
     workgroupBarrier();
 
     // Parallel reduce (256 -> 1).
@@ -134,11 +134,11 @@ fn computeBounds(
 
     if (lane == 0u) {
         // If the workgroup saw nothing inside, write sentinel mins/maxs.
-        let any0 = wgAny[0];
+        let hasAnyInside = wgAny[0];
         let mn = vec4i(wgMinX[0], wgMinY[0], wgMinZ[0], 0);
         let mx = vec4i(wgMaxX[0], wgMaxY[0], wgMaxZ[0], 0);
         if (wgLinear < arrayLength(&out)) {
-            out[wgLinear] = TileBounds(mn, mx, any0, 0u, 0u, 0u);
+            out[wgLinear] = TileBounds(mn, mx, hasAnyInside, 0u, 0u, 0u);
         }
     }
 }

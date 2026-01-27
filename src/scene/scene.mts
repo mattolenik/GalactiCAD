@@ -33,13 +33,23 @@ export class SceneInfo {
         this.root.build()
     }
 
-    compile(): string {
+    /**
+     * Compile the scene to WGSL code.
+     * @param extended If true, returns full SDFResult; if false, returns just the distance (f32)
+     */
+    compile(extended: boolean = false): string {
         const compiledResult = this.root.compile(1)
         let compiledText = compiledResult.text
         if (!compiledText) {
             throw new Error("compilation returned no result")
         }
-        compiledText += `\nreturn ${compiledResult.varName};\n`
+        if (extended) {
+            // Return full SDFResult with gradient magnitude
+            compiledText += `\nreturn ${compiledResult.varName};\n`
+        } else {
+            // Return just the distance value (f32) for backward compatibility
+            compiledText += `\nreturn ${compiledResult.varName}.d;\n`
+        }
         return compiledText
     }
 }
@@ -218,9 +228,12 @@ export class Union extends BinaryOperator {
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
         text += `let ${varName} = `
         if (this.radius) {
-            text += `fOpUnionChamfer(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+            // Use extended round union for smooth blends (not chamfer)
+            // Round creates truly smooth C1 continuous surfaces
+            text += `fOpUnionRoundEx(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
         } else {
-            text += `min( ${lhResult.varName}, ${rhResult.varName} );`
+            // Use extended hard union
+            text += `opUnionEx(${lhResult.varName}, ${rhResult.varName});`
         }
         return { text, varName }
     }
@@ -237,7 +250,13 @@ export class Subtract extends BinaryOperator {
         if (lhResult.text) text += lhResult.text + "\n"
         if (rhResult.text) text += rhResult.text + "\n"
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        text += `let ${varName} = fOpDifferenceRound(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+        if (this.radius && this.radius > 0) {
+            // Use extended round difference with gradient magnitude tracking
+            text += `let ${varName} = fOpDifferenceRoundEx(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+        } else {
+            // Use extended hard difference
+            text += `let ${varName} = opDifferenceEx(${lhResult.varName}, ${rhResult.varName});`
+        }
         return { text, varName }
     }
     constructor(lh: Node, rh: Node, public radius: number = 0) {
@@ -271,8 +290,8 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         return {
             funcName,
             varName,
-            // text: `let ${varName} = fSphere(p - args[${this.argIndex.pos}], args[${this.argIndex.r}].x);`,
-            text: `let ${varName} = fSphere(p - ${this.pos.wgsl}, ${this.r});`,
+            // Use extended sphere that returns SDFResult with gradient magnitude
+            text: `let ${varName} = fSphereEx(p - ${this.pos.wgsl}, ${this.r});`,
         }
     }
 }
@@ -303,8 +322,8 @@ export class Box extends WithSize(WithPos(Node)) {
         return {
             funcName,
             varName,
-            // text: `let ${varName} = fBox(p - args[${this.argIndex.pos}], args[${this.argIndex.size}]);`,
-            text: `let ${varName} = fBox(p - ${this.pos.wgsl}, ${this.size.wgsl});`,
+            // Use extended box that returns SDFResult with gradient magnitude
+            text: `let ${varName} = fBoxEx(p - ${this.pos.wgsl}, ${this.size.wgsl});`,
         }
     }
 }

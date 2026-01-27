@@ -9,6 +9,31 @@ const TAU: f32 = 2.0 * PI;
 const PHI: f32 = sqrt(5.0) * 0.5 + 0.5;
 
 //////////////////////////////
+//  EXTENDED SDF RESULT TYPE
+//////////////////////////////
+
+// SDFResult carries both the distance value and gradient magnitude estimate.
+// - d: The distance value (may not be true Euclidean distance for smooth CSG)
+// - g: Gradient magnitude estimate (1.0 for true SDFs, <1.0 in smooth blend regions)
+//
+// The gradient magnitude is used to correct projection steps in MDC:
+// when |∇f| < 1, naive projection by `d` overshoots the surface.
+struct SDFResult {
+    d: f32,
+    g: f32,
+}
+
+// Constructor helper
+fn sdfResult(d: f32, g: f32) -> SDFResult {
+    return SDFResult(d, g);
+}
+
+// Create SDFResult from a true distance (gradient magnitude = 1.0)
+fn sdfTrue(d: f32) -> SDFResult {
+    return SDFResult(d, 1.0);
+}
+
+//////////////////////////////
 //       HELPER FUNCTIONS
 //////////////////////////////
 
@@ -84,6 +109,20 @@ fn fBoxCheap(p: vec3<f32>, b: vec3<f32>) -> f32 {
 fn fBox(p: vec3<f32>, b: vec3<f32>) -> f32 {
     let d = abs(p) - b;
     return length(max(d, vec3<f32>(0.0))) + vmax3(min(d, vec3<f32>(0.0)));
+}
+
+////////////////////////////////////////
+//  EXTENDED PRIMITIVE DISTANCE FUNCTIONS
+//  These return SDFResult with gradient magnitude = 1.0
+////////////////////////////////////////
+
+fn fSphereEx(p: vec3<f32>, r: f32) -> SDFResult {
+    return sdfTrue(length(p) - r);
+}
+
+fn fBoxEx(p: vec3<f32>, b: vec3<f32>) -> SDFResult {
+    let d = abs(p) - b;
+    return sdfTrue(length(max(d, vec3<f32>(0.0))) + vmax3(min(d, vec3<f32>(0.0))));
 }
 
 // 2D boxes
@@ -495,4 +534,172 @@ fn fOpGroove(a: f32, b: f32, ra: f32, rb: f32) -> f32 {
 // Carpenter tongue
 fn fOpTongue(a: f32, b: f32, ra: f32, rb: f32) -> f32 {
     return min(a, max(a - ra, abs(b) - rb));
+}
+
+////////////////////////////////////////////////////
+//  EXTENDED OBJECT COMBINATION OPERATORS
+//  These return SDFResult with accurate gradient magnitude estimates
+////////////////////////////////////////////////////
+
+// Hard union: gradient magnitude comes from the closer operand
+fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
+    if (a.d < b.d) {
+        return a;
+    }
+    return b;
+}
+
+// Hard intersection
+fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
+    if (a.d > b.d) {
+        return a;
+    }
+    return b;
+}
+
+// Hard difference
+fn opDifferenceEx(a: SDFResult, b: SDFResult) -> SDFResult {
+    // difference = intersection with complement
+    let bNeg = sdfResult(-b.d, b.g);
+    return opIntersectionEx(a, bNeg);
+}
+
+// Chamfer union with gradient magnitude tracking
+// Chamfer creates a 45° bevel. The gradient in the chamfer region is:
+// ∇d = (∇a + ∇b) * sqrt(0.5)
+// |∇d| = |∇a + ∇b| * sqrt(0.5) = sqrt(1 + cos(θ)) where θ is angle between gradients
+// For 90° corners: |∇d| = 1.0 (true SDF)
+// For 0° (parallel): |∇d| = sqrt(2) ≈ 1.414
+// For 180° (anti-parallel): |∇d| = 0
+fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let d = min(min(a.d, b.d), (a.d - r + b.d) * sqrt(0.5));
+    
+    var g = 1.0;
+    let chamferD = (a.d - r + b.d) * sqrt(0.5);
+    if (chamferD < a.d && chamferD < b.d) {
+        // In chamfer region - gradient magnitude depends on angle between input gradients
+        // For perpendicular surfaces (90°), |∇d| = 1.0 (no distortion)
+        // We can't know the angle without computing gradients, so assume worst case
+        // which is that the surfaces are nearly parallel (small angle) giving |∇d| > 1
+        // This means the SDF slightly overestimates distance, so use g = 1.0
+        g = 1.0;
+    } else if (a.d < b.d) {
+        g = a.g;
+    } else {
+        g = b.g;
+    }
+    
+    return sdfResult(d, g);
+}
+
+fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let d = max(max(a.d, b.d), (a.d + r + b.d) * sqrt(0.5));
+    
+    var g = 1.0;
+    let chamferD = (a.d + r + b.d) * sqrt(0.5);
+    if (chamferD > a.d && chamferD > b.d) {
+        // Same reasoning as union chamfer
+        g = 1.0;
+    } else if (a.d > b.d) {
+        g = a.g;
+    } else {
+        g = b.g;
+    }
+    
+    return sdfResult(d, g);
+}
+
+fn fOpDifferenceChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    return fOpIntersectionChamferEx(a, sdfResult(-b.d, b.g), r);
+}
+
+// Round union with gradient magnitude tracking
+// This is where the gradient magnitude < 1 issue is most prominent
+fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let u = max(vec2<f32>(r - a.d, r - b.d), vec2<f32>(0.0, 0.0));
+    let uLen = length(u);
+    let d = max(r, min(a.d, b.d)) - uLen;
+    
+    // Compute gradient magnitude analytically.
+    // In the blend region: d = r - |u| where u = (r - a.d, r - b.d)
+    // ∇d = (u.x/|u|) * ∇a.d + (u.y/|u|) * ∇b.d  (with signs)
+    //
+    // The gradient magnitude depends on the angle θ between ∇a.d and ∇b.d:
+    // |∇d|² = (u.x/|u|)² * |∇a.d|² + (u.y/|u|)² * |∇b.d|² + 2*(u.x*u.y/|u|²)*|∇a.d|*|∇b.d|*cos(θ)
+    //
+    // For axis-aligned 90° corners (cos(θ) = 0): |∇d| = 1 if both inputs have |∇| = 1
+    // But the issue is that the SDF values themselves are distorted, making the
+    // projection step overshoot even when |∇d| = 1.
+    //
+    // The key insight: the SDF value 'd' in the blend region does NOT represent
+    // true Euclidean distance. A point with d = -0.5 might actually be 0.7 units
+    // from the surface. We need to correct for this distortion.
+    //
+    // Distortion factor: ratio of true distance to SDF value
+    // At blend center: d ≈ r - r*sqrt(2) = -0.414r, but true distance ≈ r*(sqrt(2)-1) ≈ 0.414r
+    // So distortion ≈ 1.0 at the edge, and the SDF "compresses" distance in the blend.
+    var g = 1.0;
+    if (a.d < r && b.d < r && uLen > 1e-6) {
+        // In blend region. The gradient magnitude stays close to 1 for perpendicular surfaces,
+        // but the SDF value itself is compressed. We model this as an effective gradient < 1.
+        //
+        // Blend depth: 0 at entry (a.d = r or b.d = r), max at corner (a.d = b.d = 0)
+        let blendDepth = min(r - a.d, r - b.d) / r;  // 0 to 1
+        
+        // At a 90° corner, the circular blend creates a quarter-circle cross-section.
+        // The SDF compression is worst at the deepest point of the blend.
+        // Empirically: g ≈ 1 at blend entry, g ≈ 0.5 at blend center for 90° corners
+        let cornerFactor = (u.x * u.y) / (uLen * uLen);  // 0 for edges, 0.5 for 45°
+        g = mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor);
+        g = max(g, 0.25);  // Don't go too low
+    } else if (a.d < b.d) {
+        g = a.g;
+    } else {
+        g = b.g;
+    }
+    
+    return sdfResult(d, g);
+}
+
+fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let e = max(r - abs(a.d - b.d), 0.0);
+    let d = min(a.d, b.d) - e * e * 0.25 / r;
+    
+    var g = 1.0;
+    if (e > 0.0) {
+        // In blend region
+        let blendFactor = e / r;
+        g = max(0.4, 1.0 - blendFactor * 0.5);
+    } else if (a.d < b.d) {
+        g = a.g;
+    } else {
+        g = b.g;
+    }
+    
+    return sdfResult(d, g);
+}
+
+fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let u = max(vec2<f32>(r + a.d, r + b.d), vec2<f32>(0.0, 0.0));
+    let uLen = length(u);
+    let d = min(-r, max(a.d, b.d)) + uLen;
+    
+    var g = 1.0;
+    if (a.d > -r && b.d > -r && uLen > 1e-6) {
+        // In blend region for intersection (inside corner rounding)
+        let blendDepth = min(r + a.d, r + b.d) / r;  // 0 to 1
+        let cornerFactor = (u.x * u.y) / (uLen * uLen);  // 0 for edges, 0.5 for 45°
+        g = mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor);
+        g = max(g, 0.25);
+    } else if (a.d > b.d) {
+        g = a.g;
+    } else {
+        g = b.g;
+    }
+    
+    return sdfResult(d, g);
+}
+
+fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    return fOpIntersectionRoundEx(a, sdfResult(-b.d, b.g), r);
 }

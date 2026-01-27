@@ -232,8 +232,11 @@ export class SDFRenderer {
         const trimmed = src.trim()
         this.#builtSrc = trimmed
         this.#scene = new SceneInfo(trimmed)
-        const sceneSDF = this.#scene.compile()
-        this.#shaderCompiler = new ShaderCompiler(this.#device).replace("insert", "sceneSDF", sceneSDF)
+        const sceneSDF = this.#scene.compile(false)      // Returns f32 (distance only)
+        const sceneSDFEx = this.#scene.compile(true)    // Returns SDFResult (distance + gradient magnitude)
+        this.#shaderCompiler = new ShaderCompiler(this.#device)
+            .replace("insert", "sceneSDF", sceneSDF)
+            .replace("insert", "sceneSDFEx", sceneSDFEx)
         this.#sceneShader = this.#shaderCompiler.compile(previewShader, "Preview Window")
         this.#exportShader = this.#shaderCompiler.compile(exportShader, "Export")
         this.#zsliceShader = this.#shaderCompiler.compile(zsliceShader, "Export (Z-slice)")
@@ -505,7 +508,7 @@ export class SDFRenderer {
 
         // World units are millimeters (mm).
         // Voxel size is fixed; grid dimensions are derived from a computed scene AABB.
-        const voxelSizeMm = 0.12
+        const voxelSizeMm = 0.1
         const bounds = await this.#computeSceneBoundsRefined()
         if (!bounds) {
             throw new Error("Bounds compute found no inside samples; is the SDF empty or far from origin?")

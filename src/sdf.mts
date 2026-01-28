@@ -3,8 +3,6 @@ import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
-import { ZSliceExport } from "./export/zslice.mjs"
-import { exportStlBinary } from "./export/stl.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import zsliceShader from "./shaders/zslice.wgsl"
@@ -13,7 +11,6 @@ import boundsShader from "./shaders/bounds.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
-import { mergeCoplanar } from "./export/postprocess.mjs"
 
 class UniformBuffers {
     camera!: GPUBuffer
@@ -553,25 +550,7 @@ export class SDFRenderer {
         if (pre.nonManifoldEdges > 0) {
             console.warn("[renderMesh] base mesh has non-manifold edges (before mergeCoplanar)")
             this.#logMeshEdgeStats(mesh, "renderMesh:preMerge")
-            return mesh
         }
-
-        // Compare manifoldness before/after post-processing. If merging introduces
-        // non-manifold edges, fall back to the unmerged mesh.
-        const merged = mergeCoplanar(mesh)
-        const post = this.#meshEdgeStats(merged)
-        console.log(
-            `[renderMesh] mergeCoplanar delta: tris ${pre.triCount} -> ${post.triCount}, boundaryEdges ${pre.boundaryEdges} -> ${post.boundaryEdges}, nonManifoldEdges ${pre.nonManifoldEdges} -> ${post.nonManifoldEdges}`
-        )
-        if (post.nonManifoldEdges > pre.nonManifoldEdges) {
-            console.warn("[renderMesh] mergeCoplanar increased non-manifold edges; returning unmerged mesh")
-            this.#logMeshEdgeStats(mesh, "renderMesh:preMerge")
-            this.#logMeshEdgeStats(merged, "renderMesh:postMerge")
-            return mesh
-        }
-        if (post.nonManifoldEdges > 0) {
-            this.#logMeshEdgeStats(merged, "renderMesh:postMerge")
-        }
-        return merged
+        return mesh
     }
 }

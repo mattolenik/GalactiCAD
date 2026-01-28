@@ -5,7 +5,6 @@ import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
-import zsliceShader from "./shaders/zslice.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
@@ -43,7 +42,6 @@ export class SDFRenderer {
     #shaderCompiler!: ShaderCompiler
     #sceneShader!: GPUShaderModule
     #exportShader!: GPUShaderModule
-    #zsliceShader!: GPUShaderModule
     #boundsShader!: GPUShaderModule
     #helper!: GPUHelper
     #builtSrc: string | null = null
@@ -236,7 +234,6 @@ export class SDFRenderer {
             .replace("insert", "sceneSDFEx", sceneSDFEx)
         this.#sceneShader = this.#shaderCompiler.compile(previewShader, "Preview Window")
         this.#exportShader = this.#shaderCompiler.compile(exportShader, "Export")
-        this.#zsliceShader = this.#shaderCompiler.compile(zsliceShader, "Export (Z-slice)")
         this.#boundsShader = this.#shaderCompiler.compile(boundsShader, "Bounds (scene bbox)")
         // console.log(this.#exportShader.text)
         this.#buildPreviewPipeline()

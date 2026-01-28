@@ -20,20 +20,25 @@ struct VertexOutput {
     @location(0) uv: vec2f,
 }
 
-// The contents of sceneSDF are replaced at runtime, do not modify this function.
-fn sceneSDF(p: vec3f) -> f32 {
-    return 0.0; //:) insert sceneSDF
+// The contents of sceneSDFEx are replaced at runtime, do not modify this function.
+fn sceneSDFEx(p: vec3f) -> SDFResult {
+    return 0.0; //:) insert sceneSDFEx
 }
 
 fn raymarch(origin: vec3f, dir: vec3f) -> f32 {
     var t: f32 = 0.001;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
-        let d = sceneSDF(p);
-        if (d < SURF_DIST) {
+        let sr = sceneSDFEx(p);
+        // Use g only to reduce step size when needed.
+        var step = sr.d;
+        if (sr.g > 1.0) {
+            step = sr.d / sr.g;
+        }
+        if (sr.d < SURF_DIST) {
             return t;
         }
-        t = t + d;
+        t = t + step;
         if (t >= MAX_DIST) {
             break;
         }
@@ -47,9 +52,9 @@ fn estimateNormal(p: vec3f) -> vec3f {
     let dy = vec3f(0.0, eps, 0.0);
     let dz = vec3f(0.0, 0.0, eps);
 
-    let nx = sceneSDF(p + dx) - sceneSDF(p - dx);
-    let ny = sceneSDF(p + dy) - sceneSDF(p - dy);
-    let nz = sceneSDF(p + dz) - sceneSDF(p - dz);
+    let nx = sceneSDFEx(p + dx).d - sceneSDFEx(p - dx).d;
+    let ny = sceneSDFEx(p + dy).d - sceneSDFEx(p - dy).d;
+    let nz = sceneSDFEx(p + dz).d - sceneSDFEx(p - dz).d;
 
     return normalize(vec3f(nx, ny, nz));
 }

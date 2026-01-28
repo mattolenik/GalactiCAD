@@ -37,7 +37,7 @@ export class SceneInfo {
      * Compile the scene to WGSL code.
      * @param extended If true, returns full SDFResult; if false, returns just the distance (f32)
      */
-    compile(extended: boolean = false): string {
+    compile(extended: boolean = true): string {
         const compiledResult = this.root.compile(1)
         let compiledText = compiledResult.text
         if (!compiledText) {

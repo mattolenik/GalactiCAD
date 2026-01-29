@@ -942,12 +942,17 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             }
             
             // Final projection with gradient-magnitude correction
-            var normal = computeGradient(intersectionPos);
+            // Use analytic normals from SDFResult instead of finite-difference gradients
+            // for stability at CSG seams where gradients are discontinuous.
+            // Note: n is already correctly oriented by CSG operators (they negate n when needed)
+            var sdfResult = sceneSDF(intersectionPos);
+            var normal = sdfResult.n;
             for (var iter = 0u; iter < uniforms.mdcU0.x; iter = iter + 1u) {
-                let sdfResult = sceneSDF(intersectionPos);
+                sdfResult = sceneSDF(intersectionPos);
                 let d = sdfResult.d - uniforms.isoValue;
                 if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.z) { break; }
-                normal = computeGradient(intersectionPos);
+                // Use analytic normal from SDF result (already correctly oriented)
+                normal = sdfResult.n;
                 // Only use gradient magnitude to reduce step size.
                 let gradScale = max(1.0, sdfResult.g);
                 let correctedStep = d / gradScale;
@@ -956,7 +961,9 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
                 let clampedStep = clamp(correctedStep, -maxStep, maxStep);
                 intersectionPos = intersectionPos - normal * clampedStep;
             }
-            normal = computeGradient(intersectionPos);
+            // Get final analytic normal at converged position
+            let finalSdf = sceneSDF(intersectionPos);
+            normal = finalSdf.n;
             
             crossingPos[e] = intersectionPos;
             crossingNormal[e] = normal;
@@ -1085,11 +1092,18 @@ fn vertexGeneration_Pass4(
     // Iterative projection to ensure vertex is on the true iso-surface.
     // Uses gradient-magnitude-aware stepping to handle smooth CSG regions
     // where |∇f| < 1 and naive projection overshoots.
+    // Uses analytic normals from SDFResult for stability at CSG seams.
+    // Note: n is already correctly oriented by CSG operators (they negate n when needed)
+    var finalSdfResult = sceneSDF(vertexPos);
     for (var iter = 0u; iter < uniforms.mdcU0.y; iter = iter + 1u) {
         let sdfResult = sceneSDF(vertexPos);
         let d = sdfResult.d - uniforms.isoValue;
-        if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { break; }
-        let n = computeGradient(vertexPos);
+        if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { 
+            finalSdfResult = sdfResult;
+            break; 
+        }
+        // Use analytic normal from SDF result (already correctly oriented)
+        let n = sdfResult.n;
         
         // Only use gradient magnitude to reduce step size.
         let gradScale = max(1.0, sdfResult.g);
@@ -1114,11 +1128,13 @@ fn vertexGeneration_Pass4(
         }
         // Final clamp to strict cell bounds
         vertexPos = clamp(vertexPos, cellMin, cellMax);
+        finalSdfResult = sdfResult;
     }
     
-    var vertexNormal = computeGradient(vertexPos); 
-    if (qef.numPoints == 0u) { 
-        vertexNormal = vec3f(0.0,1.0,0.0); 
+    // Use analytic normal from final SDF evaluation for vertex normal
+    var vertexNormal = finalSdfResult.n;
+    if (qef.numPoints == 0u || length(vertexNormal) < 0.001) { 
+        vertexNormal = vec3f(0.0, 1.0, 0.0); 
     }
     
     vertices[vertexRecordIdx] = Vertex(vertexPos, vertexNormal);

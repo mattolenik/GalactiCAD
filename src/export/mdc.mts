@@ -91,9 +91,19 @@ export interface MDCParams {
 export class MDCExport {
     #helper: GPUHelper
     #device: GPUDevice
+    #localBuffers: GPUBuffer[] = []
+
     constructor(helper: GPUHelper, private params: MDCParams) {
         this.#helper = helper
         this.#device = helper.device
+    }
+
+    /** Destroy all GPU buffers created during export */
+    #destroyLocalBuffers() {
+        for (const buffer of this.#localBuffers) {
+            buffer.destroy()
+        }
+        this.#localBuffers = []
     }
 
     async export(mdcShaderModule: GPUShaderModule): Promise<MeshData> {
@@ -111,9 +121,17 @@ export class MDCExport {
         let estimatedGpuBufferBytes = 0
         let estimatedGpuReadbackBytes = 0
 
+        // Create buffer and track it for cleanup
         const createBuffer = (label: string, size: number, usage: GPUBufferUsageFlags, mappedAtCreation?: boolean) => {
             estimatedGpuBufferBytes += size
-            return this.#helper.createBuffer(label, size, usage, mappedAtCreation)
+            const buffer = this.#device.createBuffer({
+                label,
+                mappedAtCreation,
+                size,
+                usage,
+            })
+            this.#localBuffers.push(buffer)
+            return buffer
         }
 
         const readBufferData = async (buffer: GPUBuffer, size = buffer.size) => {
@@ -227,6 +245,7 @@ export class MDCExport {
             0,
         ])
 
+        try {
         const uniformBuffer = createBuffer(
             "Uniforms",
             uniformBufferData.byteLength,
@@ -717,6 +736,12 @@ export class MDCExport {
 
         logDiag("done")
         return { verts, tris }
+
+        } finally {
+            // Clean up all GPU buffers created during export
+            this.#destroyLocalBuffers()
+            logDiag("GPU buffers destroyed")
+        }
     }
 }
 

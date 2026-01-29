@@ -3,20 +3,24 @@ import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
 import { DocumentTabs } from "./components/document-tabs.mjs"
 import { MenuButton } from "./components/menu-button.mjs"
-import type { MeshViewer } from "./components/mesh-viewer.mjs"
+import { MeshViewer } from "./components/mesh-viewer.mjs"
 import type { PreviewWindow } from "./components/preview-window.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
+import { LocalStorage } from "./storage/storage.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
     renderer: SDFRenderer
     #tabs: DocumentTabs
-    #mesh: MeshViewer
+    #mesh: MeshViewer | null = null
     #meshUpdateToken = 0
     #meshUpdateTimer: number | null = null
+    #viewports: HTMLElement
+    #ls: LocalStorage
+    #meshViewerEnabled = false
 
     build() {
         try {
@@ -32,12 +36,20 @@ class App {
 
     constructor(
         preview: PreviewWindow,
-        mesh: MeshViewer,
         tabs: HTMLDivElement,
         editorContainer: HTMLDivElement,
         private log: HTMLDivElement,
         menu: HTMLElement
     ) {
+        this.#ls = LocalStorage.instance
+        this.#viewports = document.getElementById("viewports")!
+
+        // Remove any existing mesh viewer from HTML (we create it dynamically when enabled)
+        const existingMesh = document.getElementById("mesh")
+        if (existingMesh) {
+            existingMesh.remove()
+        }
+
         this.editor = monaco.editor.create(editorContainer, {
             "semanticHighlighting.enabled": true,
             autoClosingBrackets: "beforeWhitespace",
@@ -76,7 +88,6 @@ class App {
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
         this.#tabs.restore()
-        this.#mesh = mesh
 
         const style = document.createElement("style")
         style.textContent = `
@@ -98,30 +109,6 @@ class App {
         })
 
         this.renderer = new SDFRenderer(preview)
-
-        // Keep mesh + preview cameras in sync (two-way).
-        // Guard against infinite loops by suppressing re-emits during propagation.
-        {
-            const previewControls = this.renderer.controls
-            const meshControls = this.#mesh.controls
-            let syncing = false
-
-            const push = (from: "preview" | "mesh", state: CameraState) => {
-                if (syncing) return
-                syncing = true
-                if (from === "preview") {
-                    meshControls.applyState(state, { emit: false })
-                } else {
-                    previewControls.applyState(state, { emit: false })
-                }
-                syncing = false
-            }
-
-            previewControls.onChange = state => push("preview", state)
-            meshControls.onChange = state => push("mesh", state)
-            // Ensure identical initial state even if load order differs.
-            meshControls.applyState(previewControls.state, { emit: false })
-        }
 
         this.renderer
             .ready()
@@ -149,6 +136,25 @@ class App {
                 deleteItem.innerHTML = "Delete"
                 const exportItem = document.createElement("span")
                 exportItem.innerHTML = "Export to STL"
+
+                // Mesh viewer toggle checkbox
+                const meshViewerContainer = document.createElement("div")
+                meshViewerContainer.style.display = "flex"
+                meshViewerContainer.style.alignItems = "center"
+                meshViewerContainer.style.gap = "8px"
+                meshViewerContainer.style.cursor = "pointer"
+                const meshViewerCheckbox = document.createElement("input")
+                meshViewerCheckbox.type = "checkbox"
+                // Prevent checkbox from toggling on its own click (action handles it)
+                meshViewerCheckbox.style.pointerEvents = "none"
+                // Default to disabled (not present)
+                const meshViewerEnabled = this.#ls.getItem("app.meshViewerEnabled") === "true"
+                meshViewerCheckbox.checked = meshViewerEnabled
+                this.#setMeshViewerEnabled(meshViewerEnabled)
+                const meshViewerText = document.createElement("span")
+                meshViewerText.textContent = "Show Mesh Viewer"
+                meshViewerContainer.append(meshViewerCheckbox, meshViewerText)
+
                 const menuButton = new MenuButton([
                     { element: newItem, action: () => this.#tabs.newDocument() },
                     { element: renameItem, action: () => console.log("TODO: rename") },
@@ -179,6 +185,15 @@ class App {
                             }
                         },
                     },
+                    {
+                        element: meshViewerContainer,
+                        action: () => {
+                            const enabled = !meshViewerCheckbox.checked
+                            meshViewerCheckbox.checked = enabled
+                            this.#setMeshViewerEnabled(enabled)
+                            this.#ls.setItem("app.meshViewerEnabled", enabled ? "true" : "false")
+                        },
+                    },
                 ])
                 menu.replaceWith(menuButton)
             })
@@ -192,6 +207,11 @@ class App {
     }
 
     #scheduleMeshUpdate(src: string) {
+        // Skip mesh updates if mesh viewer is not enabled
+        if (!this.#meshViewerEnabled || !this.#mesh) {
+            return
+        }
+
         // Meshing is expensive; debounce so we don't re-mesh on every keystroke.
         if (this.#meshUpdateTimer !== null) {
             clearTimeout(this.#meshUpdateTimer)
@@ -203,12 +223,82 @@ class App {
             try {
                 const mesh = await this.renderer.renderMesh(src)
                 if (token !== this.#meshUpdateToken) return
-                await this.#mesh.setMesh(mesh)
+                if (this.#mesh) {
+                    await this.#mesh.setMesh(mesh)
+                }
             } catch (err) {
                 // Mesh generation failing shouldn't break the live SDF preview.
                 console.error(`Mesh update failed: ${err}`)
             }
         }, 600)
+    }
+
+    #setMeshViewerEnabled(enabled: boolean) {
+        // Guard against duplicate calls
+        if (enabled === this.#meshViewerEnabled && (enabled ? this.#mesh : !this.#mesh)) {
+            return
+        }
+        this.#meshViewerEnabled = enabled
+
+        if (enabled) {
+            // Remove any existing mesh viewer first
+            if (this.#mesh) {
+                this.#mesh.remove()
+                this.#mesh = null
+            }
+
+            // Create mesh viewer element dynamically using the class constructor
+            const meshViewer = new MeshViewer()
+            meshViewer.id = "mesh"
+
+            // Add element to viewports (flexbox will distribute space automatically)
+            this.#viewports.appendChild(meshViewer)
+            this.#mesh = meshViewer
+
+            // Wait for layout to settle before setting up camera sync
+            requestAnimationFrame(() => {
+                if (!this.#mesh) return // Guard against race with disable
+
+                // Set up camera sync between preview and mesh viewer
+                const previewControls = this.renderer.controls
+                const meshControls = meshViewer.controls
+                let syncing = false
+
+                const push = (from: "preview" | "mesh", state: CameraState) => {
+                    if (syncing) return
+                    syncing = true
+                    if (from === "preview") {
+                        meshControls.applyState(state, { emit: false })
+                    } else {
+                        previewControls.applyState(state, { emit: false })
+                    }
+                    syncing = false
+                }
+
+                previewControls.onChange = state => push("preview", state)
+                meshControls.onChange = state => push("mesh", state)
+                // Sync initial camera state
+                meshControls.applyState(previewControls.state, { emit: false })
+
+                // Trigger a mesh update for the current source
+                this.#scheduleMeshUpdate(this.editor.getValue())
+            })
+        } else {
+            // Remove mesh viewer from DOM and release reference
+            if (this.#mesh) {
+                this.#mesh.remove()
+                this.#mesh = null
+            }
+
+            // Clear any pending mesh update
+            if (this.#meshUpdateTimer !== null) {
+                clearTimeout(this.#meshUpdateTimer)
+                this.#meshUpdateTimer = null
+            }
+
+            // Remove mesh viewer's camera change handler from preview controls
+            this.renderer.controls.onChange = undefined
+        }
     }
 }
 export default App

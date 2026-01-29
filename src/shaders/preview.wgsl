@@ -22,11 +22,12 @@ struct VertexOutput {
 
 // The contents of sceneSDF are replaced at runtime, do not modify this function.
 fn sceneSDF(p: vec3f) -> SDFResult {
-    return sdfTrue(0.0, 0u); //:) insert sceneSDF
+    return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
 fn raymarch(origin: vec3f, dir: vec3f) -> f32 {
     var t: f32 = 0.001;
+    var lastStep: f32 = 0.0;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF(p);
@@ -36,8 +37,21 @@ fn raymarch(origin: vec3f, dir: vec3f) -> f32 {
             step = sr.d / sr.g;
         }
         if (sr.d < SURF_DIST) {
-            return t;
+            // Refine hit to reduce view-dependent jitter at CSG seams.
+            var lo = max(0.0, t - lastStep);
+            var hi = t;
+            for (var j: i32 = 0; j < 8; j = j + 1) {
+                let mid = 0.5 * (lo + hi);
+                let md = sceneSDF(origin + mid * dir).d;
+                if (md > 0.0) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            return hi;
         }
+        lastStep = step;
         t = t + step;
         if (t >= MAX_DIST) {
             break;
@@ -47,7 +61,12 @@ fn raymarch(origin: vec3f, dir: vec3f) -> f32 {
 }
 
 fn estimateNormal(p: vec3f) -> vec3f {
-    let eps = NORMAL_EPS;
+    let hit = sceneSDF(p);
+    let n = hit.n;
+    if (length(n) > 0.0) {
+        return normalize(n);
+    }
+    let eps = max(NORMAL_EPS, SURF_DIST * 0.25);
     let dx = vec3f(eps, 0.0, 0.0);
     let dy = vec3f(0.0, eps, 0.0);
     let dz = vec3f(0.0, 0.0, eps);

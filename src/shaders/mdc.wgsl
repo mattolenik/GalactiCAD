@@ -107,7 +107,7 @@ const EDGES_PER_CELL: u32 = 12u;
 
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> SDFResult {
-    return sdfTrue(0.0, 0u); //:) insert sceneSDF
+    return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
 fn mix3f(a: vec3f, b: vec3f, t: f32) -> vec3f {

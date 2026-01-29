@@ -38,7 +38,7 @@ struct TileBounds {
 
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> SDFResult {
-    return sdfTrue(0.0, 0u); //:) insert sceneSDF
+    return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
 fn isInside(p: vec3f) -> bool {

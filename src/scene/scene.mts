@@ -34,22 +34,16 @@ export class SceneInfo {
     }
 
     /**
-     * Compile the scene to WGSL code.
-     * @param extended If true, returns full SDFResult; if false, returns just the distance (f32)
+     * Compile the scene to WGSL code (SDFResult only).
      */
-    compile(extended: boolean = true): string {
+    compile(): string {
         const compiledResult = this.root.compile(1)
         let compiledText = compiledResult.text
         if (!compiledText) {
             throw new Error("compilation returned no result")
         }
-        if (extended) {
-            // Return full SDFResult with gradient magnitude
-            compiledText += `\nreturn ${compiledResult.varName};\n`
-        } else {
-            // Return just the distance value (f32) for backward compatibility
-            compiledText += `\nreturn ${compiledResult.varName}.d;\n`
-        }
+        // Return full SDFResult with gradient magnitude
+        compiledText += `\nreturn ${compiledResult.varName};\n`
         return compiledText
     }
 }
@@ -291,7 +285,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
             funcName,
             varName,
             // Use extended sphere that returns SDFResult with gradient magnitude
-            text: `let ${varName} = fSphereEx(p - ${this.pos.wgsl}, ${this.r});`,
+            text: `let ${varName} = fSphereEx(p - ${this.pos.wgsl}, ${this.r}, ${this.id}u);`,
         }
     }
 }
@@ -323,7 +317,7 @@ export class Box extends WithSize(WithPos(Node)) {
             funcName,
             varName,
             // Use extended box that returns SDFResult with gradient magnitude
-            text: `let ${varName} = fBoxEx(p - ${this.pos.wgsl}, ${this.size.wgsl});`,
+            text: `let ${varName} = fBoxEx(p - ${this.pos.wgsl}, ${this.size.wgsl}, ${this.id}u);`,
         }
     }
 }

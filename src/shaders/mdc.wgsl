@@ -106,14 +106,8 @@ const EDGES_PER_CELL: u32 = 12u;
 // ============================== UTILITY FUNCTIONS ==============================
 
 // Placeholder for the actual scene Signed Distance Function
-fn sceneSDF(p: vec3f) -> f32 {
-    return 0.0; //:) insert sceneSDF
-}
-
-// Extended scene SDF that returns gradient magnitude alongside distance.
-// This is used for gradient-magnitude-aware projection in smooth CSG regions.
-fn sceneSDFEx(p: vec3f) -> SDFResult {
-    return sdfTrue(0.0); //:) insert sceneSDFEx
+fn sceneSDF(p: vec3f) -> SDFResult {
+    return sdfTrue(0.0, 0u); //:) insert sceneSDF
 }
 
 fn mix3f(a: vec3f, b: vec3f, t: f32) -> vec3f {
@@ -199,7 +193,7 @@ fn getCellCornerPos(cellPos: vec3u, cornerIndex: u32) -> vec3u {
 }
 
 fn sampleSDF(worldPos: vec3f) -> f32 {
-    return sceneSDF(worldPos);
+    return sceneSDF(worldPos).d;
 }
 
 fn computeGradient(p: vec3f) -> vec3f {
@@ -870,7 +864,7 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             var intersectionPos = mix3f(p0_world, p1_world, t);
             
             // Check if we're in a smooth blend region (gradient magnitude < 1)
-            let initialSdf = sceneSDFEx(intersectionPos);
+            let initialSdf = sceneSDF(intersectionPos);
             let inBlendRegion = initialSdf.g < 0.95;
             
             if (inBlendRegion) {
@@ -906,7 +900,7 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             // Final projection with gradient-magnitude correction
             var normal = computeGradient(intersectionPos);
             for (var iter = 0u; iter < uniforms.mdcU0.x; iter = iter + 1u) {
-                let sdfResult = sceneSDFEx(intersectionPos);
+                let sdfResult = sceneSDF(intersectionPos);
                 let d = sdfResult.d - uniforms.isoValue;
                 if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.z) { break; }
                 normal = computeGradient(intersectionPos);
@@ -1048,7 +1042,7 @@ fn vertexGeneration_Pass4(
     // Uses gradient-magnitude-aware stepping to handle smooth CSG regions
     // where |∇f| < 1 and naive projection overshoots.
     for (var iter = 0u; iter < uniforms.mdcU0.y; iter = iter + 1u) {
-        let sdfResult = sceneSDFEx(vertexPos);
+        let sdfResult = sceneSDF(vertexPos);
         let d = sdfResult.d - uniforms.isoValue;
         if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { break; }
         let n = computeGradient(vertexPos);

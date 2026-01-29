@@ -4,11 +4,11 @@ export class ShaderCompiler {
     symbol = `\\/\\/:\\)` // matches this:  //:)
     transforms: TransformFunc[] = []
 
-    constructor(private device: GPUDevice) {}
+    constructor(private device: GPUDevice) { }
 
     replace(directive: string, name: string, replaceString: string): ShaderCompiler {
         this.transforms.push((text: string) => {
-            // Use word boundary (\b) to prevent partial matches (e.g., sceneSDF matching sceneSDFEx)
+            // Use word boundary (\b) to prevent partial matches.
             const pattern = new RegExp(`.*${this.symbol}\\s*${directive}\\s*${name}\\b`, "g")
             return text.replaceAll(pattern, replaceString)
         })
@@ -30,12 +30,12 @@ export class ShaderCompiler {
             }
         }
         if (label === "Export") {
-            // Debug: verify sceneSDFEx injection
-            const hasSceneSDFEx = code.includes("fn sceneSDFEx")
-            const stillHasPlaceholder = code.includes("insert sceneSDFEx")
-            console.log(`[Shader Debug] ${label}: sceneSDFEx defined=${hasSceneSDFEx}, placeholder remaining=${stillHasPlaceholder}`)
+            // Debug: verify sceneSDF injection
+            const hasSceneSDF = code.includes("fn sceneSDF")
+            const stillHasPlaceholder = code.includes("insert sceneSDF")
+            console.log(`[Shader Debug] ${label}: sceneSDF defined=${hasSceneSDF}, placeholder remaining=${stillHasPlaceholder}`)
             if (stillHasPlaceholder) {
-                console.error("[Shader Debug] sceneSDFEx injection FAILED!")
+                console.error("[Shader Debug] sceneSDF injection FAILED!")
             }
         }
         return this.device.createShaderModule({ label, code })

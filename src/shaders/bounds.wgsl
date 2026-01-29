@@ -37,12 +37,12 @@ struct TileBounds {
 @group(0) @binding(1) var<storage, read_write> out: array<TileBounds>;
 
 // Placeholder for the actual scene Signed Distance Function
-fn sceneSDF(p: vec3f) -> f32 {
-    return 0.0; //:) insert sceneSDF
+fn sceneSDF(p: vec3f) -> SDFResult {
+    return sdfTrue(0.0, 0u); //:) insert sceneSDF
 }
 
 fn isInside(p: vec3f) -> bool {
-    return sceneSDF(p) <= uniforms.searchMaxIso.w;
+    return sceneSDF(p).d <= uniforms.searchMaxIso.w;
 }
 
 fn linearToGrid(i: u32, dims: vec3u) -> vec3u {

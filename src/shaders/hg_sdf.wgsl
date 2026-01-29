@@ -21,16 +21,18 @@ const PHI: f32 = sqrt(5.0) * 0.5 + 0.5;
 struct SDFResult {
     d: f32,
     g: f32,
+    id: u32,
+    s: f32,
 }
 
 // Constructor helper
-fn sdfResult(d: f32, g: f32) -> SDFResult {
-    return SDFResult(d, g);
+fn sdfResult(d: f32, g: f32, id: u32, s: f32) -> SDFResult {
+    return SDFResult(d, g, id, s);
 }
 
 // Create SDFResult from a true distance (gradient magnitude = 1.0)
-fn sdfTrue(d: f32) -> SDFResult {
-    return SDFResult(d, 1.0);
+fn sdfTrue(d: f32, id: u32) -> SDFResult {
+    return SDFResult(d, 1.0, id, 1.0);
 }
 
 //////////////////////////////
@@ -116,13 +118,13 @@ fn fBox(p: vec3<f32>, b: vec3<f32>) -> f32 {
 //  These return SDFResult with gradient magnitude = 1.0
 ////////////////////////////////////////
 
-fn fSphereEx(p: vec3<f32>, r: f32) -> SDFResult {
-    return sdfTrue(length(p) - r);
+fn fSphereEx(p: vec3<f32>, r: f32, id: u32) -> SDFResult {
+    return sdfTrue(length(p) - r, id);
 }
 
-fn fBoxEx(p: vec3<f32>, b: vec3<f32>) -> SDFResult {
+fn fBoxEx(p: vec3<f32>, b: vec3<f32>, id: u32) -> SDFResult {
     let d = abs(p) - b;
-    return sdfTrue(length(max(d, vec3<f32>(0.0))) + vmax3(min(d, vec3<f32>(0.0))));
+    return sdfTrue(length(max(d, vec3<f32>(0.0))) + vmax3(min(d, vec3<f32>(0.0))), id);
 }
 
 // 2D boxes
@@ -560,7 +562,7 @@ fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
 // Hard difference
 fn opDifferenceEx(a: SDFResult, b: SDFResult) -> SDFResult {
     // difference = intersection with complement
-    let bNeg = sdfResult(-b.d, b.g);
+    let bNeg = sdfResult(-b.d, b.g, b.id, -b.s);
     return opIntersectionEx(a, bNeg);
 }
 
@@ -575,6 +577,8 @@ fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = min(min(a.d, b.d), (a.d - r + b.d) * sqrt(0.5));
     
     var g = 1.0;
+    var id = a.id;
+    var s = a.s;
     let chamferD = (a.d - r + b.d) * sqrt(0.5);
     if (chamferD < a.d && chamferD < b.d) {
         // In chamfer region - gradient magnitude depends on angle between input gradients
@@ -585,32 +589,42 @@ fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
         g = 1.0;
     } else if (a.d < b.d) {
         g = a.g;
+        id = a.id;
+        s = a.s;
     } else {
         g = b.g;
+        id = b.id;
+        s = b.s;
     }
     
-    return sdfResult(d, g);
+    return sdfResult(d, g, id, s);
 }
 
 fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = max(max(a.d, b.d), (a.d + r + b.d) * sqrt(0.5));
     
     var g = 1.0;
+    var id = a.id;
+    var s = a.s;
     let chamferD = (a.d + r + b.d) * sqrt(0.5);
     if (chamferD > a.d && chamferD > b.d) {
         // Same reasoning as union chamfer
         g = 1.0;
     } else if (a.d > b.d) {
         g = a.g;
+        id = a.id;
+        s = a.s;
     } else {
         g = b.g;
+        id = b.id;
+        s = b.s;
     }
     
-    return sdfResult(d, g);
+    return sdfResult(d, g, id, s);
 }
 
 fn fOpDifferenceChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
-    return fOpIntersectionChamferEx(a, sdfResult(-b.d, b.g), r);
+    return fOpIntersectionChamferEx(a, sdfResult(-b.d, b.g, b.id, -b.s), r);
 }
 
 // Round union with gradient magnitude tracking
@@ -639,6 +653,8 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     // At blend center: d ≈ r - r*sqrt(2) = -0.414r, but true distance ≈ r*(sqrt(2)-1) ≈ 0.414r
     // So distortion ≈ 1.0 at the edge, and the SDF "compresses" distance in the blend.
     var g = 1.0;
+    var id = a.id;
+    var s = a.s;
     if (a.d < r && b.d < r && uLen > 1e-6) {
         // In blend region. The gradient magnitude stays close to 1 for perpendicular surfaces,
         // but the SDF value itself is compressed. We model this as an effective gradient < 1.
@@ -652,13 +668,24 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
         let cornerFactor = (u.x * u.y) / (uLen * uLen);  // 0 for edges, 0.5 for 45°
         g = mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor);
         g = max(g, 0.25);  // Don't go too low
+        if (a.d < b.d) {
+            id = a.id;
+            s = a.s;
+        } else {
+            id = b.id;
+            s = b.s;
+        }
     } else if (a.d < b.d) {
         g = a.g;
+        id = a.id;
+        s = a.s;
     } else {
         g = b.g;
+        id = b.id;
+        s = b.s;
     }
     
-    return sdfResult(d, g);
+    return sdfResult(d, g, id, s);
 }
 
 fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -666,17 +693,30 @@ fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = min(a.d, b.d) - e * e * 0.25 / r;
     
     var g = 1.0;
+    var id = a.id;
+    var s = a.s;
     if (e > 0.0) {
         // In blend region
         let blendFactor = e / r;
         g = max(0.4, 1.0 - blendFactor * 0.5);
+        if (a.d < b.d) {
+            id = a.id;
+            s = a.s;
+        } else {
+            id = b.id;
+            s = b.s;
+        }
     } else if (a.d < b.d) {
         g = a.g;
+        id = a.id;
+        s = a.s;
     } else {
         g = b.g;
+        id = b.id;
+        s = b.s;
     }
     
-    return sdfResult(d, g);
+    return sdfResult(d, g, id, s);
 }
 
 fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -685,21 +725,34 @@ fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = min(-r, max(a.d, b.d)) + uLen;
     
     var g = 1.0;
+    var id = a.id;
+    var s = a.s;
     if (a.d > -r && b.d > -r && uLen > 1e-6) {
         // In blend region for intersection (inside corner rounding)
         let blendDepth = min(r + a.d, r + b.d) / r;  // 0 to 1
         let cornerFactor = (u.x * u.y) / (uLen * uLen);  // 0 for edges, 0.5 for 45°
         g = mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor);
         g = max(g, 0.25);
+        if (a.d > b.d) {
+            id = a.id;
+            s = a.s;
+        } else {
+            id = b.id;
+            s = b.s;
+        }
     } else if (a.d > b.d) {
         g = a.g;
+        id = a.id;
+        s = a.s;
     } else {
         g = b.g;
+        id = b.id;
+        s = b.s;
     }
     
-    return sdfResult(d, g);
+    return sdfResult(d, g, id, s);
 }
 
 fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
-    return fOpIntersectionRoundEx(a, sdfResult(-b.d, b.g), r);
+    return fOpIntersectionRoundEx(a, sdfResult(-b.d, b.g, b.id, -b.s), r);
 }

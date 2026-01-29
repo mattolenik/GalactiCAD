@@ -1,9 +1,8 @@
 //:) include "hg_sdf.wgsl"
 
-const MAX_STEPS: i32 = 500;
+const MAX_STEPS: i32 = 300;
 const MAX_DIST: f32 = 300.0;
 const SURF_DIST: f32 = 0.001;
-const NORMAL_EPS: f32 = 0.001;
 
 struct Camera {
     transform: mat4x4f,
@@ -25,7 +24,13 @@ fn sceneSDF(p: vec3f) -> SDFResult {
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
-fn raymarch(origin: vec3f, dir: vec3f) -> f32 {
+// Raymarch result includes both distance and SDF info at hit point.
+struct RaymarchHit {
+    t: f32,          // distance along ray, or -1 if miss
+    sdf: SDFResult,  // SDF result at hit point (includes normal)
+}
+
+fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
     var t: f32 = 0.001;
     var lastStep: f32 = 0.0;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
@@ -49,7 +54,9 @@ fn raymarch(origin: vec3f, dir: vec3f) -> f32 {
                     hi = mid;
                 }
             }
-            return hi;
+            // Get the SDF result at the refined hit point (includes analytical normal)
+            let hitSdf = sceneSDF(origin + hi * dir);
+            return RaymarchHit(hi, hitSdf);
         }
         lastStep = step;
         t = t + step;
@@ -57,25 +64,20 @@ fn raymarch(origin: vec3f, dir: vec3f) -> f32 {
             break;
         }
     }
-    return -1.0;
+    // Miss - return sentinel
+    return RaymarchHit(-1.0, sdfTrue(MAX_DIST, 0u, vec3f(0.0)));
 }
 
-fn estimateNormal(p: vec3f) -> vec3f {
-    let hit = sceneSDF(p);
-    let n = hit.n;
-    if (length(n) > 0.0) {
-        return normalize(n);
-    }
-    let eps = max(NORMAL_EPS, SURF_DIST * 0.25);
-    let dx = vec3f(eps, 0.0, 0.0);
-    let dy = vec3f(0.0, eps, 0.0);
-    let dz = vec3f(0.0, 0.0, eps);
-
-    let nx = sceneSDF(p + dx).d - sceneSDF(p - dx).d;
-    let ny = sceneSDF(p + dy).d - sceneSDF(p - dy).d;
-    let nz = sceneSDF(p + dz).d - sceneSDF(p - dz).d;
-
-    return normalize(vec3f(nx, ny, nz));
+// Fallback normal estimation using tetrahedron gradient (4 samples instead of 6)
+fn estimateNormalFallback(p: vec3f) -> vec3f {
+    let eps = SURF_DIST * 0.5;
+    let k = vec2f(1.0, -1.0);
+    return normalize(
+        k.xyy * sceneSDF(p + k.xyy * eps).d +
+        k.yyx * sceneSDF(p + k.yyx * eps).d +
+        k.yxy * sceneSDF(p + k.yxy * eps).d +
+        k.xxx * sceneSDF(p + k.xxx * eps).d
+    );
 }
 
 fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
@@ -136,11 +138,19 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     let transformedDir = normalize((camera.transform * vec4f(rayDir, 0.0)).xyz);
 
     // Use the transformed ray for raymarching.
-    let t = raymarch(transformedOrigin, transformedDir);
+    let hit = raymarch(transformedOrigin, transformedDir);
 
-    if (t > 0) {
-        let p = transformedOrigin + t * transformedDir;
-        let normal = estimateNormal(p);
+    if (hit.t > 0.0) {
+        // Use analytical normal from SDF result (already computed during raymarch)
+        var normal = hit.sdf.n;
+        if (dot(normal, normal) < 0.001) {
+            // Fallback to numerical gradient if analytical normal is degenerate
+            let p = transformedOrigin + hit.t * transformedDir;
+            normal = estimateNormalFallback(p);
+        } else {
+            normal = normalize(normal);
+        }
+        
         let diffuse = lighting(normal);
         let baseColor = vec3f(1.0, 0.5, 0.2);
         let shadedColor = baseColor * diffuse;

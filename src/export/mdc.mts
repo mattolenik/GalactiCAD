@@ -351,10 +351,10 @@ export class MDCExport {
 
         const debugSkipCountersBuffer = createBuffer(
             "DebugSkipCounters",
-            2 * Uint32Array.BYTES_PER_ELEMENT,
+            8 * Uint32Array.BYTES_PER_ELEMENT,
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
-        this.#device.queue.writeBuffer(debugSkipCountersBuffer, 0, new Uint32Array([0, 0]))
+        this.#device.queue.writeBuffer(debugSkipCountersBuffer, 0, new Uint32Array([0, 0, 0, 0, 0, 0, 0, 0]))
 
         const cellEdgeComponentsBuffer = createBuffer(
             "CellEdgeComponents",
@@ -398,6 +398,7 @@ export class MDCExport {
             p3_edgeDetection,
             [0, uniformBuffer],
             [5, activeCellIndicesBuffer], // activeCellIndicesIn_edge
+            [24, debugSkipCountersBuffer],
             [22, cellEdgeComponentsBuffer],
             [9, cellQEFDataBuffer],
             [10, activeCellCountBuffer]
@@ -470,10 +471,20 @@ export class MDCExport {
         logDiag("after pass5 (triangle generation)")
 
         console.log("Reading back data from GPU...")
-        const debugCountsData = await readBufferData(debugSkipCountersBuffer, 2 * Uint32Array.BYTES_PER_ELEMENT)
+        const debugCountsData = await readBufferData(debugSkipCountersBuffer, 8 * Uint32Array.BYTES_PER_ELEMENT)
         const debugCounts = new Uint32Array(debugCountsData)
         console.log(
-            `MDC debug: skippedQuads(neighborMissing)=${debugCounts[0]} skippedQuads(componentMissing)=${debugCounts[1]}`
+            "MDC debug:",
+            {
+                skippedQuadsNeighborMissing: debugCounts[0],
+                skippedQuadsComponentMissing: debugCounts[1],
+                edgesBothNearIso: debugCounts[2],
+                edgesOneNearIsoNoCross: debugCounts[3],
+                cornersNearIso: debugCounts[4],
+                edgesCrossing: debugCounts[5],
+                faceCenterNearIso: debugCounts[6],
+                faceCaseAmbiguous: debugCounts[7],
+            }
         )
         const indexCountData = await readBufferData(indexCountFaceBuffer)
         const rawIndexCount = new Uint32Array(indexCountData)[0]!

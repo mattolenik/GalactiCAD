@@ -100,7 +100,7 @@ const EDGES_PER_CELL: u32 = 12u;
 // Debug counters (optional):
 // [0] = quads skipped because a neighbor cell was missing
 // [1] = quads skipped because component mapping was missing (0xffffffff)
-@group(0) @binding(24) var<storage, read_write> debugSkipCounters: array<atomic<u32>, 2>;
+@group(0) @binding(24) var<storage, read_write> debugSkipCounters: array<atomic<u32>, 8>;
 
 
 // ============================== UTILITY FUNCTIONS ==============================
@@ -246,12 +246,27 @@ fn findEdgeIntersection(p0_val: f32, p1_val: f32) -> f32 {
 // IMPORTANT: Avoid hash-based tie-breaks here. They are stable, but when many samples
 // fall into the epsilon band (common near CSG seams), they create spatially-correlated
 // alternation -> "checkerboard" missing polygons.
-fn vertexClassAtGridVertex(sdfValue: f32) -> i32 {
-    let d = sdfValue - uniforms.isoValue;
-    let eps = max(uniforms.mdcF0.y, uniforms.voxelSize * uniforms.mdcF0.x);
+fn resolveSignAtPos(p: vec3f, d: f32) -> i32 {
+    let eps = max(uniforms.mdcF0.y * 0.5, uniforms.voxelSize * uniforms.mdcF0.x * 0.5);
     if (d > eps) { return 1; }
     if (d < -eps) { return -1; }
+
+    // Use analytic normal to resolve on-surface samples deterministically.
+    let sdf = sceneSDF(p);
+    let n = sdf.n * sdf.s;
+    if (length(n) > 0.0) {
+        let nudge = min(eps, uniforms.voxelSize * 0.02);
+        let d2p = sceneSDF(p + n * nudge).d - uniforms.isoValue;
+        let d2m = sceneSDF(p - n * nudge).d - uniforms.isoValue;
+        if (d2p > 0.0 && d2m > 0.0) { return 1; }
+        if (d2p < 0.0 && d2m < 0.0) { return -1; }
+    }
     return 0;
+}
+
+fn vertexClassAtGridVertex(p: vec3f, sdfValue: f32) -> i32 {
+    let d = sdfValue - uniforms.isoValue;
+    return resolveSignAtPos(p, d);
 }
 
 fn vertexInsideForCases(sdfValue: f32) -> bool {
@@ -266,22 +281,33 @@ fn vertexInsideForCases(sdfValue: f32) -> bool {
     return d < -bias;
 }
 
-fn edgeCrossesIso(v0: f32, g0: vec3u, v1: f32, g1: vec3u) -> bool {
-    // IMPORTANT:
-    // Treating "on-surface" endpoints as automatic crossings creates lots of degenerate
-    // quads when the surface happens to align with the sampling grid (common for boxes).
-    // That manifests as cracks/holes (via inconsistent winding/culling) and distorted edges.
-    //
-    // Instead, classify endpoints with a consistent <= rule and only emit crossings when
-    // the inside/outside state differs.
-    _ = g0;
-    _ = g1;
-    // Use the same globally-biased inside test as vertexInsideForCases.
-    let bias = max(uniforms.mdcF0.w, uniforms.voxelSize * uniforms.mdcF0.z);
+fn edgeCrossesIso(v0: f32, p0: vec3f, v1: f32, p1: vec3f) -> bool {
+    // Classify endpoints with a deterministic sign resolution that uses normals
+    // when the sample is very close to the iso-surface.
     let d0 = (v0 - uniforms.isoValue);
     let d1 = (v1 - uniforms.isoValue);
-    let s0 = d0 < -bias;
-    let s1 = d1 < -bias;
+    let s0 = resolveSignAtPos(p0, d0) < 0;
+    let s1 = resolveSignAtPos(p1, d1) < 0;
+    return s0 != s1;
+}
+
+fn edgeCrossesIsoWithStats(p0: vec3f, p1: vec3f, v0: f32, v1: f32) -> bool {
+    let d0 = (v0 - uniforms.isoValue);
+    let d1 = (v1 - uniforms.isoValue);
+    let s0 = resolveSignAtPos(p0, d0) < 0;
+    let s1 = resolveSignAtPos(p1, d1) < 0;
+
+    let eps = max(uniforms.mdcF0.y, uniforms.voxelSize * uniforms.mdcF0.x);
+    let near0 = abs(d0) <= eps;
+    let near1 = abs(d1) <= eps;
+    if (near0 && near1) {
+        atomicAdd(&debugSkipCounters[2], 1u);
+    } else if ((near0 || near1) && (s0 == s1)) {
+        atomicAdd(&debugSkipCounters[3], 1u);
+    }
+    if (s0 != s1) {
+        atomicAdd(&debugSkipCounters[5], 1u);
+    }
     return s0 != s1;
 }
 
@@ -535,7 +561,7 @@ fn cellClassification_Pass1(
                 let cornerGridPos = getCellCornerPos(cellPos, i); 
                 let cornerWorldPos = gridPosToWorldPos(cornerGridPos);
                 let sdfValue = sampleSDF(cornerWorldPos);
-                let c = vertexClassAtGridVertex(sdfValue);
+                let c = vertexClassAtGridVertex(cornerWorldPos, sdfValue);
                 if (c > 0) { hasPositive = true; }
                 if (c < 0) { hasNegative = true; }
                 if (c == 0) { hasPositive = true; hasNegative = true; } // on-surface => definitely active
@@ -775,10 +801,12 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
         let c2_idx = edges_info[e][1];
         let val0 = cornerSDFValues[c1_idx];
         let val1 = cornerSDFValues[c2_idx];
+        let p0 = cornerWorldPositions[c1_idx];
+        let p1 = cornerWorldPositions[c2_idx];
         edgeCrossMask[e] = select(
             0u,
             1u,
-            edgeCrossesIso(val0, cornerGridPositions[c1_idx], val1, cornerGridPositions[c2_idx])
+            edgeCrossesIsoWithStats(p0, p1, val0, val1)
         );
     }
 
@@ -808,15 +836,31 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
             }
         } else if (cnt == 4u) {
             // Ambiguous marching-squares face (checkerboard). Disambiguate by sampling face center.
-            let s0: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.x]));
-            let s1: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.y]));
-            let s2: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.z]));
-            let s3: u32 = select(0u, 1u, vertexInsideForCases(cornerSDFValues[fc.w]));
+            let in0 = vertexInsideForCases(cornerSDFValues[fc.x]);
+            let in1 = vertexInsideForCases(cornerSDFValues[fc.y]);
+            let in2 = vertexInsideForCases(cornerSDFValues[fc.z]);
+            let in3 = vertexInsideForCases(cornerSDFValues[fc.w]);
+            let s0: u32 = select(0u, 1u, in0);
+            let s1: u32 = select(0u, 1u, in1);
+            let s2: u32 = select(0u, 1u, in2);
+            let s3: u32 = select(0u, 1u, in3);
             let faceCase = s0 | (s1 << 1u) | (s2 << 2u) | (s3 << 3u);
+
+            if (faceCase == 5u || faceCase == 10u) {
+                atomicAdd(&debugSkipCounters[7], 1u);
+            }
 
             let faceCenterPos =
                 (cornerWorldPositions[fc.x] + cornerWorldPositions[fc.y] + cornerWorldPositions[fc.z] + cornerWorldPositions[fc.w]) * 0.25;
-            let centerInside = sampleSDF(faceCenterPos) <= uniforms.isoValue;
+            // Use the same globally-biased inside test as vertexInsideForCases to avoid
+            // ambiguous on-surface centers causing inconsistent face resolution.
+            let bias = max(uniforms.mdcF0.w, uniforms.voxelSize * uniforms.mdcF0.z);
+            let centerD = sampleSDF(faceCenterPos) - uniforms.isoValue;
+            let centerInside = centerD < -bias;
+            let eps = max(uniforms.mdcF0.y, uniforms.voxelSize * uniforms.mdcF0.x);
+            if (abs(centerD) <= eps) {
+                atomicAdd(&debugSkipCounters[6], 1u);
+            }
 
             // For faceCase 5 (0101): centerInside => pair (0-1) & (2-3), else pair (0-3) & (1-2)
             // For faceCase 10 (1010): centerInside => pair (0-3) & (1-2), else pair (0-1) & (2-3)
@@ -904,8 +948,8 @@ fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
                 let d = sdfResult.d - uniforms.isoValue;
                 if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.z) { break; }
                 normal = computeGradient(intersectionPos);
-                // Correct step by gradient magnitude (lower floor for blend regions)
-                let gradScale = max(sdfResult.g, 0.15);
+                // Only use gradient magnitude to reduce step size.
+                let gradScale = max(1.0, sdfResult.g);
                 let correctedStep = d / gradScale;
                 // Tighter step limit in blend regions to avoid oscillation
                 let maxStep = uniforms.voxelSize * select(0.75, 0.4, sdfResult.g < 0.8);
@@ -1047,8 +1091,8 @@ fn vertexGeneration_Pass4(
         if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { break; }
         let n = computeGradient(vertexPos);
         
-        // Correct step by gradient magnitude (lower floor for blend regions)
-        let gradScale = max(sdfResult.g, 0.15);
+        // Only use gradient magnitude to reduce step size.
+        let gradScale = max(1.0, sdfResult.g);
         let correctedD = d / gradScale;
         
         var projected = vertexPos - n * correctedD;
@@ -1090,19 +1134,25 @@ fn getEdgeComponent(activeCellIdx: u32, edgeIdx: u32) -> u32 {
 fn hasEdgeCrossingX(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
     let g0 = getCellCornerPos(cellPos, 0u);
     let g1 = getCellCornerPos(cellPos, 1u);
-    return edgeCrossesIso(cornerSDFValues[0], g0, cornerSDFValues[1], g1);
+    let p0 = gridPosToWorldPos(g0);
+    let p1 = gridPosToWorldPos(g1);
+    return edgeCrossesIso(cornerSDFValues[0], p0, cornerSDFValues[1], p1);
 }
 
 fn hasEdgeCrossingY(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
     let g0 = getCellCornerPos(cellPos, 0u);
     let g1 = getCellCornerPos(cellPos, 2u);
-    return edgeCrossesIso(cornerSDFValues[0], g0, cornerSDFValues[2], g1);
+    let p0 = gridPosToWorldPos(g0);
+    let p1 = gridPosToWorldPos(g1);
+    return edgeCrossesIso(cornerSDFValues[0], p0, cornerSDFValues[2], p1);
 }
 
 fn hasEdgeCrossingZ(cellPos: vec3u, cornerSDFValues: array<f32, 8>) -> bool {
     let g0 = getCellCornerPos(cellPos, 0u);
     let g1 = getCellCornerPos(cellPos, 4u);
-    return edgeCrossesIso(cornerSDFValues[0], g0, cornerSDFValues[4], g1);
+    let p0 = gridPosToWorldPos(g0);
+    let p1 = gridPosToWorldPos(g1);
+    return edgeCrossesIso(cornerSDFValues[0], p0, cornerSDFValues[4], p1);
 }
 
 fn areFourCellsAroundXEdgeActive(cellPos: vec3u) -> bool {
@@ -1526,6 +1576,12 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
         let cgp = getCellCornerPos(cellPos, i);
         cornerWorldPos_cell[i] = gridPosToWorldPos(cgp);
         cornerSDFValues_cell[i] = sampleSDF(cornerWorldPos_cell[i]);
+        // Count corners near iso-surface for debugging.
+        let d = cornerSDFValues_cell[i] - uniforms.isoValue;
+        let eps = max(uniforms.mdcF0.y, uniforms.voxelSize * uniforms.mdcF0.x);
+        if (abs(d) <= eps) {
+            atomicAdd(&debugSkipCounters[4], 1u);
+        }
     }
 
     // X-edge: C(x,y,z) to C(x+1,y,z). Quad vertices from cells:

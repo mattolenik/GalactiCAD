@@ -251,6 +251,67 @@ export class DocumentTabs extends HTMLElement {
         }
     }
 
+    /** Rename the current tab, prompting the user for a new name */
+    renameCurrentTab(): boolean {
+        if (!this.#active) return false
+        return this.renameTab(this.#active)
+    }
+
+    /** Rename a tab, prompting the user for a new name */
+    renameTab(oldName: string): boolean {
+        const model = this.#docs.get(oldName)
+        if (!model) return false
+
+        const newName = window.prompt("Enter new name for the sketch", oldName)?.trim()
+        if (!newName || newName === oldName) return false
+
+        // Check for duplicate names
+        if (this.#docs.has(newName)) {
+            alert(`A sketch named "${newName}" already exists.`)
+            return false
+        }
+
+        // Update localStorage: remove old key, add new key
+        const content = localStorage.getItem(`document:${oldName}`)
+        if (content !== null) {
+            localStorage.removeItem(`document:${oldName}`)
+            localStorage.setItem(`document:${newName}`, content)
+        }
+
+        // Update the ordered map: need to preserve order
+        // Get all entries, update the name, rebuild
+        const entries = Array.from(this.#docs.entries())
+        this.#docs.clear()
+        for (const [name, m] of entries) {
+            if (name === oldName) {
+                this.#docs.set(newName, m)
+            } else {
+                this.#docs.set(name, m)
+            }
+        }
+
+        // Update subscription key
+        const sub = this.#subscriptions.get(oldName)
+        if (sub) {
+            this.#subscriptions.delete(oldName)
+            this.#subscriptions.set(newName, sub)
+        }
+
+        // Re-watch model with new name for future saves
+        this.#watchModel(newName, model)
+
+        // Update active tab if it was the renamed one
+        if (this.#active === oldName) {
+            this.#active = newName
+            localStorage.setItem("activeDocument", newName)
+        }
+
+        this.#updateStoredOrder()
+        this.#renderTabs()
+        this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: this.#active }))
+        return true
+    }
+
     switchTo(name: string, save = false) {
         const model = this.#docs.get(name)
         if (!model) return

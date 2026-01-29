@@ -157,7 +157,7 @@ class App {
 
                 const menuButton = new MenuButton([
                     { element: newItem, action: () => this.#tabs.newDocument() },
-                    { element: renameItem, action: () => console.log("TODO: rename") },
+                    { element: renameItem, action: () => this.#tabs.renameCurrentTab() },
                     { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
                     {
                         element: exportItem,

@@ -175,8 +175,20 @@ export class CameraController {
             this.#sceneRotY -= this.#cursorDelta.x * this.#rotateSensitivity
             this.#sceneRotX -= this.#cursorDelta.y * this.#rotateSensitivity
         } else if (this.#dragMode === "pan") {
-            this.#cameraTranslation.x -= this.#cursorDelta.x * this.#panSensitivity
-            this.#cameraTranslation.y += this.#cursorDelta.y * this.#panSensitivity
+            // Compute camera-relative pan directions based on current rotation
+            const rotY = Mat4x4f.rotationY(this.#sceneRotY)
+            const rotX = Mat4x4f.rotationX(this.#sceneRotX)
+            const combinedRotation = rotY.multiply(rotX)
+
+            // Camera right vector (transformed X axis)
+            const cameraRight = combinedRotation.transformVector(vec3(1, 0, 0))
+            // Camera up vector (transformed Y axis)
+            const cameraUp = combinedRotation.transformVector(vec3(0, 1, 0))
+
+            // Apply pan in camera-relative directions
+            this.#cameraTranslation.x -= (this.#cursorDelta.x * cameraRight.x - this.#cursorDelta.y * cameraUp.x) * this.#panSensitivity
+            this.#cameraTranslation.y -= (this.#cursorDelta.x * cameraRight.y - this.#cursorDelta.y * cameraUp.y) * this.#panSensitivity
+            this.#cameraTranslation.z -= (this.#cursorDelta.x * cameraRight.z - this.#cursorDelta.y * cameraUp.z) * this.#panSensitivity
         }
 
         this.#updateTransforms()

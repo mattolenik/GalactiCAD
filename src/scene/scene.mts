@@ -80,6 +80,14 @@ export class Node {
     getShapeType(): string {
         return "node"
     }
+
+    /**
+     * Get the indicator symbol for this node type in the editor.
+     * Default is a squircle (●). Override in subclasses for shape-specific symbols.
+     */
+    getIndicatorSymbol(): string {
+        return "●"  // Squircle/default - rendered with moderate border-radius
+    }
     compile(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
@@ -176,6 +184,10 @@ export class Group extends WithChildren(Node) {
     override getShapeType(): string {
         return "group"
     }
+
+    override getIndicatorSymbol(): string {
+        return "▢"  // Empty square - represents a container/group
+    }
     
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         for (let child of this.children) {
@@ -237,6 +249,10 @@ export class Union extends BinaryOperator {
     override getShapeType(): string {
         return "union"
     }
+
+    override getIndicatorSymbol(): string {
+        return "⊕"  // Circled plus - represents combining shapes
+    }
     
     override compile(indentLevel = 0): CompileResult {
         let text = ""
@@ -264,6 +280,10 @@ export class Union extends BinaryOperator {
 export class Subtract extends BinaryOperator {
     override getShapeType(): string {
         return "subtract"
+    }
+
+    override getIndicatorSymbol(): string {
+        return "⊖"  // Circled minus - represents subtracting shapes
     }
     
     override compile(indentLevel = 0): CompileResult {
@@ -302,6 +322,10 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
     override getShapeType(): string {
         return "sphere"
     }
+
+    override getIndicatorSymbol(): string {
+        return "●"  // Filled circle
+    }
     
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         writeBuffer(this.argIndex.pos, this.pos.data)
@@ -338,6 +362,10 @@ export class Box extends WithSize(WithPos(Node)) {
     
     override getShapeType(): string {
         return "box"
+    }
+
+    override getIndicatorSymbol(): string {
+        return "■"  // Filled square
     }
     
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {

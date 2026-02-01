@@ -4,11 +4,17 @@
  * This provides a robust way to link scene objects to their source code by
  * comparing the actual property values (position, size, radius) rather than
  * relying on traversal order or stack traces.
+ * 
+ * For composite types (union, subtract, group), matching is done by type name
+ * and source order since they don't have unique identifying properties.
  */
 
-import { Node, Sphere, Box } from "../scene/scene.mjs"
+import { Node, Sphere, Box, Union, Subtract, Group } from "../scene/scene.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
+
+/** Composite shape types that are matched by name only */
+const COMPOSITE_TYPES = new Set(["union", "subtract", "group"])
 
 /**
  * Tolerance for floating-point comparisons
@@ -77,9 +83,13 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
     
-    // For composite types (union, subtract, group), we can't match by properties
-    // since they don't have unique identifying values
-    // These would need a different approach (e.g., matching by structure)
+    // For composite types (union, subtract, group), match by type name only.
+    // Since they don't have unique identifying properties, we match them
+    // in source order (first union node matches first union call, etc.)
+    if (COMPOSITE_TYPES.has(shapeType)) {
+        return true  // Type already matched above
+    }
+    
     return false
 }
 

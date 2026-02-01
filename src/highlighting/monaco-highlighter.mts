@@ -17,7 +17,7 @@ export interface HighlightRange {
 }
 
 /**
- * Shape indicator with location and node ID for color lookup
+ * Shape indicator with location, node ID for color lookup, and symbol
  */
 export interface ShapeIndicator {
     startLine: number
@@ -26,6 +26,7 @@ export interface ShapeIndicator {
     endColumn: number
     nodeId: number
     functionName: string
+    symbol: string  // Shape-specific indicator symbol (e.g., ● for sphere, ■ for box)
 }
 
 /**
@@ -63,11 +64,9 @@ export class MonacoHighlighter {
                 const g = Math.round(color.y * 255)
                 const b = Math.round(color.z * 255)
                 css += `.shape-color-${i} {
-                    background-color: rgb(${r}, ${g}, ${b});
-                    border-radius: 1px;
-                    color: transparent !important;
-                    font-size: 0.85em;
-                    margin-right: 2px;
+                    color: rgb(${r}, ${g}, ${b}) !important;
+                    text-shadow: 0 0 1px rgba(0,0,0,0.3);
+                    font-size: 1.1em;
                 }\n`
             }
             this.styleElement.textContent = css
@@ -104,7 +103,7 @@ export class MonacoHighlighter {
                 ),
                 options: {
                     before: {
-                        content: "██",
+                        content: indicator.symbol + " ",
                         inlineClassName: `shape-color-${colorIndex}`
                     }
                 }

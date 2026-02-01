@@ -26,6 +26,7 @@ class App {
     #meshViewerEnabled = false
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
+    #sceneNodeMap: Map<number, import("./scene/scene.mjs").Node> = new Map()  // nodeId -> Node for symbol lookup
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
 
@@ -39,8 +40,12 @@ class App {
             // Parse the source code to extract shape function calls with their arguments
             const parsedCalls = this.#sourceParser.parseShapeCalls(src)
 
-            // Get all scene nodes
+            // Get all scene nodes and build a map for quick lookup
             const sceneNodes = this.renderer.getSceneNodes()
+            this.#sceneNodeMap.clear()
+            for (const node of sceneNodes) {
+                this.#sceneNodeMap.set(node.id, node)
+            }
 
             // Match scene nodes to source code by comparing property values
             this.#sourceLocationMap = matchNodesToSource(sceneNodes, parsedCalls)
@@ -68,18 +73,23 @@ class App {
     /**
      * Update color indicator decorations for all matched shapes.
      * Uses node IDs from the source location map for color assignment.
+     * Gets the indicator symbol from the scene node.
      */
     #updateColorIndicators() {
         const indicators: ShapeIndicator[] = []
         
         for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
+            const node = this.#sceneNodeMap.get(nodeId)
+            const symbol = node?.getIndicatorSymbol() ?? "●"  // Default to squircle
+            
             indicators.push({
                 startLine: location.startLine,
                 startColumn: location.startColumn,
                 endLine: location.endLine,
                 endColumn: location.endColumn,
                 nodeId: nodeId,
-                functionName: location.functionName
+                functionName: location.functionName,
+                symbol: symbol
             })
         }
         

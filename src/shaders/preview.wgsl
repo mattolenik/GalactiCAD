@@ -25,6 +25,9 @@ struct ClickState {
 // Selected objects array: [count, id1, id2, ...]
 @group(0) @binding(4) var<uniform> selectedObjectIds: array<u32, 64>;
 
+// Color palette: 32 pastel colors for shape coloring
+@group(0) @binding(5) var<uniform> colorPalette: array<vec3f, 32>;
+
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
@@ -177,7 +180,8 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         
         let diffuse = lighting(normal);
         
-        var baseColor = vec3f(1.0, 0.5, 0.2); // Default orange color
+        // Get color from palette using shape ID modulo palette size
+        var baseColor = colorPalette[hit.sdf.id % 32u];
         
         // Check if this object is in the selection array
         let selectedCount = selectedObjectIds[0];

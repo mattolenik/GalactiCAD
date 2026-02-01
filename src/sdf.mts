@@ -10,6 +10,7 @@ import boundsShader from "./shaders/bounds.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
+import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPalette.mjs"
 
 class UniformBuffers {
     camera!: GPUBuffer
@@ -17,6 +18,7 @@ class UniformBuffers {
     clickState!: GPUBuffer
     selectedObjectIds!: GPUBuffer
     clickedObjectId!: GPUBuffer
+    colorPalette!: GPUBuffer
 }
 
 class ExportBuffers {
@@ -407,6 +409,27 @@ export class SDFRenderer {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
             label: "clickedObjectId",
         })
+
+        // Color palette buffer: 32 colors × 3 floats (vec3f) = 384 bytes
+        // Using vec3f in WGSL requires 16 byte alignment per element (4 floats)
+        // So we need 32 × 16 = 512 bytes
+        this.#uniformBuffers.colorPalette = this.#device.createBuffer({
+            size: PALETTE_SIZE * 16, // 32 colors × 16 bytes (vec3f with alignment)
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "colorPalette",
+        })
+
+        // Initialize palette with default colors
+        const paletteData = paletteToFloat32Array(DEFAULT_PALETTE)
+        // Need to write with 16-byte alignment per color (4 floats per color, last is padding)
+        const alignedData = new Float32Array(PALETTE_SIZE * 4)
+        for (let i = 0; i < PALETTE_SIZE; i++) {
+            alignedData[i * 4] = paletteData[i * 3]
+            alignedData[i * 4 + 1] = paletteData[i * 3 + 1]
+            alignedData[i * 4 + 2] = paletteData[i * 3 + 2]
+            alignedData[i * 4 + 3] = 0.0 // padding
+        }
+        this.#device.queue.writeBuffer(this.#uniformBuffers.colorPalette, 0, alignedData)
     }
 
     #buildPreviewPipeline() {
@@ -437,6 +460,7 @@ export class SDFRenderer {
                 { binding: 2, resource: { buffer: this.#uniformBuffers.clickState } },
                 { binding: 3, resource: { buffer: this.#uniformBuffers.clickedObjectId } },
                 { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
+                { binding: 5, resource: { buffer: this.#uniformBuffers.colorPalette } },
             ],
         })
     }

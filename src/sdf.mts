@@ -209,7 +209,7 @@ export class SDFRenderer {
     get selectedObjectIds(): number[] {
         return [...this.#selectedObjectIds]
     }
-    
+
     /**
      * Get all nodes from the current scene for matching with source code.
      */
@@ -229,28 +229,28 @@ export class SDFRenderer {
         const rect = canvas.getBoundingClientRect()
         const x = (screenPos.x - rect.left) / rect.width
         const y = 1.0 - (screenPos.y - rect.top) / rect.height // Flip Y for WGSL UV space
-        
+
         this.#clickPos = vec2(x, y)
-        
+
         console.log(`Click at UV: (${x.toFixed(3)}, ${y.toFixed(3)}), shift: ${shiftKey}`)
-        
+
         // Store click state: must match WGSL ClickState struct layout
         const clickData = new ArrayBuffer(16)
         new Float32Array(clickData, 0, 2).set([x, y])
         new Uint32Array(clickData, 8, 1).set([1])
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
-        
+
         // Clear clicked object ID buffer
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
-        
+
         // Read back result after a few frames
         setTimeout(async () => {
             try {
                 const clickedId = await this.#readClickedObjectId()
-                if (clickedId > 0) {
+                if (clickedId >= 0) {
                     this.#updateSelection(clickedId, shiftKey)
                 } else {
-                    console.log('No object clicked - clickedId was 0')
+                    console.log(`No object clicked - clickedId was ${clickedId}`)
                 }
             } catch (error) {
                 console.error('Error reading clicked object ID:', error)
@@ -260,7 +260,7 @@ export class SDFRenderer {
 
     #updateSelection(clickedId: number, shiftKey: boolean) {
         const index = this.#selectedObjectIds.indexOf(clickedId)
-        
+
         if (shiftKey) {
             // Multiselect mode: toggle the clicked object
             if (index >= 0) {
@@ -284,9 +284,9 @@ export class SDFRenderer {
                 console.log(`Selected object ID: ${clickedId}`)
             }
         }
-        
+
         this.#writeSelectionBuffer()
-        
+
         // Notify listeners about selection change
         if (this.onSelectionChange) {
             this.onSelectionChange([...this.#selectedObjectIds])

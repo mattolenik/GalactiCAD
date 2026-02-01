@@ -190,12 +190,16 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
             }
         }
         
-        // Highlight selected objects in white
+        // Calculate base shaded color
+        var shadedColor = baseColor * diffuse;
+        
+        // Add white glow overlay for selected objects
         if (isSelected) {
-            baseColor = vec3f(1.0, 1.0, 1.0);
+            // Additive blend preserves shadows better than mix
+            // Adds 15% white on top, keeping original shading visible
+            shadedColor = shadedColor + vec3f(0.15);
         }
         
-        let shadedColor = baseColor * diffuse;
         return vec4f(shadedColor, 1.0);
     } else {
         return vec4f(0, 0, 0, 0);

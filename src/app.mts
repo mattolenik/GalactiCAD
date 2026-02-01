@@ -183,6 +183,8 @@ class App {
         const nodeId = this.#findNodeIdForSelection(selection)
         if (nodeId !== null) {
             this.renderer.setSelection([nodeId])
+            // Also update editor highlighting to show the selection highlight
+            this.#updateEditorHighlighting()
         }
     }
 
@@ -205,7 +207,8 @@ class App {
                     if (location && position.column <= location.startColumn) {
                         // Clicked on or before the function name (where the indicator is)
                         this.renderer.setSelection([nodeId])
-                        // Prevent default selection behavior
+                        // Also update editor highlighting to show the selection highlight
+                        this.#updateEditorHighlighting()
                         return
                     }
                 }

@@ -82,6 +82,7 @@ export class MonacoHighlighter {
             background-image: url("${dataUri}");
             background-size: contain;
             background-repeat: no-repeat;
+            cursor: default;
         }\n`
     }
 

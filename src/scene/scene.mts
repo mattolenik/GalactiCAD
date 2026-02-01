@@ -88,6 +88,15 @@ export class Node {
     getIndicatorSymbol(): string {
         return "●"  // Squircle/default - rendered with moderate border-radius
     }
+
+    /**
+     * Get the SVG content for this node type's indicator in the editor.
+     * Returns SVG elements (not full SVG tag) using currentColor for dynamic coloring.
+     * Default is a squircle (rounded square). Override in subclasses for shape-specific SVGs.
+     */
+    getIndicatorSvg(): string {
+        return `<rect x="1" y="1" width="10" height="10" rx="3" fill="currentColor"/>`
+    }
     compile(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
@@ -188,6 +197,10 @@ export class Group extends WithChildren(Node) {
     override getIndicatorSymbol(): string {
         return "▢"  // Empty square - represents a container/group
     }
+
+    override getIndicatorSvg(): string {
+        return `<rect x="1" y="1" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+    }
     
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         for (let child of this.children) {
@@ -253,6 +266,10 @@ export class Union extends BinaryOperator {
     override getIndicatorSymbol(): string {
         return "⊕"  // Circled plus - represents combining shapes
     }
+
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/>`
+    }
     
     override compile(indentLevel = 0): CompileResult {
         let text = ""
@@ -284,6 +301,10 @@ export class Subtract extends BinaryOperator {
 
     override getIndicatorSymbol(): string {
         return "⊖"  // Circled minus - represents subtracting shapes
+    }
+
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }
     
     override compile(indentLevel = 0): CompileResult {
@@ -326,6 +347,10 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
     override getIndicatorSymbol(): string {
         return "●"  // Filled circle
     }
+
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="currentColor"/>`
+    }
     
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         writeBuffer(this.argIndex.pos, this.pos.data)
@@ -366,6 +391,10 @@ export class Box extends WithSize(WithPos(Node)) {
 
     override getIndicatorSymbol(): string {
         return "■"  // Filled square
+    }
+
+    override getIndicatorSvg(): string {
+        return `<rect x="1" y="1" width="10" height="10" rx="1" fill="currentColor"/>`
     }
     
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {

@@ -17,7 +17,7 @@ export interface HighlightRange {
 }
 
 /**
- * Shape indicator with location, node ID for color lookup, and symbol
+ * Shape indicator with location, node ID for color lookup, and SVG
  */
 export interface ShapeIndicator {
     startLine: number
@@ -26,7 +26,7 @@ export interface ShapeIndicator {
     endColumn: number
     nodeId: number
     functionName: string
-    symbol: string  // Shape-specific indicator symbol (e.g., ● for sphere, ■ for box)
+    svg: string  // SVG content for the indicator (uses currentColor for dynamic coloring)
 }
 
 /**
@@ -38,6 +38,7 @@ export class MonacoHighlighter {
     private selectionDecorationIds: string[] = []
     private colorIndicatorDecorationIds: string[] = []
     private styleElement: HTMLStyleElement | null = null
+    private indicatorCounter = 0  // Unique ID counter for indicator CSS classes
 
     /**
      * Set the editor instance to work with
@@ -53,29 +54,40 @@ export class MonacoHighlighter {
     private ensureStyleElement() {
         if (!this.styleElement) {
             this.styleElement = document.createElement("style")
-            this.styleElement.id = "monaco-shape-colors"
+            this.styleElement.id = "monaco-shape-indicators"
             document.head.appendChild(this.styleElement)
-            
-            // Generate CSS classes for all palette colors
-            let css = ""
-            for (let i = 0; i < PALETTE_SIZE; i++) {
-                const color = DEFAULT_PALETTE[i]
-                const r = Math.round(color.x * 255)
-                const g = Math.round(color.y * 255)
-                const b = Math.round(color.z * 255)
-                css += `.shape-color-${i} {
-                    color: rgb(${r}, ${g}, ${b}) !important;
-                    text-shadow: 0 0 1px rgba(0,0,0,0.3);
-                    font-size: 1.1em;
-                }\n`
-            }
-            this.styleElement.textContent = css
         }
     }
 
     /**
+     * Generate a CSS class for a specific indicator with its color and SVG
+     */
+    private generateIndicatorCss(className: string, svg: string, r: number, g: number, b: number): string {
+        // Replace currentColor with the actual color
+        const svgWithColor = svg.replace(/currentColor/g, `rgb(${r},${g},${b})`)
+        
+        // Create the full SVG with viewBox
+        const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">${svgWithColor}</svg>`
+        
+        // Encode as data URI
+        const dataUri = `data:image/svg+xml,${encodeURIComponent(fullSvg)}`
+        
+        return `.${className}::before {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-right: 4px;
+            vertical-align: middle;
+            background-image: url("${dataUri}");
+            background-size: contain;
+            background-repeat: no-repeat;
+        }\n`
+    }
+
+    /**
      * Update color indicators for all shape functions
-     * @param indicators Array of shape indicators with nodeId for color lookup
+     * @param indicators Array of shape indicators with nodeId for color lookup and SVG content
      */
     setColorIndicators(indicators: ShapeIndicator[]) {
         if (!this.editor) {
@@ -91,9 +103,21 @@ export class MonacoHighlighter {
 
         this.ensureStyleElement()
 
-        // Create decorations for each shape with color indicator
+        // Reset counter for new batch of indicators
+        this.indicatorCounter = 0
+        
+        // Generate CSS for all indicators and build decorations
+        let css = ""
         const newDecorations: monaco.editor.IModelDeltaDecoration[] = indicators.map(indicator => {
             const colorIndex = indicator.nodeId % PALETTE_SIZE
+            const color = DEFAULT_PALETTE[colorIndex]
+            const r = Math.round(color.x * 255)
+            const g = Math.round(color.y * 255)
+            const b = Math.round(color.z * 255)
+            
+            const className = `shape-indicator-${this.indicatorCounter++}`
+            css += this.generateIndicatorCss(className, indicator.svg, r, g, b)
+            
             return {
                 range: new monaco.Range(
                     indicator.startLine,
@@ -102,13 +126,13 @@ export class MonacoHighlighter {
                     indicator.endColumn
                 ),
                 options: {
-                    before: {
-                        content: indicator.symbol + " ",
-                        inlineClassName: `shape-color-${colorIndex}`
-                    }
+                    beforeContentClassName: className
                 }
             }
         })
+
+        // Update the style element with generated CSS
+        this.styleElement!.textContent = css
 
         // Update decorations (removes old, adds new)
         this.colorIndicatorDecorationIds = this.editor.deltaDecorations(

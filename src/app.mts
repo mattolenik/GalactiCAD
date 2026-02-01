@@ -73,14 +73,17 @@ class App {
     /**
      * Update color indicator decorations for all matched shapes.
      * Uses node IDs from the source location map for color assignment.
-     * Gets the indicator symbol from the scene node.
+     * Gets the indicator SVG from the scene node.
      */
     #updateColorIndicators() {
         const indicators: ShapeIndicator[] = []
         
+        // Default SVG for nodes that don't have a specific one
+        const defaultSvg = `<rect x="1" y="1" width="10" height="10" rx="3" fill="currentColor"/>`
+        
         for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
             const node = this.#sceneNodeMap.get(nodeId)
-            const symbol = node?.getIndicatorSymbol() ?? "●"  // Default to squircle
+            const svg = node?.getIndicatorSvg() ?? defaultSvg
             
             indicators.push({
                 startLine: location.startLine,
@@ -89,7 +92,7 @@ class App {
                 endColumn: location.endColumn,
                 nodeId: nodeId,
                 functionName: location.functionName,
-                symbol: symbol
+                svg: svg
             })
         }
         

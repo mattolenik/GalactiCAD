@@ -92,10 +92,12 @@ export class MDCExport {
     #helper: GPUHelper
     #device: GPUDevice
     #localBuffers: GPUBuffer[] = []
+    #selectedObjectIdsBuffer: GPUBuffer
 
-    constructor(helper: GPUHelper, private params: MDCParams) {
+    constructor(helper: GPUHelper, private params: MDCParams, selectedObjectIdsBuffer: GPUBuffer) {
         this.#helper = helper
         this.#device = helper.device
+        this.#selectedObjectIdsBuffer = selectedObjectIdsBuffer
     }
 
     /** Destroy all GPU buffers created during export */
@@ -266,7 +268,8 @@ export class MDCExport {
             "BindGroup Pass1",
             p1_cellClassification,
             [0, uniformBuffer],
-            [1, activeCellFlagsBuffer]
+            [1, activeCellFlagsBuffer],
+            [99, this.#selectedObjectIdsBuffer]
         )
 
         // --- Stage 1: classify cells into bit flags ---
@@ -420,7 +423,8 @@ export class MDCExport {
             [24, debugSkipCountersBuffer],
             [22, cellEdgeComponentsBuffer],
             [9, cellQEFDataBuffer],
-            [10, activeCellCountBuffer]
+            [10, activeCellCountBuffer],
+            [99, this.#selectedObjectIdsBuffer]
         )
 
         const bindGroupPass4 = this.#helper.createBindGroup(
@@ -431,7 +435,8 @@ export class MDCExport {
             [11, activeCellIndicesBuffer], // activeCellIndicesIn_vertex
             [12, cellQEFDataBuffer],
             [13, verticesBuffer],
-            [14, activeCellCountBuffer]
+            [14, activeCellCountBuffer],
+            [99, this.#selectedObjectIdsBuffer]
         )
 
         const bindGroupPass5 = this.#helper.createBindGroup(
@@ -445,6 +450,7 @@ export class MDCExport {
             [17, indicesBuffer],
             [18, indexCountFaceBuffer],
             [20, activeCellCountBuffer],
+            [99, this.#selectedObjectIdsBuffer],
             [22, cellEdgeComponentsBuffer],
             [23, cellToActiveHashBuffer],
             [24, debugSkipCountersBuffer]

@@ -21,6 +21,9 @@ struct BoundsUniforms {
 
 @group(0) @binding(0) var<uniform> uniforms: BoundsUniforms;
 
+// Dummy selection array for isObjectSelected function compatibility
+@group(0) @binding(99) var<uniform> selectedObjectIds: array<u32, 64>;
+
 // One output record per dispatched workgroup (no atomics).
 struct TileBounds {
     // Quantized to i32 at `uniforms.scale`.

@@ -2,7 +2,6 @@
 
 const MAX_STEPS: i32 = 300;
 const MAX_DIST: f32 = 300.0;
-const SURF_DIST: f32 = 0.001;
 
 struct Camera {
     transform: mat4x4f,
@@ -199,6 +198,12 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
             // Adds 15% white on top, keeping original shading visible
             shadedColor = shadedColor + vec3f(0.15);
         }
+        
+        // Debug: visualize object IDs to verify z-fighting fix
+        // Uncomment to see object ID colors:
+        // if (hit.sdf.id == 1u) { shadedColor = vec3f(1.0, 0.0, 0.0); }
+        // else if (hit.sdf.id == 2u) { shadedColor = vec3f(0.0, 1.0, 0.0); }
+        // else if (hit.sdf.id == 3u) { shadedColor = vec3f(0.0, 0.0, 1.0); }
         
         return vec4f(shadedColor, 1.0);
     } else {

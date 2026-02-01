@@ -544,7 +544,8 @@ export class SDFRenderer {
             "Bounds BG",
             pipeline,
             [0, uniformBuffer],
-            [1, outBuffer]
+            [1, outBuffer],
+            [99, this.#uniformBuffers.selectedObjectIds]
         )
 
         const ce = this.#device.createCommandEncoder({ label: "bounds_compute" })
@@ -658,7 +659,7 @@ export class SDFRenderer {
             )},${minY.toFixed(3)},${minZ.toFixed(3)}]..[${maxX.toFixed(3)},${maxY.toFixed(3)},${maxZ.toFixed(3)}]`
         )
 
-        const mdc = new MDCExport(this.#helper, params)
+        const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.selectedObjectIds)
         const mesh = await mdc.export(this.#exportShader)
         const pre = this.#meshEdgeStats(mesh)
         if (pre.nonManifoldEdges > 0) {

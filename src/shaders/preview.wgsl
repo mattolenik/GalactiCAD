@@ -21,7 +21,7 @@ struct ClickState {
 }
 
 @group(0) @binding(2) var<uniform> clickState: ClickState;
-@group(0) @binding(3) var<storage, read_write> clickedObjectId: array<u32, 1>;
+@group(0) @binding(3) var<storage, read_write> clickedObjectId: atomic<u32>;
 
 // Currently selected object for highlighting
 @group(0) @binding(4) var<uniform> selectedObjectId: u32;
@@ -152,12 +152,20 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     // Use the transformed ray for raymarching.
     let hit = raymarch(transformedOrigin, transformedDir);
 
-        // Click detection - simplified direct assignment
-    if (clickState.enabled > 0u) {
-        let clickDist = distance(uv, clickState.clickPos);
-        if (clickDist < 0.02 && hit.t > 0.0) {
-            // This pixel was clicked and we hit an object
-            clickedObjectId[0] = hit.sdf.id;
+        // Click detection using exact pixel matching to avoid race conditions
+    if (clickState.enabled > 0u && hit.t > 0.0) {
+        // Convert UV to pixel coordinates for exact matching
+        let clickPixel = clickState.clickPos * camera.res;
+        let currentPixel = uv * camera.res;
+        let pixelDist = distance(clickPixel, currentPixel);
+        
+        // Only the exact pixel (within 0.5 pixels) under the cursor writes the ID
+        if (pixelDist < 0.5) {
+            // Use atomic exchange to avoid race conditions
+            // Only the closest surface (smallest t) should win
+            // Since we can't compare t values atomically, we rely on the fact that
+            // closer surfaces are hit first in the raymarch
+            atomicStore(&clickedObjectId, hit.sdf.id);
         }
     }
 

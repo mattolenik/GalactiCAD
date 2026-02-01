@@ -213,17 +213,21 @@ export class SDFRenderer {
         const canvas = this.#preview.canvas
         const rect = canvas.getBoundingClientRect()
         const x = (screenPos.x - rect.left) / rect.width
-        const y = (screenPos.y - rect.top) / rect.height
+        const y = 1.0 - (screenPos.y - rect.top) / rect.height // Flip Y for WGSL UV space
         
         this.#clickPos = vec2(x, y)
         
         console.log(`Click at UV: (${x.toFixed(3)}, ${y.toFixed(3)})`)
         
-        // Store click state: position (vec2f), threshold (f32), enabled (u32)
-        const clickData = new ArrayBuffer(16) // vec2f (8) + f32 (4) + u32 (4)
-        new Float32Array(clickData, 0, 2).set([x, y])
-        new Float32Array(clickData, 8, 1).set([0.05]) // clickThreshold = 0.05
-        new Uint32Array(clickData, 12, 1).set([1]) // enabled = 1
+        // Store click state: must match WGSL ClickState struct layout
+        // struct ClickState {
+        //     clickPos: vec2f,  // offset 0, size 8
+        //     enabled: u32,      // offset 8, size 4
+        // } // total 12 bytes, padded to 16
+        const clickData = new ArrayBuffer(16)
+        new Float32Array(clickData, 0, 2).set([x, y]) // clickPos at offset 0
+        new Uint32Array(clickData, 8, 1).set([1]) // enabled at offset 8
+        // padding at offset 12-15
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
         
         // Clear clicked object ID buffer

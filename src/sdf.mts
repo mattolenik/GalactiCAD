@@ -15,7 +15,7 @@ class UniformBuffers {
     camera!: GPUBuffer
     scene!: GPUBuffer
     clickState!: GPUBuffer
-    selectedObjectId!: GPUBuffer
+    selectedObjectIds!: GPUBuffer
     clickedObjectId!: GPUBuffer
 }
 
@@ -41,7 +41,7 @@ export class SDFRenderer {
     #scene!: SceneInfo
     #started = false
     #uniformBuffers: UniformBuffers
-    #selectedObjectId: number = 0
+    #selectedObjectIds: number[] = []
     #clickPos: Vec2f = vec2(0, 0)
     #exportBuffers: ExportBuffers
     #shaderCompiler!: ShaderCompiler
@@ -198,8 +198,8 @@ export class SDFRenderer {
         return this.#controls
     }
 
-    get selectedObjectId(): number {
-        return this.#selectedObjectId
+    get selectedObjectIds(): number[] {
+        return [...this.#selectedObjectIds]
     }
 
     async #readClickedObjectId(): Promise<number> {
@@ -208,7 +208,7 @@ export class SDFRenderer {
         return new Uint32Array(readback)[0]
     }
 
-    #handleClick(screenPos: Vec2f) {
+    #handleClick(screenPos: Vec2f, shiftKey: boolean) {
         // Convert screen coordinates to UV coordinates (0-1 range)
         const canvas = this.#preview.canvas
         const rect = canvas.getBoundingClientRect()
@@ -217,17 +217,12 @@ export class SDFRenderer {
         
         this.#clickPos = vec2(x, y)
         
-        console.log(`Click at UV: (${x.toFixed(3)}, ${y.toFixed(3)})`)
+        console.log(`Click at UV: (${x.toFixed(3)}, ${y.toFixed(3)}), shift: ${shiftKey}`)
         
         // Store click state: must match WGSL ClickState struct layout
-        // struct ClickState {
-        //     clickPos: vec2f,  // offset 0, size 8
-        //     enabled: u32,      // offset 8, size 4
-        // } // total 12 bytes, padded to 16
         const clickData = new ArrayBuffer(16)
-        new Float32Array(clickData, 0, 2).set([x, y]) // clickPos at offset 0
-        new Uint32Array(clickData, 8, 1).set([1]) // enabled at offset 8
-        // padding at offset 12-15
+        new Float32Array(clickData, 0, 2).set([x, y])
+        new Uint32Array(clickData, 8, 1).set([1])
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
         
         // Clear clicked object ID buffer
@@ -238,28 +233,61 @@ export class SDFRenderer {
             try {
                 const clickedId = await this.#readClickedObjectId()
                 if (clickedId > 0) {
-                    // Toggle selection: if clicking already selected object, deselect it
-                    if (clickedId === this.#selectedObjectId) {
-                        this.#selectedObjectId = 0
-                        console.log('Deselected object')
-                    } else {
-                        this.#selectedObjectId = clickedId
-                        console.log(`Selected object ID: ${this.#selectedObjectId}`)
-                    }
-                    this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectId, 0, new Uint32Array([this.#selectedObjectId]))
+                    this.#updateSelection(clickedId, shiftKey)
                 } else {
                     console.log('No object clicked - clickedId was 0')
                 }
             } catch (error) {
                 console.error('Error reading clicked object ID:', error)
             }
-        }, 200) // Wait for GPU processing
+        }, 200)
+    }
+
+    #updateSelection(clickedId: number, shiftKey: boolean) {
+        const index = this.#selectedObjectIds.indexOf(clickedId)
+        
+        if (shiftKey) {
+            // Multiselect mode: toggle the clicked object
+            if (index >= 0) {
+                // Remove from selection
+                this.#selectedObjectIds.splice(index, 1)
+                console.log(`Removed object ${clickedId} from selection`)
+            } else {
+                // Add to selection
+                this.#selectedObjectIds.push(clickedId)
+                console.log(`Added object ${clickedId} to selection`)
+            }
+        } else {
+            // Single select mode
+            if (index >= 0 && this.#selectedObjectIds.length === 1) {
+                // Clicking the only selected object deselects it
+                this.#selectedObjectIds = []
+                console.log('Deselected object')
+            } else {
+                // Select only the clicked object
+                this.#selectedObjectIds = [clickedId]
+                console.log(`Selected object ID: ${clickedId}`)
+            }
+        }
+        
+        this.#writeSelectionBuffer()
+    }
+
+    #writeSelectionBuffer() {
+        // Write selection array to GPU buffer
+        // Format: [count, id1, id2, ...] with 64 slots available (256 bytes total)
+        const data = new Uint32Array(64)
+        data[0] = this.#selectedObjectIds.length
+        for (let i = 0; i < this.#selectedObjectIds.length; i++) {
+            data[i + 1] = this.#selectedObjectIds[i]
+        }
+        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, data)
     }
 
     constructor(preview: PreviewWindow) {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50)
-        this.#controls.onSelect = (screenPos: Vec2f) => this.#handleClick(screenPos)
+        this.#controls.onSelect = (screenPos: Vec2f, shiftKey: boolean) => this.#handleClick(screenPos, shiftKey)
         this.#uniformBuffers = new UniformBuffers()
         this.#exportBuffers = new ExportBuffers()
         this.#initializing = this.initialize()
@@ -332,7 +360,8 @@ export class SDFRenderer {
         // Initialize click detection buffers to 0
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, new Uint32Array([0, 0]))
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
-        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectId, 0, new Uint32Array([0]))
+        // Initialize selection buffer with count=0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, new Uint32Array(64))
     }
 
     startLoop() {
@@ -367,10 +396,10 @@ export class SDFRenderer {
             label: "clickState",
         })
 
-        this.#uniformBuffers.selectedObjectId = this.#device.createBuffer({
-            size: 4, // u32
+        this.#uniformBuffers.selectedObjectIds = this.#device.createBuffer({
+            size: 256, // 64 u32s: [count, id1, id2, ...] up to 63 selected objects
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "selectedObjectId",
+            label: "selectedObjectIds",
         })
 
         this.#uniformBuffers.clickedObjectId = this.#device.createBuffer({
@@ -407,7 +436,7 @@ export class SDFRenderer {
                 { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
                 { binding: 2, resource: { buffer: this.#uniformBuffers.clickState } },
                 { binding: 3, resource: { buffer: this.#uniformBuffers.clickedObjectId } },
-                { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectId } },
+                { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
             ],
         })
     }

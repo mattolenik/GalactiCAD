@@ -51,7 +51,7 @@ export class CameraController {
     #cameraTranslation: Vec3f = new Vec3f()
     #zoomController: PinchZoomController
     onChange?: (state: CameraState) => void
-    onSelect?: (screenPos: Vec2f) => void
+    onSelect?: (screenPos: Vec2f, shiftKey: boolean) => void
 
     constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2) {
         this.#ls = LocalStorage.instance
@@ -149,7 +149,7 @@ export class CameraController {
     #onPointerDown(e: PointerEvent) {
         if (e.button === 0) {
             // Left click for selection
-            this.onSelect?.(vec2(e.clientX, e.clientY))
+            this.onSelect?.(vec2(e.clientX, e.clientY), e.shiftKey)
             return
         } else if (e.button === 1) {
             this.#dragMode = "pan"

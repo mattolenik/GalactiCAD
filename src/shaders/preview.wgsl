@@ -23,8 +23,8 @@ struct ClickState {
 @group(0) @binding(2) var<uniform> clickState: ClickState;
 @group(0) @binding(3) var<storage, read_write> clickedObjectId: atomic<u32>;
 
-// Currently selected object for highlighting
-@group(0) @binding(4) var<uniform> selectedObjectId: u32;
+// Selected objects array: [count, id1, id2, ...]
+@group(0) @binding(4) var<uniform> selectedObjectIds: array<u32, 64>;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -180,9 +180,19 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         
         var baseColor = vec3f(1.0, 0.5, 0.2); // Default orange color
         
-        // Highlight selected object in white
-        if (hit.sdf.id == selectedObjectId && selectedObjectId != 0u) {
-            baseColor = vec3f(1.0, 1.0, 1.0); // White for selected object
+        // Check if this object is in the selection array
+        let selectedCount = selectedObjectIds[0];
+        var isSelected = false;
+        for (var i: u32 = 1u; i <= selectedCount && i < 64u; i = i + 1u) {
+            if (hit.sdf.id == selectedObjectIds[i]) {
+                isSelected = true;
+                break;
+            }
+        }
+        
+        // Highlight selected objects in white
+        if (isSelected) {
+            baseColor = vec3f(1.0, 1.0, 1.0);
         }
         
         let shadedColor = baseColor * diffuse;

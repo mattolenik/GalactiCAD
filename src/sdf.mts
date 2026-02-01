@@ -209,6 +209,13 @@ export class SDFRenderer {
     get selectedObjectIds(): number[] {
         return [...this.#selectedObjectIds]
     }
+    
+    /**
+     * Get all nodes from the current scene for matching with source code.
+     */
+    getSceneNodes() {
+        return this.#scene?.getAllNodes() ?? []
+    }
 
     async #readClickedObjectId(): Promise<number> {
         // Read back clicked object ID from storage buffer

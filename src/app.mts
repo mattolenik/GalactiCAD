@@ -10,8 +10,9 @@ import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { LocalStorage } from "./storage/storage.mjs"
-import { SourceParser, type SourceLocationMap } from "./parser/source-parser.mjs"
 import { MonacoHighlighter, type HighlightRange } from "./highlighting/monaco-highlighter.mjs"
+import { SourceParser, type SourceLocation } from "./parser/source-parser.mjs"
+import { matchNodesToSource } from "./parser/node-matcher.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -24,17 +25,27 @@ class App {
     #ls: LocalStorage
     #meshViewerEnabled = false
     #sourceParser: SourceParser
-    #sourceLocationMap: SourceLocationMap = new Map()
+    #sourceLocationMap: Map<number, SourceLocation> = new Map()
     #monacoHighlighter: MonacoHighlighter
 
     build() {
         try {
             const src = this.editor.getValue()
             
-            // Parse source locations before building scene
-            this.#sourceLocationMap = this.#sourceParser.parse(src)
-            
+            // Build the scene
             this.renderer.build(src)
+            
+            // Parse the source code to extract shape function calls with their arguments
+            const parsedCalls = this.#sourceParser.parseShapeCalls(src)
+            
+            // Get all scene nodes
+            const sceneNodes = this.renderer.getSceneNodes()
+            
+            // Match scene nodes to source code by comparing property values
+            this.#sourceLocationMap = matchNodesToSource(sceneNodes, parsedCalls)
+            
+            console.debug("[App] Source location map:", Array.from(this.#sourceLocationMap.entries()))
+            
             this.renderer.startLoop()
             this.#scheduleMeshUpdate(src)
             this.log.innerText = ""
@@ -67,12 +78,16 @@ class App {
         for (const id of selectedIds) {
             const location = this.#sourceLocationMap.get(id)
             if (location) {
+                // The AST parser provides exact start/end positions for the function name
                 highlightRanges.push({
                     startLine: location.startLine,
                     startColumn: location.startColumn,
                     endLine: location.endLine,
                     endColumn: location.endColumn
                 })
+                console.debug(`[App] ID ${id}: '${location.functionName}' at line ${location.startLine}:${location.startColumn}`)
+            } else {
+                console.debug(`[App] ID ${id}: No source location found`)
             }
         }
 
@@ -95,7 +110,7 @@ class App {
         this.#ls = LocalStorage.instance
         this.#viewports = document.getElementById("viewports")!
         
-        // Initialize source code tracking for highlighting
+        // Initialize source parser and highlighter for selection sync
         this.#sourceParser = new SourceParser()
         this.#monacoHighlighter = new MonacoHighlighter()
 

@@ -21,20 +21,23 @@ export class SceneInfo {
         if (this.#nodes.hasValue(node)) return
         node.id = this.#nodes.size
         this.#nodes.set(node.id, node)
-
     }
 
     get<T extends Node>(id: number): T {
         return this.#nodes.get(id) as T
     }
+    
+    /**
+     * Get all nodes in the scene
+     */
+    getAllNodes(): Node[] {
+        return Array.from(this.#nodes.values())
+    }
 
     constructor(src: string) {
         // Create a function that defines scene() and then calls it
         // This allows users to write: function scene() { return sphere(...) }
-        const wrappedSrc = `
-            ${src}
-            return scene()
-        `
+        const wrappedSrc = src + "\nreturn scene()"
         this.root = new Function("box", "group", "sphere", "subtract", "union", wrappedSrc)(box, group, sphere, subtract, union)
         this.root.scene = this
         this.root.build()
@@ -69,6 +72,13 @@ export class Node {
 
     constructor() {
         this.root = this
+    }
+    
+    /**
+     * Get the shape type name for this node (e.g., "sphere", "box", "union")
+     */
+    getShapeType(): string {
+        return "node"
     }
     compile(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
@@ -163,6 +173,10 @@ function WithSize<TBase extends Constructor>(base: TBase) {
 }
 
 export class Group extends WithChildren(Node) {
+    override getShapeType(): string {
+        return "group"
+    }
+    
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         for (let child of this.children) {
             child.updateScene(writeBuffer)
@@ -220,6 +234,10 @@ export abstract class BinaryOperator extends Node {
 }
 
 export class Union extends BinaryOperator {
+    override getShapeType(): string {
+        return "union"
+    }
+    
     override compile(indentLevel = 0): CompileResult {
         let text = ""
         const lhResult = this.lh.compile()
@@ -244,6 +262,10 @@ export class Union extends BinaryOperator {
 }
 
 export class Subtract extends BinaryOperator {
+    override getShapeType(): string {
+        return "subtract"
+    }
+    
     override compile(indentLevel = 0): CompileResult {
         let text = ""
         const lhResult = this.lh.compile(indentLevel)
@@ -276,6 +298,11 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         this.pos = vec3(pos)
         this.r = asRadius(r, d)
     }
+    
+    override getShapeType(): string {
+        return "sphere"
+    }
+    
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         writeBuffer(this.argIndex.pos, this.pos.data)
         writeBuffer(this.argIndex.r, new Float32Array([this.r]))
@@ -308,6 +335,11 @@ export class Box extends WithSize(WithPos(Node)) {
         this.pos = vec3(pos)
         this.size = vec3(size)
     }
+    
+    override getShapeType(): string {
+        return "box"
+    }
+    
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         writeBuffer(this.argIndex.pos, this.pos.data)
         writeBuffer(this.argIndex.size, this.size.data)

@@ -1,9 +1,10 @@
 /**
- * Source Parser - Parse JavaScript code to extract source locations of CAD shapes
- * Uses Acorn parser to create AST with source locations
+ * Source Parser - Parse JavaScript code to extract shape function calls with their arguments
+ * Uses Acorn parser to create AST, then matches calls to scene nodes by property values
  */
 
-import { parse, type Node as AcornNode, type CallExpression, type FunctionDeclaration, type ReturnStatement, type BlockStatement, type ExpressionStatement } from "acorn"
+import { parse, type Node as AcornNode, type CallExpression, type FunctionDeclaration, type ReturnStatement, type BlockStatement } from "acorn"
+import { vec3, Vec3f } from "../vecmat/vector.mjs"
 
 /**
  * Source location information for a shape in the code
@@ -22,48 +23,41 @@ export interface SourceLocation {
 }
 
 /**
+ * Parsed shape call with source location and extracted arguments
+ */
+export interface ParsedShapeCall {
+    location: SourceLocation
+    functionName: string
+    // Parsed argument values for matching
+    pos?: Vec3f       // Position for sphere/box
+    size?: Vec3f      // Size for box
+    r?: number        // Radius for sphere
+    d?: number        // Diameter for sphere (alternative to r)
+}
+
+/**
  * Mapping from scene node index to source location
- * Index corresponds to the order shapes are created (same as node IDs)
  */
 export type SourceLocationMap = Map<number, SourceLocation>
 
 /**
  * Shape functions we care about for source location tracking
  */
-const SHAPE_FUNCTIONS = new Set([
-    "sphere",
-    "box",
-    "union",
-    "subtract",
-    "group"
-])
-
-/**
- * Check if a CallExpression is a shape function call
- */
-function isShapeFunctionCall(node: CallExpression): boolean {
-    // Handle: sphere(...), box(...), union(...), subtract(...), group(...)
-    if (node.callee.type === "Identifier") {
-        return SHAPE_FUNCTIONS.has(node.callee.name)
-    }
-    
-    // Handle method calls like something.union(...) - not a top-level shape
-    // We only want the actual shape constructor calls
-    return false
-}
+const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box"])
+const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "group"])
+const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS])
 
 /**
  * Parser for extracting source locations from CAD code
  */
 export class SourceParser {
     /**
-     * Parse JavaScript code and extract source locations of shape function calls
-     * Walks the AST in scene graph build order: depth-first, parent before children
+     * Parse JavaScript code and extract all shape function calls with their arguments
      * @param src JavaScript source code
-     * @returns Map from node index (0, 1, 2...) to source location
+     * @returns Array of parsed shape calls
      */
-    parse(src: string): SourceLocationMap {
-        const locations: SourceLocationMap = new Map()
+    parseShapeCalls(src: string): ParsedShapeCall[] {
+        const calls: ParsedShapeCall[] = []
         
         try {
             const ast = parse(src, {
@@ -73,225 +67,186 @@ export class SourceParser {
                 ranges: true
             })
             
-            // Step 1: Find the scene() function declaration
-            const sceneFunction = this.findSceneFunction(ast)
-            if (!sceneFunction) {
-                console.debug("[SourceParser] No scene() function found")
-                return locations
-            }
+            // Walk the entire AST to find all shape function calls
+            this.walkNode(ast, calls)
             
-            // Step 2: Find the return statement within scene()
-            const returnStmt = this.findReturnStatement(sceneFunction)
-            if (!returnStmt) {
-                console.debug("[SourceParser] No return statement found in scene()")
-                return locations
-            }
-            
-            // Step 3: Walk the return expression depth-first and collect CallExpressions
-            let nodeIndex = 0
-            if (returnStmt.argument) {
-                this.walkExpressionDepthFirst(returnStmt.argument, locations, () => {
-                    const current = nodeIndex
-                    nodeIndex++
-                    return current
-                })
-            }
-            
-            // Log debug message with count of found locations
-            if (locations.size > 0) {
-                console.debug(`[SourceParser] Found ${locations.size} shape function location(s)`)
-            }
+            console.debug(`[SourceParser] Found ${calls.length} shape call(s)`)
             
         } catch (err) {
-            // If parsing fails (syntax error), return empty map
-            // The build will fail anyway and user will fix the syntax
-            console.warn("Failed to parse source code for location tracking:", err)
+            console.warn("[SourceParser] Failed to parse source code:", err)
         }
         
-        return locations
+        return calls
     }
     
     /**
-     * Find the scene() function declaration in the AST
+     * Walk AST node recursively to find all shape function calls
      */
-    private findSceneFunction(ast: AcornNode): FunctionDeclaration | null {
-        // The top-level is usually a Program node with body array
-        const body = (ast as any).body
-        if (!Array.isArray(body)) {
-            return null
+    private walkNode(node: AcornNode, calls: ParsedShapeCall[]): void {
+        if (!node || typeof node !== "object") return
+        
+        if (node.type === "CallExpression") {
+            const callNode = node as CallExpression
+            this.processCallExpression(callNode, calls)
         }
         
-        for (const node of body) {
-            if (node.type === "FunctionDeclaration" && node.id?.name === "scene") {
-                return node as FunctionDeclaration
-            }
-        }
-        
-        return null
-    }
-    
-    /**
-     * Find the return statement within a function
-     */
-    private findReturnStatement(func: FunctionDeclaration): ReturnStatement | null {
-        const body = func.body
-        if (body.type !== "BlockStatement") {
-            return null
-        }
-        
-        // Look for return statement in the function body
-        for (const stmt of body.body) {
-            if (stmt.type === "ReturnStatement") {
-                return stmt as ReturnStatement
-            }
-        }
-        
-        return null
-    }
-    
-    /**
-     * Walk an expression depth-first, matching JavaScript evaluation order
-     * For CallExpression: visit arguments left-to-right first, then callee
-     * This matches how JS evaluates args before the function call
-     */
-    private walkExpressionDepthFirst(
-        node: AcornNode,
-        locations: SourceLocationMap,
-        incrementIndex: () => number
-    ): void {
-        switch (node.type) {
-            case "CallExpression": {
-                const callNode = node as CallExpression
-                
-                // Visit arguments first (left-to-right, as JavaScript evaluates args before the call)
-                for (const arg of callNode.arguments) {
-                    this.walkExpressionDepthFirst(arg, locations, incrementIndex)
-                }
-                
-                // Then record the callee (parent)
-                if (isShapeFunctionCall(callNode) && callNode.callee.type === "Identifier") {
-                    const loc = callNode.callee.loc
-                    if (loc) {
-                        const index = incrementIndex()
-                        locations.set(index, {
-                            startLine: loc.start.line,
-                            startColumn: loc.start.column + 1, // Acorn is 0-based, Monaco is 1-based
-                            endLine: loc.end.line,
-                            endColumn: loc.end.column + 1,
-                            functionName: callNode.callee.name
-                        })
-
+        // Recursively walk all properties
+        for (const key of Object.keys(node)) {
+            if (key === "type" || key === "loc" || key === "range" || key === "start" || key === "end") continue
+            const value = (node as any)[key]
+            if (Array.isArray(value)) {
+                for (const item of value) {
+                    if (item && typeof item === "object" && item.type) {
+                        this.walkNode(item, calls)
                     }
                 }
-                break
+            } else if (value && typeof value === "object" && value.type) {
+                this.walkNode(value, calls)
+            }
+        }
+    }
+    
+    /**
+     * Process a CallExpression to extract shape function info
+     */
+    private processCallExpression(callNode: CallExpression, calls: ParsedShapeCall[]): void {
+        // Only handle direct identifier calls (e.g., sphere(...), not obj.sphere(...))
+        if (callNode.callee.type !== "Identifier") return
+        
+        const funcName = callNode.callee.name
+        if (!ALL_SHAPE_FUNCTIONS.has(funcName)) return
+        
+        const loc = callNode.callee.loc
+        if (!loc) return
+        
+        const parsedCall: ParsedShapeCall = {
+            functionName: funcName,
+            location: {
+                startLine: loc.start.line,
+                startColumn: loc.start.column + 1, // Acorn is 0-based, Monaco is 1-based
+                endLine: loc.end.line,
+                endColumn: loc.end.column + 1,
+                functionName: funcName
+            }
+        }
+        
+        // Extract arguments for primitives
+        if (funcName === "sphere") {
+            this.parseSphereArgs(callNode, parsedCall)
+        } else if (funcName === "box") {
+            this.parseBoxArgs(callNode, parsedCall)
+        }
+        
+        calls.push(parsedCall)
+    }
+    
+    /**
+     * Parse sphere(pos, {r?, d?}) arguments
+     */
+    private parseSphereArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            // First arg: position (string like "1 2 3" or array)
+            if (callNode.arguments.length >= 1) {
+                const posArg = callNode.arguments[0]
+                const posValue = this.evaluateExpression(posArg)
+                if (posValue !== undefined) {
+                    parsedCall.pos = vec3(posValue)
+                }
             }
             
-            case "Identifier":
-                // Variable references - don't record, but might be used as args
-                break
-                
-            case "Literal":
-                // Literals - no shapes here
-                break
-                
-            case "ArrayExpression":
-                // Arrays might contain shapes
-                for (const elem of (node as any).elements || []) {
-                    if (elem) {
-                        this.walkExpressionDepthFirst(elem, locations, incrementIndex)
+            // Second arg: {r?, d?}
+            if (callNode.arguments.length >= 2) {
+                const optionsArg = callNode.arguments[1]
+                if (optionsArg.type === "ObjectExpression") {
+                    for (const prop of (optionsArg as any).properties) {
+                        if (prop.type === "Property" && prop.key.type === "Identifier") {
+                            const key = prop.key.name
+                            const value = this.evaluateExpression(prop.value)
+                            if (key === "r" && typeof value === "number") {
+                                parsedCall.r = value
+                            } else if (key === "d" && typeof value === "number") {
+                                parsedCall.d = value
+                            }
+                        }
                     }
                 }
-                break
-                
-            case "ObjectExpression":
-                // Objects might contain shapes in properties
-                for (const prop of (node as any).properties || []) {
-                    if (prop.value) {
-                        this.walkExpressionDepthFirst(prop.value, locations, incrementIndex)
-                    }
-                }
-                break
-                
-            case "MemberExpression":
-                // member.expression.something - walk the object part
-                if ((node as any).object) {
-                    this.walkExpressionDepthFirst((node as any).object, locations, incrementIndex)
-                }
-                break
-                
-            case "ConditionalExpression":
-                // condition ? consequent : alternate
-                if ((node as any).test) {
-                    this.walkExpressionDepthFirst((node as any).test, locations, incrementIndex)
-                }
-                if ((node as any).consequent) {
-                    this.walkExpressionDepthFirst((node as any).consequent, locations, incrementIndex)
-                }
-                if ((node as any).alternate) {
-                    this.walkExpressionDepthFirst((node as any).alternate, locations, incrementIndex)
-                }
-                break
-                
-            case "BinaryExpression":
-            case "LogicalExpression":
-                // left op right
-                if ((node as any).left) {
-                    this.walkExpressionDepthFirst((node as any).left, locations, incrementIndex)
-                }
-                if ((node as any).right) {
-                    this.walkExpressionDepthFirst((node as any).right, locations, incrementIndex)
-                }
-                break
-                
-            case "UnaryExpression":
-            case "UpdateExpression":
-                // op argument
-                if ((node as any).argument) {
-                    this.walkExpressionDepthFirst((node as any).argument, locations, incrementIndex)
-                }
-                break
-                
-            case "SequenceExpression":
-                // (a, b, c)
-                for (const expr of (node as any).expressions || []) {
-                    this.walkExpressionDepthFirst(expr, locations, incrementIndex)
-                }
-                break
-                
-            case "ArrowFunctionExpression":
-            case "FunctionExpression":
-                // Inline functions - walk the body
-                if ((node as any).body) {
-                    this.walkExpressionDepthFirst((node as any).body, locations, incrementIndex)
-                }
-                break
-                
-            case "BlockStatement": {
-                // Block statement - look for return
-                const blockBody = (node as BlockStatement).body
-                for (const stmt of blockBody) {
-                    if (stmt.type === "ReturnStatement" && stmt.argument) {
-                        this.walkExpressionDepthFirst(stmt.argument, locations, incrementIndex)
-                    } else if (stmt.type === "ExpressionStatement") {
-                        this.walkExpressionDepthFirst((stmt as ExpressionStatement).expression, locations, incrementIndex)
-                    }
-                }
-                break
             }
-                
-            case "SpreadElement":
-                // ...expr
-                if ((node as any).argument) {
-                    this.walkExpressionDepthFirst((node as any).argument, locations, incrementIndex)
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse sphere args:`, err)
+        }
+    }
+    
+    /**
+     * Parse box(pos, size) arguments
+     */
+    private parseBoxArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            // First arg: position
+            if (callNode.arguments.length >= 1) {
+                const posArg = callNode.arguments[0]
+                const posValue = this.evaluateExpression(posArg)
+                if (posValue !== undefined) {
+                    parsedCall.pos = vec3(posValue)
                 }
-                break
+            }
+            
+            // Second arg: size
+            if (callNode.arguments.length >= 2) {
+                const sizeArg = callNode.arguments[1]
+                const sizeValue = this.evaluateExpression(sizeArg)
+                if (sizeValue !== undefined) {
+                    parsedCall.size = vec3(sizeValue)
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse box args:`, err)
+        }
+    }
+    
+    /**
+     * Try to evaluate an AST expression to a value
+     * Handles: string literals, number literals, arrays, unary minus
+     */
+    private evaluateExpression(node: AcornNode): any {
+        if (!node) return undefined
+        
+        switch (node.type) {
+            case "Literal":
+                return (node as any).value
                 
+            case "ArrayExpression": {
+                const elements = (node as any).elements
+                const result: number[] = []
+                for (const elem of elements) {
+                    const val = this.evaluateExpression(elem)
+                    if (typeof val !== "number") return undefined
+                    result.push(val)
+                }
+                return result
+            }
+            
+            case "UnaryExpression": {
+                const unary = node as any
+                if (unary.operator === "-") {
+                    const arg = this.evaluateExpression(unary.argument)
+                    if (typeof arg === "number") return -arg
+                } else if (unary.operator === "+") {
+                    return this.evaluateExpression(unary.argument)
+                }
+                return undefined
+            }
+            
+            case "TemplateLiteral": {
+                // Handle simple template literals like `1 2 3`
+                const templ = node as any
+                if (templ.expressions.length === 0 && templ.quasis.length === 1) {
+                    return templ.quasis[0].value.cooked
+                }
+                return undefined
+            }
+            
             default:
-                // Unknown node type - try to walk common properties
-                if ((node as any).expression) {
-                    this.walkExpressionDepthFirst((node as any).expression, locations, incrementIndex)
-                }
-                break
+                return undefined
         }
     }
 }

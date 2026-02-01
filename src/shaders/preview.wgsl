@@ -152,19 +152,15 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     // Use the transformed ray for raymarching.
     let hit = raymarch(transformedOrigin, transformedDir);
 
-        // Click detection using exact pixel matching to avoid race conditions
+        // Click detection using pixel-accurate matching
     if (clickState.enabled > 0u && hit.t > 0.0) {
-        // Convert UV to pixel coordinates for exact matching
+        // Convert UV to pixel coordinates
         let clickPixel = clickState.clickPos * camera.res;
         let currentPixel = uv * camera.res;
         let pixelDist = distance(clickPixel, currentPixel);
         
-        // Only the exact pixel (within 0.5 pixels) under the cursor writes the ID
-        if (pixelDist < 0.5) {
-            // Use atomic exchange to avoid race conditions
-            // Only the closest surface (smallest t) should win
-            // Since we can't compare t values atomically, we rely on the fact that
-            // closer surfaces are hit first in the raymarch
+        // Capture clicks within 2 pixels of cursor (covers pixel boundaries)
+        if (pixelDist < 2.0) {
             atomicStore(&clickedObjectId, hit.sdf.id);
         }
     }
@@ -182,18 +178,11 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         
         let diffuse = lighting(normal);
         
-        // Debug: show object ID as color variation for testing
         var baseColor = vec3f(1.0, 0.5, 0.2); // Default orange color
         
-        // Debug: color-code different object IDs for testing
+        // Highlight selected object in white
         if (hit.sdf.id == selectedObjectId && selectedObjectId != 0u) {
             baseColor = vec3f(1.0, 1.0, 1.0); // White for selected object
-        } else if (hit.sdf.id == 1u) {
-            baseColor = vec3f(1.0, 0.0, 0.0); // Red for object 1
-        } else if (hit.sdf.id == 2u) {
-            baseColor = vec3f(0.0, 1.0, 0.0); // Green for object 2
-        } else if (hit.sdf.id == 3u) {
-            baseColor = vec3f(0.0, 0.0, 1.0); // Blue for object 3
         }
         
         let shadedColor = baseColor * diffuse;

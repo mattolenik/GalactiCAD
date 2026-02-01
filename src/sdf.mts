@@ -238,9 +238,15 @@ export class SDFRenderer {
             try {
                 const clickedId = await this.#readClickedObjectId()
                 if (clickedId > 0) {
-                    this.#selectedObjectId = clickedId
+                    // Toggle selection: if clicking already selected object, deselect it
+                    if (clickedId === this.#selectedObjectId) {
+                        this.#selectedObjectId = 0
+                        console.log('Deselected object')
+                    } else {
+                        this.#selectedObjectId = clickedId
+                        console.log(`Selected object ID: ${this.#selectedObjectId}`)
+                    }
                     this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectId, 0, new Uint32Array([this.#selectedObjectId]))
-                    console.log(`Selected object ID: ${this.#selectedObjectId}`)
                 } else {
                     console.log('No object clicked - clickedId was 0')
                 }

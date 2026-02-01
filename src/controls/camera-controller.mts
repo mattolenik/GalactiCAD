@@ -148,13 +148,14 @@ export class CameraController {
 
     #onPointerDown(e: PointerEvent) {
         if (e.button === 0) {
-            this.#dragMode = "rotate"
+            // Left click for selection
+            this.onSelect?.(vec2(e.clientX, e.clientY))
+            return
         } else if (e.button === 1) {
             this.#dragMode = "pan"
         } else if (e.button === 2) {
-            // Right click for selection - call callback without dragging
-            this.onSelect?.(vec2(e.clientX, e.clientY))
-            return
+            // Right click for rotate
+            this.#dragMode = "rotate"
         } else {
             return
         }

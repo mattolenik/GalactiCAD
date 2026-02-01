@@ -10,7 +10,7 @@ import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { LocalStorage } from "./storage/storage.mjs"
-import { MonacoHighlighter, type HighlightRange } from "./highlighting/monaco-highlighter.mjs"
+import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
 import { SourceParser, type SourceLocation } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
 
@@ -31,34 +31,60 @@ class App {
     build() {
         try {
             const src = this.editor.getValue()
-            
+
             // Build the scene
             this.renderer.build(src)
-            
+
             // Parse the source code to extract shape function calls with their arguments
             const parsedCalls = this.#sourceParser.parseShapeCalls(src)
-            
+
             // Get all scene nodes
             const sceneNodes = this.renderer.getSceneNodes()
-            
+
             // Match scene nodes to source code by comparing property values
             this.#sourceLocationMap = matchNodesToSource(sceneNodes, parsedCalls)
-            
+
             console.debug("[App] Source location map:", Array.from(this.#sourceLocationMap.entries()))
-            
+
+            // Update color indicators for all matched shapes
+            this.#updateColorIndicators()
+
             this.renderer.startLoop()
             this.#scheduleMeshUpdate(src)
             this.log.innerText = ""
-            
+
             // Update highlighting for current selection after build
             this.#updateEditorHighlighting()
         } catch (err) {
             this.log.innerText = `💢 ${err}`
-            // Clear highlighting on build error
+            // Clear selection highlighting on build error, but KEEP color indicators
+            // This preserves visual feedback during transient errors while editing
             this.#monacoHighlighter.clearHighlighting()
+            // Don't clear color indicators - they'll update when build succeeds
         }
     }
     
+    /**
+     * Update color indicator decorations for all matched shapes.
+     * Uses node IDs from the source location map for color assignment.
+     */
+    #updateColorIndicators() {
+        const indicators: ShapeIndicator[] = []
+        
+        for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
+            indicators.push({
+                startLine: location.startLine,
+                startColumn: location.startColumn,
+                endLine: location.endLine,
+                endColumn: location.endColumn,
+                nodeId: nodeId,
+                functionName: location.functionName
+            })
+        }
+        
+        this.#monacoHighlighter.setColorIndicators(indicators)
+    }
+
     /**
      * Update Monaco editor highlighting based on selected object IDs
      */
@@ -109,7 +135,7 @@ class App {
     ) {
         this.#ls = LocalStorage.instance
         this.#viewports = document.getElementById("viewports")!
-        
+
         // Initialize source parser and highlighter for selection sync
         this.#sourceParser = new SourceParser()
         this.#monacoHighlighter = new MonacoHighlighter()
@@ -194,12 +220,12 @@ class App {
             .then(() => {
                 // Set up Monaco highlighter with the editor instance
                 this.#monacoHighlighter.setEditor(this.editor)
-                
+
                 // Listen for selection changes to update editor highlighting
                 this.renderer.onSelectionChange = () => {
                     this.#updateEditorHighlighting()
                 }
-                
+
                 this.#tabs.addEventListener("activeTabChanged", e => {
                     this.build()
                     // Clear highlighting when switching tabs

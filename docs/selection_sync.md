@@ -301,6 +301,43 @@ This allows matching the parsed string `"0 5 -10"` to the scene node's `pos: Vec
 2. **Unique Values Required**: Two identical spheres (same pos, same radius) cannot be distinguished
 3. **Composites Not Matched**: `union`, `subtract`, `group` don't have unique identifying properties
 
+## Color Indicators
+
+In addition to selection highlighting, the editor displays colored square indicators next to each shape function call. These indicators match the color of the shape in the 3D preview.
+
+### Implementation
+
+1. **Palette Colors**: Uses the same 32-color pastel palette as the shader (`colorPalette.mts`)
+2. **Color Assignment**: `palette[nodeId % PALETTE_SIZE]` - same formula as the GPU shader
+3. **CSS Generation**: Dynamic CSS classes are generated for each palette color
+4. **Monaco Decorations**: Uses `before` decorators to insert colored squares before function names
+
+### CSS Structure
+
+```css
+.shape-color-0::before {
+    content: "■";
+    color: rgb(255, 179, 179);  /* Light coral */
+    margin-right: 4px;
+    font-size: 0.9em;
+    text-shadow: 0 0 1px rgba(0,0,0,0.5);
+}
+/* ... 31 more color classes */
+```
+
+### Visual Result
+
+```
+■ sphere("0 0 0", {r: 5})      // Coral square
+■ box("10 0 0", "5 5 5")       // Peach square  
+■ sphere("0 10 0", {r: 3})     // Yellow square
+```
+
+The color indicators:
+- Are always visible (not just when selected)
+- Update when code changes
+- Match the exact colors shown in the 3D preview
+
 ## Future Enhancements
 
 1. **Composite Matching**: Match composites by their child structure

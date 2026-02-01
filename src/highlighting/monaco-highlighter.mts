@@ -1,8 +1,10 @@
 /**
  * Monaco Highlighter - Manages Monaco editor decorations for highlighting selected shapes
+ * and showing color indicators for shape functions
  */
 
 import * as monaco from "monaco-editor"
+import { DEFAULT_PALETTE, PALETTE_SIZE } from "../colorPalette.mjs"
 
 /**
  * Range to highlight in the editor (function name position)
@@ -15,17 +17,117 @@ export interface HighlightRange {
 }
 
 /**
+ * Shape indicator with location and node ID for color lookup
+ */
+export interface ShapeIndicator {
+    startLine: number
+    startColumn: number
+    endLine: number
+    endColumn: number
+    nodeId: number
+    functionName: string
+}
+
+/**
  * Manages Monaco editor decorations for highlighting selected shapes
+ * and showing color indicators
  */
 export class MonacoHighlighter {
     private editor: monaco.editor.IStandaloneCodeEditor | null = null
-    private decorationIds: string[] = []
+    private selectionDecorationIds: string[] = []
+    private colorIndicatorDecorationIds: string[] = []
+    private styleElement: HTMLStyleElement | null = null
 
     /**
      * Set the editor instance to work with
      */
     setEditor(editor: monaco.editor.IStandaloneCodeEditor) {
         this.editor = editor
+        this.ensureStyleElement()
+    }
+
+    /**
+     * Ensure the style element for dynamic CSS exists
+     */
+    private ensureStyleElement() {
+        if (!this.styleElement) {
+            this.styleElement = document.createElement("style")
+            this.styleElement.id = "monaco-shape-colors"
+            document.head.appendChild(this.styleElement)
+            
+            // Generate CSS classes for all palette colors
+            let css = ""
+            for (let i = 0; i < PALETTE_SIZE; i++) {
+                const color = DEFAULT_PALETTE[i]
+                const r = Math.round(color.x * 255)
+                const g = Math.round(color.y * 255)
+                const b = Math.round(color.z * 255)
+                css += `.shape-color-${i} {
+                    background-color: rgb(${r}, ${g}, ${b});
+                    border-radius: 1px;
+                    color: transparent !important;
+                    font-size: 0.85em;
+                    margin-right: 2px;
+                }\n`
+            }
+            this.styleElement.textContent = css
+        }
+    }
+
+    /**
+     * Update color indicators for all shape functions
+     * @param indicators Array of shape indicators with nodeId for color lookup
+     */
+    setColorIndicators(indicators: ShapeIndicator[]) {
+        if (!this.editor) {
+            console.warn("[MonacoHighlighter] No editor set")
+            return
+        }
+
+        const model = this.editor.getModel()
+        if (!model) {
+            console.warn("[MonacoHighlighter] No model available")
+            return
+        }
+
+        this.ensureStyleElement()
+
+        // Create decorations for each shape with color indicator
+        const newDecorations: monaco.editor.IModelDeltaDecoration[] = indicators.map(indicator => {
+            const colorIndex = indicator.nodeId % PALETTE_SIZE
+            return {
+                range: new monaco.Range(
+                    indicator.startLine,
+                    indicator.startColumn,
+                    indicator.endLine,
+                    indicator.endColumn
+                ),
+                options: {
+                    before: {
+                        content: "██",
+                        inlineClassName: `shape-color-${colorIndex}`
+                    }
+                }
+            }
+        })
+
+        // Update decorations (removes old, adds new)
+        this.colorIndicatorDecorationIds = this.editor.deltaDecorations(
+            this.colorIndicatorDecorationIds, 
+            newDecorations
+        )
+    }
+
+    /**
+     * Clear all color indicators
+     */
+    clearColorIndicators() {
+        if (this.editor) {
+            this.colorIndicatorDecorationIds = this.editor.deltaDecorations(
+                this.colorIndicatorDecorationIds, 
+                []
+            )
+        }
     }
 
     /**
@@ -49,8 +151,6 @@ export class MonacoHighlighter {
             return
         }
 
-        console.log(`[MonacoHighlighter] Highlighting ${ranges.length} range(s):`, ranges)
-
         // Create decorations for each range (just the function name, not whole line)
         const newDecorations: monaco.editor.IModelDeltaDecoration[] = ranges.map(range => ({
             range: new monaco.Range(
@@ -69,8 +169,10 @@ export class MonacoHighlighter {
         }))
 
         // Update decorations (removes old, adds new)
-        this.decorationIds = this.editor.deltaDecorations(this.decorationIds, newDecorations)
-        console.log(`[MonacoHighlighter] Applied ${newDecorations.length} decorations, IDs:`, this.decorationIds)
+        this.selectionDecorationIds = this.editor.deltaDecorations(
+            this.selectionDecorationIds, 
+            newDecorations
+        )
 
         // Scroll to first selected range
         if (ranges.length > 0) {
@@ -79,20 +181,22 @@ export class MonacoHighlighter {
     }
 
     /**
-     * Clear all highlighting
+     * Clear selection highlighting (not color indicators)
      */
     clearHighlighting() {
-        console.log("[MonacoHighlighter] Clearing highlighting")
         if (this.editor) {
-            this.decorationIds = this.editor.deltaDecorations(this.decorationIds, [])
+            this.selectionDecorationIds = this.editor.deltaDecorations(
+                this.selectionDecorationIds, 
+                []
+            )
         }
     }
 
     /**
-     * Get current decoration IDs
+     * Get current selection decoration IDs
      */
     getDecorationIds(): string[] {
-        return [...this.decorationIds]
+        return [...this.selectionDecorationIds]
     }
 }
 

@@ -14,6 +14,9 @@ import { MeshData } from "./export/export.mjs"
 class UniformBuffers {
     camera!: GPUBuffer
     scene!: GPUBuffer
+    clickState!: GPUBuffer
+    selectedObjectId!: GPUBuffer
+    clickedObjectId!: GPUBuffer
 }
 
 class ExportBuffers {
@@ -38,6 +41,8 @@ export class SDFRenderer {
     #scene!: SceneInfo
     #started = false
     #uniformBuffers: UniformBuffers
+    #selectedObjectId: number = 0
+    #clickPos: Vec2f = vec2(0, 0)
     #exportBuffers: ExportBuffers
     #shaderCompiler!: ShaderCompiler
     #sceneShader!: GPUShaderModule
@@ -193,9 +198,58 @@ export class SDFRenderer {
         return this.#controls
     }
 
+    get selectedObjectId(): number {
+        return this.#selectedObjectId
+    }
+
+    async #readClickedObjectId(): Promise<number> {
+        // Read back clicked object ID from storage buffer
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.clickedObjectId, 4)
+        return new Uint32Array(readback)[0]
+    }
+
+    #handleClick(screenPos: Vec2f) {
+        // Convert screen coordinates to UV coordinates (0-1 range)
+        const canvas = this.#preview.canvas
+        const rect = canvas.getBoundingClientRect()
+        const x = (screenPos.x - rect.left) / rect.width
+        const y = (screenPos.y - rect.top) / rect.height
+        
+        this.#clickPos = vec2(x, y)
+        
+        console.log(`Click at UV: (${x.toFixed(3)}, ${y.toFixed(3)})`)
+        
+        // Store click state: position (vec2f), threshold (f32), enabled (u32)
+        const clickData = new ArrayBuffer(16) // vec2f (8) + f32 (4) + u32 (4)
+        new Float32Array(clickData, 0, 2).set([x, y])
+        new Float32Array(clickData, 8, 1).set([0.05]) // clickThreshold = 0.05
+        new Uint32Array(clickData, 12, 1).set([1]) // enabled = 1
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
+        
+        // Clear clicked object ID buffer
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
+        
+        // Read back result after a few frames
+        setTimeout(async () => {
+            try {
+                const clickedId = await this.#readClickedObjectId()
+                if (clickedId > 0) {
+                    this.#selectedObjectId = clickedId
+                    this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectId, 0, new Uint32Array([this.#selectedObjectId]))
+                    console.log(`Selected object ID: ${this.#selectedObjectId}`)
+                } else {
+                    console.log('No object clicked - clickedId was 0')
+                }
+            } catch (error) {
+                console.error('Error reading clicked object ID:', error)
+            }
+        }, 200) // Wait for GPU processing
+    }
+
     constructor(preview: PreviewWindow) {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50)
+        this.#controls.onSelect = (screenPos: Vec2f) => this.#handleClick(screenPos)
         this.#uniformBuffers = new UniformBuffers()
         this.#exportBuffers = new ExportBuffers()
         this.#initializing = this.initialize()
@@ -265,6 +319,10 @@ export class SDFRenderer {
             await this.#initializing
             this.#initializing = null
         }
+        // Initialize click detection buffers to 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, new Uint32Array([0, 0]))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectId, 0, new Uint32Array([0]))
     }
 
     startLoop() {
@@ -290,6 +348,25 @@ export class SDFRenderer {
             size: 96,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "camera",
+        })
+
+        // Click detection buffers - pad to 16 bytes for alignment
+        this.#uniformBuffers.clickState = this.#device.createBuffer({
+            size: 16, // vec2f (8) + u32 (4) + u32 (4 padding) = 16
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "clickState",
+        })
+
+        this.#uniformBuffers.selectedObjectId = this.#device.createBuffer({
+            size: 4, // u32
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "selectedObjectId",
+        })
+
+        this.#uniformBuffers.clickedObjectId = this.#device.createBuffer({
+            size: 4, // u32
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "clickedObjectId",
         })
     }
 
@@ -318,6 +395,9 @@ export class SDFRenderer {
             entries: [
                 // { binding: 0, resource: { buffer: this.#uniformBuffers.scene } },
                 { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                { binding: 2, resource: { buffer: this.#uniformBuffers.clickState } },
+                { binding: 3, resource: { buffer: this.#uniformBuffers.clickedObjectId } },
+                { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectId } },
             ],
         })
     }

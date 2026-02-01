@@ -691,14 +691,14 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = max(r, min(a.d, b.d)) - uLen;
     
     // Compute gradient magnitude analytically.
-    // In the blend region: d = r - |u| where u = (r - a.d, r - b.d)
+    // In blend region: d = r - |u| where u = (r - a.d, r - b.d)
     // ∇d = (u.x/|u|) * ∇a.d + (u.y/|u|) * ∇b.d  (with signs)
     //
     // The gradient magnitude depends on the angle θ between ∇a.d and ∇b.d:
     // |∇d|² = (u.x/|u|)² * |∇a.d|² + (u.y/|u|)² * |∇b.d|² + 2*(u.x*u.y/|u|²)*|∇a.d|*|∇b.d|*cos(θ)
     //
     // For axis-aligned 90° corners (cos(θ) = 0): |∇d| = 1 if both inputs have |∇| = 1
-    // But the issue is that the SDF values themselves are distorted, making the
+    // But issue is that the SDF values themselves are distorted, making the
     // projection step overshoot even when |∇d| = 1.
     //
     // The key insight: the SDF value 'd' in the blend region does NOT represent
@@ -726,6 +726,10 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
         g = mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor);
         g = max(g, 0.25);  // Don't go too low
         n = safeNormalize3(a.n * u.x + b.n * u.y);
+        
+        // For proper ID pass-through in smooth blends: use the ID of the object that's 
+        // actually closest to the original surface before blending
+        // This ensures more reliable click detection through CSG operations
         if (a.d < b.d) {
             id = a.id;
             s = a.s;

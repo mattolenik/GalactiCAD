@@ -14,6 +14,18 @@ struct Camera {
 // @group(0) @binding(0) var<uniform> args: array<vec3f, 1024>;
 @group(0) @binding(1) var<uniform> camera: Camera;
 
+// Click detection state
+struct ClickState {
+    clickPos: vec2f,     // UV coordinates of click (0-1 range)
+    enabled: u32,        // Whether click detection is enabled
+}
+
+@group(0) @binding(2) var<uniform> clickState: ClickState;
+@group(0) @binding(3) var<storage, read_write> clickedObjectId: array<u32, 1>;
+
+// Currently selected object for highlighting
+@group(0) @binding(4) var<uniform> selectedObjectId: u32;
+
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
@@ -140,6 +152,15 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     // Use the transformed ray for raymarching.
     let hit = raymarch(transformedOrigin, transformedDir);
 
+        // Click detection - simplified direct assignment
+    if (clickState.enabled > 0u) {
+        let clickDist = distance(uv, clickState.clickPos);
+        if (clickDist < 0.02 && hit.t > 0.0) {
+            // This pixel was clicked and we hit an object
+            clickedObjectId[0] = hit.sdf.id;
+        }
+    }
+
     if (hit.t > 0.0) {
         // Use analytical normal from SDF result (already computed during raymarch)
         var normal = hit.sdf.n;
@@ -152,7 +173,21 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         }
         
         let diffuse = lighting(normal);
-        let baseColor = vec3f(1.0, 0.5, 0.2);
+        
+        // Debug: show object ID as color variation for testing
+        var baseColor = vec3f(1.0, 0.5, 0.2); // Default orange color
+        
+        // Debug: color-code different object IDs for testing
+        if (hit.sdf.id == selectedObjectId && selectedObjectId != 0u) {
+            baseColor = vec3f(1.0, 1.0, 1.0); // White for selected object
+        } else if (hit.sdf.id == 1u) {
+            baseColor = vec3f(1.0, 0.0, 0.0); // Red for object 1
+        } else if (hit.sdf.id == 2u) {
+            baseColor = vec3f(0.0, 1.0, 0.0); // Green for object 2
+        } else if (hit.sdf.id == 3u) {
+            baseColor = vec3f(0.0, 0.0, 1.0); // Blue for object 3
+        }
+        
         let shadedColor = baseColor * diffuse;
         return vec4f(shadedColor, 1.0);
     } else {

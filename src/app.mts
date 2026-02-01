@@ -10,6 +10,8 @@ import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { LocalStorage } from "./storage/storage.mjs"
+import { SourceParser, type SourceLocationMap } from "./parser/source-parser.mjs"
+import { MonacoHighlighter, type HighlightRange } from "./highlighting/monaco-highlighter.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -21,16 +23,65 @@ class App {
     #viewports: HTMLElement
     #ls: LocalStorage
     #meshViewerEnabled = false
+    #sourceParser: SourceParser
+    #sourceLocationMap: SourceLocationMap = new Map()
+    #monacoHighlighter: MonacoHighlighter
 
     build() {
         try {
             const src = this.editor.getValue()
+            
+            // Parse source locations before building scene
+            this.#sourceLocationMap = this.#sourceParser.parse(src)
+            
             this.renderer.build(src)
             this.renderer.startLoop()
             this.#scheduleMeshUpdate(src)
             this.log.innerText = ""
+            
+            // Update highlighting for current selection after build
+            this.#updateEditorHighlighting()
         } catch (err) {
             this.log.innerText = `💢 ${err}`
+            // Clear highlighting on build error
+            this.#monacoHighlighter.clearHighlighting()
+        }
+    }
+    
+    /**
+     * Update Monaco editor highlighting based on selected object IDs
+     */
+    #updateEditorHighlighting() {
+        const selectedIds = this.renderer.selectedObjectIds
+
+        console.log("[App] Updating editor highlighting for selected IDs:", selectedIds)
+
+        if (selectedIds.length === 0) {
+            console.log("[App] No selected IDs, clearing highlighting")
+            this.#monacoHighlighter.clearHighlighting()
+            return
+        }
+
+        // Map selected IDs to their source ranges
+        const highlightRanges: HighlightRange[] = []
+        for (const id of selectedIds) {
+            const location = this.#sourceLocationMap.get(id)
+            if (location) {
+                highlightRanges.push({
+                    startLine: location.startLine,
+                    startColumn: location.startColumn,
+                    endLine: location.endLine,
+                    endColumn: location.endColumn
+                })
+            }
+        }
+
+        console.log(`[App] Built ${highlightRanges.length} highlight range(s):`, highlightRanges)
+
+        if (highlightRanges.length > 0) {
+            this.#monacoHighlighter.highlightRanges(highlightRanges)
+        } else {
+            this.#monacoHighlighter.clearHighlighting()
         }
     }
 
@@ -43,6 +94,10 @@ class App {
     ) {
         this.#ls = LocalStorage.instance
         this.#viewports = document.getElementById("viewports")!
+        
+        // Initialize source code tracking for highlighting
+        this.#sourceParser = new SourceParser()
+        this.#monacoHighlighter = new MonacoHighlighter()
 
         // Remove any existing mesh viewer from HTML (we create it dynamically when enabled)
         const existingMesh = document.getElementById("mesh")
@@ -100,6 +155,15 @@ class App {
                 ${__tone_3}: #666;
                 ${__toolbar_height}: 30px;
             }
+
+            /* Highlighted function name styling for selected shapes in Monaco editor */
+            .selected-shape-name {
+                background-color: rgba(255, 255, 0, 0.3) !important;
+                border: 1px solid rgba(255, 255, 0, 0.5) !important;
+                border-radius: 2px !important;
+                padding: 0 2px !important;
+                box-shadow: 0 0 4px rgba(255, 255, 0, 0.3) !important;
+            }
         `
         document.body.appendChild(style)
 
@@ -113,7 +177,19 @@ class App {
         this.renderer
             .ready()
             .then(() => {
-                this.#tabs.addEventListener("activeTabChanged", e => this.build())
+                // Set up Monaco highlighter with the editor instance
+                this.#monacoHighlighter.setEditor(this.editor)
+                
+                // Listen for selection changes to update editor highlighting
+                this.renderer.onSelectionChange = () => {
+                    this.#updateEditorHighlighting()
+                }
+                
+                this.#tabs.addEventListener("activeTabChanged", e => {
+                    this.build()
+                    // Clear highlighting when switching tabs
+                    this.#monacoHighlighter.clearHighlighting()
+                })
                 this.build()
 
                 fromEventPattern<monaco.editor.IModelContentChangedEvent>(

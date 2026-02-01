@@ -53,6 +53,12 @@ export class SDFRenderer {
     #helper!: GPUHelper
     #builtSrc: string | null = null
 
+    /**
+     * Callback invoked when object selection changes
+     * Provides the array of currently selected object IDs
+     */
+    onSelectionChange?: (selectedIds: number[]) => void
+
     #meshEdgeStats(mesh: MeshData) {
         // `mesh.tris` is a flat triangle index buffer (u32 indices).
         // A watertight manifold surface should have exactly 2 incident triangles per undirected edge.
@@ -273,6 +279,11 @@ export class SDFRenderer {
         }
         
         this.#writeSelectionBuffer()
+        
+        // Notify listeners about selection change
+        if (this.onSelectionChange) {
+            this.onSelectionChange([...this.#selectedObjectIds])
+        }
     }
 
     #writeSelectionBuffer() {

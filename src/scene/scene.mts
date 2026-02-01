@@ -21,6 +21,7 @@ export class SceneInfo {
         if (this.#nodes.hasValue(node)) return
         node.id = this.#nodes.size
         this.#nodes.set(node.id, node)
+
     }
 
     get<T extends Node>(id: number): T {
@@ -28,7 +29,13 @@ export class SceneInfo {
     }
 
     constructor(src: string) {
-        this.root = new Function("box", "group", "sphere", "subtract", "union", src)(box, group, sphere, subtract, union)
+        // Create a function that defines scene() and then calls it
+        // This allows users to write: function scene() { return sphere(...) }
+        const wrappedSrc = `
+            ${src}
+            return scene()
+        `
+        this.root = new Function("box", "group", "sphere", "subtract", "union", wrappedSrc)(box, group, sphere, subtract, union)
         this.root.scene = this
         this.root.build()
     }

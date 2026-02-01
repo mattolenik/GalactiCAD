@@ -13,6 +13,7 @@
     "packageManager": "pnpm@10.10.0",
     "type": "module",
     "devDependencies": {
+        "@types/acorn": "^6.0.4",
         "@types/node": "^22.19.5",
         "@types/wicg-file-system-access": "^2023.10.7",
         "@types/ws": "^8.18.1",
@@ -24,6 +25,8 @@
         "ws": "^8.19.0"
     },
     "dependencies": {
+        "acorn": "^8.15.0",
+        "acorn-walk": "^8.3.4",
         "monaco-editor": "^0.52.2",
         "rxjs": "^7.8.2"
     }

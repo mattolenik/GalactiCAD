@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      acorn:
+        specifier: ^8.15.0
+        version: 8.15.0
+      acorn-walk:
+        specifier: ^8.3.4
+        version: 8.3.4
       monaco-editor:
         specifier: ^0.52.2
         version: 0.52.2
@@ -15,6 +21,9 @@ importers:
         specifier: ^7.8.2
         version: 7.8.2
     devDependencies:
+      '@types/acorn':
+        specifier: ^6.0.4
+        version: 6.0.4
       '@types/node':
         specifier: ^22.19.5
         version: 22.19.5
@@ -357,6 +366,10 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@types/acorn@6.0.4':
+    resolution: {integrity: sha512-DafqcBAjbOOmgqIx3EF9EAdBKAKgspv00aQVIW3fVQ0TXo5ZPBeSRey1SboVAUzjw8Ucm7cd1gtTSlosYoEQLA==}
+    deprecated: This is a stub types definition. acorn provides its own type definitions, so you do not need this installed.
+
   '@types/node@22.19.5':
     resolution: {integrity: sha512-HfF8+mYcHPcPypui3w3mvzuIErlNOh2OAG+BCeBZCEwyiD5ls2SiCwEyT47OELtf7M3nHxBdu0FsmzdKxkN52Q==}
 
@@ -368,6 +381,15 @@ packages:
 
   '@webgpu/types@0.1.68':
     resolution: {integrity: sha512-3ab1B59Ojb6RwjOspYLsTpCzbNB3ZaamIAxBMmvnNkiDoLTZUOBXZ9p5nAYVEkQlDdf6qAZWi1pqj9+ypiqznA==}
+
+  acorn-walk@8.3.4:
+    resolution: {integrity: sha512-ueEepnujpqee2o5aIYnvHU6C0A42MNdsIDeqy5BydrkuC5R1ZuUFnm27EeFJGoEHJQgn3uleRvmTXaJgfXbt4g==}
+    engines: {node: '>=0.4.0'}
+
+  acorn@8.15.0:
+    resolution: {integrity: sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==}
+    engines: {node: '>=0.4.0'}
+    hasBin: true
 
   chokidar@4.0.3:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
@@ -590,6 +612,10 @@ snapshots:
   '@esbuild/win32-x64@0.27.2':
     optional: true
 
+  '@types/acorn@6.0.4':
+    dependencies:
+      acorn: 8.15.0
+
   '@types/node@22.19.5':
     dependencies:
       undici-types: 6.21.0
@@ -601,6 +627,12 @@ snapshots:
       '@types/node': 22.19.5
 
   '@webgpu/types@0.1.68': {}
+
+  acorn-walk@8.3.4:
+    dependencies:
+      acorn: 8.15.0
+
+  acorn@8.15.0: {}
 
   chokidar@4.0.3:
     dependencies:

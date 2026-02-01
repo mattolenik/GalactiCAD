@@ -27,6 +27,7 @@ class App {
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
     #monacoHighlighter: MonacoHighlighter
+    #isUpdatingFromPreview = false  // Prevent selection feedback loops
 
     build() {
         try {
@@ -91,10 +92,7 @@ class App {
     #updateEditorHighlighting() {
         const selectedIds = this.renderer.selectedObjectIds
 
-        console.log("[App] Updating editor highlighting for selected IDs:", selectedIds)
-
         if (selectedIds.length === 0) {
-            console.log("[App] No selected IDs, clearing highlighting")
             this.#monacoHighlighter.clearHighlighting()
             return
         }
@@ -111,18 +109,94 @@ class App {
                     endLine: location.endLine,
                     endColumn: location.endColumn
                 })
-                console.debug(`[App] ID ${id}: '${location.functionName}' at line ${location.startLine}:${location.startColumn}`)
-            } else {
-                console.debug(`[App] ID ${id}: No source location found`)
             }
         }
-
-        console.log(`[App] Built ${highlightRanges.length} highlight range(s):`, highlightRanges)
 
         if (highlightRanges.length > 0) {
             this.#monacoHighlighter.highlightRanges(highlightRanges)
         } else {
             this.#monacoHighlighter.clearHighlighting()
+        }
+    }
+
+    /**
+     * Find node ID at a given editor position (line, column).
+     * Used for editor-to-preview selection sync.
+     */
+    #findNodeIdAtPosition(line: number, column: number): number | null {
+        for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
+            // Check if position is within the function name range
+            if (line >= location.startLine && line <= location.endLine) {
+                if (line === location.startLine && column < location.startColumn) continue
+                if (line === location.endLine && column > location.endColumn) continue
+                return nodeId
+            }
+        }
+        return null
+    }
+
+    /**
+     * Check if the current editor selection exactly matches a function name.
+     * Returns the node ID if matched, null otherwise.
+     */
+    #findNodeIdForSelection(selection: monaco.Selection): number | null {
+        const startLine = selection.startLineNumber
+        const startColumn = selection.startColumn
+        const endLine = selection.endLineNumber
+        const endColumn = selection.endColumn
+
+        for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
+            // Check if selection exactly matches the function name range
+            if (startLine === location.startLine &&
+                startColumn === location.startColumn &&
+                endLine === location.endLine &&
+                endColumn === location.endColumn) {
+                return nodeId
+            }
+        }
+        return null
+    }
+
+    /**
+     * Handle editor selection to sync with preview.
+     * Selects the corresponding object if a function name is fully selected.
+     */
+    #handleEditorSelection() {
+        if (this.#isUpdatingFromPreview) return
+
+        const selection = this.editor.getSelection()
+        if (!selection || selection.isEmpty()) return
+
+        const nodeId = this.#findNodeIdForSelection(selection)
+        if (nodeId !== null) {
+            this.renderer.setSelection([nodeId])
+        }
+    }
+
+    /**
+     * Handle mouse click on the editor to check for color indicator clicks.
+     */
+    #handleEditorMouseDown(e: monaco.editor.IEditorMouseEvent) {
+        if (this.#isUpdatingFromPreview) return
+
+        // Check if clicking on a decoration (the color indicator)
+        if (e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT) {
+            const position = e.target.position
+            if (position) {
+                // Check if there's a color indicator decoration at this position
+                // by looking for a shape at column 1 of this line or at the clicked position
+                const nodeId = this.#findNodeIdAtPosition(position.lineNumber, position.column)
+                if (nodeId !== null) {
+                    // Check if clicking on or near the start of a shape function
+                    const location = this.#sourceLocationMap.get(nodeId)
+                    if (location && position.column <= location.startColumn) {
+                        // Clicked on or before the function name (where the indicator is)
+                        this.renderer.setSelection([nodeId])
+                        // Prevent default selection behavior
+                        return
+                    }
+                }
+            }
         }
     }
 
@@ -221,10 +295,23 @@ class App {
                 // Set up Monaco highlighter with the editor instance
                 this.#monacoHighlighter.setEditor(this.editor)
 
-                // Listen for selection changes to update editor highlighting
+                // Listen for selection changes from preview to update editor highlighting
                 this.renderer.onSelectionChange = () => {
+                    this.#isUpdatingFromPreview = true
                     this.#updateEditorHighlighting()
+                    // Reset flag after a short delay to allow editor updates to complete
+                    setTimeout(() => { this.#isUpdatingFromPreview = false }, 50)
                 }
+
+                // Listen for editor selection changes (for function name selection)
+                this.editor.onDidChangeCursorSelection(() => {
+                    this.#handleEditorSelection()
+                })
+
+                // Listen for mouse clicks (for color indicator clicks)
+                this.editor.onMouseDown((e) => {
+                    this.#handleEditorMouseDown(e)
+                })
 
                 this.#tabs.addEventListener("activeTabChanged", e => {
                     this.build()

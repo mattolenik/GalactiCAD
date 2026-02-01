@@ -211,6 +211,20 @@ export class SDFRenderer {
     }
 
     /**
+     * Set the selection programmatically (for editor-to-preview selection sync).
+     * @param ids Array of node IDs to select
+     * @param notify If true, trigger onSelectionChange callback (default: false to avoid loops)
+     */
+    setSelection(ids: number[], notify = false) {
+        this.#selectedObjectIds = [...ids]
+        this.#writeSelectionBuffer()
+        
+        if (notify && this.onSelectionChange) {
+            this.onSelectionChange([...this.#selectedObjectIds])
+        }
+    }
+
+    /**
      * Get all nodes from the current scene for matching with source code.
      */
     getSceneNodes() {

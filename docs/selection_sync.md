@@ -1,10 +1,15 @@
-# Selection Synchronization: Scene Objects to Source Code
+# Selection Synchronization: Bidirectional Scene-Code Linking
 
-This document describes the design and implementation of the selection synchronization feature that links selected objects in the SDF preview to their corresponding source code in the Monaco editor.
+This document describes the design and implementation of the bidirectional selection synchronization feature that links objects in the SDF preview to their corresponding source code in the Monaco editor.
 
 ## Overview
 
-When a user clicks on a shape in the 3D preview, the system needs to highlight the function call in the source code that created that shape. This requires a reliable mapping between runtime scene objects and their source code locations.
+The selection system provides two-way synchronization:
+
+1. **Preview → Editor**: Clicking on a shape in the 3D preview highlights the corresponding function call in the source code
+2. **Editor → Preview**: Selecting a function name or clicking its color indicator selects the corresponding object in the preview
+
+This requires a reliable mapping between runtime scene objects and their source code locations.
 
 ## Problem Statement
 
@@ -303,7 +308,7 @@ This allows matching the parsed string `"0 5 -10"` to the scene node's `pos: Vec
 
 ## Color Indicators
 
-In addition to selection highlighting, the editor displays colored square indicators next to each shape function call. These indicators match the color of the shape in the 3D preview.
+The editor displays colored square indicators next to each shape function call. These indicators match the color of the shape in the 3D preview and are clickable for selection.
 
 ### Implementation
 
@@ -311,16 +316,17 @@ In addition to selection highlighting, the editor displays colored square indica
 2. **Color Assignment**: `palette[nodeId % PALETTE_SIZE]` - same formula as the GPU shader
 3. **CSS Generation**: Dynamic CSS classes are generated for each palette color
 4. **Monaco Decorations**: Uses `before` decorators to insert colored squares before function names
+5. **Click Handling**: Clicking on the indicator selects the corresponding object in the preview
 
 ### CSS Structure
 
 ```css
-.shape-color-0::before {
-    content: "■";
-    color: rgb(255, 179, 179);  /* Light coral */
-    margin-right: 4px;
-    font-size: 0.9em;
-    text-shadow: 0 0 1px rgba(0,0,0,0.5);
+.shape-color-0 {
+    background-color: rgb(255, 179, 179);  /* Light coral */
+    border-radius: 1px;
+    color: transparent !important;
+    font-size: 0.85em;
+    margin-right: 2px;
 }
 /* ... 31 more color classes */
 ```
@@ -328,18 +334,113 @@ In addition to selection highlighting, the editor displays colored square indica
 ### Visual Result
 
 ```
-■ sphere("0 0 0", {r: 5})      // Coral square
-■ box("10 0 0", "5 5 5")       // Peach square  
-■ sphere("0 10 0", {r: 3})     // Yellow square
+██ sphere("0 0 0", {r: 5})      // Coral indicator
+██ box("10 0 0", "5 5 5")       // Peach indicator
+██ sphere("0 10 0", {r: 3})     // Yellow indicator
 ```
 
 The color indicators:
 - Are always visible (not just when selected)
-- Update when code changes
+- Update when the scene builds successfully
+- Persist during transient errors while editing
 - Match the exact colors shown in the 3D preview
+- Are clickable to select the corresponding object
+
+## Bidirectional Selection
+
+### Preview → Editor (Preview Selection)
+
+When clicking on an object in the 3D preview:
+
+1. GPU shader identifies clicked object ID via ray marching
+2. `SDFRenderer.onSelectionChange` callback fires
+3. `App.#updateEditorHighlighting()` looks up source location from map
+4. Monaco decorations highlight the function name
+
+### Editor → Preview (Code Selection)
+
+Selection from the editor to the preview is triggered in two ways:
+
+#### 1. Function Name Selection
+
+When the user selects (highlights) exactly a function name in the editor:
+
+```typescript
+#handleEditorSelection() {
+    const selection = this.editor.getSelection()
+    
+    // Check if selection exactly matches a function name
+    for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
+        if (selection matches location exactly) {
+            this.renderer.setSelection([nodeId])
+            break
+        }
+    }
+}
+```
+
+This works when:
+- Double-clicking a function name (auto-selects the word)
+- Manually selecting the exact text of a function name
+
+#### 2. Color Indicator Click
+
+When the user clicks on or near the color indicator:
+
+```typescript
+#handleEditorMouseDown(e: monaco.editor.IEditorMouseEvent) {
+    const position = e.target.position
+    
+    // Find shape at this position
+    const nodeId = this.#findNodeIdAtPosition(position.lineNumber, position.column)
+    
+    // If clicking before/on the function name (where indicator is)
+    if (position.column <= location.startColumn) {
+        this.renderer.setSelection([nodeId])
+    }
+}
+```
+
+### Preventing Feedback Loops
+
+A flag prevents infinite selection loops between editor and preview:
+
+```typescript
+#isUpdatingFromPreview = false
+
+// When preview selection changes:
+this.renderer.onSelectionChange = () => {
+    this.#isUpdatingFromPreview = true
+    this.#updateEditorHighlighting()
+    setTimeout(() => { this.#isUpdatingFromPreview = false }, 50)
+}
+
+// Editor handlers check the flag:
+#handleEditorSelection() {
+    if (this.#isUpdatingFromPreview) return
+    // ... handle selection
+}
+```
+
+### SDFRenderer.setSelection()
+
+The renderer exposes a method for programmatic selection:
+
+```typescript
+setSelection(ids: number[], notify = false) {
+    this.#selectedObjectIds = [...ids]
+    this.#writeSelectionBuffer()
+    
+    if (notify && this.onSelectionChange) {
+        this.onSelectionChange([...this.#selectedObjectIds])
+    }
+}
+```
+
+The `notify` parameter defaults to `false` to avoid triggering the callback when selection comes from the editor (preventing loops).
 
 ## Future Enhancements
 
 1. **Composite Matching**: Match composites by their child structure
 2. **Duplicate Handling**: Use source order as tiebreaker for identical shapes
-3. **Bidirectional Selection**: Click on code → highlight in preview
+3. **Multi-select from Editor**: Support shift-click or multi-cursor selection

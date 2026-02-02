@@ -173,6 +173,7 @@ class App {
     /**
      * Handle editor selection to sync with preview.
      * Selects the corresponding object if a function name is fully selected.
+     * For CSG operators (union, subtract, group), selects all descendants too.
      */
     #handleEditorSelection() {
         if (this.#isUpdatingFromPreview) return
@@ -182,7 +183,17 @@ class App {
 
         const nodeId = this.#findNodeIdForSelection(selection)
         if (nodeId !== null) {
-            this.renderer.setSelection([nodeId])
+            // Get the node and check if it's a composite (CSG/group)
+            const node = this.#sceneNodeMap.get(nodeId)
+            if (node) {
+                // Use getAllDescendantIds to select this node and all children
+                const allIds = node.getAllDescendantIds()
+                this.renderer.setSelection(allIds)
+            } else {
+                this.renderer.setSelection([nodeId])
+            }
+            // Clear hover when selecting (selection takes precedence)
+            this.renderer.setHoveredObject(0)
             // Also update editor highlighting to show the selection highlight
             this.#updateEditorHighlighting()
         }
@@ -190,6 +201,7 @@ class App {
 
     /**
      * Handle mouse click on the editor to check for color indicator clicks.
+     * For CSG operators (union, subtract, group), selects all descendants too.
      */
     #handleEditorMouseDown(e: monaco.editor.IEditorMouseEvent) {
         if (this.#isUpdatingFromPreview) return
@@ -206,7 +218,16 @@ class App {
                     const location = this.#sourceLocationMap.get(nodeId)
                     if (location && position.column <= location.startColumn) {
                         // Clicked on or before the function name (where the indicator is)
-                        this.renderer.setSelection([nodeId])
+                        const node = this.#sceneNodeMap.get(nodeId)
+                        if (node) {
+                            // Use getAllDescendantIds to select this node and all children
+                            const allIds = node.getAllDescendantIds()
+                            this.renderer.setSelection(allIds)
+                        } else {
+                            this.renderer.setSelection([nodeId])
+                        }
+                        // Clear hover when selecting
+                        this.renderer.setHoveredObject(0)
                         // Also update editor highlighting to show the selection highlight
                         this.#updateEditorHighlighting()
                         return

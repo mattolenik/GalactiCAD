@@ -97,6 +97,14 @@ export class Node {
     getIndicatorSvg(): string {
         return `<rect x="1" y="1" width="10" height="10" rx="3" fill="currentColor"/>`
     }
+
+    /**
+     * Get all descendant node IDs (including this node).
+     * Used for multi-selection when clicking CSG operators.
+     */
+    getAllDescendantIds(): number[] {
+        return [this.id]
+    }
     compile(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
@@ -201,6 +209,14 @@ export class Group extends WithChildren(Node) {
     override getIndicatorSvg(): string {
         return `<rect x="1" y="1" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>`
     }
+
+    override getAllDescendantIds(): number[] {
+        const ids = [this.id]
+        for (const child of this.children) {
+            ids.push(...child.getAllDescendantIds())
+        }
+        return ids
+    }
     
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         for (let child of this.children) {
@@ -252,6 +268,9 @@ export abstract class BinaryOperator extends Node {
         this.rh.root = this.root
         this.lh.build()
         this.rh.build()
+    }
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.lh.getAllDescendantIds(), ...this.rh.getAllDescendantIds()]
     }
     constructor(public lh: Node, public rh: Node) {
         super()

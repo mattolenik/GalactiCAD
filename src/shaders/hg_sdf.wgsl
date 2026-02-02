@@ -7,7 +7,6 @@
 const PI: f32 = 3.14159265;
 const TAU: f32 = 2.0 * PI;
 const PHI: f32 = sqrt(5.0) * 0.5 + 0.5;
-const NORMAL_SEAM_EPS: f32 = 1e-4;
 const SURF_DIST: f32 = 0.001;
 
 //////////////////////////////
@@ -39,8 +38,9 @@ fn sdfTrue(d: f32, id: u32, n: vec3<f32>) -> SDFResult {
     return SDFResult(d, 1.0, 1.0, id, n, 0.0);
 }
 
-// Selection check - returns true if object ID is in the selection array
+// Selection check utility - returns true if object ID is in the selection array
 // The selectedObjectIds uniform must be defined by the shader that includes this file
+// Note: Not used by SDF operators; available for external use (e.g., highlighting)
 fn isObjectSelected(id: u32) -> bool {
     // Access the uniform defined by the including shader (e.g., preview.wgsl)
     // Shaders without this uniform will fail to compile unless they provide it
@@ -588,393 +588,133 @@ fn fOpTongue(a: f32, b: f32, ra: f32, rb: f32) -> f32 {
 //  These return SDFResult with accurate gradient magnitude estimates
 ////////////////////////////////////////////////////
 
-// Hard union: gradient magnitude comes from the closer operand
+// Hard union: pick the closer operand
 fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
-    let diff = abs(a.d - b.d);
-    let aSelected = isObjectSelected(a.id);
-    let bSelected = isObjectSelected(b.id);
-    
-    // For nearly-equal distances, use deterministic tiebreaker to avoid z-fighting
-    // This handles coplanar surfaces and near-seams
-    if (diff < NORMAL_SEAM_EPS) {
-        var out: SDFResult;
-        // Prefer selected object, or use ID as deterministic tiebreaker
-        if (aSelected && !bSelected) {
-            out = a;
-        } else if (bSelected && !aSelected) {
-            out = b;
-        } else if (a.id <= b.id) {
-            // Both selected or neither - use lower ID for consistency
-            out = a;
-        } else {
-            out = b;
-        }
-        out.n = safeNormalize3(a.n + b.n);
-        return out;
-    }
-    if (a.d < b.d) {
-        return a;
-    }
+    if (a.d < b.d) { return a; }
     return b;
 }
 
-// Hard intersection
+// Hard intersection: pick the farther operand
 fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
-    let diff = abs(a.d - b.d);
-    let aSelected = isObjectSelected(a.id);
-    let bSelected = isObjectSelected(b.id);
-    
-    // For nearly-equal distances, use deterministic tiebreaker to avoid z-fighting
-    if (diff < NORMAL_SEAM_EPS) {
-        var out: SDFResult;
-        // Prefer selected object, or use ID as deterministic tiebreaker
-        if (aSelected && !bSelected) {
-            out = a;
-        } else if (bSelected && !aSelected) {
-            out = b;
-        } else if (a.id <= b.id) {
-            out = a;
-        } else {
-            out = b;
-        }
-        out.n = safeNormalize3(a.n + b.n);
-        return out;
-    }
-    if (a.d > b.d) {
-        return a;
-    }
+    if (a.d > b.d) { return a; }
     return b;
 }
 
-// Hard difference
+// Hard difference: intersection with complement of b
 fn opDifferenceEx(a: SDFResult, b: SDFResult) -> SDFResult {
-    // difference = intersection with complement
-    // For difference, z-fighting happens at the surface where a is being cut by b
-    // We want to show a as selected if it is, since it's the primary object
     let bNeg = sdfResult(-b.d, b.g, -b.s, b.id, -b.n);
-    let result = opIntersectionEx(a, bNeg);
-    
-    // If a is selected but result has different ID (b's complement won), 
-    // and we're at the surface, preserve a's selection status
-    let coplanar = (abs(a.d) < SURF_DIST && abs(b.d) < SURF_DIST);
-    let aSelected = isObjectSelected(a.id);
-    if (coplanar && aSelected && result.id != a.id) {
-        // Return a's data with the correct distance/normal from intersection
-        var out = result;
-        out.id = a.id;
-        return out;
-    }
-    return result;
+    return opIntersectionEx(a, bNeg);
 }
 
-// Chamfer union with gradient magnitude tracking
-// Chamfer creates a 45° bevel. The gradient in the chamfer region is:
-// ∇d = (∇a + ∇b) * sqrt(0.5)
-// |∇d| = |∇a + ∇b| * sqrt(0.5) = sqrt(1 + cos(θ)) where θ is angle between gradients
-// For 90° corners: |∇d| = 1.0 (true SDF)
-// For 0° (parallel): |∇d| = sqrt(2) ≈ 1.414
-// For 180° (anti-parallel): |∇d| = 0
+// Chamfer union - 45° bevel between operands
 fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
-    let d = min(min(a.d, b.d), (a.d - r + b.d) * sqrt(0.5));
-    let aSelected = isObjectSelected(a.id);
-    let bSelected = isObjectSelected(b.id);
-    let diff = abs(a.d - b.d);
-    
-    var g = 1.0;
-    var id = a.id;
-    var s = a.s;
-    var n = a.n;
     let chamferD = (a.d - r + b.d) * sqrt(0.5);
+    let d = min(min(a.d, b.d), chamferD);
+    let closer = a.d < b.d;
     
+    // In chamfer region: blend normals, pick closer operand's metadata
     if (chamferD < a.d && chamferD < b.d) {
-        // In chamfer region
-        g = 1.0;
-        n = safeNormalize3(a.n + b.n);
-        
-        // Deterministic ID selection for near-equal distances
-        if (diff < NORMAL_SEAM_EPS) {
-            if (aSelected && !bSelected) {
-                id = a.id; s = a.s;
-            } else if (bSelected && !aSelected) {
-                id = b.id; s = b.s;
-            } else {
-                let pickA = a.id <= b.id;
-                id = select(b.id, a.id, pickA);
-                s = select(b.s, a.s, pickA);
-            }
-        } else if (a.d < b.d) {
-            id = a.id; s = a.s;
-        } else {
-            id = b.id; s = b.s;
+        if (closer) {
+            return sdfResult(d, 1.0, a.s, a.id, safeNormalize3(a.n + b.n));
         }
-    } else if (diff < NORMAL_SEAM_EPS) {
-        // Near-seam outside chamfer region
-        if (aSelected && !bSelected) {
-            g = a.g; id = a.id; s = a.s; n = a.n;
-        } else if (bSelected && !aSelected) {
-            g = b.g; id = b.id; s = b.s; n = b.n;
-        } else {
-            let pickA = a.id <= b.id;
-            g = select(b.g, a.g, pickA);
-            id = select(b.id, a.id, pickA);
-            s = select(b.s, a.s, pickA);
-            n = select(b.n, a.n, pickA);
-        }
-    } else if (a.d < b.d) {
-        g = a.g; id = a.id; s = a.s; n = a.n;
-    } else {
-        g = b.g; id = b.id; s = b.s; n = b.n;
+        return sdfResult(d, 1.0, b.s, b.id, safeNormalize3(a.n + b.n));
     }
-    
-    return sdfResult(d, g, s, id, n);
+    if (closer) {
+        return sdfResult(d, a.g, a.s, a.id, a.n);
+    }
+    return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
-    let d = max(max(a.d, b.d), (a.d + r + b.d) * sqrt(0.5));
-    let aSelected = isObjectSelected(a.id);
-    let bSelected = isObjectSelected(b.id);
-    let diff = abs(a.d - b.d);
-    
-    var g = 1.0;
-    var id = a.id;
-    var s = a.s;
-    var n = a.n;
     let chamferD = (a.d + r + b.d) * sqrt(0.5);
+    let d = max(max(a.d, b.d), chamferD);
+    let farther = a.d > b.d;
     
+    // In chamfer region: blend normals, pick farther operand's metadata
     if (chamferD > a.d && chamferD > b.d) {
-        // In chamfer region
-        g = 1.0;
-        n = safeNormalize3(a.n + b.n);
-        
-        // Deterministic ID selection for near-equal distances
-        if (diff < NORMAL_SEAM_EPS) {
-            if (aSelected && !bSelected) {
-                id = a.id; s = a.s;
-            } else if (bSelected && !aSelected) {
-                id = b.id; s = b.s;
-            } else {
-                let pickA = a.id <= b.id;
-                id = select(b.id, a.id, pickA);
-                s = select(b.s, a.s, pickA);
-            }
-        } else if (a.d > b.d) {
-            id = a.id; s = a.s;
-        } else {
-            id = b.id; s = b.s;
+        if (farther) {
+            return sdfResult(d, 1.0, a.s, a.id, safeNormalize3(a.n + b.n));
         }
-    } else if (diff < NORMAL_SEAM_EPS) {
-        // Near-seam outside chamfer region
-        if (aSelected && !bSelected) {
-            g = a.g; id = a.id; s = a.s; n = a.n;
-        } else if (bSelected && !aSelected) {
-            g = b.g; id = b.id; s = b.s; n = b.n;
-        } else {
-            let pickA = a.id <= b.id;
-            g = select(b.g, a.g, pickA);
-            id = select(b.id, a.id, pickA);
-            s = select(b.s, a.s, pickA);
-            n = select(b.n, a.n, pickA);
-        }
-    } else if (a.d > b.d) {
-        g = a.g; id = a.id; s = a.s; n = a.n;
-    } else {
-        g = b.g; id = b.id; s = b.s; n = b.n;
+        return sdfResult(d, 1.0, b.s, b.id, safeNormalize3(a.n + b.n));
     }
-    
-    return sdfResult(d, g, s, id, n);
+    if (farther) {
+        return sdfResult(d, a.g, a.s, a.id, a.n);
+    }
+    return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpDifferenceChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     return fOpIntersectionChamferEx(a, sdfResult(-b.d, b.g, -b.s, b.id, -b.n), r);
 }
 
-// Round union with gradient magnitude tracking
+// Round union with gradient magnitude tracking for MDC
 fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let u = max(vec2<f32>(r - a.d, r - b.d), vec2<f32>(0.0, 0.0));
     let uLen = length(u);
     let d = max(r, min(a.d, b.d)) - uLen;
-    let aSelected = isObjectSelected(a.id);
-    let bSelected = isObjectSelected(b.id);
-    let diff = abs(a.d - b.d);
+    let closer = a.d < b.d;
     
-    var g = 1.0;
-    var id = a.id;
-    var s = a.s;
-    var n = a.n;
-    
+    // In blend region: track gradient magnitude, blend normals
     if (a.d < r && b.d < r && uLen > 1e-6) {
-        // In blend region
         let blendDepth = min(r - a.d, r - b.d) / r;
         let cornerFactor = (u.x * u.y) / (uLen * uLen);
-        g = mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor);
-        g = max(g, 0.25);
-        n = safeNormalize3(a.n * u.x + b.n * u.y);
-        
-        // For near-equal distances in blend, use deterministic selection
-        if (diff < NORMAL_SEAM_EPS) {
-            if (aSelected && !bSelected) {
-                id = a.id; s = a.s;
-            } else if (bSelected && !aSelected) {
-                id = b.id; s = b.s;
-            } else {
-                // Deterministic tiebreaker by ID
-                let pickA = a.id <= b.id;
-                id = select(b.id, a.id, pickA);
-                s = select(b.s, a.s, pickA);
-            }
-        } else if (a.d < b.d) {
-            id = a.id; s = a.s;
-        } else {
-            id = b.id; s = b.s;
+        let g = max(0.25, mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor));
+        let n = safeNormalize3(a.n * u.x + b.n * u.y);
+        if (closer) {
+            return sdfResult(d, g, a.s, a.id, n);
         }
-    } else if (diff < NORMAL_SEAM_EPS) {
-        // Near-seam or coplanar outside blend region
-        if (aSelected && !bSelected) {
-            g = a.g; id = a.id; s = a.s; n = a.n;
-        } else if (bSelected && !aSelected) {
-            g = b.g; id = b.id; s = b.s; n = b.n;
-        } else {
-            let pickA = a.id <= b.id;
-            g = select(b.g, a.g, pickA);
-            id = select(b.id, a.id, pickA);
-            s = select(b.s, a.s, pickA);
-            n = select(b.n, a.n, pickA);
-        }
-    } else if (a.d < b.d) {
-        g = a.g; id = a.id; s = a.s; n = a.n;
-    } else {
-        g = b.g; id = b.id; s = b.s; n = b.n;
+        return sdfResult(d, g, b.s, b.id, n);
     }
-    
-    return sdfResult(d, g, s, id, n);
+    if (closer) {
+        return sdfResult(d, a.g, a.s, a.id, a.n);
+    }
+    return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let e = max(r - abs(a.d - b.d), 0.0);
     let d = min(a.d, b.d) - e * e * 0.25 / r;
-    let aSelected = isObjectSelected(a.id);
-    let bSelected = isObjectSelected(b.id);
-    let diff = abs(a.d - b.d);
+    let closer = a.d < b.d;
     
-    var g = 1.0;
-    var id = a.id;
-    var s = a.s;
-    var n = a.n;
-    
+    // In blend region
     if (e > 0.0) {
-        // In blend region
-        let blendFactor = e / r;
-        g = max(0.4, 1.0 - blendFactor * 0.5);
-        n = safeNormalize3(a.n + b.n);
-        
-        // For near-equal distances, use deterministic selection
-        if (diff < NORMAL_SEAM_EPS) {
-            if (aSelected && !bSelected) {
-                id = a.id; s = a.s;
-            } else if (bSelected && !aSelected) {
-                id = b.id; s = b.s;
-            } else {
-                let pickA = a.id <= b.id;
-                id = select(b.id, a.id, pickA);
-                s = select(b.s, a.s, pickA);
-            }
-        } else if (a.d < b.d) {
-            id = a.id; s = a.s;
-        } else {
-            id = b.id; s = b.s;
+        let g = max(0.4, 1.0 - (e / r) * 0.5);
+        let n = safeNormalize3(a.n + b.n);
+        if (closer) {
+            return sdfResult(d, g, a.s, a.id, n);
         }
-    } else if (diff < NORMAL_SEAM_EPS) {
-        // Near-seam outside blend region
-        if (aSelected && !bSelected) {
-            g = a.g; id = a.id; s = a.s; n = a.n;
-        } else if (bSelected && !aSelected) {
-            g = b.g; id = b.id; s = b.s; n = b.n;
-        } else {
-            let pickA = a.id <= b.id;
-            g = select(b.g, a.g, pickA);
-            id = select(b.id, a.id, pickA);
-            s = select(b.s, a.s, pickA);
-            n = select(b.n, a.n, pickA);
-        }
-    } else if (a.d < b.d) {
-        g = a.g; id = a.id; s = a.s; n = a.n;
-    } else {
-        g = b.g; id = b.id; s = b.s; n = b.n;
+        return sdfResult(d, g, b.s, b.id, n);
     }
-    
-    return sdfResult(d, g, s, id, n);
+    if (closer) {
+        return sdfResult(d, a.g, a.s, a.id, a.n);
+    }
+    return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let u = max(vec2<f32>(r + a.d, r + b.d), vec2<f32>(0.0, 0.0));
     let uLen = length(u);
     let d = min(-r, max(a.d, b.d)) + uLen;
-    let aSelected = isObjectSelected(a.id);
-    let bSelected = isObjectSelected(b.id);
-    let diff = abs(a.d - b.d);
+    let farther = a.d > b.d;
     
-    var g = 1.0;
-    var id = a.id;
-    var s = a.s;
-    var n = a.n;
-    
+    // In blend region for intersection (inside corner rounding)
     if (a.d > -r && b.d > -r && uLen > 1e-6) {
-        // In blend region for intersection (inside corner rounding)
         let blendDepth = min(r + a.d, r + b.d) / r;
         let cornerFactor = (u.x * u.y) / (uLen * uLen);
-        g = mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor);
-        g = max(g, 0.25);
-        n = safeNormalize3(a.n * u.x + b.n * u.y);
-        
-        // For near-equal distances, use deterministic selection
-        if (diff < NORMAL_SEAM_EPS) {
-            if (aSelected && !bSelected) {
-                id = a.id; s = a.s;
-            } else if (bSelected && !aSelected) {
-                id = b.id; s = b.s;
-            } else {
-                let pickA = a.id <= b.id;
-                id = select(b.id, a.id, pickA);
-                s = select(b.s, a.s, pickA);
-            }
-        } else if (a.d > b.d) {
-            id = a.id; s = a.s;
-        } else {
-            id = b.id; s = b.s;
+        let g = max(0.25, mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor));
+        let n = safeNormalize3(a.n * u.x + b.n * u.y);
+        if (farther) {
+            return sdfResult(d, g, a.s, a.id, n);
         }
-    } else if (diff < NORMAL_SEAM_EPS) {
-        // Near-seam outside blend region
-        if (aSelected && !bSelected) {
-            g = a.g; id = a.id; s = a.s; n = a.n;
-        } else if (bSelected && !aSelected) {
-            g = b.g; id = b.id; s = b.s; n = b.n;
-        } else {
-            let pickA = a.id <= b.id;
-            g = select(b.g, a.g, pickA);
-            id = select(b.id, a.id, pickA);
-            s = select(b.s, a.s, pickA);
-            n = select(b.n, a.n, pickA);
-        }
-    } else if (a.d > b.d) {
-        g = a.g; id = a.id; s = a.s; n = a.n;
-    } else {
-        g = b.g; id = b.id; s = b.s; n = b.n;
+        return sdfResult(d, g, b.s, b.id, n);
     }
-    
-    return sdfResult(d, g, s, id, n);
+    if (farther) {
+        return sdfResult(d, a.g, a.s, a.id, a.n);
+    }
+    return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let bNeg = sdfResult(-b.d, b.g, -b.s, b.id, -b.n);
-    let result = fOpIntersectionRoundEx(a, bNeg, r);
-    
-    // Preserve a's selection status at coplanar surface to avoid z-fighting
-    let coplanar = (abs(a.d) < SURF_DIST && abs(b.d) < SURF_DIST);
-    let aSelected = isObjectSelected(a.id);
-    if (coplanar && aSelected && result.id != a.id) {
-        var out = result;
-        out.id = a.id;
-        return out;
-    }
-    return result;
+    return fOpIntersectionRoundEx(a, bNeg, r);
 }

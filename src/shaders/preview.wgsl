@@ -247,8 +247,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         let currentPixel = uv * camera.res;
         let pixelDist = distance(clickPixel, currentPixel);
         
-        // Capture clicks within 2 pixels of cursor (covers pixel boundaries)
-        if (pixelDist < 2.0) {
+        if (pixelDist < 1.0) {
             atomicStore(&clickedObjectId, hit.sdf.id);
         }
     }

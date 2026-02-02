@@ -137,55 +137,6 @@ fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
     return camPos + vec3f(offsetX, offsetY, 100.0);
 }
 
-// Raymarch at a specific UV coordinate and return the hit object ID (0 if miss)
-fn raymarchAtUV(uv: vec2f) -> u32 {
-    let aspect = camera.res.x / camera.res.y;
-    let uvAspect = vec2f((uv.x - 0.5) * aspect + 0.5, uv.y);
-    let rayOrigin = computeRayOrigin(uvAspect, camera.position);
-    let rayDir = vec3f(0.0, 0.0, -1.0);
-    let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
-    let transformedDir = normalize((camera.transform * vec4f(rayDir, 0.0)).xyz);
-    let hit = raymarch(transformedOrigin, transformedDir);
-    if (hit.t > 0.0) {
-        return hit.sdf.id;
-    }
-    return 0u;
-}
-
-// Detect silhouette edge by sampling neighboring pixels
-// Returns edge intensity (0.0 = no edge, 1.0 = edge)
-fn detectSilhouetteEdge(uv: vec2f, currentObjectId: u32) -> f32 {
-    // Sample distance in UV space (corresponds to ~1-2 pixels)
-    let pixelSize = 1.0 / max(camera.res.x, camera.res.y);
-    let sampleDist = pixelSize * 1.5;
-    
-    // Sample 2 neighbors for performance (diagonal for better coverage)
-    var edgeCount: f32 = 0.0;
-    let neighborOffsets = array<vec2f, 2>(
-        vec2f(-sampleDist, -sampleDist),  // diagonal
-        vec2f(sampleDist, -sampleDist)    // diagonal
-    );
-    
-    for (var i: i32 = 0; i < 2; i = i + 1) {
-        let neighborUV = uv + neighborOffsets[i];
-        // Clamp to valid UV range
-        if (neighborUV.x < 0.0 || neighborUV.x > 1.0 || 
-            neighborUV.y < 0.0 || neighborUV.y > 1.0) {
-            edgeCount = edgeCount + 1.0;
-            continue;
-        }
-        
-        let neighborId = raymarchAtUV(neighborUV);
-        // Edge if neighbor hits different object or misses entirely
-        if (neighborId != currentObjectId) {
-            edgeCount = edgeCount + 1.0;
-        }
-    }
-    
-    // Return edge intensity based on how many neighbors are different
-    return edgeCount / 2.0;
-}
-
 @fragment
 fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     let uv = fragCoord;
@@ -245,18 +196,9 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         // Calculate base shaded color
         var shadedColor = baseColor * diffuse;
         
-        // Add white glow overlay for selected objects (5% subtle highlight)
+        // Add highlight tint for selected objects
         if (isSelected) {
-            shadedColor = shadedColor + vec3f(0.05);
-            
-            // Draw faint silhouette outline around selected object edges
-            let edgeIntensity = detectSilhouetteEdge(uv, hit.sdf.id);
-            if (edgeIntensity > 0.3) {
-                // White outline for selected object silhouette
-                let outlineColor = vec3f(1.0);
-                let t = edgeIntensity * 0.4;
-                shadedColor = shadedColor * (1.0 - t) + outlineColor * t;
-            }
+            shadedColor = shadedColor * 0.85 + vec3f(0.15);
         }
         
         return vec4f(shadedColor, 1.0);

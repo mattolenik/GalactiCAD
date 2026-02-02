@@ -1,0 +1,109 @@
+// Passenger Car Model
+// A classic vintage roadster with flowing curves
+
+function scene() {
+    // === MAIN BODY ===
+    // Central body tub - narrow and elegant
+    const bodyTub = box([0, 0, 8], [44, 14, 6])
+    
+    // Rounded front cowl
+    const cowl = sphere([10, 0, 9], { r: 10 })
+    
+    // Rounded rear deck
+    const rearDeck = sphere([-16, 0, 8], { r: 9 })
+    
+    // Smooth the main body
+    const mainBody = union(4, bodyTub, cowl, rearDeck)
+    
+    // === LONG HOOD ===
+    // Classic long hood with power bulge
+    const hoodBase = box([20, 0, 7], [24, 10, 5])
+    const hoodTop = sphere([22, 0, 9], { r: 7 })
+    const hood = union(3, hoodBase, hoodTop)
+    
+    // Radiator grille at front
+    const grille = box([34, 0, 7], [4, 8, 7])
+    const grilleTop = sphere([35, 0, 10], { r: 5 })
+    const frontEnd = union(2, grille, grilleTop)
+    
+    // === SEPARATE FENDERS ===
+    // Front fenders - swooping pontoon style
+    const fenderFR = sphere([22, 10, 5], { r: 7 })
+    const fenderFRext = sphere([30, 10, 6], { r: 5 })
+    const frontFenderR = union(3, fenderFR, fenderFRext)
+    
+    const fenderFL = sphere([22, -10, 5], { r: 7 })
+    const fenderFLext = sphere([30, -10, 6], { r: 5 })
+    const frontFenderL = union(3, fenderFL, fenderFLext)
+    
+    // Rear fenders - rounded pontoons
+    const fenderRR = sphere([-18, 10, 5], { r: 7 })
+    const fenderRRext = sphere([-24, 10, 6], { r: 5 })
+    const rearFenderR = union(3, fenderRR, fenderRRext)
+    
+    const fenderRL = sphere([-18, -10, 5], { r: 7 })
+    const fenderRLext = sphere([-24, -10, 6], { r: 5 })
+    const rearFenderL = union(3, fenderRL, fenderRLext)
+    
+    // === RUNNING BOARDS ===
+    // Connect front and rear fenders
+    const runningBoardR = box([2, 10, 3], [30, 3, 2])
+    const runningBoardL = box([2, -10, 3], [30, 3, 2])
+    
+    // === CABIN ===
+    // Open cockpit with windshield frame
+    const cockpit = box([-2, 0, 12], [16, 12, 5])
+    const windshieldFrame = box([8, 0, 15], [2, 11, 4])
+    const cabinArea = union(2, cockpit, windshieldFrame)
+    
+    // Carve out interior
+    const interior = box([-2, 0, 13], [14, 10, 6])
+    const openCockpit = subtract(1, cabinArea, interior)
+    
+    // === SPARE TIRE ===
+    // Mounted on rear
+    const spareTire = sphere([-28, 0, 8], { r: 5 })
+    
+    // === HEADLIGHTS ===
+    // Classic round headlights on stalks
+    const headlightR = sphere([32, 9, 9], { r: 3 })
+    const headlightL = sphere([32, -9, 9], { r: 3 })
+    const headlights = union(headlightR, headlightL)
+    
+    // === WHEELS ===
+    // Wire wheels with whitewall look
+    const wheelFR = sphere([22, 12, 3], { r: 5 })
+    const wheelFL = sphere([22, -12, 3], { r: 5 })
+    const wheelRR = sphere([-18, 12, 3], { r: 5 })
+    const wheelRL = sphere([-18, -12, 3], { r: 5 })
+    const wheels = union(wheelFR, wheelFL, wheelRR, wheelRL)
+    
+    // === TAILLIGHTS ===
+    const taillightR = sphere([-28, 6, 10], { r: 1.5 })
+    const taillightL = sphere([-28, -6, 10], { r: 1.5 })
+    const taillights = union(taillightR, taillightL)
+    
+    // === DOOR HANDLES ===
+    const handleR = sphere([0, 8, 10], { r: 1 })
+    const handleL = sphere([0, -8, 10], { r: 1 })
+    const handles = union(handleR, handleL)
+    
+    // === ASSEMBLY ===
+    // Build up the body
+    const upperBody = union(3, mainBody, hood, frontEnd, openCockpit)
+    
+    // Add fenders
+    const withFenders = union(2, upperBody,
+        frontFenderR, frontFenderL,
+        rearFenderR, rearFenderL)
+    
+    // Add running boards
+    const withRunning = union(1, withFenders,
+        runningBoardR, runningBoardL)
+    
+    // Final details
+    const details = union(spareTire, headlights, taillights, handles)
+    
+    // Complete car
+    return union(1, withRunning, wheels, details)
+}

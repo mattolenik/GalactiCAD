@@ -7,6 +7,15 @@ export class PreviewWindow extends HTMLElement {
     #counter: HTMLSpanElement
     #framerateThreshold: number = 50 // hide FPS display until there's a significant drop
     #showFps: boolean
+    #xrayCheckbox: HTMLInputElement
+    #xrayMode: boolean = false
+
+    /** Callback when xray mode changes */
+    onXrayModeChange?: (enabled: boolean) => void
+
+    get xrayMode(): boolean {
+        return this.#xrayMode
+    }
 
     constructor() {
         super()
@@ -16,7 +25,7 @@ export class PreviewWindow extends HTMLElement {
         canvas {
             -webkit-tap-highlight-color: transparent;
             -webkit-touch-callout: none;    /* no long-press callout */
-            -webkit-user-drag: none;        /* no “drag” highlight */
+            -webkit-user-drag: none;        /* no "drag" highlight */
             -webkit-user-select: none;      /* no text selection */
             display: block;
             height: 100%;
@@ -33,6 +42,31 @@ export class PreviewWindow extends HTMLElement {
             pointer-events: none;
             z-index: 1;
         }
+        .controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: #ccc;
+            font-size: 12px;
+            font-family: system-ui, sans-serif;
+        }
+        .controls label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .controls input[type="checkbox"] {
+            cursor: pointer;
+            margin: 0;
+        }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"
@@ -45,6 +79,20 @@ export class PreviewWindow extends HTMLElement {
         this.#counter.classList.add("overlay")
         this.#counter.style.float = "right"
         shadow.appendChild(this.#counter)
+
+        // X-ray mode checkbox
+        const controls = document.createElement("div")
+        controls.classList.add("controls")
+        const xrayLabel = document.createElement("label")
+        this.#xrayCheckbox = document.createElement("input")
+        this.#xrayCheckbox.type = "checkbox"
+        this.#xrayCheckbox.addEventListener("change", () => {
+            this.#xrayMode = this.#xrayCheckbox.checked
+            this.onXrayModeChange?.(this.#xrayMode)
+        })
+        xrayLabel.append(this.#xrayCheckbox, "X-ray")
+        controls.appendChild(xrayLabel)
+        shadow.appendChild(controls)
 
         this.#showFps = !!(this.getAttribute("showFPS")?.toLocaleLowerCase() === "true")
     }

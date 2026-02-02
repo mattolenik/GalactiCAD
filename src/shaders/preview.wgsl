@@ -28,6 +28,12 @@ struct ClickState {
 // Color palette: 32 pastel colors for shape coloring
 @group(0) @binding(5) var<uniform> colorPalette: array<vec3f, 32>;
 
+// View settings
+struct ViewSettings {
+    xrayMode: u32,  // 0 = normal, 1 = xray/translucent
+}
+@group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
+
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
@@ -137,6 +143,80 @@ fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
     return camPos + vec3f(offsetX, offsetY, 100.0);
 }
 
+// Raymarch starting from inside the surface to find the exit point
+fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
+    var t: f32 = startT + 0.5;  // Start past the entry surface
+    var lastStep: f32 = 0.0;
+    
+    for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
+        let p = origin + t * dir;
+        let sr = sceneSDF(p);
+        
+        // We're inside, so distance is negative. March by abs(d).
+        var step = abs(sr.d);
+        if (sr.g > 1.0) {
+            step = step / sr.g;
+        }
+        step = max(step, 0.1);
+        
+        // Found an exit surface (going from inside to outside)
+        if (sr.d > SURF_DIST) {
+            // Refine the exit point
+            var lo = max(startT, t - lastStep);
+            var hi = t;
+            for (var j: i32 = 0; j < 6; j = j + 1) {
+                let mid = 0.5 * (lo + hi);
+                let md = sceneSDF(origin + mid * dir).d;
+                if (md < 0.0) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            let hitSdf = sceneSDF(origin + hi * dir);
+            return RaymarchHit(hi, hitSdf);
+        }
+        
+        lastStep = step;
+        t = t + step;
+        if (t >= MAX_DIST) {
+            break;
+        }
+    }
+    return RaymarchHit(-1.0, sdfTrue(MAX_DIST, 0u, vec3f(0.0)));
+}
+
+// Shade a hit point and return the color
+fn shadeHit(origin: vec3f, dir: vec3f, hit: RaymarchHit) -> vec3f {
+    var normal = hit.sdf.n;
+    if (dot(normal, normal) < 0.001) {
+        let p = origin + hit.t * dir;
+        normal = estimateNormalFallback(p);
+    } else {
+        normal = normalize(normal);
+    }
+    
+    let diffuse = lighting(normal);
+    var baseColor = colorPalette[hit.sdf.id % 32u];
+    
+    // Check if selected
+    let selectedCount = selectedObjectIds[0];
+    var isSelected = false;
+    for (var i: u32 = 1u; i <= selectedCount && i < 64u; i = i + 1u) {
+        if (hit.sdf.id == selectedObjectIds[i]) {
+            isSelected = true;
+            break;
+        }
+    }
+    
+    var shadedColor = baseColor * diffuse;
+    if (isSelected) {
+        shadedColor = shadedColor * 0.85 + vec3f(0.15);
+    }
+    
+    return shadedColor;
+}
+
 @fragment
 fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     let uv = fragCoord;
@@ -151,10 +231,10 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
     let transformedDir = normalize((camera.transform * vec4f(rayDir, 0.0)).xyz);
 
-    // Use the transformed ray for raymarching.
+    // Use standard raymarching
     let hit = raymarch(transformedOrigin, transformedDir);
 
-        // Click detection using pixel-accurate matching
+    // Click detection using pixel-accurate matching
     if (clickState.enabled > 0u && hit.t > 0.0) {
         // Convert UV to pixel coordinates
         let clickPixel = clickState.clickPos * camera.res;
@@ -199,6 +279,26 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         // Add highlight tint for selected objects
         if (isSelected) {
             shadedColor = shadedColor * 0.85 + vec3f(0.15);
+        }
+        
+        // X-ray mode: show front surface transparent with back surface visible
+        if (viewSettings.xrayMode > 0u) {
+            // Find the back/interior surface by continuing the ray
+            let backHit = raymarchFromInside(transformedOrigin, transformedDir, hit.t);
+            
+            if (backHit.t > 0.0) {
+                // Shade the back surface
+                let backColor = shadeHit(transformedOrigin, transformedDir, backHit);
+                
+                // Composite: front surface at 40% over back surface
+                let frontAlpha = 0.4;
+                let composited = shadedColor * frontAlpha + backColor * (1.0 - frontAlpha);
+                return vec4f(composited, 1.0);
+            } else {
+                // No back surface found, just show transparent front
+                let alpha = 0.6;
+                return vec4f(shadedColor * alpha, alpha);
+            }
         }
         
         return vec4f(shadedColor, 1.0);

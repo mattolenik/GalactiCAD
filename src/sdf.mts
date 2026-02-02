@@ -19,6 +19,7 @@ class UniformBuffers {
     selectedObjectIds!: GPUBuffer
     clickedObjectId!: GPUBuffer
     colorPalette!: GPUBuffer
+    viewSettings!: GPUBuffer
 }
 
 class ExportBuffers {
@@ -52,6 +53,7 @@ export class SDFRenderer {
     #boundsShader!: GPUShaderModule
     #helper!: GPUHelper
     #builtSrc: string | null = null
+    #xrayMode: boolean = false
 
     /**
      * Callback invoked when object selection changes
@@ -210,6 +212,14 @@ export class SDFRenderer {
         return [...this.#selectedObjectIds]
     }
 
+    set xrayMode(enabled: boolean) {
+        this.#xrayMode = enabled
+    }
+
+    get xrayMode(): boolean {
+        return this.#xrayMode
+    }
+
     /**
      * Set the selection programmatically (for editor-to-preview selection sync).
      * @param ids Array of node IDs to select
@@ -326,6 +336,11 @@ export class SDFRenderer {
         this.#exportBuffers = new ExportBuffers()
         this.#initializing = this.initialize()
         this.#cameraRes = vec2(this.#preview.canvas.clientWidth, this.#preview.canvas.clientHeight)
+
+        // Wire up xray mode change from preview window
+        preview.onXrayModeChange = (enabled: boolean) => {
+            this.#xrayMode = enabled
+        }
 
         const observer = new ResizeObserver(entries => {
             requestAnimationFrame(() => {
@@ -462,6 +477,13 @@ export class SDFRenderer {
             alignedData[i * 4 + 3] = 0.0 // padding
         }
         this.#device.queue.writeBuffer(this.#uniformBuffers.colorPalette, 0, alignedData)
+
+        // View settings buffer: xrayMode (u32) + padding
+        this.#uniformBuffers.viewSettings = this.#device.createBuffer({
+            size: 16, // u32 + padding to 16 bytes for alignment
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "viewSettings",
+        })
     }
 
     #buildPreviewPipeline() {
@@ -493,6 +515,7 @@ export class SDFRenderer {
                 { binding: 3, resource: { buffer: this.#uniformBuffers.clickedObjectId } },
                 { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
                 { binding: 5, resource: { buffer: this.#uniformBuffers.colorPalette } },
+                { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
             ],
         })
     }
@@ -504,6 +527,9 @@ export class SDFRenderer {
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraRes.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))
+        
+        // Write view settings (xray mode)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([this.#xrayMode ? 1 : 0]))
 
         const commandEncoder = this.#device.createCommandEncoder()
         const renderPass = commandEncoder.beginRenderPass({

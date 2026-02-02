@@ -187,13 +187,19 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
 }
 
 // Shade a hit point and return the color
-fn shadeHit(origin: vec3f, dir: vec3f, hit: RaymarchHit) -> vec3f {
+// flipNormal: true if hitting surface from inside (back surface)
+fn shadeHit(origin: vec3f, dir: vec3f, hit: RaymarchHit, flipNormal: bool) -> vec3f {
     var normal = hit.sdf.n;
     if (dot(normal, normal) < 0.001) {
         let p = origin + hit.t * dir;
         normal = estimateNormalFallback(p);
     } else {
         normal = normalize(normal);
+    }
+    
+    // Flip normal for back-facing surfaces
+    if (flipNormal) {
+        normal = -normal;
     }
     
     let diffuse = lighting(normal);
@@ -287,8 +293,8 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
             let backHit = raymarchFromInside(transformedOrigin, transformedDir, hit.t);
             
             if (backHit.t > 0.0) {
-                // Shade the back surface
-                let backColor = shadeHit(transformedOrigin, transformedDir, backHit);
+                // Shade the back surface (flip normal since we hit from inside)
+                let backColor = shadeHit(transformedOrigin, transformedDir, backHit, true);
                 
                 // Composite: front surface at 40% over back surface
                 let frontAlpha = 0.4;

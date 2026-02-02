@@ -588,14 +588,24 @@ fn fOpTongue(a: f32, b: f32, ra: f32, rb: f32) -> f32 {
 //  These return SDFResult with accurate gradient magnitude estimates
 ////////////////////////////////////////////////////
 
-// Hard union: pick the closer operand
+// Hard union: pick the closer operand (ID tiebreaker + normal blend for coplanar surfaces)
 fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
+    if (abs(a.d - b.d) < SURF_DIST) {
+        let n = safeNormalize3(a.n + b.n);
+        if (a.id <= b.id) { return sdfResult(a.d, a.g, a.s, a.id, n); }
+        return sdfResult(b.d, b.g, b.s, b.id, n);
+    }
     if (a.d < b.d) { return a; }
     return b;
 }
 
-// Hard intersection: pick the farther operand
+// Hard intersection: pick the farther operand (ID tiebreaker + normal blend for coplanar surfaces)
 fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
+    if (abs(a.d - b.d) < SURF_DIST) {
+        let n = safeNormalize3(a.n + b.n);
+        if (a.id <= b.id) { return sdfResult(a.d, a.g, a.s, a.id, n); }
+        return sdfResult(b.d, b.g, b.s, b.id, n);
+    }
     if (a.d > b.d) { return a; }
     return b;
 }
@@ -610,36 +620,48 @@ fn opDifferenceEx(a: SDFResult, b: SDFResult) -> SDFResult {
 fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let chamferD = (a.d - r + b.d) * sqrt(0.5);
     let d = min(min(a.d, b.d), chamferD);
-    let closer = a.d < b.d;
+    let diff = abs(a.d - b.d);
+    let coplanar = diff < SURF_DIST;
+    let n = safeNormalize3(a.n + b.n);
     
-    // In chamfer region: blend normals, pick closer operand's metadata
+    // In chamfer region: blend normals
     if (chamferD < a.d && chamferD < b.d) {
-        if (closer) {
-            return sdfResult(d, 1.0, a.s, a.id, safeNormalize3(a.n + b.n));
+        if (coplanar || a.d < b.d) {
+            if (coplanar && b.id < a.id) { return sdfResult(d, 1.0, b.s, b.id, n); }
+            return sdfResult(d, 1.0, a.s, a.id, n);
         }
-        return sdfResult(d, 1.0, b.s, b.id, safeNormalize3(a.n + b.n));
+        return sdfResult(d, 1.0, b.s, b.id, n);
     }
-    if (closer) {
-        return sdfResult(d, a.g, a.s, a.id, a.n);
+    // Outside chamfer: coplanar tiebreaker
+    if (coplanar) {
+        if (a.id <= b.id) { return sdfResult(d, a.g, a.s, a.id, n); }
+        return sdfResult(d, b.g, b.s, b.id, n);
     }
+    if (a.d < b.d) { return sdfResult(d, a.g, a.s, a.id, a.n); }
     return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let chamferD = (a.d + r + b.d) * sqrt(0.5);
     let d = max(max(a.d, b.d), chamferD);
-    let farther = a.d > b.d;
+    let diff = abs(a.d - b.d);
+    let coplanar = diff < SURF_DIST;
+    let n = safeNormalize3(a.n + b.n);
     
-    // In chamfer region: blend normals, pick farther operand's metadata
+    // In chamfer region: blend normals
     if (chamferD > a.d && chamferD > b.d) {
-        if (farther) {
-            return sdfResult(d, 1.0, a.s, a.id, safeNormalize3(a.n + b.n));
+        if (coplanar || a.d > b.d) {
+            if (coplanar && b.id < a.id) { return sdfResult(d, 1.0, b.s, b.id, n); }
+            return sdfResult(d, 1.0, a.s, a.id, n);
         }
-        return sdfResult(d, 1.0, b.s, b.id, safeNormalize3(a.n + b.n));
+        return sdfResult(d, 1.0, b.s, b.id, n);
     }
-    if (farther) {
-        return sdfResult(d, a.g, a.s, a.id, a.n);
+    // Outside chamfer: coplanar tiebreaker
+    if (coplanar) {
+        if (a.id <= b.id) { return sdfResult(d, a.g, a.s, a.id, n); }
+        return sdfResult(d, b.g, b.s, b.id, n);
     }
+    if (a.d > b.d) { return sdfResult(d, a.g, a.s, a.id, a.n); }
     return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
@@ -647,74 +669,73 @@ fn fOpDifferenceChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     return fOpIntersectionChamferEx(a, sdfResult(-b.d, b.g, -b.s, b.id, -b.n), r);
 }
 
-// Round union with gradient magnitude tracking for MDC
+// Round union - g=0.5 signals blend region to MDC
 fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let u = max(vec2<f32>(r - a.d, r - b.d), vec2<f32>(0.0, 0.0));
-    let uLen = length(u);
-    let d = max(r, min(a.d, b.d)) - uLen;
-    let closer = a.d < b.d;
+    let d = max(r, min(a.d, b.d)) - length(u);
+    let coplanar = abs(a.d - b.d) < SURF_DIST;
+    let aWins = (coplanar && a.id <= b.id) || (!coplanar && a.d < b.d);
     
-    // In blend region: track gradient magnitude, blend normals
-    if (a.d < r && b.d < r && uLen > 1e-6) {
-        let blendDepth = min(r - a.d, r - b.d) / r;
-        let cornerFactor = (u.x * u.y) / (uLen * uLen);
-        let g = max(0.25, mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor));
+    // In blend region: weighted normal blend
+    if (a.d < r && b.d < r) {
         let n = safeNormalize3(a.n * u.x + b.n * u.y);
-        if (closer) {
-            return sdfResult(d, g, a.s, a.id, n);
-        }
-        return sdfResult(d, g, b.s, b.id, n);
+        if (aWins) { return sdfResult(d, 0.5, a.s, a.id, n); }
+        return sdfResult(d, 0.5, b.s, b.id, n);
     }
-    if (closer) {
-        return sdfResult(d, a.g, a.s, a.id, a.n);
+    // Outside blend
+    if (coplanar) {
+        let n = safeNormalize3(a.n + b.n);
+        if (aWins) { return sdfResult(d, a.g, a.s, a.id, n); }
+        return sdfResult(d, b.g, b.s, b.id, n);
     }
+    if (aWins) { return sdfResult(d, a.g, a.s, a.id, a.n); }
     return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let e = max(r - abs(a.d - b.d), 0.0);
     let d = min(a.d, b.d) - e * e * 0.25 / r;
-    let closer = a.d < b.d;
+    let coplanar = abs(a.d - b.d) < SURF_DIST;
+    let aWins = (coplanar && a.id <= b.id) || (!coplanar && a.d < b.d);
     
-    // In blend region
+    // In blend region: weighted normal blend
     if (e > 0.0) {
-        let g = max(0.4, 1.0 - (e / r) * 0.5);
+        let n = safeNormalize3(a.n * (r - a.d) + b.n * (r - b.d));
+        if (aWins) { return sdfResult(d, 0.5, a.s, a.id, n); }
+        return sdfResult(d, 0.5, b.s, b.id, n);
+    }
+    // Outside blend
+    if (coplanar) {
         let n = safeNormalize3(a.n + b.n);
-        if (closer) {
-            return sdfResult(d, g, a.s, a.id, n);
-        }
-        return sdfResult(d, g, b.s, b.id, n);
+        if (aWins) { return sdfResult(d, a.g, a.s, a.id, n); }
+        return sdfResult(d, b.g, b.s, b.id, n);
     }
-    if (closer) {
-        return sdfResult(d, a.g, a.s, a.id, a.n);
-    }
+    if (aWins) { return sdfResult(d, a.g, a.s, a.id, a.n); }
     return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let u = max(vec2<f32>(r + a.d, r + b.d), vec2<f32>(0.0, 0.0));
-    let uLen = length(u);
-    let d = min(-r, max(a.d, b.d)) + uLen;
-    let farther = a.d > b.d;
+    let d = min(-r, max(a.d, b.d)) + length(u);
+    let coplanar = abs(a.d - b.d) < SURF_DIST;
+    let aWins = (coplanar && a.id <= b.id) || (!coplanar && a.d > b.d);
     
-    // In blend region for intersection (inside corner rounding)
-    if (a.d > -r && b.d > -r && uLen > 1e-6) {
-        let blendDepth = min(r + a.d, r + b.d) / r;
-        let cornerFactor = (u.x * u.y) / (uLen * uLen);
-        let g = max(0.25, mix(1.0, 0.5, blendDepth * 2.0 * cornerFactor));
+    // In blend region: weighted normal blend
+    if (a.d > -r && b.d > -r) {
         let n = safeNormalize3(a.n * u.x + b.n * u.y);
-        if (farther) {
-            return sdfResult(d, g, a.s, a.id, n);
-        }
-        return sdfResult(d, g, b.s, b.id, n);
+        if (aWins) { return sdfResult(d, 0.5, a.s, a.id, n); }
+        return sdfResult(d, 0.5, b.s, b.id, n);
     }
-    if (farther) {
-        return sdfResult(d, a.g, a.s, a.id, a.n);
+    // Outside blend
+    if (coplanar) {
+        let n = safeNormalize3(a.n + b.n);
+        if (aWins) { return sdfResult(d, a.g, a.s, a.id, n); }
+        return sdfResult(d, b.g, b.s, b.id, n);
     }
+    if (aWins) { return sdfResult(d, a.g, a.s, a.id, a.n); }
     return sdfResult(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
-    let bNeg = sdfResult(-b.d, b.g, -b.s, b.id, -b.n);
-    return fOpIntersectionRoundEx(a, bNeg, r);
+    return fOpIntersectionRoundEx(a, sdfResult(-b.d, b.g, -b.s, b.id, -b.n), r);
 }

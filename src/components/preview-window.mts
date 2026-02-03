@@ -5,7 +5,7 @@ export class PreviewWindow extends HTMLElement {
     readonly canvas: HTMLCanvasElement
 
     #counter: HTMLSpanElement
-    #framerateThreshold: number = 50 // hide FPS display until there's a significant drop
+    #framerateThreshold: number = 120
     #showFps: boolean
     #xrayCheckbox: HTMLInputElement
     #xrayMode: boolean = false

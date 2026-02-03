@@ -23,7 +23,7 @@ const Options = {
 }
 
 const WatchOptions = {
-    ignored: [".DS_Store", ".git", "node_modules", "assets", Options.outDir],
+    ignored: [".cursor", ".github", ".DS_Store", ".git", "node_modules", "assets", Options.outDir],
     causesRebuild: [/^build\//, /\.lock$/, /tsconfig\.json$/],
 }
 

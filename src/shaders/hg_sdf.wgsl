@@ -71,14 +71,6 @@ fn sgnVec3(v: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(sgn(v.x), sgn(v.y), sgn(v.z));
 }
 
-fn safeNormalize3(v: vec3<f32>) -> vec3<f32> {
-    let l = length(v);
-    if (l > 0.0) {
-        return v / l;
-    }
-    return vec3<f32>(0.0, 0.0, 0.0);
-}
-
 fn lengthSqr(v: vec3<f32>) -> f32 {
     return dot(v, v);
 }
@@ -134,7 +126,7 @@ fn fBox(p: vec3<f32>, b: vec3<f32>) -> f32 {
 
 fn fSphereEx(p: vec3<f32>, r: f32, id: u32) -> SDFResult {
     let d = length(p) - r;
-    let n = safeNormalize3(p);
+    let n = normalize(p);
     return sdfTrue(d, id, n);
 }
 
@@ -144,7 +136,7 @@ fn fBoxEx(p: vec3<f32>, b: vec3<f32>, id: u32) -> SDFResult {
     let outsideLen = length(outside);
     var n = vec3<f32>(0.0, 0.0, 0.0);
     if (outsideLen > 0.0) {
-        n = safeNormalize3(outside * sgnVec3(p));
+        n = normalize(outside * sgnVec3(p));
     } else {
         if (d.x > d.y && d.x > d.z) {
             n = vec3<f32>(sgn(p.x), 0.0, 0.0);
@@ -576,7 +568,7 @@ fn fOpTongue(a: f32, b: f32, ra: f32, rb: f32) -> f32 {
 // Hard union: pick the closer operand (ID tiebreaker + normal blend for coplanar surfaces)
 fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
     if (abs(a.d - b.d) < SURF_DIST) {
-        let n = safeNormalize3(a.n + b.n);
+        let n = normalize(a.n + b.n);
         if (a.id <= b.id) { return sdfResult(a.d, a.g, a.s, a.id, n); }
         return sdfResult(b.d, b.g, b.s, b.id, n);
     }
@@ -587,7 +579,7 @@ fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
 // Hard intersection: pick the farther operand (ID tiebreaker + normal blend for coplanar surfaces)
 fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
     if (abs(a.d - b.d) < SURF_DIST) {
-        let n = safeNormalize3(a.n + b.n);
+        let n = normalize(a.n + b.n);
         if (a.id <= b.id) { return sdfResult(a.d, a.g, a.s, a.id, n); }
         return sdfResult(b.d, b.g, b.s, b.id, n);
     }
@@ -607,7 +599,7 @@ fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = min(min(a.d, b.d), chamferD);
     let diff = abs(a.d - b.d);
     let coplanar = diff < SURF_DIST;
-    let n = safeNormalize3(a.n + b.n);
+    let n = normalize(a.n + b.n);
     
     // In chamfer region: blend normals
     if (chamferD < a.d && chamferD < b.d) {
@@ -631,7 +623,7 @@ fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = max(max(a.d, b.d), chamferD);
     let diff = abs(a.d - b.d);
     let coplanar = diff < SURF_DIST;
-    let n = safeNormalize3(a.n + b.n);
+    let n = normalize(a.n + b.n);
     
     // In chamfer region: blend normals
     if (chamferD > a.d && chamferD > b.d) {
@@ -663,13 +655,13 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     
     // In blend region: weighted normal blend
     if (a.d < r && b.d < r) {
-        let n = safeNormalize3(a.n * u.x + b.n * u.y);
+        let n = normalize(a.n * u.x + b.n * u.y);
         if (aWins) { return sdfResult(d, 0.5, a.s, a.id, n); }
         return sdfResult(d, 0.5, b.s, b.id, n);
     }
     // Outside blend
     if (coplanar) {
-        let n = safeNormalize3(a.n + b.n);
+        let n = normalize(a.n + b.n);
         if (aWins) { return sdfResult(d, a.g, a.s, a.id, n); }
         return sdfResult(d, b.g, b.s, b.id, n);
     }
@@ -685,13 +677,13 @@ fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     
     // In blend region: weighted normal blend
     if (e > 0.0) {
-        let n = safeNormalize3(a.n * (r - a.d) + b.n * (r - b.d));
+        let n = normalize(a.n * (r - a.d) + b.n * (r - b.d));
         if (aWins) { return sdfResult(d, 0.5, a.s, a.id, n); }
         return sdfResult(d, 0.5, b.s, b.id, n);
     }
     // Outside blend
     if (coplanar) {
-        let n = safeNormalize3(a.n + b.n);
+        let n = normalize(a.n + b.n);
         if (aWins) { return sdfResult(d, a.g, a.s, a.id, n); }
         return sdfResult(d, b.g, b.s, b.id, n);
     }
@@ -707,13 +699,13 @@ fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     
     // In blend region: weighted normal blend
     if (a.d > -r && b.d > -r) {
-        let n = safeNormalize3(a.n * u.x + b.n * u.y);
+        let n = normalize(a.n * u.x + b.n * u.y);
         if (aWins) { return sdfResult(d, 0.5, a.s, a.id, n); }
         return sdfResult(d, 0.5, b.s, b.id, n);
     }
     // Outside blend
     if (coplanar) {
-        let n = safeNormalize3(a.n + b.n);
+        let n = normalize(a.n + b.n);
         if (aWins) { return sdfResult(d, a.g, a.s, a.id, n); }
         return sdfResult(d, b.g, b.s, b.id, n);
     }

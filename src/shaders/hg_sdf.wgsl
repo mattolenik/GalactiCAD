@@ -38,21 +38,6 @@ fn sdfTrue(d: f32, id: u32, n: vec3<f32>) -> SDFResult {
     return SDFResult(d, 1.0, 1.0, id, n, 0.0);
 }
 
-// Selection check utility - returns true if object ID is in the selection array
-// The selectedObjectIds uniform must be defined by the shader that includes this file
-// Note: Not used by SDF operators; available for external use (e.g., highlighting)
-fn isObjectSelected(id: u32) -> bool {
-    // Access the uniform defined by the including shader (e.g., preview.wgsl)
-    // Shaders without this uniform will fail to compile unless they provide it
-    let count = selectedObjectIds[0];
-    for (var i: u32 = 1u; i <= count && i < 64u; i = i + 1u) {
-        if (id == selectedObjectIds[i]) {
-            return true;
-        }
-    }
-    return false;
-}
-
 //////////////////////////////
 //       HELPER FUNCTIONS
 //////////////////////////////

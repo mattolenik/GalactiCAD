@@ -280,6 +280,9 @@ export class SDFRenderer {
         // Clear clicked object ID buffer
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
 
+        // Trigger a render so the shader can evaluate the click
+        this.#needsRender = true
+
         // Read back result after a few frames
         setTimeout(async () => {
             try {

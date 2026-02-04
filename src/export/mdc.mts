@@ -248,357 +248,325 @@ export class MDCExport {
         ])
 
         try {
-        const uniformBuffer = createBuffer(
-            "Uniforms",
-            uniformBufferData.byteLength,
-            GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-        )
-        this.#device.queue.writeBuffer(uniformBuffer, 0, uniformBufferData)
+            const uniformBuffer = createBuffer(
+                "Uniforms",
+                uniformBufferData.byteLength,
+                GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+            )
+            this.#device.queue.writeBuffer(uniformBuffer, 0, uniformBufferData)
 
-        // Pass 1 Buffers
-        const activeCellFlagsBuffer = createBuffer(
-            "ActiveCellFlags",
-            totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        )
-        const p1_cellClassification = this.#helper.createComputePipeline(mdcShaderModule, "cellClassification_Pass1")
+            // Pass 1 Buffers
+            const activeCellFlagsBuffer = createBuffer(
+                "ActiveCellFlags",
+                totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            )
+            const p1_cellClassification = this.#helper.createComputePipeline(mdcShaderModule, "cellClassification_Pass1")
 
-        const bindGroupPass1 = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass1",
-            p1_cellClassification,
-            [0, uniformBuffer],
-            [1, activeCellFlagsBuffer],
-            [99, this.#selectedObjectIdsBuffer]
-        )
+            const bindGroupPass1 = this.#helper.createBindGroup(
+                0,
+                "BindGroup Pass1",
+                p1_cellClassification,
+                [0, uniformBuffer],
+                [1, activeCellFlagsBuffer],
+                [99, this.#selectedObjectIdsBuffer]
+            )
 
-        // --- Stage 1: classify cells into bit flags ---
-        {
-            const ce = this.#device.createCommandEncoder({ label: "mdc_pass1" })
-            const pass = this.#helper.beginComputePass(ce, p1_cellClassification, bindGroupPass1)
-
-            // Pass1 dispatch is in u32-blocks; for large grids totalU32sInFlags can exceed 65535,
-            // so dispatch in 2D and linearize in WGSL using @builtin(num_workgroups).
-            const dispatchX = Math.min(totalU32sInFlags, 65535)
-            const dispatchY = Math.ceil(totalU32sInFlags / dispatchX)
-            pass.dispatchWorkgroups(dispatchX, dispatchY)
-            pass.end()
-
-            this.#device.queue.submit([ce.finish()])
-            await this.#device.queue.onSubmittedWorkDone()
-        }
-        logDiag("after pass1 (cell classification)")
-
-        // Read back flags and build a compact list on CPU.
-        const flagsData = await readBufferData(
-            activeCellFlagsBuffer,
-            totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT
-        )
-        const flagsArray = new Uint32Array(flagsData)
-
-        // Build a compact active cell index list directly from flags.
-        // This avoids any mismatch between count and enumeration.
-        const activeList: number[] = []
-        for (let block = 0; block < flagsArray.length; block++) {
-            let v = flagsArray[block]! >>> 0
-            if (v === 0) continue
-            while (v !== 0) {
-                const lsb = (v & -v) >>> 0
-                const bit = 31 - Math.clz32(lsb)
-                const cellFlatIndex = block * 32 + bit
-                if (cellFlatIndex >= totalGridCells) break
-                activeList.push(cellFlatIndex >>> 0)
-                v = (v ^ lsb) >>> 0
-            }
-        }
-
-        let activeCellCount = activeList.length
-        console.log(`Active cells from flags: ${activeCellCount}`)
-        if (activeCellCount === 0) {
-            throw new Error("No active cells found, check grid bounds and scene")
-        }
-        logDiag("after flags readback + active list build", { activeCellCount })
-
-        const activeCellIndicesView = Uint32Array.from(activeList)
-
-        // Build a sparse hash table for neighbor lookup (cellFlatIndex -> activeIdx).
-        // Over-allocate to keep load factor <= 0.25 (very low probe counts, no lookup failures).
-        const targetEntries = Math.max(1024, activeCellCount * 4)
-        let tableEntries = 1
-        while (tableEntries < targetEntries) tableEntries <<= 1
-        const hashMask = tableEntries - 1
-        const cellToActiveHash = new Uint32Array(tableEntries * 2)
-        cellToActiveHash.fill(0xffffffff)
-        for (let i = 0; i < activeCellCount; i++) {
-            const key = activeCellIndicesView[i]!
-            let slot = (Math.imul(key, 2654435761) >>> 0) & hashMask
-            while (true) {
-                const base = slot * 2
-                const existing = cellToActiveHash[base]!
-                if (existing === 0xffffffff) {
-                    cellToActiveHash[base] = key
-                    cellToActiveHash[base + 1] = i
-                    break
-                }
-                if (existing === key) {
-                    cellToActiveHash[base + 1] = i
-                    break
-                }
-                slot = (slot + 1) & hashMask
-            }
-        }
-        logDiag("after CPU neighbor hash build", { hashEntries: tableEntries })
-
-        // --- Stage 2: allocate buffers sized to active cells, then run MDC passes ---
-        const activeCellCountBuffer = createBuffer(
-            "ActiveCellCount",
-            Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        )
-        this.#device.queue.writeBuffer(activeCellCountBuffer, 0, new Uint32Array([activeCellCount]))
-
-        const activeCellIndicesBuffer = createBuffer(
-            "ActiveCellIndices",
-            activeCellCount * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-        )
-        this.#device.queue.writeBuffer(activeCellIndicesBuffer, 0, activeCellIndicesView)
-
-        const cellToActiveHashBuffer = createBuffer(
-            "CellToActiveHash",
-            cellToActiveHash.byteLength,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-        )
-        this.#device.queue.writeBuffer(cellToActiveHashBuffer, 0, cellToActiveHash)
-
-        const debugSkipCountersBuffer = createBuffer(
-            "DebugSkipCounters",
-            8 * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        )
-        this.#device.queue.writeBuffer(debugSkipCountersBuffer, 0, new Uint32Array([0, 0, 0, 0, 0, 0, 0, 0]))
-
-        const cellEdgeComponentsBuffer = createBuffer(
-            "CellEdgeComponents",
-            activeCellCount * 12 * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        )
-
-        const cellQEFDataBuffer = createBuffer(
-            "CellQEFData",
-            activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-        )
-        const verticesBuffer = createBuffer(
-            "Vertices",
-            activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        )
-
-        const maxTriangles = activeCellCount * 6
-        const maxIndices = maxTriangles * 3
-        const indicesBuffer = createBuffer(
-            "Indices",
-            maxIndices * Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-        )
-        const indexCountFaceBuffer = createBuffer(
-            "IndexCountFace",
-            Uint32Array.BYTES_PER_ELEMENT,
-            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-        )
-        this.#device.queue.writeBuffer(indexCountFaceBuffer, 0, new Uint32Array([0]))
-        logDiag("after GPU buffer allocations", { maxTriangles, maxIndices })
-
-        const p3_edgeDetection = this.#helper.createComputePipeline(mdcShaderModule, "edgeDetection_Pass3")
-        const p4_vertexGeneration = this.#helper.createComputePipeline(mdcShaderModule, "vertexGeneration_Pass4")
-        const p5_generateTrianglesAtomic = this.#helper.createComputePipeline(mdcShaderModule, "generateTrianglesAtomic_Pass5")
-
-        const bindGroupPass3 = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass3",
-            p3_edgeDetection,
-            [0, uniformBuffer],
-            [5, activeCellIndicesBuffer], // activeCellIndicesIn_edge
-            [24, debugSkipCountersBuffer],
-            [22, cellEdgeComponentsBuffer],
-            [9, cellQEFDataBuffer],
-            [10, activeCellCountBuffer],
-            [99, this.#selectedObjectIdsBuffer]
-        )
-
-        const bindGroupPass4 = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass4",
-            p4_vertexGeneration,
-            [0, uniformBuffer],
-            [11, activeCellIndicesBuffer], // activeCellIndicesIn_vertex
-            [12, cellQEFDataBuffer],
-            [13, verticesBuffer],
-            [14, activeCellCountBuffer],
-            [99, this.#selectedObjectIdsBuffer]
-        )
-
-        const bindGroupPass5 = this.#helper.createBindGroup(
-            0,
-            "BindGroup Pass5 (atomic)",
-            p5_generateTrianglesAtomic,
-            [0, uniformBuffer],
-            [13, verticesBuffer],
-            [15, activeCellIndicesBuffer], // activeCellIndicesIn_face
-            [16, activeCellFlagsBuffer], // activeCellFlagsInput_face (used for isCellActive)
-            [17, indicesBuffer],
-            [18, indexCountFaceBuffer],
-            [20, activeCellCountBuffer],
-            [99, this.#selectedObjectIdsBuffer],
-            [22, cellEdgeComponentsBuffer],
-            [23, cellToActiveHashBuffer],
-            [24, debugSkipCountersBuffer]
-        )
-
-        // === Pass 3: Edge detection and per-cell union-find ===
-        {
-            const ce = this.#device.createCommandEncoder({ label: "mdc_pass3" })
-            const pass = this.#helper.beginComputePass(ce, p3_edgeDetection, bindGroupPass3)
-            pass.dispatchWorkgroups(Math.ceil(activeCellCount / 64))
-            pass.end()
-            this.#device.queue.submit([ce.finish()])
-            await this.#device.queue.onSubmittedWorkDone()
-        }
-        logDiag("after pass3 (edge detection)", { activeCellCount })
-
-        // === Pass 4: Vertex generation (per-cell, per-component) ===
-        // We intentionally do NOT do any cross-cell/global connectivity here.
-        // MDC requires vertices per *local* connected component within each cell.
-        {
-            const totalVertexRecords = activeCellCount * MAX_COMPONENTS_PER_CELL
-            const ce = this.#device.createCommandEncoder({ label: "mdc_pass4" })
-            const pass = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
-            const totalWorkgroups = Math.ceil(totalVertexRecords / 64)
-            const dispatchX = Math.min(totalWorkgroups, 65535)
-            const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
-            pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
-            pass.end()
-            this.#device.queue.submit([ce.finish()])
-            await this.#device.queue.onSubmittedWorkDone()
-        }
-        logDiag("after pass4 (vertex generation)")
-
-        // === Pass 5: Triangle generation using local component IDs ===
-        {
-            const ce = this.#device.createCommandEncoder({ label: "mdc_pass5" })
-            const pass = this.#helper.beginComputePass(ce, p5_generateTrianglesAtomic, bindGroupPass5)
-            pass.dispatchWorkgroups(Math.ceil(activeCellCount / 64))
-            pass.end()
-            this.#device.queue.submit([ce.finish()])
-            await this.#device.queue.onSubmittedWorkDone()
-        }
-        logDiag("after pass5 (triangle generation)")
-
-        console.log("Reading back data from GPU...")
-        const debugCountsData = await readBufferData(debugSkipCountersBuffer, 8 * Uint32Array.BYTES_PER_ELEMENT)
-        const debugCounts = new Uint32Array(debugCountsData)
-        console.log(
-            "MDC debug:",
+            // --- Stage 1: classify cells into bit flags ---
             {
-                skippedQuadsNeighborMissing: debugCounts[0],
-                skippedQuadsComponentMissing: debugCounts[1],
-                edgesBothNearIso: debugCounts[2],
-                edgesOneNearIsoNoCross: debugCounts[3],
-                cornersNearIso: debugCounts[4],
-                edgesCrossing: debugCounts[5],
-                faceCenterNearIso: debugCounts[6],
-                faceCaseAmbiguous: debugCounts[7],
+                const ce = this.#device.createCommandEncoder({ label: "mdc_pass1" })
+                const pass = this.#helper.beginComputePass(ce, p1_cellClassification, bindGroupPass1)
+
+                // Pass1 dispatch is in u32-blocks; for large grids totalU32sInFlags can exceed 65535,
+                // so dispatch in 2D and linearize in WGSL using @builtin(num_workgroups).
+                const dispatchX = Math.min(totalU32sInFlags, 65535)
+                const dispatchY = Math.ceil(totalU32sInFlags / dispatchX)
+                pass.dispatchWorkgroups(dispatchX, dispatchY)
+                pass.end()
+
+                this.#device.queue.submit([ce.finish()])
+                await this.#device.queue.onSubmittedWorkDone()
             }
-        )
-        const indexCountData = await readBufferData(indexCountFaceBuffer)
-        const rawIndexCount = new Uint32Array(indexCountData)[0]!
-        const actualIndexCount = Math.min(rawIndexCount, maxIndices)
-        console.log(`Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`)
+            logDiag("after pass1 (cell classification)")
 
-        const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
-        const verticesData = await readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
-        const verts = new Float32Array(verticesData)
+            // Read back flags and build a compact list on CPU.
+            const flagsData = await readBufferData(
+                activeCellFlagsBuffer,
+                totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT
+            )
+            const flagsArray = new Uint32Array(flagsData)
 
-        const indicesData = await readBufferData(
-            indicesBuffer,
-            actualIndexCount * Uint32Array.BYTES_PER_ELEMENT
-        )
-        const tris = new Uint32Array(indicesData)
-        logDiag("after GPU readback", {
-            actualIndexCount,
-            actualVertexCount,
-            triCount: Math.floor(tris.length / 3),
-        })
-
-        // Re-orient triangles to a consistent winding.
-        //
-        // A watertight manifold can still *look* like it has holes if triangle winding is inconsistent
-        // and the viewer uses backface culling. Dual contouring quad emission can produce locally
-        // inconsistent winding on sharp features / near-degenerate quads.
-        //
-        // This post-pass:
-        // - makes adjacent triangles traverse shared edges in opposite directions (consistent orientation)
-        // - then flips entire connected components to produce positive signed volume (outward by convention)
-        {
-            const stride = SIZEOF_VERTEX / 4 // floats per vertex
-            const triCount = Math.floor(tris.length / 3)
-            if (triCount > 0) {
-                type EdgeEntry = { t0: number; d0: number; t1: number; d1: number; count: number }
-                const edgeMap = new Map<bigint, EdgeEntry>()
-
-                const edgeKey = (a: number, b: number) => {
-                    const lo = a < b ? a : b
-                    const hi = a < b ? b : a
-                    return (BigInt(lo) << 32n) | BigInt(hi >>> 0)
+            // Build a compact active cell index list directly from flags.
+            // This avoids any mismatch between count and enumeration.
+            const activeList: number[] = []
+            for (let block = 0; block < flagsArray.length; block++) {
+                let v = flagsArray[block]! >>> 0
+                if (v === 0) continue
+                while (v !== 0) {
+                    const lsb = (v & -v) >>> 0
+                    const bit = 31 - Math.clz32(lsb)
+                    const cellFlatIndex = block * 32 + bit
+                    if (cellFlatIndex >= totalGridCells) break
+                    activeList.push(cellFlatIndex >>> 0)
+                    v = (v ^ lsb) >>> 0
                 }
-                const edgeDir = (a: number, b: number) => {
-                    // Direction of this edge in the triangle, relative to (min,max).
-                    // 0 => min->max, 1 => max->min
-                    return a < b ? 0 : 1
-                }
+            }
 
-                for (let t = 0; t < triCount; t++) {
-                    const i0 = tris[t * 3]!
-                    const i1 = tris[t * 3 + 1]!
-                    const i2 = tris[t * 3 + 2]!
-                    const edges: [number, number][] = [
-                        [i0, i1],
-                        [i1, i2],
-                        [i2, i0],
-                    ]
-                    for (const [a, b] of edges) {
-                        if (a === b) continue
-                        const k = edgeKey(a, b)
-                        const d = edgeDir(a, b)
-                        const e = edgeMap.get(k)
-                        if (!e) {
-                            edgeMap.set(k, { t0: t, d0: d, t1: -1, d1: 0, count: 1 })
-                        } else {
-                            e.count++
-                            if (e.t1 === -1) {
-                                e.t1 = t
-                                e.d1 = d
-                            }
-                        }
+            let activeCellCount = activeList.length
+            console.log(`Active cells from flags: ${activeCellCount}`)
+            if (activeCellCount === 0) {
+                throw new Error("No active cells found, check grid bounds and scene")
+            }
+            logDiag("after flags readback + active list build", { activeCellCount })
+
+            const activeCellIndicesView = Uint32Array.from(activeList)
+
+            // Build a sparse hash table for neighbor lookup (cellFlatIndex -> activeIdx).
+            // Over-allocate to keep load factor <= 0.25 (very low probe counts, no lookup failures).
+            const targetEntries = Math.max(1024, activeCellCount * 4)
+            let tableEntries = 1
+            while (tableEntries < targetEntries) tableEntries <<= 1
+            const hashMask = tableEntries - 1
+            const cellToActiveHash = new Uint32Array(tableEntries * 2)
+            cellToActiveHash.fill(0xffffffff)
+            for (let i = 0; i < activeCellCount; i++) {
+                const key = activeCellIndicesView[i]!
+                let slot = (Math.imul(key, 2654435761) >>> 0) & hashMask
+                while (true) {
+                    const base = slot * 2
+                    const existing = cellToActiveHash[base]!
+                    if (existing === 0xffffffff) {
+                        cellToActiveHash[base] = key
+                        cellToActiveHash[base + 1] = i
+                        break
                     }
+                    if (existing === key) {
+                        cellToActiveHash[base + 1] = i
+                        break
+                    }
+                    slot = (slot + 1) & hashMask
                 }
+            }
+            logDiag("after CPU neighbor hash build", { hashEntries: tableEntries })
 
-                const visited = new Uint8Array(triCount)
-                const flip = new Uint8Array(triCount)
-                const comps: number[][] = []
+            // --- Stage 2: allocate buffers sized to active cells, then run MDC passes ---
+            const activeCellCountBuffer = createBuffer(
+                "ActiveCellCount",
+                Uint32Array.BYTES_PER_ELEMENT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            )
+            this.#device.queue.writeBuffer(activeCellCountBuffer, 0, new Uint32Array([activeCellCount]))
 
-                for (let seed = 0; seed < triCount; seed++) {
-                    if (visited[seed]) continue
-                    visited[seed] = 1
-                    flip[seed] = 0
-                    const stack = [seed]
-                    const comp: number[] = []
+            const activeCellIndicesBuffer = createBuffer(
+                "ActiveCellIndices",
+                activeCellCount * Uint32Array.BYTES_PER_ELEMENT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            )
+            this.#device.queue.writeBuffer(activeCellIndicesBuffer, 0, activeCellIndicesView)
 
-                    while (stack.length) {
-                        const t = stack.pop()!
-                        comp.push(t)
+            const cellToActiveHashBuffer = createBuffer(
+                "CellToActiveHash",
+                cellToActiveHash.byteLength,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            )
+            this.#device.queue.writeBuffer(cellToActiveHashBuffer, 0, cellToActiveHash)
 
+            const debugSkipCountersBuffer = createBuffer(
+                "DebugSkipCounters",
+                8 * Uint32Array.BYTES_PER_ELEMENT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            )
+            this.#device.queue.writeBuffer(debugSkipCountersBuffer, 0, new Uint32Array([0, 0, 0, 0, 0, 0, 0, 0]))
+
+            const cellEdgeComponentsBuffer = createBuffer(
+                "CellEdgeComponents",
+                activeCellCount * 12 * Uint32Array.BYTES_PER_ELEMENT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            )
+
+            const cellQEFDataBuffer = createBuffer(
+                "CellQEFData",
+                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            )
+            const verticesBuffer = createBuffer(
+                "Vertices",
+                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            )
+
+            const maxTriangles = activeCellCount * 6
+            const maxIndices = maxTriangles * 3
+            const indicesBuffer = createBuffer(
+                "Indices",
+                maxIndices * Uint32Array.BYTES_PER_ELEMENT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            )
+            const indexCountFaceBuffer = createBuffer(
+                "IndexCountFace",
+                Uint32Array.BYTES_PER_ELEMENT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            )
+            this.#device.queue.writeBuffer(indexCountFaceBuffer, 0, new Uint32Array([0]))
+            logDiag("after GPU buffer allocations", { maxTriangles, maxIndices })
+
+            const p3_edgeDetection = this.#helper.createComputePipeline(mdcShaderModule, "edgeDetection_Pass3")
+            const p4_vertexGeneration = this.#helper.createComputePipeline(mdcShaderModule, "vertexGeneration_Pass4")
+            const p5_generateTrianglesAtomic = this.#helper.createComputePipeline(mdcShaderModule, "generateTrianglesAtomic_Pass5")
+
+            const bindGroupPass3 = this.#helper.createBindGroup(
+                0,
+                "BindGroup Pass3",
+                p3_edgeDetection,
+                [0, uniformBuffer],
+                [5, activeCellIndicesBuffer], // activeCellIndicesIn_edge
+                [24, debugSkipCountersBuffer],
+                [22, cellEdgeComponentsBuffer],
+                [9, cellQEFDataBuffer],
+                [10, activeCellCountBuffer],
+                [99, this.#selectedObjectIdsBuffer]
+            )
+
+            const bindGroupPass4 = this.#helper.createBindGroup(
+                0,
+                "BindGroup Pass4",
+                p4_vertexGeneration,
+                [0, uniformBuffer],
+                [11, activeCellIndicesBuffer], // activeCellIndicesIn_vertex
+                [12, cellQEFDataBuffer],
+                [13, verticesBuffer],
+                [14, activeCellCountBuffer],
+                [99, this.#selectedObjectIdsBuffer]
+            )
+
+            const bindGroupPass5 = this.#helper.createBindGroup(
+                0,
+                "BindGroup Pass5 (atomic)",
+                p5_generateTrianglesAtomic,
+                [0, uniformBuffer],
+                [13, verticesBuffer],
+                [15, activeCellIndicesBuffer], // activeCellIndicesIn_face
+                [16, activeCellFlagsBuffer], // activeCellFlagsInput_face (used for isCellActive)
+                [17, indicesBuffer],
+                [18, indexCountFaceBuffer],
+                [20, activeCellCountBuffer],
+                [99, this.#selectedObjectIdsBuffer],
+                [22, cellEdgeComponentsBuffer],
+                [23, cellToActiveHashBuffer],
+                [24, debugSkipCountersBuffer]
+            )
+
+            // === Pass 3: Edge detection and per-cell union-find ===
+            {
+                const ce = this.#device.createCommandEncoder({ label: "mdc_pass3" })
+                const pass = this.#helper.beginComputePass(ce, p3_edgeDetection, bindGroupPass3)
+                // Use 2D dispatch if workgroup count exceeds hardware limit
+                const totalWorkgroups = Math.ceil(activeCellCount / 64)
+                const dispatchX = Math.min(totalWorkgroups, 65535)
+                const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
+                pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                pass.end()
+                this.#device.queue.submit([ce.finish()])
+                await this.#device.queue.onSubmittedWorkDone()
+            }
+            logDiag("after pass3 (edge detection)", { activeCellCount })
+
+            // === Pass 4: Vertex generation (per-cell, per-component) ===
+            // We intentionally do NOT do any cross-cell/global connectivity here.
+            // MDC requires vertices per *local* connected component within each cell.
+            {
+                const totalVertexRecords = activeCellCount * MAX_COMPONENTS_PER_CELL
+                const ce = this.#device.createCommandEncoder({ label: "mdc_pass4" })
+                const pass = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
+                const totalWorkgroups = Math.ceil(totalVertexRecords / 64)
+                const dispatchX = Math.min(totalWorkgroups, 65535)
+                const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
+                pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                pass.end()
+                this.#device.queue.submit([ce.finish()])
+                await this.#device.queue.onSubmittedWorkDone()
+            }
+            logDiag("after pass4 (vertex generation)")
+
+            // === Pass 5: Triangle generation using local component IDs ===
+            {
+                const ce = this.#device.createCommandEncoder({ label: "mdc_pass5" })
+                const pass = this.#helper.beginComputePass(ce, p5_generateTrianglesAtomic, bindGroupPass5)
+                // Use 2D dispatch if workgroup count exceeds hardware limit
+                const totalWorkgroups = Math.ceil(activeCellCount / 64)
+                const dispatchX = Math.min(totalWorkgroups, 65535)
+                const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
+                pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                pass.end()
+                this.#device.queue.submit([ce.finish()])
+                await this.#device.queue.onSubmittedWorkDone()
+            }
+            logDiag("after pass5 (triangle generation)")
+
+            console.log("Reading back data from GPU...")
+            const debugCountsData = await readBufferData(debugSkipCountersBuffer, 8 * Uint32Array.BYTES_PER_ELEMENT)
+            const debugCounts = new Uint32Array(debugCountsData)
+            console.log(
+                "MDC debug:",
+                {
+                    skippedQuadsNeighborMissing: debugCounts[0],
+                    skippedQuadsComponentMissing: debugCounts[1],
+                    edgesBothNearIso: debugCounts[2],
+                    edgesOneNearIsoNoCross: debugCounts[3],
+                    cornersNearIso: debugCounts[4],
+                    edgesCrossing: debugCounts[5],
+                    faceCenterNearIso: debugCounts[6],
+                    faceCaseAmbiguous: debugCounts[7],
+                }
+            )
+            const indexCountData = await readBufferData(indexCountFaceBuffer)
+            const rawIndexCount = new Uint32Array(indexCountData)[0]!
+            const actualIndexCount = Math.min(rawIndexCount, maxIndices)
+            console.log(`Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`)
+
+            const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
+            const verticesData = await readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
+            const verts = new Float32Array(verticesData)
+
+            const indicesData = await readBufferData(
+                indicesBuffer,
+                actualIndexCount * Uint32Array.BYTES_PER_ELEMENT
+            )
+            const tris = new Uint32Array(indicesData)
+            logDiag("after GPU readback", {
+                actualIndexCount,
+                actualVertexCount,
+                triCount: Math.floor(tris.length / 3),
+            })
+
+            // Re-orient triangles to a consistent winding.
+            //
+            // A watertight manifold can still *look* like it has holes if triangle winding is inconsistent
+            // and the viewer uses backface culling. Dual contouring quad emission can produce locally
+            // inconsistent winding on sharp features / near-degenerate quads.
+            //
+            // This post-pass:
+            // - makes adjacent triangles traverse shared edges in opposite directions (consistent orientation)
+            // - then flips entire connected components to produce positive signed volume (outward by convention)
+            {
+                const stride = SIZEOF_VERTEX / 4 // floats per vertex
+                const triCount = Math.floor(tris.length / 3)
+                if (triCount > 0) {
+                    type EdgeEntry = { t0: number; d0: number; t1: number; d1: number; count: number }
+                    const edgeMap = new Map<bigint, EdgeEntry>()
+
+                    const edgeKey = (a: number, b: number) => {
+                        const lo = a < b ? a : b
+                        const hi = a < b ? b : a
+                        return (BigInt(lo) << 32n) | BigInt(hi >>> 0)
+                    }
+                    const edgeDir = (a: number, b: number) => {
+                        // Direction of this edge in the triangle, relative to (min,max).
+                        // 0 => min->max, 1 => max->min
+                        return a < b ? 0 : 1
+                    }
+
+                    for (let t = 0; t < triCount; t++) {
                         const i0 = tris[t * 3]!
                         const i1 = tris[t * 3 + 1]!
                         const i2 = tris[t * 3 + 2]!
@@ -607,141 +575,181 @@ export class MDCExport {
                             [i1, i2],
                             [i2, i0],
                         ]
-
                         for (const [a, b] of edges) {
                             if (a === b) continue
                             const k = edgeKey(a, b)
+                            const d = edgeDir(a, b)
                             const e = edgeMap.get(k)
-                            if (!e || e.count !== 2 || e.t1 === -1) continue
-                            const curIs0 = e.t0 === t
-                            const nt = curIs0 ? e.t1 : e.t0
-                            if (nt < 0) continue
-
-                            const dCur = curIs0 ? e.d0 : e.d1
-                            const dNei = curIs0 ? e.d1 : e.d0
-
-                            // Effective edge direction after flipping:
-                            // effDir = dOrig XOR flipTri
-                            // We need neighbor to traverse edge in opposite direction:
-                            // effNei = effCur XOR 1
-                            const desiredFlipNei = (dNei ^ dCur ^ flip[t] ^ 1) & 1
-
-                            if (!visited[nt]) {
-                                visited[nt] = 1
-                                flip[nt] = desiredFlipNei
-                                stack.push(nt)
+                            if (!e) {
+                                edgeMap.set(k, { t0: t, d0: d, t1: -1, d1: 0, count: 1 })
+                            } else {
+                                e.count++
+                                if (e.t1 === -1) {
+                                    e.t1 = t
+                                    e.d1 = d
+                                }
                             }
                         }
                     }
-                    comps.push(comp)
+
+                    const visited = new Uint8Array(triCount)
+                    const flip = new Uint8Array(triCount)
+                    const comps: number[][] = []
+
+                    for (let seed = 0; seed < triCount; seed++) {
+                        if (visited[seed]) continue
+                        visited[seed] = 1
+                        flip[seed] = 0
+                        const stack = [seed]
+                        const comp: number[] = []
+
+                        while (stack.length) {
+                            const t = stack.pop()!
+                            comp.push(t)
+
+                            const i0 = tris[t * 3]!
+                            const i1 = tris[t * 3 + 1]!
+                            const i2 = tris[t * 3 + 2]!
+                            const edges: [number, number][] = [
+                                [i0, i1],
+                                [i1, i2],
+                                [i2, i0],
+                            ]
+
+                            for (const [a, b] of edges) {
+                                if (a === b) continue
+                                const k = edgeKey(a, b)
+                                const e = edgeMap.get(k)
+                                if (!e || e.count !== 2 || e.t1 === -1) continue
+                                const curIs0 = e.t0 === t
+                                const nt = curIs0 ? e.t1 : e.t0
+                                if (nt < 0) continue
+
+                                const dCur = curIs0 ? e.d0 : e.d1
+                                const dNei = curIs0 ? e.d1 : e.d0
+
+                                // Effective edge direction after flipping:
+                                // effDir = dOrig XOR flipTri
+                                // We need neighbor to traverse edge in opposite direction:
+                                // effNei = effCur XOR 1
+                                const desiredFlipNei = (dNei ^ dCur ^ flip[t] ^ 1) & 1
+
+                                if (!visited[nt]) {
+                                    visited[nt] = 1
+                                    flip[nt] = desiredFlipNei
+                                    stack.push(nt)
+                                }
+                            }
+                        }
+                        comps.push(comp)
+                    }
+
+                    // Apply BFS-derived flips.
+                    for (let t = 0; t < triCount; t++) {
+                        if (!flip[t]) continue
+                        const off = t * 3
+                        const tmp = tris[off + 1]!
+                        tris[off + 1] = tris[off + 2]!
+                        tris[off + 2] = tmp
+                    }
+
+                    // Flip whole components to get positive signed volume (outward by convention).
+                    const vpos = (vidx: number) => {
+                        const base = vidx * stride
+                        return [verts[base]!, verts[base + 1]!, verts[base + 2]!] as const
+                    }
+                    const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                        [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
+                    const dot = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                        a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+                    const sub = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                        [a[0] - b[0], a[1] - b[1], a[2] - b[2]] as const
+
+                    for (const comp of comps) {
+                        let vol6 = 0 // 6x signed volume
+                        for (const t of comp) {
+                            const off = t * 3
+                            const i0 = tris[off + 0]!
+                            const i1 = tris[off + 1]!
+                            const i2 = tris[off + 2]!
+                            const p0 = vpos(i0)
+                            const p1 = vpos(i1)
+                            const p2 = vpos(i2)
+                            // signed volume contribution: dot(p0, cross(p1, p2))
+                            vol6 += dot(p0, cross(p1, p2))
+                        }
+                        if (vol6 < 0) {
+                            // Flip all triangles in the component.
+                            for (const t of comp) {
+                                const off = t * 3
+                                const tmp = tris[off + 1]!
+                                tris[off + 1] = tris[off + 2]!
+                                tris[off + 2] = tmp
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Basic mesh sanity stats to help diagnose “holes”:
+            // - boundary edges (count==1) indicate actual holes / open surface
+            // - degenerate triangles can look like missing faces
+            {
+                const stride = SIZEOF_VERTEX / 4 // floats per vertex
+                const triCount = Math.floor(tris.length / 3)
+                const areaEpsSq = Math.pow(this.params.voxelSize * this.params.voxelSize * 1e-6, 2)
+                let degenerate = 0
+
+                const edgeCounts = new Map<bigint, number>()
+                const addEdge = (a: number, b: number) => {
+                    if (a === b) return
+                    const lo = a < b ? a : b
+                    const hi = a < b ? b : a
+                    const key = (BigInt(lo) << 32n) | BigInt(hi >>> 0)
+                    edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1)
                 }
 
-                // Apply BFS-derived flips.
-                for (let t = 0; t < triCount; t++) {
-                    if (!flip[t]) continue
-                    const off = t * 3
-                    const tmp = tris[off + 1]!
-                    tris[off + 1] = tris[off + 2]!
-                    tris[off + 2] = tmp
-                }
-
-                // Flip whole components to get positive signed volume (outward by convention).
                 const vpos = (vidx: number) => {
                     const base = vidx * stride
                     return [verts[base]!, verts[base + 1]!, verts[base + 2]!] as const
                 }
-                const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
-                const dot = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
                 const sub = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
                     [a[0] - b[0], a[1] - b[1], a[2] - b[2]] as const
+                const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
+                    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
 
-                for (const comp of comps) {
-                    let vol6 = 0 // 6x signed volume
-                    for (const t of comp) {
-                        const off = t * 3
-                        const i0 = tris[off + 0]!
-                        const i1 = tris[off + 1]!
-                        const i2 = tris[off + 2]!
-                        const p0 = vpos(i0)
-                        const p1 = vpos(i1)
-                        const p2 = vpos(i2)
-                        // signed volume contribution: dot(p0, cross(p1, p2))
-                        vol6 += dot(p0, cross(p1, p2))
-                    }
-                    if (vol6 < 0) {
-                        // Flip all triangles in the component.
-                        for (const t of comp) {
-                            const off = t * 3
-                            const tmp = tris[off + 1]!
-                            tris[off + 1] = tris[off + 2]!
-                            tris[off + 2] = tmp
-                        }
-                    }
+                for (let t = 0; t < triCount; t++) {
+                    const i0 = tris[t * 3]!
+                    const i1 = tris[t * 3 + 1]!
+                    const i2 = tris[t * 3 + 2]!
+
+                    addEdge(i0, i1)
+                    addEdge(i1, i2)
+                    addEdge(i2, i0)
+
+                    const p0 = vpos(i0)
+                    const p1 = vpos(i1)
+                    const p2 = vpos(i2)
+                    const e0 = sub(p1, p0)
+                    const e1 = sub(p2, p0)
+                    const n = cross(e0, e1)
+                    const a2 = n[0] * n[0] + n[1] * n[1] + n[2] * n[2]
+                    if (!isFinite(a2) || a2 <= areaEpsSq) degenerate++
                 }
-            }
-        }
 
-        // Basic mesh sanity stats to help diagnose “holes”:
-        // - boundary edges (count==1) indicate actual holes / open surface
-        // - degenerate triangles can look like missing faces
-        {
-            const stride = SIZEOF_VERTEX / 4 // floats per vertex
-            const triCount = Math.floor(tris.length / 3)
-            const areaEpsSq = Math.pow(this.params.voxelSize * this.params.voxelSize * 1e-6, 2)
-            let degenerate = 0
-
-            const edgeCounts = new Map<bigint, number>()
-            const addEdge = (a: number, b: number) => {
-                if (a === b) return
-                const lo = a < b ? a : b
-                const hi = a < b ? b : a
-                const key = (BigInt(lo) << 32n) | BigInt(hi >>> 0)
-                edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1)
+                let boundaryEdges = 0
+                let nonManifoldEdges = 0
+                for (const c of edgeCounts.values()) {
+                    if (c === 1) boundaryEdges++
+                    else if (c !== 2) nonManifoldEdges++
+                }
+                console.log(
+                    `MDC mesh stats: tris=${triCount} degenerateTris=${degenerate} boundaryEdges=${boundaryEdges} nonManifoldEdges=${nonManifoldEdges}`
+                )
             }
 
-            const vpos = (vidx: number) => {
-                const base = vidx * stride
-                return [verts[base]!, verts[base + 1]!, verts[base + 2]!] as const
-            }
-            const sub = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                [a[0] - b[0], a[1] - b[1], a[2] - b[2]] as const
-            const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
-
-            for (let t = 0; t < triCount; t++) {
-                const i0 = tris[t * 3]!
-                const i1 = tris[t * 3 + 1]!
-                const i2 = tris[t * 3 + 2]!
-
-                addEdge(i0, i1)
-                addEdge(i1, i2)
-                addEdge(i2, i0)
-
-                const p0 = vpos(i0)
-                const p1 = vpos(i1)
-                const p2 = vpos(i2)
-                const e0 = sub(p1, p0)
-                const e1 = sub(p2, p0)
-                const n = cross(e0, e1)
-                const a2 = n[0] * n[0] + n[1] * n[1] + n[2] * n[2]
-                if (!isFinite(a2) || a2 <= areaEpsSq) degenerate++
-            }
-
-            let boundaryEdges = 0
-            let nonManifoldEdges = 0
-            for (const c of edgeCounts.values()) {
-                if (c === 1) boundaryEdges++
-                else if (c !== 2) nonManifoldEdges++
-            }
-            console.log(
-                `MDC mesh stats: tris=${triCount} degenerateTris=${degenerate} boundaryEdges=${boundaryEdges} nonManifoldEdges=${nonManifoldEdges}`
-            )
-        }
-
-        logDiag("done")
-        return { verts, tris }
+            logDiag("done")
+            return { verts, tris }
 
         } finally {
             // Clean up all GPU buffers created during export

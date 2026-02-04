@@ -45,6 +45,8 @@ fn sceneSDF(p: vec3f) -> SDFResult {
 }
 
 fn isInside(p: vec3f) -> bool {
+    // Reference selectedObjectIds to prevent optimization (unused but required for binding)
+    let dummy = selectedObjectIds[0];
     return sceneSDF(p).d <= uniforms.searchMaxIso.w;
 }
 

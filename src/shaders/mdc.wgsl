@@ -110,6 +110,8 @@ const EDGES_PER_CELL: u32 = 12u;
 
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> SDFResult {
+    // Reference selectedObjectIds to prevent optimization (unused but required for binding)
+    let dummy = selectedObjectIds[0];
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
@@ -766,8 +768,12 @@ fn expandActiveCells_Pass2d(
 
 // Pass 3: Edge Detection and QEF Accumulation
 @compute @workgroup_size(64, 1, 1)
-fn edgeDetection_Pass3(@builtin(global_invocation_id) globalId: vec3u) {
-    let active_cell_array_idx = globalId.x; 
+fn edgeDetection_Pass3(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u
+) {
+    // Linearize 2D dispatch for large workgroup counts
+    let active_cell_array_idx = globalId.x + globalId.y * (numWg.x * 64u); 
 
     let totalActiveCells = activeCellCount_edgeInput; 
     if (active_cell_array_idx >= totalActiveCells) { return; }
@@ -1709,8 +1715,12 @@ fn generateTriangles_Pass5c(@builtin(global_invocation_id) globalId: vec3u) {
 // Pass 5 (scalable): Generate triangles using an atomic index counter.
 // This avoids prefix-sum limitations for large active cell counts.
 @compute @workgroup_size(64, 1, 1)
-fn generateTrianglesAtomic_Pass5(@builtin(global_invocation_id) globalId: vec3u) {
-    let active_cell_array_idx = globalId.x;
+fn generateTrianglesAtomic_Pass5(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u
+) {
+    // Linearize 2D dispatch for large workgroup counts
+    let active_cell_array_idx = globalId.x + globalId.y * (numWg.x * 64u);
     let totalActiveCells = activeCellCount_faceInput;
     if (active_cell_array_idx >= totalActiveCells) { return; }
     if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }

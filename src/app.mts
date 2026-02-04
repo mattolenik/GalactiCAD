@@ -69,7 +69,7 @@ class App {
             // Don't clear color indicators - they'll update when build succeeds
         }
     }
-    
+
     /**
      * Update color indicator decorations for all matched shapes.
      * Uses node IDs from the source location map for color assignment.
@@ -77,14 +77,14 @@ class App {
      */
     #updateColorIndicators() {
         const indicators: ShapeIndicator[] = []
-        
+
         // Default SVG for nodes that don't have a specific one
         const defaultSvg = `<rect x="1" y="1" width="10" height="10" rx="3" fill="currentColor"/>`
-        
+
         for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
             const node = this.#sceneNodeMap.get(nodeId)
             const svg = node?.getIndicatorSvg() ?? defaultSvg
-            
+
             indicators.push({
                 startLine: location.startLine,
                 startColumn: location.startColumn,
@@ -95,7 +95,7 @@ class App {
                 svg: svg
             })
         }
-        
+
         this.#monacoHighlighter.setColorIndicators(indicators)
     }
 
@@ -192,8 +192,6 @@ class App {
             } else {
                 this.renderer.setSelection([nodeId])
             }
-            // Clear hover when selecting (selection takes precedence)
-            this.renderer.setHoveredObject(0)
             // Also update editor highlighting to show the selection highlight
             this.#updateEditorHighlighting()
         }
@@ -226,8 +224,6 @@ class App {
                         } else {
                             this.renderer.setSelection([nodeId])
                         }
-                        // Clear hover when selecting
-                        this.renderer.setHoveredObject(0)
                         // Also update editor highlighting to show the selection highlight
                         this.#updateEditorHighlighting()
                         return

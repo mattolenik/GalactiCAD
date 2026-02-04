@@ -17,6 +17,9 @@ importers:
       monaco-editor:
         specifier: ^0.52.2
         version: 0.52.2
+      quaternion:
+        specifier: ^2.2.0
+        version: 2.2.0
       rxjs:
         specifier: ^7.8.2
         version: 7.8.2
@@ -409,6 +412,9 @@ packages:
   monaco-editor@0.52.2:
     resolution: {integrity: sha512-GEQWEZmfkOGLdd3XK8ryrfWz3AIP8YymVXiPHEdewrUq7mh0qrKrfHLNCXcbB6sTnMLnOZ3ztSiKcciFUkIJwQ==}
 
+  quaternion@2.2.0:
+    resolution: {integrity: sha512-dVX+rdN3RZU/XPPyfayxuyZdWjLlbp2ZRHWAhKFXgfZ91mM/YUTUassEzWJV8VNynq2kCaaHoa4Kkckj2AA4sQ==}
+
   readdirp@4.1.2:
     resolution: {integrity: sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==}
     engines: {node: '>= 14.18.0'}
@@ -693,6 +699,8 @@ snapshots:
       resolve-pkg-maps: 1.0.0
 
   monaco-editor@0.52.2: {}
+
+  quaternion@2.2.0: {}
 
   readdirp@4.1.2: {}
 

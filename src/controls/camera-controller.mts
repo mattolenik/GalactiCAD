@@ -1,16 +1,17 @@
-import { clamped, clampedAngle } from "../math.mjs"
+import { clamped } from "../math.mjs"
 import { LocalStorage } from "../storage/storage.mjs"
 import { lookAt, Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { PinchZoomController } from "./pinchzoom-controller.mjs"
+// @ts-ignore - quaternion library type definitions have issues
+import Quaternion from "quaternion"
 
 export interface CameraHost extends HTMLElement {
     canvas: HTMLCanvasElement
 }
 
 export interface CameraState {
-    sceneRotX: number
-    sceneRotY: number
+    rotation: [number, number, number, number] // quaternion [w, x, y, z]
     zoom: number
     translation: Vec3f
 }
@@ -22,11 +23,7 @@ export class CameraController {
     cameraPosition = new Vec3f()
     viewTransform = new Mat4x4f()
 
-    @clampedAngle
-    accessor #sceneRotX: number = 0
-
-    @clampedAngle
-    accessor #sceneRotY: number = 0
+    #rotation: Quaternion = new Quaternion(1, 0, 0, 0) // identity quaternion
 
     @clamped(2, 150)
     accessor zoom: number = 40
@@ -67,8 +64,8 @@ export class CameraController {
             this.#saveCameraState()
             this.onChange?.(this.state)
         }
-        this.#sceneRotY = initialTheta
-        this.#sceneRotX = initialPhi
+        // Initialize rotation from Euler angles (for backward compatibility)
+        this.#rotation = Quaternion.fromEuler(initialPhi, initialTheta, 0, "YXZ")
 
         this.#initEvents()
         this.#loadCameraState()
@@ -76,9 +73,9 @@ export class CameraController {
     }
 
     get state(): CameraState {
+        const q = this.#rotation.toVector()
         return {
-            sceneRotX: this.#sceneRotX,
-            sceneRotY: this.#sceneRotY,
+            rotation: [q[0], q[1], q[2], q[3]], // [w, x, y, z]
             zoom: this.zoom,
             translation: this.#cameraTranslation.clone(),
         }
@@ -86,8 +83,7 @@ export class CameraController {
 
     applyState(state: CameraState, opts: { emit?: boolean } = {}): void {
         const emit = opts.emit ?? true
-        this.#sceneRotX = state.sceneRotX
-        this.#sceneRotY = state.sceneRotY
+        this.#rotation = new Quaternion(state.rotation[0], state.rotation[1], state.rotation[2], state.rotation[3])
         this.zoom = state.zoom
         this.#zoomController.setZoom(this.zoom, false)
         this.#cameraTranslation = state.translation.clone()
@@ -118,26 +114,19 @@ export class CameraController {
     #onKeyPress(e: KeyboardEvent) {
         if (this.#lastFocused?.id !== this.#host.id) return
         if (e.code === "Digit1") {
-            this.#sceneRotX = -1 * Math.PI
-            this.#sceneRotY = -1 * Math.PI
+            this.#rotation = Quaternion.fromEuler(-Math.PI, -Math.PI, 0, "YXZ")
         } else if (e.code === "Digit2") {
-            this.#sceneRotX = -1 * Math.PI
-            this.#sceneRotY = 0
+            this.#rotation = Quaternion.fromEuler(-Math.PI, 0, 0, "YXZ")
         } else if (e.code === "Digit3") {
-            this.#sceneRotX = 0
-            this.#sceneRotY = (1 / 2) * Math.PI
+            this.#rotation = Quaternion.fromEuler(0, Math.PI / 2, 0, "YXZ")
         } else if (e.code === "Digit4") {
-            this.#sceneRotX = 0
-            this.#sceneRotY = (-1 / 2) * Math.PI
+            this.#rotation = Quaternion.fromEuler(0, -Math.PI / 2, 0, "YXZ")
         } else if (e.code === "Digit5") {
-            this.#sceneRotX = (-1 / 2) * Math.PI
-            this.#sceneRotY = 1 * Math.PI
+            this.#rotation = Quaternion.fromEuler(-Math.PI / 2, Math.PI, 0, "YXZ")
         } else if (e.code === "Digit6") {
-            this.#sceneRotX = (1 / 2) * Math.PI
-            this.#sceneRotY = 1 * Math.PI
+            this.#rotation = Quaternion.fromEuler(Math.PI / 2, Math.PI, 0, "YXZ")
         } else if (e.code === "Backquote") {
-            this.#sceneRotX = -Math.PI / 8
-            this.#sceneRotY = Math.PI * (5 / 4)
+            this.#rotation = Quaternion.fromEuler(-Math.PI / 8, (5 / 4) * Math.PI, 0, "YXZ")
             this.#cameraTranslation = new Vec3f()
         } else {
             return
@@ -169,8 +158,6 @@ export class CameraController {
 
         const rect = this.#host.canvas.getBoundingClientRect()
         if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
-            // this.isDragging = false
-            // this.dragMode = null
             return
         }
         const pvec = vec2(e.clientX, e.clientY)
@@ -178,18 +165,41 @@ export class CameraController {
         this.#last.set(pvec)
 
         if (this.#dragMode === "rotate") {
-            this.#sceneRotY -= this.#cursorDelta.x * this.#rotateSensitivity
-            this.#sceneRotX -= this.#cursorDelta.y * this.#rotateSensitivity
+            // Build the current rotation matrix applied to lookAt (without translation)
+            // to extract the camera's current orientation axes
+            const baseView = lookAt(this.cameraPosition, this.#pivot, vec3(0, 1, 0))
+            const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
+            const rotatedView = rotationMatrix.multiply(baseView)
+
+            // Extract camera orientation vectors from the rotated view matrix
+            // Column 0 (indices 0,1,2): camera's right vector in world space
+            // Column 1 (indices 4,5,6): camera's up vector in world space
+            const viewData = rotatedView.data
+            const cameraRight = vec3(viewData[0], viewData[1], viewData[2]).normalize()
+            const cameraUp = vec3(viewData[4], viewData[5], viewData[6]).normalize()
+
+            // Arcball rotation: rotate object as if held in your hand (trackball style)
+            // Key insight: rotations should be applied in the object's local space
+            // When you drag right: rotate around the camera's up axis (screen vertical)
+            // When you drag down: rotate around the camera's right axis (screen horizontal)
+            //
+            // For trackball feel: dragging right rotates the object right (clockwise around vertical)
+            // The rotation axis is in world space but aligned with screen orientation
+            const horizontalAngle = this.#cursorDelta.x * this.#rotateSensitivity
+            const horizontalRotation = Quaternion.fromAxisAngle([cameraUp.x, cameraUp.y, cameraUp.z], horizontalAngle)
+
+            const verticalAngle = -this.#cursorDelta.y * this.#rotateSensitivity
+            const verticalRotation = Quaternion.fromAxisAngle([cameraRight.x, cameraRight.y, cameraRight.z], verticalAngle)
+
+            // Apply rotations: for trackball, we apply them in object-local order
+            // This means: currentRotation * horizontalRotation * verticalRotation
+            // The rotations accumulate in the object's local coordinate system
+            this.#rotation = this.#rotation.mul(horizontalRotation).mul(verticalRotation).normalize()
         } else if (this.#dragMode === "pan") {
             // Compute camera-relative pan directions based on current rotation
-            const rotY = Mat4x4f.rotationY(this.#sceneRotY)
-            const rotX = Mat4x4f.rotationX(this.#sceneRotX)
-            const combinedRotation = rotY.multiply(rotX)
-
-            // Camera right vector (transformed X axis)
-            const cameraRight = combinedRotation.transformVector(vec3(1, 0, 0))
-            // Camera up vector (transformed Y axis)
-            const cameraUp = combinedRotation.transformVector(vec3(0, 1, 0))
+            const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
+            const cameraRight = rotationMatrix.transformVector(vec3(1, 0, 0))
+            const cameraUp = rotationMatrix.transformVector(vec3(0, 1, 0))
 
             // Apply pan in camera-relative directions
             this.#cameraTranslation.x -= (this.#cursorDelta.x * cameraRight.x - this.#cursorDelta.y * cameraUp.x) * this.#panSensitivity
@@ -206,23 +216,23 @@ export class CameraController {
         this.#saveCameraState(true)
     }
 
-    // #onWheel(e: WheelEvent) {
-    //     e.preventDefault()
-    //     this.#radius += e.deltaY * this.#zoomSensitivity
-    // }
-    // this.zoom = this.#radius
-    // this.#updateTransforms()
-
     #computeCameraPosition(): Vec3f {
         return this.#pivot.add(vec3(0, 0, 1))
+    }
+
+    #quaternionToMatrix(q: Quaternion): Mat4x4f {
+        // Convert quaternion to 4x4 rotation matrix
+        const matrix4 = q.toMatrix4(false) // false = flat array, not 2D
+        return new Mat4x4f(new Float32Array(matrix4))
     }
 
     #updateTransforms(emit = true) {
         this.cameraPosition = this.#computeCameraPosition()
         // Use a fixed up vector (world up) for constructing the view matrix
         let view = lookAt(this.cameraPosition, this.#pivot, vec3(0, 1, 0))
-        view = Mat4x4f.rotationX(this.#sceneRotX).multiply(view)
-        view = Mat4x4f.rotationY(this.#sceneRotY).multiply(view)
+        // Apply quaternion rotation
+        const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
+        view = rotationMatrix.multiply(view)
         view = Mat4x4f.translation(this.#cameraTranslation).multiply(view)
         this.viewTransform = view
         this.#saveCameraState()
@@ -239,8 +249,9 @@ export class CameraController {
         this.#ls.setVec3f("camera.position", this.cameraPosition)
         this.#ls.setVec3f("camera.translation", this.#cameraTranslation)
         this.#ls.setFloat("camera.zoom", this.zoom)
-        this.#ls.setFloat("camera.sceneRotX", this.#sceneRotX)
-        this.#ls.setFloat("camera.sceneRotY", this.#sceneRotY)
+        // Save quaternion as string (quaternion library supports string serialization)
+        const q = this.#rotation.toVector()
+        this.#ls.setItem("camera.rotation", `${q[0]},${q[1]},${q[2]},${q[3]}`)
     }
 
     #loadCameraState(): void {
@@ -248,8 +259,18 @@ export class CameraController {
         this.#cameraTranslation = this.#ls.getVec3f("camera.translation")
         this.zoom = this.#ls.getFloat("camera.zoom") ?? 20
         this.#zoomController.setZoom(this.zoom, false)
-        this.#sceneRotX = this.#ls.getFloat("camera.sceneRotX") ?? (1 / 2) * Math.PI
-        this.#sceneRotY = this.#ls.getFloat("camera.sceneRotY") ?? (1 / 2) * Math.PI
+
+        // Try to load quaternion, fall back to Euler angles for backward compatibility
+        const rotationStr = this.#ls.getItem("camera.rotation")
+        if (rotationStr) {
+            const [w, x, y, z] = rotationStr.split(",").map(Number)
+            this.#rotation = new Quaternion(w, x, y, z).normalize()
+        } else {
+            // Backward compatibility: load old Euler angles and convert to quaternion
+            const sceneRotX = this.#ls.getFloat("camera.sceneRotX") ?? Math.PI / 2
+            const sceneRotY = this.#ls.getFloat("camera.sceneRotY") ?? Math.PI / 2
+            this.#rotation = Quaternion.fromEuler(sceneRotX, sceneRotY, 0, "YXZ")
+        }
         this.#updateTransforms()
     }
 }

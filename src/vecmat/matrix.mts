@@ -195,6 +195,37 @@ export class Mat4x4f {
             s = Math.sin(angle)
         return new Mat4x4f(new Float32Array([c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]))
     }
+    static rotationAroundAxis(axis: Vec3f, angle: number): Mat4x4f {
+        // Rodrigues' rotation formula
+        const normalizedAxis = axis.normalize()
+        const c = Math.cos(angle)
+        const s = Math.sin(angle)
+        const t = 1 - c
+        const x = normalizedAxis.x
+        const y = normalizedAxis.y
+        const z = normalizedAxis.z
+
+        return new Mat4x4f(
+            new Float32Array([
+                t * x * x + c,
+                t * x * y + s * z,
+                t * x * z - s * y,
+                0,
+                t * x * y - s * z,
+                t * y * y + c,
+                t * y * z + s * x,
+                0,
+                t * x * z + s * y,
+                t * y * z - s * x,
+                t * z * z + c,
+                0,
+                0,
+                0,
+                0,
+                1,
+            ])
+        )
+    }
     static scaling(v: Vec3f): Mat4x4f {
         return new Mat4x4f(new Float32Array([v.x, 0, 0, 0, 0, v.y, 0, 0, 0, 0, v.z, 0, 0, 0, 0, 1]))
     }

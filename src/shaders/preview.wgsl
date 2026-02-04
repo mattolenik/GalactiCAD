@@ -111,10 +111,11 @@ fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
 
 fn lighting(normalScene: vec3f) -> f32 {
     // Define lights in camera-space so they move with the camera.
-    let lCam1 = normalize(vec3f(0.6, 0.7, -1.0));
-    let lCam2 = normalize(vec3f(-0.8, 0.2, -1.0));
-    let lCam3 = normalize(vec3f(0.2, -0.9, -1.0));
-    let lCamBack = normalize(vec3f(-0.2, 0.2, 1.0));
+    // Positive Z means light comes from in front (toward camera), negative Z is behind
+    let lCam1 = normalize(vec3f(0.5, 0.6, 1.0));   // Key light from front-top-right
+    let lCam2 = normalize(vec3f(-0.6, 0.3, 0.8));  // Fill light from front-left
+    let lCam3 = normalize(vec3f(0.1, -0.5, 0.9)); // Rim light from front-bottom
+    let lCamBack = normalize(vec3f(-0.2, 0.2, -0.8)); // Subtle back light
 
     // Transform light directions into scene-space (same convention as rays).
     let l1 = normalize((camera.transform * vec4f(lCam1, 0.0)).xyz);
@@ -122,14 +123,14 @@ fn lighting(normalScene: vec3f) -> f32 {
     let l3 = normalize((camera.transform * vec4f(lCam3, 0.0)).xyz);
     let lb = normalize((camera.transform * vec4f(lCamBack, 0.0)).xyz);
 
-    let wrap = 0.25;
-    let key = 0.55 * diffuseWrap(normalScene, l1, wrap);
-    let fill = 0.30 * diffuseWrap(normalScene, l2, wrap);
-    let rim = 0.20 * diffuseWrap(normalScene, l3, wrap);
-    let back = 0.15 * diffuseWrap(normalScene, lb, 0.40);
+    let wrap = 0.3;
+    let key = 0.45 * diffuseWrap(normalScene, l1, wrap);
+    let fill = 0.25 * diffuseWrap(normalScene, l2, wrap);
+    let rim = 0.15 * diffuseWrap(normalScene, l3, wrap);
+    let back = 0.05 * diffuseWrap(normalScene, lb, 0.5);
 
-    let ambient = 0.18;
-    return clamp(ambient + key + fill + rim + back, 0.0, 1.3);
+    let ambient = 0.10;
+    return clamp(ambient + key + fill + rim + back, 0.0, 1.2);
 }
 
 @vertex

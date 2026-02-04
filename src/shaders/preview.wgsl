@@ -66,10 +66,9 @@ fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
         }
         if (sr.d < SURF_DIST) {
             // Refine hit to reduce view-dependent jitter at CSG seams.
-            // 4 iterations = 1/16 precision (reduced from 8 for performance)
             var lo = max(0.0, t - lastStep);
             var hi = t;
-            for (var j: i32 = 0; j < 4; j = j + 1) {
+            for (var j: i32 = 0; j < 6; j = j + 1) {
                 let mid = 0.5 * (lo + hi);
                 let md = sceneSDF(origin + mid * dir).d;
                 if (md > 0.0) {

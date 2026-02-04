@@ -1,6 +1,8 @@
 //:) include "hg_sdf.wgsl"
 
-const MAX_STEPS: i32 = 300;
+// Reduce MAX_STEPS to prevent GPU saturation
+// 100 steps is usually sufficient for most scenes
+const MAX_STEPS: i32 = 100;
 const MAX_DIST: f32 = 300.0;
 
 struct Camera {
@@ -23,7 +25,8 @@ struct ClickState {
 @group(0) @binding(3) var<storage, read_write> clickedObjectId: atomic<u32>;
 
 // Selected objects array: [count, id1, id2, ...]
-@group(0) @binding(4) var<uniform> selectedObjectIds: array<u32, 64>;
+// Using storage buffer because uniform requires 16-byte alignment per element
+@group(0) @binding(4) var<storage, read> selectedObjectIds: array<u32, 64>;
 
 // Color palette: 32 pastel colors for shape coloring
 @group(0) @binding(5) var<uniform> colorPalette: array<vec3f, 32>;
@@ -63,9 +66,10 @@ fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
         }
         if (sr.d < SURF_DIST) {
             // Refine hit to reduce view-dependent jitter at CSG seams.
+            // 4 iterations = 1/16 precision (reduced from 8 for performance)
             var lo = max(0.0, t - lastStep);
             var hi = t;
-            for (var j: i32 = 0; j < 8; j = j + 1) {
+            for (var j: i32 = 0; j < 4; j = j + 1) {
                 let mid = 0.5 * (lo + hi);
                 let md = sceneSDF(origin + mid * dir).d;
                 if (md > 0.0) {

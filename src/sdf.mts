@@ -38,7 +38,10 @@ export class SDFRenderer {
     #format!: GPUTextureFormat
     #framerate = new AveragedBuffer(4)
     #initializing: Promise<void> | null
-    #lastRenderTime: number = 0
+    #lastActualRenderTime: number = 0  // Time of last actual GPU render
+    #lastRenderEndTime: number = 0
+    #targetFPS: number = 120  // Limit frame rate to reduce GPU saturation
+    #needsRender: boolean = true  // Dirty flag - only render when true
     #pipeline!: GPURenderPipeline
     #preview: PreviewWindow
     #scene!: SceneInfo
@@ -214,10 +217,20 @@ export class SDFRenderer {
 
     set xrayMode(enabled: boolean) {
         this.#xrayMode = enabled
+        this.#needsRender = true
     }
 
     get xrayMode(): boolean {
         return this.#xrayMode
+    }
+
+    /** Target frame rate limit (default 30). Lower values reduce GPU load. */
+    set targetFPS(fps: number) {
+        this.#targetFPS = Math.max(1, Math.min(60, fps))
+    }
+
+    get targetFPS(): number {
+        return this.#targetFPS
     }
 
     /**
@@ -228,7 +241,7 @@ export class SDFRenderer {
     setSelection(ids: number[], notify = false) {
         this.#selectedObjectIds = [...ids]
         this.#writeSelectionBuffer()
-        
+
         if (notify && this.onSelectionChange) {
             this.onSelectionChange([...this.#selectedObjectIds])
         }
@@ -326,12 +339,14 @@ export class SDFRenderer {
             data[i + 1] = this.#selectedObjectIds[i]
         }
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, data)
+        this.#needsRender = true
     }
 
     constructor(preview: PreviewWindow) {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50)
         this.#controls.onSelect = (screenPos: Vec2f, shiftKey: boolean) => this.#handleClick(screenPos, shiftKey)
+        this.#controls.onChange = () => { this.#needsRender = true }
         this.#uniformBuffers = new UniformBuffers()
         this.#exportBuffers = new ExportBuffers()
         this.#initializing = this.initialize()
@@ -340,6 +355,7 @@ export class SDFRenderer {
         // Wire up xray mode change from preview window
         preview.onXrayModeChange = (enabled: boolean) => {
             this.#xrayMode = enabled
+            this.#needsRender = true
         }
 
         const observer = new ResizeObserver(entries => {
@@ -354,6 +370,7 @@ export class SDFRenderer {
                     this.#preview.canvas.width = w
                     this.#preview.canvas.height = h
                     this.#cameraRes = vec2(w, h)
+                    this.#needsRender = true
                 }
             })
         })
@@ -376,6 +393,7 @@ export class SDFRenderer {
         this.#boundsShader = this.#shaderCompiler.compile(boundsShader, "Bounds (scene bbox)")
         // console.log(this.#exportShader.text)
         this.#buildPreviewPipeline()
+        this.#needsRender = true
 
         // this.#scene.root.updateScene((index, data) => {
         //     this.#device.queue.writeBuffer(this.#uniformBuffers.scene, index * 16, data)
@@ -447,7 +465,7 @@ export class SDFRenderer {
 
         this.#uniformBuffers.selectedObjectIds = this.#device.createBuffer({
             size: 256, // 64 u32s: [count, id1, id2, ...] up to 63 selected objects
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             label: "selectedObjectIds",
         })
 
@@ -521,13 +539,29 @@ export class SDFRenderer {
     }
 
     update(time: number): void {
-        this.#updateFPS(time)
+        // Schedule next frame first
+        requestAnimationFrame(t => this.update(t))
+
+        // Only render when camera changed or scene needs update
+        if (!this.#needsRender) {
+            return
+        }
+
+        // Frame rate limiting: skip if rendering too fast
+        const minFrameTime = 1000 / this.#targetFPS
+        const timeSinceLastRender = time - this.#lastRenderEndTime
+        if (timeSinceLastRender < minFrameTime) {
+            return
+        }
+
+        // Clear dirty flag before rendering
+        this.#needsRender = false
 
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, this.#controls.viewTransform.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraRes.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))
-        
+
         // Write view settings (xray mode)
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([this.#xrayMode ? 1 : 0]))
 
@@ -548,14 +582,21 @@ export class SDFRenderer {
         renderPass.end()
 
         this.#device.queue.submit([commandEncoder.finish()])
-        requestAnimationFrame(time => this.update(time))
+
+        // Update FPS after actual render
+        const now = performance.now()
+        const deltaTime = now - this.#lastActualRenderTime
+        if (deltaTime > 0 && this.#lastActualRenderTime > 0) {
+            this.#framerate.update(1000 / deltaTime)
+            this.#preview.updateFPS(this.#framerate.average)
+        }
+        this.#lastActualRenderTime = now
+        this.#lastRenderEndTime = now
     }
 
-    #updateFPS(time: number) {
-        const deltaTime = time - this.#lastRenderTime
-        this.#lastRenderTime = time
-        this.#framerate.update(1000 / deltaTime)
-        this.#preview.updateFPS(this.#framerate.average)
+    /** Request a re-render (e.g., after scene change) */
+    requestRender(): void {
+        this.#needsRender = true
     }
 
     async #computeSceneBounds(searchMin: [number, number, number], searchMax: [number, number, number], stepMm: number) {

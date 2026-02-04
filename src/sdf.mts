@@ -746,7 +746,7 @@ export class SDFRenderer {
 
         // World units are millimeters (mm).
         // Voxel size is fixed; grid dimensions are derived from a computed scene AABB.
-        const voxelSizeMm = 0.1
+        const voxelSizeMm = 0.5
         const bounds = await this.#computeSceneBoundsRefined()
         if (!bounds) {
             throw new Error("Bounds compute found no inside samples; is the SDF empty or far from origin?")
@@ -786,12 +786,65 @@ export class SDFRenderer {
         )
 
         const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.selectedObjectIds)
-        const mesh = await mdc.export(this.#exportShader)
-        const pre = this.#meshEdgeStats(mesh)
-        if (pre.nonManifoldEdges > 0) {
-            console.warn("[renderMesh] base mesh has non-manifold edges (before mergeCoplanar)")
-            this.#logMeshEdgeStats(mesh, "renderMesh:preMerge")
+
+        // Create and show progress dialog
+        const { ProgressDialog } = await import("./components/progress-dialog.mjs")
+        const progressDialog = new ProgressDialog()
+        const progressPromise = progressDialog.show()
+
+        // Track cancellation state
+        let cancelled = false
+
+        // Create progress callback that updates the dialog
+        const progressCallback: import("./export/mdc.mjs").ProgressCallback = {
+            updateProgress: (phase: string, percentage: number) => {
+                if (!cancelled) {
+                    progressDialog.updateProgress(phase, percentage)
+                }
+            },
+            get cancelled() {
+                return cancelled || progressDialog.cancelled
+            }
         }
-        return mesh
+
+        // Update cancelled flag when dialog is cancelled - use synchronous check
+        // The promise resolves when cancelled, so we need to handle it immediately
+        let cancellationHandled = false
+        progressPromise.then(completed => {
+            if (!completed && !cancellationHandled) {
+                cancelled = true
+                cancellationHandled = true
+            }
+        }).catch(() => {
+            if (!cancellationHandled) {
+                cancelled = true
+                cancellationHandled = true
+            }
+        })
+
+        let mesh: MeshData
+        try {
+            mesh = await mdc.export(this.#exportShader, progressCallback)
+            if (!progressDialog.cancelled) {
+                progressDialog.complete()
+            }
+            await progressPromise.catch(() => { }) // Wait for dialog to close, ignore errors
+
+            const pre = this.#meshEdgeStats(mesh)
+            if (pre.nonManifoldEdges > 0) {
+                console.warn("[renderMesh] base mesh has non-manifold edges (before mergeCoplanar)")
+                this.#logMeshEdgeStats(mesh, "renderMesh:preMerge")
+            }
+            return mesh
+        } catch (err) {
+            if (!progressDialog.cancelled) {
+                progressDialog.complete()
+            }
+            await progressPromise.catch(() => { }) // Wait for dialog to close, ignore errors
+            if (err instanceof Error && err.message.includes("cancelled")) {
+                throw new Error("Mesh generation was cancelled")
+            }
+            throw err
+        }
     }
 }

@@ -105,6 +105,9 @@ const EDGES_PER_CELL: u32 = 12u;
 // [1] = quads skipped because component mapping was missing (0xffffffff)
 @group(0) @binding(24) var<storage, read_write> debugSkipCounters: array<atomic<u32>, 8>;
 
+// Cancellation flag: 0 = continue, 1 = cancelled
+@group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
+
 
 // ============================== UTILITY FUNCTIONS ==============================
 
@@ -145,6 +148,11 @@ fn gridPosToIndex(pos: vec3u) -> u32 {
 
 fn totalU32sInFlags() -> u32 {
     return (uniforms.gridDimensions.x * uniforms.gridDimensions.y * uniforms.gridDimensions.z + 31u) / 32u;
+}
+
+// Check if the operation has been cancelled
+fn isCancelled() -> bool {
+    return atomicLoad(&cancelled) != 0u;
 }
 
 // Base offset into activeCellIndices_compaction where the compacted list is stored.
@@ -556,8 +564,12 @@ fn cellClassification_Pass1(
     
     let totalGridCells = uniforms.gridDimensions.x * uniforms.gridDimensions.y * uniforms.gridDimensions.z;
 
+    // Check cancellation - store in variable to ensure binding is included in layout
+    let cancelled = isCancelled();
+
     var cell_is_active = 0u;
-    if (cellFlatIndex < totalGridCells) {
+    // Skip work if cancelled, but still participate in barrier
+    if (!cancelled && cellFlatIndex < totalGridCells) {
         let cellPos = gridIndexTo3D(cellFlatIndex);
         if (all(cellPos < uniforms.gridDimensions - 1u)) { 
             var hasPositive = false;
@@ -773,10 +785,13 @@ fn edgeDetection_Pass3(
     @builtin(num_workgroups) numWg: vec3u
 ) {
     // Linearize 2D dispatch for large workgroup counts
-    let active_cell_array_idx = globalId.x + globalId.y * (numWg.x * 64u); 
+    let active_cell_array_idx = globalId.x + globalId.y * (numWg.x * 64u);
+
+    // Check cancellation but don't return early (to maintain uniform control flow)
+    let cancelled = isCancelled();
 
     let totalActiveCells = activeCellCount_edgeInput; 
-    if (active_cell_array_idx >= totalActiveCells) { return; }
+    if (cancelled || active_cell_array_idx >= totalActiveCells) { return; }
     if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_edge)) { return; }
 
     // activeCellIndicesIn_edge is a direct compact list of active cell flat indices.
@@ -1061,10 +1076,13 @@ fn vertexGeneration_Pass4(
 ) {
     // We generate up to MAX_COMPONENTS_PER_CELL vertices per active cell.
     let wgLinear = workgroupId.x + workgroupId.y * numWg.x + workgroupId.z * numWg.x * numWg.y;
+    
+    // Check cancellation but don't return early (to maintain uniform control flow)
+    let cancelled = isCancelled();
     let vertexRecordIdx = wgLinear * 64u + localId.x;
     let totalActiveCells = activeCellCount_vertexInput;
     let totalVertexRecords = totalActiveCells * MAX_COMPONENTS_PER_CELL;
-    if (vertexRecordIdx >= totalVertexRecords) { return; }
+    if (cancelled || vertexRecordIdx >= totalVertexRecords) { return; }
     if (vertexRecordIdx >= arrayLength(&cellQEFDataIn_vertex) || vertexRecordIdx >= arrayLength(&vertices)) { return; }
 
     let active_cell_array_idx = vertexRecordIdx / MAX_COMPONENTS_PER_CELL;
@@ -1721,6 +1739,10 @@ fn generateTrianglesAtomic_Pass5(
 ) {
     // Linearize 2D dispatch for large workgroup counts
     let active_cell_array_idx = globalId.x + globalId.y * (numWg.x * 64u);
+    
+    // Note: Cancellation buffer not included in Pass 5 to stay within storage buffer limit (10 max)
+    // Cancellation is still checked between passes in TypeScript code.
+    
     let totalActiveCells = activeCellCount_faceInput;
     if (active_cell_array_idx >= totalActiveCells) { return; }
     if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }

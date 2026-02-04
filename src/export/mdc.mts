@@ -88,11 +88,18 @@ export interface MDCParams {
     orientationProbeMin?: number
 }
 
+export interface ProgressCallback {
+    updateProgress(phase: string, percentage: number): void
+    cancelled: boolean
+}
+
 export class MDCExport {
     #helper: GPUHelper
     #device: GPUDevice
     #localBuffers: GPUBuffer[] = []
     #selectedObjectIdsBuffer: GPUBuffer
+    #cancelled = false
+    #cancellationBuffer: GPUBuffer | null = null
 
     constructor(helper: GPUHelper, private params: MDCParams, selectedObjectIdsBuffer: GPUBuffer) {
         this.#helper = helper
@@ -108,9 +115,34 @@ export class MDCExport {
         this.#localBuffers = []
     }
 
-    async export(mdcShaderModule: GPUShaderModule): Promise<MeshData> {
+    async export(mdcShaderModule: GPUShaderModule, progressCallback?: ProgressCallback): Promise<MeshData> {
         const perfNow = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now())
         const t0 = perfNow()
+
+        // Create cancellation buffer (atomic u32, initialized to 0)
+        this.#cancellationBuffer = this.#device.createBuffer({
+            label: "Cancellation",
+            size: Uint32Array.BYTES_PER_ELEMENT,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        })
+        this.#localBuffers.push(this.#cancellationBuffer)
+        this.#device.queue.writeBuffer(this.#cancellationBuffer, 0, new Uint32Array([0]))
+
+        progressCallback?.updateProgress("Initializing...", 0)
+
+        const checkCancelled = () => {
+            if (this.#cancelled || (progressCallback && progressCallback.cancelled)) {
+                this.#cancelled = true
+                // Write 1 to cancellation buffer
+                if (this.#cancellationBuffer) {
+                    this.#device.queue.writeBuffer(this.#cancellationBuffer, 0, new Uint32Array([1]))
+                }
+                throw new Error("MDC export was cancelled")
+            }
+        }
+
+        // Check cancellation immediately at start and before any work
+        checkCancelled()
 
         const fmtBytes = (bytes: number) => {
             const abs = Math.abs(bytes)
@@ -248,12 +280,15 @@ export class MDCExport {
         ])
 
         try {
+            checkCancelled() // Check before creating buffers
+
             const uniformBuffer = createBuffer(
                 "Uniforms",
                 uniformBufferData.byteLength,
                 GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
             )
             this.#device.queue.writeBuffer(uniformBuffer, 0, uniformBufferData)
+            checkCancelled() // Check after buffer operations
 
             // Pass 1 Buffers
             const activeCellFlagsBuffer = createBuffer(
@@ -269,11 +304,13 @@ export class MDCExport {
                 p1_cellClassification,
                 [0, uniformBuffer],
                 [1, activeCellFlagsBuffer],
-                [99, this.#selectedObjectIdsBuffer]
+                [99, this.#selectedObjectIdsBuffer],
+                [25, this.#cancellationBuffer]
             )
 
             // --- Stage 1: classify cells into bit flags ---
             {
+                progressCallback?.updateProgress("Pass 1: Cell Classification", 20)
                 const ce = this.#device.createCommandEncoder({ label: "mdc_pass1" })
                 const pass = this.#helper.beginComputePass(ce, p1_cellClassification, bindGroupPass1)
 
@@ -286,20 +323,25 @@ export class MDCExport {
 
                 this.#device.queue.submit([ce.finish()])
                 await this.#device.queue.onSubmittedWorkDone()
+                checkCancelled()
             }
             logDiag("after pass1 (cell classification)")
 
             // Read back flags and build a compact list on CPU.
+            checkCancelled() // Check before CPU work
             const flagsData = await readBufferData(
                 activeCellFlagsBuffer,
                 totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT
             )
+            checkCancelled() // Check after async operation
+
             const flagsArray = new Uint32Array(flagsData)
 
             // Build a compact active cell index list directly from flags.
             // This avoids any mismatch between count and enumeration.
             const activeList: number[] = []
             for (let block = 0; block < flagsArray.length; block++) {
+                checkCancelled() // Check periodically during CPU work
                 let v = flagsArray[block]! >>> 0
                 if (v === 0) continue
                 while (v !== 0) {
@@ -318,7 +360,10 @@ export class MDCExport {
                 throw new Error("No active cells found, check grid bounds and scene")
             }
             logDiag("after flags readback + active list build", { activeCellCount })
+            progressCallback?.updateProgress("Pass 2: Active Cell Compaction", 40)
+            checkCancelled()
 
+            checkCancelled() // Check before more CPU work
             const activeCellIndicesView = Uint32Array.from(activeList)
 
             // Build a sparse hash table for neighbor lookup (cellFlatIndex -> activeIdx).
@@ -330,6 +375,7 @@ export class MDCExport {
             const cellToActiveHash = new Uint32Array(tableEntries * 2)
             cellToActiveHash.fill(0xffffffff)
             for (let i = 0; i < activeCellCount; i++) {
+                checkCancelled() // Check periodically during hash table build
                 const key = activeCellIndicesView[i]!
                 let slot = (Math.imul(key, 2654435761) >>> 0) & hashMask
                 while (true) {
@@ -424,7 +470,8 @@ export class MDCExport {
                 [22, cellEdgeComponentsBuffer],
                 [9, cellQEFDataBuffer],
                 [10, activeCellCountBuffer],
-                [99, this.#selectedObjectIdsBuffer]
+                [99, this.#selectedObjectIdsBuffer],
+                [25, this.#cancellationBuffer]
             )
 
             const bindGroupPass4 = this.#helper.createBindGroup(
@@ -436,7 +483,8 @@ export class MDCExport {
                 [12, cellQEFDataBuffer],
                 [13, verticesBuffer],
                 [14, activeCellCountBuffer],
-                [99, this.#selectedObjectIdsBuffer]
+                [99, this.#selectedObjectIdsBuffer],
+                [25, this.#cancellationBuffer]
             )
 
             const bindGroupPass5 = this.#helper.createBindGroup(
@@ -454,10 +502,12 @@ export class MDCExport {
                 [22, cellEdgeComponentsBuffer],
                 [23, cellToActiveHashBuffer],
                 [24, debugSkipCountersBuffer]
+                // Note: cancellation buffer omitted from Pass 5 to stay within storage buffer limit (10 max)
             )
 
             // === Pass 3: Edge detection and per-cell union-find ===
             {
+                progressCallback?.updateProgress("Pass 3: Edge Detection", 60)
                 const ce = this.#device.createCommandEncoder({ label: "mdc_pass3" })
                 const pass = this.#helper.beginComputePass(ce, p3_edgeDetection, bindGroupPass3)
                 // Use 2D dispatch if workgroup count exceeds hardware limit
@@ -468,6 +518,7 @@ export class MDCExport {
                 pass.end()
                 this.#device.queue.submit([ce.finish()])
                 await this.#device.queue.onSubmittedWorkDone()
+                checkCancelled()
             }
             logDiag("after pass3 (edge detection)", { activeCellCount })
 
@@ -475,6 +526,7 @@ export class MDCExport {
             // We intentionally do NOT do any cross-cell/global connectivity here.
             // MDC requires vertices per *local* connected component within each cell.
             {
+                progressCallback?.updateProgress("Pass 4: Vertex Generation", 80)
                 const totalVertexRecords = activeCellCount * MAX_COMPONENTS_PER_CELL
                 const ce = this.#device.createCommandEncoder({ label: "mdc_pass4" })
                 const pass = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
@@ -485,11 +537,13 @@ export class MDCExport {
                 pass.end()
                 this.#device.queue.submit([ce.finish()])
                 await this.#device.queue.onSubmittedWorkDone()
+                checkCancelled()
             }
             logDiag("after pass4 (vertex generation)")
 
             // === Pass 5: Triangle generation using local component IDs ===
             {
+                progressCallback?.updateProgress("Pass 5: Triangle Generation", 90)
                 const ce = this.#device.createCommandEncoder({ label: "mdc_pass5" })
                 const pass = this.#helper.beginComputePass(ce, p5_generateTrianglesAtomic, bindGroupPass5)
                 // Use 2D dispatch if workgroup count exceeds hardware limit
@@ -500,6 +554,7 @@ export class MDCExport {
                 pass.end()
                 this.#device.queue.submit([ce.finish()])
                 await this.#device.queue.onSubmittedWorkDone()
+                checkCancelled()
             }
             logDiag("after pass5 (triangle generation)")
 
@@ -748,6 +803,7 @@ export class MDCExport {
                 )
             }
 
+            progressCallback?.updateProgress("Complete", 100)
             logDiag("done")
             return { verts, tris }
 

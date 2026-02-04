@@ -399,6 +399,9 @@ class App {
                     {
                         element: exportItem,
                         action: async () => {
+                            const { StatusDialog } = await import("./components/status-dialog.mjs")
+                            let statusDialog: import("./components/status-dialog.mjs").StatusDialog | null = null
+
                             try {
                                 const documentName = this.#tabs.active!
                                 const handle = await window.showSaveFilePicker({
@@ -414,11 +417,24 @@ class App {
                                 })
                                 const mesh = await this.renderer.renderMesh(this.editor.getValue())
                                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
+
+                                // Show success dialog
+                                statusDialog = new StatusDialog("Export successful")
+                                await statusDialog.show()
                             } catch (err) {
                                 if (`${err}`.includes("AbortError")) {
                                     return
                                 }
-                                throw err
+                                if (`${err}`.includes("cancelled")) {
+                                    statusDialog = new StatusDialog("Export cancelled")
+                                    await statusDialog.show()
+                                    return
+                                }
+
+                                // Show error dialog
+                                const errorMsg = err instanceof Error ? err.message : String(err)
+                                statusDialog = new StatusDialog(`Export failed: ${errorMsg}`)
+                                await statusDialog.show()
                             }
                         },
                     },

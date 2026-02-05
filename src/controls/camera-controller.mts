@@ -188,7 +188,7 @@ export class CameraController {
             const horizontalAngle = this.#cursorDelta.x * this.#rotateSensitivity
             const horizontalRotation = Quaternion.fromAxisAngle([cameraUp.x, cameraUp.y, cameraUp.z], horizontalAngle)
 
-            const verticalAngle = -this.#cursorDelta.y * this.#rotateSensitivity
+            const verticalAngle = this.#cursorDelta.y * this.#rotateSensitivity
             const verticalRotation = Quaternion.fromAxisAngle([cameraRight.x, cameraRight.y, cameraRight.z], verticalAngle)
 
             // Apply rotations: for trackball, we apply them in object-local order

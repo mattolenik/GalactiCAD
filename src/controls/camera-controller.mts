@@ -43,6 +43,7 @@ export class CameraController {
     #lastFocused: Element | null = null
 
     #dragMode: "rotate" | "pan" | null = null
+    #hasDragged: boolean = false
     #rotateSensitivity: number = 0.005
     #panSensitivity: number = 0.1
     #cameraTranslation: Vec3f = new Vec3f()
@@ -96,6 +97,7 @@ export class CameraController {
         this.#host.canvas.addEventListener("pointerup", this.#onPointerUp.bind(this))
         this.#host.canvas.addEventListener("pointercancel", this.#onPointerUp.bind(this))
         this.#host.canvas.addEventListener("pointerleave", this.#onPointerUp.bind(this))
+        this.#host.canvas.addEventListener("click", this.#onClick.bind(this))
         this.#host.canvas.addEventListener("contextmenu", e => e.preventDefault())
         this.#host.canvas.addEventListener("keypress", this.#onKeyPress.bind(this))
         document.addEventListener("keydown", this.#onKeyPress.bind(this), false)
@@ -135,21 +137,28 @@ export class CameraController {
         this.#updateTransforms()
     }
 
+    #onClick(e: MouseEvent) {
+        // Only handle left clicks, and only if we didn't drag
+        if (e.button === 0 && !this.#hasDragged) {
+            this.onSelect?.(vec2(e.clientX, e.clientY), e.shiftKey)
+        }
+    }
+
     #onPointerDown(e: PointerEvent) {
         if (e.button === 0) {
-            // Left click for selection
-            this.onSelect?.(vec2(e.clientX, e.clientY), e.shiftKey)
-            return
+            // Left click: start rotation drag
+            this.#dragMode = "rotate"
+            this.isDragging = true
+            this.#hasDragged = false
+            this.#last = vec2(e.clientX, e.clientY)
         } else if (e.button === 1) {
             this.#dragMode = "pan"
-        } else if (e.button === 2) {
-            // Right click for rotate
-            this.#dragMode = "rotate"
+            this.isDragging = true
+            this.#hasDragged = false
+            this.#last = vec2(e.clientX, e.clientY)
         } else {
             return
         }
-        this.isDragging = true
-        this.#last = vec2(e.clientX, e.clientY)
     }
 
     #onPointerMove(e: PointerEvent) {
@@ -162,6 +171,12 @@ export class CameraController {
         }
         const pvec = vec2(e.clientX, e.clientY)
         this.#cursorDelta.set(pvec.subtract(this.#last))
+
+        // Mark that we've dragged if there's any movement
+        if (this.#cursorDelta.length() > 0) {
+            this.#hasDragged = true
+        }
+
         this.#last.set(pvec)
 
         if (this.#dragMode === "rotate") {
@@ -211,9 +226,12 @@ export class CameraController {
     }
 
     #onPointerUp(e: PointerEvent) {
-        this.isDragging = false
-        this.#dragMode = null
-        this.#saveCameraState(true)
+        // Reset drag state (but keep #hasDragged until next pointerdown so click handler can check it)
+        if (e.button === 0 || e.button === 1 || this.isDragging) {
+            this.isDragging = false
+            this.#dragMode = null
+            this.#saveCameraState(true)
+        }
     }
 
     #computeCameraPosition(): Vec3f {

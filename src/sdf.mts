@@ -7,6 +7,7 @@ import { SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
+import outlineShader from "./shaders/outline.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
@@ -57,6 +58,15 @@ export class SDFRenderer {
     #helper!: GPUHelper
     #builtSrc: string | null = null
     #xrayMode: boolean = false
+    #colorTexture!: GPUTexture
+    #idTexture!: GPUTexture
+    #colorTextureView!: GPUTextureView
+    #idTextureView!: GPUTextureView
+    #outlinePipeline!: GPURenderPipeline
+    #outlineBindGroup!: GPUBindGroup
+    #outlineShaderModule!: GPUShaderModule
+    #renderTextureWidth: number = 0
+    #renderTextureHeight: number = 0
 
     /**
      * Callback invoked when object selection changes
@@ -424,6 +434,29 @@ export class SDFRenderer {
             alphaMode: "premultiplied",
         })
         this.#createBuffers()
+
+        // Create outline post-process shader and pipeline (scene-independent)
+        this.#outlineShaderModule = this.#device.createShaderModule({
+            label: "Outline Post-Process",
+            code: outlineShader,
+        })
+        this.#outlinePipeline = this.#device.createRenderPipeline({
+            label: "Outline Pipeline",
+            layout: "auto",
+            vertex: {
+                module: this.#outlineShaderModule,
+                entryPoint: "vertexMain",
+            },
+            fragment: {
+                module: this.#outlineShaderModule,
+                entryPoint: "fragmentMain",
+                targets: [{ format: this.#format }],
+            },
+            primitive: {
+                topology: "triangle-strip",
+                stripIndexFormat: "uint32",
+            },
+        })
     }
 
     async ready() {
@@ -513,6 +546,44 @@ export class SDFRenderer {
         })
     }
 
+    #ensureRenderTextures(width: number, height: number) {
+        if (this.#renderTextureWidth === width && this.#renderTextureHeight === height) {
+            return
+        }
+        // Destroy old textures if they exist
+        if (this.#colorTexture) this.#colorTexture.destroy()
+        if (this.#idTexture) this.#idTexture.destroy()
+
+        this.#colorTexture = this.#device.createTexture({
+            label: "Preview Color (offscreen)",
+            size: [width, height],
+            format: this.#format,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        })
+        this.#idTexture = this.#device.createTexture({
+            label: "Object ID",
+            size: [width, height],
+            format: "r32uint",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        })
+        this.#colorTextureView = this.#colorTexture.createView()
+        this.#idTextureView = this.#idTexture.createView()
+
+        // Recreate outline bind group with new texture views
+        this.#outlineBindGroup = this.#device.createBindGroup({
+            label: "outlinePostProcess",
+            layout: this.#outlinePipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: this.#colorTextureView },
+                { binding: 1, resource: this.#idTextureView },
+                { binding: 2, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
+            ],
+        })
+
+        this.#renderTextureWidth = width
+        this.#renderTextureHeight = height
+    }
+
     #buildPreviewPipeline() {
         const format = this.#format
         this.#pipeline = this.#device.createRenderPipeline({
@@ -525,7 +596,10 @@ export class SDFRenderer {
             fragment: {
                 module: this.#sceneShader,
                 entryPoint: "fragmentMain",
-                targets: [{ format }],
+                targets: [
+                    { format },
+                    { format: "r32uint" as GPUTextureFormat },
+                ],
             },
             primitive: {
                 topology: "triangle-strip",
@@ -560,21 +634,46 @@ export class SDFRenderer {
         // Write view settings (xray mode)
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([this.#xrayMode ? 1 : 0]))
 
+        const canvasTexture = this.#context.getCurrentTexture()
+        this.#ensureRenderTextures(canvasTexture.width, canvasTexture.height)
+
         const commandEncoder = this.#device.createCommandEncoder()
-        const renderPass = commandEncoder.beginRenderPass({
+
+        // Pass 1: Render scene to offscreen color + object ID textures (MRT)
+        const scenePass = commandEncoder.beginRenderPass({
             colorAttachments: [
                 {
-                    view: this.#context.getCurrentTexture().createView(),
+                    view: this.#colorTextureView,
+                    loadOp: "clear",
+                    storeOp: "store",
+                },
+                {
+                    view: this.#idTextureView,
+                    loadOp: "clear",
+                    storeOp: "store",
+                    clearValue: { r: 0xFFFFFFFF, g: 0, b: 0, a: 0 },
+                },
+            ],
+        })
+        scenePass.setPipeline(this.#pipeline)
+        scenePass.setBindGroup(0, this.#bindGroup)
+        scenePass.draw(4)
+        scenePass.end()
+
+        // Pass 2: Outline post-process, compositing dark outline at selection boundaries
+        const outlinePass = commandEncoder.beginRenderPass({
+            colorAttachments: [
+                {
+                    view: canvasTexture.createView(),
                     loadOp: "clear",
                     storeOp: "store",
                 },
             ],
         })
-
-        renderPass.setPipeline(this.#pipeline)
-        renderPass.setBindGroup(0, this.#bindGroup)
-        renderPass.draw(4)
-        renderPass.end()
+        outlinePass.setPipeline(this.#outlinePipeline)
+        outlinePass.setBindGroup(0, this.#outlineBindGroup)
+        outlinePass.draw(4)
+        outlinePass.end()
 
         this.#device.queue.submit([commandEncoder.finish()])
 

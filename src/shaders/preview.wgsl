@@ -37,6 +37,12 @@ struct ViewSettings {
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
+// Fragment output: color and object ID for MRT outline detection
+struct FragmentOutput {
+    @location(0) color: vec4f,
+    @location(1) objectId: vec4<u32>,
+}
+
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
@@ -235,7 +241,7 @@ fn shadeHit(origin: vec3f, dir: vec3f, hit: RaymarchHit, flipNormal: bool) -> ve
 }
 
 @fragment
-fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
+fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     let uv = fragCoord;
     let aspect = camera.res.x / camera.res.y;
 
@@ -278,16 +284,16 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
                 // Composite: front surface at 40% over back surface
                 let frontAlpha = 0.4;
                 let composited = shadedColor * frontAlpha + backColor * (1.0 - frontAlpha);
-                return vec4f(composited, 1.0);
+                return FragmentOutput(vec4f(composited, 1.0), vec4<u32>(hit.sdf.id, 0u, 0u, 0u));
             } else {
                 // No back surface found, just show transparent front
                 let alpha = 0.6;
-                return vec4f(shadedColor * alpha, alpha);
+                return FragmentOutput(vec4f(shadedColor * alpha, alpha), vec4<u32>(hit.sdf.id, 0u, 0u, 0u));
             }
         }
         
-        return vec4f(shadedColor, 1.0);
+        return FragmentOutput(vec4f(shadedColor, 1.0), vec4<u32>(hit.sdf.id, 0u, 0u, 0u));
     } else {
-        return vec4f(0, 0, 0, 0);
+        return FragmentOutput(vec4f(0, 0, 0, 0), vec4<u32>(0xFFFFFFFFu, 0u, 0u, 0u));
     }
 }

@@ -224,15 +224,6 @@ export class SDFRenderer {
         return this.#xrayMode
     }
 
-    /** Target frame rate limit (default 30). Lower values reduce GPU load. */
-    set targetFPS(fps: number) {
-        this.#targetFPS = Math.max(1, Math.min(60, fps))
-    }
-
-    get targetFPS(): number {
-        return this.#targetFPS
-    }
-
     /**
      * Set the selection programmatically (for editor-to-preview selection sync).
      * @param ids Array of node IDs to select

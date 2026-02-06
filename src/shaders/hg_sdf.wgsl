@@ -555,6 +555,94 @@ fn fOpTongue(a: f32, b: f32, ra: f32, rb: f32) -> f32 {
 }
 
 ////////////////////////////////////////////////////
+//  FAST PRIMITIVES & OPERATORS (vec2f: d, g only)
+//  Used during ray marching where normals/IDs are not needed.
+////////////////////////////////////////////////////
+
+// Fast sphere: returns vec2f(distance, gradientMagnitude=1.0)
+fn fSphereFast(p: vec3<f32>, r: f32) -> vec2f {
+    return vec2f(length(p) - r, 1.0);
+}
+
+// Fast box: returns vec2f(distance, gradientMagnitude=1.0)
+fn fBoxFast(p: vec3<f32>, b: vec3<f32>) -> vec2f {
+    let d = abs(p) - b;
+    return vec2f(length(max(d, vec3<f32>(0.0))) + vmax3(min(d, vec3<f32>(0.0))), 1.0);
+}
+
+// Fast hard union: just pick min distance, no tie-breaking or normals
+fn opUnionFast(a: vec2f, b: vec2f) -> vec2f {
+    if (a.x < b.x) { return a; }
+    return b;
+}
+
+// Fast hard intersection: just pick max distance
+fn opIntersectionFast(a: vec2f, b: vec2f) -> vec2f {
+    if (a.x > b.x) { return a; }
+    return b;
+}
+
+// Fast hard difference: intersection with complement
+fn opDifferenceFast(a: vec2f, b: vec2f) -> vec2f {
+    return opIntersectionFast(a, vec2f(-b.x, b.y));
+}
+
+// Fast round union: distance + gradient only, no normal blending
+fn fOpUnionRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
+    let u = max(vec2f(r - a.x, r - b.x), vec2f(0.0));
+    let d = max(r, min(a.x, b.x)) - length(u);
+    if (a.x < r && b.x < r) { return vec2f(d, 0.5); }
+    if (a.x < b.x) { return vec2f(d, a.y); }
+    return vec2f(d, b.y);
+}
+
+// Fast soft union
+fn fOpUnionSoftFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
+    let e = max(r - abs(a.x - b.x), 0.0);
+    let d = min(a.x, b.x) - e * e * 0.25 / r;
+    if (e > 0.0) { return vec2f(d, 0.5); }
+    if (a.x < b.x) { return vec2f(d, a.y); }
+    return vec2f(d, b.y);
+}
+
+// Fast round intersection
+fn fOpIntersectionRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
+    let u = max(vec2f(r + a.x, r + b.x), vec2f(0.0));
+    let d = min(-r, max(a.x, b.x)) + length(u);
+    if (a.x > -r && b.x > -r) { return vec2f(d, 0.5); }
+    if (a.x > b.x) { return vec2f(d, a.y); }
+    return vec2f(d, b.y);
+}
+
+// Fast round difference
+fn fOpDifferenceRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
+    return fOpIntersectionRoundFast(a, vec2f(-b.x, b.y), r);
+}
+
+// Fast chamfer union
+fn fOpUnionChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
+    let chamferD = (a.x - r + b.x) * sqrt(0.5);
+    let d = min(min(a.x, b.x), chamferD);
+    if (chamferD < a.x && chamferD < b.x) { return vec2f(d, 1.0); }
+    if (a.x < b.x) { return vec2f(d, a.y); }
+    return vec2f(d, b.y);
+}
+
+// Fast chamfer intersection
+fn fOpIntersectionChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
+    let chamferD = (a.x + r + b.x) * sqrt(0.5);
+    let d = max(max(a.x, b.x), chamferD);
+    if (chamferD > a.x && chamferD > b.x) { return vec2f(d, 1.0); }
+    if (a.x > b.x) { return vec2f(d, a.y); }
+    return vec2f(d, b.y);
+}
+
+// Fast chamfer difference
+fn fOpDifferenceChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
+    return fOpIntersectionChamferFast(a, vec2f(-b.x, b.y), r);
+}
+
+////////////////////////////////////////////////////
 //  EXTENDED OBJECT COMBINATION OPERATORS
 //  These return SDFResult with accurate gradient magnitude estimates
 ////////////////////////////////////////////////////

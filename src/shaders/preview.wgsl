@@ -47,6 +47,12 @@ fn sceneSDF(p: vec3f) -> SDFResult {
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
+// Fast version for ray marching - only returns vec2f(distance, gradientMagnitude).
+// No tie-breaking, no normals, no normalize() calls.
+fn sceneSDF_fast(p: vec3f) -> vec2f {
+    return vec2f(0.0, 1.0); //:) insert sceneSDF_fast
+}
+
 // Raymarch result includes both distance and SDF info at hit point.
 struct RaymarchHit {
     t: f32,          // distance along ray, or -1 if miss
@@ -58,26 +64,26 @@ fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
     var lastStep: f32 = 0.0;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
-        let sr = sceneSDF(p);
+        let sr = sceneSDF_fast(p);  // Fast: only (d, g), no normals/IDs
         // Use g only to reduce step size when needed.
-        var step = sr.d;
-        if (sr.g > 1.0) {
-            step = sr.d / sr.g;
+        var step = sr.x;            // .x = d
+        if (sr.y > 1.0) {           // .y = g
+            step = sr.x / sr.y;
         }
-        if (sr.d < SURF_DIST) {
+        if (sr.x < SURF_DIST) {
             // Refine hit to reduce view-dependent jitter at CSG seams.
             var lo = max(0.0, t - lastStep);
             var hi = t;
             for (var j: i32 = 0; j < 6; j = j + 1) {
                 let mid = 0.5 * (lo + hi);
-                let md = sceneSDF(origin + mid * dir).d;
+                let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
                 if (md > 0.0) {
                     lo = mid;
                 } else {
                     hi = mid;
                 }
             }
-            // Get the SDF result at the refined hit point (includes analytical normal)
+            // Get the full SDF result at the refined hit point (includes analytical normal + ID)
             let hitSdf = sceneSDF(origin + hi * dir);
             return RaymarchHit(hi, hitSdf);
         }
@@ -96,10 +102,10 @@ fn estimateNormalFallback(p: vec3f) -> vec3f {
     let eps = SURF_DIST * 0.5;
     let k = vec2f(1.0, -1.0);
     return normalize(
-        k.xyy * sceneSDF(p + k.xyy * eps).d +
-        k.yyx * sceneSDF(p + k.yyx * eps).d +
-        k.yxy * sceneSDF(p + k.yxy * eps).d +
-        k.xxx * sceneSDF(p + k.xxx * eps).d
+        k.xyy * sceneSDF_fast(p + k.xyy * eps).x +
+        k.yyx * sceneSDF_fast(p + k.yyx * eps).x +
+        k.yxy * sceneSDF_fast(p + k.yxy * eps).x +
+        k.xxx * sceneSDF_fast(p + k.xxx * eps).x
     );
 }
 
@@ -154,29 +160,30 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
     
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
-        let sr = sceneSDF(p);
+        let sr = sceneSDF_fast(p);  // Fast: only (d, g)
         
         // We're inside, so distance is negative. March by abs(d).
-        var step = abs(sr.d);
-        if (sr.g > 1.0) {
-            step = step / sr.g;
+        var step = abs(sr.x);       // .x = d
+        if (sr.y > 1.0) {           // .y = g
+            step = step / sr.y;
         }
         step = max(step, 0.1);
         
         // Found an exit surface (going from inside to outside)
-        if (sr.d > SURF_DIST) {
+        if (sr.x > SURF_DIST) {
             // Refine the exit point
             var lo = max(startT, t - lastStep);
             var hi = t;
             for (var j: i32 = 0; j < 6; j = j + 1) {
                 let mid = 0.5 * (lo + hi);
-                let md = sceneSDF(origin + mid * dir).d;
+                let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
                 if (md < 0.0) {
                     lo = mid;
                 } else {
                     hi = mid;
                 }
             }
+            // Full evaluation only at final hit point
             let hitSdf = sceneSDF(origin + hi * dir);
             return RaymarchHit(hi, hitSdf);
         }

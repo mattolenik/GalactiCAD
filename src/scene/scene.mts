@@ -56,6 +56,20 @@ export class SceneInfo {
         compiledText += `\nreturn ${compiledResult.varName};\n`
         return compiledText
     }
+
+    /**
+     * Compile the scene to fast WGSL code (vec2f: d, g only).
+     * Used for ray marching steps where normals/IDs are not needed.
+     */
+    compileFast(): string {
+        const compiledResult = this.root.compileFast(1)
+        let compiledText = compiledResult.text
+        if (!compiledText) {
+            throw new Error("fast compilation returned no result")
+        }
+        compiledText += `\nreturn ${compiledResult.varName};\n`
+        return compiledText
+    }
 }
 
 export class Node {
@@ -106,6 +120,9 @@ export class Node {
         return [this.id]
     }
     compile(indentLevel = 0): CompileResult {
+        throw new Error("Method not implemented.")
+    }
+    compileFast(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
     updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
@@ -237,6 +254,13 @@ export class Group extends WithChildren(Node) {
             varName: res.varName,
         }
     }
+    override compileFast(): CompileResult {
+        const res = this.children[0].compileFast()
+        return {
+            text: res.text,
+            varName: res.varName,
+        }
+    }
     constructor(...children: Node[]) {
         super()
         this.children = children
@@ -308,6 +332,21 @@ export class Union extends BinaryOperator {
         }
         return { text, varName }
     }
+    override compileFast(indentLevel = 0): CompileResult {
+        let text = ""
+        const lhResult = this.lh.compileFast()
+        const rhResult = this.rh.compileFast()
+        if (lhResult.text) text += lhResult.text + "\n"
+        if (rhResult.text) text += rhResult.text + "\n"
+        const varName = `u_${lhResult.varName}__${rhResult.varName}`
+        text += `let ${varName} = `
+        if (this.radius) {
+            text += `fOpUnionRoundFast(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+        } else {
+            text += `opUnionFast(${lhResult.varName}, ${rhResult.varName});`
+        }
+        return { text, varName }
+    }
     constructor(lh: Node, rh: Node, public radius?: number) {
         super(lh, rh)
     }
@@ -339,6 +378,20 @@ export class Subtract extends BinaryOperator {
         } else {
             // Use extended hard difference
             text += `let ${varName} = opDifferenceEx(${lhResult.varName}, ${rhResult.varName});`
+        }
+        return { text, varName }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        let text = ""
+        const lhResult = this.lh.compileFast(indentLevel)
+        const rhResult = this.rh.compileFast(indentLevel)
+        if (lhResult.text) text += lhResult.text + "\n"
+        if (rhResult.text) text += rhResult.text + "\n"
+        const varName = `d_${lhResult.varName}__${rhResult.varName}`
+        if (this.radius && this.radius > 0) {
+            text += `let ${varName} = fOpDifferenceRoundFast(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+        } else {
+            text += `let ${varName} = opDifferenceFast(${lhResult.varName}, ${rhResult.varName});`
         }
         return { text, varName }
     }
@@ -390,6 +443,15 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
             text: `let ${varName} = fSphereEx(p - ${this.pos.wgsl}, ${this.r}, ${this.id}u);`,
         }
     }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Sphere${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return {
+            funcName,
+            varName,
+            text: `let ${varName} = fSphereFast(p - ${this.pos.wgsl}, ${this.r});`,
+        }
+    }
 }
 
 export class Box extends WithSize(WithPos(Node)) {
@@ -433,6 +495,15 @@ export class Box extends WithSize(WithPos(Node)) {
             varName,
             // Use extended box that returns SDFResult with gradient magnitude
             text: `let ${varName} = fBoxEx(p - ${this.pos.wgsl}, ${this.size.wgsl}, ${this.id}u);`,
+        }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Box${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return {
+            funcName,
+            varName,
+            text: `let ${varName} = fBoxFast(p - ${this.pos.wgsl}, ${this.size.wgsl});`,
         }
     }
 }

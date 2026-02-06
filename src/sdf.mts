@@ -388,8 +388,10 @@ export class SDFRenderer {
         const trimmed = src.trim()
         this.#builtSrc = trimmed
         this.#scene = new SceneInfo(trimmed)
-        const sceneSDF = this.#scene.compile()    // Returns SDFResult (distance + gradient magnitude)
+        const sceneSDF = this.#scene.compile()        // Full SDFResult (distance + gradient + normal + ID)
+        const sceneSDF_fast = this.#scene.compileFast() // Fast vec2f (distance + gradient only)
         this.#shaderCompiler = new ShaderCompiler(this.#device)
+            .replace("insert", "sceneSDF_fast", sceneSDF_fast)
             .replace("insert", "sceneSDF", sceneSDF)
         this.#sceneShader = this.#shaderCompiler.compile(previewShader, "Preview Window")
         this.#exportShader = this.#shaderCompiler.compile(exportShader, "Export")

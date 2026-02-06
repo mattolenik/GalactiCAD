@@ -173,7 +173,7 @@ export class CameraController {
         this.#cursorDelta.set(pvec.subtract(this.#last))
 
         // Mark that we've dragged if there's any movement
-        if (this.#cursorDelta.length() > 0) {
+        if (this.#cursorDelta.length() > 2) {
             this.#hasDragged = true
         }
 

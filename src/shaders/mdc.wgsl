@@ -118,6 +118,12 @@ fn sceneSDF(p: vec3f) -> SDFResult {
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
+// Fast version for distance-only evaluations - only returns vec2f(distance, gradientMagnitude).
+// No tie-breaking, no normals, no normalize() calls.
+fn sceneSDF_fast(p: vec3f) -> vec2f {
+    return vec2f(0.0, 1.0); //:) insert sceneSDF_fast
+}
+
 fn mix3f(a: vec3f, b: vec3f, t: f32) -> vec3f {
     return a * (1.0f - t) + b * t;
 }
@@ -206,7 +212,7 @@ fn getCellCornerPos(cellPos: vec3u, cornerIndex: u32) -> vec3u {
 }
 
 fn sampleSDF(worldPos: vec3f) -> f32 {
-    return sceneSDF(worldPos).d;
+    return sceneSDF_fast(worldPos).x;
 }
 
 fn computeGradient(p: vec3f) -> vec3f {
@@ -269,8 +275,8 @@ fn resolveSignAtPos(p: vec3f, d: f32) -> i32 {
     let n = sdf.n * sdf.s;
     if (length(n) > 0.0) {
         let nudge = min(eps, uniforms.voxelSize * 0.02);
-        let d2p = sceneSDF(p + n * nudge).d - uniforms.isoValue;
-        let d2m = sceneSDF(p - n * nudge).d - uniforms.isoValue;
+        let d2p = sceneSDF_fast(p + n * nudge).x - uniforms.isoValue;
+        let d2m = sceneSDF_fast(p - n * nudge).x - uniforms.isoValue;
         if (d2p > 0.0 && d2m > 0.0) { return 1; }
         if (d2p < 0.0 && d2m < 0.0) { return -1; }
     }
@@ -932,8 +938,8 @@ fn edgeDetection_Pass3(
             var intersectionPos = mix3f(p0_world, p1_world, t);
             
             // Check if we're in a smooth blend region (gradient magnitude < 1)
-            let initialSdf = sceneSDF(intersectionPos);
-            let inBlendRegion = initialSdf.g < 0.95;
+            let initialSdfFast = sceneSDF_fast(intersectionPos);
+            let inBlendRegion = initialSdfFast.y < 0.95;
             
             if (inBlendRegion) {
                 // Use bisection for accurate edge intersection in blend regions

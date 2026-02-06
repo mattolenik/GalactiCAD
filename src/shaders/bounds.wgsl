@@ -44,10 +44,16 @@ fn sceneSDF(p: vec3f) -> SDFResult {
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
+// Fast version for distance-only evaluations - only returns vec2f(distance, gradientMagnitude).
+// No tie-breaking, no normals, no normalize() calls.
+fn sceneSDF_fast(p: vec3f) -> vec2f {
+    return vec2f(0.0, 1.0); //:) insert sceneSDF_fast
+}
+
 fn isInside(p: vec3f) -> bool {
     // Reference selectedObjectIds to prevent optimization (unused but required for binding)
     let dummy = selectedObjectIds[0];
-    return sceneSDF(p).d <= uniforms.searchMaxIso.w;
+    return sceneSDF_fast(p).x <= uniforms.searchMaxIso.w;
 }
 
 fn linearToGrid(i: u32, dims: vec3u) -> vec3u {

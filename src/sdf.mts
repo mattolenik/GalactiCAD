@@ -268,8 +268,9 @@ export class SDFRenderer {
         new Uint32Array(clickData, 8, 1).set([1])
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
 
-        // Clear clicked object ID buffer
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
+        // Clear clicked object ID buffer to sentinel value (0xFFFFFFFF = no hit)
+        const NO_HIT_SENTINEL = 0xFFFFFFFF
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([NO_HIT_SENTINEL]))
 
         // Trigger a render so the shader can evaluate the click
         this.#needsRender = true
@@ -278,10 +279,20 @@ export class SDFRenderer {
         setTimeout(async () => {
             try {
                 const clickedId = await this.#readClickedObjectId()
-                if (clickedId >= 0) {
+                if (clickedId !== NO_HIT_SENTINEL) {
                     this.#updateSelection(clickedId, shiftKey)
                 } else {
-                    console.log(`No object clicked - clickedId was ${clickedId}`)
+                    // Clicked on empty space - deselect all
+                    if (!shiftKey) {
+                        this.#selectedObjectIds = []
+                        this.#writeSelectionBuffer()
+                        if (this.onSelectionChange) {
+                            this.onSelectionChange([])
+                        }
+                        console.log('Deselected all objects (clicked empty space)')
+                    } else {
+                        console.log('No object clicked - clickedId was sentinel')
+                    }
                 }
             } catch (error) {
                 console.error('Error reading clicked object ID:', error)
@@ -420,9 +431,11 @@ export class SDFRenderer {
             await this.#initializing
             this.#initializing = null
         }
-        // Initialize click detection buffers to 0
+        // Initialize click detection buffers
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, new Uint32Array([0, 0]))
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
+        // Initialize clickedObjectId to sentinel value (0xFFFFFFFF = no hit)
+        const NO_HIT_SENTINEL = 0xFFFFFFFF
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([NO_HIT_SENTINEL]))
         // Initialize selection buffer with count=0
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, new Uint32Array(64))
     }

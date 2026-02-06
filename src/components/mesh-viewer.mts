@@ -143,12 +143,14 @@ export class MeshViewer extends HTMLElement {
         const observer = new ResizeObserver(entries => {
             requestAnimationFrame(() => {
                 for (const entry of entries) {
-                    const w =
+                    const w = Math.max(1,
                         entry.devicePixelContentBoxSize?.[0].inlineSize ??
-                        Math.max(1, Math.round(entry.contentRect.width * devicePixelRatio))
-                    const h =
+                        Math.round(entry.contentRect.width * devicePixelRatio)
+                    )
+                    const h = Math.max(1,
                         entry.devicePixelContentBoxSize?.[0].blockSize ??
-                        Math.max(1, Math.round(entry.contentRect.height * devicePixelRatio))
+                        Math.round(entry.contentRect.height * devicePixelRatio)
+                    )
                     this.canvas.width = w
                     this.canvas.height = h
                     this.#cameraRes = vec2(w, h)
@@ -509,6 +511,12 @@ export class MeshViewer extends HTMLElement {
 
     update(): void {
         if (!this.#device || !this.#uniformBuffer) {
+            requestAnimationFrame(() => this.update())
+            return
+        }
+
+        // Skip rendering if canvas is collapsed (0x0 size)
+        if (this.canvas.width === 0 || this.canvas.height === 0) {
             requestAnimationFrame(() => this.update())
             return
         }

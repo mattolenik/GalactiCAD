@@ -572,14 +572,12 @@ fn fBoxFast(p: vec3<f32>, b: vec3<f32>) -> vec2f {
 
 // Fast hard union: just pick min distance, no tie-breaking or normals
 fn opUnionFast(a: vec2f, b: vec2f) -> vec2f {
-    if (a.x < b.x) { return a; }
-    return b;
+    return select(b, a, a.x < b.x);
 }
 
 // Fast hard intersection: just pick max distance
 fn opIntersectionFast(a: vec2f, b: vec2f) -> vec2f {
-    if (a.x > b.x) { return a; }
-    return b;
+    return select(b, a, a.x > b.x);
 }
 
 // Fast hard difference: intersection with complement
@@ -591,27 +589,27 @@ fn opDifferenceFast(a: vec2f, b: vec2f) -> vec2f {
 fn fOpUnionRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let u = max(vec2f(r - a.x, r - b.x), vec2f(0.0));
     let d = max(r, min(a.x, b.x)) - length(u);
-    if (a.x < r && b.x < r) { return vec2f(d, 0.5); }
-    if (a.x < b.x) { return vec2f(d, a.y); }
-    return vec2f(d, b.y);
+    let inBlend = a.x < r && b.x < r;
+    let g = select(select(b.y, a.y, a.x < b.x), 0.5, inBlend);
+    return vec2f(d, g);
 }
 
 // Fast soft union
 fn fOpUnionSoftFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let e = max(r - abs(a.x - b.x), 0.0);
     let d = min(a.x, b.x) - e * e * 0.25 / r;
-    if (e > 0.0) { return vec2f(d, 0.5); }
-    if (a.x < b.x) { return vec2f(d, a.y); }
-    return vec2f(d, b.y);
+    let inBlend = e > 0.0;
+    let g = select(select(b.y, a.y, a.x < b.x), 0.5, inBlend);
+    return vec2f(d, g);
 }
 
 // Fast round intersection
 fn fOpIntersectionRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let u = max(vec2f(r + a.x, r + b.x), vec2f(0.0));
     let d = min(-r, max(a.x, b.x)) + length(u);
-    if (a.x > -r && b.x > -r) { return vec2f(d, 0.5); }
-    if (a.x > b.x) { return vec2f(d, a.y); }
-    return vec2f(d, b.y);
+    let inBlend = a.x > -r && b.x > -r;
+    let g = select(select(b.y, a.y, a.x > b.x), 0.5, inBlend);
+    return vec2f(d, g);
 }
 
 // Fast round difference
@@ -623,18 +621,18 @@ fn fOpDifferenceRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
 fn fOpUnionChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let chamferD = (a.x - r + b.x) * sqrt(0.5);
     let d = min(min(a.x, b.x), chamferD);
-    if (chamferD < a.x && chamferD < b.x) { return vec2f(d, 1.0); }
-    if (a.x < b.x) { return vec2f(d, a.y); }
-    return vec2f(d, b.y);
+    let inChamfer = chamferD < a.x && chamferD < b.x;
+    let g = select(select(b.y, a.y, a.x < b.x), 1.0, inChamfer);
+    return vec2f(d, g);
 }
 
 // Fast chamfer intersection
 fn fOpIntersectionChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let chamferD = (a.x + r + b.x) * sqrt(0.5);
     let d = max(max(a.x, b.x), chamferD);
-    if (chamferD > a.x && chamferD > b.x) { return vec2f(d, 1.0); }
-    if (a.x > b.x) { return vec2f(d, a.y); }
-    return vec2f(d, b.y);
+    let inChamfer = chamferD > a.x && chamferD > b.x;
+    let g = select(select(b.y, a.y, a.x > b.x), 1.0, inChamfer);
+    return vec2f(d, g);
 }
 
 // Fast chamfer difference

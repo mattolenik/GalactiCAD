@@ -151,7 +151,7 @@ export class CameraController {
             this.isDragging = true
             this.#hasDragged = false
             this.#last = vec2(e.clientX, e.clientY)
-        } else if (e.button === 1) {
+        } else if (e.button === 2) {
             this.#dragMode = "pan"
             this.isDragging = true
             this.#hasDragged = false

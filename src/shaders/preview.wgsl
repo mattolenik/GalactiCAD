@@ -272,38 +272,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     }
 
     if (hit.t > 0.0) {
-        // Use analytical normal from SDF result (already computed during raymarch)
-        var normal = hit.sdf.n;
-        if (dot(normal, normal) < 0.001) {
-            // Fallback to numerical gradient if analytical normal is degenerate
-            let p = transformedOrigin + hit.t * transformedDir;
-            normal = estimateNormalFallback(p);
-        } else {
-            normal = normalize(normal);
-        }
-        
-        let diffuse = lighting(normal);
-        
-        // Get color from palette using shape ID modulo palette size
-        var baseColor = colorPalette[hit.sdf.id % 32u];
-        
-        // Check if this object is in the selection array
-        let selectedCount = selectedObjectIds[0];
-        var isSelected = false;
-        for (var i: u32 = 1u; i <= selectedCount && i < 64u; i = i + 1u) {
-            if (hit.sdf.id == selectedObjectIds[i]) {
-                isSelected = true;
-                break;
-            }
-        }
-        
-        // Calculate base shaded color
-        var shadedColor = baseColor * diffuse;
-        
-        // Add highlight tint for selected objects
-        if (isSelected) {
-            shadedColor = shadedColor * 0.85 + vec3f(0.15);
-        }
+        let shadedColor = shadeHit(transformedOrigin, transformedDir, hit, false);
         
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {

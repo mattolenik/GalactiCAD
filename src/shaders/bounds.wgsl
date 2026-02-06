@@ -22,7 +22,7 @@ struct BoundsUniforms {
 @group(0) @binding(0) var<uniform> uniforms: BoundsUniforms;
 
 // Dummy selection array for isObjectSelected function compatibility
-@group(0) @binding(99) var<storage, read> selectedObjectIds: array<u32, 64>;
+@group(0) @binding(99) var<storage, read> selectedObjectIds: array<u32, 1024>;
 
 // One output record per dispatched workgroup (no atomics).
 struct TileBounds {

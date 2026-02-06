@@ -4,7 +4,7 @@
 
 @group(0) @binding(0) var colorTex: texture_2d<f32>;
 @group(0) @binding(1) var idTex: texture_2d<u32>;
-@group(0) @binding(2) var<storage, read> selectedObjectIds: array<u32, 64>;
+@group(0) @binding(2) var<storage, read> selectedObjectIds: array<u32, 1024>;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -25,7 +25,7 @@ fn isSelected(id: u32) -> bool {
         return false;
     }
     let count = selectedObjectIds[0];
-    for (var i: u32 = 1u; i <= count && i < 64u; i = i + 1u) {
+    for (var i: u32 = 1u; i <= count && i < 1024u; i = i + 1u) {
         if (id == selectedObjectIds[i]) {
             return true;
         }

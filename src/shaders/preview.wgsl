@@ -26,7 +26,7 @@ struct ClickState {
 
 // Selected objects array: [count, id1, id2, ...]
 // Using storage buffer because uniform requires 16-byte alignment per element
-@group(0) @binding(4) var<storage, read> selectedObjectIds: array<u32, 64>;
+@group(0) @binding(4) var<storage, read> selectedObjectIds: array<u32, 1024>;
 
 // Color palette: 32 pastel colors for shape coloring
 @group(0) @binding(5) var<uniform> colorPalette: array<vec3f, 32>;
@@ -227,7 +227,7 @@ fn shadeHit(origin: vec3f, dir: vec3f, hit: RaymarchHit, flipNormal: bool) -> ve
     // Check if selected
     let selectedCount = selectedObjectIds[0];
     var isSelected = false;
-    for (var i: u32 = 1u; i <= selectedCount && i < 64u; i = i + 1u) {
+    for (var i: u32 = 1u; i <= selectedCount && i < 1024u; i = i + 1u) {
         if (hit.sdf.id == selectedObjectIds[i]) {
             isSelected = true;
             break;

@@ -74,149 +74,6 @@ export class SDFRenderer {
      */
     onSelectionChange?: (selectedIds: number[]) => void
 
-    #meshEdgeStats(mesh: MeshData) {
-        // `mesh.tris` is a flat triangle index buffer (u32 indices).
-        // A watertight manifold surface should have exactly 2 incident triangles per undirected edge.
-        const tris = mesh.tris
-        const verts = mesh.verts
-        const stride = 8 // floats per vertex in MeshData (pos vec3 + pad + normal vec3 + pad)
-        const vertexCount = Math.floor(verts.length / stride)
-        const triCount = Math.floor(tris.length / 3)
-
-        const edgeCounts = new Map<bigint, number>()
-        let degenerateTris = 0
-        let outOfRangeIndices = 0
-
-        const edgeKey = (a: number, b: number) => {
-            const lo = a < b ? a : b
-            const hi = a < b ? b : a
-            return (BigInt(lo) << 32n) | BigInt(hi >>> 0)
-        }
-        const addEdge = (a: number, b: number) => {
-            if (a === b) return
-            if (a < 0 || b < 0 || a >= vertexCount || b >= vertexCount) {
-                outOfRangeIndices++
-                return
-            }
-            const k = edgeKey(a, b)
-            edgeCounts.set(k, (edgeCounts.get(k) ?? 0) + 1)
-        }
-
-        for (let t = 0; t < triCount; t++) {
-            const i0 = tris[t * 3]!
-            const i1 = tris[t * 3 + 1]!
-            const i2 = tris[t * 3 + 2]!
-            if (i0 === i1 || i1 === i2 || i2 === i0) degenerateTris++
-            addEdge(i0, i1)
-            addEdge(i1, i2)
-            addEdge(i2, i0)
-        }
-
-        let boundaryEdges = 0
-        let nonManifoldEdges = 0
-        let maxIncidence = 0
-        for (const c of edgeCounts.values()) {
-            if (c === 1) boundaryEdges++
-            else if (c > 2) nonManifoldEdges++
-            if (c > maxIncidence) maxIncidence = c
-        }
-
-        const worst: Array<{ k: bigint; c: number }> = []
-        if (nonManifoldEdges > 0) {
-            for (const [k, c] of edgeCounts) {
-                if (c > 2) worst.push({ k, c })
-            }
-            worst.sort((a, b) => b.c - a.c)
-        }
-
-        return {
-            vertexCount,
-            triCount,
-            uniqueEdges: edgeCounts.size,
-            boundaryEdges,
-            nonManifoldEdges,
-            maxIncidence,
-            degenerateTris,
-            outOfRangeIndices,
-            worstEdges: worst,
-        }
-    }
-
-    #logMeshEdgeStats(mesh: MeshData, label: string) {
-        const s = this.#meshEdgeStats(mesh)
-        console.log(
-            `[${label}] mesh edge stats: verts=${s.vertexCount} tris=${s.triCount} uniqueEdges=${s.uniqueEdges} boundaryEdges=${s.boundaryEdges} nonManifoldEdges=${s.nonManifoldEdges} maxIncidence=${s.maxIncidence} degenerateTris=${s.degenerateTris} outOfRangeEdgeRefs=${s.outOfRangeIndices}`
-        )
-
-        // Print a few examples of the worst offenders (counts > 2).
-        if (s.nonManifoldEdges > 0) {
-            const top = s.worstEdges.slice(0, 10)
-            console.log(
-                `[${label}] top non-manifold edges (undirected vertex pairs): ` +
-                top
-                    .map(e => {
-                        const lo = Number(e.k >> 32n)
-                        const hi = Number(e.k & 0xffffffffn)
-                        return `(${lo},${hi}):${e.c}`
-                    })
-                    .join(", ")
-            )
-
-            // For the top offenders, also print incident triangle indices and vertex positions.
-            const tris = mesh.tris
-            const verts = mesh.verts
-            const stride = 8
-            const triCount = Math.floor(tris.length / 3)
-
-            const vpos = (vidx: number) => {
-                const base = vidx * stride
-                return [verts[base]!, verts[base + 1]!, verts[base + 2]!] as const
-            }
-
-            const topSet = new Set<bigint>(top.map(e => e.k))
-            const incident = new Map<bigint, number[]>()
-            for (const e of top) incident.set(e.k, [])
-
-            const edgeKey = (a: number, b: number) => {
-                const lo = a < b ? a : b
-                const hi = a < b ? b : a
-                return (BigInt(lo) << 32n) | BigInt(hi >>> 0)
-            }
-
-            // Second pass: collect up to 16 incident triangles per top edge.
-            for (let t = 0; t < triCount; t++) {
-                const i0 = tris[t * 3]!
-                const i1 = tris[t * 3 + 1]!
-                const i2 = tris[t * 3 + 2]!
-                const edges: [number, number][] = [
-                    [i0, i1],
-                    [i1, i2],
-                    [i2, i0],
-                ]
-                for (const [a, b] of edges) {
-                    if (a === b) continue
-                    const k = edgeKey(a, b)
-                    if (!topSet.has(k)) continue
-                    const arr = incident.get(k)!
-                    if (arr.length < 16) arr.push(t)
-                }
-            }
-
-            for (const e of top) {
-                const lo = Number(e.k >> 32n)
-                const hi = Number(e.k & 0xffffffffn)
-                const p0 = vpos(lo)
-                const p1 = vpos(hi)
-                const trisList = incident.get(e.k) ?? []
-                console.log(
-                    `[${label}] edge (${lo},${hi}) count=${e.c} p0=(${p0[0].toFixed(4)},${p0[1].toFixed(4)},${p0[2].toFixed(4)}) p1=(${p1[0].toFixed(4)},${p1[1].toFixed(4)},${p1[2].toFixed(4)}) incidentTris=[${trisList.join(
-                        ","
-                    )}]`
-                )
-            }
-        }
-    }
-
     get controls(): CameraController {
         return this.#controls
     }
@@ -347,8 +204,8 @@ export class SDFRenderer {
 
     #writeSelectionBuffer() {
         // Write selection array to GPU buffer
-        // Format: [count, id1, id2, ...] with 64 slots available (256 bytes total)
-        const data = new Uint32Array(64)
+        // Format: [count, id1, id2, ...] with 1024 slots available (4096 bytes total)
+        const data = new Uint32Array(1024)
         data[0] = this.#selectedObjectIds.length
         for (let i = 0; i < this.#selectedObjectIds.length; i++) {
             data[i + 1] = this.#selectedObjectIds[i]
@@ -470,7 +327,7 @@ export class SDFRenderer {
         const NO_HIT_SENTINEL = 0xFFFFFFFF
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([NO_HIT_SENTINEL]))
         // Initialize selection buffer with count=0
-        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, new Uint32Array(64))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, new Uint32Array(1024))
     }
 
     startLoop() {
@@ -506,7 +363,7 @@ export class SDFRenderer {
         })
 
         this.#uniformBuffers.selectedObjectIds = this.#device.createBuffer({
-            size: 256, // 64 u32s: [count, id1, id2, ...] up to 63 selected objects
+            size: 4096, // 1024 u32s: [count, id1, id2, ...] up to 1023 selected objects
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             label: "selectedObjectIds",
         })
@@ -1000,11 +857,6 @@ export class SDFRenderer {
             }
             await progressPromise.catch(() => { }) // Wait for dialog to close, ignore errors
 
-            const pre = this.#meshEdgeStats(mesh)
-            if (pre.nonManifoldEdges > 0) {
-                console.warn("[renderMesh] base mesh has non-manifold edges (before mergeCoplanar)")
-                this.#logMeshEdgeStats(mesh, "renderMesh:preMerge")
-            }
             return mesh
         } catch (err) {
             if (!progressDialog.cancelled) {

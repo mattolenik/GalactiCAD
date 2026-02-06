@@ -66,10 +66,8 @@ fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: only (d, g), no normals/IDs
         // Use g only to reduce step size when needed.
-        var step = sr.x;            // .x = d
-        if (sr.y > 1.0) {           // .y = g
-            step = sr.x / sr.y;
-        }
+        // Note: g never exceeds 1.0 in current operators, so this is dead code but kept branchless
+        let step = select(sr.x, sr.x / sr.y, sr.y > 1.0);  // .x = d, .y = g
         if (sr.x < SURF_DIST) {
             // Only refine hit when needed: large step (CSG seam) or blend region (g < 1)
             if (lastStep > SURF_DIST * 10.0 || sr.y < 1.0) {
@@ -167,11 +165,9 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
         let sr = sceneSDF_fast(p);  // Fast: only (d, g)
         
         // We're inside, so distance is negative. March by abs(d).
-        var step = abs(sr.x);       // .x = d
-        if (sr.y > 1.0) {           // .y = g
-            step = step / sr.y;
-        }
-        step = max(step, 0.1);
+        // Note: g never exceeds 1.0 in current operators, so this is dead code but kept branchless
+        let stepRaw = abs(sr.x);    // .x = d
+        let step = max(select(stepRaw, stepRaw / sr.y, sr.y > 1.0), 0.1);  // .y = g
         
         // Found an exit surface (going from inside to outside)
         if (sr.x > SURF_DIST) {
@@ -217,9 +213,7 @@ fn shadeHit(origin: vec3f, dir: vec3f, hit: RaymarchHit, flipNormal: bool) -> ve
     }
     
     // Flip normal for back-facing surfaces
-    if (flipNormal) {
-        normal = -normal;
-    }
+    normal = select(normal, -normal, flipNormal);
     
     let diffuse = lighting(normal);
     var baseColor = colorPalette[hit.sdf.id % 32u];
@@ -234,12 +228,10 @@ fn shadeHit(origin: vec3f, dir: vec3f, hit: RaymarchHit, flipNormal: bool) -> ve
         }
     }
     
-    var shadedColor = baseColor * diffuse;
-    if (isSelected) {
-        shadedColor = shadedColor * 0.85 + vec3f(0.15);
-    }
-    
-    return shadedColor;
+    let shadedColor = baseColor * diffuse;
+    // Apply selection highlight: darken by 15% and add white tint
+    let selectedColor = shadedColor * 0.85 + vec3f(0.15);
+    return select(shadedColor, selectedColor, isSelected);
 }
 
 @fragment

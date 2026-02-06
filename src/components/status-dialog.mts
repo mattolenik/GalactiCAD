@@ -4,12 +4,26 @@ export class StatusDialog extends HTMLElement {
     #shadow = this.attachShadow({ mode: "open" })
     #resolve?: () => void
 
-    constructor(message: string) {
+    constructor(message: string, showOkButton = true) {
         super()
-        this.#render(message)
+        this.#render(message, showOkButton)
     }
 
-    #render(message: string) {
+    /**
+     * Update the dialog message and optionally show the OK button
+     */
+    updateMessage(message: string, showOkButton = true) {
+        const messageEl = this.#shadow.querySelector(".message")
+        const buttonsEl = this.#shadow.querySelector(".buttons")
+        if (messageEl) {
+            messageEl.textContent = message
+        }
+        if (buttonsEl) {
+            buttonsEl.style.display = showOkButton ? "flex" : "none"
+        }
+    }
+
+    #render(message: string, showOkButton = true) {
         this.#shadow.innerHTML = `
         <style>
             :host {
@@ -53,6 +67,10 @@ export class StatusDialog extends HTMLElement {
                 gap: 1em;
             }
 
+            .buttons.hidden {
+                display: none;
+            }
+
             button {
                 padding: 0.5em 1.5em;
                 border: none;
@@ -70,7 +88,7 @@ export class StatusDialog extends HTMLElement {
         <div class="overlay"></div>
         <div class="dialog">
             <div class="message">${this.#escapeHtml(message)}</div>
-            <div class="buttons">
+            <div class="buttons" ${showOkButton ? '' : 'style="display: none"'}>
                 <button class="ok">OK</button>
             </div>
         </div>`
@@ -83,8 +101,17 @@ export class StatusDialog extends HTMLElement {
     }
 
     connectedCallback() {
-        this.#shadow.querySelector(".ok")!.addEventListener("click", () => this.#close())
-        this.#shadow.querySelector(".overlay")!.addEventListener("click", () => this.#close())
+        const okButton = this.#shadow.querySelector(".ok")
+        if (okButton) {
+            okButton.addEventListener("click", () => this.#close())
+        }
+        this.#shadow.querySelector(".overlay")!.addEventListener("click", () => {
+            // Only allow closing via overlay if OK button is visible
+            const buttonsEl = this.#shadow.querySelector(".buttons")
+            if (buttonsEl && buttonsEl.style.display !== "none") {
+                this.#close()
+            }
+        })
         window.addEventListener("keydown", this.#onKeyDown)
     }
 
@@ -93,9 +120,13 @@ export class StatusDialog extends HTMLElement {
     }
 
     #onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape" || e.key === "Enter") {
-            e.preventDefault()
-            this.#close()
+        // Only allow closing via keyboard if OK button is visible
+        const buttonsEl = this.#shadow.querySelector(".buttons")
+        if (buttonsEl && buttonsEl.style.display !== "none") {
+            if (e.key === "Escape" || e.key === "Enter") {
+                e.preventDefault()
+                this.#close()
+            }
         }
     }
 

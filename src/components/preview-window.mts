@@ -13,6 +13,9 @@ export class PreviewWindow extends HTMLElement {
     /** Callback when xray mode changes */
     onXrayModeChange?: (enabled: boolean) => void
 
+    /** Callback when benchmark button is clicked */
+    onBenchmark?: () => void | Promise<void>
+
     get xrayMode(): boolean {
         return this.#xrayMode
     }
@@ -67,6 +70,27 @@ export class PreviewWindow extends HTMLElement {
             cursor: pointer;
             margin: 0;
         }
+        .controls button {
+            cursor: pointer;
+            padding: 2px 8px;
+            border: 1px solid #666;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ccc;
+            font-size: 12px;
+            font-family: system-ui, sans-serif;
+            border-radius: 3px;
+            transition: background 0.2s ease;
+        }
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .controls button:active {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"
@@ -80,7 +104,7 @@ export class PreviewWindow extends HTMLElement {
         this.#counter.style.float = "right"
         shadow.appendChild(this.#counter)
 
-        // X-ray mode checkbox
+        // X-ray mode checkbox and benchmark button
         const controls = document.createElement("div")
         controls.classList.add("controls")
         const xrayLabel = document.createElement("label")
@@ -92,6 +116,20 @@ export class PreviewWindow extends HTMLElement {
         })
         xrayLabel.append(this.#xrayCheckbox, "X-ray")
         controls.appendChild(xrayLabel)
+
+        const benchmarkButton = document.createElement("button")
+        benchmarkButton.textContent = "Benchmark"
+        benchmarkButton.addEventListener("click", async () => {
+            if (this.onBenchmark) {
+                benchmarkButton.disabled = true
+                try {
+                    await this.onBenchmark()
+                } finally {
+                    benchmarkButton.disabled = false
+                }
+            }
+        })
+        controls.appendChild(benchmarkButton)
         shadow.appendChild(controls)
 
         this.#showFps = !!(this.getAttribute("showFPS")?.toLocaleLowerCase() === "true")

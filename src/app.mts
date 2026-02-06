@@ -346,6 +346,32 @@ class App {
                     this.#handleEditorMouseDown(e)
                 })
 
+                // Wire up benchmark button
+                preview.onBenchmark = async () => {
+                    const { StatusDialog } = await import("./components/status-dialog.mjs")
+                    const statusDialog = new StatusDialog("Running benchmark...", false)
+                    const dialogPromise = statusDialog.show()
+
+                    try {
+                        const frameCount = 100
+                        const results = await this.renderer.benchmark(frameCount, true)
+
+                        const message = `Benchmark Results (${frameCount} frames):\n\n` +
+                            `Total time: ${results.totalTime.toFixed(2)}ms\n` +
+                            `Average frame time: ${results.averageFrameTime.toFixed(2)}ms\n` +
+                            `FPS: ${results.framesPerSecond.toFixed(2)}\n` +
+                            `Min frame time: ${results.minFrameTime.toFixed(2)}ms\n` +
+                            `Max frame time: ${results.maxFrameTime.toFixed(2)}ms`
+
+                        statusDialog.updateMessage(message, true)
+                        await dialogPromise
+                    } catch (err) {
+                        const errorMsg = err instanceof Error ? err.message : String(err)
+                        statusDialog.updateMessage(`Benchmark failed: ${errorMsg}`, true)
+                        await dialogPromise
+                    }
+                }
+
                 this.#tabs.addEventListener("activeTabChanged", e => {
                     this.build()
                     // Clear highlighting when switching tabs

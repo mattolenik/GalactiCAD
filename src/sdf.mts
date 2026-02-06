@@ -543,25 +543,11 @@ export class SDFRenderer {
         })
     }
 
-    update(time: number): void {
-        // Schedule next frame first
-        requestAnimationFrame(t => this.update(t))
-
-        // Only render when camera changed or scene needs update
-        if (!this.#needsRender) {
-            return
-        }
-
-        // Frame rate limiting: skip if rendering too fast
-        const minFrameTime = 1000 / this.#targetFPS
-        const timeSinceLastRender = time - this.#lastRenderEndTime
-        if (timeSinceLastRender < minFrameTime) {
-            return
-        }
-
-        // Clear dirty flag before rendering
-        this.#needsRender = false
-
+    /**
+     * Internal method to perform a single frame render.
+     * @param waitForGPU If true, wait for GPU to complete before returning (for accurate benchmarking)
+     */
+    async #renderFrame(waitForGPU = false): Promise<void> {
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, this.#controls.viewTransform.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraRes.data as BufferSource)
@@ -588,6 +574,33 @@ export class SDFRenderer {
 
         this.#device.queue.submit([commandEncoder.finish()])
 
+        if (waitForGPU) {
+            await this.#device.queue.onSubmittedWorkDone()
+        }
+    }
+
+    update(time: number): void {
+        // Schedule next frame first
+        requestAnimationFrame(t => this.update(t))
+
+        // Only render when camera changed or scene needs update
+        if (!this.#needsRender) {
+            return
+        }
+
+        // Frame rate limiting: skip if rendering too fast
+        const minFrameTime = 1000 / this.#targetFPS
+        const timeSinceLastRender = time - this.#lastRenderEndTime
+        if (timeSinceLastRender < minFrameTime) {
+            return
+        }
+
+        // Clear dirty flag before rendering
+        this.#needsRender = false
+
+        // Perform the render (non-blocking for normal loop)
+        this.#renderFrame(false)
+
         // Update FPS after actual render
         const now = performance.now()
         const deltaTime = now - this.#lastActualRenderTime
@@ -602,6 +615,58 @@ export class SDFRenderer {
     /** Request a re-render (e.g., after scene change) */
     requestRender(): void {
         this.#needsRender = true
+    }
+
+    /**
+     * Benchmark rendering performance by rendering n frames and measuring time.
+     * @param frameCount Number of frames to render (default: 100)
+     * @param waitForGPU If true, wait for GPU completion after each frame for accurate timing (default: true)
+     * @returns Benchmark results with timing statistics
+     */
+    async benchmark(frameCount = 100, waitForGPU = true): Promise<{
+        totalTime: number
+        averageFrameTime: number
+        minFrameTime: number
+        maxFrameTime: number
+        framesPerSecond: number
+        frameTimes: number[]
+    }> {
+        const frameTimes: number[] = []
+        const startTime = performance.now()
+
+        // Ensure we have a valid scene before benchmarking
+        if (!this.#pipeline) {
+            throw new Error("Cannot benchmark: renderer not initialized. Call build() first.")
+        }
+
+        // Warm-up frame to ensure GPU is ready
+        await this.#renderFrame(waitForGPU)
+
+        // Benchmark loop
+        for (let i = 0; i < frameCount; i++) {
+            const frameStart = performance.now()
+            await this.#renderFrame(waitForGPU)
+            const frameEnd = performance.now()
+            frameTimes.push(frameEnd - frameStart)
+        }
+
+        const endTime = performance.now()
+        const totalTime = endTime - startTime
+
+        // Calculate statistics
+        const averageFrameTime = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length
+        const minFrameTime = Math.min(...frameTimes)
+        const maxFrameTime = Math.max(...frameTimes)
+        const framesPerSecond = 1000 / averageFrameTime
+
+        return {
+            totalTime,
+            averageFrameTime,
+            minFrameTime,
+            maxFrameTime,
+            framesPerSecond,
+            frameTimes,
+        }
     }
 
     async #computeSceneBounds(searchMin: [number, number, number], searchMax: [number, number, number], stepMm: number) {

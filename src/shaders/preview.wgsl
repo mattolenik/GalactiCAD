@@ -71,21 +71,25 @@ fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
             step = sr.x / sr.y;
         }
         if (sr.x < SURF_DIST) {
-            // Refine hit to reduce view-dependent jitter at CSG seams.
-            var lo = max(0.0, t - lastStep);
-            var hi = t;
-            for (var j: i32 = 0; j < 6; j = j + 1) {
-                let mid = 0.5 * (lo + hi);
-                let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
-                if (md > 0.0) {
-                    lo = mid;
-                } else {
-                    hi = mid;
+            // Only refine hit when needed: large step (CSG seam) or blend region (g < 1)
+            if (lastStep > SURF_DIST * 10.0 || sr.y < 1.0) {
+                // Refine hit to reduce view-dependent jitter at CSG seams.
+                var lo = max(0.0, t - lastStep);
+                var hi = t;
+                for (var j: i32 = 0; j < 6; j = j + 1) {
+                    let mid = 0.5 * (lo + hi);
+                    let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
+                    if (md > 0.0) {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
                 }
+                // Get the full SDF result at the refined hit point (includes analytical normal + ID)
+                return RaymarchHit(hi, sceneSDF(origin + hi * dir));
             }
-            // Get the full SDF result at the refined hit point (includes analytical normal + ID)
-            let hitSdf = sceneSDF(origin + hi * dir);
-            return RaymarchHit(hi, hitSdf);
+            // Clean surface hit - skip binary search, just get full SDF result
+            return RaymarchHit(t, sceneSDF(origin + t * dir));
         }
         lastStep = step;
         t = t + step;
@@ -171,21 +175,25 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
         
         // Found an exit surface (going from inside to outside)
         if (sr.x > SURF_DIST) {
-            // Refine the exit point
-            var lo = max(startT, t - lastStep);
-            var hi = t;
-            for (var j: i32 = 0; j < 6; j = j + 1) {
-                let mid = 0.5 * (lo + hi);
-                let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
-                if (md < 0.0) {
-                    lo = mid;
-                } else {
-                    hi = mid;
+            // Only refine exit point when needed: large step (CSG seam) or blend region (g < 1)
+            if (lastStep > SURF_DIST * 10.0 || sr.y < 1.0) {
+                // Refine the exit point
+                var lo = max(startT, t - lastStep);
+                var hi = t;
+                for (var j: i32 = 0; j < 6; j = j + 1) {
+                    let mid = 0.5 * (lo + hi);
+                    let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
+                    if (md < 0.0) {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
                 }
+                // Full evaluation only at final hit point
+                return RaymarchHit(hi, sceneSDF(origin + hi * dir));
             }
-            // Full evaluation only at final hit point
-            let hitSdf = sceneSDF(origin + hi * dir);
-            return RaymarchHit(hi, hitSdf);
+            // Clean exit surface - skip binary search, just get full SDF result
+            return RaymarchHit(t, sceneSDF(origin + t * dir));
         }
         
         lastStep = step;

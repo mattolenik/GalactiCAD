@@ -108,17 +108,11 @@ fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
     return RaymarchHit(-1.0, sdfTrue(MAX_DIST, 0u, vec3f(0.0)));
 }
 
-fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
-    // "Wrapped" diffuse keeps surfaces lit from multiple angles.
-    return clamp((dot(n, l) + wrap) / (1.0 + wrap), 0.0, 1.0);
-}
-
 fn lighting(normalScene: vec3f) -> f32 {
     // Light directions are pre-transformed on the CPU and passed via the camera uniform.
-    let wrap = 0.3;
-    let key  = 0.45 * diffuseWrap(normalScene, camera.lightDir1, wrap);
-    let fill = 0.25 * diffuseWrap(normalScene, camera.lightDir2, wrap);
-    let rim  = 0.15 * diffuseWrap(normalScene, camera.lightDir3, wrap);
+    let key  = 0.45 * max(dot(normalScene, camera.lightDir1), 0.0);
+    let fill = 0.25 * max(dot(normalScene, camera.lightDir2), 0.0);
+    let rim  = 0.15 * max(dot(normalScene, camera.lightDir3), 0.0);
 
     return clamp(0.15 + key + fill + rim, 0.0, 1.2);
 }

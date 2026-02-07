@@ -26,7 +26,7 @@ export class SceneInfo {
     get<T extends Node>(id: number): T {
         return this.#nodes.get(id) as T
     }
-    
+
     /**
      * Get all nodes in the scene
      */
@@ -48,13 +48,7 @@ export class SceneInfo {
      */
     compile(): string {
         const compiledResult = this.root.compile(1)
-        let compiledText = compiledResult.text
-        if (!compiledText) {
-            throw new Error("compilation returned no result")
-        }
-        // Return full SDFResult with gradient magnitude
-        compiledText += `\nreturn ${compiledResult.varName};\n`
-        return compiledText
+        return `\nreturn ${compiledResult.text};\n`
     }
 
     /**
@@ -63,12 +57,7 @@ export class SceneInfo {
      */
     compileFast(): string {
         const compiledResult = this.root.compileFast(1)
-        let compiledText = compiledResult.text
-        if (!compiledText) {
-            throw new Error("fast compilation returned no result")
-        }
-        compiledText += `\nreturn ${compiledResult.varName};\n`
-        return compiledText
+        return `\nreturn ${compiledResult.text};\n`
     }
 }
 
@@ -87,7 +76,7 @@ export class Node {
     constructor() {
         this.root = this
     }
-    
+
     /**
      * Get the shape type name for this node (e.g., "sphere", "box", "union")
      */
@@ -234,7 +223,7 @@ export class Group extends WithChildren(Node) {
         }
         return ids
     }
-    
+
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         for (let child of this.children) {
             child.updateScene(writeBuffer)
@@ -313,22 +302,19 @@ export class Union extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }
-    
+
     override compile(indentLevel = 0): CompileResult {
         let text = ""
         const lhResult = this.lh.compile()
         const rhResult = this.rh.compile()
-        if (lhResult.text) text += lhResult.text + "\n"
-        if (rhResult.text) text += rhResult.text + "\n"
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
-        text += `let ${varName} = `
         if (this.radius) {
             // Use extended round union for smooth blends (not chamfer)
             // Round creates truly smooth C1 continuous surfaces
-            text += `fOpUnionRoundEx(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+            text += `fOpUnionRoundEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`
         } else {
             // Use extended hard union
-            text += `opUnionEx(${lhResult.varName}, ${rhResult.varName});`
+            text += `opUnionEx(${lhResult.text}, ${rhResult.text})`
         }
         return { text, varName }
     }
@@ -336,14 +322,11 @@ export class Union extends BinaryOperator {
         let text = ""
         const lhResult = this.lh.compileFast()
         const rhResult = this.rh.compileFast()
-        if (lhResult.text) text += lhResult.text + "\n"
-        if (rhResult.text) text += rhResult.text + "\n"
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
-        text += `let ${varName} = `
         if (this.radius) {
-            text += `fOpUnionRoundFast(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+            text += `fOpUnionRoundFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`
         } else {
-            text += `opUnionFast(${lhResult.varName}, ${rhResult.varName});`
+            text += `opUnionFast(${lhResult.text}, ${rhResult.text})`
         }
         return { text, varName }
     }
@@ -364,20 +347,18 @@ export class Subtract extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }
-    
+
     override compile(indentLevel = 0): CompileResult {
         let text = ""
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
-        if (lhResult.text) text += lhResult.text + "\n"
-        if (rhResult.text) text += rhResult.text + "\n"
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
         if (this.radius && this.radius > 0) {
             // Use extended round difference with gradient magnitude tracking
-            text += `let ${varName} = fOpDifferenceRoundEx(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+            text += `fOpDifferenceRoundEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`
         } else {
             // Use extended hard difference
-            text += `let ${varName} = opDifferenceEx(${lhResult.varName}, ${rhResult.varName});`
+            text += `opDifferenceEx(${lhResult.text}, ${rhResult.text})`
         }
         return { text, varName }
     }
@@ -385,13 +366,11 @@ export class Subtract extends BinaryOperator {
         let text = ""
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
-        if (lhResult.text) text += lhResult.text + "\n"
-        if (rhResult.text) text += rhResult.text + "\n"
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
         if (this.radius && this.radius > 0) {
-            text += `let ${varName} = fOpDifferenceRoundFast(${lhResult.varName}, ${rhResult.varName}, ${this.radius});`
+            text += `fOpDifferenceRoundFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`
         } else {
-            text += `let ${varName} = opDifferenceFast(${lhResult.varName}, ${rhResult.varName});`
+            text += `opDifferenceFast(${lhResult.text}, ${rhResult.text})`
         }
         return { text, varName }
     }
@@ -411,7 +390,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         this.pos = vec3(pos)
         this.r = asRadius(r, d)
     }
-    
+
     override getShapeType(): string {
         return "sphere"
     }
@@ -423,7 +402,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="currentColor"/>`
     }
-    
+
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         writeBuffer(this.argIndex.pos, this.pos.data)
         writeBuffer(this.argIndex.r, new Float32Array([this.r]))
@@ -440,7 +419,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
             funcName,
             varName,
             // Use extended sphere that returns SDFResult with gradient magnitude
-            text: `let ${varName} = fSphereEx(p - ${this.pos.wgsl}, ${this.r}, ${this.id}u);`,
+            text: `fSphereEx(p - ${this.pos.wgsl}, ${this.r}, ${this.id}u)`,
         }
     }
     override compileFast(indentLevel = 0): CompileResult {
@@ -449,7 +428,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         return {
             funcName,
             varName,
-            text: `let ${varName} = fSphereFast(p - ${this.pos.wgsl}, ${this.r});`,
+            text: `fSphereFast(p - ${this.pos.wgsl}, ${this.r})`,
         }
     }
 }
@@ -465,7 +444,7 @@ export class Box extends WithSize(WithPos(Node)) {
         this.pos = vec3(pos)
         this.size = vec3(size)
     }
-    
+
     override getShapeType(): string {
         return "box"
     }
@@ -477,7 +456,7 @@ export class Box extends WithSize(WithPos(Node)) {
     override getIndicatorSvg(): string {
         return `<rect x="1" y="1" width="10" height="10" rx="1" fill="currentColor"/>`
     }
-    
+
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         writeBuffer(this.argIndex.pos, this.pos.data)
         writeBuffer(this.argIndex.size, this.size.data)
@@ -494,7 +473,7 @@ export class Box extends WithSize(WithPos(Node)) {
             funcName,
             varName,
             // Use extended box that returns SDFResult with gradient magnitude
-            text: `let ${varName} = fBoxEx(p - ${this.pos.wgsl}, ${this.size.wgsl}, ${this.id}u);`,
+            text: `fBoxEx(p - ${this.pos.wgsl}, ${this.size.wgsl}, ${this.id}u)`,
         }
     }
     override compileFast(indentLevel = 0): CompileResult {
@@ -503,7 +482,7 @@ export class Box extends WithSize(WithPos(Node)) {
         return {
             funcName,
             varName,
-            text: `let ${varName} = fBoxFast(p - ${this.pos.wgsl}, ${this.size.wgsl});`,
+            text: `fBoxFast(p - ${this.pos.wgsl}, ${this.size.wgsl})`,
         }
     }
 }

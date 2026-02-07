@@ -71,6 +71,7 @@ export class SDFRenderer {
     #xrayMode: boolean = false
     #outlineMode: OutlineMode = "solid"
     #outlineThickness: number = 3
+    #outlineColor: [number, number, number] = [0.9, 0.9, 0.9]
     #colorTexture!: GPUTexture
     #idTexture!: GPUTexture
     #colorTextureView!: GPUTextureView
@@ -129,6 +130,16 @@ export class SDFRenderer {
 
     get outlineThickness(): number {
         return this.#outlineThickness
+    }
+
+    /** Outline color as [r, g, b] in 0-1 range. */
+    set outlineColor(rgb: [number, number, number]) {
+        this.#outlineColor = [rgb[0], rgb[1], rgb[2]]
+        this.#needsRender = true
+    }
+
+    get outlineColor(): [number, number, number] {
+        return [...this.#outlineColor] as [number, number, number]
     }
 
     /**
@@ -442,9 +453,9 @@ export class SDFRenderer {
             label: "viewSettings",
         })
 
-        // Outline settings buffer: mode (u32) + padding
+        // Outline settings buffer: mode (u32) + thickness (f32) + pad + color (vec3f)
         this.#uniformBuffers.outlineSettings = this.#device.createBuffer({
-            size: 16, // u32 + padding to 16 bytes for alignment
+            size: 32, // u32(4) + f32(4) + pad(8) + vec3f(12) + pad(4) = 32
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "outlineSettings",
         })
@@ -539,10 +550,11 @@ export class SDFRenderer {
         // Write view settings (xray mode)
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([this.#xrayMode ? 1 : 0]))
 
-        // Write outline settings (mode + thickness)
-        const outlineData = new ArrayBuffer(16)
+        // Write outline settings (mode + thickness + color)
+        const outlineData = new ArrayBuffer(32)
         new Uint32Array(outlineData, 0, 1).set([OUTLINE_MODE_VALUES[this.#outlineMode]])
         new Float32Array(outlineData, 4, 1).set([this.#outlineThickness])
+        new Float32Array(outlineData, 16, 3).set(this.#outlineColor)
         this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, outlineData)
 
         const canvasTexture = this.#context.getCurrentTexture()

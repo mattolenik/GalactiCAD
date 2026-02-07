@@ -10,6 +10,7 @@
 struct OutlineSettings {
     mode: u32,
     thickness: f32,
+    color: vec3f,
 }
 @group(0) @binding(3) var<uniform> outlineSettings: OutlineSettings;
 
@@ -99,7 +100,7 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
                 return color;
             }
         }
-        return vec4f(0.1, 0.1, 0.15, 1.0);
+        return vec4f(outlineSettings.color, 1.0);
     }
 
     return color;

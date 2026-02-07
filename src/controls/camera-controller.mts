@@ -20,6 +20,7 @@ export class CameraController {
     #ls: LocalStorage
     #pivot: Vec3f
     #host: CameraHost
+    #documentName: string | null = null
     cameraPosition = new Vec3f()
     viewTransform = new Mat4x4f()
 
@@ -48,10 +49,12 @@ export class CameraController {
     #panSensitivity: number = 0.1
     #cameraTranslation: Vec3f = new Vec3f()
     #zoomController: PinchZoomController
+    #tabsElement: EventTarget | null = null
+    #tabChangeListener: EventListener | null = null
     onChange?: (state: CameraState) => void
     onSelect?: (screenPos: Vec2f, shiftKey: boolean) => void
 
-    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2) {
+    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null) {
         this.#ls = LocalStorage.instance
         this.#host = host
         this.#pivot = pivot
@@ -69,6 +72,22 @@ export class CameraController {
         this.#rotation = Quaternion.fromEuler(initialPhi, initialTheta, 0, "YXZ")
 
         this.#initEvents()
+
+        // Listen for tab changes if tabs element is provided
+        if (tabsElement) {
+            this.#tabsElement = tabsElement
+            this.#tabChangeListener = ((e: Event) => {
+                const customEvent = e as CustomEvent<string | undefined>
+                // Save current state before switching
+                this.#saveCameraState(true)
+                // Switch to new document
+                this.#documentName = customEvent.detail ?? ""
+                // Load the new document's camera state
+                this.#loadCameraState()
+            }) as EventListener
+            tabsElement.addEventListener("activeTabChanged", this.#tabChangeListener)
+        }
+
         this.#loadCameraState()
         this.#updateTransforms()
     }
@@ -259,36 +278,56 @@ export class CameraController {
         }
     }
 
+    #getStorageKey(suffix: string): string {
+        if (this.#documentName) {
+            return `camera:${this.#documentName}:${suffix}`
+        }
+        return `camera:${suffix}`
+    }
+
     #saveCameraState(always = false): void {
         if (!always && Date.now() - this.#lastCameraSave < 100) {
             return
         }
         this.#lastCameraSave = Date.now()
-        this.#ls.setVec3f("camera.position", this.cameraPosition)
-        this.#ls.setVec3f("camera.translation", this.#cameraTranslation)
-        this.#ls.setFloat("camera.zoom", this.zoom)
+        this.#ls.setVec3f(this.#getStorageKey("position"), this.cameraPosition)
+        this.#ls.setVec3f(this.#getStorageKey("translation"), this.#cameraTranslation)
+        this.#ls.setFloat(this.#getStorageKey("zoom"), this.zoom)
         // Save quaternion as string (quaternion library supports string serialization)
         const q = this.#rotation.toVector()
-        this.#ls.setItem("camera.rotation", `${q[0]},${q[1]},${q[2]},${q[3]}`)
+        this.#ls.setItem(this.#getStorageKey("rotation"), `${q[0]},${q[1]},${q[2]},${q[3]}`)
     }
 
     #loadCameraState(): void {
-        this.cameraPosition = this.#ls.getVec3f("camera.position")
-        this.#cameraTranslation = this.#ls.getVec3f("camera.translation")
-        this.zoom = this.#ls.getFloat("camera.zoom") ?? 20
+        this.cameraPosition = this.#ls.getVec3f(this.#getStorageKey("position"))
+        this.#cameraTranslation = this.#ls.getVec3f(this.#getStorageKey("translation"))
+        this.zoom = this.#ls.getFloat(this.#getStorageKey("zoom")) ?? 20
         this.#zoomController.setZoom(this.zoom, false)
 
         // Try to load quaternion, fall back to Euler angles for backward compatibility
-        const rotationStr = this.#ls.getItem("camera.rotation")
+        const rotationStr = this.#ls.getItem(this.#getStorageKey("rotation"))
         if (rotationStr) {
             const [w, x, y, z] = rotationStr.split(",").map(Number)
             this.#rotation = new Quaternion(w, x, y, z).normalize()
         } else {
             // Backward compatibility: load old Euler angles and convert to quaternion
-            const sceneRotX = this.#ls.getFloat("camera.sceneRotX") ?? Math.PI / 2
-            const sceneRotY = this.#ls.getFloat("camera.sceneRotY") ?? Math.PI / 2
+            const sceneRotX = this.#ls.getFloat(this.#getStorageKey("sceneRotX")) ?? Math.PI / 2
+            const sceneRotY = this.#ls.getFloat(this.#getStorageKey("sceneRotY")) ?? Math.PI / 2
             this.#rotation = Quaternion.fromEuler(sceneRotX, sceneRotY, 0, "YXZ")
         }
         this.#updateTransforms()
     }
+
+    /**
+     * Clean up event listeners when the controller is destroyed.
+     * Should be called when the component is no longer needed.
+     */
+    dispose(): void {
+        if (this.#tabsElement && this.#tabChangeListener) {
+            this.#tabsElement.removeEventListener("activeTabChanged", this.#tabChangeListener)
+            this.#tabsElement = null
+            this.#tabChangeListener = null
+        }
+    }
+
 }

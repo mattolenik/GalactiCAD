@@ -50,7 +50,7 @@ export class MeshViewer extends HTMLElement {
         return this.#controls
     }
 
-    constructor() {
+    constructor(tabsElement?: EventTarget | null) {
         super()
         const shadow = this.attachShadow({ mode: "open" })
 
@@ -137,7 +137,7 @@ export class MeshViewer extends HTMLElement {
         })
 
         this.#cameraRes = vec2(this.canvas.clientWidth, this.canvas.clientHeight)
-        this.#controls = new CameraController(this, vec3(0, 0, 0), 50)
+        this.#controls = new CameraController(this, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement)
         this.#initializing = this.#initialize()
 
         const observer = new ResizeObserver(entries => {
@@ -165,6 +165,11 @@ export class MeshViewer extends HTMLElement {
         } catch {
             observer.observe(this, { box: "content-box" })
         }
+    }
+
+    disconnectedCallback(): void {
+        // Clean up camera controller when element is removed from DOM
+        this.#controls.dispose()
     }
 
     connectedCallback(): void {

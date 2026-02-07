@@ -320,7 +320,7 @@ class App {
             this.#tabs.style.setProperty("--active-bg", bg)
         })
 
-        this.renderer = new SDFRenderer(preview)
+        this.renderer = new SDFRenderer(preview, this.#tabs)
 
         this.renderer
             .ready()
@@ -372,7 +372,7 @@ class App {
                     }
                 }
 
-                this.#tabs.addEventListener("activeTabChanged", e => {
+                this.#tabs.addEventListener("activeTabChanged", () => {
                     this.build()
                     // Clear highlighting when switching tabs
                     this.#monacoHighlighter.clearHighlighting()
@@ -527,7 +527,7 @@ class App {
             }
 
             // Create mesh viewer element dynamically using the class constructor
-            const meshViewer = new MeshViewer()
+            const meshViewer = new MeshViewer(this.#tabs)
             meshViewer.id = "mesh"
 
             // Add element to viewports (flexbox will distribute space automatically)

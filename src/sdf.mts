@@ -60,7 +60,7 @@ export class SDFRenderer {
     #started = false
     #uniformBuffers: UniformBuffers
     #selectedObjectIds: number[] = []
-    #clickPos: Vec2f = vec2(0, 0)
+    #lastClickPos: Vec2f = vec2(0, 0)
     #exportBuffers: ExportBuffers
     #shaderCompiler!: ShaderCompiler
     #sceneShader!: GPUShaderModule
@@ -113,6 +113,14 @@ export class SDFRenderer {
         return this.#outlineMode
     }
 
+    private set lastClickPos(pos: Vec2f) {
+        this.#lastClickPos = pos
+    }
+
+    get lastClickPos(): Vec2f {
+        return this.#lastClickPos
+    }
+
     /** Outline thickness in pixels (1-8). */
     set outlineThickness(px: number) {
         this.#outlineThickness = Math.max(1, Math.min(8, Math.round(px)))
@@ -157,7 +165,7 @@ export class SDFRenderer {
         const x = (screenPos.x - rect.left) / rect.width
         const y = 1.0 - (screenPos.y - rect.top) / rect.height // Flip Y for WGSL UV space
 
-        this.#clickPos = vec2(x, y)
+        this.#lastClickPos = vec2(x, y)
 
         console.log(`Click at UV: (${x.toFixed(3)}, ${y.toFixed(3)}), shift: ${shiftKey}`)
 
@@ -246,9 +254,9 @@ export class SDFRenderer {
         this.#needsRender = true
     }
 
-    constructor(preview: PreviewWindow) {
+    constructor(preview: PreviewWindow, tabsElement?: EventTarget | null) {
         this.#preview = preview
-        this.#controls = new CameraController(preview, vec3(0, 0, 0), 50)
+        this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement)
         this.#controls.onSelect = (screenPos: Vec2f, shiftKey: boolean) => this.#handleClick(screenPos, shiftKey)
         this.#controls.onChange = () => { this.#needsRender = true }
         this.#uniformBuffers = new UniformBuffers()

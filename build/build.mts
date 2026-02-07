@@ -48,6 +48,7 @@ async function build() {
                 ".ttf": "file",
                 ".woff": "file",
                 ".woff2": "file",
+                ".gcad": "text",
             },
             plugins: Options.plugins,
             sourcemap: !Options.isProd,

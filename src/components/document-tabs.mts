@@ -130,7 +130,7 @@ export class DocumentTabs extends HTMLElement {
     }
 
     /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts */
-    newDocument(content = sample, language = "javascript"): string | undefined {
+    newDocument(content = default , language = "javascript"): string | undefined {
         this.topUntitledIndex =
             Array.from(this.#docs.keys())
                 .map(s => parseInt(s.match(/^new sketch (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
@@ -357,10 +357,11 @@ export class DocumentTabs extends HTMLElement {
 
 customElements.define("document-tabs", DocumentTabs)
 
-const sample = `
-return union(1,
-   box('2 -4 4', '20 3 3'),
-   box('0  5 4', '20 3 3'),
-   subtract(0.5, box('0 0 0', '10 15 8'), sphere('0 0 -10', { r: 6 })),
-)
+const defaultContent = `
+function scene() {
+    return union(1,
+    box('2 -4 4', '20 3 3'),
+    box('0  5 4', '20 3 3'),
+    subtract(0.5, box('0 0 0', '10 15 8'), sphere('0 0 -10', { r: 6 })),
+}
 `

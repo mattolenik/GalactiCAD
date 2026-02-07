@@ -462,9 +462,6 @@ export class SDFRenderer {
     }
 
     #ensureRenderTextures(width: number, height: number) {
-        if (this.#renderTextureWidth === width && this.#renderTextureHeight === height) {
-            return
-        }
         // Destroy old textures if they exist
         if (this.#colorTexture) this.#colorTexture.destroy()
         if (this.#idTexture) this.#idTexture.destroy()

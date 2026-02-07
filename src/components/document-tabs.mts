@@ -130,7 +130,7 @@ export class DocumentTabs extends HTMLElement {
     }
 
     /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts */
-    newDocument(content = default , language = "javascript"): string | undefined {
+    newDocument(content = defaultContent, language = "javascript"): string | undefined {
         this.topUntitledIndex =
             Array.from(this.#docs.keys())
                 .map(s => parseInt(s.match(/^new sketch (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)

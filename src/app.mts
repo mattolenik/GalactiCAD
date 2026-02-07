@@ -32,6 +32,11 @@ class App {
 
     build() {
         try {
+            const model = this.editor.getModel()
+            if (!model) {
+                // No active model - don't try to build
+                return
+            }
             const src = this.editor.getValue()
 
             // Build the scene
@@ -372,10 +377,18 @@ class App {
                     }
                 }
 
-                this.#tabs.addEventListener("activeTabChanged", () => {
-                    this.build()
+                this.#tabs.addEventListener("activeTabChanged", (e: Event) => {
+                    const event = e as CustomEvent<string | undefined>
                     // Clear highlighting when switching tabs
                     this.#monacoHighlighter.clearHighlighting()
+
+                    // Only build if there's an active document
+                    if (event.detail !== undefined) {
+                        this.build()
+                    } else {
+                        // No active document - clear log
+                        this.log.innerText = ""
+                    }
                 })
                 this.build()
 
@@ -419,7 +432,7 @@ class App {
                 meshViewerContainer.append(meshViewerCheckbox, meshViewerText)
 
                 const menuButton = new MenuButton([
-                    { element: newItem, action: () => this.#tabs.newDocument() },
+                    { element: newItem, action: () => this.#tabs.newDocument(undefined, "javascript") },
                     { element: renameItem, action: () => this.#tabs.renameCurrentTab() },
                     { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
                     {

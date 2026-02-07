@@ -58,8 +58,8 @@ export default async function wgslLoader(extensions = ["wgsl"]): Promise<Plugin>
                         }
                     }
                 }
-                const errors = info.messages.filter(m => m.type === "error").map(m => formatMessage(m))
-                const warnings = info.messages.filter(m => m.type === "warning").map(m => formatMessage(m))
+                const errors = info.messages.filter(m => m.type === "error").map(formatMessage)
+                const warnings = info.messages.filter(m => m.type === "warning").map(formatMessage)
 
                 return { pluginName: pluginName, contents: code, loader: "text", errors: errors, warnings: warnings }
             })

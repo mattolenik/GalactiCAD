@@ -21,6 +21,17 @@ class UniformBuffers {
     clickedObjectId!: GPUBuffer
     colorPalette!: GPUBuffer
     viewSettings!: GPUBuffer
+    outlineSettings!: GPUBuffer
+}
+
+/** Outline style for selected objects. */
+export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
+
+const OUTLINE_MODE_VALUES: Record<OutlineMode, number> = {
+    none: 0,
+    solid: 1,
+    dashed: 2,
+    dotted: 3,
 }
 
 class ExportBuffers {
@@ -58,6 +69,8 @@ export class SDFRenderer {
     #helper!: GPUHelper
     #builtSrc: string | null = null
     #xrayMode: boolean = false
+    #outlineMode: OutlineMode = "solid"
+    #outlineThickness: number = 3
     #colorTexture!: GPUTexture
     #idTexture!: GPUTexture
     #colorTextureView!: GPUTextureView
@@ -89,6 +102,25 @@ export class SDFRenderer {
 
     get xrayMode(): boolean {
         return this.#xrayMode
+    }
+
+    set outlineMode(mode: OutlineMode) {
+        this.#outlineMode = mode
+        this.#needsRender = true
+    }
+
+    get outlineMode(): OutlineMode {
+        return this.#outlineMode
+    }
+
+    /** Outline thickness in pixels (1-8). */
+    set outlineThickness(px: number) {
+        this.#outlineThickness = Math.max(1, Math.min(8, Math.round(px)))
+        this.#needsRender = true
+    }
+
+    get outlineThickness(): number {
+        return this.#outlineThickness
     }
 
     /**
@@ -401,6 +433,13 @@ export class SDFRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "viewSettings",
         })
+
+        // Outline settings buffer: mode (u32) + padding
+        this.#uniformBuffers.outlineSettings = this.#device.createBuffer({
+            size: 16, // u32 + padding to 16 bytes for alignment
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "outlineSettings",
+        })
     }
 
     #ensureRenderTextures(width: number, height: number) {
@@ -434,6 +473,7 @@ export class SDFRenderer {
                 { binding: 0, resource: this.#colorTextureView },
                 { binding: 1, resource: this.#idTextureView },
                 { binding: 2, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
+                { binding: 3, resource: { buffer: this.#uniformBuffers.outlineSettings } },
             ],
         })
 
@@ -490,6 +530,12 @@ export class SDFRenderer {
 
         // Write view settings (xray mode)
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([this.#xrayMode ? 1 : 0]))
+
+        // Write outline settings (mode + thickness)
+        const outlineData = new ArrayBuffer(16)
+        new Uint32Array(outlineData, 0, 1).set([OUTLINE_MODE_VALUES[this.#outlineMode]])
+        new Float32Array(outlineData, 4, 1).set([this.#outlineThickness])
+        this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, outlineData)
 
         const canvasTexture = this.#context.getCurrentTexture()
         this.#ensureRenderTextures(canvasTexture.width, canvasTexture.height)

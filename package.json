@@ -13,7 +13,7 @@
     "packageManager": "pnpm@10.10.0",
     "type": "module",
     "devDependencies": {
-        "@types/node": "^22.19.7",
+        "@types/node": "^22.19.9",
         "@types/wicg-file-system-access": "^2023.10.7",
         "@types/ws": "^8.18.1",
         "@webgpu/types": "^0.1.69",

@@ -104,18 +104,6 @@ fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
     return RaymarchHit(-1.0, sdfTrue(MAX_DIST, 0u, vec3f(0.0)));
 }
 
-// Fallback normal estimation using tetrahedron gradient (4 samples instead of 6)
-fn estimateNormalFallback(p: vec3f) -> vec3f {
-    let eps = SURF_DIST * 0.5;
-    let k = vec2f(1.0, -1.0);
-    return normalize(
-        k.xyy * sceneSDF_fast(p + k.xyy * eps).x +
-        k.yyx * sceneSDF_fast(p + k.yyx * eps).x +
-        k.yxy * sceneSDF_fast(p + k.yxy * eps).x +
-        k.xxx * sceneSDF_fast(p + k.xxx * eps).x
-    );
-}
-
 fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
     // "Wrapped" diffuse keeps surfaces lit from multiple angles.
     return clamp((dot(n, l) + wrap) / (1.0 + wrap), 0.0, 1.0);
@@ -209,23 +197,15 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
 // Shade a hit point and return the color
 // flipNormal: true if hitting surface from inside (back surface)
 fn shadeHit(origin: vec3f, dir: vec3f, hit: RaymarchHit, flipNormal: bool) -> vec3f {
-    var normal = hit.sdf.n;
-    if (dot(normal, normal) < 0.001) {
-        let p = origin + hit.t * dir;
-        normal = estimateNormalFallback(p);
-    } else {
-        normal = normalize(normal);
-    }
-    
     // Flip normal for back-facing surfaces
-    normal = select(normal, -normal, flipNormal);
+    var normal = select(hit.sdf.n, -hit.sdf.n, flipNormal);
     
     let diffuse = lighting(normal);
     var baseColor = colorPalette[hit.sdf.id % 32u];
     
     let shadedColor = baseColor * diffuse;
-    // Apply selection highlight: darken by 15% and add white tint
-    let selectedColor = shadedColor * 0.85 + vec3f(0.15);
+
+    let selectedColor = shadedColor * 0.9 + vec3f(0.15);
     return select(shadedColor, selectedColor, selectedObjectIds[hit.sdf.id] != 0u);
 }
 

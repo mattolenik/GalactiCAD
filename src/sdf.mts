@@ -401,7 +401,7 @@ export class SDFRenderer {
         })
 
         this.#uniformBuffers.camera = this.#device.createBuffer({
-            size: 96,
+            size: 144, // Camera struct: transform(64) + position(16) + res(8) + zoom(4) + pad(4) + 3x lightDir vec3f(48)
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "camera",
         })
@@ -543,6 +543,21 @@ export class SDFRenderer {
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraRes.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))
+
+        // Pre-transform light directions from camera-space into scene-space on the CPU.
+        // This eliminates 3 matrix-vector multiplies per pixel in the fragment shader.
+        const camTransform = this.#controls.viewTransform
+        const l1 = camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
+        const l2 = camTransform.transformVector(vec3(-0.6, 0.3, 0.8).normalize())
+        const l3 = camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
+        // Each vec3f in uniform layout occupies 16 bytes (12 data + 4 padding).
+        // lightDir1 at offset 96, lightDir2 at offset 112, lightDir3 at offset 128.
+        const lightDirs = new Float32Array([
+            l1.x, l1.y, l1.z, 0,
+            l2.x, l2.y, l2.z, 0,
+            l3.x, l3.y, l3.z, 0,
+        ])
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 96, lightDirs)
 
         // Write view settings (xray mode)
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([this.#xrayMode ? 1 : 0]))

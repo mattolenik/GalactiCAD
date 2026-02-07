@@ -10,6 +10,10 @@ struct Camera {
     position: vec3f,
     res: vec2f,
     zoom: f32,
+    // Pre-transformed light directions (camera-space → scene-space, computed on CPU)
+    lightDir1: vec3f,  // Key light
+    lightDir2: vec3f,  // Fill light
+    lightDir3: vec3f,  // Rim light
 };
 
 // @group(0) @binding(0) var<uniform> args: array<vec3f, 1024>;
@@ -110,27 +114,13 @@ fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
 }
 
 fn lighting(normalScene: vec3f) -> f32 {
-    // Define lights in camera-space so they move with the camera.
-    // Positive Z means light comes from in front (toward camera), negative Z is behind
-    let lCam1 = normalize(vec3f(0.5, 0.6, 1.0));   // Key light from front-top-right
-    let lCam2 = normalize(vec3f(-0.6, 0.3, 0.8));  // Fill light from front-left
-    let lCam3 = normalize(vec3f(0.1, -0.5, 0.9)); // Rim light from front-bottom
-    let lCamBack = normalize(vec3f(-0.2, 0.2, -0.8)); // Subtle back light
-
-    // Transform light directions into scene-space (same convention as rays).
-    let l1 = normalize((camera.transform * vec4f(lCam1, 0.0)).xyz);
-    let l2 = normalize((camera.transform * vec4f(lCam2, 0.0)).xyz);
-    let l3 = normalize((camera.transform * vec4f(lCam3, 0.0)).xyz);
-    let lb = normalize((camera.transform * vec4f(lCamBack, 0.0)).xyz);
-
+    // Light directions are pre-transformed on the CPU and passed via the camera uniform.
     let wrap = 0.3;
-    let key = 0.45 * diffuseWrap(normalScene, l1, wrap);
-    let fill = 0.25 * diffuseWrap(normalScene, l2, wrap);
-    let rim = 0.15 * diffuseWrap(normalScene, l3, wrap);
-    let back = 0.05 * diffuseWrap(normalScene, lb, 0.5);
+    let key  = 0.45 * diffuseWrap(normalScene, camera.lightDir1, wrap);
+    let fill = 0.25 * diffuseWrap(normalScene, camera.lightDir2, wrap);
+    let rim  = 0.15 * diffuseWrap(normalScene, camera.lightDir3, wrap);
 
-    let ambient = 0.10;
-    return clamp(ambient + key + fill + rim + back, 0.0, 1.2);
+    return clamp(0.15 + key + fill + rim, 0.0, 1.2);
 }
 
 @vertex
@@ -196,13 +186,12 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
 
 // Shade a hit point and return the color
 // flipNormal: true if hitting surface from inside (back surface)
-fn shadeHit(origin: vec3f, dir: vec3f, hit: RaymarchHit, flipNormal: bool) -> vec3f {
+fn shadeHit(hit: RaymarchHit, flipNormal: bool) -> vec3f {
     // Flip normal for back-facing surfaces
-    var normal = select(hit.sdf.n, -hit.sdf.n, flipNormal);
-    
+    let normal = select(hit.sdf.n, -hit.sdf.n, flipNormal);
+
     let diffuse = lighting(normal);
-    var baseColor = colorPalette[hit.sdf.id % 32u];
-    
+    let baseColor = colorPalette[hit.sdf.id & 31u];
     let shadedColor = baseColor * diffuse;
 
     let selectedColor = shadedColor * 0.9 + vec3f(0.15);
@@ -239,7 +228,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     }
 
     if (hit.t > 0.0) {
-        let shadedColor = shadeHit(transformedOrigin, transformedDir, hit, false);
+        let shadedColor = shadeHit(hit, false);
         
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {
@@ -248,7 +237,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
             
             if (backHit.t > 0.0) {
                 // Shade the back surface (flip normal since we hit from inside)
-                let backColor = shadeHit(transformedOrigin, transformedDir, backHit, true);
+                let backColor = shadeHit(backHit, true);
                 
                 // Composite: front surface at 40% over back surface
                 let frontAlpha = 0.4;

@@ -278,7 +278,7 @@ export class CameraController {
         }
     }
 
-    #getStorageKey(suffix: string): string {
+    storageKey(suffix: string): string {
         if (this.#documentName) {
             return `camera:${this.#documentName}:${suffix}`
         }
@@ -290,29 +290,29 @@ export class CameraController {
             return
         }
         this.#lastCameraSave = Date.now()
-        this.#ls.setVec3f(this.#getStorageKey("position"), this.cameraPosition)
-        this.#ls.setVec3f(this.#getStorageKey("translation"), this.#cameraTranslation)
-        this.#ls.setFloat(this.#getStorageKey("zoom"), this.zoom)
+        this.#ls.setVec3f(this.storageKey("position"), this.cameraPosition)
+        this.#ls.setVec3f(this.storageKey("translation"), this.#cameraTranslation)
+        this.#ls.setFloat(this.storageKey("zoom"), this.zoom)
         // Save quaternion as string (quaternion library supports string serialization)
         const q = this.#rotation.toVector()
-        this.#ls.setItem(this.#getStorageKey("rotation"), `${q[0]},${q[1]},${q[2]},${q[3]}`)
+        this.#ls.setItem(this.storageKey("rotation"), `${q[0]},${q[1]},${q[2]},${q[3]}`)
     }
 
     #loadCameraState(): void {
-        this.cameraPosition = this.#ls.getVec3f(this.#getStorageKey("position"))
-        this.#cameraTranslation = this.#ls.getVec3f(this.#getStorageKey("translation"))
-        this.zoom = this.#ls.getFloat(this.#getStorageKey("zoom")) ?? 20
+        this.cameraPosition = this.#ls.getVec3f(this.storageKey("position"))
+        this.#cameraTranslation = this.#ls.getVec3f(this.storageKey("translation"))
+        this.zoom = this.#ls.getFloat(this.storageKey("zoom")) ?? 20
         this.#zoomController.setZoom(this.zoom, false)
 
         // Try to load quaternion, fall back to Euler angles for backward compatibility
-        const rotationStr = this.#ls.getItem(this.#getStorageKey("rotation"))
+        const rotationStr = this.#ls.getItem(this.storageKey("rotation"))
         if (rotationStr) {
             const [w, x, y, z] = rotationStr.split(",").map(Number)
             this.#rotation = new Quaternion(w, x, y, z).normalize()
         } else {
             // Backward compatibility: load old Euler angles and convert to quaternion
-            const sceneRotX = this.#ls.getFloat(this.#getStorageKey("sceneRotX")) ?? Math.PI / 2
-            const sceneRotY = this.#ls.getFloat(this.#getStorageKey("sceneRotY")) ?? Math.PI / 2
+            const sceneRotX = this.#ls.getFloat(this.storageKey("sceneRotX")) ?? Math.PI / 2
+            const sceneRotY = this.#ls.getFloat(this.storageKey("sceneRotY")) ?? Math.PI / 2
             this.#rotation = Quaternion.fromEuler(sceneRotX, sceneRotY, 0, "YXZ")
         }
         this.#updateTransforms()

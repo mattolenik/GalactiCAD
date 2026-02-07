@@ -49,7 +49,7 @@ const EDGES_PER_CELL: u32 = 12u;
 // Group 0: Shared parameters across all passes
 @group(0) @binding(0) var<uniform> uniforms: SharedUniforms;
 
-// Dummy selection array for isObjectSelected function compatibility
+// Dummy selection array (boolean array indexed by object ID, required for binding compatibility)
 @group(0) @binding(99) var<storage, read> selectedObjectIds: array<u32, 1024>;
 
 // Pass 1: Cell Classification

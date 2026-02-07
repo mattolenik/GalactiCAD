@@ -59,7 +59,7 @@ export class SDFRenderer {
     #scene!: SceneInfo
     #started = false
     #uniformBuffers: UniformBuffers
-    #selectedObjectIds: number[] = []
+    #selectedObjectIds: boolean[] = new Array<boolean>(1024).fill(false)
     #lastClickPos: Vec2f = vec2(0, 0)
     #exportBuffers: ExportBuffers
     #shaderCompiler!: ShaderCompiler
@@ -93,7 +93,11 @@ export class SDFRenderer {
     }
 
     get selectedObjectIds(): number[] {
-        return [...this.#selectedObjectIds]
+        const ids: number[] = []
+        for (let i = 0; i < this.#selectedObjectIds.length; i++) {
+            if (this.#selectedObjectIds[i]) ids.push(i)
+        }
+        return ids
     }
 
     set xrayMode(enabled: boolean) {
@@ -148,11 +152,14 @@ export class SDFRenderer {
      * @param notify If true, trigger onSelectionChange callback (default: false to avoid loops)
      */
     setSelection(ids: number[], notify = false) {
-        this.#selectedObjectIds = [...ids]
+        this.#selectedObjectIds.fill(false)
+        for (const id of ids) {
+            this.#selectedObjectIds[id] = true
+        }
         this.#writeSelectionBuffer()
 
         if (notify && this.onSelectionChange) {
-            this.onSelectionChange([...this.#selectedObjectIds])
+            this.onSelectionChange(this.selectedObjectIds)
         }
     }
 
@@ -202,7 +209,7 @@ export class SDFRenderer {
                 } else {
                     // Clicked on empty space - deselect all
                     if (!shiftKey) {
-                        this.#selectedObjectIds = []
+                        this.#selectedObjectIds.fill(false)
                         this.#writeSelectionBuffer()
                         if (this.onSelectionChange) {
                             this.onSelectionChange([])
@@ -219,28 +226,22 @@ export class SDFRenderer {
     }
 
     #updateSelection(clickedId: number, shiftKey: boolean) {
-        const index = this.#selectedObjectIds.indexOf(clickedId)
+        const wasSelected = this.#selectedObjectIds[clickedId] === true
 
         if (shiftKey) {
             // Multiselect mode: toggle the clicked object
-            if (index >= 0) {
-                // Remove from selection
-                this.#selectedObjectIds.splice(index, 1)
-                console.log(`Removed object ${clickedId} from selection`)
-            } else {
-                // Add to selection
-                this.#selectedObjectIds.push(clickedId)
-                console.log(`Added object ${clickedId} to selection`)
-            }
+            this.#selectedObjectIds[clickedId] = !wasSelected
+            console.log(wasSelected ? `Removed object ${clickedId} from selection` : `Added object ${clickedId} to selection`)
         } else {
             // Single select mode
-            if (index >= 0 && this.#selectedObjectIds.length === 1) {
+            if (wasSelected && this.selectedObjectIds.length === 1) {
                 // Clicking the only selected object deselects it
-                this.#selectedObjectIds = []
+                this.#selectedObjectIds.fill(false)
                 console.log('Deselected object')
             } else {
                 // Select only the clicked object
-                this.#selectedObjectIds = [clickedId]
+                this.#selectedObjectIds.fill(false)
+                this.#selectedObjectIds[clickedId] = true
                 console.log(`Selected object ID: ${clickedId}`)
             }
         }
@@ -249,17 +250,16 @@ export class SDFRenderer {
 
         // Notify listeners about selection change
         if (this.onSelectionChange) {
-            this.onSelectionChange([...this.#selectedObjectIds])
+            this.onSelectionChange(this.selectedObjectIds)
         }
     }
 
     #writeSelectionBuffer() {
-        // Write selection array to GPU buffer
-        // Format: [count, id1, id2, ...] with 1024 slots available (4096 bytes total)
+        // Write selection as boolean array to GPU buffer
+        // Format: selectedObjectIds[objectId] = 1 if selected, 0 if not (1024 slots, 4096 bytes)
         const data = new Uint32Array(1024)
-        data[0] = this.#selectedObjectIds.length
-        for (let i = 0; i < this.#selectedObjectIds.length; i++) {
-            data[i + 1] = this.#selectedObjectIds[i]
+        for (let i = 0; i < this.#selectedObjectIds.length && i < 1024; i++) {
+            data[i] = this.#selectedObjectIds[i] ? 1 : 0
         }
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, data)
         this.#needsRender = true
@@ -414,7 +414,7 @@ export class SDFRenderer {
         })
 
         this.#uniformBuffers.selectedObjectIds = this.#device.createBuffer({
-            size: 4096, // 1024 u32s: [count, id1, id2, ...] up to 1023 selected objects
+            size: 4096, // 1024 u32s: boolean array indexed by object ID (0 = not selected, 1 = selected)
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             label: "selectedObjectIds",
         })

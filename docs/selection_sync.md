@@ -428,11 +428,14 @@ The renderer exposes a method for programmatic selection:
 
 ```typescript
 setSelection(ids: number[], notify = false) {
-    this.#selectedObjectIds = [...ids]
+    this.#selectedObjectIds = []
+    for (const id of ids) {
+        this.#selectedObjectIds[id] = true
+    }
     this.#writeSelectionBuffer()
-    
+
     if (notify && this.onSelectionChange) {
-        this.onSelectionChange([...this.#selectedObjectIds])
+        this.onSelectionChange(this.selectedObjectIds)
     }
 }
 ```

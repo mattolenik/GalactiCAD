@@ -30,16 +30,10 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 }
 
 fn isSelected(id: u32) -> bool {
-    if (id == 0xFFFFFFFFu) {
+    if (id >= 1024u) {
         return false;
     }
-    let count = selectedObjectIds[0];
-    for (var i: u32 = 1u; i <= count && i < 1024u; i = i + 1u) {
-        if (id == selectedObjectIds[i]) {
-            return true;
-        }
-    }
-    return false;
+    return selectedObjectIds[id] != 0u;
 }
 
 @fragment
@@ -47,12 +41,8 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
     let coords = vec2i(fragPos.xy);
     let color = textureLoad(colorTex, coords, 0);
 
-    // Early out: if outline disabled or nothing is selected, pass through
+    // Early out: if outline disabled, pass through
     if (outlineSettings.mode == 0u) {
-        return color;
-    }
-    let selectedCount = selectedObjectIds[0];
-    if (selectedCount == 0u) {
         return color;
     }
 

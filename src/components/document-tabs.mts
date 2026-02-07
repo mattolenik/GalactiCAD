@@ -362,6 +362,6 @@ function scene() {
     return union(1,
     box('2 -4 4', '20 3 3'),
     box('0  5 4', '20 3 3'),
-    subtract(0.5, box('0 0 0', '10 15 8'), sphere('0 0 -10', { r: 6 })),
+    subtract(0.5, box('0 0 0', '10 15 8'), sphere('0 0 -10', { r: 6 })))
 }
 `

@@ -74,9 +74,7 @@ fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: only (d, g), no normals/IDs
-        // Use g only to reduce step size when needed.
-        // Note: g never exceeds 1.0 in current operators, so this is dead code but kept branchless
-        let step = select(sr.x, sr.x / sr.y, sr.y > 1.0);  // .x = d, .y = g
+        let step = sr.x;
         if (sr.x < SURF_DIST) {
             // Only refine hit when needed: large step (CSG seam) or blend region (g < 1)
             if (lastStep > SURF_DIST * 10.0 || sr.y < 1.0) {
@@ -142,9 +140,7 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
         let sr = sceneSDF_fast(p);  // Fast: only (d, g)
         
         // We're inside, so distance is negative. March by abs(d).
-        // Note: g never exceeds 1.0 in current operators, so this is dead code but kept branchless
-        let stepRaw = abs(sr.x);    // .x = d
-        let step = max(select(stepRaw, stepRaw / sr.y, sr.y > 1.0), 0.1);  // .y = g
+        let step = max(abs(sr.x), 0.1);
         
         // Found an exit surface (going from inside to outside)
         if (sr.x > SURF_DIST) {
@@ -197,14 +193,13 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     let uv = fragCoord;
     let aspect = camera.res.x / camera.res.y;
 
-    let rayDir = vec3f(0.0, 0.0, -1.0);
     // Apply aspect correction about the center so the view stays centered.
     let uvAspect = vec2f((uv.x - 0.5) * aspect + 0.5, uv.y);
     let rayOrigin = computeRayOrigin(uvAspect, camera.position);
 
     // Transform the ray from camera space into scene space
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
-    let transformedDir = normalize((camera.transform * vec4f(rayDir, 0.0)).xyz);
+    let transformedDir = -camera.transform[2].xyz;
 
     // Use standard raymarching
     let hit = raymarch(transformedOrigin, transformedDir);

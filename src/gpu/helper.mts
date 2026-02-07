@@ -1,6 +1,5 @@
-export class GPUHelper implements Disposable {
+export class GPUHelper {
     readonly device: GPUDevice
-    #buffers: GPUBuffer[] = []
 
     private constructor(device: GPUDevice) {
         this.device = device
@@ -35,7 +34,6 @@ export class GPUHelper implements Disposable {
             size,
             usage,
         })
-        this.#buffers.push(buffer)
         return buffer
     }
 
@@ -109,16 +107,5 @@ export class GPUHelper implements Disposable {
         readbackBuffer.unmap()
         readbackBuffer.destroy()
         return data
-    }
-
-    destroyAllBuffers() {
-        for (const buffer of this.#buffers) {
-            buffer.destroy()
-        }
-        this.#buffers = []
-    }
-
-    [Symbol.dispose](): void {
-        this.destroyAllBuffers()
     }
 }

@@ -12,6 +12,7 @@ struct OutlineSettings {
     thickness: f32,
     color: vec3f,
 }
+
 @group(0) @binding(3) var<uniform> outlineSettings: OutlineSettings;
 
 struct VertexOutput {

@@ -1,6 +1,12 @@
 import type { Plugin, PluginBuild } from "esbuild"
 import fs from "fs/promises"
 import * as path from "path"
+import { create, globals } from 'webgpu'
+
+Object.assign(globalThis, globals)
+const navigator = { gpu: create(["backend=null"]) }
+const pluginName = "wgsl-loader"
+
 
 // esbuild plugin for loading WGSL files
 //
@@ -13,20 +19,51 @@ import * as path from "path"
 // * Supports recursive include in the form of `//:) include "path/to/file.wgsl"`
 //                                       or of `//:)include "path/to/file.wgsl"`
 //
-export default function wgslLoader(extensions = ["wgsl"]): Plugin {
+export default async function wgslLoader(extensions = ["wgsl"]): Promise<Plugin> {
     if (extensions.length === 0) {
         throw new Error("must specify at least one file extension for WGSL shaders")
     }
     var extsPattern = extensions.map(e => `(${e})`).join("|")
     const pattern = new RegExp(`\.${extsPattern}$`, "")
+
+    const adapter = await navigator.gpu.requestAdapter()
+    const device = await adapter!.requestDevice()
+
     return {
-        name: "wgsl-loader",
-        setup(build: PluginBuild) {
-            build.onLoad({ filter: pattern, namespace: "file" }, async args => {
-                const contents = await load(args.path)
-                return { contents, loader: "text" }
+        name: pluginName,
+        setup: async (build: PluginBuild) => {
+
+            build.onDispose(async () => {
+                device.destroy()
             })
-        },
+
+            build.onLoad({ filter: pattern, namespace: "file" }, async args => {
+                const source = await load(args.path)
+                if (!source) {
+                    throw new Error(`[${pluginName}] Failed to load shader at "${args.path}"`)
+                }
+                const code = source.join("\n")
+                const results = device.createShaderModule({ code: code })
+                const info = await results.getCompilationInfo()
+
+                const formatMessage = (m: GPUCompilationMessage) => {
+                    return {
+                        text: m.message,
+                        location: {
+                            file: args.path,
+                            line: m.lineNum,
+                            column: m.linePos - 1,
+                            lineText: source[m.lineNum - 1],
+                            length: m.length
+                        }
+                    }
+                }
+                const errors = info.messages.filter(m => m.type === "error").map(m => formatMessage(m))
+                const warnings = info.messages.filter(m => m.type === "warning").map(m => formatMessage(m))
+
+                return { pluginName: pluginName, contents: code, loader: "text", errors: errors, warnings: warnings }
+            })
+        }
     }
 }
 
@@ -38,11 +75,11 @@ export default function wgslLoader(extensions = ["wgsl"]): Plugin {
  * @param visited The paths already visited
  * @returns The file text with any #include statements inlined.
  */
-async function load(filePath: string, visited = new Set<string>()): Promise<string | undefined> {
+async function load(filePath: string, visited = new Set<string>()): Promise<string[]> {
     const absPath = path.resolve(filePath)
 
     if (visited.has(absPath)) {
-        return undefined
+        return []
     }
     visited.add(absPath)
 
@@ -57,7 +94,7 @@ async function load(filePath: string, visited = new Set<string>()): Promise<stri
     const dirOfFile = path.dirname(absPath)
 
     const lines = content.split(/\r?\n/)
-    let result = ""
+    let result: string[] = []
 
     // Matches the style of:  //:) include "file.ext"
     const pattern = /^\/\/:\)\s*include\s+"([^"]+)"\s*$/
@@ -70,10 +107,10 @@ async function load(filePath: string, visited = new Set<string>()): Promise<stri
 
             // Recursively load and inline
             const nestedContent = await load(nestedFile, visited)
-            result += nestedContent + "\n"
+            result.push(...nestedContent)
         } else {
             // Ordinary line, just copy it
-            result += line + "\n"
+            result.push(line)
         }
     }
 

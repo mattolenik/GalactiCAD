@@ -309,11 +309,6 @@ export class CameraController {
         if (rotationStr) {
             const [w, x, y, z] = rotationStr.split(",").map(Number)
             this.#rotation = new Quaternion(w, x, y, z).normalize()
-        } else {
-            // Backward compatibility: load old Euler angles and convert to quaternion
-            const sceneRotX = this.#ls.getFloat(this.storageKey("sceneRotX")) ?? Math.PI / 2
-            const sceneRotY = this.#ls.getFloat(this.storageKey("sceneRotY")) ?? Math.PI / 2
-            this.#rotation = Quaternion.fromEuler(sceneRotX, sceneRotY, 0, "YXZ")
         }
         this.#updateTransforms()
     }

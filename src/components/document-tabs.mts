@@ -358,140 +358,80 @@ export class DocumentTabs extends HTMLElement {
 customElements.define("document-tabs", DocumentTabs)
 
 const defaultContent = `
-// Dieselpunk Battle Mech
-// A hulking war machine bristling with weapons and pipes
+// Passenger Car Model
+// A simple sedan built from SDF primitives
 
 function scene() {
-   // === TORSO - THE CORE ===
-   // Main chest housing
-   const chestCore = box([0, 0, 40], [24, 30, 22])
-   const chestBulge = sphere([0, 0, 44], { r: 18 })
-   const chest = union(6, chestCore, chestBulge)
+   // === CAR BODY ===
+   // Main body - lower chassis/body
+   const body = box([0, 0, 3], [40, 16, 6])
 
-   // Armored collar
-   const collarR = sphere([0, 16, 52], { r: 8 })
-   const collarL = sphere([0, -16, 52], { r: 8 })
-   const collarFront = sphere([10, 0, 52], { r: 7 })
-   const collar = union(4, collarR, collarL, collarFront)
+   // Cabin/roof - upper portion with windows
+   const cabin = box([2, 0, 8], [24, 14, 5])
 
-   // Reactor exhaust vents on back
-   const ventR = sphere([-14, 10, 48], { r: 5 })
-   const ventL = sphere([-14, -10, 48], { r: 5 })
-   const ventTop = sphere([-14, 0, 52], { r: 6 })
-   const vents = union(2, ventR, ventL, ventTop)
+   // Hood slopes down slightly at front - add a box that gets subtracted
+   const hoodCut = box([18, 0, 8], [10, 18, 6])
 
-   // === HEAD - COCKPIT POD ===
-   const headCore = sphere([4, 0, 62], { r: 10 })
-   const visor = box([10, 0, 60], [6, 14, 4])
-   const headCrest = sphere([0, 0, 72], { r: 5 })
-   const antenna1 = sphere([-4, 6, 70], { r: 2 })
-   const antenna2 = sphere([-4, -6, 70], { r: 2 })
-   const head = union(3, headCore, visor, headCrest, antenna1, antenna2)
+   // Trunk slopes down at rear
+   const trunkCut = box([-16, 0, 8], [8, 18, 6])
 
-   // === SHOULDERS - WEAPON MOUNTS ===
-   // Right shoulder pod
-   const shoulderR = sphere([0, 26, 50], { r: 12 })
-   const shoulderPadR = box([0, 30, 52], [10, 8, 10])
-   const rocketPodR = box([0, 36, 54], [8, 6, 14])
-   const rightShoulder = union(4, shoulderR, shoulderPadR, rocketPodR)
+   // Combine body and cabin with smooth blend
+   const bodyWithCabin = union(2, body, cabin)
 
-   // Left shoulder pod
-   const shoulderL = sphere([0, -26, 50], { r: 12 })
-   const shoulderPadL = box([0, -30, 52], [10, 8, 10])
-   const rocketPodL = box([0, -36, 54], [8, 6, 14])
-   const leftShoulder = union(4, shoulderL, shoulderPadL, rocketPodL)
+   // Cut the hood and trunk angles
+   const sculptedBody = subtract(1, bodyWithCabin, hoodCut, trunkCut)
 
-   // === RIGHT ARM - GATLING GUN ===
-   const upperArmR = box([0, 32, 38], [8, 8, 16])
-   const elbowR = sphere([0, 34, 28], { r: 6 })
-   const forearmR = box([4, 34, 18], [6, 6, 14])
-   const gatlingHousing = sphere([8, 34, 8], { r: 7 })
-   const gatlingBarrel = box([18, 34, 8], [16, 4, 4])
-   const rightArm = union(3, upperArmR, elbowR, forearmR, gatlingHousing, gatlingBarrel)
+   // === WHEEL WELLS ===
+   // Carve out wheel wells to give wheels depth
+   const wheelWellFR = sphere([12, 9, 2], { r: 5 })   // front-right
+   const wheelWellFL = sphere([12, -9, 2], { r: 5 })  // front-left
+   const wheelWellRR = sphere([-12, 9, 2], { r: 5 })  // rear-right
+   const wheelWellRL = sphere([-12, -9, 2], { r: 5 }) // rear-left
 
-   // === LEFT ARM - CLAW ===
-   const upperArmL = box([0, -32, 38], [8, 8, 16])
-   const elbowL = sphere([0, -34, 28], { r: 6 })
-   const forearmL = box([4, -34, 18], [6, 6, 14])
-   const clawBase = sphere([8, -34, 8], { r: 6 })
-   const clawTop = sphere([16, -30, 6], { r: 4 })
-   const clawBot = sphere([16, -38, 6], { r: 4 })
-   const leftArm = union(3, upperArmL, elbowL, forearmL, clawBase, clawTop, clawBot)
+   const bodyWithWells = subtract(0.5,
+      sculptedBody,
+      wheelWellFR, wheelWellFL, wheelWellRR, wheelWellRL
+   )
 
-   // === HIP ASSEMBLY ===
-   const hipCore = box([0, 0, 24], [18, 26, 10])
-   const hipBulge = sphere([0, 0, 24], { r: 14 })
-   const hips = union(5, hipCore, hipBulge)
+   // === WINDOWS ===
+   // Side windows - carved into the cabin
+   const windowRight = box([2, 8, 8], [20, 2, 3])
+   const windowLeft = box([2, -8, 8], [20, 2, 3])
 
-   // Hip armor plates
-   const hipPlateR = sphere([6, 18, 24], { r: 7 })
-   const hipPlateL = sphere([6, -18, 24], { r: 7 })
+   // Windshield (front) and rear window
+   const windshield = box([14, 0, 8], [2, 12, 3])
+   const rearWindow = box([-10, 0, 8], [2, 12, 3])
 
-   // === LEGS - DIGITIGRADE STYLE ===
-   // Right leg
-   const thighR = box([0, 14, 14], [8, 8, 14])
-   const kneeR = sphere([4, 14, 6], { r: 6 })
-   const shinR = box([8, 14, -4], [6, 6, 16])
-   const ankleR = sphere([6, 14, -14], { r: 5 })
-   const footR = box([10, 14, -18], [12, 8, 4])
-   const toeR = sphere([18, 14, -18], { r: 4 })
-   const rightLeg = union(3, thighR, kneeR, shinR, ankleR, footR, toeR)
+   // Carve windows into body
+   const bodyWithWindows = subtract(0.3,
+      bodyWithWells,
+      windowRight, windowLeft, windshield, rearWindow
+   )
 
-   // Left leg
-   const thighL = box([0, -14, 14], [8, 8, 14])
-   const kneeL = sphere([4, -14, 6], { r: 6 })
-   const shinL = box([8, -14, -4], [6, 6, 16])
-   const ankleL = sphere([6, -14, -14], { r: 5 })
-   const footL = box([10, -14, -18], [12, 8, 4])
-   const toeL = sphere([18, -14, -18], { r: 4 })
-   const leftLeg = union(3, thighL, kneeL, shinL, ankleL, footL, toeL)
+   // === WHEELS ===
+   // Four wheels positioned at corners
+   const wheelFR = sphere([12, 10, 0], { r: 4 })   // front-right
+   const wheelFL = sphere([12, -10, 0], { r: 4 })  // front-left
+   const wheelRR = sphere([-12, 10, 0], { r: 4 })  // rear-right
+   const wheelRL = sphere([-12, -10, 0], { r: 4 }) // rear-left
 
-   // === BACK MOUNTED SYSTEMS ===
-   // Reactor core
-   const reactor = sphere([-16, 0, 42], { r: 10 })
-   const reactorCasing = box([-18, 0, 42], [8, 14, 14])
-   const reactorUnit = union(4, reactor, reactorCasing)
+   // Combine wheels
+   const wheels = union(wheelFR, wheelFL, wheelRR, wheelRL)
 
-   // Smoke stacks
-   const stack1 = box([-20, 8, 56], [4, 4, 16])
-   const stackTop1 = sphere([-20, 8, 66], { r: 4 })
-   const stack2 = box([-20, -8, 56], [4, 4, 16])
-   const stackTop2 = sphere([-20, -8, 66], { r: 4 })
-   const stacks = union(2, stack1, stackTop1, stack2, stackTop2)
+   // === HEADLIGHTS & TAILLIGHTS ===
+   // Headlights (front spheres)
+   const headlightR = sphere([20, 5, 4], { r: 1.5 })
+   const headlightL = sphere([20, -5, 4], { r: 1.5 })
 
-   // Fuel tanks
-   const tankR = sphere([-12, 20, 38], { r: 6 })
-   const tankL = sphere([-12, -20, 38], { r: 6 })
-   const tanks = union(tankR, tankL)
+   // Taillights (rear spheres)
+   const taillightR = sphere([-20, 5, 4], { r: 1.2 })
+   const taillightL = sphere([-20, -5, 4], { r: 1.2 })
 
-   // === DECORATIVE RIVETS & DETAILS ===
-   const rivet1 = sphere([14, 12, 44], { r: 2 })
-   const rivet2 = sphere([14, -12, 44], { r: 2 })
-   const rivet3 = sphere([14, 0, 50], { r: 2 })
-   const rivet4 = sphere([12, 8, 36], { r: 1.5 })
-   const rivet5 = sphere([12, -8, 36], { r: 1.5 })
-   const rivets = union(rivet1, rivet2, rivet3, rivet4, rivet5)
+   const lights = union(headlightR, headlightL, taillightR, taillightL)
 
-   // Chest searchlight
-   const searchlight = sphere([16, 0, 42], { r: 4 })
-
-   // === ASSEMBLY ===
-   // Upper body
-   const torso = union(4, chest, collar, vents, head)
-   const arms = union(2, rightShoulder, leftShoulder, rightArm, leftArm)
-   const upperBody = union(3, torso, arms)
-
-   // Lower body
-   const lowerBody = union(3, hips, hipPlateR, hipPlateL, rightLeg, leftLeg)
-
-   // Back systems
-   const backpack = union(3, reactorUnit, stacks, tanks)
-
-   // Details
-   const details = union(1, rivets, searchlight)
-
-   // Final mech
-   return union(4, upperBody, lowerBody, backpack, details)
+   // === FINAL ASSEMBLY ===
+   // Union the body, wheels, and lights together
+   return union(0.5, bodyWithWindows, wheels, lights)
 }
 
 `

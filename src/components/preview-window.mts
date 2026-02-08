@@ -9,15 +9,29 @@ export class PreviewWindow extends HTMLElement {
     #showFps: boolean
     #xrayCheckbox: HTMLInputElement
     #xrayMode: boolean = false
+    #cameraOptCheckbox: HTMLInputElement
+    #cameraOptimization: boolean = true
 
     /** Callback when xray mode changes */
     onXrayModeChange?: (enabled: boolean) => void
+
+    /** Callback when camera optimization changes */
+    onCameraOptimizationChange?: (enabled: boolean) => void
 
     /** Callback when benchmark button is clicked */
     onBenchmark?: () => void | Promise<void>
 
     get xrayMode(): boolean {
         return this.#xrayMode
+    }
+
+    get cameraOptimization(): boolean {
+        return this.#cameraOptimization
+    }
+
+    set cameraOptimization(enabled: boolean) {
+        this.#cameraOptimization = enabled
+        this.#cameraOptCheckbox.checked = enabled
     }
 
     constructor() {
@@ -116,6 +130,17 @@ export class PreviewWindow extends HTMLElement {
         })
         xrayLabel.append(this.#xrayCheckbox, "X-ray")
         controls.appendChild(xrayLabel)
+
+        const cameraOptLabel = document.createElement("label")
+        this.#cameraOptCheckbox = document.createElement("input")
+        this.#cameraOptCheckbox.type = "checkbox"
+        this.#cameraOptCheckbox.checked = this.#cameraOptimization
+        this.#cameraOptCheckbox.addEventListener("change", () => {
+            this.#cameraOptimization = this.#cameraOptCheckbox.checked
+            this.onCameraOptimizationChange?.(this.#cameraOptimization)
+        })
+        cameraOptLabel.append(this.#cameraOptCheckbox, "Camera optimization")
+        controls.appendChild(cameraOptLabel)
 
         const benchmarkButton = document.createElement("button")
         benchmarkButton.textContent = "Benchmark"

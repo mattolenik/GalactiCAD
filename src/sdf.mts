@@ -1,4 +1,5 @@
 import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
+import { LocalStorage } from "./storage/storage.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
@@ -89,6 +90,16 @@ export class SDFRenderer {
     #tStartTexture!: GPUTexture
     #tStartTextureView!: GPUTextureView
 
+    // Resolution scaling: render at reduced res during camera movement for responsiveness
+    #ls: LocalStorage = LocalStorage.instance
+    #fullWidth: number = 0
+    #fullHeight: number = 0
+    #resolutionScale: number = 1.0
+    #movementScale: number = 0.5
+    #cameraOptimization: boolean = true
+    #movementTimer: ReturnType<typeof setTimeout> | null = null
+    #movementSettleMs: number = 150 // ms of inactivity before restoring full resolution
+
     /**
      * Callback invoked when object selection changes
      * Provides the array of currently selected object IDs
@@ -151,6 +162,36 @@ export class SDFRenderer {
 
     get outlineColor(): [number, number, number] {
         return [...this.#outlineColor] as [number, number, number]
+    }
+
+    /** Resolution scale used during camera movement (0.25–1.0). Lower = faster interaction. */
+    set movementScale(scale: number) {
+        this.#movementScale = Math.max(0.25, Math.min(1.0, scale))
+        this.#ls.setFloat("preview:movementScale", this.#movementScale)
+    }
+
+    get movementScale(): number {
+        return this.#movementScale
+    }
+
+    /** Whether resolution scaling during camera movement is enabled. */
+    set cameraOptimization(enabled: boolean) {
+        this.#cameraOptimization = enabled
+        this.#ls.setFloat("preview:cameraOptimization", enabled ? 1 : 0)
+        // If disabling while at reduced resolution, restore full res immediately
+        if (!enabled && this.#resolutionScale !== 1.0) {
+            if (this.#movementTimer !== null) {
+                clearTimeout(this.#movementTimer)
+                this.#movementTimer = null
+            }
+            this.#resolutionScale = 1.0
+            this.#applyResolutionScale()
+            this.#needsRender = true
+        }
+    }
+
+    get cameraOptimization(): boolean {
+        return this.#cameraOptimization
     }
 
     /**
@@ -276,7 +317,13 @@ export class SDFRenderer {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement)
         this.#controls.onSelect = (screenPos: Vec2f, shiftKey: boolean) => this.#handleClick(screenPos, shiftKey)
-        this.#controls.onChange = () => { this.#needsRender = true }
+        this.#controls.onChange = () => {
+            this.#needsRender = true
+            this.#onCameraMovement()
+        }
+        this.#movementScale = this.#ls.getFloat("preview:movementScale") ?? 0.5
+        const savedCameraOpt = this.#ls.getFloat("preview:cameraOptimization")
+        this.#cameraOptimization = savedCameraOpt !== undefined ? savedCameraOpt !== 0 : true
         this.#uniformBuffers = new UniformBuffers()
         this.#exportBuffers = new ExportBuffers()
         this.#initializing = this.initialize()
@@ -288,6 +335,12 @@ export class SDFRenderer {
             this.#needsRender = true
         }
 
+        // Wire up camera optimization toggle
+        preview.cameraOptimization = this.#cameraOptimization
+        preview.onCameraOptimizationChange = (enabled: boolean) => {
+            this.cameraOptimization = enabled
+        }
+
         const observer = new ResizeObserver(entries => {
             requestAnimationFrame(() => {
                 for (const entry of entries) {
@@ -297,9 +350,9 @@ export class SDFRenderer {
                     const h =
                         entry.devicePixelContentBoxSize?.[0].blockSize ??
                         Math.max(1, Math.round(entry.contentRect.height * devicePixelRatio))
-                    this.#preview.canvas.width = w
-                    this.#preview.canvas.height = h
-                    this.#cameraRes = vec2(w, h)
+                    this.#fullWidth = w
+                    this.#fullHeight = h
+                    this.#applyResolutionScale()
                     this.#needsRender = true
                 }
             })
@@ -728,6 +781,44 @@ export class SDFRenderer {
     /** Request a re-render (e.g., after scene change) */
     requestRender(): void {
         this.#needsRender = true
+    }
+
+    /**
+     * Called when the camera moves (rotate, pan, zoom).
+     * Drops to half resolution immediately for responsiveness,
+     * then restores full resolution after movement settles.
+     */
+    #onCameraMovement(): void {
+        if (!this.#cameraOptimization) return
+
+        // Drop to reduced resolution on first movement
+        if (this.#resolutionScale === 1.0) {
+            this.#resolutionScale = this.#movementScale
+            this.#applyResolutionScale()
+        }
+
+        // Reset the settle timer
+        if (this.#movementTimer !== null) {
+            clearTimeout(this.#movementTimer)
+        }
+        this.#movementTimer = setTimeout(() => {
+            this.#movementTimer = null
+            this.#resolutionScale = 1.0
+            this.#applyResolutionScale()
+            this.#needsRender = true
+        }, this.#movementSettleMs)
+    }
+
+    /**
+     * Applies the current resolution scale to canvas dimensions and camera resolution.
+     */
+    #applyResolutionScale(): void {
+        if (this.#fullWidth === 0 || this.#fullHeight === 0) return
+        const w = Math.max(1, Math.round(this.#fullWidth * this.#resolutionScale))
+        const h = Math.max(1, Math.round(this.#fullHeight * this.#resolutionScale))
+        this.#preview.canvas.width = w
+        this.#preview.canvas.height = h
+        this.#cameraRes = vec2(w, h)
     }
 
     /**

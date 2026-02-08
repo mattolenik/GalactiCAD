@@ -108,9 +108,9 @@ fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
 
 fn lighting(normalScene: vec3f) -> f32 {
     // Light directions are pre-transformed on the CPU and passed via the camera uniform.
-    let key  = 0.45 * max(dot(normalScene, camera.lightDir1), 0.0);
-    let fill = 0.25 * max(dot(normalScene, camera.lightDir2), 0.0);
-    let rim  = 0.15 * max(dot(normalScene, camera.lightDir3), 0.0);
+    let key  = 0.45 * dot(normalScene, camera.lightDir1);
+    let fill = 0.25 * dot(normalScene, camera.lightDir2);
+    let rim  = 0.15 * dot(normalScene, camera.lightDir3);
 
     return clamp(0.15 + key + fill + rim, 0.0, 1.2);
 }

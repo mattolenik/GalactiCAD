@@ -6,6 +6,7 @@ import { MDCParams, MDCExport } from "./export/mdc.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
+import beamShader from "./shaders/beam.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import outlineShader from "./shaders/outline.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
@@ -81,6 +82,12 @@ export class SDFRenderer {
     #outlineShaderModule!: GPUShaderModule
     #renderTextureWidth: number = 0
     #renderTextureHeight: number = 0
+    // Beam optimization: tile-based SDF pre-pass
+    #beamShader!: GPUShaderModule
+    #beamPipeline!: GPUComputePipeline
+    #beamBindGroup!: GPUBindGroup
+    #tStartTexture!: GPUTexture
+    #tStartTextureView!: GPUTextureView
 
     /**
      * Callback invoked when object selection changes
@@ -316,8 +323,12 @@ export class SDFRenderer {
         this.#sceneShader = this.#shaderCompiler.compile(previewShader, "Preview Window")
         this.#exportShader = this.#shaderCompiler.compile(exportShader, "Export")
         this.#boundsShader = this.#shaderCompiler.compile(boundsShader, "Bounds (scene bbox)")
-        // console.log(this.#exportShader.text)
+        this.#beamShader = this.#shaderCompiler.compile(beamShader, "Beam Pre-Pass")
         this.#buildPreviewPipeline()
+        this.#buildBeamPipeline()
+        // Force render texture recreation so bind groups are rebuilt with new pipelines
+        this.#renderTextureWidth = 0
+        this.#renderTextureHeight = 0
         this.#needsRender = true
 
         // this.#scene.root.updateScene((index, data) => {
@@ -462,9 +473,15 @@ export class SDFRenderer {
     }
 
     #ensureRenderTextures(width: number, height: number) {
+        // Skip if dimensions haven't changed
+        if (width === this.#renderTextureWidth && height === this.#renderTextureHeight) {
+            return
+        }
+
         // Destroy old textures if they exist
         if (this.#colorTexture) this.#colorTexture.destroy()
         if (this.#idTexture) this.#idTexture.destroy()
+        if (this.#tStartTexture) this.#tStartTexture.destroy()
 
         this.#colorTexture = this.#device.createTexture({
             label: "Preview Color (offscreen)",
@@ -481,6 +498,18 @@ export class SDFRenderer {
         this.#colorTextureView = this.#colorTexture.createView()
         this.#idTextureView = this.#idTexture.createView()
 
+        // Beam optimization: create low-res t_start texture (one texel per 8x8 tile)
+        const BEAM_TILE_SIZE = 8
+        const tilesX = Math.ceil(width / BEAM_TILE_SIZE)
+        const tilesY = Math.ceil(height / BEAM_TILE_SIZE)
+        this.#tStartTexture = this.#device.createTexture({
+            label: "Beam t_start (tile resolution)",
+            size: [tilesX, tilesY],
+            format: "r32float",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        })
+        this.#tStartTextureView = this.#tStartTexture.createView()
+
         // Recreate outline bind group with new texture views
         this.#outlineBindGroup = this.#device.createBindGroup({
             label: "outlinePostProcess",
@@ -492,6 +521,36 @@ export class SDFRenderer {
                 { binding: 3, resource: { buffer: this.#uniformBuffers.outlineSettings } },
             ],
         })
+
+        // Recreate beam bind group with new t_start texture
+        if (this.#beamPipeline) {
+            this.#beamBindGroup = this.#device.createBindGroup({
+                label: "beamPrePass",
+                layout: this.#beamPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
+                    { binding: 1, resource: this.#tStartTextureView },
+                ],
+            })
+        }
+
+        // Recreate preview bind group (references the t_start texture)
+        if (this.#pipeline) {
+            this.#bindGroup = this.#device.createBindGroup({
+                label: "scenePreview",
+                layout: this.#pipeline.getBindGroupLayout(0),
+                entries: [
+                    // { binding: 0, resource: { buffer: this.#uniformBuffers.scene } },
+                    { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                    { binding: 2, resource: { buffer: this.#uniformBuffers.clickState } },
+                    { binding: 3, resource: { buffer: this.#uniformBuffers.clickedObjectId } },
+                    { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
+                    { binding: 5, resource: { buffer: this.#uniformBuffers.colorPalette } },
+                    { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
+                    { binding: 7, resource: this.#tStartTextureView },
+                ],
+            })
+        }
 
         this.#renderTextureWidth = width
         this.#renderTextureHeight = height
@@ -519,18 +578,18 @@ export class SDFRenderer {
                 stripIndexFormat: "uint32",
             },
         })
-        this.#bindGroup = this.#device.createBindGroup({
-            label: "scenePreview",
-            layout: this.#pipeline.getBindGroupLayout(0),
-            entries: [
-                // { binding: 0, resource: { buffer: this.#uniformBuffers.scene } },
-                { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
-                { binding: 2, resource: { buffer: this.#uniformBuffers.clickState } },
-                { binding: 3, resource: { buffer: this.#uniformBuffers.clickedObjectId } },
-                { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
-                { binding: 5, resource: { buffer: this.#uniformBuffers.colorPalette } },
-                { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
-            ],
+        // Note: preview bind group is created in #ensureRenderTextures() because
+        // it references the beam t_start texture which depends on canvas dimensions.
+    }
+
+    #buildBeamPipeline() {
+        this.#beamPipeline = this.#device.createComputePipeline({
+            label: "Beam Pre-Pass Pipeline",
+            layout: "auto",
+            compute: {
+                module: this.#beamShader,
+                entryPoint: "beamMarch",
+            },
         })
     }
 
@@ -573,6 +632,22 @@ export class SDFRenderer {
         this.#ensureRenderTextures(canvasTexture.width, canvasTexture.height)
 
         const commandEncoder = this.#device.createCommandEncoder()
+
+        // Pass 0: Beam pre-pass - march one ray per 8x8 tile through empty space
+        if (this.#beamPipeline && this.#beamBindGroup) {
+            const BEAM_TILE_SIZE = 8
+            const tilesX = Math.ceil(canvasTexture.width / BEAM_TILE_SIZE)
+            const tilesY = Math.ceil(canvasTexture.height / BEAM_TILE_SIZE)
+            const beamPass = commandEncoder.beginComputePass({ label: "Beam Pre-Pass" })
+            beamPass.setPipeline(this.#beamPipeline)
+            beamPass.setBindGroup(0, this.#beamBindGroup)
+            // Workgroup size is (8,8), so dispatch ceil(tilesX/8) x ceil(tilesY/8)
+            beamPass.dispatchWorkgroups(
+                Math.ceil(tilesX / 8),
+                Math.ceil(tilesY / 8)
+            )
+            beamPass.end()
+        }
 
         // Pass 1: Render scene to offscreen color + object ID textures (MRT)
         const scenePass = commandEncoder.beginRenderPass({

@@ -40,6 +40,10 @@ struct ViewSettings {
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
+// Beam optimization: low-res texture with per-tile starting-t from beam pre-pass
+const BEAM_TILE_SIZE: i32 = 8;
+@group(0) @binding(7) var tStartTex: texture_2d<f32>;
+
 // Fragment output: color and object ID for MRT outline detection
 struct FragmentOutput {
     @location(0) color: vec4f,
@@ -68,8 +72,8 @@ struct RaymarchHit {
     sdf: SDFResult,  // SDF result at hit point (includes normal)
 }
 
-fn raymarch(origin: vec3f, dir: vec3f) -> RaymarchHit {
-    var t: f32 = 0.001;
+fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> RaymarchHit {
+    var t: f32 = t_start;
     var lastStep: f32 = 0.0;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
@@ -201,8 +205,12 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
     let transformedDir = -camera.transform[2].xyz;
 
-    // Use standard raymarching
-    let hit = raymarch(transformedOrigin, transformedDir);
+    // Read beam pre-pass starting distance for this tile
+    let tileCoord = vec2i(uv * camera.res) / BEAM_TILE_SIZE;
+    let t_start = textureLoad(tStartTex, tileCoord, 0).x;
+
+    // Use standard raymarching, starting from beam distance
+    let hit = raymarch(transformedOrigin, transformedDir, t_start);
 
     // Click detection using pixel-accurate matching
     if (clickState.enabled > 0u && hit.t > 0.0) {

@@ -15,6 +15,7 @@ struct OutlineSettings {
     mode: u32,
     thickness: f32,
     color: vec3f,
+    canvasWidth: f32,
 }
 
 @group(0) @binding(3) var<uniform> outlineSettings: OutlineSettings;
@@ -65,9 +66,11 @@ fn fragmentMain(@builtin(position) fragPos: vec4f, @location(0) uv: vec2f) -> @l
 
     // Check neighbors within thickness radius for a selection boundary.
     // Uses a filled circle pattern; radius capped at 8px for performance.
-    // Neighbor search operates in ID-texture space (outlines may appear slightly
-    // thicker during reduced-resolution camera movement, which is acceptable).
-    let t = min(i32(outlineSettings.thickness), 8);
+    // Thickness is specified in screen pixels. Scale to ID-texture pixels so
+    // outlines stay the same visual width when the ID texture is at lower
+    // resolution during camera movement.
+    let scaleRatio = f32(idDims.x) / outlineSettings.canvasWidth;
+    let t = min(max(i32(round(outlineSettings.thickness * scaleRatio)), 1), 8);
     let t2 = t * t;
     var isOutline = false;
 

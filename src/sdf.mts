@@ -410,9 +410,7 @@ export class SDFRenderer {
         })
         this.#createBuffers()
 
-        // Create sampler for upscaling scene textures in the outline pass.
-        // When scene resolution < canvas resolution (during camera movement),
-        // hardware bilinear interpolation smoothly fills the output pixels.
+        // Sampler for bilinear upscaling of the scene color texture in the outline pass.
         this.#colorSampler = this.#device.createSampler({
             magFilter: "linear",
             minFilter: "linear",
@@ -536,6 +534,10 @@ export class SDFRenderer {
         })
     }
 
+    /**
+     * Ensure scene-resolution textures (color, ID, beam t_start) exist at the given size.
+     * Called each frame with scene dimensions (which may be lower during camera movement).
+     */
     #ensureRenderTextures(width: number, height: number) {
         // Skip if dimensions haven't changed
         if (width === this.#renderTextureWidth && height === this.#renderTextureHeight) {
@@ -689,11 +691,12 @@ export class SDFRenderer {
         // Write view settings (xray mode)
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([this.#xrayMode ? 1 : 0]))
 
-        // Write outline settings (mode + thickness + color)
+        // Write outline settings (mode + thickness + color + canvasWidth)
         const outlineData = new ArrayBuffer(32)
         new Uint32Array(outlineData, 0, 1).set([OUTLINE_MODE_VALUES[this.#outlineMode]])
         new Float32Array(outlineData, 4, 1).set([this.#outlineThickness])
         new Float32Array(outlineData, 16, 3).set(this.#outlineColor)
+        new Float32Array(outlineData, 28, 1).set([this.#fullWidth])
         this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, outlineData)
 
         const canvasTexture = this.#context.getCurrentTexture()
@@ -711,7 +714,6 @@ export class SDFRenderer {
             const beamPass = commandEncoder.beginComputePass({ label: "Beam Pre-Pass" })
             beamPass.setPipeline(this.#beamPipeline)
             beamPass.setBindGroup(0, this.#beamBindGroup)
-            // Workgroup size is (8,8), so dispatch ceil(tilesX/8) x ceil(tilesY/8)
             beamPass.dispatchWorkgroups(
                 Math.ceil(tilesX / 8),
                 Math.ceil(tilesY / 8)
@@ -719,7 +721,7 @@ export class SDFRenderer {
             beamPass.end()
         }
 
-        // Pass 1: Render scene to offscreen color + object ID textures (MRT)
+        // Pass 1: Render scene to offscreen color + object ID textures (MRT, scene resolution)
         const scenePass = commandEncoder.beginRenderPass({
             colorAttachments: [
                 {
@@ -742,13 +744,11 @@ export class SDFRenderer {
 
         // Pass 2: Outline post-process, compositing dark outline at selection boundaries
         const outlinePass = commandEncoder.beginRenderPass({
-            colorAttachments: [
-                {
-                    view: canvasTexture.createView(),
-                    loadOp: "clear",
-                    storeOp: "store",
-                },
-            ],
+            colorAttachments: [{
+                view: canvasTexture.createView(),
+                loadOp: "clear",
+                storeOp: "store",
+            }],
         })
         outlinePass.setPipeline(this.#outlinePipeline)
         outlinePass.setBindGroup(0, this.#outlineBindGroup)

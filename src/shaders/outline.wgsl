@@ -1,6 +1,10 @@
 // Outline post-process shader
 // Reads the color and object ID textures from the MRT scene pass,
 // detects boundaries of selected objects, and composites an outline.
+//
+// The scene textures (color + ID) may be at a lower resolution than the canvas
+// during camera movement. Color is sampled with hardware bilinear interpolation
+// via a sampler; the integer ID texture is sampled with scaled textureLoad.
 
 @group(0) @binding(0) var colorTex: texture_2d<f32>;
 @group(0) @binding(1) var idTex: texture_2d<u32>;
@@ -14,6 +18,9 @@ struct OutlineSettings {
 }
 
 @group(0) @binding(3) var<uniform> outlineSettings: OutlineSettings;
+
+// Sampler for bilinear upscaling of the color texture
+@group(0) @binding(4) var colorSampler: sampler;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -37,21 +44,29 @@ fn isSelected(id: u32) -> bool {
 }
 
 @fragment
-fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
-    let coords = vec2i(fragPos.xy);
-    let color = textureLoad(colorTex, coords, 0);
+fn fragmentMain(@builtin(position) fragPos: vec4f, @location(0) uv: vec2f) -> @location(0) vec4f {
+    // The vertex shader UV has Y=0 at bottom, Y=1 at top (clip-space convention).
+    // Texture coordinates for textureSample/textureLoad use Y=0 at top. Flip V.
+    let texUV = vec2f(uv.x, 1.0 - uv.y);
+
+    // Sample color with bilinear interpolation -- handles scene-to-canvas resolution mismatch
+    let color = textureSample(colorTex, colorSampler, texUV);
 
     // Early out: if outline disabled, pass through
     if (outlineSettings.mode == 0u) {
         return color;
     }
 
-    let centerId = textureLoad(idTex, coords, 0).x;
+    // Map UV to ID texture coordinates (ID texture may be smaller than canvas during movement)
+    let idDims = vec2i(textureDimensions(idTex));
+    let idCoords = clamp(vec2i(texUV * vec2f(idDims)), vec2i(0), idDims - vec2i(1));
+    let centerId = textureLoad(idTex, idCoords, 0).x;
     let centerSel = isSelected(centerId);
 
     // Check neighbors within thickness radius for a selection boundary.
     // Uses a filled circle pattern; radius capped at 8px for performance.
-    let dims = vec2i(textureDimensions(idTex));
+    // Neighbor search operates in ID-texture space (outlines may appear slightly
+    // thicker during reduced-resolution camera movement, which is acceptable).
     let t = min(i32(outlineSettings.thickness), 8);
     let t2 = t * t;
     var isOutline = false;
@@ -61,7 +76,7 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
         for (var dx: i32 = -t; dx <= t; dx = dx + 1) {
             if (dx == 0 && dy == 0) { continue; }
             if (dx * dx + dy * dy > t2) { continue; }
-            let nc = clamp(coords + vec2i(dx, dy), vec2i(0), dims - vec2i(1));
+            let nc = clamp(idCoords + vec2i(dx, dy), vec2i(0), idDims - vec2i(1));
             let nId = textureLoad(idTex, nc, 0).x;
             let nSel = isSelected(nId);
             if (centerSel != nSel) {
@@ -73,6 +88,7 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
 
     if (isOutline) {
         // Dashed mode: diagonal stripe pattern (marching ants)
+        // fragPos is in canvas pixels, so patterns remain consistent at full resolution
         if (outlineSettings.mode == 2u) {
             let dashPos = fragPos.x + fragPos.y;
             let inDash = (i32(dashPos) % 10) < 5;

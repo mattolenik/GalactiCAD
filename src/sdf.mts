@@ -81,6 +81,7 @@ export class SDFRenderer {
     #outlinePipeline!: GPURenderPipeline
     #outlineBindGroup!: GPUBindGroup
     #outlineShaderModule!: GPUShaderModule
+    #colorSampler!: GPUSampler
     #renderTextureWidth: number = 0
     #renderTextureHeight: number = 0
     // Beam optimization: tile-based SDF pre-pass
@@ -94,6 +95,8 @@ export class SDFRenderer {
     #ls: LocalStorage = LocalStorage.instance
     #fullWidth: number = 0
     #fullHeight: number = 0
+    #sceneWidth: number = 0   // scene rendering resolution (may differ from canvas during movement)
+    #sceneHeight: number = 0
     #resolutionScale: number = 1.0
     #movementScale: number = 0.5
     #cameraOptimization: boolean = true
@@ -407,6 +410,14 @@ export class SDFRenderer {
         })
         this.#createBuffers()
 
+        // Create sampler for upscaling scene textures in the outline pass.
+        // When scene resolution < canvas resolution (during camera movement),
+        // hardware bilinear interpolation smoothly fills the output pixels.
+        this.#colorSampler = this.#device.createSampler({
+            magFilter: "linear",
+            minFilter: "linear",
+        })
+
         // Create outline post-process shader and pipeline (scene-independent)
         this.#outlineShaderModule = this.#device.createShaderModule({
             label: "Outline Post-Process",
@@ -572,6 +583,7 @@ export class SDFRenderer {
                 { binding: 1, resource: this.#idTextureView },
                 { binding: 2, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
                 { binding: 3, resource: { buffer: this.#uniformBuffers.outlineSettings } },
+                { binding: 4, resource: this.#colorSampler },
             ],
         })
 
@@ -651,6 +663,9 @@ export class SDFRenderer {
      * @param waitForGPU If true, wait for GPU to complete before returning (for accurate benchmarking)
      */
     async #renderFrame(waitForGPU = false): Promise<void> {
+        // Skip rendering if scene dimensions haven't been set yet (before ResizeObserver fires)
+        if (this.#sceneWidth === 0 || this.#sceneHeight === 0) return
+
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, this.#controls.viewTransform.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraRes.data as BufferSource)
@@ -682,15 +697,17 @@ export class SDFRenderer {
         this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, outlineData)
 
         const canvasTexture = this.#context.getCurrentTexture()
-        this.#ensureRenderTextures(canvasTexture.width, canvasTexture.height)
+        // Offscreen scene textures use scene resolution (may be lower during camera movement);
+        // the outline pass upscales them to the full-res canvas with bilinear interpolation.
+        this.#ensureRenderTextures(this.#sceneWidth, this.#sceneHeight)
 
         const commandEncoder = this.#device.createCommandEncoder()
 
         // Pass 0: Beam pre-pass - march one ray per 8x8 tile through empty space
         if (this.#beamPipeline && this.#beamBindGroup) {
             const BEAM_TILE_SIZE = 8
-            const tilesX = Math.ceil(canvasTexture.width / BEAM_TILE_SIZE)
-            const tilesY = Math.ceil(canvasTexture.height / BEAM_TILE_SIZE)
+            const tilesX = Math.ceil(this.#sceneWidth / BEAM_TILE_SIZE)
+            const tilesY = Math.ceil(this.#sceneHeight / BEAM_TILE_SIZE)
             const beamPass = commandEncoder.beginComputePass({ label: "Beam Pre-Pass" })
             beamPass.setPipeline(this.#beamPipeline)
             beamPass.setBindGroup(0, this.#beamBindGroup)
@@ -810,15 +827,18 @@ export class SDFRenderer {
     }
 
     /**
-     * Applies the current resolution scale to canvas dimensions and camera resolution.
+     * Applies the current resolution scale to scene dimensions and camera resolution.
+     * The canvas always stays at full resolution; only the offscreen scene textures
+     * are scaled, and the outline pass upscales them back to full resolution with
+     * hardware bilinear interpolation.
      */
     #applyResolutionScale(): void {
         if (this.#fullWidth === 0 || this.#fullHeight === 0) return
-        const w = Math.max(1, Math.round(this.#fullWidth * this.#resolutionScale))
-        const h = Math.max(1, Math.round(this.#fullHeight * this.#resolutionScale))
-        this.#preview.canvas.width = w
-        this.#preview.canvas.height = h
-        this.#cameraRes = vec2(w, h)
+        this.#preview.canvas.width = this.#fullWidth
+        this.#preview.canvas.height = this.#fullHeight
+        this.#sceneWidth = Math.max(1, Math.round(this.#fullWidth * this.#resolutionScale))
+        this.#sceneHeight = Math.max(1, Math.round(this.#fullHeight * this.#resolutionScale))
+        this.#cameraRes = vec2(this.#sceneWidth, this.#sceneHeight)
     }
 
     /**

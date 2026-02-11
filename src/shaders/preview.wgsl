@@ -36,7 +36,8 @@ struct ClickState {
 
 // View settings
 struct ViewSettings {
-    xrayMode: u32,  // 0 = normal, 1 = xray/translucent
+    xrayMode: u32,        // 0 = normal, 1 = xray/translucent
+    refinementSteps: u32, // binary search refinement iterations (e.g. 4 during movement, 8 when idle)
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
@@ -85,7 +86,7 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> RaymarchHit {
                 // Refine hit to reduce view-dependent jitter at CSG seams.
                 var lo = max(0.0, t - lastStep);
                 var hi = t;
-                for (var j: i32 = 0; j < 6; j = j + 1) {
+                for (var j: u32 = 0; j < viewSettings.refinementSteps; j = j + 1) {
                     let mid = 0.5 * (lo + hi);
                     let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
                     if (md > 0.0) {
@@ -153,7 +154,7 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
                 // Refine the exit point
                 var lo = max(startT, t - lastStep);
                 var hi = t;
-                for (var j: i32 = 0; j < 6; j = j + 1) {
+                for (var j: u32 = 0; j < viewSettings.refinementSteps; j = j + 1) {
                     let mid = 0.5 * (lo + hi);
                     let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
                     if (md < 0.0) {

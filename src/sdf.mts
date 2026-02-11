@@ -688,8 +688,12 @@ export class SDFRenderer {
         ])
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 96, lightDirs)
 
-        // Write view settings (xray mode)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([this.#xrayMode ? 1 : 0]))
+        // Write view settings (xray mode + refinement steps)
+        const refinementSteps = this.#resolutionScale < 1.0 ? 4 : 8
+        this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([
+            this.#xrayMode ? 1 : 0,
+            refinementSteps,
+        ]))
 
         // Write outline settings (mode + thickness + color + canvasWidth)
         const outlineData = new ArrayBuffer(32)

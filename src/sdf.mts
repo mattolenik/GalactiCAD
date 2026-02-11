@@ -71,6 +71,7 @@ export class SDFRenderer {
     #helper!: GPUHelper
     #builtSrc: string | null = null
     #xrayMode: boolean = false
+    #beamEnabled: boolean = false
     #outlineMode: OutlineMode = "solid"
     #outlineThickness: number = 3
     #outlineColor: [number, number, number] = [0.9, 0.9, 0.9]
@@ -128,6 +129,15 @@ export class SDFRenderer {
 
     get xrayMode(): boolean {
         return this.#xrayMode
+    }
+
+    set beamEnabled(enabled: boolean) {
+        this.#beamEnabled = enabled
+        this.#needsRender = true
+    }
+
+    get beamEnabled(): boolean {
+        return this.#beamEnabled
     }
 
     set outlineMode(mode: OutlineMode) {
@@ -342,6 +352,12 @@ export class SDFRenderer {
         preview.cameraOptimization = this.#cameraOptimization
         preview.onCameraOptimizationChange = (enabled: boolean) => {
             this.cameraOptimization = enabled
+        }
+
+        // Wire up beam optimization toggle
+        preview.beamOptimization = this.#beamEnabled
+        preview.onBeamOptimizationChange = (enabled: boolean) => {
+            this.beamEnabled = enabled
         }
 
         const observer = new ResizeObserver(entries => {
@@ -688,11 +704,13 @@ export class SDFRenderer {
         ])
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 96, lightDirs)
 
-        // Write view settings (xray mode + refinement steps)
-        const refinementSteps = this.#resolutionScale < 1.0 ? 4 : 8
+        // Write view settings (xray mode + refinement steps + beam enabled)
+        const refinementSteps = this.#resolutionScale < 1.0 ? 6 : 8
+        const beamActive = this.#beamEnabled && this.#resolutionScale >= 1.0
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([
             this.#xrayMode ? 1 : 0,
             refinementSteps,
+            beamActive ? 1 : 0,
         ]))
 
         // Write outline settings (mode + thickness + color + canvasWidth)
@@ -711,7 +729,8 @@ export class SDFRenderer {
         const commandEncoder = this.#device.createCommandEncoder()
 
         // Pass 0: Beam pre-pass - march one ray per 8x8 tile through empty space
-        if (this.#beamPipeline && this.#beamBindGroup) {
+        // Skip beam during reduced-resolution rendering (camera movement) to avoid artifacts
+        if (beamActive && this.#beamPipeline && this.#beamBindGroup) {
             const BEAM_TILE_SIZE = 8
             const tilesX = Math.ceil(this.#sceneWidth / BEAM_TILE_SIZE)
             const tilesY = Math.ceil(this.#sceneHeight / BEAM_TILE_SIZE)

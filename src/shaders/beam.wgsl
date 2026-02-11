@@ -75,7 +75,10 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     var t: f32 = 0.001;
     for (var i: i32 = 0; i < MAX_BEAM_STEPS; i = i + 1) {
         let p = transformedOrigin + t * transformedDir;
-        let d = sceneSDF_fast(p).x;
+        let sr = sceneSDF_fast(p);
+        // In smooth CSG blend regions (g < 1), the SDF over-estimates true distance.
+        // Scale by gradient magnitude to get a conservative distance estimate.
+        let d = sr.x * min(sr.y, 1.0);
         let safeStep = d - tileRadius;
 
         // Stop when near a surface or past max distance
@@ -85,6 +88,7 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
         t = t + safeStep;
     }
 
-    // Write the safe starting-t for this tile
-    textureStore(tStartOut, vec2i(gid.xy), vec4f(t, 0.0, 0.0, 0.0));
+    // Write the safe starting-t for this tile.
+    // Back off by tileRadius for extra safety at tile boundaries.
+    textureStore(tStartOut, vec2i(gid.xy), vec4f(max(t - tileRadius, 0.0), 0.0, 0.0, 0.0));
 }

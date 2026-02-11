@@ -25,11 +25,18 @@ struct SDFResult {
     s: f32,
     id: u32,
     n: vec3<f32>,
+    id2: u32,     // secondary ID for smooth blend color interpolation
+    blend: f32,   // blend weight: 0 = fully id, 1 = fully id2
+}
+
+// Create SDFResult with no color blending (gradient magnitude g, sign s)
+fn sdfR(d: f32, g: f32, s: f32, id: u32, n: vec3f) -> SDFResult {
+    return SDFResult(d, g, s, id, n, id, 0.0);
 }
 
 // Create SDFResult from a true distance (gradient magnitude = 1.0)
 fn sdfTrue(d: f32, id: u32, n: vec3<f32>) -> SDFResult {
-    return SDFResult(d, 1.0, 1.0, id, n);
+    return SDFResult(d, 1.0, 1.0, id, n, id, 0.0);
 }
 
 //////////////////////////////
@@ -649,8 +656,8 @@ fn fOpDifferenceChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
 fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
     if (abs(a.d - b.d) < SURF_DIST) {
         let n = normalize(a.n + b.n);
-        if (a.id <= b.id) { return SDFResult(a.d, a.g, a.s, a.id, n); }
-        return SDFResult(b.d, b.g, b.s, b.id, n);
+        if (a.id <= b.id) { return sdfR(a.d, a.g, a.s, a.id, n); }
+        return sdfR(b.d, b.g, b.s, b.id, n);
     }
     if (a.d < b.d) { return a; }
     return b;
@@ -660,8 +667,8 @@ fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
 fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
     if (abs(a.d - b.d) < SURF_DIST) {
         let n = normalize(a.n + b.n);
-        if (a.id <= b.id) { return SDFResult(a.d, a.g, a.s, a.id, n); }
-        return SDFResult(b.d, b.g, b.s, b.id, n);
+        if (a.id <= b.id) { return sdfR(a.d, a.g, a.s, a.id, n); }
+        return sdfR(b.d, b.g, b.s, b.id, n);
     }
     if (a.d > b.d) { return a; }
     return b;
@@ -669,7 +676,7 @@ fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
 
 // Hard difference: intersection with complement of b
 fn opDifferenceEx(a: SDFResult, b: SDFResult) -> SDFResult {
-    let bNeg = SDFResult(-b.d, b.g, -b.s, b.id, -b.n);
+    let bNeg = SDFResult(-b.d, b.g, -b.s, b.id, -b.n, b.id2, b.blend);
     return opIntersectionEx(a, bNeg);
 }
 
@@ -684,18 +691,18 @@ fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     // In chamfer region: blend normals
     if (chamferD < a.d && chamferD < b.d) {
         if (coplanar || a.d < b.d) {
-            if (coplanar && b.id < a.id) { return SDFResult(d, 1.0, b.s, b.id, n); }
-            return SDFResult(d, 1.0, a.s, a.id, n);
+            if (coplanar && b.id < a.id) { return sdfR(d, 1.0, b.s, b.id, n); }
+            return sdfR(d, 1.0, a.s, a.id, n);
         }
-        return SDFResult(d, 1.0, b.s, b.id, n);
+        return sdfR(d, 1.0, b.s, b.id, n);
     }
     // Outside chamfer: coplanar tiebreaker
     if (coplanar) {
-        if (a.id <= b.id) { return SDFResult(d, a.g, a.s, a.id, n); }
-        return SDFResult(d, b.g, b.s, b.id, n);
+        if (a.id <= b.id) { return sdfR(d, a.g, a.s, a.id, n); }
+        return sdfR(d, b.g, b.s, b.id, n);
     }
-    if (a.d < b.d) { return SDFResult(d, a.g, a.s, a.id, a.n); }
-    return SDFResult(d, b.g, b.s, b.id, b.n);
+    if (a.d < b.d) { return sdfR(d, a.g, a.s, a.id, a.n); }
+    return sdfR(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -708,22 +715,22 @@ fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     // In chamfer region: blend normals
     if (chamferD > a.d && chamferD > b.d) {
         if (coplanar || a.d > b.d) {
-            if (coplanar && b.id < a.id) { return SDFResult(d, 1.0, b.s, b.id, n); }
-            return SDFResult(d, 1.0, a.s, a.id, n);
+            if (coplanar && b.id < a.id) { return sdfR(d, 1.0, b.s, b.id, n); }
+            return sdfR(d, 1.0, a.s, a.id, n);
         }
-        return SDFResult(d, 1.0, b.s, b.id, n);
+        return sdfR(d, 1.0, b.s, b.id, n);
     }
     // Outside chamfer: coplanar tiebreaker
     if (coplanar) {
-        if (a.id <= b.id) { return SDFResult(d, a.g, a.s, a.id, n); }
-        return SDFResult(d, b.g, b.s, b.id, n);
+        if (a.id <= b.id) { return sdfR(d, a.g, a.s, a.id, n); }
+        return sdfR(d, b.g, b.s, b.id, n);
     }
-    if (a.d > b.d) { return SDFResult(d, a.g, a.s, a.id, a.n); }
-    return SDFResult(d, b.g, b.s, b.id, b.n);
+    if (a.d > b.d) { return sdfR(d, a.g, a.s, a.id, a.n); }
+    return sdfR(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpDifferenceChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
-    return fOpIntersectionChamferEx(a, SDFResult(-b.d, b.g, -b.s, b.id, -b.n), r);
+    return fOpIntersectionChamferEx(a, SDFResult(-b.d, b.g, -b.s, b.id, -b.n, b.id2, b.blend), r);
 }
 
 // Round union - g=0.5 signals blend region to MDC
@@ -733,20 +740,20 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     let aWins = (coplanar && a.id <= b.id) || (!coplanar && a.d < b.d);
     
-    // In blend region: weighted normal blend
+    // In blend region: smooth color interpolation between both operands
     if (a.d < r && b.d < r) {
         let n = normalize(a.n * u.x + b.n * u.y);
-        if (aWins) { return SDFResult(d, 0.5, a.s, a.id, n); }
-        return SDFResult(d, 0.5, b.s, b.id, n);
+        let w = u.y / (u.x + u.y);  // 0 = fully a, 1 = fully b
+        return SDFResult(d, 0.5, select(b.s, a.s, a.d < b.d), a.id, n, b.id, w);
     }
     // Outside blend
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        if (aWins) { return SDFResult(d, a.g, a.s, a.id, n); }
-        return SDFResult(d, b.g, b.s, b.id, n);
+        if (aWins) { return sdfR(d, a.g, a.s, a.id, n); }
+        return sdfR(d, b.g, b.s, b.id, n);
     }
-    if (aWins) { return SDFResult(d, a.g, a.s, a.id, a.n); }
-    return SDFResult(d, b.g, b.s, b.id, b.n);
+    if (aWins) { return sdfR(d, a.g, a.s, a.id, a.n); }
+    return sdfR(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -755,20 +762,22 @@ fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     let aWins = (coplanar && a.id <= b.id) || (!coplanar && a.d < b.d);
     
-    // In blend region: weighted normal blend
+    // In blend region: smooth color interpolation between both operands
     if (e > 0.0) {
         let n = normalize(a.n * (r - a.d) + b.n * (r - b.d));
-        if (aWins) { return SDFResult(d, 0.5, a.s, a.id, n); }
-        return SDFResult(d, 0.5, b.s, b.id, n);
+        let wa = max(r - a.d, 0.0);
+        let wb = max(r - b.d, 0.0);
+        let w = wb / (wa + wb);  // 0 = fully a, 1 = fully b
+        return SDFResult(d, 0.5, select(b.s, a.s, a.d < b.d), a.id, n, b.id, w);
     }
     // Outside blend
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        if (aWins) { return SDFResult(d, a.g, a.s, a.id, n); }
-        return SDFResult(d, b.g, b.s, b.id, n);
+        if (aWins) { return sdfR(d, a.g, a.s, a.id, n); }
+        return sdfR(d, b.g, b.s, b.id, n);
     }
-    if (aWins) { return SDFResult(d, a.g, a.s, a.id, a.n); }
-    return SDFResult(d, b.g, b.s, b.id, b.n);
+    if (aWins) { return sdfR(d, a.g, a.s, a.id, a.n); }
+    return sdfR(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -777,22 +786,22 @@ fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     let aWins = (coplanar && a.id <= b.id) || (!coplanar && a.d > b.d);
     
-    // In blend region: weighted normal blend
+    // In blend region: smooth color interpolation between both operands
     if (a.d > -r && b.d > -r) {
         let n = normalize(a.n * u.x + b.n * u.y);
-        if (aWins) { return SDFResult(d, 0.5, a.s, a.id, n); }
-        return SDFResult(d, 0.5, b.s, b.id, n);
+        let w = u.y / (u.x + u.y);  // 0 = fully a, 1 = fully b
+        return SDFResult(d, 0.5, select(b.s, a.s, a.d > b.d), a.id, n, b.id, w);
     }
     // Outside blend
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        if (aWins) { return SDFResult(d, a.g, a.s, a.id, n); }
-        return SDFResult(d, b.g, b.s, b.id, n);
+        if (aWins) { return sdfR(d, a.g, a.s, a.id, n); }
+        return sdfR(d, b.g, b.s, b.id, n);
     }
-    if (aWins) { return SDFResult(d, a.g, a.s, a.id, a.n); }
-    return SDFResult(d, b.g, b.s, b.id, b.n);
+    if (aWins) { return sdfR(d, a.g, a.s, a.id, a.n); }
+    return sdfR(d, b.g, b.s, b.id, b.n);
 }
 
 fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
-    return fOpIntersectionRoundEx(a, SDFResult(-b.d, b.g, -b.s, b.id, -b.n), r);
+    return fOpIntersectionRoundEx(a, SDFResult(-b.d, b.g, -b.s, b.id, -b.n, b.id2, b.blend), r);
 }

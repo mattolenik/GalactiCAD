@@ -38,6 +38,7 @@ struct ClickState {
 struct ViewSettings {
     xrayMode: u32,        // 0 = normal, 1 = xray/translucent
     refinementSteps: u32, // binary search refinement iterations (e.g. 4 during movement, 8 when idle)
+    beamEnabled: u32,     // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
@@ -186,11 +187,20 @@ fn shadeHit(hit: RaymarchHit, flipNormal: bool) -> vec3f {
     let normal = select(hit.sdf.n, -hit.sdf.n, flipNormal);
 
     let diffuse = lighting(normal);
-    let baseColor = colorPalette[hit.sdf.id & 31u];
+
+    // Smooth color blending at CSG seams: mix palette colors using blend weight
+    let color1 = colorPalette[hit.sdf.id & 31u];
+    let color2 = colorPalette[hit.sdf.id2 & 31u];
+    let bw = hit.sdf.blend;
+    let baseColor = color1 * (1.0 - bw) + color2 * bw;
     let shadedColor = baseColor * diffuse;
 
+    // Selection highlight also blends smoothly across CSG seams
+    let sel1 = f32(selectedObjectIds[hit.sdf.id] != 0u);
+    let sel2 = f32(selectedObjectIds[hit.sdf.id2] != 0u);
+    let selBlend = mix(sel1, sel2, hit.sdf.blend);
     let selectedColor = shadedColor * 0.9 + vec3f(0.15);
-    return select(shadedColor, selectedColor, selectedObjectIds[hit.sdf.id] != 0u);
+    return shadedColor * (1.0 - selBlend) + selectedColor * selBlend;
 }
 
 @fragment
@@ -206,9 +216,12 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
     let transformedDir = -camera.transform[2].xyz;
 
-    // Read beam pre-pass starting distance for this tile
-    let tileCoord = vec2i(uv * camera.res) / BEAM_TILE_SIZE;
-    let t_start = textureLoad(tStartTex, tileCoord, 0).x;
+    // Read beam pre-pass starting distance for this tile (or 0 if beam disabled)
+    var t_start = 0.0;
+    if (viewSettings.beamEnabled != 0u) {
+        let tileCoord = vec2i(uv * camera.res) / BEAM_TILE_SIZE;
+        t_start = textureLoad(tStartTex, tileCoord, 0).x;
+    }
 
     // Use standard raymarching, starting from beam distance
     let hit = raymarch(transformedOrigin, transformedDir, t_start);

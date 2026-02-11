@@ -11,12 +11,17 @@ export class PreviewWindow extends HTMLElement {
     #xrayMode: boolean = false
     #cameraOptCheckbox: HTMLInputElement
     #cameraOptimization: boolean = true
+    #beamOptCheckbox: HTMLInputElement
+    #beamOptimization: boolean = false
 
     /** Callback when xray mode changes */
     onXrayModeChange?: (enabled: boolean) => void
 
     /** Callback when camera optimization changes */
     onCameraOptimizationChange?: (enabled: boolean) => void
+
+    /** Callback when beam optimization changes */
+    onBeamOptimizationChange?: (enabled: boolean) => void
 
     /** Callback when benchmark button is clicked */
     onBenchmark?: () => void | Promise<void>
@@ -27,6 +32,15 @@ export class PreviewWindow extends HTMLElement {
 
     get cameraOptimization(): boolean {
         return this.#cameraOptimization
+    }
+
+    get beamOptimization(): boolean {
+        return this.#beamOptimization
+    }
+
+    set beamOptimization(enabled: boolean) {
+        this.#beamOptimization = enabled
+        this.#beamOptCheckbox.checked = enabled
     }
 
     set cameraOptimization(enabled: boolean) {
@@ -141,6 +155,17 @@ export class PreviewWindow extends HTMLElement {
         })
         cameraOptLabel.append(this.#cameraOptCheckbox, "Camera optimization")
         controls.appendChild(cameraOptLabel)
+
+        const beamOptLabel = document.createElement("label")
+        this.#beamOptCheckbox = document.createElement("input")
+        this.#beamOptCheckbox.type = "checkbox"
+        this.#beamOptCheckbox.checked = this.#beamOptimization
+        this.#beamOptCheckbox.addEventListener("change", () => {
+            this.#beamOptimization = this.#beamOptCheckbox.checked
+            this.onBeamOptimizationChange?.(this.#beamOptimization)
+        })
+        beamOptLabel.append(this.#beamOptCheckbox, "Beam optimization")
+        controls.appendChild(beamOptLabel)
 
         const benchmarkButton = document.createElement("button")
         benchmarkButton.textContent = "Benchmark"

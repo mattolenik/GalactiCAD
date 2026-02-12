@@ -120,8 +120,8 @@ export class SDFRenderer {
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
         this.#preview.xrayMode = this.#xrayMode
-        this.#preview.cameraOptimization = this.#cameraOptimization
-        this.#preview.beamOptimization = this.#beamEnabled
+        this.#preview.devTools.cameraOptimization = this.#cameraOptimization
+        this.#preview.devTools.beamOptimization = this.#beamEnabled
         this.#needsRender = true
     }
 
@@ -370,14 +370,14 @@ export class SDFRenderer {
         }
 
         // Wire up camera optimization toggle
-        preview.cameraOptimization = this.#cameraOptimization
-        preview.onCameraOptimizationChange = (enabled: boolean) => {
+        preview.devTools.cameraOptimization = this.#cameraOptimization
+        preview.devTools.onCameraOptimizationChange = (enabled: boolean) => {
             this.cameraOptimization = enabled
         }
 
         // Wire up beam optimization toggle
-        preview.beamOptimization = this.#beamEnabled
-        preview.onBeamOptimizationChange = (enabled: boolean) => {
+        preview.devTools.beamOptimization = this.#beamEnabled
+        preview.devTools.onBeamOptimizationChange = (enabled: boolean) => {
             this.beamEnabled = enabled
         }
 

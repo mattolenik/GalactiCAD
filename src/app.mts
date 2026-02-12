@@ -359,7 +359,7 @@ class App {
                 })
 
                 // Wire up save benchmark suite button
-                preview.onSaveBenchmarkSuite = async () => {
+                preview.devTools.onSaveBenchmarkSuite = async () => {
                     this.#settings.flushDocNow()
                     const suite: BenchmarkCase[] = []
                     for (const name of this.#tabs.documentNames) {
@@ -384,7 +384,7 @@ class App {
                 }
 
                 // Wire up benchmark button
-                preview.onBenchmark = async () => {
+                preview.devTools.onBenchmark = async () => {
                     const { StatusDialog } = await import("./components/status-dialog.mjs")
                     const suite = loadBenchmarkSuite()
                     if (suite.length === 0) {
@@ -485,6 +485,22 @@ class App {
                 meshViewerText.textContent = "Show Mesh Viewer"
                 meshViewerContainer.append(meshViewerCheckbox, meshViewerText)
 
+                // Developer Tools toggle checkbox
+                const devToolsContainer = document.createElement("div")
+                devToolsContainer.style.display = "flex"
+                devToolsContainer.style.alignItems = "center"
+                devToolsContainer.style.gap = "8px"
+                devToolsContainer.style.cursor = "pointer"
+                const devToolsCheckbox = document.createElement("input")
+                devToolsCheckbox.type = "checkbox"
+                devToolsCheckbox.style.pointerEvents = "none"
+                const devToolsEnabled = this.#settings.getGlobal().app.devToolsEnabled
+                devToolsCheckbox.checked = devToolsEnabled
+                preview.devTools.visible = devToolsEnabled
+                const devToolsText = document.createElement("span")
+                devToolsText.textContent = "Developer Tools"
+                devToolsContainer.append(devToolsCheckbox, devToolsText)
+
                 const menuButton = new MenuButton([
                     { element: newItem, action: () => this.#tabs.newDocument(undefined, "javascript") },
                     { element: renameItem, action: () => this.#tabs.renameCurrentTab() },
@@ -539,6 +555,15 @@ class App {
                             meshViewerCheckbox.checked = enabled
                             this.#setMeshViewerEnabled(enabled)
                             this.#settings.updateGlobal({ app: { meshViewerEnabled: enabled } })
+                        },
+                    },
+                    {
+                        element: devToolsContainer,
+                        action: () => {
+                            const enabled = !devToolsCheckbox.checked
+                            devToolsCheckbox.checked = enabled
+                            preview.devTools.visible = enabled
+                            this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
                         },
                     },
                 ])

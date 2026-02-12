@@ -366,8 +366,7 @@ export class SDFRenderer {
 
         // Wire up xray mode change from preview window
         preview.onXrayModeChange = (enabled: boolean) => {
-            this.#xrayMode = enabled
-            this.#needsRender = true
+            this.xrayMode = enabled
         }
 
         // Wire up camera optimization toggle

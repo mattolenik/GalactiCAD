@@ -26,6 +26,9 @@ export class PreviewWindow extends HTMLElement {
     /** Callback when benchmark button is clicked */
     onBenchmark?: () => void | Promise<void>
 
+    /** Callback when save benchmark suite button is clicked */
+    onSaveBenchmarkSuite?: () => void | Promise<void>
+
     get xrayMode(): boolean {
         return this.#xrayMode
     }
@@ -171,6 +174,20 @@ export class PreviewWindow extends HTMLElement {
         })
         beamOptLabel.append(this.#beamOptCheckbox, "Beam optimization")
         controls.appendChild(beamOptLabel)
+
+        const saveSuiteButton = document.createElement("button")
+        saveSuiteButton.textContent = "Save Suite"
+        saveSuiteButton.addEventListener("click", async () => {
+            if (this.onSaveBenchmarkSuite) {
+                saveSuiteButton.disabled = true
+                try {
+                    await this.onSaveBenchmarkSuite()
+                } finally {
+                    saveSuiteButton.disabled = false
+                }
+            }
+        })
+        controls.appendChild(saveSuiteButton)
 
         const benchmarkButton = document.createElement("button")
         benchmarkButton.textContent = "Benchmark"

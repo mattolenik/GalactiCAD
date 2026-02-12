@@ -130,6 +130,11 @@ export class DocumentTabs extends HTMLElement {
         return this.#docs.values()
     }
 
+    /** All document names in insertion order */
+    get documentNames(): string[] {
+        return Array.from(this.#docs.keys())
+    }
+
     /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts */
     newDocument(content = defaultContent, language = "javascript"): string | undefined {
         this.topUntitledIndex =
@@ -257,6 +262,35 @@ export class DocumentTabs extends HTMLElement {
     renameCurrentTab(): boolean {
         if (!this.#active) return false
         return this.renameTab(this.#active)
+    }
+
+    /** Duplicate the current tab into a new one, cloning content and settings. Returns the new tab name, or undefined if user cancels. */
+    duplicateCurrentTab(): string | undefined {
+        if (!this.#active) return undefined
+
+        SettingsManager.instance.flushDocNow()
+        const model = this.#docs.get(this.#active)
+        if (!model) return undefined
+
+        const content = model.getValue()
+        const settings = SettingsManager.instance.getDocumentSettings(this.#active)
+
+        const newName = window.prompt("Name for duplicated sketch", this.#active)?.trim()
+        if (!newName || newName === this.#active) return undefined
+
+        if (this.#docs.has(newName)) {
+            alert(`A sketch named "${newName}" already exists.`)
+            return undefined
+        }
+
+        const uri = monaco.Uri.parse(`inmemory://model/${newName}`)
+        const newModel = monaco.editor.createModel(content, "javascript", uri)
+        this.#docs.set(newName, newModel)
+        this.#watchModel(newName, newModel)
+        localStorage.setItem(`settings:${newName}`, JSON.stringify(settings))
+        this.#updateStoredOrder()
+        this.switchTo(newName)
+        return newName
     }
 
     /** Rename a tab, prompting the user for a new name */

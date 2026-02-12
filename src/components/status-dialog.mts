@@ -23,6 +23,20 @@ export class StatusDialog extends HTMLElement {
         }
     }
 
+    /**
+     * Update the dialog content with HTML (e.g. for tables)
+     */
+    updateContentHtml(html: string, showOkButton = true) {
+        const messageEl = this.#shadow.querySelector(".message")
+        const buttonsEl = this.#shadow.querySelector(".buttons")
+        if (messageEl) {
+            messageEl.innerHTML = html
+        }
+        if (buttonsEl) {
+            buttonsEl.style.display = showOkButton ? "flex" : "none"
+        }
+    }
+
     #render(message: string, showOkButton = true) {
         this.#shadow.innerHTML = `
         <style>
@@ -60,6 +74,18 @@ export class StatusDialog extends HTMLElement {
                 font-size: 1.1em;
                 color: var(${__fg_color});
                 text-align: center;
+            }
+
+            .message table {
+                text-align: left;
+                border-collapse: collapse;
+                font-family: monospace;
+                font-size: 0.9em;
+            }
+
+            .message th, .message td {
+                padding: 0.25em 0.75em;
+                border: 1px solid var(${__tone_3});
             }
 
             .buttons {

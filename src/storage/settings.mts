@@ -105,6 +105,24 @@ export class SettingsManager {
         localStorage.removeItem(`settings:${name}`)
     }
 
+    /** Load document settings for a given document name (without switching). Used for benchmark suite. */
+    getDocumentSettings(name: string): DocumentSettings {
+        const raw = localStorage.getItem(`settings:${name}`)
+        const def = defaultDocSettings()
+        if (raw) {
+            try {
+                const parsed = JSON.parse(raw)
+                return {
+                    camera: { ...def.camera, ...parsed.camera },
+                    preview: { ...def.preview, ...parsed.preview },
+                }
+            } catch {
+                // Corrupted JSON -- use defaults
+            }
+        }
+        return def
+    }
+
     /** Rename a document's settings entry. */
     renameDocument(oldName: string, newName: string): void {
         const raw = localStorage.getItem(`settings:${oldName}`)

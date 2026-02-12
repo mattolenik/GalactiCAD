@@ -1,6 +1,7 @@
 import { __fg_color, __tone_1, __tone_2, __tone_3 } from "../style/style.mjs"
 
 export class StatusDialog extends HTMLElement {
+    #ac = new AbortController()
     #shadow = this.attachShadow({ mode: "open" })
     #resolve?: () => void
 
@@ -127,9 +128,11 @@ export class StatusDialog extends HTMLElement {
     }
 
     connectedCallback() {
+        this.#ac = new AbortController()
+        const { signal } = this.#ac
         const okButton = this.#shadow.querySelector(".ok")
         if (okButton) {
-            okButton.addEventListener("click", () => this.#close())
+            okButton.addEventListener("click", () => this.#close(), { signal })
         }
         this.#shadow.querySelector(".overlay")!.addEventListener("click", () => {
             // Only allow closing via overlay if OK button is visible
@@ -137,12 +140,12 @@ export class StatusDialog extends HTMLElement {
             if (buttonsEl && buttonsEl.style.display !== "none") {
                 this.#close()
             }
-        })
-        window.addEventListener("keydown", this.#onKeyDown)
+        }, { signal })
+        window.addEventListener("keydown", this.#onKeyDown, { signal })
     }
 
     disconnectedCallback() {
-        window.removeEventListener("keydown", this.#onKeyDown)
+        this.#ac.abort()
     }
 
     #onKeyDown = (e: KeyboardEvent) => {
@@ -174,3 +177,9 @@ export class StatusDialog extends HTMLElement {
 }
 
 customElements.define("status-dialog", StatusDialog)
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "status-dialog": StatusDialog
+    }
+}

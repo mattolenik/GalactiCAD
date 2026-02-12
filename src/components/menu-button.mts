@@ -1,6 +1,7 @@
 import { __fg_color, __tone_2, __tone_3, __toolbar_height } from "../style/style.mjs"
 
 export class MenuButton extends HTMLElement {
+    #ac = new AbortController()
     #button: HTMLButtonElement
     #menuContainer: HTMLElement
     #items: Array<{ element: HTMLElement; action: () => void }>
@@ -81,13 +82,23 @@ export class MenuButton extends HTMLElement {
 
         this.#button.addEventListener("click", e => this.toggleMenu(e))
 
-        document.addEventListener("click", e => {
-            if (!this.contains(e.target as Node)) {
-                this.hideMenu()
-            }
-        })
-
         this.renderMenu()
+    }
+
+    connectedCallback() {
+        this.#ac = new AbortController()
+        const { signal } = this.#ac
+        document.addEventListener("click", this.#onDocumentClick, { signal })
+    }
+
+    disconnectedCallback() {
+        this.#ac.abort()
+    }
+
+    #onDocumentClick = (e: MouseEvent) => {
+        if (!this.contains(e.target as Node)) {
+            this.hideMenu()
+        }
     }
 
     renderMenu() {
@@ -135,3 +146,9 @@ export class MenuButton extends HTMLElement {
 }
 
 customElements.define("menu-button", MenuButton)
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "menu-button": MenuButton
+    }
+}

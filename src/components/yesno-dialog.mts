@@ -1,6 +1,7 @@
-import { __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
+import { __fg_color, __tone_1, __tone_2, __tone_3 } from "../style/style.mjs"
 
 export class YesNoDialog extends HTMLElement {
+    #ac = new AbortController()
     #shadow = this.attachShadow({ mode: "open" })
     #resolve?: (value: boolean) => void
     #content: HTMLElement
@@ -90,14 +91,16 @@ export class YesNoDialog extends HTMLElement {
     }
 
     connectedCallback() {
-        this.#shadow.querySelector(".overlay")!.addEventListener("click", () => this.#rejectWithFlash())
-        this.#shadow.querySelector(".no")!.addEventListener("click", () => this.#close(false))
-        this.#shadow.querySelector(".yes")!.addEventListener("click", () => this.#close(true))
-        window.addEventListener("keydown", this.#onKeyDown)
+        this.#ac = new AbortController()
+        const { signal } = this.#ac
+        this.#shadow.querySelector(".overlay")!.addEventListener("click", () => this.#rejectWithFlash(), { signal })
+        this.#shadow.querySelector(".no")!.addEventListener("click", () => this.#close(false), { signal })
+        this.#shadow.querySelector(".yes")!.addEventListener("click", () => this.#close(true), { signal })
+        window.addEventListener("keydown", this.#onKeyDown, { signal })
     }
 
     disconnectedCallback() {
-        window.removeEventListener("keydown", this.#onKeyDown)
+        this.#ac.abort()
     }
 
     #onKeyDown = (e: KeyboardEvent) => {
@@ -134,3 +137,9 @@ export class YesNoDialog extends HTMLElement {
 }
 
 customElements.define("yes-no-dialog", YesNoDialog)
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "yes-no-dialog": YesNoDialog
+    }
+}

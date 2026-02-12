@@ -8,6 +8,7 @@ export class CancelledError extends Error {
 }
 
 export class ProgressDialog extends HTMLElement {
+    #ac = new AbortController()
     #shadow = this.attachShadow({ mode: "open" })
     #resolve?: (value: boolean) => void
     #startTime: number
@@ -136,13 +137,15 @@ export class ProgressDialog extends HTMLElement {
     }
 
     connectedCallback() {
-        this.#shadow.querySelector(".cancel")!.addEventListener("click", () => this.#cancel())
-        window.addEventListener("keydown", this.#onKeyDown)
+        this.#ac = new AbortController()
+        const { signal } = this.#ac
+        this.#shadow.querySelector(".cancel")!.addEventListener("click", () => this.#cancel(), { signal })
+        window.addEventListener("keydown", this.#onKeyDown, { signal })
         this.#updateElapsed()
     }
 
     disconnectedCallback() {
-        window.removeEventListener("keydown", this.#onKeyDown)
+        this.#ac.abort()
     }
 
     #onKeyDown = (e: KeyboardEvent) => {
@@ -213,3 +216,9 @@ export class ProgressDialog extends HTMLElement {
 }
 
 customElements.define("progress-dialog", ProgressDialog)
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "progress-dialog": ProgressDialog
+    }
+}

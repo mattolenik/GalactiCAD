@@ -2,6 +2,7 @@ import { MeshData } from "../export/export.mjs"
 import { CameraController } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
+import { __fg_color, __tone_2, __tone_accent } from "../style/style.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3 } from "../vecmat/vector.mjs"
 
@@ -90,21 +91,20 @@ export class MeshViewer extends HTMLElement {
             padding: 6px 10px;
             border-radius: 6px;
             font-size: 12px;
-            background: color-mix(in srgb, var(--tone-2, #444) 92%, transparent);
-            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.85);
+            background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
+            color: rgb(from var(${__fg_color}) r g b / 0.85);
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
             user-select: none;
         }
         .overlay input[type="checkbox"] {
-            accent-color: var(--tone-accent, #88f);
+            accent-color: var(${__tone_accent});
         }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"
         this.canvas.style.height = "100%"
         this.canvas.style.display = "inline-block"
-        shadow.appendChild(this.canvas)
         shadow.append(style, this.canvas)
 
         const overlay = document.createElement("div")

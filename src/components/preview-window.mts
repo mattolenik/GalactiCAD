@@ -1,3 +1,5 @@
+import { __fg_color, __tone_1, __tone_2, __tone_3 } from "../style/style.mjs"
+
 export class PreviewWindow extends HTMLElement {
     static get observedAttributes() {
         return ["showFPS"]
@@ -89,10 +91,12 @@ export class PreviewWindow extends HTMLElement {
             display: flex;
             align-items: center;
             gap: 6px;
-            background: rgba(0, 0, 0, 0.5);
+            background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
             padding: 4px 8px;
             border-radius: 4px;
-            color: #ccc;
+            color: rgb(from var(${__fg_color}) r g b / 0.85);
             font-size: 12px;
             font-family: system-ui, sans-serif;
         }
@@ -109,19 +113,19 @@ export class PreviewWindow extends HTMLElement {
         .controls button {
             cursor: pointer;
             padding: 2px 8px;
-            border: 1px solid #666;
-            background: rgba(255, 255, 255, 0.1);
-            color: #ccc;
+            border: 1px solid var(${__tone_1});
+            background: rgb(from var(${__fg_color}) r g b / 0.1);
+            color: rgb(from var(${__fg_color}) r g b / 0.85);
             font-size: 12px;
             font-family: system-ui, sans-serif;
             border-radius: 3px;
             transition: background 0.2s ease;
         }
         .controls button:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgb(from var(${__fg_color}) r g b / 0.2);
         }
         .controls button:active {
-            background: rgba(255, 255, 255, 0.3);
+            background: rgb(from var(${__fg_color}) r g b / 0.3);
         }
         .controls button:disabled {
             opacity: 0.5;
@@ -132,7 +136,6 @@ export class PreviewWindow extends HTMLElement {
         this.canvas.style.width = "100%"
         this.canvas.style.height = "100%"
         this.canvas.style.display = "inline-block"
-        shadow.appendChild(this.canvas)
         shadow.append(style, this.canvas)
 
         this.#counter = document.createElement("span")

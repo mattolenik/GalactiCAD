@@ -12,7 +12,7 @@ export class DocumentTabs extends HTMLElement {
     #editor: monaco.editor.IStandaloneCodeEditor
     #subscriptions = new Map<string, Subscription>()
     #tabContainer: HTMLElement
-    topUntitledIndex: number = 0
+    #topUntitledIndex: number = 0
 
     constructor(editor: monaco.editor.IStandaloneCodeEditor) {
         super()
@@ -27,6 +27,7 @@ export class DocumentTabs extends HTMLElement {
         const style = document.createElement("style")
         style.textContent = `
             :host {
+                display: block;
                 ${__fg_color}: whitesmoke;
                 ${__tone_1}: #888;
                 ${__tone_2}: #444;
@@ -115,6 +116,13 @@ export class DocumentTabs extends HTMLElement {
         this.#renderTabs()
     }
 
+    disconnectedCallback() {
+        for (const sub of this.#subscriptions.values()) {
+            sub.unsubscribe()
+        }
+        this.#subscriptions.clear()
+    }
+
     /** Current active document name (if any) */
     get active(): string | undefined {
         return this.#active
@@ -137,12 +145,12 @@ export class DocumentTabs extends HTMLElement {
 
     /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts */
     newDocument(content = defaultContent, language = "javascript"): string | undefined {
-        this.topUntitledIndex =
+        this.#topUntitledIndex =
             Array.from(this.#docs.keys())
                 .map(s => parseInt(s.match(/^new sketch (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
                 .reduce((p, c) => Math.max(p, c), 0) + 1
 
-        const defaultName = `new sketch ${this.topUntitledIndex}`
+        const defaultName = `new sketch ${this.#topUntitledIndex}`
         const name = this.#docs.size > 0 ? window.prompt("Give the new sketch a name", defaultName)?.trim() : defaultName
         if (!name) return
 
@@ -397,6 +405,12 @@ export class DocumentTabs extends HTMLElement {
 }
 
 customElements.define("document-tabs", DocumentTabs)
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "document-tabs": DocumentTabs
+    }
+}
 
 const defaultContent = `
 // Passenger Car Model

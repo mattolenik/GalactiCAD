@@ -103,6 +103,33 @@ export class SDFRenderer {
     #cameraOptimization: boolean = true
     #movementTimer: ReturnType<typeof setTimeout> | null = null
     #movementSettleMs: number = 150 // ms of inactivity before restoring full resolution
+    #documentName: string | null = null
+    #tabChangeListener: ((e: Event) => void) | null = null
+
+    /** Storage key for per-document preview settings */
+    #previewSettingsKey(suffix: string): string {
+        return this.#documentName ? `preview:${this.#documentName}:${suffix}` : `preview:${suffix}`
+    }
+
+    #savePreviewSettings(): void {
+        this.#ls.setInt(this.#previewSettingsKey("xrayMode"), this.#xrayMode ? 1 : 0)
+        this.#ls.setInt(this.#previewSettingsKey("cameraOptimization"), this.#cameraOptimization ? 1 : 0)
+        this.#ls.setInt(this.#previewSettingsKey("beamOptimization"), this.#beamEnabled ? 1 : 0)
+    }
+
+    #loadPreviewSettings(): void {
+        const xray = this.#ls.getInt(this.#previewSettingsKey("xrayMode"))
+        this.#xrayMode = xray !== undefined ? xray !== 0 : false
+        let camOpt = this.#ls.getInt(this.#previewSettingsKey("cameraOptimization"))
+        if (camOpt === undefined) camOpt = this.#ls.getFloat("preview:cameraOptimization")
+        this.#cameraOptimization = camOpt !== undefined ? camOpt !== 0 : true
+        const beamOpt = this.#ls.getInt(this.#previewSettingsKey("beamOptimization"))
+        this.#beamEnabled = beamOpt !== undefined ? beamOpt !== 0 : false
+        this.#preview.xrayMode = this.#xrayMode
+        this.#preview.cameraOptimization = this.#cameraOptimization
+        this.#preview.beamOptimization = this.#beamEnabled
+        this.#needsRender = true
+    }
 
     /**
      * Callback invoked when object selection changes
@@ -124,6 +151,7 @@ export class SDFRenderer {
 
     set xrayMode(enabled: boolean) {
         this.#xrayMode = enabled
+        this.#ls.setInt(this.#previewSettingsKey("xrayMode"), enabled ? 1 : 0)
         this.#needsRender = true
     }
 
@@ -133,6 +161,7 @@ export class SDFRenderer {
 
     set beamEnabled(enabled: boolean) {
         this.#beamEnabled = enabled
+        this.#ls.setInt(this.#previewSettingsKey("beamOptimization"), enabled ? 1 : 0)
         this.#needsRender = true
     }
 
@@ -190,7 +219,7 @@ export class SDFRenderer {
     /** Whether resolution scaling during camera movement is enabled. */
     set cameraOptimization(enabled: boolean) {
         this.#cameraOptimization = enabled
-        this.#ls.setFloat("preview:cameraOptimization", enabled ? 1 : 0)
+        this.#ls.setInt(this.#previewSettingsKey("cameraOptimization"), enabled ? 1 : 0)
         // If disabling while at reduced resolution, restore full res immediately
         if (!enabled && this.#resolutionScale !== 1.0) {
             if (this.#movementTimer !== null) {
@@ -335,8 +364,7 @@ export class SDFRenderer {
             this.#onCameraMovement()
         }
         this.#movementScale = this.#ls.getFloat("preview:movementScale") ?? 0.5
-        const savedCameraOpt = this.#ls.getFloat("preview:cameraOptimization")
-        this.#cameraOptimization = savedCameraOpt !== undefined ? savedCameraOpt !== 0 : true
+        this.#documentName = (tabsElement as { active?: string })?.active ?? null
         this.#uniformBuffers = new UniformBuffers()
         this.#exportBuffers = new ExportBuffers()
         this.#initializing = this.initialize()
@@ -358,6 +386,18 @@ export class SDFRenderer {
         preview.beamOptimization = this.#beamEnabled
         preview.onBeamOptimizationChange = (enabled: boolean) => {
             this.beamEnabled = enabled
+        }
+
+        this.#loadPreviewSettings()
+
+        if (tabsElement) {
+            this.#tabChangeListener = (e: Event) => {
+                const customEvent = e as CustomEvent<string | undefined>
+                this.#savePreviewSettings()
+                this.#documentName = customEvent.detail ?? null
+                this.#loadPreviewSettings()
+            }
+            tabsElement.addEventListener("activeTabChanged", this.#tabChangeListener)
         }
 
         const observer = new ResizeObserver(entries => {

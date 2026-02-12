@@ -30,6 +30,11 @@ export class PreviewWindow extends HTMLElement {
         return this.#xrayMode
     }
 
+    set xrayMode(enabled: boolean) {
+        this.#xrayMode = enabled
+        this.#xrayCheckbox.checked = enabled
+    }
+
     get cameraOptimization(): boolean {
         return this.#cameraOptimization
     }

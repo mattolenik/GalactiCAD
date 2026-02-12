@@ -247,6 +247,12 @@ export class DocumentTabs extends HTMLElement {
         const cntinue = await new YesNoDialog(`Are you sure you want to delete ${name}?`).show()
         if (cntinue) {
             localStorage.removeItem(`document:${name}`)
+            for (const suffix of ["xrayMode", "cameraOptimization", "beamOptimization"]) {
+                localStorage.removeItem(`preview:${name}:${suffix}`)
+            }
+            for (const suffix of ["position", "translation", "zoom", "rotation"]) {
+                localStorage.removeItem(`camera:${name}:${suffix}`)
+            }
             this.closeTab(name)
         }
     }
@@ -276,6 +282,30 @@ export class DocumentTabs extends HTMLElement {
         if (content !== null) {
             localStorage.removeItem(`document:${oldName}`)
             localStorage.setItem(`document:${newName}`, content)
+        }
+
+        // Migrate per-document preview settings (x-ray, camera opt, beam opt)
+        const previewKeys = ["xrayMode", "cameraOptimization", "beamOptimization"]
+        for (const suffix of previewKeys) {
+            const oldKey = `preview:${oldName}:${suffix}`
+            const newKey = `preview:${newName}:${suffix}`
+            const val = localStorage.getItem(oldKey)
+            if (val !== null) {
+                localStorage.setItem(newKey, val)
+                localStorage.removeItem(oldKey)
+            }
+        }
+
+        // Migrate per-document camera state
+        const cameraKeys = ["position", "translation", "zoom", "rotation"]
+        for (const suffix of cameraKeys) {
+            const oldKey = `camera:${oldName}:${suffix}`
+            const newKey = `camera:${newName}:${suffix}`
+            const val = localStorage.getItem(oldKey)
+            if (val !== null) {
+                localStorage.setItem(newKey, val)
+                localStorage.removeItem(oldKey)
+            }
         }
 
         // Update the ordered map: need to preserve order

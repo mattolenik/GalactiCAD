@@ -70,4 +70,20 @@ export class OrderedMap<K, V> implements Iterable<[K, V]> {
             callback.call(thisArg, this.#map.get(k)!, k, this)
         }
     }
+
+    /** Return the key at the given index, or undefined if out of bounds */
+    keyAt(index: number): K | undefined {
+        if (index < 0 || index >= this.#order.length) return undefined
+        return this.#order[index]
+    }
+
+    /** Move the key at fromIndex to toIndex (0 to n inclusive). No-op if indices are equal or out of bounds. */
+    moveToIndex(fromIndex: number, toIndex: number): void {
+        const n = this.#order.length
+        if (fromIndex < 0 || fromIndex >= n || toIndex < 0 || toIndex > n || fromIndex === toIndex) return
+        const key = this.#order[fromIndex]
+        this.#order.splice(fromIndex, 1)
+        const insertAt = fromIndex < toIndex ? toIndex - 1 : toIndex
+        this.#order.splice(insertAt, 0, key)
+    }
 }

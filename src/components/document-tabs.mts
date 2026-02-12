@@ -6,6 +6,9 @@ import { SettingsManager } from "../storage/settings.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { YesNoDialog } from "./yesno-dialog.mjs"
 
+const LONG_PRESS_MS = 500
+const MOVE_THRESHOLD_PX = 5
+
 export class DocumentTabs extends HTMLElement {
     #active?: string
     #docs = new OrderedMap<string, monaco.editor.ITextModel>()
@@ -13,6 +16,15 @@ export class DocumentTabs extends HTMLElement {
     #subscriptions = new Map<string, Subscription>()
     #tabContainer: HTMLElement
     #topUntitledIndex: number = 0
+
+    #draggingName: string | null = null
+    #longPressTimer: ReturnType<typeof setTimeout> | null = null
+    #pendingTabName: string | null = null
+    #startX = 0
+    #startY = 0
+    #dropIndex = 0
+    #hasDragged = false
+    #dropIndicator: HTMLElement
 
     constructor(editor: monaco.editor.IStandaloneCodeEditor) {
         super()
@@ -106,8 +118,25 @@ export class DocumentTabs extends HTMLElement {
                 background: var(${__tone_2});
                 color: var(${__fg_color});
             }
+            .tab.dragging {
+                opacity: 0.9;
+                transition: none;
+                z-index: 10;
+            }
+            .tab.dragging .close {
+                pointer-events: none;
+            }
+            .drop-indicator {
+                align-self: stretch;
+                background: var(${__tone_accent});
+                flex: 0 0 3px;
+                margin: 4px 0;
+            }
         `
         this.shadowRoot!.appendChild(style)
+
+        this.#dropIndicator = document.createElement("div")
+        this.#dropIndicator.classList.add("drop-indicator")
 
         this.#tabContainer = document.createElement("div")
         this.#tabContainer.classList.add("tabs-container")
@@ -380,12 +409,15 @@ export class DocumentTabs extends HTMLElement {
 
     #renderTabs() {
         this.#tabContainer.innerHTML = ""
-        for (const name of this.#docs.keys()) {
+        const names = Array.from(this.#docs.keys())
+        for (let i = 0; i < names.length; i++) {
+            const name = names[i]
             const tab = document.createElement("button")
+            tab.setAttribute("data-tab-name", name)
             tab.addEventListener("contextmenu", ev => ev.preventDefault())
             tab.classList.add("tab")
             if (name === this.#active) tab.classList.add("active")
-            tab.addEventListener("click", () => this.switchTo(name, true))
+            tab.addEventListener("pointerdown", (e) => this.#onTabPointerDown(e, name))
 
             const label = document.createElement("span")
             label.textContent = name
@@ -401,6 +433,132 @@ export class DocumentTabs extends HTMLElement {
             tab.appendChild(close)
             this.#tabContainer.appendChild(tab)
         }
+    }
+
+    #onTabPointerDown = (e: PointerEvent, name: string): void => {
+        if ((e.target as HTMLElement).closest(".close")) return
+        if (this.#draggingName) return
+        if (this.#docs.size <= 1) return
+
+        const tab = (e.target as HTMLElement).closest(".tab") as HTMLElement
+        this.#startX = e.clientX
+        this.#startY = e.clientY
+        this.#hasDragged = false
+        this.#dropIndex = Array.from(this.#docs.keys()).indexOf(name)
+        this.#pendingTabName = name
+
+        if (e.pointerType === "mouse") {
+            tab.setPointerCapture(e.pointerId)
+            this.#startDrag(tab, name, e.pointerId)
+        } else {
+            this.#longPressTimer = setTimeout(() => {
+                this.#longPressTimer = null
+                tab.setPointerCapture(e.pointerId)
+                this.#startDrag(tab, name, e.pointerId)
+            }, LONG_PRESS_MS)
+            document.addEventListener("pointermove", this.#onPreDragPointerMove)
+            document.addEventListener("pointerup", this.#onPreDragPointerUp)
+            document.addEventListener("pointercancel", this.#onPreDragPointerUp)
+        }
+    }
+
+    #onPreDragPointerMove = (e: PointerEvent): void => {
+        if (this.#longPressTimer === null) return
+        const dx = e.clientX - this.#startX
+        const dy = e.clientY - this.#startY
+        if (Math.hypot(dx, dy) > MOVE_THRESHOLD_PX) {
+            clearTimeout(this.#longPressTimer)
+            this.#longPressTimer = null
+            document.removeEventListener("pointermove", this.#onPreDragPointerMove)
+            document.removeEventListener("pointerup", this.#onPreDragPointerUp)
+            document.removeEventListener("pointercancel", this.#onPreDragPointerUp)
+        }
+    }
+
+    #onPreDragPointerUp = (): void => {
+        if (this.#longPressTimer === null) return
+        clearTimeout(this.#longPressTimer)
+        this.#longPressTimer = null
+        document.removeEventListener("pointermove", this.#onPreDragPointerMove)
+        document.removeEventListener("pointerup", this.#onPreDragPointerUp)
+        document.removeEventListener("pointercancel", this.#onPreDragPointerUp)
+        const name = this.#pendingTabName
+        this.#pendingTabName = null
+        if (name) this.switchTo(name, true)
+    }
+
+    #startDrag(tab: HTMLElement, name: string, pointerId: number): void {
+        this.#draggingName = name
+        tab.classList.add("dragging")
+        this.#updateDropIndicator()
+        document.addEventListener("pointermove", this.#onDragPointerMove)
+        document.addEventListener("pointerup", this.#onDragPointerUp)
+        document.addEventListener("pointercancel", this.#onDragPointerUp)
+    }
+
+    #onDragPointerMove = (e: PointerEvent): void => {
+        if (!this.#draggingName) return
+        this.#hasDragged = this.#hasDragged || Math.hypot(e.clientX - this.#startX, e.clientY - this.#startY) > MOVE_THRESHOLD_PX
+        this.#dropIndex = this.#computeDropIndex(e.clientX, e.clientY)
+        this.#updateDropIndicator()
+    }
+
+    #computeDropIndex(clientX: number, clientY: number): number {
+        const rect = this.#tabContainer.getBoundingClientRect()
+        if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+            return -1
+        }
+        const tabs = Array.from(this.#tabContainer.querySelectorAll<HTMLElement>(".tab"))
+        for (let i = 0; i < tabs.length; i++) {
+            const tab = tabs[i]
+            const tabRect = tab.getBoundingClientRect()
+            if (clientY < tabRect.top || clientY > tabRect.bottom) continue
+            if (clientX < tabRect.left || clientX > tabRect.right) continue
+            const midX = tabRect.left + tabRect.width / 2
+            return clientX < midX ? i : i + 1
+        }
+        return tabs.length
+    }
+
+    #updateDropIndicator(): void {
+        if (this.#dropIndex < 0) {
+            this.#dropIndicator.remove()
+            return
+        }
+        const tabs = Array.from(this.#tabContainer.querySelectorAll(".tab"))
+        const insertAt = Math.min(this.#dropIndex, tabs.length)
+        const target = tabs[insertAt]
+        if (target) {
+            this.#tabContainer.insertBefore(this.#dropIndicator, target)
+        } else {
+            this.#tabContainer.appendChild(this.#dropIndicator)
+        }
+    }
+
+    #onDragPointerUp = (e: PointerEvent): void => {
+        if (!this.#draggingName) return
+        const name = this.#draggingName
+        const tab = this.#tabContainer.querySelector(`[data-tab-name="${name}"]`)
+        document.removeEventListener("pointermove", this.#onDragPointerMove)
+        document.removeEventListener("pointerup", this.#onDragPointerUp)
+        document.removeEventListener("pointercancel", this.#onDragPointerUp)
+        this.#dropIndicator.remove()
+        tab?.classList.remove("dragging")
+        this.#draggingName = null
+
+        if (this.#hasDragged) {
+            if (this.#dropIndex >= 0) {
+                const fromIndex = Array.from(this.#docs.keys()).indexOf(name)
+                const toIndex = Math.min(this.#dropIndex, this.#docs.size)
+                if (fromIndex !== -1 && fromIndex !== toIndex) {
+                    this.#docs.moveToIndex(fromIndex, toIndex)
+                    this.#updateStoredOrder()
+                }
+            }
+        } else {
+            this.switchTo(name, true)
+        }
+        this.#renderTabs()
     }
 }
 

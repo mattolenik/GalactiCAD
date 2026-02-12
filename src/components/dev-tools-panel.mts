@@ -1,22 +1,27 @@
 import { __fg_color, __tone_1, __tone_2 } from "../style/style.mjs"
+import { SettingsManager } from "../storage/settings.mjs"
+import type { DocumentTabs } from "./document-tabs.mjs"
+import {
+    loadBenchmarkSuite,
+    saveBenchmarkSuite,
+    runBenchmarkSuite,
+    formatBenchmarkResultsHtml,
+    type BenchmarkCase,
+} from "../benchmark/benchmark.mjs"
 
 export class DevToolsPanel extends HTMLElement {
     #cameraOptCheckbox: HTMLInputElement
     #cameraOptimization: boolean = true
     #beamOptCheckbox: HTMLInputElement
     #beamOptimization: boolean = false
+    #settings: SettingsManager
+    #tabs: DocumentTabs
 
     /** Callback when camera optimization changes */
     onCameraOptimizationChange?: (enabled: boolean) => void
 
     /** Callback when beam optimization changes */
     onBeamOptimizationChange?: (enabled: boolean) => void
-
-    /** Callback when benchmark button is clicked */
-    onBenchmark?: () => void | Promise<void>
-
-    /** Callback when save benchmark suite button is clicked */
-    onSaveBenchmarkSuite?: () => void | Promise<void>
 
     get cameraOptimization(): boolean {
         return this.#cameraOptimization
@@ -45,13 +50,20 @@ export class DevToolsPanel extends HTMLElement {
         this.style.display = show ? "" : "none"
     }
 
-    constructor() {
+    constructor(settings: SettingsManager, tabs: DocumentTabs) {
         super()
+        this.#settings = settings
+        this.#tabs = tabs
+
         const shadow = this.attachShadow({ mode: "open" })
 
         const style = document.createElement("style")
         style.textContent = `
         :host {
+            position: absolute;
+            top: 46px;
+            right: 10px;
+            z-index: 1;
             display: flex;
             flex-direction: column;
             align-items: flex-start;
@@ -128,13 +140,11 @@ export class DevToolsPanel extends HTMLElement {
         const saveSuiteButton = document.createElement("button")
         saveSuiteButton.textContent = "Save Suite"
         saveSuiteButton.addEventListener("click", async () => {
-            if (this.onSaveBenchmarkSuite) {
-                saveSuiteButton.disabled = true
-                try {
-                    await this.onSaveBenchmarkSuite()
-                } finally {
-                    saveSuiteButton.disabled = false
-                }
+            saveSuiteButton.disabled = true
+            try {
+                await this.#saveBenchmarkSuite()
+            } finally {
+                saveSuiteButton.disabled = false
             }
         })
         shadow.appendChild(saveSuiteButton)
@@ -143,19 +153,86 @@ export class DevToolsPanel extends HTMLElement {
         const benchmarkButton = document.createElement("button")
         benchmarkButton.textContent = "Benchmark"
         benchmarkButton.addEventListener("click", async () => {
-            if (this.onBenchmark) {
-                benchmarkButton.disabled = true
-                try {
-                    await this.onBenchmark()
-                } finally {
-                    benchmarkButton.disabled = false
-                }
+            benchmarkButton.disabled = true
+            try {
+                await this.#runBenchmark()
+            } finally {
+                benchmarkButton.disabled = false
             }
         })
         shadow.appendChild(benchmarkButton)
 
         // Hidden by default
         this.style.display = "none"
+    }
+
+    async #saveBenchmarkSuite(): Promise<void> {
+        this.#settings.flushDocNow()
+        const suite: BenchmarkCase[] = []
+        for (const name of this.#tabs.documentNames) {
+            const model = this.#tabs.getByName(name)
+            const docSettings = this.#settings.getDocumentSettings(name)
+            if (model) {
+                suite.push({
+                    name,
+                    source: model.getValue(),
+                    camera: docSettings.camera,
+                    preview: docSettings.preview,
+                })
+            }
+        }
+        saveBenchmarkSuite(suite)
+        const { StatusDialog } = await import("./status-dialog.mjs")
+        const statusDialog = new StatusDialog(
+            `Saved benchmark suite with ${suite.length} case(s) to localStorage.`,
+            true
+        )
+        await statusDialog.show()
+    }
+
+    async #runBenchmark(): Promise<void> {
+        const { StatusDialog } = await import("./status-dialog.mjs")
+        const suite = loadBenchmarkSuite()
+        if (suite.length === 0) {
+            const statusDialog = new StatusDialog(
+                "No benchmark suite found. Save a suite first using the Save Suite button.",
+                true
+            )
+            await statusDialog.show()
+            return
+        }
+
+        const statusDialog = new StatusDialog("Running benchmark suite...", false)
+        const dialogPromise = statusDialog.show()
+
+        try {
+            const frameCount = 100
+            const results = await runBenchmarkSuite(suite, frameCount)
+
+            // Log to console
+            console.log("Benchmark Results:")
+            console.table(
+                results.map(r =>
+                    r.result.error
+                        ? { document: r.name, error: r.result.error }
+                        : {
+                              document: r.name,
+                              "avg (ms)": r.result.averageFrameTime.toFixed(2),
+                              fps: r.result.framesPerSecond.toFixed(2),
+                              "min (ms)": r.result.minFrameTime.toFixed(2),
+                              "max (ms)": r.result.maxFrameTime.toFixed(2),
+                          }
+                )
+            )
+
+            const html = formatBenchmarkResultsHtml(results)
+            statusDialog.updateContentHtml(html, true)
+            await dialogPromise
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            statusDialog.updateMessage(`Benchmark failed: ${errorMsg}`, true)
+            await dialogPromise
+        }
     }
 }
 

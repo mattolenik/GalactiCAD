@@ -1,12 +1,10 @@
 import { __fg_color, __tone_2 } from "../style/style.mjs"
-import { DevToolsPanel } from "./dev-tools-panel.mjs"
 
 export class PreviewWindow extends HTMLElement {
     static get observedAttributes() {
         return ["showFPS"]
     }
     readonly canvas: HTMLCanvasElement
-    readonly devTools: DevToolsPanel
 
     #counter: HTMLSpanElement
     #framerateThreshold: number = 120
@@ -51,17 +49,11 @@ export class PreviewWindow extends HTMLElement {
             pointer-events: none;
             z-index: 1;
         }
-        .controls-container {
+        .controls {
             position: absolute;
             top: 10px;
             right: 10px;
             z-index: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 6px;
-        }
-        .controls {
             display: flex;
             align-items: center;
             gap: 6px;
@@ -96,11 +88,7 @@ export class PreviewWindow extends HTMLElement {
         this.#counter.style.float = "right"
         shadow.appendChild(this.#counter)
 
-        // Controls container (stacks X-ray box and dev tools panel vertically)
-        const controlsContainer = document.createElement("div")
-        controlsContainer.classList.add("controls-container")
-
-        // X-ray mode checkbox (always visible — product feature)
+        // X-ray mode checkbox (product feature, always visible)
         const xrayBox = document.createElement("div")
         xrayBox.classList.add("controls")
         const xrayLabel = document.createElement("label")
@@ -112,12 +100,7 @@ export class PreviewWindow extends HTMLElement {
         })
         xrayLabel.append(this.#xrayCheckbox, "X-ray")
         xrayBox.appendChild(xrayLabel)
-        controlsContainer.appendChild(xrayBox)
-
-        // Developer tools panel (own web component, hidden by default)
-        this.devTools = new DevToolsPanel()
-        controlsContainer.appendChild(this.devTools)
-        shadow.appendChild(controlsContainer)
+        shadow.appendChild(xrayBox)
 
         this.#showFps = !!(this.getAttribute("showFPS")?.toLocaleLowerCase() === "true")
     }

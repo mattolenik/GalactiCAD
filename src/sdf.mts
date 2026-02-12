@@ -120,8 +120,7 @@ export class SDFRenderer {
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
         this.#preview.xrayMode = this.#xrayMode
-        this.#preview.devTools.cameraOptimization = this.#cameraOptimization
-        this.#preview.devTools.beamOptimization = this.#beamEnabled
+        this.onPreviewSettingsLoaded?.()
         this.#needsRender = true
     }
 
@@ -130,6 +129,9 @@ export class SDFRenderer {
      * Provides the array of currently selected object IDs
      */
     onSelectionChange?: (selectedIds: number[]) => void
+
+    /** Called after preview settings are loaded (e.g. on document switch) so the UI can sync */
+    onPreviewSettingsLoaded?: () => void
 
     get controls(): CameraController {
         return this.#controls
@@ -367,18 +369,6 @@ export class SDFRenderer {
         // Wire up xray mode change from preview window
         preview.onXrayModeChange = (enabled: boolean) => {
             this.xrayMode = enabled
-        }
-
-        // Wire up camera optimization toggle
-        preview.devTools.cameraOptimization = this.#cameraOptimization
-        preview.devTools.onCameraOptimizationChange = (enabled: boolean) => {
-            this.cameraOptimization = enabled
-        }
-
-        // Wire up beam optimization toggle
-        preview.devTools.beamOptimization = this.#beamEnabled
-        preview.devTools.onBeamOptimizationChange = (enabled: boolean) => {
-            this.beamEnabled = enabled
         }
 
         this.#loadPreviewSettings()

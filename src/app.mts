@@ -13,13 +13,7 @@ import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
 import { SourceParser, type SourceLocation } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
-import {
-    loadBenchmarkSuite,
-    saveBenchmarkSuite,
-    runBenchmarkSuite,
-    formatBenchmarkResultsHtml,
-    type BenchmarkCase,
-} from "./benchmark/benchmark.mjs"
+import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -332,6 +326,10 @@ class App {
             this.#tabs.style.setProperty("--active-bg", bg)
         })
 
+        // Developer tools panel — positioned over the viewports area
+        const devTools = new DevToolsPanel(this.#settings, this.#tabs)
+        this.#viewports.appendChild(devTools)
+
         this.renderer = new SDFRenderer(preview, this.#tabs)
 
         this.renderer
@@ -358,75 +356,18 @@ class App {
                     this.#handleEditorMouseDown(e)
                 })
 
-                // Wire up save benchmark suite button
-                preview.devTools.onSaveBenchmarkSuite = async () => {
-                    this.#settings.flushDocNow()
-                    const suite: BenchmarkCase[] = []
-                    for (const name of this.#tabs.documentNames) {
-                        const model = this.#tabs.getByName(name)
-                        const docSettings = this.#settings.getDocumentSettings(name)
-                        if (model) {
-                            suite.push({
-                                name,
-                                source: model.getValue(),
-                                camera: docSettings.camera,
-                                preview: docSettings.preview,
-                            })
-                        }
-                    }
-                    saveBenchmarkSuite(suite)
-                    const { StatusDialog } = await import("./components/status-dialog.mjs")
-                    const statusDialog = new StatusDialog(
-                        `Saved benchmark suite with ${suite.length} case(s) to localStorage.`,
-                        true
-                    )
-                    await statusDialog.show()
+                // Wire dev tools panel ↔ renderer
+                devTools.cameraOptimization = this.renderer.cameraOptimization
+                devTools.beamOptimization = this.renderer.beamEnabled
+                devTools.onCameraOptimizationChange = (enabled) => {
+                    this.renderer.cameraOptimization = enabled
                 }
-
-                // Wire up benchmark button
-                preview.devTools.onBenchmark = async () => {
-                    const { StatusDialog } = await import("./components/status-dialog.mjs")
-                    const suite = loadBenchmarkSuite()
-                    if (suite.length === 0) {
-                        const statusDialog = new StatusDialog(
-                            "No benchmark suite found. Save a suite first using the Save Suite button.",
-                            true
-                        )
-                        await statusDialog.show()
-                        return
-                    }
-
-                    const statusDialog = new StatusDialog("Running benchmark suite...", false)
-                    const dialogPromise = statusDialog.show()
-
-                    try {
-                        const frameCount = 100
-                        const results = await runBenchmarkSuite(suite, frameCount)
-
-                        // Log to console
-                        console.log("Benchmark Results:")
-                        console.table(
-                            results.map(r =>
-                                r.result.error
-                                    ? { document: r.name, error: r.result.error }
-                                    : {
-                                          document: r.name,
-                                          "avg (ms)": r.result.averageFrameTime.toFixed(2),
-                                          fps: r.result.framesPerSecond.toFixed(2),
-                                          "min (ms)": r.result.minFrameTime.toFixed(2),
-                                          "max (ms)": r.result.maxFrameTime.toFixed(2),
-                                      }
-                            )
-                        )
-
-                        const html = formatBenchmarkResultsHtml(results)
-                        statusDialog.updateContentHtml(html, true)
-                        await dialogPromise
-                    } catch (err) {
-                        const errorMsg = err instanceof Error ? err.message : String(err)
-                        statusDialog.updateMessage(`Benchmark failed: ${errorMsg}`, true)
-                        await dialogPromise
-                    }
+                devTools.onBeamOptimizationChange = (enabled) => {
+                    this.renderer.beamEnabled = enabled
+                }
+                this.renderer.onPreviewSettingsLoaded = () => {
+                    devTools.cameraOptimization = this.renderer.cameraOptimization
+                    devTools.beamOptimization = this.renderer.beamEnabled
                 }
 
                 this.#tabs.addEventListener("activeTabChanged", (e: Event) => {
@@ -496,7 +437,7 @@ class App {
                 devToolsCheckbox.style.pointerEvents = "none"
                 const devToolsEnabled = this.#settings.getGlobal().app.devToolsEnabled
                 devToolsCheckbox.checked = devToolsEnabled
-                preview.devTools.visible = devToolsEnabled
+                devTools.visible = devToolsEnabled
                 const devToolsText = document.createElement("span")
                 devToolsText.textContent = "Developer Tools"
                 devToolsContainer.append(devToolsCheckbox, devToolsText)
@@ -562,7 +503,7 @@ class App {
                         action: () => {
                             const enabled = !devToolsCheckbox.checked
                             devToolsCheckbox.checked = enabled
-                            preview.devTools.visible = enabled
+                            devTools.visible = enabled
                             this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
                         },
                     },

@@ -333,9 +333,10 @@ class App {
         this.#viewports.appendChild(devTools)
 
         // Resize handle between editor and preview
-        const workspace = editorContainer.parentElement!
+        const workspace = document.getElementById("workspace")!
+        const mainPanels = document.getElementById("main-panels")!
         const resizeHandleEl = document.getElementById("resize-handle")!
-        const resizeHandle = new ResizeHandle(resizeHandleEl, workspace, this.#tabs)
+        const resizeHandle = new ResizeHandle(resizeHandleEl, mainPanels, workspace)
         resizeHandle.connect()
 
         // ResizeObserver so Monaco layout updates when editor container resizes
@@ -381,6 +382,20 @@ class App {
                     devTools.cameraOptimization = this.renderer.cameraOptimization
                     devTools.beamOptimization = this.renderer.beamEnabled
                 }
+
+                // Editor On Left checkbox (used in menu and activeTabChanged)
+                const editorOnLeftCheckbox = document.createElement("input")
+                editorOnLeftCheckbox.type = "checkbox"
+                editorOnLeftCheckbox.style.pointerEvents = "none"
+                editorOnLeftCheckbox.checked = this.#settings.getGlobal().layout.editorOnLeft
+                const editorOnLeftContainer = document.createElement("div")
+                editorOnLeftContainer.style.display = "flex"
+                editorOnLeftContainer.style.alignItems = "center"
+                editorOnLeftContainer.style.gap = "8px"
+                editorOnLeftContainer.style.cursor = "pointer"
+                const editorOnLeftText = document.createElement("span")
+                editorOnLeftText.textContent = "Editor On Left"
+                editorOnLeftContainer.append(editorOnLeftCheckbox, editorOnLeftText)
 
                 // Wire dev tools FPS toggle ↔ preview window
                 const showFps = this.#settings.getGlobal().app.showFps
@@ -510,6 +525,15 @@ class App {
                                 preview.showFps = devTools.showFps
                             }
                             this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
+                        },
+                    },
+                    {
+                        element: editorOnLeftContainer,
+                        action: () => {
+                            const enabled = !editorOnLeftCheckbox.checked
+                            editorOnLeftCheckbox.checked = enabled
+                                this.#settings.updateGlobal({ layout: { editorOnLeft: enabled } })
+                            resizeHandle.applyLayout()
                         },
                     },
                 ])

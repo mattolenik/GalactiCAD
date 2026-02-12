@@ -20,18 +20,20 @@ export interface PreviewSettings {
 
 export interface LayoutSettings {
     editorHeightPercent: number
+    editorWidthPercent: number
+    editorOnLeft: boolean
 }
 
 export interface DocumentSettings {
     camera: CameraSettings
     preview: PreviewSettings
-    layout: LayoutSettings
 }
 
 export interface GlobalSettings {
     preview: { movementScale: number }
     meshViewer: { translucentFaces: boolean; wireframe: boolean }
     app: { meshViewerEnabled: boolean; devToolsEnabled: boolean; showFps: boolean }
+    layout: LayoutSettings
 }
 
 // ---------------------------------------------------------------------------
@@ -47,11 +49,11 @@ function defaultPreview(): PreviewSettings {
 }
 
 function defaultLayout(): LayoutSettings {
-    return { editorHeightPercent: 28 }
+    return { editorHeightPercent: 28, editorWidthPercent: 40, editorOnLeft: false }
 }
 
 function defaultDocSettings(): DocumentSettings {
-    return { camera: defaultCamera(), preview: defaultPreview(), layout: defaultLayout() }
+    return { camera: defaultCamera(), preview: defaultPreview() }
 }
 
 function defaultGlobalSettings(): GlobalSettings {
@@ -59,6 +61,7 @@ function defaultGlobalSettings(): GlobalSettings {
         preview: { movementScale: 0.5 },
         meshViewer: { translucentFaces: false, wireframe: false },
         app: { meshViewerEnabled: false, devToolsEnabled: false, showFps: true },
+        layout: defaultLayout(),
     }
 }
 
@@ -124,7 +127,6 @@ export class SettingsManager {
                 return {
                     camera: { ...def.camera, ...parsed.camera },
                     preview: { ...def.preview, ...parsed.preview },
-                    layout: { ...def.layout, ...parsed.layout },
                 }
             } catch {
                 // Corrupted JSON -- use defaults
@@ -183,25 +185,6 @@ export class SettingsManager {
     }
 
     // -----------------------------------------------------------------------
-    // Layout settings (per-document)
-    // -----------------------------------------------------------------------
-
-    getLayout(): LayoutSettings {
-        return this.#docSettings.layout
-    }
-
-    setLayout(layout: LayoutSettings): void {
-        this.#docSettings.layout = layout
-        this.#docSave$.next()
-    }
-
-    /** Update layout with a partial patch. */
-    updateLayout(patch: Partial<LayoutSettings>): void {
-        Object.assign(this.#docSettings.layout, patch)
-        this.#docSave$.next()
-    }
-
-    // -----------------------------------------------------------------------
     // Global settings
     // -----------------------------------------------------------------------
 
@@ -253,7 +236,6 @@ export class SettingsManager {
                 this.#docSettings = {
                     camera: { ...def.camera, ...parsed.camera },
                     preview: { ...def.preview, ...parsed.preview },
-                    layout: { ...def.layout, ...parsed.layout },
                 }
                 return
             } catch {
@@ -273,6 +255,7 @@ export class SettingsManager {
                     preview: { ...def.preview, ...parsed.preview },
                     meshViewer: { ...def.meshViewer, ...parsed.meshViewer },
                     app: { ...def.app, ...parsed.app },
+                    layout: { ...def.layout, ...parsed.layout },
                 }
                 return
             } catch {

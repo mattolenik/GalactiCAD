@@ -102,10 +102,27 @@
         #workspace {
             height: 100vh;
             display: grid;
-            grid-template-rows: auto minmax(100px, var(--editor-height, 28%)) 10px auto minmax(100px, 1fr);
+            grid-template-rows: auto 1fr auto;
+            grid-template-columns: 1fr;
             max-width: 1200px;
             min-width: 400px;
             margin: auto;
+        }
+        #workspace:not(.editor-left) #main-panels {
+            display: grid;
+            grid-template-rows: minmax(100px, var(--editor-height, 28%)) 10px minmax(100px, 1fr);
+            grid-template-columns: 1fr;
+            min-height: 0;
+        }
+        #workspace.editor-left #main-panels {
+            display: grid;
+            grid-template-rows: 1fr;
+            grid-template-columns: minmax(100px, var(--editor-width, 40%)) 10px minmax(100px, 1fr);
+            min-height: 0;
+        }
+        #main-panels > * {
+            min-width: 0;
+            min-height: 0;
         }
         @media only screen and (max-width: 4in) {
             #workspace {
@@ -129,6 +146,9 @@
             -webkit-user-select: none;
             background: var(--tone-2, #444);
             z-index: 15;
+        }
+        #workspace.editor-left #resize-handle {
+            cursor: col-resize;
         }
         #resize-handle:hover {
             background: var(--tone-3, #666);
@@ -154,12 +174,14 @@
             <div id="tabs"></div>
             <div id="menuButton"></div>
         </div>
-        <div id="editor"></div>
-        <div id="resize-handle" role="separator" aria-orientation="horizontal"></div>
-        <div id="log"></div>
-        <div id="viewports">
-            <preview-window id="preview"></preview-window>
+        <div id="main-panels">
+            <div id="editor"></div>
+            <div id="resize-handle" role="separator" aria-orientation="horizontal"></div>
+            <div id="viewports">
+                <preview-window id="preview"></preview-window>
+            </div>
         </div>
+        <div id="log"></div>
     </div>
     <script type="module" src="./components/preview-window.js"></script>
     <script type="module">

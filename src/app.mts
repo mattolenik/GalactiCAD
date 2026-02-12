@@ -14,6 +14,7 @@ import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./h
 import { SourceParser, type SourceLocation } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
+import { ResizeHandle } from "./components/resize-handle.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -330,6 +331,16 @@ class App {
         // Developer tools panel — positioned over the viewports area
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)
         this.#viewports.appendChild(devTools)
+
+        // Resize handle between editor and preview
+        const workspace = editorContainer.parentElement!
+        const resizeHandleEl = document.getElementById("resize-handle")!
+        const resizeHandle = new ResizeHandle(resizeHandleEl, workspace, this.#tabs)
+        resizeHandle.connect()
+
+        // ResizeObserver so Monaco layout updates when editor container resizes
+        const resizeObserver = new ResizeObserver(() => this.editor.layout())
+        resizeObserver.observe(editorContainer)
 
         this.renderer = new SDFRenderer(preview, this.#tabs)
 

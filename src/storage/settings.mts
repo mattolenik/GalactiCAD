@@ -18,9 +18,14 @@ export interface PreviewSettings {
     beamOptimization: boolean
 }
 
+export interface LayoutSettings {
+    editorHeightPercent: number
+}
+
 export interface DocumentSettings {
     camera: CameraSettings
     preview: PreviewSettings
+    layout: LayoutSettings
 }
 
 export interface GlobalSettings {
@@ -41,8 +46,12 @@ function defaultPreview(): PreviewSettings {
     return { xrayMode: false, cameraOptimization: true, beamOptimization: false }
 }
 
+function defaultLayout(): LayoutSettings {
+    return { editorHeightPercent: 28 }
+}
+
 function defaultDocSettings(): DocumentSettings {
-    return { camera: defaultCamera(), preview: defaultPreview() }
+    return { camera: defaultCamera(), preview: defaultPreview(), layout: defaultLayout() }
 }
 
 function defaultGlobalSettings(): GlobalSettings {
@@ -115,6 +124,7 @@ export class SettingsManager {
                 return {
                     camera: { ...def.camera, ...parsed.camera },
                     preview: { ...def.preview, ...parsed.preview },
+                    layout: { ...def.layout, ...parsed.layout },
                 }
             } catch {
                 // Corrupted JSON -- use defaults
@@ -173,6 +183,25 @@ export class SettingsManager {
     }
 
     // -----------------------------------------------------------------------
+    // Layout settings (per-document)
+    // -----------------------------------------------------------------------
+
+    getLayout(): LayoutSettings {
+        return this.#docSettings.layout
+    }
+
+    setLayout(layout: LayoutSettings): void {
+        this.#docSettings.layout = layout
+        this.#docSave$.next()
+    }
+
+    /** Update layout with a partial patch. */
+    updateLayout(patch: Partial<LayoutSettings>): void {
+        Object.assign(this.#docSettings.layout, patch)
+        this.#docSave$.next()
+    }
+
+    // -----------------------------------------------------------------------
     // Global settings
     // -----------------------------------------------------------------------
 
@@ -224,6 +253,7 @@ export class SettingsManager {
                 this.#docSettings = {
                     camera: { ...def.camera, ...parsed.camera },
                     preview: { ...def.preview, ...parsed.preview },
+                    layout: { ...def.layout, ...parsed.layout },
                 }
                 return
             } catch {

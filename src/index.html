@@ -102,7 +102,7 @@
         #workspace {
             height: 100vh;
             display: grid;
-            grid-template-rows: auto 2fr auto 5fr;
+            grid-template-rows: auto minmax(100px, var(--editor-height, 28%)) 10px auto minmax(100px, 1fr);
             max-width: 1200px;
             min-width: 400px;
             margin: auto;
@@ -120,6 +120,21 @@
 
         #workspace>* {
             min-width: 0;
+        }
+
+        #resize-handle {
+            cursor: row-resize;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            background: var(--tone-2, #444);
+            z-index: 15;
+        }
+        #resize-handle:hover {
+            background: var(--tone-3, #666);
+        }
+        #resize-handle:active {
+            background: var(--tone-1, #888);
         }
 
         canvas {
@@ -140,6 +155,7 @@
             <div id="menuButton"></div>
         </div>
         <div id="editor"></div>
+        <div id="resize-handle" role="separator" aria-orientation="horizontal"></div>
         <div id="log"></div>
         <div id="viewports">
             <preview-window id="preview"></preview-window>

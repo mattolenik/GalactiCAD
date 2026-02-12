@@ -112,7 +112,6 @@ export class CameraController {
         this.#host.canvas.addEventListener("pointermove", this.#onPointerMove.bind(this))
         this.#host.canvas.addEventListener("pointerup", this.#onPointerUp.bind(this))
         this.#host.canvas.addEventListener("pointercancel", this.#onPointerUp.bind(this))
-        this.#host.canvas.addEventListener("pointerleave", this.#onPointerUp.bind(this))
         this.#host.canvas.addEventListener("click", this.#onClick.bind(this))
         this.#host.canvas.addEventListener("contextmenu", e => e.preventDefault())
         this.#host.canvas.addEventListener("keypress", this.#onKeyPress.bind(this))
@@ -167,11 +166,13 @@ export class CameraController {
             this.isDragging = true
             this.#hasDragged = false
             this.#last = vec2(e.clientX, e.clientY)
+            this.#host.canvas.setPointerCapture(e.pointerId)
         } else if (e.button === 2) {
             this.#dragMode = "pan"
             this.isDragging = true
             this.#hasDragged = false
             this.#last = vec2(e.clientX, e.clientY)
+            this.#host.canvas.setPointerCapture(e.pointerId)
         } else {
             return
         }
@@ -181,10 +182,6 @@ export class CameraController {
         if (!this.isDragging) return
         if (this.#zoomController.isZooming) return
 
-        const rect = this.#host.canvas.getBoundingClientRect()
-        if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
-            return
-        }
         const pvec = vec2(e.clientX, e.clientY)
         this.#cursorDelta.set(pvec.subtract(this.#last))
 

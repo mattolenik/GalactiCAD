@@ -58,7 +58,7 @@
             margin: 0;
             padding: 0;
             display: inline-block;
-            z-index: 2;
+            z-index: 20;
         }
 
         #log {
@@ -102,7 +102,7 @@
         #workspace {
             height: 100vh;
             display: grid;
-            grid-template-rows: 2fr auto auto 5fr;
+            grid-template-rows: auto 2fr auto 5fr;
             max-width: 1200px;
             min-width: 400px;
             margin: auto;
@@ -135,11 +135,11 @@
 
 <body>
     <div id="workspace">
-        <div id="editor"></div>
         <div id="toolbar">
             <div id="tabs"></div>
             <div id="menuButton"></div>
         </div>
+        <div id="editor"></div>
         <div id="log"></div>
         <div id="viewports">
             <preview-window id="preview"></preview-window>

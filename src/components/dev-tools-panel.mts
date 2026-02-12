@@ -158,7 +158,7 @@ export class DevToolsPanel extends HTMLElement {
             this.#settings.updateGlobal({ app: { meshViewerEnabled: enabled } })
             this.onMeshViewerChange?.(enabled)
         })
-        meshViewerLabel.append(this.#meshViewerCheckbox, "Show Mesh Viewer")
+        meshViewerLabel.append(this.#meshViewerCheckbox, "Export preview")
         shadow.appendChild(meshViewerLabel)
 
         // Camera optimization checkbox

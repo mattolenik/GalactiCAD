@@ -25,6 +25,7 @@ class App {
     #viewports: HTMLElement
     #settings: SettingsManager
     #meshViewerEnabled = false
+    #originalPreviewOnChange: ((state: CameraState) => void) | undefined
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
     #sceneNodeMap: Map<number, import("./scene/scene.mjs").Node> = new Map()  // nodeId -> Node for symbol lookup
@@ -378,6 +379,13 @@ class App {
                     preview.showFps = enabled
                 }
 
+                const meshViewerEnabled = this.#settings.getGlobal().app.meshViewerEnabled
+                devTools.meshViewer = meshViewerEnabled
+                this.#setMeshViewerEnabled(meshViewerEnabled)
+                devTools.onMeshViewerChange = (enabled) => {
+                    this.#setMeshViewerEnabled(enabled)
+                }
+
                 this.#tabs.addEventListener("activeTabChanged", (e: Event) => {
                     const event = e as CustomEvent<string | undefined>
                     // Clear highlighting when switching tabs
@@ -415,24 +423,6 @@ class App {
                 deleteItem.innerHTML = "Delete"
                 const exportItem = document.createElement("span")
                 exportItem.innerHTML = "Export to STL"
-
-                // Mesh viewer toggle checkbox
-                const meshViewerContainer = document.createElement("div")
-                meshViewerContainer.style.display = "flex"
-                meshViewerContainer.style.alignItems = "center"
-                meshViewerContainer.style.gap = "8px"
-                meshViewerContainer.style.cursor = "pointer"
-                const meshViewerCheckbox = document.createElement("input")
-                meshViewerCheckbox.type = "checkbox"
-                // Prevent checkbox from toggling on its own click (action handles it)
-                meshViewerCheckbox.style.pointerEvents = "none"
-                // Default to disabled (not present)
-                const meshViewerEnabled = this.#settings.getGlobal().app.meshViewerEnabled
-                meshViewerCheckbox.checked = meshViewerEnabled
-                this.#setMeshViewerEnabled(meshViewerEnabled)
-                const meshViewerText = document.createElement("span")
-                meshViewerText.textContent = "Show Mesh Viewer"
-                meshViewerContainer.append(meshViewerCheckbox, meshViewerText)
 
                 // Developer Tools toggle checkbox
                 const devToolsContainer = document.createElement("div")
@@ -498,20 +488,16 @@ class App {
                         },
                     },
                     {
-                        element: meshViewerContainer,
-                        action: () => {
-                            const enabled = !meshViewerCheckbox.checked
-                            meshViewerCheckbox.checked = enabled
-                            this.#setMeshViewerEnabled(enabled)
-                            this.#settings.updateGlobal({ app: { meshViewerEnabled: enabled } })
-                        },
-                    },
-                    {
                         element: devToolsContainer,
                         action: () => {
                             const enabled = !devToolsCheckbox.checked
                             devToolsCheckbox.checked = enabled
                             devTools.visible = enabled
+                            if (!enabled) {
+                                preview.showFps = false
+                            } else {
+                                preview.showFps = devTools.showFps
+                            }
                             this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
                         },
                     },
@@ -580,9 +566,11 @@ class App {
             requestAnimationFrame(() => {
                 if (!this.#mesh) return // Guard against race with disable
 
-                // Set up camera sync between preview and mesh viewer
+                // Set up camera sync between preview and mesh viewer.
+                // Preserve the renderer's onChange so the preview still gets #needsRender and #onCameraMovement.
                 const previewControls = this.renderer.controls
                 const meshControls = meshViewer.controls
+                this.#originalPreviewOnChange = previewControls.onChange
                 let syncing = false
 
                 const push = (from: "preview" | "mesh", state: CameraState) => {
@@ -592,11 +580,16 @@ class App {
                         meshControls.applyState(state, { emit: false })
                     } else {
                         previewControls.applyState(state, { emit: false })
+                        // Trigger preview render when mesh camera changes
+                        this.#originalPreviewOnChange?.(state)
                     }
                     syncing = false
                 }
 
-                previewControls.onChange = state => push("preview", state)
+                previewControls.onChange = state => {
+                    push("preview", state)
+                    this.#originalPreviewOnChange?.(state)
+                }
                 meshControls.onChange = state => push("mesh", state)
                 // Sync initial camera state
                 meshControls.applyState(previewControls.state, { emit: false })
@@ -617,8 +610,9 @@ class App {
                 this.#meshUpdateTimer = null
             }
 
-            // Remove mesh viewer's camera change handler from preview controls
-            this.renderer.controls.onChange = undefined
+            // Restore the renderer's original onChange handler
+            this.renderer.controls.onChange = this.#originalPreviewOnChange
+            this.#originalPreviewOnChange = undefined
         }
     }
 }

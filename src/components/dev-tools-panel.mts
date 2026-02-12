@@ -15,6 +15,7 @@ export class DevToolsPanel extends HTMLElement {
     #beamOptCheckbox: HTMLInputElement
     #beamOptimization: boolean = false
     #showFpsCheckbox: HTMLInputElement
+    #meshViewerCheckbox: HTMLInputElement
     #settings: SettingsManager
     #tabs: DocumentTabs
 
@@ -26,6 +27,9 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback when show FPS changes */
     onShowFpsChange?: (enabled: boolean) => void
+
+    /** Callback when mesh viewer toggle changes */
+    onMeshViewerChange?: (enabled: boolean) => void
 
     get cameraOptimization(): boolean {
         return this.#cameraOptimization
@@ -51,6 +55,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set showFps(enabled: boolean) {
         this.#showFpsCheckbox.checked = enabled
+    }
+
+    get meshViewer(): boolean {
+        return this.#meshViewerCheckbox.checked
+    }
+
+    set meshViewer(enabled: boolean) {
+        this.#meshViewerCheckbox.checked = enabled
     }
 
     /** Show or hide the panel */
@@ -135,6 +147,19 @@ export class DevToolsPanel extends HTMLElement {
         })
         showFpsLabel.append(this.#showFpsCheckbox, "Show FPS")
         shadow.appendChild(showFpsLabel)
+
+        // Mesh viewer checkbox
+        const meshViewerLabel = document.createElement("label")
+        this.#meshViewerCheckbox = document.createElement("input")
+        this.#meshViewerCheckbox.type = "checkbox"
+        this.#meshViewerCheckbox.checked = this.#settings.getGlobal().app.meshViewerEnabled
+        this.#meshViewerCheckbox.addEventListener("change", () => {
+            const enabled = this.#meshViewerCheckbox.checked
+            this.#settings.updateGlobal({ app: { meshViewerEnabled: enabled } })
+            this.onMeshViewerChange?.(enabled)
+        })
+        meshViewerLabel.append(this.#meshViewerCheckbox, "Show Mesh Viewer")
+        shadow.appendChild(meshViewerLabel)
 
         // Camera optimization checkbox
         const cameraOptLabel = document.createElement("label")

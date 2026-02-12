@@ -1,5 +1,5 @@
 import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
-import { LocalStorage } from "./storage/storage.mjs"
+import { SettingsManager } from "./storage/settings.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
@@ -93,7 +93,7 @@ export class SDFRenderer {
     #tStartTextureView!: GPUTextureView
 
     // Resolution scaling: render at reduced res during camera movement for responsiveness
-    #ls: LocalStorage = LocalStorage.instance
+    #settings: SettingsManager = SettingsManager.instance
     #fullWidth: number = 0
     #fullHeight: number = 0
     #sceneWidth: number = 0   // scene rendering resolution (may differ from canvas during movement)
@@ -106,25 +106,19 @@ export class SDFRenderer {
     #documentName: string | null = null
     #tabChangeListener: ((e: Event) => void) | null = null
 
-    /** Storage key for per-document preview settings */
-    #previewSettingsKey(suffix: string): string {
-        return this.#documentName ? `preview:${this.#documentName}:${suffix}` : `preview:${suffix}`
-    }
-
     #savePreviewSettings(): void {
-        this.#ls.setInt(this.#previewSettingsKey("xrayMode"), this.#xrayMode ? 1 : 0)
-        this.#ls.setInt(this.#previewSettingsKey("cameraOptimization"), this.#cameraOptimization ? 1 : 0)
-        this.#ls.setInt(this.#previewSettingsKey("beamOptimization"), this.#beamEnabled ? 1 : 0)
+        this.#settings.setPreview({
+            xrayMode: this.#xrayMode,
+            cameraOptimization: this.#cameraOptimization,
+            beamOptimization: this.#beamEnabled,
+        })
     }
 
     #loadPreviewSettings(): void {
-        const xray = this.#ls.getInt(this.#previewSettingsKey("xrayMode"))
-        this.#xrayMode = xray !== undefined ? xray !== 0 : false
-        let camOpt = this.#ls.getInt(this.#previewSettingsKey("cameraOptimization"))
-        if (camOpt === undefined) camOpt = this.#ls.getFloat("preview:cameraOptimization")
-        this.#cameraOptimization = camOpt !== undefined ? camOpt !== 0 : true
-        const beamOpt = this.#ls.getInt(this.#previewSettingsKey("beamOptimization"))
-        this.#beamEnabled = beamOpt !== undefined ? beamOpt !== 0 : false
+        const prev = this.#settings.getPreview()
+        this.#xrayMode = prev.xrayMode
+        this.#cameraOptimization = prev.cameraOptimization
+        this.#beamEnabled = prev.beamOptimization
         this.#preview.xrayMode = this.#xrayMode
         this.#preview.cameraOptimization = this.#cameraOptimization
         this.#preview.beamOptimization = this.#beamEnabled
@@ -151,7 +145,7 @@ export class SDFRenderer {
 
     set xrayMode(enabled: boolean) {
         this.#xrayMode = enabled
-        this.#ls.setInt(this.#previewSettingsKey("xrayMode"), enabled ? 1 : 0)
+        this.#settings.updatePreview("xrayMode", enabled)
         this.#needsRender = true
     }
 
@@ -161,7 +155,7 @@ export class SDFRenderer {
 
     set beamEnabled(enabled: boolean) {
         this.#beamEnabled = enabled
-        this.#ls.setInt(this.#previewSettingsKey("beamOptimization"), enabled ? 1 : 0)
+        this.#settings.updatePreview("beamOptimization", enabled)
         this.#needsRender = true
     }
 
@@ -209,7 +203,7 @@ export class SDFRenderer {
     /** Resolution scale used during camera movement (0.25–1.0). Lower = faster interaction. */
     set movementScale(scale: number) {
         this.#movementScale = Math.max(0.25, Math.min(1.0, scale))
-        this.#ls.setFloat("preview:movementScale", this.#movementScale)
+        this.#settings.updateGlobal({ preview: { movementScale: this.#movementScale } })
     }
 
     get movementScale(): number {
@@ -219,7 +213,7 @@ export class SDFRenderer {
     /** Whether resolution scaling during camera movement is enabled. */
     set cameraOptimization(enabled: boolean) {
         this.#cameraOptimization = enabled
-        this.#ls.setInt(this.#previewSettingsKey("cameraOptimization"), enabled ? 1 : 0)
+        this.#settings.updatePreview("cameraOptimization", enabled)
         // If disabling while at reduced resolution, restore full res immediately
         if (!enabled && this.#resolutionScale !== 1.0) {
             if (this.#movementTimer !== null) {
@@ -363,7 +357,7 @@ export class SDFRenderer {
             this.#needsRender = true
             this.#onCameraMovement()
         }
-        this.#movementScale = this.#ls.getFloat("preview:movementScale") ?? 0.5
+        this.#movementScale = this.#settings.getGlobal().preview.movementScale
         this.#documentName = (tabsElement as { active?: string })?.active ?? null
         this.#uniformBuffers = new UniformBuffers()
         this.#exportBuffers = new ExportBuffers()
@@ -393,7 +387,9 @@ export class SDFRenderer {
         if (tabsElement) {
             this.#tabChangeListener = (e: Event) => {
                 const customEvent = e as CustomEvent<string | undefined>
-                this.#savePreviewSettings()
+                // SettingsManager.switchDocument (called from DocumentTabs) handles
+                // flushing the old doc and loading the new one. We just need to
+                // reload our in-memory preview flags from the (already-switched) settings.
                 this.#documentName = customEvent.detail ?? null
                 this.#loadPreviewSettings()
             }

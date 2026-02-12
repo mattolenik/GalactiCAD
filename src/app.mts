@@ -9,7 +9,7 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
-import { LocalStorage } from "./storage/storage.mjs"
+import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
 import { SourceParser, type SourceLocation } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
@@ -22,7 +22,7 @@ class App {
     #meshUpdateToken = 0
     #meshUpdateTimer: number | null = null
     #viewports: HTMLElement
-    #ls: LocalStorage
+    #settings: SettingsManager
     #meshViewerEnabled = false
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
@@ -245,7 +245,7 @@ class App {
         private log: HTMLDivElement,
         menu: HTMLElement
     ) {
-        this.#ls = LocalStorage.instance
+        this.#settings = SettingsManager.instance
         this.#viewports = document.getElementById("viewports")!
 
         // Initialize source parser and highlighter for selection sync
@@ -424,7 +424,7 @@ class App {
                 // Prevent checkbox from toggling on its own click (action handles it)
                 meshViewerCheckbox.style.pointerEvents = "none"
                 // Default to disabled (not present)
-                const meshViewerEnabled = this.#ls.getItem("app.meshViewerEnabled") === "true"
+                const meshViewerEnabled = this.#settings.getGlobal().app.meshViewerEnabled
                 meshViewerCheckbox.checked = meshViewerEnabled
                 this.#setMeshViewerEnabled(meshViewerEnabled)
                 const meshViewerText = document.createElement("span")
@@ -483,7 +483,7 @@ class App {
                             const enabled = !meshViewerCheckbox.checked
                             meshViewerCheckbox.checked = enabled
                             this.#setMeshViewerEnabled(enabled)
-                            this.#ls.setItem("app.meshViewerEnabled", enabled ? "true" : "false")
+                            this.#settings.updateGlobal({ app: { meshViewerEnabled: enabled } })
                         },
                     },
                 ])

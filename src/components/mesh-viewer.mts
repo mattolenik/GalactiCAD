@@ -1,7 +1,7 @@
 import { MeshData } from "../export/export.mjs"
 import { CameraController } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
-import { LocalStorage } from "../storage/storage.mjs"
+import { SettingsManager } from "../storage/settings.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3 } from "../vecmat/vector.mjs"
 
@@ -40,7 +40,7 @@ export class MeshViewer extends HTMLElement {
     #compositePipelineLayout!: GPUPipelineLayout
     #compositeBindGroup: GPUBindGroup | null = null
 
-    #ls: LocalStorage
+    #settings: SettingsManager
     #translucentFaces = false
     #translucentCheckbox!: HTMLInputElement
     #wireframe = false
@@ -54,7 +54,7 @@ export class MeshViewer extends HTMLElement {
         super()
         const shadow = this.attachShadow({ mode: "open" })
 
-        this.#ls = LocalStorage.instance
+        this.#settings = SettingsManager.instance
 
         // Initialize state from attribute (if present in HTML), then load from storage.
         this.#translucentFaces = (this.getAttribute("translucentFaces") ?? "").toLowerCase() === "true"
@@ -703,26 +703,25 @@ export class MeshViewer extends HTMLElement {
     }
 
     #saveViewerState(): void {
-        this.#ls.setItem("meshViewer.translucentFaces", this.#translucentFaces ? "true" : "false")
-        this.#ls.setItem("meshViewer.wireframe", this.#wireframe ? "true" : "false")
+        this.#settings.updateGlobal({
+            meshViewer: {
+                translucentFaces: this.#translucentFaces,
+                wireframe: this.#wireframe,
+            },
+        })
     }
 
     #loadViewerState(): void {
-        const translucentFaces = this.#ls.getItem("meshViewer.translucentFaces")
-        if (translucentFaces !== null) {
-            this.#translucentFaces = translucentFaces.toLowerCase() === "true"
-            this.setAttribute("translucentFaces", this.#translucentFaces ? "true" : "false")
-            if (this.#translucentCheckbox) {
-                this.#translucentCheckbox.checked = this.#translucentFaces
-            }
+        const g = this.#settings.getGlobal().meshViewer
+        this.#translucentFaces = g.translucentFaces
+        this.setAttribute("translucentFaces", this.#translucentFaces ? "true" : "false")
+        if (this.#translucentCheckbox) {
+            this.#translucentCheckbox.checked = this.#translucentFaces
         }
-        const wireframe = this.#ls.getItem("meshViewer.wireframe")
-        if (wireframe !== null) {
-            this.#wireframe = wireframe.toLowerCase() === "true"
-            this.setAttribute("wireframe", this.#wireframe ? "true" : "false")
-            if (this.#wireframeCheckbox) {
-                this.#wireframeCheckbox.checked = this.#wireframe
-            }
+        this.#wireframe = g.wireframe
+        this.setAttribute("wireframe", this.#wireframe ? "true" : "false")
+        if (this.#wireframeCheckbox) {
+            this.#wireframeCheckbox.checked = this.#wireframe
         }
     }
 }

@@ -1,5 +1,5 @@
 import { clamped } from "../math.mjs"
-import { LocalStorage } from "../storage/storage.mjs"
+import { SettingsManager, type CameraSettings } from "../storage/settings.mjs"
 import { lookAt, Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { PinchZoomController } from "./pinchzoom-controller.mjs"
@@ -17,7 +17,7 @@ export interface CameraState {
 }
 
 export class CameraController {
-    #ls: LocalStorage
+    #settings: SettingsManager
     #pivot: Vec3f
     #host: CameraHost
     #documentName: string | null = null
@@ -40,7 +40,6 @@ export class CameraController {
 
     #last = new Vec2f()
     #cursorDelta = new Vec2f()
-    #lastCameraSave = 0
     #lastFocused: Element | null = null
 
     #dragMode: "rotate" | "pan" | null = null
@@ -55,7 +54,7 @@ export class CameraController {
     onSelect?: (screenPos: Vec2f, shiftKey: boolean) => void
 
     constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null) {
-        this.#ls = LocalStorage.instance
+        this.#settings = SettingsManager.instance
         this.#host = host
         this.#pivot = pivot
         this.zoom = radius
@@ -78,11 +77,9 @@ export class CameraController {
             this.#tabsElement = tabsElement
             this.#tabChangeListener = ((e: Event) => {
                 const customEvent = e as CustomEvent<string | undefined>
-                // Save current state before switching
-                this.#saveCameraState(true)
-                // Switch to new document
+                // SettingsManager.switchDocument flushes current doc & loads the new one
                 this.#documentName = customEvent.detail ?? ""
-                // Load the new document's camera state
+                // Load the new document's camera state from the (already-switched) settings
                 this.#loadCameraState()
             }) as EventListener
             tabsElement.addEventListener("activeTabChanged", this.#tabChangeListener)
@@ -249,7 +246,9 @@ export class CameraController {
         if (e.button === 0 || e.button === 1 || this.isDragging) {
             this.isDragging = false
             this.#dragMode = null
-            this.#saveCameraState(true)
+            // Camera state is saved via rxjs debounce in SettingsManager;
+            // the debounce fires once the camera stops moving.
+            this.#saveCameraState()
         }
     }
 
@@ -278,38 +277,25 @@ export class CameraController {
         }
     }
 
-    storageKey(suffix: string): string {
-        if (this.#documentName) {
-            return `camera:${this.#documentName}:${suffix}`
-        }
-        return `camera:${suffix}`
-    }
-
-    #saveCameraState(always = false): void {
-        if (!always && Date.now() - this.#lastCameraSave < 100) {
-            return
-        }
-        this.#lastCameraSave = Date.now()
-        this.#ls.setVec3f(this.storageKey("position"), this.cameraPosition)
-        this.#ls.setVec3f(this.storageKey("translation"), this.#cameraTranslation)
-        this.#ls.setFloat(this.storageKey("zoom"), this.zoom)
-        // Save quaternion as string (quaternion library supports string serialization)
+    /** Push current camera state to SettingsManager (persisted via rxjs debounce). */
+    #saveCameraState(): void {
         const q = this.#rotation.toVector()
-        this.#ls.setItem(this.storageKey("rotation"), `${q[0]},${q[1]},${q[2]},${q[3]}`)
+        const cam: CameraSettings = {
+            position: [this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z],
+            translation: [this.#cameraTranslation.x, this.#cameraTranslation.y, this.#cameraTranslation.z],
+            zoom: this.zoom,
+            rotation: [q[0], q[1], q[2], q[3]],
+        }
+        this.#settings.setCamera(cam)
     }
 
     #loadCameraState(): void {
-        this.cameraPosition = this.#ls.getVec3f(this.storageKey("position"))
-        this.#cameraTranslation = this.#ls.getVec3f(this.storageKey("translation"))
-        this.zoom = this.#ls.getFloat(this.storageKey("zoom")) ?? 20
+        const cam = this.#settings.getCamera()
+        this.cameraPosition = vec3(cam.position[0], cam.position[1], cam.position[2])
+        this.#cameraTranslation = vec3(cam.translation[0], cam.translation[1], cam.translation[2])
+        this.zoom = cam.zoom
         this.#zoomController.setZoom(this.zoom, false)
-
-        // Try to load quaternion, fall back to Euler angles for backward compatibility
-        const rotationStr = this.#ls.getItem(this.storageKey("rotation"))
-        if (rotationStr) {
-            const [w, x, y, z] = rotationStr.split(",").map(Number)
-            this.#rotation = new Quaternion(w, x, y, z).normalize()
-        }
+        this.#rotation = new Quaternion(cam.rotation[0], cam.rotation[1], cam.rotation[2], cam.rotation[3]).normalize()
         this.#updateTransforms()
     }
 

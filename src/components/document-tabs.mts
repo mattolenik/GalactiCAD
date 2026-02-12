@@ -2,6 +2,7 @@ import * as monaco from "monaco-editor"
 import { fromEventPattern, Subscription } from "rxjs"
 import { bufferTime } from "rxjs/operators"
 import { OrderedMap } from "../collections/orderedMap.mjs"
+import { SettingsManager } from "../storage/settings.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { YesNoDialog } from "./yesno-dialog.mjs"
 
@@ -247,12 +248,7 @@ export class DocumentTabs extends HTMLElement {
         const cntinue = await new YesNoDialog(`Are you sure you want to delete ${name}?`).show()
         if (cntinue) {
             localStorage.removeItem(`document:${name}`)
-            for (const suffix of ["xrayMode", "cameraOptimization", "beamOptimization"]) {
-                localStorage.removeItem(`preview:${name}:${suffix}`)
-            }
-            for (const suffix of ["position", "translation", "zoom", "rotation"]) {
-                localStorage.removeItem(`camera:${name}:${suffix}`)
-            }
+            SettingsManager.instance.deleteDocument(name)
             this.closeTab(name)
         }
     }
@@ -277,36 +273,15 @@ export class DocumentTabs extends HTMLElement {
             return false
         }
 
-        // Update localStorage: remove old key, add new key
+        // Update localStorage: remove old document content key, add new one
         const content = localStorage.getItem(`document:${oldName}`)
         if (content !== null) {
             localStorage.removeItem(`document:${oldName}`)
             localStorage.setItem(`document:${newName}`, content)
         }
 
-        // Migrate per-document preview settings (x-ray, camera opt, beam opt)
-        const previewKeys = ["xrayMode", "cameraOptimization", "beamOptimization"]
-        for (const suffix of previewKeys) {
-            const oldKey = `preview:${oldName}:${suffix}`
-            const newKey = `preview:${newName}:${suffix}`
-            const val = localStorage.getItem(oldKey)
-            if (val !== null) {
-                localStorage.setItem(newKey, val)
-                localStorage.removeItem(oldKey)
-            }
-        }
-
-        // Migrate per-document camera state
-        const cameraKeys = ["position", "translation", "zoom", "rotation"]
-        for (const suffix of cameraKeys) {
-            const oldKey = `camera:${oldName}:${suffix}`
-            const newKey = `camera:${newName}:${suffix}`
-            const val = localStorage.getItem(oldKey)
-            if (val !== null) {
-                localStorage.setItem(newKey, val)
-                localStorage.removeItem(oldKey)
-            }
-        }
+        // Rename per-document settings (camera, preview) in the consolidated settings store
+        SettingsManager.instance.renameDocument(oldName, newName)
 
         // Update the ordered map: need to preserve order
         // Get all entries, update the name, rebuild
@@ -346,6 +321,8 @@ export class DocumentTabs extends HTMLElement {
         const model = this.#docs.get(name)
         if (!model) return
         this.#active = name
+        // Flush the outgoing document's settings and load the incoming document's settings
+        SettingsManager.instance.switchDocument(name)
         this.#editor.setModel(model)
         this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: name }))
         this.#renderTabs()

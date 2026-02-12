@@ -26,7 +26,7 @@ export interface DocumentSettings {
 export interface GlobalSettings {
     preview: { movementScale: number }
     meshViewer: { translucentFaces: boolean; wireframe: boolean }
-    app: { meshViewerEnabled: boolean; devToolsEnabled: boolean }
+    app: { meshViewerEnabled: boolean; devToolsEnabled: boolean; showFps: boolean }
 }
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ function defaultGlobalSettings(): GlobalSettings {
     return {
         preview: { movementScale: 0.5 },
         meshViewer: { translucentFaces: false, wireframe: false },
-        app: { meshViewerEnabled: false, devToolsEnabled: false },
+        app: { meshViewerEnabled: false, devToolsEnabled: false, showFps: true },
     }
 }
 

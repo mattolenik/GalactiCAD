@@ -1,14 +1,11 @@
 import { __fg_color, __tone_2 } from "../style/style.mjs"
 
 export class PreviewWindow extends HTMLElement {
-    static get observedAttributes() {
-        return ["showFPS"]
-    }
     readonly canvas: HTMLCanvasElement
 
     #counter: HTMLSpanElement
     #framerateThreshold: number = 120
-    #showFps: boolean
+    #showFps: boolean = false
     #xrayCheckbox: HTMLInputElement
     #xrayMode: boolean = false
 
@@ -22,6 +19,15 @@ export class PreviewWindow extends HTMLElement {
     set xrayMode(enabled: boolean) {
         this.#xrayMode = enabled
         this.#xrayCheckbox.checked = enabled
+    }
+
+    get showFps(): boolean {
+        return this.#showFps
+    }
+
+    set showFps(enabled: boolean) {
+        this.#showFps = enabled
+        this.#counter.style.visibility = enabled ? "visible" : "hidden"
     }
 
     constructor() {
@@ -102,7 +108,6 @@ export class PreviewWindow extends HTMLElement {
         xrayBox.appendChild(xrayLabel)
         shadow.appendChild(xrayBox)
 
-        this.#showFps = !!(this.getAttribute("showFPS")?.toLocaleLowerCase() === "true")
     }
 
     updateFPS(fps: number) {
@@ -112,13 +117,6 @@ export class PreviewWindow extends HTMLElement {
             this.#counter.textContent = fps.toFixed(0)
         } else {
             this.#counter.textContent = ""
-        }
-    }
-
-    attributeChangedCallback(name: string, oldVal: string | null, newVal: string | null) {
-        if (name === "showFPS") {
-            this.#showFps = !!(newVal?.toLocaleLowerCase() === "true")
-            this.#counter.style.visibility = this.#showFps ? "visible" : "hidden"
         }
     }
 }

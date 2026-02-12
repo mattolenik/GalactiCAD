@@ -370,6 +370,14 @@ class App {
                     devTools.beamOptimization = this.renderer.beamEnabled
                 }
 
+                // Wire dev tools FPS toggle ↔ preview window
+                const showFps = this.#settings.getGlobal().app.showFps
+                devTools.showFps = showFps
+                preview.showFps = showFps
+                devTools.onShowFpsChange = (enabled) => {
+                    preview.showFps = enabled
+                }
+
                 this.#tabs.addEventListener("activeTabChanged", (e: Event) => {
                     const event = e as CustomEvent<string | undefined>
                     // Clear highlighting when switching tabs

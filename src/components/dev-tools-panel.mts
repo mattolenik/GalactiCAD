@@ -14,6 +14,7 @@ export class DevToolsPanel extends HTMLElement {
     #cameraOptimization: boolean = true
     #beamOptCheckbox: HTMLInputElement
     #beamOptimization: boolean = false
+    #showFpsCheckbox: HTMLInputElement
     #settings: SettingsManager
     #tabs: DocumentTabs
 
@@ -22,6 +23,9 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback when beam optimization changes */
     onBeamOptimizationChange?: (enabled: boolean) => void
+
+    /** Callback when show FPS changes */
+    onShowFpsChange?: (enabled: boolean) => void
 
     get cameraOptimization(): boolean {
         return this.#cameraOptimization
@@ -39,6 +43,14 @@ export class DevToolsPanel extends HTMLElement {
     set beamOptimization(enabled: boolean) {
         this.#beamOptimization = enabled
         this.#beamOptCheckbox.checked = enabled
+    }
+
+    get showFps(): boolean {
+        return this.#showFpsCheckbox.checked
+    }
+
+    set showFps(enabled: boolean) {
+        this.#showFpsCheckbox.checked = enabled
     }
 
     /** Show or hide the panel */
@@ -112,6 +124,18 @@ export class DevToolsPanel extends HTMLElement {
 `
         shadow.appendChild(style)
 
+        // Show FPS checkbox
+        const showFpsLabel = document.createElement("label")
+        this.#showFpsCheckbox = document.createElement("input")
+        this.#showFpsCheckbox.type = "checkbox"
+        this.#showFpsCheckbox.addEventListener("change", () => {
+            const enabled = this.#showFpsCheckbox.checked
+            this.#settings.updateGlobal({ app: { showFps: enabled } })
+            this.onShowFpsChange?.(enabled)
+        })
+        showFpsLabel.append(this.#showFpsCheckbox, "Show FPS")
+        shadow.appendChild(showFpsLabel)
+
         // Camera optimization checkbox
         const cameraOptLabel = document.createElement("label")
         this.#cameraOptCheckbox = document.createElement("input")
@@ -121,7 +145,7 @@ export class DevToolsPanel extends HTMLElement {
             this.#cameraOptimization = this.#cameraOptCheckbox.checked
             this.onCameraOptimizationChange?.(this.#cameraOptimization)
         })
-        cameraOptLabel.append(this.#cameraOptCheckbox, "Camera optimization")
+        cameraOptLabel.append(this.#cameraOptCheckbox, "Camera halfres")
         shadow.appendChild(cameraOptLabel)
 
         // Beam optimization checkbox
@@ -133,12 +157,12 @@ export class DevToolsPanel extends HTMLElement {
             this.#beamOptimization = this.#beamOptCheckbox.checked
             this.onBeamOptimizationChange?.(this.#beamOptimization)
         })
-        beamOptLabel.append(this.#beamOptCheckbox, "Beam optimization")
+        beamOptLabel.append(this.#beamOptCheckbox, "Beam render")
         shadow.appendChild(beamOptLabel)
 
         // Save Suite button
         const saveSuiteButton = document.createElement("button")
-        saveSuiteButton.textContent = "Save Suite"
+        saveSuiteButton.textContent = "Save Bench Suite"
         saveSuiteButton.addEventListener("click", async () => {
             saveSuiteButton.disabled = true
             try {
@@ -216,12 +240,12 @@ export class DevToolsPanel extends HTMLElement {
                     r.result.error
                         ? { document: r.name, error: r.result.error }
                         : {
-                              document: r.name,
-                              "avg (ms)": r.result.averageFrameTime.toFixed(2),
-                              fps: r.result.framesPerSecond.toFixed(2),
-                              "min (ms)": r.result.minFrameTime.toFixed(2),
-                              "max (ms)": r.result.maxFrameTime.toFixed(2),
-                          }
+                            document: r.name,
+                            "avg (ms)": r.result.averageFrameTime.toFixed(2),
+                            fps: r.result.framesPerSecond.toFixed(2),
+                            "min (ms)": r.result.minFrameTime.toFixed(2),
+                            "max (ms)": r.result.maxFrameTime.toFixed(2),
+                        }
                 )
             )
 

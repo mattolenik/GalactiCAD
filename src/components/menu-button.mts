@@ -1,4 +1,4 @@
-import { __fg_color, __tone_2, __tone_3, __toolbar_height } from "../style/style.mjs"
+import { __fg_color, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "../style/style.mjs"
 
 export class MenuButton extends HTMLElement {
     #ac = new AbortController()
@@ -24,19 +24,19 @@ export class MenuButton extends HTMLElement {
                 display: inline-block;
                 cursor: pointer;
                 background: none;
-                background: var(${__tone_2});
+                background: var(${__tone_accent});
                 line-height: 0;
                 padding: 0 0 calc(var(${__toolbar_height}) / 2 - 4px) 0;
                 height: calc(var(${__toolbar_height}) + 4px);
                 width: calc(var(${__toolbar_height}) + 10px);
                 border: none;
-                color: rgb(from var(${__fg_color}) r g b / 0.6);
+                color: var(${__fg_color});
                 font-size: large;
                 transition: background-color 0.2s, color 0.2s;
             }
 
             button:hover {
-                background: var(${__tone_3});
+                background: color-mix(in srgb, var(${__tone_accent}) 85%, white);
                 color: var(${__fg_color});
             }
 

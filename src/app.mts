@@ -7,7 +7,7 @@ import { MeshViewer } from "./components/mesh-viewer.mjs"
 import type { PreviewWindow } from "./components/preview-window.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
 import { SDFRenderer } from "./sdf.mjs"
-import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __toolbar_height } from "./style/style.mjs"
+import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
@@ -309,6 +309,7 @@ class App {
                 ${__tone_1}: #888;
                 ${__tone_2}: #444;
                 ${__tone_3}: #666;
+                ${__tone_accent}: #007acc;
                 ${__toolbar_height}: 30px;
             }
 
@@ -382,20 +383,6 @@ class App {
                     devTools.cameraOptimization = this.renderer.cameraOptimization
                     devTools.beamOptimization = this.renderer.beamEnabled
                 }
-
-                // Editor On Left checkbox (used in menu and activeTabChanged)
-                const editorOnLeftCheckbox = document.createElement("input")
-                editorOnLeftCheckbox.type = "checkbox"
-                editorOnLeftCheckbox.style.pointerEvents = "none"
-                editorOnLeftCheckbox.checked = this.#settings.getGlobal().layout.editorOnLeft
-                const editorOnLeftContainer = document.createElement("div")
-                editorOnLeftContainer.style.display = "flex"
-                editorOnLeftContainer.style.alignItems = "center"
-                editorOnLeftContainer.style.gap = "8px"
-                editorOnLeftContainer.style.cursor = "pointer"
-                const editorOnLeftText = document.createElement("span")
-                editorOnLeftText.textContent = "Editor On Left"
-                editorOnLeftContainer.append(editorOnLeftCheckbox, editorOnLeftText)
 
                 // Wire dev tools FPS toggle ↔ preview window
                 const showFps = this.#settings.getGlobal().app.showFps
@@ -525,15 +512,6 @@ class App {
                                 preview.showFps = devTools.showFps
                             }
                             this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
-                        },
-                    },
-                    {
-                        element: editorOnLeftContainer,
-                        action: () => {
-                            const enabled = !editorOnLeftCheckbox.checked
-                            editorOnLeftCheckbox.checked = enabled
-                                this.#settings.updateGlobal({ layout: { editorOnLeft: enabled } })
-                            resizeHandle.applyLayout()
                         },
                     },
                 ])

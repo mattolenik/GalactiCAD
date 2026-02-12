@@ -1,4 +1,4 @@
-import { SettingsManager } from "../storage/settings.mjs"
+import { LayoutSettings, SettingsManager } from "../storage/settings.mjs"
 
 const MIN_PERCENT = 15
 const MAX_PERCENT = 70
@@ -12,6 +12,11 @@ export class ResizeHandle {
     #startY = 0
     #startPercent = 0
 
+    /** Whether the editor is on the left, computed from window aspect ratio */
+    get #editorOnLeft(): boolean {
+        return window.innerWidth > window.innerHeight
+    }
+
     constructor(handle: HTMLElement, mainPanels: HTMLElement, workspace: HTMLElement) {
         this.#handle = handle
         this.#mainPanels = mainPanels
@@ -21,25 +26,27 @@ export class ResizeHandle {
     connect(): void {
         this.#applyLayout()
         this.#handle.addEventListener("pointerdown", this.#onPointerDown)
+        window.addEventListener("resize", this.#onWindowResize)
     }
 
     disconnect(): void {
         this.#handle.removeEventListener("pointerdown", this.#onPointerDown)
+        window.removeEventListener("resize", this.#onWindowResize)
         document.removeEventListener("pointermove", this.#onPointerMove)
         document.removeEventListener("pointerup", this.#onPointerUp)
         document.removeEventListener("pointercancel", this.#onPointerUp)
     }
 
-    /** Call when layout mode (editorOnLeft) changes from outside, e.g. menu toggle */
-    applyLayout(): void {
+    #onWindowResize = (): void => {
         this.#applyLayout()
     }
 
     #applyLayout(): void {
         const layout = SettingsManager.instance.getGlobal().layout
-        this.#workspace.classList.toggle("editor-left", layout.editorOnLeft)
-        this.#handle.setAttribute("aria-orientation", layout.editorOnLeft ? "vertical" : "horizontal")
-        if (layout.editorOnLeft) {
+        const editorOnLeft = this.#editorOnLeft
+        this.#workspace.classList.toggle("editor-left", editorOnLeft)
+        this.#handle.setAttribute("aria-orientation", editorOnLeft ? "vertical" : "horizontal")
+        if (editorOnLeft) {
             this.#mainPanels.style.setProperty("--editor-width", `${layout.editorWidthPercent}%`)
         } else {
             this.#mainPanels.style.setProperty("--editor-height", `${layout.editorHeightPercent}%`)
@@ -53,7 +60,7 @@ export class ResizeHandle {
         this.#startX = e.clientX
         this.#startY = e.clientY
         const layout = SettingsManager.instance.getGlobal().layout
-        this.#startPercent = layout.editorOnLeft ? layout.editorWidthPercent : layout.editorHeightPercent
+        this.#startPercent = this.#editorOnLeft ? layout.editorWidthPercent : layout.editorHeightPercent
         this.#handle.setPointerCapture(e.pointerId)
         document.addEventListener("pointermove", this.#onPointerMove)
         document.addEventListener("pointerup", this.#onPointerUp)
@@ -62,10 +69,9 @@ export class ResizeHandle {
 
     #onPointerMove = (e: PointerEvent): void => {
         if (!this.#isDragging) return
-        const layout = SettingsManager.instance.getGlobal().layout
         const rect = this.#mainPanels.getBoundingClientRect()
         let newPercent: number
-        if (layout.editorOnLeft) {
+        if (this.#editorOnLeft) {
             const deltaX = e.clientX - this.#startX
             newPercent = this.#startPercent + (deltaX / rect.width) * 100
         } else {
@@ -73,7 +79,7 @@ export class ResizeHandle {
             newPercent = this.#startPercent + (deltaY / rect.height) * 100
         }
         newPercent = Math.max(MIN_PERCENT, Math.min(MAX_PERCENT, newPercent))
-        if (layout.editorOnLeft) {
+        if (this.#editorOnLeft) {
             this.#mainPanels.style.setProperty("--editor-width", `${newPercent}%`)
         } else {
             this.#mainPanels.style.setProperty("--editor-height", `${newPercent}%`)
@@ -87,9 +93,8 @@ export class ResizeHandle {
         document.removeEventListener("pointermove", this.#onPointerMove)
         document.removeEventListener("pointerup", this.#onPointerUp)
         document.removeEventListener("pointercancel", this.#onPointerUp)
-        const layout = SettingsManager.instance.getGlobal().layout
-        const patch: Partial<typeof layout> = {}
-        if (layout.editorOnLeft) {
+        const patch: Partial<LayoutSettings> = {}
+        if (this.#editorOnLeft) {
             const current = this.#mainPanels.style.getPropertyValue("--editor-width")
             const percent = parseFloat(current)
             if (!isNaN(percent)) patch.editorWidthPercent = percent

@@ -21,7 +21,6 @@ export interface PreviewSettings {
 export interface LayoutSettings {
     editorHeightPercent: number
     editorWidthPercent: number
-    editorOnLeft: boolean
 }
 
 export interface DocumentSettings {
@@ -49,7 +48,7 @@ function defaultPreview(): PreviewSettings {
 }
 
 function defaultLayout(): LayoutSettings {
-    return { editorHeightPercent: 28, editorWidthPercent: 40, editorOnLeft: false }
+    return { editorHeightPercent: 28, editorWidthPercent: 40 }
 }
 
 function defaultDocSettings(): DocumentSettings {

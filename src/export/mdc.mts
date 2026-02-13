@@ -86,6 +86,12 @@ export interface MDCParams {
 
     orientationProbeScale?: number
     orientationProbeMin?: number
+
+    // --- Mesh simplification (post-MDC) ---
+    /** Fraction of triangles to keep, 0–1 (e.g. 0.5 = 50%). undefined or 1 = skip. */
+    simplifyTargetRatio?: number
+    /** Max geometric error the simplifier may introduce (default 0.01). */
+    simplifyTargetError?: number
 }
 
 export interface ProgressCallback {
@@ -581,13 +587,13 @@ export class MDCExport {
 
             const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
             const verticesData = await readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
-            const verts = new Float32Array(verticesData)
+            let verts = new Float32Array(verticesData)
 
             const indicesData = await readBufferData(
                 indicesBuffer,
                 actualIndexCount * Uint32Array.BYTES_PER_ELEMENT
             )
-            const tris = new Uint32Array(indicesData)
+            let tris = new Uint32Array(indicesData)
             logDiag("after GPU readback", {
                 actualIndexCount,
                 actualVertexCount,
@@ -744,6 +750,18 @@ export class MDCExport {
                         }
                     }
                 }
+            }
+
+            // Mesh simplification (QEM edge collapse via meshoptimizer)
+            if (this.params.simplifyTargetRatio !== undefined && this.params.simplifyTargetRatio < 1) {
+                const { simplifyMesh } = await import("./simplify.mjs")
+                const simplified = await simplifyMesh(
+                    { verts, tris },
+                    this.params.simplifyTargetRatio,
+                    this.params.simplifyTargetError,
+                )
+                verts = simplified.verts
+                tris = simplified.tris
             }
 
             // Basic mesh sanity stats to help diagnose “holes”:

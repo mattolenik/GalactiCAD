@@ -3,7 +3,7 @@ import { fromEventPattern, Subscription } from "rxjs"
 import { bufferTime } from "rxjs/operators"
 import { OrderedMap } from "../collections/orderedMap.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
-import { __active_bg, __bg_color, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
+import { __active_bg, __bg_color, __fg_color, __tone_0, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { YesNoDialog } from "./yesno-dialog.mjs"
 
 const LONG_PRESS_MS = 500
@@ -46,6 +46,7 @@ export class DocumentTabs extends HTMLElement {
             :host {
                 display: block;
                 ${__fg_color}: whitesmoke;
+                ${__tone_0}: #EEE;
                 ${__tone_1}: #888;
                 ${__tone_2}: #444;
                 ${__tone_3}: #666;
@@ -64,7 +65,7 @@ export class DocumentTabs extends HTMLElement {
                 background-color: var(${__bg_color});
                 border: none;
                 border-bottom: 2px solid var(${__tone_1});
-                color: var(${__tone_1});
+                color: var(${__tone_0});
                 cursor: pointer;
                 display: flex;
                 font-size: medium;

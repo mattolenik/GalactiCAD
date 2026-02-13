@@ -472,7 +472,6 @@ export class DocumentTabs extends HTMLElement {
         } else {
             this.#longPressTimer = setTimeout(() => {
                 this.#longPressTimer = null
-                navigator.vibrate?.(10)
                 tab.setPointerCapture(e.pointerId)
                 this.#startDrag(tab, name, e.pointerId)
             }, LONG_PRESS_MS)
@@ -482,26 +481,28 @@ export class DocumentTabs extends HTMLElement {
         }
     }
 
+    #clearPreDragTimers = (): void => {
+        if (this.#longPressTimer !== null) {
+            clearTimeout(this.#longPressTimer)
+            this.#longPressTimer = null
+        }
+        document.removeEventListener("pointermove", this.#onPreDragPointerMove)
+        document.removeEventListener("pointerup", this.#onPreDragPointerUp)
+        document.removeEventListener("pointercancel", this.#onPreDragPointerUp)
+    }
+
     #onPreDragPointerMove = (e: PointerEvent): void => {
         if (this.#longPressTimer === null) return
         const dx = e.clientX - this.#startX
         const dy = e.clientY - this.#startY
         if (Math.hypot(dx, dy) > MOVE_THRESHOLD_PX) {
-            clearTimeout(this.#longPressTimer)
-            this.#longPressTimer = null
-            document.removeEventListener("pointermove", this.#onPreDragPointerMove)
-            document.removeEventListener("pointerup", this.#onPreDragPointerUp)
-            document.removeEventListener("pointercancel", this.#onPreDragPointerUp)
+            this.#clearPreDragTimers()
         }
     }
 
     #onPreDragPointerUp = (): void => {
         if (this.#longPressTimer === null) return
-        clearTimeout(this.#longPressTimer)
-        this.#longPressTimer = null
-        document.removeEventListener("pointermove", this.#onPreDragPointerMove)
-        document.removeEventListener("pointerup", this.#onPreDragPointerUp)
-        document.removeEventListener("pointercancel", this.#onPreDragPointerUp)
+        this.#clearPreDragTimers()
         const name = this.#pendingTabName
         this.#pendingTabName = null
         if (name) this.switchTo(name, true)
@@ -509,6 +510,7 @@ export class DocumentTabs extends HTMLElement {
 
     #startDrag(tab: HTMLElement, name: string, pointerId: number): void {
         this.#draggingName = name
+        navigator.vibrate?.(10)
         tab.classList.add("dragging")
         const rect = tab.getBoundingClientRect()
         this.#dragOffsetX = this.#startX - rect.left

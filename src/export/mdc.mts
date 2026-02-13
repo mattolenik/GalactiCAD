@@ -92,6 +92,16 @@ export interface MDCParams {
     simplifyTargetRatio?: number
     /** Max geometric error the simplifier may introduce (default 0.01). */
     simplifyTargetError?: number
+    /** Lock boundary (open) edges so they are never collapsed. */
+    simplifyLockBorder?: boolean
+    /** Optimize for meshes with many shared vertex positions. */
+    simplifySparse?: boolean
+    /** Treat targetError as absolute world-space distance instead of relative to mesh scale. */
+    simplifyErrorAbsolute?: boolean
+    /** Remove degenerate (zero-area) triangles from output. */
+    simplifyPrune?: boolean
+    /** Bias toward more uniform triangle shapes (less slivery). */
+    simplifyRegularize?: boolean
 }
 
 export interface ProgressCallback {
@@ -759,6 +769,13 @@ export class MDCExport {
                     { verts, tris },
                     this.params.simplifyTargetRatio,
                     this.params.simplifyTargetError,
+                    {
+                        lockBorder: this.params.simplifyLockBorder,
+                        sparse: this.params.simplifySparse,
+                        errorAbsolute: this.params.simplifyErrorAbsolute,
+                        prune: this.params.simplifyPrune,
+                        regularize: this.params.simplifyRegularize,
+                    },
                 )
                 verts = simplified.verts
                 tris = simplified.tris

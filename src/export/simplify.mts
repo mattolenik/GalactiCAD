@@ -1,8 +1,23 @@
 import { MeshoptSimplifier } from "meshoptimizer"
+import type { Flags } from "meshoptimizer/simplifier"
 import type { MeshData } from "./export.mjs"
 
 /** Floats per vertex in MeshData.verts: [px, py, pz, pad, nx, ny, nz, pad] */
 const VERTEX_STRIDE = 8
+
+/** Simplification flags exposed as friendly booleans. */
+export interface SimplifyFlags {
+    /** Lock boundary (open) edges so they are never collapsed. */
+    lockBorder?: boolean
+    /** Optimize for meshes with many shared vertex positions. */
+    sparse?: boolean
+    /** Treat targetError as absolute world-space distance instead of relative. */
+    errorAbsolute?: boolean
+    /** Remove degenerate (zero-area) triangles from output. */
+    prune?: boolean
+    /** Bias toward more uniform triangle shapes. */
+    regularize?: boolean
+}
 
 /**
  * Simplify a mesh using meshoptimizer's QEM-based edge collapse.
@@ -15,16 +30,26 @@ const VERTEX_STRIDE = 8
  * @param targetRatio   Fraction of triangles to keep, 0–1 (e.g. 0.5 = 50%).
  * @param targetError   Maximum geometric error the simplifier may introduce,
  *                      expressed relative to mesh scale. 0 = lossless only.
+ * @param flags         Optional meshoptimizer flags.
  */
 export async function simplifyMesh(
     mesh: MeshData,
     targetRatio: number,
     targetError: number = 0.01,
+    flags?: SimplifyFlags,
 ): Promise<MeshData> {
     await MeshoptSimplifier.ready
 
     const inputTriCount = mesh.tris.length / 3
     const targetIndexCount = Math.floor(inputTriCount * Math.max(0, Math.min(1, targetRatio))) * 3
+
+    // Build meshoptimizer flags array from boolean options
+    const flagsArray: Flags[] = []
+    if (flags?.lockBorder) flagsArray.push("LockBorder")
+    if (flags?.sparse) flagsArray.push("Sparse")
+    if (flags?.errorAbsolute) flagsArray.push("ErrorAbsolute")
+    if (flags?.prune) flagsArray.push("Prune")
+    if (flags?.regularize) flagsArray.push("Regularize")
 
     // simplify() returns [newIndices, achievedError]
     const [simplifiedTris, error] = MeshoptSimplifier.simplify(
@@ -33,6 +58,7 @@ export async function simplifyMesh(
         VERTEX_STRIDE,
         targetIndexCount,
         targetError,
+        flagsArray.length > 0 ? flagsArray : undefined,
     )
 
     const outputTriCount = simplifiedTris.length / 3

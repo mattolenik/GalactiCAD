@@ -1118,6 +1118,11 @@ export class SDFRenderer {
             gridOffsetZ: minZ,
             voxelSize: voxelSizeMm,
             simplifyTargetRatio: 0.5,
+            simplifyRegularize: false,
+            simplifyLockBorder: false,
+            simplifyPrune: true,
+            simplifySparse: false,
+            // simplifyErrorAbsolute: true,
         }
         console.log(
             `MDC export params: dim=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSizeMm}mm bbox=[${minX.toFixed(

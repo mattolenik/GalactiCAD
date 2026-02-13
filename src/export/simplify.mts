@@ -5,6 +5,12 @@ import type { MeshData } from "./export.mjs"
 /** Floats per vertex in MeshData.verts: [px, py, pz, pad, nx, ny, nz, pad] */
 const VERTEX_STRIDE = 8
 
+/** Offset (in floats) to the normal components within a vertex record. */
+const NORMAL_OFFSET = 4
+
+/** Number of normal components (nx, ny, nz). */
+const NORMAL_COMPONENTS = 3
+
 /** Simplification flags exposed as friendly booleans. */
 export interface SimplifyFlags {
     /** Lock boundary (open) edges so they are never collapsed. */
@@ -17,6 +23,13 @@ export interface SimplifyFlags {
     prune?: boolean
     /** Bias toward more uniform triangle shapes. */
     regularize?: boolean
+    /**
+     * Weight for normal-aware simplification.
+     * When > 0, uses simplifyWithAttributes to penalize collapsing edges between
+     * faces with different normals, protecting sharp CAD edges.
+     * 0 or undefined = position-only simplification.
+     */
+    normalWeight?: number
 }
 
 /**
@@ -25,6 +38,10 @@ export interface SimplifyFlags {
  * The algorithm reduces triangle count while preserving manifold topology
  * and overall mesh shape. Vertices are compacted afterward so the returned
  * MeshData contains no unreferenced vertices.
+ *
+ * When normalWeight > 0, uses simplifyWithAttributes so that normals influence
+ * the error metric — edges between faces with very different normals (sharp
+ * features) become expensive to collapse.
  *
  * @param mesh          Input mesh (interleaved verts, triangle indices).
  * @param targetRatio   Fraction of triangles to keep, 0–1 (e.g. 0.5 = 50%).
@@ -50,21 +67,56 @@ export async function simplifyMesh(
     if (flags?.errorAbsolute) flagsArray.push("ErrorAbsolute")
     if (flags?.prune) flagsArray.push("Prune")
     if (flags?.regularize) flagsArray.push("Regularize")
+    const flagsArg = flagsArray.length > 0 ? flagsArray : undefined
 
-    // simplify() returns [newIndices, achievedError]
-    const [simplifiedTris, error] = MeshoptSimplifier.simplify(
-        mesh.tris,
-        mesh.verts,
-        VERTEX_STRIDE,
-        targetIndexCount,
-        targetError,
-        flagsArray.length > 0 ? flagsArray : undefined,
-    )
+    const normalWeight = flags?.normalWeight ?? 0
+
+    let simplifiedTris: Uint32Array
+    let error: number
+
+    if (normalWeight > 0) {
+        // Extract normals into a dense attribute buffer for simplifyWithAttributes
+        const vertexCount = mesh.verts.length / VERTEX_STRIDE
+        const normals = new Float32Array(vertexCount * NORMAL_COMPONENTS)
+        for (let i = 0; i < vertexCount; i++) {
+            const srcBase = i * VERTEX_STRIDE + NORMAL_OFFSET
+            const dstBase = i * NORMAL_COMPONENTS
+            normals[dstBase] = mesh.verts[srcBase]!
+            normals[dstBase + 1] = mesh.verts[srcBase + 1]!
+            normals[dstBase + 2] = mesh.verts[srcBase + 2]!
+        }
+
+        // One weight per attribute component (nx, ny, nz all get the same weight)
+        const attributeWeights = [normalWeight, normalWeight, normalWeight]
+
+        ;[simplifiedTris, error] = MeshoptSimplifier.simplifyWithAttributes(
+            mesh.tris,
+            mesh.verts,
+            VERTEX_STRIDE,
+            normals,
+            NORMAL_COMPONENTS,
+            attributeWeights,
+            null, // vertex_lock — no locked vertices
+            targetIndexCount,
+            targetError,
+            flagsArg,
+        )
+    } else {
+        ;[simplifiedTris, error] = MeshoptSimplifier.simplify(
+            mesh.tris,
+            mesh.verts,
+            VERTEX_STRIDE,
+            targetIndexCount,
+            targetError,
+            flagsArg,
+        )
+    }
 
     const outputTriCount = simplifiedTris.length / 3
     console.log(
         `Mesh simplification: ${inputTriCount} → ${outputTriCount} triangles `
-        + `(${((outputTriCount / inputTriCount) * 100).toFixed(1)}%, error=${error.toExponential(3)})`,
+        + `(${((outputTriCount / inputTriCount) * 100).toFixed(1)}%, error=${error.toExponential(3)}`
+        + `${normalWeight > 0 ? `, normalWeight=${normalWeight}` : ""})`,
     )
 
     // --- Compact: strip unreferenced vertices ---

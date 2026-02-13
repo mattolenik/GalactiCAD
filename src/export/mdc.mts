@@ -102,6 +102,8 @@ export interface MDCParams {
     simplifyPrune?: boolean
     /** Bias toward more uniform triangle shapes (less slivery). */
     simplifyRegularize?: boolean
+    /** Weight for normal-aware simplification (0 = ignore normals, >0 = protect sharp edges). */
+    simplifyNormalWeight?: number
 }
 
 export interface ProgressCallback {
@@ -775,6 +777,7 @@ export class MDCExport {
                         errorAbsolute: this.params.simplifyErrorAbsolute,
                         prune: this.params.simplifyPrune,
                         regularize: this.params.simplifyRegularize,
+                        normalWeight: this.params.simplifyNormalWeight,
                     },
                 )
                 verts = simplified.verts

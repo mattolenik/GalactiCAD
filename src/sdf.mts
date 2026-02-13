@@ -1117,11 +1117,12 @@ export class SDFRenderer {
             gridOffsetY: minY,
             gridOffsetZ: minZ,
             voxelSize: voxelSizeMm,
-            simplifyTargetRatio: 0.5,
+            simplifyTargetRatio: 0.1,
             simplifyRegularize: false,
-            simplifyLockBorder: false,
-            simplifyPrune: true,
+            simplifyLockBorder: true,
+            simplifyPrune: false,
             simplifySparse: false,
+            simplifyTargetError: 0.001,
             // simplifyErrorAbsolute: true,
         }
         console.log(

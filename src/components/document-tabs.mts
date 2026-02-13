@@ -472,6 +472,7 @@ export class DocumentTabs extends HTMLElement {
         } else {
             this.#longPressTimer = setTimeout(() => {
                 this.#longPressTimer = null
+                navigator.vibrate?.(10)
                 tab.setPointerCapture(e.pointerId)
                 this.#startDrag(tab, name, e.pointerId)
             }, LONG_PRESS_MS)

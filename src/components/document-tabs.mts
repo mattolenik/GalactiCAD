@@ -64,7 +64,6 @@ export class DocumentTabs extends HTMLElement {
                 align-items: center;
                 background-color: var(${__bg_color});
                 border: none;
-                border-bottom: 2px solid var(${__tone_1});
                 color: var(${__tone_0});
                 cursor: pointer;
                 display: flex;
@@ -84,12 +83,17 @@ export class DocumentTabs extends HTMLElement {
             }
             .tab.active {
                 background-color: var(${__active_bg});
-                border-color: var(${__tone_accent});
-                border-width: 0 0px 4px 0;
-                box-sizing: border-box;
                 color: var(${__fg_color});
                 opacity: 1;
-                padding-top: 1px;
+            }
+            .tab.active::before {
+                background: var(${__tone_accent});
+                content: "";
+                height: 4px;
+                left: 0;
+                position: absolute;
+                right: 0;
+                top: 0;
             }
             .tab:not(.active, :hover)+.tab:not(.active, :hover)::after {
                 background: var(${__tone_3});

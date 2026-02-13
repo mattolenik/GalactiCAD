@@ -1,11 +1,14 @@
 export class PinchZoomController {
     #initialPinchDistance = 0
+    #initialPinchAngle = 0
     #initialZoom = 0
     #zoom: number
     #zoomSensitivity = 0.1
+    #rotateSensitivity = 1
 
     isZooming = false
     onZoom?: (zoom: number) => void
+    onRotate?: (angleDelta: number) => void
 
     constructor(el: HTMLElement, defaultZoom = 40) {
         this.#zoom = defaultZoom
@@ -22,10 +25,14 @@ export class PinchZoomController {
         this.#emitZoom()
     }
 
+    #lastPinchAngle = 0
+
     #onTouchStart(e: TouchEvent) {
         if (e.touches.length === 2) {
             e.preventDefault()
             this.#initialPinchDistance = this.#getDistance(e.touches)
+            this.#initialPinchAngle = this.#getAngle(e.touches)
+            this.#lastPinchAngle = this.#initialPinchAngle
             this.#initialZoom = this.#zoom
         }
     }
@@ -38,12 +45,21 @@ export class PinchZoomController {
             const delta = currentDistance - this.#initialPinchDistance
             this.#zoom = this.#initialZoom - delta * this.#zoomSensitivity
             this.#emitZoom()
+
+            const currentAngle = this.#getAngle(e.touches)
+            let angleDelta = currentAngle - this.#lastPinchAngle
+            if (angleDelta > Math.PI) angleDelta -= 2 * Math.PI
+            if (angleDelta < -Math.PI) angleDelta += 2 * Math.PI
+            this.#lastPinchAngle = currentAngle
+            this.onRotate?.(angleDelta * this.#rotateSensitivity)
         }
     }
 
     #onTouchEnd(e: TouchEvent) {
         if (e.touches.length < 2) {
             this.#initialPinchDistance = 0
+            this.#initialPinchAngle = 0
+            this.#lastPinchAngle = 0
             this.isZooming = false
         }
     }
@@ -60,9 +76,20 @@ export class PinchZoomController {
     }
 
     #getDistance(touches: TouchList): number {
-        const [t1, t2] = touches
+        const [t1, t2] = this.#sortedTouches(touches)
         const dx = t1.clientX - t2.clientX
         const dy = t1.clientY - t2.clientY
         return Math.hypot(dx, dy)
+    }
+
+    #getAngle(touches: TouchList): number {
+        const [t1, t2] = this.#sortedTouches(touches)
+        return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX)
+    }
+
+    /** Sort by identifier for consistent angle/distance across touch events */
+    #sortedTouches(touches: TouchList): [Touch, Touch] {
+        const [a, b] = touches
+        return a.identifier <= b.identifier ? [a, b] : [b, a]
     }
 }

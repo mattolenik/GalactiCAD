@@ -68,6 +68,13 @@ export class CameraController {
             this.#saveCameraState()
             this.onChange?.(this.state)
         }
+        this.#zoomController.onRotate = angleDelta => {
+            // Rotate around the axis perpendicular to the screen (camera forward direction)
+            const forward = this.#pivot.subtract(this.cameraPosition).normalize()
+            const twist = Quaternion.fromAxisAngle([forward.x, forward.y, forward.z], angleDelta)
+            this.#rotation = this.#rotation.mul(twist).normalize()
+            this.#updateTransforms()
+        }
         // Initialize rotation from Euler angles (for backward compatibility)
         this.#rotation = Quaternion.fromEuler(initialPhi, initialTheta, 0, "YXZ")
 

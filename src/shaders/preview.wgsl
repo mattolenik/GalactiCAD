@@ -118,7 +118,7 @@ fn lighting(normalScene: vec3f) -> f32 {
     let fill = 0.25 * dot(normalScene, camera.lightDir2);
     let rim  = 0.15 * dot(normalScene, camera.lightDir3);
 
-    return clamp(0.15 + key + fill + rim, 0.0, 1.2);
+    return clamp(0.25 + key + fill + rim, 0.0, 1.2);
 }
 
 @vertex

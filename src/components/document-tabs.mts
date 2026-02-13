@@ -57,10 +57,11 @@ export class DocumentTabs extends HTMLElement {
             }
             .tabs-container {
                 display: flex;
-                flex-wrap: wrap;
+                flex-wrap: nowrap;
+                overflow-x: auto;
             }
             .tab {
-                flex: 1 1 auto;
+                flex: 0 0 auto;
                 align-items: center;
                 background-color: var(${__bg_color});
                 border: none;
@@ -69,8 +70,10 @@ export class DocumentTabs extends HTMLElement {
                 display: flex;
                 font-size: medium;
                 height: ${tabHeight};
+                min-width: calc(1rem + 1rem + ${closeButtonSize} + 0.5rem);
                 opacity: 0.8;
                 padding: 0 1rem 0 1rem;
+                padding-inline-end: calc(0.5rem + ${closeButtonSize} + 0.5rem);
                 position: relative;
                 transition: all ${transitionSpeed};
                 -webkit-touch-callout: none;
@@ -116,16 +119,13 @@ export class DocumentTabs extends HTMLElement {
                 height: ${closeButtonSize};
                 line-height: ${closeButtonSize};
                 margin: 0;
-                opacity: 0;
+                opacity: 1;
                 padding: 0;
                 position: absolute;
                 right: 0.5rem;
                 text-align: center;
                 transition: all ${transitionSpeed};
                 width: ${closeButtonSize};
-            }
-            .tab:hover > .close {
-                opacity: 1;
             }
             .close:hover {
                 background: var(${__tone_2});

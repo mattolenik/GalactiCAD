@@ -19,7 +19,7 @@ const Options = {
     entryPoints: ["./src/app.mts", "./src/components/preview-window.mts", "./src/components/mesh-viewer.mts"],
     plugins: [await wgslLoader(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
     outDir: "./dist",
-    isProd: !!process.env.PRODUCTION,
+    isProd: !!process.env.PRODUCTION || !!process.env.CI,
 }
 
 const WatchOptions = {

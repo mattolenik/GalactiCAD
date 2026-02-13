@@ -345,7 +345,7 @@ class App {
         resizeObserver.observe(editorContainer)
 
         // Hide line numbers on narrow screens to maximize code space
-        const narrowMedia = window.matchMedia("(max-width: 800px)")
+        const narrowMedia = window.matchMedia("(max-width: 600px)")
         const updateLineNumbers = () => {
             this.editor.updateOptions({ lineNumbers: narrowMedia.matches ? "off" : "on" })
         }
@@ -531,16 +531,16 @@ class App {
                 menuItems.push({
                     element: devToolsContainer,
                     action: () => {
-                            const enabled = !devToolsCheckbox.checked
-                            devToolsCheckbox.checked = enabled
-                            devTools.visible = enabled
-                            if (!enabled) {
-                                preview.showFps = false
-                            } else {
-                                preview.showFps = devTools.showFps
-                            }
-                            this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
-                        },
+                        const enabled = !devToolsCheckbox.checked
+                        devToolsCheckbox.checked = enabled
+                        devTools.visible = enabled
+                        if (!enabled) {
+                            preview.showFps = false
+                        } else {
+                            preview.showFps = devTools.showFps
+                        }
+                        this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
+                    },
                 })
                 const menuButton = new MenuButton(menuItems)
                 menu.replaceWith(menuButton)

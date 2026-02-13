@@ -122,20 +122,19 @@
             display: grid;
             grid-template-rows: auto 1fr auto;
             grid-template-columns: 1fr;
-            max-width: 1200px;
             min-width: 400px;
             margin: auto;
         }
         #workspace:not(.editor-left) #main-panels {
             display: grid;
-            grid-template-rows: minmax(100px, var(--editor-height, 28%)) 10px minmax(100px, 1fr);
+            grid-template-rows: minmax(100px, var(--editor-height, 28%)) 6px minmax(100px, 1fr);
             grid-template-columns: 1fr;
             min-height: 0;
         }
         #workspace.editor-left #main-panels {
             display: grid;
             grid-template-rows: 1fr;
-            grid-template-columns: minmax(100px, var(--editor-width, 40%)) 10px minmax(100px, 1fr);
+            grid-template-columns: minmax(100px, var(--editor-width, 40%)) 6px minmax(100px, 1fr);
             min-height: 0;
         }
         #main-panels > * {
@@ -144,7 +143,6 @@
         }
         @media only screen and (max-width: 4in) {
             #workspace {
-                max-width: 100%;
                 min-width: 100%;
                 width: 100%;
                 height: 100%;

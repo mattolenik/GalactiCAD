@@ -453,7 +453,14 @@ class App {
                 devToolsText.textContent = "Developer Tools"
                 devToolsContainer.append(devToolsCheckbox, devToolsText)
 
-                const menuButton = new MenuButton([
+                const fullscreenItem = document.createElement("span")
+                const updateFullscreenText = () => {
+                    fullscreenItem.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Enter Fullscreen"
+                }
+                updateFullscreenText()
+                document.addEventListener("fullscreenchange", updateFullscreenText)
+
+                const menuItems: Array<{ element: HTMLElement; action: () => void }> = [
                     { element: newItem, action: () => this.#tabs.newDocument(undefined, "javascript") },
                     { element: renameItem, action: () => this.#tabs.renameCurrentTab() },
                     { element: duplicateItem, action: () => this.#tabs.duplicateCurrentTab() },
@@ -500,9 +507,22 @@ class App {
                             }
                         },
                     },
-                    {
-                        element: devToolsContainer,
-                        action: () => {
+                ]
+                if (document.fullscreenEnabled) {
+                    menuItems.push({
+                        element: fullscreenItem,
+                        action: async () => {
+                            if (document.fullscreenElement) {
+                                await document.exitFullscreen()
+                            } else {
+                                await document.documentElement.requestFullscreen()
+                            }
+                        },
+                    })
+                }
+                menuItems.push({
+                    element: devToolsContainer,
+                    action: () => {
                             const enabled = !devToolsCheckbox.checked
                             devToolsCheckbox.checked = enabled
                             devTools.visible = enabled
@@ -513,8 +533,8 @@ class App {
                             }
                             this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
                         },
-                    },
-                ])
+                })
+                const menuButton = new MenuButton(menuItems)
                 menu.replaceWith(menuButton)
             })
             .catch(err => {

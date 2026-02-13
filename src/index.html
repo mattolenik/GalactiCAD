@@ -5,12 +5,24 @@
     <meta charset="UTF-8">
     <meta name="description" content="A new kind of CAD with SDFs, made for 3D printing">
     <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">
+    <meta name="theme-color" content="#333333">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
     <link rel="manifest" href="/site.webmanifest">
     <link rel="stylesheet" href="/vs/editor/editor.main.css" />
     <style>
+        html {
+            position: fixed;
+            overflow: hidden;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            overscroll-behavior: none;
+        }
+
         div,
         span {
             margin: 0;
@@ -18,10 +30,14 @@
         }
 
         body {
+            position: fixed;
+            overflow: hidden;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
             font-family: sans-serif;
             margin: 0;
             padding: 0;
-            height: 100vh;
             background-color: #333;
             color: whitesmoke;
             scrollbar-width: none;
@@ -40,6 +56,7 @@
             width: 100%;
             height: 100%;
             background-color: #1a1a1a;
+            touch-action: none;
         }
 
         #viewports > * {
@@ -101,6 +118,7 @@
 
         #workspace {
             height: 100vh;
+            height: 100dvh;
             display: grid;
             grid-template-rows: auto 1fr auto;
             grid-template-columns: 1fr;
@@ -155,6 +173,12 @@
         }
         #resize-handle:active {
             background: var(--tone-1, #888);
+        }
+
+        input,
+        select,
+        textarea {
+            font-size: 16px;
         }
 
         canvas {

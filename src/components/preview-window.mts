@@ -81,6 +81,7 @@ export class PreviewWindow extends HTMLElement {
         .controls input[type="checkbox"] {
             cursor: pointer;
             margin: 0;
+            font-size: 16px;
         }
 `
         this.canvas = document.createElement("canvas")

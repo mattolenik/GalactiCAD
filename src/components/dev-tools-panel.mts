@@ -111,6 +111,7 @@ export class DevToolsPanel extends HTMLElement {
         input[type="checkbox"] {
             cursor: pointer;
             margin: 0;
+            font-size: 16px;
         }
         button {
             cursor: pointer;

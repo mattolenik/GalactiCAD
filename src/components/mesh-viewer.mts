@@ -99,6 +99,7 @@ export class MeshViewer extends HTMLElement {
         }
         .overlay input[type="checkbox"] {
             accent-color: var(${__tone_accent});
+            font-size: 16px;
         }
 `
         this.canvas = document.createElement("canvas")

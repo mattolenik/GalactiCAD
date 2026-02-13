@@ -19,6 +19,7 @@
     "theme_color": "#333333",
     "background_color": "#333333",
     "display": "standalone",
+    "orientation": "any",
     "start_url": "/",
     "file_handlers": [
         {

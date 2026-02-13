@@ -73,6 +73,9 @@ export class DocumentTabs extends HTMLElement {
                 padding: 0 1rem 0 1rem;
                 position: relative;
                 transition: all ${transitionSpeed};
+                -webkit-touch-callout: none;
+                -webkit-user-select: none;
+                user-select: none;
             }
 
             .tab:hover {

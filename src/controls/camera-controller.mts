@@ -69,8 +69,10 @@ export class CameraController {
             this.onChange?.(this.state)
         }
         this.#zoomController.onRotate = angleDelta => {
-            // Rotate around the axis perpendicular to the screen (camera forward direction)
-            const forward = this.#pivot.subtract(this.cameraPosition).normalize()
+            // Rotate around the axis perpendicular to the screen (camera forward direction).
+            // The base view looks down -Z; apply current rotation to get world-space forward.
+            const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
+            const forward = rotationMatrix.transformVector(vec3(0, 0, -1)).normalize()
             const twist = Quaternion.fromAxisAngle([forward.x, forward.y, forward.z], angleDelta)
             this.#rotation = this.#rotation.mul(twist).normalize()
             this.#updateTransforms()

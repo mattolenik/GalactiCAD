@@ -14,6 +14,9 @@ importers:
       acorn-walk:
         specifier: ^8.3.4
         version: 8.3.4
+      meshoptimizer:
+        specifier: ^1.0.1
+        version: 1.0.1
       monaco-editor:
         specifier: ^0.52.2
         version: 0.52.2
@@ -421,6 +424,9 @@ packages:
   get-tsconfig@4.13.6:
     resolution: {integrity: sha512-shZT/QMiSHc/YBLxxOkMtgSid5HFoauqCE3/exfsEcwg1WkeqjG+V40yBbBrsD+jW2HDXcs28xOfcbm2jI8Ddw==}
 
+  meshoptimizer@1.0.1:
+    resolution: {integrity: sha512-Vix+QlA1YYT3FwmBBZ+49cE5y/b+pRrcXKqGpS5ouh33d3lSp2PoTpCw19E0cKDFWalembrHnIaZetf27a+W2g==}
+
   monaco-editor@0.52.2:
     resolution: {integrity: sha512-GEQWEZmfkOGLdd3XK8ryrfWz3AIP8YymVXiPHEdewrUq7mh0qrKrfHLNCXcbB6sTnMLnOZ3ztSiKcciFUkIJwQ==}
 
@@ -719,6 +725,8 @@ snapshots:
   get-tsconfig@4.13.6:
     dependencies:
       resolve-pkg-maps: 1.0.0
+
+  meshoptimizer@1.0.1: {}
 
   monaco-editor@0.52.2: {}
 

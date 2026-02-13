@@ -41,6 +41,7 @@ export class CameraController {
     #last = new Vec2f()
     #cursorDelta = new Vec2f()
     #lastFocused: Element | null = null
+    #primaryPointerId: number | null = null
 
     #dragMode: "rotate" | "pan" | null = null
     #hasDragged: boolean = false
@@ -162,16 +163,24 @@ export class CameraController {
     #onPointerDown(e: PointerEvent) {
         if (e.button === 0) {
             // Left click: start rotation drag
-            this.#dragMode = "rotate"
-            this.isDragging = true
-            this.#hasDragged = false
-            this.#last = vec2(e.clientX, e.clientY)
+            // When already dragging (e.g. second finger touches for pinch), don't overwrite #last
+            // or we'd get a huge spurious delta when the first finger moves.
+            if (!this.isDragging) {
+                this.#dragMode = "rotate"
+                this.#primaryPointerId = e.pointerId
+                this.isDragging = true
+                this.#hasDragged = false
+                this.#last = vec2(e.clientX, e.clientY)
+            }
             this.#host.canvas.setPointerCapture(e.pointerId)
         } else if (e.button === 2) {
-            this.#dragMode = "pan"
-            this.isDragging = true
-            this.#hasDragged = false
-            this.#last = vec2(e.clientX, e.clientY)
+            if (!this.isDragging) {
+                this.#dragMode = "pan"
+                this.#primaryPointerId = e.pointerId
+                this.isDragging = true
+                this.#hasDragged = false
+                this.#last = vec2(e.clientX, e.clientY)
+            }
             this.#host.canvas.setPointerCapture(e.pointerId)
         } else {
             return
@@ -181,6 +190,8 @@ export class CameraController {
     #onPointerMove(e: PointerEvent) {
         if (!this.isDragging) return
         if (this.#zoomController.isZooming) return
+        // Only use the primary pointer's movement; ignore the second finger when pinch starts
+        if (this.#primaryPointerId !== null && e.pointerId !== this.#primaryPointerId) return
 
         const pvec = vec2(e.clientX, e.clientY)
         this.#cursorDelta.set(pvec.subtract(this.#last))
@@ -239,8 +250,9 @@ export class CameraController {
     }
 
     #onPointerUp(e: PointerEvent) {
-        // Reset drag state (but keep #hasDragged until next pointerdown so click handler can check it)
-        if (e.button === 0 || e.button === 1 || this.isDragging) {
+        // Reset drag state only when the primary pointer is released
+        if (this.#primaryPointerId === e.pointerId) {
+            this.#primaryPointerId = null
             this.isDragging = false
             this.#dragMode = null
             // Camera state is saved via rxjs debounce in SettingsManager;

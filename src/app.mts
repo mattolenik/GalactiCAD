@@ -345,7 +345,7 @@ class App {
         resizeObserver.observe(editorContainer)
 
         // Hide line numbers on narrow screens to maximize code space
-        const narrowMedia = window.matchMedia("(max-width: 600px)")
+        const narrowMedia = window.matchMedia("(max-width: 800px)")
         const updateLineNumbers = () => {
             this.editor.updateOptions({ lineNumbers: narrowMedia.matches ? "off" : "on" })
         }

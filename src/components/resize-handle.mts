@@ -62,6 +62,7 @@ export class ResizeHandle {
         const layout = SettingsManager.instance.getGlobal().layout
         this.#startPercent = this.#editorOnLeft ? layout.editorWidthPercent : layout.editorHeightPercent
         this.#handle.setPointerCapture(e.pointerId)
+        document.body.classList.add("resize-dragging")
         document.addEventListener("pointermove", this.#onPointerMove)
         document.addEventListener("pointerup", this.#onPointerUp)
         document.addEventListener("pointercancel", this.#onPointerUp)
@@ -69,6 +70,7 @@ export class ResizeHandle {
 
     #onPointerMove = (e: PointerEvent): void => {
         if (!this.#isDragging) return
+        e.preventDefault()
         const rect = this.#mainPanels.getBoundingClientRect()
         let newPercent: number
         if (this.#editorOnLeft) {
@@ -89,6 +91,7 @@ export class ResizeHandle {
     #onPointerUp = (e: PointerEvent): void => {
         if (!this.#isDragging) return
         this.#isDragging = false
+        document.body.classList.remove("resize-dragging")
         this.#handle.releasePointerCapture(e.pointerId)
         document.removeEventListener("pointermove", this.#onPointerMove)
         document.removeEventListener("pointerup", this.#onPointerUp)

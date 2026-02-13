@@ -344,6 +344,14 @@ class App {
         const resizeObserver = new ResizeObserver(() => this.editor.layout())
         resizeObserver.observe(editorContainer)
 
+        // Hide line numbers on narrow screens to maximize code space
+        const narrowMedia = window.matchMedia("(max-width: 600px)")
+        const updateLineNumbers = () => {
+            this.editor.updateOptions({ lineNumbers: narrowMedia.matches ? "off" : "on" })
+        }
+        narrowMedia.addEventListener("change", updateLineNumbers)
+        updateLineNumbers()
+
         this.renderer = new SDFRenderer(preview, this.#tabs)
 
         this.renderer

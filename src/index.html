@@ -189,6 +189,13 @@
             -webkit-touch-callout: none;
             -webkit-tap-highlight-color: transparent;
         }
+
+        /* prevent text selection in editor while dragging resize handle (mobile) */
+        body.resize-dragging {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
     </style>
 </head>
 

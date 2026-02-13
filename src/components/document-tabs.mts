@@ -25,6 +25,11 @@ export class DocumentTabs extends HTMLElement {
     #dropIndex = 0
     #hasDragged = false
     #dropIndicator: HTMLElement
+    #dragPlaceholder: HTMLElement | null = null
+    #dragOffsetX = 0
+    #dragOffsetY = 0
+    #dragTabWidth = 0
+    #dragTabHeight = 0
 
     constructor(editor: monaco.editor.IStandaloneCodeEditor) {
         super()
@@ -121,7 +126,9 @@ export class DocumentTabs extends HTMLElement {
             .tab.dragging {
                 opacity: 0.9;
                 transition: none;
-                z-index: 10;
+                z-index: 10000;
+                pointer-events: none;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             }
             .tab.dragging .close {
                 pointer-events: none;
@@ -131,6 +138,10 @@ export class DocumentTabs extends HTMLElement {
                 background: var(${__tone_accent});
                 flex: 0 0 3px;
                 margin: 4px 0;
+            }
+            .tab-placeholder {
+                flex: 0 0 auto;
+                pointer-events: none;
             }
         `
         this.shadowRoot!.appendChild(style)
@@ -490,15 +501,50 @@ export class DocumentTabs extends HTMLElement {
     #startDrag(tab: HTMLElement, name: string, pointerId: number): void {
         this.#draggingName = name
         tab.classList.add("dragging")
-        this.#updateDropIndicator()
+        const rect = tab.getBoundingClientRect()
+        this.#dragOffsetX = this.#startX - rect.left
+        this.#dragOffsetY = this.#startY - rect.top
+        this.#dragTabWidth = rect.width
+        this.#dragTabHeight = rect.height
+        this.#dragPlaceholder = document.createElement("div")
+        this.#dragPlaceholder.classList.add("tab-placeholder")
+        this.#dragPlaceholder.style.width = `${rect.width}px`
+        this.#dragPlaceholder.style.height = `${rect.height}px`
+        this.#tabContainer.insertBefore(this.#dragPlaceholder, tab)
+        this.#updateDragPosition(this.#startX, this.#startY)
         document.addEventListener("pointermove", this.#onDragPointerMove)
         document.addEventListener("pointerup", this.#onDragPointerUp)
         document.addEventListener("pointercancel", this.#onDragPointerUp)
+        this.#updateDropIndicator()
+    }
+
+    #updateDragPosition(clientX: number, clientY: number): void {
+        const tab = this.#tabContainer.querySelector<HTMLElement>(`[data-tab-name="${this.#draggingName!}"]`)
+        if (!tab) return
+        tab.style.position = "fixed"
+        tab.style.left = `${clientX - this.#dragOffsetX}px`
+        tab.style.top = `${clientY - this.#dragOffsetY}px`
+        tab.style.width = `${this.#dragTabWidth}px`
+        tab.style.minWidth = `${this.#dragTabWidth}px`
+        tab.style.height = `${this.#dragTabHeight}px`
+    }
+
+    #clearDragPosition(): void {
+        const tab = this.#tabContainer.querySelector<HTMLElement>(`[data-tab-name="${this.#draggingName!}"]`)
+        if (tab) {
+            tab.style.position = ""
+            tab.style.left = ""
+            tab.style.top = ""
+            tab.style.width = ""
+            tab.style.minWidth = ""
+            tab.style.height = ""
+        }
     }
 
     #onDragPointerMove = (e: PointerEvent): void => {
         if (!this.#draggingName) return
         this.#hasDragged = this.#hasDragged || Math.hypot(e.clientX - this.#startX, e.clientY - this.#startY) > MOVE_THRESHOLD_PX
+        this.#updateDragPosition(e.clientX, e.clientY)
         this.#dropIndex = this.#computeDropIndex(e.clientX, e.clientY)
         this.#updateDropIndicator()
     }
@@ -509,19 +555,26 @@ export class DocumentTabs extends HTMLElement {
             return -1
         }
         const tabs = Array.from(this.#tabContainer.querySelectorAll<HTMLElement>(".tab"))
+        const draggingName = this.#draggingName
         for (let i = 0; i < tabs.length; i++) {
             const tab = tabs[i]
+            if (draggingName && tab.getAttribute("data-tab-name") === draggingName) continue
             const tabRect = tab.getBoundingClientRect()
             if (clientY < tabRect.top || clientY > tabRect.bottom) continue
             if (clientX < tabRect.left || clientX > tabRect.right) continue
             const midX = tabRect.left + tabRect.width / 2
             return clientX < midX ? i : i + 1
         }
-        return tabs.length
+        return -1
     }
 
     #updateDropIndicator(): void {
-        if (this.#dropIndex < 0) {
+        if (!this.#hasDragged || this.#dropIndex < 0) {
+            this.#dropIndicator.remove()
+            return
+        }
+        const fromIndex = this.#draggingName ? Array.from(this.#docs.keys()).indexOf(this.#draggingName) : -1
+        if (fromIndex >= 0 && (this.#dropIndex === fromIndex || this.#dropIndex === fromIndex + 1)) {
             this.#dropIndicator.remove()
             return
         }
@@ -539,17 +592,21 @@ export class DocumentTabs extends HTMLElement {
         if (!this.#draggingName) return
         const name = this.#draggingName
         const tab = this.#tabContainer.querySelector(`[data-tab-name="${name}"]`)
+        const releaseDropIndex = this.#computeDropIndex(e.clientX, e.clientY)
         document.removeEventListener("pointermove", this.#onDragPointerMove)
         document.removeEventListener("pointerup", this.#onDragPointerUp)
         document.removeEventListener("pointercancel", this.#onDragPointerUp)
         this.#dropIndicator.remove()
+        this.#dragPlaceholder?.remove()
+        this.#dragPlaceholder = null
+        this.#clearDragPosition()
         tab?.classList.remove("dragging")
         this.#draggingName = null
 
         if (this.#hasDragged) {
-            if (this.#dropIndex >= 0) {
+            if (releaseDropIndex >= 0) {
                 const fromIndex = Array.from(this.#docs.keys()).indexOf(name)
-                const toIndex = Math.min(this.#dropIndex, this.#docs.size)
+                const toIndex = Math.min(releaseDropIndex, this.#docs.size)
                 if (fromIndex !== -1 && fromIndex !== toIndex) {
                     this.#docs.moveToIndex(fromIndex, toIndex)
                     this.#updateStoredOrder()

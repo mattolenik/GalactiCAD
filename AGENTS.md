@@ -32,6 +32,13 @@ import previewShader from "./shaders/preview.wgsl"
 
 That results in previewShader being a string with the processed content of the code.
 
-### Building and Linting
+## Building and Linting
 
-**Do not run build or lint commands on WGSL files.** WGSL files are processed by a custom esbuild plugin (build/wgsl-loader.mts) at compile time, and standard build/lint tools are not configured for them. Only edit WGSL files directly - do not attempt to validate, format, or build them separately.
+**Use these exact commands** - do not use npm/pnpm run, node, or tsx directly:
+
+- **Build**: `make build`
+- **Test**: `make test`
+
+The Makefile orchestrates the build via `build/build.mts`; use `make` as the single entry point.
+
+**Do not run build or lint commands on WGSL files directly.** WGSL files will be compiled with `make build` by the custom build logic. This means when making changes to WGSL files, you should run `make build` to validate them. If they don't compile, you will see the compiler error in `make build`. This custom build logic is what handles the `//:) include` directive, meaning this shader compiler output is indicative of what happens at runtime.

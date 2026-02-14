@@ -120,6 +120,7 @@ export class SDFRenderer {
     #helper!: GPUHelper
     #builtSrc: string | null = null
     #xrayMode: boolean = false
+    #selectionMode: import("./storage/settings.mjs").SelectionMode = "object"
     #beamEnabled: boolean = false
     #outlineMode: OutlineMode = "solid"
     #outlineThickness: number = 3
@@ -160,6 +161,7 @@ export class SDFRenderer {
             xrayMode: this.#xrayMode,
             cameraOptimization: this.#cameraOptimization,
             beamOptimization: this.#beamEnabled,
+            selectionMode: this.#selectionMode,
         })
     }
 
@@ -168,7 +170,7 @@ export class SDFRenderer {
         this.#xrayMode = prev.xrayMode
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
-        this.#preview.xrayMode = this.#xrayMode
+        this.#selectionMode = prev.selectionMode
         this.onPreviewSettingsLoaded?.()
         this.#needsRender = true
     }
@@ -202,6 +204,16 @@ export class SDFRenderer {
 
     get xrayMode(): boolean {
         return this.#xrayMode
+    }
+
+    set selectionMode(mode: import("./storage/settings.mjs").SelectionMode) {
+        this.#selectionMode = mode
+        this.#settings.updatePreview("selectionMode", mode)
+        this.#needsRender = true
+    }
+
+    get selectionMode(): import("./storage/settings.mjs").SelectionMode {
+        return this.#selectionMode
     }
 
     set beamEnabled(enabled: boolean) {
@@ -1255,11 +1267,6 @@ export class SDFRenderer {
         this.#exportBuffers = new ExportBuffers()
         this.#initializing = this.initialize()
         this.#cameraRes = vec2(this.#preview.canvas.clientWidth, this.#preview.canvas.clientHeight)
-
-        // Wire up xray mode change from preview window
-        preview.onXrayModeChange = (enabled: boolean) => {
-            this.xrayMode = enabled
-        }
 
         this.#loadPreviewSettings()
 

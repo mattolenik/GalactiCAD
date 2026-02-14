@@ -1,0 +1,197 @@
+import { __fg_color, __tone_2 } from "../style/style.mjs"
+
+export class ToolbarCheckbox {
+    #checkbox: HTMLInputElement
+    onChange?: (checked: boolean) => void
+
+    constructor(label: string, checked: boolean, container: HTMLElement) {
+        const el = document.createElement("label")
+        this.#checkbox = document.createElement("input")
+        this.#checkbox.type = "checkbox"
+        this.#checkbox.checked = checked
+        this.#checkbox.addEventListener("change", () => {
+            this.onChange?.(this.#checkbox.checked)
+        })
+        el.append(this.#checkbox, label)
+        container.appendChild(el)
+    }
+
+    get checked(): boolean { return this.#checkbox.checked }
+    set checked(v: boolean) { this.#checkbox.checked = v }
+}
+
+export class ToolbarButton {
+    #button: HTMLButtonElement
+    onClick?: () => void
+
+    constructor(label: string, container: HTMLElement) {
+        this.#button = document.createElement("button")
+        this.#button.textContent = label
+        this.#button.addEventListener("click", () => {
+            this.onClick?.()
+        })
+        container.appendChild(this.#button)
+    }
+
+    get label(): string { return this.#button.textContent ?? "" }
+    set label(v: string) { this.#button.textContent = v }
+
+    get disabled(): boolean { return this.#button.disabled }
+    set disabled(v: boolean) { this.#button.disabled = v }
+}
+
+let radioGroupId = 0
+
+export class ToolbarRadioGroup<T extends string> {
+    #radios: Map<T, HTMLInputElement> = new Map()
+    #value: T
+    onChange?: (value: T) => void
+
+    constructor(options: { label: string; value: T }[], defaultValue: T, container: HTMLElement) {
+        const groupName = `tb-radio-${radioGroupId++}`
+        this.#value = defaultValue
+
+        const group = document.createElement("div")
+        group.classList.add("radio-group")
+
+        for (const opt of options) {
+            const label = document.createElement("label")
+            const radio = document.createElement("input")
+            radio.type = "radio"
+            radio.name = groupName
+            radio.value = opt.value
+            radio.checked = opt.value === defaultValue
+            radio.addEventListener("change", () => {
+                if (radio.checked) {
+                    this.#value = opt.value
+                    this.onChange?.(opt.value)
+                }
+            })
+            this.#radios.set(opt.value, radio)
+            label.append(radio, opt.label)
+            group.appendChild(label)
+        }
+
+        container.appendChild(group)
+    }
+
+    get value(): T { return this.#value }
+    set value(v: T) {
+        this.#value = v
+        const radio = this.#radios.get(v)
+        if (radio) radio.checked = true
+    }
+}
+
+export class Toolbar extends HTMLElement {
+    #container: HTMLDivElement
+
+    constructor() {
+        super()
+        const shadow = this.attachShadow({ mode: "open" })
+
+        const style = document.createElement("style")
+        style.textContent = `
+            :host {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                z-index: 1;
+            }
+            .toolbar {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
+                backdrop-filter: blur(6px);
+                -webkit-backdrop-filter: blur(6px);
+                padding: 4px 8px;
+                border-radius: 4px;
+                color: rgb(from var(${__fg_color}) r g b / 0.85);
+                font-size: 12px;
+                font-family: system-ui, sans-serif;
+            }
+            label {
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            input[type="checkbox"] {
+                cursor: pointer;
+                margin: 0;
+            }
+            button {
+                cursor: pointer;
+                background: none;
+                border: 1px solid rgb(from var(${__fg_color}) r g b / 0.2);
+                border-radius: 3px;
+                color: inherit;
+                font: inherit;
+                padding: 2px 8px;
+            }
+            button:hover {
+                background: rgb(from var(${__fg_color}) r g b / 0.1);
+            }
+            button:active {
+                background: rgb(from var(${__fg_color}) r g b / 0.2);
+            }
+            button:disabled {
+                opacity: 0.4;
+                cursor: default;
+            }
+            .separator {
+                width: 1px;
+                height: 16px;
+                background: rgb(from var(${__fg_color}) r g b / 0.2);
+                flex-shrink: 0;
+            }
+            .radio-group {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .radio-group label {
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 3px;
+            }
+            input[type="radio"] {
+                cursor: pointer;
+                margin: 0;
+            }
+        `
+        shadow.appendChild(style)
+
+        this.#container = document.createElement("div")
+        this.#container.classList.add("toolbar")
+        shadow.appendChild(this.#container)
+    }
+
+    addCheckbox(label: string, checked = false): ToolbarCheckbox {
+        return new ToolbarCheckbox(label, checked, this.#container)
+    }
+
+    addButton(label: string): ToolbarButton {
+        return new ToolbarButton(label, this.#container)
+    }
+
+    addRadioGroup<T extends string>(options: { label: string; value: T }[], defaultValue: T): ToolbarRadioGroup<T> {
+        return new ToolbarRadioGroup(options, defaultValue, this.#container)
+    }
+
+    addSeparator(): void {
+        const sep = document.createElement("div")
+        sep.classList.add("separator")
+        this.#container.appendChild(sep)
+    }
+}
+
+customElements.define("view-toolbar", Toolbar)
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "view-toolbar": Toolbar
+    }
+}

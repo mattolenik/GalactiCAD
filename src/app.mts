@@ -9,12 +9,13 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
-import { SettingsManager } from "./storage/settings.mjs"
+import { SettingsManager, type SelectionMode } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
 import { SourceParser, type SourceLocation } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
 import { ResizeHandle } from "./components/resize-handle.mjs"
+import { Toolbar } from "./components/toolbar.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -329,6 +330,16 @@ class App {
             this.#tabs.style.setProperty("--active-bg", bg)
         })
 
+        // Viewport toolbar — floating over the preview area
+        const toolbar = new Toolbar()
+        const selectionModeGroup = toolbar.addRadioGroup<SelectionMode>([
+            { label: "Object", value: "object" },
+            { label: "Edge", value: "edge" },
+        ], "object")
+        toolbar.addSeparator()
+        const xrayCheckbox = toolbar.addCheckbox("X-ray")
+        this.#viewports.appendChild(toolbar)
+
         // Developer tools panel — positioned over the viewports area
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)
         this.#viewports.appendChild(devTools)
@@ -378,6 +389,16 @@ class App {
                     this.#handleEditorMouseDown(e)
                 })
 
+                // Wire toolbar ↔ renderer
+                xrayCheckbox.checked = this.renderer.xrayMode
+                xrayCheckbox.onChange = (enabled) => {
+                    this.renderer.xrayMode = enabled
+                }
+                selectionModeGroup.value = this.renderer.selectionMode
+                selectionModeGroup.onChange = (mode) => {
+                    this.renderer.selectionMode = mode
+                }
+
                 // Wire dev tools panel ↔ renderer
                 devTools.cameraOptimization = this.renderer.cameraOptimization
                 devTools.beamOptimization = this.renderer.beamEnabled
@@ -388,6 +409,8 @@ class App {
                     this.renderer.beamEnabled = enabled
                 }
                 this.renderer.onPreviewSettingsLoaded = () => {
+                    xrayCheckbox.checked = this.renderer.xrayMode
+                    selectionModeGroup.value = this.renderer.selectionMode
                     devTools.cameraOptimization = this.renderer.cameraOptimization
                     devTools.beamOptimization = this.renderer.beamEnabled
                 }

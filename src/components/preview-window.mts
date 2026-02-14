@@ -1,25 +1,9 @@
-import { __fg_color, __tone_2 } from "../style/style.mjs"
-
 export class PreviewWindow extends HTMLElement {
     readonly canvas: HTMLCanvasElement
 
     #counter: HTMLSpanElement
     #framerateThreshold: number = 120
     #showFps: boolean = false
-    #xrayCheckbox: HTMLInputElement
-    #xrayMode: boolean = false
-
-    /** Callback when xray mode changes */
-    onXrayModeChange?: (enabled: boolean) => void
-
-    get xrayMode(): boolean {
-        return this.#xrayMode
-    }
-
-    set xrayMode(enabled: boolean) {
-        this.#xrayMode = enabled
-        this.#xrayCheckbox.checked = enabled
-    }
 
     get showFps(): boolean {
         return this.#showFps
@@ -55,34 +39,6 @@ export class PreviewWindow extends HTMLElement {
             pointer-events: none;
             z-index: 1;
         }
-        .controls {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 1;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
-            padding: 4px 8px;
-            border-radius: 4px;
-            color: rgb(from var(${__fg_color}) r g b / 0.85);
-            font-size: 12px;
-            font-family: system-ui, sans-serif;
-        }
-        .controls label {
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .controls input[type="checkbox"] {
-            cursor: pointer;
-            margin: 0;
-            font-size: 16px;
-        }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"
@@ -94,21 +50,6 @@ export class PreviewWindow extends HTMLElement {
         this.#counter.classList.add("overlay")
         this.#counter.style.float = "right"
         shadow.appendChild(this.#counter)
-
-        // X-ray mode checkbox (product feature, always visible)
-        const xrayBox = document.createElement("div")
-        xrayBox.classList.add("controls")
-        const xrayLabel = document.createElement("label")
-        this.#xrayCheckbox = document.createElement("input")
-        this.#xrayCheckbox.type = "checkbox"
-        this.#xrayCheckbox.addEventListener("change", () => {
-            this.#xrayMode = this.#xrayCheckbox.checked
-            this.onXrayModeChange?.(this.#xrayMode)
-        })
-        xrayLabel.append(this.#xrayCheckbox, "X-ray")
-        xrayBox.appendChild(xrayLabel)
-        shadow.appendChild(xrayBox)
-
     }
 
     updateFPS(fps: number) {

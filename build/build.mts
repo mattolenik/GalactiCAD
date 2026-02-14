@@ -104,7 +104,7 @@ async function main() {
 
     if (process.argv.includes("-w")) {
         log("Watching for changes")
-        let server = new DevServer(Options.outDir, ServerOptions.port, "index.html", log, err)
+        let server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err)
         let watcher = watch(
             ".",
             async (event, path) => {

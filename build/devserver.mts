@@ -4,16 +4,22 @@ import path from "path"
 import WebSocket, { WebSocketServer } from "ws"
 
 export class DevServer {
-    httpServer: http.Server
-    wsServer: WebSocketServer
+    httpServer!: http.Server
+    wsServer!: WebSocketServer
 
-    constructor(
+    private constructor(
         public serveRoot: string,
         public port: number,
         public indexFileName = "index.html",
+    ) {}
+
+    static async create(
+        serveRoot: string,
+        port: number,
+        indexFileName = "index.html",
         log = console.log,
         err = console.error
-    ) {
+    ): Promise<DevServer> {
         // Use an ephemeral port for live reload, but, store it in the environment
         // so that upon rebuild (an execve call), the port can be reused, preventing
         // the browser from having to refresh to get the new port.
@@ -32,8 +38,10 @@ export class DevServer {
             });
         </script>`
 
-        this.httpServer = httpServer(serveRoot, port, clientScript, indexFileName, log, err)
-        this.wsServer = new WebSocketServer({ port: liveReloadPort })
+        const { server, port: actualPort } = await listenWithPortRetry(serveRoot, port, clientScript, indexFileName, log, err)
+        const instance = new DevServer(serveRoot, actualPort, indexFileName)
+        instance.httpServer = server
+        instance.wsServer = new WebSocketServer({ port: liveReloadPort })
             .on("connection", (ws: WebSocket) => {
                 ws.on("error", (error: Error) => {
                     err("WebSocket error: ", error)
@@ -42,6 +50,7 @@ export class DevServer {
             .on("listening", () => {
                 log("Live reload at " + wsURL)
             })
+        return instance
     }
 
     public command(cmd: string) {
@@ -62,7 +71,7 @@ function ephemeralPort() {
     return 49152 + Math.floor(Math.random() * (65535 - 49152))
 }
 
-function httpServer(dir: string, port: number, clientScript = "", indexFileName = "index.html", log = console.log, err = console.error) {
+function createHttpServer(dir: string, clientScript = "", indexFileName = "index.html", log = console.log, err = console.error) {
     const contentType: Record<string, string> = {
         ".css": "text/css",
         ".gif": "image/gif",
@@ -76,7 +85,6 @@ function httpServer(dir: string, port: number, clientScript = "", indexFileName 
     }
 
     const defaultContentType = "application/octet-stream"
-    log(`Serving at http://localhost:${port}`)
 
     return http
         .createServer(async (req, res) => {
@@ -106,5 +114,27 @@ function httpServer(dir: string, port: number, clientScript = "", indexFileName 
                 }
             }
         })
-        .listen(port)
+}
+
+function listenWithPortRetry(dir: string, port: number, clientScript: string, indexFileName: string, log = console.log, err = console.error): Promise<{ server: http.Server; port: number }> {
+    const server = createHttpServer(dir, clientScript, indexFileName, log, err)
+    return new Promise((resolve, reject) => {
+        function tryPort(p: number) {
+            const onError = (e: NodeJS.ErrnoException) => {
+                if (e.code === "EADDRINUSE") {
+                    log(`Port ${p} in use, trying ${p + 1}...`)
+                    tryPort(p + 1)
+                } else {
+                    reject(e)
+                }
+            }
+            server.once("error", onError)
+            server.listen(p, () => {
+                server.removeListener("error", onError)
+                log(`Serving at http://localhost:${p}`)
+                resolve({ server, port: p })
+            })
+        }
+        tryPort(port)
+    })
 }

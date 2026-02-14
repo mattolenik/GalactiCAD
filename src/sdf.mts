@@ -4,7 +4,7 @@ import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
-import { SceneInfo, Node, Box, Sphere, Union, Subtract, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate } from "./scene/scene.mjs"
+import { SceneInfo, Node, BinaryOperator, Box, Sphere, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import beamShader from "./shaders/beam.wgsl"
@@ -505,6 +505,42 @@ export class SDFRenderer {
             }
             return Math.max(a, -b)
         }
+        if (node instanceof Intersect) {
+            const a = this.#evalNodeDist(node.lh, px, py, pz)
+            const b = this.#evalNodeDist(node.rh, px, py, pz)
+            if (a === null || b === null) return null
+            if (node.radius && node.radius > 0) {
+                // fOpIntersectionRound
+                const r = node.radius
+                const ux = Math.max(r + a, 0), uy = Math.max(r + b, 0)
+                return Math.min(-r, Math.max(a, b)) + Math.hypot(ux, uy)
+            }
+            return Math.max(a, b)
+        }
+        if (node instanceof Pipe) {
+            const a = this.#evalNodeDist(node.lh, px, py, pz)
+            const b = this.#evalNodeDist(node.rh, px, py, pz)
+            if (a === null || b === null) return null
+            return Math.hypot(a, b) - node.radius
+        }
+        if (node instanceof Engrave) {
+            const a = this.#evalNodeDist(node.lh, px, py, pz)
+            const b = this.#evalNodeDist(node.rh, px, py, pz)
+            if (a === null || b === null) return null
+            return Math.max(a, (a + node.radius - Math.hypot(a, b)) * Math.SQRT1_2)
+        }
+        if (node instanceof Groove) {
+            const a = this.#evalNodeDist(node.lh, px, py, pz)
+            const b = this.#evalNodeDist(node.rh, px, py, pz)
+            if (a === null || b === null) return null
+            return Math.max(a, Math.min(a + node.ra, Math.max(Math.abs(b) - node.rb, a)))
+        }
+        if (node instanceof Tongue) {
+            const a = this.#evalNodeDist(node.lh, px, py, pz)
+            const b = this.#evalNodeDist(node.rh, px, py, pz)
+            if (a === null || b === null) return null
+            return Math.min(a, Math.max(a - node.ra, Math.min(-Math.abs(b) + node.rb, a)))
+        }
         if (node instanceof Rotate) {
             const [rx, ry, rz] = node.applyInvRotation(px, py, pz)
             return this.#evalNodeDist(node.arg, rx, ry, rz)
@@ -600,7 +636,7 @@ export class SDFRenderer {
     #buildParentMap(): Map<number, Node> {
         const map = new Map<number, Node>()
         const walk = (node: Node) => {
-            if (node instanceof Union || node instanceof Subtract) {
+            if (node instanceof BinaryOperator) {
                 map.set(node.lh.id, node)
                 map.set(node.rh.id, node)
                 walk(node.lh)
@@ -638,7 +674,7 @@ export class SDFRenderer {
     }
 
     /** Find which direct child of a binary operator contains a given node ID. */
-    #findChildContaining(op: Union | Subtract, nodeId: number): Node | null {
+    #findChildContaining(op: BinaryOperator, nodeId: number): Node | null {
         if (op.lh.id === nodeId || op.lh.getAllDescendantIds().includes(nodeId)) return op.lh
         if (op.rh.id === nodeId || op.rh.getAllDescendantIds().includes(nodeId)) return op.rh
         return null
@@ -658,7 +694,7 @@ export class SDFRenderer {
         const parentMap = this.#buildParentMap()
         const lca = this.#findLCA(idA, idB, parentMap)
 
-        if (lca && (lca instanceof Union || lca instanceof Subtract)) {
+        if (lca && lca instanceof BinaryOperator) {
             const childA = this.#findChildContaining(lca, idA)
             const childB = this.#findChildContaining(lca, idB)
             if (childA && childB && childA.id !== childB.id) {

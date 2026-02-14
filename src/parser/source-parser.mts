@@ -50,7 +50,7 @@ export type SourceLocationMap = Map<number, SourceLocation>
  * Shape functions we care about for source location tracking
  */
 const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob"])
-const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "group", "rotate"])
+const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "group", "rotate"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS])
 
 /**

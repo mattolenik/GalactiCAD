@@ -1,0 +1,81 @@
+// New Operators Demo
+// Demonstrates intersect, pipe, engrave, groove, tongue, and blend modes
+
+function scene() {
+    // === INTERSECTION ===
+    // Sphere intersected with a box produces a rounded cube shape
+    const s1 = sphere([0, 0, 12], { r: 8 })
+    const b1 = box([0, 0, 12], [6, 6, 6])
+    const roundedCube = intersect(s1, b1)
+
+    // Smooth intersection with radius
+    const s2 = sphere([20, 0, 12], { r: 8 })
+    const b2 = box([20, 0, 12], [6, 6, 6])
+    const smoothIntersect = intersect({ r: 1.5 }, s2, b2)
+
+    // === BLEND MODES ON UNION ===
+    // Columns blend
+    const colA = sphere([-20, 0, 6], { r: 5 })
+    const colB = sphere([-20, 0, 14], { r: 5 })
+    const columnsUnion = union({ r: 2, mode: 'columns', n: 6 }, colA, colB)
+
+    // Stairs blend
+    const stA = sphere([-40, 0, 6], { r: 5 })
+    const stB = sphere([-40, 0, 14], { r: 5 })
+    const stairsUnion = union({ r: 2, mode: 'stairs', n: 4 }, stA, stB)
+
+    // Chamfer blend
+    const chA = box([40, 0, 6], [4, 4, 4])
+    const chB = sphere([40, 0, 14], { r: 5 })
+    const chamferUnion = union({ r: 1.5, mode: 'chamfer' }, chA, chB)
+
+    // === BLEND MODES ON SUBTRACT ===
+    // Columns subtract
+    const csA = box([-20, 20, 10], [6, 6, 6])
+    const csB = sphere([-20, 20, 10], { r: 5 })
+    const columnsSub = subtract({ r: 1.5, mode: 'columns', n: 4 }, csA, csB)
+
+    // Stairs subtract
+    const ssA = box([0, 20, 10], [6, 6, 6])
+    const ssB = sphere([0, 20, 10], { r: 5 })
+    const stairsSub = subtract({ r: 1.5, mode: 'stairs', n: 4 }, ssA, ssB)
+
+    // === PIPE ===
+    // Creates a tube-like surface at the intersection of two shapes
+    const pA = sphere([20, 20, 10], { r: 6 })
+    const pB = box([20, 20, 10], [5, 5, 5])
+    const pipeOp = pipe(pA, pB, 0.5)
+
+    // === ENGRAVE ===
+    // Engraves one shape into the surface of another
+    const eBase = box([40, 20, 10], [6, 6, 6])
+    const ePattern = sphere([40, 20, 14], { r: 4 })
+    const engraveOp = engrave(eBase, ePattern, 1.5)
+
+    // === GROOVE ===
+    // Carves a groove at the intersection of two shapes
+    const gBase = box([-40, 20, 10], [6, 6, 6])
+    const gPattern = sphere([-40, 20, 10], { r: 5 })
+    const grooveOp = groove(gBase, gPattern, 1.0, 0.5)
+
+    // === TONGUE ===
+    // Creates a raised ridge at the intersection of two shapes
+    const tBase = box([0, -20, 10], [6, 6, 6])
+    const tPattern = sphere([0, -20, 10], { r: 5 })
+    const tongueOp = tongue(tBase, tPattern, 1.0, 0.5)
+
+    // === INTERSECT BLEND MODES ===
+    // Columns intersect
+    const icA = sphere([20, -20, 10], { r: 7 })
+    const icB = box([20, -20, 10], [5, 5, 5])
+    const columnsIntersect = intersect({ r: 1.5, mode: 'columns', n: 4 }, icA, icB)
+
+    // === ASSEMBLY ===
+    return union(
+        roundedCube, smoothIntersect,
+        columnsUnion, stairsUnion, chamferUnion,
+        columnsSub, stairsSub,
+        pipeOp, engraveOp, grooveOp, tongueOp,
+        columnsIntersect
+    )
+}

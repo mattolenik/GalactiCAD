@@ -38,7 +38,7 @@ export class SceneInfo {
         // Create a function that defines scene() and then calls it
         // This allows users to write: function scene() { return sphere(...) }
         const wrappedSrc = src + "\nreturn scene()"
-        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", wrappedSrc)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate)
+        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", wrappedSrc)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue)
         this.root.scene = this
         this.root.build()
     }
@@ -307,6 +307,8 @@ export abstract class BinaryOperator extends Node {
     }
 }
 
+export type BlendMode = 'round' | 'chamfer' | 'soft' | 'columns' | 'stairs'
+
 export class Union extends BinaryOperator {
     override getShapeType(): string {
         return "union"
@@ -321,33 +323,44 @@ export class Union extends BinaryOperator {
     }
 
     override compile(indentLevel = 0): CompileResult {
-        let text = ""
         const lhResult = this.lh.compile()
         const rhResult = this.rh.compile()
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
-        if (this.radius) {
-            // Use extended round union for smooth blends (not chamfer)
-            // Round creates truly smooth C1 continuous surfaces
-            text += `fOpUnionRoundEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`
+        const L = lhResult.text, R = rhResult.text, r = this.radius
+        let text: string
+        if (!r) {
+            text = `opUnionEx(${L}, ${R})`
         } else {
-            // Use extended hard union
-            text += `opUnionEx(${lhResult.text}, ${rhResult.text})`
+            switch (this.mode) {
+                case 'chamfer': text = `fOpUnionChamferEx(${L}, ${R}, ${r})`; break
+                case 'soft':    text = `fOpUnionSoftEx(${L}, ${R}, ${r})`; break
+                case 'columns': text = `fOpUnionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                case 'stairs':  text = `fOpUnionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default:        text = `fOpUnionRoundEx(${L}, ${R}, ${r})`; break
+            }
         }
         return { text, varName }
     }
     override compileFast(indentLevel = 0): CompileResult {
-        let text = ""
         const lhResult = this.lh.compileFast()
         const rhResult = this.rh.compileFast()
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
-        if (this.radius) {
-            text += `fOpUnionRoundFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`
+        const L = lhResult.text, R = rhResult.text, r = this.radius
+        let text: string
+        if (!r) {
+            text = `opUnionFast(${L}, ${R})`
         } else {
-            text += `opUnionFast(${lhResult.text}, ${rhResult.text})`
+            switch (this.mode) {
+                case 'chamfer': text = `fOpUnionChamferFast(${L}, ${R}, ${r})`; break
+                case 'soft':    text = `fOpUnionSoftFast(${L}, ${R}, ${r})`; break
+                case 'columns': text = `fOpUnionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                case 'stairs':  text = `fOpUnionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default:        text = `fOpUnionRoundFast(${L}, ${R}, ${r})`; break
+            }
         }
         return { text, varName }
     }
-    constructor(lh: Node, rh: Node, public radius?: number) {
+    constructor(lh: Node, rh: Node, public radius?: number, public mode?: BlendMode, public n?: number) {
         super(lh, rh)
     }
 }
@@ -366,32 +379,188 @@ export class Subtract extends BinaryOperator {
     }
 
     override compile(indentLevel = 0): CompileResult {
-        let text = ""
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        if (this.radius && this.radius > 0) {
-            // Use extended round difference with gradient magnitude tracking
-            text += `fOpDifferenceRoundEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`
+        const L = lhResult.text, R = rhResult.text, r = this.radius
+        let text: string
+        if (!r || r <= 0) {
+            text = `opDifferenceEx(${L}, ${R})`
         } else {
-            // Use extended hard difference
-            text += `opDifferenceEx(${lhResult.text}, ${rhResult.text})`
+            switch (this.mode) {
+                case 'chamfer': text = `fOpDifferenceChamferEx(${L}, ${R}, ${r})`; break
+                case 'columns': text = `fOpDifferenceColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                case 'stairs':  text = `fOpDifferenceStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default:        text = `fOpDifferenceRoundEx(${L}, ${R}, ${r})`; break
+            }
         }
         return { text, varName }
     }
     override compileFast(indentLevel = 0): CompileResult {
-        let text = ""
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        if (this.radius && this.radius > 0) {
-            text += `fOpDifferenceRoundFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`
+        const L = lhResult.text, R = rhResult.text, r = this.radius
+        let text: string
+        if (!r || r <= 0) {
+            text = `opDifferenceFast(${L}, ${R})`
         } else {
-            text += `opDifferenceFast(${lhResult.text}, ${rhResult.text})`
+            switch (this.mode) {
+                case 'chamfer': text = `fOpDifferenceChamferFast(${L}, ${R}, ${r})`; break
+                case 'columns': text = `fOpDifferenceColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                case 'stairs':  text = `fOpDifferenceStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default:        text = `fOpDifferenceRoundFast(${L}, ${R}, ${r})`; break
+            }
         }
         return { text, varName }
     }
-    constructor(lh: Node, rh: Node, public radius: number = 0) {
+    constructor(lh: Node, rh: Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {
+        super(lh, rh)
+    }
+}
+
+export class Intersect extends BinaryOperator {
+    override getShapeType(): string {
+        return "intersect"
+    }
+
+    override getIndicatorSymbol(): string {
+        return "⊗"  // Circled times - represents intersection
+    }
+
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="3" x2="9" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="9" y1="3" x2="3" y2="9" stroke="currentColor" stroke-width="1.5"/>`
+    }
+
+    override compile(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compile(indentLevel)
+        const rhResult = this.rh.compile(indentLevel)
+        const varName = `i_${lhResult.varName}__${rhResult.varName}`
+        const L = lhResult.text, R = rhResult.text, r = this.radius
+        let text: string
+        if (!r || r <= 0) {
+            text = `opIntersectionEx(${L}, ${R})`
+        } else {
+            switch (this.mode) {
+                case 'chamfer': text = `fOpIntersectionChamferEx(${L}, ${R}, ${r})`; break
+                case 'columns': text = `fOpIntersectionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                case 'stairs':  text = `fOpIntersectionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default:        text = `fOpIntersectionRoundEx(${L}, ${R}, ${r})`; break
+            }
+        }
+        return { text, varName }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileFast(indentLevel)
+        const rhResult = this.rh.compileFast(indentLevel)
+        const varName = `i_${lhResult.varName}__${rhResult.varName}`
+        const L = lhResult.text, R = rhResult.text, r = this.radius
+        let text: string
+        if (!r || r <= 0) {
+            text = `opIntersectionFast(${L}, ${R})`
+        } else {
+            switch (this.mode) {
+                case 'chamfer': text = `fOpIntersectionChamferFast(${L}, ${R}, ${r})`; break
+                case 'columns': text = `fOpIntersectionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                case 'stairs':  text = `fOpIntersectionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default:        text = `fOpIntersectionRoundFast(${L}, ${R}, ${r})`; break
+            }
+        }
+        return { text, varName }
+    }
+    constructor(lh: Node, rh: Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {
+        super(lh, rh)
+    }
+}
+
+export class Pipe extends BinaryOperator {
+    override getShapeType(): string { return "pipe" }
+    override getIndicatorSymbol(): string { return "⊘" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="10" x2="10" y2="2" stroke="currentColor" stroke-width="1.5"/>`
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compile(indentLevel)
+        const rhResult = this.rh.compile(indentLevel)
+        const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpPipeEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileFast(indentLevel)
+        const rhResult = this.rh.compileFast(indentLevel)
+        const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpPipeFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
+    }
+    constructor(lh: Node, rh: Node, public radius: number) {
+        super(lh, rh)
+    }
+}
+
+export class Engrave extends BinaryOperator {
+    override getShapeType(): string { return "engrave" }
+    override getIndicatorSymbol(): string { return "⊜" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1"/>`
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compile(indentLevel)
+        const rhResult = this.rh.compile(indentLevel)
+        const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpEngraveEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileFast(indentLevel)
+        const rhResult = this.rh.compileFast(indentLevel)
+        const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpEngraveFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
+    }
+    constructor(lh: Node, rh: Node, public radius: number) {
+        super(lh, rh)
+    }
+}
+
+export class Groove extends BinaryOperator {
+    override getShapeType(): string { return "groove" }
+    override getIndicatorSymbol(): string { return "⊝" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="6" x2="8" y2="6" stroke="currentColor" stroke-width="1.5"/>`
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compile(indentLevel)
+        const rhResult = this.rh.compile(indentLevel)
+        const varName = `groove_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpGrooveEx(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileFast(indentLevel)
+        const rhResult = this.rh.compileFast(indentLevel)
+        const varName = `groove_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpGrooveFast(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
+    }
+    constructor(lh: Node, rh: Node, public ra: number, public rb: number) {
+        super(lh, rh)
+    }
+}
+
+export class Tongue extends BinaryOperator {
+    override getShapeType(): string { return "tongue" }
+    override getIndicatorSymbol(): string { return "⊞" }
+    override getIndicatorSvg(): string {
+        return `<rect x="1" y="1" width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" stroke-width="1"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1"/>`
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compile(indentLevel)
+        const rhResult = this.rh.compile(indentLevel)
+        const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpTongueEx(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileFast(indentLevel)
+        const rhResult = this.rh.compileFast(indentLevel)
+        const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpTongueFast(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
+    }
+    constructor(lh: Node, rh: Node, public ra: number, public rb: number) {
         super(lh, rh)
     }
 }
@@ -848,31 +1017,53 @@ export function group(...nodes: Node[]): Group {
     return new Group(...nodes)
 }
 
+export type UnionOptions = { r?: number; mode?: BlendMode; n?: number }
+
+export function union(opts: UnionOptions, ...parts: Node[]): Union
 export function union(radius: number, ...parts: Node[]): Union
 export function union(...parts: Node[]): Union
 export function union(...args: any[]): Union {
     let radius: number | undefined = undefined
+    let mode: BlendMode | undefined = undefined
+    let n: number | undefined = undefined
     if (typeof args[0] === "number") {
         radius = args[0] as number
+        args.shift()
+    } else if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
+        const opts = args[0] as UnionOptions
+        radius = opts.r
+        mode = opts.mode
+        n = opts.n
         args.shift()
     }
     if (args.length < 2) {
         throw new Error("union requires at least two things to union together")
     }
     while (args.length > 1) {
-        args.push(new Union(args.pop(), args.pop(), radius))
+        args.push(new Union(args.pop(), args.pop(), radius, mode, n))
     }
     const result = args[0] as Union
     if (!(result instanceof Union)) throw new Error("unexpected type during union stacking")
     return result
 }
 
+export type SubtractOptions = { r?: number; mode?: BlendMode; n?: number }
+
+export function subtract(opts: SubtractOptions, ...parts: Node[]): Subtract
 export function subtract(radius: number, ...parts: Node[]): Subtract
 export function subtract(...parts: Node[]): Subtract
 export function subtract(...args: any[]): Subtract {
     let radius: number | undefined = undefined
+    let mode: BlendMode | undefined = undefined
+    let n: number | undefined = undefined
     if (typeof args[0] === "number") {
         radius = args[0] as number
+        args.shift()
+    } else if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
+        const opts = args[0] as SubtractOptions
+        radius = opts.r
+        mode = opts.mode
+        n = opts.n
         args.shift()
     }
     if (args.length < 2) {
@@ -880,7 +1071,7 @@ export function subtract(...args: any[]): Subtract {
     }
     args.reverse()
     while (args.length > 1) {
-        args.push(new Subtract(args.pop(), args.pop(), radius))
+        args.push(new Subtract(args.pop(), args.pop(), radius, mode, n))
     }
     const result = args[0] as Subtract
     if (!(result instanceof Subtract)) throw new Error("unexpected type during subtract stacking")
@@ -929,4 +1120,41 @@ export function blob(pos: Vec3): Blob {
 
 export function rotate(rotation: Vec3, child: Node): Rotate {
     return new Rotate(rotation, child)
+}
+
+export type IntersectOptions = { r?: number; mode?: BlendMode; n?: number }
+
+export function intersect(opts: IntersectOptions, lh: Node, rh: Node): Intersect
+export function intersect(lh: Node, rh: Node): Intersect
+export function intersect(...args: any[]): Intersect {
+    let radius = 0
+    let mode: BlendMode | undefined = undefined
+    let n: number | undefined = undefined
+    if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
+        const opts = args[0] as IntersectOptions
+        radius = opts.r ?? 0
+        mode = opts.mode
+        n = opts.n
+        args.shift()
+    }
+    if (args.length < 2) {
+        throw new Error("intersect requires exactly two shapes")
+    }
+    return new Intersect(args[0], args[1], radius, mode, n)
+}
+
+export function pipe(lh: Node, rh: Node, radius: number): Pipe {
+    return new Pipe(lh, rh, radius)
+}
+
+export function engrave(lh: Node, rh: Node, radius: number): Engrave {
+    return new Engrave(lh, rh, radius)
+}
+
+export function groove(lh: Node, rh: Node, ra: number, rb: number): Groove {
+    return new Groove(lh, rh, ra, rb)
+}
+
+export function tongue(lh: Node, rh: Node, ra: number, rb: number): Tongue {
+    return new Tongue(lh, rh, ra, rb)
 }

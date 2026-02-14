@@ -21,6 +21,11 @@
     "display": "standalone",
     "orientation": "any",
     "start_url": "/",
+    "scope": "/",
+    "launch_handler": {
+        "client_mode": "navigate-existing"
+    },
+    "handle_links": "preferred",
     "file_handlers": [
         {
             "action": "/#open",

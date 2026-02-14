@@ -26,7 +26,7 @@ export class CameraController {
 
     #rotation: Quaternion = new Quaternion(1, 0, 0, 0) // identity quaternion
 
-    @clamped(2, 150)
+    @clamped(2, 250)
     accessor zoom: number = 40
 
     #isDragging = false
@@ -52,7 +52,8 @@ export class CameraController {
     #tabsElement: EventTarget | null = null
     #tabChangeListener: EventListener | null = null
     onChange?: (state: CameraState) => void
-    onSelect?: (screenPos: Vec2f, shiftKey: boolean) => void
+    onSelect?: (screenPos: Vec2f, shiftKey: boolean, altKey: boolean) => void
+    onHover?: (screenPos: Vec2f, altKey: boolean) => void
 
     constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null) {
         this.#settings = SettingsManager.instance
@@ -165,7 +166,7 @@ export class CameraController {
     #onClick(e: MouseEvent) {
         // Only handle left clicks, and only if we didn't drag
         if (e.button === 0 && !this.#hasDragged) {
-            this.onSelect?.(vec2(e.clientX, e.clientY), e.shiftKey)
+            this.onSelect?.(vec2(e.clientX, e.clientY), e.shiftKey, e.altKey)
         }
     }
 
@@ -197,7 +198,11 @@ export class CameraController {
     }
 
     #onPointerMove(e: PointerEvent) {
-        if (!this.isDragging) return
+        // Check for hover events when not dragging
+        if (!this.isDragging) {
+            this.onHover?.(vec2(e.clientX, e.clientY), e.altKey)
+            return
+        }
         if (this.#zoomController.isZooming) return
         // Only use the primary pointer's movement; ignore the second finger when pinch starts
         if (this.#primaryPointerId !== null && e.pointerId !== this.#primaryPointerId) return

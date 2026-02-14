@@ -2,8 +2,8 @@
 
 // Reduce MAX_STEPS to prevent GPU saturation
 // 100 steps is usually sufficient for most scenes
-const MAX_STEPS: i32 = 300;
-const MAX_DIST: f32 = 300.0;
+const MAX_STEPS: i32 = 400;
+const MAX_DIST: f32 = 600.0;
 
 struct Camera {
     transform: mat4x4f,

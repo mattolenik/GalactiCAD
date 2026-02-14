@@ -71,10 +71,10 @@ class App {
             this.#updateEditorHighlighting()
         } catch (err) {
             this.log.innerText = `💢 ${err}`
-            // Clear selection highlighting on build error, but KEEP color indicators
-            // This preserves visual feedback during transient errors while editing
+            // Clear all editor decorations on build error so stale indicators
+            // don't appear at outdated line positions after code changes.
             this.#monacoHighlighter.clearHighlighting()
-            // Don't clear color indicators - they'll update when build succeeds
+            this.#monacoHighlighter.setColorIndicators([])
         }
     }
 

@@ -38,7 +38,7 @@ export class SceneInfo {
         // Create a function that defines scene() and then calls it
         // This allows users to write: function scene() { return sphere(...) }
         const wrappedSrc = src + "\nreturn scene()"
-        this.root = new Function("box", "group", "sphere", "subtract", "union", wrappedSrc)(box, group, sphere, subtract, union)
+        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", wrappedSrc)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate)
         this.root.scene = this
         this.root.build()
     }
@@ -58,6 +58,23 @@ export class SceneInfo {
     compileFast(): string {
         const compiledResult = this.root.compileFast(1)
         return `\nreturn ${compiledResult.text};\n`
+    }
+
+    /**
+     * Compile helper WGSL for edge picking/highlighting.
+     * Currently emits a box-parameter lookup keyed by node ID.
+     */
+    compileEdgeHelpers(): string {
+        const boxes = Array.from(this.#nodes.values()).filter((node): node is Box => node instanceof Box)
+        let code = ""
+        for (const boxNode of boxes) {
+            code += `case ${boxNode.id}u: {\n`
+            code += `    (*posOut) = ${boxNode.pos.wgsl};\n`
+            code += `    (*halfOut) = ${boxNode.size.wgsl};\n`
+            code += "    return true;\n"
+            code += "}\n"
+        }
+        return code
     }
 }
 
@@ -379,6 +396,123 @@ export class Subtract extends BinaryOperator {
     }
 }
 
+export class Rotate extends UnaryOperator {
+    /** Rotation around X axis in degrees */
+    rx: number
+    /** Rotation around Y axis in degrees */
+    ry: number
+    /** Rotation around Z axis in degrees */
+    rz: number
+
+    constructor(rotation: Vec3, arg: Node) {
+        super(arg)
+        const r = vec3(rotation)
+        this.rx = r.x
+        this.ry = r.y
+        this.rz = r.z
+    }
+
+    override getShapeType(): string { return "rotate" }
+    override getIndicatorSymbol(): string { return "↻" }
+    override getIndicatorSvg(): string {
+        return `<path d="M6,1 A5,5 0 1,1 1,6" fill="none" stroke="currentColor" stroke-width="1.5"/><polygon points="1,3 1,7 3,5" fill="currentColor"/>`
+    }
+
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.arg.getAllDescendantIds()]
+    }
+
+    /**
+     * Compute forward and inverse rotation matrices in column-major order for WGSL.
+     * Rotation order is ZYX (apply X first, then Y, then Z). Angles are in degrees.
+     */
+    getWgslMatrices(): { fwd: number[], inv: number[] } {
+        const toRad = Math.PI / 180
+        const cx = Math.cos(this.rx * toRad), sx = Math.sin(this.rx * toRad)
+        const cy = Math.cos(this.ry * toRad), sy = Math.sin(this.ry * toRad)
+        const cz = Math.cos(this.rz * toRad), sz = Math.sin(this.rz * toRad)
+
+        // R = Rz * Ry * Rx (row-major):
+        //   [cy*cz,   sx*sy*cz-cx*sz, cx*sy*cz+sx*sz]
+        //   [cy*sz,   sx*sy*sz+cx*cz, cx*sy*sz-sx*cz]
+        //   [-sy,     sx*cy,          cx*cy         ]
+        //
+        // WGSL mat3x3f is column-major: mat3x3f(col0.xyz, col1.xyz, col2.xyz)
+
+        // Forward R: columns are rows of row-major transposed
+        const fwd = [
+            cy * cz, cy * sz, -sy,
+            sx * sy * cz - cx * sz, sx * sy * sz + cx * cz, sx * cy,
+            cx * sy * cz + sx * sz, cx * sy * sz - sx * cz, cx * cy,
+        ]
+        // Inverse R^T: columns
+        const inv = [
+            cy * cz, sx * sy * cz - cx * sz, cx * sy * cz + sx * sz,
+            cy * sz, sx * sy * sz + cx * cz, cx * sy * sz - sx * cz,
+            -sy, sx * cy, cx * cy,
+        ]
+        return { fwd, inv }
+    }
+
+    /**
+     * Apply inverse rotation to a point (for JS-side SDF evaluation).
+     */
+    applyInvRotation(px: number, py: number, pz: number): [number, number, number] {
+        const toRad = Math.PI / 180
+        const cx = Math.cos(this.rx * toRad), sx = Math.sin(this.rx * toRad)
+        const cy = Math.cos(this.ry * toRad), sy = Math.sin(this.ry * toRad)
+        const cz = Math.cos(this.rz * toRad), sz = Math.sin(this.rz * toRad)
+        // R_inv = R^T applied row-by-row
+        return [
+            (cy * cz) * px + (cy * sz) * py + (-sy) * pz,
+            (sx * sy * cz - cx * sz) * px + (sx * sy * sz + cx * cz) * py + (sx * cy) * pz,
+            (cx * sy * cz + sx * sz) * px + (cx * sy * sz - sx * cz) * py + (cx * cy) * pz,
+        ]
+    }
+
+    private matToWgsl(m: number[]): string {
+        // Use column-vector constructor: mat3x3f(col0, col1, col2)
+        const f = (v: number) => v.toFixed(10)
+        return `mat3x3f(vec3f(${f(m[0])}, ${f(m[1])}, ${f(m[2])}), vec3f(${f(m[3])}, ${f(m[4])}, ${f(m[5])}), vec3f(${f(m[6])}, ${f(m[7])}, ${f(m[8])}))`
+    }
+
+    override compile(indentLevel = 0): CompileResult {
+        const { fwd, inv } = this.getWgslMatrices()
+        const childResult = this.arg.compile(indentLevel)
+        const childText = childResult.text!
+
+        // Replace standalone 'p' (the point variable) with the inverse-rotated point
+        const invMat = this.matToWgsl(inv)
+        const fwdMat = this.matToWgsl(fwd)
+        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
+
+        const funcName = `Rotate${this.id}`
+        const varName = decapitalize(funcName)
+        return {
+            funcName,
+            varName,
+            text: `sdfRotateNormal(${rotatedChildText}, ${fwdMat})`,
+        }
+    }
+
+    override compileFast(indentLevel = 0): CompileResult {
+        const { inv } = this.getWgslMatrices()
+        const childResult = this.arg.compileFast(indentLevel)
+        const childText = childResult.text!
+
+        const invMat = this.matToWgsl(inv)
+        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
+
+        const funcName = `Rotate${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return {
+            funcName,
+            varName,
+            text: rotatedChildText,
+        }
+    }
+}
+
 export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
     argIndex = {
         pos: 0,
@@ -430,6 +564,225 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
             varName,
             text: `fSphereFast(p - ${this.pos.wgsl}, ${this.r})`,
         }
+    }
+}
+
+export class Cylinder extends WithRaD(WithPos(Node)) {
+    h: number
+
+    constructor(pos: Vec3, { r, d, h }: { r?: number; d?: number; h: number }) {
+        super()
+        this.pos = vec3(pos)
+        this.r = asRadius(r, d)
+        this.h = h
+    }
+
+    override getShapeType(): string { return "cylinder" }
+    override getIndicatorSymbol(): string { return "⬭" }
+    override getIndicatorSvg(): string {
+        return `<rect x="1" y="2" width="10" height="8" rx="3" fill="currentColor"/>`
+    }
+    override updateScene(): void {}
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Cylinder${this.id}`
+        const varName = `${decapitalize(funcName)}`
+        return { funcName, varName, text: `fCylinderEx(p - ${this.pos.wgsl}, ${this.r}, ${this.h}, ${this.id}u)` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Cylinder${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `fCylinderFast(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
+    }
+}
+
+export class Cone extends WithRaD(WithPos(Node)) {
+    h: number
+
+    constructor(pos: Vec3, { r, d, h }: { r?: number; d?: number; h: number }) {
+        super()
+        this.pos = vec3(pos)
+        this.r = asRadius(r, d)
+        this.h = h
+    }
+
+    override getShapeType(): string { return "cone" }
+    override getIndicatorSymbol(): string { return "▲" }
+    override getIndicatorSvg(): string {
+        return `<polygon points="6,1 11,11 1,11" fill="currentColor"/>`
+    }
+    override updateScene(): void {}
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Cone${this.id}`
+        const varName = `${decapitalize(funcName)}`
+        return { funcName, varName, text: `fConeEx(p - ${this.pos.wgsl}, ${this.r}, ${this.h}, ${this.id}u)` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Cone${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `fConeFast(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
+    }
+}
+
+export class Torus extends WithPos(Node) {
+    sr: number
+    lr: number
+
+    constructor(pos: Vec3, { sr, lr }: { sr: number; lr: number }) {
+        super()
+        this.pos = vec3(pos)
+        this.sr = sr
+        this.lr = lr
+    }
+
+    override getShapeType(): string { return "torus" }
+    override getIndicatorSymbol(): string { return "◎" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1"/>`
+    }
+    override updateScene(): void {}
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Torus${this.id}`
+        const varName = `${decapitalize(funcName)}`
+        return { funcName, varName, text: `fTorusEx(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr}, ${this.id}u)` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Torus${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `fTorusFast(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr})` }
+    }
+}
+
+export class Capsule extends WithRaD(WithPos(Node)) {
+    c: number
+
+    constructor(pos: Vec3, { r, d, c }: { r?: number; d?: number; c: number }) {
+        super()
+        this.pos = vec3(pos)
+        this.r = asRadius(r, d)
+        this.c = c
+    }
+
+    override getShapeType(): string { return "capsule" }
+    override getIndicatorSymbol(): string { return "⬮" }
+    override getIndicatorSvg(): string {
+        return `<rect x="2" y="1" width="8" height="10" rx="4" fill="currentColor"/>`
+    }
+    override updateScene(): void {}
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Capsule${this.id}`
+        const varName = `${decapitalize(funcName)}`
+        return { funcName, varName, text: `fCapsuleEx(p - ${this.pos.wgsl}, ${this.r}, ${this.c}, ${this.id}u)` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Capsule${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `fCapsuleFast(p - ${this.pos.wgsl}, ${this.r}, ${this.c})` }
+    }
+}
+
+export class PlaneNode extends WithPos(Node) {
+    normal: Vec3f
+    dist: number
+
+    constructor(pos: Vec3, { n, dist = 0 }: { n: Vec3; dist?: number }) {
+        super()
+        this.pos = vec3(pos)
+        this.normal = vec3(n).normalize()
+        this.dist = dist
+    }
+
+    override getShapeType(): string { return "plane" }
+    override getIndicatorSymbol(): string { return "▬" }
+    override getIndicatorSvg(): string {
+        return `<line x1="0" y1="6" x2="12" y2="6" stroke="currentColor" stroke-width="2"/>`
+    }
+    override updateScene(): void {}
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Plane${this.id}`
+        const varName = `${decapitalize(funcName)}`
+        return { funcName, varName, text: `fPlaneEx(p - ${this.pos.wgsl}, ${this.normal.wgsl}, ${this.dist}, ${this.id}u)` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Plane${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `fPlaneFast(p - ${this.pos.wgsl}, ${this.normal.wgsl}, ${this.dist})` }
+    }
+}
+
+export class HexPrism extends WithRaD(WithPos(Node)) {
+    h: number
+
+    constructor(pos: Vec3, { r, d, h }: { r?: number; d?: number; h: number }) {
+        super()
+        this.pos = vec3(pos)
+        this.r = asRadius(r, d)
+        this.h = h
+    }
+
+    override getShapeType(): string { return "hexprism" }
+    override getIndicatorSymbol(): string { return "⬡" }
+    override getIndicatorSvg(): string {
+        return `<polygon points="6,1 10.5,3.5 10.5,8.5 6,11 1.5,8.5 1.5,3.5" fill="currentColor"/>`
+    }
+    override updateScene(): void {}
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `HexPrism${this.id}`
+        const varName = `${decapitalize(funcName)}`
+        return { funcName, varName, text: `fHexagonCircumcircleEx(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}), ${this.id}u)` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `HexPrism${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `fHexagonCircumcircleFast(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}))` }
+    }
+}
+
+export class Disc extends WithRaD(WithPos(Node)) {
+    constructor(pos: Vec3, { r, d }: { r?: number; d?: number }) {
+        super()
+        this.pos = vec3(pos)
+        this.r = asRadius(r, d)
+    }
+
+    override getShapeType(): string { return "disc" }
+    override getIndicatorSymbol(): string { return "◉" }
+    override getIndicatorSvg(): string {
+        return `<ellipse cx="6" cy="6" rx="5" ry="2.5" fill="currentColor"/>`
+    }
+    override updateScene(): void {}
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Disc${this.id}`
+        const varName = `${decapitalize(funcName)}`
+        return { funcName, varName, text: `fDiscEx(p - ${this.pos.wgsl}, ${this.r}, ${this.id}u)` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Disc${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `fDiscFast(p - ${this.pos.wgsl}, ${this.r})` }
+    }
+}
+
+export class Blob extends WithPos(Node) {
+    constructor(pos: Vec3) {
+        super()
+        this.pos = vec3(pos)
+    }
+
+    override getShapeType(): string { return "blob" }
+    override getIndicatorSymbol(): string { return "◌" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="4" fill="currentColor"/>`
+    }
+    override updateScene(): void {}
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Blob${this.id}`
+        const varName = `${decapitalize(funcName)}`
+        return { funcName, varName, text: `fBlobEx(p - ${this.pos.wgsl}, ${this.id}u)` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Blob${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `fBlobFast(p - ${this.pos.wgsl})` }
     }
 }
 
@@ -540,4 +893,40 @@ export function box(pos: Vec3, size: Vec3): Box {
 
 export function sphere(pos: Vec3, { r, d }: { r?: number; d?: number }): Sphere {
     return new Sphere(pos, { r, d })
+}
+
+export function cylinder(pos: Vec3, opts: { r?: number; d?: number; h: number }): Cylinder {
+    return new Cylinder(pos, opts)
+}
+
+export function cone(pos: Vec3, opts: { r?: number; d?: number; h: number }): Cone {
+    return new Cone(pos, opts)
+}
+
+export function torus(pos: Vec3, opts: { sr: number; lr: number }): Torus {
+    return new Torus(pos, opts)
+}
+
+export function capsule(pos: Vec3, opts: { r?: number; d?: number; c: number }): Capsule {
+    return new Capsule(pos, opts)
+}
+
+export function plane(pos: Vec3, opts: { n: Vec3; dist?: number }): PlaneNode {
+    return new PlaneNode(pos, opts)
+}
+
+export function hexprism(pos: Vec3, opts: { r?: number; d?: number; h: number }): HexPrism {
+    return new HexPrism(pos, opts)
+}
+
+export function disc(pos: Vec3, opts: { r?: number; d?: number }): Disc {
+    return new Disc(pos, opts)
+}
+
+export function blob(pos: Vec3): Blob {
+    return new Blob(pos)
+}
+
+export function rotate(rotation: Vec3, child: Node): Rotate {
+    return new Rotate(rotation, child)
 }

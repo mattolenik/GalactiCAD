@@ -29,10 +29,16 @@ export interface ParsedShapeCall {
     location: SourceLocation
     functionName: string
     // Parsed argument values for matching
-    pos?: Vec3f       // Position for sphere/box
+    pos?: Vec3f       // Position for sphere/box/cylinder/cone/etc.
     size?: Vec3f      // Size for box
-    r?: number        // Radius for sphere
-    d?: number        // Diameter for sphere (alternative to r)
+    r?: number        // Radius for sphere/cylinder/cone/hexprism/disc
+    d?: number        // Diameter (alternative to r)
+    h?: number        // Half-height for cylinder/hexprism, full height for cone
+    sr?: number       // Small radius (tube) for torus
+    lr?: number       // Large radius (ring) for torus
+    c?: number        // Center half-height for capsule
+    normal?: Vec3f    // Normal vector for plane
+    planeOffset?: number  // Distance from origin for plane
 }
 
 /**
@@ -43,8 +49,8 @@ export type SourceLocationMap = Map<number, SourceLocation>
 /**
  * Shape functions we care about for source location tracking
  */
-const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box"])
-const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "group"])
+const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob"])
+const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "group", "rotate"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS])
 
 /**
@@ -131,10 +137,20 @@ export class SourceParser {
         }
         
         // Extract arguments for primitives
-        if (funcName === "sphere") {
+        if (funcName === "sphere" || funcName === "disc") {
             this.parseSphereArgs(callNode, parsedCall)
         } else if (funcName === "box") {
             this.parseBoxArgs(callNode, parsedCall)
+        } else if (funcName === "cylinder" || funcName === "cone" || funcName === "hexprism") {
+            this.parsePosRadiusHeightArgs(callNode, parsedCall)
+        } else if (funcName === "torus") {
+            this.parseTorusArgs(callNode, parsedCall)
+        } else if (funcName === "capsule") {
+            this.parseCapsuleArgs(callNode, parsedCall)
+        } else if (funcName === "plane") {
+            this.parsePlaneArgs(callNode, parsedCall)
+        } else if (funcName === "blob") {
+            this.parseBlobArgs(callNode, parsedCall)
         }
         
         calls.push(parsedCall)
@@ -203,6 +219,151 @@ export class SourceParser {
         }
     }
     
+    /**
+     * Parse cylinder/cone/hexprism(pos, {r?, d?, h}) arguments
+     */
+    private parsePosRadiusHeightArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            if (callNode.arguments.length >= 1) {
+                const posArg = callNode.arguments[0]
+                const posValue = this.evaluateExpression(posArg)
+                if (posValue !== undefined) {
+                    parsedCall.pos = vec3(posValue)
+                }
+            }
+            if (callNode.arguments.length >= 2) {
+                const optionsArg = callNode.arguments[1]
+                if (optionsArg.type === "ObjectExpression") {
+                    for (const prop of (optionsArg as any).properties) {
+                        if (prop.type === "Property" && prop.key.type === "Identifier") {
+                            const key = prop.key.name
+                            const value = this.evaluateExpression(prop.value)
+                            if (key === "r" && typeof value === "number") parsedCall.r = value
+                            else if (key === "d" && typeof value === "number") parsedCall.d = value
+                            else if (key === "h" && typeof value === "number") parsedCall.h = value
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse ${parsedCall.functionName} args:`, err)
+        }
+    }
+
+    /**
+     * Parse torus(pos, {sr, lr}) arguments
+     */
+    private parseTorusArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            if (callNode.arguments.length >= 1) {
+                const posArg = callNode.arguments[0]
+                const posValue = this.evaluateExpression(posArg)
+                if (posValue !== undefined) {
+                    parsedCall.pos = vec3(posValue)
+                }
+            }
+            if (callNode.arguments.length >= 2) {
+                const optionsArg = callNode.arguments[1]
+                if (optionsArg.type === "ObjectExpression") {
+                    for (const prop of (optionsArg as any).properties) {
+                        if (prop.type === "Property" && prop.key.type === "Identifier") {
+                            const key = prop.key.name
+                            const value = this.evaluateExpression(prop.value)
+                            if (key === "sr" && typeof value === "number") parsedCall.sr = value
+                            else if (key === "lr" && typeof value === "number") parsedCall.lr = value
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse torus args:`, err)
+        }
+    }
+
+    /**
+     * Parse capsule(pos, {r?, d?, c}) arguments
+     */
+    private parseCapsuleArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            if (callNode.arguments.length >= 1) {
+                const posArg = callNode.arguments[0]
+                const posValue = this.evaluateExpression(posArg)
+                if (posValue !== undefined) {
+                    parsedCall.pos = vec3(posValue)
+                }
+            }
+            if (callNode.arguments.length >= 2) {
+                const optionsArg = callNode.arguments[1]
+                if (optionsArg.type === "ObjectExpression") {
+                    for (const prop of (optionsArg as any).properties) {
+                        if (prop.type === "Property" && prop.key.type === "Identifier") {
+                            const key = prop.key.name
+                            const value = this.evaluateExpression(prop.value)
+                            if (key === "r" && typeof value === "number") parsedCall.r = value
+                            else if (key === "d" && typeof value === "number") parsedCall.d = value
+                            else if (key === "c" && typeof value === "number") parsedCall.c = value
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse capsule args:`, err)
+        }
+    }
+
+    /**
+     * Parse plane(pos, {n, dist?}) arguments
+     */
+    private parsePlaneArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            if (callNode.arguments.length >= 1) {
+                const posArg = callNode.arguments[0]
+                const posValue = this.evaluateExpression(posArg)
+                if (posValue !== undefined) {
+                    parsedCall.pos = vec3(posValue)
+                }
+            }
+            if (callNode.arguments.length >= 2) {
+                const optionsArg = callNode.arguments[1]
+                if (optionsArg.type === "ObjectExpression") {
+                    for (const prop of (optionsArg as any).properties) {
+                        if (prop.type === "Property" && prop.key.type === "Identifier") {
+                            const key = prop.key.name
+                            if (key === "n") {
+                                const value = this.evaluateExpression(prop.value)
+                                if (value !== undefined) {
+                                    parsedCall.normal = vec3(value)
+                                }
+                            } else if (key === "dist") {
+                                const value = this.evaluateExpression(prop.value)
+                                if (typeof value === "number") parsedCall.planeOffset = value
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse plane args:`, err)
+        }
+    }
+
+    /**
+     * Parse blob(pos) arguments
+     */
+    private parseBlobArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            if (callNode.arguments.length >= 1) {
+                const posArg = callNode.arguments[0]
+                const posValue = this.evaluateExpression(posArg)
+                if (posValue !== undefined) {
+                    parsedCall.pos = vec3(posValue)
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse blob args:`, err)
+        }
+    }
+
     /**
      * Try to evaluate an AST expression to a value
      * Handles: string literals, number literals, arrays, unary minus

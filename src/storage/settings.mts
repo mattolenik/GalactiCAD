@@ -48,7 +48,7 @@ function defaultPreview(): PreviewSettings {
 }
 
 function defaultLayout(): LayoutSettings {
-    return { editorHeightPercent: 28, editorWidthPercent: 40 }
+    return { editorHeightPercent: 22, editorWidthPercent: 35 }
 }
 
 function defaultDocSettings(): DocumentSettings {

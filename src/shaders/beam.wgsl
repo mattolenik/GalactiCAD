@@ -11,8 +11,8 @@
 // low-resolution storage texture that the fragment shader reads.
 
 const TILE_SIZE: u32 = 8u;
-const MAX_BEAM_STEPS: i32 = 200;
-const MAX_DIST: f32 = 300.0;
+const MAX_BEAM_STEPS: i32 = 350;
+const MAX_DIST: f32 = 600.0;
 
 struct Camera {
     transform: mat4x4f,

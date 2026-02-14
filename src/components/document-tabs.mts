@@ -639,80 +639,71 @@ declare global {
 }
 
 const defaultContent = `
-// Passenger Car Model
-// A simple sedan built from SDF primitives
+// Stealth Fighter
+// A twin-engine strike aircraft with canted tails
 
 function scene() {
-   // === CAR BODY ===
-   // Main body - lower chassis/body
-   const body = box([0, 0, 3], [40, 16, 6])
+   // ═══ FUSELAGE ═══
+   // Three overlapping boxes blended into a smooth organic hull
+   const body = box([0, 0, 0], [3, 15, 2])
+   const nose = box([0, 12, 0.3], [2, 8, 1.5])
+   const aft  = box([0, -8, -0.2], [4.5, 8, 2.2])
+   const fuselage = union(4, body, nose, aft)
 
-   // Cabin/roof - upper portion with windows
-   const cabin = box([2, 0, 8], [24, 14, 5])
+   // Chisel the belly flat for a stealth cross-section
+   const bellySlice = plane([0, 0, -1], { n: [0, 0, 1] })
+   const hull = subtract(0.3, fuselage, bellySlice)
 
-   // Hood slopes down slightly at front - add a box that gets subtracted
-   const hoodCut = box([18, 0, 8], [10, 18, 6])
+   // ═══ COCKPIT ═══
+   // Canopy dome clipped to sit flush on the spine
+   const canopyBubble = sphere([0, 6, 2.5], { r: 2.5 })
+   const canopyFloor  = plane([0, 0, 1.8], { n: [0, 0, 1] })
+   const cockpit = subtract(canopyBubble, canopyFloor)
 
-   // Trunk slopes down at rear
-   const trunkCut = box([-16, 0, 8], [8, 18, 6])
-
-   // Combine body and cabin with smooth blend
-   const bodyWithCabin = union(2, body, cabin)
-
-   // Cut the hood and trunk angles
-   const sculptedBody = subtract(1, bodyWithCabin, hoodCut, trunkCut)
-
-   // === WHEEL WELLS ===
-   // Carve out wheel wells to give wheels depth
-   const wheelWellFR = sphere([12, 9, 2], { r: 5 })   // front-right
-   const wheelWellFL = sphere([12, -9, 2], { r: 5 })  // front-left
-   const wheelWellRR = sphere([-12, 9, 2], { r: 5 })  // rear-right
-   const wheelWellRL = sphere([-12, -9, 2], { r: 5 }) // rear-left
-
-   const bodyWithWells = subtract(0.5,
-      sculptedBody,
-      wheelWellFR, wheelWellFL, wheelWellRR, wheelWellRL
+   // ═══ WINGS ═══
+   // Swept delta wings with slight anhedral
+   const wingR = rotate([0, 0, -2],
+      box([10, -2, -0.3], [8, 6, 0.35])
+   )
+   const wingL = rotate([0, 0, 2],
+      box([-10, -2, -0.3], [8, 6, 0.35])
    )
 
-   // === WINDOWS ===
-   // Side windows - carved into the cabin
-   const windowRight = box([2, 8, 8], [20, 2, 3])
-   const windowLeft = box([2, -8, 8], [20, 2, 3])
-
-   // Windshield (front) and rear window
-   const windshield = box([14, 0, 8], [2, 12, 3])
-   const rearWindow = box([-10, 0, 8], [2, 12, 3])
-
-   // Carve windows into body
-   const bodyWithWindows = subtract(0.3,
-      bodyWithWells,
-      windowRight, windowLeft, windshield, rearWindow
+   // ═══ TAIL ═══
+   // Canted twin vertical stabilisers
+   const vStabR = rotate([0, 22, 0],
+      box([2, -15, 3], [0.2, 3.5, 2.5])
+   )
+   const vStabL = rotate([0, -22, 0],
+      box([-2, -15, 3], [0.2, 3.5, 2.5])
    )
 
-   // === WHEELS ===
-   // Four wheels positioned at corners
-   const wheelFR = sphere([12, 10, 0], { r: 4 })   // front-right
-   const wheelFL = sphere([12, -10, 0], { r: 4 })  // front-left
-   const wheelRR = sphere([-12, 10, 0], { r: 4 })  // rear-right
-   const wheelRL = sphere([-12, -10, 0], { r: 4 }) // rear-left
+   // All-moving horizontal stabilisers
+   const hStabR = rotate([3, 0, -2],
+      box([5, -14, -0.2], [3.5, 2.5, 0.2])
+   )
+   const hStabL = rotate([-3, 0, 2],
+      box([-5, -14, -0.2], [3.5, 2.5, 0.2])
+   )
 
-   // Combine wheels
-   const wheels = union(wheelFR, wheelFL, wheelRR, wheelRL)
+   // ═══ ENGINES ═══
+   // Twin exhaust nozzles recessed in the aft body
+   const nozzleR = cylinder([2, -17, 0], { r: 1.2, h: 2 })
+   const nozzleL = cylinder([-2, -17, 0], { r: 1.2, h: 2 })
 
-   // === HEADLIGHTS & TAILLIGHTS ===
-   // Headlights (front spheres)
-   const headlightR = sphere([20, 5, 4], { r: 1.5 })
-   const headlightL = sphere([20, -5, 4], { r: 1.5 })
+   // ═══ INTAKES ═══
+   // Subtractive intake ducts on the lower fuselage sides
+   const intakeR = box([3.5, 3, -0.5], [1, 3, 1.2])
+   const intakeL = box([-3.5, 3, -0.5], [1, 3, 1.2])
 
-   // Taillights (rear spheres)
-   const taillightR = sphere([-20, 5, 4], { r: 1.2 })
-   const taillightL = sphere([-20, -5, 4], { r: 1.2 })
+   // ═══ ASSEMBLY ═══
+   // Generous blend radii make the wings flow into the body
+   const airframe = union(2.5, hull, cockpit, wingR, wingL)
+   const tail = union(1, vStabR, vStabL, hStabR, hStabL)
+   const engines = union(0.8, nozzleR, nozzleL)
 
-   const lights = union(headlightR, headlightL, taillightR, taillightL)
-
-   // === FINAL ASSEMBLY ===
-   // Union the body, wheels, and lights together
-   return union(0.5, bodyWithWindows, wheels, lights)
+   const aircraft = union(1.5, airframe, tail, engines)
+   return subtract(0.5, aircraft, intakeR, intakeL)
 }
 
 `

@@ -9,12 +9,12 @@
  * and source order since they don't have unique identifying properties.
  */
 
-import { Node, Sphere, Box, Union, Subtract, Group } from "../scene/scene.mjs"
+import { Node, Sphere, Box, Union, Subtract, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate } from "../scene/scene.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
 
 /** Composite shape types that are matched by name only */
-const COMPOSITE_TYPES = new Set(["union", "subtract", "group"])
+const COMPOSITE_TYPES = new Set(["union", "subtract", "group", "rotate"])
 
 /**
  * Tolerance for floating-point comparisons
@@ -80,6 +80,77 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
             return false
         }
         
+        return true
+    }
+
+    if (node instanceof Cylinder) {
+        if (!call.pos) return false
+        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
+        if (expectedRadius === undefined) return false
+        if (!approxEqual(node.r, expectedRadius)) return false
+        if (call.h !== undefined && !approxEqual(node.h, call.h)) return false
+        return true
+    }
+
+    if (node instanceof Cone) {
+        if (!call.pos) return false
+        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
+        if (expectedRadius === undefined) return false
+        if (!approxEqual(node.r, expectedRadius)) return false
+        if (call.h !== undefined && !approxEqual(node.h, call.h)) return false
+        return true
+    }
+
+    if (node instanceof Torus) {
+        if (!call.pos) return false
+        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        if (call.sr !== undefined && !approxEqual(node.sr, call.sr)) return false
+        if (call.lr !== undefined && !approxEqual(node.lr, call.lr)) return false
+        return true
+    }
+
+    if (node instanceof Capsule) {
+        if (!call.pos) return false
+        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
+        if (expectedRadius === undefined) return false
+        if (!approxEqual(node.r, expectedRadius)) return false
+        if (call.c !== undefined && !approxEqual(node.c, call.c)) return false
+        return true
+    }
+
+    if (node instanceof PlaneNode) {
+        if (!call.pos) return false
+        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        if (call.normal && !vec3ApproxEqual(node.normal, call.normal)) return false
+        if (call.planeOffset !== undefined && !approxEqual(node.dist, call.planeOffset)) return false
+        return true
+    }
+
+    if (node instanceof HexPrism) {
+        if (!call.pos) return false
+        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
+        if (expectedRadius === undefined) return false
+        if (!approxEqual(node.r, expectedRadius)) return false
+        if (call.h !== undefined && !approxEqual(node.h, call.h)) return false
+        return true
+    }
+
+    if (node instanceof Disc) {
+        if (!call.pos) return false
+        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
+        if (expectedRadius === undefined) return false
+        if (!approxEqual(node.r, expectedRadius)) return false
+        return true
+    }
+
+    if (node instanceof Blob) {
+        if (!call.pos) return false
+        if (!vec3ApproxEqual(node.pos, call.pos)) return false
         return true
     }
     

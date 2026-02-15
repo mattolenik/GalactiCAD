@@ -850,11 +850,14 @@ fn fOpUnionColumnsFast(a: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
 }
 
 // Fast columns difference
+// Soft-clamp: allow column protrusions up to columnradius beyond the hard surface,
+// but prevent unbounded overestimation far from the surface that breaks ray marching.
 fn fOpDifferenceColumnsFast(aIn: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
     let a = -aIn.x;
+    let hardD = -min(a, b.x);  // standard hard difference = max(aIn.x, -b.x)
     if (a < r) && (b.x < r) {
-        var p = vec2f(a, b.x);
         let columnradius = r * sqrt(2.0) / ((n - 1.0) * 2.0 + sqrt(2.0));
+        var p = vec2f(a, b.x);
         let tmp = p + vec2f(p.y, -p.x);
         p = tmp * sqrt(0.5);
         p.y = p.y + columnradius;
@@ -864,10 +867,12 @@ fn fOpDifferenceColumnsFast(aIn: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
         }
         let py = modF(p.y, columnradius * 2.0);
         let res = min(max(-length(vec2f(p.x, py)) + columnradius, p.x), a);
-        return vec2f(-min(res, b.x), 1.0);
+        let colD = -min(res, b.x);
+        // Bound overshoot to columnradius — prevents massive overestimation far from surface
+        // while preserving column geometry near the surface where colD < hardD + columnradius.
+        return vec2f(min(colD, hardD + columnradius), 1.0);
     }
-    let m = min(a, b.x);
-    return vec2f(-m, select(b.y, aIn.y, a < b.x));
+    return vec2f(hardD, select(b.y, aIn.y, a < b.x));
 }
 
 // Fast columns intersection
@@ -1181,6 +1186,7 @@ fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
 }
 
 // Columns union Ex — cylindrical columns decorate the blend between operands
+// Uses smooth color blending in the blend zone to avoid z-fighting at column boundaries.
 fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
     if (a.d < r) && (b.d < r) {
         var p = vec2f(a.d, b.d);
@@ -1195,9 +1201,12 @@ fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
         let dist = length(vec2f(p.x, py)) - columnradius;
         let res = min(min(dist, p.x), a.d);
         let d = min(res, b.d);
-        let blendN = safeNormalize(a.n + b.n, a.n);
-        if (a.d <= b.d) { return sdfR(d, 1.0, a.s, a.id, blendN); }
-        return sdfR(d, 1.0, b.s, b.id, blendN);
+        let wa = r - a.d;
+        let wb = r - b.d;
+        let w = wb / (wa + wb);
+        let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
+        let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+        return SDFResult(d, 1.0, select(b.s, a.s, a.d < b.d), a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
     }
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     if (coplanar) {
@@ -1210,9 +1219,12 @@ fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
 }
 
 // Columns difference Ex — columns decorate the carved boundary
+// Distance follows the scalar fOpDifferenceColumns exactly.
+// Normals: mirrors the union's weight scheme in the complement space, then negates.
+//   wa = r + aIn.d (= r - aD), wb = r - b.d — both guaranteed positive in blend zone.
+//   Difference normal = normalize(aIn.n * wa - b.n * wb).
 fn fOpDifferenceColumnsEx(aIn: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
     let aD = -aIn.d;
-    let aN = -aIn.n;
     if (aD < r) && (b.d < r) {
         var p = vec2f(aD, b.d);
         let columnradius = r * sqrt(2.0) / ((n - 1.0) * 2.0 + sqrt(2.0));
@@ -1226,20 +1238,25 @@ fn fOpDifferenceColumnsEx(aIn: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRe
         let py = modF(p.y, columnradius * 2.0);
         let res = min(max(-length(vec2f(p.x, py)) + columnradius, p.x), aD);
         let d = -min(res, b.d);
-        let blendN = safeNormalize(aN + b.n, aN);
-        if (aD <= b.d) { return sdfR(d, 1.0, -aIn.s, aIn.id, blendN); }
-        return sdfR(d, 1.0, b.s, b.id, blendN);
+        // Weights mirror the union's (r - operand_dist) but in complement space
+        let wa = r + aIn.d;   // = r - aD, always > 0 in blend zone
+        let wb = r - b.d;     // always > 0 in blend zone
+        // Negate the union-space normal to get the difference normal
+        let blendN = safeNormalize(aIn.n * wa - b.n * wb, aIn.n);
+        let w = wb / (wa + wb);  // 0 = a's color, 1 = b's color
+        let seamT = safeNormalize(cross(aIn.n, b.n), vec3f(0.0, 0.0, 1.0));
+        return SDFResult(d, 1.0, select(b.s, aIn.s, aIn.d < b.d), aIn.id, blendN, b.id, w, aIn.id, b.id, 0u, 1e9, seamT, 0.0);
     }
-    let m = min(aD, b.d);
-    let d = -m;
-    let coplanar = abs(aD - b.d) < SURF_DIST;
+    // Outside blend: standard hard difference max(aIn.d, -b.d)
+    let d = max(aIn.d, -b.d);
+    let coplanar = abs(aIn.d + b.d) < SURF_DIST;
     if (coplanar) {
-        let cn = safeNormalize(aN + b.n, aN);
-        if (aIn.id <= b.id) { return sdfR(d, aIn.g, -aIn.s, aIn.id, cn); }
-        return sdfR(d, b.g, b.s, b.id, cn);
+        let cn = safeNormalize(aIn.n - b.n, aIn.n);
+        if (aIn.id <= b.id) { return sdfR(d, aIn.g, aIn.s, aIn.id, cn); }
+        return sdfR(d, b.g, -b.s, b.id, cn);
     }
-    if (aD < b.d) { return sdfR(d, aIn.g, -aIn.s, aIn.id, aN); }
-    return sdfR(d, b.g, b.s, b.id, b.n);
+    if (aIn.d > -b.d) { return sdfR(d, aIn.g, aIn.s, aIn.id, aIn.n); }
+    return sdfR(d, b.g, -b.s, b.id, -b.n);
 }
 
 // Columns intersection Ex
@@ -1248,19 +1265,26 @@ fn fOpIntersectionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRe
 }
 
 // Stairs union Ex — staircase transition between operands
+// Uses smooth color blending (id/id2/blend) in the blend zone to avoid
+// z-fighting artifacts at modF step boundaries.
 fn fOpUnionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
     let s = r / n;
     let u = b.d - r;
     let stairD = 0.5 * (u + a.d + abs(modF(u - a.d + s, 2.0 * s) - s));
     let d = min(min(a.d, b.d), stairD);
-    let coplanar = abs(a.d - b.d) < SURF_DIST;
-    // In stair region: blend normals
-    if (stairD < a.d && stairD < b.d) {
-        let blendN = safeNormalize(a.n + b.n, a.n);
-        if (a.d <= b.d) { return sdfR(d, 1.0, a.s, a.id, blendN); }
-        return sdfR(d, 1.0, b.s, b.id, blendN);
+    let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+
+    // In the blend zone (both operands within r), use smooth color blending
+    // so that the periodic modF boundaries don't cause ID flickering.
+    if (a.d < r && b.d < r) {
+        let wa = r - a.d;
+        let wb = r - b.d;
+        let w = wb / (wa + wb);  // 0 = fully a, 1 = fully b
+        let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
+        return SDFResult(d, 1.0, select(b.s, a.s, a.d < b.d), a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
     }
-    // Outside stair region
+    // Outside blend zone: one operand clearly wins
+    let coplanar = abs(a.d - b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(a.n + b.n, a.n);
         if (a.id <= b.id) { return sdfR(d, a.g, a.s, a.id, cn); }

@@ -7,6 +7,7 @@
 const PI: f32 = 3.14159265;
 const TAU: f32 = 2.0 * PI;
 const PHI: f32 = sqrt(5.0) * 0.5 + 0.5;
+const INVERSESQRT2: f32 = 0.7071067811865476;
 const SURF_DIST: f32 = 0.001;
 
 //////////////////////////////
@@ -904,8 +905,11 @@ fn fOpDifferenceStairsFast(a: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
 }
 
 // Fast pipe (cylindrical hole at intersection)
+// The pipe SDF length(a,b)-r can overestimate 3D distance by up to sqrt(2)
+// when the two input gradients are parallel.  Scale by 1/sqrt(2) to guarantee
+// conservative steps.  No clamp discontinuity, just uniformly smaller steps.
 fn fOpPipeFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    return vec2f(length(vec2f(a.x, b.x)) - r, 1.0);
+    return vec2f((length(vec2f(a.x, b.x)) - r) * INVERSESQRT2, 1.0);
 }
 
 // Fast engrave

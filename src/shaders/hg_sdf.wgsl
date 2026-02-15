@@ -950,6 +950,181 @@ fn sdfRotateNormal(r: SDFResult, m: mat3x3f) -> SDFResult {
 }
 
 ////////////////////////////////////////////////////
+//  UNARY SDF MODIFIERS (Shell, Offset)
+////////////////////////////////////////////////////
+
+// Shell Fast: hollow out a shape to a thin wall of given thickness
+fn sdfShellFast(a: vec2f, thickness: f32) -> vec2f {
+    return vec2f(abs(a.x) - thickness, a.y);
+}
+
+// Shell Ex: flip normal when evaluating the interior side
+fn sdfShellEx(a: SDFResult, thickness: f32) -> SDFResult {
+    var out = a;
+    out.d = abs(a.d) - thickness;
+    if (a.d < 0.0) {
+        out.n = -out.n;
+        out.s = -out.s;
+    }
+    return out;
+}
+
+// Offset Fast: grow (positive) or shrink (negative) a shape uniformly
+fn sdfOffsetFast(a: vec2f, amount: f32) -> vec2f {
+    return vec2f(a.x - amount, a.y);
+}
+
+// Offset Ex: shift distance, normals unchanged
+fn sdfOffsetEx(a: SDFResult, amount: f32) -> SDFResult {
+    var out = a;
+    out.d = a.d - amount;
+    return out;
+}
+
+////////////////////////////////////////////////////
+//  DOMAIN TRANSFORM HELPERS (Elongate, Twist, Bend, Taper)
+////////////////////////////////////////////////////
+
+// Elongate: clamp point to box [-h, h], stretching shape along axes
+fn elongatePoint(p: vec3f, h: vec3f) -> vec3f {
+    return p - clamp(p, -h, h);
+}
+
+// Twist: rotate XZ plane by p.y * rate (radians per unit Y)
+fn twistPoint(p: vec3f, rate: f32) -> vec3f {
+    let a = p.y * rate;
+    let c = cos(a);
+    let s = sin(a);
+    return vec3f(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
+}
+
+// Twist Fast: correct gradient overestimation from non-uniform domain distortion.
+// The twist stretches space by sqrt(1 + (rate * rho)^2) where rho = length(p.xz).
+// Divide distance by this factor to keep ray marching conservative.
+fn sdfTwistFast(r: vec2f, p: vec3f, rate: f32) -> vec2f {
+    let rho = length(p.xz);
+    let stretch = sqrt(1.0 + rate * rate * rho * rho);
+    return vec2f(r.x / stretch, r.y);
+}
+
+// Twist Ex: untwist the normal back to world space at the original point p.
+// Apply inverse twist (negative angle) to the child's normal.
+fn sdfTwistNormal(r: SDFResult, p: vec3f, rate: f32) -> SDFResult {
+    var out = r;
+    let a = -(p.y * rate);
+    let c = cos(a);
+    let s = sin(a);
+    out.n = safeNormalize(vec3f(c * out.n.x + s * out.n.z, out.n.y, -s * out.n.x + c * out.n.z), out.n);
+    out.seamTangent = safeNormalize(vec3f(c * out.seamTangent.x + s * out.seamTangent.z, out.seamTangent.y, -s * out.seamTangent.x + c * out.seamTangent.z), out.seamTangent);
+    return out;
+}
+
+// Bend: rotate XY plane by p.x * amount (cheap bend, iq)
+fn bendPoint(p: vec3f, amount: f32) -> vec3f {
+    let a = amount * p.x;
+    let c = cos(a);
+    let s = sin(a);
+    return vec3f(c * p.x - s * p.y, s * p.x + c * p.y, p.z);
+}
+
+// Bend Fast: correct gradient overestimation.
+// Same principle as twist but in XY plane: stretch = sqrt(1 + (amount * |p.y|)^2).
+fn sdfBendFast(r: vec2f, p: vec3f, amount: f32) -> vec2f {
+    let stretch = sqrt(1.0 + amount * amount * p.y * p.y);
+    return vec2f(r.x / stretch, r.y);
+}
+
+// Bend Ex: unbend the normal back to world space at the original point p.
+fn sdfBendNormal(r: SDFResult, p: vec3f, amount: f32) -> SDFResult {
+    var out = r;
+    let a = -(amount * p.x);
+    let c = cos(a);
+    let s = sin(a);
+    out.n = safeNormalize(vec3f(c * out.n.x - s * out.n.y, s * out.n.x + c * out.n.y, out.n.z), out.n);
+    out.seamTangent = safeNormalize(vec3f(c * out.seamTangent.x - s * out.seamTangent.y, s * out.seamTangent.x + c * out.seamTangent.y, out.seamTangent.z), out.seamTangent);
+    return out;
+}
+
+// Taper: scale XZ cross-section linearly from 1.0 at y=0 to ratio at y=height
+fn taperPoint(p: vec3f, ratio: f32, height: f32) -> vec3f {
+    let t = clamp(p.y / height, 0.0, 1.0);
+    let s = 1.0 + (ratio - 1.0) * t;  // scale factor: 1.0 at y=0, ratio at y=height
+    return vec3f(p.x / s, p.y, p.z / s);
+}
+
+// Taper Fast: correct gradient overestimation from non-uniform scaling.
+// The taper shrinks/grows XZ by scale s.  Gradient magnitude scales as ~1/s.
+// When s < 1 (narrowing), gradient > 1, distance overestimates: divide by 1/s.
+fn sdfTaperFast(r: vec2f, p: vec3f, ratio: f32, height: f32) -> vec2f {
+    let t = clamp(p.y / height, 0.0, 1.0);
+    let s = 1.0 + (ratio - 1.0) * t;
+    // Only correct when s < 1 (narrowing taper overestimates).
+    // When s >= 1 (widening), the SDF is conservative or exact.
+    let correction = min(s, 1.0);
+    return vec2f(r.x * correction, r.y);
+}
+
+// Taper Ex: correct the normal for the non-uniform scaling.
+// In tapered space, the XZ components of the gradient are scaled by 1/s.
+// Unscale them to get the world-space normal.
+fn sdfTaperNormal(r: SDFResult, p: vec3f, ratio: f32, height: f32) -> SDFResult {
+    var out = r;
+    let t = clamp(p.y / height, 0.0, 1.0);
+    let s = 1.0 + (ratio - 1.0) * t;
+    // Normal in tapered space has XZ scaled by 1/s; undo this
+    out.n = safeNormalize(vec3f(out.n.x / s, out.n.y, out.n.z / s), out.n);
+    return out;
+}
+
+////////////////////////////////////////////////////
+//  BINARY SDF OPERATORS (Morph, Seam)
+////////////////////////////////////////////////////
+
+// Morph Fast: interpolate between two SDFs
+fn sdfMorphFast(a: vec2f, b: vec2f, t: f32) -> vec2f {
+    return vec2f(a.x * (1.0 - t) + b.x * t, a.y * (1.0 - t) + b.y * t);
+}
+
+// Morph Ex: interpolate distance, blend normals, use id/id2 for color
+fn sdfMorphEx(a: SDFResult, b: SDFResult, t: f32) -> SDFResult {
+    let d = a.d * (1.0 - t) + b.d * t;
+    let g = a.g * (1.0 - t) + b.g * t;
+    let n = safeNormalize(a.n * (1.0 - t) + b.n * t, a.n);
+    // Use id/id2/blend for smooth color interpolation
+    if (t < 0.5) {
+        return SDFResult(d, g, a.s, a.id, n, b.id, t, a.id, b.id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0);
+    }
+    return SDFResult(d, g, b.s, b.id, n, a.id, 1.0 - t, a.id, b.id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0);
+}
+
+// Seam Fast: union of both shapes plus a pipe tube at their intersection (weld bead).
+// The pipe component uses INVERSESQRT2 to prevent overestimation.
+fn sdfSeamFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
+    let unionD = min(a.x, b.x);
+    let pipeD = (length(vec2f(a.x, b.x)) - r) * INVERSESQRT2;
+    return vec2f(min(unionD, pipeD), select(1.0, 0.5, pipeD < unionD));
+}
+
+// Seam Ex: union + pipe tube with proper normals
+fn sdfSeamEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    // Compute union
+    let unionResult = opUnionEx(a, b);
+    // Compute pipe
+    let pipeLen = length(vec2f(a.d, b.d));
+    let pipeD = pipeLen - r;
+    // If pipe surface is closer than union, use pipe
+    if (pipeD < unionResult.d) {
+        var blendN = a.n;
+        if (pipeLen > 1e-6) {
+            blendN = safeNormalize(a.n * a.d + b.n * b.d, a.n);
+        }
+        if (a.id <= b.id) { return sdfR(pipeD, 1.0, a.s, a.id, blendN); }
+        return sdfR(pipeD, 1.0, b.s, b.id, blendN);
+    }
+    return unionResult;
+}
+
+////////////////////////////////////////////////////
 //  EXTENDED OBJECT COMBINATION OPERATORS
 //  These return SDFResult with accurate gradient magnitude estimates
 ////////////////////////////////////////////////////

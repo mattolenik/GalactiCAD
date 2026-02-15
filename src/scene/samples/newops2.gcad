@@ -1,0 +1,80 @@
+// New Operators Demo 2
+// Demonstrates shell, offset, elongate, twist, bend, taper, morph, and seam
+
+function scene() {
+    // === SHELL ===
+    // Hollow out a sphere into a thin shell
+    const shellSphere = shell(0.3, sphere([0, 0, 10], { r: 5 }))
+
+    // Shell of a box - creates a hollow cube
+    const shellBox = shell(0.3, box([15, 0, 10], [4, 4, 4]))
+
+    // === OFFSET ===
+    // Offset a box to round all its edges
+    const roundedBox = offset(0.5, box([30, 0, 10], [3.5, 3.5, 3.5]))
+
+    // Negative offset - shrink a sphere
+    const shrunkSphere = offset(-1, sphere([45, 0, 10], { r: 5 }))
+
+    // === ELONGATE ===
+    // Elongate a sphere along Y to make a capsule-like shape
+    const elongatedSphere = elongate([0, 4, 0], sphere([0, 20, 10], { r: 3 }))
+
+    // Elongate a box along X
+    const elongatedBox = elongate([5, 0, 0], box([20, 20, 10], [2, 3, 3]))
+
+    // === TWIST ===
+    // Twist a box around the Y axis
+    const twistedBox = twist(0.4, box([40, 20, 10], [3, 8, 3]))
+
+    // === BEND ===
+    // Bend a tall box into an arch
+    const bentBox = bend(0.1, box([0, -20, 10], [8, 3, 3]))
+
+    // === TAPER ===
+    // Taper a cylinder: wide at bottom, narrow at top
+    const taperedCyl = taper(0.3, 10, cylinder([20, -20, 5], { r: 4, h: 5 }))
+
+    // Taper a box: creates a truncated pyramid
+    const taperedBox = taper(0.5, 8, box([35, -20, 4], [4, 4, 4]))
+
+    // === MORPH ===
+    // Morph 25% between sphere and box (mostly sphere)
+    const morph25 = morph(0.25,
+        sphere([-20, -20, 10], { r: 5 }),
+        box([-20, -20, 10], [4, 4, 4])
+    )
+
+    // Morph 75% between sphere and box (mostly box)
+    const morph75 = morph(0.75,
+        sphere([-35, -20, 10], { r: 5 }),
+        box([-35, -20, 10], [4, 4, 4])
+    )
+
+    // === SEAM ===
+    // Weld bead at the junction of two shapes
+    const seamDemo = seam(
+        sphere([-20, 0, 10], { r: 4 }),
+        box([-20, 0, 10], [3, 3, 6]),
+        0.5
+    )
+
+    // Seam between two spheres
+    const seamSpheres = seam(
+        sphere([-35, 0, 7], { r: 4 }),
+        sphere([-35, 0, 13], { r: 4 }),
+        0.4
+    )
+
+    // === ASSEMBLY ===
+    return union(
+        shellSphere, shellBox,
+        roundedBox, shrunkSphere,
+        elongatedSphere, elongatedBox,
+        twistedBox,
+        bentBox,
+        taperedCyl, taperedBox,
+        morph25, morph75,
+        seamDemo, seamSpheres
+    )
+}

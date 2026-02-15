@@ -4,7 +4,7 @@ import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
-import { SceneInfo, Node, BinaryOperator, Box, Sphere, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate } from "./scene/scene.mjs"
+import { SceneInfo, Node, BinaryOperator, Box, Sphere, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import beamShader from "./shaders/beam.wgsl"
@@ -527,19 +527,72 @@ export class SDFRenderer {
             const a = this.#evalNodeDist(node.lh, px, py, pz)
             const b = this.#evalNodeDist(node.rh, px, py, pz)
             if (a === null || b === null) return null
-            return Math.max(a, (a + node.radius - Math.hypot(a, b)) * Math.SQRT1_2)
+            return Math.max(a, (a + node.radius - Math.abs(b)) * Math.SQRT1_2)
         }
         if (node instanceof Groove) {
             const a = this.#evalNodeDist(node.lh, px, py, pz)
             const b = this.#evalNodeDist(node.rh, px, py, pz)
             if (a === null || b === null) return null
-            return Math.max(a, Math.min(a + node.ra, Math.max(Math.abs(b) - node.rb, a)))
+            return Math.max(a, Math.min(a + node.ra, node.rb - Math.abs(b)))
         }
         if (node instanceof Tongue) {
             const a = this.#evalNodeDist(node.lh, px, py, pz)
             const b = this.#evalNodeDist(node.rh, px, py, pz)
             if (a === null || b === null) return null
-            return Math.min(a, Math.max(a - node.ra, Math.min(-Math.abs(b) + node.rb, a)))
+            return Math.min(a, Math.max(a - node.ra, Math.abs(b) - node.rb))
+        }
+        if (node instanceof Shell) {
+            const d = this.#evalNodeDist(node.arg, px, py, pz)
+            if (d === null) return null
+            return Math.abs(d) - node.thickness
+        }
+        if (node instanceof Offset) {
+            const d = this.#evalNodeDist(node.arg, px, py, pz)
+            if (d === null) return null
+            return d - node.amount
+        }
+        if (node instanceof Elongate) {
+            // Clamp point to elongation box, evaluate child at offset
+            const qx = px - Math.max(-node.hx, Math.min(px, node.hx))
+            const qy = py - Math.max(-node.hy, Math.min(py, node.hy))
+            const qz = pz - Math.max(-node.hz, Math.min(pz, node.hz))
+            return this.#evalNodeDist(node.arg, qx, qy, qz)
+        }
+        if (node instanceof Twist) {
+            // Rotate XZ by p.y * rate
+            const a = py * node.rate
+            const c = Math.cos(a), s = Math.sin(a)
+            const qx = c * px + s * pz
+            const qz = -s * px + c * pz
+            return this.#evalNodeDist(node.arg, qx, py, qz)
+        }
+        if (node instanceof Bend) {
+            // Rotate XY by p.x * amount
+            const a = node.amount * px
+            const c = Math.cos(a), s = Math.sin(a)
+            const qx = c * px - s * py
+            const qy = s * px + c * py
+            return this.#evalNodeDist(node.arg, qx, qy, pz)
+        }
+        if (node instanceof Taper) {
+            // Scale XZ by linear function of Y
+            const t = Math.max(0, Math.min(py / node.height, 1))
+            const scale = 1 + (node.ratio - 1) * t
+            return this.#evalNodeDist(node.arg, px / scale, py, pz / scale)
+        }
+        if (node instanceof Morph) {
+            const a = this.#evalNodeDist(node.lh, px, py, pz)
+            const b = this.#evalNodeDist(node.rh, px, py, pz)
+            if (a === null || b === null) return null
+            return a * (1 - node.t) + b * node.t
+        }
+        if (node instanceof Seam) {
+            const a = this.#evalNodeDist(node.lh, px, py, pz)
+            const b = this.#evalNodeDist(node.rh, px, py, pz)
+            if (a === null || b === null) return null
+            const unionD = Math.min(a, b)
+            const pipeD = Math.hypot(a, b) - node.radius
+            return Math.min(unionD, pipeD)
         }
         if (node instanceof Rotate) {
             const [rx, ry, rz] = node.applyInvRotation(px, py, pz)

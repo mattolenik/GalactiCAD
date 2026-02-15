@@ -38,7 +38,7 @@ export class SceneInfo {
         // Create a function that defines scene() and then calls it
         // This allows users to write: function scene() { return sphere(...) }
         const wrappedSrc = src + "\nreturn scene()"
-        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", wrappedSrc)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue)
+        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", wrappedSrc)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, shell, offset, elongate, twist, bend, taper, morph, seam)
         this.root.scene = this
         this.root.build()
     }
@@ -561,6 +561,234 @@ export class Tongue extends BinaryOperator {
         return { text: `fOpTongueFast(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
     }
     constructor(lh: Node, rh: Node, public ra: number, public rb: number) {
+        super(lh, rh)
+    }
+}
+
+export class Shell extends UnaryOperator {
+    override getShapeType(): string { return "shell" }
+    override getIndicatorSymbol(): string { return "◯" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="0.5" stroke-dasharray="1,1"/>`
+    }
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.arg.getAllDescendantIds()]
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compile(indentLevel)
+        const funcName = `Shell${this.id}`
+        const varName = decapitalize(funcName)
+        return { funcName, varName, text: `sdfShellEx(${childResult.text}, ${this.thickness})` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileFast(indentLevel)
+        const funcName = `Shell${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `sdfShellFast(${childResult.text}, ${this.thickness})` }
+    }
+    constructor(public thickness: number, arg: Node) {
+        super(arg)
+    }
+}
+
+export class Offset extends UnaryOperator {
+    override getShapeType(): string { return "offset" }
+    override getIndicatorSymbol(): string { return "⊕" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="3" fill="currentColor"/><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2,1"/>`
+    }
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.arg.getAllDescendantIds()]
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compile(indentLevel)
+        const funcName = `Offset${this.id}`
+        const varName = decapitalize(funcName)
+        return { funcName, varName, text: `sdfOffsetEx(${childResult.text}, ${this.amount})` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileFast(indentLevel)
+        const funcName = `Offset${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `sdfOffsetFast(${childResult.text}, ${this.amount})` }
+    }
+    constructor(public amount: number, arg: Node) {
+        super(arg)
+    }
+}
+
+export class Elongate extends UnaryOperator {
+    hx: number
+    hy: number
+    hz: number
+
+    override getShapeType(): string { return "elongate" }
+    override getIndicatorSymbol(): string { return "⟷" }
+    override getIndicatorSvg(): string {
+        return `<line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.5"/><polygon points="0,6 3,4 3,8" fill="currentColor"/><polygon points="12,6 9,4 9,8" fill="currentColor"/>`
+    }
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.arg.getAllDescendantIds()]
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compile(indentLevel)
+        const childText = childResult.text!
+        const h = `vec3f(${this.hx}, ${this.hy}, ${this.hz})`
+        const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
+        const funcName = `Elongate${this.id}`
+        const varName = decapitalize(funcName)
+        return { funcName, varName, text: elongatedChild }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileFast(indentLevel)
+        const childText = childResult.text!
+        const h = `vec3f(${this.hx}, ${this.hy}, ${this.hz})`
+        const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
+        const funcName = `Elongate${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: elongatedChild }
+    }
+    constructor(h: Vec3, arg: Node) {
+        super(arg)
+        const v = vec3(h)
+        this.hx = v.x
+        this.hy = v.y
+        this.hz = v.z
+    }
+}
+
+export class Twist extends UnaryOperator {
+    override getShapeType(): string { return "twist" }
+    override getIndicatorSymbol(): string { return "⌀" }
+    override getIndicatorSvg(): string {
+        return `<path d="M3,2 C9,4 3,8 9,10" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+    }
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.arg.getAllDescendantIds()]
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compile(indentLevel)
+        const childText = childResult.text!
+        const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${this.rate})`)
+        const funcName = `Twist${this.id}`
+        const varName = decapitalize(funcName)
+        return { funcName, varName, text: `sdfTwistNormal(${twistedChild}, p, ${this.rate})` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileFast(indentLevel)
+        const childText = childResult.text!
+        const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${this.rate})`)
+        const funcName = `Twist${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `sdfTwistFast(${twistedChild}, p, ${this.rate})` }
+    }
+    constructor(public rate: number, arg: Node) {
+        super(arg)
+    }
+}
+
+export class Bend extends UnaryOperator {
+    override getShapeType(): string { return "bend" }
+    override getIndicatorSymbol(): string { return "⌒" }
+    override getIndicatorSvg(): string {
+        return `<path d="M2,10 Q6,1 10,10" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+    }
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.arg.getAllDescendantIds()]
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compile(indentLevel)
+        const childText = childResult.text!
+        const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${this.amount})`)
+        const funcName = `Bend${this.id}`
+        const varName = decapitalize(funcName)
+        return { funcName, varName, text: `sdfBendNormal(${bentChild}, p, ${this.amount})` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileFast(indentLevel)
+        const childText = childResult.text!
+        const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${this.amount})`)
+        const funcName = `Bend${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `sdfBendFast(${bentChild}, p, ${this.amount})` }
+    }
+    constructor(public amount: number, arg: Node) {
+        super(arg)
+    }
+}
+
+export class Taper extends UnaryOperator {
+    override getShapeType(): string { return "taper" }
+    override getIndicatorSymbol(): string { return "△" }
+    override getIndicatorSvg(): string {
+        return `<polygon points="3,11 9,11 7,1 5,1" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+    }
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.arg.getAllDescendantIds()]
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compile(indentLevel)
+        const childText = childResult.text!
+        const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${this.ratio}, ${this.height})`)
+        const funcName = `Taper${this.id}`
+        const varName = decapitalize(funcName)
+        return { funcName, varName, text: `sdfTaperNormal(${taperedChild}, p, ${this.ratio}, ${this.height})` }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileFast(indentLevel)
+        const childText = childResult.text!
+        const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${this.ratio}, ${this.height})`)
+        const funcName = `Taper${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return { funcName, varName, text: `sdfTaperFast(${taperedChild}, p, ${this.ratio}, ${this.height})` }
+    }
+    constructor(public ratio: number, public height: number, arg: Node) {
+        super(arg)
+    }
+}
+
+export class Morph extends BinaryOperator {
+    override getShapeType(): string { return "morph" }
+    override getIndicatorSymbol(): string { return "⇌" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="3" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1"/><rect x="7" y="4" width="4" height="4" rx="0.5" fill="none" stroke="currentColor" stroke-width="1"/><line x1="5" y1="6" x2="7" y2="6" stroke="currentColor" stroke-width="1" stroke-dasharray="1,0.5"/>`
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compile(indentLevel)
+        const rhResult = this.rh.compile(indentLevel)
+        const varName = `morph_${lhResult.varName}__${rhResult.varName}`
+        return { text: `sdfMorphEx(${lhResult.text}, ${rhResult.text}, ${this.t})`, varName }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileFast(indentLevel)
+        const rhResult = this.rh.compileFast(indentLevel)
+        const varName = `morph_${lhResult.varName}__${rhResult.varName}`
+        return { text: `sdfMorphFast(${lhResult.text}, ${rhResult.text}, ${this.t})`, varName }
+    }
+    constructor(public t: number, lh: Node, rh: Node) {
+        super(lh, rh)
+    }
+}
+
+export class Seam extends BinaryOperator {
+    override getShapeType(): string { return "seam" }
+    override getIndicatorSymbol(): string { return "⊕" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="4" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1" fill="currentColor"/>`
+    }
+    override compile(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compile(indentLevel)
+        const rhResult = this.rh.compile(indentLevel)
+        const varName = `seam_${lhResult.varName}__${rhResult.varName}`
+        return { text: `sdfSeamEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileFast(indentLevel)
+        const rhResult = this.rh.compileFast(indentLevel)
+        const varName = `seam_${lhResult.varName}__${rhResult.varName}`
+        return { text: `sdfSeamFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
+    }
+    constructor(lh: Node, rh: Node, public radius: number) {
         super(lh, rh)
     }
 }
@@ -1157,4 +1385,36 @@ export function groove(lh: Node, rh: Node, ra: number, rb: number): Groove {
 
 export function tongue(lh: Node, rh: Node, ra: number, rb: number): Tongue {
     return new Tongue(lh, rh, ra, rb)
+}
+
+export function shell(thickness: number, child: Node): Shell {
+    return new Shell(thickness, child)
+}
+
+export function offset(amount: number, child: Node): Offset {
+    return new Offset(amount, child)
+}
+
+export function elongate(h: Vec3, child: Node): Elongate {
+    return new Elongate(h, child)
+}
+
+export function twist(rate: number, child: Node): Twist {
+    return new Twist(rate, child)
+}
+
+export function bend(amount: number, child: Node): Bend {
+    return new Bend(amount, child)
+}
+
+export function taper(ratio: number, height: number, child: Node): Taper {
+    return new Taper(ratio, height, child)
+}
+
+export function morph(t: number, lh: Node, rh: Node): Morph {
+    return new Morph(t, lh, rh)
+}
+
+export function seam(lh: Node, rh: Node, radius: number): Seam {
+    return new Seam(lh, rh, radius)
 }

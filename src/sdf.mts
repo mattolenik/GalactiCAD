@@ -121,6 +121,7 @@ export class SDFRenderer {
     #builtSrc: string | null = null
     #xrayMode: boolean = false
     #selectionMode: import("./storage/settings.mjs").SelectionMode = "object"
+    #cameraRotationMode: import("./storage/settings.mjs").CameraRotationMode = "arcball"
     #beamEnabled: boolean = false
     #outlineMode: OutlineMode = "solid"
     #outlineThickness: number = 3
@@ -162,6 +163,7 @@ export class SDFRenderer {
             cameraOptimization: this.#cameraOptimization,
             beamOptimization: this.#beamEnabled,
             selectionMode: this.#selectionMode,
+            cameraRotationMode: this.#cameraRotationMode,
         })
     }
 
@@ -171,6 +173,8 @@ export class SDFRenderer {
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
         this.#selectionMode = prev.selectionMode
+        this.#cameraRotationMode = prev.cameraRotationMode
+        this.#controls.setRotationMode(this.#cameraRotationMode)
         this.onPreviewSettingsLoaded?.()
         this.#needsRender = true
     }
@@ -217,6 +221,16 @@ export class SDFRenderer {
 
     get selectionMode(): import("./storage/settings.mjs").SelectionMode {
         return this.#selectionMode
+    }
+
+    set cameraRotationMode(mode: import("./storage/settings.mjs").CameraRotationMode) {
+        this.#cameraRotationMode = mode
+        this.#settings.updatePreview("cameraRotationMode", mode)
+        this.#controls.setRotationMode(mode)
+    }
+
+    get cameraRotationMode(): import("./storage/settings.mjs").CameraRotationMode {
+        return this.#cameraRotationMode
     }
 
     set beamEnabled(enabled: boolean) {

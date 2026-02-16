@@ -1,8 +1,9 @@
 import { clamped } from "../math.mjs"
-import { SettingsManager, type CameraSettings } from "../storage/settings.mjs"
+import { SettingsManager, type CameraSettings, type CameraRotationMode } from "../storage/settings.mjs"
 import { lookAt, Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { PinchZoomController } from "./pinchzoom-controller.mjs"
+import { Trackball } from "./trackball.mjs"
 // @ts-ignore - quaternion library type definitions have issues
 import Quaternion from "quaternion"
 
@@ -49,6 +50,8 @@ export class CameraController {
     #panSensitivity: number = 0.1
     #cameraTranslation: Vec3f = new Vec3f()
     #zoomController: PinchZoomController
+    #trackball: Trackball
+    #rotationMode: CameraRotationMode = "arcball"
     #tabsElement: EventTarget | null = null
     #tabChangeListener: EventListener | null = null
     onChange?: (state: CameraState) => void
@@ -56,7 +59,7 @@ export class CameraController {
     onDoubleClick?: (screenPos: Vec2f) => void
     onHover?: (screenPos: Vec2f, altKey: boolean) => void
 
-    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null) {
+    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null, rotationMode: CameraRotationMode = "arcball") {
         this.#settings = SettingsManager.instance
         this.#host = host
         this.#pivot = pivot
@@ -81,6 +84,17 @@ export class CameraController {
         }
         // Initialize rotation from Euler angles (for backward compatibility)
         this.#rotation = Quaternion.fromEuler(initialPhi, initialTheta, 0, "YXZ")
+
+        this.#rotationMode = rotationMode
+        this.#trackball = new Trackball({
+            scene: this.#host.canvas,
+            rotationMethod: this.#rotationMode === "azimuth" ? "azel" : "rounded_arcball",
+            q: this.#rotation,
+            onDraw: (q) => {
+                this.#rotation = q
+                this.#updateTransforms()
+            },
+        })
 
         this.#initEvents()
 
@@ -116,6 +130,7 @@ export class CameraController {
         this.zoom = state.zoom
         this.#zoomController.setZoom(this.zoom, false)
         this.#cameraTranslation = state.translation.clone()
+        this.#syncTrackball()
         this.#updateTransforms(emit)
     }
 
@@ -162,6 +177,7 @@ export class CameraController {
             return
         }
         e.preventDefault()
+        this.#syncTrackball()
         this.#updateTransforms()
     }
 
@@ -226,36 +242,7 @@ export class CameraController {
         this.#last.set(pvec)
 
         if (this.#dragMode === "rotate") {
-            // Build the current rotation matrix applied to lookAt (without translation)
-            // to extract the camera's current orientation axes
-            const baseView = lookAt(this.cameraPosition, this.#pivot, vec3(0, 1, 0))
-            const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
-            const rotatedView = rotationMatrix.multiply(baseView)
-
-            // Extract camera orientation vectors from the rotated view matrix
-            // Column 0 (indices 0,1,2): camera's right vector in world space
-            // Column 1 (indices 4,5,6): camera's up vector in world space
-            const viewData = rotatedView.data
-            const cameraRight = vec3(viewData[0], viewData[1], viewData[2]).normalize()
-            const cameraUp = vec3(viewData[4], viewData[5], viewData[6]).normalize()
-
-            // Arcball rotation: rotate object as if held in your hand (trackball style)
-            // Key insight: rotations should be applied in the object's local space
-            // When you drag right: rotate around the camera's up axis (screen vertical)
-            // When you drag down: rotate around the camera's right axis (screen horizontal)
-            //
-            // For trackball feel: dragging right rotates the object right (clockwise around vertical)
-            // The rotation axis is in world space but aligned with screen orientation
-            const horizontalAngle = this.#cursorDelta.x * this.#rotateSensitivity
-            const horizontalRotation = Quaternion.fromAxisAngle([cameraUp.x, cameraUp.y, cameraUp.z], horizontalAngle)
-
-            const verticalAngle = this.#cursorDelta.y * this.#rotateSensitivity
-            const verticalRotation = Quaternion.fromAxisAngle([cameraRight.x, cameraRight.y, cameraRight.z], verticalAngle)
-
-            // Apply rotations: for trackball, we apply them in object-local order
-            // This means: currentRotation * horizontalRotation * verticalRotation
-            // The rotations accumulate in the object's local coordinate system
-            this.#rotation = this.#rotation.mul(horizontalRotation).mul(verticalRotation).normalize()
+            // Rotation is handled by Trackball (rounded arcball) via its onDraw callback
         } else if (this.#dragMode === "pan") {
             // Compute camera-relative pan directions based on current rotation
             const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
@@ -268,7 +255,9 @@ export class CameraController {
             this.#cameraTranslation.z -= (this.#cursorDelta.x * cameraRight.z - this.#cursorDelta.y * cameraUp.z) * this.#panSensitivity
         }
 
-        this.#updateTransforms()
+        if (this.#dragMode !== "rotate") {
+            this.#updateTransforms()
+        }
     }
 
     #onPointerUp(e: PointerEvent) {
@@ -327,7 +316,19 @@ export class CameraController {
         this.zoom = cam.zoom
         this.#zoomController.setZoom(this.zoom, false)
         this.#rotation = new Quaternion(cam.rotation[0], cam.rotation[1], cam.rotation[2], cam.rotation[3]).normalize()
+        this.#syncTrackball()
         this.#updateTransforms()
+    }
+
+    #syncTrackball(): void {
+        this.#trackball.reset()
+        this.#trackball.rotate(this.#rotation)
+    }
+
+    setRotationMode(mode: CameraRotationMode): void {
+        if (this.#rotationMode === mode) return
+        this.#rotationMode = mode
+        this.#trackball.rotationMethod = mode === "azimuth" ? "azel" : "rounded_arcball"
     }
 
     /**

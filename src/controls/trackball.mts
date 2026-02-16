@@ -140,6 +140,14 @@ export class Trackball {
         }
     }
 
+    /** Set the rotation method at runtime. */
+    set rotationMethod(m: TrackballRotationMethod) {
+        ;(this.#opts as { rotationMethod: TrackballRotationMethod }).rotationMethod = m
+        if (m === "rounded_arcball") {
+            ;(this.#opts as { border: number }).border = 0.5
+        }
+    }
+
     /**
      * Resets the trackball to its initial state.
      */
@@ -192,6 +200,9 @@ export class Trackball {
     }
 
     #handleMouseDown(event: MouseEvent | Touch): void {
+        // Only respond to left mouse button; right/middle are used for pan
+        if (event instanceof MouseEvent && event.button !== 0) return
+
         const box = this.#opts.scene.getBoundingClientRect()
 
         const startVector =

@@ -39,6 +39,7 @@ export interface ParsedShapeCall {
     c?: number        // Center half-height for capsule
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
+    vertices?: [number, number][]  // Vertex array for polygon2d
 }
 
 /**
@@ -163,6 +164,8 @@ export class SourceParser {
             this.parsePlaneArgs(callNode, parsedCall)
         } else if (funcName === "blob") {
             this.parseBlobArgs(callNode, parsedCall)
+        } else if (funcName === "polygon2d") {
+            this.parsePolygon2DArgs(callNode, parsedCall)
         }
 
         calls.push(parsedCall)
@@ -373,6 +376,25 @@ export class SourceParser {
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse blob args:`, err)
+        }
+    }
+
+    /**
+     * Parse polygon2d(vertices) arguments — extract the vertex array for matching
+     */
+    private parsePolygon2DArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            if (callNode.arguments.length >= 1) {
+                const arrayArg = callNode.arguments[0]
+                if (arrayArg.type === "ArrayExpression") {
+                    const vertices = this.evaluateVertexArray(arrayArg)
+                    if (vertices) {
+                        parsedCall.vertices = vertices
+                    }
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse polygon2d args:`, err)
         }
     }
 

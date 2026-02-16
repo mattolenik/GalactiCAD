@@ -1317,6 +1317,7 @@ export class Extrude extends WithPos(Node) {
 
     override compileAux(): string {
         const childFunc = this.child.wgslFuncName
+        const childId = this.child.id
         const h = this.h.toFixed(6)
         const hasTwist = this.twist !== 0
 
@@ -1334,7 +1335,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(p.y), 0.0);
     let n = select(nCap, nSide, onSide);
-    return sdfTrue(d, id, n);
+    let resultId = select(${childId}u, id, onSide);
+    return sdfTrue(d, resultId, n);
 }
 
 fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
@@ -1368,7 +1370,10 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let ny = ${this.wgslFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, eps, 0.0));
     let nz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
     let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
-    return sdfR(d, 0.8, 1.0, id, n);
+    let dCap = abs(p.y) - ${h};
+    let onSide = (d - dCap) > 0.01;
+    let resultId = select(${childId}u, id, onSide);
+    return sdfR(d, 0.8, 1.0, resultId, n);
 }
 
 fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
@@ -1597,7 +1602,12 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let ny = ${this.wgslFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, eps, 0.0));
     let nz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
     let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
-    return sdfR(d, 0.8, 1.0, id, n);
+    let dCap = abs(p.y) - ${h};
+    let onSide = (d - dCap) > 0.01;
+    let bottomCap = p.y < 0.0;
+    let capId = select(${this.profiles[this.profiles.length - 1].id}u, ${this.profiles[0].id}u, bottomCap);
+    let resultId = select(capId, id, onSide);
+    return sdfR(d, 0.8, 1.0, resultId, n);
 }
 
 fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {

@@ -181,6 +181,9 @@ export class SDFRenderer {
      */
     onSelectionChange?: (selectedIds: number[]) => void
 
+    /** Callback invoked when an object is double-clicked in the preview */
+    onObjectDoubleClick?: (nodeId: number) => void
+
     /** Called after preview settings are loaded (e.g. on document switch) so the UI can sync */
     onPreviewSettingsLoaded?: () => void
 
@@ -1075,6 +1078,38 @@ export class SDFRenderer {
         }, 200)
     }
 
+    #handleDoubleClick(screenPos: Vec2f) {
+        const canvas = this.#preview.canvas
+        const rect = canvas.getBoundingClientRect()
+        const x = (screenPos.x - rect.left) / rect.width
+        const y = 1.0 - (screenPos.y - rect.top) / rect.height
+
+        // Write click state for GPU pick
+        const clickData = new ArrayBuffer(32)
+        const clickF32 = new Float32Array(clickData)
+        const clickU32 = new Uint32Array(clickData)
+        clickF32[0] = x
+        clickF32[1] = y
+        clickU32[2] = 1  // click enabled
+        clickU32[3] = 0  // hover disabled
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
+        this.#device.queue.writeBuffer(
+            this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0])
+        )
+        this.#needsRender = true
+
+        setTimeout(async () => {
+            try {
+                const clickedId = await this.#readClickedObjectId()
+                if (clickedId !== 0 && this.onObjectDoubleClick) {
+                    this.onObjectDoubleClick(clickedId)
+                }
+            } catch (error) {
+                console.error('Error reading double-clicked object ID:', error)
+            }
+        }, 200)
+    }
+
     #handleHover(screenPos: Vec2f, altKey: boolean) {
         if (!altKey) {
             // Only show edge hover when Alt is held
@@ -1256,6 +1291,7 @@ export class SDFRenderer {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement)
         this.#controls.onSelect = (screenPos: Vec2f, shiftKey: boolean, altKey: boolean) => this.#handleClick(screenPos, shiftKey, altKey)
+        this.#controls.onDoubleClick = (screenPos: Vec2f) => this.#handleDoubleClick(screenPos)
         this.#controls.onHover = (screenPos: Vec2f, altKey: boolean) => this.#handleHover(screenPos, altKey)
         this.#controls.onChange = () => {
             this.#needsRender = true

@@ -14,7 +14,7 @@ import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
 
 /** Composite shape types that are matched by name only */
-const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group", "rotate", "polygon2d", "extrude", "loft", "lathe"])
+const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group", "rotate", "extrude", "loft", "lathe"])
 
 /**
  * Tolerance for floating-point comparisons
@@ -151,6 +151,17 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
     if (node instanceof Blob) {
         if (!call.pos) return false
         if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        return true
+    }
+
+    if (node instanceof Polygon2D) {
+        // Match polygon2d by comparing vertex arrays
+        if (!call.vertices) return false
+        if (node.vertices.length !== call.vertices.length) return false
+        for (let i = 0; i < node.vertices.length; i++) {
+            if (!approxEqual(node.vertices[i][0], call.vertices[i][0])) return false
+            if (!approxEqual(node.vertices[i][1], call.vertices[i][1])) return false
+        }
         return true
     }
 

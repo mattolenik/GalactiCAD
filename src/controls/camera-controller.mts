@@ -53,6 +53,7 @@ export class CameraController {
     #tabChangeListener: EventListener | null = null
     onChange?: (state: CameraState) => void
     onSelect?: (screenPos: Vec2f, shiftKey: boolean, altKey: boolean) => void
+    onDoubleClick?: (screenPos: Vec2f) => void
     onHover?: (screenPos: Vec2f, altKey: boolean) => void
 
     constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null) {
@@ -124,6 +125,7 @@ export class CameraController {
         this.#host.canvas.addEventListener("pointerup", this.#onPointerUp.bind(this))
         this.#host.canvas.addEventListener("pointercancel", this.#onPointerUp.bind(this))
         this.#host.canvas.addEventListener("click", this.#onClick.bind(this))
+        this.#host.canvas.addEventListener("dblclick", this.#onDblClick.bind(this))
         this.#host.canvas.addEventListener("contextmenu", e => e.preventDefault())
         this.#host.canvas.addEventListener("keypress", this.#onKeyPress.bind(this))
         document.addEventListener("keydown", this.#onKeyPress.bind(this), false)
@@ -167,6 +169,12 @@ export class CameraController {
         // Only handle left clicks, and only if we didn't drag
         if (e.button === 0 && !this.#hasDragged) {
             this.onSelect?.(vec2(e.clientX, e.clientY), e.shiftKey, e.altKey)
+        }
+    }
+
+    #onDblClick(e: MouseEvent) {
+        if (e.button === 0 && !this.#hasDragged) {
+            this.onDoubleClick?.(vec2(e.clientX, e.clientY))
         }
     }
 

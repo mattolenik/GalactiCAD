@@ -183,6 +183,24 @@ class App {
     }
 
     /**
+     * Handle double-click on a node in the preview.
+     * If the node is a polygon2d (cap face of extrude/loft), open the polygon editor.
+     */
+    #handlePreviewDoubleClick(nodeId: number) {
+        const location = this.#sourceLocationMap.get(nodeId)
+        if (location?.functionName === "polygon2d") {
+            const model = this.editor.getModel()
+            if (model) {
+                const src = model.getValue()
+                const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn)
+                if (info) {
+                    this.#openPolygonEditor(info, model)
+                }
+            }
+        }
+    }
+
+    /**
      * Handle editor selection to sync with preview.
      * Selects the corresponding object if a function name is fully selected.
      * For CSG operators (union, subtract, group), selects all descendants too.
@@ -412,6 +430,11 @@ class App {
                     this.#updateEditorHighlighting()
                     // Reset flag after a short delay to allow editor updates to complete
                     setTimeout(() => { this.#isUpdatingFromPreview = false }, 50)
+                }
+
+                // Double-click on a polygon2d cap face opens the polygon editor
+                this.renderer.onObjectDoubleClick = (nodeId: number) => {
+                    this.#handlePreviewDoubleClick(nodeId)
                 }
 
                 // Listen for editor selection changes (for function name selection)

@@ -9,7 +9,7 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
-import { SettingsManager, type CameraRotationMode, type SelectionMode } from "./storage/settings.mjs"
+import { SettingsManager, type SelectionMode } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
 import { SourceParser, type SourceLocation, type Polygon2DCallInfo } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
@@ -390,11 +390,6 @@ class App {
             { label: "Edge", value: "edge" },
         ], "object")
         toolbar.addSeparator()
-        const cameraRotationGroup = toolbar.addRadioGroup<CameraRotationMode>([
-            { label: "Arcball", value: "arcball" },
-            { label: "Azimuth", value: "azimuth" },
-        ], "arcball")
-        toolbar.addSeparator()
         const xrayCheckbox = toolbar.addCheckbox("X-ray")
         this.#viewports.appendChild(toolbar)
 
@@ -461,10 +456,6 @@ class App {
                 selectionModeGroup.onChange = (mode) => {
                     this.renderer.selectionMode = mode
                 }
-                cameraRotationGroup.value = this.renderer.cameraRotationMode
-                cameraRotationGroup.onChange = (mode) => {
-                    this.renderer.cameraRotationMode = mode
-                }
 
                 // Wire dev tools panel ↔ renderer
                 devTools.cameraOptimization = this.renderer.cameraOptimization
@@ -478,7 +469,6 @@ class App {
                 this.renderer.onPreviewSettingsLoaded = () => {
                     xrayCheckbox.checked = this.renderer.xrayMode
                     selectionModeGroup.value = this.renderer.selectionMode
-                    cameraRotationGroup.value = this.renderer.cameraRotationMode
                     devTools.cameraOptimization = this.renderer.cameraOptimization
                     devTools.beamOptimization = this.renderer.beamEnabled
                 }

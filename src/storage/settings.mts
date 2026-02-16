@@ -14,14 +14,11 @@ export interface CameraSettings {
 
 export type SelectionMode = "object" | "edge"
 
-export type CameraRotationMode = "arcball" | "azimuth"
-
 export interface PreviewSettings {
     xrayMode: boolean
     cameraOptimization: boolean
     beamOptimization: boolean
     selectionMode: SelectionMode
-    cameraRotationMode: CameraRotationMode
 }
 
 export interface LayoutSettings {
@@ -50,7 +47,7 @@ function defaultCamera(): CameraSettings {
 }
 
 function defaultPreview(): PreviewSettings {
-    return { xrayMode: false, cameraOptimization: true, beamOptimization: false, selectionMode: "object", cameraRotationMode: "arcball" }
+    return { xrayMode: false, cameraOptimization: true, beamOptimization: false, selectionMode: "object" }
 }
 
 function defaultLayout(): LayoutSettings {

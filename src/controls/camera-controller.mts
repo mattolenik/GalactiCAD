@@ -1,5 +1,5 @@
 import { clamped } from "../math.mjs"
-import { SettingsManager, type CameraSettings, type CameraRotationMode } from "../storage/settings.mjs"
+import { SettingsManager, type CameraSettings } from "../storage/settings.mjs"
 import { lookAt, Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { PinchZoomController } from "./pinchzoom-controller.mjs"
@@ -51,7 +51,6 @@ export class CameraController {
     #cameraTranslation: Vec3f = new Vec3f()
     #zoomController: PinchZoomController
     #trackball: Trackball
-    #rotationMode: CameraRotationMode = "arcball"
     #tabsElement: EventTarget | null = null
     #tabChangeListener: EventListener | null = null
     onChange?: (state: CameraState) => void
@@ -59,7 +58,7 @@ export class CameraController {
     onDoubleClick?: (screenPos: Vec2f) => void
     onHover?: (screenPos: Vec2f, altKey: boolean) => void
 
-    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null, rotationMode: CameraRotationMode = "arcball") {
+    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null) {
         this.#settings = SettingsManager.instance
         this.#host = host
         this.#pivot = pivot
@@ -85,10 +84,9 @@ export class CameraController {
         // Initialize rotation from Euler angles (for backward compatibility)
         this.#rotation = Quaternion.fromEuler(initialPhi, initialTheta, 0, "YXZ")
 
-        this.#rotationMode = rotationMode
         this.#trackball = new Trackball({
             scene: this.#host.canvas,
-            rotationMethod: this.#rotationMode === "azimuth" ? "azel" : "rounded_arcball",
+            rotationMethod: "rounded_arcball",
             q: this.#rotation,
             onDraw: (q) => {
                 this.#rotation = q
@@ -323,12 +321,6 @@ export class CameraController {
     #syncTrackball(): void {
         this.#trackball.reset()
         this.#trackball.rotate(this.#rotation)
-    }
-
-    setRotationMode(mode: CameraRotationMode): void {
-        if (this.#rotationMode === mode) return
-        this.#rotationMode = mode
-        this.#trackball.rotationMethod = mode === "azimuth" ? "azel" : "rounded_arcball"
     }
 
     /**

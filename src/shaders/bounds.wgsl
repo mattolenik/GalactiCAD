@@ -39,6 +39,9 @@ struct TileBounds {
 
 @group(0) @binding(1) var<storage, read_write> out: array<TileBounds>;
 
+// Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
+//:) insert sceneAux
+
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> SDFResult {
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF

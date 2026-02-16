@@ -111,6 +111,9 @@ const EDGES_PER_CELL: u32 = 12u;
 
 // ============================== UTILITY FUNCTIONS ==============================
 
+// Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
+//:) insert sceneAux
+
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> SDFResult {
     // Reference selectedObjectIds to prevent optimization (unused but required for binding)

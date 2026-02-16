@@ -4,7 +4,7 @@ import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
-import { SceneInfo, Node, BinaryOperator, Box, Sphere, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate } from "./scene/scene.mjs"
+import { SceneInfo, Node, BinaryOperator, Box, Sphere, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate, Polygon2D, Extrude, Loft, Lathe } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import beamShader from "./shaders/beam.wgsl"
@@ -1302,10 +1302,12 @@ export class SDFRenderer {
         const trimmed = src.trim()
         this.#builtSrc = trimmed
         this.#scene = new SceneInfo(trimmed)
+        const sceneAux = this.#scene.compileAux()       // Auxiliary WGSL functions (e.g., polygon SDF evaluators)
         const sceneSDF = this.#scene.compile()        // Full SDFResult (distance + gradient + normal + ID)
         const sceneSDF_fast = this.#scene.compileFast() // Fast vec2f (distance + gradient only)
         const sceneEdgeHelpers = this.#scene.compileEdgeHelpers()
         this.#shaderCompiler = new ShaderCompiler(this.#device)
+            .replace("insert", "sceneAux", sceneAux)
             .replace("insert", "sceneSDF_fast", sceneSDF_fast)
             .replace("insert", "sceneSDF", sceneSDF)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)

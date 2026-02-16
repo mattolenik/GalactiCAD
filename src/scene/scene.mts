@@ -38,7 +38,7 @@ export class SceneInfo {
         // Create a function that defines scene() and then calls it
         // This allows users to write: function scene() { return sphere(...) }
         const wrappedSrc = src + "\nreturn scene()"
-        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", wrappedSrc)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, shell, offset, elongate, twist, bend, taper, morph, seam)
+        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", wrappedSrc)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, shell, offset, elongate, twist, bend, taper, morph, seam, polygon2d, extrude, loft, lathe)
         this.root.scene = this
         this.root.build()
     }
@@ -58,6 +58,18 @@ export class SceneInfo {
     compileFast(): string {
         const compiledResult = this.root.compileFast(1)
         return `\nreturn ${compiledResult.text};\n`
+    }
+
+    /**
+     * Compile auxiliary WGSL functions from all nodes in the scene.
+     * These are placed before sceneSDF in the shader (e.g., per-polygon SDF evaluators).
+     */
+    compileAux(): string {
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            code += node.compileAux()
+        }
+        return code
     }
 
     /**
@@ -124,6 +136,14 @@ export class Node {
      */
     getAllDescendantIds(): number[] {
         return [this.id]
+    }
+    /**
+     * Emit auxiliary WGSL function definitions needed by this node.
+     * These are placed before sceneSDF in the shader (e.g., per-polygon SDF evaluators).
+     * Default returns empty string. Override in nodes that need helper functions.
+     */
+    compileAux(): string {
+        return ""
     }
     compile(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
@@ -333,10 +353,10 @@ export class Union extends BinaryOperator {
         } else {
             switch (this.mode) {
                 case 'chamfer': text = `fOpUnionChamferEx(${L}, ${R}, ${r})`; break
-                case 'soft':    text = `fOpUnionSoftEx(${L}, ${R}, ${r})`; break
+                case 'soft': text = `fOpUnionSoftEx(${L}, ${R}, ${r})`; break
                 case 'columns': text = `fOpUnionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs':  text = `fOpUnionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default:        text = `fOpUnionRoundEx(${L}, ${R}, ${r})`; break
+                case 'stairs': text = `fOpUnionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default: text = `fOpUnionRoundEx(${L}, ${R}, ${r})`; break
             }
         }
         return { text, varName }
@@ -352,10 +372,10 @@ export class Union extends BinaryOperator {
         } else {
             switch (this.mode) {
                 case 'chamfer': text = `fOpUnionChamferFast(${L}, ${R}, ${r})`; break
-                case 'soft':    text = `fOpUnionSoftFast(${L}, ${R}, ${r})`; break
+                case 'soft': text = `fOpUnionSoftFast(${L}, ${R}, ${r})`; break
                 case 'columns': text = `fOpUnionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs':  text = `fOpUnionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default:        text = `fOpUnionRoundFast(${L}, ${R}, ${r})`; break
+                case 'stairs': text = `fOpUnionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default: text = `fOpUnionRoundFast(${L}, ${R}, ${r})`; break
             }
         }
         return { text, varName }
@@ -390,8 +410,8 @@ export class Subtract extends BinaryOperator {
             switch (this.mode) {
                 case 'chamfer': text = `fOpDifferenceChamferEx(${L}, ${R}, ${r})`; break
                 case 'columns': text = `fOpDifferenceColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs':  text = `fOpDifferenceStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default:        text = `fOpDifferenceRoundEx(${L}, ${R}, ${r})`; break
+                case 'stairs': text = `fOpDifferenceStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default: text = `fOpDifferenceRoundEx(${L}, ${R}, ${r})`; break
             }
         }
         return { text, varName }
@@ -408,8 +428,8 @@ export class Subtract extends BinaryOperator {
             switch (this.mode) {
                 case 'chamfer': text = `fOpDifferenceChamferFast(${L}, ${R}, ${r})`; break
                 case 'columns': text = `fOpDifferenceColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs':  text = `fOpDifferenceStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default:        text = `fOpDifferenceRoundFast(${L}, ${R}, ${r})`; break
+                case 'stairs': text = `fOpDifferenceStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default: text = `fOpDifferenceRoundFast(${L}, ${R}, ${r})`; break
             }
         }
         return { text, varName }
@@ -444,8 +464,8 @@ export class Intersect extends BinaryOperator {
             switch (this.mode) {
                 case 'chamfer': text = `fOpIntersectionChamferEx(${L}, ${R}, ${r})`; break
                 case 'columns': text = `fOpIntersectionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs':  text = `fOpIntersectionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default:        text = `fOpIntersectionRoundEx(${L}, ${R}, ${r})`; break
+                case 'stairs': text = `fOpIntersectionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default: text = `fOpIntersectionRoundEx(${L}, ${R}, ${r})`; break
             }
         }
         return { text, varName }
@@ -462,8 +482,8 @@ export class Intersect extends BinaryOperator {
             switch (this.mode) {
                 case 'chamfer': text = `fOpIntersectionChamferFast(${L}, ${R}, ${r})`; break
                 case 'columns': text = `fOpIntersectionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs':  text = `fOpIntersectionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default:        text = `fOpIntersectionRoundFast(${L}, ${R}, ${r})`; break
+                case 'stairs': text = `fOpIntersectionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
+                default: text = `fOpIntersectionRoundFast(${L}, ${R}, ${r})`; break
             }
         }
         return { text, varName }
@@ -979,7 +999,7 @@ export class Cylinder extends WithRaD(WithPos(Node)) {
     override getIndicatorSvg(): string {
         return `<rect x="1" y="2" width="10" height="8" rx="3" fill="currentColor"/>`
     }
-    override updateScene(): void {}
+    override updateScene(): void { }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Cylinder${this.id}`
         const varName = `${decapitalize(funcName)}`
@@ -1007,7 +1027,7 @@ export class Cone extends WithRaD(WithPos(Node)) {
     override getIndicatorSvg(): string {
         return `<polygon points="6,1 11,11 1,11" fill="currentColor"/>`
     }
-    override updateScene(): void {}
+    override updateScene(): void { }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Cone${this.id}`
         const varName = `${decapitalize(funcName)}`
@@ -1036,7 +1056,7 @@ export class Torus extends WithPos(Node) {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1"/>`
     }
-    override updateScene(): void {}
+    override updateScene(): void { }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Torus${this.id}`
         const varName = `${decapitalize(funcName)}`
@@ -1064,7 +1084,7 @@ export class Capsule extends WithRaD(WithPos(Node)) {
     override getIndicatorSvg(): string {
         return `<rect x="2" y="1" width="8" height="10" rx="4" fill="currentColor"/>`
     }
-    override updateScene(): void {}
+    override updateScene(): void { }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Capsule${this.id}`
         const varName = `${decapitalize(funcName)}`
@@ -1093,7 +1113,7 @@ export class PlaneNode extends WithPos(Node) {
     override getIndicatorSvg(): string {
         return `<line x1="0" y1="6" x2="12" y2="6" stroke="currentColor" stroke-width="2"/>`
     }
-    override updateScene(): void {}
+    override updateScene(): void { }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Plane${this.id}`
         const varName = `${decapitalize(funcName)}`
@@ -1121,7 +1141,7 @@ export class HexPrism extends WithRaD(WithPos(Node)) {
     override getIndicatorSvg(): string {
         return `<polygon points="6,1 10.5,3.5 10.5,8.5 6,11 1.5,8.5 1.5,3.5" fill="currentColor"/>`
     }
-    override updateScene(): void {}
+    override updateScene(): void { }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `HexPrism${this.id}`
         const varName = `${decapitalize(funcName)}`
@@ -1146,7 +1166,7 @@ export class Disc extends WithRaD(WithPos(Node)) {
     override getIndicatorSvg(): string {
         return `<ellipse cx="6" cy="6" rx="5" ry="2.5" fill="currentColor"/>`
     }
-    override updateScene(): void {}
+    override updateScene(): void { }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Disc${this.id}`
         const varName = `${decapitalize(funcName)}`
@@ -1170,7 +1190,7 @@ export class Blob extends WithPos(Node) {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="4" fill="currentColor"/>`
     }
-    override updateScene(): void {}
+    override updateScene(): void { }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Blob${this.id}`
         const varName = `${decapitalize(funcName)}`
@@ -1180,6 +1200,392 @@ export class Blob extends WithPos(Node) {
         const funcName = `Blob${this.id}`
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fBlobFast(p - ${this.pos.wgsl})` }
+    }
+}
+
+/**
+ * A 2D SDF primitive defined by a closed polygon of vertices.
+ * Cannot be used directly in a 3D scene — must be wrapped in Extrude or Loft.
+ */
+export class Polygon2D extends Node {
+    vertices: [number, number][]
+
+    constructor(vertices: [number, number][]) {
+        super()
+        if (vertices.length < 3) {
+            throw new Error("polygon2d requires at least 3 vertices")
+        }
+        this.vertices = vertices
+    }
+
+    override getShapeType(): string { return "polygon2d" }
+    override getIndicatorSymbol(): string { return "⬠" }
+    override getIndicatorSvg(): string {
+        return `<polygon points="6,1 11,5 9,11 3,11 1,5" fill="currentColor"/>`
+    }
+    override updateScene(): void { }
+
+    /** Generate a unique WGSL function name for this polygon instance */
+    get wgslFuncName(): string {
+        return `fPolygon2D_${this.id}`
+    }
+
+    override compileAux(): string {
+        const N = this.vertices.length
+        const verts = this.vertices
+            .map(([x, y]) => `vec2f(${x.toFixed(6)}, ${y.toFixed(6)})`)
+            .join(", ")
+
+        return `
+fn ${this.wgslFuncName}(p: vec2f) -> f32 {
+    const N = ${N}u;
+    var v = array<vec2f, ${N}>(${verts});
+    var d = dot(p - v[0], p - v[0]);
+    var s = 1.0;
+    var j = N - 1u;
+    for (var i = 0u; i < N; i++) {
+        let e = v[j] - v[i];
+        let w = p - v[i];
+        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+        d = min(d, dot(b, b));
+        let c0 = p.y >= v[i].y;
+        let c1 = p.y < v[j].y;
+        let c2 = e.x * w.y > e.y * w.x;
+        if ((c0 && c1 && c2) || (!c0 && !c1 && !c2)) { s = -s; }
+        j = i;
+    }
+    return s * sqrt(d);
+}
+`
+    }
+
+    override compile(indentLevel = 0): CompileResult {
+        throw new Error("Polygon2D cannot be used directly in a 3D scene. Wrap it in extrude() or loft().")
+    }
+    override compileFast(indentLevel = 0): CompileResult {
+        throw new Error("Polygon2D cannot be used directly in a 3D scene. Wrap it in extrude() or loft().")
+    }
+}
+
+/**
+ * Extrudes a 2D SDF child along the Y axis to produce a 3D solid.
+ * h is the half-height (extends h above and h below the center, consistent with Cylinder).
+ */
+export class Extrude extends WithPos(Node) {
+    h: number
+    child: Polygon2D
+
+    constructor(child: Polygon2D, opts: { h: number })
+    constructor(pos: Vec3, child: Polygon2D, opts: { h: number })
+    constructor(...args: any[]) {
+        super()
+        if (args[0] instanceof Polygon2D) {
+            this.pos = new Vec3f()
+            this.child = args[0]
+            this.h = args[1].h
+        } else {
+            this.pos = vec3(args[0])
+            this.child = args[1]
+            this.h = args[2].h
+        }
+    }
+
+    override getShapeType(): string { return "extrude" }
+    override getIndicatorSymbol(): string { return "⬒" }
+    override getIndicatorSvg(): string {
+        return `<rect x="2" y="1" width="8" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1"/>`
+    }
+    override updateScene(): void { }
+
+    override build() {
+        super.build()
+        this.child.root = this.root
+        this.child.build()
+    }
+
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.child.getAllDescendantIds()]
+    }
+
+    get wgslExFuncName(): string { return `fExtrude_${this.id}_Ex` }
+    get wgslFastFuncName(): string { return `fExtrude_${this.id}_Fast` }
+
+    override compileAux(): string {
+        const childFunc = this.child.wgslFuncName
+        const h = this.h.toFixed(6)
+
+        return `
+fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
+    let d2d = ${childFunc}(p.xz);
+    let dCap = abs(p.y) - ${h};
+    let d = max(d2d, dCap);
+    let onSide = d2d > dCap;
+    // Side normal via finite differences on the 2D SDF
+    let eps = 0.001;
+    let gx = ${childFunc}(p.xz + vec2f(eps, 0.0)) - ${childFunc}(p.xz - vec2f(eps, 0.0));
+    let gz = ${childFunc}(p.xz + vec2f(0.0, eps)) - ${childFunc}(p.xz - vec2f(0.0, eps));
+    let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
+    let nCap = vec3f(0.0, sgn(p.y), 0.0);
+    let n = select(nCap, nSide, onSide);
+    return sdfTrue(d, id, n);
+}
+
+fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+    let d2d = ${childFunc}(p.xz);
+    let dCap = abs(p.y) - ${h};
+    return vec2f(max(d2d, dCap), 1.0);
+}
+`
+    }
+
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Extrude${this.id}`
+        const varName = decapitalize(funcName)
+        return {
+            funcName,
+            varName,
+            text: `${this.wgslExFuncName}(p - ${this.pos.wgsl}, ${this.id}u)`,
+        }
+    }
+
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Extrude${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return {
+            funcName,
+            varName,
+            text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+        }
+    }
+}
+
+/**
+ * Revolves a 2D SDF profile around the Y axis to create a solid of revolution.
+ * The profile is defined in the (radius, height) plane — the first coordinate of each
+ * vertex is the radial distance from the Y axis, the second is the Y height.
+ * The resulting 3D SDF is exact (revolution preserves the SDF property).
+ */
+export class Lathe extends WithPos(Node) {
+    child: Polygon2D
+
+    constructor(child: Polygon2D)
+    constructor(pos: Vec3, child: Polygon2D)
+    constructor(...args: any[]) {
+        super()
+        if (args[0] instanceof Polygon2D) {
+            this.pos = new Vec3f()
+            this.child = args[0]
+        } else {
+            this.pos = vec3(args[0])
+            this.child = args[1]
+        }
+    }
+
+    override getShapeType(): string { return "lathe" }
+    override getIndicatorSymbol(): string { return "◐" }
+    override getIndicatorSvg(): string {
+        return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" stroke-width="1" stroke-dasharray="2,1"/>`
+    }
+    override updateScene(): void { }
+
+    override build() {
+        super.build()
+        this.child.root = this.root
+        this.child.build()
+    }
+
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.child.getAllDescendantIds()]
+    }
+
+    get wgslExFuncName(): string { return `fLathe_${this.id}_Ex` }
+    get wgslFastFuncName(): string { return `fLathe_${this.id}_Fast` }
+
+    override compileAux(): string {
+        const childFunc = this.child.wgslFuncName
+
+        return `
+fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
+    let r = length(p.xz);
+    let q = vec2f(r, p.y);
+    let d = ${childFunc}(q);
+    // 2D gradient via finite differences in the (radius, height) plane
+    let eps = 0.001;
+    let gr = ${childFunc}(q + vec2f(eps, 0.0)) - ${childFunc}(q - vec2f(eps, 0.0));
+    let gy = ${childFunc}(q + vec2f(0.0, eps)) - ${childFunc}(q - vec2f(0.0, eps));
+    // Map radial gradient back to 3D (spread across x and z)
+    var radDir = vec2f(1.0, 0.0);
+    if (r > 1e-8) {
+        radDir = p.xz / r;
+    }
+    let n = safeNormalize(vec3f(gr * radDir.x, gy, gr * radDir.y), vec3f(0.0, 1.0, 0.0));
+    return sdfTrue(d, id, n);
+}
+
+fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+    let q = vec2f(length(p.xz), p.y);
+    return vec2f(${childFunc}(q), 1.0);
+}
+`
+    }
+
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Lathe${this.id}`
+        const varName = decapitalize(funcName)
+        return {
+            funcName,
+            varName,
+            text: `${this.wgslExFuncName}(p - ${this.pos.wgsl}, ${this.id}u)`,
+        }
+    }
+
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Lathe${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return {
+            funcName,
+            varName,
+            text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+        }
+    }
+}
+
+/**
+ * Lofts between two or more 2D SDF profiles along the Y axis.
+ * h is the half-height. Profiles are evenly spaced from -h (first) to +h (last).
+ * The interpolated field is a distance estimator (not exact SDF), but works for ray marching.
+ */
+export class Loft extends WithPos(Node) {
+    h: number
+    profiles: Polygon2D[]
+
+    constructor(profiles: Polygon2D[], opts: { h: number })
+    constructor(pos: Vec3, profiles: Polygon2D[], opts: { h: number })
+    constructor(...args: any[]) {
+        super()
+        if (Array.isArray(args[0]) && args[0][0] instanceof Polygon2D) {
+            this.pos = new Vec3f()
+            this.profiles = args[0]
+            this.h = args[1].h
+        } else {
+            this.pos = vec3(args[0])
+            this.profiles = args[1]
+            this.h = args[2].h
+        }
+        if (this.profiles.length < 2) {
+            throw new Error("loft requires at least 2 profiles")
+        }
+    }
+
+    override getShapeType(): string { return "loft" }
+    override getIndicatorSymbol(): string { return "⏥" }
+    override getIndicatorSvg(): string {
+        return `<polygon points="3,1 9,1 11,11 1,11" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+    }
+    override updateScene(): void { }
+
+    override build() {
+        super.build()
+        for (const profile of this.profiles) {
+            profile.root = this.root
+            profile.build()
+        }
+    }
+
+    override getAllDescendantIds(): number[] {
+        const ids = [this.id]
+        for (const profile of this.profiles) {
+            ids.push(...profile.getAllDescendantIds())
+        }
+        return ids
+    }
+
+    get wgslFieldFuncName(): string { return `fLoft_${this.id}_field` }
+    get wgslExFuncName(): string { return `fLoft_${this.id}_Ex` }
+    get wgslFastFuncName(): string { return `fLoft_${this.id}_Fast` }
+
+    override compileAux(): string {
+        const N = this.profiles.length
+        const h = this.h.toFixed(6)
+
+        // Generate profile evaluation lines
+        const evalLines = this.profiles
+            .map((p, i) => `    let d${i} = ${p.wgslFuncName}(p.xz);`)
+            .join("\n")
+
+        // Generate interpolation logic
+        let interpCode: string
+        if (N === 2) {
+            interpCode = `    let d_profile = mix(d0, d1, t);`
+        } else {
+            const numSegments = N - 1
+            interpCode = `    let seg = t * ${numSegments.toFixed(1)};
+    var d_profile: f32;
+`
+            for (let i = 0; i < numSegments; i++) {
+                const localT = i === 0 ? "seg" : `seg - ${i.toFixed(1)}`
+                if (i === 0) {
+                    interpCode += `    if (seg < 1.0) {
+        d_profile = mix(d${i}, d${i + 1}, ${localT});
+`
+                } else if (i === numSegments - 1) {
+                    interpCode += `    } else {
+        d_profile = mix(d${i}, d${i + 1}, ${localT});
+    }
+`
+                } else {
+                    interpCode += `    } else if (seg < ${(i + 1).toFixed(1)}) {
+        d_profile = mix(d${i}, d${i + 1}, ${localT});
+`
+                }
+            }
+        }
+
+        const fieldFunc = `
+fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
+    let h = ${h};
+    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
+${evalLines}
+${interpCode}
+    let dCap = abs(p.y) - h;
+    return max(d_profile, dCap);
+}
+
+fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
+    let d = ${this.wgslFieldFuncName}(p);
+    let eps = 0.001;
+    let nx = ${this.wgslFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
+    let ny = ${this.wgslFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, eps, 0.0));
+    let nz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
+    let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
+    return sdfR(d, 0.8, 1.0, id, n);
+}
+
+fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+    return vec2f(${this.wgslFieldFuncName}(p), 0.8);
+}
+`
+        return fieldFunc
+    }
+
+    override compile(indentLevel = 0): CompileResult {
+        const funcName = `Loft${this.id}`
+        const varName = decapitalize(funcName)
+        return {
+            funcName,
+            varName,
+            text: `${this.wgslExFuncName}(p - ${this.pos.wgsl}, ${this.id}u)`,
+        }
+    }
+
+    override compileFast(indentLevel = 0): CompileResult {
+        const funcName = `Loft${this.id}`
+        const varName = `${decapitalize(funcName)}_f`
+        return {
+            funcName,
+            varName,
+            text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+        }
     }
 }
 
@@ -1417,4 +1823,61 @@ export function morph(t: number, lh: Node, rh: Node): Morph {
 
 export function seam(lh: Node, rh: Node, radius: number): Seam {
     return new Seam(lh, rh, radius)
+}
+
+export function polygon2d(vertices: [number, number][]): Polygon2D {
+    return new Polygon2D(vertices)
+}
+
+export function extrude(child: Polygon2D, opts: { h: number }): Extrude
+export function extrude(pos: Vec3, child: Polygon2D, opts: { h: number }): Extrude
+export function extrude(...args: any[]): Extrude {
+    if (args[0] instanceof Polygon2D) {
+        return new Extrude(args[0], args[1])
+    }
+    return new Extrude(args[0], args[1], args[2])
+}
+
+export function loft(...args: any[]): Loft {
+    // loft(profile1, profile2, ..., { h })
+    // loft(pos, profile1, profile2, ..., { h })
+    let pos: Vec3 | undefined
+    let startIdx = 0
+
+    // Check if first arg is a position array (not a Polygon2D)
+    if (!(args[0] instanceof Polygon2D) && Array.isArray(args[0]) && typeof args[0][0] === "number") {
+        pos = args[0] as Vec3
+        startIdx = 1
+    }
+
+    // Last arg is the options object
+    const opts = args[args.length - 1] as { h: number }
+    if (!opts || typeof opts.h !== "number") {
+        throw new Error("loft requires an options object with { h } as the last argument")
+    }
+
+    // Middle args are profiles
+    const profiles = args.slice(startIdx, args.length - 1) as Polygon2D[]
+    if (profiles.length < 2) {
+        throw new Error("loft requires at least 2 profiles")
+    }
+    for (const p of profiles) {
+        if (!(p instanceof Polygon2D)) {
+            throw new Error("loft profiles must be polygon2d() instances")
+        }
+    }
+
+    if (pos) {
+        return new Loft(pos, profiles, opts)
+    }
+    return new Loft(profiles, opts)
+}
+
+export function lathe(child: Polygon2D): Lathe
+export function lathe(pos: Vec3, child: Polygon2D): Lathe
+export function lathe(...args: any[]): Lathe {
+    if (args[0] instanceof Polygon2D) {
+        return new Lathe(args[0])
+    }
+    return new Lathe(args[0], args[1])
 }

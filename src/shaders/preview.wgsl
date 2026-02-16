@@ -57,6 +57,9 @@ struct VertexOutput {
     @location(0) uv: vec2f,
 }
 
+// Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
+//:) insert sceneAux
+
 // The contents of sceneSDF are replaced at runtime, do not modify this function.
 fn sceneSDF(p: vec3f) -> SDFResult {
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF

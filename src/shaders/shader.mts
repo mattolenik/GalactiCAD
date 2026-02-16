@@ -38,6 +38,24 @@ export class ShaderCompiler {
                 console.error("[Shader Debug] sceneSDF injection FAILED!")
             }
         }
-        return this.device.createShaderModule({ label, code })
+        const module = this.device.createShaderModule({ label, code })
+        module.getCompilationInfo().then(info => {
+            for (const msg of info.messages) {
+                const loc = msg.lineNum ? ` (line ${msg.lineNum}:${msg.linePos})` : ""
+                const logFn = msg.type === "error" ? console.error : msg.type === "warning" ? console.warn : console.log
+                logFn(`[WGSL ${msg.type}] ${label}${loc}: ${msg.message}`)
+                if (msg.type === "error") {
+                    const lines = code.split("\n")
+                    const lineIdx = msg.lineNum - 1
+                    const start = Math.max(0, lineIdx - 2)
+                    const end = Math.min(lines.length, lineIdx + 3)
+                    for (let i = start; i < end; i++) {
+                        const marker = i === lineIdx ? ">>>" : "   "
+                        console.error(`  ${marker} ${i + 1}: ${lines[i]}`)
+                    }
+                }
+            }
+        })
+        return module
     }
 }

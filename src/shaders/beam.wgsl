@@ -29,6 +29,9 @@ struct Camera {
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var tStartOut: texture_storage_2d<r32float, write>;
 
+// Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
+//:) insert sceneAux
+
 // Fast SDF: only returns vec2f(distance, gradientMagnitude).
 // Contents are replaced at runtime by the scene compiler.
 fn sceneSDF_fast(p: vec3f) -> vec2f {

@@ -9,12 +9,12 @@
  * and source order since they don't have unique identifying properties.
  */
 
-import { Node, Sphere, Box, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate } from "../scene/scene.mjs"
+import { Node, Sphere, Box, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate, Polygon2D, Extrude, Loft, Lathe } from "../scene/scene.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
 
 /** Composite shape types that are matched by name only */
-const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group", "rotate"])
+const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group", "rotate", "polygon2d", "extrude", "loft", "lathe"])
 
 /**
  * Tolerance for floating-point comparisons
@@ -41,45 +41,45 @@ function vec3ApproxEqual(a: { x: number, y: number, z: number }, b: { x: number,
  */
 function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
     const shapeType = node.getShapeType()
-    
+
     if (shapeType !== call.functionName) {
         return false
     }
-    
+
     if (node instanceof Sphere) {
         // Match sphere: position and radius must match
         if (!call.pos) return false
-        
+
         // Check position
         if (!vec3ApproxEqual(node.pos, call.pos)) {
             return false
         }
-        
+
         // Check radius (can be specified as r or d)
         const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
         if (expectedRadius === undefined) return false
-        
+
         if (!approxEqual(node.r, expectedRadius)) {
             return false
         }
-        
+
         return true
     }
-    
+
     if (node instanceof Box) {
         // Match box: position and size must match
         if (!call.pos || !call.size) return false
-        
+
         // Check position
         if (!vec3ApproxEqual(node.pos, call.pos)) {
             return false
         }
-        
+
         // Check size
         if (!vec3ApproxEqual(node.size, call.size)) {
             return false
         }
-        
+
         return true
     }
 
@@ -153,14 +153,14 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         if (!vec3ApproxEqual(node.pos, call.pos)) return false
         return true
     }
-    
+
     // For composite types (union, subtract, group), match by type name only.
     // Since they don't have unique identifying properties, we match them
     // in source order (first union node matches first union call, etc.)
     if (COMPOSITE_TYPES.has(shapeType)) {
         return true  // Type already matched above
     }
-    
+
     return false
 }
 
@@ -179,15 +179,15 @@ export function matchNodesToSource(
     calls: ParsedShapeCall[]
 ): Map<number, SourceLocation> {
     const result = new Map<number, SourceLocation>()
-    
+
     // Track which calls have been matched to avoid duplicate matches
     const matchedCalls = new Set<ParsedShapeCall>()
-    
+
     for (const node of nodes) {
         // Find a matching call for this node
         for (const call of calls) {
             if (matchedCalls.has(call)) continue
-            
+
             if (matchNodeToCall(node, call)) {
                 result.set(node.id, call.location)
                 matchedCalls.add(call)
@@ -196,8 +196,8 @@ export function matchNodesToSource(
             }
         }
     }
-    
+
     console.debug(`[NodeMatcher] Matched ${result.size}/${nodes.length} nodes`)
-    
+
     return result
 }

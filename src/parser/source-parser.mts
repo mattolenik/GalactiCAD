@@ -49,8 +49,8 @@ export type SourceLocationMap = Map<number, SourceLocation>
 /**
  * Shape functions we care about for source location tracking
  */
-const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob"])
-const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group", "rotate"])
+const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
+const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group", "rotate", "extrude", "loft", "lathe"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS])
 
 /**
@@ -64,7 +64,7 @@ export class SourceParser {
      */
     parseShapeCalls(src: string): ParsedShapeCall[] {
         const calls: ParsedShapeCall[] = []
-        
+
         try {
             const ast = parse(src, {
                 ecmaVersion: "latest",
@@ -72,30 +72,30 @@ export class SourceParser {
                 locations: true,
                 ranges: true
             })
-            
+
             // Walk the entire AST to find all shape function calls
             this.walkNode(ast, calls)
-            
+
             console.debug(`[SourceParser] Found ${calls.length} shape call(s)`)
-            
+
         } catch (err) {
             console.warn("[SourceParser] Failed to parse source code:", err)
         }
-        
+
         return calls
     }
-    
+
     /**
      * Walk AST node recursively to find all shape function calls
      */
     private walkNode(node: AcornNode, calls: ParsedShapeCall[]): void {
         if (!node || typeof node !== "object") return
-        
+
         if (node.type === "CallExpression") {
             const callNode = node as CallExpression
             this.processCallExpression(callNode, calls)
         }
-        
+
         // Recursively walk all properties
         for (const key of Object.keys(node)) {
             if (key === "type" || key === "loc" || key === "range" || key === "start" || key === "end") continue
@@ -111,20 +111,20 @@ export class SourceParser {
             }
         }
     }
-    
+
     /**
      * Process a CallExpression to extract shape function info
      */
     private processCallExpression(callNode: CallExpression, calls: ParsedShapeCall[]): void {
         // Only handle direct identifier calls (e.g., sphere(...), not obj.sphere(...))
         if (callNode.callee.type !== "Identifier") return
-        
+
         const funcName = callNode.callee.name
         if (!ALL_SHAPE_FUNCTIONS.has(funcName)) return
-        
+
         const loc = callNode.callee.loc
         if (!loc) return
-        
+
         const parsedCall: ParsedShapeCall = {
             functionName: funcName,
             location: {
@@ -135,7 +135,7 @@ export class SourceParser {
                 functionName: funcName
             }
         }
-        
+
         // Extract arguments for primitives
         if (funcName === "sphere" || funcName === "disc") {
             this.parseSphereArgs(callNode, parsedCall)
@@ -152,10 +152,10 @@ export class SourceParser {
         } else if (funcName === "blob") {
             this.parseBlobArgs(callNode, parsedCall)
         }
-        
+
         calls.push(parsedCall)
     }
-    
+
     /**
      * Parse sphere(pos, {r?, d?}) arguments
      */
@@ -169,7 +169,7 @@ export class SourceParser {
                     parsedCall.pos = vec3(posValue)
                 }
             }
-            
+
             // Second arg: {r?, d?}
             if (callNode.arguments.length >= 2) {
                 const optionsArg = callNode.arguments[1]
@@ -191,7 +191,7 @@ export class SourceParser {
             console.debug(`[SourceParser] Could not parse sphere args:`, err)
         }
     }
-    
+
     /**
      * Parse box(pos, size) arguments
      */
@@ -205,7 +205,7 @@ export class SourceParser {
                     parsedCall.pos = vec3(posValue)
                 }
             }
-            
+
             // Second arg: size
             if (callNode.arguments.length >= 2) {
                 const sizeArg = callNode.arguments[1]
@@ -218,7 +218,7 @@ export class SourceParser {
             console.debug(`[SourceParser] Could not parse box args:`, err)
         }
     }
-    
+
     /**
      * Parse cylinder/cone/hexprism(pos, {r?, d?, h}) arguments
      */
@@ -370,11 +370,11 @@ export class SourceParser {
      */
     private evaluateExpression(node: AcornNode): any {
         if (!node) return undefined
-        
+
         switch (node.type) {
             case "Literal":
                 return (node as any).value
-                
+
             case "ArrayExpression": {
                 const elements = (node as any).elements
                 const result: number[] = []
@@ -385,7 +385,7 @@ export class SourceParser {
                 }
                 return result
             }
-            
+
             case "UnaryExpression": {
                 const unary = node as any
                 if (unary.operator === "-") {
@@ -396,7 +396,7 @@ export class SourceParser {
                 }
                 return undefined
             }
-            
+
             case "TemplateLiteral": {
                 // Handle simple template literals like `1 2 3`
                 const templ = node as any
@@ -405,7 +405,7 @@ export class SourceParser {
                 }
                 return undefined
             }
-            
+
             default:
                 return undefined
         }

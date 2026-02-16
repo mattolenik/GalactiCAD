@@ -334,7 +334,7 @@ export class PolygonEditor extends HTMLElement {
         if (shouldSnap) {
             return [Math.round(wx), Math.round(wy)]
         }
-        return [Math.round(wx * 1000) / 1000, Math.round(wy * 1000) / 1000]
+        return [Math.round(wx * 100) / 100, Math.round(wy * 100) / 100]
     }
 
     // ── Drawing ────────────────────────────────────────────────────
@@ -788,9 +788,9 @@ export class PolygonEditor extends HTMLElement {
 
             const xInput = document.createElement("input")
             xInput.type = "number"
-            xInput.step = "0.001"
+            xInput.step = "0.01"
             xInput.className = "vertex-input"
-            xInput.value = String(Math.round(this.#vertices[i][0] * 1000) / 1000)
+            xInput.value = String(Math.round(this.#vertices[i][0] * 100) / 100)
 
             const yLabel = document.createElement("span")
             yLabel.className = "axis-label"
@@ -798,9 +798,9 @@ export class PolygonEditor extends HTMLElement {
 
             const yInput = document.createElement("input")
             yInput.type = "number"
-            yInput.step = "0.001"
+            yInput.step = "0.01"
             yInput.className = "vertex-input"
-            yInput.value = String(Math.round(this.#vertices[i][1] * 1000) / 1000)
+            yInput.value = String(Math.round(this.#vertices[i][1] * 100) / 100)
 
             row.append(label, xLabel, xInput, yLabel, yInput)
 
@@ -816,7 +816,7 @@ export class PolygonEditor extends HTMLElement {
             xInput.addEventListener("input", () => {
                 const val = parseFloat(xInput.value)
                 if (!isNaN(val)) {
-                    this.#vertices[idx][0] = Math.round(val * 1000) / 1000
+                    this.#vertices[idx][0] = Math.round(val * 100) / 100
                     this.#emitChange()
                     this.#draw()
                 }
@@ -826,7 +826,7 @@ export class PolygonEditor extends HTMLElement {
             yInput.addEventListener("input", () => {
                 const val = parseFloat(yInput.value)
                 if (!isNaN(val)) {
-                    this.#vertices[idx][1] = Math.round(val * 1000) / 1000
+                    this.#vertices[idx][1] = Math.round(val * 100) / 100
                     this.#emitChange()
                     this.#draw()
                 }
@@ -841,8 +841,8 @@ export class PolygonEditor extends HTMLElement {
         if (!row) return
         const inputs = row.querySelectorAll<HTMLInputElement>(".vertex-input")
         if (inputs.length >= 2) {
-            inputs[0].value = String(Math.round(this.#vertices[idx][0] * 1000) / 1000)
-            inputs[1].value = String(Math.round(this.#vertices[idx][1] * 1000) / 1000)
+            inputs[0].value = String(Math.round(this.#vertices[idx][0] * 100) / 100)
+            inputs[1].value = String(Math.round(this.#vertices[idx][1] * 100) / 100)
         }
     }
 

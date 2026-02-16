@@ -752,8 +752,8 @@ class App {
 }
 function formatVertices(vertices: [number, number][]): string {
     const pairs = vertices.map(([x, y]) => {
-        const xs = String(Math.round(x * 1000) / 1000)
-        const ys = String(Math.round(y * 1000) / 1000)
+        const xs = String(Math.round(x * 100) / 100)
+        const ys = String(Math.round(y * 100) / 100)
         return `[${xs}, ${ys}]`
     })
     return `[${pairs.join(", ")}]`

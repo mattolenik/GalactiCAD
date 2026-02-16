@@ -12,6 +12,13 @@ function scene() {
     ])
     const extrudedL = extrude([20, 0, 0], lShape, { h: 5 })
 
+    // === EXTRUDE with TWIST: Star twisted 180° ===
+    const star = polygon2d([
+        [0, 4], [1, 1.5], [4, 1.2], [1.8, -0.5], [2.5, -3.5],
+        [0, -1.5], [-2.5, -3.5], [-1.8, -0.5], [-4, 1.2], [-1, 1.5]
+    ])
+    const twistedStar = extrude([40, 0, 0], star, { h: 8, t: 180 })
+
     // === LOFT: Square to triangle ===
     const square = polygon2d([[-4, -4], [4, -4], [4, 4], [-4, 4]])
     const triangle = polygon2d([[-2, -2], [2, -2], [0, 3]])
@@ -29,6 +36,7 @@ function scene() {
     return union(
         extrudedTri,
         extrudedL,
+        twistedStar,
         lofted,
         vase
     )

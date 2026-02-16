@@ -1273,20 +1273,24 @@ fn ${this.wgslFuncName}(p: vec2f) -> f32 {
  */
 export class Extrude extends WithPos(Node) {
     h: number
+    /** Twist angle in degrees over the full height. 0 = no twist. */
+    twist: number
     child: Polygon2D
 
-    constructor(child: Polygon2D, opts: { h: number })
-    constructor(pos: Vec3, child: Polygon2D, opts: { h: number })
+    constructor(child: Polygon2D, opts: { h: number; t?: number })
+    constructor(pos: Vec3, child: Polygon2D, opts: { h: number; t?: number })
     constructor(...args: any[]) {
         super()
         if (args[0] instanceof Polygon2D) {
             this.pos = new Vec3f()
             this.child = args[0]
             this.h = args[1].h
+            this.twist = args[1].t ?? 0
         } else {
             this.pos = vec3(args[0])
             this.child = args[1]
             this.h = args[2].h
+            this.twist = args[2].t ?? 0
         }
     }
 
@@ -1307,20 +1311,23 @@ export class Extrude extends WithPos(Node) {
         return [this.id, ...this.child.getAllDescendantIds()]
     }
 
+    get wgslFieldFuncName(): string { return `fExtrude_${this.id}_field` }
     get wgslExFuncName(): string { return `fExtrude_${this.id}_Ex` }
     get wgslFastFuncName(): string { return `fExtrude_${this.id}_Fast` }
 
     override compileAux(): string {
         const childFunc = this.child.wgslFuncName
         const h = this.h.toFixed(6)
+        const hasTwist = this.twist !== 0
 
-        return `
+        if (!hasTwist) {
+            // No twist: exact SDF with analytic normals
+            return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d2d = ${childFunc}(p.xz);
     let dCap = abs(p.y) - ${h};
     let d = max(d2d, dCap);
     let onSide = d2d > dCap;
-    // Side normal via finite differences on the 2D SDF
     let eps = 0.001;
     let gx = ${childFunc}(p.xz + vec2f(eps, 0.0)) - ${childFunc}(p.xz - vec2f(eps, 0.0));
     let gz = ${childFunc}(p.xz + vec2f(0.0, eps)) - ${childFunc}(p.xz - vec2f(0.0, eps));
@@ -1334,6 +1341,38 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
     let d2d = ${childFunc}(p.xz);
     let dCap = abs(p.y) - ${h};
     return vec2f(max(d2d, dCap), 1.0);
+}
+`
+        }
+
+        // With twist: distance estimator, normals via 3D finite differences
+        const twistRad = (this.twist * Math.PI / 180).toFixed(10)
+        return `
+fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
+    let h = ${h};
+    let twist = ${twistRad};
+    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
+    let angle = twist * t;
+    let ca = cos(angle);
+    let sa = sin(angle);
+    let twisted = vec2f(ca * p.x + sa * p.z, -sa * p.x + ca * p.z);
+    let d2d = ${childFunc}(twisted);
+    let dCap = abs(p.y) - h;
+    return max(d2d, dCap);
+}
+
+fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
+    let d = ${this.wgslFieldFuncName}(p);
+    let eps = 0.001;
+    let nx = ${this.wgslFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
+    let ny = ${this.wgslFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, eps, 0.0));
+    let nz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
+    let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
+    return sdfR(d, 0.8, 1.0, id, n);
+}
+
+fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+    return vec2f(${this.wgslFieldFuncName}(p), 0.8);
 }
 `
     }
@@ -1829,8 +1868,8 @@ export function polygon2d(vertices: [number, number][]): Polygon2D {
     return new Polygon2D(vertices)
 }
 
-export function extrude(child: Polygon2D, opts: { h: number }): Extrude
-export function extrude(pos: Vec3, child: Polygon2D, opts: { h: number }): Extrude
+export function extrude(child: Polygon2D, opts: { h: number; t?: number }): Extrude
+export function extrude(pos: Vec3, child: Polygon2D, opts: { h: number; t?: number }): Extrude
 export function extrude(...args: any[]): Extrude {
     if (args[0] instanceof Polygon2D) {
         return new Extrude(args[0], args[1])

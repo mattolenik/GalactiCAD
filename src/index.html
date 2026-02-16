@@ -111,8 +111,11 @@
         #toolbar {
             display: grid;
             width: 100%;
-            grid-template-columns: auto min-content;
+            grid-template-columns: 1fr min-content;
             box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+        }
+        #toolbar > #tabs {
+            min-width: 0;
         }
 
         #workspace {

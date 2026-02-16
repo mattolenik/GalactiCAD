@@ -195,11 +195,11 @@ export class DocumentTabs extends HTMLElement {
     newDocument(content = defaultContent, language = "javascript"): string | undefined {
         this.#topUntitledIndex =
             Array.from(this.#docs.keys())
-                .map(s => parseInt(s.match(/^new sketch (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
+                .map(s => parseInt(s.match(/^new scene (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
                 .reduce((p, c) => Math.max(p, c), 0) + 1
 
-        const defaultName = `new sketch ${this.#topUntitledIndex}`
-        const name = this.#docs.size > 0 ? window.prompt("Give the new sketch a name", defaultName)?.trim() : defaultName
+        const defaultName = `new scene ${this.#topUntitledIndex}`
+        const name = this.#docs.size > 0 ? window.prompt("Give the new scene a name", defaultName)?.trim() : defaultName
         if (!name) return
 
         const uri = monaco.Uri.parse(`inmemory://model/${name}`)
@@ -331,11 +331,11 @@ export class DocumentTabs extends HTMLElement {
         const content = model.getValue()
         const settings = SettingsManager.instance.getDocumentSettings(this.#active)
 
-        const newName = window.prompt("Name for duplicated sketch", this.#active)?.trim()
+        const newName = window.prompt("Name for duplicated scene", this.#active)?.trim()
         if (!newName || newName === this.#active) return undefined
 
         if (this.#docs.has(newName)) {
-            alert(`A sketch named "${newName}" already exists.`)
+            alert(`A scene named "${newName}" already exists.`)
             return undefined
         }
 
@@ -354,12 +354,12 @@ export class DocumentTabs extends HTMLElement {
         const model = this.#docs.get(oldName)
         if (!model) return false
 
-        const newName = window.prompt("Enter new name for the sketch", oldName)?.trim()
+        const newName = window.prompt("Enter new name for the scene", oldName)?.trim()
         if (!newName || newName === oldName) return false
 
         // Check for duplicate names
         if (this.#docs.has(newName)) {
-            alert(`A sketch named "${newName}" already exists.`)
+            alert(`A scene named "${newName}" already exists.`)
             return false
         }
 

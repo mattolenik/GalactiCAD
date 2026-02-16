@@ -47,6 +47,18 @@ export interface ParsedShapeCall {
 export type SourceLocationMap = Map<number, SourceLocation>
 
 /**
+ * Information about a polygon2d() call for the polygon editor
+ */
+export interface Polygon2DCallInfo {
+    callStartOffset: number
+    callEndOffset: number
+    arrayStartOffset: number
+    arrayEndOffset: number
+    vertices: [number, number][]
+    location: SourceLocation
+}
+
+/**
  * Shape functions we care about for source location tracking
  */
 const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
@@ -409,6 +421,115 @@ export class SourceParser {
             default:
                 return undefined
         }
+    }
+
+    /**
+     * Find a polygon2d() call at a given editor position.
+     * Returns info needed by the polygon editor, or null if not on a polygon2d call.
+     */
+    findPolygon2DAtPosition(src: string, line: number, column: number): Polygon2DCallInfo | null {
+        const offset = this.positionToOffset(src, line, column)
+        const calls: Polygon2DCallInfo[] = []
+
+        try {
+            const ast = parse(src, {
+                ecmaVersion: "latest",
+                sourceType: "script",
+                locations: true,
+                ranges: true
+            })
+            this.walkNodeForPolygon2D(ast, calls)
+        } catch {
+            return null
+        }
+
+        for (const call of calls) {
+            if (offset >= call.callStartOffset && offset <= call.callEndOffset) {
+                return call
+            }
+        }
+        return null
+    }
+
+    private positionToOffset(src: string, line: number, column: number): number {
+        const lines = src.split("\n")
+        let offset = 0
+        for (let i = 0; i < line - 1 && i < lines.length; i++) {
+            offset += lines[i].length + 1
+        }
+        offset += column - 1
+        return offset
+    }
+
+    private walkNodeForPolygon2D(node: AcornNode, calls: Polygon2DCallInfo[]): void {
+        if (!node || typeof node !== "object") return
+
+        if (node.type === "CallExpression") {
+            const callNode = node as CallExpression
+            if (callNode.callee.type === "Identifier" && callNode.callee.name === "polygon2d") {
+                const info = this.extractPolygon2DInfo(callNode)
+                if (info) calls.push(info)
+            }
+        }
+
+        for (const key of Object.keys(node)) {
+            if (key === "type" || key === "loc" || key === "range" || key === "start" || key === "end") continue
+            const value = (node as any)[key]
+            if (Array.isArray(value)) {
+                for (const item of value) {
+                    if (item && typeof item === "object" && item.type) {
+                        this.walkNodeForPolygon2D(item, calls)
+                    }
+                }
+            } else if (value && typeof value === "object" && value.type) {
+                this.walkNodeForPolygon2D(value, calls)
+            }
+        }
+    }
+
+    private extractPolygon2DInfo(callNode: CallExpression): Polygon2DCallInfo | null {
+        const loc = callNode.callee.loc
+        if (!loc) return null
+        if (callNode.arguments.length < 1) return null
+
+        const arrayArg = callNode.arguments[0]
+        if (arrayArg.type !== "ArrayExpression") return null
+
+        const vertices = this.evaluateVertexArray(arrayArg)
+        if (!vertices) return null
+
+        return {
+            callStartOffset: callNode.start,
+            callEndOffset: callNode.end,
+            arrayStartOffset: arrayArg.start,
+            arrayEndOffset: arrayArg.end,
+            vertices,
+            location: {
+                startLine: loc.start.line,
+                startColumn: loc.start.column + 1,
+                endLine: loc.end.line,
+                endColumn: loc.end.column + 1,
+                functionName: "polygon2d"
+            }
+        }
+    }
+
+    private evaluateVertexArray(node: AcornNode): [number, number][] | null {
+        if (node.type !== "ArrayExpression") return null
+        const elements = (node as any).elements
+        const vertices: [number, number][] = []
+
+        for (const elem of elements) {
+            if (!elem || elem.type !== "ArrayExpression") return null
+            const inner = elem.elements
+            if (!inner || inner.length !== 2) return null
+            const x = this.evaluateExpression(inner[0])
+            const y = this.evaluateExpression(inner[1])
+            if (typeof x !== "number" || typeof y !== "number") return null
+            vertices.push([x, y])
+        }
+
+        return vertices
     }
 }
 

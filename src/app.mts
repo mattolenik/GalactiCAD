@@ -11,11 +11,12 @@ import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, 
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager, type SelectionMode } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
-import { SourceParser, type SourceLocation } from "./parser/source-parser.mjs"
+import { SourceParser, type SourceLocation, type Polygon2DCallInfo } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
 import { ResizeHandle } from "./components/resize-handle.mjs"
 import { Toolbar } from "./components/toolbar.mjs"
+import { PolygonEditor } from "./components/polygon-editor.mjs"
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -33,6 +34,7 @@ class App {
     #sceneNodeMap: Map<number, import("./scene/scene.mjs").Node> = new Map()  // nodeId -> Node for symbol lookup
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
+    #polygonEditor: PolygonEditor | null = null
 
     build() {
         try {
@@ -296,6 +298,23 @@ class App {
             wrappingStrategy: "advanced",
         })
 
+        this.editor.addAction({
+            id: "galacticad.editPolygon",
+            label: "Edit polygon",
+            contextMenuGroupId: "navigation",
+            contextMenuOrder: 1.5,
+            run: (ed) => {
+                const model = ed.getModel()
+                if (!model) return
+                const pos = ed.getPosition()
+                if (!pos) return
+                const src = model.getValue()
+                const info = this.#sourceParser.findPolygon2DAtPosition(src, pos.lineNumber, pos.column)
+                if (!info) return
+                this.#openPolygonEditor(info, model)
+            }
+        })
+
         this.#tabs = new DocumentTabs(this.editor)
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
@@ -458,7 +477,7 @@ class App {
                     })
 
                 const newItem = document.createElement("span")
-                newItem.innerHTML = "New Sketch"
+                newItem.innerHTML = "New Scene"
                 const renameItem = document.createElement("span")
                 renameItem.innerHTML = "Rename"
                 const duplicateItem = document.createElement("span")
@@ -577,6 +596,32 @@ class App {
             })
     }
 
+    #openPolygonEditor(info: Polygon2DCallInfo, model: monaco.editor.ITextModel) {
+        if (this.#polygonEditor) {
+            this.#polygonEditor.remove()
+            this.#polygonEditor = null
+        }
+
+        const editor = new PolygonEditor(info.vertices)
+        let arrayStart = info.arrayStartOffset
+        let arrayEnd = info.arrayEndOffset
+
+        editor.onChange = (vertices) => {
+            const newText = formatVertices(vertices)
+            const startPos = model.getPositionAt(arrayStart)
+            const endPos = model.getPositionAt(arrayEnd)
+            const range = new monaco.Range(
+                startPos.lineNumber, startPos.column,
+                endPos.lineNumber, endPos.column
+            )
+            model.pushEditOperations([], [{ range, text: newText }], () => null)
+            arrayEnd = arrayStart + newText.length
+        }
+
+        editor.show()
+        this.#polygonEditor = editor
+    }
+
     #scheduleMeshUpdate(src: string) {
         // Skip mesh updates if mesh viewer is not enabled
         if (!this.#meshViewerEnabled || !this.#mesh) {
@@ -680,4 +725,13 @@ class App {
         }
     }
 }
+function formatVertices(vertices: [number, number][]): string {
+    const pairs = vertices.map(([x, y]) => {
+        const xs = String(Math.round(x * 1000) / 1000)
+        const ys = String(Math.round(y * 1000) / 1000)
+        return `[${xs}, ${ys}]`
+    })
+    return `[${pairs.join(", ")}]`
+}
+
 export default App

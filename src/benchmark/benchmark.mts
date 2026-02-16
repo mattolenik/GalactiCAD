@@ -8,7 +8,7 @@ import { SDFRenderer } from "../sdf.mjs"
 // ---------------------------------------------------------------------------
 
 export interface BenchmarkCase {
-    /** Document/sketch name */
+    /** Document/scene name */
     name: string
     /** Scene source code */
     source: string
@@ -101,7 +101,7 @@ function createOffscreenHost(width: number, height: number): HTMLElement & { can
     canvas.width = width
     canvas.height = height
     host.appendChild(canvas)
-    ;(host as HTMLElement & { canvas: HTMLCanvasElement }).canvas = canvas
+        ; (host as HTMLElement & { canvas: HTMLCanvasElement }).canvas = canvas
     document.body.appendChild(host)
     return host as HTMLElement & { canvas: HTMLCanvasElement }
 }

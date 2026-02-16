@@ -29,6 +29,12 @@ export class PolygonEditor extends HTMLElement {
     #mouseSY = 0
     #mouseOnCanvas = false
 
+    // rAF draw batching
+    #drawPending = false
+    #pendingInputUpdate = -1
+    #changeDirty = false
+    #canvasRect: DOMRect = new DOMRect()
+
     // Canvas sizing (CSS pixels)
     #canvasW = 0
     #canvasH = 0
@@ -208,7 +214,7 @@ export class PolygonEditor extends HTMLElement {
         `
 
         this.#canvas = this.#shadow.querySelector("canvas")!
-        this.#ctx = this.#canvas.getContext("2d")!
+        this.#ctx = this.#canvas.getContext("2d", { alpha: false })!
         this.#vertexList = this.#shadow.querySelector(".vertex-list")!
         this.#snapCheckbox = this.#shadow.querySelector<HTMLInputElement>(".snap-checkbox")!
         this.#modeLabel = this.#shadow.querySelector(".mode-label")!
@@ -281,12 +287,12 @@ export class PolygonEditor extends HTMLElement {
     // ── Canvas sizing ──────────────────────────────────────────────
 
     #resizeCanvas() {
-        const rect = this.#canvas.getBoundingClientRect()
+        this.#canvasRect = this.#canvas.getBoundingClientRect()
         const dpr = devicePixelRatio || 1
-        this.#canvasW = rect.width
-        this.#canvasH = rect.height
-        this.#canvas.width = rect.width * dpr
-        this.#canvas.height = rect.height * dpr
+        this.#canvasW = this.#canvasRect.width
+        this.#canvasH = this.#canvasRect.height
+        this.#canvas.width = this.#canvasRect.width * dpr
+        this.#canvas.height = this.#canvasRect.height * dpr
         this.#ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
 
@@ -351,6 +357,23 @@ export class PolygonEditor extends HTMLElement {
     }
 
     // ── Drawing ────────────────────────────────────────────────────
+
+    #requestDraw() {
+        if (this.#drawPending) return
+        this.#drawPending = true
+        requestAnimationFrame(() => {
+            this.#drawPending = false
+            this.#draw()
+            if (this.#pendingInputUpdate >= 0) {
+                this.#updateVertexInputs(this.#pendingInputUpdate)
+                this.#pendingInputUpdate = -1
+            }
+            if (this.#changeDirty) {
+                this.#changeDirty = false
+                this.#emitChange()
+            }
+        })
+    }
 
     #draw() {
         const ctx = this.#ctx
@@ -551,9 +574,8 @@ export class PolygonEditor extends HTMLElement {
     // ── Mouse handlers ─────────────────────────────────────────────
 
     #onCanvasMouseDown = (e: MouseEvent) => {
-        const rect = this.#canvas.getBoundingClientRect()
-        const sx = e.clientX - rect.left
-        const sy = e.clientY - rect.top
+        const sx = e.clientX - this.#canvasRect.left
+        const sy = e.clientY - this.#canvasRect.top
 
         // Middle click or right click for panning
         if (e.button === 1 || e.button === 2) {
@@ -627,9 +649,10 @@ export class PolygonEditor extends HTMLElement {
     }
 
     #onCanvasMouseMove = (e: MouseEvent) => {
-        const rect = this.#canvas.getBoundingClientRect()
-        const sx = e.clientX - rect.left
-        const sy = e.clientY - rect.top
+        if (this.#dragging || this.#isPanning) return
+
+        const sx = e.clientX - this.#canvasRect.left
+        const sy = e.clientY - this.#canvasRect.top
         const [wx, wy] = this.#screenToWorld(sx, sy)
 
         this.#mouseWorldX = wx
@@ -652,14 +675,14 @@ export class PolygonEditor extends HTMLElement {
         }
 
         if (this.#mode === "new") {
-            this.#draw()
+            this.#requestDraw()
         }
     }
 
     #onCanvasMouseLeave = () => {
         this.#mouseOnCanvas = false
         if (this.#mode === "new") {
-            this.#draw()
+            this.#requestDraw()
         }
     }
 
@@ -669,34 +692,35 @@ export class PolygonEditor extends HTMLElement {
             const dy = (e.clientY - this.#panStartScreen[1]) / this.#zoom
             this.#panX = this.#panStartOffset[0] - dx
             this.#panY = this.#panStartOffset[1] + dy
-            this.#draw()
+            this.#requestDraw()
             return
         }
 
         if (this.#dragging && this.#selectedVertex >= 0) {
-            const rect = this.#canvas.getBoundingClientRect()
-            const sx = e.clientX - rect.left
-            const sy = e.clientY - rect.top
+            const sx = e.clientX - this.#canvasRect.left
+            const sy = e.clientY - this.#canvasRect.top
             const [wx, wy] = this.#applySnap(...this.#screenToWorld(sx, sy))
             this.#vertices[this.#selectedVertex] = [wx, wy]
-            this.#updateVertexInputs(this.#selectedVertex)
-            this.#emitChange()
-            this.#draw()
+            this.#pendingInputUpdate = this.#selectedVertex
+            this.#requestDraw()
         }
     }
 
     #onDragEnd = () => {
+        const wasDragging = this.#dragging
         this.#dragging = false
         this.#isPanning = false
         window.removeEventListener("mousemove", this.#onDragMove)
         window.removeEventListener("mouseup", this.#onDragEnd)
+        if (wasDragging) {
+            this.#emitChange()
+        }
     }
 
     #onWheel = (e: WheelEvent) => {
         e.preventDefault()
-        const rect = this.#canvas.getBoundingClientRect()
-        const sx = e.clientX - rect.left
-        const sy = e.clientY - rect.top
+        const sx = e.clientX - this.#canvasRect.left
+        const sy = e.clientY - this.#canvasRect.top
 
         const [wxBefore, wyBefore] = this.#screenToWorld(sx, sy)
 
@@ -707,7 +731,7 @@ export class PolygonEditor extends HTMLElement {
         this.#panX -= wxAfter - wxBefore
         this.#panY -= wyAfter - wyBefore
 
-        this.#draw()
+        this.#requestDraw()
     }
 
     // ── Keyboard handlers ──────────────────────────────────────────

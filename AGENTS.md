@@ -34,11 +34,9 @@ That results in previewShader being a string with the processed content of the c
 
 ## Building and Linting
 
-**Use these exact commands** - do not use npm/pnpm run, node, or tsx directly:
+See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 - **Build**: `make build`
 - **Test**: `make test`
-
-The Makefile orchestrates the build via `build/build.mts`; use `make` as the single entry point.
 
 **Do not run build or lint commands on WGSL files directly.** WGSL files will be compiled with `make build` by the custom build logic. This means when making changes to WGSL files, you should run `make build` to validate them. If they don't compile, you will see the compiler error in `make build`. This custom build logic is what handles the `//:) include` directive, meaning this shader compiler output is indicative of what happens at runtime.

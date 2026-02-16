@@ -1,0 +1,20 @@
+---
+description: Build and test commands - use make only, never npm/pnpm/node/tsx/npx
+alwaysApply: true
+---
+
+# Build and Test Commands
+
+**CRITICAL: NEVER use these commands for building or running tests:**
+- `npm` — NEVER
+- `pnpm` — NEVER
+- `node` — NEVER
+- `tsx` — NEVER
+- `npx` — NEVER
+
+Under NO condition whatsoever, from now until the end of time, use any of the above. Always, always, always and forever throughout all eternity, run `make build` and nothing else for building. For tests, run `make test`.
+
+- **Build**: `make build` (ONLY THIS. EVER.)
+- **Test**: `make test`
+
+The Makefile orchestrates the build via `build/build.mts`; use `make` as the single entry point.

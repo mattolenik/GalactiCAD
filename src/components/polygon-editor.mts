@@ -46,10 +46,15 @@ export class PolygonEditor extends HTMLElement {
     #snapCheckbox: HTMLInputElement
     #modeLabel: HTMLSpanElement
 
+    // Undo/redo
+    #undoStack: [number, number][][] = []
+    #redoStack: [number, number][][] = []
+
     // Source sync
     #change$ = new Subject<void>()
     #changeSub: Subscription
     onChange?: (vertices: [number, number][]) => void
+    onClose?: () => void
 
     constructor(vertices: [number, number][]) {
         super()
@@ -59,30 +64,12 @@ export class PolygonEditor extends HTMLElement {
         this.#shadow.innerHTML = `
             <style>
                 :host {
-                    display: block;
-                    position: fixed;
-                    inset: 0;
-                    z-index: 10000;
-                }
-                .overlay {
-                    position: fixed;
-                    inset: 0;
-                    background: rgba(0, 0, 0, 0.6);
-                }
-                .dialog {
-                    position: fixed;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    width: 80vw;
-                    height: 80vh;
-                    max-width: 1200px;
-                    background: var(${__tone_2});
-                    color: var(${__fg_color});
-                    border-radius: 8px;
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+                    width: 100%;
+                    height: 100%;
+                    background: var(${__tone_2});
+                    color: var(${__fg_color});
                     overflow: hidden;
                 }
                 .titlebar {
@@ -193,24 +180,21 @@ export class PolygonEditor extends HTMLElement {
                     border-color: var(${__tone_accent});
                 }
             </style>
-            <div class="overlay"></div>
-            <div class="dialog">
-                <div class="titlebar">
-                    <span>Polygon Editor</span>
-                    <button class="close-btn">\u00d7</button>
-                </div>
-                <div class="canvas-container">
-                    <canvas></canvas>
-                </div>
-                <div class="controls">
-                    <label>
-                        <input type="checkbox" class="snap-checkbox">
-                        Snap to grid
-                    </label>
-                    <span class="mode-label"></span>
-                </div>
-                <div class="vertex-list"></div>
+            <div class="titlebar">
+                <span>Polygon Editor</span>
+                <button class="close-btn">\u00d7</button>
             </div>
+            <div class="canvas-container">
+                <canvas></canvas>
+            </div>
+            <div class="controls">
+                <label>
+                    <input type="checkbox" class="snap-checkbox">
+                    Snap to grid
+                </label>
+                <span class="mode-label"></span>
+            </div>
+            <div class="vertex-list"></div>
         `
 
         this.#canvas = this.#shadow.querySelector("canvas")!
@@ -271,16 +255,13 @@ export class PolygonEditor extends HTMLElement {
         window.removeEventListener("mouseup", this.#onDragEnd)
     }
 
-    show() {
-        document.body.appendChild(this)
-    }
-
     #close() {
         if (!this.isConnected) return
         // Flush final state
         this.onChange?.(this.#vertices.map(v => [v[0], v[1]] as [number, number]))
         this.onChange = undefined
         this.#changeSub.unsubscribe()
+        this.onClose?.()
         this.remove()
     }
 
@@ -597,6 +578,7 @@ export class PolygonEditor extends HTMLElement {
             if (this.#vertices.length >= 3) {
                 const [fsx, fsy] = this.#worldToScreen(...this.#vertices[0])
                 if (Math.hypot(sx - fsx, sy - fsy) <= 5) {
+                    this.#pushUndo()
                     this.#mode = "edit"
                     this.#selectedVertex = -1
                     this.#emitChange()
@@ -607,6 +589,7 @@ export class PolygonEditor extends HTMLElement {
                 }
             }
 
+            this.#pushUndo()
             this.#vertices.push([wx, wy])
             this.#selectedVertex = this.#vertices.length - 1
             this.#emitChange()
@@ -618,6 +601,7 @@ export class PolygonEditor extends HTMLElement {
         // Edit mode: check vertex hit
         const hitVertex = this.#findVertexAt(sx, sy)
         if (hitVertex >= 0) {
+            this.#pushUndo()
             this.#selectedVertex = hitVertex
             this.#dragging = true
             this.#highlightSelectedRow()
@@ -630,6 +614,7 @@ export class PolygonEditor extends HTMLElement {
         // Check edge hit for splitting
         const hitEdge = this.#findEdgeAt(sx, sy)
         if (hitEdge >= 0) {
+            this.#pushUndo()
             const [wx, wy] = this.#applySnap(...this.#screenToWorld(sx, sy))
             this.#vertices.splice(hitEdge + 1, 0, [wx, wy])
             this.#selectedVertex = hitEdge + 1
@@ -742,6 +727,18 @@ export class PolygonEditor extends HTMLElement {
             return
         }
 
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "z") {
+            e.preventDefault()
+            this.#redo()
+            return
+        }
+
+        if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+            e.preventDefault()
+            this.#undo()
+            return
+        }
+
         if (e.key === "Alt") {
             this.#altHeld = true
             e.preventDefault()
@@ -752,6 +749,7 @@ export class PolygonEditor extends HTMLElement {
             // Don't delete if a text input is focused
             if (this.#shadow.activeElement instanceof HTMLInputElement) return
 
+            this.#pushUndo()
             this.#vertices.splice(this.#selectedVertex, 1)
             if (this.#vertices.length <= 2) {
                 this.#mode = "new"
@@ -814,6 +812,7 @@ export class PolygonEditor extends HTMLElement {
                 this.#highlightSelectedRow()
             })
 
+            xInput.addEventListener("focus", () => this.#pushUndo())
             xInput.addEventListener("input", () => {
                 const val = parseFloat(xInput.value)
                 if (!isNaN(val)) {
@@ -823,6 +822,7 @@ export class PolygonEditor extends HTMLElement {
                 }
             })
 
+            yInput.addEventListener("focus", () => this.#pushUndo())
             yInput.addEventListener("input", () => {
                 const val = parseFloat(yInput.value)
                 if (!isNaN(val)) {
@@ -851,6 +851,36 @@ export class PolygonEditor extends HTMLElement {
         rows.forEach((row, i) => {
             row.classList.toggle("selected", i === this.#selectedVertex)
         })
+    }
+
+    // ── Undo / Redo ────────────────────────────────────────────────
+
+    #pushUndo() {
+        this.#undoStack.push(this.#vertices.map(v => [v[0], v[1]] as [number, number]))
+        this.#redoStack.length = 0
+    }
+
+    #undo() {
+        if (this.#undoStack.length === 0) return
+        this.#redoStack.push(this.#vertices.map(v => [v[0], v[1]] as [number, number]))
+        this.#vertices = this.#undoStack.pop()!
+        this.#restoreState()
+    }
+
+    #redo() {
+        if (this.#redoStack.length === 0) return
+        this.#undoStack.push(this.#vertices.map(v => [v[0], v[1]] as [number, number]))
+        this.#vertices = this.#redoStack.pop()!
+        this.#restoreState()
+    }
+
+    #restoreState() {
+        this.#mode = this.#vertices.length <= 2 ? "new" : "edit"
+        this.#selectedVertex = Math.min(this.#selectedVertex, this.#vertices.length - 1)
+        this.#emitChange()
+        this.#draw()
+        this.#rebuildVertexList()
+        this.#updateModeLabel()
     }
 
     // ── Source sync ────────────────────────────────────────────────

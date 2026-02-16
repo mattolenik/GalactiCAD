@@ -35,6 +35,7 @@ class App {
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
     #polygonEditor: PolygonEditor | null = null
+    #editorContainer!: HTMLDivElement
 
     build() {
         try {
@@ -253,6 +254,7 @@ class App {
     ) {
         this.#settings = SettingsManager.instance
         this.#viewports = document.getElementById("viewports")!
+        this.#editorContainer = editorContainer
 
         // Initialize source parser and highlighter for selection sync
         this.#sourceParser = new SourceParser()
@@ -602,11 +604,11 @@ class App {
             this.#polygonEditor = null
         }
 
-        const editor = new PolygonEditor(info.vertices)
+        const polyEditor = new PolygonEditor(info.vertices)
         let arrayStart = info.arrayStartOffset
         let arrayEnd = info.arrayEndOffset
 
-        editor.onChange = (vertices) => {
+        polyEditor.onChange = (vertices) => {
             const newText = formatVertices(vertices)
             const startPos = model.getPositionAt(arrayStart)
             const endPos = model.getPositionAt(arrayEnd)
@@ -618,8 +620,17 @@ class App {
             arrayEnd = arrayStart + newText.length
         }
 
-        editor.show()
-        this.#polygonEditor = editor
+        // Hide Monaco and insert polygon editor in its place
+        this.#editorContainer.style.display = "none"
+        this.#editorContainer.parentElement!.insertBefore(polyEditor, this.#editorContainer)
+
+        polyEditor.onClose = () => {
+            this.#editorContainer.style.display = ""
+            this.editor.layout()
+            this.#polygonEditor = null
+        }
+
+        this.#polygonEditor = polyEditor
     }
 
     #scheduleMeshUpdate(src: string) {

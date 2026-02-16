@@ -195,6 +195,20 @@ class App {
 
         const nodeId = this.#findNodeIdForSelection(selection)
         if (nodeId !== null) {
+            // polygon2d is a 2D shape not present in the 3D scene — open the polygon editor
+            const location = this.#sourceLocationMap.get(nodeId)
+            if (location?.functionName === "polygon2d") {
+                const model = this.editor.getModel()
+                if (model) {
+                    const src = model.getValue()
+                    const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn)
+                    if (info) {
+                        this.#openPolygonEditor(info, model)
+                        return
+                    }
+                }
+            }
+
             // Get the node and check if it's a composite (CSG/group)
             const node = this.#sceneNodeMap.get(nodeId)
             if (node) {

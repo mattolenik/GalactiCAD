@@ -59,6 +59,11 @@ export class DocumentTabs extends HTMLElement {
                 display: flex;
                 flex-wrap: nowrap;
                 overflow-x: auto;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+            }
+            .tabs-container::-webkit-scrollbar {
+                display: none;
             }
             .tab {
                 flex: 0 0 auto;

@@ -39,11 +39,15 @@ export class PolygonEditor extends HTMLElement {
     #canvasW = 0
     #canvasH = 0
 
+    // Grid
+    #gridSize = 1
+
     // DOM references
     #canvas: HTMLCanvasElement
     #ctx: CanvasRenderingContext2D
     #vertexList: HTMLDivElement
     #snapCheckbox: HTMLInputElement
+    #gridSizeInput: HTMLInputElement
     #modeLabel: HTMLSpanElement
 
     // Undo/redo
@@ -76,9 +80,9 @@ export class PolygonEditor extends HTMLElement {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    padding: 8px 16px;
+                    padding: 10px 16px;
                     background: var(${__tone_3});
-                    font-size: 14px;
+                    font-size: 16px;
                     font-weight: 600;
                     user-select: none;
                     -webkit-user-select: none;
@@ -87,9 +91,9 @@ export class PolygonEditor extends HTMLElement {
                     background: none;
                     border: none;
                     color: var(${__fg_color});
-                    font-size: 20px;
+                    font-size: 24px;
                     cursor: pointer;
-                    padding: 0 6px;
+                    padding: 0 8px;
                     border-radius: 4px;
                     line-height: 1;
                 }
@@ -107,43 +111,56 @@ export class PolygonEditor extends HTMLElement {
                     height: 100%;
                     display: block;
                 }
-                .controls {
-                    padding: 6px 16px;
+                .status-bar {
+                    padding: 8px 16px;
                     display: flex;
                     align-items: center;
-                    gap: 12px;
                     background: var(${__tone_2});
                     border-top: 1px solid var(${__tone_3});
-                    font-size: 13px;
-                }
-                .controls label {
-                    display: flex;
-                    align-items: center;
-                    gap: 5px;
-                    cursor: pointer;
-                    user-select: none;
-                    -webkit-user-select: none;
-                }
-                .controls input[type="checkbox"] {
-                    accent-color: var(${__tone_accent});
-                }
-                .mode-label {
-                    margin-left: auto;
-                    font-size: 12px;
+                    font-size: 14px;
                     color: var(${__tone_1});
                 }
-                .vertex-list {
-                    max-height: 150px;
-                    overflow-y: auto;
+                .bottom-panel {
+                    display: flex;
                     border-top: 1px solid var(${__tone_3});
+                    max-height: 180px;
+                }
+                .vertex-list {
+                    flex: 1;
+                    min-width: 0;
+                    overflow-y: auto;
                     scrollbar-width: thin;
+                }
+                .prefs-pane {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                    padding: 10px 16px;
+                    border-left: 1px solid var(${__tone_3});
+                    font-size: 15px;
+                    user-select: none;
+                    -webkit-user-select: none;
+                    white-space: nowrap;
+                }
+                .prefs-pane label {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    color: var(${__tone_1});
+                }
+                .prefs-pane input[type="checkbox"] {
+                    accent-color: var(${__tone_accent});
+                    width: 16px;
+                    height: 16px;
                 }
                 .vertex-row {
                     display: flex;
                     align-items: center;
-                    gap: 8px;
-                    padding: 4px 16px;
-                    font-size: 13px;
+                    gap: 10px;
+                    padding: 6px 16px;
+                    font-size: 15px;
                     cursor: pointer;
                     user-select: none;
                     -webkit-user-select: none;
@@ -155,27 +172,42 @@ export class PolygonEditor extends HTMLElement {
                     background: rgba(0, 122, 204, 0.15);
                 }
                 .vertex-label {
-                    width: 28px;
+                    width: 32px;
                     font-family: monospace;
-                    font-size: 11px;
+                    font-size: 13px;
                     color: var(${__tone_1});
                 }
                 .axis-label {
                     font-family: monospace;
-                    font-size: 11px;
+                    font-size: 13px;
                     color: var(${__tone_1});
                 }
                 .vertex-input {
-                    width: 72px;
+                    width: 80px;
                     background: var(${__bg_color_dark});
                     color: var(${__fg_color});
                     border: 1px solid var(${__tone_3});
                     border-radius: 3px;
-                    padding: 2px 6px;
-                    font-size: 13px;
+                    padding: 4px 8px;
+                    font-size: 15px;
                     font-family: monospace;
                 }
                 .vertex-input:focus {
+                    outline: none;
+                    border-color: var(${__tone_accent});
+                }
+                .grid-size-input {
+                    width: 60px;
+                    background: var(${__bg_color_dark});
+                    color: var(${__fg_color});
+                    border: 1px solid var(${__tone_3});
+                    border-radius: 3px;
+                    padding: 4px 8px;
+                    font-size: 15px;
+                    font-family: monospace;
+                    text-align: right;
+                }
+                .grid-size-input:focus {
                     outline: none;
                     border-color: var(${__tone_accent});
                 }
@@ -187,26 +219,42 @@ export class PolygonEditor extends HTMLElement {
             <div class="canvas-container">
                 <canvas></canvas>
             </div>
-            <div class="controls">
-                <label>
-                    <input type="checkbox" class="snap-checkbox">
-                    Snap to grid
-                </label>
+            <div class="status-bar">
                 <span class="mode-label"></span>
             </div>
-            <div class="vertex-list"></div>
+            <div class="bottom-panel">
+                <div class="vertex-list"></div>
+                <div class="prefs-pane">
+                    <label>
+                        <input type="checkbox" class="snap-checkbox">
+                        Snap to grid
+                    </label>
+                    <label>
+                        Grid size
+                        <input type="number" class="grid-size-input" value="1" min="1" step="1">
+                    </label>
+                </div>
+            </div>
         `
 
         this.#canvas = this.#shadow.querySelector("canvas")!
         this.#ctx = this.#canvas.getContext("2d", { alpha: false })!
         this.#vertexList = this.#shadow.querySelector(".vertex-list")!
         this.#snapCheckbox = this.#shadow.querySelector<HTMLInputElement>(".snap-checkbox")!
+        this.#gridSizeInput = this.#shadow.querySelector<HTMLInputElement>(".grid-size-input")!
         this.#modeLabel = this.#shadow.querySelector(".mode-label")!
 
         // Wire UI events
         this.#shadow.querySelector(".close-btn")!.addEventListener("click", () => this.#close())
         this.#snapCheckbox.addEventListener("change", () => {
             this.#snapEnabled = this.#snapCheckbox.checked
+        })
+        this.#gridSizeInput.addEventListener("input", () => {
+            const val = Math.round(parseFloat(this.#gridSizeInput.value))
+            if (!isNaN(val) && val >= 1) {
+                this.#gridSize = val
+                this.#requestDraw()
+            }
         })
 
         // Canvas events
@@ -332,7 +380,8 @@ export class PolygonEditor extends HTMLElement {
     #applySnap(wx: number, wy: number): [number, number] {
         const shouldSnap = this.#snapEnabled !== this.#altHeld
         if (shouldSnap) {
-            return [Math.round(wx), Math.round(wy)]
+            const gs = this.#gridSize
+            return [Math.round(wx / gs) * gs, Math.round(wy / gs) * gs]
         }
         return [Math.round(wx * 100) / 100, Math.round(wy * 100) / 100]
     }
@@ -373,15 +422,11 @@ export class PolygonEditor extends HTMLElement {
         const ctx = this.#ctx
         const w = this.#canvasW
         const h = this.#canvasH
+        const gs = this.#gridSize
 
-        // Adaptive grid step — aim for ~15-80px between lines
-        let step = 1
-        const minGap = 15
-        while (step * this.#zoom < minGap) {
-            if (step * 2 * this.#zoom >= minGap) { step *= 2; break }
-            if (step * 5 * this.#zoom >= minGap) { step *= 5; break }
-            step *= 10
-        }
+        const pxPerCell = this.#zoom * gs
+        const majorMult = 10
+        const majorStep = gs * majorMult
 
         const [wLeft, wTop] = this.#screenToWorld(0, 0)
         const [wRight, wBottom] = this.#screenToWorld(w, h)
@@ -390,23 +435,52 @@ export class PolygonEditor extends HTMLElement {
         const minWY = Math.min(wTop, wBottom)
         const maxWY = Math.max(wTop, wBottom)
 
-        const startX = Math.floor(minWX / step) * step
-        const endX = Math.ceil(maxWX / step) * step
-        const startY = Math.floor(minWY / step) * step
-        const endY = Math.ceil(maxWY / step) * step
+        // Minor grid lines at gridSize interval
+        if (pxPerCell >= 4) {
+            const alpha = pxPerCell >= 15 ? 0.16
+                : 0.16 * (pxPerCell - 4) / 11
+            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha.toFixed(4)})`
+            ctx.lineWidth = 0.5
+            ctx.beginPath()
 
-        // Minor grid lines
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.06)"
-        ctx.lineWidth = 0.5
+            const startX = Math.floor(minWX / gs) * gs
+            const endX = Math.ceil(maxWX / gs) * gs
+            const startY = Math.floor(minWY / gs) * gs
+            const endY = Math.ceil(maxWY / gs) * gs
+
+            for (let x = startX; x <= endX; x += gs) {
+                if (Math.abs(x) < gs * 0.01) continue
+                if (Math.abs(x % majorStep) < gs * 0.01) continue
+                const [sx] = this.#worldToScreen(x, 0)
+                ctx.moveTo(sx, 0)
+                ctx.lineTo(sx, h)
+            }
+            for (let y = startY; y <= endY; y += gs) {
+                if (Math.abs(y) < gs * 0.01) continue
+                if (Math.abs(y % majorStep) < gs * 0.01) continue
+                const [, sy] = this.#worldToScreen(0, y)
+                ctx.moveTo(0, sy)
+                ctx.lineTo(w, sy)
+            }
+            ctx.stroke()
+        }
+
+        // Major grid lines at gridSize * 10 interval
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.22)"
+        ctx.lineWidth = 1
         ctx.beginPath()
-        for (let x = startX; x <= endX; x += step) {
-            if (x === 0) continue
+        const majorStartX = Math.floor(minWX / majorStep) * majorStep
+        const majorEndX = Math.ceil(maxWX / majorStep) * majorStep
+        const majorStartY = Math.floor(minWY / majorStep) * majorStep
+        const majorEndY = Math.ceil(maxWY / majorStep) * majorStep
+        for (let x = majorStartX; x <= majorEndX; x += majorStep) {
+            if (Math.abs(x) < gs * 0.01) continue
             const [sx] = this.#worldToScreen(x, 0)
             ctx.moveTo(sx, 0)
             ctx.lineTo(sx, h)
         }
-        for (let y = startY; y <= endY; y += step) {
-            if (y === 0) continue
+        for (let y = majorStartY; y <= majorEndY; y += majorStep) {
+            if (Math.abs(y) < gs * 0.01) continue
             const [, sy] = this.#worldToScreen(0, y)
             ctx.moveTo(0, sy)
             ctx.lineTo(w, sy)
@@ -414,7 +488,7 @@ export class PolygonEditor extends HTMLElement {
         ctx.stroke()
 
         // Axis lines
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"
         ctx.lineWidth = 1
         ctx.beginPath()
         const [ox, oy] = this.#worldToScreen(0, 0)

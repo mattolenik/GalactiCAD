@@ -7,17 +7,12 @@ function scene() {
     const extrudedTri = extrude(tri, { h: 4 })
 
     // === EXTRUDE: L-shaped profile with position offset ===
-    const lShape = polygon2d([
-        [-3, -3], [3, -3], [3, -1], [-1, -1], [-1, 3], [-3, 3]
-    ])
-    const extrudedL = extrude([20, 0, 0], lShape, { h: 5 })
+    const lShape = polygon2d([[-3, -3], [3, -3], [3, -1], [-1, -1], [-1, 3], [-3, 3]])
+    const extrudedL = extrude([20, 0, 0], lShape, { h: 5, t:22 })
 
     // === EXTRUDE with TWIST: Star twisted 180° ===
-    const star = polygon2d([
-        [0, 4], [1, 1.5], [4, 1.2], [1.8, -0.5], [2.5, -3.5],
-        [0, -1.5], [-2.5, -3.5], [-1.8, -0.5], [-4, 1.2], [-1, 1.5]
-    ])
-    const twistedStar = extrude([40, 0, 0], star, { h: 8, t: 180 })
+    const star = polygon2d([[0, 4], [4.66, 4.94], [4, 1.2], [3.06, -0.97], [2.5, -3.5], [-0.16, -2.82], [-2.5, -3.5], [-1.52, -1.73], [0.23, -0.04], [-0.69, 2.27]])
+    const twistedStar = extrude([40, 0, 0], star, { h: 8, t: 90 })
 
     // === LOFT: Square to triangle ===
     const square = polygon2d([[-4, -4], [4, -4], [4, 4], [-4, 4]])
@@ -26,10 +21,7 @@ function scene() {
 
     // === LATHE: Vase ===
     // Profile is in (radius, height) space — revolved around Y axis
-    const vaseProfile = polygon2d([
-        [0, -5], [3, -5], [3.5, -4.5], [2, -2],
-        [1.5, 0], [2, 3], [3, 4.5], [2.5, 5], [0, 5]
-    ])
+    const vaseProfile = polygon2d([[1.27, -4.97], [3, -5], [5.42, -4.45], [5.19, -3.56], [4.38, -2.83], [6.07, -2.11], [4.82, -1.08], [5.42, -0.34], [5.88, 0.07], [3.91, 1.45], [4.47, 2.77], [2.07, 3.07], [0.93, 0.05]])
     const vase = lathe([-20, 0, 0], vaseProfile)
 
     // === ASSEMBLY ===

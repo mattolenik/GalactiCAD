@@ -770,30 +770,38 @@ fn opDifferenceFast(a: vec2f, b: vec2f) -> vec2f {
     return opIntersectionFast(a, vec2f(-b.x, b.y));
 }
 
-// Fast round union: distance + gradient only, no normal blending
+// Fast round union: distance + gradient only, no normal blending.
+// Gradient magnitude in the blend region: the round min formula d = r - |u| has
+// Lipschitz constant sqrt(2) (worst case when operand gradients are aligned), so
+// the safe step multiplier is 1/sqrt(2). This is tighter than the previous 0.5.
 fn fOpUnionRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let u = max(vec2f(r - a.x, r - b.x), vec2f(0.0));
     let d = max(r, min(a.x, b.x)) - length(u);
     let inBlend = a.x < r && b.x < r;
-    let g = select(select(b.y, a.y, a.x < b.x), 0.5, inBlend);
+    let g = select(select(b.y, a.y, a.x < b.x), INVERSESQRT2 * min(a.y, b.y), inBlend);
     return vec2f(d, g);
 }
 
-// Fast soft union
+// Fast soft union.
+// The polynomial smooth min d = min(a,b) - e²/(4r) has gradient that is a convex
+// combination of the operand gradients: ∇d = ∇a·(1-e/2r) + ∇b·(e/2r).
+// This means |∇d| ≤ max(|∇a|, |∇b|) ≤ 1 — it is Lipschitz-1, so g can be the
+// operand gradient (no additional reduction needed).
 fn fOpUnionSoftFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let e = max(r - abs(a.x - b.x), 0.0);
     let d = min(a.x, b.x) - e * e * 0.25 / r;
     let inBlend = e > 0.0;
-    let g = select(select(b.y, a.y, a.x < b.x), 0.5, inBlend);
+    let g = select(select(b.y, a.y, a.x < b.x), min(a.y, b.y), inBlend);
     return vec2f(d, g);
 }
 
-// Fast round intersection
+// Fast round intersection.
+// Same Lipschitz analysis as round union (sqrt(2) worst case).
 fn fOpIntersectionRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let u = max(vec2f(r + a.x, r + b.x), vec2f(0.0));
     let d = min(-r, max(a.x, b.x)) + length(u);
     let inBlend = a.x > -r && b.x > -r;
-    let g = select(select(b.y, a.y, a.x > b.x), 0.5, inBlend);
+    let g = select(select(b.y, a.y, a.x > b.x), INVERSESQRT2 * min(a.y, b.y), inBlend);
     return vec2f(d, g);
 }
 
@@ -802,21 +810,22 @@ fn fOpDifferenceRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     return fOpIntersectionRoundFast(a, vec2f(-b.x, b.y), r);
 }
 
-// Fast chamfer union
+// Fast chamfer union.
+// Chamfer gradient is (∇a + ∇b)/√2, with |∇d| ≤ √2 (Lipschitz-√2).
 fn fOpUnionChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let chamferD = (a.x - r + b.x) * sqrt(0.5);
     let d = min(min(a.x, b.x), chamferD);
     let inChamfer = chamferD < a.x && chamferD < b.x;
-    let g = select(select(b.y, a.y, a.x < b.x), 1.0, inChamfer);
+    let g = select(select(b.y, a.y, a.x < b.x), INVERSESQRT2 * min(a.y, b.y), inChamfer);
     return vec2f(d, g);
 }
 
-// Fast chamfer intersection
+// Fast chamfer intersection.
 fn fOpIntersectionChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
     let chamferD = (a.x + r + b.x) * sqrt(0.5);
     let d = max(max(a.x, b.x), chamferD);
     let inChamfer = chamferD > a.x && chamferD > b.x;
-    let g = select(select(b.y, a.y, a.x > b.x), 1.0, inChamfer);
+    let g = select(select(b.y, a.y, a.x > b.x), INVERSESQRT2 * min(a.y, b.y), inChamfer);
     return vec2f(d, g);
 }
 
@@ -882,7 +891,7 @@ fn fOpUnionStairsFast(a: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
     let stairD = 0.5 * (u + a.x + abs(modF(u - a.x + s, 2.0 * s) - s));
     let d = min(min(a.x, b.x), stairD);
     let inStair = stairD < a.x && stairD < b.x;
-    let g = select(select(b.y, a.y, a.x < b.x), 1.0, inStair);
+    let g = select(select(b.y, a.y, a.x < b.x), INVERSESQRT2 * min(a.y, b.y), inStair);
     return vec2f(d, g);
 }
 

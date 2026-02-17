@@ -1,4 +1,6 @@
 import { Subject } from "rxjs"
+import { fromEvent } from "rxjs"
+import type { Subscription } from "rxjs"
 import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
@@ -114,14 +116,16 @@ export class SDFRenderer {
     #movementTimer: ReturnType<typeof setTimeout> | null = null
     #movementSettleMs: number = 150 // ms of inactivity before restoring full resolution
     #documentName: string | null = null
-    #tabChangeListener: ((e: Event) => void) | null = null
+    #tabChangeSub: Subscription | null = null
+    #resizeObserver: ResizeObserver | null = null
+    #controlSubs: Subscription[] = []
 
     #loadPreviewSettings(): void {
         const prev = this.#settings.getPreview()
         this.#xrayMode = prev.xrayMode
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
-        this.onPreviewSettingsLoaded?.()
+        this.previewSettingsLoaded$.next()
         this.#needsRender = true
     }
 
@@ -131,11 +135,11 @@ export class SDFRenderer {
      */
     readonly selectionChange$ = new Subject<number[]>()
 
-    /** Callback invoked when an object is double-clicked in the preview */
-    onObjectDoubleClick?: (nodeId: number) => void
+    /** Emitted when an object is double-clicked in the preview (node ID). */
+    readonly objectDoubleClick$ = new Subject<number>()
 
-    /** Called after preview settings are loaded (e.g. on document switch) so the UI can sync */
-    onPreviewSettingsLoaded?: () => void
+    /** Emitted after preview settings are loaded (e.g. on document switch) so the UI can sync */
+    readonly previewSettingsLoaded$ = new Subject<void>()
 
     get controls(): CameraController {
         return this.#controls
@@ -271,16 +275,14 @@ export class SDFRenderer {
         return new Uint32Array(readback)[0] ?? 0
     }
 
-    #handleClick(screenPos: Vec2f, shiftKey: boolean, altKey: boolean) {
-        // Convert screen coordinates to UV coordinates (0-1 range)
+    /** Write click state to GPU buffers and trigger render. Converts screen pos to UV. */
+    #writeClickState(screenPos: Vec2f): void {
         const canvas = this.#preview.canvas
         const rect = canvas.getBoundingClientRect()
         const x = (screenPos.x - rect.left) / rect.width
         const y = 1.0 - (screenPos.y - rect.top) / rect.height // Flip Y for WGSL UV space
 
         this.#lastClickPos = vec2(x, y)
-
-        console.log(`Click at UV: (${x.toFixed(3)}, ${y.toFixed(3)}), shift: ${shiftKey}, alt: ${altKey}`)
 
         // Store click state: must match WGSL ClickState struct layout (32 bytes)
         const clickData = new ArrayBuffer(32)
@@ -301,59 +303,46 @@ export class SDFRenderer {
             this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0])
         )
 
-        // Trigger a render so the shader can evaluate the click
         this.#needsRender = true
+    }
 
-        // Read back result after a few frames
+    /** Schedule async readback of clicked object ID after a few frames. */
+    #scheduleClickReadback(onResult: (id: number) => void): void {
         setTimeout(async () => {
             try {
-                const clickedId = await this.#readClickedObjectId()
-
-                if (clickedId !== 0) {
-                    this.#updateSelection(clickedId, shiftKey)
-                } else if (!shiftKey) {
-                    // Clicked on empty space — deselect all
-                    this.#selectedObjectIds.fill(false)
-                    this.#writeSelectionBuffer()
-                    this.selectionChange$.next([])
-                    console.log('Deselected all objects (clicked empty space)')
-                }
+                const id = await this.#readClickedObjectId()
+                onResult(id)
             } catch (error) {
-                console.error('Error reading clicked object ID:', error)
+                console.error("Error reading clicked object ID:", error)
             }
         }, 200)
     }
 
-    #handleDoubleClick(screenPos: Vec2f) {
-        const canvas = this.#preview.canvas
-        const rect = canvas.getBoundingClientRect()
-        const x = (screenPos.x - rect.left) / rect.width
-        const y = 1.0 - (screenPos.y - rect.top) / rect.height
+    #handleClick(screenPos: Vec2f, shiftKey: boolean, altKey: boolean) {
+        this.#writeClickState(screenPos)
+        console.log(`Click at UV: (${this.#lastClickPos.x.toFixed(3)}, ${this.#lastClickPos.y.toFixed(3)}), shift: ${shiftKey}, alt: ${altKey}`)
 
-        // Write click state for GPU pick
-        const clickData = new ArrayBuffer(32)
-        const clickF32 = new Float32Array(clickData)
-        const clickU32 = new Uint32Array(clickData)
-        clickF32[0] = x
-        clickF32[1] = y
-        clickU32[2] = 1  // click enabled
-        clickU32[3] = 0  // hover disabled
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
-        this.#device.queue.writeBuffer(
-            this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0])
-        )
-        this.#needsRender = true
-
-        setTimeout(async () => {
-            try {
-                const clickedId = await this.#readClickedObjectId()
-                if (clickedId !== 0 && this.onObjectDoubleClick) {
-                    this.onObjectDoubleClick(clickedId)
-                }
-            } catch (error) {
-                console.error('Error reading double-clicked object ID:', error)
+        this.#scheduleClickReadback(clickedId => {
+            if (clickedId !== 0) {
+                this.#updateSelection(clickedId, shiftKey)
+            } else if (!shiftKey) {
+                // Clicked on empty space — deselect all
+                this.#selectedObjectIds.fill(false)
+                this.#writeSelectionBuffer()
+                this.selectionChange$.next([])
+                console.log("Deselected all objects (clicked empty space)")
             }
-        }, 200)
+        })
+    }
+
+    #handleDoubleClick(screenPos: Vec2f) {
+        this.#writeClickState(screenPos)
+
+        this.#scheduleClickReadback(clickedId => {
+            if (clickedId !== 0) {
+                this.objectDoubleClick$.next(clickedId)
+            }
+        })
     }
 
     #updateSelection(clickedId: number, shiftKey: boolean) {
@@ -397,12 +386,16 @@ export class SDFRenderer {
     constructor(preview: PreviewWindow, tabsElement?: EventTarget | null) {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement)
-        this.#controls.onSelect = (screenPos: Vec2f, shiftKey: boolean, altKey: boolean) => this.#handleClick(screenPos, shiftKey, altKey)
-        this.#controls.onDoubleClick = (screenPos: Vec2f) => this.#handleDoubleClick(screenPos)
-        this.#controls.onChange = () => {
-            this.#needsRender = true
-            this.#onCameraMovement()
-        }
+        this.#controlSubs.push(
+            this.#controls.select$.subscribe(({ screenPos, shiftKey, altKey }) =>
+                this.#handleClick(screenPos, shiftKey, altKey)
+            ),
+            this.#controls.doubleClick$.subscribe(screenPos => this.#handleDoubleClick(screenPos)),
+            this.#controls.change$.subscribe(() => {
+                this.#needsRender = true
+                this.#onCameraMovement()
+            })
+        )
         this.#movementScale = this.#settings.getGlobal().preview.movementScale
         this.#documentName = (tabsElement as { active?: string })?.active ?? null
         this.#uniformBuffers = new UniformBuffers()
@@ -413,15 +406,14 @@ export class SDFRenderer {
         this.#loadPreviewSettings()
 
         if (tabsElement) {
-            this.#tabChangeListener = (e: Event) => {
+            this.#tabChangeSub = fromEvent(tabsElement, "activeTabChanged").subscribe((e: Event) => {
                 const customEvent = e as CustomEvent<string | undefined>
                 // SettingsManager.switchDocument (called from DocumentTabs) handles
                 // flushing the old doc and loading the new one. We just need to
                 // reload our in-memory preview flags from the (already-switched) settings.
                 this.#documentName = customEvent.detail ?? null
                 this.#loadPreviewSettings()
-            }
-            tabsElement.addEventListener("activeTabChanged", this.#tabChangeListener)
+            })
         }
 
         const observer = new ResizeObserver(entries => {
@@ -445,6 +437,21 @@ export class SDFRenderer {
         } catch {
             observer.observe(this.#preview, { box: "content-box" })
         }
+        this.#resizeObserver = observer
+    }
+
+    /** Clean up subscriptions and listeners. Call when the renderer is no longer needed. */
+    dispose(): void {
+        for (const sub of this.#controlSubs) sub.unsubscribe()
+        this.#controlSubs.length = 0
+        this.#tabChangeSub?.unsubscribe()
+        this.#tabChangeSub = null
+        this.#resizeObserver?.disconnect()
+        this.#resizeObserver = null
+        this.#controls.dispose()
+        this.selectionChange$.complete()
+        this.objectDoubleClick$.complete()
+        this.previewSettingsLoaded$.complete()
     }
 
     build(src: string) {

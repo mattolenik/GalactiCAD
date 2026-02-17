@@ -1,6 +1,7 @@
 import * as monaco from "monaco-editor"
 import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
+import type { Subscription } from "rxjs"
 import { DocumentTabs } from "./components/document-tabs.mjs"
 import { MenuButton } from "./components/menu-button.mjs"
 import { MeshViewer } from "./components/mesh-viewer.mjs"
@@ -28,7 +29,7 @@ class App {
     #viewports: HTMLElement
     #settings: SettingsManager
     #meshViewerEnabled = false
-    #originalPreviewOnChange: ((state: CameraState) => void) | undefined
+    #meshViewerCameraSubs: Subscription[] = []
     #updateViewCenter: (() => void) | undefined
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
@@ -484,9 +485,7 @@ class App {
             setTimeout(() => { this.#isUpdatingFromPreview = false }, 50)
         })
 
-        this.renderer.onObjectDoubleClick = (nodeId: number) => {
-            this.#handlePreviewDoubleClick(nodeId)
-        }
+        this.renderer.objectDoubleClick$.subscribe(nodeId => this.#handlePreviewDoubleClick(nodeId))
 
         this.editor.onDidChangeCursorSelection(() => {
             this.#handleEditorSelection()
@@ -509,11 +508,11 @@ class App {
         devTools.onBeamOptimizationChange = (enabled) => {
             this.renderer.beamEnabled = enabled
         }
-        this.renderer.onPreviewSettingsLoaded = () => {
+        this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
-        }
+        })
 
         const showFps = this.#settings.getGlobal().app.showFps
         devTools.showFps = showFps
@@ -747,10 +746,9 @@ class App {
                 if (!this.#mesh) return // Guard against race with disable
 
                 // Set up camera sync between preview and mesh viewer.
-                // Preserve the renderer's onChange so the preview still gets #needsRender and #onCameraMovement.
+                // SDFRenderer already subscribes to preview change$ for needsRender; we add sync logic.
                 const previewControls = this.renderer.controls
                 const meshControls = meshViewer.controls
-                this.#originalPreviewOnChange = previewControls.onChange
                 let syncing = false
 
                 const push = (from: "preview" | "mesh", state: CameraState) => {
@@ -760,17 +758,15 @@ class App {
                         meshControls.applyState(state, { emit: false })
                     } else {
                         previewControls.applyState(state, { emit: false })
-                        // Trigger preview render when mesh camera changes
-                        this.#originalPreviewOnChange?.(state)
+                        this.renderer.requestRender()
                     }
                     syncing = false
                 }
 
-                previewControls.onChange = state => {
-                    push("preview", state)
-                    this.#originalPreviewOnChange?.(state)
-                }
-                meshControls.onChange = state => push("mesh", state)
+                this.#meshViewerCameraSubs.push(
+                    previewControls.change$.subscribe(state => push("preview", state)),
+                    meshControls.change$.subscribe(state => push("mesh", state))
+                )
                 // Sync initial camera state
                 meshControls.applyState(previewControls.state, { emit: false })
                 // Sync viewCenter so mesh viewer matches SDF preview offset
@@ -792,9 +788,8 @@ class App {
                 this.#meshUpdateTimer = null
             }
 
-            // Restore the renderer's original onChange handler
-            this.renderer.controls.onChange = this.#originalPreviewOnChange
-            this.#originalPreviewOnChange = undefined
+            for (const sub of this.#meshViewerCameraSubs) sub.unsubscribe()
+            this.#meshViewerCameraSubs.length = 0
         }
     }
 }

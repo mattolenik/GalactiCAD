@@ -1,9 +1,12 @@
+import { Subject } from "rxjs"
+import { fromEvent } from "rxjs"
 import { clamped } from "../math.mjs"
 import { SettingsManager, type CameraSettings } from "../storage/settings.mjs"
 import { lookAt, Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { PinchZoomController } from "./pinchzoom-controller.mjs"
 import { Trackball } from "./trackball.mjs"
+import type { Subscription } from "rxjs"
 // @ts-ignore - quaternion library type definitions have issues
 import Quaternion from "quaternion"
 
@@ -53,11 +56,16 @@ export class CameraController {
     #trackball: Trackball
     #isSyncing = false
     #tabsElement: EventTarget | null = null
-    #tabChangeListener: EventListener | null = null
-    onChange?: (state: CameraState) => void
-    onSelect?: (screenPos: Vec2f, shiftKey: boolean, altKey: boolean) => void
-    onDoubleClick?: (screenPos: Vec2f) => void
-    onHover?: (screenPos: Vec2f, altKey: boolean) => void
+    #tabChangeSub: Subscription | null = null
+
+    /** Emitted when camera state changes (rotate, pan, zoom). */
+    readonly change$ = new Subject<CameraState>()
+    /** Emitted on single click (screen position, shift, alt). */
+    readonly select$ = new Subject<{ screenPos: Vec2f; shiftKey: boolean; altKey: boolean }>()
+    /** Emitted on double click (screen position). */
+    readonly doubleClick$ = new Subject<Vec2f>()
+    /** Emitted on hover when not dragging (screen position, alt). */
+    readonly hover$ = new Subject<{ screenPos: Vec2f; altKey: boolean }>()
 
     constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null) {
         this.#settings = SettingsManager.instance
@@ -71,7 +79,7 @@ export class CameraController {
             this.#zoomController.setZoom(this.zoom, false)
             // Zoom doesn't affect viewTransform, but it *must* emit so other views stay synced.
             this.#saveCameraState()
-            this.onChange?.(this.state)
+            this.change$.next(this.state)
         }
         this.#zoomController.onRotate = angleDelta => {
             // Rotate around the axis perpendicular to the screen (camera forward direction).
@@ -103,14 +111,13 @@ export class CameraController {
         // Listen for tab changes if tabs element is provided
         if (tabsElement) {
             this.#tabsElement = tabsElement
-            this.#tabChangeListener = ((e: Event) => {
+            this.#tabChangeSub = fromEvent(tabsElement, "activeTabChanged").subscribe((e: Event) => {
                 const customEvent = e as CustomEvent<string | undefined>
                 // SettingsManager.switchDocument flushes current doc & loads the new one
                 this.#documentName = customEvent.detail ?? ""
                 // Load the new document's camera state from the (already-switched) settings
                 this.#loadCameraState()
-            }) as EventListener
-            tabsElement.addEventListener("activeTabChanged", this.#tabChangeListener)
+            })
         }
 
         this.#loadCameraState()
@@ -186,13 +193,13 @@ export class CameraController {
     #onClick(e: MouseEvent) {
         // Only handle left clicks, and only if we didn't drag
         if (e.button === 0 && !this.#hasDragged) {
-            this.onSelect?.(vec2(e.clientX, e.clientY), e.shiftKey, e.altKey)
+            this.select$.next({ screenPos: vec2(e.clientX, e.clientY), shiftKey: e.shiftKey, altKey: e.altKey })
         }
     }
 
     #onDblClick(e: MouseEvent) {
         if (e.button === 0 && !this.#hasDragged) {
-            this.onDoubleClick?.(vec2(e.clientX, e.clientY))
+            this.doubleClick$.next(vec2(e.clientX, e.clientY))
         }
     }
 
@@ -226,7 +233,7 @@ export class CameraController {
     #onPointerMove(e: PointerEvent) {
         // Check for hover events when not dragging
         if (!this.isDragging) {
-            this.onHover?.(vec2(e.clientX, e.clientY), e.altKey)
+            this.hover$.next({ screenPos: vec2(e.clientX, e.clientY), altKey: e.altKey })
             return
         }
         if (this.#zoomController.isZooming) return
@@ -295,7 +302,7 @@ export class CameraController {
         this.viewTransform = view
         this.#saveCameraState()
         if (emit) {
-            this.onChange?.(this.state)
+            this.change$.next(this.state)
         }
     }
 
@@ -334,11 +341,9 @@ export class CameraController {
      * Should be called when the component is no longer needed.
      */
     dispose(): void {
-        if (this.#tabsElement && this.#tabChangeListener) {
-            this.#tabsElement.removeEventListener("activeTabChanged", this.#tabChangeListener)
-            this.#tabsElement = null
-            this.#tabChangeListener = null
-        }
+        this.#tabChangeSub?.unsubscribe()
+        this.#tabChangeSub = null
+        this.#tabsElement = null
     }
 
 }

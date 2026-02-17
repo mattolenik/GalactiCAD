@@ -241,10 +241,17 @@ export class Node {
     /**
      * Emit auxiliary WGSL for the fast path only (vec2f distance+gradient).
      * Used by the beam shader which doesn't need full SDFResult functions.
-     * Default returns compileAux(). Override in nodes that emit both fast and full functions.
+     * Default returns "". Override in nodes that emit fast-path helper functions.
+     *
+     * IMPORTANT: sceneAuxFast and sceneAux are both injected into shaders like
+     * preview.wgsl. To avoid duplicate function definitions, compileAux() must
+     * only emit full-path (Ex) functions, and compileAuxFast() must emit
+     * fast-path functions plus any shared helpers (e.g., polygon evaluators,
+     * field functions). WGSL has module-wide scope, so functions in sceneAux
+     * can reference helpers defined in sceneAuxFast.
      */
     compileAuxFast(): string {
-        return this.compileAux()
+        return ""
     }
     compile(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
@@ -1483,7 +1490,13 @@ export class Polygon2D extends Node {
         return `fPolygon2D_${this.id}`
     }
 
-    override compileAux(): string {
+    // Polygon2D's evaluator is a shared helper needed by both fast and full
+    // paths (Extrude, Lathe, Loft all reference it). Emit it only in
+    // compileAuxFast() so it appears once in sceneAuxFast. WGSL module scope
+    // makes it visible to functions in sceneAux too.
+    override compileAux(): string { return "" }
+
+    override compileAuxFast(): string {
         const N = this.vertices.length
         const verts = this.vertices
             .map(([x, y]) => `vec2f(${x.toFixed(6)}, ${y.toFixed(6)})`)
@@ -1575,7 +1588,8 @@ export class Extrude extends WithPos(Node) {
         const hasTwist = this.twist !== 0
 
         if (!hasTwist) {
-            // No twist: exact SDF with analytic normals
+            // No twist: exact SDF with analytic normals.
+            // Fast function is emitted by compileAuxFast() only.
             return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d2d = ${childFunc}(p.xz);
@@ -1591,31 +1605,13 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let resultId = select(${childId}u, id, onSide);
     return sdfTrue(d, resultId, n);
 }
-
-fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
-    let d2d = ${childFunc}(p.xz);
-    let dCap = abs(p.y) - ${h};
-    return vec2f(max(d2d, dCap), 1.0);
-}
 `
         }
 
-        // With twist: distance estimator, normals via 3D finite differences
-        const twistRad = (this.twist * Math.PI / 180).toFixed(10)
+        // With twist: distance estimator, normals via 3D finite differences.
+        // Field and Fast functions are emitted by compileAuxFast() only.
+        // Ex function references the field function via WGSL module scope.
         return `
-fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
-    let h = ${h};
-    let twist = ${twistRad};
-    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
-    let angle = twist * t;
-    let ca = cos(angle);
-    let sa = sin(angle);
-    let twisted = vec2f(ca * p.x + sa * p.z, -sa * p.x + ca * p.z);
-    let d2d = ${childFunc}(twisted);
-    let dCap = abs(p.y) - h;
-    return max(d2d, dCap);
-}
-
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d = ${this.wgslFieldFuncName}(p);
     let eps = 0.001;
@@ -1623,14 +1619,10 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let ny = ${this.wgslFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, eps, 0.0));
     let nz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
     let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
-    let dCap = abs(p.y) - ${h};
+    let dCap = abs(p.y) - ${this.h.toFixed(6)};
     let onSide = (d - dCap) > 0.01;
     let resultId = select(${childId}u, id, onSide);
     return sdfR(d, 0.8, 1.0, resultId, n);
-}
-
-fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
-    return vec2f(${this.wgslFieldFuncName}(p), 0.8);
 }
 `
     }
@@ -1734,6 +1726,7 @@ export class Lathe extends WithPos(Node) {
     get wgslExFuncName(): string { return `fLathe_${this.id}_Ex` }
     get wgslFastFuncName(): string { return `fLathe_${this.id}_Fast` }
 
+    // Full-path only: emit Ex function. Fast function is in compileAuxFast().
     override compileAux(): string {
         const childFunc = this.child.wgslFuncName
 
@@ -1742,22 +1735,15 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let r = length(p.xz);
     let q = vec2f(r, p.y);
     let d = ${childFunc}(q);
-    // 2D gradient via finite differences in the (radius, height) plane
     let eps = 0.001;
     let gr = ${childFunc}(q + vec2f(eps, 0.0)) - ${childFunc}(q - vec2f(eps, 0.0));
     let gy = ${childFunc}(q + vec2f(0.0, eps)) - ${childFunc}(q - vec2f(0.0, eps));
-    // Map radial gradient back to 3D (spread across x and z)
     var radDir = vec2f(1.0, 0.0);
     if (r > 1e-8) {
         radDir = p.xz / r;
     }
     let n = safeNormalize(vec3f(gr * radDir.x, gy, gr * radDir.y), vec3f(0.0, 1.0, 0.0));
     return sdfTrue(d, id, n);
-}
-
-fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
-    let q = vec2f(length(p.xz), p.y);
-    return vec2f(${childFunc}(q), 1.0);
 }
 `
     }
@@ -1884,16 +1870,9 @@ export class Loft extends WithPos(Node) {
             }
         }
 
-        const fieldFunc = `
-fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
-    let h = ${h};
-    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
-${evalLines}
-${interpCode}
-    let dCap = abs(p.y) - h;
-    return max(d_profile, dCap);
-}
-
+        // Full-path only: emit Ex function. Field and Fast functions are in compileAuxFast().
+        // Ex references the field function via WGSL module scope.
+        return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d = ${this.wgslFieldFuncName}(p);
     let eps = 0.001;
@@ -1908,12 +1887,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let resultId = select(capId, id, onSide);
     return sdfR(d, 0.8, 1.0, resultId, n);
 }
-
-fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
-    return vec2f(${this.wgslFieldFuncName}(p), 0.8);
-}
 `
-        return fieldFunc
     }
 
     override compileAuxFast(): string {

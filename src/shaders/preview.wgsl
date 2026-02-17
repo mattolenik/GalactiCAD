@@ -1,6 +1,6 @@
 //:) include "hg_sdf.wgsl"
 
-const MAX_STEPS: i32 = 200;
+const MAX_STEPS: i32 = 300;
 const MAX_DIST: f32 = 300.0;
 
 struct Camera {
@@ -218,6 +218,9 @@ fn shadeHit(hit: RaymarchHit, flipNormal: bool) -> vec3f {
 
 @fragment
 fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
+    // Force subtreeAABBs into the bind group layout (auto-layout strips unused bindings)
+    _ = subtreeAABBs[0].center;
+
     let uv = fragCoord;
     let aspect = camera.res.x / camera.res.y;
 

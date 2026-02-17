@@ -1445,7 +1445,7 @@ export class SDFRenderer {
             const subtreeShaderCode = boundsShader
             const compiler = new ShaderCompiler(this.#device)
                 .replace("insert", "sceneAuxFast", sub.fastAux)
-                .replace("insert", "sceneAux", sub.fastAux)
+                .replace("insert", "sceneAux", "")
                 .replace("insert", "sceneSDF_fast", `\nreturn ${sub.fastSDF};\n`)
                 .replace("insert", "sceneSDF", `\nreturn sdfTrue(${sub.fastSDF}.x, 0u, vec3f(0.0));\n`)
             const module = compiler.compile(subtreeShaderCode, `SubtreeBounds_${sub.aabbIndex}`)

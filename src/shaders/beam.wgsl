@@ -44,6 +44,9 @@ fn sceneSDF_fast(p: vec3f) -> vec2f {
 
 @compute @workgroup_size(8, 8)
 fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
+    // Force subtreeAABBs into the bind group layout (auto-layout strips unused bindings)
+    _ = subtreeAABBs[0].center;
+
     // Output texture is at tile resolution: ceil(W/TILE_SIZE) x ceil(H/TILE_SIZE)
     let outDims = textureDimensions(tStartOut);
     if (gid.x >= outDims.x || gid.y >= outDims.y) {

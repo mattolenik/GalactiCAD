@@ -570,8 +570,11 @@ fn cellClassification_Pass1(
     @builtin(workgroup_id) workgroupId: vec3u,   // u32 block index (linearized)
     @builtin(num_workgroups) numWg: vec3u
 ) {
+    // Force subtreeAABBs into the bind group layout (auto-layout strips unused bindings)
+    _ = subtreeAABBs[0].center;
+
     let u32_block_index = workgroupId.x + workgroupId.y * numWg.x + workgroupId.z * numWg.x * numWg.y;
-    let bit_index_in_u32 = localId.x;   
+    let bit_index_in_u32 = localId.x;
 
     let cellFlatIndex = u32_block_index * 32u + bit_index_in_u32;
     
@@ -797,6 +800,7 @@ fn edgeDetection_Pass3(
     @builtin(global_invocation_id) globalId: vec3u,
     @builtin(num_workgroups) numWg: vec3u
 ) {
+    _ = subtreeAABBs[0].center;
     // Linearize 2D dispatch for large workgroup counts
     let active_cell_array_idx = globalId.x + globalId.y * (numWg.x * 64u);
 
@@ -1087,6 +1091,7 @@ fn vertexGeneration_Pass4(
     @builtin(workgroup_id) workgroupId: vec3u,
     @builtin(num_workgroups) numWg: vec3u
 ) {
+    _ = subtreeAABBs[0].center;
     // We generate up to MAX_COMPONENTS_PER_CELL vertices per active cell.
     let wgLinear = workgroupId.x + workgroupId.y * numWg.x + workgroupId.z * numWg.x * numWg.y;
     

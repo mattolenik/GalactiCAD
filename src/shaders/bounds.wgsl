@@ -89,6 +89,9 @@ fn computeBounds(
     @builtin(workgroup_id) workgroupId: vec3u,
     @builtin(num_workgroups) numWg: vec3u
 ) {
+    // Force subtreeAABBs into the bind group layout (auto-layout strips unused bindings)
+    _ = subtreeAABBs[0].center;
+
     let dims = uniforms.dims.xyz;
     let total = dims.x * dims.y * dims.z;
 

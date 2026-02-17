@@ -7,7 +7,6 @@ BUILD       := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 
 default: build test
 
-
 .PHONY: open
 open:
 	$(BROWSER) http://localhost:$(PORT)

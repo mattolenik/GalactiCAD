@@ -1,142 +1,140 @@
 // Deep-Sea Research Submersible
 // DSV Abyssal Pioneer — rated to 6,000 metres
 
-function scene() {
-    // ═══ PRESSURE HULL ═══
-    // Main titanium crew sphere — this is the sub
-    const pressureHull = sphere([0, 0, 0], { r: 16 })
+// ═══ PRESSURE HULL ═══
+// Main titanium crew sphere — this is the sub
+let pressureHull = sphere([0, 0, 0], { r: 16 })
 
-    // ═══ OUTER FAIRING ═══
-    // Lightweight fiberglass shell streamlining the sphere
-    const fairingCore = box([0, 0, -2], [22, 14, 10])
-    const fairingNose = sphere([16, 0, -2], { r: 12 })
-    const fairingTail = sphere([-14, 0, -2], { r: 11 })
-    const fairingBelly = sphere([0, 0, -8], { r: 11 })
-    const fairing = union(6, fairingCore, fairingNose, fairingTail, fairingBelly)
+// ═══ OUTER FAIRING ═══
+// Lightweight fiberglass shell streamlining the sphere
+let fairingCore = box([0, 0, -2], [22, 14, 10])
+let fairingNose = sphere([16, 0, -2], { r: 12 })
+let fairingTail = sphere([-14, 0, -2], { r: 11 })
+let fairingBelly = sphere([0, 0, -8], { r: 11 })
+let fairing = union(6, fairingCore, fairingNose, fairingTail, fairingBelly)
 
-    // Hull dome protrudes above the fairing
-    const body = union(4, fairing, pressureHull)
+// Hull dome protrudes above the fairing
+let body = union(4, fairing, pressureHull)
 
-    // ═══ SAIL (CONNING TOWER) ═══
-    const sailBox = box([2, 0, 14], [5, 4, 6])
-    const sailCap = sphere([2, 0, 18], { r: 4 })
-    const sail = union(3, sailBox, sailCap)
-    const bodySail = union(3, body, sail)
+// ═══ SAIL (CONNING TOWER) ═══
+let sailBox = box([2, 0, 14], [5, 4, 6])
+let sailCap = sphere([2, 0, 18], { r: 4 })
+let sail = union(3, sailBox, sailCap)
+let bodySail = union(3, body, sail)
 
-    // === VIEWPORTS ===
-    // Three forward observation windows
-    const vpCenter = sphere([18, 0, 2], { r: 4 })
-    const vpStbd = sphere([16, 8, -1], { r: 3 })
-    const vpPort = sphere([16, -8, -1], { r: 3 })
-    // Downward viewport for seafloor observation
-    const vpBelly = sphere([6, 0, -12], { r: 3 })
+// === VIEWPORTS ===
+// Three forward observation windows
+let vpCenter = sphere([18, 0, 2], { r: 4 })
+let vpStbd = sphere([16, 8, -1], { r: 3 })
+let vpPort = sphere([16, -8, -1], { r: 3 })
+// Downward viewport for seafloor observation
+let vpBelly = sphere([6, 0, -12], { r: 3 })
 
-    // ═══ PROPULSION ═══
-    // Main aft thruster with cowl
-    const thrusterBody = box([-22, 0, -2], [6, 7, 7])
-    const thrusterCowl = sphere([-26, 0, -2], { r: 6 })
-    const thrusterTip = sphere([-30, 0, -2], { r: 4.5 })
-    const thrusterAsm = union(3, thrusterBody, thrusterCowl, thrusterTip)
+// ═══ PROPULSION ═══
+// Main aft thruster with cowl
+let thrusterBody = box([-22, 0, -2], [6, 7, 7])
+let thrusterCowl = sphere([-26, 0, -2], { r: 6 })
+let thrusterTip = sphere([-30, 0, -2], { r: 4.5 })
+let thrusterAsm = union(3, thrusterBody, thrusterCowl, thrusterTip)
 
-    // Hollow duct
-    const thrusterBore = sphere([-28, 0, -2], { r: 3 })
-    const thruster = subtract(0.5, thrusterAsm, thrusterBore)
+// Hollow duct
+let thrusterBore = sphere([-28, 0, -2], { r: 3 })
+let thruster = subtract(0.5, thrusterAsm, thrusterBore)
 
-    // Lateral manoeuvring thrusters (tunnel pods)
-    const latPodR = box([4, 14, 2], [3, 3, 3])
-    const latBulgeR = sphere([4, 16, 2], { r: 3 })
-    const latR = union(1.5, latPodR, latBulgeR)
+// Lateral manoeuvring thrusters (tunnel pods)
+let latPodR = box([4, 14, 2], [3, 3, 3])
+let latBulgeR = sphere([4, 16, 2], { r: 3 })
+let latR = union(1.5, latPodR, latBulgeR)
 
-    const latPodL = box([4, -14, 2], [3, 3, 3])
-    const latBulgeL = sphere([4, -16, 2], { r: 3 })
-    const latL = union(1.5, latPodL, latBulgeL)
+let latPodL = box([4, -14, 2], [3, 3, 3])
+let latBulgeL = sphere([4, -16, 2], { r: 3 })
+let latL = union(1.5, latPodL, latBulgeL)
 
-    // Vertical thruster atop the sail
-    const vertPod = box([2, 0, 20], [3, 2, 2])
-    const vertBulge = sphere([2, 0, 22], { r: 2 })
-    const vertT = union(1, vertPod, vertBulge)
+// Vertical thruster atop the sail
+let vertPod = box([2, 0, 20], [3, 2, 2])
+let vertBulge = sphere([2, 0, 22], { r: 2 })
+let vertT = union(1, vertPod, vertBulge)
 
-    // ═══ MANIPULATOR ARMS ═══
-    // Starboard arm — seven linked spheres
-    const sR0 = sphere([10, 10, -8], { r: 3 })
-    const sR1 = sphere([14, 13, -10], { r: 2.5 })
-    const sR2 = sphere([18, 15, -11], { r: 2.2 })
-    const sR3 = sphere([22, 17, -11], { r: 2 })
-    const sR4 = sphere([25, 18, -11], { r: 1.8 })
-    const sR5 = sphere([28, 19, -11], { r: 1.5 })
-    // Claw jaws
-    const sR6 = sphere([30, 20, -10], { r: 1.2 })
-    const sR7 = sphere([30, 20, -12], { r: 1.2 })
-    const armR = union(1.5, sR0, sR1, sR2, sR3, sR4, sR5, sR6, sR7)
+// ═══ MANIPULATOR ARMS ═══
+// Starboard arm — seven linked spheres
+let sR0 = sphere([10, 10, -8], { r: 3 })
+let sR1 = sphere([14, 13, -10], { r: 2.5 })
+let sR2 = sphere([18, 15, -11], { r: 2.2 })
+let sR3 = sphere([22, 17, -11], { r: 2 })
+let sR4 = sphere([25, 18, -11], { r: 1.8 })
+let sR5 = sphere([28, 19, -11], { r: 1.5 })
+// Claw jaws
+let sR6 = sphere([30, 20, -10], { r: 1.2 })
+let sR7 = sphere([30, 20, -12], { r: 1.2 })
+let armR = union(1.5, sR0, sR1, sR2, sR3, sR4, sR5, sR6, sR7)
 
-    // Port arm — mirror
-    const sL0 = sphere([10, -10, -8], { r: 3 })
-    const sL1 = sphere([14, -13, -10], { r: 2.5 })
-    const sL2 = sphere([18, -15, -11], { r: 2.2 })
-    const sL3 = sphere([22, -17, -11], { r: 2 })
-    const sL4 = sphere([25, -18, -11], { r: 1.8 })
-    const sL5 = sphere([28, -19, -11], { r: 1.5 })
-    const sL6 = sphere([30, -20, -10], { r: 1.2 })
-    const sL7 = sphere([30, -20, -12], { r: 1.2 })
-    const armL = union(1.5, sL0, sL1, sL2, sL3, sL4, sL5, sL6, sL7)
+// Port arm — mirror
+let sL0 = sphere([10, -10, -8], { r: 3 })
+let sL1 = sphere([14, -13, -10], { r: 2.5 })
+let sL2 = sphere([18, -15, -11], { r: 2.2 })
+let sL3 = sphere([22, -17, -11], { r: 2 })
+let sL4 = sphere([25, -18, -11], { r: 1.8 })
+let sL5 = sphere([28, -19, -11], { r: 1.5 })
+let sL6 = sphere([30, -20, -10], { r: 1.2 })
+let sL7 = sphere([30, -20, -12], { r: 1.2 })
+let armL = union(1.5, sL0, sL1, sL2, sL3, sL4, sL5, sL6, sL7)
 
-    // ═══ SAMPLE BASKET ═══
-    // Open-top wire basket for collecting specimens
-    const basketOuter = box([16, 0, -13], [7, 8, 4])
-    const basketInner = box([16, 0, -12], [6, 7, 3.5])
-    const basket = subtract(basketOuter, basketInner)
+// ═══ SAMPLE BASKET ═══
+// Open-top wire basket for collecting specimens
+let basketOuter = box([16, 0, -13], [7, 8, 4])
+let basketInner = box([16, 0, -12], [6, 7, 3.5])
+let basket = subtract(basketOuter, basketInner)
 
-    // ═══ BALLAST ═══
-    // Syntactic foam buoyancy blocks along the spine
-    const foamR = box([-4, 8, 10], [10, 3, 3])
-    const foamL = box([-4, -8, 10], [10, 3, 3])
-    const foamCap1 = sphere([4, 8, 10], { r: 3 })
-    const foamCap2 = sphere([4, -8, 10], { r: 3 })
-    const foam = union(1, foamR, foamL, foamCap1, foamCap2)
+// ═══ BALLAST ═══
+// Syntactic foam buoyancy blocks along the spine
+let foamR = box([-4, 8, 10], [10, 3, 3])
+let foamL = box([-4, -8, 10], [10, 3, 3])
+let foamCap1 = sphere([4, 8, 10], { r: 3 })
+let foamCap2 = sphere([4, -8, 10], { r: 3 })
+let foam = union(1, foamR, foamL, foamCap1, foamCap2)
 
-    // Releasable steel drop-weights
-    const weightR = sphere([0, 8, -15], { r: 3.5 })
-    const weightL = sphere([0, -8, -15], { r: 3.5 })
+// Releasable steel drop-weights
+let weightR = sphere([0, 8, -15], { r: 3.5 })
+let weightL = sphere([0, -8, -15], { r: 3.5 })
 
-    // ═══ LANDING SKIDS ═══
-    const skidR = box([0, 10, -18], [14, 1, 1])
-    const skidL = box([0, -10, -18], [14, 1, 1])
-    const xbarF = box([12, 0, -18], [1, 11, 1])
-    const xbarM = box([0, 0, -18], [1, 11, 1])
-    const xbarA = box([-12, 0, -18], [1, 11, 1])
-    const skids = union(skidR, skidL, xbarF, xbarM, xbarA)
+// ═══ LANDING SKIDS ═══
+let skidR = box([0, 10, -18], [14, 1, 1])
+let skidL = box([0, -10, -18], [14, 1, 1])
+let xbarF = box([12, 0, -18], [1, 11, 1])
+let xbarM = box([0, 0, -18], [1, 11, 1])
+let xbarA = box([-12, 0, -18], [1, 11, 1])
+let skids = union(skidR, skidL, xbarF, xbarM, xbarA)
 
-    // ═══ LIGHTS ═══
-    // Forward high-intensity spots
-    const spotR = sphere([18, 7, 6], { r: 2 })
-    const spotL = sphere([18, -7, 6], { r: 2 })
-    // Work lights above the arms
-    const wkR = sphere([14, 12, -6], { r: 1.5 })
-    const wkL = sphere([14, -12, -6], { r: 1.5 })
+// ═══ LIGHTS ═══
+// Forward high-intensity spots
+let spotR = sphere([18, 7, 6], { r: 2 })
+let spotL = sphere([18, -7, 6], { r: 2 })
+// Work lights above the arms
+let wkR = sphere([14, 12, -6], { r: 1.5 })
+let wkL = sphere([14, -12, -6], { r: 1.5 })
 
-    // ═══ EXTERNAL INSTRUMENTS ═══
-    // Sonar transponder on the sail
-    const sonar = sphere([-6, 0, 18], { r: 3 })
-    const sonarStalk = box([-6, 0, 16], [2, 2, 4])
-    const sonarUnit = union(1, sonar, sonarStalk)
+// ═══ EXTERNAL INSTRUMENTS ═══
+// Sonar transponder on the sail
+let sonar = sphere([-6, 0, 18], { r: 3 })
+let sonarStalk = box([-6, 0, 16], [2, 2, 4])
+let sonarUnit = union(1, sonar, sonarStalk)
 
-    // CTD (conductivity-temperature-depth) sensor pod
-    const ctdBody = box([-10, 12, -4], [3, 2, 4])
-    const ctdProbe = sphere([-10, 12, -8], { r: 2 })
-    const ctd = union(1, ctdBody, ctdProbe)
+// CTD (conductivity-temperature-depth) sensor pod
+let ctdBody = box([-10, 12, -4], [3, 2, 4])
+let ctdProbe = sphere([-10, 12, -8], { r: 2 })
+let ctd = union(1, ctdBody, ctdProbe)
 
-    // Emergency locator beacon on the stern
-    const beacon = sphere([-16, 0, 10], { r: 2 })
-    const beaconMast = box([-16, 0, 8], [1, 1, 4])
-    const beaconUnit = union(0.5, beacon, beaconMast)
+// Emergency locator beacon on the stern
+let beacon = sphere([-16, 0, 10], { r: 2 })
+let beaconMast = box([-16, 0, 8], [1, 1, 4])
+let beaconUnit = union(0.5, beacon, beaconMast)
 
-    // ═══ ASSEMBLY ═══
-    const hull = union(2, bodySail, vpCenter, vpStbd, vpPort, vpBelly)
-    const propulsion = union(1, thruster, latR, latL, vertT)
-    const arms = union(armR, armL)
-    const payload = union(1, basket, foam, weightR, weightL)
-    const lights = union(spotR, spotL, wkR, wkL)
-    const instruments = union(1, sonarUnit, ctd, beaconUnit)
+// ═══ ASSEMBLY ═══
+let hull = union(2, bodySail, vpCenter, vpStbd, vpPort, vpBelly)
+let propulsion = union(1, thruster, latR, latL, vertT)
+let arms = union(armR, armL)
+let payload = union(1, basket, foam, weightR, weightL)
+let lights = union(spotR, spotL, wkR, wkL)
+let instruments = union(1, sonarUnit, ctd, beaconUnit)
 
-    return union(1.5, hull, propulsion, arms, payload, skids, lights, instruments)
-}
+return union(1.5, hull, propulsion, arms, payload, skids, lights, instruments)

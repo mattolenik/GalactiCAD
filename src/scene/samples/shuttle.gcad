@@ -4,145 +4,144 @@
 // more aircraft-like configuration with straight aft-mounted wings
 // and a conventional T-tail
 
-function scene() {
-    // ═══ FUSELAGE ═══
-    // Long slender cylindrical body — much higher fineness ratio
-    // than the final shuttle. More like a conventional aircraft.
-    const fuseFwd = box([20, 0, 0], [16, 5.5, 5.5])
-    const fuseMid = box([0, 0, 0], [22, 6, 6])
-    const fuseAft = box([-18, 0, 0], [14, 7, 7])
-    const fuseRaw = union(5, fuseFwd, fuseMid, fuseAft)
 
-    // Nose cone — pointed, more like a fighter than the blunt
-    // profile that was eventually chosen for re-entry heating
-    // (cone base at x≈30, apex at x≈42, pointing forward along +X)
-    const noseCone = rotate([0, 0, -90],
-        cone([0, 30, 0.5], { r: 6, h: 12 })
-    )
-    const noseFair = union(4, fuseRaw, noseCone)
+// ═══ FUSELAGE ═══
+// Long slender cylindrical body — much higher fineness ratio
+// than the final shuttle. More like a conventional aircraft.
+let fuseFwd = box([20, 0, 0], [16, 5.5, 5.5])
+let fuseMid = box([0, 0, 0], [22, 6, 6])
+let fuseAft = box([-18, 0, 0], [14, 7, 7])
+let fuseRaw = union(5, fuseFwd, fuseMid, fuseAft)
 
-    // Flatten the belly for the heat shield
-    const bellyPlane = plane([0, 0, -4], { n: [0, 0, 1] })
-    const fuselage = subtract(0.3, noseFair, bellyPlane)
+// Nose cone — pointed, more like a fighter than the blunt
+// profile that was eventually chosen for re-entry heating
+// (cone base at x≈30, apex at x≈42, pointing forward along +X)
+let noseCone = rotate([0, 0, -90],
+cone([0, 30, 0.5], { r: 6, h: 12 })
+)
+let noseFair = union(4, fuseRaw, noseCone)
 
-    // ═══ CREW CABIN / FLIGHT DECK ═══
-    // Raised cockpit area with conventional airliner windshield angle
-    const cockpitBulge = sphere([30, 0, 3], { r: 4 })
-    const windshieldR = sphere([32, 2, 3], { r: 2 })
-    const windshieldL = sphere([32, -2, 3], { r: 2 })
+// Flatten the belly for the heat shield
+let bellyPlane = plane([0, 0, -4], { n: [0, 0, 1] })
+let fuselage = subtract(0.3, noseFair, bellyPlane)
 
-    // ═══ FORWARD RCS ═══
-    // Reaction control thrusters housed in a conical nose cap
-    // (cone tip forward, wide end blending into fuselage)
-    const rcsCone = rotate([0, 0, -90],
-        cone([0, 36, 2], { r: 3, h: 6 })
-    )
+// ═══ CREW CABIN / FLIGHT DECK ═══
+// Raised cockpit area with conventional airliner windshield angle
+let cockpitBulge = sphere([30, 0, 3], { r: 4 })
+let windshieldR = sphere([32, 2, 3], { r: 2 })
+let windshieldL = sphere([32, -2, 3], { r: 2 })
 
-    // ═══ PAYLOAD BAY ═══
-    // Long cargo bay with clamshell doors on the dorsal surface
-    const bayDoorR = box([2, 3.5, 5.5], [18, 0.4, 1])
-    const bayDoorL = box([2, -3.5, 5.5], [18, 0.4, 1])
-    const bayRidge = box([2, 0, 6.5], [18, 4, 0.3])
+// ═══ FORWARD RCS ═══
+// Reaction control thrusters housed in a conical nose cap
+// (cone tip forward, wide end blending into fuselage)
+let rcsCone = rotate([0, 0, -90],
+cone([0, 36, 2], { r: 3, h: 6 })
+)
 
-    // ═══ WINGS ═══
-    // The defining feature: STRAIGHT wings, not delta
-    // Mounted far aft. Faget argued these were simpler,
-    // lighter, and gave better low-speed handling for landing.
+// ═══ PAYLOAD BAY ═══
+// Long cargo bay with clamshell doors on the dorsal surface
+let bayDoorR = box([2, 3.5, 5.5], [18, 0.4, 1])
+let bayDoorL = box([2, -3.5, 5.5], [18, 0.4, 1])
+let bayRidge = box([2, 0, 6.5], [18, 4, 0.3])
 
-    // Wing root sections (thicker, blended into fuselage)
-    const wingRootR = box([-10, 10, -1.5], [8, 6, 1.5])
-    const wingRootL = box([-10, -10, -1.5], [8, 6, 1.5])
+// ═══ WINGS ═══
+// The defining feature: STRAIGHT wings, not delta
+// Mounted far aft. Faget argued these were simpler,
+// lighter, and gave better low-speed handling for landing.
 
-    // Wing outer panels (thinner toward tips)
-    const wingOuterR = box([-10, 22, -1.5], [7, 8, 0.8])
-    const wingOuterL = box([-10, -22, -1.5], [7, 8, 0.8])
+// Wing root sections (thicker, blended into fuselage)
+let wingRootR = box([-10, 10, -1.5], [8, 6, 1.5])
+let wingRootL = box([-10, -10, -1.5], [8, 6, 1.5])
 
-    // Wingtip fairings
-    const tipR = sphere([-10, 28, -1.5], { r: 2 })
-    const tipL = sphere([-10, -28, -1.5], { r: 2 })
+// Wing outer panels (thinner toward tips)
+let wingOuterR = box([-10, 22, -1.5], [7, 8, 0.8])
+let wingOuterL = box([-10, -22, -1.5], [7, 8, 0.8])
 
-    // Blend wing sections smoothly
-    const wingR = union(2, wingRootR, wingOuterR, tipR)
-    const wingL = union(2, wingRootL, wingOuterL, tipL)
+// Wingtip fairings
+let tipR = sphere([-10, 28, -1.5], { r: 2 })
+let tipL = sphere([-10, -28, -1.5], { r: 2 })
 
-    // Wing-body fairing
-    const fairR = sphere([-10, 6, -1], { r: 4 })
-    const fairL = sphere([-10, -6, -1], { r: 4 })
+// Blend wing sections smoothly
+let wingR = union(2, wingRootR, wingOuterR, tipR)
+let wingL = union(2, wingRootL, wingOuterL, tipL)
 
-    // ═══ VERTICAL TAIL ═══
-    // Tall single fin — tapers to a conical tip
-    // (cone base at z≈8, apex at z≈20, pointing up along +Z)
-    const vertStabSlab = box([-24, 0, 8], [8, 0.5, 6])
-    const vertStabCone = rotate([90, 0, 0],
-        cone([-24, 8, 0], { r: 4, h: 12 })
-    )
-    const vertStab = union(3, vertStabSlab, vertStabCone)
+// Wing-body fairing
+let fairR = sphere([-10, 6, -1], { r: 4 })
+let fairL = sphere([-10, -6, -1], { r: 4 })
 
-    // Dorsal spine fairing connecting fuselage to fin
-    const dorsalSpine = box([-20, 0, 5], [10, 1.5, 4])
-    const dorsalFair = sphere([-16, 0, 5], { r: 3 })
-    const dorsal = union(2, dorsalSpine, dorsalFair)
+// ═══ VERTICAL TAIL ═══
+// Tall single fin — tapers to a conical tip
+// (cone base at z≈8, apex at z≈20, pointing up along +Z)
+let vertStabSlab = box([-24, 0, 8], [8, 0.5, 6])
+let vertStabCone = rotate([90, 0, 0],
+cone([-24, 8, 0], { r: 4, h: 12 })
+)
+let vertStab = union(3, vertStabSlab, vertStabCone)
 
-    // ═══ HORIZONTAL TAIL ═══
-    // T-tail: horizontal stabilisers at the top of the fin
-    const hStabR = box([-26, 8, 15], [4, 6, 0.5])
-    const hStabL = box([-26, -8, 15], [4, 6, 0.5])
-    const hStabTipR = sphere([-26, 13, 15], { r: 1.5 })
-    const hStabTipL = sphere([-26, -13, 15], { r: 1.5 })
+// Dorsal spine fairing connecting fuselage to fin
+let dorsalSpine = box([-20, 0, 5], [10, 1.5, 4])
+let dorsalFair = sphere([-16, 0, 5], { r: 3 })
+let dorsal = union(2, dorsalSpine, dorsalFair)
 
-    // ═══ OMS / RCS PODS ═══
-    // Orbital manoeuvring system pods flanking the aft fuselage
-    // Pod bodies with conical thruster nozzles pointing aft
-    const omsPodR = sphere([-20, 6, 2], { r: 3.5 })
-    const omsFairR = box([-18, 6, 2], [4, 2, 2.5])
-    // OMS nozzle cone (wide bell opening at rear, throat forward)
-    const omsNozzleR = rotate([0, 0, -90],
-        cone([0, -24, 2], { r: 2, h: 3 })
-    )
-    const omsR = union(2, omsPodR, omsFairR, omsNozzleR)
+// ═══ HORIZONTAL TAIL ═══
+// T-tail: horizontal stabilisers at the top of the fin
+let hStabR = box([-26, 8, 15], [4, 6, 0.5])
+let hStabL = box([-26, -8, 15], [4, 6, 0.5])
+let hStabTipR = sphere([-26, 13, 15], { r: 1.5 })
+let hStabTipL = sphere([-26, -13, 15], { r: 1.5 })
 
-    const omsPodL = sphere([-20, -6, 2], { r: 3.5 })
-    const omsFairL = box([-18, -6, 2], [4, 2, 2.5])
-    const omsNozzleL = rotate([0, 0, -90],
-        cone([0, -24, 2], { r: 2, h: 3 })
-    )
-    const omsL = union(2, omsPodL, omsFairL, omsNozzleL)
+// ═══ OMS / RCS PODS ═══
+// Orbital manoeuvring system pods flanking the aft fuselage
+// Pod bodies with conical thruster nozzles pointing aft
+let omsPodR = sphere([-20, 6, 2], { r: 3.5 })
+let omsFairR = box([-18, 6, 2], [4, 2, 2.5])
+// OMS nozzle cone (wide bell opening at rear, throat forward)
+let omsNozzleR = rotate([0, 0, -90],
+cone([0, -24, 2], { r: 2, h: 3 })
+)
+let omsR = union(2, omsPodR, omsFairR, omsNozzleR)
 
-    // ═══ MAIN ENGINES ═══
-    // Three SSMEs in a triangular cluster
-    // Conical nozzle bells flaring out at the tail
-    // (wide opening at rear x≈-30, throat at x≈-26)
-    const engineBellTop = rotate([0, 0, -90],
-        cone([0, -26, 1], { r: 2.8, h: 4 })
-    )
-    const engineBellBR = rotate([0, 0, -90],
-        cone([3, -26, -2], { r: 2.8, h: 4 })
-    )
-    const engineBellBL = rotate([0, 0, -90],
-        cone([-3, -26, -2], { r: 2.8, h: 4 })
-    )
-    const engineShroud = box([-26, 0, -0.5], [3, 5, 4])
-    const engines = union(1, engineBellTop, engineBellBR, engineBellBL, engineShroud)
+let omsPodL = sphere([-20, -6, 2], { r: 3.5 })
+let omsFairL = box([-18, -6, 2], [4, 2, 2.5])
+let omsNozzleL = rotate([0, 0, -90],
+cone([0, -24, 2], { r: 2, h: 3 })
+)
+let omsL = union(2, omsPodL, omsFairL, omsNozzleL)
 
-    // ═══ BODY FLAP ═══
-    const bodyFlap = box([-28, 0, -4.5], [4, 6, 0.6])
+// ═══ MAIN ENGINES ═══
+// Three SSMEs in a triangular cluster
+// Conical nozzle bells flaring out at the tail
+// (wide opening at rear x≈-30, throat at x≈-26)
+let engineBellTop = rotate([0, 0, -90],
+cone([0, -26, 1], { r: 2.8, h: 4 })
+)
+let engineBellBR = rotate([0, 0, -90],
+cone([3, -26, -2], { r: 2.8, h: 4 })
+)
+let engineBellBL = rotate([0, 0, -90],
+cone([-3, -26, -2], { r: 2.8, h: 4 })
+)
+let engineShroud = box([-26, 0, -0.5], [3, 5, 4])
+let engines = union(1, engineBellTop, engineBellBR, engineBellBL, engineShroud)
 
-    // ═══ HEAT SHIELD PANEL LINE ═══
-    const tpsBoundaryR = box([0, 5, -3.5], [30, 0.3, 0.3])
-    const tpsBoundaryL = box([0, -5, -3.5], [30, 0.3, 0.3])
+// ═══ BODY FLAP ═══
+let bodyFlap = box([-28, 0, -4.5], [4, 6, 0.6])
 
-    // ═══ EXTERNAL TANK ATTACH POINTS ═══
-    // Fittings where the external propellant drop tanks connected
-    const attachFwd = sphere([10, 0, -4.5], { r: 1.5 })
-    const attachAft = sphere([-14, 0, -4.5], { r: 1.5 })
+// ═══ HEAT SHIELD PANEL LINE ═══
+let tpsBoundaryR = box([0, 5, -3.5], [30, 0.3, 0.3])
+let tpsBoundaryL = box([0, -5, -3.5], [30, 0.3, 0.3])
 
-    // ═══ ASSEMBLY ═══
-    const body = union(2.5, fuselage, cockpitBulge, windshieldR, windshieldL, rcsCone)
-    const wings = union(2.5, body, wingR, wingL, fairR, fairL)
-    const tail = union(2, vertStab, dorsal, hStabR, hStabL, hStabTipR, hStabTipL)
-    const propulsion = union(1, omsR, omsL, engines, bodyFlap)
-    const bayDoors = union(bayDoorR, bayDoorL, bayRidge)
-    const details = union(tpsBoundaryR, tpsBoundaryL, attachFwd, attachAft)
+// ═══ EXTERNAL TANK ATTACH POINTS ═══
+// Fittings where the external propellant drop tanks connected
+let attachFwd = sphere([10, 0, -4.5], { r: 1.5 })
+let attachAft = sphere([-14, 0, -4.5], { r: 1.5 })
 
-    return union(1.5, wings, tail, propulsion, bayDoors, details)
-}
+// ═══ ASSEMBLY ═══
+let body = union(2.5, fuselage, cockpitBulge, windshieldR, windshieldL, rcsCone)
+let wings = union(2.5, body, wingR, wingL, fairR, fairL)
+let tail = union(2, vertStab, dorsal, hStabR, hStabL, hStabTipR, hStabTipL)
+let propulsion = union(1, omsR, omsL, engines, bodyFlap)
+let bayDoors = union(bayDoorR, bayDoorL, bayRidge)
+let details = union(tpsBoundaryR, tpsBoundaryL, attachFwd, attachAft)
+
+return union(1.5, wings, tail, propulsion, bayDoors, details)

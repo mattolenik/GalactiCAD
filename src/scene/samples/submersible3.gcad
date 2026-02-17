@@ -3,176 +3,175 @@
 // "We've addressed all the criticism by making it bigger and adding a hot tub"
 // Now with EVEN LESS engineering oversight
 
-function scene() {
-    // ═══ PRESSURE HULL ═══
-    // Still a cylinder. Still carbon fibre. But now WIDER
-    // to fit the wet bar and the DJ booth.
-    // A whistleblower tried to report the hull to the coast guard
-    // but was silenced with an NDA and a gift bag.
-    const hull = box([0, 0, 0], [12, 12, 22])
-    const hullRound = sphere([0, 0, 0], { r: 28 })
-    const pressureHull = intersect({ r: 3 }, hull, hullRound)
 
-    // Endcaps now held on with construction adhesive
-    // "It's the same stuff they use on the space shuttle" (it is not)
-    const endcapTop = sphere([0, 0, 20], { r: 12 })
-    const endcapBot = sphere([0, 0, -20], { r: 12 })
-    const tube = union(2, pressureHull, endcapTop, endcapBot)
+// ═══ PRESSURE HULL ═══
+// Still a cylinder. Still carbon fibre. But now WIDER
+// to fit the wet bar and the DJ booth.
+// A whistleblower tried to report the hull to the coast guard
+// but was silenced with an NDA and a gift bag.
+let hull = box([0, 0, 0], [12, 12, 22])
+let hullRound = sphere([0, 0, 0], { r: 28 })
+let pressureHull = intersect({ r: 3 }, hull, hullRound)
 
-    // ═══ VIEWPORT ═══
-    // Upgraded from one shower door to TWO shower doors
-    // "Redundancy!" says the billionaire. "That's engineering!"
-    const vpR = sphere([14, 4, 0], { r: 5 })
-    const vpL = sphere([14, -4, 0], { r: 5 })
+// Endcaps now held on with construction adhesive
+// "It's the same stuff they use on the space shuttle" (it is not)
+let endcapTop = sphere([0, 0, 20], { r: 12 })
+let endcapBot = sphere([0, 0, -20], { r: 12 })
+let tube = union(2, pressureHull, endcapTop, endcapBot)
 
-    // ═══ "FAIRING" ═══
-    // The intern was promoted to Chief Naval Architect
-    // He added more flat panels. They are thicker now. "Stronger."
-    const panelF = box([10, 0, 0], [3, 14, 18])
-    const panelR = box([0, 10, 0], [14, 3, 18])
-    const panelL = box([0, -10, 0], [14, 3, 18])
-    const panelB = box([-10, 0, 0], [3, 14, 18])
-    const fairing = union(1, panelF, panelR, panelL, panelB)
+// ═══ VIEWPORT ═══
+// Upgraded from one shower door to TWO shower doors
+// "Redundancy!" says the billionaire. "That's engineering!"
+let vpR = sphere([14, 4, 0], { r: 5 })
+let vpL = sphere([14, -4, 0], { r: 5 })
 
-    const bodyRaw = union(2, tube, fairing, vpR, vpL)
+// ═══ "FAIRING" ═══
+// The intern was promoted to Chief Naval Architect
+// He added more flat panels. They are thicker now. "Stronger."
+let panelF = box([10, 0, 0], [3, 14, 18])
+let panelR = box([0, 10, 0], [14, 3, 18])
+let panelL = box([0, -10, 0], [14, 3, 18])
+let panelB = box([-10, 0, 0], [3, 14, 18])
+let fairing = union(1, panelF, panelR, panelL, panelB)
 
-    // ═══ BALLAST "SYSTEM" ═══
-    // The sandbags are back. Now there are more of them.
-    // Someone suggested "maybe use actual ballast tanks" and was fired.
-    const sb1 = sphere([0, 12, -14], { r: 4 })
-    const sb2 = sphere([0, -12, -14], { r: 4 })
-    const sb3 = sphere([0, 12, 14], { r: 3.5 })
-    const sb4 = sphere([0, -12, 14], { r: 3.5 })
-    const sb5 = sphere([0, 12, 0], { r: 3 })
-    const sb6 = sphere([0, -12, 0], { r: 3 })
-    const sb7 = sphere([0, 12, 7], { r: 3 })
-    const sb8 = sphere([0, -12, 7], { r: 3 })
-    const sb9 = sphere([0, 12, -7], { r: 3 })
-    const sb10 = sphere([0, -12, -7], { r: 3 })
-    const ballast = union(sb1, sb2, sb3, sb4, sb5, sb6, sb7, sb8, sb9, sb10)
+let bodyRaw = union(2, tube, fairing, vpR, vpL)
 
-    // ═══ PROPULSION ═══
-    // Two jet ski thrusters now. Both mounted off-centre.
-    // One points slightly up. The other slightly down.
-    // "They'll average out" — actual quote from the design review
-    const thruster1 = sphere([-12, 5, -14], { r: 4 })
-    const thruster1Mount = box([-10, 5, -14], [4, 3, 3])
-    const thruster2 = sphere([-12, -6, -10], { r: 4 })
-    const thruster2Mount = box([-10, -6, -10], [4, 3, 3])
-    const propulsion = union(1, thruster1, thruster1Mount, thruster2, thruster2Mount)
+// ═══ BALLAST "SYSTEM" ═══
+// The sandbags are back. Now there are more of them.
+// Someone suggested "maybe use actual ballast tanks" and was fired.
+let sb1 = sphere([0, 12, -14], { r: 4 })
+let sb2 = sphere([0, -12, -14], { r: 4 })
+let sb3 = sphere([0, 12, 14], { r: 3.5 })
+let sb4 = sphere([0, -12, 14], { r: 3.5 })
+let sb5 = sphere([0, 12, 0], { r: 3 })
+let sb6 = sphere([0, -12, 0], { r: 3 })
+let sb7 = sphere([0, 12, 7], { r: 3 })
+let sb8 = sphere([0, -12, 7], { r: 3 })
+let sb9 = sphere([0, 12, -7], { r: 3 })
+let sb10 = sphere([0, -12, -7], { r: 3 })
+let ballast = union(sb1, sb2, sb3, sb4, sb5, sb6, sb7, sb8, sb9, sb10)
 
-    // ═══ LIFE SUPPORT ═══
-    // Still camping tanks. Fewer of them now because two fell off
-    // during the last test dive and nobody replaced them.
-    // "We'll just breathe slower"
-    const tank1 = sphere([5, 5, 22], { r: 2.5 })
-    const tank2 = sphere([-5, -5, 22], { r: 2.5 })
-    const tanks = union(tank1, tank2)
+// ═══ PROPULSION ═══
+// Two jet ski thrusters now. Both mounted off-centre.
+// One points slightly up. The other slightly down.
+// "They'll average out" — actual quote from the design review
+let thruster1 = sphere([-12, 5, -14], { r: 4 })
+let thruster1Mount = box([-10, 5, -14], [4, 3, 3])
+let thruster2 = sphere([-12, -6, -10], { r: 4 })
+let thruster2Mount = box([-10, -6, -10], [4, 3, 3])
+let propulsion = union(1, thruster1, thruster1Mount, thruster2, thruster2Mount)
 
-    // ═══ LUXURY OBSERVATION DOME ═══
-    // Even bigger now. Double height. Zero engineering.
-    // "The guests need to see the bioluminescence"
-    const loungeDome = sphere([0, 0, 26], { r: 12 })
-    const loungeFloor = plane([0, 0, 20], { n: [0, 0, 1] })
-    const lounge = subtract(loungeDome, loungeFloor)
+// ═══ LIFE SUPPORT ═══
+// Still camping tanks. Fewer of them now because two fell off
+// during the last test dive and nobody replaced them.
+// "We'll just breathe slower"
+let tank1 = sphere([5, 5, 22], { r: 2.5 })
+let tank2 = sphere([-5, -5, 22], { r: 2.5 })
+let tanks = union(tank1, tank2)
 
-    // ═══ HOT TUB ═══
-    // Yes. A hot tub. On a deep-sea submersible.
-    // Mounted externally on the top because it "didn't fit inside."
-    // Filled with seawater at depth. "It's a feature."
-    const tubOuter = sphere([0, 0, 36], { r: 7 })
-    const tubInner = sphere([0, 0, 38], { r: 6 })
-    const tubFloor = plane([0, 0, 34], { n: [0, 0, 1] })
-    const hotTub = subtract(subtract(tubOuter, tubInner), tubFloor)
+// ═══ LUXURY OBSERVATION DOME ═══
+// Even bigger now. Double height. Zero engineering.
+// "The guests need to see the bioluminescence"
+let loungeDome = sphere([0, 0, 26], { r: 12 })
+let loungeFloor = plane([0, 0, 20], { n: [0, 0, 1] })
+let lounge = subtract(loungeDome, loungeFloor)
 
-    // ═══ COMMUNICATIONS ═══
-    // Starlink dish is back, now flanked by two more dishes
-    // "Mesh networking!" (they are not networked)
-    const dish1 = sphere([0, 0, 42], { r: 4 })
-    const dish1Cut = sphere([0, 0, 45], { r: 4 })
-    const dishMain = subtract(dish1, dish1Cut)
-    const dish2 = sphere([5, 0, 40], { r: 3 })
-    const dish2Cut = sphere([5, 0, 43], { r: 3 })
-    const dishR = subtract(dish2, dish2Cut)
-    const dish3 = sphere([-5, 0, 40], { r: 3 })
-    const dish3Cut = sphere([-5, 0, 43], { r: 3 })
-    const dishL = subtract(dish3, dish3Cut)
-    const dishMast = box([0, 0, 38], [1, 1, 6])
-    const comms = union(0.5, dishMain, dishR, dishL, dishMast)
+// ═══ HOT TUB ═══
+// Yes. A hot tub. On a deep-sea submersible.
+// Mounted externally on the top because it "didn't fit inside."
+// Filled with seawater at depth. "It's a feature."
+let tubOuter = sphere([0, 0, 36], { r: 7 })
+let tubInner = sphere([0, 0, 38], { r: 6 })
+let tubFloor = plane([0, 0, 34], { n: [0, 0, 1] })
+let hotTub = subtract(subtract(tubOuter, tubInner), tubFloor)
 
-    // ═══ SPONSORSHIP BILLBOARDS ═══
-    // Now on BOTH sides. And the back. And the top.
-    // The billionaire's face is on one of them.
-    const billboardR = box([0, 14, 4], [14, 0.5, 10])
-    const billboardL = box([0, -14, 4], [14, 0.5, 10])
-    const billboardBack = box([-14, 0, 4], [0.5, 14, 10])
-    const billboardTop = box([0, 0, 32], [10, 10, 0.5])
-    const billboards = union(billboardR, billboardL, billboardBack, billboardTop)
+// ═══ COMMUNICATIONS ═══
+// Starlink dish is back, now flanked by two more dishes
+// "Mesh networking!" (they are not networked)
+let dish1 = sphere([0, 0, 42], { r: 4 })
+let dish1Cut = sphere([0, 0, 45], { r: 4 })
+let dishMain = subtract(dish1, dish1Cut)
+let dish2 = sphere([5, 0, 40], { r: 3 })
+let dish2Cut = sphere([5, 0, 43], { r: 3 })
+let dishR = subtract(dish2, dish2Cut)
+let dish3 = sphere([-5, 0, 40], { r: 3 })
+let dish3Cut = sphere([-5, 0, 43], { r: 3 })
+let dishL = subtract(dish3, dish3Cut)
+let dishMast = box([0, 0, 38], [1, 1, 6])
+let comms = union(0.5, dishMain, dishR, dishL, dishMast)
 
-    // ═══ "SAFETY" SYSTEM ═══
-    // The PlayStation controller has been upgraded to a Logitech gamepad
-    // Found on Amazon for $29.99. "It has more buttons"
-    // Also: one (1) glow stick
-    const controller = box([8, 0, 22], [3, 4, 1])
-    const glowStick = box([10, 0, 24], [0.3, 0.3, 3])
+// ═══ SPONSORSHIP BILLBOARDS ═══
+// Now on BOTH sides. And the back. And the top.
+// The billionaire's face is on one of them.
+let billboardR = box([0, 14, 4], [14, 0.5, 10])
+let billboardL = box([0, -14, 4], [14, 0.5, 10])
+let billboardBack = box([-14, 0, 4], [0.5, 14, 10])
+let billboardTop = box([0, 0, 32], [10, 10, 0.5])
+let billboards = union(billboardR, billboardL, billboardBack, billboardTop)
 
-    // ═══ LANDING GEAR ═══
-    // Upgraded from shopping trolley wheels to go-kart wheels
-    // Still no suspension. "The ocean floor is flat, right?"
-    const wheelFR = sphere([8, 8, -24], { r: 3 })
-    const wheelFL = sphere([8, -8, -24], { r: 3 })
-    const wheelRR = sphere([-8, 8, -24], { r: 3 })
-    const wheelRL = sphere([-8, -8, -24], { r: 3 })
-    // Bonus: a spare wheel, bolted to the back
-    const spare = sphere([-14, 0, -8], { r: 3 })
-    const wheels = union(wheelFR, wheelFL, wheelRR, wheelRL, spare)
-    const axleF = box([8, 0, -24], [1, 9, 1])
-    const axleR = box([-8, 0, -24], [1, 9, 1])
+// ═══ "SAFETY" SYSTEM ═══
+// The PlayStation controller has been upgraded to a Logitech gamepad
+// Found on Amazon for $29.99. "It has more buttons"
+// Also: one (1) glow stick
+let controller = box([8, 0, 22], [3, 4, 1])
+let glowStick = box([10, 0, 24], [0.3, 0.3, 3])
 
-    // ═══ DECORATIVE FINS ═══
-    // Now FOUR fins because "more fins = more stable"
-    // The CFD simulation was done in Microsoft Paint
-    const finR = rotate([0, 20, 0],
-        box([0, 14, -10], [8, 1, 10])
-    )
-    const finL = rotate([0, -20, 0],
-        box([0, -14, -10], [8, 1, 10])
-    )
-    const finTop = box([0, 0, 30], [10, 1, 5])
-    const finBot = box([0, 0, -18], [10, 1, 5])
+// ═══ LANDING GEAR ═══
+// Upgraded from shopping trolley wheels to go-kart wheels
+// Still no suspension. "The ocean floor is flat, right?"
+let wheelFR = sphere([8, 8, -24], { r: 3 })
+let wheelFL = sphere([8, -8, -24], { r: 3 })
+let wheelRR = sphere([-8, 8, -24], { r: 3 })
+let wheelRL = sphere([-8, -8, -24], { r: 3 })
+// Bonus: a spare wheel, bolted to the back
+let spare = sphere([-14, 0, -8], { r: 3 })
+let wheels = union(wheelFR, wheelFL, wheelRR, wheelRL, spare)
+let axleF = box([8, 0, -24], [1, 9, 1])
+let axleR = box([-8, 0, -24], [1, 9, 1])
 
-    // ═══ VIP HANDRAIL ═══
-    // Now gold-plated. $120,000.
-    // Longer too, so more influencers can pose at once.
-    const railR = box([10, 8, 8], [1, 1, 16])
-    const railL = box([10, -8, 8], [1, 1, 16])
-    const railTop = box([10, 0, 22], [1, 9, 1])
-    const railBot = box([10, 0, -6], [1, 9, 1])
-    const handrail = union(0.5, railR, railL, railTop, railBot)
+// ═══ DECORATIVE FINS ═══
+// Now FOUR fins because "more fins = more stable"
+// The CFD simulation was done in Microsoft Paint
+let finR = rotate([0, 20, 0],
+box([0, 14, -10], [8, 1, 10])
+)
+let finL = rotate([0, -20, 0],
+box([0, -14, -10], [8, 1, 10])
+)
+let finTop = box([0, 0, 30], [10, 1, 5])
+let finBot = box([0, 0, -18], [10, 1, 5])
 
-    // ═══ HELICOPTER PAD ═══
-    // A flat platform on the very top. For the "emergency helicopter."
-    // There is no emergency helicopter. There is no helicopter that
-    // can land on a submerged submarine. But it's in the brochure.
-    const helipad = box([0, 0, 44], [12, 12, 0.5])
-    const helipadBumper1 = sphere([10, 10, 44], { r: 1.5 })
-    const helipadBumper2 = sphere([10, -10, 44], { r: 1.5 })
-    const helipadBumper3 = sphere([-10, 10, 44], { r: 1.5 })
-    const helipadBumper4 = sphere([-10, -10, 44], { r: 1.5 })
-    const helipadAsm = union(helipad, helipadBumper1, helipadBumper2, helipadBumper3, helipadBumper4)
+// ═══ VIP HANDRAIL ═══
+// Now gold-plated. $120,000.
+// Longer too, so more influencers can pose at once.
+let railR = box([10, 8, 8], [1, 1, 16])
+let railL = box([10, -8, 8], [1, 1, 16])
+let railTop = box([10, 0, 22], [1, 9, 1])
+let railBot = box([10, 0, -6], [1, 9, 1])
+let handrail = union(0.5, railR, railL, railTop, railBot)
 
-    // ═══ ESCAPE POD ═══
-    // It's a beach ball with a GoPro taped to it.
-    // "In an emergency, the guest can... float."
-    const escapePod = sphere([-14, 0, 10], { r: 4 })
-    const gopro = box([-16, 0, 12], [1, 1, 1])
+// ═══ HELICOPTER PAD ═══
+// A flat platform on the very top. For the "emergency helicopter."
+// There is no emergency helicopter. There is no helicopter that
+// can land on a submerged submarine. But it's in the brochure.
+let helipad = box([0, 0, 44], [12, 12, 0.5])
+let helipadBumper1 = sphere([10, 10, 44], { r: 1.5 })
+let helipadBumper2 = sphere([10, -10, 44], { r: 1.5 })
+let helipadBumper3 = sphere([-10, 10, 44], { r: 1.5 })
+let helipadBumper4 = sphere([-10, -10, 44], { r: 1.5 })
+let helipadAsm = union(helipad, helipadBumper1, helipadBumper2, helipadBumper3, helipadBumper4)
 
-    // ═══ ASSEMBLY ═══
-    const structure = union(1, bodyRaw, lounge, hotTub, comms, billboards, controller, glowStick)
-    const externals = union(ballast, propulsion, tanks, handrail)
-    const landing = union(wheels, axleF, axleR)
-    const fins = union(finR, finL, finTop, finBot)
-    const topDeck = union(helipadAsm, escapePod, gopro)
+// ═══ ESCAPE POD ═══
+// It's a beach ball with a GoPro taped to it.
+// "In an emergency, the guest can... float."
+let escapePod = sphere([-14, 0, 10], { r: 4 })
+let gopro = box([-16, 0, 12], [1, 1, 1])
 
-    return union(1, structure, externals, landing, fins, topDeck)
-}
+// ═══ ASSEMBLY ═══
+let structure = union(1, bodyRaw, lounge, hotTub, comms, billboards, controller, glowStick)
+let externals = union(ballast, propulsion, tanks, handrail)
+let landing = union(wheels, axleF, axleR)
+let fins = union(finR, finL, finTop, finBot)
+let topDeck = union(helipadAsm, escapePod, gopro)
+
+return union(1, structure, externals, landing, fins, topDeck)

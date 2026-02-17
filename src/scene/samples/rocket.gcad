@@ -6,139 +6,138 @@
 // Standing vertically: Z is up
 // Fairing tip ≈ z=72, engine bells ≈ z=-7
 
-function scene() {
 
-    // All bodies are vertical (Z-up). Cones, cylinders, and
-    // capsules extend natively along Y, so we rotate 90° around
-    // X to stand them upright.
 
-    // ═══ CENTER CORE (CBC) ═══
-    // The centre core is slightly taller than the strap-on boosters.
-    // LH2/LOX tank stretching from z≈0 to z≈40.
-    // (In reality the core is covered in orange foam insulation.)
-    const ccTank = rotate([90, 0, 0],
-        capsule([0, 20, 0], { r: 2.5, c: 17.5 })
-    )
-    // External LOX feedline running down the tank wall
-    const ccPipe = rotate([90, 0, 0],
-        cylinder([2.4, 18, 0], { r: 0.18, h: 15 })
-    )
+// All bodies are vertical (Z-up). Cones, cylinders, and
+// capsules extend natively along Y, so we rotate 90° around
+// X to stand them upright.
 
-    // ═══ LEFT BOOSTER (CBC) ═══
-    // Offset Y = -5.2  (just touching the center core)
-    // Tank from z≈0 to z≈37, then a pointed nose cone to z≈44
-    const lbTank = rotate([90, 0, 0],
-        cylinder([0, 18.5, 5.2], { r: 2.5, h: 18.5 })
-    )
-    const lbBotCap = sphere([0, -5.2, 0], { r: 2.5 })
-    const lbNose = rotate([90, 0, 0],
-        cone([0, 37, 5.2], { r: 2.5, h: 7 })
-    )
-    const lbPipe = rotate([90, 0, 0],
-        cylinder([2.4, 16, 5.2], { r: 0.18, h: 13 })
-    )
-    const leftBooster = union(0.2, lbTank, lbBotCap, lbNose)
+// ═══ CENTER CORE (CBC) ═══
+// The centre core is slightly taller than the strap-on boosters.
+// LH2/LOX tank stretching from z≈0 to z≈40.
+// (In reality the core is covered in orange foam insulation.)
+let ccTank = rotate([90, 0, 0],
+capsule([0, 20, 0], { r: 2.5, c: 17.5 })
+)
+// External LOX feedline running down the tank wall
+let ccPipe = rotate([90, 0, 0],
+cylinder([2.4, 18, 0], { r: 0.18, h: 15 })
+)
 
-    // ═══ RIGHT BOOSTER (CBC) ═══
-    // Mirror of the left booster at Y = +5.2
-    const rbTank = rotate([90, 0, 0],
-        cylinder([0, 18.5, -5.2], { r: 2.5, h: 18.5 })
-    )
-    const rbBotCap = sphere([0, 5.2, 0], { r: 2.5 })
-    const rbNose = rotate([90, 0, 0],
-        cone([0, 37, -5.2], { r: 2.5, h: 7 })
-    )
-    const rbPipe = rotate([90, 0, 0],
-        cylinder([-2.4, 16, -5.2], { r: 0.18, h: 13 })
-    )
-    const rightBooster = union(0.2, rbTank, rbBotCap, rbNose)
+// ═══ LEFT BOOSTER (CBC) ═══
+// Offset Y = -5.2  (just touching the center core)
+// Tank from z≈0 to z≈37, then a pointed nose cone to z≈44
+let lbTank = rotate([90, 0, 0],
+cylinder([0, 18.5, 5.2], { r: 2.5, h: 18.5 })
+)
+let lbBotCap = sphere([0, -5.2, 0], { r: 2.5 })
+let lbNose = rotate([90, 0, 0],
+cone([0, 37, 5.2], { r: 2.5, h: 7 })
+)
+let lbPipe = rotate([90, 0, 0],
+cylinder([2.4, 16, 5.2], { r: 0.18, h: 13 })
+)
+let leftBooster = union(0.2, lbTank, lbBotCap, lbNose)
 
-    // ═══ ENGINE SECTION SKIRTS ═══
-    // Flared aft structures that house the RS-68 turbopumps
-    // and engine gimbal hardware. Cone base (wide) at the
-    // bottom, tapering up into the tank walls.
-    const ccSkirt = rotate([90, 0, 0],
-        cone([0, -2.5, 0], { r: 3.2, h: 3 })
-    )
-    const lbSkirt = rotate([90, 0, 0],
-        cone([0, -2.5, 5.2], { r: 3.2, h: 3 })
-    )
-    const rbSkirt = rotate([90, 0, 0],
-        cone([0, -2.5, -5.2], { r: 3.2, h: 3 })
-    )
+// ═══ RIGHT BOOSTER (CBC) ═══
+// Mirror of the left booster at Y = +5.2
+let rbTank = rotate([90, 0, 0],
+cylinder([0, 18.5, -5.2], { r: 2.5, h: 18.5 })
+)
+let rbBotCap = sphere([0, 5.2, 0], { r: 2.5 })
+let rbNose = rotate([90, 0, 0],
+cone([0, 37, -5.2], { r: 2.5, h: 7 })
+)
+let rbPipe = rotate([90, 0, 0],
+cylinder([-2.4, 16, -5.2], { r: 0.18, h: 13 })
+)
+let rightBooster = union(0.2, rbTank, rbBotCap, rbNose)
 
-    // ═══ RS-68 ENGINE NOZZLES ═══
-    // One per core. Regeneratively-cooled bell nozzles —
-    // wide opening at the bottom, narrowing up into the skirt.
-    const ccNozzle = rotate([90, 0, 0],
-        cone([0, -7, 0], { r: 2, h: 4.5 })
-    )
-    const lbNozzle = rotate([90, 0, 0],
-        cone([0, -7, 5.2], { r: 2, h: 4.5 })
-    )
-    const rbNozzle = rotate([90, 0, 0],
-        cone([0, -7, -5.2], { r: 2, h: 4.5 })
-    )
+// ═══ ENGINE SECTION SKIRTS ═══
+// Flared aft structures that house the RS-68 turbopumps
+// and engine gimbal hardware. Cone base (wide) at the
+// bottom, tapering up into the tank walls.
+let ccSkirt = rotate([90, 0, 0],
+cone([0, -2.5, 0], { r: 3.2, h: 3 })
+)
+let lbSkirt = rotate([90, 0, 0],
+cone([0, -2.5, 5.2], { r: 3.2, h: 3 })
+)
+let rbSkirt = rotate([90, 0, 0],
+cone([0, -2.5, -5.2], { r: 3.2, h: 3 })
+)
 
-    // ═══ INTERSTAGE ADAPTER ═══
-    // Short cylindrical skirt connecting center core to
-    // the second stage — slightly wider than the tanks
-    const interstage = rotate([90, 0, 0],
-        cylinder([0, 41.25, 0], { r: 2.7, h: 1.25 })
-    )
+// ═══ RS-68 ENGINE NOZZLES ═══
+// One per core. Regeneratively-cooled bell nozzles —
+// wide opening at the bottom, narrowing up into the skirt.
+let ccNozzle = rotate([90, 0, 0],
+cone([0, -7, 0], { r: 2, h: 4.5 })
+)
+let lbNozzle = rotate([90, 0, 0],
+cone([0, -7, 5.2], { r: 2, h: 4.5 })
+)
+let rbNozzle = rotate([90, 0, 0],
+cone([0, -7, -5.2], { r: 2, h: 4.5 })
+)
 
-    // ═══ UPPER STAGE (DCSS) ═══
-    // Delta Cryogenic Second Stage: z≈42 to z≈53
-    // Single RL10B-2 engine with extended nozzle
-    const usBody = rotate([90, 0, 0],
-        capsule([0, 47.5, 0], { r: 2.5, c: 3 })
-    )
-    // RL10B-2 engine — long carbon-carbon nozzle extension
-    // protrudes below the interstage
-    const usNozzle = rotate([90, 0, 0],
-        cone([0, 37, 0], { r: 1.4, h: 5 })
-    )
+// ═══ INTERSTAGE ADAPTER ═══
+// Short cylindrical skirt connecting center core to
+// the second stage — slightly wider than the tanks
+let interstage = rotate([90, 0, 0],
+cylinder([0, 41.25, 0], { r: 2.7, h: 1.25 })
+)
 
-    // ═══ PAYLOAD FAIRING ═══
-    // Two-piece clamshell fairing, 5 m diameter
-    // Cylindrical section from z≈53 to z≈63, then a
-    // conical ogive nose to the tip at z≈72
+// ═══ UPPER STAGE (DCSS) ═══
+// Delta Cryogenic Second Stage: z≈42 to z≈53
+// Single RL10B-2 engine with extended nozzle
+let usBody = rotate([90, 0, 0],
+capsule([0, 47.5, 0], { r: 2.5, c: 3 })
+)
+// RL10B-2 engine — long carbon-carbon nozzle extension
+// protrudes below the interstage
+let usNozzle = rotate([90, 0, 0],
+cone([0, 37, 0], { r: 1.4, h: 5 })
+)
 
-    // Cylindrical barrel section
-    const fairingCyl = rotate([90, 0, 0],
-        cylinder([0, 58, 0], { r: 2.6, h: 5 })
-    )
-    const fairingBotCap = sphere([0, 0, 53], { r: 2.6 })
+// ═══ PAYLOAD FAIRING ═══
+// Two-piece clamshell fairing, 5 m diameter
+// Cylindrical section from z≈53 to z≈63, then a
+// conical ogive nose to the tip at z≈72
 
-    // Conical nose
-    const fairingNose = rotate([90, 0, 0],
-        cone([0, 63, 0], { r: 2.6, h: 9 })
-    )
-    const fairing = union(0.3, fairingCyl, fairingBotCap, fairingNose)
+// Cylindrical barrel section
+let fairingCyl = rotate([90, 0, 0],
+cylinder([0, 58, 0], { r: 2.6, h: 5 })
+)
+let fairingBotCap = sphere([0, 0, 53], { r: 2.6 })
 
-    // Vertical split lines where the two fairing halves separate
-    const splitF = box([2.55, 0, 62], [0.06, 0.06, 10])
-    const splitB = box([-2.55, 0, 62], [0.06, 0.06, 10])
+// Conical nose
+let fairingNose = rotate([90, 0, 0],
+cone([0, 63, 0], { r: 2.6, h: 9 })
+)
+let fairing = union(0.3, fairingCyl, fairingBotCap, fairingNose)
 
-    // ═══ BOOSTER ATTACH HARDWARE ═══
-    // Forward and aft strut fittings connecting boosters to core
-    const strutFwdL = box([0, -2.6, 30], [0.5, 0.7, 0.3])
-    const strutFwdR = box([0, 2.6, 30], [0.5, 0.7, 0.3])
-    const strutAftL = box([0, -2.6, 6], [0.5, 0.7, 0.3])
-    const strutAftR = box([0, 2.6, 6], [0.5, 0.7, 0.3])
-    // Mid-body stabiliser struts
-    const strutMidL = box([0, -2.6, 18], [0.5, 0.7, 0.3])
-    const strutMidR = box([0, 2.6, 18], [0.5, 0.7, 0.3])
+// Vertical split lines where the two fairing halves separate
+let splitF = box([2.55, 0, 62], [0.06, 0.06, 10])
+let splitB = box([-2.55, 0, 62], [0.06, 0.06, 10])
 
-    // ═══ ASSEMBLY ═══
-    const cores = union(0.3, ccTank, leftBooster, rightBooster)
-    const pipes = union(ccPipe, lbPipe, rbPipe)
-    const skirts = union(ccSkirt, lbSkirt, rbSkirt)
-    const nozzles = union(ccNozzle, lbNozzle, rbNozzle)
-    const upper = union(0.3, usBody, usNozzle, interstage)
-    const struts = union(strutFwdL, strutFwdR, strutAftL, strutAftR,
-                         strutMidL, strutMidR)
-    const fairingAssy = union(fairing, splitF, splitB)
+// ═══ BOOSTER ATTACH HARDWARE ═══
+// Forward and aft strut fittings connecting boosters to core
+let strutFwdL = box([0, -2.6, 30], [0.5, 0.7, 0.3])
+let strutFwdR = box([0, 2.6, 30], [0.5, 0.7, 0.3])
+let strutAftL = box([0, -2.6, 6], [0.5, 0.7, 0.3])
+let strutAftR = box([0, 2.6, 6], [0.5, 0.7, 0.3])
+// Mid-body stabiliser struts
+let strutMidL = box([0, -2.6, 18], [0.5, 0.7, 0.3])
+let strutMidR = box([0, 2.6, 18], [0.5, 0.7, 0.3])
 
-    return union(0.5, cores, pipes, skirts, nozzles, upper, struts, fairingAssy)
-}
+// ═══ ASSEMBLY ═══
+let cores = union(0.3, ccTank, leftBooster, rightBooster)
+let pipes = union(ccPipe, lbPipe, rbPipe)
+let skirts = union(ccSkirt, lbSkirt, rbSkirt)
+let nozzles = union(ccNozzle, lbNozzle, rbNozzle)
+let upper = union(0.3, usBody, usNozzle, interstage)
+let struts = union(strutFwdL, strutFwdR, strutAftL, strutAftR,
+     strutMidL, strutMidR)
+let fairingAssy = union(fairing, splitF, splitB)
+
+return union(0.5, cores, pipes, skirts, nozzles, upper, struts, fairingAssy)

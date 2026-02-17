@@ -2,133 +2,132 @@
 // "Powerful like a gorilla, yet soft and yielding like a nerf ball"
 // All the features nobody asked for
 
-function scene() {
-    // === GROTESQUELY LARGE BODY ===
-    // Main hull - like a bloated whale
-    const hull = box([0, 0, 10], [70, 32, 12])
-    
-    // Extra thicc bulges everywhere
-    const bulgeR = sphere([0, 20, 12], { r: 14 })
-    const bulgeL = sphere([0, -20, 12], { r: 14 })
-    const bulgeFront = sphere([32, 0, 12], { r: 16 })
-    const bulgeRear = sphere([-30, 0, 12], { r: 14 })
-    const bulgeTop = sphere([0, 0, 16], { r: 14 })
-    
-    // Merge into one big blob
-    const megaBody = union(8, hull, 
-        bulgeR, bulgeL, bulgeFront, bulgeRear, bulgeTop)
-    
-    // === THE BUBBLE DOMES ===
-    // Driver dome - HUGE so Homer has room
-    const driverDome = sphere([8, 0, 26], { r: 14 })
-    const driverDomeBase = sphere([8, 0, 18], { r: 12 })
-    const mainBubble = union(5, driverDome, driverDomeBase)
-    
-    // Soundproof kid bubbles - they have their own domes!
-    // "The kids sit in the back and you can't even hear them!"
-    const kidBubbleR = sphere([-14, 14, 24], { r: 10 })
-    const kidBubbleL = sphere([-14, -14, 24], { r: 10 })
-    const kidBaseR = sphere([-14, 14, 16], { r: 8 })
-    const kidBaseL = sphere([-14, -14, 16], { r: 8 })
-    const kidDomeR = union(4, kidBubbleR, kidBaseR)
-    const kidDomeL = union(4, kidBubbleL, kidBaseL)
-    
-    // All bubbles together
-    const allBubbles = union(3, mainBubble, kidDomeR, kidDomeL)
-    const bodyWithBubbles = union(6, megaBody, allBubbles)
-    
-    // === MASSIVE TAIL FINS ===
-    // "Fins to attract a mate"
-    const finBaseR = box([-32, 18, 18], [14, 4, 16])
-    const finTipR = sphere([-40, 18, 32], { r: 6 })
-    const finMidR = sphere([-36, 18, 26], { r: 5 })
-    const tailFinR = union(4, finBaseR, finMidR, finTipR)
-    
-    const finBaseL = box([-32, -18, 18], [14, 4, 16])
-    const finTipL = sphere([-40, -18, 32], { r: 6 })
-    const finMidL = sphere([-36, -18, 26], { r: 5 })
-    const tailFinL = union(4, finBaseL, finMidL, finTipL)
-    
-    const withFins = union(4, bodyWithBubbles, tailFinR, tailFinL)
-    
-    // === HOOD SCOOPS ===
-    // Multiple pointless hood scoops
-    const scoop1 = sphere([28, 8, 18], { r: 5 })
-    const scoop2 = sphere([28, -8, 18], { r: 5 })
-    const scoop3 = sphere([34, 0, 20], { r: 6 })
-    const scoops = union(2, scoop1, scoop2, scoop3)
-    
-    // === BOWLING TROPHY HOOD ORNAMENT ===
-    const ornamentPost = box([44, 0, 16], [2, 2, 10])
-    const ornamentBall = sphere([44, 0, 28], { r: 5 })
-    const ornamentBase = sphere([44, 0, 22], { r: 3 })
-    const bowlingTrophy = union(2, ornamentPost, ornamentBase, ornamentBall)
-    
-    // === HORN SECTION ===
-    // Three horns that play La Cucaracha
-    const horn1 = sphere([38, 10, 22], { r: 4 })
-    const horn2 = sphere([38, -10, 22], { r: 4 })
-    const horn3 = sphere([42, 0, 24], { r: 5 })
-    const horns = union(2, horn1, horn2, horn3)
-    
-    // === COMICALLY SMALL WHEELS ===
-    const wheelFR = sphere([24, 20, 4], { r: 5 })
-    const wheelFL = sphere([24, -20, 4], { r: 5 })
-    const wheelRR = sphere([-24, 20, 4], { r: 5 })
-    const wheelRL = sphere([-24, -20, 4], { r: 5 })
-    const wheels = union(wheelFR, wheelFL, wheelRR, wheelRL)
-    
-    // Wheel wells
-    const wellFR = sphere([24, 22, 6], { r: 8 })
-    const wellFL = sphere([24, -22, 6], { r: 8 })
-    const wellRR = sphere([-24, 22, 6], { r: 8 })
-    const wellRL = sphere([-24, -22, 6], { r: 8 })
-    
-    const bodyWithWells = subtract(2, withFins, wellFR, wellFL, wellRR, wellRL)
-    
-    // === BUG EYES ===
-    // Giant pop-out headlights
-    const eyeR = sphere([46, 12, 14], { r: 6 })
-    const eyeL = sphere([46, -12, 14], { r: 6 })
-    const bugEyes = union(eyeR, eyeL)
-    
-    // === GIGANTIC BUMPERS ===
-    const frontBumper = box([48, 0, 8], [6, 30, 6])
-    const bumperBulgeR = sphere([50, 14, 8], { r: 5 })
-    const bumperBulgeL = sphere([50, -14, 8], { r: 5 })
-    const bumperCenter = sphere([52, 0, 8], { r: 6 })
-    const megaFrontBumper = union(4, frontBumper, bumperBulgeR, bumperBulgeL, bumperCenter)
-    
-    const rearBumper = box([-44, 0, 8], [6, 30, 6])
-    const rearBumperBulge = sphere([-48, 0, 8], { r: 6 })
-    const megaRearBumper = union(4, rearBumper, rearBumperBulge)
-    
-    // === EXHAUST MANIFOLD OF DOOM ===
-    const ex1 = sphere([-50, 10, 6], { r: 3 })
-    const ex2 = sphere([-50, -10, 6], { r: 3 })
-    const ex3 = sphere([-50, 5, 10], { r: 2.5 })
-    const ex4 = sphere([-50, -5, 10], { r: 2.5 })
-    const ex5 = sphere([-50, 0, 6], { r: 3.5 })
-    const exhausts = union(1, ex1, ex2, ex3, ex4, ex5)
-    
-    // === FIN-MOUNTED TAIL LIGHTS ===
-    const tailR = sphere([-42, 18, 28], { r: 3 })
-    const tailL = sphere([-42, -18, 28], { r: 3 })
-    const tails = union(tailR, tailL)
-    
-    // === SIDE PIPES ===
-    const pipeR1 = sphere([0, 20, 6], { r: 2.5 })
-    const pipeR2 = sphere([8, 20, 6], { r: 2.5 })
-    const pipeR3 = sphere([-8, 20, 6], { r: 2.5 })
-    const pipeL1 = sphere([0, -20, 6], { r: 2.5 })
-    const pipeL2 = sphere([8, -20, 6], { r: 2.5 })
-    const pipeL3 = sphere([-8, -20, 6], { r: 2.5 })
-    const sidePipes = union(pipeR1, pipeR2, pipeR3, pipeL1, pipeL2, pipeL3)
-    
-    // === ASSEMBLE THIS MONSTROSITY ===
-    const hoodStuff = union(3, scoops, bowlingTrophy, horns)
-    const bumpers = union(2, megaFrontBumper, megaRearBumper)
-    const details = union(2, bugEyes, bumpers, exhausts, tails, sidePipes)
-    
-    return union(2, bodyWithWells, wheels, hoodStuff, details)
-}
+
+// === GROTESQUELY LARGE BODY ===
+// Main hull - like a bloated whale
+let hull = box([0, 0, 10], [70, 32, 12])
+
+// Extra thicc bulges everywhere
+let bulgeR = sphere([0, 20, 12], { r: 14 })
+let bulgeL = sphere([0, -20, 12], { r: 14 })
+let bulgeFront = sphere([32, 0, 12], { r: 16 })
+let bulgeRear = sphere([-30, 0, 12], { r: 14 })
+let bulgeTop = sphere([0, 0, 16], { r: 14 })
+
+// Merge into one big blob
+let megaBody = union(8, hull, 
+bulgeR, bulgeL, bulgeFront, bulgeRear, bulgeTop)
+
+// === THE BUBBLE DOMES ===
+// Driver dome - HUGE so Homer has room
+let driverDome = sphere([8, 0, 26], { r: 14 })
+let driverDomeBase = sphere([8, 0, 18], { r: 12 })
+let mainBubble = union(5, driverDome, driverDomeBase)
+
+// Soundproof kid bubbles - they have their own domes!
+// "The kids sit in the back and you can't even hear them!"
+let kidBubbleR = sphere([-14, 14, 24], { r: 10 })
+let kidBubbleL = sphere([-14, -14, 24], { r: 10 })
+let kidBaseR = sphere([-14, 14, 16], { r: 8 })
+let kidBaseL = sphere([-14, -14, 16], { r: 8 })
+let kidDomeR = union(4, kidBubbleR, kidBaseR)
+let kidDomeL = union(4, kidBubbleL, kidBaseL)
+
+// All bubbles together
+let allBubbles = union(3, mainBubble, kidDomeR, kidDomeL)
+let bodyWithBubbles = union(6, megaBody, allBubbles)
+
+// === MASSIVE TAIL FINS ===
+// "Fins to attract a mate"
+let finBaseR = box([-32, 18, 18], [14, 4, 16])
+let finTipR = sphere([-40, 18, 32], { r: 6 })
+let finMidR = sphere([-36, 18, 26], { r: 5 })
+let tailFinR = union(4, finBaseR, finMidR, finTipR)
+
+let finBaseL = box([-32, -18, 18], [14, 4, 16])
+let finTipL = sphere([-40, -18, 32], { r: 6 })
+let finMidL = sphere([-36, -18, 26], { r: 5 })
+let tailFinL = union(4, finBaseL, finMidL, finTipL)
+
+let withFins = union(4, bodyWithBubbles, tailFinR, tailFinL)
+
+// === HOOD SCOOPS ===
+// Multiple pointless hood scoops
+let scoop1 = sphere([28, 8, 18], { r: 5 })
+let scoop2 = sphere([28, -8, 18], { r: 5 })
+let scoop3 = sphere([34, 0, 20], { r: 6 })
+let scoops = union(2, scoop1, scoop2, scoop3)
+
+// === BOWLING TROPHY HOOD ORNAMENT ===
+let ornamentPost = box([44, 0, 16], [2, 2, 10])
+let ornamentBall = sphere([44, 0, 28], { r: 5 })
+let ornamentBase = sphere([44, 0, 22], { r: 3 })
+let bowlingTrophy = union(2, ornamentPost, ornamentBase, ornamentBall)
+
+// === HORN SECTION ===
+// Three horns that play La Cucaracha
+let horn1 = sphere([38, 10, 22], { r: 4 })
+let horn2 = sphere([38, -10, 22], { r: 4 })
+let horn3 = sphere([42, 0, 24], { r: 5 })
+let horns = union(2, horn1, horn2, horn3)
+
+// === COMICALLY SMALL WHEELS ===
+let wheelFR = sphere([24, 20, 4], { r: 5 })
+let wheelFL = sphere([24, -20, 4], { r: 5 })
+let wheelRR = sphere([-24, 20, 4], { r: 5 })
+let wheelRL = sphere([-24, -20, 4], { r: 5 })
+let wheels = union(wheelFR, wheelFL, wheelRR, wheelRL)
+
+// Wheel wells
+let wellFR = sphere([24, 22, 6], { r: 8 })
+let wellFL = sphere([24, -22, 6], { r: 8 })
+let wellRR = sphere([-24, 22, 6], { r: 8 })
+let wellRL = sphere([-24, -22, 6], { r: 8 })
+
+let bodyWithWells = subtract(2, withFins, wellFR, wellFL, wellRR, wellRL)
+
+// === BUG EYES ===
+// Giant pop-out headlights
+let eyeR = sphere([46, 12, 14], { r: 6 })
+let eyeL = sphere([46, -12, 14], { r: 6 })
+let bugEyes = union(eyeR, eyeL)
+
+// === GIGANTIC BUMPERS ===
+let frontBumper = box([48, 0, 8], [6, 30, 6])
+let bumperBulgeR = sphere([50, 14, 8], { r: 5 })
+let bumperBulgeL = sphere([50, -14, 8], { r: 5 })
+let bumperCenter = sphere([52, 0, 8], { r: 6 })
+let megaFrontBumper = union(4, frontBumper, bumperBulgeR, bumperBulgeL, bumperCenter)
+
+let rearBumper = box([-44, 0, 8], [6, 30, 6])
+let rearBumperBulge = sphere([-48, 0, 8], { r: 6 })
+let megaRearBumper = union(4, rearBumper, rearBumperBulge)
+
+// === EXHAUST MANIFOLD OF DOOM ===
+let ex1 = sphere([-50, 10, 6], { r: 3 })
+let ex2 = sphere([-50, -10, 6], { r: 3 })
+let ex3 = sphere([-50, 5, 10], { r: 2.5 })
+let ex4 = sphere([-50, -5, 10], { r: 2.5 })
+let ex5 = sphere([-50, 0, 6], { r: 3.5 })
+let exhausts = union(1, ex1, ex2, ex3, ex4, ex5)
+
+// === FIN-MOUNTED TAIL LIGHTS ===
+let tailR = sphere([-42, 18, 28], { r: 3 })
+let tailL = sphere([-42, -18, 28], { r: 3 })
+let tails = union(tailR, tailL)
+
+// === SIDE PIPES ===
+let pipeR1 = sphere([0, 20, 6], { r: 2.5 })
+let pipeR2 = sphere([8, 20, 6], { r: 2.5 })
+let pipeR3 = sphere([-8, 20, 6], { r: 2.5 })
+let pipeL1 = sphere([0, -20, 6], { r: 2.5 })
+let pipeL2 = sphere([8, -20, 6], { r: 2.5 })
+let pipeL3 = sphere([-8, -20, 6], { r: 2.5 })
+let sidePipes = union(pipeR1, pipeR2, pipeR3, pipeL1, pipeL2, pipeL3)
+
+// === ASSEMBLE THIS MONSTROSITY ===
+let hoodStuff = union(3, scoops, bowlingTrophy, horns)
+let bumpers = union(2, megaFrontBumper, megaRearBumper)
+let details = union(2, bugEyes, bumpers, exhausts, tails, sidePipes)
+
+return union(2, bodyWithWells, wheels, hoodStuff, details)

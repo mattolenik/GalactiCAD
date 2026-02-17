@@ -298,6 +298,14 @@ class App {
             existingMesh.remove()
         }
 
+        monaco.editor.defineTheme("galacticad-dark", {
+            base: "vs-dark",
+            inherit: true,
+            rules: [],
+            colors: {
+                "editor.lineHighlightBackground": "#3a3a3eCC",
+            },
+        })
         this.editor = monaco.editor.create(editorContainer, {
             "semanticHighlighting.enabled": true,
             autoClosingBrackets: "beforeWhitespace",
@@ -325,7 +333,7 @@ class App {
             showUnused: true,
             stickyTabStops: true,
             tabSize: 3,
-            theme: "vs-dark",
+            theme: "galacticad-dark",
             useTabStops: true,
             wordWrap: "on",
             wrappingIndent: "indent",

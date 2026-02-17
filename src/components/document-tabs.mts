@@ -419,11 +419,18 @@ export class DocumentTabs extends HTMLElement {
         // Flush the outgoing document's settings and load the incoming document's settings
         SettingsManager.instance.switchDocument(name)
         this.#editor.setModel(model)
-        this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: name }))
+        // Render tabs first so the tab bar updates before any event handlers run
         this.#renderTabs()
         if (save) {
             localStorage.setItem("activeDocument", this.#active)
         }
+        // Defer event dispatch so the browser can paint the tab switch + editor before handlers run
+        requestAnimationFrame(() => {
+            // Only dispatch if we're still on this tab (user may have switched again)
+            if (this.#active === name) {
+                this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: name }))
+            }
+        })
     }
 
     /** Update serialized order */

@@ -495,7 +495,10 @@ class App {
 
                     // Only build if there's an active document
                     if (event.detail !== undefined) {
-                        this.build()
+                        // Defer build so tab switch + editor model change can render immediately
+                        requestAnimationFrame(() => {
+                            this.build()
+                        })
                     } else {
                         // No active document - clear log
                         this.log.innerText = ""

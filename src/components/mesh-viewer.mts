@@ -44,11 +44,17 @@ export class MeshViewer extends HTMLElement {
     #settings: SettingsManager
     #translucentFaces = false
     #translucentCheckbox!: HTMLInputElement
+    #viewCenter: Vec2f = vec2(0.5, 0.5)
     #wireframe = false
     #wireframeCheckbox!: HTMLInputElement
 
     get controls(): CameraController {
         return this.#controls
+    }
+
+    /** Set the center of the visible (non-editor) area in UV space (0-1). */
+    setViewCenter(x: number, y: number): void {
+        this.#viewCenter = vec2(x, y)
     }
 
     constructor(tabsElement?: EventTarget | null) {
@@ -202,7 +208,7 @@ export class MeshViewer extends HTMLElement {
 
         this.#uniformBuffer = this.#device.createBuffer({
             label: "meshViewer.camera",
-            size: 160,
+            size: 176,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         })
 
@@ -539,6 +545,7 @@ export class MeshViewer extends HTMLElement {
         // Provide camera-space -> scene-space so lighting can move with the camera (matching PreviewWindow).
         const camToScene = rotated.inverse()
         this.#device.queue.writeBuffer(this.#uniformBuffer, 96, camToScene.data as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 160, this.#viewCenter.data as BufferSource)
 
         const commandEncoder = this.#device.createCommandEncoder()
         // Wireframe mode overrides face rendering.
@@ -721,6 +728,7 @@ struct Camera {
     res: vec2f,
     zoom: f32,
     camToScene: mat4x4f,
+    viewCenter: vec2f,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -761,8 +769,13 @@ fn vertexMain(v: VertexIn) -> VertexOut {
     let far = 10000.0;
     let ndcZ = clamp((p.z - near) / (far - near), 0.0, 1.0);
 
+    // Shift NDC so the scene center aligns with the viewCenter screen position,
+    // matching the SDF preview's camera offset for the editor overlay.
+    let vcOffsetX = 2.0 * (camera.viewCenter.x - 0.5);
+    let vcOffsetY = -2.0 * (camera.viewCenter.y - 0.5);
+
     var out: VertexOut;
-    out.position = vec4f(ndcX, ndcY, ndcZ, 1.0);
+    out.position = vec4f(ndcX + vcOffsetX, ndcY + vcOffsetY, ndcZ, 1.0);
     // Used to compute a per-triangle (flat) normal in the fragment shader.
     out.worldPos = v.position;
     out.normal = v.normal;

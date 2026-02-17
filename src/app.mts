@@ -29,6 +29,7 @@ class App {
     #settings: SettingsManager
     #meshViewerEnabled = false
     #originalPreviewOnChange: ((state: CameraState) => void) | undefined
+    #updateViewCenter: (() => void) | undefined
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
     #sceneNodeMap: Map<number, import("./scene/scene.mjs").Node> = new Map()  // nodeId -> Node for symbol lookup
@@ -413,14 +414,20 @@ class App {
             const editorRect = editorContainer.getBoundingClientRect()
             if (mainRect.width === 0 || mainRect.height === 0) return
             const editorOnLeft = window.innerWidth > window.innerHeight
+            let vcx: number, vcy: number
             if (editorOnLeft) {
                 const frac = editorRect.width / mainRect.width
-                this.renderer.setViewCenter((frac + 1.0) / 2, 0.5)
+                vcx = (frac + 1.0) / 2
+                vcy = 0.5
             } else {
                 const frac = editorRect.height / mainRect.height
-                this.renderer.setViewCenter(0.5, (1.0 - frac) / 2)
+                vcx = 0.5
+                vcy = (1.0 - frac) / 2
             }
+            this.renderer.setViewCenter(vcx, vcy)
+            this.#mesh?.setViewCenter(vcx, vcy)
         }
+        this.#updateViewCenter = updateViewCenter
         const resizeObserver = new ResizeObserver(() => {
             this.editor.layout()
             updateViewCenter()
@@ -769,6 +776,8 @@ class App {
                 meshControls.onChange = state => push("mesh", state)
                 // Sync initial camera state
                 meshControls.applyState(previewControls.state, { emit: false })
+                // Sync viewCenter so mesh viewer matches SDF preview offset
+                this.#updateViewCenter?.()
 
                 // Trigger a mesh update for the current source
                 this.#scheduleMeshUpdate(this.editor.getValue())

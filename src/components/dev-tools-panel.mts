@@ -1,4 +1,4 @@
-import { BehaviorSubject } from "rxjs"
+import { BehaviorSubject, skip } from "rxjs"
 import type { Subscription } from "rxjs"
 import { __fg_color, __tone_1, __tone_2 } from "../style/style.mjs"
 import { connectCheckbox } from "../binding/bind.mjs"
@@ -149,27 +149,27 @@ export class DevToolsPanel extends HTMLElement {
 
         this.#showFpsCheckbox = this.#addCheckbox(shadow, "Show FPS", this.#showFps$.value)
         this.#subscriptions.push(connectCheckbox(this.#showFpsCheckbox, this.#showFps$))
-        this.#showFps$.subscribe(v => {
+        this.#showFps$.pipe(skip(1)).subscribe(v => {
             this.#settings.updateGlobal({ app: { showFps: v } })
             this.onShowFpsChange?.(v)
         })
 
         this.#meshViewerCheckbox = this.#addCheckbox(shadow, "Export preview", this.#meshViewer$.value)
         this.#subscriptions.push(connectCheckbox(this.#meshViewerCheckbox, this.#meshViewer$))
-        this.#meshViewer$.subscribe(v => {
+        this.#meshViewer$.pipe(skip(1)).subscribe(v => {
             this.#settings.updateGlobal({ app: { meshViewerEnabled: v } })
             this.onMeshViewerChange?.(v)
         })
 
         this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)
         this.#subscriptions.push(connectCheckbox(this.#cameraOptCheckbox, this.#cameraOptimization$))
-        this.#cameraOptimization$.subscribe(v => {
+        this.#cameraOptimization$.pipe(skip(1)).subscribe(v => {
             this.onCameraOptimizationChange?.(v)
         })
 
         this.#beamOptCheckbox = this.#addCheckbox(shadow, "Beam render", this.#beamOptimization$.value)
         this.#subscriptions.push(connectCheckbox(this.#beamOptCheckbox, this.#beamOptimization$))
-        this.#beamOptimization$.subscribe(v => {
+        this.#beamOptimization$.pipe(skip(1)).subscribe(v => {
             this.onBeamOptimizationChange?.(v)
         })
 

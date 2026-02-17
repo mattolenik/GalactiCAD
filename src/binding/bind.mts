@@ -11,11 +11,13 @@ export function connectCheckbox(
     checkbox: HTMLInputElement,
     source$: BehaviorSubject<boolean>
 ): Subscription {
+    const ac = new AbortController()
     const sub = source$.subscribe(v => {
         checkbox.checked = v
     })
     checkbox.addEventListener("change", () => {
         source$.next(checkbox.checked)
-    })
+    }, { signal: ac.signal })
+    sub.add(() => ac.abort())
     return sub
 }

@@ -1,0 +1,218 @@
+// Dieselpunk Battle Mech
+// A hulking war machine bristling with weapons and pipes
+
+function scene() {
+    // === TORSO - THE CORE ===
+    // Main chest housing with layered armor
+    const chestCore = box([0, 0, 40], [26, 32, 24])
+    const chestBulge = sphere([0, 0, 44], { r: 19 })
+    const chestArmor1 = box([0, 0, 46], [20, 28, 18])
+    const chestArmor2 = sphere([0, 0, 48], { r: 16 })
+    const chest = union(5, chestCore, chestBulge, chestArmor1, chestArmor2)
+
+    // Chest panel cutouts using subtract
+    const chestCutout1 = box([8, 0, 42], [12, 20, 16])
+    const chestCutout2 = box([-8, 0, 42], [12, 20, 16])
+    const chestWithCutouts = subtract(1, chest, chestCutout1, chestCutout2)
+
+    // Armored collar with multiple layers
+    const collarR = sphere([0, 18, 54], { r: 9 })
+    const collarL = sphere([0, -18, 54], { r: 9 })
+    const collarFront = sphere([12, 0, 54], { r: 8 })
+    const collarBack = sphere([-8, 0, 54], { r: 7 })
+    const collarTop = sphere([0, 0, 58], { r: 6 })
+    const collar = union(3, collarR, collarL, collarFront, collarBack, collarTop)
+
+    // Reactor exhaust vents on back - more detailed
+    const ventR = sphere([-16, 12, 50], { r: 6 })
+    const ventL = sphere([-16, -12, 50], { r: 6 })
+    const ventTop = sphere([-16, 0, 54], { r: 7 })
+    const ventMid = sphere([-16, 6, 52], { r: 4 })
+    const ventMid2 = sphere([-16, -6, 52], { r: 4 })
+    const vents = union(2, ventR, ventL, ventTop, ventMid, ventMid2)
+
+    // Vent cutouts for detail
+    const ventCutoutR = box([-20, 12, 50], [6, 3, 3])
+    const ventCutoutL = box([-20, -12, 50], [6, 3, 3])
+    const ventCutoutTop = box([-20, 0, 54], [6, 3, 3])
+    const ventsWithCutouts = subtract(0.5, vents, ventCutoutR, ventCutoutL, ventCutoutTop)
+
+    // === HEAD - COCKPIT POD ===
+    const headCore = sphere([5, 0, 64], { r: 11 })
+    const headBack = sphere([-2, 0, 64], { r: 9 })
+    const visor = box([12, 0, 62], [7, 16, 5])
+    const visorFrame = box([12, 0, 62], [8, 18, 6])
+    const headCrest = sphere([0, 0, 74], { r: 6 })
+    const headCrestBase = box([0, 0, 70], [4, 4, 8])
+    const antenna1 = sphere([-5, 9, 72], { r: 2.5 })
+    const antenna2 = sphere([-5, -9, 72], { r: 2.5 })
+    const antennaBase1 = box([-5, 9, 68], [2, 2, 6])
+    const antennaBase2 = box([-5, -9, 68], [2, 2, 6])
+    const head = union(4, headCore, headBack, visorFrame, visor, headCrestBase, headCrest, antennaBase1, antennaBase2, antenna1, antenna2)
+
+    // === SHOULDERS - WEAPON MOUNTS ===
+    // Right shoulder pod - enhanced
+    const shoulderR = sphere([0, 28, 52], { r: 13 })
+    const shoulderPadR = box([0, 32, 54], [12, 10, 12])
+    const shoulderPadR2 = sphere([0, 35, 54], { r: 6 })
+    const rocketPodR = box([0, 38, 56], [10, 8, 16])
+    const rocketPodR2 = box([0, 40, 58], [8, 6, 12])
+    const rocketTipR = sphere([0, 42, 64], { r: 3 })
+    const rightShoulder = union(4, shoulderR, shoulderPadR, shoulderPadR2, rocketPodR, rocketPodR2, rocketTipR)
+
+    // Left shoulder pod - enhanced
+    const shoulderL = sphere([0, -28, 52], { r: 13 })
+    const shoulderPadL = box([0, -32, 54], [12, 10, 12])
+    const shoulderPadL2 = sphere([0, -35, 54], { r: 6 })
+    const rocketPodL = box([0, -38, 56], [10, 8, 16])
+    const rocketPodL2 = box([0, -40, 58], [8, 6, 12])
+    const rocketTipL = sphere([0, -42, 64], { r: 3 })
+    const leftShoulder = union(4, shoulderL, shoulderPadL, shoulderPadL2, rocketPodL, rocketPodL2, rocketTipL)
+
+    // === RIGHT ARM - GATLING GUN ===
+    const upperArmR = box([0, 34, 40], [10, 10, 18])
+    const upperArmR2 = sphere([0, 34, 40], { r: 7 })
+    const elbowR = sphere([0, 36, 30], { r: 7 })
+    const elbowGuardR = box([0, 38, 30], [6, 4, 8])
+    const forearmR = box([5, 36, 20], [7, 7, 16])
+    const forearmR2 = sphere([5, 36, 20], { r: 5 })
+    const gatlingHousing = sphere([10, 36, 10], { r: 8 })
+    const gatlingHousing2 = box([10, 36, 10], [12, 6, 6])
+    const gatlingBarrel = box([22, 36, 10], [20, 5, 5])
+    const gatlingBarrel2 = box([32, 36, 10], [8, 3, 3])
+    const gatlingTip = sphere([38, 36, 10], { r: 2.5 })
+    const rightArm = union(3, upperArmR, upperArmR2, elbowR, elbowGuardR, forearmR, forearmR2, gatlingHousing, gatlingHousing2, gatlingBarrel, gatlingBarrel2, gatlingTip)
+
+    // === LEFT ARM - CLAW ===
+    const upperArmL = box([0, -34, 40], [10, 10, 18])
+    const upperArmL2 = sphere([0, -34, 40], { r: 7 })
+    const elbowL = sphere([0, -36, 30], { r: 7 })
+    const elbowGuardL = box([0, -38, 30], [6, 4, 8])
+    const forearmL = box([5, -36, 20], [7, 7, 16])
+    const forearmL2 = sphere([5, -36, 20], { r: 5 })
+    const clawBase = sphere([10, -36, 10], { r: 7 })
+    const clawBase2 = box([10, -36, 10], [8, 6, 6])
+    // Enhanced claw with more fingers
+    const clawTop = sphere([18, -32, 8], { r: 5 })
+    const clawMid = sphere([18, -36, 8], { r: 5 })
+    const clawBot = sphere([18, -40, 8], { r: 5 })
+    const clawTip1 = sphere([24, -30, 6], { r: 3 })
+    const clawTip2 = sphere([24, -36, 6], { r: 3 })
+    const clawTip3 = sphere([24, -42, 6], { r: 3 })
+    const leftArm = union(3, upperArmL, upperArmL2, elbowL, elbowGuardL, forearmL, forearmL2, clawBase, clawBase2, clawTop, clawMid, clawBot, clawTip1, clawTip2, clawTip3)
+
+    // === HIP ASSEMBLY ===
+    const hipCore = box([0, 0, 26], [20, 28, 12])
+    const hipBulge = sphere([0, 0, 26], { r: 15 })
+    const hipCore2 = box([0, 0, 28], [18, 26, 10])
+    const hips = union(4, hipCore, hipBulge, hipCore2)
+
+    // Hip armor plates - more detailed
+    const hipPlateR = sphere([8, 20, 26], { r: 8 })
+    const hipPlateR2 = box([8, 22, 26], [6, 4, 8])
+    const hipPlateL = sphere([8, -20, 26], { r: 8 })
+    const hipPlateL2 = box([8, -22, 26], [6, 4, 8])
+    const hipPlates = union(2, hipPlateR, hipPlateR2, hipPlateL, hipPlateL2)
+
+    // === LEGS - DIGITIGRADE STYLE ===
+    // Right leg - enhanced
+    const thighR = box([0, 16, 16], [10, 10, 16])
+    const thighR2 = sphere([0, 16, 16], { r: 7 })
+    const kneeR = sphere([5, 16, 8], { r: 7 })
+    const kneeGuardR = box([5, 18, 8], [6, 4, 10])
+    const shinR = box([10, 16, -2], [7, 7, 18])
+    const shinR2 = sphere([10, 16, -2], { r: 5 })
+    const ankleR = sphere([8, 16, -16], { r: 6 })
+    const footR = box([12, 16, -20], [14, 10, 5])
+    const footR2 = sphere([12, 16, -20], { r: 6 })
+    const toeR = sphere([22, 16, -20], { r: 5 })
+    const toeR2 = sphere([26, 16, -20], { r: 4 })
+    const rightLeg = union(3, thighR, thighR2, kneeR, kneeGuardR, shinR, shinR2, ankleR, footR, footR2, toeR, toeR2)
+
+    // Left leg - enhanced
+    const thighL = box([0, -16, 16], [10, 10, 16])
+    const thighL2 = sphere([0, -16, 16], { r: 7 })
+    const kneeL = sphere([5, -16, 8], { r: 7 })
+    const kneeGuardL = box([5, -18, 8], [6, 4, 10])
+    const shinL = box([10, -16, -2], [7, 7, 18])
+    const shinL2 = sphere([10, -16, -2], { r: 5 })
+    const ankleL = sphere([8, -16, -16], { r: 6 })
+    const footL = box([12, -16, -20], [14, 10, 5])
+    const footL2 = sphere([12, -16, -20], { r: 6 })
+    const toeL = sphere([22, -16, -20], { r: 5 })
+    const toeL2 = sphere([26, -16, -20], { r: 4 })
+    const leftLeg = union(3, thighL, thighL2, kneeL, kneeGuardL, shinL, shinL2, ankleL, footL, footL2, toeL, toeL2)
+
+    // === BACK MOUNTED SYSTEMS ===
+    // Reactor core - enhanced
+    const reactor = sphere([-18, 0, 44], { r: 11 })
+    const reactorCasing = box([-20, 0, 44], [10, 16, 16])
+    const reactorCasing2 = sphere([-18, 0, 44], { r: 9 })
+    const reactorUnit = union(4, reactor, reactorCasing, reactorCasing2)
+
+    // Reactor cutouts for detail
+    const reactorCutout1 = box([-24, 0, 44], [4, 8, 8])
+    const reactorCutout2 = box([-24, 0, 44], [4, 4, 12])
+    const reactorWithCutouts = subtract(1, reactorUnit, reactorCutout1, reactorCutout2)
+
+    // Smoke stacks - enhanced
+    const stack1 = box([-22, 10, 58], [5, 5, 18])
+    const stackTop1 = sphere([-22, 10, 70], { r: 5 })
+    const stack1Mid = sphere([-22, 10, 64], { r: 4 })
+    const stack2 = box([-22, -10, 58], [5, 5, 18])
+    const stackTop2 = sphere([-22, -10, 70], { r: 5 })
+    const stack2Mid = sphere([-22, -10, 64], { r: 4 })
+    const stack3 = box([-22, 0, 58], [5, 5, 18])
+    const stackTop3 = sphere([-22, 0, 70], { r: 5 })
+    const stacks = union(2, stack1, stackTop1, stack1Mid, stack2, stackTop2, stack2Mid, stack3, stackTop3)
+
+    // Fuel tanks - enhanced
+    const tankR = sphere([-14, 22, 40], { r: 7 })
+    const tankR2 = box([-14, 24, 40], [8, 4, 12])
+    const tankL = sphere([-14, -22, 40], { r: 7 })
+    const tankL2 = box([-14, -24, 40], [8, 4, 12])
+    const tanks = union(2, tankR, tankR2, tankL, tankL2)
+
+    // === DECORATIVE RIVETS & DETAILS ===
+    // More rivets for detail
+    const rivet1 = sphere([16, 14, 46], { r: 2 })
+    const rivet2 = sphere([16, -14, 46], { r: 2 })
+    const rivet3 = sphere([16, 0, 52], { r: 2 })
+    const rivet4 = sphere([14, 10, 38], { r: 1.5 })
+    const rivet5 = sphere([14, -10, 38], { r: 1.5 })
+    const rivet6 = sphere([12, 18, 44], { r: 1.5 })
+    const rivet7 = sphere([12, -18, 44], { r: 1.5 })
+    const rivet8 = sphere([10, 22, 40], { r: 1.5 })
+    const rivet9 = sphere([10, -22, 40], { r: 1.5 })
+    const rivet10 = sphere([-10, 14, 48], { r: 1.5 })
+    const rivet11 = sphere([-10, -14, 48], { r: 1.5 })
+    const rivets = union(rivet1, rivet2, rivet3, rivet4, rivet5, rivet6, rivet7, rivet8, rivet9, rivet10, rivet11)
+
+    // Chest searchlight - enhanced
+    const searchlight = sphere([18, 0, 44], { r: 5 })
+    const searchlightFrame = box([18, 0, 44], [6, 6, 6])
+    const searchlightUnit = union(2, searchlightFrame, searchlight)
+
+    // Side armor plates
+    const sidePlateR = box([6, 24, 42], [4, 6, 12])
+    const sidePlateL = box([6, -24, 42], [4, 6, 12])
+    const sidePlates = union(sidePlateR, sidePlateL)
+
+    // === ASSEMBLY ===
+    // Upper body
+    const torso = union(4, chestWithCutouts, collar, ventsWithCutouts, head)
+    const arms = union(2, rightShoulder, leftShoulder, rightArm, leftArm)
+    const upperBody = union(3, torso, arms)
+
+    // Lower body
+    const lowerBody = union(3, hips, hipPlates, rightLeg, leftLeg)
+
+    // Back systems
+    const backpack = union(3, reactorWithCutouts, stacks, tanks)
+
+    // Details
+    const details = union(1, rivets, searchlightUnit, sidePlates)
+
+    // Final mech
+    return union(4, upperBody, lowerBody, backpack, details)
+}

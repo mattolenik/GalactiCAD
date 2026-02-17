@@ -5,7 +5,7 @@ import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
-import { SceneInfo, Node, Box, Sphere, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate, Polygon2D, Extrude, Loft, Lathe } from "./scene/scene.mjs"
+import { SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import beamShader from "./shaders/beam.wgsl"
@@ -116,14 +116,6 @@ export class SDFRenderer {
     #documentName: string | null = null
     #tabChangeListener: ((e: Event) => void) | null = null
 
-    #savePreviewSettings(): void {
-        this.#settings.setPreview({
-            xrayMode: this.#xrayMode,
-            cameraOptimization: this.#cameraOptimization,
-            beamOptimization: this.#beamEnabled,
-        })
-    }
-
     #loadPreviewSettings(): void {
         const prev = this.#settings.getPreview()
         this.#xrayMode = prev.xrayMode
@@ -138,9 +130,6 @@ export class SDFRenderer {
      * Provides the array of currently selected object IDs.
      */
     readonly selectionChange$ = new Subject<number[]>()
-
-    /** @deprecated Use selectionChange$.subscribe() instead */
-    onSelectionChange?: (selectedIds: number[]) => void
 
     /** Callback invoked when an object is double-clicked in the preview */
     onObjectDoubleClick?: (nodeId: number) => void
@@ -256,7 +245,6 @@ export class SDFRenderer {
     /**
      * Set the selection programmatically (for editor-to-preview selection sync).
      * @param ids Array of node IDs to select
-     * @param notify If true, trigger onSelectionChange callback (default: false to avoid loops)
      */
     setSelection(ids: number[], notify = false) {
         this.#selectedObjectIds.fill(false)
@@ -267,7 +255,6 @@ export class SDFRenderer {
 
         if (notify) {
             this.selectionChange$.next(this.selectedObjectIds)
-            this.onSelectionChange?.(this.selectedObjectIds)
         }
     }
 
@@ -282,200 +269,6 @@ export class SDFRenderer {
     async #readClickedObjectId(): Promise<number> {
         const readback = await this.#helper.readBufferData(this.#uniformBuffers.clickedObjectId, 4)
         return new Uint32Array(readback)[0] ?? 0
-    }
-
-    /** Evaluate scalar SDF for any scene node recursively. */
-    #evalNodeDist(node: Node, px: number, py: number, pz: number): number | null {
-        if (node instanceof Sphere) {
-            const qx = px - node.pos.x, qy = py - node.pos.y, qz = pz - node.pos.z
-            return Math.hypot(qx, qy, qz) - node.r
-        }
-        if (node instanceof Box) {
-            const dx = Math.abs(px - node.pos.x) - node.size.x
-            const dy = Math.abs(py - node.pos.y) - node.size.y
-            const dz = Math.abs(pz - node.pos.z) - node.size.z
-            const ox = Math.max(dx, 0), oy = Math.max(dy, 0), oz = Math.max(dz, 0)
-            return Math.hypot(ox, oy, oz) + Math.max(Math.min(dx, 0), Math.min(dy, 0), Math.min(dz, 0))
-        }
-        if (node instanceof Cylinder) {
-            const qx = px - node.pos.x, qy = py - node.pos.y, qz = pz - node.pos.z
-            return Math.max(Math.hypot(qx, qz) - node.r, Math.abs(qy) - node.h)
-        }
-        if (node instanceof Cone) {
-            const qx = px - node.pos.x, qy = py - node.pos.y, qz = pz - node.pos.z
-            const lenXZ = Math.hypot(qx, qz)
-            const tipR = lenXZ, tipY = qy - node.h
-            const L = Math.hypot(node.h, node.r)
-            const mdR = node.h / L, mdY = node.r / L
-            const mantle = tipR * mdR + tipY * mdY
-            let d = Math.max(mantle, -qy)
-            const projected = tipR * mdY + tipY * (-mdR)
-            if (qy > node.h && projected < 0) {
-                d = Math.max(d, Math.hypot(tipR, tipY))
-            }
-            if (lenXZ > node.r && projected > L) {
-                d = Math.max(d, Math.hypot(lenXZ - node.r, qy))
-            }
-            return d
-        }
-        if (node instanceof Torus) {
-            const qx = px - node.pos.x, qy = py - node.pos.y, qz = pz - node.pos.z
-            const lenXZ = Math.hypot(qx, qz)
-            return Math.hypot(lenXZ - node.lr, qy) - node.sr
-        }
-        if (node instanceof Capsule) {
-            const qx = px - node.pos.x, qy = py - node.pos.y, qz = pz - node.pos.z
-            const absQy = Math.abs(qy)
-            if (absQy >= node.c) {
-                return Math.hypot(qx, absQy - node.c, qz) - node.r
-            }
-            return Math.hypot(qx, qz) - node.r
-        }
-        if (node instanceof PlaneNode) {
-            const qx = px - node.pos.x, qy = py - node.pos.y, qz = pz - node.pos.z
-            return qx * node.normal.x + qy * node.normal.y + qz * node.normal.z + node.dist
-        }
-        if (node instanceof HexPrism) {
-            const qx = Math.abs(px - node.pos.x), qy = Math.abs(py - node.pos.y), qz = Math.abs(pz - node.pos.z)
-            return Math.max(qy - node.h, Math.max(qx * Math.sqrt(3) * 0.5 + qz * 0.5, qz) - node.r)
-        }
-        if (node instanceof Disc) {
-            const qx = px - node.pos.x, qy = py - node.pos.y, qz = pz - node.pos.z
-            const lenXZ = Math.hypot(qx, qz)
-            const l = lenXZ - node.r
-            if (l < 0) return Math.abs(qy)
-            return Math.hypot(qy, l)
-        }
-        if (node instanceof Blob) {
-            const qx = px - node.pos.x, qy = py - node.pos.y, qz = pz - node.pos.z
-            // Approximate blob as a sphere of radius ~1.5
-            return Math.hypot(qx, qy, qz) - 1.5
-        }
-        if (node instanceof Union) {
-            const a = this.#evalNodeDist(node.lh, px, py, pz)
-            const b = this.#evalNodeDist(node.rh, px, py, pz)
-            if (a === null || b === null) return null
-            if (node.radius && node.radius > 0) {
-                // fOpUnionRound
-                const r = node.radius
-                const ux = Math.max(r - a, 0), uy = Math.max(r - b, 0)
-                return Math.max(r, Math.min(a, b)) - Math.hypot(ux, uy)
-            }
-            return Math.min(a, b)
-        }
-        if (node instanceof Subtract) {
-            const a = this.#evalNodeDist(node.lh, px, py, pz)
-            const b = this.#evalNodeDist(node.rh, px, py, pz)
-            if (a === null || b === null) return null
-            if (node.radius && node.radius > 0) {
-                // fOpDifferenceRound = fOpIntersectionRound(a, -b, r)
-                const r = node.radius
-                const nb = -b
-                const ux = Math.max(r + a, 0), uy = Math.max(r + nb, 0)
-                return Math.min(-r, Math.max(a, nb)) + Math.hypot(ux, uy)
-            }
-            return Math.max(a, -b)
-        }
-        if (node instanceof Intersect) {
-            const a = this.#evalNodeDist(node.lh, px, py, pz)
-            const b = this.#evalNodeDist(node.rh, px, py, pz)
-            if (a === null || b === null) return null
-            if (node.radius && node.radius > 0) {
-                // fOpIntersectionRound
-                const r = node.radius
-                const ux = Math.max(r + a, 0), uy = Math.max(r + b, 0)
-                return Math.min(-r, Math.max(a, b)) + Math.hypot(ux, uy)
-            }
-            return Math.max(a, b)
-        }
-        if (node instanceof Pipe) {
-            const a = this.#evalNodeDist(node.lh, px, py, pz)
-            const b = this.#evalNodeDist(node.rh, px, py, pz)
-            if (a === null || b === null) return null
-            return Math.hypot(a, b) - node.radius
-        }
-        if (node instanceof Engrave) {
-            const a = this.#evalNodeDist(node.lh, px, py, pz)
-            const b = this.#evalNodeDist(node.rh, px, py, pz)
-            if (a === null || b === null) return null
-            return Math.max(a, (a + node.radius - Math.abs(b)) * Math.SQRT1_2)
-        }
-        if (node instanceof Groove) {
-            const a = this.#evalNodeDist(node.lh, px, py, pz)
-            const b = this.#evalNodeDist(node.rh, px, py, pz)
-            if (a === null || b === null) return null
-            return Math.max(a, Math.min(a + node.ra, node.rb - Math.abs(b)))
-        }
-        if (node instanceof Tongue) {
-            const a = this.#evalNodeDist(node.lh, px, py, pz)
-            const b = this.#evalNodeDist(node.rh, px, py, pz)
-            if (a === null || b === null) return null
-            return Math.min(a, Math.max(a - node.ra, Math.abs(b) - node.rb))
-        }
-        if (node instanceof Shell) {
-            const d = this.#evalNodeDist(node.arg, px, py, pz)
-            if (d === null) return null
-            return Math.abs(d) - node.thickness
-        }
-        if (node instanceof Offset) {
-            const d = this.#evalNodeDist(node.arg, px, py, pz)
-            if (d === null) return null
-            return d - node.amount
-        }
-        if (node instanceof Elongate) {
-            // Clamp point to elongation box, evaluate child at offset
-            const qx = px - Math.max(-node.hx, Math.min(px, node.hx))
-            const qy = py - Math.max(-node.hy, Math.min(py, node.hy))
-            const qz = pz - Math.max(-node.hz, Math.min(pz, node.hz))
-            return this.#evalNodeDist(node.arg, qx, qy, qz)
-        }
-        if (node instanceof Twist) {
-            // Rotate XZ by p.y * rate
-            const a = py * node.rate
-            const c = Math.cos(a), s = Math.sin(a)
-            const qx = c * px + s * pz
-            const qz = -s * px + c * pz
-            return this.#evalNodeDist(node.arg, qx, py, qz)
-        }
-        if (node instanceof Bend) {
-            // Rotate XY by p.x * amount
-            const a = node.amount * px
-            const c = Math.cos(a), s = Math.sin(a)
-            const qx = c * px - s * py
-            const qy = s * px + c * py
-            return this.#evalNodeDist(node.arg, qx, qy, pz)
-        }
-        if (node instanceof Taper) {
-            // Scale XZ by linear function of Y
-            const t = Math.max(0, Math.min(py / node.height, 1))
-            const scale = 1 + (node.ratio - 1) * t
-            return this.#evalNodeDist(node.arg, px / scale, py, pz / scale)
-        }
-        if (node instanceof Morph) {
-            const a = this.#evalNodeDist(node.lh, px, py, pz)
-            const b = this.#evalNodeDist(node.rh, px, py, pz)
-            if (a === null || b === null) return null
-            return a * (1 - node.t) + b * node.t
-        }
-        if (node instanceof Seam) {
-            const a = this.#evalNodeDist(node.lh, px, py, pz)
-            const b = this.#evalNodeDist(node.rh, px, py, pz)
-            if (a === null || b === null) return null
-            const unionD = Math.min(a, b)
-            const pipeD = Math.hypot(a, b) - node.radius
-            return Math.min(unionD, pipeD)
-        }
-        if (node instanceof Rotate) {
-            const [rx, ry, rz] = node.applyInvRotation(px, py, pz)
-            return this.#evalNodeDist(node.arg, rx, ry, rz)
-        }
-        if (node instanceof Group) {
-            if (node.children.length > 0) {
-                return this.#evalNodeDist(node.children[0], px, py, pz)
-            }
-            return null
-        }
-        return null
     }
 
     #handleClick(screenPos: Vec2f, shiftKey: boolean, altKey: boolean) {
@@ -523,7 +316,6 @@ export class SDFRenderer {
                     this.#selectedObjectIds.fill(false)
                     this.#writeSelectionBuffer()
                     this.selectionChange$.next([])
-                    this.onSelectionChange?.([])
                     console.log('Deselected all objects (clicked empty space)')
                 }
             } catch (error) {
@@ -589,7 +381,6 @@ export class SDFRenderer {
 
         // Notify listeners about selection change
         this.selectionChange$.next(this.selectedObjectIds)
-        this.onSelectionChange?.(this.selectedObjectIds)
     }
 
     #writeSelectionBuffer() {

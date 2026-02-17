@@ -409,6 +409,31 @@ class App {
         const resizeHandle = new ResizeHandle(resizeHandleEl, mainPanels, workspace)
         resizeHandle.connect()
 
+        /** Returns the rect of the preview area NOT behind the editor overlay. */
+        const getVisiblePreviewRect = (): DOMRect => {
+            const mainRect = mainPanels.getBoundingClientRect()
+            if (mainRect.width === 0 || mainRect.height === 0) return mainRect
+            const editorOnLeft = window.innerWidth > window.innerHeight
+            const css = getComputedStyle(mainPanels)
+            const frac = editorOnLeft
+                ? parseFloat(css.getPropertyValue("--editor-width") || "35") / 100
+                : parseFloat(css.getPropertyValue("--editor-height") || "22") / 100
+            if (editorOnLeft) {
+                return new DOMRect(
+                    mainRect.left + mainRect.width * frac,
+                    mainRect.top,
+                    mainRect.width * (1 - frac),
+                    mainRect.height
+                )
+            }
+            return new DOMRect(
+                mainRect.left,
+                mainRect.top + mainRect.height * frac,
+                mainRect.width,
+                mainRect.height * (1 - frac)
+            )
+        }
+
         // ResizeObserver so Monaco layout updates and viewCenter stays in sync.
         // Use CSS layout vars (not editor rect) so view center is correct when the
         // polygon editor replaces the code editor (editor has display:none → 0 rect).
@@ -441,7 +466,7 @@ class App {
         narrowMedia.addEventListener("change", updateLineNumbers)
         updateLineNumbers()
 
-        this.renderer = new SDFRenderer(preview, this.#tabs)
+        this.renderer = new SDFRenderer(preview, this.#tabs, getVisiblePreviewRect)
 
         this.renderer
             .ready()

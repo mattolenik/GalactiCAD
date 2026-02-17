@@ -19,6 +19,8 @@ export type TrackballRotationMethod =
 export interface TrackballOptions {
     /** The DOM element that will contain the trackball */
     scene: HTMLElement
+    /** Optional rect for interaction (e.g. visible area when editor overlays). Uses scene.getBoundingClientRect() when omitted. */
+    getInteractionRect?: () => DOMRect
     /** The rotation method to use */
     rotationMethod?: TrackballRotationMethod
     /** Callback function called when trackball is rotated */
@@ -62,9 +64,10 @@ export class Trackball {
     #isUpdatePending = false
     #lastMousePosition: { clientX: number; clientY: number } | null = null
     #opts: Required<
-        Omit<TrackballOptions, "scene" | "rotationMethod" | "q">
+        Omit<TrackballOptions, "scene" | "rotationMethod" | "q" | "getInteractionRect">
     > & {
         scene: HTMLElement
+        getInteractionRect?: () => DOMRect
         rotationMethod?: TrackballRotationMethod
     }
 
@@ -86,6 +89,7 @@ export class Trackball {
 
         const {
             scene,
+            getInteractionRect,
             rotationMethod,
             onDraw = () => {},
             clampElevation = false,
@@ -99,6 +103,7 @@ export class Trackball {
 
         this.#opts = {
             scene: scene!,
+            getInteractionRect,
             rotationMethod,
             onDraw,
             clampElevation,
@@ -203,7 +208,7 @@ export class Trackball {
         // Only respond to left mouse button; right/middle are used for pan
         if (event instanceof MouseEvent && event.button !== 0) return
 
-        const box = this.#opts.scene.getBoundingClientRect()
+        const box = this.#opts.getInteractionRect?.() ?? this.#opts.scene.getBoundingClientRect()
 
         const startVector =
             this.#project(event.clientX, event.clientY, box) ?? [0, 0, 1]

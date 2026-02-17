@@ -67,7 +67,7 @@ export class CameraController {
     /** Emitted on hover when not dragging (screen position, alt). */
     readonly hover$ = new Subject<{ screenPos: Vec2f; altKey: boolean }>()
 
-    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null) {
+    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect) {
         this.#settings = SettingsManager.instance
         this.#host = host
         this.#pivot = pivot
@@ -96,6 +96,7 @@ export class CameraController {
         this.#isSyncing = true
         this.#trackball = new Trackball({
             scene: this.#host.canvas,
+            getInteractionRect,
             rotationMethod: "rounded_arcball",
             q: this.#rotation,
             onDraw: (q) => {
@@ -344,6 +345,10 @@ export class CameraController {
         this.#tabChangeSub?.unsubscribe()
         this.#tabChangeSub = null
         this.#tabsElement = null
+        this.change$.complete()
+        this.select$.complete()
+        this.doubleClick$.complete()
+        this.hover$.complete()
     }
 
 }

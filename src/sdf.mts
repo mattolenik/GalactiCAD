@@ -383,9 +383,9 @@ export class SDFRenderer {
         this.#needsRender = true
     }
 
-    constructor(preview: PreviewWindow, tabsElement?: EventTarget | null) {
+    constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect) {
         this.#preview = preview
-        this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement)
+        this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement, getInteractionRect)
         this.#controlSubs.push(
             this.#controls.select$.subscribe(({ screenPos, shiftKey, altKey }) =>
                 this.#handleClick(screenPos, shiftKey, altKey)

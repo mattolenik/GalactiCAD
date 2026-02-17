@@ -47,7 +47,7 @@ function defaultCamera(): CameraSettings {
 }
 
 function defaultPreview(): PreviewSettings {
-    return { xrayMode: false, cameraOptimization: true, beamOptimization: false, selectionMode: "object" }
+    return { xrayMode: false, cameraOptimization: true, beamOptimization: true, selectionMode: "object" }
 }
 
 function defaultLayout(): LayoutSettings {

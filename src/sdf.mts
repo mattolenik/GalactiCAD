@@ -1903,7 +1903,7 @@ export class SDFRenderer {
 
         // Write view settings (xray mode + refinement steps + beam enabled)
         const refinementSteps = this.#resolutionScale < 1.0 ? 6 : 8
-        const beamActive = this.#beamEnabled && this.#resolutionScale >= 1.0
+        const beamActive = this.#beamEnabled
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([
             this.#xrayMode ? 1 : 0,
             refinementSteps,
@@ -1926,7 +1926,6 @@ export class SDFRenderer {
         const commandEncoder = this.#device.createCommandEncoder()
 
         // Pass 0: Beam pre-pass - march one ray per 8x8 tile through empty space
-        // Skip beam during reduced-resolution rendering (camera movement) to avoid artifacts
         if (beamActive && this.#beamPipeline && this.#beamBindGroup) {
             const BEAM_TILE_SIZE = 8
             const tilesX = Math.ceil(this.#sceneWidth / BEAM_TILE_SIZE)

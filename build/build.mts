@@ -4,6 +4,7 @@ import * as esbuild from "esbuild"
 import { DevServer } from "./devserver.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
 import staticBundler from "./static-bundler.mjs"
+import { versionPlugin } from "./version-plugin.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
 
 const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
@@ -17,7 +18,7 @@ const Static = {
 
 const Options = {
     entryPoints: ["./src/app.mts", "./src/components/preview-window.mts", "./src/components/mesh-viewer.mts"],
-    plugins: [await wgslLoader(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
+    plugins: [await wgslLoader(), versionPlugin(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
     outDir: "./dist",
     isProd: !!process.env.PRODUCTION || !!process.env.CI,
 }

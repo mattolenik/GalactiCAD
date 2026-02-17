@@ -4,7 +4,6 @@ DIST        := dist
 PORT        ?= $(shell $(BUILD) port)
 export TSX  ?= ./node_modules/.bin/tsx
 BUILD       := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
-VERSION     := $(shell echo $$(ver=$$(git tag -l --points-at HEAD) && [[ -z $$ver ]] && ver=$$(git describe --always --dirty); printf $$ver))
 
 default: build test
 

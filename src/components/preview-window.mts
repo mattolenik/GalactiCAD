@@ -1,3 +1,5 @@
+import { VERSION } from "../version.mts"
+
 export class PreviewWindow extends HTMLElement {
     readonly canvas: HTMLCanvasElement
 
@@ -38,6 +40,14 @@ export class PreviewWindow extends HTMLElement {
             right: 10px;
             pointer-events: none;
             z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+        .version {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.35);
         }
 `
         this.canvas = document.createElement("canvas")
@@ -46,10 +56,16 @@ export class PreviewWindow extends HTMLElement {
         this.canvas.style.display = "inline-block"
         shadow.append(style, this.canvas)
 
+        const overlay = document.createElement("div")
+        overlay.classList.add("overlay")
         this.#counter = document.createElement("span")
-        this.#counter.classList.add("overlay")
-        this.#counter.style.float = "right"
-        shadow.appendChild(this.#counter)
+        shadow.appendChild(overlay)
+        overlay.appendChild(this.#counter)
+
+        const versionEl = document.createElement("span")
+        versionEl.classList.add("version")
+        versionEl.textContent = VERSION
+        overlay.appendChild(versionEl)
     }
 
     updateFPS(fps: number) {

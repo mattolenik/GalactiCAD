@@ -1,7 +1,7 @@
 {
     "name": "GalactiCAD",
     "description": "New generation of GPU powered CAD, driven by SDFs and built from code",
-    "version": "0.1.0",
+    "version": "0.0.0",
     "homepage": "https://galacticad.app",
     "author": "Matthew Olenik",
     "license": "AGPL-3.0-only",

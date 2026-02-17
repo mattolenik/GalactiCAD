@@ -30,7 +30,6 @@ serve: watch
 .PHONY: release
 release: export PRODUCTION=1
 release: build test
-	jq '.version="$(VERSION)"' <<< "$$(< package.json)" > package.json
 
 .PHONY: clean
 clean:

@@ -11,8 +11,8 @@
 // low-resolution storage texture that the fragment shader reads.
 
 const TILE_SIZE: u32 = 8u;
-const MAX_BEAM_STEPS: i32 = 350;
-const MAX_DIST: f32 = 600.0;
+const MAX_BEAM_STEPS: i32 = 200;
+const MAX_DIST: f32 = 300.0;
 
 struct Camera {
     transform: mat4x4f,
@@ -29,8 +29,9 @@ struct Camera {
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var tStartOut: texture_storage_2d<r32float, write>;
 
-// Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
-//:) insert sceneAux
+// Fast-path-only auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
+// Uses sceneAuxFast to exclude full SDFResult functions not needed by the beam shader.
+//:) insert sceneAuxFast
 
 // Fast SDF: only returns vec2f(distance, gradientMagnitude).
 // Contents are replaced at runtime by the scene compiler.

@@ -2,8 +2,8 @@
 
 // Reduce MAX_STEPS to prevent GPU saturation
 // 100 steps is usually sufficient for most scenes
-const MAX_STEPS: i32 = 400;
-const MAX_DIST: f32 = 600.0;
+const MAX_STEPS: i32 = 300;
+const MAX_DIST: f32 = 300.0;
 
 struct Camera {
     transform: mat4x4f,
@@ -191,17 +191,22 @@ fn shadeHit(hit: RaymarchHit, flipNormal: bool) -> vec3f {
 
     let diffuse = lighting(normal);
 
-    // Smooth color blending at CSG seams: mix palette colors using blend weight
+    // Color and selection: only do second lookups when blending is active
     let color1 = colorPalette[hit.sdf.id & 31u];
-    let color2 = colorPalette[hit.sdf.id2 & 31u];
     let bw = hit.sdf.blend;
-    let baseColor = color1 * (1.0 - bw) + color2 * bw;
+    var baseColor = color1;
+    if (bw > 0.0) {
+        let color2 = colorPalette[hit.sdf.id2 & 31u];
+        baseColor = color1 * (1.0 - bw) + color2 * bw;
+    }
     let shadedColor = baseColor * diffuse;
 
-    // Selection highlight also blends smoothly across CSG seams
     let sel1 = f32(selectedObjectIds[hit.sdf.id] != 0u);
-    let sel2 = f32(selectedObjectIds[hit.sdf.id2] != 0u);
-    let selBlend = mix(sel1, sel2, hit.sdf.blend);
+    var selBlend = sel1;
+    if (bw > 0.0) {
+        let sel2 = f32(selectedObjectIds[hit.sdf.id2] != 0u);
+        selBlend = mix(sel1, sel2, bw);
+    }
     let selectedColor = shadedColor * 0.9 + vec3f(0.15);
     return shadedColor * (1.0 - selBlend) + selectedColor * selBlend;
 }

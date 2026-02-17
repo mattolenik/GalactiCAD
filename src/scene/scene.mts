@@ -73,6 +73,18 @@ export class SceneInfo {
     }
 
     /**
+     * Compile fast-path-only auxiliary WGSL functions.
+     * Excludes full SDFResult (Ex) functions not needed by the beam shader.
+     */
+    compileAuxFast(): string {
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            code += node.compileAuxFast()
+        }
+        return code
+    }
+
+    /**
      * Compile helper WGSL for edge picking/highlighting.
      * Currently emits a box-parameter lookup keyed by node ID.
      */
@@ -144,6 +156,14 @@ export class Node {
      */
     compileAux(): string {
         return ""
+    }
+    /**
+     * Emit auxiliary WGSL for the fast path only (vec2f distance+gradient).
+     * Used by the beam shader which doesn't need full SDFResult functions.
+     * Default returns compileAux(). Override in nodes that emit both fast and full functions.
+     */
+    compileAuxFast(): string {
+        return this.compileAux()
     }
     compile(indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
@@ -1382,6 +1402,42 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
 `
     }
 
+    override compileAuxFast(): string {
+        const childFunc = this.child.wgslFuncName
+        const h = this.h.toFixed(6)
+        const hasTwist = this.twist !== 0
+
+        if (!hasTwist) {
+            return `
+fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+    let d2d = ${childFunc}(p.xz);
+    let dCap = abs(p.y) - ${h};
+    return vec2f(max(d2d, dCap), 1.0);
+}
+`
+        }
+
+        const twistRad = (this.twist * Math.PI / 180).toFixed(10)
+        return `
+fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
+    let h = ${h};
+    let twist = ${twistRad};
+    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
+    let angle = twist * t;
+    let ca = cos(angle);
+    let sa = sin(angle);
+    let twisted = vec2f(ca * p.x + sa * p.z, -sa * p.x + ca * p.z);
+    let d2d = ${childFunc}(twisted);
+    let dCap = abs(p.y) - h;
+    return max(d2d, dCap);
+}
+
+fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+    return vec2f(${this.wgslFieldFuncName}(p), 0.8);
+}
+`
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Extrude${this.id}`
         const varName = decapitalize(funcName)
@@ -1466,6 +1522,16 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     return sdfTrue(d, id, n);
 }
 
+fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+    let q = vec2f(length(p.xz), p.y);
+    return vec2f(${childFunc}(q), 1.0);
+}
+`
+    }
+
+    override compileAuxFast(): string {
+        const childFunc = this.child.wgslFuncName
+        return `
 fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
     let q = vec2f(length(p.xz), p.y);
     return vec2f(${childFunc}(q), 1.0);
@@ -1615,6 +1681,57 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
 }
 `
         return fieldFunc
+    }
+
+    override compileAuxFast(): string {
+        const N = this.profiles.length
+        const h = this.h.toFixed(6)
+
+        const evalLines = this.profiles
+            .map((p, i) => `    let d${i} = ${p.wgslFuncName}(p.xz);`)
+            .join("\n")
+
+        let interpCode: string
+        if (N === 2) {
+            interpCode = `    let d_profile = mix(d0, d1, t);`
+        } else {
+            const numSegments = N - 1
+            interpCode = `    let seg = t * ${numSegments.toFixed(1)};
+    var d_profile: f32;
+`
+            for (let i = 0; i < numSegments; i++) {
+                const localT = i === 0 ? "seg" : `seg - ${i.toFixed(1)}`
+                if (i === 0) {
+                    interpCode += `    if (seg < 1.0) {
+        d_profile = mix(d${i}, d${i + 1}, ${localT});
+`
+                } else if (i === numSegments - 1) {
+                    interpCode += `    } else {
+        d_profile = mix(d${i}, d${i + 1}, ${localT});
+    }
+`
+                } else {
+                    interpCode += `    } else if (seg < ${(i + 1).toFixed(1)}) {
+        d_profile = mix(d${i}, d${i + 1}, ${localT});
+`
+                }
+            }
+        }
+
+        return `
+fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
+    let h = ${h};
+    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
+${evalLines}
+${interpCode}
+    let dCap = abs(p.y) - h;
+    return max(d_profile, dCap);
+}
+
+fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+    return vec2f(${this.wgslFieldFuncName}(p), 0.8);
+}
+`
     }
 
     override compile(indentLevel = 0): CompileResult {

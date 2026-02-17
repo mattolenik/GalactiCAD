@@ -95,6 +95,7 @@ class ExportBuffers {
 export class SDFRenderer {
     #bindGroup!: GPUBindGroup
     #cameraRes!: Vec2f
+    #viewCenter: Vec2f = vec2(0.5, 0.5)
     #context!: GPUCanvasContext
     #controls: CameraController
     #device!: GPUDevice
@@ -197,6 +198,12 @@ export class SDFRenderer {
 
     get controls(): CameraController {
         return this.#controls
+    }
+
+    /** Set the center of the visible (non-editor) area in UV space (0-1). */
+    setViewCenter(x: number, y: number): void {
+        this.#viewCenter = vec2(x, y)
+        this.#needsRender = true
     }
 
     get selectedObjectIds(): number[] {
@@ -1628,7 +1635,7 @@ export class SDFRenderer {
         })
 
         this.#uniformBuffers.camera = this.#device.createBuffer({
-            size: 144, // Camera struct: transform(64) + position(16) + res(8) + zoom(4) + pad(4) + 3x lightDir vec3f(48)
+            size: 160, // Camera struct: transform(64) + position(16) + res(8) + zoom(4) + pad(4) + 3x lightDir vec3f(48) + viewCenter(8) + pad(8)
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "camera",
         })
@@ -1900,6 +1907,7 @@ export class SDFRenderer {
             l3.x, l3.y, l3.z, 0,
         ])
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 96, lightDirs)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 144, this.#viewCenter.data as BufferSource)
 
         // Write view settings (xray mode + refinement steps + beam enabled)
         const refinementSteps = this.#resolutionScale < 1.0 ? 6 : 8

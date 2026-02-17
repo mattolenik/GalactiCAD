@@ -404,9 +404,26 @@ class App {
         const resizeHandle = new ResizeHandle(resizeHandleEl, mainPanels, workspace)
         resizeHandle.connect()
 
-        // ResizeObserver so Monaco layout updates when editor container resizes
-        const resizeObserver = new ResizeObserver(() => this.editor.layout())
+        // ResizeObserver so Monaco layout updates and viewCenter stays in sync
+        const updateViewCenter = () => {
+            const mainRect = mainPanels.getBoundingClientRect()
+            const editorRect = editorContainer.getBoundingClientRect()
+            if (mainRect.width === 0 || mainRect.height === 0) return
+            const editorOnLeft = window.innerWidth > window.innerHeight
+            if (editorOnLeft) {
+                const frac = editorRect.width / mainRect.width
+                this.renderer.setViewCenter((frac + 1.0) / 2, 0.5)
+            } else {
+                const frac = editorRect.height / mainRect.height
+                this.renderer.setViewCenter(0.5, (1.0 - frac) / 2)
+            }
+        }
+        const resizeObserver = new ResizeObserver(() => {
+            this.editor.layout()
+            updateViewCenter()
+        })
         resizeObserver.observe(editorContainer)
+        resizeObserver.observe(mainPanels)
 
         // Hide line numbers on narrow screens to maximize code space
         const narrowMedia = window.matchMedia("(max-width: 600px)")

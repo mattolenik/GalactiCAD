@@ -24,6 +24,7 @@ struct Camera {
     lightDir1: vec3f,
     lightDir2: vec3f,
     lightDir3: vec3f,
+    viewCenter: vec2f,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -64,8 +65,11 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     );
     let uv = tileCenterPixel / res;
 
-    // Apply the same aspect correction as the fragment shader
-    let uvAspect = vec2f((uv.x - 0.5) * aspect + 0.5, uv.y);
+    // Apply the same aspect + viewCenter correction as the fragment shader
+    let uvAspect = vec2f(
+        (uv.x - camera.viewCenter.x) * aspect + 0.5,
+        uv.y - camera.viewCenter.y + 0.5
+    );
 
     // Compute ray origin (mirrors computeRayOrigin in preview.wgsl)
     let offsetX = (uvAspect.x * 2.0 - 1.0) * camera.zoom;

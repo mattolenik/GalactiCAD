@@ -12,6 +12,9 @@ struct Camera {
     lightDir1: vec3f,  // Key light
     lightDir2: vec3f,  // Fill light
     lightDir3: vec3f,  // Rim light
+    // Center of the visible (non-editor) area in UV space (0-1).
+    // When the editor overlays part of the canvas, the scene is centered here.
+    viewCenter: vec2f,
 };
 
 // @group(0) @binding(0) var<uniform> args: array<vec3f, 1024>;
@@ -224,8 +227,13 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     let uv = fragCoord;
     let aspect = camera.res.x / camera.res.y;
 
-    // Apply aspect correction about the center so the view stays centered.
-    let uvAspect = vec2f((uv.x - 0.5) * aspect + 0.5, uv.y);
+    // Shift UV so camera.viewCenter maps to the camera center (0.5, 0.5).
+    // This keeps the scene centered in the visible (non-editor) area while
+    // the rendering extends underneath the translucent editor overlay.
+    let uvAspect = vec2f(
+        (uv.x - camera.viewCenter.x) * aspect + 0.5,
+        uv.y - camera.viewCenter.y + 0.5
+    );
     let rayOrigin = computeRayOrigin(uvAspect, camera.position);
 
     // Transform the ray from camera space into scene space

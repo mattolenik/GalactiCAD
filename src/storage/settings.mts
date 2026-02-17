@@ -12,13 +12,10 @@ export interface CameraSettings {
     rotation: [number, number, number, number] // quaternion [w, x, y, z]
 }
 
-export type SelectionMode = "object" | "edge"
-
 export interface PreviewSettings {
     xrayMode: boolean
     cameraOptimization: boolean
     beamOptimization: boolean
-    selectionMode: SelectionMode
 }
 
 export interface LayoutSettings {
@@ -47,7 +44,7 @@ function defaultCamera(): CameraSettings {
 }
 
 function defaultPreview(): PreviewSettings {
-    return { xrayMode: false, cameraOptimization: true, beamOptimization: true, selectionMode: "object" }
+    return { xrayMode: false, cameraOptimization: true, beamOptimization: true }
 }
 
 function defaultLayout(): LayoutSettings {

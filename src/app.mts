@@ -9,7 +9,7 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
-import { SettingsManager, type SelectionMode } from "./storage/settings.mjs"
+import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
 import { SourceParser, type SourceLocation, type Polygon2DCallInfo } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
@@ -393,11 +393,6 @@ class App {
 
         // Viewport toolbar — floating over the preview area
         const toolbar = new Toolbar()
-        const selectionModeGroup = toolbar.addRadioGroup<SelectionMode>([
-            { label: "Object", value: "object" },
-            { label: "Edge", value: "edge" },
-        ], "object")
-        toolbar.addSeparator()
         const xrayCheckbox = toolbar.addCheckbox("X-ray")
         this.#viewports.appendChild(toolbar)
 
@@ -477,10 +472,6 @@ class App {
                 xrayCheckbox.onChange = (enabled) => {
                     this.renderer.xrayMode = enabled
                 }
-                selectionModeGroup.value = this.renderer.selectionMode
-                selectionModeGroup.onChange = (mode) => {
-                    this.renderer.selectionMode = mode
-                }
 
                 // Wire dev tools panel ↔ renderer
                 devTools.cameraOptimization = this.renderer.cameraOptimization
@@ -493,7 +484,6 @@ class App {
                 }
                 this.renderer.onPreviewSettingsLoaded = () => {
                     xrayCheckbox.checked = this.renderer.xrayMode
-                    selectionModeGroup.value = this.renderer.selectionMode
                     devTools.cameraOptimization = this.renderer.cameraOptimization
                     devTools.beamOptimization = this.renderer.beamEnabled
                 }

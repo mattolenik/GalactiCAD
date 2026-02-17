@@ -144,23 +144,6 @@ export class SceneInfo {
         }
         return code
     }
-
-    /**
-     * Compile helper WGSL for edge picking/highlighting.
-     * Currently emits a box-parameter lookup keyed by node ID.
-     */
-    compileEdgeHelpers(): string {
-        const boxes = Array.from(this.#nodes.values()).filter((node): node is Box => node instanceof Box)
-        let code = ""
-        for (const boxNode of boxes) {
-            code += `case ${boxNode.id}u: {\n`
-            code += `    (*posOut) = ${boxNode.pos.wgsl};\n`
-            code += `    (*halfOut) = ${boxNode.size.wgsl};\n`
-            code += "    return true;\n"
-            code += "}\n"
-        }
-        return code
-    }
 }
 
 export class Node {

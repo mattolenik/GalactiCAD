@@ -4,7 +4,7 @@ import type { Plugin } from "esbuild"
 /** Same logic as Makefile VERSION: tag at HEAD, else git describe --always --dirty */
 function getVersion(): string {
     try {
-        const tag = execSync("git tag -l --points-at HEAD", { encoding: "utf8" }).trim()
+        const tag = execSync("git tag -l --points-at $(git describe --always)", { encoding: "utf8" }).trim()
         if (tag) return tag
         return execSync("git describe --always --dirty", { encoding: "utf8" }).trim()
     } catch {

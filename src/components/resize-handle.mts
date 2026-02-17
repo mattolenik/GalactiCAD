@@ -7,6 +7,8 @@ export class ResizeHandle {
     #handle: HTMLElement
     #mainPanels: HTMLElement
     #workspace: HTMLElement
+    #ac = new AbortController()
+    #dragAc: AbortController | null = null
     #isDragging = false
     #startX = 0
     #startY = 0
@@ -24,17 +26,16 @@ export class ResizeHandle {
     }
 
     connect(): void {
+        this.#ac = new AbortController()
+        const { signal } = this.#ac
         this.#applyLayout()
-        this.#handle.addEventListener("pointerdown", this.#onPointerDown)
-        window.addEventListener("resize", this.#onWindowResize)
+        this.#handle.addEventListener("pointerdown", this.#onPointerDown, { signal })
+        window.addEventListener("resize", this.#onWindowResize, { signal })
     }
 
     disconnect(): void {
-        this.#handle.removeEventListener("pointerdown", this.#onPointerDown)
-        window.removeEventListener("resize", this.#onWindowResize)
-        document.removeEventListener("pointermove", this.#onPointerMove)
-        document.removeEventListener("pointerup", this.#onPointerUp)
-        document.removeEventListener("pointercancel", this.#onPointerUp)
+        this.#dragAc?.abort()
+        this.#ac.abort()
     }
 
     #onWindowResize = (): void => {
@@ -63,9 +64,11 @@ export class ResizeHandle {
         this.#startPercent = this.#editorOnLeft ? layout.editorWidthPercent : layout.editorHeightPercent
         this.#handle.setPointerCapture(e.pointerId)
         document.body.classList.add("resize-dragging")
-        document.addEventListener("pointermove", this.#onPointerMove)
-        document.addEventListener("pointerup", this.#onPointerUp)
-        document.addEventListener("pointercancel", this.#onPointerUp)
+        this.#dragAc = new AbortController()
+        const { signal } = this.#dragAc
+        document.addEventListener("pointermove", this.#onPointerMove, { signal })
+        document.addEventListener("pointerup", this.#onPointerUp, { signal })
+        document.addEventListener("pointercancel", this.#onPointerUp, { signal })
     }
 
     #onPointerMove = (e: PointerEvent): void => {
@@ -93,9 +96,8 @@ export class ResizeHandle {
         this.#isDragging = false
         document.body.classList.remove("resize-dragging")
         this.#handle.releasePointerCapture(e.pointerId)
-        document.removeEventListener("pointermove", this.#onPointerMove)
-        document.removeEventListener("pointerup", this.#onPointerUp)
-        document.removeEventListener("pointercancel", this.#onPointerUp)
+        this.#dragAc?.abort()
+        this.#dragAc = null
         const patch: Partial<LayoutSettings> = {}
         if (this.#editorOnLeft) {
             const current = this.#mainPanels.style.getPropertyValue("--editor-width")

@@ -660,11 +660,7 @@ export class MeshViewer extends HTMLElement {
     set translucentFaces(enabled: boolean) {
         const next = !!enabled
         if (next === this.#translucentFaces) return
-        this.#translucentFaces = next
-        if (this.#translucentCheckbox) {
-            this.#translucentCheckbox.checked = next
-        }
-        this.setAttribute("translucentFaces", next ? "true" : "false")
+        this.#syncBool("translucentFaces", next)
         this.#saveViewerState()
     }
 
@@ -675,31 +671,30 @@ export class MeshViewer extends HTMLElement {
     set wireframe(enabled: boolean) {
         const next = !!enabled
         if (next === this.#wireframe) return
-        this.#wireframe = next
-        if (this.#wireframeCheckbox) {
-            this.#wireframeCheckbox.checked = next
-        }
-        this.setAttribute("wireframe", next ? "true" : "false")
+        this.#syncBool("wireframe", next)
         this.#saveViewerState()
     }
 
-    attributeChangedCallback(name: string, oldVal: string | null, newVal: string | null) {
+    #syncBool(name: "translucentFaces" | "wireframe", value: boolean) {
+        if (name === "translucentFaces") {
+            this.#translucentFaces = value
+            if (this.#translucentCheckbox) this.#translucentCheckbox.checked = value
+        } else {
+            this.#wireframe = value
+            if (this.#wireframeCheckbox) this.#wireframeCheckbox.checked = value
+        }
+        this.setAttribute(name, value ? "true" : "false")
+    }
+
+    attributeChangedCallback(name: string, _oldVal: string | null, newVal: string | null) {
         if (name === "translucentFaces") {
             const next = (newVal ?? "").toLowerCase() === "true"
-            if (next === this.#translucentFaces) return
-            this.#translucentFaces = next
-            if (this.#translucentCheckbox) {
-                this.#translucentCheckbox.checked = next
-            }
+            if (next !== this.#translucentFaces) this.#syncBool("translucentFaces", next)
             return
         }
         if (name === "wireframe") {
             const next = (newVal ?? "").toLowerCase() === "true"
-            if (next === this.#wireframe) return
-            this.#wireframe = next
-            if (this.#wireframeCheckbox) {
-                this.#wireframeCheckbox.checked = next
-            }
+            if (next !== this.#wireframe) this.#syncBool("wireframe", next)
         }
     }
 
@@ -714,16 +709,8 @@ export class MeshViewer extends HTMLElement {
 
     #loadViewerState(): void {
         const g = this.#settings.getGlobal().meshViewer
-        this.#translucentFaces = g.translucentFaces
-        this.setAttribute("translucentFaces", this.#translucentFaces ? "true" : "false")
-        if (this.#translucentCheckbox) {
-            this.#translucentCheckbox.checked = this.#translucentFaces
-        }
-        this.#wireframe = g.wireframe
-        this.setAttribute("wireframe", this.#wireframe ? "true" : "false")
-        if (this.#wireframeCheckbox) {
-            this.#wireframeCheckbox.checked = this.#wireframe
-        }
+        this.#syncBool("translucentFaces", g.translucentFaces)
+        this.#syncBool("wireframe", g.wireframe)
     }
 }
 

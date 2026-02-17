@@ -1,4 +1,7 @@
+import { BehaviorSubject } from "rxjs"
+import type { Subscription } from "rxjs"
 import { __fg_color, __tone_1, __tone_2 } from "../style/style.mjs"
+import { connectCheckbox } from "../binding/bind.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import type { DocumentTabs } from "./document-tabs.mjs"
 import {
@@ -11,13 +14,16 @@ import {
 
 export class DevToolsPanel extends HTMLElement {
     #cameraOptCheckbox: HTMLInputElement
-    #cameraOptimization: boolean = true
+    #cameraOptimization$: BehaviorSubject<boolean>
     #beamOptCheckbox: HTMLInputElement
-    #beamOptimization: boolean = false
+    #beamOptimization$: BehaviorSubject<boolean>
     #showFpsCheckbox: HTMLInputElement
+    #showFps$: BehaviorSubject<boolean>
     #meshViewerCheckbox: HTMLInputElement
+    #meshViewer$: BehaviorSubject<boolean>
     #settings: SettingsManager
     #tabs: DocumentTabs
+    #subscriptions: Subscription[] = []
 
     /** Callback when camera optimization changes */
     onCameraOptimizationChange?: (enabled: boolean) => void
@@ -32,37 +38,35 @@ export class DevToolsPanel extends HTMLElement {
     onMeshViewerChange?: (enabled: boolean) => void
 
     get cameraOptimization(): boolean {
-        return this.#cameraOptimization
+        return this.#cameraOptimization$.value
     }
 
     set cameraOptimization(enabled: boolean) {
-        this.#cameraOptimization = enabled
-        this.#cameraOptCheckbox.checked = enabled
+        this.#cameraOptimization$.next(enabled)
     }
 
     get beamOptimization(): boolean {
-        return this.#beamOptimization
+        return this.#beamOptimization$.value
     }
 
     set beamOptimization(enabled: boolean) {
-        this.#beamOptimization = enabled
-        this.#beamOptCheckbox.checked = enabled
+        this.#beamOptimization$.next(enabled)
     }
 
     get showFps(): boolean {
-        return this.#showFpsCheckbox.checked
+        return this.#showFps$.value
     }
 
     set showFps(enabled: boolean) {
-        this.#showFpsCheckbox.checked = enabled
+        this.#showFps$.next(enabled)
     }
 
     get meshViewer(): boolean {
-        return this.#meshViewerCheckbox.checked
+        return this.#meshViewer$.value
     }
 
     set meshViewer(enabled: boolean) {
-        this.#meshViewerCheckbox.checked = enabled
+        this.#meshViewer$.next(enabled)
     }
 
     /** Show or hide the panel */
@@ -137,54 +141,37 @@ export class DevToolsPanel extends HTMLElement {
 `
         shadow.appendChild(style)
 
-        // Show FPS checkbox
-        const showFpsLabel = document.createElement("label")
-        this.#showFpsCheckbox = document.createElement("input")
-        this.#showFpsCheckbox.type = "checkbox"
-        this.#showFpsCheckbox.addEventListener("change", () => {
-            const enabled = this.#showFpsCheckbox.checked
-            this.#settings.updateGlobal({ app: { showFps: enabled } })
-            this.onShowFpsChange?.(enabled)
-        })
-        showFpsLabel.append(this.#showFpsCheckbox, "Show FPS")
-        shadow.appendChild(showFpsLabel)
+        const g = this.#settings.getGlobal().app
+        this.#showFps$ = new BehaviorSubject(g.showFps)
+        this.#meshViewer$ = new BehaviorSubject(g.meshViewerEnabled)
+        this.#cameraOptimization$ = new BehaviorSubject(true)
+        this.#beamOptimization$ = new BehaviorSubject(false)
 
-        // Mesh viewer checkbox
-        const meshViewerLabel = document.createElement("label")
-        this.#meshViewerCheckbox = document.createElement("input")
-        this.#meshViewerCheckbox.type = "checkbox"
-        this.#meshViewerCheckbox.checked = this.#settings.getGlobal().app.meshViewerEnabled
-        this.#meshViewerCheckbox.addEventListener("change", () => {
-            const enabled = this.#meshViewerCheckbox.checked
-            this.#settings.updateGlobal({ app: { meshViewerEnabled: enabled } })
-            this.onMeshViewerChange?.(enabled)
+        this.#showFpsCheckbox = this.#addCheckbox(shadow, "Show FPS", this.#showFps$.value)
+        this.#subscriptions.push(connectCheckbox(this.#showFpsCheckbox, this.#showFps$))
+        this.#showFps$.subscribe(v => {
+            this.#settings.updateGlobal({ app: { showFps: v } })
+            this.onShowFpsChange?.(v)
         })
-        meshViewerLabel.append(this.#meshViewerCheckbox, "Export preview")
-        shadow.appendChild(meshViewerLabel)
 
-        // Camera optimization checkbox
-        const cameraOptLabel = document.createElement("label")
-        this.#cameraOptCheckbox = document.createElement("input")
-        this.#cameraOptCheckbox.type = "checkbox"
-        this.#cameraOptCheckbox.checked = this.#cameraOptimization
-        this.#cameraOptCheckbox.addEventListener("change", () => {
-            this.#cameraOptimization = this.#cameraOptCheckbox.checked
-            this.onCameraOptimizationChange?.(this.#cameraOptimization)
+        this.#meshViewerCheckbox = this.#addCheckbox(shadow, "Export preview", this.#meshViewer$.value)
+        this.#subscriptions.push(connectCheckbox(this.#meshViewerCheckbox, this.#meshViewer$))
+        this.#meshViewer$.subscribe(v => {
+            this.#settings.updateGlobal({ app: { meshViewerEnabled: v } })
+            this.onMeshViewerChange?.(v)
         })
-        cameraOptLabel.append(this.#cameraOptCheckbox, "Camera halfres")
-        shadow.appendChild(cameraOptLabel)
 
-        // Beam optimization checkbox
-        const beamOptLabel = document.createElement("label")
-        this.#beamOptCheckbox = document.createElement("input")
-        this.#beamOptCheckbox.type = "checkbox"
-        this.#beamOptCheckbox.checked = this.#beamOptimization
-        this.#beamOptCheckbox.addEventListener("change", () => {
-            this.#beamOptimization = this.#beamOptCheckbox.checked
-            this.onBeamOptimizationChange?.(this.#beamOptimization)
+        this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)
+        this.#subscriptions.push(connectCheckbox(this.#cameraOptCheckbox, this.#cameraOptimization$))
+        this.#cameraOptimization$.subscribe(v => {
+            this.onCameraOptimizationChange?.(v)
         })
-        beamOptLabel.append(this.#beamOptCheckbox, "Beam render")
-        shadow.appendChild(beamOptLabel)
+
+        this.#beamOptCheckbox = this.#addCheckbox(shadow, "Beam render", this.#beamOptimization$.value)
+        this.#subscriptions.push(connectCheckbox(this.#beamOptCheckbox, this.#beamOptimization$))
+        this.#beamOptimization$.subscribe(v => {
+            this.onBeamOptimizationChange?.(v)
+        })
 
         // Save Suite button
         const saveSuiteButton = document.createElement("button")
@@ -214,6 +201,23 @@ export class DevToolsPanel extends HTMLElement {
 
         // Hidden by default
         this.style.display = "none"
+    }
+
+    #addCheckbox(shadow: ShadowRoot, label: string, checked: boolean): HTMLInputElement {
+        const el = document.createElement("label")
+        const cb = document.createElement("input")
+        cb.type = "checkbox"
+        cb.checked = checked
+        el.append(cb, label)
+        shadow.appendChild(el)
+        return cb
+    }
+
+    disconnectedCallback() {
+        for (const sub of this.#subscriptions) {
+            sub.unsubscribe()
+        }
+        this.#subscriptions = []
     }
 
     async #saveBenchmarkSuite(): Promise<void> {

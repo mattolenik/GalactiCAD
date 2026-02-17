@@ -441,84 +441,9 @@ class App {
         this.renderer
             .ready()
             .then(() => {
-                // Set up Monaco highlighter with the editor instance
-                this.#monacoHighlighter.setEditor(this.editor)
-
-                // Listen for selection changes from preview to update editor highlighting
-                this.renderer.onSelectionChange = () => {
-                    this.#isUpdatingFromPreview = true
-                    this.#updateEditorHighlighting()
-                    // Reset flag after a short delay to allow editor updates to complete
-                    setTimeout(() => { this.#isUpdatingFromPreview = false }, 50)
-                }
-
-                // Double-click on a polygon2d cap face opens the polygon editor
-                this.renderer.onObjectDoubleClick = (nodeId: number) => {
-                    this.#handlePreviewDoubleClick(nodeId)
-                }
-
-                // Listen for editor selection changes (for function name selection)
-                this.editor.onDidChangeCursorSelection(() => {
-                    this.#handleEditorSelection()
-                })
-
-                // Listen for mouse clicks (for color indicator clicks)
-                this.editor.onMouseDown((e) => {
-                    this.#handleEditorMouseDown(e)
-                })
-
-                // Wire toolbar ↔ renderer
-                xrayCheckbox.checked = this.renderer.xrayMode
-                xrayCheckbox.onChange = (enabled) => {
-                    this.renderer.xrayMode = enabled
-                }
-
-                // Wire dev tools panel ↔ renderer
-                devTools.cameraOptimization = this.renderer.cameraOptimization
-                devTools.beamOptimization = this.renderer.beamEnabled
-                devTools.onCameraOptimizationChange = (enabled) => {
-                    this.renderer.cameraOptimization = enabled
-                }
-                devTools.onBeamOptimizationChange = (enabled) => {
-                    this.renderer.beamEnabled = enabled
-                }
-                this.renderer.onPreviewSettingsLoaded = () => {
-                    xrayCheckbox.checked = this.renderer.xrayMode
-                    devTools.cameraOptimization = this.renderer.cameraOptimization
-                    devTools.beamOptimization = this.renderer.beamEnabled
-                }
-
-                // Wire dev tools FPS toggle ↔ preview window
-                const showFps = this.#settings.getGlobal().app.showFps
-                devTools.showFps = showFps
-                preview.showFps = showFps
-                devTools.onShowFpsChange = (enabled) => {
-                    preview.showFps = enabled
-                }
-
-                const meshViewerEnabled = this.#settings.getGlobal().app.meshViewerEnabled
-                devTools.meshViewer = meshViewerEnabled
-                this.#setMeshViewerEnabled(meshViewerEnabled)
-                devTools.onMeshViewerChange = (enabled) => {
-                    this.#setMeshViewerEnabled(enabled)
-                }
-
-                this.#tabs.addEventListener("activeTabChanged", (e: Event) => {
-                    const event = e as CustomEvent<string | undefined>
-                    // Clear highlighting when switching tabs
-                    this.#monacoHighlighter.clearHighlighting()
-
-                    // Only build if there's an active document
-                    if (event.detail !== undefined) {
-                        // Defer build so tab switch + editor model change can render immediately
-                        requestAnimationFrame(() => {
-                            this.build()
-                        })
-                    } else {
-                        // No active document - clear log
-                        this.log.innerText = ""
-                    }
-                })
+                this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox)
+                this.#wireEditorAndTabs()
+                this.#wireMenu(menu, preview, devTools)
                 this.build()
 
                 fromEventPattern<monaco.editor.IModelContentChangedEvent>(
@@ -529,120 +454,9 @@ class App {
                         bufferTime(100),
                         filter(arr => arr.length > 0)
                     )
-                    .subscribe(events => {
+                    .subscribe(() => {
                         this.build()
                     })
-
-                const newItem = document.createElement("span")
-                newItem.innerHTML = "New Scene"
-                const renameItem = document.createElement("span")
-                renameItem.innerHTML = "Rename"
-                const duplicateItem = document.createElement("span")
-                duplicateItem.innerHTML = "Duplicate"
-                const deleteItem = document.createElement("span")
-                deleteItem.innerHTML = "Delete"
-                const exportItem = document.createElement("span")
-                exportItem.innerHTML = "Export to STL"
-
-                // Developer Tools toggle checkbox
-                const devToolsContainer = document.createElement("div")
-                devToolsContainer.style.display = "flex"
-                devToolsContainer.style.alignItems = "center"
-                devToolsContainer.style.gap = "8px"
-                devToolsContainer.style.cursor = "pointer"
-                const devToolsCheckbox = document.createElement("input")
-                devToolsCheckbox.type = "checkbox"
-                devToolsCheckbox.style.pointerEvents = "none"
-                const devToolsEnabled = this.#settings.getGlobal().app.devToolsEnabled
-                devToolsCheckbox.checked = devToolsEnabled
-                devTools.visible = devToolsEnabled
-                const devToolsText = document.createElement("span")
-                devToolsText.textContent = "Developer Tools"
-                devToolsContainer.append(devToolsCheckbox, devToolsText)
-
-                const fullscreenItem = document.createElement("span")
-                const updateFullscreenText = () => {
-                    fullscreenItem.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Enter Fullscreen"
-                }
-                updateFullscreenText()
-                document.addEventListener("fullscreenchange", updateFullscreenText)
-
-                const menuItems: Array<{ element: HTMLElement; action: () => void }> = [
-                    { element: newItem, action: () => this.#tabs.newDocument(undefined, "javascript") },
-                    { element: renameItem, action: () => this.#tabs.renameCurrentTab() },
-                    { element: duplicateItem, action: () => this.#tabs.duplicateCurrentTab() },
-                    { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
-                    {
-                        element: exportItem,
-                        action: async () => {
-                            const { StatusDialog } = await import("./components/status-dialog.mjs")
-                            let statusDialog: import("./components/status-dialog.mjs").StatusDialog | null = null
-
-                            try {
-                                const documentName = this.#tabs.active!
-                                const handle = await window.showSaveFilePicker({
-                                    suggestedName: documentName,
-                                    startIn: "desktop",
-                                    types: [
-                                        {
-                                            description: "STL file",
-                                            accept: { "model/stl": [".stl"] },
-                                        },
-                                    ],
-                                    excludeAcceptAllOption: false,
-                                })
-                                const mesh = await this.renderer.renderMesh(this.editor.getValue())
-                                await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
-
-                                // Show success dialog
-                                statusDialog = new StatusDialog("Export successful")
-                                await statusDialog.show()
-                            } catch (err) {
-                                if (`${err}`.includes("AbortError")) {
-                                    return
-                                }
-                                if (`${err}`.includes("cancelled")) {
-                                    statusDialog = new StatusDialog("Export cancelled")
-                                    await statusDialog.show()
-                                    return
-                                }
-
-                                // Show error dialog
-                                const errorMsg = err instanceof Error ? err.message : String(err)
-                                statusDialog = new StatusDialog(`Export failed: ${errorMsg}`)
-                                await statusDialog.show()
-                            }
-                        },
-                    },
-                ]
-                if (document.fullscreenEnabled) {
-                    menuItems.push({
-                        element: fullscreenItem,
-                        action: async () => {
-                            if (document.fullscreenElement) {
-                                await document.exitFullscreen()
-                            } else {
-                                await document.documentElement.requestFullscreen()
-                            }
-                        },
-                    })
-                }
-                menuItems.push({
-                    element: devToolsContainer,
-                    action: () => {
-                        const enabled = !devToolsCheckbox.checked
-                        devToolsCheckbox.checked = enabled
-                        devTools.visible = enabled
-                        if (!enabled) {
-                            preview.showFps = false
-                        } else {
-                            preview.showFps = devTools.showFps
-                        }
-                        this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
-                    },
-                })
-                const menuButton = new MenuButton(menuItems)
-                menu.replaceWith(menuButton)
             })
             .catch(err => {
                 console.error(`UNEXPECTED ERROR: ${err}`)
@@ -651,6 +465,193 @@ class App {
                     "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
                 preview.replaceWith(msg)
             })
+    }
+
+    #wirePreviewAndRenderer(
+        preview: PreviewWindow,
+        devTools: DevToolsPanel,
+        xrayCheckbox: import("./components/toolbar.mjs").ToolbarCheckbox
+    ) {
+        this.#monacoHighlighter.setEditor(this.editor)
+
+        this.renderer.selectionChange$.subscribe(() => {
+            this.#isUpdatingFromPreview = true
+            this.#updateEditorHighlighting()
+            setTimeout(() => { this.#isUpdatingFromPreview = false }, 50)
+        })
+
+        this.renderer.onObjectDoubleClick = (nodeId: number) => {
+            this.#handlePreviewDoubleClick(nodeId)
+        }
+
+        this.editor.onDidChangeCursorSelection(() => {
+            this.#handleEditorSelection()
+        })
+
+        this.editor.onMouseDown((e) => {
+            this.#handleEditorMouseDown(e)
+        })
+
+        xrayCheckbox.checked = this.renderer.xrayMode
+        xrayCheckbox.onChange = (enabled) => {
+            this.renderer.xrayMode = enabled
+        }
+
+        devTools.cameraOptimization = this.renderer.cameraOptimization
+        devTools.beamOptimization = this.renderer.beamEnabled
+        devTools.onCameraOptimizationChange = (enabled) => {
+            this.renderer.cameraOptimization = enabled
+        }
+        devTools.onBeamOptimizationChange = (enabled) => {
+            this.renderer.beamEnabled = enabled
+        }
+        this.renderer.onPreviewSettingsLoaded = () => {
+            xrayCheckbox.checked = this.renderer.xrayMode
+            devTools.cameraOptimization = this.renderer.cameraOptimization
+            devTools.beamOptimization = this.renderer.beamEnabled
+        }
+
+        const showFps = this.#settings.getGlobal().app.showFps
+        devTools.showFps = showFps
+        preview.showFps = showFps
+        devTools.onShowFpsChange = (enabled) => {
+            preview.showFps = enabled
+        }
+
+        const meshViewerEnabled = this.#settings.getGlobal().app.meshViewerEnabled
+        devTools.meshViewer = meshViewerEnabled
+        this.#setMeshViewerEnabled(meshViewerEnabled)
+        devTools.onMeshViewerChange = (enabled) => {
+            this.#setMeshViewerEnabled(enabled)
+        }
+    }
+
+    #wireEditorAndTabs() {
+        this.#tabs.addEventListener("activeTabChanged", (e: Event) => {
+            const event = e as CustomEvent<string | undefined>
+            this.#monacoHighlighter.clearHighlighting()
+            if (event.detail !== undefined) {
+                requestAnimationFrame(() => {
+                    this.build()
+                })
+            } else {
+                this.log.innerText = ""
+            }
+        })
+    }
+
+    #wireMenu(
+        menu: HTMLElement,
+        preview: PreviewWindow,
+        devTools: DevToolsPanel
+    ) {
+        const newItem = document.createElement("span")
+        newItem.innerHTML = "New Scene"
+        const renameItem = document.createElement("span")
+        renameItem.innerHTML = "Rename"
+        const duplicateItem = document.createElement("span")
+        duplicateItem.innerHTML = "Duplicate"
+        const deleteItem = document.createElement("span")
+        deleteItem.innerHTML = "Delete"
+        const exportItem = document.createElement("span")
+        exportItem.innerHTML = "Export to STL"
+
+        const devToolsContainer = document.createElement("div")
+        devToolsContainer.style.display = "flex"
+        devToolsContainer.style.alignItems = "center"
+        devToolsContainer.style.gap = "8px"
+        devToolsContainer.style.cursor = "pointer"
+        const devToolsCheckbox = document.createElement("input")
+        devToolsCheckbox.type = "checkbox"
+        devToolsCheckbox.style.pointerEvents = "none"
+        const devToolsEnabled = this.#settings.getGlobal().app.devToolsEnabled
+        devToolsCheckbox.checked = devToolsEnabled
+        devTools.visible = devToolsEnabled
+        const devToolsText = document.createElement("span")
+        devToolsText.textContent = "Developer Tools"
+        devToolsContainer.append(devToolsCheckbox, devToolsText)
+
+        const fullscreenItem = document.createElement("span")
+        const updateFullscreenText = () => {
+            fullscreenItem.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Enter Fullscreen"
+        }
+        updateFullscreenText()
+        document.addEventListener("fullscreenchange", updateFullscreenText)
+
+        const menuItems: Array<{ element: HTMLElement; action: () => void }> = [
+            { element: newItem, action: () => this.#tabs.newDocument(undefined, "javascript") },
+            { element: renameItem, action: () => this.#tabs.renameCurrentTab() },
+            { element: duplicateItem, action: () => this.#tabs.duplicateCurrentTab() },
+            { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
+            {
+                element: exportItem,
+                action: async () => {
+                    const { StatusDialog } = await import("./components/status-dialog.mjs")
+                    let statusDialog: import("./components/status-dialog.mjs").StatusDialog | null = null
+
+                    try {
+                        const documentName = this.#tabs.active!
+                        const handle = await window.showSaveFilePicker({
+                            suggestedName: documentName,
+                            startIn: "desktop",
+                            types: [
+                                {
+                                    description: "STL file",
+                                    accept: { "model/stl": [".stl"] },
+                                },
+                            ],
+                            excludeAcceptAllOption: false,
+                        })
+                        const mesh = await this.renderer.renderMesh(this.editor.getValue())
+                        await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
+
+                        statusDialog = new StatusDialog("Export successful")
+                        await statusDialog.show()
+                    } catch (err) {
+                        if (`${err}`.includes("AbortError")) {
+                            return
+                        }
+                        if (`${err}`.includes("cancelled")) {
+                            statusDialog = new StatusDialog("Export cancelled")
+                            await statusDialog.show()
+                            return
+                        }
+
+                        const errorMsg = err instanceof Error ? err.message : String(err)
+                        statusDialog = new StatusDialog(`Export failed: ${errorMsg}`)
+                        await statusDialog.show()
+                    }
+                },
+            },
+        ]
+        if (document.fullscreenEnabled) {
+            menuItems.push({
+                element: fullscreenItem,
+                action: async () => {
+                    if (document.fullscreenElement) {
+                        await document.exitFullscreen()
+                    } else {
+                        await document.documentElement.requestFullscreen()
+                    }
+                },
+            })
+        }
+        menuItems.push({
+            element: devToolsContainer,
+            action: () => {
+                const enabled = !devToolsCheckbox.checked
+                devToolsCheckbox.checked = enabled
+                devTools.visible = enabled
+                if (!enabled) {
+                    preview.showFps = false
+                } else {
+                    preview.showFps = devTools.showFps
+                }
+                this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
+            },
+        })
+        const menuButton = new MenuButton(menuItems)
+        menu.replaceWith(menuButton)
     }
 
     #openPolygonEditor(info: Polygon2DCallInfo, model: monaco.editor.ITextModel) {
@@ -791,6 +792,7 @@ class App {
         }
     }
 }
+
 function formatVertices(vertices: [number, number][]): string {
     const pairs = vertices.map(([x, y]) => {
         const xs = String(Math.round(x * 100) / 100)

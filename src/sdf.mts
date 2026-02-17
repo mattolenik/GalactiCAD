@@ -1,3 +1,4 @@
+import { Subject } from "rxjs"
 import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
@@ -133,9 +134,12 @@ export class SDFRenderer {
     }
 
     /**
-     * Callback invoked when object selection changes
-     * Provides the array of currently selected object IDs
+     * Observable emitted when object selection changes.
+     * Provides the array of currently selected object IDs.
      */
+    readonly selectionChange$ = new Subject<number[]>()
+
+    /** @deprecated Use selectionChange$.subscribe() instead */
     onSelectionChange?: (selectedIds: number[]) => void
 
     /** Callback invoked when an object is double-clicked in the preview */
@@ -261,8 +265,9 @@ export class SDFRenderer {
         }
         this.#writeSelectionBuffer()
 
-        if (notify && this.onSelectionChange) {
-            this.onSelectionChange(this.selectedObjectIds)
+        if (notify) {
+            this.selectionChange$.next(this.selectedObjectIds)
+            this.onSelectionChange?.(this.selectedObjectIds)
         }
     }
 
@@ -517,9 +522,8 @@ export class SDFRenderer {
                     // Clicked on empty space — deselect all
                     this.#selectedObjectIds.fill(false)
                     this.#writeSelectionBuffer()
-                    if (this.onSelectionChange) {
-                        this.onSelectionChange([])
-                    }
+                    this.selectionChange$.next([])
+                    this.onSelectionChange?.([])
                     console.log('Deselected all objects (clicked empty space)')
                 }
             } catch (error) {
@@ -584,9 +588,8 @@ export class SDFRenderer {
         this.#writeSelectionBuffer()
 
         // Notify listeners about selection change
-        if (this.onSelectionChange) {
-            this.onSelectionChange(this.selectedObjectIds)
-        }
+        this.selectionChange$.next(this.selectedObjectIds)
+        this.onSelectionChange?.(this.selectedObjectIds)
     }
 
     #writeSelectionBuffer() {

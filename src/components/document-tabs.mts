@@ -8,6 +8,7 @@ import { YesNoDialog } from "./yesno-dialog.mjs"
 
 const LONG_PRESS_MS = 500
 const MOVE_THRESHOLD_PX = 5
+const DEBOUNCE_SAVE_MS = 1000
 
 export class DocumentTabs extends HTMLElement {
     #active?: string
@@ -19,6 +20,8 @@ export class DocumentTabs extends HTMLElement {
 
     #draggingName: string | null = null
     #longPressTimer: ReturnType<typeof setTimeout> | null = null
+    #preDragAc: AbortController | null = null
+    #dragAc: AbortController | null = null
     #pendingTabName: string | null = null
     #startX = 0
     #startY = 0
@@ -170,6 +173,8 @@ export class DocumentTabs extends HTMLElement {
     }
 
     disconnectedCallback() {
+        this.#preDragAc?.abort()
+        this.#dragAc?.abort()
         for (const sub of this.#subscriptions.values()) {
             sub.unsubscribe()
         }
@@ -275,7 +280,7 @@ export class DocumentTabs extends HTMLElement {
         const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
             handler => model.onDidChangeContent(handler),
             (_handler, subscription) => (subscription as monaco.IDisposable).dispose()
-        ).pipe(bufferTime(1000))
+        ).pipe(bufferTime(DEBOUNCE_SAVE_MS))
         const sub = change$.subscribe(() => localStorage.setItem(`document:${name}`, model.getValue()))
         this.#subscriptions.set(name, sub)
         localStorage.setItem(`document:${name}`, model.getValue())
@@ -482,14 +487,16 @@ export class DocumentTabs extends HTMLElement {
             tab.setPointerCapture(e.pointerId)
             this.#startDrag(tab, name, e.pointerId)
         } else {
+            this.#preDragAc = new AbortController()
+            const { signal } = this.#preDragAc
             this.#longPressTimer = setTimeout(() => {
                 this.#longPressTimer = null
                 tab.setPointerCapture(e.pointerId)
                 this.#startDrag(tab, name, e.pointerId)
             }, LONG_PRESS_MS)
-            document.addEventListener("pointermove", this.#onPreDragPointerMove)
-            document.addEventListener("pointerup", this.#onPreDragPointerUp)
-            document.addEventListener("pointercancel", this.#onPreDragPointerUp)
+            document.addEventListener("pointermove", this.#onPreDragPointerMove, { signal })
+            document.addEventListener("pointerup", this.#onPreDragPointerUp, { signal })
+            document.addEventListener("pointercancel", this.#onPreDragPointerUp, { signal })
         }
     }
 
@@ -498,9 +505,8 @@ export class DocumentTabs extends HTMLElement {
             clearTimeout(this.#longPressTimer)
             this.#longPressTimer = null
         }
-        document.removeEventListener("pointermove", this.#onPreDragPointerMove)
-        document.removeEventListener("pointerup", this.#onPreDragPointerUp)
-        document.removeEventListener("pointercancel", this.#onPreDragPointerUp)
+        this.#preDragAc?.abort()
+        this.#preDragAc = null
     }
 
     #onPreDragPointerMove = (e: PointerEvent): void => {
@@ -521,6 +527,10 @@ export class DocumentTabs extends HTMLElement {
     }
 
     #startDrag(tab: HTMLElement, name: string, pointerId: number): void {
+        this.#clearPreDragTimers()
+        this.#dragAc?.abort()
+        this.#dragAc = new AbortController()
+        const { signal } = this.#dragAc
         this.#draggingName = name
         navigator.vibrate?.(10)
         tab.classList.add("dragging")
@@ -535,9 +545,9 @@ export class DocumentTabs extends HTMLElement {
         this.#dragPlaceholder.style.height = `${rect.height}px`
         this.#tabContainer.insertBefore(this.#dragPlaceholder, tab)
         this.#updateDragPosition(this.#startX, this.#startY)
-        document.addEventListener("pointermove", this.#onDragPointerMove)
-        document.addEventListener("pointerup", this.#onDragPointerUp)
-        document.addEventListener("pointercancel", this.#onDragPointerUp)
+        document.addEventListener("pointermove", this.#onDragPointerMove, { signal })
+        document.addEventListener("pointerup", this.#onDragPointerUp, { signal })
+        document.addEventListener("pointercancel", this.#onDragPointerUp, { signal })
         this.#updateDropIndicator()
     }
 
@@ -616,9 +626,8 @@ export class DocumentTabs extends HTMLElement {
         const name = this.#draggingName
         const tab = this.#tabContainer.querySelector(`[data-tab-name="${name}"]`)
         const releaseDropIndex = this.#computeDropIndex(e.clientX, e.clientY)
-        document.removeEventListener("pointermove", this.#onDragPointerMove)
-        document.removeEventListener("pointerup", this.#onDragPointerUp)
-        document.removeEventListener("pointercancel", this.#onDragPointerUp)
+        this.#dragAc?.abort()
+        this.#dragAc = null
         this.#dropIndicator.remove()
         this.#dragPlaceholder?.remove()
         this.#dragPlaceholder = null

@@ -54,6 +54,9 @@ export class PolygonEditor extends HTMLElement {
     #undoStack: [number, number][][] = []
     #redoStack: [number, number][][] = []
 
+    // Per-drag AbortController for mousemove/mouseup cleanup
+    #dragAc: AbortController | null = null
+
     // Source sync
     #change$ = new Subject<void>()
     #changeSub: Subscription
@@ -298,9 +301,8 @@ export class PolygonEditor extends HTMLElement {
 
     disconnectedCallback() {
         this.#ac.abort()
+        this.#dragAc?.abort()
         this.#changeSub.unsubscribe()
-        window.removeEventListener("mousemove", this.#onDragMove)
-        window.removeEventListener("mouseup", this.#onDragEnd)
     }
 
     #close() {
@@ -637,8 +639,10 @@ export class PolygonEditor extends HTMLElement {
             this.#isPanning = true
             this.#panStartScreen = [e.clientX, e.clientY]
             this.#panStartOffset = [this.#panX, this.#panY]
-            window.addEventListener("mousemove", this.#onDragMove)
-            window.addEventListener("mouseup", this.#onDragEnd)
+            this.#dragAc = new AbortController()
+            const { signal } = this.#dragAc
+            window.addEventListener("mousemove", this.#onDragMove, { signal })
+            window.addEventListener("mouseup", this.#onDragEnd, { signal })
             e.preventDefault()
             return
         }
@@ -680,8 +684,10 @@ export class PolygonEditor extends HTMLElement {
             this.#dragging = true
             this.#highlightSelectedRow()
             this.#draw()
-            window.addEventListener("mousemove", this.#onDragMove)
-            window.addEventListener("mouseup", this.#onDragEnd)
+            this.#dragAc = new AbortController()
+            const { signal } = this.#dragAc
+            window.addEventListener("mousemove", this.#onDragMove, { signal })
+            window.addEventListener("mouseup", this.#onDragEnd, { signal })
             return
         }
 
@@ -696,8 +702,10 @@ export class PolygonEditor extends HTMLElement {
             this.#emitChange()
             this.#rebuildVertexList()
             this.#draw()
-            window.addEventListener("mousemove", this.#onDragMove)
-            window.addEventListener("mouseup", this.#onDragEnd)
+            this.#dragAc = new AbortController()
+            const { signal } = this.#dragAc
+            window.addEventListener("mousemove", this.#onDragMove, { signal })
+            window.addEventListener("mouseup", this.#onDragEnd, { signal })
             return
         }
 
@@ -769,8 +777,8 @@ export class PolygonEditor extends HTMLElement {
         const wasDragging = this.#dragging
         this.#dragging = false
         this.#isPanning = false
-        window.removeEventListener("mousemove", this.#onDragMove)
-        window.removeEventListener("mouseup", this.#onDragEnd)
+        this.#dragAc?.abort()
+        this.#dragAc = null
         if (wasDragging) {
             this.#emitChange()
         }

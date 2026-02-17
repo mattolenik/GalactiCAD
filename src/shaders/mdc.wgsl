@@ -52,6 +52,9 @@ const EDGES_PER_CELL: u32 = 12u;
 // Dummy selection array (boolean array indexed by object ID, required for binding compatibility)
 @group(0) @binding(99) var<storage, read> selectedObjectIds: array<u32, 1024>;
 
+// Subtree AABBs for spatial culling (required by hg_sdf.wgsl subtreeAABBDist).
+@group(0) @binding(26) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
+
 // Pass 1: Cell Classification
 @group(0) @binding(1) var<storage, read_write> activeCellFlags: array<u32>; // Bit-packed flags
 
@@ -112,6 +115,7 @@ const EDGES_PER_CELL: u32 = 12u;
 // ============================== UTILITY FUNCTIONS ==============================
 
 // Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
+//:) insert sceneAuxFast
 //:) insert sceneAux
 
 // Placeholder for the actual scene Signed Distance Function

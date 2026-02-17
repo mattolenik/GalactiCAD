@@ -116,13 +116,15 @@ export class MDCExport {
     #device: GPUDevice
     #localBuffers: GPUBuffer[] = []
     #selectedObjectIdsBuffer: GPUBuffer
+    #subtreeAABBsBuffer: GPUBuffer
     #cancelled = false
     #cancellationBuffer: GPUBuffer | null = null
 
-    constructor(helper: GPUHelper, private params: MDCParams, selectedObjectIdsBuffer: GPUBuffer) {
+    constructor(helper: GPUHelper, private params: MDCParams, selectedObjectIdsBuffer: GPUBuffer, subtreeAABBsBuffer: GPUBuffer) {
         this.#helper = helper
         this.#device = helper.device
         this.#selectedObjectIdsBuffer = selectedObjectIdsBuffer
+        this.#subtreeAABBsBuffer = subtreeAABBsBuffer
     }
 
     /** Destroy all GPU buffers created during export */
@@ -322,6 +324,7 @@ export class MDCExport {
                 p1_cellClassification,
                 [0, uniformBuffer],
                 [1, activeCellFlagsBuffer],
+                [26, this.#subtreeAABBsBuffer],
                 [99, this.#selectedObjectIdsBuffer],
                 [25, this.#cancellationBuffer]
             )
@@ -488,6 +491,7 @@ export class MDCExport {
                 [22, cellEdgeComponentsBuffer],
                 [9, cellQEFDataBuffer],
                 [10, activeCellCountBuffer],
+                [26, this.#subtreeAABBsBuffer],
                 [99, this.#selectedObjectIdsBuffer],
                 [25, this.#cancellationBuffer]
             )
@@ -501,6 +505,7 @@ export class MDCExport {
                 [12, cellQEFDataBuffer],
                 [13, verticesBuffer],
                 [14, activeCellCountBuffer],
+                [26, this.#subtreeAABBsBuffer],
                 [99, this.#selectedObjectIdsBuffer],
                 [25, this.#cancellationBuffer]
             )

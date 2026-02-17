@@ -8,13 +8,23 @@ export type CompileResult = {
     text?: string
 }
 
+/** Minimum primitives in a subtree for it to receive an AABB guard. */
+const AABB_GUARD_THRESHOLD = 4
+
 export class SceneInfo {
     readonly root: Node
     numArgs = 0
     #nodes = new BijectiveMap<number, Node>()
+    /** Number of AABB slots assigned to guarded subtrees. */
+    numAABBSlots = 0
 
     nextArgIndex(): number {
         return this.numArgs++
+    }
+
+    /** Assign a new AABB slot index for a guarded subtree. */
+    nextAABBIndex(): number {
+        return this.numAABBSlots++
     }
 
     add(node: Node) {
@@ -41,6 +51,27 @@ export class SceneInfo {
         this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", wrappedSrc)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, shell, offset, elongate, twist, bend, taper, morph, seam)
         this.root.scene = this
         this.root.build()
+        this.#assignAABBIndices(this.root)
+    }
+
+    /**
+     * Walk the tree and assign AABB indices to right-hand subtrees of binary
+     * operators where the subtree is large enough to benefit from culling.
+     */
+    #assignAABBIndices(node: Node) {
+        if (node instanceof BinaryOperator) {
+            this.#assignAABBIndices(node.lh)
+            this.#assignAABBIndices(node.rh)
+            if (node.rh.primitiveCount() >= AABB_GUARD_THRESHOLD) {
+                node.rh.aabbIndex = this.nextAABBIndex()
+            }
+        } else if (node instanceof UnaryOperator) {
+            this.#assignAABBIndices(node.arg)
+        } else if (node instanceof Group) {
+            for (const child of node.children) {
+                this.#assignAABBIndices(child)
+            }
+        }
     }
 
     /**
@@ -85,6 +116,38 @@ export class SceneInfo {
     }
 
     /**
+     * Get all subtrees that have been assigned an AABB index.
+     * Returns an array of { aabbIndex, node, fastAux, fastSDF } for each guarded subtree.
+     * fastAux includes auxiliary code from ALL descendants (not just the top node).
+     */
+    getGuardedSubtrees(): { aabbIndex: number; node: Node; fastAux: string; fastSDF: string }[] {
+        const result: { aabbIndex: number; node: Node; fastAux: string; fastSDF: string }[] = []
+        for (const node of this.#nodes.values()) {
+            if (node.aabbIndex >= 0) {
+                const fastAux = this.#collectSubtreeAuxFast(node)
+                const fastSDF = node.compileFast().text!
+                result.push({ aabbIndex: node.aabbIndex, node, fastAux, fastSDF })
+            }
+        }
+        return result
+    }
+
+    /** Collect compileAuxFast() from a node and all its descendants. */
+    #collectSubtreeAuxFast(node: Node): string {
+        let code = node.compileAuxFast()
+        if (node instanceof BinaryOperator) {
+            code = this.#collectSubtreeAuxFast(node.lh) + this.#collectSubtreeAuxFast(node.rh) + code
+        } else if (node instanceof UnaryOperator) {
+            code = this.#collectSubtreeAuxFast(node.arg) + code
+        } else if (node instanceof Group) {
+            for (const child of node.children) {
+                code = this.#collectSubtreeAuxFast(child) + code
+            }
+        }
+        return code
+    }
+
+    /**
      * Compile helper WGSL for edge picking/highlighting.
      * Currently emits a box-parameter lookup keyed by node ID.
      */
@@ -106,6 +169,9 @@ export class Node {
     id!: number
     root: Node
     #scene!: SceneInfo
+    /** AABB slot index if this subtree is guarded, or -1. */
+    aabbIndex = -1
+    #primitiveCount = -1
 
     get scene() {
         return this.root.#scene
@@ -116,6 +182,21 @@ export class Node {
 
     constructor() {
         this.root = this
+    }
+
+    /**
+     * Count leaf primitives in this subtree. Cached after first call.
+     */
+    primitiveCount(): number {
+        if (this.#primitiveCount < 0) {
+            this.#primitiveCount = this._computePrimitiveCount()
+        }
+        return this.#primitiveCount
+    }
+
+    /** Override in subclasses. Default = 1 (leaf primitive). */
+    protected _computePrimitiveCount(): number {
+        return 1
     }
 
     /**
@@ -265,6 +346,10 @@ export class Group extends WithChildren(Node) {
         return "group"
     }
 
+    protected override _computePrimitiveCount(): number {
+        return this.children.reduce((sum, c) => sum + c.primitiveCount(), 0)
+    }
+
     override getIndicatorSymbol(): string {
         return "▢"  // Empty square - represents a container/group
     }
@@ -314,6 +399,9 @@ export class Group extends WithChildren(Node) {
 }
 
 export abstract class UnaryOperator extends Node {
+    protected override _computePrimitiveCount(): number {
+        return this.arg.primitiveCount()
+    }
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         this.arg.updateScene(writeBuffer)
     }
@@ -328,6 +416,9 @@ export abstract class UnaryOperator extends Node {
 }
 
 export abstract class BinaryOperator extends Node {
+    protected override _computePrimitiveCount(): number {
+        return this.lh.primitiveCount() + this.rh.primitiveCount()
+    }
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         this.lh.updateScene(writeBuffer)
         this.rh.updateScene(writeBuffer)
@@ -362,43 +453,95 @@ export class Union extends BinaryOperator {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }
 
+    /** Generate the Ex blend expression for two operand names. */
+    private _blendEx(L: string, R: string): string {
+        const r = this.radius
+        if (!r) return `opUnionEx(${L}, ${R})`
+        switch (this.mode) {
+            case 'chamfer': return `fOpUnionChamferEx(${L}, ${R}, ${r})`
+            case 'soft': return `fOpUnionSoftEx(${L}, ${R}, ${r})`
+            case 'columns': return `fOpUnionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            case 'stairs': return `fOpUnionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            default: return `fOpUnionRoundEx(${L}, ${R}, ${r})`
+        }
+    }
+
+    /** Generate the Fast blend expression for two operand names. */
+    private _blendFast(L: string, R: string): string {
+        const r = this.radius
+        if (!r) return `opUnionFast(${L}, ${R})`
+        switch (this.mode) {
+            case 'chamfer': return `fOpUnionChamferFast(${L}, ${R}, ${r})`
+            case 'soft': return `fOpUnionSoftFast(${L}, ${R}, ${r})`
+            case 'columns': return `fOpUnionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            case 'stairs': return `fOpUnionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            default: return `fOpUnionRoundFast(${L}, ${R}, ${r})`
+        }
+    }
+
+    /** AABB guard threshold: skip right subtree when bbox distance exceeds this. */
+    private get _guardThreshold(): string {
+        const r = this.radius
+        return r ? `max(a.x, ${r})` : `a.x`
+    }
+
+    private get _guardThresholdEx(): string {
+        const r = this.radius
+        return r ? `max(a.d, ${r})` : `a.d`
+    }
+
     override compile(indentLevel = 0): CompileResult {
+        if (this.rh.aabbIndex >= 0) {
+            return { text: `sdf_guard_${this.id}(p)`, varName: `guard_${this.id}` }
+        }
         const lhResult = this.lh.compile()
         const rhResult = this.rh.compile()
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
-        const L = lhResult.text, R = rhResult.text, r = this.radius
-        let text: string
-        if (!r) {
-            text = `opUnionEx(${L}, ${R})`
-        } else {
-            switch (this.mode) {
-                case 'chamfer': text = `fOpUnionChamferEx(${L}, ${R}, ${r})`; break
-                case 'soft': text = `fOpUnionSoftEx(${L}, ${R}, ${r})`; break
-                case 'columns': text = `fOpUnionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs': text = `fOpUnionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default: text = `fOpUnionRoundEx(${L}, ${R}, ${r})`; break
-            }
-        }
-        return { text, varName }
+        return { text: this._blendEx(lhResult.text!, rhResult.text!), varName }
     }
+
+    override compileAux(): string {
+        let code = ""
+        if (this.rh.aabbIndex >= 0) {
+            const L = this.lh.compile().text!
+            const R = this.rh.compile().text!
+            const idx = this.rh.aabbIndex
+            code += `\nfn sdf_guard_${this.id}(p: vec3f) -> SDFResult {\n`
+            code += `    let a = ${L};\n`
+            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
+            code += `    if (bbox_d > ${this._guardThresholdEx}) { return a; }\n`
+            code += `    let b = ${R};\n`
+            code += `    return ${this._blendEx("a", "b")};\n`
+            code += `}\n`
+        }
+        return code
+    }
+
+    override compileAuxFast(): string {
+        let code = ""
+        if (this.rh.aabbIndex >= 0) {
+            const L = this.lh.compileFast().text!
+            const R = this.rh.compileFast().text!
+            const idx = this.rh.aabbIndex
+            code += `\nfn sdf_fast_guard_${this.id}(p: vec3f) -> vec2f {\n`
+            code += `    let a = ${L};\n`
+            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
+            code += `    if (bbox_d > ${this._guardThreshold}) { return a; }\n`
+            code += `    let b = ${R};\n`
+            code += `    return ${this._blendFast("a", "b")};\n`
+            code += `}\n`
+        }
+        return code
+    }
+
     override compileFast(indentLevel = 0): CompileResult {
+        if (this.rh.aabbIndex >= 0) {
+            return { text: `sdf_fast_guard_${this.id}(p)`, varName: `guard_${this.id}_f` }
+        }
         const lhResult = this.lh.compileFast()
         const rhResult = this.rh.compileFast()
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
-        const L = lhResult.text, R = rhResult.text, r = this.radius
-        let text: string
-        if (!r) {
-            text = `opUnionFast(${L}, ${R})`
-        } else {
-            switch (this.mode) {
-                case 'chamfer': text = `fOpUnionChamferFast(${L}, ${R}, ${r})`; break
-                case 'soft': text = `fOpUnionSoftFast(${L}, ${R}, ${r})`; break
-                case 'columns': text = `fOpUnionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs': text = `fOpUnionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default: text = `fOpUnionRoundFast(${L}, ${R}, ${r})`; break
-            }
-        }
-        return { text, varName }
+        return { text: this._blendFast(lhResult.text!, rhResult.text!), varName }
     }
     constructor(lh: Node, rh: Node, public radius?: number, public mode?: BlendMode, public n?: number) {
         super(lh, rh)
@@ -418,41 +561,90 @@ export class Subtract extends BinaryOperator {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }
 
+    private _diffEx(L: string, R: string): string {
+        const r = this.radius
+        if (!r || r <= 0) return `opDifferenceEx(${L}, ${R})`
+        switch (this.mode) {
+            case 'chamfer': return `fOpDifferenceChamferEx(${L}, ${R}, ${r})`
+            case 'columns': return `fOpDifferenceColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            case 'stairs': return `fOpDifferenceStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            default: return `fOpDifferenceRoundEx(${L}, ${R}, ${r})`
+        }
+    }
+
+    private _diffFast(L: string, R: string): string {
+        const r = this.radius
+        if (!r || r <= 0) return `opDifferenceFast(${L}, ${R})`
+        switch (this.mode) {
+            case 'chamfer': return `fOpDifferenceChamferFast(${L}, ${R}, ${r})`
+            case 'columns': return `fOpDifferenceColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            case 'stairs': return `fOpDifferenceStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            default: return `fOpDifferenceRoundFast(${L}, ${R}, ${r})`
+        }
+    }
+
+    /** For subtract, skip the subtracted shape when it's far from point.
+     *  If point is far from the subtracted shape, -b is very negative, so max(a, -b) = a. */
+    private get _guardThresholdFast(): string {
+        const r = this.radius
+        return r && r > 0 ? `${r}` : `0.0`
+    }
+    private get _guardThresholdEx(): string {
+        return this._guardThresholdFast
+    }
+
     override compile(indentLevel = 0): CompileResult {
+        if (this.rh.aabbIndex >= 0) {
+            return { text: `sdf_guard_${this.id}(p)`, varName: `guard_${this.id}` }
+        }
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        const L = lhResult.text, R = rhResult.text, r = this.radius
-        let text: string
-        if (!r || r <= 0) {
-            text = `opDifferenceEx(${L}, ${R})`
-        } else {
-            switch (this.mode) {
-                case 'chamfer': text = `fOpDifferenceChamferEx(${L}, ${R}, ${r})`; break
-                case 'columns': text = `fOpDifferenceColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs': text = `fOpDifferenceStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default: text = `fOpDifferenceRoundEx(${L}, ${R}, ${r})`; break
-            }
-        }
-        return { text, varName }
+        return { text: this._diffEx(lhResult.text!, rhResult.text!), varName }
     }
+
+    override compileAux(): string {
+        let code = ""
+        if (this.rh.aabbIndex >= 0) {
+            const L = this.lh.compile().text!
+            const R = this.rh.compile().text!
+            const idx = this.rh.aabbIndex
+            code += `\nfn sdf_guard_${this.id}(p: vec3f) -> SDFResult {\n`
+            code += `    let a = ${L};\n`
+            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
+            code += `    if (bbox_d > ${this._guardThresholdEx}) { return a; }\n`
+            code += `    let b = ${R};\n`
+            code += `    return ${this._diffEx("a", "b")};\n`
+            code += `}\n`
+        }
+        return code
+    }
+
+    override compileAuxFast(): string {
+        let code = ""
+        if (this.rh.aabbIndex >= 0) {
+            const L = this.lh.compileFast().text!
+            const R = this.rh.compileFast().text!
+            const idx = this.rh.aabbIndex
+            code += `\nfn sdf_fast_guard_${this.id}(p: vec3f) -> vec2f {\n`
+            code += `    let a = ${L};\n`
+            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
+            code += `    if (bbox_d > ${this._guardThresholdFast}) { return a; }\n`
+            code += `    let b = ${R};\n`
+            code += `    return ${this._diffFast("a", "b")};\n`
+            code += `}\n`
+        }
+        return code
+    }
+
     override compileFast(indentLevel = 0): CompileResult {
+        if (this.rh.aabbIndex >= 0) {
+            return { text: `sdf_fast_guard_${this.id}(p)`, varName: `guard_${this.id}_f` }
+        }
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        const L = lhResult.text, R = rhResult.text, r = this.radius
-        let text: string
-        if (!r || r <= 0) {
-            text = `opDifferenceFast(${L}, ${R})`
-        } else {
-            switch (this.mode) {
-                case 'chamfer': text = `fOpDifferenceChamferFast(${L}, ${R}, ${r})`; break
-                case 'columns': text = `fOpDifferenceColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs': text = `fOpDifferenceStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default: text = `fOpDifferenceRoundFast(${L}, ${R}, ${r})`; break
-            }
-        }
-        return { text, varName }
+        return { text: this._diffFast(lhResult.text!, rhResult.text!), varName }
     }
     constructor(lh: Node, rh: Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {
         super(lh, rh)
@@ -472,41 +664,82 @@ export class Intersect extends BinaryOperator {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="3" x2="9" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="9" y1="3" x2="3" y2="9" stroke="currentColor" stroke-width="1.5"/>`
     }
 
+    private _interEx(L: string, R: string): string {
+        const r = this.radius
+        if (!r || r <= 0) return `opIntersectionEx(${L}, ${R})`
+        switch (this.mode) {
+            case 'chamfer': return `fOpIntersectionChamferEx(${L}, ${R}, ${r})`
+            case 'columns': return `fOpIntersectionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            case 'stairs': return `fOpIntersectionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            default: return `fOpIntersectionRoundEx(${L}, ${R}, ${r})`
+        }
+    }
+
+    private _interFast(L: string, R: string): string {
+        const r = this.radius
+        if (!r || r <= 0) return `opIntersectionFast(${L}, ${R})`
+        switch (this.mode) {
+            case 'chamfer': return `fOpIntersectionChamferFast(${L}, ${R}, ${r})`
+            case 'columns': return `fOpIntersectionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            case 'stairs': return `fOpIntersectionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            default: return `fOpIntersectionRoundFast(${L}, ${R}, ${r})`
+        }
+    }
+
     override compile(indentLevel = 0): CompileResult {
+        if (this.rh.aabbIndex >= 0) {
+            return { text: `sdf_guard_${this.id}(p)`, varName: `guard_${this.id}` }
+        }
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
-        const L = lhResult.text, R = rhResult.text, r = this.radius
-        let text: string
-        if (!r || r <= 0) {
-            text = `opIntersectionEx(${L}, ${R})`
-        } else {
-            switch (this.mode) {
-                case 'chamfer': text = `fOpIntersectionChamferEx(${L}, ${R}, ${r})`; break
-                case 'columns': text = `fOpIntersectionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs': text = `fOpIntersectionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default: text = `fOpIntersectionRoundEx(${L}, ${R}, ${r})`; break
-            }
-        }
-        return { text, varName }
+        return { text: this._interEx(lhResult.text!, rhResult.text!), varName }
     }
+
+    override compileAux(): string {
+        let code = ""
+        if (this.rh.aabbIndex >= 0) {
+            const L = this.lh.compile().text!
+            const R = this.rh.compile().text!
+            const idx = this.rh.aabbIndex
+            // For intersection, if point is outside the AABB, return bbox distance as
+            // a conservative estimate (the intersection can't be closer than the AABB).
+            code += `\nfn sdf_guard_${this.id}(p: vec3f) -> SDFResult {\n`
+            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
+            code += `    let a = ${L};\n`
+            code += `    if (bbox_d > 0.0) { return sdfTrue(max(a.d, bbox_d), a.id, a.n); }\n`
+            code += `    let b = ${R};\n`
+            code += `    return ${this._interEx("a", "b")};\n`
+            code += `}\n`
+        }
+        return code
+    }
+
+    override compileAuxFast(): string {
+        let code = ""
+        if (this.rh.aabbIndex >= 0) {
+            const L = this.lh.compileFast().text!
+            const R = this.rh.compileFast().text!
+            const idx = this.rh.aabbIndex
+            code += `\nfn sdf_fast_guard_${this.id}(p: vec3f) -> vec2f {\n`
+            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
+            code += `    let a = ${L};\n`
+            code += `    if (bbox_d > 0.0) { return vec2f(max(a.x, bbox_d), a.y); }\n`
+            code += `    let b = ${R};\n`
+            code += `    return ${this._interFast("a", "b")};\n`
+            code += `}\n`
+        }
+        return code
+    }
+
     override compileFast(indentLevel = 0): CompileResult {
+        if (this.rh.aabbIndex >= 0) {
+            return { text: `sdf_fast_guard_${this.id}(p)`, varName: `guard_${this.id}_f` }
+        }
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
-        const L = lhResult.text, R = rhResult.text, r = this.radius
-        let text: string
-        if (!r || r <= 0) {
-            text = `opIntersectionFast(${L}, ${R})`
-        } else {
-            switch (this.mode) {
-                case 'chamfer': text = `fOpIntersectionChamferFast(${L}, ${R}, ${r})`; break
-                case 'columns': text = `fOpIntersectionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                case 'stairs': text = `fOpIntersectionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`; break
-                default: text = `fOpIntersectionRoundFast(${L}, ${R}, ${r})`; break
-            }
-        }
-        return { text, varName }
+        return { text: this._interFast(lhResult.text!, rhResult.text!), varName }
     }
     constructor(lh: Node, rh: Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {
         super(lh, rh)

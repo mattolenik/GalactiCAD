@@ -1,8 +1,6 @@
 //:) include "hg_sdf.wgsl"
 
-// Reduce MAX_STEPS to prevent GPU saturation
-// 100 steps is usually sufficient for most scenes
-const MAX_STEPS: i32 = 300;
+const MAX_STEPS: i32 = 200;
 const MAX_DIST: f32 = 300.0;
 
 struct Camera {
@@ -46,6 +44,10 @@ struct ViewSettings {
 const BEAM_TILE_SIZE: i32 = 8;
 @group(0) @binding(7) var tStartTex: texture_2d<f32>;
 
+// Subtree AABBs for spatial culling during ray marching.
+// Populated asynchronously after scene build; initialized with infinite extents (no culling).
+@group(0) @binding(8) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
+
 // Fragment output: color and object ID for MRT outline detection
 struct FragmentOutput {
     @location(0) color: vec4f,
@@ -58,6 +60,7 @@ struct VertexOutput {
 }
 
 // Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
+//:) insert sceneAuxFast
 //:) insert sceneAux
 
 // The contents of sceneSDF are replaced at runtime, do not modify this function.
@@ -83,7 +86,9 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> RaymarchHit {
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: only (d, g), no normals/IDs
-        let step = sr.x;
+        // Correct for gradient magnitude in smooth blend regions:
+        // when |nabla f| < 1 (smooth CSG), stepping by raw d overshoots.
+        let step = sr.x * min(sr.y, 1.0);
         if (sr.x < SURF_DIST) {
             // Only refine hit when needed: large step (CSG seam) or blend region (g < 1)
             if (lastStep > SURF_DIST * 10.0 || sr.y < 1.0) {

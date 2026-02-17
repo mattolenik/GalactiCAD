@@ -1455,3 +1455,22 @@ fn fOpTongueEx(a: SDFResult, b: SDFResult, ra: f32, rb: f32) -> SDFResult {
     }
     return sdfR(d, a.g, a.s, a.id, a.n);
 }
+
+////////////////////////////////////////////////////
+//  SUBTREE AABB CULLING
+////////////////////////////////////////////////////
+
+// AABB for a CSG subtree — stored in a uniform buffer.
+struct SubtreeAABB {
+    center: vec4f,      // xyz = center of the bounding box
+    halfExtent: vec4f,  // xyz = half-extents along each axis
+}
+
+// Compute the exterior distance from point p to a subtree's AABB.
+// Returns 0 when p is inside the box, positive when outside.
+fn subtreeAABBDist(idx: u32, p: vec3f) -> f32 {
+    let c = subtreeAABBs[idx].center.xyz;
+    let h = subtreeAABBs[idx].halfExtent.xyz;
+    let d = max(abs(p - c) - h, vec3f(0.0));
+    return length(d);
+}

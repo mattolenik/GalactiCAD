@@ -24,6 +24,9 @@ struct BoundsUniforms {
 // Dummy selection array (boolean array indexed by object ID, required for binding compatibility)
 @group(0) @binding(99) var<storage, read> selectedObjectIds: array<u32, 1024>;
 
+// Subtree AABBs for spatial culling (same as preview/beam; initialized to infinite = no culling).
+@group(0) @binding(2) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
+
 // One output record per dispatched workgroup (no atomics).
 struct TileBounds {
     // Quantized to i32 at `uniforms.scale`.
@@ -40,6 +43,7 @@ struct TileBounds {
 @group(0) @binding(1) var<storage, read_write> out: array<TileBounds>;
 
 // Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
+//:) insert sceneAuxFast
 //:) insert sceneAux
 
 // Placeholder for the actual scene Signed Distance Function

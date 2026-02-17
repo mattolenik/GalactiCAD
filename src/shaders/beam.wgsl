@@ -29,6 +29,9 @@ struct Camera {
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var tStartOut: texture_storage_2d<r32float, write>;
 
+// Subtree AABBs for spatial culling (shared with preview shader).
+@group(0) @binding(2) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
+
 // Fast-path-only auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 // Uses sceneAuxFast to exclude full SDFResult functions not needed by the beam shader.
 //:) insert sceneAuxFast

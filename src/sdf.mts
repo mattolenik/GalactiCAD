@@ -15,6 +15,11 @@ import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
 import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPalette.mjs"
 
+/** Max AABB slots for subtree culling. Each slot is 32 bytes (center vec4f + halfExtent vec4f). */
+const MAX_AABB_SLOTS = 128
+/** Byte size of the AABB uniform buffer. */
+const AABB_BUFFER_SIZE = MAX_AABB_SLOTS * 32
+
 class UniformBuffers {
     camera!: GPUBuffer
     scene!: GPUBuffer
@@ -29,6 +34,7 @@ class UniformBuffers {
     outlineSettings!: GPUBuffer
     hoverEdgeHit!: GPUBuffer
     hoveredEdge!: GPUBuffer
+    subtreeAABBs!: GPUBuffer
 }
 
 type EdgeHitData = {
@@ -141,6 +147,8 @@ export class SDFRenderer {
     #beamBindGroup!: GPUBindGroup
     #tStartTexture!: GPUTexture
     #tStartTextureView!: GPUTextureView
+    // Generation counter to discard stale async AABB results
+    #aabbGeneration = 0
 
     // Resolution scaling: render at reduced res during camera movement for responsiveness
     #settings: SettingsManager = SettingsManager.instance
@@ -1367,10 +1375,163 @@ export class SDFRenderer {
         this.#renderTextureHeight = 0
         this.#needsRender = true
 
-        // this.#scene.root.updateScene((index, data) => {
-        //     this.#device.queue.writeBuffer(this.#uniformBuffers.scene, index * 16, data)
-        //     // this.#device.queue.writeBuffer(this.#exportBuffers.scene, index * 16, data)
-        // })
+        // Reset AABB buffer to infinite (no culling) for immediate rendering,
+        // then kick off async GPU-based bounds computation.
+        this.#initAABBBufferInfinite()
+        this.#aabbGeneration++
+        if (this.#scene.numAABBSlots > 0) {
+            this.#computeSubtreeAABBs(this.#aabbGeneration)
+        }
+    }
+
+    /**
+     * Asynchronously compute AABBs for each guarded subtree using the GPU bounds shader.
+     * Runs bounds.wgsl with each subtree's SDF injected, then writes results to the
+     * AABB uniform buffer. Called after build(); the scene renders with infinite AABBs
+     * (no culling) until this completes.
+     * @param generation Build generation counter — results are discarded if a newer build started.
+     */
+    async #computeSubtreeAABBs(generation: number) {
+        const scene = this.#scene
+        const subtrees = scene.getGuardedSubtrees()
+        if (subtrees.length === 0) return
+
+        const SEARCH_HALF = 250
+        const STEP = 5.0
+        const SCALE = 1000
+        const searchMin: [number, number, number] = [-SEARCH_HALF, -SEARCH_HALF, -SEARCH_HALF]
+        const searchMax: [number, number, number] = [SEARCH_HALF, SEARCH_HALF, SEARCH_HALF]
+
+        const dimsX = Math.max(1, Math.ceil((searchMax[0] - searchMin[0]) / STEP) + 1)
+        const dimsY = Math.max(1, Math.ceil((searchMax[1] - searchMin[1]) / STEP) + 1)
+        const dimsZ = Math.max(1, Math.ceil((searchMax[2] - searchMin[2]) / STEP) + 1)
+
+        const totalSamples = dimsX * dimsY * dimsZ
+        const totalWorkgroups = Math.ceil(totalSamples / 256)
+        const dispatchX = Math.min(totalWorkgroups, 65535)
+        const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
+        const dispatchedWorkgroups = dispatchX * dispatchY
+        const TILE_STRIDE_BYTES = 48
+        const outSize = dispatchedWorkgroups * TILE_STRIDE_BYTES
+
+        // Shared uniform buffer for all subtree dispatches
+        const uniformsData = new ArrayBuffer(80)
+        new Float32Array(uniformsData, 0, 4).set([searchMin[0], searchMin[1], searchMin[2], STEP])
+        new Float32Array(uniformsData, 16, 4).set([searchMax[0], searchMax[1], searchMax[2], 0.0])
+        new Uint32Array(uniformsData, 32, 4).set([dimsX >>> 0, dimsY >>> 0, dimsZ >>> 0, 0])
+        new Float32Array(uniformsData, 48, 1).set([SCALE])
+
+        const uniformBuffer = this.#helper.createBuffer(
+            "SubtreeAABBUniforms", uniformsData.byteLength,
+            GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        )
+        this.#device.queue.writeBuffer(uniformBuffer, 0, uniformsData)
+
+        const outBuffer = this.#helper.createBuffer(
+            "SubtreeAABBTiles", outSize,
+            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+        )
+
+        const aabbData = new Float32Array(MAX_AABB_SLOTS * 8)
+        // Start with infinite bounds as defaults
+        for (let i = 0; i < MAX_AABB_SLOTS; i++) {
+            aabbData[i * 8 + 4] = 9999
+            aabbData[i * 8 + 5] = 9999
+            aabbData[i * 8 + 6] = 9999
+        }
+
+        for (const sub of subtrees) {
+            // Build a per-subtree bounds shader with only this subtree's SDF
+            const subtreeShaderCode = boundsShader
+            const compiler = new ShaderCompiler(this.#device)
+                .replace("insert", "sceneAuxFast", sub.fastAux)
+                .replace("insert", "sceneAux", sub.fastAux)
+                .replace("insert", "sceneSDF_fast", `\nreturn ${sub.fastSDF};\n`)
+                .replace("insert", "sceneSDF", `\nreturn sdfTrue(${sub.fastSDF}.x, 0u, vec3f(0.0));\n`)
+            const module = compiler.compile(subtreeShaderCode, `SubtreeBounds_${sub.aabbIndex}`)
+
+            const pipeline = this.#helper.createComputePipeline(module, "computeBounds", `SubtreeBounds_${sub.aabbIndex}`)
+            const [, bindGroup] = this.#helper.createBindGroup(
+                0, `SubtreeBounds_BG_${sub.aabbIndex}`, pipeline,
+                [0, uniformBuffer],
+                [1, outBuffer],
+                [2, this.#uniformBuffers.subtreeAABBs],
+                [99, this.#uniformBuffers.selectedObjectIds]
+            )
+
+            const ce = this.#device.createCommandEncoder({ label: `subtree_bounds_${sub.aabbIndex}` })
+            const pass = this.#helper.beginComputePass(ce, pipeline, [0, bindGroup])
+            pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+            pass.end()
+            this.#device.queue.submit([ce.finish()])
+            await this.#device.queue.onSubmittedWorkDone()
+            if (generation !== this.#aabbGeneration) { uniformBuffer.destroy(); outBuffer.destroy(); return }
+
+            // Read back and reduce the tile results
+            const outData = await this.#helper.readBufferData(outBuffer, outSize)
+            const dv = new DataView(outData)
+
+            let any = false
+            let minXq = 2147483647, minYq = 2147483647, minZq = 2147483647
+            let maxXq = -2147483648, maxYq = -2147483648, maxZq = -2147483648
+
+            for (let t = 0; t < dispatchedWorkgroups; t++) {
+                const base = t * TILE_STRIDE_BYTES
+                const anyInside = dv.getUint32(base + 32, true)
+                if (!anyInside) continue
+                any = true
+                const txMinX = dv.getInt32(base + 0, true)
+                const txMinY = dv.getInt32(base + 4, true)
+                const txMinZ = dv.getInt32(base + 8, true)
+                const txMaxX = dv.getInt32(base + 16, true)
+                const txMaxY = dv.getInt32(base + 20, true)
+                const txMaxZ = dv.getInt32(base + 24, true)
+                if (txMinX < minXq) minXq = txMinX
+                if (txMinY < minYq) minYq = txMinY
+                if (txMinZ < minZq) minZq = txMinZ
+                if (txMaxX > maxXq) maxXq = txMaxX
+                if (txMaxY > maxYq) maxYq = txMaxY
+                if (txMaxZ > maxZq) maxZq = txMaxZ
+            }
+
+            if (any) {
+                const minX = minXq / SCALE
+                const minY = minYq / SCALE
+                const minZ = minZq / SCALE
+                const maxX = maxXq / SCALE
+                const maxY = maxYq / SCALE
+                const maxZ = maxZq / SCALE
+
+                // Inflate slightly for safety (coarse grid + blend regions)
+                const pad = STEP + 2.0
+                const cx = (minX + maxX) * 0.5
+                const cy = (minY + maxY) * 0.5
+                const cz = (minZ + maxZ) * 0.5
+                const hx = (maxX - minX) * 0.5 + pad
+                const hy = (maxY - minY) * 0.5 + pad
+                const hz = (maxZ - minZ) * 0.5 + pad
+
+                const base = sub.aabbIndex * 8
+                aabbData[base + 0] = cx
+                aabbData[base + 1] = cy
+                aabbData[base + 2] = cz
+                aabbData[base + 3] = 0
+                aabbData[base + 4] = hx
+                aabbData[base + 5] = hy
+                aabbData[base + 6] = hz
+                aabbData[base + 7] = 0
+            }
+        }
+
+        // Write all computed AABBs to the uniform buffer in one call (if still current)
+        if (generation === this.#aabbGeneration) {
+            this.#device.queue.writeBuffer(this.#uniformBuffers.subtreeAABBs, 0, aabbData)
+            this.#needsRender = true
+        }
+
+        // Clean up temporary buffers
+        uniformBuffer.destroy()
+        outBuffer.destroy()
     }
 
     async initialize() {
@@ -1555,6 +1716,31 @@ export class SDFRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "outlineSettings",
         })
+
+        // Subtree AABB buffer for spatial culling during ray marching.
+        // 128 entries × 32 bytes (center vec4f + halfExtent vec4f) = 4096 bytes.
+        // Initialized with infinite half-extents so all guards pass (no culling) until
+        // actual AABBs are computed asynchronously on the GPU.
+        this.#uniformBuffers.subtreeAABBs = this.#device.createBuffer({
+            size: AABB_BUFFER_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "subtreeAABBs",
+        })
+        this.#initAABBBufferInfinite()
+    }
+
+    /** Fill the AABB buffer with infinite half-extents so guards never trigger (no culling). */
+    #initAABBBufferInfinite() {
+        const data = new Float32Array(MAX_AABB_SLOTS * 8)
+        for (let i = 0; i < MAX_AABB_SLOTS; i++) {
+            const base = i * 8
+            // center = (0,0,0,0)
+            // halfExtent = (9999,9999,9999,0)
+            data[base + 4] = 9999
+            data[base + 5] = 9999
+            data[base + 6] = 9999
+        }
+        this.#device.queue.writeBuffer(this.#uniformBuffers.subtreeAABBs, 0, data)
     }
 
     /**
@@ -1620,6 +1806,7 @@ export class SDFRenderer {
                 entries: [
                     { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
                     { binding: 1, resource: this.#tStartTextureView },
+                    { binding: 2, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
                 ],
             })
         }
@@ -1627,7 +1814,7 @@ export class SDFRenderer {
         // Recreate preview bind group (references the t_start texture)
         // Bindings must match preview.wgsl declarations:
         //   1: camera, 2: clickState, 3: clickedObjectId, 4: selectedObjectIds,
-        //   5: colorPalette, 6: viewSettings, 7: tStartTex
+        //   5: colorPalette, 6: viewSettings, 7: tStartTex, 8: subtreeAABBs
         if (this.#pipeline) {
             this.#bindGroup = this.#device.createBindGroup({
                 label: "scenePreview",
@@ -1640,6 +1827,7 @@ export class SDFRenderer {
                     { binding: 5, resource: { buffer: this.#uniformBuffers.colorPalette } },
                     { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                     { binding: 7, resource: this.#tStartTextureView },
+                    { binding: 8, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
                 ],
             })
         }
@@ -1994,6 +2182,7 @@ export class SDFRenderer {
             pipeline,
             [0, uniformBuffer],
             [1, outBuffer],
+            [2, this.#uniformBuffers.subtreeAABBs],
             [99, this.#uniformBuffers.selectedObjectIds]
         )
 
@@ -2115,7 +2304,7 @@ export class SDFRenderer {
             )},${minY.toFixed(3)},${minZ.toFixed(3)}]..[${maxX.toFixed(3)},${maxY.toFixed(3)},${maxZ.toFixed(3)}]`
         )
 
-        const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.selectedObjectIds)
+        const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.selectedObjectIds, this.#uniformBuffers.subtreeAABBs)
 
         // Create and show progress dialog
         const { ProgressDialog } = await import("./components/progress-dialog.mjs")

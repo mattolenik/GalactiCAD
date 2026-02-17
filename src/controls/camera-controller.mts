@@ -51,6 +51,7 @@ export class CameraController {
     #cameraTranslation: Vec3f = new Vec3f()
     #zoomController: PinchZoomController
     #trackball: Trackball
+    #isSyncing = false
     #tabsElement: EventTarget | null = null
     #tabChangeListener: EventListener | null = null
     onChange?: (state: CameraState) => void
@@ -84,15 +85,18 @@ export class CameraController {
         // Initialize rotation from Euler angles (for backward compatibility)
         this.#rotation = Quaternion.fromEuler(initialPhi, initialTheta, 0, "YXZ")
 
+        this.#isSyncing = true
         this.#trackball = new Trackball({
             scene: this.#host.canvas,
             rotationMethod: "rounded_arcball",
             q: this.#rotation,
             onDraw: (q) => {
+                if (this.#isSyncing) return
                 this.#rotation = q
                 this.#updateTransforms()
             },
         })
+        this.#isSyncing = false
 
         this.#initEvents()
 
@@ -319,8 +323,10 @@ export class CameraController {
     }
 
     #syncTrackball(): void {
+        this.#isSyncing = true
         this.#trackball.reset()
         this.#trackball.rotate(this.#rotation)
+        this.#isSyncing = false
     }
 
     /**

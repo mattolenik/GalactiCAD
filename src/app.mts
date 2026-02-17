@@ -408,22 +408,19 @@ class App {
         const resizeHandle = new ResizeHandle(resizeHandleEl, mainPanels, workspace)
         resizeHandle.connect()
 
-        // ResizeObserver so Monaco layout updates and viewCenter stays in sync
+        // ResizeObserver so Monaco layout updates and viewCenter stays in sync.
+        // Use CSS layout vars (not editor rect) so view center is correct when the
+        // polygon editor replaces the code editor (editor has display:none → 0 rect).
         const updateViewCenter = () => {
             const mainRect = mainPanels.getBoundingClientRect()
-            const editorRect = editorContainer.getBoundingClientRect()
             if (mainRect.width === 0 || mainRect.height === 0) return
             const editorOnLeft = window.innerWidth > window.innerHeight
-            let vcx: number, vcy: number
-            if (editorOnLeft) {
-                const frac = editorRect.width / mainRect.width
-                vcx = (frac + 1.0) / 2
-                vcy = 0.5
-            } else {
-                const frac = editorRect.height / mainRect.height
-                vcx = 0.5
-                vcy = (1.0 - frac) / 2
-            }
+            const css = getComputedStyle(mainPanels)
+            const frac = editorOnLeft
+                ? parseFloat(css.getPropertyValue("--editor-width") || "35") / 100
+                : parseFloat(css.getPropertyValue("--editor-height") || "22") / 100
+            const vcx = editorOnLeft ? (frac + 1.0) / 2 : 0.5
+            const vcy = editorOnLeft ? 0.5 : (1.0 - frac) / 2
             this.renderer.setViewCenter(vcx, vcy)
             this.#mesh?.setViewCenter(vcx, vcy)
         }

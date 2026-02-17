@@ -13,12 +13,12 @@
     "packageManager": "pnpm@10.10.0",
     "type": "module",
     "devDependencies": {
-        "@types/node": "^22.19.11",
+        "@types/node": "^25.2.3",
         "@types/wicg-file-system-access": "^2023.10.7",
         "@types/ws": "^8.18.1",
         "@webgpu/types": "^0.1.69",
-        "chokidar": "^4.0.3",
-        "esbuild": "^0.25.12",
+        "chokidar": "^5.0.0",
+        "esbuild": "^0.27.3",
         "tsx": "^4.21.0",
         "typescript": "^5.9.3",
         "webgpu": "^0.3.8",
@@ -28,7 +28,7 @@
         "acorn": "^8.15.0",
         "acorn-walk": "^8.3.4",
         "meshoptimizer": "^1.0.1",
-        "monaco-editor": "^0.52.2",
+        "monaco-editor": "^0.55.1",
         "quaternion": "^2.2.0",
         "rxjs": "^7.8.2"
     }

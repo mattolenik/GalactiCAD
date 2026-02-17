@@ -521,11 +521,12 @@ export class MDCExport {
                 [17, indicesBuffer],
                 [18, indexCountFaceBuffer],
                 [20, activeCellCountBuffer],
-                [99, this.#selectedObjectIdsBuffer],
                 [22, cellEdgeComponentsBuffer],
                 [23, cellToActiveHashBuffer],
-                [24, debugSkipCountersBuffer]
-                // Note: cancellation buffer omitted from Pass 5 to stay within storage buffer limit (10 max)
+                [24, debugSkipCountersBuffer],
+                [26, this.#subtreeAABBsBuffer],
+                [99, this.#selectedObjectIdsBuffer]
+                // Note: cancellation buffer (25) omitted from Pass 5 to stay within storage buffer limit
             )
 
             // === Pass 3: Edge detection and per-cell union-find ===

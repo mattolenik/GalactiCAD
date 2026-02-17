@@ -3,7 +3,7 @@
  * Uses Acorn parser to create AST, then matches calls to scene nodes by property values
  */
 
-import { parse, type Node as AcornNode, type CallExpression, type FunctionDeclaration, type ReturnStatement, type BlockStatement } from "acorn"
+import { parse, type Node as AcornNode, type CallExpression } from "acorn"
 import { vec3, Vec3f } from "../vecmat/vector.mjs"
 
 /**
@@ -60,6 +60,16 @@ export interface Polygon2DCallInfo {
 }
 
 /**
+ * Wrapping prefix/suffix used to make bare function-body code parseable by acorn.
+ * The editor source is just the function body (with return statements), so we
+ * wrap it in a function declaration before parsing, then adjust locations back.
+ */
+const ACORN_PREFIX = "function _() {\n"
+const ACORN_SUFFIX = "\n}"
+const ACORN_PREFIX_LINES = 1   // number of extra lines the prefix adds
+const ACORN_PREFIX_CHARS = ACORN_PREFIX.length
+
+/**
  * Shape functions we care about for source location tracking
  */
 const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
@@ -79,7 +89,9 @@ export class SourceParser {
         const calls: ParsedShapeCall[] = []
 
         try {
-            const ast = parse(src, {
+            // Wrap bare function-body source so acorn can parse return statements
+            const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
+            const ast = parse(wrapped, {
                 ecmaVersion: "latest",
                 sourceType: "script",
                 locations: true,
@@ -141,9 +153,9 @@ export class SourceParser {
         const parsedCall: ParsedShapeCall = {
             functionName: funcName,
             location: {
-                startLine: loc.start.line,
+                startLine: loc.start.line - ACORN_PREFIX_LINES,
                 startColumn: loc.start.column + 1, // Acorn is 0-based, Monaco is 1-based
-                endLine: loc.end.line,
+                endLine: loc.end.line - ACORN_PREFIX_LINES,
                 endColumn: loc.end.column + 1,
                 functionName: funcName
             }
@@ -454,7 +466,9 @@ export class SourceParser {
         const calls: Polygon2DCallInfo[] = []
 
         try {
-            const ast = parse(src, {
+            // Wrap bare function-body source so acorn can parse return statements
+            const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
+            const ast = parse(wrapped, {
                 ecmaVersion: "latest",
                 sourceType: "script",
                 locations: true,
@@ -521,15 +535,15 @@ export class SourceParser {
         if (!vertices) return null
 
         return {
-            callStartOffset: callNode.start,
-            callEndOffset: callNode.end,
-            arrayStartOffset: arrayArg.start,
-            arrayEndOffset: arrayArg.end,
+            callStartOffset: callNode.start - ACORN_PREFIX_CHARS,
+            callEndOffset: callNode.end - ACORN_PREFIX_CHARS,
+            arrayStartOffset: arrayArg.start - ACORN_PREFIX_CHARS,
+            arrayEndOffset: arrayArg.end - ACORN_PREFIX_CHARS,
             vertices,
             location: {
-                startLine: loc.start.line,
+                startLine: loc.start.line - ACORN_PREFIX_LINES,
                 startColumn: loc.start.column + 1,
-                endLine: loc.end.line,
+                endLine: loc.end.line - ACORN_PREFIX_LINES,
                 endColumn: loc.end.column + 1,
                 functionName: "polygon2d"
             }

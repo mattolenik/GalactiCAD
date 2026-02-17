@@ -45,10 +45,8 @@ export class SceneInfo {
     }
 
     constructor(src: string) {
-        // Create a function that defines scene() and then calls it
-        // This allows users to write: function scene() { return sphere(...) }
-        const wrappedSrc = src + "\nreturn scene()"
-        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", wrappedSrc)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, shell, offset, elongate, twist, bend, taper, morph, seam)
+        // The source is the function body directly — it should end with a return statement
+        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", src)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, shell, offset, elongate, twist, bend, taper, morph, seam)
         this.root.scene = this
         this.root.build()
         this.#assignAABBIndices(this.root)

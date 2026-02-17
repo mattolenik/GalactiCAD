@@ -650,72 +650,68 @@ declare global {
     }
 }
 
-const defaultContent = `
-// Stealth Fighter
+const defaultContent = `// Stealth Fighter
 // A twin-engine strike aircraft with canted tails
 
-function scene() {
-   // ═══ FUSELAGE ═══
-   // Three overlapping boxes blended into a smooth organic hull
-   const body = box([0, 0, 0], [3, 15, 2])
-   const nose = box([0, 12, 0.3], [2, 8, 1.5])
-   const aft  = box([0, -8, -0.2], [4.5, 8, 2.2])
-   const fuselage = union(4, body, nose, aft)
+// ═══ FUSELAGE ═══
+// Three overlapping boxes blended into a smooth organic hull
+const body = box([0, 0, 0], [3, 15, 2])
+const nose = box([0, 12, 0.3], [2, 8, 1.5])
+const aft  = box([0, -8, -0.2], [4.5, 8, 2.2])
+const fuselage = union(4, body, nose, aft)
 
-   // Chisel the belly flat for a stealth cross-section
-   const bellySlice = plane([0, 0, -1], { n: [0, 0, 1] })
-   const hull = subtract(0.3, fuselage, bellySlice)
+// Chisel the belly flat for a stealth cross-section
+const bellySlice = plane([0, 0, -1], { n: [0, 0, 1] })
+const hull = subtract(0.3, fuselage, bellySlice)
 
-   // ═══ COCKPIT ═══
-   // Canopy dome clipped to sit flush on the spine
-   const canopyBubble = sphere([0, 6, 2.5], { r: 2.5 })
-   const canopyFloor  = plane([0, 0, 1.8], { n: [0, 0, 1] })
-   const cockpit = subtract(canopyBubble, canopyFloor)
+// ═══ COCKPIT ═══
+// Canopy dome clipped to sit flush on the spine
+const canopyBubble = sphere([0, 6, 2.5], { r: 2.5 })
+const canopyFloor  = plane([0, 0, 1.8], { n: [0, 0, 1] })
+const cockpit = subtract(canopyBubble, canopyFloor)
 
-   // ═══ WINGS ═══
-   // Swept delta wings with slight anhedral
-   const wingR = rotate([0, 0, -2],
-      box([10, -2, -0.3], [8, 6, 0.35])
-   )
-   const wingL = rotate([0, 0, 2],
-      box([-10, -2, -0.3], [8, 6, 0.35])
-   )
+// ═══ WINGS ═══
+// Swept delta wings with slight anhedral
+const wingR = rotate([0, 0, -2],
+   box([10, -2, -0.3], [8, 6, 0.35])
+)
+const wingL = rotate([0, 0, 2],
+   box([-10, -2, -0.3], [8, 6, 0.35])
+)
 
-   // ═══ TAIL ═══
-   // Canted twin vertical stabilisers
-   const vStabR = rotate([0, 22, 0],
-      box([2, -15, 3], [0.2, 3.5, 2.5])
-   )
-   const vStabL = rotate([0, -22, 0],
-      box([-2, -15, 3], [0.2, 3.5, 2.5])
-   )
+// ═══ TAIL ═══
+// Canted twin vertical stabilisers
+const vStabR = rotate([0, 22, 0],
+   box([2, -15, 3], [0.2, 3.5, 2.5])
+)
+const vStabL = rotate([0, -22, 0],
+   box([-2, -15, 3], [0.2, 3.5, 2.5])
+)
 
-   // All-moving horizontal stabilisers
-   const hStabR = rotate([3, 0, -2],
-      box([5, -14, -0.2], [3.5, 2.5, 0.2])
-   )
-   const hStabL = rotate([-3, 0, 2],
-      box([-5, -14, -0.2], [3.5, 2.5, 0.2])
-   )
+// All-moving horizontal stabilisers
+const hStabR = rotate([3, 0, -2],
+   box([5, -14, -0.2], [3.5, 2.5, 0.2])
+)
+const hStabL = rotate([-3, 0, 2],
+   box([-5, -14, -0.2], [3.5, 2.5, 0.2])
+)
 
-   // ═══ ENGINES ═══
-   // Twin exhaust nozzles recessed in the aft body
-   const nozzleR = cylinder([2, -17, 0], { r: 1.2, h: 2 })
-   const nozzleL = cylinder([-2, -17, 0], { r: 1.2, h: 2 })
+// ═══ ENGINES ═══
+// Twin exhaust nozzles recessed in the aft body
+const nozzleR = cylinder([2, -17, 0], { r: 1.2, h: 2 })
+const nozzleL = cylinder([-2, -17, 0], { r: 1.2, h: 2 })
 
-   // ═══ INTAKES ═══
-   // Subtractive intake ducts on the lower fuselage sides
-   const intakeR = box([3.5, 3, -0.5], [1, 3, 1.2])
-   const intakeL = box([-3.5, 3, -0.5], [1, 3, 1.2])
+// ═══ INTAKES ═══
+// Subtractive intake ducts on the lower fuselage sides
+const intakeR = box([3.5, 3, -0.5], [1, 3, 1.2])
+const intakeL = box([-3.5, 3, -0.5], [1, 3, 1.2])
 
-   // ═══ ASSEMBLY ═══
-   // Generous blend radii make the wings flow into the body
-   const airframe = union(2.5, hull, cockpit, wingR, wingL)
-   const tail = union(1, vStabR, vStabL, hStabR, hStabL)
-   const engines = union(0.8, nozzleR, nozzleL)
+// ═══ ASSEMBLY ═══
+// Generous blend radii make the wings flow into the body
+const airframe = union(2.5, hull, cockpit, wingR, wingL)
+const tail = union(1, vStabR, vStabL, hStabR, hStabL)
+const engines = union(0.8, nozzleR, nozzleL)
 
-   const aircraft = union(1.5, airframe, tail, engines)
-   return subtract(0.5, aircraft, intakeR, intakeL)
-}
-
+const aircraft = union(1.5, airframe, tail, engines)
+return subtract(0.5, aircraft, intakeR, intakeL)
 `

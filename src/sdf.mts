@@ -752,7 +752,6 @@ export class SDFRenderer {
                 .replace("insert", "sceneAuxFast", sub.fastAux)
                 .replace("insert", "sceneAux", "")
                 .replace("insert", "sceneSDF_fast", `\nreturn ${sub.fastSDF};\n`)
-                .replace("insert", "sceneSDF", `\nreturn sdfTrue(${sub.fastSDF}.x, 0u, vec3f(0.0));\n`)
             const module = compiler.compile(subtreeShaderCode, `SubtreeBounds_${sub.aabbIndex}`)
 
             const pipeline = this.#helper.createComputePipeline(module, "computeBounds", `SubtreeBounds_${sub.aabbIndex}`)
@@ -1517,7 +1516,7 @@ export class SDFRenderer {
 
         // World units are millimeters (mm).
         // Voxel size is fixed; grid dimensions are derived from a computed scene AABB.
-        const voxelSizeMm = 0.1
+        const voxelSizeMm = 0.5
         const bounds = await this.#computeSceneBoundsRefined()
         if (!bounds) {
             throw new Error("Bounds compute found no inside samples; is the SDF empty or far from origin?")

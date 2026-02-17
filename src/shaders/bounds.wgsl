@@ -46,11 +46,6 @@ struct TileBounds {
 //:) insert sceneAuxFast
 //:) insert sceneAux
 
-// Placeholder for the actual scene Signed Distance Function
-fn sceneSDF(p: vec3f) -> SDFResult {
-    return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
-}
-
 // Fast version for distance-only evaluations - only returns vec2f(distance, gradientMagnitude).
 // No tie-breaking, no normals, no normalize() calls.
 fn sceneSDF_fast(p: vec3f) -> vec2f {

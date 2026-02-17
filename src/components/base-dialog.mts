@@ -14,13 +14,13 @@ export abstract class BaseDialog<T> extends HTMLElement {
         return this.#shadow
     }
 
-    constructor(...args: unknown[]) {
+    constructor() {
         super()
         this.#shadow.innerHTML = this.#getBaseStyles() + this.#getBaseMarkup()
-        this.renderContent(...args)
     }
 
-    /** Subclasses override to render their dialog content into the dialog container */
+    /** Subclasses override to render their dialog content into the dialog container.
+     *  Must be called by the subclass constructor after super(). */
     protected abstract renderContent(...args: unknown[]): void
 
     #getBaseStyles(): string {

@@ -18,6 +18,7 @@ export class ProgressDialog extends BaseDialog<boolean> {
     constructor() {
         super()
         this.#startTime = performance.now()
+        this.renderContent()
     }
 
     protected renderContent() {

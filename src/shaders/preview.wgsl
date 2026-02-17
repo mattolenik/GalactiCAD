@@ -17,7 +17,6 @@ struct Camera {
     viewCenter: vec2f,
 };
 
-// @group(0) @binding(0) var<uniform> args: array<vec3f, 1024>;
 @group(0) @binding(1) var<uniform> camera: Camera;
 
 // Click detection state

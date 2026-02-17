@@ -3,7 +3,8 @@ import { BaseDialog } from "./base-dialog.mjs"
 
 export class StatusDialog extends BaseDialog<void> {
     constructor(message: string, showOkButton = true) {
-        super(message, showOkButton)
+        super()
+        this.renderContent(message, showOkButton)
     }
 
     /**

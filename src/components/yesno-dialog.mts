@@ -5,7 +5,8 @@ export class YesNoDialog extends BaseDialog<boolean> {
     #content!: HTMLElement
 
     constructor(messageOrElement: string | HTMLElement) {
-        super(messageOrElement)
+        super()
+        this.renderContent(messageOrElement)
     }
 
     protected renderContent(messageOrElement: string | HTMLElement) {

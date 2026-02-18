@@ -9,6 +9,7 @@ export interface PushPullHost {
     readonly polygonVerticesBuffer: GPUBuffer
     readonly faceSelectionBuffer: GPUBuffer
     readonly nodeParamsBuffer: GPUBuffer
+    getCompiledPosY(nodeId: number): number
     readonly selectedObjectIdsBuffer: GPUBuffer
     requestRender(): void
     readonly canvas: HTMLCanvasElement
@@ -35,6 +36,7 @@ interface CapState {
     isTop: boolean
     originalH: number
     originalPosY: number
+    basePosYDelta: number
 }
 
 export type PushPullMode = "slide" | "extrude"
@@ -143,11 +145,13 @@ export class PushPullController {
     /** Select a cap face (top or bottom) of an Extrude or Loft for push/pull. */
     selectCapFace(node: Extrude | Loft, isTop: boolean): void {
         this.#face = null
+        const compiledPosY = this.#host.getCompiledPosY(node.id)
         this.#cap = {
             node,
             isTop,
             originalH: node.h,
             originalPosY: node.pos.y,
+            basePosYDelta: node.pos.y - compiledPosY,
         }
 
         // mode 2 = top cap, mode 3 = bottom cap
@@ -292,7 +296,7 @@ export class PushPullController {
                     this.#restoreOriginalVertices()
                 }
                 if (this.#cap) {
-                    this.#writeNodeParams(this.#cap.node.id, this.#cap.originalH, 0)
+                    this.#writeNodeParams(this.#cap.node.id, this.#cap.originalH, this.#cap.basePosYDelta)
                 }
                 this.#dragging = false
                 this.#host.controls.isDragging = false
@@ -449,8 +453,8 @@ export class PushPullController {
         this.#dragOffset = Math.max(worldOffset, minOffset)
 
         const newH = cap.originalH + this.#dragOffset * 0.5
-        const posYDelta = cap.isTop ? this.#dragOffset * 0.5 : -this.#dragOffset * 0.5
-        this.#writeNodeParams(cap.node.id, newH, posYDelta)
+        const dragPosYDelta = cap.isTop ? this.#dragOffset * 0.5 : -this.#dragOffset * 0.5
+        this.#writeNodeParams(cap.node.id, newH, cap.basePosYDelta + dragPosYDelta)
         this.#host.requestRender()
         return true
     }

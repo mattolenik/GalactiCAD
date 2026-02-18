@@ -98,6 +98,7 @@ export class SDFRenderer {
     #boundsShader!: GPUShaderModule
     #helper!: GPUHelper
     #builtSrc: string | null = null
+    #compiledPosY = new Map<number, number>()
     #xrayMode: boolean = false
     #beamEnabled: boolean = false
     #outlineMode: OutlineMode = "solid"
@@ -572,12 +573,16 @@ export class SDFRenderer {
         }
 
         // Populate nodeParams buffer: h and posYDelta (0) for each Extrude/Loft.
+        // Also record the compiled pos.y for each node so cap drag can compute
+        // the correct delta when the build is skipped after a prior drag.
+        this.#compiledPosY.clear()
         {
             const params = new Float32Array(MAX_NODE_PARAMS * 4)
             for (const node of this.#scene.getAllNodes()) {
                 if ((node instanceof Extrude || node instanceof Loft) && node.id < MAX_NODE_PARAMS) {
                     params[node.id * 4] = node.h
-                    params[node.id * 4 + 1] = 0 // posYDelta = 0 at build time
+                    params[node.id * 4 + 1] = 0
+                    this.#compiledPosY.set(node.id, node.pos.y)
                 }
             }
             this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, params)
@@ -665,6 +670,7 @@ export class SDFRenderer {
                 [2, this.#uniformBuffers.subtreeAABBs],
                 [3, this.#uniformBuffers.polygonVertices],
                 [4, this.#uniformBuffers.faceSelection],
+                [5, this.#uniformBuffers.nodeParams],
                 [99, this.#uniformBuffers.selectedObjectIds]
             )
 
@@ -812,6 +818,7 @@ export class SDFRenderer {
             get polygonVerticesBuffer() { return self.#uniformBuffers.polygonVertices },
             get faceSelectionBuffer() { return self.#uniformBuffers.faceSelection },
             get nodeParamsBuffer() { return self.#uniformBuffers.nodeParams },
+            getCompiledPosY(nodeId: number) { return self.#compiledPosY.get(nodeId) ?? 0 },
             get selectedObjectIdsBuffer() { return self.#uniformBuffers.selectedObjectIds },
             requestRender() {
                 self.#needsRender = true

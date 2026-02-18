@@ -33,6 +33,9 @@ struct Camera {
 // Subtree AABBs for spatial culling (shared with preview shader).
 @group(0) @binding(2) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
 
+// Polygon vertex buffer (shared storage for all Polygon2D vertex data).
+@group(0) @binding(3) var<storage, read> polygonVertices: array<vec2f>;
+
 // Fast-path-only auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 // Uses sceneAuxFast to exclude full SDFResult functions not needed by the beam shader.
 //:) insert sceneAuxFast
@@ -45,8 +48,9 @@ fn sceneSDF_fast(p: vec3f) -> vec2f {
 
 @compute @workgroup_size(8, 8)
 fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
-    // Force subtreeAABBs into the bind group layout (auto-layout strips unused bindings)
+    // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = subtreeAABBs[0].center;
+    _ = polygonVertices[0];
 
     // Output texture is at tile resolution: ceil(W/TILE_SIZE) x ceil(H/TILE_SIZE)
     let outDims = textureDimensions(tStartOut);

@@ -55,6 +55,14 @@ const EDGES_PER_CELL: u32 = 12u;
 // Subtree AABBs for spatial culling (required by hg_sdf.wgsl subtreeAABBDist).
 @group(0) @binding(26) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
 
+// Polygon vertex buffer (shared storage for all Polygon2D vertex data).
+@group(0) @binding(27) var<storage, read> polygonVertices: array<vec2f>;
+
+// Face selection (for Extrude face highlighting; not used in MDC, but must exist for compilation).
+struct FaceSelection { nodeId: u32, faceIndex: u32, }
+@group(0) @binding(28) var<uniform> faceSelection: FaceSelection;
+const FACE_HIGHLIGHT_ID: u32 = 1023u;
+
 // Pass 1: Cell Classification
 @group(0) @binding(1) var<storage, read_write> activeCellFlags: array<u32>; // Bit-packed flags
 
@@ -106,8 +114,10 @@ const EDGES_PER_CELL: u32 = 12u;
 
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> SDFResult {
-    // Reference selectedObjectIds to prevent optimization (unused but required for binding)
+    // Reference unused bindings to prevent optimization (auto-layout strips unused bindings)
     let dummy = selectedObjectIds[0];
+    _ = polygonVertices[0];
+    _ = faceSelection.nodeId;
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 

@@ -7,21 +7,27 @@ import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
-import { SceneInfo } from "./scene/scene.mjs"
+import { Extrude, SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import beamShader from "./shaders/beam.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import outlineShader from "./shaders/outline.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
-import { vec2, Vec2f, vec3 } from "./vecmat/vector.mjs"
+import { vec2, Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
 import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPalette.mjs"
+import { PushPullController } from "./interaction/push-pull.mjs"
 
 /** Max AABB slots for subtree culling. Each slot is 32 bytes (center vec4f + halfExtent vec4f). */
 const MAX_AABB_SLOTS = 128
 /** Byte size of the AABB uniform buffer. */
 const AABB_BUFFER_SIZE = MAX_AABB_SLOTS * 32
+
+/** Max vec2f slots in the shared polygon vertex buffer. */
+const MAX_POLYGON_VERTICES = 1024
+/** Byte size of the polygon vertex buffer. Each vec2f is 8 bytes. */
+const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8
 
 class UniformBuffers {
     camera!: GPUBuffer
@@ -33,6 +39,12 @@ class UniformBuffers {
     viewSettings!: GPUBuffer
     outlineSettings!: GPUBuffer
     subtreeAABBs!: GPUBuffer
+    /** Shared storage buffer for all Polygon2D vertex data (vec2f per vertex). */
+    polygonVertices!: GPUBuffer
+    /** Storage buffer for the 3D hit position of the clicked pixel (vec3f + t). */
+    clickedHitPos!: GPUBuffer
+    /** Uniform buffer for face selection state (nodeId, faceIndex). */
+    faceSelection!: GPUBuffer
 }
 
 /** Outline style for selected objects. */
@@ -119,6 +131,7 @@ export class SDFRenderer {
     #tabChangeSub: Subscription | null = null
     #resizeObserver: ResizeObserver | null = null
     #controlSubs: Subscription[] = []
+    #pushPullController: PushPullController | null = null
 
     #loadPreviewSettings(): void {
         const prev = this.#settings.getPreview()
@@ -137,6 +150,9 @@ export class SDFRenderer {
 
     /** Emitted when an object is double-clicked in the preview (node ID). */
     readonly objectDoubleClick$ = new Subject<number>()
+
+    /** Emitted when a push/pull drag completes with the new polygon vertices. */
+    readonly pushPullComplete$ = new Subject<{ nodeId: number; vertices: [number, number][] }>()
 
     /** Emitted after preview settings are loaded (e.g. on document switch) so the UI can sync */
     readonly previewSettingsLoaded$ = new Subject<void>()
@@ -275,6 +291,13 @@ export class SDFRenderer {
         return new Uint32Array(readback)[0] ?? 0
     }
 
+    /** Read back the 3D hit position from the GPU storage buffer. */
+    async #readClickedHitPos(): Promise<Vec3f> {
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.clickedHitPos, 16)
+        const f = new Float32Array(readback)
+        return vec3(f[0], f[1], f[2])
+    }
+
     /** Write click state to GPU buffers and trigger render. Converts screen pos to UV. */
     #writeClickState(screenPos: Vec2f): void {
         const canvas = this.#preview.canvas
@@ -301,6 +324,10 @@ export class SDFRenderer {
         // 0 means "no hit" since valid object IDs start at 1.
         this.#device.queue.writeBuffer(
             this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0])
+        )
+        // Clear hit position to prevent stale data from previous clicks.
+        this.#device.queue.writeBuffer(
+            this.#uniformBuffers.clickedHitPos, 0, new Float32Array([0, 0, 0, 0]).buffer
         )
 
         this.#needsRender = true
@@ -338,11 +365,28 @@ export class SDFRenderer {
     #handleDoubleClick(screenPos: Vec2f) {
         this.#writeClickState(screenPos)
 
-        this.#scheduleClickReadback(clickedId => {
-            if (clickedId !== 0) {
-                this.objectDoubleClick$.next(clickedId)
+        // Extended readback for double-click: read object ID and hit position.
+        setTimeout(async () => {
+            try {
+                const [clickedId, hitPos] = await Promise.all([
+                    this.#readClickedObjectId(),
+                    this.#readClickedHitPos(),
+                ])
+                if (clickedId !== 0) {
+                    // Check if clicked object is an Extrude (side face) for push/pull
+                    if (this.#scene && this.#pushPullController) {
+                        const node = this.#scene.get(clickedId)
+                        if (node instanceof Extrude && node.twist === 0) {
+                            this.#pushPullController.selectFace(node, hitPos)
+                            return
+                        }
+                    }
+                    this.objectDoubleClick$.next(clickedId)
+                }
+            } catch (error) {
+                console.error("Error reading double-click data:", error)
             }
-        })
+        }, 200)
     }
 
     #updateSelection(clickedId: number, shiftKey: boolean) {
@@ -478,6 +522,12 @@ export class SDFRenderer {
         this.#renderTextureHeight = 0
         this.#needsRender = true
 
+        // Populate the polygon vertex buffer with all Polygon2D vertex data.
+        if (this.#scene.totalPolygonVertices > 0) {
+            const vertexData = this.#scene.getPolygonVertexData()
+            this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, vertexData.buffer)
+        }
+
         // Reset AABB buffer to infinite (no culling) for immediate rendering,
         // then kick off async GPU-based bounds computation.
         this.#initAABBBufferInfinite()
@@ -558,6 +608,8 @@ export class SDFRenderer {
                 [0, uniformBuffer],
                 [1, outBuffer],
                 [2, this.#uniformBuffers.subtreeAABBs],
+                [3, this.#uniformBuffers.polygonVertices],
+                [4, this.#uniformBuffers.faceSelection],
                 [99, this.#uniformBuffers.selectedObjectIds]
             )
 
@@ -692,6 +744,69 @@ export class SDFRenderer {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, new ArrayBuffer(32))
         // Initialize selection buffer with count=0
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, new Uint32Array(1024))
+        // Initialize face selection as disabled
+        this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, new Uint32Array([0, 0]))
+
+        this.#initPushPull()
+    }
+
+    #initPushPull(): void {
+        const self = this
+        this.#pushPullController = new PushPullController({
+            get device() { return self.#device },
+            get polygonVerticesBuffer() { return self.#uniformBuffers.polygonVertices },
+            get faceSelectionBuffer() { return self.#uniformBuffers.faceSelection },
+            get selectedObjectIdsBuffer() { return self.#uniformBuffers.selectedObjectIds },
+            requestRender() { self.#needsRender = true },
+            get canvas() { return self.#preview.canvas },
+            get controls() { return self.#controls },
+            get viewCenter() { return self.#viewCenter },
+            get cameraRes() { return self.#cameraRes },
+        })
+
+        this.#pushPullController.onComplete = (nodeId: number, vertices: [number, number][]) => {
+            this.pushPullComplete$.next({ nodeId, vertices })
+        }
+
+        this.#pushPullController.onDeselect = () => {
+            // Restore the normal selection buffer state
+            this.#writeSelectionBuffer()
+        }
+
+        // Intercept pointer events on the canvas for push/pull
+        const canvas = this.#preview.canvas
+        canvas.addEventListener("pointerdown", (e: PointerEvent) => {
+            if (this.#pushPullController?.isActive && !this.#pushPullController.isDragging) {
+                if (this.#pushPullController.handlePointerDown(e)) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                }
+            }
+        }, { capture: true })
+
+        canvas.addEventListener("pointermove", (e: PointerEvent) => {
+            if (this.#pushPullController?.isDragging) {
+                if (this.#pushPullController.handlePointerMove(e)) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                }
+            }
+        }, { capture: true })
+
+        canvas.addEventListener("pointerup", (e: PointerEvent) => {
+            if (this.#pushPullController?.isDragging) {
+                if (this.#pushPullController.handlePointerUp(e)) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                }
+            }
+        }, { capture: true })
+
+        document.addEventListener("keydown", (e: KeyboardEvent) => {
+            if (this.#pushPullController?.isActive) {
+                this.#pushPullController.handleKeyDown(e)
+            }
+        })
     }
 
     startLoop() {
@@ -783,6 +898,30 @@ export class SDFRenderer {
             label: "subtreeAABBs",
         })
         this.#initAABBBufferInfinite()
+
+        // Polygon vertex buffer: shared storage for all Polygon2D vertex data.
+        // Each vertex is a vec2f (8 bytes). Populated during build(), updated during push/pull drag.
+        this.#uniformBuffers.polygonVertices = this.#device.createBuffer({
+            size: POLYGON_VERTEX_BUFFER_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            label: "polygonVertices",
+        })
+
+        // Clicked hit position: written by fragment shader on click, read back for face picking.
+        // Layout: vec3f position (12 bytes) + f32 t (4 bytes) = 16 bytes.
+        this.#uniformBuffers.clickedHitPos = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "clickedHitPos",
+        })
+
+        // Face selection uniform: tells the Extrude shader which face to highlight.
+        // Layout: nodeId (u32) + faceIndex (u32) = 8 bytes.
+        this.#uniformBuffers.faceSelection = this.#device.createBuffer({
+            size: 8,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "faceSelection",
+        })
     }
 
     /** Fill the AABB buffer with infinite half-extents so guards never trigger (no culling). */
@@ -863,14 +1002,13 @@ export class SDFRenderer {
                     { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
                     { binding: 1, resource: this.#tStartTextureView },
                     { binding: 2, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
+                    { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                 ],
             })
         }
 
         // Recreate preview bind group (references the t_start texture)
-        // Bindings must match preview.wgsl declarations:
-        //   1: camera, 2: clickState, 3: clickedObjectId, 4: selectedObjectIds,
-        //   5: colorPalette, 6: viewSettings, 7: tStartTex, 8: subtreeAABBs
+        // Bindings must match preview.wgsl declarations
         if (this.#pipeline) {
             this.#bindGroup = this.#device.createBindGroup({
                 label: "scenePreview",
@@ -884,6 +1022,9 @@ export class SDFRenderer {
                     { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                     { binding: 7, resource: this.#tStartTextureView },
                     { binding: 8, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
+                    { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                    { binding: 10, resource: { buffer: this.#uniformBuffers.clickedHitPos } },
+                    { binding: 11, resource: { buffer: this.#uniformBuffers.faceSelection } },
                 ],
             })
         }
@@ -1360,7 +1501,7 @@ export class SDFRenderer {
             )},${minY.toFixed(3)},${minZ.toFixed(3)}]..[${maxX.toFixed(3)},${maxY.toFixed(3)},${maxZ.toFixed(3)}]`
         )
 
-        const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.selectedObjectIds, this.#uniformBuffers.subtreeAABBs)
+        const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.selectedObjectIds, this.#uniformBuffers.subtreeAABBs, this.#uniformBuffers.polygonVertices, this.#uniformBuffers.faceSelection)
 
         // Create and show progress dialog
         const { ProgressDialog } = await import("./components/progress-dialog.mjs")

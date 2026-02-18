@@ -50,6 +50,22 @@ const BEAM_TILE_SIZE: i32 = 8;
 // Populated asynchronously after scene build; initialized with infinite extents (no culling).
 @group(0) @binding(8) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
 
+// Polygon vertex buffer: shared storage for all Polygon2D vertex data.
+// Each Polygon2D reads its vertices from a contiguous slice starting at its compile-time BASE offset.
+@group(0) @binding(9) var<storage, read> polygonVertices: array<vec2f>;
+
+// Hit position of the clicked pixel — written alongside clickedObjectId for face picking.
+@group(0) @binding(10) var<storage, read_write> clickedHitPos: array<f32, 4>;
+
+// Face selection: tells the Extrude shader which face to highlight with FACE_HIGHLIGHT_ID.
+struct FaceSelection {
+    nodeId: u32,       // Extrude node ID (0 = disabled)
+    faceIndex: u32,    // edge index of the selected face
+}
+@group(0) @binding(11) var<uniform> faceSelection: FaceSelection;
+
+const FACE_HIGHLIGHT_ID: u32 = 1023u;
+
 // Fragment output: color and object ID for MRT outline detection
 struct FragmentOutput {
     @location(0) color: vec4f,
@@ -220,8 +236,11 @@ fn shadeHit(hit: RaymarchHit, flipNormal: bool) -> vec3f {
 
 @fragment
 fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
-    // Force subtreeAABBs into the bind group layout (auto-layout strips unused bindings)
+    // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = subtreeAABBs[0].center;
+    _ = polygonVertices[0];
+    _ = clickedHitPos[0];
+    _ = faceSelection.nodeId;
 
     let uv = fragCoord;
     let aspect = camera.res.x / camera.res.y;
@@ -258,6 +277,11 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         
         if (pixelDist < 1.0) {
             atomicStore(&clickedObjectId, hit.sdf.id);
+            let hitPos = transformedOrigin + transformedDir * hit.t;
+            clickedHitPos[0] = hitPos.x;
+            clickedHitPos[1] = hitPos.y;
+            clickedHitPos[2] = hitPos.z;
+            clickedHitPos[3] = hit.t;
         }
     }
 

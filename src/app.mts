@@ -203,6 +203,31 @@ class App {
     }
 
     /**
+     * Handle push/pull completion: update the polygon2d vertex array in the source code.
+     * The nodeId is the Polygon2D child node ID — look up its source location and replace the vertex array.
+     */
+    #handlePushPullComplete(nodeId: number, vertices: [number, number][]) {
+        const location = this.#sourceLocationMap.get(nodeId)
+        if (!location || location.functionName !== "polygon2d") return
+
+        const model = this.editor.getModel()
+        if (!model) return
+
+        const src = model.getValue()
+        const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn)
+        if (!info) return
+
+        const newText = formatVertices(vertices)
+        const startPos = model.getPositionAt(info.arrayStartOffset)
+        const endPos = model.getPositionAt(info.arrayEndOffset)
+        const range = new monaco.Range(
+            startPos.lineNumber, startPos.column,
+            endPos.lineNumber, endPos.column
+        )
+        model.pushEditOperations([], [{ range, text: newText }], () => null)
+    }
+
+    /**
      * Handle editor selection to sync with preview.
      * Selects the corresponding object if a function name is fully selected.
      * For CSG operators (union, subtract, group), selects all descendants too.
@@ -511,6 +536,10 @@ class App {
         })
 
         this.renderer.objectDoubleClick$.subscribe(nodeId => this.#handlePreviewDoubleClick(nodeId))
+
+        this.renderer.pushPullComplete$.subscribe(({ nodeId, vertices }) => {
+            this.#handlePushPullComplete(nodeId, vertices)
+        })
 
         this.editor.onDidChangeCursorSelection(() => {
             this.#handleEditorSelection()

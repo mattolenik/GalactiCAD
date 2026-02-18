@@ -17,6 +17,8 @@ export class SceneInfo {
     #nodes = new BijectiveMap<number, Node>()
     /** Number of AABB slots assigned to guarded subtrees. */
     numAABBSlots = 0
+    /** Running total of polygon vertices allocated in the shared vertex buffer. */
+    totalPolygonVertices = 0
 
     nextArgIndex(): number {
         return this.numArgs++
@@ -25,6 +27,13 @@ export class SceneInfo {
     /** Assign a new AABB slot index for a guarded subtree. */
     nextAABBIndex(): number {
         return this.numAABBSlots++
+    }
+
+    /** Allocate a contiguous block of vec2f slots in the polygon vertex buffer. Returns the base offset. */
+    allocPolygonVertices(count: number): number {
+        const base = this.totalPolygonVertices
+        this.totalPolygonVertices += count
+        return base
     }
 
     add(node: Node) {
@@ -42,6 +51,25 @@ export class SceneInfo {
      */
     getAllNodes(): Node[] {
         return Array.from(this.#nodes.values())
+    }
+
+    /**
+     * Build a Float32Array containing all polygon vertex data, laid out so that
+     * each Polygon2D's vertices occupy the region starting at its bufferOffset.
+     * Each vertex is two f32 values (x, y), packed as vec2f.
+     */
+    getPolygonVertexData(): Float32Array {
+        const data = new Float32Array(this.totalPolygonVertices * 2)
+        for (const node of this.#nodes.values()) {
+            if (node instanceof Polygon2D && node.bufferOffset >= 0) {
+                for (let i = 0; i < node.vertices.length; i++) {
+                    const base = (node.bufferOffset + i) * 2
+                    data[base] = node.vertices[i][0]
+                    data[base + 1] = node.vertices[i][1]
+                }
+            }
+        }
+        return data
     }
 
     constructor(src: string) {
@@ -1450,6 +1478,8 @@ export class Blob extends WithPos(Node) {
  */
 export class Polygon2D extends Node {
     vertices: [number, number][]
+    /** Base offset into the shared polygon vertex storage buffer, assigned during build(). */
+    bufferOffset = -1
 
     constructor(vertices: [number, number][]) {
         super()
@@ -1466,9 +1496,19 @@ export class Polygon2D extends Node {
     }
     override updateScene(): void { }
 
+    override build() {
+        super.build()
+        this.bufferOffset = this.scene.allocPolygonVertices(this.vertices.length)
+    }
+
     /** Generate a unique WGSL function name for this polygon instance */
     get wgslFuncName(): string {
         return `fPolygon2D_${this.id}`
+    }
+
+    /** WGSL function name for the closest-edge helper (used by face selection). */
+    get wgslClosestEdgeFuncName(): string {
+        return `fPolygon2D_${this.id}_closestEdge`
     }
 
     // Polygon2D's evaluator is a shared helper needed by both fast and full
@@ -1479,14 +1519,16 @@ export class Polygon2D extends Node {
 
     override compileAuxFast(): string {
         const N = this.vertices.length
-        const verts = this.vertices
-            .map(([x, y]) => `vec2f(${x.toFixed(6)}, ${y.toFixed(6)})`)
-            .join(", ")
+        const BASE = this.bufferOffset
 
         return `
 fn ${this.wgslFuncName}(p: vec2f) -> f32 {
     const N = ${N}u;
-    var v = array<vec2f, ${N}>(${verts});
+    const BASE = ${BASE}u;
+    var v: array<vec2f, ${N}>;
+    for (var k = 0u; k < N; k++) {
+        v[k] = polygonVertices[BASE + k];
+    }
     var d = dot(p - v[0], p - v[0]);
     var s = 1.0;
     var j = N - 1u;
@@ -1502,6 +1544,27 @@ fn ${this.wgslFuncName}(p: vec2f) -> f32 {
         j = i;
     }
     return s * sqrt(d);
+}
+
+fn ${this.wgslClosestEdgeFuncName}(p: vec2f) -> u32 {
+    const N = ${N}u;
+    const BASE = ${BASE}u;
+    var v: array<vec2f, ${N}>;
+    for (var k = 0u; k < N; k++) {
+        v[k] = polygonVertices[BASE + k];
+    }
+    var minDist = 1e30;
+    var closest = 0u;
+    var j = N - 1u;
+    for (var i = 0u; i < N; i++) {
+        let e = v[j] - v[i];
+        let w = p - v[i];
+        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+        let dd = dot(b, b);
+        if (dd < minDist) { minDist = dd; closest = j; }
+        j = i;
+    }
+    return closest;
 }
 `
     }
@@ -1564,6 +1627,7 @@ export class Extrude extends WithPos(Node) {
 
     override compileAux(): string {
         const childFunc = this.child.wgslFuncName
+        const closestEdgeFunc = this.child.wgslClosestEdgeFuncName
         const childId = this.child.id
         const h = this.h.toFixed(6)
         const hasTwist = this.twist !== 0
@@ -1583,7 +1647,13 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(p.y), 0.0);
     let n = select(nCap, nSide, onSide);
-    let resultId = select(${childId}u, id, onSide);
+    var resultId = select(${childId}u, id, onSide);
+    if (onSide && faceSelection.nodeId == id) {
+        let edge = ${closestEdgeFunc}(p.xz);
+        if (edge == faceSelection.faceIndex) {
+            resultId = FACE_HIGHLIGHT_ID;
+        }
+    }
     return sdfTrue(d, resultId, n);
 }
 `

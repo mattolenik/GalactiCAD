@@ -117,14 +117,18 @@ export class MDCExport {
     #localBuffers: GPUBuffer[] = []
     #selectedObjectIdsBuffer: GPUBuffer
     #subtreeAABBsBuffer: GPUBuffer
+    #polygonVerticesBuffer: GPUBuffer
+    #faceSelectionBuffer: GPUBuffer
     #cancelled = false
     #cancellationBuffer: GPUBuffer | null = null
 
-    constructor(helper: GPUHelper, private params: MDCParams, selectedObjectIdsBuffer: GPUBuffer, subtreeAABBsBuffer: GPUBuffer) {
+    constructor(helper: GPUHelper, private params: MDCParams, selectedObjectIdsBuffer: GPUBuffer, subtreeAABBsBuffer: GPUBuffer, polygonVerticesBuffer: GPUBuffer, faceSelectionBuffer: GPUBuffer) {
         this.#helper = helper
         this.#device = helper.device
         this.#selectedObjectIdsBuffer = selectedObjectIdsBuffer
         this.#subtreeAABBsBuffer = subtreeAABBsBuffer
+        this.#polygonVerticesBuffer = polygonVerticesBuffer
+        this.#faceSelectionBuffer = faceSelectionBuffer
     }
 
     /** Destroy all GPU buffers created during export */
@@ -325,6 +329,8 @@ export class MDCExport {
                 [0, uniformBuffer],
                 [1, activeCellFlagsBuffer],
                 [26, this.#subtreeAABBsBuffer],
+                [27, this.#polygonVerticesBuffer],
+                [28, this.#faceSelectionBuffer],
                 [99, this.#selectedObjectIdsBuffer],
                 [25, this.#cancellationBuffer]
             )
@@ -492,6 +498,8 @@ export class MDCExport {
                 [9, cellQEFDataBuffer],
                 [10, activeCellCountBuffer],
                 [26, this.#subtreeAABBsBuffer],
+                [27, this.#polygonVerticesBuffer],
+                [28, this.#faceSelectionBuffer],
                 [99, this.#selectedObjectIdsBuffer],
                 [25, this.#cancellationBuffer]
             )
@@ -506,6 +514,8 @@ export class MDCExport {
                 [13, verticesBuffer],
                 [14, activeCellCountBuffer],
                 [26, this.#subtreeAABBsBuffer],
+                [27, this.#polygonVerticesBuffer],
+                [28, this.#faceSelectionBuffer],
                 [99, this.#selectedObjectIdsBuffer],
                 [25, this.#cancellationBuffer]
             )
@@ -525,6 +535,8 @@ export class MDCExport {
                 [23, cellToActiveHashBuffer],
                 [24, debugSkipCountersBuffer],
                 [26, this.#subtreeAABBsBuffer],
+                [27, this.#polygonVerticesBuffer],
+                [28, this.#faceSelectionBuffer],
                 [99, this.#selectedObjectIdsBuffer]
                 // Note: cancellation buffer (25) omitted from Pass 5 to stay within storage buffer limit
             )

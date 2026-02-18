@@ -27,6 +27,14 @@ struct BoundsUniforms {
 // Subtree AABBs for spatial culling (same as preview/beam; initialized to infinite = no culling).
 @group(0) @binding(2) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
 
+// Polygon vertex buffer (shared storage for all Polygon2D vertex data).
+@group(0) @binding(3) var<storage, read> polygonVertices: array<vec2f>;
+
+// Face selection (for Extrude face highlighting; not used in bounds, but must exist for compilation).
+struct FaceSelection { nodeId: u32, faceIndex: u32, }
+@group(0) @binding(4) var<uniform> faceSelection: FaceSelection;
+const FACE_HIGHLIGHT_ID: u32 = 1023u;
+
 // One output record per dispatched workgroup (no atomics).
 struct TileBounds {
     // Quantized to i32 at `uniforms.scale`.
@@ -84,8 +92,10 @@ fn computeBounds(
     @builtin(workgroup_id) workgroupId: vec3u,
     @builtin(num_workgroups) numWg: vec3u
 ) {
-    // Force subtreeAABBs into the bind group layout (auto-layout strips unused bindings)
+    // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = subtreeAABBs[0].center;
+    _ = polygonVertices[0];
+    _ = faceSelection.nodeId;
 
     let dims = uniforms.dims.xyz;
     let total = dims.x * dims.y * dims.z;

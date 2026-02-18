@@ -164,18 +164,38 @@ export class PushPullController {
             currentScreen.y - this.#dragStartScreen.y,
         )
 
-        // Project the face normal into screen space to determine drag direction
-        const screenNormal = this.#projectNormalToScreen(this.#face.normal3D)
-        const screenNormalLen = Math.sqrt(screenNormal.x * screenNormal.x + screenNormal.y * screenNormal.y)
-        if (screenNormalLen < 1e-6) return true
+        // Project the face normal from world space to screen space.
+        //
+        // viewTransform is the camera-to-world matrix (used in the shader as
+        // camera.transform * cameraSpacePoint = worldSpacePoint). Its columns
+        // are the camera's basis vectors in world space:
+        //   column 0 = camera right
+        //   column 1 = camera up
+        //   column 2 = camera -forward (ray direction is -column2)
+        //
+        // To project a world-space direction onto the screen plane, we dot
+        // with each column (not row) of the matrix.
+        const m = this.#host.controls.viewTransform.data
+        const n = this.#face.normal3D
+        const dotRight = m[0] * n.x + m[1] * n.y + m[2] * n.z
+        const dotUp    = m[4] * n.x + m[5] * n.y + m[6] * n.z
 
-        // Dot product of drag delta with screen-space normal gives pixel offset
-        const pixelOffset = (delta.x * screenNormal.x + delta.y * screenNormal.y) / screenNormalLen
+        // Screen-space normal. Screen Y is flipped (screen down = +Y, camera up = +Y).
+        const snx = dotRight
+        const sny = -dotUp
+        const snLenSq = snx * snx + sny * sny
+        if (snLenSq < 1e-12) return true // normal points directly at/away from camera
 
-        // Convert pixel offset to world units using camera zoom and canvas size
-        const canvas = this.#host.canvas
-        const canvasHeight = canvas.getBoundingClientRect().height
-        const worldOffset = pixelOffset * (this.#host.controls.zoom * 2) / canvasHeight
+        // Convert drag delta to world-space offset along the face normal.
+        //
+        // The orthographic camera has visible height = 2 * zoom, so
+        // worldPerPixel = 2 * zoom / canvasHeight.
+        //
+        // 1 world unit along the normal produces |screenNormal| * (1/worldPerPixel) pixels.
+        // Inverting: worldOffset = dot(drag, sn) * worldPerPixel / |sn|^2
+        const canvasHeight = this.#host.canvas.getBoundingClientRect().height
+        const worldPerPixel = (this.#host.controls.zoom * 2) / canvasHeight
+        const worldOffset = (delta.x * snx + delta.y * sny) * worldPerPixel / snLenSq
 
         this.#dragOffset = worldOffset
         this.#applyOffset(worldOffset)
@@ -310,17 +330,6 @@ export class PushPullController {
         )
     }
 
-    /** Project a 3D world-space direction to 2D screen-space direction. */
-    #projectNormalToScreen(normal: Vec3f): Vec2f {
-        const transform = this.#host.controls.viewTransform.data
-        // The view transform is a 4x4 matrix (column-major in Float32Array).
-        // We apply the rotation part (3x3 upper-left) to the normal to get camera-space direction.
-        const cx = transform[0] * normal.x + transform[4] * normal.y + transform[8] * normal.z
-        const cy = transform[1] * normal.x + transform[5] * normal.y + transform[9] * normal.z
-
-        // In screen space, X maps to screen right, Y maps to screen up (but screen Y is flipped)
-        return vec2(cx, -cy)
-    }
 }
 
 /** Compute signed area of a 2D polygon. Positive = CCW, Negative = CW. */

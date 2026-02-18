@@ -35,6 +35,9 @@ struct FaceSelection { nodeId: u32, faceIndex: u32, mode: u32, extrudeOffset: f3
 @group(0) @binding(4) var<uniform> faceSelection: FaceSelection;
 const FACE_HIGHLIGHT_ID: u32 = 1023u;
 
+// Per-node parameters: .x = h, .y = posYDelta. Indexed by node ID.
+@group(0) @binding(5) var<uniform> nodeParams: array<vec4f, 256>;
+
 // One output record per dispatched workgroup (no atomics).
 struct TileBounds {
     // Quantized to i32 at `uniforms.scale`.
@@ -104,6 +107,7 @@ fn computeBounds(
     _ = subtreeAABBs[0].center;
     _ = polygonVertices[0];
     _ = faceSelection.nodeId;
+    _ = nodeParams[0];
 
     let dims = uniforms.dims.xyz;
     let total = dims.x * dims.y * dims.z;

@@ -36,6 +36,7 @@ class App {
     #sceneNodeMap: Map<number, import("./scene/scene.mjs").Node> = new Map()  // nodeId -> Node for symbol lookup
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
+    #skipNextBuild = false  // When true, skip the next build entirely (nodeParams already correct)
     #polygonEditor: PolygonEditor | null = null
     #editorContainer!: HTMLDivElement
 
@@ -227,6 +228,83 @@ class App {
         model.pushStackElement()
         model.pushEditOperations([], [{ range, text: newText }], () => null)
         model.pushStackElement()
+    }
+
+    /**
+     * Handle cap push/pull completion: update the extrude/loft h value and position in source code.
+     * nodeId is the Extrude or Loft node ID.
+     */
+    #handleCapPullComplete(nodeId: number, newH: number, newPosY: number) {
+        const location = this.#sourceLocationMap.get(nodeId)
+        if (!location || (location.functionName !== "extrude" && location.functionName !== "loft")) return
+
+        const model = this.editor.getModel()
+        if (!model) return
+
+        const src = model.getValue()
+        const info = this.#sourceParser.findExtrudeLoftAtPosition(src, location.startLine, location.startColumn)
+        if (!info) return
+
+        // Update the in-memory scene node so the next drag starts from correct values.
+        // nodeParams buffer already has the correct h and posYDelta, so rendering is fine
+        // without a full shader recompile.
+        const node = this.#sceneNodeMap.get(nodeId) as { h: number; pos: { y: number } } | undefined
+        if (node && "h" in node) {
+            node.h = newH
+            node.pos.y = newPosY
+        }
+
+        this.#skipNextBuild = true
+        model.pushStackElement()
+
+        const edits: { range: import("monaco-editor").IRange; text: string }[] = []
+
+        // Update h value
+        const hStart = model.getPositionAt(info.hValueStart)
+        const hEnd = model.getPositionAt(info.hValueEnd)
+        edits.push({
+            range: new monaco.Range(hStart.lineNumber, hStart.column, hEnd.lineNumber, hEnd.column),
+            text: formatNumber(newH),
+        })
+
+        // Update position if it exists, or insert one if the Y component changed
+        if (info.posArgStart !== null && info.posArgEnd !== null) {
+            const posText = src.substring(info.posArgStart, info.posArgEnd)
+            const updatedPosText = updatePosY(posText, newPosY)
+            if (updatedPosText !== null) {
+                const posStart = model.getPositionAt(info.posArgStart)
+                const posEnd = model.getPositionAt(info.posArgEnd)
+                edits.push({
+                    range: new monaco.Range(posStart.lineNumber, posStart.column, posEnd.lineNumber, posEnd.column),
+                    text: updatedPosText,
+                })
+            }
+        } else if (Math.abs(newPosY) > 0.0005) {
+            // No position argument exists, insert one
+            const insertPos = model.getPositionAt(info.insertPosOffset)
+            edits.push({
+                range: new monaco.Range(insertPos.lineNumber, insertPos.column, insertPos.lineNumber, insertPos.column),
+                text: `"0 ${formatNumber(newPosY)} 0", `,
+            })
+        }
+
+        // Apply edits in reverse offset order so earlier edits don't shift later ones
+        edits.sort((a, b) => {
+            if (a.range.startLineNumber !== b.range.startLineNumber)
+                return b.range.startLineNumber - a.range.startLineNumber
+            return b.range.startColumn - a.range.startColumn
+        })
+        model.pushEditOperations([], edits, () => null)
+        model.pushStackElement()
+
+        // Re-parse source locations so subsequent drags find correct offsets
+        // (lightweight — no shader recompilation)
+        const updatedSrc = model.getValue()
+        const parsedCalls = this.#sourceParser.parseShapeCalls(updatedSrc)
+        this.#sourceLocationMap = matchNodesToSource(
+            Array.from(this.#sceneNodeMap.values()),
+            parsedCalls,
+        )
     }
 
     /**
@@ -521,6 +599,10 @@ class App {
                         filter(arr => arr.length > 0)
                     )
                     .subscribe(() => {
+                        if (this.#skipNextBuild) {
+                            this.#skipNextBuild = false
+                            return
+                        }
                         this.build()
                     })
             })
@@ -550,6 +632,10 @@ class App {
 
         this.renderer.pushPullComplete$.subscribe(({ nodeId, vertices }) => {
             this.#handlePushPullComplete(nodeId, vertices)
+        })
+
+        this.renderer.capPullComplete$.subscribe(({ nodeId, newH, newPosY }) => {
+            this.#handleCapPullComplete(nodeId, newH, newPosY)
         })
 
         this.editor.onDidChangeCursorSelection(() => {
@@ -881,6 +967,44 @@ function formatVertices(vertices: [number, number][]): string {
         return `[${xs}, ${ys}]`
     })
     return `[${pairs.join(", ")}]`
+}
+
+function formatNumber(n: number): string {
+    const rounded = Math.round(n * 1000) / 1000
+    return String(rounded)
+}
+
+/**
+ * Update the Y component of a position argument in source.
+ * Handles string-form "x y z" and array-form [x, y, z].
+ */
+function updatePosY(posText: string, newY: number): string | null {
+    const trimmed = posText.trim()
+
+    // String form: "x y z"
+    if (trimmed.startsWith('"') || trimmed.startsWith("'")) {
+        const quote = trimmed[0]
+        const inner = trimmed.slice(1, -1).trim()
+        const parts = inner.split(/\s+/)
+        if (parts.length === 3) {
+            parts[1] = formatNumber(newY)
+            return `${quote}${parts.join(" ")}${quote}`
+        }
+        return null
+    }
+
+    // Array form: [x, y, z]
+    if (trimmed.startsWith("[")) {
+        const inner = trimmed.slice(1, -1)
+        const parts = inner.split(",").map(s => s.trim())
+        if (parts.length === 3) {
+            parts[1] = formatNumber(newY)
+            return `[${parts.join(", ")}]`
+        }
+        return null
+    }
+
+    return null
 }
 
 export default App

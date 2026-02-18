@@ -60,6 +60,24 @@ export interface Polygon2DCallInfo {
 }
 
 /**
+ * Information about an extrude() or loft() call for cap push/pull source updates.
+ * Tracks the source offsets of the `h:` value and position array so they can be
+ * surgically replaced after a drag operation.
+ */
+export interface ExtrudeLoftCallInfo {
+    functionName: "extrude" | "loft"
+    /** Offset in source of the `h:` value expression (start, end). */
+    hValueStart: number
+    hValueEnd: number
+    /** Offset in source of the position array argument, if present. null when no pos arg. */
+    posArgStart: number | null
+    posArgEnd: number | null
+    /** Offset in source where a position argument would be inserted (after the opening paren). */
+    insertPosOffset: number
+    location: SourceLocation
+}
+
+/**
  * Wrapping prefix/suffix used to make bare function-body code parseable by acorn.
  * The editor source is just the function body (with return statements), so we
  * wrap it in a function declaration before parsing, then adjust locations back.
@@ -566,6 +584,141 @@ export class SourceParser {
         }
 
         return vertices
+    }
+
+    /**
+     * Find an extrude() or loft() call at a given editor position.
+     * Returns info needed to update h and pos after a cap push/pull drag.
+     */
+    findExtrudeLoftAtPosition(src: string, line: number, column: number): ExtrudeLoftCallInfo | null {
+        const offset = this.positionToOffset(src, line, column)
+        const calls: ExtrudeLoftCallInfo[] = []
+
+        try {
+            const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
+            const ast = parse(wrapped, {
+                ecmaVersion: "latest",
+                sourceType: "script",
+                locations: true,
+                ranges: true
+            })
+            this.walkNodeForExtrudeLoft(ast, calls)
+        } catch {
+            return null
+        }
+
+        for (const call of calls) {
+            const callStart = call.hValueStart
+            const callEnd = call.hValueEnd
+            if (offset >= callStart - 50 && offset <= callEnd + 50) {
+                return call
+            }
+        }
+        // Fall back to the first call at the matching source location
+        for (const call of calls) {
+            if (call.location.startLine === line) return call
+        }
+        return calls.length === 1 ? calls[0] : null
+    }
+
+    private walkNodeForExtrudeLoft(node: AcornNode, calls: ExtrudeLoftCallInfo[]): void {
+        if (!node || typeof node !== "object") return
+
+        if (node.type === "CallExpression") {
+            const callNode = node as CallExpression
+            if (callNode.callee.type === "Identifier") {
+                const name = callNode.callee.name
+                if (name === "extrude" || name === "loft") {
+                    const info = this.extractExtrudeLoftInfo(callNode, name as "extrude" | "loft")
+                    if (info) calls.push(info)
+                }
+            }
+        }
+
+        for (const key of Object.keys(node)) {
+            if (key === "type" || key === "loc" || key === "range" || key === "start" || key === "end") continue
+            const value = (node as any)[key]
+            if (Array.isArray(value)) {
+                for (const item of value) {
+                    if (item && typeof item === "object" && item.type) {
+                        this.walkNodeForExtrudeLoft(item, calls)
+                    }
+                }
+            } else if (value && typeof value === "object" && value.type) {
+                this.walkNodeForExtrudeLoft(value, calls)
+            }
+        }
+    }
+
+    /**
+     * Extract h value and pos arg source offsets from an extrude() or loft() call.
+     *
+     * extrude(polygon2d(...), { h: 1.5 })           — no pos
+     * extrude([x, y, z], polygon2d(...), { h: 1.5 }) — with pos
+     * loft([polygon2d(...), polygon2d(...)], { h: 2 })  — no pos
+     * loft([x, y, z], [...], { h: 2 })                   — with pos
+     */
+    private extractExtrudeLoftInfo(
+        callNode: CallExpression,
+        name: "extrude" | "loft"
+    ): ExtrudeLoftCallInfo | null {
+        const loc = callNode.callee.loc
+        if (!loc) return null
+
+        const args = callNode.arguments
+        if (args.length < 2) return null
+
+        // Determine which arg is the options object with { h: ... }
+        // It's always the last argument.
+        const optsArg = args[args.length - 1]
+        if (optsArg.type !== "ObjectExpression") return null
+
+        let hValueStart: number | null = null
+        let hValueEnd: number | null = null
+
+        for (const prop of (optsArg as any).properties) {
+            if (prop.type === "Property" && prop.key.type === "Identifier" && prop.key.name === "h") {
+                hValueStart = prop.value.start - ACORN_PREFIX_CHARS
+                hValueEnd = prop.value.end - ACORN_PREFIX_CHARS
+                break
+            }
+        }
+
+        if (hValueStart === null || hValueEnd === null) return null
+
+        // Check if the first arg is a position (string literal or array literal)
+        let posArgStart: number | null = null
+        let posArgEnd: number | null = null
+        const firstArg = args[0]
+        const isPositionArg = firstArg.type === "Literal" ||
+            (firstArg.type === "ArrayExpression" &&
+                (firstArg as any).elements?.length === 3 &&
+                (firstArg as any).elements.every((e: any) =>
+                    e && (e.type === "Literal" || e.type === "UnaryExpression")
+                ))
+        if (isPositionArg) {
+            posArgStart = firstArg.start - ACORN_PREFIX_CHARS
+            posArgEnd = firstArg.end - ACORN_PREFIX_CHARS
+        }
+
+        // The insertion point is right after the opening paren, before the first argument
+        const insertPosOffset = args[0].start - ACORN_PREFIX_CHARS
+
+        return {
+            functionName: name,
+            hValueStart,
+            hValueEnd,
+            posArgStart,
+            posArgEnd,
+            insertPosOffset,
+            location: {
+                startLine: loc.start.line - ACORN_PREFIX_LINES,
+                startColumn: loc.start.column + 1,
+                endLine: loc.end.line - ACORN_PREFIX_LINES,
+                endColumn: loc.end.column + 1,
+                functionName: name,
+            }
+        }
     }
 }
 

@@ -7,7 +7,7 @@ import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
-import { Extrude, SceneInfo } from "./scene/scene.mjs"
+import { Extrude, Loft, Polygon2D, SceneInfo } from "./scene/scene.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import beamShader from "./shaders/beam.wgsl"
@@ -29,6 +29,10 @@ const MAX_POLYGON_VERTICES = 1024
 /** Byte size of the polygon vertex buffer. Each vec2f is 8 bytes. */
 const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8
 
+/** Max node slots in the nodeParams uniform. Each slot is a vec4f (16 bytes): .x = h, .y = posYDelta. */
+const MAX_NODE_PARAMS = 256
+const NODE_PARAMS_BUFFER_SIZE = MAX_NODE_PARAMS * 16
+
 class UniformBuffers {
     camera!: GPUBuffer
     scene!: GPUBuffer
@@ -45,6 +49,8 @@ class UniformBuffers {
     clickedHitPos!: GPUBuffer
     /** Uniform buffer for face selection state (nodeId, faceIndex). */
     faceSelection!: GPUBuffer
+    /** Per-node parameters (h, posYDelta) for Extrude/Loft. Updated during cap drag. */
+    nodeParams!: GPUBuffer
 }
 
 /** Outline style for selected objects. */
@@ -163,6 +169,9 @@ export class SDFRenderer {
 
     /** Emitted when a push/pull drag completes with the new polygon vertices. */
     readonly pushPullComplete$ = new Subject<{ nodeId: number; vertices: [number, number][] }>()
+
+    /** Emitted when a cap push/pull drag completes with the new h and pos.y. */
+    readonly capPullComplete$ = new Subject<{ nodeId: number; newH: number; newPosY: number }>()
 
     /** Emitted after preview settings are loaded (e.g. on document switch) so the UI can sync */
     readonly previewSettingsLoaded$ = new Subject<void>()
@@ -383,12 +392,22 @@ export class SDFRenderer {
                     this.#readClickedHitPos(),
                 ])
                 if (clickedId !== 0) {
-                    // Check if clicked object is an Extrude (side face) for push/pull
                     if (this.#scene && this.#pushPullController) {
                         const node = this.#scene.get(clickedId)
+                        // Side face of a no-twist Extrude
                         if (node instanceof Extrude && node.twist === 0) {
                             this.#pushPullController.selectFace(node, hitPos)
                             return
+                        }
+                        // Cap face: Polygon2D child of an Extrude or Loft
+                        if (node instanceof Polygon2D) {
+                            const parent = this.#findCapParent(node)
+                            if (parent) {
+                                const localY = hitPos.y - parent.pos.y
+                                const isTop = localY >= 0
+                                this.#pushPullController.selectCapFace(parent, isTop)
+                                return
+                            }
                         }
                     }
                     this.objectDoubleClick$.next(clickedId)
@@ -397,6 +416,20 @@ export class SDFRenderer {
                 console.error("Error reading double-click data:", error)
             }
         }, 200)
+    }
+
+    /** Find the parent Extrude or Loft that owns this Polygon2D cap. */
+    #findCapParent(poly: Polygon2D): Extrude | Loft | null {
+        if (!this.#scene) return null
+        for (const node of this.#scene.getAllNodes()) {
+            if (node instanceof Extrude && node.child === poly) return node
+            if (node instanceof Loft) {
+                if (node.profiles[0] === poly || node.profiles[node.profiles.length - 1] === poly) {
+                    return node
+                }
+            }
+        }
+        return null
     }
 
     #updateSelection(clickedId: number, shiftKey: boolean) {
@@ -536,6 +569,18 @@ export class SDFRenderer {
         if (this.#scene.totalPolygonVertices > 0) {
             const vertexData = this.#scene.getPolygonVertexData()
             this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, vertexData.buffer)
+        }
+
+        // Populate nodeParams buffer: h and posYDelta (0) for each Extrude/Loft.
+        {
+            const params = new Float32Array(MAX_NODE_PARAMS * 4)
+            for (const node of this.#scene.getAllNodes()) {
+                if ((node instanceof Extrude || node instanceof Loft) && node.id < MAX_NODE_PARAMS) {
+                    params[node.id * 4] = node.h
+                    params[node.id * 4 + 1] = 0 // posYDelta = 0 at build time
+                }
+            }
+            this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, params)
         }
 
         // Reset AABB buffer to infinite (no culling) for immediate rendering,
@@ -766,6 +811,7 @@ export class SDFRenderer {
             get device() { return self.#device },
             get polygonVerticesBuffer() { return self.#uniformBuffers.polygonVertices },
             get faceSelectionBuffer() { return self.#uniformBuffers.faceSelection },
+            get nodeParamsBuffer() { return self.#uniformBuffers.nodeParams },
             get selectedObjectIdsBuffer() { return self.#uniformBuffers.selectedObjectIds },
             requestRender() {
                 self.#needsRender = true
@@ -781,6 +827,10 @@ export class SDFRenderer {
 
         this.#pushPullController.onComplete = (nodeId: number, vertices: [number, number][]) => {
             this.pushPullComplete$.next({ nodeId, vertices })
+        }
+
+        this.#pushPullController.onCapComplete = (nodeId: number, newH: number, newPosY: number) => {
+            this.capPullComplete$.next({ nodeId, newH, newPosY })
         }
 
         this.#pushPullController.onDeselect = () => {
@@ -937,6 +987,12 @@ export class SDFRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "faceSelection",
         })
+
+        this.#uniformBuffers.nodeParams = this.#device.createBuffer({
+            size: NODE_PARAMS_BUFFER_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "nodeParams",
+        })
     }
 
     /** Fill the AABB buffer with infinite half-extents so guards never trigger (no culling). */
@@ -1018,6 +1074,7 @@ export class SDFRenderer {
                     { binding: 1, resource: this.#tStartTextureView },
                     { binding: 2, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
                     { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                    { binding: 4, resource: { buffer: this.#uniformBuffers.nodeParams } },
                 ],
             })
         }
@@ -1040,6 +1097,7 @@ export class SDFRenderer {
                     { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                     { binding: 10, resource: { buffer: this.#uniformBuffers.clickedHitPos } },
                     { binding: 11, resource: { buffer: this.#uniformBuffers.faceSelection } },
+                    { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
                 ],
             })
         }
@@ -1403,6 +1461,7 @@ export class SDFRenderer {
             [2, this.#uniformBuffers.subtreeAABBs],
             [3, this.#uniformBuffers.polygonVertices],
             [4, this.#uniformBuffers.faceSelection],
+            [5, this.#uniformBuffers.nodeParams],
             [99, this.#uniformBuffers.selectedObjectIds]
         )
 
@@ -1524,7 +1583,7 @@ export class SDFRenderer {
             )},${minY.toFixed(3)},${minZ.toFixed(3)}]..[${maxX.toFixed(3)},${maxY.toFixed(3)},${maxZ.toFixed(3)}]`
         )
 
-        const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.subtreeAABBs, this.#uniformBuffers.polygonVertices, this.#uniformBuffers.faceSelection)
+        const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.subtreeAABBs, this.#uniformBuffers.polygonVertices, this.#uniformBuffers.faceSelection, this.#uniformBuffers.nodeParams)
 
         // Create and show progress dialog
         const { ProgressDialog } = await import("./components/progress-dialog.mjs")

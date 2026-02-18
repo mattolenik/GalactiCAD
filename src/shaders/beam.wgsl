@@ -36,6 +36,9 @@ struct Camera {
 // Polygon vertex buffer (shared storage for all Polygon2D vertex data).
 @group(0) @binding(3) var<storage, read> polygonVertices: array<vec2f>;
 
+// Per-node parameters: .x = h, .y = posYDelta. Indexed by node ID.
+@group(0) @binding(4) var<uniform> nodeParams: array<vec4f, 256>;
+
 // Fast-path-only auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 // Uses sceneAuxFast to exclude full SDFResult functions not needed by the beam shader.
 //:) insert sceneAuxFast
@@ -51,6 +54,7 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = subtreeAABBs[0].center;
     _ = polygonVertices[0];
+    _ = nodeParams[0];
 
     // Output texture is at tile resolution: ceil(W/TILE_SIZE) x ceil(H/TILE_SIZE)
     let outDims = textureDimensions(tStartOut);

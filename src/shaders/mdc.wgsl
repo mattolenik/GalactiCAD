@@ -63,6 +63,9 @@ struct FaceSelection { nodeId: u32, faceIndex: u32, mode: u32, extrudeOffset: f3
 @group(0) @binding(28) var<uniform> faceSelection: FaceSelection;
 const FACE_HIGHLIGHT_ID: u32 = 1023u;
 
+// Per-node parameters: .x = h, .y = posYDelta. Indexed by node ID.
+@group(0) @binding(29) var<uniform> nodeParams: array<vec4f, 256>;
+
 // Pass 1: Cell Classification
 @group(0) @binding(1) var<storage, read_write> activeCellFlags: array<u32>; // Bit-packed flags
 
@@ -122,9 +125,9 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
 
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> SDFResult {
-    // Force polygonVertices and faceSelection into the auto-layout (used by injected SDF code)
     _ = polygonVertices[0];
     _ = faceSelection.nodeId;
+    _ = nodeParams[0];
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 

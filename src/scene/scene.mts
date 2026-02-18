@@ -1711,7 +1711,9 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         d2d = min(d2d, bumpDist);
     }
 
-    let dCap = abs(p.y) - ${h};
+    let capH = nodeParams[id].x;
+    let capY = p.y - nodeParams[id].y;
+    let dCap = abs(capY) - capH;
     let d = max(d2d, dCap);
     let onSide = d2d > dCap;
     let eps = 0.001;
@@ -1748,16 +1750,16 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     }
 
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
-    let nCap = vec3f(0.0, sgn(p.y), 0.0);
+    let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
     var resultId = select(${childId}u, id, onSide);
-    if (onSide && faceSelection.nodeId == id) {
-        if (faceSelection.mode == 0u) {
+    if (faceSelection.nodeId == id) {
+        if (onSide && faceSelection.mode == 0u) {
             let edge = u32(combined.y);
             if (edge == faceSelection.faceIndex) {
                 resultId = FACE_HIGHLIGHT_ID;
             }
-        } else {
+        } else if (onSide && faceSelection.mode == 1u) {
             let fi = faceSelection.faceIndex;
             let v0 = polygonVertices[${BASE}u + fi];
             let v1 = polygonVertices[${BASE}u + (fi + 1u) % ${N}u];
@@ -1775,6 +1777,11 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             if (projAlong < edgeLen * 0.5 + 0.01 && projNorm < 0.01) {
                 resultId = FACE_HIGHLIGHT_ID;
             }
+        } else if (!onSide && faceSelection.mode >= 2u) {
+            let isTopFace = capY > 0.0;
+            if ((faceSelection.mode == 2u && isTopFace) || (faceSelection.mode == 3u && !isTopFace)) {
+                resultId = FACE_HIGHLIGHT_ID;
+            }
         }
     }
     return sdfTrue(d, resultId, n);
@@ -1787,24 +1794,31 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         const twistRad = (this.twist * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
-    let h = ${this.h.toFixed(6)};
+    let h = nodeParams[id].x;
+    let capY = p.y - nodeParams[id].y;
     let twist = ${twistRad};
-    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
+    let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
     let angle = twist * t;
     let ca = cos(angle);
     let sa = sin(angle);
     let twisted = vec2f(ca * p.x + sa * p.z, -sa * p.x + ca * p.z);
     let d2d = ${childFunc}(twisted);
-    let dCap = abs(p.y) - h;
+    let dCap = abs(capY) - h;
     let d = max(d2d, dCap);
     let onSide = (d - dCap) > 0.01;
     let eps = 0.001;
     let gx = ${childFunc}(twisted + vec2f(eps, 0.0)) - ${childFunc}(twisted - vec2f(eps, 0.0));
     let gz = ${childFunc}(twisted + vec2f(0.0, eps)) - ${childFunc}(twisted - vec2f(0.0, eps));
     let nSide = safeNormalize(vec3f(ca * gx - sa * gz, 0.0, sa * gx + ca * gz), vec3f(1.0, 0.0, 0.0));
-    let nCap = vec3f(0.0, sgn(p.y), 0.0);
+    let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
-    let resultId = select(${childId}u, id, onSide);
+    var resultId = select(${childId}u, id, onSide);
+    if (!onSide && faceSelection.nodeId == id && faceSelection.mode >= 2u) {
+        let isTopFace = capY > 0.0;
+        if ((faceSelection.mode == 2u && isTopFace) || (faceSelection.mode == 3u && !isTopFace)) {
+            resultId = FACE_HIGHLIGHT_ID;
+        }
+    }
     return sdfR(d, 0.8, 1.0, resultId, n);
 }
 `
@@ -1819,7 +1833,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             return `
 fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
     let d2d = ${childFunc}(p.xz);
-    let dCap = abs(p.y) - ${h};
+    let dCap = abs(p.y - nodeParams[${this.id}].y) - nodeParams[${this.id}].x;
     return vec2f(max(d2d, dCap), 1.0);
 }
 `
@@ -1828,15 +1842,16 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
         const twistRad = (this.twist * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
-    let h = ${h};
+    let h = nodeParams[${this.id}].x;
+    let capY = p.y - nodeParams[${this.id}].y;
     let twist = ${twistRad};
-    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
+    let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
     let angle = twist * t;
     let ca = cos(angle);
     let sa = sin(angle);
     let twisted = vec2f(ca * p.x + sa * p.z, -sa * p.x + ca * p.z);
     let d2d = ${childFunc}(twisted);
-    let dCap = abs(p.y) - h;
+    let dCap = abs(capY) - h;
     return max(d2d, dCap);
 }
 
@@ -2055,17 +2070,25 @@ export class Loft extends WithPos(Node) {
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d = ${this.wgslFieldFuncName}(p);
-    let dCap = abs(p.y) - ${h};
+    let capH = nodeParams[id].x;
+    let capY = p.y - nodeParams[id].y;
+    let dCap = abs(capY) - capH;
     let onSide = (d - dCap) > 0.01;
     let eps = 0.001;
     let gx = ${this.wgslFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
     let gz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
-    let nCap = vec3f(0.0, sgn(p.y), 0.0);
+    let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
-    let bottomCap = p.y < 0.0;
+    let bottomCap = capY < 0.0;
     let capId = select(${this.profiles[this.profiles.length - 1].id}u, ${this.profiles[0].id}u, bottomCap);
-    let resultId = select(capId, id, onSide);
+    var resultId = select(capId, id, onSide);
+    if (!onSide && faceSelection.nodeId == id && faceSelection.mode >= 2u) {
+        let isTopFace = capY > 0.0;
+        if ((faceSelection.mode == 2u && isTopFace) || (faceSelection.mode == 3u && !isTopFace)) {
+            resultId = FACE_HIGHLIGHT_ID;
+        }
+    }
     return sdfTrue(d, resultId, n);
 }
 `
@@ -2077,10 +2100,11 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
 
         return `
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
-    let h = ${h};
-    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
+    let h = nodeParams[${this.id}].x;
+    let capY = p.y - nodeParams[${this.id}].y;
+    let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
 ${fieldBody}
-    let dCap = abs(p.y) - h;
+    let dCap = abs(capY) - h;
     return max(d_profile, dCap);
 }
 

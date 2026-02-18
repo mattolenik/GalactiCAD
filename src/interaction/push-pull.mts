@@ -1,5 +1,5 @@
 import { Vec2f, Vec3f, vec2, vec3 } from "../vecmat/vector.mjs"
-import type { Extrude } from "../scene/scene.mjs"
+import type { Extrude, Loft } from "../scene/scene.mjs"
 
 /** Reserved object ID for face-level highlighting via the existing outline system. */
 const FACE_HIGHLIGHT_ID = 1023
@@ -8,6 +8,7 @@ export interface PushPullHost {
     readonly device: GPUDevice
     readonly polygonVerticesBuffer: GPUBuffer
     readonly faceSelectionBuffer: GPUBuffer
+    readonly nodeParamsBuffer: GPUBuffer
     readonly selectedObjectIdsBuffer: GPUBuffer
     requestRender(): void
     readonly canvas: HTMLCanvasElement
@@ -29,16 +30,25 @@ interface FaceState {
     originalVertices: [number, number][]
 }
 
+interface CapState {
+    node: Extrude | Loft
+    isTop: boolean
+    originalH: number
+    originalPosY: number
+}
+
 export type PushPullMode = "slide" | "extrude"
 
 export class PushPullController {
     #host: PushPullHost
     #face: FaceState | null = null
+    #cap: CapState | null = null
     #dragging = false
     #dragStartScreen = vec2(0, 0)
     #dragOffset = 0
     #canvasHeight = 0
     #onComplete: ((nodeId: number, vertices: [number, number][]) => void) | null = null
+    #onCapComplete: ((nodeId: number, newH: number, newPosY: number) => void) | null = null
     #onDeselect: (() => void) | null = null
     mode: PushPullMode = "slide"
 
@@ -47,7 +57,7 @@ export class PushPullController {
     }
 
     get isActive(): boolean {
-        return this.#face !== null
+        return this.#face !== null || this.#cap !== null
     }
 
     get isDragging(): boolean {
@@ -56,6 +66,10 @@ export class PushPullController {
 
     set onComplete(cb: (nodeId: number, vertices: [number, number][]) => void) {
         this.#onComplete = cb
+    }
+
+    set onCapComplete(cb: (nodeId: number, newH: number, newPosY: number) => void) {
+        this.#onCapComplete = cb
     }
 
     set onDeselect(cb: () => void) {
@@ -126,10 +140,32 @@ export class PushPullController {
         this.#host.requestRender()
     }
 
+    /** Select a cap face (top or bottom) of an Extrude or Loft for push/pull. */
+    selectCapFace(node: Extrude | Loft, isTop: boolean): void {
+        this.#face = null
+        this.#cap = {
+            node,
+            isTop,
+            originalH: node.h,
+            originalPosY: node.pos.y,
+        }
+
+        // mode 2 = top cap, mode 3 = bottom cap
+        const mode = isTop ? 2 : 3
+        this.#writeFaceSelection(node.id, 0, mode, 0)
+
+        const selData = new Uint32Array(1024)
+        selData[FACE_HIGHLIGHT_ID] = 1
+        this.#host.device.queue.writeBuffer(this.#host.selectedObjectIdsBuffer, 0, selData)
+
+        this.#host.requestRender()
+    }
+
     /** Deselect any active face. */
     deselect(): void {
-        if (!this.#face) return
+        if (!this.#face && !this.#cap) return
         this.#face = null
+        this.#cap = null
         this.#dragging = false
 
         // Clear face selection on GPU
@@ -148,7 +184,7 @@ export class PushPullController {
 
     /** Handle pointer down: start a drag if clicking on the selected face. */
     handlePointerDown(e: PointerEvent): boolean {
-        if (!this.#face || e.button !== 0) return false
+        if ((!this.#face && !this.#cap) || e.button !== 0) return false
 
         this.#dragging = true
         this.#dragStartScreen = vec2(e.clientX, e.clientY)
@@ -161,7 +197,13 @@ export class PushPullController {
 
     /** Handle pointer move during drag. Returns true if the event was consumed. */
     handlePointerMove(e: PointerEvent): boolean {
-        if (!this.#dragging || !this.#face) return false
+        if (!this.#dragging) return false
+
+        if (this.#cap) {
+            return this.#handleCapPointerMove(e)
+        }
+
+        if (!this.#face) return false
 
         const currentScreen = vec2(e.clientX, e.clientY)
         const delta = vec2(
@@ -213,7 +255,13 @@ export class PushPullController {
 
     /** Handle pointer up: finalize drag. Returns true if the event was consumed. */
     handlePointerUp(e: PointerEvent): boolean {
-        if (!this.#dragging || !this.#face) return false
+        if (!this.#dragging) return false
+
+        if (this.#cap) {
+            return this.#handleCapPointerUp()
+        }
+
+        if (!this.#face) return false
 
         this.#dragging = false
         this.#host.controls.isDragging = false
@@ -238,12 +286,14 @@ export class PushPullController {
 
     /** Handle Escape key: cancel drag and restore original vertices. */
     handleKeyDown(e: KeyboardEvent): boolean {
-        if (e.key === "Escape" && this.#face) {
+        if (e.key === "Escape" && (this.#face || this.#cap)) {
             if (this.#dragging) {
-                if (this.mode === "slide") {
+                if (this.#face && this.mode === "slide") {
                     this.#restoreOriginalVertices()
                 }
-                // Extrude mode: vertices weren't modified during drag, just clear the uniform
+                if (this.#cap) {
+                    this.#writeNodeParams(this.#cap.node.id, this.#cap.originalH, 0)
+                }
                 this.#dragging = false
                 this.#host.controls.isDragging = false
             }
@@ -262,6 +312,18 @@ export class PushPullController {
         u32[2] = mode
         f32[3] = extrudeOffset
         this.#host.device.queue.writeBuffer(this.#host.faceSelectionBuffer, 0, data)
+    }
+
+    /** Write h and posYDelta into the nodeParams uniform for a single node slot. */
+    #writeNodeParams(nodeId: number, h: number, posYDelta: number): void {
+        const data = new Float32Array(4) // vec4f
+        data[0] = h
+        data[1] = posYDelta
+        this.#host.device.queue.writeBuffer(
+            this.#host.nodeParamsBuffer,
+            nodeId * 16,
+            data,
+        )
     }
 
     /** Apply a push/pull offset to the selected face, updating polygon vertices. */
@@ -357,6 +419,59 @@ export class PushPullController {
             }
         }
         return result
+    }
+
+    /** Cap drag: project screen-space mouse movement onto the Y axis. */
+    #handleCapPointerMove(e: PointerEvent): boolean {
+        const cap = this.#cap!
+        const currentScreen = vec2(e.clientX, e.clientY)
+        const delta = vec2(
+            currentScreen.x - this.#dragStartScreen.x,
+            currentScreen.y - this.#dragStartScreen.y,
+        )
+
+        // Cap normal is always (0, ±1, 0) in world space
+        const n = cap.isTop ? vec3(0, 1, 0) : vec3(0, -1, 0)
+
+        const m = this.#host.controls.viewTransform.data
+        const dotRight = m[0] * n.x + m[1] * n.y + m[2] * n.z
+        const dotUp    = m[4] * n.x + m[5] * n.y + m[6] * n.z
+        const snx = dotRight
+        const sny = -dotUp
+        const snLenSq = snx * snx + sny * sny
+        if (snLenSq < 1e-12) return true
+
+        const worldPerPixel = (this.#host.controls.zoom * 2) / this.#canvasHeight
+        const worldOffset = (delta.x * snx + delta.y * sny) * worldPerPixel / snLenSq
+
+        // Clamp so h doesn't go below 0.01 (newH = originalH + delta * 0.5)
+        const minOffset = 2 * (0.01 - cap.originalH)
+        this.#dragOffset = Math.max(worldOffset, minOffset)
+
+        const newH = cap.originalH + this.#dragOffset * 0.5
+        const posYDelta = cap.isTop ? this.#dragOffset * 0.5 : -this.#dragOffset * 0.5
+        this.#writeNodeParams(cap.node.id, newH, posYDelta)
+        this.#host.requestRender()
+        return true
+    }
+
+    /** Finalize cap drag: compute new h and pos, emit completion. */
+    #handleCapPointerUp(): boolean {
+        const cap = this.#cap!
+        this.#dragging = false
+        this.#host.controls.isDragging = false
+
+        if (Math.abs(this.#dragOffset) > 0.001) {
+            const delta = this.#dragOffset
+            const newH = cap.originalH + delta * 0.5
+            const newPosY = cap.isTop
+                ? cap.originalPosY + delta * 0.5
+                : cap.originalPosY - delta * 0.5
+            this.#onCapComplete?.(cap.node.id, newH, newPosY)
+        }
+
+        this.deselect()
+        return true
     }
 
     #restoreOriginalVertices(): void {

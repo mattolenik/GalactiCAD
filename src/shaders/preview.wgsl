@@ -66,6 +66,10 @@ struct FaceSelection {
 }
 @group(0) @binding(11) var<uniform> faceSelection: FaceSelection;
 
+// Per-node parameters: .x = h (half-height), .y = posYDelta (Y offset from compiled position).
+// Indexed by node ID. Updated during cap push/pull drag.
+@group(0) @binding(12) var<uniform> nodeParams: array<vec4f, 256>;
+
 const FACE_HIGHLIGHT_ID: u32 = 1023u;
 
 // Fragment output: color and object ID for MRT outline detection
@@ -252,6 +256,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     _ = polygonVertices[0];
     _ = clickedHitPos[0];
     _ = faceSelection.nodeId;
+    _ = nodeParams[0];
 
     let uv = fragCoord;
     let aspect = camera.res.x / camera.res.y;

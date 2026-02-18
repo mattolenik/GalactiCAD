@@ -118,15 +118,17 @@ export class MDCExport {
     #subtreeAABBsBuffer: GPUBuffer
     #polygonVerticesBuffer: GPUBuffer
     #faceSelectionBuffer: GPUBuffer
+    #nodeParamsBuffer: GPUBuffer
     #cancelled = false
     #cancellationBuffer: GPUBuffer | null = null
 
-    constructor(helper: GPUHelper, private params: MDCParams, subtreeAABBsBuffer: GPUBuffer, polygonVerticesBuffer: GPUBuffer, faceSelectionBuffer: GPUBuffer) {
+    constructor(helper: GPUHelper, private params: MDCParams, subtreeAABBsBuffer: GPUBuffer, polygonVerticesBuffer: GPUBuffer, faceSelectionBuffer: GPUBuffer, nodeParamsBuffer: GPUBuffer) {
         this.#helper = helper
         this.#device = helper.device
         this.#subtreeAABBsBuffer = subtreeAABBsBuffer
         this.#polygonVerticesBuffer = polygonVerticesBuffer
         this.#faceSelectionBuffer = faceSelectionBuffer
+        this.#nodeParamsBuffer = nodeParamsBuffer
     }
 
     /** Destroy all GPU buffers created during export */
@@ -329,6 +331,7 @@ export class MDCExport {
                 [26, this.#subtreeAABBsBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
+                [29, this.#nodeParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
 
@@ -497,6 +500,7 @@ export class MDCExport {
                 [26, this.#subtreeAABBsBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
+                [29, this.#nodeParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
 
@@ -512,6 +516,7 @@ export class MDCExport {
                 [26, this.#subtreeAABBsBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
+                [29, this.#nodeParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
 
@@ -531,7 +536,8 @@ export class MDCExport {
                 [24, debugSkipCountersBuffer],
                 [26, this.#subtreeAABBsBuffer],
                 [27, this.#polygonVerticesBuffer],
-                [28, this.#faceSelectionBuffer]
+                [28, this.#faceSelectionBuffer],
+                [29, this.#nodeParamsBuffer]
             )
 
             // === Pass 3: Edge detection and per-cell union-find ===

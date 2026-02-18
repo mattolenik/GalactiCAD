@@ -1401,6 +1401,8 @@ export class SDFRenderer {
             [0, uniformBuffer],
             [1, outBuffer],
             [2, this.#uniformBuffers.subtreeAABBs],
+            [3, this.#uniformBuffers.polygonVertices],
+            [4, this.#uniformBuffers.faceSelection],
             [99, this.#uniformBuffers.selectedObjectIds]
         )
 
@@ -1522,7 +1524,7 @@ export class SDFRenderer {
             )},${minY.toFixed(3)},${minZ.toFixed(3)}]..[${maxX.toFixed(3)},${maxY.toFixed(3)},${maxZ.toFixed(3)}]`
         )
 
-        const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.selectedObjectIds, this.#uniformBuffers.subtreeAABBs, this.#uniformBuffers.polygonVertices, this.#uniformBuffers.faceSelection)
+        const mdc = new MDCExport(this.#helper, params, this.#uniformBuffers.subtreeAABBs, this.#uniformBuffers.polygonVertices, this.#uniformBuffers.faceSelection)
 
         // Create and show progress dialog
         const { ProgressDialog } = await import("./components/progress-dialog.mjs")

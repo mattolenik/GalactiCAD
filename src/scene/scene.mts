@@ -1511,6 +1511,11 @@ export class Polygon2D extends Node {
         return `fPolygon2D_${this.id}_closestEdge`
     }
 
+    /** WGSL function name for combined SDF + closest-edge (single-pass). */
+    get wgslCombinedFuncName(): string {
+        return `fPolygon2D_${this.id}_combined`
+    }
+
     // Polygon2D's evaluator is a shared helper needed by both fast and full
     // paths (Extrude, Lathe, Loft all reference it). Emit it only in
     // compileAuxFast() so it appears once in sceneAuxFast. WGSL module scope
@@ -1565,6 +1570,34 @@ fn ${this.wgslClosestEdgeFuncName}(p: vec2f) -> u32 {
         j = i;
     }
     return closest;
+}
+
+fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec3f {
+    const N = ${N}u;
+    const BASE = ${BASE}u;
+    var v: array<vec2f, ${N}>;
+    for (var k = 0u; k < N; k++) {
+        v[k] = polygonVertices[BASE + k];
+    }
+    var d = dot(p - v[0], p - v[0]);
+    var s = 1.0;
+    var minDist = 1e30;
+    var closest = 0u;
+    var j = N - 1u;
+    for (var i = 0u; i < N; i++) {
+        let e = v[j] - v[i];
+        let w = p - v[i];
+        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+        let dd = dot(b, b);
+        d = min(d, dd);
+        if (dd < minDist) { minDist = dd; closest = j; }
+        let c0 = p.y >= v[i].y;
+        let c1 = p.y < v[j].y;
+        let c2 = e.x * w.y > e.y * w.x;
+        if ((c0 && c1 && c2) || (!c0 && !c1 && !c2)) { s = -s; }
+        j = i;
+    }
+    return vec3f(s * sqrt(d), f32(closest), 0.0);
 }
 `
     }
@@ -1627,19 +1660,33 @@ export class Extrude extends WithPos(Node) {
 
     override compileAux(): string {
         const childFunc = this.child.wgslFuncName
-        const closestEdgeFunc = this.child.wgslClosestEdgeFuncName
+        const combinedFunc = this.child.wgslCombinedFuncName
         const childId = this.child.id
         const h = this.h.toFixed(6)
         const N = this.child.vertices.length
         const BASE = this.child.bufferOffset
         const hasTwist = this.twist !== 0
 
+        // Precompute polygon winding direction at JS compile time
+        const windSign = (() => {
+            let area = 0
+            const verts = this.child.vertices
+            for (let i = 0; i < verts.length; i++) {
+                const [ax, ay] = verts[i]
+                const [bx, by] = verts[(i + 1) % verts.length]
+                area += (ax + bx) * (ay - by)
+            }
+            return area < 0 ? -1.0 : 1.0
+        })()
+        const windSignStr = windSign.toFixed(1)
+
         if (!hasTwist) {
             // No twist: exact SDF with analytic normals.
             // Fast function is emitted by compileAuxFast() only.
             return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
-    var d2d = ${childFunc}(p.xz);
+    let combined = ${combinedFunc}(p.xz);
+    var d2d = combined.x;
 
     // Extrude mode: union the polygon with a bump rectangle
     if (faceSelection.mode == 1u && faceSelection.nodeId == id && faceSelection.extrudeOffset != 0.0) {
@@ -1649,23 +1696,11 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         let edgeDir = v1 - v0;
         let edgeLen = length(edgeDir);
         let eTan = edgeDir / edgeLen;
-        // Outward normal (perpendicular to edge, direction matches polygon winding)
         let eNorm = vec2f(eTan.y, -eTan.x);
-        // Determine winding: check if normal points outward by testing signed area direction
-        var windSign = 1.0;
-        var area = 0.0;
-        for (var ai = 0u; ai < ${N}u; ai++) {
-            let va = polygonVertices[${BASE}u + ai];
-            let vb = polygonVertices[${BASE}u + (ai + 1u) % ${N}u];
-            area += (va.x + vb.x) * (va.y - vb.y);
-        }
-        if (area < 0.0) { windSign = -1.0; }
-        let outNorm = eNorm * windSign;
+        let outNorm = eNorm * ${windSignStr};
         let off = faceSelection.extrudeOffset;
-        // Rectangle center: midpoint of edge shifted by half the offset along the normal
         let edgeMid = (v0 + v1) * 0.5;
         let rectCenter = edgeMid + outNorm * off * 0.5;
-        // Transform p.xz into the rectangle's local frame
         let rel = p.xz - rectCenter;
         let localX = dot(rel, eTan);
         let localY = dot(rel, outNorm);
@@ -1696,21 +1731,12 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         let edgeLen = length(edgeDir);
         let eTan = edgeDir / edgeLen;
         let eNorm = vec2f(eTan.y, -eTan.x);
-        var windSign = 1.0;
-        var area = 0.0;
-        for (var ai = 0u; ai < ${N}u; ai++) {
-            let va = polygonVertices[${BASE}u + ai];
-            let vb = polygonVertices[${BASE}u + (ai + 1u) % ${N}u];
-            area += (va.x + vb.x) * (va.y - vb.y);
-        }
-        if (area < 0.0) { windSign = -1.0; }
-        let outNorm = eNorm * windSign;
+        let outNorm = eNorm * ${windSignStr};
         let off = faceSelection.extrudeOffset;
         let edgeMid = (v0 + v1) * 0.5;
         let rectCenter = edgeMid + outNorm * off * 0.5;
         let halfW = edgeLen * 0.5;
         let halfH = abs(off) * 0.5;
-        // Recompute gradient using the combined SDF
         let sample_xp = p.xz + vec2f(eps, 0.0);
         let sample_xn = p.xz - vec2f(eps, 0.0);
         let sample_zp = p.xz + vec2f(0.0, eps);
@@ -1727,12 +1753,11 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     var resultId = select(${childId}u, id, onSide);
     if (onSide && faceSelection.nodeId == id) {
         if (faceSelection.mode == 0u) {
-            let edge = ${closestEdgeFunc}(p.xz);
+            let edge = u32(combined.y);
             if (edge == faceSelection.faceIndex) {
                 resultId = FACE_HIGHLIGHT_ID;
             }
         } else {
-            // In extrude mode, highlight the bump region
             let fi = faceSelection.faceIndex;
             let v0 = polygonVertices[${BASE}u + fi];
             let v1 = polygonVertices[${BASE}u + (fi + 1u) % ${N}u];
@@ -1740,18 +1765,9 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             let edgeLen = length(edgeDir);
             let eTan = edgeDir / edgeLen;
             let eNorm = vec2f(eTan.y, -eTan.x);
-            var windSign2 = 1.0;
-            var area2 = 0.0;
-            for (var ai2 = 0u; ai2 < ${N}u; ai2++) {
-                let va2 = polygonVertices[${BASE}u + ai2];
-                let vb2 = polygonVertices[${BASE}u + (ai2 + 1u) % ${N}u];
-                area2 += (va2.x + vb2.x) * (va2.y - vb2.y);
-            }
-            if (area2 < 0.0) { windSign2 = -1.0; }
-            let outNorm2 = eNorm * windSign2;
+            let outNorm2 = eNorm * ${windSignStr};
             let off2 = faceSelection.extrudeOffset;
             let edgeMid2 = (v0 + v1) * 0.5;
-            // The extruded face is the far edge of the bump rectangle
             let faceMid = edgeMid2 + outNorm2 * off2;
             let rel2 = p.xz - faceMid;
             let projAlong = abs(dot(rel2, eTan));
@@ -1766,19 +1782,28 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
 `
         }
 
-        // With twist: distance estimator, normals via 3D finite differences.
+        // With twist: analytic 2D gradient in twisted frame, rotated back to world space.
         // Field and Fast functions are emitted by compileAuxFast() only.
-        // Ex function references the field function via WGSL module scope.
+        const twistRad = (this.twist * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
-    let d = ${this.wgslFieldFuncName}(p);
-    let eps = 0.001;
-    let nx = ${this.wgslFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
-    let ny = ${this.wgslFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, eps, 0.0));
-    let nz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
-    let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
-    let dCap = abs(p.y) - ${this.h.toFixed(6)};
+    let h = ${this.h.toFixed(6)};
+    let twist = ${twistRad};
+    let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
+    let angle = twist * t;
+    let ca = cos(angle);
+    let sa = sin(angle);
+    let twisted = vec2f(ca * p.x + sa * p.z, -sa * p.x + ca * p.z);
+    let d2d = ${childFunc}(twisted);
+    let dCap = abs(p.y) - h;
+    let d = max(d2d, dCap);
     let onSide = (d - dCap) > 0.01;
+    let eps = 0.001;
+    let gx = ${childFunc}(twisted + vec2f(eps, 0.0)) - ${childFunc}(twisted - vec2f(eps, 0.0));
+    let gz = ${childFunc}(twisted + vec2f(0.0, eps)) - ${childFunc}(twisted - vec2f(0.0, eps));
+    let nSide = safeNormalize(vec3f(ca * gx - sa * gz, 0.0, sa * gx + ca * gz), vec3f(1.0, 0.0, 0.0));
+    let nCap = vec3f(0.0, sgn(p.y), 0.0);
+    let n = select(nCap, nSide, onSide);
     let resultId = select(${childId}u, id, onSide);
     return sdfR(d, 0.8, 1.0, resultId, n);
 }
@@ -1991,104 +2016,70 @@ export class Loft extends WithPos(Node) {
     get wgslExFuncName(): string { return `fLoft_${this.id}_Ex` }
     get wgslFastFuncName(): string { return `fLoft_${this.id}_Fast` }
 
-    override compileAux(): string {
+    /** Generate the WGSL field function body that evaluates only the 2 bracketing profiles. */
+    private generateFieldBody(h: string): string {
         const N = this.profiles.length
-        const h = this.h.toFixed(6)
 
-        // Generate profile evaluation lines
-        const evalLines = this.profiles
-            .map((p, i) => `    let d${i} = ${p.wgslFuncName}(p.xz);`)
-            .join("\n")
-
-        // Generate interpolation logic
-        let interpCode: string
         if (N === 2) {
-            interpCode = `    let d_profile = mix(d0, d1, t);`
-        } else {
-            const numSegments = N - 1
-            interpCode = `    let seg = t * ${numSegments.toFixed(1)};
-    var d_profile: f32;
-`
-            for (let i = 0; i < numSegments; i++) {
-                const localT = i === 0 ? "seg" : `seg - ${i.toFixed(1)}`
-                if (i === 0) {
-                    interpCode += `    if (seg < 1.0) {
-        d_profile = mix(d${i}, d${i + 1}, ${localT});
-`
-                } else if (i === numSegments - 1) {
-                    interpCode += `    } else {
-        d_profile = mix(d${i}, d${i + 1}, ${localT});
-    }
-`
-                } else {
-                    interpCode += `    } else if (seg < ${(i + 1).toFixed(1)}) {
-        d_profile = mix(d${i}, d${i + 1}, ${localT});
-`
-                }
-            }
+            const f0 = this.profiles[0].wgslFuncName
+            const f1 = this.profiles[1].wgslFuncName
+            return `    let d_profile = mix(${f0}(p.xz), ${f1}(p.xz), t);`
         }
 
-        // Full-path only: emit Ex function. Field and Fast functions are in compileAuxFast().
+        const numSegments = N - 1
+        let code = `    let seg = t * ${numSegments.toFixed(1)};\n`
+        code += `    let si = min(u32(seg), ${(numSegments - 1)}u);\n`
+        code += `    let localT = seg - f32(si);\n`
+        code += `    var dA: f32; var dB: f32;\n`
+        for (let i = 0; i < numSegments; i++) {
+            const fA = this.profiles[i].wgslFuncName
+            const fB = this.profiles[i + 1].wgslFuncName
+            if (i === 0) {
+                code += `    if (si == 0u) { dA = ${fA}(p.xz); dB = ${fB}(p.xz); }\n`
+            } else if (i === numSegments - 1) {
+                code += `    else { dA = ${fA}(p.xz); dB = ${fB}(p.xz); }\n`
+            } else {
+                code += `    else if (si == ${i}u) { dA = ${fA}(p.xz); dB = ${fB}(p.xz); }\n`
+            }
+        }
+        code += `    let d_profile = mix(dA, dB, localT);`
+        return code
+    }
+
+    override compileAux(): string {
+        const h = this.h.toFixed(6)
+
+        // Full-path only: emit Ex function with 2D analytic normals.
+        // Field and Fast functions are in compileAuxFast().
         // Ex references the field function via WGSL module scope.
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d = ${this.wgslFieldFuncName}(p);
-    let eps = 0.001;
-    let nx = ${this.wgslFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
-    let ny = ${this.wgslFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, eps, 0.0));
-    let nz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
-    let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
     let dCap = abs(p.y) - ${h};
     let onSide = (d - dCap) > 0.01;
+    let eps = 0.001;
+    let gx = ${this.wgslFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
+    let gz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
+    let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
+    let nCap = vec3f(0.0, sgn(p.y), 0.0);
+    let n = select(nCap, nSide, onSide);
     let bottomCap = p.y < 0.0;
     let capId = select(${this.profiles[this.profiles.length - 1].id}u, ${this.profiles[0].id}u, bottomCap);
     let resultId = select(capId, id, onSide);
-    return sdfR(d, 0.8, 1.0, resultId, n);
+    return sdfTrue(d, resultId, n);
 }
 `
     }
 
     override compileAuxFast(): string {
-        const N = this.profiles.length
         const h = this.h.toFixed(6)
-
-        const evalLines = this.profiles
-            .map((p, i) => `    let d${i} = ${p.wgslFuncName}(p.xz);`)
-            .join("\n")
-
-        let interpCode: string
-        if (N === 2) {
-            interpCode = `    let d_profile = mix(d0, d1, t);`
-        } else {
-            const numSegments = N - 1
-            interpCode = `    let seg = t * ${numSegments.toFixed(1)};
-    var d_profile: f32;
-`
-            for (let i = 0; i < numSegments; i++) {
-                const localT = i === 0 ? "seg" : `seg - ${i.toFixed(1)}`
-                if (i === 0) {
-                    interpCode += `    if (seg < 1.0) {
-        d_profile = mix(d${i}, d${i + 1}, ${localT});
-`
-                } else if (i === numSegments - 1) {
-                    interpCode += `    } else {
-        d_profile = mix(d${i}, d${i + 1}, ${localT});
-    }
-`
-                } else {
-                    interpCode += `    } else if (seg < ${(i + 1).toFixed(1)}) {
-        d_profile = mix(d${i}, d${i + 1}, ${localT});
-`
-                }
-            }
-        }
+        const fieldBody = this.generateFieldBody(h)
 
         return `
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
     let h = ${h};
     let t = clamp((p.y + h) / (2.0 * h), 0.0, 1.0);
-${evalLines}
-${interpCode}
+${fieldBody}
     let dCap = abs(p.y) - h;
     return max(d_profile, dCap);
 }

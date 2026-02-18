@@ -49,8 +49,8 @@ const EDGES_PER_CELL: u32 = 12u;
 // Group 0: Shared parameters across all passes
 @group(0) @binding(0) var<uniform> uniforms: SharedUniforms;
 
-// Dummy selection array (boolean array indexed by object ID, required for binding compatibility)
-@group(0) @binding(99) var<storage, read> selectedObjectIds: array<u32, 1024>;
+// Selection array indexed by object ID (not used in MDC; only needed in preview shader).
+// Deliberately omitted to stay within the 10 storage buffer per-stage limit in Pass 5.
 
 // Subtree AABBs for spatial culling (required by hg_sdf.wgsl subtreeAABBDist).
 @group(0) @binding(26) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
@@ -122,8 +122,7 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
 
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> SDFResult {
-    // Reference unused bindings to prevent optimization (auto-layout strips unused bindings)
-    let dummy = selectedObjectIds[0];
+    // Force polygonVertices and faceSelection into the auto-layout (used by injected SDF code)
     _ = polygonVertices[0];
     _ = faceSelection.nodeId;
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF

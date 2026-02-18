@@ -37,6 +37,7 @@ export class PushPullController {
     #dragging = false
     #dragStartScreen = vec2(0, 0)
     #dragOffset = 0
+    #canvasHeight = 0
     #onComplete: ((nodeId: number, vertices: [number, number][]) => void) | null = null
     #onDeselect: (() => void) | null = null
     mode: PushPullMode = "slide"
@@ -152,6 +153,7 @@ export class PushPullController {
         this.#dragging = true
         this.#dragStartScreen = vec2(e.clientX, e.clientY)
         this.#dragOffset = 0
+        this.#canvasHeight = this.#host.canvas.getBoundingClientRect().height
         this.#host.controls.isDragging = true
         this.#host.canvas.setPointerCapture(e.pointerId)
         return true
@@ -196,8 +198,7 @@ export class PushPullController {
         //
         // 1 world unit along the normal produces |screenNormal| * (1/worldPerPixel) pixels.
         // Inverting: worldOffset = dot(drag, sn) * worldPerPixel / |sn|^2
-        const canvasHeight = this.#host.canvas.getBoundingClientRect().height
-        const worldPerPixel = (this.#host.controls.zoom * 2) / canvasHeight
+        const worldPerPixel = (this.#host.controls.zoom * 2) / this.#canvasHeight
         const worldOffset = (delta.x * snx + delta.y * sny) * worldPerPixel / snLenSq
 
         this.#dragOffset = worldOffset

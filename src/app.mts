@@ -224,7 +224,9 @@ class App {
             startPos.lineNumber, startPos.column,
             endPos.lineNumber, endPos.column
         )
+        model.pushStackElement()
         model.pushEditOperations([], [{ range, text: newText }], () => null)
+        model.pushStackElement()
     }
 
     /**
@@ -506,6 +508,7 @@ class App {
             .then(() => {
                 this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox)
                 this.#wireEditorAndTabs()
+                this.#wireGlobalUndoRedo()
                 this.#wireMenu(menu, preview, devTools)
                 this.build()
 
@@ -602,6 +605,21 @@ class App {
             } else {
                 this.log.innerText = ""
             }
+        })
+    }
+
+    #wireGlobalUndoRedo() {
+        document.addEventListener("keydown", (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey) || e.altKey) return
+            if (e.key.toLowerCase() !== "z") return
+
+            const active = document.activeElement
+            if (this.#editorContainer.contains(active)) return
+            if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return
+            if (this.#polygonEditor) return
+
+            e.preventDefault()
+            this.editor.trigger("keyboard", e.shiftKey ? "redo" : "undo", null)
         })
     }
 

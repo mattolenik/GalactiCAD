@@ -116,6 +116,16 @@ export class SDFRenderer {
     // Generation counter to discard stale async AABB results
     #aabbGeneration = 0
 
+    // Pre-allocated buffers reused every frame to avoid GC pressure
+    #zoomBuf = new Float32Array(1)
+    #lightDirBuf = new Float32Array(12)
+    #viewSettingsBuf = new Uint32Array(3)
+    #outlineBuf = new ArrayBuffer(32)
+    #outlineU32 = new Uint32Array(this.#outlineBuf, 0, 1)
+    #outlineThicknessF32 = new Float32Array(this.#outlineBuf, 4, 1)
+    #outlineColorF32 = new Float32Array(this.#outlineBuf, 16, 3)
+    #outlineWidthF32 = new Float32Array(this.#outlineBuf, 28, 1)
+
     // Resolution scaling: render at reduced res during camera movement for responsiveness
     #settings: SettingsManager = SettingsManager.instance
     #fullWidth: number = 0
@@ -757,7 +767,12 @@ export class SDFRenderer {
             get polygonVerticesBuffer() { return self.#uniformBuffers.polygonVertices },
             get faceSelectionBuffer() { return self.#uniformBuffers.faceSelection },
             get selectedObjectIdsBuffer() { return self.#uniformBuffers.selectedObjectIds },
-            requestRender() { self.#needsRender = true },
+            requestRender() {
+                self.#needsRender = true
+                if (self.#pushPullController?.isDragging) {
+                    self.#onCameraMovement()
+                }
+            },
             get canvas() { return self.#preview.canvas },
             get controls() { return self.#controls },
             get viewCenter() { return self.#viewCenter },
@@ -1081,7 +1096,8 @@ export class SDFRenderer {
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, this.#controls.viewTransform.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraRes.data as BufferSource)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))
+        this.#zoomBuf[0] = this.#controls.zoom
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, this.#zoomBuf)
 
         // Pre-transform light directions from camera-space into scene-space on the CPU.
         // This eliminates 3 matrix-vector multiplies per pixel in the fragment shader.
@@ -1091,30 +1107,28 @@ export class SDFRenderer {
         const l3 = camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
         // Each vec3f in uniform layout occupies 16 bytes (12 data + 4 padding).
         // lightDir1 at offset 96, lightDir2 at offset 112, lightDir3 at offset 128.
-        const lightDirs = new Float32Array([
-            l1.x, l1.y, l1.z, 0,
-            l2.x, l2.y, l2.z, 0,
-            l3.x, l3.y, l3.z, 0,
-        ])
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 96, lightDirs)
+        const ld = this.#lightDirBuf
+        ld[0] = l1.x; ld[1] = l1.y; ld[2] = l1.z; ld[3] = 0
+        ld[4] = l2.x; ld[5] = l2.y; ld[6] = l2.z; ld[7] = 0
+        ld[8] = l3.x; ld[9] = l3.y; ld[10] = l3.z; ld[11] = 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 96, ld)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 144, this.#viewCenter.data as BufferSource)
 
         // Write view settings (xray mode + refinement steps + beam enabled)
         const refinementSteps = this.#resolutionScale < 1.0 ? 6 : 8
         const beamActive = this.#beamEnabled
-        this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, new Uint32Array([
-            this.#xrayMode ? 1 : 0,
-            refinementSteps,
-            beamActive ? 1 : 0,
-        ]))
+        const vs = this.#viewSettingsBuf
+        vs[0] = this.#xrayMode ? 1 : 0
+        vs[1] = refinementSteps
+        vs[2] = beamActive ? 1 : 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, vs)
 
         // Write outline settings (mode + thickness + color + canvasWidth)
-        const outlineData = new ArrayBuffer(32)
-        new Uint32Array(outlineData, 0, 1).set([OUTLINE_MODE_VALUES[this.#outlineMode]])
-        new Float32Array(outlineData, 4, 1).set([this.#outlineThickness])
-        new Float32Array(outlineData, 16, 3).set(this.#outlineColor)
-        new Float32Array(outlineData, 28, 1).set([this.#fullWidth])
-        this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, outlineData)
+        this.#outlineU32[0] = OUTLINE_MODE_VALUES[this.#outlineMode]
+        this.#outlineThicknessF32[0] = this.#outlineThickness
+        this.#outlineColorF32.set(this.#outlineColor)
+        this.#outlineWidthF32[0] = this.#fullWidth
+        this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, this.#outlineBuf)
 
         const canvasTexture = this.#context.getCurrentTexture()
         // Offscreen scene textures use scene resolution (may be lower during camera movement);

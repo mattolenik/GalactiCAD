@@ -421,6 +421,14 @@ class App {
         // Viewport toolbar — floating over the preview area
         const toolbar = new Toolbar()
         const xrayCheckbox = toolbar.addCheckbox("X-ray")
+        toolbar.addSeparator()
+        const pushPullModeRadio = toolbar.addRadioGroup([
+            { label: "Slide", value: "slide" as const },
+            { label: "Extrude", value: "extrude" as const },
+        ], "slide")
+        pushPullModeRadio.onChange = (value) => {
+            this.renderer.setPushPullMode(value)
+        }
         this.#viewports.appendChild(toolbar)
 
         // Developer tools panel — positioned over the viewports area

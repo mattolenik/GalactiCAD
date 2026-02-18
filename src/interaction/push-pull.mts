@@ -29,6 +29,8 @@ interface FaceState {
     originalVertices: [number, number][]
 }
 
+export type PushPullMode = "slide" | "extrude"
+
 export class PushPullController {
     #host: PushPullHost
     #face: FaceState | null = null
@@ -37,6 +39,7 @@ export class PushPullController {
     #dragOffset = 0
     #onComplete: ((nodeId: number, vertices: [number, number][]) => void) | null = null
     #onDeselect: (() => void) | null = null
+    mode: PushPullMode = "slide"
 
     constructor(host: PushPullHost) {
         this.#host = host
@@ -111,8 +114,8 @@ export class PushPullController {
             originalVertices: verts.map(v => [v[0], v[1]] as [number, number]),
         }
 
-        // Write face selection uniform to GPU
-        this.#writeFaceSelection(extrude.id, closestEdge)
+        // Write face selection uniform to GPU (mode=0 for initial selection, no offset yet)
+        this.#writeFaceSelection(extrude.id, closestEdge, 0, 0)
 
         // Mark FACE_HIGHLIGHT_ID as selected, deselect everything else
         const selData = new Uint32Array(1024)
@@ -198,7 +201,11 @@ export class PushPullController {
         const worldOffset = (delta.x * snx + delta.y * sny) * worldPerPixel / snLenSq
 
         this.#dragOffset = worldOffset
-        this.#applyOffset(worldOffset)
+        if (this.mode === "extrude") {
+            this.#applyExtrudeOffset(worldOffset)
+        } else {
+            this.#applyOffset(worldOffset)
+        }
 
         return true
     }
@@ -211,11 +218,16 @@ export class PushPullController {
         this.#host.controls.isDragging = false
 
         if (Math.abs(this.#dragOffset) > 0.001) {
-            // Commit: fire the completion callback with the new vertices
-            const newVerts = this.#face.extrude.child.vertices.map(
-                v => [v[0], v[1]] as [number, number]
-            )
-            this.#onComplete?.(this.#face.extrude.child.id, newVerts)
+            if (this.mode === "extrude") {
+                // Compute expanded vertices: insert 2 new vertices for the extruded face
+                const newVerts = this.#computeExtrudedVertices(this.#dragOffset)
+                this.#onComplete?.(this.#face.extrude.child.id, newVerts)
+            } else {
+                const newVerts = this.#face.extrude.child.vertices.map(
+                    v => [v[0], v[1]] as [number, number]
+                )
+                this.#onComplete?.(this.#face.extrude.child.id, newVerts)
+            }
         }
 
         // Deselect after completing the drag
@@ -227,8 +239,10 @@ export class PushPullController {
     handleKeyDown(e: KeyboardEvent): boolean {
         if (e.key === "Escape" && this.#face) {
             if (this.#dragging) {
-                // Restore original vertices
-                this.#restoreOriginalVertices()
+                if (this.mode === "slide") {
+                    this.#restoreOriginalVertices()
+                }
+                // Extrude mode: vertices weren't modified during drag, just clear the uniform
                 this.#dragging = false
                 this.#host.controls.isDragging = false
             }
@@ -238,8 +252,14 @@ export class PushPullController {
         return false
     }
 
-    #writeFaceSelection(nodeId: number, faceIndex: number): void {
-        const data = new Uint32Array([nodeId, faceIndex])
+    #writeFaceSelection(nodeId: number, faceIndex: number, mode: number = 0, extrudeOffset: number = 0): void {
+        const data = new ArrayBuffer(16)
+        const u32 = new Uint32Array(data)
+        const f32 = new Float32Array(data)
+        u32[0] = nodeId
+        u32[1] = faceIndex
+        u32[2] = mode
+        f32[3] = extrudeOffset
         this.#host.device.queue.writeBuffer(this.#host.faceSelectionBuffer, 0, data)
     }
 
@@ -301,6 +321,41 @@ export class PushPullController {
         // Write updated vertices to the GPU buffer
         this.#writePolygonVerticesToGPU(face.extrude)
         this.#host.requestRender()
+    }
+
+    /** In extrude mode, write the offset to the faceSelection uniform. No vertex modification. */
+    #applyExtrudeOffset(offset: number): void {
+        const face = this.#face!
+        this.#writeFaceSelection(face.extrude.id, face.faceIndex, 1, offset)
+        this.#host.requestRender()
+    }
+
+    /**
+     * Compute the expanded vertex array for extrude completion.
+     * Inserts two new vertices to create the step/bump in the polygon.
+     *
+     * Original: ..., v[i0], v[i1], ...
+     * Result:   ..., v[i0], v[i0]+offset*n, v[i1]+offset*n, v[i1], ...
+     */
+    #computeExtrudedVertices(offset: number): [number, number][] {
+        const face = this.#face!
+        const verts = face.originalVertices
+        const N = verts.length
+        const i0 = face.faceIndex
+        const i1 = (i0 + 1) % N
+        const nx = face.normal2D.x
+        const ny = face.normal2D.y
+
+        const result: [number, number][] = []
+        for (let i = 0; i < N; i++) {
+            result.push([verts[i][0], verts[i][1]])
+            if (i === i0) {
+                // Insert the two extruded vertices after v[i0]
+                result.push([verts[i0][0] + offset * nx, verts[i0][1] + offset * ny])
+                result.push([verts[i1][0] + offset * nx, verts[i1][1] + offset * ny])
+            }
+        }
+        return result
     }
 
     #restoreOriginalVertices(): void {

@@ -59,8 +59,10 @@ const BEAM_TILE_SIZE: i32 = 8;
 
 // Face selection: tells the Extrude shader which face to highlight with FACE_HIGHLIGHT_ID.
 struct FaceSelection {
-    nodeId: u32,       // Extrude node ID (0 = disabled)
-    faceIndex: u32,    // edge index of the selected face
+    nodeId: u32,         // Extrude node ID (0 = disabled)
+    faceIndex: u32,      // edge index of the selected face
+    mode: u32,           // 0 = slide, 1 = extrude
+    extrudeOffset: f32,  // world-space offset (extrude mode only)
 }
 @group(0) @binding(11) var<uniform> faceSelection: FaceSelection;
 
@@ -75,6 +77,15 @@ struct FragmentOutput {
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
+}
+
+// Oriented rectangle SDF in 2D (used by extrude mode for the bump rectangle).
+fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32, halfH: f32) -> f32 {
+    let rel = p - center;
+    let localX = dot(rel, tangent);
+    let localY = dot(rel, normal);
+    let dd = vec2f(abs(localX) - halfW, abs(localY) - halfH);
+    return length(max(dd, vec2f(0.0))) + min(max(dd.x, dd.y), 0.0);
 }
 
 // Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.

@@ -1630,6 +1630,8 @@ export class Extrude extends WithPos(Node) {
         const closestEdgeFunc = this.child.wgslClosestEdgeFuncName
         const childId = this.child.id
         const h = this.h.toFixed(6)
+        const N = this.child.vertices.length
+        const BASE = this.child.bufferOffset
         const hasTwist = this.twist !== 0
 
         if (!hasTwist) {
@@ -1637,21 +1639,126 @@ export class Extrude extends WithPos(Node) {
             // Fast function is emitted by compileAuxFast() only.
             return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
-    let d2d = ${childFunc}(p.xz);
+    var d2d = ${childFunc}(p.xz);
+
+    // Extrude mode: union the polygon with a bump rectangle
+    if (faceSelection.mode == 1u && faceSelection.nodeId == id && faceSelection.extrudeOffset != 0.0) {
+        let fi = faceSelection.faceIndex;
+        let v0 = polygonVertices[${BASE}u + fi];
+        let v1 = polygonVertices[${BASE}u + (fi + 1u) % ${N}u];
+        let edgeDir = v1 - v0;
+        let edgeLen = length(edgeDir);
+        let eTan = edgeDir / edgeLen;
+        // Outward normal (perpendicular to edge, direction matches polygon winding)
+        let eNorm = vec2f(eTan.y, -eTan.x);
+        // Determine winding: check if normal points outward by testing signed area direction
+        var windSign = 1.0;
+        var area = 0.0;
+        for (var ai = 0u; ai < ${N}u; ai++) {
+            let va = polygonVertices[${BASE}u + ai];
+            let vb = polygonVertices[${BASE}u + (ai + 1u) % ${N}u];
+            area += (va.x + vb.x) * (va.y - vb.y);
+        }
+        if (area < 0.0) { windSign = -1.0; }
+        let outNorm = eNorm * windSign;
+        let off = faceSelection.extrudeOffset;
+        // Rectangle center: midpoint of edge shifted by half the offset along the normal
+        let edgeMid = (v0 + v1) * 0.5;
+        let rectCenter = edgeMid + outNorm * off * 0.5;
+        // Transform p.xz into the rectangle's local frame
+        let rel = p.xz - rectCenter;
+        let localX = dot(rel, eTan);
+        let localY = dot(rel, outNorm);
+        let halfW = edgeLen * 0.5;
+        let halfH = abs(off) * 0.5;
+        let dd = vec2f(abs(localX) - halfW, abs(localY) - halfH);
+        let bumpDist = length(max(dd, vec2f(0.0))) + min(max(dd.x, dd.y), 0.0);
+        d2d = min(d2d, bumpDist);
+    }
+
     let dCap = abs(p.y) - ${h};
     let d = max(d2d, dCap);
     let onSide = d2d > dCap;
     let eps = 0.001;
-    let gx = ${childFunc}(p.xz + vec2f(eps, 0.0)) - ${childFunc}(p.xz - vec2f(eps, 0.0));
-    let gz = ${childFunc}(p.xz + vec2f(0.0, eps)) - ${childFunc}(p.xz - vec2f(0.0, eps));
+    let gx_pos = ${childFunc}(p.xz + vec2f(eps, 0.0));
+    let gx_neg = ${childFunc}(p.xz - vec2f(eps, 0.0));
+    let gz_pos = ${childFunc}(p.xz + vec2f(0.0, eps));
+    let gz_neg = ${childFunc}(p.xz - vec2f(0.0, eps));
+    var gx = gx_pos - gx_neg;
+    var gz = gz_pos - gz_neg;
+
+    // In extrude mode, use the combined SDF gradient for normals
+    if (faceSelection.mode == 1u && faceSelection.nodeId == id && faceSelection.extrudeOffset != 0.0) {
+        let fi = faceSelection.faceIndex;
+        let v0 = polygonVertices[${BASE}u + fi];
+        let v1 = polygonVertices[${BASE}u + (fi + 1u) % ${N}u];
+        let edgeDir = v1 - v0;
+        let edgeLen = length(edgeDir);
+        let eTan = edgeDir / edgeLen;
+        let eNorm = vec2f(eTan.y, -eTan.x);
+        var windSign = 1.0;
+        var area = 0.0;
+        for (var ai = 0u; ai < ${N}u; ai++) {
+            let va = polygonVertices[${BASE}u + ai];
+            let vb = polygonVertices[${BASE}u + (ai + 1u) % ${N}u];
+            area += (va.x + vb.x) * (va.y - vb.y);
+        }
+        if (area < 0.0) { windSign = -1.0; }
+        let outNorm = eNorm * windSign;
+        let off = faceSelection.extrudeOffset;
+        let edgeMid = (v0 + v1) * 0.5;
+        let rectCenter = edgeMid + outNorm * off * 0.5;
+        let halfW = edgeLen * 0.5;
+        let halfH = abs(off) * 0.5;
+        // Recompute gradient using the combined SDF
+        let sample_xp = p.xz + vec2f(eps, 0.0);
+        let sample_xn = p.xz - vec2f(eps, 0.0);
+        let sample_zp = p.xz + vec2f(0.0, eps);
+        let sample_zn = p.xz - vec2f(0.0, eps);
+        gx = min(gx_pos, rectSDF2D(sample_xp, rectCenter, eTan, outNorm, halfW, halfH))
+           - min(gx_neg, rectSDF2D(sample_xn, rectCenter, eTan, outNorm, halfW, halfH));
+        gz = min(gz_pos, rectSDF2D(sample_zp, rectCenter, eTan, outNorm, halfW, halfH))
+           - min(gz_neg, rectSDF2D(sample_zn, rectCenter, eTan, outNorm, halfW, halfH));
+    }
+
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(p.y), 0.0);
     let n = select(nCap, nSide, onSide);
     var resultId = select(${childId}u, id, onSide);
     if (onSide && faceSelection.nodeId == id) {
-        let edge = ${closestEdgeFunc}(p.xz);
-        if (edge == faceSelection.faceIndex) {
-            resultId = FACE_HIGHLIGHT_ID;
+        if (faceSelection.mode == 0u) {
+            let edge = ${closestEdgeFunc}(p.xz);
+            if (edge == faceSelection.faceIndex) {
+                resultId = FACE_HIGHLIGHT_ID;
+            }
+        } else {
+            // In extrude mode, highlight the bump region
+            let fi = faceSelection.faceIndex;
+            let v0 = polygonVertices[${BASE}u + fi];
+            let v1 = polygonVertices[${BASE}u + (fi + 1u) % ${N}u];
+            let edgeDir = v1 - v0;
+            let edgeLen = length(edgeDir);
+            let eTan = edgeDir / edgeLen;
+            let eNorm = vec2f(eTan.y, -eTan.x);
+            var windSign2 = 1.0;
+            var area2 = 0.0;
+            for (var ai2 = 0u; ai2 < ${N}u; ai2++) {
+                let va2 = polygonVertices[${BASE}u + ai2];
+                let vb2 = polygonVertices[${BASE}u + (ai2 + 1u) % ${N}u];
+                area2 += (va2.x + vb2.x) * (va2.y - vb2.y);
+            }
+            if (area2 < 0.0) { windSign2 = -1.0; }
+            let outNorm2 = eNorm * windSign2;
+            let off2 = faceSelection.extrudeOffset;
+            let edgeMid2 = (v0 + v1) * 0.5;
+            // The extruded face is the far edge of the bump rectangle
+            let faceMid = edgeMid2 + outNorm2 * off2;
+            let rel2 = p.xz - faceMid;
+            let projAlong = abs(dot(rel2, eTan));
+            let projNorm = abs(dot(rel2, outNorm2));
+            if (projAlong < edgeLen * 0.5 + 0.01 && projNorm < 0.01) {
+                resultId = FACE_HIGHLIGHT_ID;
+            }
         }
     }
     return sdfTrue(d, resultId, n);

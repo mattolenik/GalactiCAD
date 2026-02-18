@@ -17,7 +17,7 @@ import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
 import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPalette.mjs"
-import { PushPullController } from "./interaction/push-pull.mjs"
+import { PushPullController, type PushPullMode } from "./interaction/push-pull.mjs"
 
 /** Max AABB slots for subtree culling. Each slot is 32 bytes (center vec4f + halfExtent vec4f). */
 const MAX_AABB_SLOTS = 128
@@ -744,8 +744,8 @@ export class SDFRenderer {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, new ArrayBuffer(32))
         // Initialize selection buffer with count=0
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, new Uint32Array(1024))
-        // Initialize face selection as disabled
-        this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, new Uint32Array([0, 0]))
+        // Initialize face selection as disabled (nodeId=0, faceIndex=0, mode=0, extrudeOffset=0.0)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, new ArrayBuffer(16))
 
         this.#initPushPull()
     }
@@ -916,9 +916,9 @@ export class SDFRenderer {
         })
 
         // Face selection uniform: tells the Extrude shader which face to highlight.
-        // Layout: nodeId (u32) + faceIndex (u32) = 8 bytes.
+        // Layout: nodeId (u32) + faceIndex (u32) + mode (u32) + extrudeOffset (f32) = 16 bytes.
         this.#uniformBuffers.faceSelection = this.#device.createBuffer({
-            size: 8,
+            size: 16,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "faceSelection",
         })
@@ -1215,6 +1215,13 @@ export class SDFRenderer {
     /** Request a re-render (e.g., after scene change) */
     requestRender(): void {
         this.#needsRender = true
+    }
+
+    /** Set the push/pull interaction mode ("slide" or "extrude"). */
+    setPushPullMode(mode: PushPullMode): void {
+        if (this.#pushPullController) {
+            this.#pushPullController.mode = mode
+        }
     }
 
     /**

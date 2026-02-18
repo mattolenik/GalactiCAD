@@ -31,7 +31,7 @@ struct BoundsUniforms {
 @group(0) @binding(3) var<storage, read> polygonVertices: array<vec2f>;
 
 // Face selection (for Extrude face highlighting; not used in bounds, but must exist for compilation).
-struct FaceSelection { nodeId: u32, faceIndex: u32, }
+struct FaceSelection { nodeId: u32, faceIndex: u32, mode: u32, extrudeOffset: f32, }
 @group(0) @binding(4) var<uniform> faceSelection: FaceSelection;
 const FACE_HIGHLIGHT_ID: u32 = 1023u;
 
@@ -49,6 +49,14 @@ struct TileBounds {
 }
 
 @group(0) @binding(1) var<storage, read_write> out: array<TileBounds>;
+
+fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32, halfH: f32) -> f32 {
+    let rel = p - center;
+    let localX = dot(rel, tangent);
+    let localY = dot(rel, normal);
+    let dd = vec2f(abs(localX) - halfW, abs(localY) - halfH);
+    return length(max(dd, vec2f(0.0))) + min(max(dd.x, dd.y), 0.0);
+}
 
 // Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 //:) insert sceneAuxFast

@@ -598,11 +598,14 @@ class App {
                         bufferTime(100),
                         filter(arr => arr.length > 0)
                     )
-                    .subscribe(() => {
-                        if (this.#skipNextBuild) {
+                    .subscribe((changes) => {
+                        // Only skip when we have exactly one change (our programmatic edit).
+                        // Multiple changes (e.g. our edit + user undo/redo) require a build.
+                        if (this.#skipNextBuild && changes.length === 1) {
                             this.#skipNextBuild = false
                             return
                         }
+                        this.#skipNextBuild = false
                         this.build()
                     })
             })
@@ -629,6 +632,8 @@ class App {
         })
 
         this.renderer.objectDoubleClick$.subscribe(nodeId => this.#handlePreviewDoubleClick(nodeId))
+
+        devTools.onClearUndoStack = () => this.#clearEditorUndoStack()
 
         this.renderer.pushPullComplete$.subscribe(({ nodeId, vertices }) => {
             this.#handlePushPullComplete(nodeId, vertices)
@@ -707,6 +712,16 @@ class App {
             e.preventDefault()
             this.editor.trigger("keyboard", e.shiftKey ? "redo" : "undo", null)
         })
+    }
+
+    /** Clear undo/redo stack for all open documents. Uses Monaco internal API. */
+    #clearEditorUndoStack() {
+        for (const name of this.#tabs.documentNames) {
+            const model = this.#tabs.getByName(name)
+            if (model && (model as { _commandManager?: { clear: () => void } })._commandManager) {
+                ;(model as { _commandManager: { clear: () => void } })._commandManager.clear()
+            }
+        }
     }
 
     #wireMenu(
@@ -841,7 +856,9 @@ class App {
                 startPos.lineNumber, startPos.column,
                 endPos.lineNumber, endPos.column
             )
+            model.pushStackElement()
             model.pushEditOperations([], [{ range, text: newText }], () => null)
+            model.pushStackElement()
             arrayEnd = arrayStart + newText.length
         }
 

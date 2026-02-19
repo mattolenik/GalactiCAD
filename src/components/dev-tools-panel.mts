@@ -37,6 +37,9 @@ export class DevToolsPanel extends HTMLElement {
     /** Callback when mesh viewer toggle changes */
     onMeshViewerChange?: (enabled: boolean) => void
 
+    /** Callback when clear undo stack button is clicked */
+    onClearUndoStack?: () => void
+
     get cameraOptimization(): boolean {
         return this.#cameraOptimization$.value
     }
@@ -198,6 +201,14 @@ export class DevToolsPanel extends HTMLElement {
             }
         })
         shadow.appendChild(benchmarkButton)
+
+        // Clear undo stack button
+        const clearUndoButton = document.createElement("button")
+        clearUndoButton.textContent = "Clear Undo"
+        clearUndoButton.addEventListener("click", () => {
+            this.onClearUndoStack?.()
+        })
+        shadow.appendChild(clearUndoButton)
 
         // Hidden by default
         this.style.display = "none"

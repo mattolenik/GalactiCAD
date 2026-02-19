@@ -440,7 +440,7 @@ export class SDFRenderer {
             u32[2] = edge.secondaryId
             u32[3] = edge.featureA
             u32[4] = edge.opType
-            f32[5] = edge.lineWidthPx ?? 2.5
+            f32[5] = edge.lineWidthPx ?? 6.0
             f32[6] = edge.epsilon ?? 0.02
             this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 16, buf)
         }
@@ -574,7 +574,7 @@ export class SDFRenderer {
                     secondaryId: hit.secondaryId,
                     featureA: hit.featureA,
                     opType: hit.opType,
-                    lineWidthPx: 2.5,
+                    lineWidthPx: 6.0,
                     epsilon: 0.02,
                 } : null
                 this.#setHoveredEdge(edge)

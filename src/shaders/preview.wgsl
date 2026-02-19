@@ -245,7 +245,7 @@ fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
 
 fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> vec3f {
     var result = color;
-    let highlight = vec3f(0.2, 0.6, 1.0);
+    let highlight = vec3f(1.0, 1.0, 0.0);
 
     for (var i: u32 = 0u; i < selectedEdges.count; i = i + 1u) {
         let e = selectedEdges.edges[i];

@@ -105,7 +105,7 @@ export class Toolbar extends HTMLElement {
                 background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
                 backdrop-filter: blur(6px);
                 -webkit-backdrop-filter: blur(6px);
-                padding: 4px 8px;
+                padding: 8px 10px;
                 border-radius: 4px;
                 color: rgb(from var(${__fg_color}) r g b / 0.85);
                 font-size: 12px;
@@ -142,7 +142,7 @@ export class Toolbar extends HTMLElement {
             }
             .separator {
                 width: 1px;
-                height: 16px;
+                height: 20px;
                 background: rgb(from var(${__fg_color}) r g b / 0.2);
                 flex-shrink: 0;
             }

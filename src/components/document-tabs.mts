@@ -40,7 +40,7 @@ export class DocumentTabs extends HTMLElement {
 
         this.attachShadow({ mode: "open" })
 
-        const tabHeight = "34px"
+        const tabHeight = "40px"
         const closeButtonSize = "20px"
         const transitionSpeed = "0.3s"
 

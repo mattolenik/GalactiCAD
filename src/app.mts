@@ -479,7 +479,7 @@ class App {
                 ${__tone_2}: #444;
                 ${__tone_3}: #666;
                 ${__tone_accent}: #007acc;
-                ${__toolbar_height}: 30px;
+                ${__toolbar_height}: 36px;
             }
 
             /* Highlighted function name styling for selected shapes in Monaco editor */

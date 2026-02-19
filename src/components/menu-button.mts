@@ -26,7 +26,7 @@ export class MenuButton extends HTMLElement {
                 background: none;
                 background: var(${__tone_accent});
                 line-height: 0;
-                padding: 0 0 calc(var(${__toolbar_height}) / 2 - 4px) 0;
+                padding: 2px 0 calc(var(${__toolbar_height}) / 2 - 6px) 0;
                 height: calc(var(${__toolbar_height}) + 4px);
                 width: calc(var(${__toolbar_height}) + 10px);
                 border: none;

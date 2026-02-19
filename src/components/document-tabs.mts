@@ -299,6 +299,7 @@ export class DocumentTabs extends HTMLElement {
         this.#docs.delete(name)
         this.#renderTabs()
         this.#updateStoredOrder()
+        this.dispatchEvent(new CustomEvent("tabClosed", { detail: name }))
         if (wasActive) {
             const next = this.#docs.keys().next().value
             if (next) this.switchTo(next)
@@ -413,6 +414,7 @@ export class DocumentTabs extends HTMLElement {
 
         this.#updateStoredOrder()
         this.#renderTabs()
+        this.dispatchEvent(new CustomEvent("tabRenamed", { detail: { oldName, newName } }))
         this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: this.#active }))
         return true
     }

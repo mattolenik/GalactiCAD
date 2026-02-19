@@ -79,6 +79,23 @@ class ExportBuffers {
     triCountBuffer!: GPUBuffer
 }
 
+/** Cached scene build state for fast tab switching without shader recompilation. */
+interface SceneCacheEntry {
+    src: string
+    scene: SceneInfo
+    sceneShader: GPUShaderModule
+    exportShader: GPUShaderModule
+    boundsShader: GPUShaderModule
+    beamShader: GPUShaderModule
+    pipeline: GPURenderPipeline
+    beamPipeline: GPUComputePipeline
+    polygonVertexData: ArrayBuffer
+    totalPolygonVertices: number
+    nodeParamsData: Float32Array
+    compiledPosY: Map<number, number>
+    aabbData: Float32Array
+}
+
 export class SDFRenderer {
     #bindGroup!: GPUBindGroup
     #cameraRes!: Vec2f
@@ -137,6 +154,8 @@ export class SDFRenderer {
     #aabbGeneration = 0
     // Generation counter to discard stale async pipeline creation
     #buildGeneration = 0
+    /** Per-document cache of compiled shaders and buffers for fast tab switching. */
+    #sceneCache = new Map<string, SceneCacheEntry>()
 
     // Pre-allocated buffers reused every frame to avoid GC pressure
     #zoomBuf = new Float32Array(1)
@@ -161,6 +180,8 @@ export class SDFRenderer {
     #movementSettleMs: number = 150 // ms of inactivity before restoring full resolution
     #documentName: string | null = null
     #tabChangeSub: Subscription | null = null
+    #tabCloseSub: Subscription | null = null
+    #tabRenameSub: Subscription | null = null
     #resizeObserver: ResizeObserver | null = null
     #controlSubs: Subscription[] = []
     #pushPullController: PushPullController | null = null
@@ -751,6 +772,13 @@ export class SDFRenderer {
                 this.#documentName = customEvent.detail ?? null
                 this.#loadPreviewSettings()
             })
+            this.#tabCloseSub = fromEvent(tabsElement, "tabClosed").subscribe((e: Event) => {
+                this.#sceneCache.delete((e as CustomEvent<string>).detail)
+            })
+            this.#tabRenameSub = fromEvent(tabsElement, "tabRenamed").subscribe((e: Event) => {
+                const { oldName } = (e as CustomEvent<{ oldName: string; newName: string }>).detail
+                this.#sceneCache.delete(oldName)
+            })
         }
 
         const observer = new ResizeObserver(entries => {
@@ -783,6 +811,10 @@ export class SDFRenderer {
         this.#controlSubs.length = 0
         this.#tabChangeSub?.unsubscribe()
         this.#tabChangeSub = null
+        this.#tabCloseSub?.unsubscribe()
+        this.#tabCloseSub = null
+        this.#tabRenameSub?.unsubscribe()
+        this.#tabRenameSub = null
         this.#resizeObserver?.disconnect()
         this.#resizeObserver = null
         this.#controls.dispose()
@@ -791,8 +823,44 @@ export class SDFRenderer {
         this.previewSettingsLoaded$.complete()
     }
 
-    build(src: string): Promise<void> {
+    build(src: string, documentName?: string | null): Promise<void> {
         const trimmed = src.trim()
+
+        // Restore from cache if we have a matching entry (avoids shader recompilation on tab switch)
+        if (documentName) {
+            const cached = this.#sceneCache.get(documentName)
+            if (cached && cached.src === trimmed) {
+                return this.#restoreFromCache(cached)
+            }
+        }
+
+        return this.#buildFromSource(trimmed, documentName)
+    }
+
+    #restoreFromCache(cached: SceneCacheEntry): Promise<void> {
+        this.#builtSrc = cached.src
+        this.#scene = cached.scene
+        this.#sceneShader = cached.sceneShader
+        this.#exportShader = cached.exportShader
+        this.#boundsShader = cached.boundsShader
+        this.#beamShader = cached.beamShader
+        this.#pipeline = cached.pipeline
+        this.#beamPipeline = cached.beamPipeline
+
+        this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, cached.polygonVertexData as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, cached.nodeParamsData as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.subtreeAABBs, 0, cached.aabbData as BufferSource)
+
+        this.#compiledPosY.clear()
+        for (const [k, v] of cached.compiledPosY) this.#compiledPosY.set(k, v)
+
+        this.#renderTextureWidth = 0
+        this.#renderTextureHeight = 0
+        this.#needsRender = true
+        return Promise.resolve()
+    }
+
+    #buildFromSource(trimmed: string, documentName?: string | null): Promise<void> {
         this.#builtSrc = trimmed
         this.#scene = new SceneInfo(trimmed)
         const sceneAux = this.#scene.compileAux()
@@ -811,40 +879,92 @@ export class SDFRenderer {
         this.#boundsShader = this.#shaderCompiler.compile(boundsShader, "Bounds (scene bbox)")
         this.#beamShader = this.#shaderCompiler.compile(beamShader, "Beam Pre-Pass")
 
+        // Capture data for cache before async work
+        const polygonVertexData: ArrayBuffer = this.#scene.totalPolygonVertices > 0
+            ? (this.#scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer)
+            : new ArrayBuffer(0)
+        const totalPolygonVertices = this.#scene.totalPolygonVertices
+        const nodeParamsData = new Float32Array(MAX_NODE_PARAMS * 4)
+        this.#compiledPosY.clear()
+        for (const node of this.#scene.getAllNodes()) {
+            if ((node instanceof Extrude || node instanceof Loft) && node.id < MAX_NODE_PARAMS) {
+                nodeParamsData[node.id * 4] = node.h
+                nodeParamsData[node.id * 4 + 1] = 0
+                this.#compiledPosY.set(node.id, node.pos.y)
+            }
+        }
+        const compiledPosYCopy = new Map<number, number>(this.#compiledPosY)
+
         // Populate the polygon vertex buffer with all Polygon2D vertex data.
-        if (this.#scene.totalPolygonVertices > 0) {
-            const vertexData = this.#scene.getPolygonVertexData()
-            this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, vertexData.buffer)
+        if (totalPolygonVertices > 0) {
+            this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
         }
 
-        // Populate nodeParams buffer: h and posYDelta (0) for each Extrude/Loft.
-        // Also record the compiled pos.y for each node so cap drag can compute
-        // the correct delta when the build is skipped after a prior drag.
-        this.#compiledPosY.clear()
-        {
-            const params = new Float32Array(MAX_NODE_PARAMS * 4)
-            for (const node of this.#scene.getAllNodes()) {
-                if ((node instanceof Extrude || node instanceof Loft) && node.id < MAX_NODE_PARAMS) {
-                    params[node.id * 4] = node.h
-                    params[node.id * 4 + 1] = 0
-                    this.#compiledPosY.set(node.id, node.pos.y)
-                }
-            }
-            this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, params)
-        }
+        // Populate nodeParams buffer
+        this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, nodeParamsData)
 
         // Reset AABB buffer to infinite (no culling) for immediate rendering,
         // then kick off async GPU-based bounds computation.
         this.#initAABBBufferInfinite()
         this.#aabbGeneration++
-        if (this.#scene.numAABBSlots > 0) {
-            this.#computeSubtreeAABBs(this.#aabbGeneration)
-        }
+        const aabbPromise = this.#scene.numAABBSlots > 0
+            ? this.#computeSubtreeAABBs(this.#aabbGeneration)
+            : Promise.resolve(this.#getInfiniteAABBData())
 
         // Create pipelines asynchronously to avoid blocking the main thread.
-        // Returns a promise that resolves when pipelines are ready.
         const generation = ++this.#buildGeneration
-        return this.#createPipelinesAsync(generation)
+        const pipelinesPromise = this.#createPipelinesAsync(generation)
+
+        return Promise.all([pipelinesPromise, aabbPromise]).then(([, aabbData]) => {
+            if (documentName && generation === this.#buildGeneration) {
+                this.#storeCache(documentName, trimmed, {
+                    polygonVertexData,
+                    totalPolygonVertices,
+                    nodeParamsData,
+                    compiledPosY: compiledPosYCopy,
+                    aabbData,
+                })
+            }
+        })
+    }
+
+    #getInfiniteAABBData(): Float32Array {
+        const data = new Float32Array(MAX_AABB_SLOTS * 8)
+        for (let i = 0; i < MAX_AABB_SLOTS; i++) {
+            data[i * 8 + 4] = 9999
+            data[i * 8 + 5] = 9999
+            data[i * 8 + 6] = 9999
+        }
+        return data
+    }
+
+    #storeCache(
+        documentName: string,
+        src: string,
+        data: {
+            polygonVertexData: ArrayBuffer
+            totalPolygonVertices: number
+            nodeParamsData: Float32Array
+            compiledPosY: Map<number, number>
+            aabbData: Float32Array
+        }
+    ): void {
+        if (!this.#pipeline || !this.#beamPipeline) return
+        this.#sceneCache.set(documentName, {
+            src,
+            scene: this.#scene,
+            sceneShader: this.#sceneShader,
+            exportShader: this.#exportShader,
+            boundsShader: this.#boundsShader,
+            beamShader: this.#beamShader,
+            pipeline: this.#pipeline,
+            beamPipeline: this.#beamPipeline,
+            polygonVertexData: data.polygonVertexData,
+            totalPolygonVertices: data.totalPolygonVertices,
+            nodeParamsData: data.nodeParamsData,
+            compiledPosY: data.compiledPosY,
+            aabbData: data.aabbData,
+        })
     }
 
     /**
@@ -903,11 +1023,19 @@ export class SDFRenderer {
      * AABB uniform buffer. Called after build(); the scene renders with infinite AABBs
      * (no culling) until this completes.
      * @param generation Build generation counter — results are discarded if a newer build started.
+     * @returns The AABB data (for caching).
      */
-    async #computeSubtreeAABBs(generation: number) {
+    async #computeSubtreeAABBs(generation: number): Promise<Float32Array> {
+        const aabbData = new Float32Array(MAX_AABB_SLOTS * 8)
+        for (let i = 0; i < MAX_AABB_SLOTS; i++) {
+            aabbData[i * 8 + 4] = 9999
+            aabbData[i * 8 + 5] = 9999
+            aabbData[i * 8 + 6] = 9999
+        }
+
         const scene = this.#scene
         const subtrees = scene.getGuardedSubtrees()
-        if (subtrees.length === 0) return
+        if (subtrees.length === 0) return aabbData
 
         const SEARCH_HALF = 250
         const STEP = 5.0
@@ -945,14 +1073,6 @@ export class SDFRenderer {
             GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         )
 
-        const aabbData = new Float32Array(MAX_AABB_SLOTS * 8)
-        // Start with infinite bounds as defaults
-        for (let i = 0; i < MAX_AABB_SLOTS; i++) {
-            aabbData[i * 8 + 4] = 9999
-            aabbData[i * 8 + 5] = 9999
-            aabbData[i * 8 + 6] = 9999
-        }
-
         for (const sub of subtrees) {
             // Build a per-subtree bounds shader with only this subtree's SDF
             const subtreeShaderCode = boundsShader
@@ -980,7 +1100,11 @@ export class SDFRenderer {
             pass.end()
             this.#device.queue.submit([ce.finish()])
             await this.#device.queue.onSubmittedWorkDone()
-            if (generation !== this.#aabbGeneration) { uniformBuffer.destroy(); outBuffer.destroy(); return }
+            if (generation !== this.#aabbGeneration) {
+                uniformBuffer.destroy()
+                outBuffer.destroy()
+                return aabbData
+            }
 
             // Read back and reduce the tile results
             const outData = await this.#helper.readBufferData(outBuffer, outSize)
@@ -1047,6 +1171,7 @@ export class SDFRenderer {
         // Clean up temporary buffers
         uniformBuffer.destroy()
         outBuffer.destroy()
+        return aabbData
     }
 
     async initialize() {

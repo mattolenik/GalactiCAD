@@ -48,9 +48,10 @@ class App {
                 return
             }
             const src = this.editor.getValue()
+            const documentName = this.#tabs.active ?? undefined
 
-            // Build the scene
-            this.renderer.build(src)
+            // Build the scene (uses cache when switching back to a tab with unchanged content)
+            this.renderer.build(src, documentName)
 
             // Parse the source code to extract shape function calls with their arguments
             const parsedCalls = this.#sourceParser.parseShapeCalls(src)

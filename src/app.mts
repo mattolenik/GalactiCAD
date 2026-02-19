@@ -40,7 +40,7 @@ class App {
     #polygonEditor: PolygonEditor | null = null
     #editorContainer!: HTMLDivElement
 
-    build() {
+    async build() {
         try {
             const model = this.editor.getModel()
             if (!model) {
@@ -50,8 +50,9 @@ class App {
             const src = this.editor.getValue()
             const documentName = this.#tabs.active ?? undefined
 
-            // Build the scene (uses cache when switching back to a tab with unchanged content)
-            this.renderer.build(src, documentName)
+            // Build the scene (uses cache when switching back to a tab with unchanged content).
+            // Await so camera loads only after scene is ready, avoiding flicker.
+            await this.renderer.build(src, documentName)
 
             // Parse the source code to extract shape function calls with their arguments
             const parsedCalls = this.#sourceParser.parseShapeCalls(src)
@@ -693,7 +694,7 @@ class App {
             this.#monacoHighlighter.clearHighlighting()
             if (event.detail !== undefined) {
                 requestAnimationFrame(() => {
-                    this.build()
+                    void this.build()
                 })
             } else {
                 this.log.innerText = ""

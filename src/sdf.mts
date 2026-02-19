@@ -857,6 +857,7 @@ export class SDFRenderer {
         this.#renderTextureWidth = 0
         this.#renderTextureHeight = 0
         this.#needsRender = true
+        this.#controls.loadCameraFromSettings()
         return Promise.resolve()
     }
 
@@ -916,7 +917,8 @@ export class SDFRenderer {
         const pipelinesPromise = this.#createPipelinesAsync(generation)
 
         return Promise.all([pipelinesPromise, aabbPromise]).then(([, aabbData]) => {
-            if (documentName && generation === this.#buildGeneration) {
+            if (generation !== this.#buildGeneration) return
+            if (documentName) {
                 this.#storeCache(documentName, trimmed, {
                     polygonVertexData,
                     totalPolygonVertices,
@@ -1011,6 +1013,7 @@ export class SDFRenderer {
             this.#renderTextureWidth = 0
             this.#renderTextureHeight = 0
             this.#needsRender = true
+            this.#controls.loadCameraFromSettings()
         } catch (err) {
             if (generation !== this.#buildGeneration) return
             console.error("[SDFRenderer] Pipeline creation failed:", err)

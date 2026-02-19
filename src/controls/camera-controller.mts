@@ -116,8 +116,8 @@ export class CameraController {
                 const customEvent = e as CustomEvent<string | undefined>
                 // SettingsManager.switchDocument flushes current doc & loads the new one
                 this.#documentName = customEvent.detail ?? ""
-                // Load the new document's camera state from the (already-switched) settings
-                this.#loadCameraState()
+                // Camera is loaded when the scene build completes (via loadCameraFromSettings)
+                // to avoid flicker from new camera + old scene
             })
         }
 
@@ -317,6 +317,11 @@ export class CameraController {
             rotation: [q[0], q[1], q[2], q[3]],
         }
         this.#settings.setCamera(cam)
+    }
+
+    /** Load camera from current document settings. Called when scene is ready to avoid flicker. */
+    loadCameraFromSettings(): void {
+        this.#loadCameraState()
     }
 
     #loadCameraState(): void {

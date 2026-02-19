@@ -101,6 +101,7 @@ export class SDFRenderer {
     #selectedObjectIds: boolean[] = new Array<boolean>(1024).fill(false)
     #selectedEdges: SelectedEdgeData[] = []
     #hoveredEdgeData: SelectedEdgeData | null = null
+    #hoveredObjectId: number = 0
     #clickPending = false
     #lastClickPos: Vec2f = vec2(0, 0)
     #exportBuffers: ExportBuffers
@@ -356,14 +357,15 @@ export class SDFRenderer {
         const u32 = new Uint32Array(readback)
         const f32 = new Float32Array(readback)
         const kind = u32[0]
-        if (kind === 0) return null
+        const objectId = u32[5]
+        if (objectId === 0) return null
         return {
             kind,
             primaryId: u32[1],
             secondaryId: u32[2],
             featureA: u32[3],
             opType: u32[4],
-            objectId: u32[5],
+            objectId,
             seedPoint: [f32[8], f32[9], f32[10]],
         }
     }
@@ -559,16 +561,15 @@ export class SDFRenderer {
 
     #handleHover(screenPos: Vec2f, altKey: boolean) {
         if (!this.#device) return
+        this.#writeHoverState(screenPos, true)
         if (!altKey) {
             this.#setHoveredEdge(null)
-            this.#writeHoverState(screenPos, false)
-            return
         }
-        this.#writeHoverState(screenPos, true)
         setTimeout(async () => {
             try {
                 const hit = await this.#readHoverEdgeHit()
-                const edge: SelectedEdgeData | null = hit ? {
+                this.#hoveredObjectId = hit?.objectId ?? 0
+                const edge: SelectedEdgeData | null = (altKey && hit && hit.kind !== 0) ? {
                     kind: hit.kind,
                     primaryId: hit.primaryId,
                     secondaryId: hit.secondaryId,
@@ -578,6 +579,7 @@ export class SDFRenderer {
                     epsilon: 0.02,
                 } : null
                 this.#setHoveredEdge(edge)
+                this.#pushSelectionInfo()
                 this.#needsRender = true
             } catch (error) {
                 console.error("Error reading hover edge:", error)
@@ -601,6 +603,7 @@ export class SDFRenderer {
                         // Side face of a no-twist Extrude
                         if (node instanceof Extrude && node.twist === 0) {
                             this.#pushPullController.selectFace(node, hitPos)
+                            this.#pushSelectionInfo()
                             return
                         }
                         // Cap face: Polygon2D child of an Extrude or Loft
@@ -610,6 +613,7 @@ export class SDFRenderer {
                                 const localY = hitPos.y - parent.pos.y
                                 const isTop = localY >= 0
                                 this.#pushPullController.selectCapFace(parent, isTop)
+                                this.#pushSelectionInfo()
                                 return
                             }
                         }
@@ -663,10 +667,35 @@ export class SDFRenderer {
     }
 
     #pushSelectionInfo(): void {
-        const objects = this.selectedObjectIds
-        const edges = this.#selectedEdges
-        const hover = this.#hoveredEdgeData
-        this.#preview.updateSelectionInfo({ objects, edges, hover })
+        const rawObjects = this.selectedObjectIds
+        const faceSel = this.#pushPullController?.getFaceSelection()
+        const objects = faceSel
+            ? rawObjects.filter(id => id !== 1023)
+            : rawObjects
+        const edges = this.#selectedEdges.map(e => ({
+            kind: e.kind,
+            primaryId: e.primaryId,
+            secondaryId: e.secondaryId,
+            featureA: e.featureA,
+            opType: e.opType,
+        }))
+        const face = this.#pushPullController?.getFaceSelection() ?? null
+        const hover: SelectionInfo["hover"] =
+            this.#hoveredObjectId > 0
+                ? {
+                      objectId: this.#hoveredObjectId,
+                      edge: this.#hoveredEdgeData
+                          ? {
+                                kind: this.#hoveredEdgeData.kind,
+                                primaryId: this.#hoveredEdgeData.primaryId,
+                                secondaryId: this.#hoveredEdgeData.secondaryId,
+                                featureA: this.#hoveredEdgeData.featureA,
+                                opType: this.#hoveredEdgeData.opType,
+                            }
+                          : null,
+                  }
+                : null
+        this.#preview.updateSelectionInfo({ objects, edges, face, hover })
     }
 
     #writeSelectionBuffer() {
@@ -1106,6 +1135,7 @@ export class SDFRenderer {
         this.#pushPullController.onDeselect = () => {
             // Restore the normal selection buffer state
             this.#writeSelectionBuffer()
+            this.#pushSelectionInfo()
         }
 
         // Intercept pointer events on the canvas for push/pull

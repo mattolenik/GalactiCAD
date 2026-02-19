@@ -1,6 +1,30 @@
 import { VERSION } from "../version.mjs"
 
-export type SelectionInfo = { objects: number[]; edges: unknown[]; hover: unknown | null }
+export interface EdgeSelectionInfo {
+    kind: number
+    primaryId: number
+    secondaryId: number
+    featureA?: number
+    opType?: number
+}
+
+export interface FaceSelectionInfo {
+    nodeId: number
+    faceIndex: number
+    mode: number
+}
+
+export interface HoverInfo {
+    objectId: number
+    edge: EdgeSelectionInfo | null
+}
+
+export type SelectionInfo = {
+    objects: number[]
+    edges: EdgeSelectionInfo[]
+    face: FaceSelectionInfo | null
+    hover: HoverInfo | null
+}
 
 export class PreviewWindow extends HTMLElement {
     readonly canvas: HTMLCanvasElement
@@ -90,10 +114,28 @@ export class PreviewWindow extends HTMLElement {
             parts.push(`Objects: ${info.objects.join(", ")}`)
         }
         if (info.edges.length > 0) {
-            parts.push(`Edges: ${info.edges.length}`)
+            const edgeLabels = info.edges.map(e =>
+                e.kind === 2
+                    ? `Seam [${e.primaryId},${e.secondaryId}]`
+                    : `Edge [${e.primaryId}]`
+            ).join(" ")
+            parts.push(`Edges: ${edgeLabels}`)
+        }
+        if (info.face) {
+            const modeLabel = ["slide", "extrude", "top", "bottom"][info.face.mode] ?? "?"
+            parts.push(`Face: node ${info.face.nodeId} edge ${info.face.faceIndex} (${modeLabel})`)
         }
         if (info.hover) {
-            parts.push("Hover")
+            const hoverParts: string[] = [`Object ${info.hover.objectId}`]
+            if (info.hover.edge) {
+                const e = info.hover.edge
+                hoverParts.push(
+                    e.kind === 2
+                        ? `Seam [${e.primaryId},${e.secondaryId}]`
+                        : `Edge [${e.primaryId}]`
+                )
+            }
+            parts.push(`Hover: ${hoverParts.join(" · ")}`)
         }
         this.#selInfo.textContent = parts.join(" · ")
         this.#selInfo.style.visibility = parts.length > 0 ? "visible" : "hidden"

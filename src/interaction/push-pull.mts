@@ -66,6 +66,25 @@ export class PushPullController {
         return this.#dragging
     }
 
+    /** Current face selection: nodeId, faceIndex, mode (0=slide, 1=extrude, 2=top cap, 3=bottom cap). */
+    getFaceSelection(): { nodeId: number; faceIndex: number; mode: number } | null {
+        if (this.#face) {
+            return {
+                nodeId: this.#face.extrude.id,
+                faceIndex: this.#face.faceIndex,
+                mode: this.#dragging ? 1 : 0,
+            }
+        }
+        if (this.#cap) {
+            return {
+                nodeId: this.#cap.node.id,
+                faceIndex: 0,
+                mode: this.#cap.isTop ? 2 : 3,
+            }
+        }
+        return null
+    }
+
     set onComplete(cb: (nodeId: number, vertices: [number, number][]) => void) {
         this.#onComplete = cb
     }

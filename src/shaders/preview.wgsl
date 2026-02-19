@@ -233,7 +233,7 @@ fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
         }
     }
 
-    if (sdf.seamOp != 0u && sdf.seamGap < 0.05) {
+    if (sdf.seamOp != 0u && sdf.seamGap < 0.15) {
         out.kind = 2u;
         out.primaryId = sdf.seamA;
         out.secondaryId = sdf.seamB;

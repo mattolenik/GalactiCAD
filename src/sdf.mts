@@ -672,6 +672,14 @@ export class SDFRenderer {
         const objects = faceSel
             ? rawObjects.filter(id => id !== 1023)
             : rawObjects
+        const objectNames: Record<number, string> = {}
+        if (this.#scene) {
+            const ids = new Set([...objects, this.#hoveredObjectId, faceSel?.nodeId].filter((id): id is number => id != null && id > 0))
+            for (const id of ids) {
+                const node = this.#scene.get(id)
+                objectNames[id] = node?.getShapeType?.() ?? "?"
+            }
+        }
         const edges = this.#selectedEdges.map(e => ({
             kind: e.kind,
             primaryId: e.primaryId,
@@ -695,7 +703,7 @@ export class SDFRenderer {
                           : null,
                   }
                 : null
-        this.#preview.updateSelectionInfo({ objects, edges, face, hover })
+        this.#preview.updateSelectionInfo({ objects, objectNames, edges, face, hover })
     }
 
     #writeSelectionBuffer() {

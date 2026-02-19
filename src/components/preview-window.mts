@@ -21,6 +21,7 @@ export interface HoverInfo {
 
 export type SelectionInfo = {
     objects: number[]
+    objectNames: Record<number, string>  // id -> shape type (e.g. "box", "union")
     edges: EdgeSelectionInfo[]
     face: FaceSelectionInfo | null
     hover: HoverInfo | null
@@ -111,7 +112,11 @@ export class PreviewWindow extends HTMLElement {
     updateSelectionInfo(info: SelectionInfo): void {
         const parts: string[] = []
         if (info.objects.length > 0) {
-            parts.push(`Objects: ${info.objects.join(", ")}`)
+            const objLabels = info.objects.map(id => {
+                const name = info.objectNames?.[id]
+                return name ? `${id} (${name})` : String(id)
+            }).join(", ")
+            parts.push(`Objects: ${objLabels}`)
         }
         if (info.edges.length > 0) {
             const edgeLabels = info.edges.map(e =>
@@ -123,10 +128,15 @@ export class PreviewWindow extends HTMLElement {
         }
         if (info.face) {
             const modeLabel = ["slide", "extrude", "top", "bottom"][info.face.mode] ?? "?"
-            parts.push(`Face: node ${info.face.nodeId} edge ${info.face.faceIndex} (${modeLabel})`)
+            const faceName = info.objectNames?.[info.face.nodeId]
+            const nodeLabel = faceName ? `${info.face.nodeId} (${faceName})` : String(info.face.nodeId)
+            parts.push(`Face: node ${nodeLabel} edge ${info.face.faceIndex} (${modeLabel})`)
         }
         if (info.hover) {
-            const hoverParts: string[] = [`Object ${info.hover.objectId}`]
+            const hoverName = info.objectNames?.[info.hover.objectId]
+            const hoverParts: string[] = [
+                hoverName ? `Object ${info.hover.objectId} (${hoverName})` : `Object ${info.hover.objectId}`,
+            ]
             if (info.hover.edge) {
                 const e = info.hover.edge
                 hoverParts.push(

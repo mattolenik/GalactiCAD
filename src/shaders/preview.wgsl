@@ -161,23 +161,36 @@ fn classifyBoxEdgeFeature(localP: vec3f, half: vec3f, eps: f32) -> u32 {
     return 0xFFFFFFFFu;
 }
 
+// Distance from p to a specific box edge. Each edge is a line segment; we need the perpendicular distance.
+// Features 0-3: Z-parallel at (sx*half.x, sy*half.y, z). Features 4-7: Y-parallel. Features 8-11: X-parallel.
 fn boxEdgeDistance(localP: vec3f, half: vec3f, feature: u32) -> f32 {
-    let d = abs(localP) - half;
     if (feature < 4u) {
+        let sx = select(-1.0, 1.0, (feature & 2u) != 0u);
+        let sy = select(-1.0, 1.0, (feature & 1u) != 0u);
+        let cx = sx * half.x;
+        let cy = sy * half.y;
+        let dx = localP.x - cx;
+        let dy = localP.y - cy;
         let zClamp = clamp(localP.z, -half.z, half.z);
-        let dx = d.x;
-        let dy = d.y;
         return length(vec3f(dx, dy, localP.z - zClamp));
     }
     if (feature < 8u) {
+        let sx = select(-1.0, 1.0, ((feature - 4u) & 2u) != 0u);
+        let sz = select(-1.0, 1.0, ((feature - 4u) & 1u) != 0u);
+        let cx = sx * half.x;
+        let cz = sz * half.z;
+        let dx = localP.x - cx;
+        let dz = localP.z - cz;
         let yClamp = clamp(localP.y, -half.y, half.y);
-        let dx = d.x;
-        let dz = d.z;
         return length(vec3f(dx, localP.y - yClamp, dz));
     }
+    let sy = select(-1.0, 1.0, ((feature - 8u) & 2u) != 0u);
+    let sz = select(-1.0, 1.0, ((feature - 8u) & 1u) != 0u);
+    let cy = sy * half.y;
+    let cz = sz * half.z;
+    let dy = localP.y - cy;
+    let dz = localP.z - cz;
     let xClamp = clamp(localP.x, -half.x, half.x);
-    let dy = d.y;
-    let dz = d.z;
     return length(vec3f(localP.x - xClamp, dy, dz));
 }
 
@@ -208,9 +221,11 @@ fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
     var half = vec3f(0.0);
     if (getBoxParamsForId(sdf.id, &pos, &half)) {
         let localP = hitWorld - pos;
-        let eps = 0.02;
-        let feat = classifyBoxEdgeFeature(localP, half, eps);
-        if (feat != 0xFFFFFFFFu) {
+        let feat = nearestBoxEdgeFeature(localP, half);
+        let nearestDist = boxEdgeDistance(localP, half, feat);
+        let minHalf = min(min(half.x, half.y), half.z);
+        let edgeThreshold = max(minHalf * 0.25, 0.03);
+        if (nearestDist < edgeThreshold) {
             out.kind = 1u;
             out.primaryId = sdf.id;
             out.featureA = feat;

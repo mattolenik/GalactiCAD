@@ -142,7 +142,7 @@ export async function runBenchmarkSuite(suite: BenchmarkSuite, frameCount = 100)
 
         for (const benchCase of suite) {
             try {
-                renderer.build(benchCase.source)
+                await renderer.build(benchCase.source)
                 renderer.controls.applyState(cameraStateFromSettings(benchCase.camera), { emit: false })
                 renderer.xrayMode = benchCase.preview.xrayMode
                 renderer.beamEnabled = benchCase.preview.beamOptimization

@@ -93,7 +93,7 @@ export class SDFRenderer {
     #lastRenderEndTime: number = 0
     #targetFPS: number = 120  // Limit frame rate to reduce GPU saturation
     #needsRender: boolean = true  // Dirty flag - only render when true
-    #pipeline!: GPURenderPipeline
+    #pipeline: GPURenderPipeline | null = null
     #preview: PreviewWindow
     #scene!: SceneInfo
     #started = false
@@ -128,12 +128,14 @@ export class SDFRenderer {
     #renderTextureHeight: number = 0
     // Beam optimization: tile-based SDF pre-pass
     #beamShader!: GPUShaderModule
-    #beamPipeline!: GPUComputePipeline
+    #beamPipeline: GPUComputePipeline | null = null
     #beamBindGroup!: GPUBindGroup
     #tStartTexture!: GPUTexture
     #tStartTextureView!: GPUTextureView
     // Generation counter to discard stale async AABB results
     #aabbGeneration = 0
+    // Generation counter to discard stale async pipeline creation
+    #buildGeneration = 0
 
     // Pre-allocated buffers reused every frame to avoid GC pressure
     #zoomBuf = new Float32Array(1)
@@ -752,7 +754,7 @@ export class SDFRenderer {
         this.previewSettingsLoaded$.complete()
     }
 
-    build(src: string) {
+    build(src: string): Promise<void> {
         const trimmed = src.trim()
         this.#builtSrc = trimmed
         this.#scene = new SceneInfo(trimmed)
@@ -771,12 +773,6 @@ export class SDFRenderer {
         this.#exportShader = this.#shaderCompiler.compile(exportShader, "Export")
         this.#boundsShader = this.#shaderCompiler.compile(boundsShader, "Bounds (scene bbox)")
         this.#beamShader = this.#shaderCompiler.compile(beamShader, "Beam Pre-Pass")
-        this.#buildPreviewPipeline()
-        this.#buildBeamPipeline()
-        // Force render texture recreation so bind groups are rebuilt with new pipelines
-        this.#renderTextureWidth = 0
-        this.#renderTextureHeight = 0
-        this.#needsRender = true
 
         // Populate the polygon vertex buffer with all Polygon2D vertex data.
         if (this.#scene.totalPolygonVertices > 0) {
@@ -806,6 +802,61 @@ export class SDFRenderer {
         this.#aabbGeneration++
         if (this.#scene.numAABBSlots > 0) {
             this.#computeSubtreeAABBs(this.#aabbGeneration)
+        }
+
+        // Create pipelines asynchronously to avoid blocking the main thread.
+        // Returns a promise that resolves when pipelines are ready.
+        const generation = ++this.#buildGeneration
+        return this.#createPipelinesAsync(generation)
+    }
+
+    /**
+     * Create preview and beam pipelines asynchronously.
+     * When complete, updates pipelines and forces bind group recreation.
+     * Discards results if a newer build has started (generation mismatch).
+     */
+    async #createPipelinesAsync(generation: number): Promise<void> {
+        const format = this.#format
+        try {
+            const [pipeline, beamPipeline] = await Promise.all([
+                this.#device.createRenderPipelineAsync({
+                    label: "Preview Pipeline",
+                    layout: "auto",
+                    vertex: {
+                        module: this.#sceneShader,
+                        entryPoint: "vertexMain",
+                    },
+                    fragment: {
+                        module: this.#sceneShader,
+                        entryPoint: "fragmentMain",
+                        targets: [
+                            { format },
+                            { format: "r32uint" as GPUTextureFormat },
+                        ],
+                    },
+                    primitive: {
+                        topology: "triangle-strip",
+                        stripIndexFormat: "uint32",
+                    },
+                }),
+                this.#device.createComputePipelineAsync({
+                    label: "Beam Pre-Pass Pipeline",
+                    layout: "auto",
+                    compute: {
+                        module: this.#beamShader,
+                        entryPoint: "beamMarch",
+                    },
+                }),
+            ])
+            if (generation !== this.#buildGeneration) return
+            this.#pipeline = pipeline
+            this.#beamPipeline = beamPipeline
+            this.#renderTextureWidth = 0
+            this.#renderTextureHeight = 0
+            this.#needsRender = true
+        } catch (err) {
+            if (generation !== this.#buildGeneration) return
+            console.error("[SDFRenderer] Pipeline creation failed:", err)
         }
     }
 
@@ -1358,43 +1409,6 @@ export class SDFRenderer {
         this.#renderTextureHeight = height
     }
 
-    #buildPreviewPipeline() {
-        const format = this.#format
-        this.#pipeline = this.#device.createRenderPipeline({
-            label: "Preview Pipeline",
-            layout: "auto",
-            vertex: {
-                module: this.#sceneShader,
-                entryPoint: "vertexMain",
-            },
-            fragment: {
-                module: this.#sceneShader,
-                entryPoint: "fragmentMain",
-                targets: [
-                    { format },
-                    { format: "r32uint" as GPUTextureFormat },
-                ],
-            },
-            primitive: {
-                topology: "triangle-strip",
-                stripIndexFormat: "uint32",
-            },
-        })
-        // Note: preview bind group is created in #ensureRenderTextures() because
-        // it references the beam t_start texture which depends on canvas dimensions.
-    }
-
-    #buildBeamPipeline() {
-        this.#beamPipeline = this.#device.createComputePipeline({
-            label: "Beam Pre-Pass Pipeline",
-            layout: "auto",
-            compute: {
-                module: this.#beamShader,
-                entryPoint: "beamMarch",
-            },
-        })
-    }
-
     /**
      * Internal method to perform a single frame render.
      * @param waitForGPU If true, wait for GPU to complete before returning (for accurate benchmarking)
@@ -1402,6 +1416,8 @@ export class SDFRenderer {
     async #renderFrame(waitForGPU = false): Promise<void> {
         // Skip rendering if scene dimensions haven't been set yet (before ResizeObserver fires)
         if (this.#sceneWidth === 0 || this.#sceneHeight === 0) return
+        // Skip if pipelines are not ready yet (async build in progress)
+        if (!this.#pipeline) return
 
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, this.#controls.viewTransform.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#controls.cameraPosition.data as BufferSource)

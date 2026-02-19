@@ -28,21 +28,57 @@ struct SDFResult {
     n: vec3<f32>,
     id2: u32,     // secondary ID for smooth blend color interpolation
     blend: f32,   // blend weight: 0 = fully id, 1 = fully id2
+    seamA: u32,   // operand ID at nearest hard CSG seam
+    seamB: u32,
+    seamOp: u32,  // 0=none, 1=union, 2=intersection, 3=difference
+    seamGap: f32, // |dA - dB| near seam
+    seamTangent: vec3f,
+    _seamPad: f32,
 }
 
-// Create SDFResult with no color blending (gradient magnitude g, sign s)
 fn sdfR(d: f32, g: f32, s: f32, id: u32, n: vec3f) -> SDFResult {
-    return SDFResult(d, g, s, id, n, id, 0.0);
+    return SDFResult(d, g, s, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0);
 }
 
-// Create SDFResult from a true distance (gradient magnitude = 1.0)
 fn sdfTrue(d: f32, id: u32, n: vec3<f32>) -> SDFResult {
-    return SDFResult(d, 1.0, 1.0, id, n, id, 0.0);
+    return SDFResult(d, 1.0, 1.0, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0);
 }
 
-// Negate an SDFResult (complement the surface: flip distance, sign, and normal)
 fn sdfNeg(r: SDFResult) -> SDFResult {
-    return SDFResult(-r.d, r.g, -r.s, r.id, -r.n, r.id2, r.blend);
+    return SDFResult(-r.d, r.g, -r.s, r.id, -r.n, r.id2, r.blend, r.seamA, r.seamB, r.seamOp, r.seamGap, r.seamTangent, r._seamPad);
+}
+
+fn bestSeam(a: SDFResult, b: SDFResult, outerGap: f32, outerOp: u32, outerTangent: vec3f) -> SDFResult {
+    var s: SDFResult;
+    s.seamA = a.id;
+    s.seamB = b.id;
+    s.seamOp = outerOp;
+    s.seamGap = outerGap;
+    s.seamTangent = outerTangent;
+    if (a.seamOp != 0u && a.seamGap < s.seamGap) {
+        s.seamA = a.seamA; s.seamB = a.seamB;
+        s.seamOp = a.seamOp; s.seamGap = a.seamGap;
+        s.seamTangent = a.seamTangent;
+    }
+    if (b.seamOp != 0u && b.seamGap < s.seamGap) {
+        s.seamA = b.seamA; s.seamB = b.seamB;
+        s.seamOp = b.seamOp; s.seamGap = b.seamGap;
+        s.seamTangent = b.seamTangent;
+    }
+    return s;
+}
+
+fn selectSDF(falseVal: SDFResult, trueVal: SDFResult, cond: bool) -> SDFResult {
+    if (cond) { return trueVal; }
+    return falseVal;
+}
+
+fn applySeam(out: ptr<function, SDFResult>, seam: SDFResult) {
+    (*out).seamA = seam.seamA;
+    (*out).seamB = seam.seamB;
+    (*out).seamOp = seam.seamOp;
+    (*out).seamGap = seam.seamGap;
+    (*out).seamTangent = seam.seamTangent;
 }
 
 //////////////////////////////
@@ -1090,11 +1126,11 @@ fn sdfMorphEx(a: SDFResult, b: SDFResult, t: f32) -> SDFResult {
     let d = a.d * (1.0 - t) + b.d * t;
     let g = a.g * (1.0 - t) + b.g * t;
     let n = safeNormalize(a.n * (1.0 - t) + b.n * t, a.n);
-    // Use id/id2/blend for smooth color interpolation
+    let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
     if (t < 0.5) {
-        return SDFResult(d, g, a.s, a.id, n, b.id, t);
+        return SDFResult(d, g, a.s, a.id, n, b.id, t, a.id, b.id, 0u, 1e9, seamT, 0.0);
     }
-    return SDFResult(d, g, b.s, b.id, n, a.id, 1.0 - t);
+    return SDFResult(d, g, b.s, b.id, n, a.id, 1.0 - t, a.id, b.id, 0u, 1e9, seamT, 0.0);
 }
 
 // Seam Fast: union of both shapes plus a pipe tube at their intersection (weld bead).
@@ -1131,29 +1167,43 @@ fn sdfSeamEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
 
 // Hard union: pick the closer operand (ID tiebreaker + normal blend for coplanar surfaces)
 fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
-    if (abs(a.d - b.d) < SURF_DIST) {
+    let gap = abs(a.d - b.d);
+    let seamTangent = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(a, b, gap, 1u, seamTangent);
+    if (gap < SURF_DIST) {
         let n = normalize(a.n + b.n);
-        if (a.id <= b.id) { return sdfR(a.d, a.g, a.s, a.id, n); }
-        return sdfR(b.d, b.g, b.s, b.id, n);
+        var out = selectSDF(sdfR(b.d, b.g, b.s, b.id, n), sdfR(a.d, a.g, a.s, a.id, n), a.id <= b.id);
+        applySeam(&out, seam);
+        return out;
     }
-    if (a.d < b.d) { return a; }
-    return b;
+    var out = selectSDF(b, a, a.d < b.d);
+    applySeam(&out, seam);
+    return out;
 }
 
 // Hard intersection: pick the farther operand (ID tiebreaker + normal blend for coplanar surfaces)
 fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
-    if (abs(a.d - b.d) < SURF_DIST) {
+    let gap = abs(a.d - b.d);
+    let seamTangent = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(a, b, gap, 2u, seamTangent);
+    if (gap < SURF_DIST) {
         let n = normalize(a.n + b.n);
-        if (a.id <= b.id) { return sdfR(a.d, a.g, a.s, a.id, n); }
-        return sdfR(b.d, b.g, b.s, b.id, n);
+        var out = selectSDF(sdfR(b.d, b.g, b.s, b.id, n), sdfR(a.d, a.g, a.s, a.id, n), a.id <= b.id);
+        applySeam(&out, seam);
+        return out;
     }
-    if (a.d > b.d) { return a; }
-    return b;
+    var out = selectSDF(b, a, a.d > b.d);
+    applySeam(&out, seam);
+    return out;
 }
 
 // Hard difference: intersection with complement of b
 fn opDifferenceEx(a: SDFResult, b: SDFResult) -> SDFResult {
-    return opIntersectionEx(a, sdfNeg(b));
+    var out = opIntersectionEx(a, sdfNeg(b));
+    if (out.seamOp == 2u) {
+        out.seamOp = 3u;
+    }
+    return out;
 }
 
 // Chamfer union - 45° bevel between operands
@@ -1163,22 +1213,22 @@ fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let diff = abs(a.d - b.d);
     let coplanar = diff < SURF_DIST;
     let n = normalize(a.n + b.n);
-    
-    // In chamfer region: blend normals
+    let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(a, b, diff, 1u, seamT);
+    var out: SDFResult;
     if (chamferD < a.d && chamferD < b.d) {
         if (coplanar || a.d < b.d) {
-            if (coplanar && b.id < a.id) { return sdfR(d, 1.0, b.s, b.id, n); }
-            return sdfR(d, 1.0, a.s, a.id, n);
+            out = selectSDF(sdfR(d, 1.0, b.s, b.id, n), sdfR(d, 1.0, a.s, a.id, n), coplanar && b.id < a.id);
+        } else {
+            out = sdfR(d, 1.0, b.s, b.id, n);
         }
-        return sdfR(d, 1.0, b.s, b.id, n);
+    } else if (coplanar) {
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), a.id <= b.id);
+    } else {
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), a.d < b.d);
     }
-    // Outside chamfer: coplanar tiebreaker
-    if (coplanar) {
-        if (a.id <= b.id) { return sdfR(d, a.g, a.s, a.id, n); }
-        return sdfR(d, b.g, b.s, b.id, n);
-    }
-    if (a.d < b.d) { return sdfR(d, a.g, a.s, a.id, a.n); }
-    return sdfR(d, b.g, b.s, b.id, b.n);
+    applySeam(&out, seam);
+    return out;
 }
 
 fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -1187,22 +1237,22 @@ fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let diff = abs(a.d - b.d);
     let coplanar = diff < SURF_DIST;
     let n = normalize(a.n + b.n);
-    
-    // In chamfer region: blend normals
+    let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(a, b, diff, 2u, seamT);
+    var out: SDFResult;
     if (chamferD > a.d && chamferD > b.d) {
         if (coplanar || a.d > b.d) {
-            if (coplanar && b.id < a.id) { return sdfR(d, 1.0, b.s, b.id, n); }
-            return sdfR(d, 1.0, a.s, a.id, n);
+            out = selectSDF(sdfR(d, 1.0, b.s, b.id, n), sdfR(d, 1.0, a.s, a.id, n), coplanar && b.id < a.id);
+        } else {
+            out = sdfR(d, 1.0, b.s, b.id, n);
         }
-        return sdfR(d, 1.0, b.s, b.id, n);
+    } else if (coplanar) {
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), a.id <= b.id);
+    } else {
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), a.d > b.d);
     }
-    // Outside chamfer: coplanar tiebreaker
-    if (coplanar) {
-        if (a.id <= b.id) { return sdfR(d, a.g, a.s, a.id, n); }
-        return sdfR(d, b.g, b.s, b.id, n);
-    }
-    if (a.d > b.d) { return sdfR(d, a.g, a.s, a.id, a.n); }
-    return sdfR(d, b.g, b.s, b.id, b.n);
+    applySeam(&out, seam);
+    return out;
 }
 
 fn fOpDifferenceChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -1215,21 +1265,22 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = max(r, min(a.d, b.d)) - length(u);
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     let aWins = (coplanar && a.id <= b.id) || (!coplanar && a.d < b.d);
-    
-    // In blend region: smooth color interpolation between both operands
+    let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(a, b, abs(a.d - b.d), 1u, seamT);
     if (a.d < r && b.d < r) {
         let n = normalize(a.n * u.x + b.n * u.y);
-        let w = u.y / (u.x + u.y);  // 0 = fully a, 1 = fully b
-        return SDFResult(d, 0.5, select(b.s, a.s, a.d < b.d), a.id, n, b.id, w);
+        let w = u.y / (u.x + u.y);
+        return SDFResult(d, 0.5, select(b.s, a.s, a.d < b.d), a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
     }
-    // Outside blend
+    var out: SDFResult;
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        if (aWins) { return sdfR(d, a.g, a.s, a.id, n); }
-        return sdfR(d, b.g, b.s, b.id, n);
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), aWins);
+    } else {
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), aWins);
     }
-    if (aWins) { return sdfR(d, a.g, a.s, a.id, a.n); }
-    return sdfR(d, b.g, b.s, b.id, b.n);
+    applySeam(&out, seam);
+    return out;
 }
 
 fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -1237,23 +1288,24 @@ fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = min(a.d, b.d) - e * e * 0.25 / r;
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     let aWins = (coplanar && a.id <= b.id) || (!coplanar && a.d < b.d);
-    
-    // In blend region: smooth color interpolation between both operands
+    let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(a, b, abs(a.d - b.d), 1u, seamT);
     if (e > 0.0) {
         let n = normalize(a.n * (r - a.d) + b.n * (r - b.d));
         let wa = max(r - a.d, 0.0);
         let wb = max(r - b.d, 0.0);
-        let w = wb / (wa + wb);  // 0 = fully a, 1 = fully b
-        return SDFResult(d, 0.5, select(b.s, a.s, a.d < b.d), a.id, n, b.id, w);
+        let w = wb / (wa + wb);
+        return SDFResult(d, 0.5, select(b.s, a.s, a.d < b.d), a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
     }
-    // Outside blend
+    var out: SDFResult;
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        if (aWins) { return sdfR(d, a.g, a.s, a.id, n); }
-        return sdfR(d, b.g, b.s, b.id, n);
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), aWins);
+    } else {
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), aWins);
     }
-    if (aWins) { return sdfR(d, a.g, a.s, a.id, a.n); }
-    return sdfR(d, b.g, b.s, b.id, b.n);
+    applySeam(&out, seam);
+    return out;
 }
 
 fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -1261,21 +1313,22 @@ fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     let d = min(-r, max(a.d, b.d)) + length(u);
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     let aWins = (coplanar && a.id <= b.id) || (!coplanar && a.d > b.d);
-    
-    // In blend region: smooth color interpolation between both operands
+    let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(a, b, abs(a.d - b.d), 2u, seamT);
     if (a.d > -r && b.d > -r) {
         let n = normalize(a.n * u.x + b.n * u.y);
-        let w = u.y / (u.x + u.y);  // 0 = fully a, 1 = fully b
-        return SDFResult(d, 0.5, select(b.s, a.s, a.d > b.d), a.id, n, b.id, w);
+        let w = u.y / (u.x + u.y);
+        return SDFResult(d, 0.5, select(b.s, a.s, a.d > b.d), a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
     }
-    // Outside blend
+    var out: SDFResult;
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        if (aWins) { return sdfR(d, a.g, a.s, a.id, n); }
-        return sdfR(d, b.g, b.s, b.id, n);
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), aWins);
+    } else {
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), aWins);
     }
-    if (aWins) { return sdfR(d, a.g, a.s, a.id, a.n); }
-    return sdfR(d, b.g, b.s, b.id, b.n);
+    applySeam(&out, seam);
+    return out;
 }
 
 fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -1283,8 +1336,9 @@ fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
 }
 
 // Columns union Ex — cylindrical columns decorate the blend between operands
-// Uses smooth color blending in the blend zone to avoid z-fighting at column boundaries.
 fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
+    let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(a, b, abs(a.d - b.d), 1u, seamT);
     if (a.d < r) && (b.d < r) {
         var p = vec2f(a.d, b.d);
         let columnradius = r * sqrt(2.0) / ((n - 1.0) * 2.0 + sqrt(2.0));
@@ -1302,16 +1356,20 @@ fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
         let wb = r - b.d;
         let w = wb / (wa + wb);
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return SDFResult(d, 1.0, select(b.s, a.s, a.d < b.d), a.id, blendN, b.id, w);
+        return SDFResult(d, 1.0, select(b.s, a.s, a.d < b.d), a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
     }
+    var out: SDFResult;
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(a.n + b.n, a.n);
-        if (a.id <= b.id) { return sdfR(min(a.d, b.d), a.g, a.s, a.id, cn); }
-        return sdfR(min(a.d, b.d), b.g, b.s, b.id, cn);
+        out = selectSDF(sdfR(min(a.d, b.d), b.g, b.s, b.id, cn), sdfR(min(a.d, b.d), a.g, a.s, a.id, cn), a.id <= b.id);
+    } else if (a.d < b.d) {
+        out = sdfR(a.d, a.g, a.s, a.id, a.n);
+    } else {
+        out = sdfR(b.d, b.g, b.s, b.id, b.n);
     }
-    if (a.d < b.d) { return sdfR(a.d, a.g, a.s, a.id, a.n); }
-    return sdfR(b.d, b.g, b.s, b.id, b.n);
+    applySeam(&out, seam);
+    return out;
 }
 
 // Columns difference Ex — columns decorate the carved boundary
@@ -1320,6 +1378,8 @@ fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
 //   wa = r + aIn.d (= r - aD), wb = r - b.d — both guaranteed positive in blend zone.
 //   Difference normal = normalize(aIn.n * wa - b.n * wb).
 fn fOpDifferenceColumnsEx(aIn: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
+    let seamT = safeNormalize(cross(aIn.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(aIn, b, abs(aIn.d + b.d), 3u, seamT);
     let aD = -aIn.d;
     if (aD < r) && (b.d < r) {
         var p = vec2f(aD, b.d);
@@ -1334,24 +1394,27 @@ fn fOpDifferenceColumnsEx(aIn: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRe
         let py = modF(p.y, columnradius * 2.0);
         let res = min(max(-length(vec2f(p.x, py)) + columnradius, p.x), aD);
         let d = -min(res, b.d);
-        // Weights mirror the union's (r - operand_dist) but in complement space
-        let wa = r + aIn.d;   // = r - aD, always > 0 in blend zone
-        let wb = r - b.d;     // always > 0 in blend zone
-        // Negate the union-space normal to get the difference normal
+        let wa = r + aIn.d;
+        let wb = r - b.d;
         let blendN = safeNormalize(aIn.n * wa - b.n * wb, aIn.n);
-        let w = wb / (wa + wb);  // 0 = a's color, 1 = b's color
-        return SDFResult(d, 1.0, select(b.s, aIn.s, aIn.d < b.d), aIn.id, blendN, b.id, w);
+        let w = wb / (wa + wb);
+        var out = SDFResult(d, 1.0, select(b.s, aIn.s, aIn.d < b.d), aIn.id, blendN, b.id, w, aIn.id, b.id, 0u, 1e9, seamT, 0.0);
+        applySeam(&out, seam);
+        return out;
     }
-    // Outside blend: standard hard difference max(aIn.d, -b.d)
     let d = max(aIn.d, -b.d);
+    var out: SDFResult;
     let coplanar = abs(aIn.d + b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(aIn.n - b.n, aIn.n);
-        if (aIn.id <= b.id) { return sdfR(d, aIn.g, aIn.s, aIn.id, cn); }
-        return sdfR(d, b.g, -b.s, b.id, cn);
+        out = selectSDF(sdfR(d, b.g, -b.s, b.id, cn), sdfR(d, aIn.g, aIn.s, aIn.id, cn), aIn.id <= b.id);
+    } else if (aIn.d > -b.d) {
+        out = sdfR(d, aIn.g, aIn.s, aIn.id, aIn.n);
+    } else {
+        out = sdfR(d, b.g, -b.s, b.id, -b.n);
     }
-    if (aIn.d > -b.d) { return sdfR(d, aIn.g, aIn.s, aIn.id, aIn.n); }
-    return sdfR(d, b.g, -b.s, b.id, -b.n);
+    applySeam(&out, seam);
+    return out;
 }
 
 // Columns intersection Ex
@@ -1360,32 +1423,33 @@ fn fOpIntersectionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRe
 }
 
 // Stairs union Ex — staircase transition between operands
-// Uses smooth color blending (id/id2/blend) in the blend zone to avoid
-// z-fighting artifacts at modF step boundaries.
 fn fOpUnionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
+    let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
+    let seam = bestSeam(a, b, abs(a.d - b.d), 1u, seamT);
     let s = r / n;
     let u = b.d - r;
     let stairD = 0.5 * (u + a.d + abs(modF(u - a.d + s, 2.0 * s) - s));
     let d = min(min(a.d, b.d), stairD);
 
-    // In the blend zone (both operands within r), use smooth color blending
-    // so that the periodic modF boundaries don't cause ID flickering.
     if (a.d < r && b.d < r) {
         let wa = r - a.d;
         let wb = r - b.d;
-        let w = wb / (wa + wb);  // 0 = fully a, 1 = fully b
+        let w = wb / (wa + wb);
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return SDFResult(d, 1.0, select(b.s, a.s, a.d < b.d), a.id, blendN, b.id, w);
+        return SDFResult(d, 1.0, select(b.s, a.s, a.d < b.d), a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
     }
-    // Outside blend zone: one operand clearly wins
+    var out: SDFResult;
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(a.n + b.n, a.n);
-        if (a.id <= b.id) { return sdfR(d, a.g, a.s, a.id, cn); }
-        return sdfR(d, b.g, b.s, b.id, cn);
+        out = selectSDF(sdfR(d, b.g, b.s, b.id, cn), sdfR(d, a.g, a.s, a.id, cn), a.id <= b.id);
+    } else if (a.d < b.d) {
+        out = sdfR(d, a.g, a.s, a.id, a.n);
+    } else {
+        out = sdfR(d, b.g, b.s, b.id, b.n);
     }
-    if (a.d < b.d) { return sdfR(d, a.g, a.s, a.id, a.n); }
-    return sdfR(d, b.g, b.s, b.id, b.n);
+    applySeam(&out, seam);
+    return out;
 }
 
 // Stairs intersection Ex

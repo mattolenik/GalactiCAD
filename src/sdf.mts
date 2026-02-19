@@ -1,5 +1,6 @@
 import { Subject } from "rxjs"
 import { fromEvent } from "rxjs"
+import { throttleTime } from "rxjs"
 import type { Subscription } from "rxjs"
 import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
@@ -8,6 +9,7 @@ import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
 import { Extrude, Loft, Polygon2D, SceneInfo } from "./scene/scene.mjs"
+import type { SelectionInfo } from "./components/preview-window.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import beamShader from "./shaders/beam.wgsl"
@@ -51,7 +53,14 @@ class UniformBuffers {
     faceSelection!: GPUBuffer
     /** Per-node parameters (h, posYDelta) for Extrude/Loft. Updated during cap drag. */
     nodeParams!: GPUBuffer
+    edgeHit!: GPUBuffer
+    selectedEdges!: GPUBuffer
+    hoverEdgeHit!: GPUBuffer
+    hoveredEdge!: GPUBuffer
 }
+
+type EdgeHitData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; objectId: number; seedPoint: [number, number, number] }
+type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx: number; epsilon: number }
 
 /** Outline style for selected objects. */
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -90,6 +99,9 @@ export class SDFRenderer {
     #started = false
     #uniformBuffers: UniformBuffers
     #selectedObjectIds: boolean[] = new Array<boolean>(1024).fill(false)
+    #selectedEdges: SelectedEdgeData[] = []
+    #hoveredEdgeData: SelectedEdgeData | null = null
+    #clickPending = false
     #lastClickPos: Vec2f = vec2(0, 0)
     #exportBuffers: ExportBuffers
     #shaderCompiler!: ShaderCompiler
@@ -182,8 +194,9 @@ export class SDFRenderer {
     }
 
     /** Set the center of the visible (non-editor) area in UV space (0-1). */
-    setViewCenter(x: number, y: number): void {
+    setViewCenter(x: number, y: number, editorOffsetPx?: number): void {
         this.#viewCenter = vec2(x, y)
+        this.#preview.setSelectionInfoLeft(editorOffsetPx ?? 0)
         this.#needsRender = true
     }
 
@@ -291,8 +304,9 @@ export class SDFRenderer {
         for (const id of ids) {
             this.#selectedObjectIds[id] = true
         }
+        this.#clearSelectedEdges()
         this.#writeSelectionBuffer()
-
+        this.#pushSelectionInfo()
         if (notify) {
             this.selectionChange$.next(this.selectedObjectIds)
         }
@@ -318,6 +332,119 @@ export class SDFRenderer {
         return vec3(f[0], f[1], f[2])
     }
 
+    async #readEdgeHit(): Promise<EdgeHitData | null> {
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.edgeHit, 48)
+        const u32 = new Uint32Array(readback)
+        const f32 = new Float32Array(readback)
+        const kind = u32[0]
+        if (kind === 0) return null
+        return {
+            kind,
+            primaryId: u32[1],
+            secondaryId: u32[2],
+            featureA: u32[3],
+            opType: u32[4],
+            objectId: u32[5],
+            seedPoint: [f32[8], f32[9], f32[10]],
+        }
+    }
+
+    async #readHoverEdgeHit(): Promise<EdgeHitData | null> {
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.hoverEdgeHit, 48)
+        const u32 = new Uint32Array(readback)
+        const f32 = new Float32Array(readback)
+        const kind = u32[0]
+        if (kind === 0) return null
+        return {
+            kind,
+            primaryId: u32[1],
+            secondaryId: u32[2],
+            featureA: u32[3],
+            opType: u32[4],
+            objectId: u32[5],
+            seedPoint: [f32[8], f32[9], f32[10]],
+        }
+    }
+
+    #writeSelectedEdgesBuffer(): void {
+        const header = new ArrayBuffer(16)
+        new Uint32Array(header)[0] = this.#selectedEdges.length
+        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedEdges, 0, header)
+        for (let i = 0; i < Math.min(this.#selectedEdges.length, 16); i++) {
+            const e = this.#selectedEdges[i]
+            const buf = new ArrayBuffer(32)
+            const u32 = new Uint32Array(buf)
+            const f32 = new Float32Array(buf)
+            u32[0] = e.kind
+            u32[1] = e.primaryId
+            u32[2] = e.secondaryId
+            u32[3] = e.featureA
+            u32[4] = e.opType
+            f32[5] = e.lineWidthPx ?? 4.0
+            f32[6] = e.epsilon ?? 0.015
+            this.#device.queue.writeBuffer(this.#uniformBuffers.selectedEdges, 16 + i * 32, buf)
+        }
+    }
+
+    #setSelectedEdgeFromHit(hit: EdgeHitData): void {
+        this.#selectedEdges = [{
+            kind: hit.kind,
+            primaryId: hit.primaryId,
+            secondaryId: hit.secondaryId,
+            featureA: hit.featureA,
+            opType: hit.opType,
+            lineWidthPx: 4.0,
+            epsilon: 0.02,
+        }]
+        this.#writeSelectedEdgesBuffer()
+        this.#pushSelectionInfo()
+    }
+
+    #addSelectedEdgeFromHit(hit: EdgeHitData): void {
+        const edge: SelectedEdgeData = {
+            kind: hit.kind,
+            primaryId: hit.primaryId,
+            secondaryId: hit.secondaryId,
+            featureA: hit.featureA,
+            opType: hit.opType,
+            lineWidthPx: 4.0,
+            epsilon: 0.02,
+        }
+        const key = `${hit.kind}:${hit.primaryId}:${hit.secondaryId}:${hit.featureA}:${hit.opType}`
+        if (this.#selectedEdges.some(e => `${e.kind}:${e.primaryId}:${e.secondaryId}:${e.featureA}:${e.opType}` === key)) return
+        this.#selectedEdges.push(edge)
+        if (this.#selectedEdges.length > 16) this.#selectedEdges = this.#selectedEdges.slice(-16)
+        this.#writeSelectedEdgesBuffer()
+        this.#pushSelectionInfo()
+    }
+
+    #clearSelectedEdges(): void {
+        this.#selectedEdges = []
+        this.#writeSelectedEdgesBuffer()
+        this.#pushSelectionInfo()
+    }
+
+    #setHoveredEdge(edge: SelectedEdgeData | null): void {
+        this.#hoveredEdgeData = edge
+        const header = new ArrayBuffer(16)
+        new Uint32Array(header)[0] = edge ? 1 : 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 0, header)
+        if (edge) {
+            const buf = new ArrayBuffer(32)
+            const u32 = new Uint32Array(buf)
+            const f32 = new Float32Array(buf)
+            u32[0] = edge.kind
+            u32[1] = edge.primaryId
+            u32[2] = edge.secondaryId
+            u32[3] = edge.featureA
+            u32[4] = edge.opType
+            f32[5] = edge.lineWidthPx ?? 2.5
+            f32[6] = edge.epsilon ?? 0.02
+            this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 16, buf)
+        }
+        this.#pushSelectionInfo()
+    }
+
     /** Write click state to GPU buffers and trigger render. Converts screen pos to UV. */
     #writeClickState(screenPos: Vec2f): void {
         const canvas = this.#preview.canvas
@@ -339,17 +466,42 @@ export class SDFRenderer {
         clickF32[5] = 0
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
 
-        // Clear clickedObjectId buffer to 0 before rendering.
-        // The shader writes the hit object ID (non-zero) via atomicStore;
-        // 0 means "no hit" since valid object IDs start at 1.
         this.#device.queue.writeBuffer(
             this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0])
         )
-        // Clear hit position to prevent stale data from previous clicks.
         this.#device.queue.writeBuffer(
             this.#uniformBuffers.clickedHitPos, 0, new Float32Array([0, 0, 0, 0]).buffer
         )
+        this.#device.queue.writeBuffer(
+            this.#uniformBuffers.edgeHit, 0, new Uint32Array([0, 0, 0, 0, 0, 0]).buffer
+        )
 
+        this.#needsRender = true
+    }
+
+    #writeHoverState(screenPos: Vec2f, enabled: boolean): void {
+        if (this.#clickPending) return
+        const canvas = this.#preview.canvas
+        const rect = canvas.getBoundingClientRect()
+        const x = (screenPos.x - rect.left) / rect.width
+        const y = 1.0 - (screenPos.y - rect.top) / rect.height
+
+        const clickData = new ArrayBuffer(32)
+        const clickF32 = new Float32Array(clickData)
+        const clickU32 = new Uint32Array(clickData)
+        clickF32[0] = this.#lastClickPos.x
+        clickF32[1] = this.#lastClickPos.y
+        clickU32[2] = 0
+        clickU32[3] = enabled ? 1 : 0
+        clickF32[4] = x
+        clickF32[5] = y
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
+
+        if (enabled) {
+            this.#device.queue.writeBuffer(
+                this.#uniformBuffers.hoverEdgeHit, 0, new Uint32Array([0, 0, 0, 0, 0, 0]).buffer
+            )
+        }
         this.#needsRender = true
     }
 
@@ -366,20 +518,69 @@ export class SDFRenderer {
     }
 
     #handleClick(screenPos: Vec2f, shiftKey: boolean, altKey: boolean) {
+        if (!this.#device) return
+        this.#clickPending = true
         this.#writeClickState(screenPos)
-        console.log(`Click at UV: (${this.#lastClickPos.x.toFixed(3)}, ${this.#lastClickPos.y.toFixed(3)}), shift: ${shiftKey}, alt: ${altKey}`)
 
-        this.#scheduleClickReadback(clickedId => {
-            if (clickedId !== 0) {
-                this.#updateSelection(clickedId, shiftKey)
-            } else if (!shiftKey) {
-                // Clicked on empty space — deselect all
-                this.#selectedObjectIds.fill(false)
-                this.#writeSelectionBuffer()
-                this.selectionChange$.next([])
-                console.log("Deselected all objects (clicked empty space)")
+        setTimeout(async () => {
+            try {
+                const [clickedId, edgeHitResult] = await Promise.all([
+                    this.#readClickedObjectId(),
+                    this.#readEdgeHit(),
+                ])
+                this.#clickPending = false
+                if (altKey && edgeHitResult) {
+                    if (shiftKey) {
+                        this.#addSelectedEdgeFromHit(edgeHitResult)
+                    } else {
+                        this.#setSelectedEdgeFromHit(edgeHitResult)
+                    }
+                    this.#selectedObjectIds.fill(false)
+                    this.#writeSelectionBuffer()
+                    this.selectionChange$.next([])
+                } else {
+                    this.#clearSelectedEdges()
+                    if (clickedId !== 0) {
+                        this.#updateSelection(clickedId, shiftKey)
+                    } else if (!shiftKey) {
+                        this.#selectedObjectIds.fill(false)
+                        this.#writeSelectionBuffer()
+                        this.selectionChange$.next([])
+                    }
+                }
+            } catch (error) {
+                this.#clickPending = false
+                console.error("Error reading click data:", error)
             }
-        })
+        }, 200)
+    }
+
+    #handleHover(screenPos: Vec2f, altKey: boolean) {
+        if (!this.#device) return
+        if (!altKey) {
+            this.#setHoveredEdge(null)
+            this.#writeHoverState(screenPos, false)
+            return
+        }
+        this.#writeHoverState(screenPos, true)
+        setTimeout(async () => {
+            try {
+                const hit = await this.#readHoverEdgeHit()
+                const edge: SelectedEdgeData | null = hit ? {
+                    kind: hit.kind,
+                    primaryId: hit.primaryId,
+                    secondaryId: hit.secondaryId,
+                    featureA: hit.featureA,
+                    opType: hit.opType,
+                    lineWidthPx: 2.5,
+                    epsilon: 0.02,
+                } : null
+                this.#setHoveredEdge(edge)
+                this.#needsRender = true
+            } catch (error) {
+                console.error("Error reading hover edge:", error)
+            }
+        }, 50)
     }
 
     #handleDoubleClick(screenPos: Vec2f) {
@@ -455,9 +656,15 @@ export class SDFRenderer {
         }
 
         this.#writeSelectionBuffer()
-
-        // Notify listeners about selection change
+        this.#pushSelectionInfo()
         this.selectionChange$.next(this.selectedObjectIds)
+    }
+
+    #pushSelectionInfo(): void {
+        const objects = this.selectedObjectIds
+        const edges = this.#selectedEdges
+        const hover = this.#hoveredEdgeData
+        this.#preview.updateSelectionInfo({ objects, edges, hover })
     }
 
     #writeSelectionBuffer() {
@@ -479,6 +686,9 @@ export class SDFRenderer {
                 this.#handleClick(screenPos, shiftKey, altKey)
             ),
             this.#controls.doubleClick$.subscribe(screenPos => this.#handleDoubleClick(screenPos)),
+            this.#controls.hover$.pipe(throttleTime(80)).subscribe(({ screenPos, altKey }) =>
+                this.#handleHover(screenPos, altKey)
+            ),
             this.#controls.change$.subscribe(() => {
                 this.#needsRender = true
                 this.#onCameraMovement()
@@ -546,15 +756,17 @@ export class SDFRenderer {
         const trimmed = src.trim()
         this.#builtSrc = trimmed
         this.#scene = new SceneInfo(trimmed)
-        const sceneAux = this.#scene.compileAux()           // Auxiliary WGSL functions (e.g., polygon SDF evaluators)
-        const sceneAuxFast = this.#scene.compileAuxFast()  // Fast-path-only aux (no full SDFResult functions)
-        const sceneSDF = this.#scene.compile()             // Full SDFResult (distance + gradient + normal + ID)
-        const sceneSDF_fast = this.#scene.compileFast()    // Fast vec2f (distance + gradient only)
+        const sceneAux = this.#scene.compileAux()
+        const sceneAuxFast = this.#scene.compileAuxFast()
+        const sceneSDF = this.#scene.compile()
+        const sceneSDF_fast = this.#scene.compileFast()
+        const sceneEdgeHelpers = this.#scene.compileEdgeHelpers()
         this.#shaderCompiler = new ShaderCompiler(this.#device)
             .replace("insert", "sceneAuxFast", sceneAuxFast)
             .replace("insert", "sceneAux", sceneAux)
             .replace("insert", "sceneSDF_fast", sceneSDF_fast)
             .replace("insert", "sceneSDF", sceneSDF)
+            .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
         this.#sceneShader = this.#shaderCompiler.compile(previewShader, "Preview Window")
         this.#exportShader = this.#shaderCompiler.compile(exportShader, "Export")
         this.#boundsShader = this.#shaderCompiler.compile(boundsShader, "Bounds (scene bbox)")
@@ -1000,6 +1212,35 @@ export class SDFRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "nodeParams",
         })
+
+        const EDGE_HIT_SIZE = 48
+        const SELECTED_EDGES_HEADER = 16
+        const SELECTED_EDGE_SIZE = 32
+        const SELECTED_EDGES_COUNT = 16
+        const SELECTED_EDGES_TOTAL = SELECTED_EDGES_HEADER + SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE
+
+        this.#uniformBuffers.edgeHit = this.#device.createBuffer({
+            size: EDGE_HIT_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "edgeHit",
+        })
+        this.#uniformBuffers.selectedEdges = this.#device.createBuffer({
+            size: SELECTED_EDGES_TOTAL,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            label: "selectedEdges",
+        })
+        this.#uniformBuffers.hoverEdgeHit = this.#device.createBuffer({
+            size: EDGE_HIT_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "hoverEdgeHit",
+        })
+        this.#uniformBuffers.hoveredEdge = this.#device.createBuffer({
+            size: SELECTED_EDGES_TOTAL,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            label: "hoveredEdge",
+        })
+        this.#writeSelectedEdgesBuffer()
+        this.#setHoveredEdge(null)
     }
 
     /** Fill the AABB buffer with infinite half-extents so guards never trigger (no culling). */
@@ -1105,6 +1346,10 @@ export class SDFRenderer {
                     { binding: 10, resource: { buffer: this.#uniformBuffers.clickedHitPos } },
                     { binding: 11, resource: { buffer: this.#uniformBuffers.faceSelection } },
                     { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                    { binding: 13, resource: { buffer: this.#uniformBuffers.edgeHit } },
+                    { binding: 14, resource: { buffer: this.#uniformBuffers.selectedEdges } },
+                    { binding: 15, resource: { buffer: this.#uniformBuffers.hoverEdgeHit } },
+                    { binding: 16, resource: { buffer: this.#uniformBuffers.hoveredEdge } },
                 ],
             })
         }

@@ -560,7 +560,8 @@ class App {
                 : parseFloat(css.getPropertyValue("--editor-height") || "22") / 100
             const vcx = editorOnLeft ? (frac + 1.0) / 2 : 0.5
             const vcy = editorOnLeft ? 0.5 : (1.0 - frac) / 2
-            this.renderer.setViewCenter(vcx, vcy)
+            const editorOffsetPx = editorOnLeft ? mainRect.width * frac : 0
+            this.renderer.setViewCenter(vcx, vcy, editorOffsetPx)
             this.#mesh?.setViewCenter(vcx, vcy)
         }
         this.#updateViewCenter = updateViewCenter

@@ -117,6 +117,16 @@ export class SceneInfo {
         return `\nreturn ${compiledResult.text};\n`
     }
 
+    compileEdgeHelpers(): string {
+        const boxes = Array.from(this.#nodes.values())
+            .filter((node): node is Box => node instanceof Box)
+        let code = ""
+        for (const b of boxes) {
+            code += `case ${b.id}u: { (*posOut) = ${b.pos.wgsl}; (*halfOut) = ${b.size.wgsl}; return true; }\n`
+        }
+        return code
+    }
+
     /**
      * Compile auxiliary WGSL functions from all nodes in the scene.
      * These are placed before sceneSDF in the shader (e.g., per-polygon SDF evaluators).

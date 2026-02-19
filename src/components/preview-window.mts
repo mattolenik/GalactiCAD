@@ -1,9 +1,12 @@
 import { VERSION } from "../version.mts"
 
+export type SelectionInfo = { objects: number[]; edges: unknown[]; hover: unknown | null }
+
 export class PreviewWindow extends HTMLElement {
     readonly canvas: HTMLCanvasElement
 
     #counter: HTMLSpanElement
+    #selInfo: HTMLDivElement
     #framerateThreshold: number = 120
     #showFps: boolean = false
 
@@ -49,6 +52,15 @@ export class PreviewWindow extends HTMLElement {
             font-size: 10px;
             color: rgba(255, 255, 255, 0.35);
         }
+        .sel-info {
+            position: absolute;
+            bottom: 10px;
+            left: calc(var(--sel-info-left, 0px) + 10px);
+            pointer-events: none;
+            z-index: 1;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+        }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"
@@ -66,6 +78,29 @@ export class PreviewWindow extends HTMLElement {
         versionEl.classList.add("version")
         versionEl.textContent = VERSION
         overlay.appendChild(versionEl)
+
+        this.#selInfo = document.createElement("div")
+        this.#selInfo.classList.add("sel-info")
+        shadow.appendChild(this.#selInfo)
+    }
+
+    updateSelectionInfo(info: SelectionInfo): void {
+        const parts: string[] = []
+        if (info.objects.length > 0) {
+            parts.push(`Objects: ${info.objects.join(", ")}`)
+        }
+        if (info.edges.length > 0) {
+            parts.push(`Edges: ${info.edges.length}`)
+        }
+        if (info.hover) {
+            parts.push("Hover")
+        }
+        this.#selInfo.textContent = parts.join(" · ")
+        this.#selInfo.style.visibility = parts.length > 0 ? "visible" : "hidden"
+    }
+
+    setSelectionInfoLeft(offsetPx: number): void {
+        this.#selInfo.style.setProperty("--sel-info-left", `${offsetPx}px`)
     }
 
     updateFPS(fps: number) {

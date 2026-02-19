@@ -589,9 +589,9 @@ export class SourceParser {
     /**
      * Find an extrude() or loft() call at a given editor position.
      * Returns info needed to update h and pos after a cap push/pull drag.
+     * Uses exact (line, column) match to avoid editing the wrong call when multiple extrude/loft exist.
      */
     findExtrudeLoftAtPosition(src: string, line: number, column: number): ExtrudeLoftCallInfo | null {
-        const offset = this.positionToOffset(src, line, column)
         const calls: ExtrudeLoftCallInfo[] = []
 
         try {
@@ -607,17 +607,13 @@ export class SourceParser {
             return null
         }
 
+        // Exact match: source location maps nodeId to the function name position
         for (const call of calls) {
-            const callStart = call.hValueStart
-            const callEnd = call.hValueEnd
-            if (offset >= callStart - 50 && offset <= callEnd + 50) {
+            if (call.location.startLine === line && call.location.startColumn === column) {
                 return call
             }
         }
-        // Fall back to the first call at the matching source location
-        for (const call of calls) {
-            if (call.location.startLine === line) return call
-        }
+        // Fallback: single call only
         return calls.length === 1 ? calls[0] : null
     }
 

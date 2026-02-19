@@ -82,7 +82,8 @@ struct EdgeHit {
     objectId: u32,
     seedPoint: vec4f,     // xyz = world hit pos, w = unused
 }
-@group(0) @binding(13) var<storage, read_write> edgeHit: EdgeHit;
+// Two slots for xray mode: [0]=front (outer), [1]=back (inner)
+@group(0) @binding(13) var<storage, read_write> edgeHits: array<EdgeHit, 2>;
 
 struct SelectedEdge {
     kind: u32,
@@ -103,7 +104,7 @@ struct SelectedEdgesBuffer {
 }
 @group(0) @binding(14) var<storage, read> selectedEdges: SelectedEdgesBuffer;
 
-@group(0) @binding(15) var<storage, read_write> hoverEdgeHit: EdgeHit;
+@group(0) @binding(15) var<storage, read_write> hoverEdgeHits: array<EdgeHit, 2>;
 @group(0) @binding(16) var<storage, read> hoveredEdge: SelectedEdgesBuffer;
 
 const FACE_HIGHLIGHT_ID: u32 = 1023u;
@@ -474,9 +475,9 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     _ = clickedHitPos[0];
     _ = faceSelection.nodeId;
     _ = nodeParams[0];
-    _ = edgeHit.kind;
+    _ = edgeHits[0].kind;
     _ = selectedEdges.count;
-    _ = hoverEdgeHit.kind;
+    _ = hoverEdgeHits[0].kind;
     _ = hoveredEdge.count;
 
     let uv = fragCoord;
@@ -505,8 +506,20 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
 
     // Use standard raymarching, starting from beam distance
     let hit = raymarch(transformedOrigin, transformedDir, t_start);
-
     let hitPos = transformedOrigin + transformedDir * hit.t;
+
+    // In xray mode, find the back (inner) surface and use it for selection so inner edges are selectable.
+    // We compute backHit here and reuse it for shading below.
+    var selecHit = hit;
+    var selecPos = transformedOrigin + transformedDir * hit.t;
+    var backHit = RaymarchHit(-1.0, sdfTrue(MAX_DIST, 0u, vec3f(0.0)));
+    if (viewSettings.xrayMode > 0u && hit.t > 0.0) {
+        backHit = raymarchFromInside(transformedOrigin, transformedDir, hit.t);
+        if (backHit.t > 0.0) {
+            selecHit = backHit;
+            selecPos = transformedOrigin + transformedDir * backHit.t;
+        }
+    }
 
     // Click detection using pixel-accurate matching
     if (clickState.enabled > 0u && hit.t > 0.0) {
@@ -514,12 +527,19 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         let currentPixel = uv * camera.res;
         let pixelDist = distance(clickPixel, currentPixel);
         if (pixelDist < 2.0) {
-            atomicStore(&clickedObjectId, hit.sdf.id);
-            clickedHitPos[0] = hitPos.x;
-            clickedHitPos[1] = hitPos.y;
-            clickedHitPos[2] = hitPos.z;
-            clickedHitPos[3] = hit.t;
-            edgeHit = classifyEdgeAtHit(hitPos, hit.sdf, wppu);
+            atomicStore(&clickedObjectId, selecHit.sdf.id);
+            clickedHitPos[0] = selecPos.x;
+            clickedHitPos[1] = selecPos.y;
+            clickedHitPos[2] = selecPos.z;
+            clickedHitPos[3] = selecHit.t;
+            let frontEdge = classifyEdgeAtHit(hitPos, hit.sdf, wppu);
+            edgeHits[0] = frontEdge;
+            if (viewSettings.xrayMode > 0u && backHit.t > 0.0) {
+                let backEdge = classifyEdgeAtHit(selecPos, selecHit.sdf, wppu);
+                edgeHits[1] = backEdge;
+            } else {
+                edgeHits[1] = EdgeHit();
+            }
         }
     }
 
@@ -528,7 +548,14 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         let currentPixel = uv * camera.res;
         let pixelDist = distance(hoverPixel, currentPixel);
         if (pixelDist < 2.0) {
-            hoverEdgeHit = classifyEdgeAtHit(hitPos, hit.sdf, wppu);
+            let frontEdge = classifyEdgeAtHit(hitPos, hit.sdf, wppu);
+            hoverEdgeHits[0] = frontEdge;
+            if (viewSettings.xrayMode > 0u && backHit.t > 0.0) {
+                let backEdge = classifyEdgeAtHit(selecPos, selecHit.sdf, wppu);
+                hoverEdgeHits[1] = backEdge;
+            } else {
+                hoverEdgeHits[1] = EdgeHit();
+            }
         }
     }
 
@@ -538,7 +565,6 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
 
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {
-            let backHit = raymarchFromInside(transformedOrigin, transformedDir, hit.t);
             if (backHit.t > 0.0) {
                 var backColor = shadeHit(backHit, true);
                 let backPos = transformedOrigin + transformedDir * backHit.t;

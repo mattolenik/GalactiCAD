@@ -16,7 +16,7 @@ export interface FaceSelectionInfo {
 
 export interface HoverInfo {
     objectId: number
-    edge: EdgeSelectionInfo | null
+    edges: EdgeSelectionInfo[]
 }
 
 export type SelectionInfo = {
@@ -137,13 +137,11 @@ export class PreviewWindow extends HTMLElement {
             const hoverParts: string[] = [
                 hoverName ? `Object ${info.hover.objectId} (${hoverName})` : `Object ${info.hover.objectId}`,
             ]
-            if (info.hover.edge) {
-                const e = info.hover.edge
-                hoverParts.push(
-                    e.kind === 2
-                        ? `Seam [${e.primaryId},${e.secondaryId}]`
-                        : `Edge [${e.primaryId}]`
+            if (info.hover.edges.length > 0) {
+                const edgeLabels = info.hover.edges.map(e =>
+                    e.kind === 2 ? `Seam [${e.primaryId},${e.secondaryId}]` : `Edge [${e.primaryId}]`
                 )
+                hoverParts.push(edgeLabels.join(" "))
             }
             parts.push(`Hover: ${hoverParts.join(" · ")}`)
         }

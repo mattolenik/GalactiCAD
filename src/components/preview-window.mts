@@ -1,4 +1,4 @@
-import { VERSION } from "../version.mts"
+import { VERSION } from "../version.mjs"
 
 export type SelectionInfo = { objects: number[]; edges: unknown[]; hover: unknown | null }
 

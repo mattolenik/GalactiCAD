@@ -40,6 +40,7 @@ export interface ParsedShapeCall {
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
     vertices?: [number, number][]  // Vertex array for polygon2d
+    t?: number                     // Twist (degrees) for extrude
 }
 
 /**
@@ -196,6 +197,8 @@ export class SourceParser {
             this.parseBlobArgs(callNode, parsedCall)
         } else if (funcName === "polygon2d") {
             this.parsePolygon2DArgs(callNode, parsedCall)
+        } else if (funcName === "extrude" || funcName === "loft") {
+            this.parseExtrudeLoftArgs(callNode, parsedCall)
         }
 
         calls.push(parsedCall)
@@ -406,6 +409,44 @@ export class SourceParser {
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse blob args:`, err)
+        }
+    }
+
+    /**
+     * Parse extrude/loft options: h, pos (if first arg), t (twist, extrude only)
+     */
+    private parseExtrudeLoftArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const args = callNode.arguments
+            if (args.length < 2) return
+
+            // First arg may be position [x, y, z]
+            const firstArg = args[0]
+            const isPositionArg = firstArg.type === "Literal" ||
+                (firstArg.type === "ArrayExpression" &&
+                    (firstArg as any).elements?.length === 3 &&
+                    (firstArg as any).elements.every((e: any) =>
+                        e && (e.type === "Literal" || e.type === "UnaryExpression")
+                    ))
+            if (isPositionArg) {
+                const posValue = this.evaluateExpression(firstArg)
+                if (posValue !== undefined) parsedCall.pos = vec3(posValue)
+            }
+
+            // Options object (last arg): h, t
+            const optsArg = args[args.length - 1]
+            if (optsArg.type === "ObjectExpression") {
+                for (const prop of (optsArg as any).properties) {
+                    if (prop.type === "Property" && prop.key.type === "Identifier") {
+                        const key = prop.key.name
+                        const value = this.evaluateExpression(prop.value)
+                        if (key === "h" && typeof value === "number") parsedCall.h = value
+                        else if (key === "t" && typeof value === "number") parsedCall.t = value
+                    }
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse extrude/loft args:`, err)
         }
     }
 

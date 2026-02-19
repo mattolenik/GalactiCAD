@@ -165,6 +165,22 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
+    if (node instanceof Extrude) {
+        if (call.h === undefined) return false
+        if (!approxEqual(node.h, call.h)) return false
+        if (call.pos !== undefined && !vec3ApproxEqual(node.pos, call.pos)) return false
+        const callTwist = call.t ?? 0
+        if (!approxEqual(node.twist, callTwist)) return false
+        return true
+    }
+
+    if (node instanceof Loft) {
+        if (call.h === undefined) return false
+        if (!approxEqual(node.h, call.h)) return false
+        if (call.pos !== undefined && !vec3ApproxEqual(node.pos, call.pos)) return false
+        return true
+    }
+
     // For composite types (union, subtract, group), match by type name only.
     // Since they don't have unique identifying properties, we match them
     // in source order (first union node matches first union call, etc.)

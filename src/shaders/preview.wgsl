@@ -37,10 +37,15 @@ struct ClickState {
 @group(0) @binding(5) var<uniform> colorPalette: array<vec3f, 32>;
 
 // View settings
+const SELECTION_MODE_OBJECT: u32 = 0u;
+const SELECTION_MODE_SEAM: u32 = 1u;
+const SELECTION_MODE_EDGE: u32 = 2u;
+const SELECTION_MODE_FACE: u32 = 3u;
 struct ViewSettings {
     xrayMode: u32,        // 0 = normal, 1 = xray/translucent
     refinementSteps: u32, // binary search refinement iterations (e.g. 4 during movement, 8 when idle)
     beamEnabled: u32,     // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
+    selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
@@ -243,6 +248,18 @@ fn closestPointOnBoxEdge(localP: vec3f, half: vec3f, feature: u32) -> vec3f {
     return vec3f(xClamp, cy, cz);
 }
 
+// Project hit point onto the seam line. Returns hitWorld if projection is degenerate.
+fn projectHitOntoSeam(hitWorld: vec3f, sdf: SDFResult) -> vec3f {
+    let t = sdf.seamTangent;
+    let tLen = max(length(t), 1e-6);
+    let perp = sdf.n - dot(sdf.n, t) / (tLen * tLen) * t;
+    let perpDot = dot(perp, perp);
+    if (perpDot <= 1e-12) { return hitWorld; }
+    let perpNorm = perp * inverseSqrt(perpDot);
+    let d = sdf.seamGap / tLen;
+    return hitWorld - perpNorm * d;
+}
+
 // Return dominant axis index 1-6 for +X,-X,+Y,-Y,+Z,-Z. 0 if vector is degenerate.
 fn dominantAxisIndex(v: vec3f) -> u32 {
     let ax = abs(v.x);
@@ -292,13 +309,7 @@ fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
         let t = sdf.seamTangent;
         let tLen = max(length(t), 1e-6);
         out.seedTangent = t / tLen;
-        let perp = sdf.n - dot(sdf.n, t) / (tLen * tLen) * t;
-        let perpLen = length(perp);
-        if (perpLen > 1e-6) {
-            let d = sdf.seamGap / tLen;
-            let onSeam = hitWorld - (perp / perpLen) * d;
-            out.seedPoint = vec4f(onSeam, 0.0);
-        }
+        out.seedPoint = vec4f(projectHitOntoSeam(hitWorld, sdf), 0.0);
         return out;
     }
     return out;
@@ -318,14 +329,7 @@ fn classifySeamSegment(hitWorld: vec3f, sdf: SDFResult) -> EdgeHit {
     let t = sdf.seamTangent;
     let tLen = length(t);
     if (tLen > 1e-6 && sdf.seamOp != 0u && sdf.seamGap < 0.10) {
-        let perp = sdf.n - dot(sdf.n, t) / (tLen * tLen) * t;
-        let perpLen = length(perp);
-        if (perpLen > 1e-6) {
-            let d = sdf.seamGap / tLen;
-            out.seedPoint = vec4f(hitWorld - (perp / perpLen) * d, 0.0);
-        } else {
-            out.seedPoint = vec4f(hitWorld, 0.0);
-        }
+        out.seedPoint = vec4f(projectHitOntoSeam(hitWorld, sdf), 0.0);
     } else {
         out.seedPoint = vec4f(hitWorld, 0.0);
     }
@@ -359,112 +363,61 @@ fn classifySeamSegment(hitWorld: vec3f, sdf: SDFResult) -> EdgeHit {
     return out;
 }
 
-fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> vec3f {
-    var result = color;
+fn applyEdgeHighlight(result: ptr<function, vec3f>, e: SelectedEdge, hitWorld: vec3f, sdf: SDFResult, wppu: f32, strength: f32) {
     let highlight = vec3f(1.0, 1.0, 0.0);
+    let lineWidth = e.lineWidthPx;
+    let epsilon = e.epsilon;
 
-    for (var i: u32 = 0u; i < selectedEdges.count; i = i + 1u) {
-        let e = selectedEdges.edges[i];
-        var lineWidth = e.lineWidthPx;
-        var epsilon = e.epsilon;
-        let strength = 0.8;
-
-        if (e.kind == EDGE_KIND_PRIMITIVE) {
-            var pos = vec3f(0.0);
-            var half = vec3f(0.0);
-            if (getBoxParamsForId(e.primaryId, &pos, &half) && e.primaryId == sdf.id) {
-                let localP = hitWorld - pos;
-                let feat = nearestBoxEdgeFeature(localP, half);
-                if (feat == e.featureA) {
-                    let dist = boxEdgeDistance(localP, half, feat);
-                    let edgeDistPx = dist / wppu;
-                    let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
-                    result = result * (1.0 - t * strength) + highlight * (t * strength);
-                }
-            }
-        } else if (e.kind == EDGE_KIND_SEAM && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
-            if (objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType) {
-                let seamThresh = max(length(sdf.seamTangent), 1e-6);
-                let seamDist = sdf.seamGap / seamThresh;
-                let edgeDistPx = seamDist / wppu;
+    if (e.kind == EDGE_KIND_PRIMITIVE) {
+        var pos = vec3f(0.0);
+        var half = vec3f(0.0);
+        if (getBoxParamsForId(e.primaryId, &pos, &half) && e.primaryId == sdf.id) {
+            let localP = hitWorld - pos;
+            let feat = nearestBoxEdgeFeature(localP, half);
+            if (feat == e.featureA) {
+                let dist = boxEdgeDistance(localP, half, feat);
+                let edgeDistPx = dist / wppu;
                 let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
-                result = result * (1.0 - t * strength) + highlight * (t * strength);
+                *result = *result * (1.0 - t * strength) + highlight * (t * strength);
             }
-        } else if (e.kind == EDGE_KIND_SEAM_SEGMENT && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
-            let idsMatch = objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
-            let toSeed = hitWorld - e.seedPoint;
-            let distToSeed = length(toSeed);
-            let tangent = sdf.seamTangent;
-            let tLen = max(length(tangent), 1e-6);
-            let tNorm = tangent / tLen;
-            let seedTanLen = length(e.seedTangent);
-            let tangentContinuous = seedTanLen > 1e-6 && dot(tNorm, e.seedTangent / seedTanLen) > 0.342;
-            // Arc plane check: the fragment must lie in the same plane as the arc.
-            // seedNormal is the arc plane normal (camera-independent, from curvature at click).
-            let seedNormLen = length(e.seedNormal);
-            let onSamePlane = seedNormLen < 1e-4 || abs(dot(toSeed, e.seedNormal)) < 0.5;
-            let onSameSegment = idsMatch && tangentContinuous && onSamePlane && distToSeed < 15.0;
-            if (onSameSegment) {
-                let seamThresh = max(length(sdf.seamTangent), 1e-6);
-                let seamDist = sdf.seamGap / seamThresh;
-                let edgeDistPx = seamDist / wppu;
-                let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
-                result = result * (1.0 - t * strength) + highlight * (t * strength);
-            }
+        }
+    } else if (e.kind == EDGE_KIND_SEAM && sdf.seamOp != 0u && sdf.blend < 0.01) {
+        let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
+        if (objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType) {
+            let tLen = max(length(sdf.seamTangent), 1e-6);
+            let seamDist = sdf.seamGap / tLen;
+            let edgeDistPx = seamDist / wppu;
+            let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
+            *result = *result * (1.0 - t * strength) + highlight * (t * strength);
+        }
+    } else if (e.kind == EDGE_KIND_SEAM_SEGMENT && sdf.seamOp != 0u && sdf.blend < 0.01) {
+        let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
+        let idsMatch = objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
+        let toSeed = hitWorld - e.seedPoint;
+        let distToSeed = length(toSeed);
+        let tLen = max(length(sdf.seamTangent), 1e-6);
+        let tNorm = sdf.seamTangent / tLen;
+        let seedTanLen = length(e.seedTangent);
+        let tangentContinuous = seedTanLen > 1e-6 && dot(tNorm, e.seedTangent / seedTanLen) > 0.342;
+        let seedNormLen = length(e.seedNormal);
+        let onSamePlane = seedNormLen < 1e-4 || abs(dot(toSeed, e.seedNormal)) < 0.5;
+        let onSameSegment = idsMatch && tangentContinuous && onSamePlane && distToSeed < 15.0;
+        if (onSameSegment) {
+            let seamDist = sdf.seamGap / tLen;
+            let edgeDistPx = seamDist / wppu;
+            let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
+            *result = *result * (1.0 - t * strength) + highlight * (t * strength);
         }
     }
+}
 
+fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> vec3f {
+    var result = color;
+    for (var i: u32 = 0u; i < selectedEdges.count; i = i + 1u) {
+        applyEdgeHighlight(&result, selectedEdges.edges[i], hitWorld, sdf, wppu, 0.8);
+    }
     for (var j: u32 = 0u; j < hoveredEdge.count; j = j + 1u) {
-        let e = hoveredEdge.edges[j];
-        var lineWidth = e.lineWidthPx;
-        var epsilon = e.epsilon;
-        let strength = 0.4;
-
-        if (e.kind == EDGE_KIND_PRIMITIVE) {
-            var pos = vec3f(0.0);
-            var half = vec3f(0.0);
-            if (getBoxParamsForId(e.primaryId, &pos, &half) && e.primaryId == sdf.id) {
-                let localP = hitWorld - pos;
-                let feat = nearestBoxEdgeFeature(localP, half);
-                if (feat == e.featureA) {
-                    let dist = boxEdgeDistance(localP, half, feat);
-                    let edgeDistPx = dist / wppu;
-                    let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
-                    result = result * (1.0 - t * strength) + highlight * (t * strength);
-                }
-            }
-        } else if (e.kind == EDGE_KIND_SEAM && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
-            if (objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType) {
-                let seamThresh = max(length(sdf.seamTangent), 1e-6);
-                let seamDist = sdf.seamGap / seamThresh;
-                let edgeDistPx = seamDist / wppu;
-                let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
-                result = result * (1.0 - t * strength) + highlight * (t * strength);
-            }
-        } else if (e.kind == EDGE_KIND_SEAM_SEGMENT && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
-            let idsMatch = objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
-            let toSeed = hitWorld - e.seedPoint;
-            let distToSeed = length(toSeed);
-            let tangent = sdf.seamTangent;
-            let tLen = max(length(tangent), 1e-6);
-            let tNorm = tangent / tLen;
-            let seedTanLen = length(e.seedTangent);
-            let tangentContinuous = seedTanLen > 1e-6 && dot(tNorm, e.seedTangent / seedTanLen) > 0.342;
-            let seedNormLen = length(e.seedNormal);
-            let onSamePlane = seedNormLen < 1e-4 || abs(dot(toSeed, e.seedNormal)) < 0.5;
-            let onSameSegment = idsMatch && tangentContinuous && onSamePlane && distToSeed < 15.0;
-            if (onSameSegment) {
-                let seamThresh = max(length(sdf.seamTangent), 1e-6);
-                let seamDist = sdf.seamGap / seamThresh;
-                let edgeDistPx = seamDist / wppu;
-                let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
-                result = result * (1.0 - t * strength) + highlight * (t * strength);
-            }
-        }
+        applyEdgeHighlight(&result, hoveredEdge.edges[j], hitWorld, sdf, wppu, 0.4);
     }
     return result;
 }
@@ -681,6 +634,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     }
 
     // Click detection using pixel-accurate matching
+    let needSeamSegment = viewSettings.selectionMode != SELECTION_MODE_SEAM;
     if (clickState.enabled > 0u && hit.t > 0.0) {
         let clickPixel = clickState.clickPos * camera.res;
         let currentPixel = uv * camera.res;
@@ -693,13 +647,19 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
             clickedHitPos[3] = selecHit.t;
             let frontEdge = classifyEdgeAtHit(hitPos, hit.sdf, wppu);
             edgeHits[0] = frontEdge;
-            let frontSeg = classifySeamSegment(hitPos, hit.sdf);
-            edgeHits[2] = frontSeg;
+            if (needSeamSegment) {
+                edgeHits[2] = classifySeamSegment(hitPos, hit.sdf);
+            } else {
+                edgeHits[2] = EdgeHit();
+            }
             if (viewSettings.xrayMode > 0u && backHit.t > 0.0) {
                 let backEdge = classifyEdgeAtHit(selecPos, selecHit.sdf, wppu);
                 edgeHits[1] = backEdge;
-                let backSeg = classifySeamSegment(selecPos, selecHit.sdf);
-                edgeHits[3] = backSeg;
+                if (needSeamSegment) {
+                    edgeHits[3] = classifySeamSegment(selecPos, selecHit.sdf);
+                } else {
+                    edgeHits[3] = EdgeHit();
+                }
             } else {
                 edgeHits[1] = EdgeHit();
                 edgeHits[3] = EdgeHit();
@@ -714,13 +674,19 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         if (pixelDist < 2.0) {
             let frontEdge = classifyEdgeAtHit(hitPos, hit.sdf, wppu);
             hoverEdgeHits[0] = frontEdge;
-            let frontSeg = classifySeamSegment(hitPos, hit.sdf);
-            hoverEdgeHits[2] = frontSeg;
+            if (needSeamSegment) {
+                hoverEdgeHits[2] = classifySeamSegment(hitPos, hit.sdf);
+            } else {
+                hoverEdgeHits[2] = EdgeHit();
+            }
             if (viewSettings.xrayMode > 0u && backHit.t > 0.0) {
                 let backEdge = classifyEdgeAtHit(selecPos, selecHit.sdf, wppu);
                 hoverEdgeHits[1] = backEdge;
-                let backSeg = classifySeamSegment(selecPos, selecHit.sdf);
-                hoverEdgeHits[3] = backSeg;
+                if (needSeamSegment) {
+                    hoverEdgeHits[3] = classifySeamSegment(selecPos, selecHit.sdf);
+                } else {
+                    hoverEdgeHits[3] = EdgeHit();
+                }
             } else {
                 hoverEdgeHits[1] = EdgeHit();
                 hoverEdgeHits[3] = EdgeHit();

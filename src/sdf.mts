@@ -167,7 +167,7 @@ export class SDFRenderer {
     // Pre-allocated buffers reused every frame to avoid GC pressure
     #zoomBuf = new Float32Array(1)
     #lightDirBuf = new Float32Array(12)
-    #viewSettingsBuf = new Uint32Array(3)
+    #viewSettingsBuf = new Uint32Array(4)
     #outlineBuf = new ArrayBuffer(32)
     #outlineU32 = new Uint32Array(this.#outlineBuf, 0, 1)
     #outlineThicknessF32 = new Float32Array(this.#outlineBuf, 4, 1)
@@ -416,6 +416,8 @@ export class SDFRenderer {
         const f32 = new Float32Array(readback)
         const result: EdgeHitData[] = []
         const STRIDE = 20 // 80 bytes / 4
+        // Unlike #readEdgeHits, we include (None, objectId) entries so that #hoveredObjectId
+        // can be derived from the last hit when hovering over a surface with no edge.
         for (let slot = 0; slot < 4; slot++) {
             const o = slot * STRIDE
             const kind = u32[o]
@@ -436,19 +438,19 @@ export class SDFRenderer {
         return result
     }
 
-    #writeSelectedEdgesBuffer(): void {
-        // SelectedEdge layout (80 bytes):
-        //  u32[0..4] = kind,primaryId,secondaryId,featureA,opType
-        //  f32[5..6] = lineWidthPx,epsilon
-        //  f32[8..10] = seedPoint.xyz   (vec3f at offset 32)
-        //  f32[12..14] = seedTangent.xyz (vec3f at offset 48)
-        //  f32[16..18] = seedNormal.xyz  (vec3f at offset 64)
+    /** Write edges to a GPU buffer. Layout must match WGSL SelectedEdge (80 bytes per edge). */
+    #writeEdgesToBuffer(
+        buffer: GPUBuffer,
+        edges: SelectedEdgeData[],
+        lineWidthPx: number,
+        epsilon: number,
+    ): void {
         const header = new ArrayBuffer(16)
-        new Uint32Array(header)[0] = this.#selectedEdges.length
-        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedEdges, 0, header)
+        new Uint32Array(header)[0] = Math.min(edges.length, 16)
+        this.#device.queue.writeBuffer(buffer, 0, header)
         const EDGE_STRIDE = 80
-        for (let i = 0; i < Math.min(this.#selectedEdges.length, 16); i++) {
-            const e = this.#selectedEdges[i]
+        for (let i = 0; i < Math.min(edges.length, 16); i++) {
+            const e = edges[i]
             const buf = new ArrayBuffer(EDGE_STRIDE)
             const u32 = new Uint32Array(buf)
             const f32 = new Float32Array(buf)
@@ -457,8 +459,8 @@ export class SDFRenderer {
             u32[2] = e.secondaryId
             u32[3] = e.featureA
             u32[4] = e.opType
-            f32[5] = e.lineWidthPx ?? 4.0
-            f32[6] = e.epsilon ?? 0.015
+            f32[5] = e.lineWidthPx ?? lineWidthPx
+            f32[6] = e.epsilon ?? epsilon
             const sp = e.seedPoint ?? [0, 0, 0]
             f32[8] = sp[0]
             f32[9] = sp[1]
@@ -471,8 +473,17 @@ export class SDFRenderer {
             f32[16] = sn[0]
             f32[17] = sn[1]
             f32[18] = sn[2]
-            this.#device.queue.writeBuffer(this.#uniformBuffers.selectedEdges, 16 + i * EDGE_STRIDE, buf)
+            this.#device.queue.writeBuffer(buffer, 16 + i * EDGE_STRIDE, buf)
         }
+    }
+
+    #writeSelectedEdgesBuffer(): void {
+        this.#writeEdgesToBuffer(
+            this.#uniformBuffers.selectedEdges,
+            this.#selectedEdges,
+            4.0,
+            0.015,
+        )
     }
 
     #setSelectedEdgeFromHit(hit: EdgeHitData): void {
@@ -548,36 +559,12 @@ export class SDFRenderer {
     #setHoveredEdges(edges: SelectedEdgeData[]): void {
         this.#hoveredEdges = edges
         this.#hoveredEdgeData = edges.length > 0 ? edges[0] : null
-        const header = new ArrayBuffer(16)
-        new Uint32Array(header)[0] = Math.min(edges.length, 16)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 0, header)
-        const EDGE_STRIDE = 80 // Must match WGSL SelectedEdge layout
-        for (let i = 0; i < Math.min(edges.length, 16); i++) {
-            const edge = edges[i]
-            const buf = new ArrayBuffer(EDGE_STRIDE)
-            const u32 = new Uint32Array(buf)
-            const f32 = new Float32Array(buf)
-            u32[0] = edge.kind
-            u32[1] = edge.primaryId
-            u32[2] = edge.secondaryId
-            u32[3] = edge.featureA
-            u32[4] = edge.opType
-            f32[5] = edge.lineWidthPx ?? 6.0
-            f32[6] = edge.epsilon ?? 0.02
-            const sp = edge.seedPoint ?? [0, 0, 0]
-            f32[8] = sp[0]
-            f32[9] = sp[1]
-            f32[10] = sp[2]
-            const st = edge.seedTangent ?? [0, 0, 0]
-            f32[12] = st[0]
-            f32[13] = st[1]
-            f32[14] = st[2]
-            const sn = edge.seedNormal ?? [0, 0, 0]
-            f32[16] = sn[0]
-            f32[17] = sn[1]
-            f32[18] = sn[2]
-            this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 16 + i * EDGE_STRIDE, buf)
-        }
+        this.#writeEdgesToBuffer(
+            this.#uniformBuffers.hoveredEdge,
+            edges,
+            6.0,
+            0.02,
+        )
         this.#pushSelectionInfo()
     }
 
@@ -1761,13 +1748,14 @@ export class SDFRenderer {
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 96, ld)
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 144, this.#viewCenter.data as BufferSource)
 
-        // Write view settings (xray mode + refinement steps + beam enabled)
+        // Write view settings (xray mode + refinement steps + beam enabled + selection mode)
         const refinementSteps = this.#resolutionScale < 1.0 ? 6 : 8
         const beamActive = this.#beamEnabled
         const vs = this.#viewSettingsBuf
         vs[0] = this.#xrayMode ? 1 : 0
         vs[1] = refinementSteps
         vs[2] = beamActive ? 1 : 0
+        vs[3] = { object: 0, seam: 1, edge: 2, face: 3 }[this.#selectionMode]
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, vs)
 
         // Write outline settings (mode + thickness + color + canvasWidth)

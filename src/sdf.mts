@@ -59,8 +59,8 @@ class UniformBuffers {
     hoveredEdge!: GPUBuffer
 }
 
-type EdgeHitData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; objectId: number; seedPoint: [number, number, number]; seedTangent?: [number, number, number] }
-type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx: number; epsilon: number; seedPoint?: [number, number, number]; seedTangent?: [number, number, number] }
+type EdgeHitData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; objectId: number; seedPoint: [number, number, number]; seedTangent?: [number, number, number]; seedNormal?: [number, number, number] }
+type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx: number; epsilon: number; seedPoint?: [number, number, number]; seedTangent?: [number, number, number]; seedNormal?: [number, number, number] }
 
 import { EdgeKind } from "./edge-kind.mjs"
 
@@ -381,11 +381,16 @@ export class SDFRenderer {
     }
 
     async #readEdgeHits(): Promise<EdgeHitData[]> {
-        const readback = await this.#helper.readBufferData(this.#uniformBuffers.edgeHit, 256)
+        // EdgeHit layout (80 bytes, stride = 20 f32s):
+        //  u32[0..5] = kind,primaryId,secondaryId,featureA,opType,objectId
+        //  f32[8..10] = seedPoint.xyz  (vec4f at offset 32)
+        //  f32[12..14] = seedTangent.xyz (vec3f at offset 48)
+        //  f32[16..18] = seedNormal.xyz  (vec3f at offset 64)
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.edgeHit, 320)
         const u32 = new Uint32Array(readback)
         const f32 = new Float32Array(readback)
         const result: EdgeHitData[] = []
-        const STRIDE = 16
+        const STRIDE = 20 // 80 bytes / 4
         for (let slot = 0; slot < 4; slot++) {
             const o = slot * STRIDE
             const kind = u32[o]
@@ -397,19 +402,20 @@ export class SDFRenderer {
                 featureA: u32[o + 3],
                 opType: u32[o + 4],
                 objectId: u32[o + 5],
-                seedPoint: [f32[o + 6], f32[o + 7], f32[o + 8]],
+                seedPoint: [f32[o + 8], f32[o + 9], f32[o + 10]],
                 seedTangent: [f32[o + 12], f32[o + 13], f32[o + 14]],
+                seedNormal: [f32[o + 16], f32[o + 17], f32[o + 18]],
             })
         }
         return result
     }
 
     async #readHoverEdgeHits(): Promise<EdgeHitData[]> {
-        const readback = await this.#helper.readBufferData(this.#uniformBuffers.hoverEdgeHit, 256)
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.hoverEdgeHit, 320)
         const u32 = new Uint32Array(readback)
         const f32 = new Float32Array(readback)
         const result: EdgeHitData[] = []
-        const STRIDE = 16
+        const STRIDE = 20 // 80 bytes / 4
         for (let slot = 0; slot < 4; slot++) {
             const o = slot * STRIDE
             const kind = u32[o]
@@ -422,18 +428,25 @@ export class SDFRenderer {
                 featureA: u32[o + 3],
                 opType: u32[o + 4],
                 objectId,
-                seedPoint: [f32[o + 6], f32[o + 7], f32[o + 8]],
+                seedPoint: [f32[o + 8], f32[o + 9], f32[o + 10]],
                 seedTangent: [f32[o + 12], f32[o + 13], f32[o + 14]],
+                seedNormal: [f32[o + 16], f32[o + 17], f32[o + 18]],
             })
         }
         return result
     }
 
     #writeSelectedEdgesBuffer(): void {
+        // SelectedEdge layout (80 bytes):
+        //  u32[0..4] = kind,primaryId,secondaryId,featureA,opType
+        //  f32[5..6] = lineWidthPx,epsilon
+        //  f32[8..10] = seedPoint.xyz   (vec3f at offset 32)
+        //  f32[12..14] = seedTangent.xyz (vec3f at offset 48)
+        //  f32[16..18] = seedNormal.xyz  (vec3f at offset 64)
         const header = new ArrayBuffer(16)
         new Uint32Array(header)[0] = this.#selectedEdges.length
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectedEdges, 0, header)
-        const EDGE_STRIDE = 64
+        const EDGE_STRIDE = 80
         for (let i = 0; i < Math.min(this.#selectedEdges.length, 16); i++) {
             const e = this.#selectedEdges[i]
             const buf = new ArrayBuffer(EDGE_STRIDE)
@@ -454,6 +467,10 @@ export class SDFRenderer {
             f32[12] = st[0]
             f32[13] = st[1]
             f32[14] = st[2]
+            const sn = e.seedNormal ?? [0, 0, 0]
+            f32[16] = sn[0]
+            f32[17] = sn[1]
+            f32[18] = sn[2]
             this.#device.queue.writeBuffer(this.#uniformBuffers.selectedEdges, 16 + i * EDGE_STRIDE, buf)
         }
     }
@@ -481,6 +498,7 @@ export class SDFRenderer {
                 epsilon: 0.02,
                 seedPoint: hit.seedPoint,
                 seedTangent: hit.seedTangent,
+                seedNormal: hit.seedNormal,
             })
         }
         if (this.#selectedEdges.length > 16) {
@@ -501,6 +519,7 @@ export class SDFRenderer {
             epsilon: 0.02,
             seedPoint: hit.seedPoint,
             seedTangent: hit.seedTangent,
+            seedNormal: hit.seedNormal,
         }
         const seedKey = hit.seedPoint ? `:${hit.seedPoint[0].toFixed(3)},${hit.seedPoint[1].toFixed(3)},${hit.seedPoint[2].toFixed(3)}` : ""
         const tanKey = hit.seedTangent ? `:t${hit.seedTangent[0].toFixed(3)},${hit.seedTangent[1].toFixed(3)},${hit.seedTangent[2].toFixed(3)}` : ""
@@ -532,7 +551,7 @@ export class SDFRenderer {
         const header = new ArrayBuffer(16)
         new Uint32Array(header)[0] = Math.min(edges.length, 16)
         this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 0, header)
-        const EDGE_STRIDE = 64 // Must match WGSL SelectedEdge layout
+        const EDGE_STRIDE = 80 // Must match WGSL SelectedEdge layout
         for (let i = 0; i < Math.min(edges.length, 16); i++) {
             const edge = edges[i]
             const buf = new ArrayBuffer(EDGE_STRIDE)
@@ -553,6 +572,10 @@ export class SDFRenderer {
             f32[12] = st[0]
             f32[13] = st[1]
             f32[14] = st[2]
+            const sn = edge.seedNormal ?? [0, 0, 0]
+            f32[16] = sn[0]
+            f32[17] = sn[1]
+            f32[18] = sn[2]
             this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 16 + i * EDGE_STRIDE, buf)
         }
         this.#pushSelectionInfo()
@@ -715,6 +738,7 @@ export class SDFRenderer {
                         epsilon: 0.02,
                         seedPoint: h.seedPoint,
                         seedTangent: h.seedTangent,
+                        seedNormal: h.seedNormal,
                     }))
                 } else if (effectiveMode === "edge") {
                     edges = hits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment).map(h => ({
@@ -727,6 +751,7 @@ export class SDFRenderer {
                         epsilon: 0.02,
                         seedPoint: h.seedPoint,
                         seedTangent: h.seedTangent,
+                        seedNormal: h.seedNormal,
                     }))
                 }
                 this.#setHoveredEdges(edges)
@@ -843,15 +868,15 @@ export class SDFRenderer {
         const hover: SelectionInfo["hover"] =
             this.#hoveredObjectId > 0
                 ? {
-                      objectId: this.#hoveredObjectId,
-                      edges: this.#hoveredEdges.map(e => ({
-                          kind: e.kind,
-                          primaryId: e.primaryId,
-                          secondaryId: e.secondaryId,
-                          featureA: e.featureA,
-                          opType: e.opType,
-                      })),
-                  }
+                    objectId: this.#hoveredObjectId,
+                    edges: this.#hoveredEdges.map(e => ({
+                        kind: e.kind,
+                        primaryId: e.primaryId,
+                        secondaryId: e.secondaryId,
+                        featureA: e.featureA,
+                        opType: e.opType,
+                    })),
+                }
                 : null
         this.#preview.updateSelectionInfo({ objects, objectNames, edges, face, hover })
     }
@@ -1559,10 +1584,10 @@ export class SDFRenderer {
             label: "nodeParams",
         })
 
-        const EDGE_HIT_SIZE = 64
-        const EDGE_HITS_SIZE = 256  // 4 slots: front, back, front segment, back segment
+        const EDGE_HIT_SIZE = 80
+        const EDGE_HITS_SIZE = 320  // 4 slots: front, back, front segment, back segment
         const SELECTED_EDGES_HEADER = 16
-        const SELECTED_EDGE_SIZE = 64
+        const SELECTED_EDGE_SIZE = 80
         const SELECTED_EDGES_COUNT = 16
         const SELECTED_EDGES_TOTAL = SELECTED_EDGES_HEADER + SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE
 

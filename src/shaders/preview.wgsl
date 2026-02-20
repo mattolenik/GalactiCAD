@@ -85,8 +85,9 @@ struct EdgeHit {
     featureA: u32,        // box edge 0-11, or 0 for seam
     opType: u32,          // 1=union, 2=intersection, 3=difference
     objectId: u32,
-    seedPoint: vec4f,     // xyz = world hit pos, w = unused
-    seedTangent: vec3f,   // for seam segments: tangent at seed for sharp-boundary matching
+    seedPoint: vec4f,     // xyz = world hit pos, w = unused  (offset 32)
+    seedTangent: vec3f,   // for seam segments: tangent at seed              (offset 48)
+    seedNormal: vec3f,    // for seam segments: arc plane normal (from curvature), camera-independent (offset 64)
 }
 // Four slots: [0]=front, [1]=back (xray), [2]=front seam segment, [3]=back seam segment
 @group(0) @binding(13) var<storage, read_write> edgeHits: array<EdgeHit, 4>;
@@ -99,8 +100,9 @@ struct SelectedEdge {
     opType: u32,
     lineWidthPx: f32,
     epsilon: f32,
-    seedPoint: vec3f,   // for seam segments: disambiguate parallel seams
-    seedTangent: vec3f, // for seam segments: tangent at seed, segment ends when dot < cos(angle)
+    seedPoint: vec3f,   // for seam segments: world pos of click            (offset 32)
+    seedTangent: vec3f, // for seam segments: tangent at click               (offset 48)
+    seedNormal: vec3f,  // for seam segments: arc plane normal (camera-independent) (offset 64)
 }
 struct SelectedEdgesBuffer {
     count: u32,
@@ -262,6 +264,7 @@ fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
     out.objectId = sdf.id;
     out.seedPoint = vec4f(hitWorld, 0.0);
     out.seedTangent = vec3f(0.0, 0.0, 0.0);
+    out.seedNormal = vec3f(0.0, 0.0, 0.0);
 
     var pos = vec3f(0.0);
     var half = vec3f(0.0);
@@ -311,6 +314,7 @@ fn classifySeamSegment(hitWorld: vec3f, sdf: SDFResult) -> EdgeHit {
     out.opType = sdf.seamOp;
     out.objectId = sdf.id;
     out.seedTangent = vec3f(0.0, 0.0, 0.0);
+    out.seedNormal = vec3f(0.0, 0.0, 0.0);
     let t = sdf.seamTangent;
     let tLen = length(t);
     if (tLen > 1e-6 && sdf.seamOp != 0u && sdf.seamGap < 0.10) {
@@ -342,6 +346,16 @@ fn classifySeamSegment(hitWorld: vec3f, sdf: SDFResult) -> EdgeHit {
     out.kind = EDGE_KIND_SEAM_SEGMENT;
     out.featureA = tangentAxis * 8u + normalAxis;
     out.seedTangent = tNorm;
+    // Arc plane normal: cross(tangent, curvature direction). Derived purely from how the
+    // seam tangent changes — camera-independent. Used to reject parallel arcs on other faces.
+    if (tAheadLen > 1e-6) {
+        let tAheadNorm = tAhead / tAheadLen;
+        let curvPerp = tAheadNorm - dot(tAheadNorm, tNorm) * tNorm;
+        let curvPerpLen = length(curvPerp);
+        if (curvPerpLen > 1e-4) {
+            out.seedNormal = normalize(cross(tNorm, curvPerp / curvPerpLen));
+        }
+    }
     return out;
 }
 
@@ -385,7 +399,11 @@ fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wpp
             let tNorm = tangent / tLen;
             let seedTanLen = length(e.seedTangent);
             let tangentContinuous = seedTanLen > 1e-6 && dot(tNorm, e.seedTangent / seedTanLen) > 0.342;
-            let onSameSegment = idsMatch && tangentContinuous && distToSeed < 15.0;
+            // Arc plane check: the fragment must lie in the same plane as the arc.
+            // seedNormal is the arc plane normal (camera-independent, from curvature at click).
+            let seedNormLen = length(e.seedNormal);
+            let onSamePlane = seedNormLen < 1e-4 || abs(dot(toSeed, e.seedNormal)) < 0.5;
+            let onSameSegment = idsMatch && tangentContinuous && onSamePlane && distToSeed < 15.0;
             if (onSameSegment) {
                 let seamThresh = max(length(sdf.seamTangent), 1e-6);
                 let seamDist = sdf.seamGap / seamThresh;
@@ -432,7 +450,9 @@ fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wpp
             let tNorm = tangent / tLen;
             let seedTanLen = length(e.seedTangent);
             let tangentContinuous = seedTanLen > 1e-6 && dot(tNorm, e.seedTangent / seedTanLen) > 0.342;
-            let onSameSegment = idsMatch && tangentContinuous && distToSeed < 15.0;
+            let seedNormLen = length(e.seedNormal);
+            let onSamePlane = seedNormLen < 1e-4 || abs(dot(toSeed, e.seedNormal)) < 0.5;
+            let onSameSegment = idsMatch && tangentContinuous && onSamePlane && distToSeed < 15.0;
             if (onSameSegment) {
                 let seamThresh = max(length(sdf.seamTangent), 1e-6);
                 let seamDist = sdf.seamGap / seamThresh;

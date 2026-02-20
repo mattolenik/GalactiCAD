@@ -28,8 +28,10 @@ export interface DocumentSettings {
     preview: PreviewSettings
 }
 
+export type SelectionMode = "object" | "seam" | "edge" | "face"
+
 export interface GlobalSettings {
-    preview: { movementScale: number }
+    preview: { movementScale: number; selectionMode: SelectionMode }
     meshViewer: { translucentFaces: boolean; wireframe: boolean }
     app: { meshViewerEnabled: boolean; devToolsEnabled: boolean; showFps: boolean }
     layout: LayoutSettings
@@ -57,7 +59,7 @@ function defaultDocSettings(): DocumentSettings {
 
 function defaultGlobalSettings(): GlobalSettings {
     return {
-        preview: { movementScale: 0.5 },
+        preview: { movementScale: 0.5, selectionMode: "object" },
         meshViewer: { translucentFaces: false, wireframe: false },
         app: { meshViewerEnabled: false, devToolsEnabled: false, showFps: true },
         layout: defaultLayout(),

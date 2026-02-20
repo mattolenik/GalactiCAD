@@ -511,7 +511,7 @@ class App {
                 { label: "Edge", value: "edge" as const },
                 { label: "Face", value: "face" as const },
             ],
-            "object"
+            this.#settings.getGlobal().preview.selectionMode
         )
         toolbar.addSeparator()
         const pushPullModeRadio = toolbar.addRadioGroup([

@@ -195,9 +195,11 @@ export class SDFRenderer {
 
     #loadPreviewSettings(): void {
         const prev = this.#settings.getPreview()
+        const global = this.#settings.getGlobal()
         this.#xrayMode = prev.xrayMode
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
+        this.#selectionMode = global.preview.selectionMode
         this.previewSettingsLoaded$.next()
         this.#needsRender = true
     }
@@ -261,6 +263,7 @@ export class SDFRenderer {
 
     setSelectionMode(mode: SelectionMode): void {
         this.#selectionMode = mode
+        this.#settings.updateGlobal({ preview: { selectionMode: mode } })
         this.#needsRender = true
     }
 

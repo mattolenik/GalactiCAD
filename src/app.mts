@@ -504,6 +504,16 @@ class App {
         const toolbar = new Toolbar()
         const xrayCheckbox = toolbar.addCheckbox("X-ray")
         toolbar.addSeparator()
+        const selectionModeRadio = toolbar.addRadioGroup(
+            [
+                { label: "Object", value: "object" as const },
+                { label: "Seam", value: "seam" as const },
+                { label: "Edge", value: "edge" as const },
+                { label: "Face", value: "face" as const },
+            ],
+            "object"
+        )
+        toolbar.addSeparator()
         const pushPullModeRadio = toolbar.addRadioGroup([
             { label: "Slide", value: "slide" as const },
             { label: "Extrude", value: "extrude" as const },
@@ -587,7 +597,7 @@ class App {
         this.renderer
             .ready()
             .then(() => {
-                this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox)
+                this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
                 this.#wireEditorAndTabs()
                 this.#wireGlobalUndoRedo()
                 this.#wireMenu(menu, preview, devTools)
@@ -624,7 +634,8 @@ class App {
     #wirePreviewAndRenderer(
         preview: PreviewWindow,
         devTools: DevToolsPanel,
-        xrayCheckbox: import("./components/toolbar.mjs").ToolbarCheckbox
+        xrayCheckbox: import("./components/toolbar.mjs").ToolbarCheckbox,
+        selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
     ) {
         this.#monacoHighlighter.setEditor(this.editor)
 
@@ -659,6 +670,11 @@ class App {
             this.renderer.xrayMode = enabled
         }
 
+        selectionModeRadio.value = this.renderer.selectionMode
+        selectionModeRadio.onChange = (value) => {
+            this.renderer.setSelectionMode(value)
+        }
+
         devTools.cameraOptimization = this.renderer.cameraOptimization
         devTools.beamOptimization = this.renderer.beamEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
@@ -669,6 +685,7 @@ class App {
         }
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
+            selectionModeRadio.value = this.renderer.selectionMode
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
         })

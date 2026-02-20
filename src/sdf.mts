@@ -62,6 +62,8 @@ class UniformBuffers {
 type EdgeHitData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; objectId: number; seedPoint: [number, number, number] }
 type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx: number; epsilon: number }
 
+export type SelectionMode = "object" | "seam" | "edge" | "face"
+
 /** Outline style for selected objects. */
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
 
@@ -132,6 +134,7 @@ export class SDFRenderer {
     #compiledPosY = new Map<number, number>()
     #xrayMode: boolean = false
     #beamEnabled: boolean = false
+    #selectionMode: SelectionMode = "object"
     #outlineMode: OutlineMode = "solid"
     #outlineThickness: number = 3
     #outlineColor: [number, number, number] = [0.9, 0.9, 0.9]
@@ -251,6 +254,20 @@ export class SDFRenderer {
 
     get beamEnabled(): boolean {
         return this.#beamEnabled
+    }
+
+    setSelectionMode(mode: SelectionMode): void {
+        this.#selectionMode = mode
+        this.#needsRender = true
+    }
+
+    get selectionMode(): SelectionMode {
+        return this.#selectionMode
+    }
+
+    #getEffectiveMode(altKey: boolean): SelectionMode {
+        if (altKey && this.#selectionMode === "object") return "seam"
+        return this.#selectionMode
     }
 
     set outlineMode(mode: OutlineMode) {
@@ -585,26 +602,48 @@ export class SDFRenderer {
                     this.#readEdgeHits(),
                 ])
                 this.#clickPending = false
-                if (altKey && edgeHits.length > 0) {
-                    if (shiftKey) {
-                        for (const hit of edgeHits) {
-                            this.#addSelectedEdgeFromHit(hit)
+                const effectiveMode = this.#getEffectiveMode(altKey)
+
+                if (effectiveMode === "seam") {
+                    const filtered = edgeHits.filter(h => h.kind === 2)
+                    if (filtered.length > 0) {
+                        if (shiftKey) {
+                            for (const hit of filtered) {
+                                this.#addSelectedEdgeFromHit(hit)
+                            }
+                        } else {
+                            this.#setSelectedEdgesFromHits(filtered)
                         }
-                    } else {
-                        this.#setSelectedEdgesFromHits(edgeHits)
-                    }
-                    this.#selectedObjectIds.fill(false)
-                    this.#writeSelectionBuffer()
-                    this.selectionChange$.next([])
-                } else {
-                    this.#clearSelectedEdges()
-                    if (clickedId !== 0) {
-                        this.#updateSelection(clickedId, shiftKey)
-                    } else if (!shiftKey) {
                         this.#selectedObjectIds.fill(false)
                         this.#writeSelectionBuffer()
                         this.selectionChange$.next([])
+                        return
                     }
+                } else if (effectiveMode === "edge") {
+                    const filtered = edgeHits.filter(h => h.kind === 1)
+                    if (filtered.length > 0) {
+                        if (shiftKey) {
+                            for (const hit of filtered) {
+                                this.#addSelectedEdgeFromHit(hit)
+                            }
+                        } else {
+                            this.#setSelectedEdgesFromHits(filtered)
+                        }
+                        this.#selectedObjectIds.fill(false)
+                        this.#writeSelectionBuffer()
+                        this.selectionChange$.next([])
+                        return
+                    }
+                }
+
+                // Object mode, Face mode (single-click as object), or Seam/Edge with no hits
+                this.#clearSelectedEdges()
+                if (clickedId !== 0) {
+                    this.#updateSelection(clickedId, shiftKey)
+                } else if (!shiftKey) {
+                    this.#selectedObjectIds.fill(false)
+                    this.#writeSelectionBuffer()
+                    this.selectionChange$.next([])
                 }
             } catch (error) {
                 this.#clickPending = false
@@ -616,24 +655,36 @@ export class SDFRenderer {
     #handleHover(screenPos: Vec2f, altKey: boolean) {
         if (!this.#device) return
         this.#writeHoverState(screenPos, true)
-        if (!altKey) {
-            this.#setHoveredEdge(null)
+        const effectiveMode = this.#getEffectiveMode(altKey)
+        if (effectiveMode === "object" || effectiveMode === "face") {
+            this.#setHoveredEdges([])
         }
         setTimeout(async () => {
             try {
                 const hits = await this.#readHoverEdgeHits()
                 this.#hoveredObjectId = hits.length > 0 ? hits[hits.length - 1].objectId : 0
-                const edges: SelectedEdgeData[] = altKey
-                    ? hits.filter(h => h.kind !== 0).map(h => ({
-                          kind: h.kind,
-                          primaryId: h.primaryId,
-                          secondaryId: h.secondaryId,
-                          featureA: h.featureA,
-                          opType: h.opType,
-                          lineWidthPx: 6.0,
-                          epsilon: 0.02,
-                      }))
-                    : []
+                let edges: SelectedEdgeData[] = []
+                if (effectiveMode === "seam") {
+                    edges = hits.filter(h => h.kind === 2).map(h => ({
+                        kind: h.kind,
+                        primaryId: h.primaryId,
+                        secondaryId: h.secondaryId,
+                        featureA: h.featureA,
+                        opType: h.opType,
+                        lineWidthPx: 6.0,
+                        epsilon: 0.02,
+                    }))
+                } else if (effectiveMode === "edge") {
+                    edges = hits.filter(h => h.kind === 1).map(h => ({
+                        kind: h.kind,
+                        primaryId: h.primaryId,
+                        secondaryId: h.secondaryId,
+                        featureA: h.featureA,
+                        opType: h.opType,
+                        lineWidthPx: 6.0,
+                        epsilon: 0.02,
+                    }))
+                }
                 this.#setHoveredEdges(edges)
                 this.#pushSelectionInfo()
                 this.#needsRender = true

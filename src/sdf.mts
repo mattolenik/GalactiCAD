@@ -62,6 +62,9 @@ class UniformBuffers {
 type EdgeHitData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; objectId: number; seedPoint: [number, number, number] }
 type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx: number; epsilon: number }
 
+import { EdgeKind } from "./edge-kind.mjs"
+
+export { EdgeKind }
 export type SelectionMode = "object" | "seam" | "edge" | "face"
 
 /** Outline style for selected objects. */
@@ -375,14 +378,14 @@ export class SDFRenderer {
     }
 
     async #readEdgeHits(): Promise<EdgeHitData[]> {
-        const readback = await this.#helper.readBufferData(this.#uniformBuffers.edgeHit, 96)
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.edgeHit, 192)
         const u32 = new Uint32Array(readback)
         const f32 = new Float32Array(readback)
         const result: EdgeHitData[] = []
-        for (let slot = 0; slot < 2; slot++) {
+        for (let slot = 0; slot < 4; slot++) {
             const o = slot * 12
             const kind = u32[o]
-            if (kind === 0) continue
+            if (kind === EdgeKind.None) continue
             result.push({
                 kind,
                 primaryId: u32[o + 1],
@@ -397,15 +400,15 @@ export class SDFRenderer {
     }
 
     async #readHoverEdgeHits(): Promise<EdgeHitData[]> {
-        const readback = await this.#helper.readBufferData(this.#uniformBuffers.hoverEdgeHit, 96)
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.hoverEdgeHit, 192)
         const u32 = new Uint32Array(readback)
         const f32 = new Float32Array(readback)
         const result: EdgeHitData[] = []
-        for (let slot = 0; slot < 2; slot++) {
+        for (let slot = 0; slot < 4; slot++) {
             const o = slot * 12
             const kind = u32[o]
             const objectId = u32[o + 5]
-            if (kind === 0 && objectId === 0) continue
+            if (kind === EdgeKind.None && objectId === 0) continue
             result.push({
                 kind,
                 primaryId: u32[o + 1],
@@ -546,7 +549,7 @@ export class SDFRenderer {
             this.#uniformBuffers.clickedHitPos, 0, new Float32Array([0, 0, 0, 0]).buffer
         )
         this.#device.queue.writeBuffer(
-            this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(96)
+            this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(192)
         )
 
         this.#needsRender = true
@@ -572,7 +575,7 @@ export class SDFRenderer {
 
         if (enabled) {
             this.#device.queue.writeBuffer(
-                this.#uniformBuffers.hoverEdgeHit, 0, new ArrayBuffer(96)
+                this.#uniformBuffers.hoverEdgeHit, 0, new ArrayBuffer(192)
             )
         }
         this.#needsRender = true
@@ -605,7 +608,7 @@ export class SDFRenderer {
                 const effectiveMode = this.#getEffectiveMode(altKey)
 
                 if (effectiveMode === "seam") {
-                    const filtered = edgeHits.filter(h => h.kind === 2)
+                    const filtered = edgeHits.filter(h => h.kind === EdgeKind.Seam)
                     if (filtered.length > 0) {
                         if (shiftKey) {
                             for (const hit of filtered) {
@@ -620,7 +623,7 @@ export class SDFRenderer {
                         return
                     }
                 } else if (effectiveMode === "edge") {
-                    const filtered = edgeHits.filter(h => h.kind === 1)
+                    const filtered = edgeHits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment)
                     if (filtered.length > 0) {
                         if (shiftKey) {
                             for (const hit of filtered) {
@@ -665,7 +668,7 @@ export class SDFRenderer {
                 this.#hoveredObjectId = hits.length > 0 ? hits[hits.length - 1].objectId : 0
                 let edges: SelectedEdgeData[] = []
                 if (effectiveMode === "seam") {
-                    edges = hits.filter(h => h.kind === 2).map(h => ({
+                    edges = hits.filter(h => h.kind === EdgeKind.Seam).map(h => ({
                         kind: h.kind,
                         primaryId: h.primaryId,
                         secondaryId: h.secondaryId,
@@ -675,7 +678,7 @@ export class SDFRenderer {
                         epsilon: 0.02,
                     }))
                 } else if (effectiveMode === "edge") {
-                    edges = hits.filter(h => h.kind === 1).map(h => ({
+                    edges = hits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment).map(h => ({
                         kind: h.kind,
                         primaryId: h.primaryId,
                         secondaryId: h.secondaryId,
@@ -1515,7 +1518,7 @@ export class SDFRenderer {
         })
 
         const EDGE_HIT_SIZE = 48
-        const EDGE_HITS_SIZE = 96  // 2 slots for xray (front + back)
+        const EDGE_HITS_SIZE = 192  // 4 slots: front, back, front segment, back segment
         const SELECTED_EDGES_HEADER = 16
         const SELECTED_EDGE_SIZE = 32
         const SELECTED_EDGES_COUNT = 16

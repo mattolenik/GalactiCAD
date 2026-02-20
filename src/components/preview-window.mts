@@ -1,4 +1,5 @@
 import { VERSION } from "../version.mjs"
+import { EdgeKind } from "../edge-kind.mjs"
 
 export interface EdgeSelectionInfo {
     kind: number
@@ -120,9 +121,11 @@ export class PreviewWindow extends HTMLElement {
         }
         if (info.edges.length > 0) {
             const edgeLabels = info.edges.map(e =>
-                e.kind === 2
+                e.kind === EdgeKind.Seam
                     ? `Seam [${e.primaryId},${e.secondaryId}]`
-                    : `Edge [${e.primaryId}]`
+                    : e.kind === EdgeKind.SeamSegment
+                      ? `Seam seg [${e.primaryId},${e.secondaryId}]`
+                      : `Edge [${e.primaryId}]`
             ).join(" ")
             parts.push(`Edges: ${edgeLabels}`)
         }
@@ -139,7 +142,7 @@ export class PreviewWindow extends HTMLElement {
             ]
             if (info.hover.edges.length > 0) {
                 const edgeLabels = info.hover.edges.map(e =>
-                    e.kind === 2 ? `Seam [${e.primaryId},${e.secondaryId}]` : `Edge [${e.primaryId}]`
+                    e.kind === EdgeKind.Seam ? `Seam [${e.primaryId},${e.secondaryId}]` : e.kind === EdgeKind.SeamSegment ? `Seam seg [${e.primaryId},${e.secondaryId}]` : `Edge [${e.primaryId}]`
                 )
                 hoverParts.push(edgeLabels.join(" "))
             }

@@ -383,7 +383,8 @@ fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wpp
                 }
             }
         } else if (e.kind == EDGE_KIND_SEAM && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            if (sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType) {
+            let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
+            if (objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType) {
                 let seamThresh = max(length(sdf.seamTangent), 1e-6);
                 let seamDist = sdf.seamGap / seamThresh;
                 let edgeDistPx = seamDist / wppu;
@@ -391,7 +392,8 @@ fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wpp
                 result = result * (1.0 - t * strength) + highlight * (t * strength);
             }
         } else if (e.kind == EDGE_KIND_SEAM_SEGMENT && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            let idsMatch = sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
+            let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
+            let idsMatch = objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
             let toSeed = hitWorld - e.seedPoint;
             let distToSeed = length(toSeed);
             let tangent = sdf.seamTangent;
@@ -434,7 +436,8 @@ fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wpp
                 }
             }
         } else if (e.kind == EDGE_KIND_SEAM && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            if (sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType) {
+            let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
+            if (objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType) {
                 let seamThresh = max(length(sdf.seamTangent), 1e-6);
                 let seamDist = sdf.seamGap / seamThresh;
                 let edgeDistPx = seamDist / wppu;
@@ -442,7 +445,8 @@ fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wpp
                 result = result * (1.0 - t * strength) + highlight * (t * strength);
             }
         } else if (e.kind == EDGE_KIND_SEAM_SEGMENT && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            let idsMatch = sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
+            let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
+            let idsMatch = objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
             let toSeed = hitWorld - e.seedPoint;
             let distToSeed = length(toSeed);
             let tangent = sdf.seamTangent;

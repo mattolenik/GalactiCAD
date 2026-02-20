@@ -41,11 +41,12 @@ const SELECTION_MODE_OBJECT: u32 = 0u;
 const SELECTION_MODE_SEAM: u32 = 1u;
 const SELECTION_MODE_EDGE: u32 = 2u;
 const SELECTION_MODE_FACE: u32 = 3u;
+const SELECTION_MODE_CONTOUR: u32 = 4u;
 struct ViewSettings {
     xrayMode: u32,        // 0 = normal, 1 = xray/translucent
     refinementSteps: u32, // binary search refinement iterations (e.g. 4 during movement, 8 when idle)
     beamEnabled: u32,     // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
-    selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face
+    selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=contour
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
@@ -634,7 +635,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     }
 
     // Click detection using pixel-accurate matching
-    let needSeamSegment = viewSettings.selectionMode != SELECTION_MODE_SEAM;
+    let needSeamSegment = viewSettings.selectionMode != SELECTION_MODE_SEAM && viewSettings.selectionMode != SELECTION_MODE_OBJECT && viewSettings.selectionMode != SELECTION_MODE_FACE;
     if (clickState.enabled > 0u && hit.t > 0.0) {
         let clickPixel = clickState.clickPos * camera.res;
         let currentPixel = uv * camera.res;

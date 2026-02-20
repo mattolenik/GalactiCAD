@@ -59,8 +59,8 @@ class UniformBuffers {
     hoveredEdge!: GPUBuffer
 }
 
-type EdgeHitData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; objectId: number; seedPoint: [number, number, number] }
-type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx: number; epsilon: number }
+type EdgeHitData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; objectId: number; seedPoint: [number, number, number]; seedTangent?: [number, number, number] }
+type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx: number; epsilon: number; seedPoint?: [number, number, number]; seedTangent?: [number, number, number] }
 
 import { EdgeKind } from "./edge-kind.mjs"
 
@@ -381,12 +381,13 @@ export class SDFRenderer {
     }
 
     async #readEdgeHits(): Promise<EdgeHitData[]> {
-        const readback = await this.#helper.readBufferData(this.#uniformBuffers.edgeHit, 192)
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.edgeHit, 256)
         const u32 = new Uint32Array(readback)
         const f32 = new Float32Array(readback)
         const result: EdgeHitData[] = []
+        const STRIDE = 16
         for (let slot = 0; slot < 4; slot++) {
-            const o = slot * 12
+            const o = slot * STRIDE
             const kind = u32[o]
             if (kind === EdgeKind.None) continue
             result.push({
@@ -396,19 +397,21 @@ export class SDFRenderer {
                 featureA: u32[o + 3],
                 opType: u32[o + 4],
                 objectId: u32[o + 5],
-                seedPoint: [f32[o + 8], f32[o + 9], f32[o + 10]],
+                seedPoint: [f32[o + 6], f32[o + 7], f32[o + 8]],
+                seedTangent: [f32[o + 12], f32[o + 13], f32[o + 14]],
             })
         }
         return result
     }
 
     async #readHoverEdgeHits(): Promise<EdgeHitData[]> {
-        const readback = await this.#helper.readBufferData(this.#uniformBuffers.hoverEdgeHit, 192)
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.hoverEdgeHit, 256)
         const u32 = new Uint32Array(readback)
         const f32 = new Float32Array(readback)
         const result: EdgeHitData[] = []
+        const STRIDE = 16
         for (let slot = 0; slot < 4; slot++) {
-            const o = slot * 12
+            const o = slot * STRIDE
             const kind = u32[o]
             const objectId = u32[o + 5]
             if (kind === EdgeKind.None && objectId === 0) continue
@@ -419,7 +422,8 @@ export class SDFRenderer {
                 featureA: u32[o + 3],
                 opType: u32[o + 4],
                 objectId,
-                seedPoint: [f32[o + 8], f32[o + 9], f32[o + 10]],
+                seedPoint: [f32[o + 6], f32[o + 7], f32[o + 8]],
+                seedTangent: [f32[o + 12], f32[o + 13], f32[o + 14]],
             })
         }
         return result
@@ -429,9 +433,10 @@ export class SDFRenderer {
         const header = new ArrayBuffer(16)
         new Uint32Array(header)[0] = this.#selectedEdges.length
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectedEdges, 0, header)
+        const EDGE_STRIDE = 64
         for (let i = 0; i < Math.min(this.#selectedEdges.length, 16); i++) {
             const e = this.#selectedEdges[i]
-            const buf = new ArrayBuffer(32)
+            const buf = new ArrayBuffer(EDGE_STRIDE)
             const u32 = new Uint32Array(buf)
             const f32 = new Float32Array(buf)
             u32[0] = e.kind
@@ -441,7 +446,15 @@ export class SDFRenderer {
             u32[4] = e.opType
             f32[5] = e.lineWidthPx ?? 4.0
             f32[6] = e.epsilon ?? 0.015
-            this.#device.queue.writeBuffer(this.#uniformBuffers.selectedEdges, 16 + i * 32, buf)
+            const sp = e.seedPoint ?? [0, 0, 0]
+            f32[8] = sp[0]
+            f32[9] = sp[1]
+            f32[10] = sp[2]
+            const st = e.seedTangent ?? [0, 0, 0]
+            f32[12] = st[0]
+            f32[13] = st[1]
+            f32[14] = st[2]
+            this.#device.queue.writeBuffer(this.#uniformBuffers.selectedEdges, 16 + i * EDGE_STRIDE, buf)
         }
     }
 
@@ -453,7 +466,9 @@ export class SDFRenderer {
         const seen = new Set<string>()
         this.#selectedEdges = []
         for (const hit of hits) {
-            const key = `${hit.kind}:${hit.primaryId}:${hit.secondaryId}:${hit.featureA}:${hit.opType}`
+            const seedKey = hit.seedPoint ? `:${hit.seedPoint[0].toFixed(3)},${hit.seedPoint[1].toFixed(3)},${hit.seedPoint[2].toFixed(3)}` : ""
+            const tanKey = hit.seedTangent ? `:t${hit.seedTangent[0].toFixed(3)},${hit.seedTangent[1].toFixed(3)},${hit.seedTangent[2].toFixed(3)}` : ""
+            const key = `${hit.kind}:${hit.primaryId}:${hit.secondaryId}:${hit.featureA}:${hit.opType}${seedKey}${tanKey}`
             if (seen.has(key)) continue
             seen.add(key)
             this.#selectedEdges.push({
@@ -464,6 +479,8 @@ export class SDFRenderer {
                 opType: hit.opType,
                 lineWidthPx: 4.0,
                 epsilon: 0.02,
+                seedPoint: hit.seedPoint,
+                seedTangent: hit.seedTangent,
             })
         }
         if (this.#selectedEdges.length > 16) {
@@ -482,9 +499,17 @@ export class SDFRenderer {
             opType: hit.opType,
             lineWidthPx: 4.0,
             epsilon: 0.02,
+            seedPoint: hit.seedPoint,
+            seedTangent: hit.seedTangent,
         }
-        const key = `${hit.kind}:${hit.primaryId}:${hit.secondaryId}:${hit.featureA}:${hit.opType}`
-        if (this.#selectedEdges.some(e => `${e.kind}:${e.primaryId}:${e.secondaryId}:${e.featureA}:${e.opType}` === key)) return
+        const seedKey = hit.seedPoint ? `:${hit.seedPoint[0].toFixed(3)},${hit.seedPoint[1].toFixed(3)},${hit.seedPoint[2].toFixed(3)}` : ""
+        const tanKey = hit.seedTangent ? `:t${hit.seedTangent[0].toFixed(3)},${hit.seedTangent[1].toFixed(3)},${hit.seedTangent[2].toFixed(3)}` : ""
+        const key = `${hit.kind}:${hit.primaryId}:${hit.secondaryId}:${hit.featureA}:${hit.opType}${seedKey}${tanKey}`
+        if (this.#selectedEdges.some(e => {
+            const eSeed = e.seedPoint ? `:${e.seedPoint[0].toFixed(3)},${e.seedPoint[1].toFixed(3)},${e.seedPoint[2].toFixed(3)}` : ""
+            const eTan = e.seedTangent ? `:t${e.seedTangent[0].toFixed(3)},${e.seedTangent[1].toFixed(3)},${e.seedTangent[2].toFixed(3)}` : ""
+            return `${e.kind}:${e.primaryId}:${e.secondaryId}:${e.featureA}:${e.opType}${eSeed}${eTan}` === key
+        })) return
         this.#selectedEdges.push(edge)
         if (this.#selectedEdges.length > 16) this.#selectedEdges = this.#selectedEdges.slice(-16)
         this.#writeSelectedEdgesBuffer()
@@ -507,9 +532,10 @@ export class SDFRenderer {
         const header = new ArrayBuffer(16)
         new Uint32Array(header)[0] = Math.min(edges.length, 16)
         this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 0, header)
+        const EDGE_STRIDE = 64 // Must match WGSL SelectedEdge layout
         for (let i = 0; i < Math.min(edges.length, 16); i++) {
             const edge = edges[i]
-            const buf = new ArrayBuffer(32)
+            const buf = new ArrayBuffer(EDGE_STRIDE)
             const u32 = new Uint32Array(buf)
             const f32 = new Float32Array(buf)
             u32[0] = edge.kind
@@ -519,7 +545,15 @@ export class SDFRenderer {
             u32[4] = edge.opType
             f32[5] = edge.lineWidthPx ?? 6.0
             f32[6] = edge.epsilon ?? 0.02
-            this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 16 + i * 32, buf)
+            const sp = edge.seedPoint ?? [0, 0, 0]
+            f32[8] = sp[0]
+            f32[9] = sp[1]
+            f32[10] = sp[2]
+            const st = edge.seedTangent ?? [0, 0, 0]
+            f32[12] = st[0]
+            f32[13] = st[1]
+            f32[14] = st[2]
+            this.#device.queue.writeBuffer(this.#uniformBuffers.hoveredEdge, 16 + i * EDGE_STRIDE, buf)
         }
         this.#pushSelectionInfo()
     }
@@ -679,6 +713,8 @@ export class SDFRenderer {
                         opType: h.opType,
                         lineWidthPx: 6.0,
                         epsilon: 0.02,
+                        seedPoint: h.seedPoint,
+                        seedTangent: h.seedTangent,
                     }))
                 } else if (effectiveMode === "edge") {
                     edges = hits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment).map(h => ({
@@ -689,6 +725,8 @@ export class SDFRenderer {
                         opType: h.opType,
                         lineWidthPx: 6.0,
                         epsilon: 0.02,
+                        seedPoint: h.seedPoint,
+                        seedTangent: h.seedTangent,
                     }))
                 }
                 this.#setHoveredEdges(edges)
@@ -799,6 +837,7 @@ export class SDFRenderer {
             secondaryId: e.secondaryId,
             featureA: e.featureA,
             opType: e.opType,
+            seedPoint: e.seedPoint,
         }))
         const face = this.#pushPullController?.getFaceSelection() ?? null
         const hover: SelectionInfo["hover"] =
@@ -1520,10 +1559,10 @@ export class SDFRenderer {
             label: "nodeParams",
         })
 
-        const EDGE_HIT_SIZE = 48
-        const EDGE_HITS_SIZE = 192  // 4 slots: front, back, front segment, back segment
+        const EDGE_HIT_SIZE = 64
+        const EDGE_HITS_SIZE = 256  // 4 slots: front, back, front segment, back segment
         const SELECTED_EDGES_HEADER = 16
-        const SELECTED_EDGE_SIZE = 32
+        const SELECTED_EDGE_SIZE = 64
         const SELECTED_EDGES_COUNT = 16
         const SELECTED_EDGES_TOTAL = SELECTED_EDGES_HEADER + SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE
 

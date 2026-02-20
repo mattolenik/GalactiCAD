@@ -86,6 +86,7 @@ struct EdgeHit {
     opType: u32,          // 1=union, 2=intersection, 3=difference
     objectId: u32,
     seedPoint: vec4f,     // xyz = world hit pos, w = unused
+    seedTangent: vec3f,   // for seam segments: tangent at seed for sharp-boundary matching
 }
 // Four slots: [0]=front, [1]=back (xray), [2]=front seam segment, [3]=back seam segment
 @group(0) @binding(13) var<storage, read_write> edgeHits: array<EdgeHit, 4>;
@@ -98,7 +99,8 @@ struct SelectedEdge {
     opType: u32,
     lineWidthPx: f32,
     epsilon: f32,
-    pad: f32,
+    seedPoint: vec3f,   // for seam segments: disambiguate parallel seams
+    seedTangent: vec3f, // for seam segments: tangent at seed, segment ends when dot < cos(angle)
 }
 struct SelectedEdgesBuffer {
     count: u32,
@@ -213,14 +215,40 @@ fn nearestBoxEdgeFeature(localP: vec3f, half: vec3f) -> u32 {
     return bestFeature;
 }
 
-// Return dominant axis index 1-6 for +X,-X,+Y,-Y,+Z,-Z. 0 if tangent is degenerate.
-fn seamTangentAxis(t: vec3f) -> u32 {
-    let ax = abs(t.x);
-    let ay = abs(t.y);
-    let az = abs(t.z);
-    if (ax >= ay && ax >= az && ax > 1e-6) { return select(1u, 2u, t.x > 0.0); }
-    if (ay >= ax && ay >= az && ay > 1e-6) { return select(3u, 4u, t.y > 0.0); }
-    if (az >= ax && az >= ay && az > 1e-6) { return select(5u, 6u, t.z > 0.0); }
+// Closest point on a box edge segment. Projects hit onto the edge geometry for camera-invariant selection.
+fn closestPointOnBoxEdge(localP: vec3f, half: vec3f, feature: u32) -> vec3f {
+    if (feature < 4u) {
+        let sx = select(-1.0, 1.0, (feature & 2u) != 0u);
+        let sy = select(-1.0, 1.0, (feature & 1u) != 0u);
+        let cx = sx * half.x;
+        let cy = sy * half.y;
+        let zClamp = clamp(localP.z, -half.z, half.z);
+        return vec3f(cx, cy, zClamp);
+    }
+    if (feature < 8u) {
+        let sx = select(-1.0, 1.0, ((feature - 4u) & 2u) != 0u);
+        let sz = select(-1.0, 1.0, ((feature - 4u) & 1u) != 0u);
+        let cx = sx * half.x;
+        let cz = sz * half.z;
+        let yClamp = clamp(localP.y, -half.y, half.y);
+        return vec3f(cx, yClamp, cz);
+    }
+    let sy = select(-1.0, 1.0, ((feature - 8u) & 2u) != 0u);
+    let sz = select(-1.0, 1.0, ((feature - 8u) & 1u) != 0u);
+    let cy = sy * half.y;
+    let cz = sz * half.z;
+    let xClamp = clamp(localP.x, -half.x, half.x);
+    return vec3f(xClamp, cy, cz);
+}
+
+// Return dominant axis index 1-6 for +X,-X,+Y,-Y,+Z,-Z. 0 if vector is degenerate.
+fn dominantAxisIndex(v: vec3f) -> u32 {
+    let ax = abs(v.x);
+    let ay = abs(v.y);
+    let az = abs(v.z);
+    if (ax >= ay && ax >= az && ax > 1e-6) { return select(1u, 2u, v.x > 0.0); }
+    if (ay >= ax && ay >= az && ay > 1e-6) { return select(3u, 4u, v.y > 0.0); }
+    if (az >= ax && az >= ay && az > 1e-6) { return select(5u, 6u, v.z > 0.0); }
     return 0u;
 }
 
@@ -233,6 +261,7 @@ fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
     out.opType = 0u;
     out.objectId = sdf.id;
     out.seedPoint = vec4f(hitWorld, 0.0);
+    out.seedTangent = vec3f(0.0, 0.0, 0.0);
 
     var pos = vec3f(0.0);
     var half = vec3f(0.0);
@@ -241,20 +270,32 @@ fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
         let feat = nearestBoxEdgeFeature(localP, half);
         let nearestDist = boxEdgeDistance(localP, half, feat);
         let minHalf = min(min(half.x, half.y), half.z);
-        let edgeThreshold = max(minHalf * 0.25, 0.03);
+        let edgeThreshold = max(minHalf * 0.12, 0.012);
         if (nearestDist < edgeThreshold) {
             out.kind = EDGE_KIND_PRIMITIVE;
             out.primaryId = sdf.id;
             out.featureA = feat;
+            let onEdge = pos + closestPointOnBoxEdge(localP, half, feat);
+            out.seedPoint = vec4f(onEdge, 0.0);
             return out;
         }
     }
 
-    if (sdf.seamOp != 0u && sdf.seamGap < 0.15) {
+    if (sdf.seamOp != 0u && sdf.seamGap < 0.10) {
         out.kind = EDGE_KIND_SEAM;
         out.primaryId = sdf.seamA;
         out.secondaryId = sdf.seamB;
         out.opType = sdf.seamOp;
+        let t = sdf.seamTangent;
+        let tLen = max(length(t), 1e-6);
+        out.seedTangent = t / tLen;
+        let perp = sdf.n - dot(sdf.n, t) / (tLen * tLen) * t;
+        let perpLen = length(perp);
+        if (perpLen > 1e-6) {
+            let d = sdf.seamGap / tLen;
+            let onSeam = hitWorld - (perp / perpLen) * d;
+            out.seedPoint = vec4f(onSeam, 0.0);
+        }
         return out;
     }
     return out;
@@ -269,10 +310,22 @@ fn classifySeamSegment(hitWorld: vec3f, sdf: SDFResult) -> EdgeHit {
     out.featureA = 0u;
     out.opType = sdf.seamOp;
     out.objectId = sdf.id;
-    out.seedPoint = vec4f(hitWorld, 0.0);
-    if (sdf.seamOp == 0u || sdf.seamGap >= 0.15) { return out; }
+    out.seedTangent = vec3f(0.0, 0.0, 0.0);
     let t = sdf.seamTangent;
     let tLen = length(t);
+    if (tLen > 1e-6 && sdf.seamOp != 0u && sdf.seamGap < 0.10) {
+        let perp = sdf.n - dot(sdf.n, t) / (tLen * tLen) * t;
+        let perpLen = length(perp);
+        if (perpLen > 1e-6) {
+            let d = sdf.seamGap / tLen;
+            out.seedPoint = vec4f(hitWorld - (perp / perpLen) * d, 0.0);
+        } else {
+            out.seedPoint = vec4f(hitWorld, 0.0);
+        }
+    } else {
+        out.seedPoint = vec4f(hitWorld, 0.0);
+    }
+    if (sdf.seamOp == 0u || sdf.seamGap >= 0.10) { return out; }
     if (tLen < 1e-6) { return out; }
     let tNorm = t / tLen;
     let epsilon: f32 = 0.02;
@@ -283,10 +336,12 @@ fn classifySeamSegment(hitWorld: vec3f, sdf: SDFResult) -> EdgeHit {
     let cos15: f32 = 0.9659258;
     let atCorner = tAheadLen > 1e-6 && dot(tNorm, tAhead / tAheadLen) < cos15;
     let segTangent = select(t, tAhead, atCorner);
-    let axis = seamTangentAxis(segTangent);
-    if (axis == 0u) { return out; }
+    let tangentAxis = dominantAxisIndex(segTangent);
+    let normalAxis = dominantAxisIndex(sdf.n);
+    if (tangentAxis == 0u) { return out; }
     out.kind = EDGE_KIND_SEAM_SEGMENT;
-    out.featureA = axis;
+    out.featureA = tangentAxis * 8u + normalAxis;
+    out.seedTangent = tNorm;
     return out;
 }
 
@@ -322,7 +377,16 @@ fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wpp
                 result = result * (1.0 - t * strength) + highlight * (t * strength);
             }
         } else if (e.kind == EDGE_KIND_SEAM_SEGMENT && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            if (sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType && seamTangentAxis(sdf.seamTangent) == e.featureA) {
+            let idsMatch = sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
+            let toSeed = hitWorld - e.seedPoint;
+            let distToSeed = length(toSeed);
+            let tangent = sdf.seamTangent;
+            let tLen = max(length(tangent), 1e-6);
+            let tNorm = tangent / tLen;
+            let seedTanLen = length(e.seedTangent);
+            let tangentContinuous = seedTanLen > 1e-6 && dot(tNorm, e.seedTangent / seedTanLen) > 0.342;
+            let onSameSegment = idsMatch && tangentContinuous && distToSeed < 15.0;
+            if (onSameSegment) {
                 let seamThresh = max(length(sdf.seamTangent), 1e-6);
                 let seamDist = sdf.seamGap / seamThresh;
                 let edgeDistPx = seamDist / wppu;
@@ -360,7 +424,16 @@ fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wpp
                 result = result * (1.0 - t * strength) + highlight * (t * strength);
             }
         } else if (e.kind == EDGE_KIND_SEAM_SEGMENT && sdf.seamOp != 0u && sdf.blend < 0.01) {
-            if (sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType && seamTangentAxis(sdf.seamTangent) == e.featureA) {
+            let idsMatch = sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
+            let toSeed = hitWorld - e.seedPoint;
+            let distToSeed = length(toSeed);
+            let tangent = sdf.seamTangent;
+            let tLen = max(length(tangent), 1e-6);
+            let tNorm = tangent / tLen;
+            let seedTanLen = length(e.seedTangent);
+            let tangentContinuous = seedTanLen > 1e-6 && dot(tNorm, e.seedTangent / seedTanLen) > 0.342;
+            let onSameSegment = idsMatch && tangentContinuous && distToSeed < 15.0;
+            if (onSameSegment) {
                 let seamThresh = max(length(sdf.seamTangent), 1e-6);
                 let seamDist = sdf.seamGap / seamThresh;
                 let edgeDistPx = seamDist / wppu;

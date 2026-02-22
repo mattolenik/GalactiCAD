@@ -773,8 +773,9 @@ export class SDFRenderer {
                         if (node instanceof Polygon2D) {
                             const parent = this.#findCapParent(node)
                             if (parent) {
-                                const localY = hitPos.y - parent.pos.y
-                                const isTop = localY >= 0
+                                const isTop = parent instanceof Loft
+                                    ? node === parent.profiles[parent.profiles.length - 1]
+                                    : (hitPos.y - parent.pos.y) >= 0
                                 this.#pushPullController.selectCapFace(parent, isTop)
                                 this.#pushSelectionInfo()
                                 return
@@ -1388,6 +1389,7 @@ export class SDFRenderer {
             get faceSelectionBuffer() { return self.#uniformBuffers.faceSelection },
             get nodeParamsBuffer() { return self.#uniformBuffers.nodeParams },
             getCompiledPosY(nodeId: number) { return self.#compiledPosY.get(nodeId) ?? 0 },
+            hasCompiledPosY(nodeId: number) { return self.#compiledPosY.has(nodeId) },
             get selectedObjectIdsBuffer() { return self.#uniformBuffers.selectedObjectIds },
             requestRender() {
                 self.#needsRender = true

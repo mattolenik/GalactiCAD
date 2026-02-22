@@ -10,6 +10,8 @@ export interface PushPullHost {
     readonly faceSelectionBuffer: GPUBuffer
     readonly nodeParamsBuffer: GPUBuffer
     getCompiledPosY(nodeId: number): number
+    /** True if we have a valid compiled pos.y for this node (from last build). */
+    hasCompiledPosY(nodeId: number): boolean
     readonly selectedObjectIdsBuffer: GPUBuffer
     requestRender(): void
     readonly canvas: HTMLCanvasElement
@@ -164,7 +166,11 @@ export class PushPullController {
     /** Select a cap face (top or bottom) of an Extrude or Loft for push/pull. */
     selectCapFace(node: Extrude | Loft, isTop: boolean): void {
         this.#face = null
-        const compiledPosY = this.#host.getCompiledPosY(node.id)
+        // basePosYDelta = offset from compiled position. When compiledPosY is missing (e.g. node
+        // not in map after tab switch or build race), use 0 to avoid the whole object jumping.
+        const compiledPosY = this.#host.hasCompiledPosY(node.id)
+            ? this.#host.getCompiledPosY(node.id)
+            : node.pos.y
         this.#cap = {
             node,
             isTop,

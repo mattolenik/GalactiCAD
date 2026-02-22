@@ -77,9 +77,24 @@
         }
 
         #log {
-            font-size: 1rem;
-            margin-bottom: -2rem;
+            display: none;
+            flex-shrink: 0;
+            font-size: 0.85rem;
+            font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Monaco, monospace;
+            padding: 0.4em 0.85em;
             white-space: pre-wrap;
+            max-height: 6em;
+            overflow-y: auto;
+            line-height: 1.35;
+            background: rgba(180, 60, 60, 0.2);
+            border-top: 1px solid rgba(255, 100, 100, 0.35);
+        }
+        #log.has-error {
+            display: block;
+        }
+
+        #editor > llm-prompt-bar {
+            flex-shrink: 0;
         }
 
         #editor {
@@ -87,6 +102,8 @@
             position: absolute;
             background-color: rgba(30, 30, 30, 0.82);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
             --vscode-focusBorder: transparent;
         }
 
@@ -137,7 +154,7 @@
             height: 100vh;
             height: 100dvh;
             display: grid;
-            grid-template-rows: auto 1fr auto;
+            grid-template-rows: auto 1fr;
             grid-template-columns: 1fr;
             min-width: 400px;
             margin: auto;
@@ -252,13 +269,14 @@
             <div id="menuButton"></div>
         </div>
         <div id="main-panels">
-            <div id="editor"></div>
+            <div id="editor">
+                <div id="log"></div>
+            </div>
             <div id="resize-handle" role="separator" aria-orientation="horizontal"></div>
             <div id="viewports">
                 <preview-window id="preview"></preview-window>
             </div>
         </div>
-        <div id="log"></div>
     </div>
     <script type="module" src="./components/preview-window.js"></script>
     <script type="module">

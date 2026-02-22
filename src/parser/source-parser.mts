@@ -83,10 +83,99 @@ export interface ExtrudeLoftCallInfo {
  * The editor source is just the function body (with return statements), so we
  * wrap it in a function declaration before parsing, then adjust locations back.
  */
-const ACORN_PREFIX = "function _() {\n"
+export const ACORN_PREFIX = "function _() {\n"
 const ACORN_SUFFIX = "\n}"
-const ACORN_PREFIX_LINES = 1   // number of extra lines the prefix adds
+export const ACORN_PREFIX_LINES = 1   // number of extra lines the prefix adds
 const ACORN_PREFIX_CHARS = ACORN_PREFIX.length
+
+/**
+ * Try to parse source with Acorn (using ACORN_PREFIX). If parse fails with SyntaxError,
+ * return the error position adjusted for the prefix (1-based line, 1-based column in user's document).
+ *
+ * ACORN_PREFIX adds "function _() {\n" so wrapped line 1 = prefix, wrapped line 2 = user line 1.
+ * We subtract ACORN_PREFIX_LINES from Acorn's line numbers to map back to user's document.
+ * Acorn columns are 0-based; we add 1 for 1-based display.
+ */
+export function getSyntaxErrorPosition(src: string): { line: number; column: number } | null {
+    try {
+        const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
+        parse(wrapped, { ecmaVersion: "latest", sourceType: "script", locations: true })
+        return null  // parse succeeded
+    } catch (err: unknown) {
+        const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
+        const lines = wrapped.split("\n")
+        let line = 1
+        let column = 1
+        const errWithPos = err as { pos?: number; loc?: { line: number; column: number } }
+        if (errWithPos.loc) {
+            // loc is relative to wrapped source; subtract prefix lines to get user document line
+            line = errWithPos.loc.line - ACORN_PREFIX_LINES
+            column = errWithPos.loc.column + 1  // Acorn columns are 0-based
+        } else if (typeof errWithPos.pos === "number") {
+            // Convert character offset to line/col in wrapped source, then adjust line for prefix
+            let offset = errWithPos.pos
+            for (let i = 0; i < lines.length; i++) {
+                const lineLen = lines[i].length + (i < lines.length - 1 ? 1 : 0)  // +1 for newline except last line
+                if (offset < lineLen) {
+                    line = i + 1 - ACORN_PREFIX_LINES  // wrapped line (i+1) → user line
+                    column = Math.min(offset, lines[i].length) + 1  // 0-based → 1-based
+                    break
+                }
+                offset -= lineLen
+            }
+        } else {
+            return null
+        }
+
+        // Reject if error was in the prefix line (line would be 0)
+        if (line < 1) return null
+
+        // When Acorn reports column 0, the parser found the error at the very start of a
+        // line — almost always because the real mistake is at the end of the previous line
+        // (e.g. missing comma, bracket, or semicolon). Move back to the end of that line.
+        const userLines = src.split("\n")
+        if (column === 1 && line > 1) {
+            const prevLine = line - 1
+            const prevContent = userLines[prevLine - 1] || ""
+            return { line: prevLine, column: prevContent.length + 1 }
+        }
+
+        return { line, column }
+    }
+}
+
+/**
+ * Find the line number of the return statement in document source.
+ * Returns 1-based line number, or null if no return statement or parse fails.
+ */
+export function findReturnStatementLine(src: string): number | null {
+    try {
+        const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
+        const ast = parse(wrapped, { ecmaVersion: "latest", sourceType: "script", locations: true })
+        let lastReturnLine: number | null = null
+        function walk(n: AcornNode) {
+            if (!n || typeof n !== "object") return
+            if (n.type === "ReturnStatement" && n.loc) {
+                lastReturnLine = n.loc.start.line - ACORN_PREFIX_LINES
+            }
+            for (const key of Object.keys(n)) {
+                if (key === "type" || key === "loc" || key === "range" || key === "start" || key === "end") continue
+                const value = (n as Record<string, unknown>)[key]
+                if (Array.isArray(value)) {
+                    for (const item of value) {
+                        if (item && typeof item === "object" && "type" in item) walk(item as AcornNode)
+                    }
+                } else if (value && typeof value === "object" && value !== null && "type" in value) {
+                    walk(value as AcornNode)
+                }
+            }
+        }
+        walk(ast)
+        return lastReturnLine
+    } catch {
+        return null
+    }
+}
 
 /**
  * Shape functions we care about for source location tracking

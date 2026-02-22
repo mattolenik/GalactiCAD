@@ -12,46 +12,31 @@ import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, 
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
-import { SourceParser, type SourceLocation, type Polygon2DCallInfo } from "./parser/source-parser.mjs"
+import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
 import { ResizeHandle } from "./components/resize-handle.mjs"
 import { Toolbar } from "./components/toolbar.mjs"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
 
-/**
- * Extract line/column from a scene compilation error and format with source context.
- * Parses V8-style stack traces (e.g. <anonymous>:5:12) and SyntaxError messages (e.g. "(3:5)").
- */
-function formatSceneError(err: unknown, src: string): { message: string; lineInfo: string | null } {
+/** Extract the compiler error message for display. Monaco handles location highlighting. */
+function formatSceneError(err: unknown, src: string): string {
     const msg = err instanceof Error ? err.message : String(err)
-    const stack = err instanceof Error ? err.stack : ""
+    const cleanMsg = msg.replace(/^Error:\s*/i, "").trim()
+    const displayMsg = cleanMsg.length > 200 ? cleanMsg.slice(0, 197) + "…" : cleanMsg
 
-    // Try stack first (V8 format: <anonymous>:line:col in user's function body)
-    let anonymousMatch = stack?.match(/<anonymous>:(\d+):(\d+)/)
-    // Fallback: SyntaxError messages often include (line:col)
-    if (!anonymousMatch) {
-        const msgMatch = msg.match(/\((\d+):(\d+)\)/)
-        if (msgMatch) anonymousMatch = msgMatch
-    }
-    const line = anonymousMatch ? parseInt(anonymousMatch[1], 10) : null
-    const column = anonymousMatch ? parseInt(anonymousMatch[2], 10) : null
-
-    const lines = src.split("\n")
-    const maxLine = lines.length
-
-    if (line != null && line >= 1 && line <= maxLine) {
-        const lineContent = lines[line - 1]
-        const col = column != null && column >= 1 ? Math.min(column, lineContent.length + 1) : 1
-        const marker = " ".repeat(col - 1) + "^"
-        const lineInfo = `  ${line} | ${lineContent}\n    | ${marker}`
-        return {
-            message: `${msg} (line ${line})`,
-            lineInfo
+    // Custom message for "undefined scene root" — document didn't return a valid scene node
+    const isUndefinedSceneRoot =
+        msg.includes("Cannot set properties of undefined") && msg.includes("'scene'")
+    if (isUndefinedSceneRoot && src.trim().length > 0) {
+        const returnLine = findReturnStatementLine(src)
+        if (returnLine != null) {
+            return "Document must return a scene node (e.g. sphere(), box(), union()). Your return evaluates to undefined."
         }
+        return "Document must return a scene node (e.g. sphere(), box(), union()). Add a return statement at the end."
     }
 
-    return { message: msg, lineInfo: null }
+    return displayMsg
 }
 
 class App {
@@ -111,16 +96,15 @@ class App {
             this.renderer.startLoop()
             this.#scheduleMeshUpdate(src)
             this.log.innerText = ""
+            this.log.classList.remove("has-error")
 
             // Update highlighting for current selection after build
             this.#updateEditorHighlighting()
         } catch (err) {
-            const { message, lineInfo } = formatSceneError(err, src)
-            this.log.innerText = lineInfo ? `💢 ${message}\n${lineInfo}` : `💢 ${message}`
+            const message = formatSceneError(err, src)
+            this.log.innerText = `💢 ${message}`
+            this.log.classList.add("has-error")
             console.error("[Scene compilation]", err)
-            if (lineInfo) {
-                console.error(lineInfo)
-            }
             // Clear all editor decorations on build error so stale indicators
             // don't appear at outdated line positions after code changes.
             this.#monacoHighlighter.clearHighlighting()
@@ -188,6 +172,24 @@ class App {
         } else {
             this.#monacoHighlighter.clearHighlighting()
         }
+    }
+
+    /**
+     * Insert generated code at the current cursor or replace selection.
+     */
+    #insertGeneratedCode(code: string) {
+        const model = this.editor.getModel()
+        if (!model) return
+        const selection = this.editor.getSelection()
+        if (!selection) return
+        const range = new monaco.Range(
+            selection.startLineNumber,
+            selection.startColumn,
+            selection.endLineNumber,
+            selection.endColumn
+        )
+        this.#skipNextBuild = true
+        model.pushEditOperations([], [{ range, text: code }], () => null)
     }
 
     /**
@@ -438,6 +440,19 @@ class App {
         this.#viewports = document.getElementById("viewports")!
         this.#editorContainer = editorContainer
 
+        // Editor panel: code area (flex) + LLM prompt bar (fixed) + error log (hidden until error)
+        const codeDiv = document.createElement("div")
+        codeDiv.style.flex = "1"
+        codeDiv.style.minHeight = "0"
+        codeDiv.style.overflow = "hidden"
+        editorContainer.insertBefore(codeDiv, this.log)
+
+        const promptBar = document.createElement("llm-prompt-bar") as import("./components/llm-prompt-bar.mjs").LLMPromptBar
+        promptBar.getDocumentContent = () => this.editor.getValue()
+        promptBar.onInsert = (code) => this.#insertGeneratedCode(code)
+        editorContainer.appendChild(promptBar)
+        editorContainer.appendChild(this.log)  // move log to end (after codeDiv, promptBar)
+
         // Initialize source parser and highlighter for selection sync
         this.#sourceParser = new SourceParser()
         this.#monacoHighlighter = new MonacoHighlighter()
@@ -456,7 +471,7 @@ class App {
                 "editor.lineHighlightBackground": "#3a3a3eCC",
             },
         })
-        this.editor = monaco.editor.create(editorContainer, {
+        this.editor = monaco.editor.create(codeDiv, {
             "semanticHighlighting.enabled": true,
             autoClosingBrackets: "beforeWhitespace",
             autoClosingDelete: "always",
@@ -756,6 +771,7 @@ class App {
                 })
             } else {
                 this.log.innerText = ""
+                this.log.classList.remove("has-error")
             }
         })
     }
@@ -780,7 +796,7 @@ class App {
         for (const name of this.#tabs.documentNames) {
             const model = this.#tabs.getByName(name)
             if (model && (model as { _commandManager?: { clear: () => void } })._commandManager) {
-                ;(model as { _commandManager: { clear: () => void } })._commandManager.clear()
+                ; (model as { _commandManager: { clear: () => void } })._commandManager.clear()
             }
         }
     }

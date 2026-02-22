@@ -80,6 +80,7 @@ class App {
             this.#updateEditorHighlighting()
         } catch (err) {
             this.log.innerText = `💢 ${err}`
+            console.error("[Scene compilation]", err)
             // Clear all editor decorations on build error so stale indicators
             // don't appear at outdated line positions after code changes.
             this.#monacoHighlighter.clearHighlighting()

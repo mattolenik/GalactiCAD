@@ -76,13 +76,14 @@ class App {
     #editorContainer!: HTMLDivElement
 
     async build() {
+        let src = ""
         try {
             const model = this.editor.getModel()
             if (!model) {
                 // No active model - don't try to build
                 return
             }
-            const src = this.editor.getValue()
+            src = this.editor.getValue()
             const documentName = this.#tabs.active ?? undefined
 
             // Build the scene (uses cache when switching back to a tab with unchanged content).

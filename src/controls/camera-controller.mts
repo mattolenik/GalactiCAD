@@ -301,7 +301,6 @@ export class CameraController {
         view = rotationMatrix.multiply(view)
         view = Mat4x4f.translation(this.#cameraTranslation).multiply(view)
         this.viewTransform = view
-        this.#saveCameraState()
         if (emit) {
             this.change$.next(this.state)
         }

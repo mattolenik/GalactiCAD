@@ -19,6 +19,41 @@ import { ResizeHandle } from "./components/resize-handle.mjs"
 import { Toolbar } from "./components/toolbar.mjs"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
 
+/**
+ * Extract line/column from a scene compilation error and format with source context.
+ * Parses V8-style stack traces (e.g. <anonymous>:5:12) and SyntaxError messages (e.g. "(3:5)").
+ */
+function formatSceneError(err: unknown, src: string): { message: string; lineInfo: string | null } {
+    const msg = err instanceof Error ? err.message : String(err)
+    const stack = err instanceof Error ? err.stack : ""
+
+    // Try stack first (V8 format: <anonymous>:line:col in user's function body)
+    let anonymousMatch = stack?.match(/<anonymous>:(\d+):(\d+)/)
+    // Fallback: SyntaxError messages often include (line:col)
+    if (!anonymousMatch) {
+        const msgMatch = msg.match(/\((\d+):(\d+)\)/)
+        if (msgMatch) anonymousMatch = msgMatch
+    }
+    const line = anonymousMatch ? parseInt(anonymousMatch[1], 10) : null
+    const column = anonymousMatch ? parseInt(anonymousMatch[2], 10) : null
+
+    const lines = src.split("\n")
+    const maxLine = lines.length
+
+    if (line != null && line >= 1 && line <= maxLine) {
+        const lineContent = lines[line - 1]
+        const col = column != null && column >= 1 ? Math.min(column, lineContent.length + 1) : 1
+        const marker = " ".repeat(col - 1) + "^"
+        const lineInfo = `  ${line} | ${lineContent}\n    | ${marker}`
+        return {
+            message: `${msg} (line ${line})`,
+            lineInfo
+        }
+    }
+
+    return { message: msg, lineInfo: null }
+}
+
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
     renderer: SDFRenderer
@@ -79,8 +114,12 @@ class App {
             // Update highlighting for current selection after build
             this.#updateEditorHighlighting()
         } catch (err) {
-            this.log.innerText = `💢 ${err}`
+            const { message, lineInfo } = formatSceneError(err, src)
+            this.log.innerText = lineInfo ? `💢 ${message}\n${lineInfo}` : `💢 ${message}`
             console.error("[Scene compilation]", err)
+            if (lineInfo) {
+                console.error(lineInfo)
+            }
             // Clear all editor decorations on build error so stale indicators
             // don't appear at outdated line positions after code changes.
             this.#monacoHighlighter.clearHighlighting()

@@ -508,7 +508,6 @@ class App {
             [
                 { label: "Object", value: "object" as const },
                 { label: "Seam", value: "seam" as const },
-                { label: "Contour", value: "contour" as const },
                 { label: "Edge", value: "edge" as const },
                 { label: "Face", value: "face" as const },
             ],

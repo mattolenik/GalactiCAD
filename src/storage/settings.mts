@@ -252,8 +252,11 @@ export class SettingsManager {
             try {
                 const parsed = JSON.parse(raw)
                 const def = defaultGlobalSettings()
+                const preview = { ...def.preview, ...parsed.preview }
+                // Migrate removed contour mode to object
+                if (preview.selectionMode === "contour") preview.selectionMode = "object"
                 this.#globalSettings = {
-                    preview: { ...def.preview, ...parsed.preview },
+                    preview,
                     meshViewer: { ...def.meshViewer, ...parsed.meshViewer },
                     app: { ...def.app, ...parsed.app },
                     layout: { ...def.layout, ...parsed.layout },

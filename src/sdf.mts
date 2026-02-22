@@ -65,7 +65,7 @@ type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; 
 import { EdgeKind } from "./edge-kind.mjs"
 
 export { EdgeKind }
-export type SelectionMode = "object" | "seam" | "contour" | "edge" | "face"
+export type SelectionMode = "object" | "seam" | "edge" | "face"
 
 /** Outline style for selected objects. */
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -669,21 +669,6 @@ export class SDFRenderer {
                         this.selectionChange$.next([])
                         return
                     }
-                } else if (effectiveMode === "contour") {
-                    const filtered = edgeHits.filter(h => h.kind === EdgeKind.SeamSegment)
-                    if (filtered.length > 0) {
-                        if (shiftKey) {
-                            for (const hit of filtered) {
-                                this.#addSelectedEdgeFromHit(hit)
-                            }
-                        } else {
-                            this.#setSelectedEdgesFromHits(filtered)
-                        }
-                        this.#selectedObjectIds.fill(false)
-                        this.#writeSelectionBuffer()
-                        this.selectionChange$.next([])
-                        return
-                    }
                 } else if (effectiveMode === "edge") {
                     const filtered = edgeHits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment)
                     if (filtered.length > 0) {
@@ -731,19 +716,6 @@ export class SDFRenderer {
                 let edges: SelectedEdgeData[] = []
                 if (effectiveMode === "seam") {
                     edges = hits.filter(h => h.kind === EdgeKind.Seam).map(h => ({
-                        kind: h.kind,
-                        primaryId: h.primaryId,
-                        secondaryId: h.secondaryId,
-                        featureA: h.featureA,
-                        opType: h.opType,
-                        lineWidthPx: 6.0,
-                        epsilon: 0.02,
-                        seedPoint: h.seedPoint,
-                        seedTangent: h.seedTangent,
-                        seedNormal: h.seedNormal,
-                    }))
-                } else if (effectiveMode === "contour") {
-                    edges = hits.filter(h => h.kind === EdgeKind.SeamSegment).map(h => ({
                         kind: h.kind,
                         primaryId: h.primaryId,
                         secondaryId: h.secondaryId,
@@ -1783,7 +1755,7 @@ export class SDFRenderer {
         vs[0] = this.#xrayMode ? 1 : 0
         vs[1] = refinementSteps
         vs[2] = beamActive ? 1 : 0
-        vs[3] = { object: 0, seam: 1, contour: 4, edge: 2, face: 3 }[this.#selectionMode]
+        vs[3] = { object: 0, seam: 1, edge: 2, face: 3 }[this.#selectionMode]
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, vs)
 
         // Write outline settings (mode + thickness + color + canvasWidth)

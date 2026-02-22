@@ -41,12 +41,11 @@ const SELECTION_MODE_OBJECT: u32 = 0u;
 const SELECTION_MODE_SEAM: u32 = 1u;
 const SELECTION_MODE_EDGE: u32 = 2u;
 const SELECTION_MODE_FACE: u32 = 3u;
-const SELECTION_MODE_CONTOUR: u32 = 4u;
 struct ViewSettings {
     xrayMode: u32,        // 0 = normal, 1 = xray/translucent
     refinementSteps: u32, // binary search refinement iterations (e.g. 4 during movement, 8 when idle)
     beamEnabled: u32,     // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
-    selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=contour
+    selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 

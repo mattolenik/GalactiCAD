@@ -1,4 +1,5 @@
 import * as monaco from "monaco-editor"
+import { CAD_TYPES_DECL } from "./scene/cad-types-decl.mjs"
 import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
 import type { Subscription } from "rxjs"
@@ -533,6 +534,32 @@ class App {
             existingMesh.remove()
         }
 
+        // Configure the TypeScript language service so user CAD code gets completions
+        // and type-checking for the built-in factory functions (sphere, box, union, …).
+        // (monaco.typescript is the correct top-level API in monaco-editor ≥0.52)
+        monaco.typescript.typescriptDefaults.setCompilerOptions({
+            target: monaco.typescript.ScriptTarget.ESNext,
+            // Non-strict so casual user code doesn't get flooded with errors.
+            strict: false,
+            noImplicitAny: false,
+            noUnusedLocals: false,
+            noUnusedParameters: false,
+            allowUnreachableCode: true,
+            // No module system — user code is a standalone function body.
+            module: monaco.typescript.ModuleKind.None,
+        })
+        // Only show syntax errors and semantic errors the user can actually act on;
+        // suppress lib-level noise.
+        monaco.typescript.typescriptDefaults.setDiagnosticsOptions({
+            noSemanticValidation: false,
+            noSyntaxValidation: false,
+        })
+        // Inject the CAD API declarations as an ambient global library.
+        monaco.typescript.typescriptDefaults.addExtraLib(
+            CAD_TYPES_DECL,
+            "file:///cad-api.d.ts",
+        )
+
         monaco.editor.defineTheme("galacticad-dark", {
             base: "vs-dark",
             inherit: true,
@@ -559,7 +586,7 @@ class App {
             fontVariations: true,
             formatOnPaste: true,
             formatOnType: true,
-            language: "javascript",
+            language: "typescript",
             lineNumbers: "on",
             minimap: { enabled: false },
             model: null,

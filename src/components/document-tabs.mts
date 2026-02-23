@@ -202,7 +202,7 @@ export class DocumentTabs extends HTMLElement {
     }
 
     /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts */
-    newDocument(content = defaultContent, language = "javascript"): string | undefined {
+    newDocument(content = defaultContent, language = "typescript"): string | undefined {
         this.#topUntitledIndex =
             Array.from(this.#docs.keys())
                 .map(s => parseInt(s.match(/^new scene (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
@@ -212,8 +212,8 @@ export class DocumentTabs extends HTMLElement {
         const name = this.#docs.size > 0 ? window.prompt("Give the new scene a name", defaultName)?.trim() : defaultName
         if (!name) return
 
-        const uri = monaco.Uri.parse(`inmemory://model/${name}`)
-        const model = monaco.editor.createModel(content, language, uri)
+        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+        const model = monaco.editor.createModel(content, "typescript", uri)
         this.#docs.set(name, model)
         this.#watchModel(name, model)
         this.switchTo(name)
@@ -238,8 +238,8 @@ export class DocumentTabs extends HTMLElement {
             const key = `${prefix}${name}`
             const content = localStorage.getItem(key)
             if (content !== null) {
-                const uri = monaco.Uri.parse(`inmemory://model/${name}`)
-                const model = monaco.editor.createModel(content, "javascript", uri)
+                const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+                const model = monaco.editor.createModel(content, "typescript", uri)
                 this.#docs.set(name, model)
                 this.#watchModel(name, model)
                 loaded.add(name)
@@ -252,8 +252,8 @@ export class DocumentTabs extends HTMLElement {
                 const name = key.substring(prefix.length)
                 if (!loaded.has(name)) {
                     const content = localStorage.getItem(key) || ""
-                    const uri = monaco.Uri.parse(`inmemory://model/${name}`)
-                    const model = monaco.editor.createModel(content, "javascript", uri)
+                    const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+                    const model = monaco.editor.createModel(content, "typescript", uri)
                     this.#docs.set(name, model)
                     this.#watchModel(name, model)
                 }
@@ -350,8 +350,8 @@ export class DocumentTabs extends HTMLElement {
             return undefined
         }
 
-        const uri = monaco.Uri.parse(`inmemory://model/${newName}`)
-        const newModel = monaco.editor.createModel(content, "javascript", uri)
+        const uri = monaco.Uri.parse(`inmemory://model/${newName}.ts`)
+        const newModel = monaco.editor.createModel(content, "typescript", uri)
         this.#docs.set(newName, newModel)
         this.#watchModel(newName, newModel)
         localStorage.setItem(`settings:${newName}`, JSON.stringify(settings))

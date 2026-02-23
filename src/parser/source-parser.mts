@@ -117,17 +117,13 @@ function parseSource(src: string): ts.SourceFile {
 }
 
 /**
- * Parse source and return the TypeScript SourceFile plus whether it has parse errors.
- * Use when you need to parse and may have errors (e.g. getSyntaxErrorPosition).
+ * Parse source and return the TypeScript SourceFile plus syntactic diagnostics.
+ * Uses getSyntacticDiagnostics (not getPreEmitDiagnostics) so that semantic errors
+ * from missing lib.d.ts types (Math, console, etc.) do not produce false positives
+ * for valid CAD source.
  */
 function parseSourceWithDiagnostics(src: string): { sourceFile: ts.SourceFile; diagnostics: readonly ts.Diagnostic[] } {
-    const wrapped = wrapSource(src)
-    const sourceFile = ts.createSourceFile(
-        "cad.ts",
-        wrapped,
-        ts.ScriptTarget.Latest,
-        true
-    )
+    const sourceFile = parseSource(src)
     const program = ts.createProgram(["cad.ts"], {}, {
         getSourceFile: () => sourceFile,
         getDefaultLibFileName: () => "lib.d.ts",
@@ -140,7 +136,7 @@ function parseSourceWithDiagnostics(src: string): { sourceFile: ts.SourceFile; d
         useCaseSensitiveFileNames: () => true,
         getNewLine: () => "\n",
     })
-    const diagnostics = ts.getPreEmitDiagnostics(program)
+    const diagnostics = program.getSyntacticDiagnostics(sourceFile)
     return { sourceFile, diagnostics }
 }
 
@@ -189,12 +185,11 @@ export function getSyntaxErrorPosition(src: string): { line: number; column: num
  */
 export function findReturnStatementLine(src: string): number | null {
     const sourceFile = parseSource(src)
-    const sf = sourceFile
     let lastReturnLine: number | null = null
 
     function visit(node: ts.Node) {
         if (ts.isReturnStatement(node)) {
-            const { line } = tsPosToUser(sf, node.getStart())
+            const { line } = tsPosToUser(sourceFile, node.getStart())
             lastReturnLine = line
         }
         ts.forEachChild(node, visit)
@@ -222,13 +217,12 @@ const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pi
  * Parser for extracting source locations from CAD code
  */
 export class SourceParser {
-    #sourceFile: ts.SourceFile | null = null
     /** Maps callStart (user-source offset) → ts.CallExpression node, populated by parseShapeCalls */
     #callNodeMap: Map<number, ts.CallExpression> = new Map()
+    /** Maps callStart (user-source offset) → ParsedShapeCall, for O(1) lookup in resolveLogicalLeafCalls */
+    #callMap: Map<number, ParsedShapeCall> = new Map()
     /** Maps variable name → ParsedShapeCall for its initializer, populated by parseShapeCalls */
     #varMap: Map<string, ParsedShapeCall> = new Map()
-    /** The last result from parseShapeCalls, for use by resolveLogicalLeafCalls */
-    #lastParsedCalls: ParsedShapeCall[] = []
 
     /**
      * Parse JavaScript/TypeScript code and extract all shape function calls with their arguments
@@ -238,12 +232,12 @@ export class SourceParser {
     parseShapeCalls(src: string): ParsedShapeCall[] {
         const calls: ParsedShapeCall[] = []
         const sourceFile = parseSource(src)
-        this.#sourceFile = sourceFile
         this.#callNodeMap.clear()
+        this.#callMap.clear()
 
         const visit = (node: ts.Node) => {
             if (ts.isCallExpression(node)) {
-                this.processCallExpression(node, calls)
+                this.processCallExpression(node, sourceFile, calls)
             }
             ts.forEachChild(node, visit)
         }
@@ -257,7 +251,7 @@ export class SourceParser {
                 node.initializer &&
                 ts.isCallExpression(node.initializer)) {
                 const callStart = node.initializer.getStart() - WRAP_PREFIX_CHARS
-                const matchingCall = calls.find(c => c.callStart === callStart)
+                const matchingCall = this.#callMap.get(callStart)
                 if (matchingCall) {
                     this.#varMap.set(node.name.text, matchingCall)
                 }
@@ -266,7 +260,6 @@ export class SourceParser {
         }
         visitVars(sourceFile)
 
-        this.#lastParsedCalls = calls
         console.debug(`[SourceParser] Found ${calls.length} shape call(s)`)
 
         return calls
@@ -315,7 +308,7 @@ export class SourceParser {
             const funcName = arg.expression.text
             if (ALL_SHAPE_FUNCTIONS.has(funcName)) {
                 const callStart = arg.getStart() - WRAP_PREFIX_CHARS
-                const call = this.#lastParsedCalls.find(c => c.callStart === callStart)
+                const call = this.#callMap.get(callStart)
                 if (call) resolve(call)
             }
         } else if (ts.isIdentifier(arg)) {
@@ -329,13 +322,12 @@ export class SourceParser {
     /**
      * Process a CallExpression to extract shape function info
      */
-    private processCallExpression(callNode: ts.CallExpression, calls: ParsedShapeCall[]): void {
+    private processCallExpression(callNode: ts.CallExpression, sourceFile: ts.SourceFile, calls: ParsedShapeCall[]): void {
         if (!ts.isIdentifier(callNode.expression)) return
 
         const funcName = callNode.expression.text
         if (!ALL_SHAPE_FUNCTIONS.has(funcName)) return
 
-        const sourceFile = this.#sourceFile!
         const startPos = callNode.expression.getStart()
         const endPos = callNode.expression.getEnd()
         const startLoc = tsPosToUser(sourceFile, startPos)
@@ -378,6 +370,7 @@ export class SourceParser {
         }
 
         calls.push(parsedCall)
+        this.#callMap.set(callStart, parsedCall)
     }
 
     private parseSphereArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
@@ -563,8 +556,7 @@ export class SourceParser {
 
     private getPropertyKey(prop: ts.PropertyAssignment): string | undefined {
         const name = prop.name
-        if (ts.isIdentifier(name)) return name.text
-        if (ts.isComputedPropertyName(name)) return undefined
+        if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text
         return undefined
     }
 
@@ -626,11 +618,10 @@ export class SourceParser {
         const calls: Polygon2DCallInfo[] = []
 
         const sourceFile = parseSource(src)
-        this.#sourceFile = sourceFile
 
         const visit = (node: ts.Node) => {
             if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "polygon2d") {
-                const info = this.extractPolygon2DInfo(node)
+                const info = this.extractPolygon2DInfo(node, sourceFile)
                 if (info) calls.push(info)
             }
             ts.forEachChild(node, visit)
@@ -655,8 +646,7 @@ export class SourceParser {
         return offset
     }
 
-    private extractPolygon2DInfo(callNode: ts.CallExpression): Polygon2DCallInfo | null {
-        const sourceFile = this.#sourceFile!
+    private extractPolygon2DInfo(callNode: ts.CallExpression, sourceFile: ts.SourceFile): Polygon2DCallInfo | null {
         if (callNode.arguments.length < 1) return null
 
         const arrayArg = callNode.arguments[0]
@@ -689,13 +679,12 @@ export class SourceParser {
         const calls: ExtrudeLoftCallInfo[] = []
 
         const sourceFile = parseSource(src)
-        this.#sourceFile = sourceFile
 
         const visit = (node: ts.Node) => {
             if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
                 const name = node.expression.text
                 if (name === "extrude" || name === "loft") {
-                    const info = this.extractExtrudeLoftInfo(node, name as "extrude" | "loft")
+                    const info = this.extractExtrudeLoftInfo(node, name as "extrude" | "loft", sourceFile)
                     if (info) calls.push(info)
                 }
             }
@@ -713,9 +702,9 @@ export class SourceParser {
 
     private extractExtrudeLoftInfo(
         callNode: ts.CallExpression,
-        name: "extrude" | "loft"
+        name: "extrude" | "loft",
+        sourceFile: ts.SourceFile
     ): ExtrudeLoftCallInfo | null {
-        const sourceFile = this.#sourceFile!
         const args = callNode.arguments
         if (args.length < 2) return null
 

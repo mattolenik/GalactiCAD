@@ -548,11 +548,14 @@ class App {
             // No module system — user code is a standalone function body.
             module: monaco.typescript.ModuleKind.None,
         })
-        // Only show syntax errors and semantic errors the user can actually act on;
-        // suppress lib-level noise.
+        // Only show syntax errors and semantic errors the user can actually act on.
         monaco.typescript.typescriptDefaults.setDiagnosticsOptions({
             noSemanticValidation: false,
             noSyntaxValidation: false,
+            // 1108: "A 'return' statement can only be used within a function body."
+            // User code is a function body executed via new Function(), so top-level
+            // return statements are valid at runtime but look illegal to the TS checker.
+            diagnosticCodesToIgnore: [1108],
         })
         // Inject the CAD API declarations as an ambient global library.
         monaco.typescript.typescriptDefaults.addExtraLib(

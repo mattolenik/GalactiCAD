@@ -210,7 +210,21 @@ declare class Lathe extends Node {}
 declare function group(...nodes: Node[]): Group;
 
 /** Options for union / subtract / intersect with optional smooth blending. */
-declare type BlendOptions = { r?: number; mode?: BlendMode; n?: number };
+declare type BlendOptions = {
+    /** Blend radius. Larger values create smoother transitions. */
+    r?: number;
+    /**
+     * Blend mode (default: 'round').
+     * - 'round'   — smooth rounded blend
+     * - 'chamfer' — flat chamfered edge
+     * - 'soft'    — softer falloff than round
+     * - 'columns' — columnar / pillar-shaped blend
+     * - 'stairs'  — stepped staircase blend
+     */
+    mode?: 'round' | 'chamfer' | 'soft' | 'columns' | 'stairs';
+    /** Number of steps, used with 'stairs' and 'columns' modes. */
+    n?: number;
+};
 
 /**
  * Boolean union of two or more shapes, with optional smooth blending.

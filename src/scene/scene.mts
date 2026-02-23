@@ -1,4 +1,6 @@
+import * as ts from "typescript"
 import { BijectiveMap } from "../collections/bijectiveMap.mjs"
+import { WRAP_PREFIX, WRAP_SUFFIX } from "../parser/source-parser.mjs"
 import { Vec3, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { asRadius } from "./geom.mjs"
 
@@ -73,8 +75,24 @@ export class SceneInfo {
     }
 
     constructor(src: string) {
-        // The source is the function body directly — it should end with a return statement
-        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", src)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, shell, offset, elongate, twist, bend, taper, morph, seam)
+        // The source is the function body directly — it should end with a return statement.
+        // Wrap in a function, transpile (for TypeScript syntax support), then execute.
+        const wrapped = WRAP_PREFIX + src + WRAP_SUFFIX
+        const result = ts.transpileModule(wrapped, {
+            compilerOptions: {
+                module: ts.ModuleKind.None,
+                target: ts.ScriptTarget.ESNext,
+            },
+        })
+        if (result.diagnostics && result.diagnostics.length > 0) {
+            const first = result.diagnostics[0]
+            const msg = typeof first.messageText === "string"
+                ? first.messageText
+                : first.messageText.messageText
+            throw new Error(msg)
+        }
+        const body = result.outputText + "\nreturn _();"
+        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", body)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, shell, offset, elongate, twist, bend, taper, morph, seam)
         this.root.scene = this
         this.root.build()
         this.#assignAABBIndices(this.root)

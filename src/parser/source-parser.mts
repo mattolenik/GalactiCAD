@@ -1,10 +1,10 @@
 /**
- * Source Parser - Parse JavaScript code to extract shape function calls with their arguments
- * Uses Acorn parser to create AST, then matches calls to scene nodes by property values
+ * Source Parser - Parse JavaScript/TypeScript code to extract shape function calls with their arguments
+ * Uses TypeScript compiler API to create AST, then matches calls to scene nodes by property values
  */
 
-import { parse, type Node as AcornNode, type CallExpression } from "acorn"
-import { vec3, Vec3f } from "../vecmat/vector.mjs"
+import * as ts from "typescript"
+import { vec3, type Vec3, Vec3f } from "../vecmat/vector.mjs"
 
 /**
  * Source location information for a shape in the code
@@ -28,6 +28,10 @@ export interface SourceLocation {
 export interface ParsedShapeCall {
     location: SourceLocation
     functionName: string
+    /** Character offset of the start of the full call expression in user source (without wrapper). */
+    callStart: number
+    /** Character offset of the end of the full call expression in user source (without wrapper). */
+    callEnd: number
     // Parsed argument values for matching
     pos?: Vec3f       // Position for sphere/box/cylinder/cone/etc.
     size?: Vec3f      // Size for box
@@ -79,69 +83,104 @@ export interface ExtrudeLoftCallInfo {
 }
 
 /**
- * Wrapping prefix/suffix used to make bare function-body code parseable by acorn.
+ * Wrapping prefix/suffix used to make bare function-body code parseable.
  * The editor source is just the function body (with return statements), so we
  * wrap it in a function declaration before parsing, then adjust locations back.
  */
-export const ACORN_PREFIX = "function _() {\n"
-const ACORN_SUFFIX = "\n}"
-export const ACORN_PREFIX_LINES = 1   // number of extra lines the prefix adds
-const ACORN_PREFIX_CHARS = ACORN_PREFIX.length
+export const WRAP_PREFIX = "function _() {\n"
+export const WRAP_SUFFIX = "\n}"
+export const WRAP_PREFIX_LINES = 1   // number of extra lines the prefix adds
+export const WRAP_PREFIX_CHARS = WRAP_PREFIX.length
 
 /**
- * Try to parse source with Acorn (using ACORN_PREFIX). If parse fails with SyntaxError,
- * return the error position adjusted for the prefix (1-based line, 1-based column in user's document).
- *
- * ACORN_PREFIX adds "function _() {\n" so wrapped line 1 = prefix, wrapped line 2 = user line 1.
- * We subtract ACORN_PREFIX_LINES from Acorn's line numbers to map back to user's document.
- * Acorn columns are 0-based; we add 1 for 1-based display.
+ * Create a wrapped source string for parsing.
+ */
+function wrapSource(src: string): string {
+    return WRAP_PREFIX + src + WRAP_SUFFIX
+}
+
+/**
+ * Parse source and return the TypeScript SourceFile.
+ * Uses createSourceFile only; the parser is resilient and produces a tree even for
+ * invalid input. We avoid getPreEmitDiagnostics because a minimal compiler host
+ * can emit unrelated diagnostics (e.g. missing lib.d.ts) that would incorrectly
+ * reject valid CAD source.
+ */
+function parseSource(src: string): ts.SourceFile {
+    const wrapped = wrapSource(src)
+    return ts.createSourceFile(
+        "cad.ts",
+        wrapped,
+        ts.ScriptTarget.Latest,
+        true
+    )
+}
+
+/**
+ * Parse source and return the TypeScript SourceFile plus whether it has parse errors.
+ * Use when you need to parse and may have errors (e.g. getSyntaxErrorPosition).
+ */
+function parseSourceWithDiagnostics(src: string): { sourceFile: ts.SourceFile; diagnostics: readonly ts.Diagnostic[] } {
+    const wrapped = wrapSource(src)
+    const sourceFile = ts.createSourceFile(
+        "cad.ts",
+        wrapped,
+        ts.ScriptTarget.Latest,
+        true
+    )
+    const program = ts.createProgram(["cad.ts"], {}, {
+        getSourceFile: () => sourceFile,
+        getDefaultLibFileName: () => "lib.d.ts",
+        writeFile: () => {},
+        getCurrentDirectory: () => "",
+        getDirectories: () => [],
+        fileExists: () => true,
+        readFile: () => "",
+        getCanonicalFileName: (f) => f,
+        useCaseSensitiveFileNames: () => true,
+        getNewLine: () => "\n",
+    })
+    const diagnostics = ts.getPreEmitDiagnostics(program)
+    return { sourceFile, diagnostics }
+}
+
+/**
+ * Convert TypeScript position (0-based line, 0-based character) to user document position.
+ * Subtracts WRAP_PREFIX_LINES from line, adds 1 to column for 1-based.
+ */
+function tsPosToUser(sourceFile: ts.SourceFile, pos: number): { line: number; column: number } {
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(pos)
+    return {
+        line: line - WRAP_PREFIX_LINES + 1,
+        column: character + 1
+    }
+}
+
+/**
+ * Try to parse source. If parse fails with syntax errors, return the error position
+ * adjusted for the prefix (1-based line, 1-based column in user's document).
  */
 export function getSyntaxErrorPosition(src: string): { line: number; column: number } | null {
-    try {
-        const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
-        parse(wrapped, { ecmaVersion: "latest", sourceType: "script", locations: true })
-        return null  // parse succeeded
-    } catch (err: unknown) {
-        const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
-        const lines = wrapped.split("\n")
-        let line = 1
-        let column = 1
-        const errWithPos = err as { pos?: number; loc?: { line: number; column: number } }
-        if (errWithPos.loc) {
-            // loc is relative to wrapped source; subtract prefix lines to get user document line
-            line = errWithPos.loc.line - ACORN_PREFIX_LINES
-            column = errWithPos.loc.column + 1  // Acorn columns are 0-based
-        } else if (typeof errWithPos.pos === "number") {
-            // Convert character offset to line/col in wrapped source, then adjust line for prefix
-            let offset = errWithPos.pos
-            for (let i = 0; i < lines.length; i++) {
-                const lineLen = lines[i].length + (i < lines.length - 1 ? 1 : 0)  // +1 for newline except last line
-                if (offset < lineLen) {
-                    line = i + 1 - ACORN_PREFIX_LINES  // wrapped line (i+1) → user line
-                    column = Math.min(offset, lines[i].length) + 1  // 0-based → 1-based
-                    break
-                }
-                offset -= lineLen
-            }
-        } else {
-            return null
-        }
+    const { sourceFile, diagnostics } = parseSourceWithDiagnostics(src)
+    if (diagnostics.length === 0) return null
 
-        // Reject if error was in the prefix line (line would be 0)
-        if (line < 1) return null
+    const diag = diagnostics[0]
+    if (!diag || diag.start === undefined) return null
 
-        // When Acorn reports column 0, the parser found the error at the very start of a
-        // line — almost always because the real mistake is at the end of the previous line
-        // (e.g. missing comma, bracket, or semicolon). Move back to the end of that line.
-        const userLines = src.split("\n")
-        if (column === 1 && line > 1) {
-            const prevLine = line - 1
-            const prevContent = userLines[prevLine - 1] || ""
-            return { line: prevLine, column: prevContent.length + 1 }
-        }
+    const { line, column } = tsPosToUser(sourceFile, diag.start)
 
-        return { line, column }
+    // Reject if error was in the prefix line (line would be 0 or less)
+    if (line < 1) return null
+
+    // When parser reports column 1 at start of line, the real mistake is often at end of previous line
+    const userLines = src.split("\n")
+    if (column === 1 && line > 1) {
+        const prevLine = line - 1
+        const prevContent = userLines[prevLine - 1] ?? ""
+        return { line: prevLine, column: prevContent.length + 1 }
     }
+
+    return { line, column }
 }
 
 /**
@@ -149,32 +188,20 @@ export function getSyntaxErrorPosition(src: string): { line: number; column: num
  * Returns 1-based line number, or null if no return statement or parse fails.
  */
 export function findReturnStatementLine(src: string): number | null {
-    try {
-        const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
-        const ast = parse(wrapped, { ecmaVersion: "latest", sourceType: "script", locations: true })
-        let lastReturnLine: number | null = null
-        function walk(n: AcornNode) {
-            if (!n || typeof n !== "object") return
-            if (n.type === "ReturnStatement" && n.loc) {
-                lastReturnLine = n.loc.start.line - ACORN_PREFIX_LINES
-            }
-            for (const key of Object.keys(n)) {
-                if (key === "type" || key === "loc" || key === "range" || key === "start" || key === "end") continue
-                const value = (n as Record<string, unknown>)[key]
-                if (Array.isArray(value)) {
-                    for (const item of value) {
-                        if (item && typeof item === "object" && "type" in item) walk(item as AcornNode)
-                    }
-                } else if (value && typeof value === "object" && value !== null && "type" in value) {
-                    walk(value as AcornNode)
-                }
-            }
+    const sourceFile = parseSource(src)
+    const sf = sourceFile
+    let lastReturnLine: number | null = null
+
+    function visit(node: ts.Node) {
+        if (ts.isReturnStatement(node)) {
+            const { line } = tsPosToUser(sf, node.getStart())
+            lastReturnLine = line
         }
-        walk(ast)
-        return lastReturnLine
-    } catch {
-        return null
+        ts.forEachChild(node, visit)
     }
+    visit(sourceFile)
+
+    return lastReturnLine
 }
 
 /**
@@ -185,91 +212,151 @@ const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS])
 
 /**
+ * CSG operators that act as pure pass-throughs: they have no independent visual representation
+ * and should be "looked through" when resolving logical leaf calls.
+ * Rendering composites (extrude, loft, lathe, rotate) are NOT in this set.
+ */
+const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group"])
+
+/**
  * Parser for extracting source locations from CAD code
  */
 export class SourceParser {
+    #sourceFile: ts.SourceFile | null = null
+    /** Maps callStart (user-source offset) → ts.CallExpression node, populated by parseShapeCalls */
+    #callNodeMap: Map<number, ts.CallExpression> = new Map()
+    /** Maps variable name → ParsedShapeCall for its initializer, populated by parseShapeCalls */
+    #varMap: Map<string, ParsedShapeCall> = new Map()
+    /** The last result from parseShapeCalls, for use by resolveLogicalLeafCalls */
+    #lastParsedCalls: ParsedShapeCall[] = []
+
     /**
-     * Parse JavaScript code and extract all shape function calls with their arguments
-     * @param src JavaScript source code
+     * Parse JavaScript/TypeScript code and extract all shape function calls with their arguments
+     * @param src JavaScript/TypeScript source code
      * @returns Array of parsed shape calls
      */
     parseShapeCalls(src: string): ParsedShapeCall[] {
         const calls: ParsedShapeCall[] = []
+        const sourceFile = parseSource(src)
+        this.#sourceFile = sourceFile
+        this.#callNodeMap.clear()
 
-        try {
-            // Wrap bare function-body source so acorn can parse return statements
-            const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
-            const ast = parse(wrapped, {
-                ecmaVersion: "latest",
-                sourceType: "script",
-                locations: true,
-                ranges: true
-            })
-
-            // Walk the entire AST to find all shape function calls
-            this.walkNode(ast, calls)
-
-            console.debug(`[SourceParser] Found ${calls.length} shape call(s)`)
-
-        } catch (err) {
-            console.warn("[SourceParser] Failed to parse source code:", err)
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node)) {
+                this.processCallExpression(node, calls)
+            }
+            ts.forEachChild(node, visit)
         }
+        visit(sourceFile)
+
+        // Build variable map: name → ParsedShapeCall for its defining shape call
+        this.#varMap.clear()
+        const visitVars = (node: ts.Node) => {
+            if (ts.isVariableDeclaration(node) &&
+                ts.isIdentifier(node.name) &&
+                node.initializer &&
+                ts.isCallExpression(node.initializer)) {
+                const callStart = node.initializer.getStart() - WRAP_PREFIX_CHARS
+                const matchingCall = calls.find(c => c.callStart === callStart)
+                if (matchingCall) {
+                    this.#varMap.set(node.name.text, matchingCall)
+                }
+            }
+            ts.forEachChild(node, visitVars)
+        }
+        visitVars(sourceFile)
+
+        this.#lastParsedCalls = calls
+        console.debug(`[SourceParser] Found ${calls.length} shape call(s)`)
 
         return calls
     }
 
     /**
-     * Walk AST node recursively to find all shape function calls
+     * Resolve a composite ParsedShapeCall to its logical leaf calls by tracing through
+     * variable references in the TypeScript AST.
+     *
+     * For inline code: `union(sphere(...), box(...))` → [sphere_call, box_call]
+     * For variable code: `const s=sphere(...); union(s, box(...))` → [sphere_call, box_call]
+     *
+     * Recurses through CSG_PASSTHROUGH_FUNCTIONS; stops at primitives and rendering composites
+     * (extrude, loft, lathe, rotate) which are treated as leaves.
      */
-    private walkNode(node: AcornNode, calls: ParsedShapeCall[]): void {
-        if (!node || typeof node !== "object") return
+    resolveLogicalLeafCalls(compositeCall: ParsedShapeCall): ParsedShapeCall[] {
+        const results: ParsedShapeCall[] = []
+        const visited = new Set<number>()
 
-        if (node.type === "CallExpression") {
-            const callNode = node as CallExpression
-            this.processCallExpression(callNode, calls)
+        const resolve = (call: ParsedShapeCall) => {
+            if (visited.has(call.callStart)) return
+            visited.add(call.callStart)
+
+            if (!CSG_PASSTHROUGH_FUNCTIONS.has(call.functionName)) {
+                // Leaf: primitive or rendering composite (extrude, rotate, etc.)
+                results.push(call)
+                return
+            }
+
+            // Pure CSG: look through its arguments
+            const callNode = this.#callNodeMap.get(call.callStart)
+            if (!callNode) return
+
+            for (const arg of callNode.arguments) {
+                this.#resolveCallArg(arg, resolve)
+            }
         }
 
-        // Recursively walk all properties
-        for (const key of Object.keys(node)) {
-            if (key === "type" || key === "loc" || key === "range" || key === "start" || key === "end") continue
-            const value = (node as any)[key]
-            if (Array.isArray(value)) {
-                for (const item of value) {
-                    if (item && typeof item === "object" && item.type) {
-                        this.walkNode(item, calls)
-                    }
-                }
-            } else if (value && typeof value === "object" && value.type) {
-                this.walkNode(value, calls)
+        resolve(compositeCall)
+        return results
+    }
+
+    /** Resolve a single call argument to a shape call and invoke resolve() on it */
+    #resolveCallArg(arg: ts.Expression, resolve: (call: ParsedShapeCall) => void): void {
+        if (ts.isCallExpression(arg) && ts.isIdentifier(arg.expression)) {
+            const funcName = arg.expression.text
+            if (ALL_SHAPE_FUNCTIONS.has(funcName)) {
+                const callStart = arg.getStart() - WRAP_PREFIX_CHARS
+                const call = this.#lastParsedCalls.find(c => c.callStart === callStart)
+                if (call) resolve(call)
             }
+        } else if (ts.isIdentifier(arg)) {
+            const call = this.#varMap.get(arg.text)
+            if (call) resolve(call)
+        } else if (ts.isSpreadElement(arg)) {
+            this.#resolveCallArg(arg.expression, resolve)
         }
     }
 
     /**
      * Process a CallExpression to extract shape function info
      */
-    private processCallExpression(callNode: CallExpression, calls: ParsedShapeCall[]): void {
-        // Only handle direct identifier calls (e.g., sphere(...), not obj.sphere(...))
-        if (callNode.callee.type !== "Identifier") return
+    private processCallExpression(callNode: ts.CallExpression, calls: ParsedShapeCall[]): void {
+        if (!ts.isIdentifier(callNode.expression)) return
 
-        const funcName = callNode.callee.name
+        const funcName = callNode.expression.text
         if (!ALL_SHAPE_FUNCTIONS.has(funcName)) return
 
-        const loc = callNode.callee.loc
-        if (!loc) return
+        const sourceFile = this.#sourceFile!
+        const startPos = callNode.expression.getStart()
+        const endPos = callNode.expression.getEnd()
+        const startLoc = tsPosToUser(sourceFile, startPos)
+        const endLoc = tsPosToUser(sourceFile, endPos)
+
+        const callStart = callNode.getStart() - WRAP_PREFIX_CHARS
+        this.#callNodeMap.set(callStart, callNode)
 
         const parsedCall: ParsedShapeCall = {
             functionName: funcName,
+            callStart,
+            callEnd: callNode.getEnd() - WRAP_PREFIX_CHARS,
             location: {
-                startLine: loc.start.line - ACORN_PREFIX_LINES,
-                startColumn: loc.start.column + 1, // Acorn is 0-based, Monaco is 1-based
-                endLine: loc.end.line - ACORN_PREFIX_LINES,
-                endColumn: loc.end.column + 1,
+                startLine: startLoc.line,
+                startColumn: startLoc.column,
+                endLine: endLoc.line,
+                endColumn: endLoc.column,
                 functionName: funcName
             }
         }
 
-        // Extract arguments for primitives
         if (funcName === "sphere" || funcName === "disc") {
             this.parseSphereArgs(callNode, parsedCall)
         } else if (funcName === "box") {
@@ -293,34 +380,20 @@ export class SourceParser {
         calls.push(parsedCall)
     }
 
-    /**
-     * Parse sphere(pos, {r?, d?}) arguments
-     */
-    private parseSphereArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseSphereArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            // First arg: position (string like "1 2 3" or array)
-            if (callNode.arguments.length >= 1) {
-                const posArg = callNode.arguments[0]
-                const posValue = this.evaluateExpression(posArg)
-                if (posValue !== undefined) {
-                    parsedCall.pos = vec3(posValue)
-                }
+            const args = callNode.arguments
+            if (args.length >= 1) {
+                const posValue = this.evaluateExpression(args[0])
+                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
             }
-
-            // Second arg: {r?, d?}
-            if (callNode.arguments.length >= 2) {
-                const optionsArg = callNode.arguments[1]
-                if (optionsArg.type === "ObjectExpression") {
-                    for (const prop of (optionsArg as any).properties) {
-                        if (prop.type === "Property" && prop.key.type === "Identifier") {
-                            const key = prop.key.name
-                            const value = this.evaluateExpression(prop.value)
-                            if (key === "r" && typeof value === "number") {
-                                parsedCall.r = value
-                            } else if (key === "d" && typeof value === "number") {
-                                parsedCall.d = value
-                            }
-                        }
+            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
+                for (const prop of args[1].properties) {
+                    if (ts.isPropertyAssignment(prop)) {
+                        const key = this.getPropertyKey(prop)
+                        const value = this.evaluateExpression(prop.initializer)
+                        if (key === "r" && typeof value === "number") parsedCall.r = value
+                        else if (key === "d" && typeof value === "number") parsedCall.d = value
                     }
                 }
             }
@@ -329,56 +402,37 @@ export class SourceParser {
         }
     }
 
-    /**
-     * Parse box(pos, size) arguments
-     */
-    private parseBoxArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseBoxArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            // First arg: position
-            if (callNode.arguments.length >= 1) {
-                const posArg = callNode.arguments[0]
-                const posValue = this.evaluateExpression(posArg)
-                if (posValue !== undefined) {
-                    parsedCall.pos = vec3(posValue)
-                }
+            const args = callNode.arguments
+            if (args.length >= 1) {
+                const posValue = this.evaluateExpression(args[0])
+                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
             }
-
-            // Second arg: size
-            if (callNode.arguments.length >= 2) {
-                const sizeArg = callNode.arguments[1]
-                const sizeValue = this.evaluateExpression(sizeArg)
-                if (sizeValue !== undefined) {
-                    parsedCall.size = vec3(sizeValue)
-                }
+            if (args.length >= 2) {
+                const sizeValue = this.evaluateExpression(args[1])
+                if (sizeValue !== undefined) parsedCall.size = vec3(sizeValue as Vec3)
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse box args:`, err)
         }
     }
 
-    /**
-     * Parse cylinder/cone/hexprism(pos, {r?, d?, h}) arguments
-     */
-    private parsePosRadiusHeightArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+    private parsePosRadiusHeightArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            if (callNode.arguments.length >= 1) {
-                const posArg = callNode.arguments[0]
-                const posValue = this.evaluateExpression(posArg)
-                if (posValue !== undefined) {
-                    parsedCall.pos = vec3(posValue)
-                }
+            const args = callNode.arguments
+            if (args.length >= 1) {
+                const posValue = this.evaluateExpression(args[0])
+                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
             }
-            if (callNode.arguments.length >= 2) {
-                const optionsArg = callNode.arguments[1]
-                if (optionsArg.type === "ObjectExpression") {
-                    for (const prop of (optionsArg as any).properties) {
-                        if (prop.type === "Property" && prop.key.type === "Identifier") {
-                            const key = prop.key.name
-                            const value = this.evaluateExpression(prop.value)
-                            if (key === "r" && typeof value === "number") parsedCall.r = value
-                            else if (key === "d" && typeof value === "number") parsedCall.d = value
-                            else if (key === "h" && typeof value === "number") parsedCall.h = value
-                        }
+            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
+                for (const prop of args[1].properties) {
+                    if (ts.isPropertyAssignment(prop)) {
+                        const key = this.getPropertyKey(prop)
+                        const value = this.evaluateExpression(prop.initializer)
+                        if (key === "r" && typeof value === "number") parsedCall.r = value
+                        else if (key === "d" && typeof value === "number") parsedCall.d = value
+                        else if (key === "h" && typeof value === "number") parsedCall.h = value
                     }
                 }
             }
@@ -387,28 +441,20 @@ export class SourceParser {
         }
     }
 
-    /**
-     * Parse torus(pos, {sr, lr}) arguments
-     */
-    private parseTorusArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseTorusArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            if (callNode.arguments.length >= 1) {
-                const posArg = callNode.arguments[0]
-                const posValue = this.evaluateExpression(posArg)
-                if (posValue !== undefined) {
-                    parsedCall.pos = vec3(posValue)
-                }
+            const args = callNode.arguments
+            if (args.length >= 1) {
+                const posValue = this.evaluateExpression(args[0])
+                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
             }
-            if (callNode.arguments.length >= 2) {
-                const optionsArg = callNode.arguments[1]
-                if (optionsArg.type === "ObjectExpression") {
-                    for (const prop of (optionsArg as any).properties) {
-                        if (prop.type === "Property" && prop.key.type === "Identifier") {
-                            const key = prop.key.name
-                            const value = this.evaluateExpression(prop.value)
-                            if (key === "sr" && typeof value === "number") parsedCall.sr = value
-                            else if (key === "lr" && typeof value === "number") parsedCall.lr = value
-                        }
+            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
+                for (const prop of args[1].properties) {
+                    if (ts.isPropertyAssignment(prop)) {
+                        const key = this.getPropertyKey(prop)
+                        const value = this.evaluateExpression(prop.initializer)
+                        if (key === "sr" && typeof value === "number") parsedCall.sr = value
+                        else if (key === "lr" && typeof value === "number") parsedCall.lr = value
                     }
                 }
             }
@@ -417,29 +463,21 @@ export class SourceParser {
         }
     }
 
-    /**
-     * Parse capsule(pos, {r?, d?, c}) arguments
-     */
-    private parseCapsuleArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseCapsuleArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            if (callNode.arguments.length >= 1) {
-                const posArg = callNode.arguments[0]
-                const posValue = this.evaluateExpression(posArg)
-                if (posValue !== undefined) {
-                    parsedCall.pos = vec3(posValue)
-                }
+            const args = callNode.arguments
+            if (args.length >= 1) {
+                const posValue = this.evaluateExpression(args[0])
+                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
             }
-            if (callNode.arguments.length >= 2) {
-                const optionsArg = callNode.arguments[1]
-                if (optionsArg.type === "ObjectExpression") {
-                    for (const prop of (optionsArg as any).properties) {
-                        if (prop.type === "Property" && prop.key.type === "Identifier") {
-                            const key = prop.key.name
-                            const value = this.evaluateExpression(prop.value)
-                            if (key === "r" && typeof value === "number") parsedCall.r = value
-                            else if (key === "d" && typeof value === "number") parsedCall.d = value
-                            else if (key === "c" && typeof value === "number") parsedCall.c = value
-                        }
+            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
+                for (const prop of args[1].properties) {
+                    if (ts.isPropertyAssignment(prop)) {
+                        const key = this.getPropertyKey(prop)
+                        const value = this.evaluateExpression(prop.initializer)
+                        if (key === "r" && typeof value === "number") parsedCall.r = value
+                        else if (key === "d" && typeof value === "number") parsedCall.d = value
+                        else if (key === "c" && typeof value === "number") parsedCall.c = value
                     }
                 }
             }
@@ -448,33 +486,23 @@ export class SourceParser {
         }
     }
 
-    /**
-     * Parse plane(pos, {n, dist?}) arguments
-     */
-    private parsePlaneArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+    private parsePlaneArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            if (callNode.arguments.length >= 1) {
-                const posArg = callNode.arguments[0]
-                const posValue = this.evaluateExpression(posArg)
-                if (posValue !== undefined) {
-                    parsedCall.pos = vec3(posValue)
-                }
+            const args = callNode.arguments
+            if (args.length >= 1) {
+                const posValue = this.evaluateExpression(args[0])
+                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
             }
-            if (callNode.arguments.length >= 2) {
-                const optionsArg = callNode.arguments[1]
-                if (optionsArg.type === "ObjectExpression") {
-                    for (const prop of (optionsArg as any).properties) {
-                        if (prop.type === "Property" && prop.key.type === "Identifier") {
-                            const key = prop.key.name
-                            if (key === "n") {
-                                const value = this.evaluateExpression(prop.value)
-                                if (value !== undefined) {
-                                    parsedCall.normal = vec3(value)
-                                }
-                            } else if (key === "dist") {
-                                const value = this.evaluateExpression(prop.value)
-                                if (typeof value === "number") parsedCall.planeOffset = value
-                            }
+            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
+                for (const prop of args[1].properties) {
+                    if (ts.isPropertyAssignment(prop)) {
+                        const key = this.getPropertyKey(prop)
+                        if (key === "n") {
+                            const value = this.evaluateExpression(prop.initializer)
+                            if (value !== undefined) parsedCall.normal = vec3(value as Vec3)
+                        } else if (key === "dist") {
+                            const value = this.evaluateExpression(prop.initializer)
+                            if (typeof value === "number") parsedCall.planeOffset = value
                         }
                     }
                 }
@@ -484,51 +512,34 @@ export class SourceParser {
         }
     }
 
-    /**
-     * Parse blob(pos) arguments
-     */
-    private parseBlobArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseBlobArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             if (callNode.arguments.length >= 1) {
-                const posArg = callNode.arguments[0]
-                const posValue = this.evaluateExpression(posArg)
-                if (posValue !== undefined) {
-                    parsedCall.pos = vec3(posValue)
-                }
+                const posValue = this.evaluateExpression(callNode.arguments[0])
+                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse blob args:`, err)
         }
     }
 
-    /**
-     * Parse extrude/loft options: h, pos (if first arg), t (twist, extrude only)
-     */
-    private parseExtrudeLoftArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseExtrudeLoftArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const args = callNode.arguments
             if (args.length < 2) return
 
-            // First arg may be position [x, y, z]
             const firstArg = args[0]
-            const isPositionArg = firstArg.type === "Literal" ||
-                (firstArg.type === "ArrayExpression" &&
-                    (firstArg as any).elements?.length === 3 &&
-                    (firstArg as any).elements.every((e: any) =>
-                        e && (e.type === "Literal" || e.type === "UnaryExpression")
-                    ))
-            if (isPositionArg) {
+            if (this.isPositionArg(firstArg)) {
                 const posValue = this.evaluateExpression(firstArg)
-                if (posValue !== undefined) parsedCall.pos = vec3(posValue)
+                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
             }
 
-            // Options object (last arg): h, t
             const optsArg = args[args.length - 1]
-            if (optsArg.type === "ObjectExpression") {
-                for (const prop of (optsArg as any).properties) {
-                    if (prop.type === "Property" && prop.key.type === "Identifier") {
-                        const key = prop.key.name
-                        const value = this.evaluateExpression(prop.value)
+            if (ts.isObjectLiteralExpression(optsArg)) {
+                for (const prop of optsArg.properties) {
+                    if (ts.isPropertyAssignment(prop)) {
+                        const key = this.getPropertyKey(prop)
+                        const value = this.evaluateExpression(prop.initializer)
                         if (key === "h" && typeof value === "number") parsedCall.h = value
                         else if (key === "t" && typeof value === "number") parsedCall.t = value
                     }
@@ -539,93 +550,92 @@ export class SourceParser {
         }
     }
 
-    /**
-     * Parse polygon2d(vertices) arguments — extract the vertex array for matching
-     */
-    private parsePolygon2DArgs(callNode: CallExpression, parsedCall: ParsedShapeCall): void {
+    private parsePolygon2DArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            if (callNode.arguments.length >= 1) {
-                const arrayArg = callNode.arguments[0]
-                if (arrayArg.type === "ArrayExpression") {
-                    const vertices = this.evaluateVertexArray(arrayArg)
-                    if (vertices) {
-                        parsedCall.vertices = vertices
-                    }
-                }
+            if (callNode.arguments.length >= 1 && ts.isArrayLiteralExpression(callNode.arguments[0])) {
+                const vertices = this.evaluateVertexArray(callNode.arguments[0])
+                if (vertices) parsedCall.vertices = vertices
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse polygon2d args:`, err)
         }
     }
 
-    /**
-     * Try to evaluate an AST expression to a value
-     * Handles: string literals, number literals, arrays, unary minus
-     */
-    private evaluateExpression(node: AcornNode): any {
-        if (!node) return undefined
-
-        switch (node.type) {
-            case "Literal":
-                return (node as any).value
-
-            case "ArrayExpression": {
-                const elements = (node as any).elements
-                const result: number[] = []
-                for (const elem of elements) {
-                    const val = this.evaluateExpression(elem)
-                    if (typeof val !== "number") return undefined
-                    result.push(val)
-                }
-                return result
-            }
-
-            case "UnaryExpression": {
-                const unary = node as any
-                if (unary.operator === "-") {
-                    const arg = this.evaluateExpression(unary.argument)
-                    if (typeof arg === "number") return -arg
-                } else if (unary.operator === "+") {
-                    return this.evaluateExpression(unary.argument)
-                }
-                return undefined
-            }
-
-            case "TemplateLiteral": {
-                // Handle simple template literals like `1 2 3`
-                const templ = node as any
-                if (templ.expressions.length === 0 && templ.quasis.length === 1) {
-                    return templ.quasis[0].value.cooked
-                }
-                return undefined
-            }
-
-            default:
-                return undefined
-        }
+    private getPropertyKey(prop: ts.PropertyAssignment): string | undefined {
+        const name = prop.name
+        if (ts.isIdentifier(name)) return name.text
+        if (ts.isComputedPropertyName(name)) return undefined
+        return undefined
     }
 
-    /**
-     * Find a polygon2d() call at a given editor position.
-     * Returns info needed by the polygon editor, or null if not on a polygon2d call.
-     */
+    private isPositionArg(node: ts.Node): boolean {
+        if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return true
+        if (ts.isArrayLiteralExpression(node)) {
+            const elements = node.elements
+            if (elements.length !== 3) return false
+            return elements.every((e) =>
+                e && (ts.isNumericLiteral(e) || ts.isPrefixUnaryExpression(e))
+            )
+        }
+        return false
+    }
+
+    private evaluateExpression(node: ts.Node): unknown {
+        if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+            return node.text
+        }
+        if (ts.isNumericLiteral(node)) {
+            return parseFloat(node.text)
+        }
+        if (ts.isArrayLiteralExpression(node)) {
+            const result: number[] = []
+            for (const elem of node.elements) {
+                const val = this.evaluateExpression(elem)
+                if (typeof val !== "number") return undefined
+                result.push(val)
+            }
+            return result
+        }
+        if (ts.isPrefixUnaryExpression(node)) {
+            if (node.operator === ts.SyntaxKind.MinusToken) {
+                const arg = this.evaluateExpression(node.operand)
+                if (typeof arg === "number") return -arg
+            } else if (node.operator === ts.SyntaxKind.PlusToken) {
+                return this.evaluateExpression(node.operand)
+            }
+        }
+        return undefined
+    }
+
+    private evaluateVertexArray(node: ts.ArrayLiteralExpression): [number, number][] | null {
+        const vertices: [number, number][] = []
+        for (const elem of node.elements) {
+            if (!elem || !ts.isArrayLiteralExpression(elem)) return null
+            const inner = elem.elements
+            if (inner.length !== 2) return null
+            const x = this.evaluateExpression(inner[0])
+            const y = this.evaluateExpression(inner[1])
+            if (typeof x !== "number" || typeof y !== "number") return null
+            vertices.push([x, y])
+        }
+        return vertices
+    }
+
     findPolygon2DAtPosition(src: string, line: number, column: number): Polygon2DCallInfo | null {
         const offset = this.positionToOffset(src, line, column)
         const calls: Polygon2DCallInfo[] = []
 
-        try {
-            // Wrap bare function-body source so acorn can parse return statements
-            const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
-            const ast = parse(wrapped, {
-                ecmaVersion: "latest",
-                sourceType: "script",
-                locations: true,
-                ranges: true
-            })
-            this.walkNodeForPolygon2D(ast, calls)
-        } catch {
-            return null
+        const sourceFile = parseSource(src)
+        this.#sourceFile = sourceFile
+
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "polygon2d") {
+                const info = this.extractPolygon2DInfo(node)
+                if (info) calls.push(info)
+            }
+            ts.forEachChild(node, visit)
         }
+        visit(sourceFile)
 
         for (const call of calls) {
             if (offset >= call.callStartOffset && offset <= call.callEndOffset) {
@@ -645,190 +655,99 @@ export class SourceParser {
         return offset
     }
 
-    private walkNodeForPolygon2D(node: AcornNode, calls: Polygon2DCallInfo[]): void {
-        if (!node || typeof node !== "object") return
-
-        if (node.type === "CallExpression") {
-            const callNode = node as CallExpression
-            if (callNode.callee.type === "Identifier" && callNode.callee.name === "polygon2d") {
-                const info = this.extractPolygon2DInfo(callNode)
-                if (info) calls.push(info)
-            }
-        }
-
-        for (const key of Object.keys(node)) {
-            if (key === "type" || key === "loc" || key === "range" || key === "start" || key === "end") continue
-            const value = (node as any)[key]
-            if (Array.isArray(value)) {
-                for (const item of value) {
-                    if (item && typeof item === "object" && item.type) {
-                        this.walkNodeForPolygon2D(item, calls)
-                    }
-                }
-            } else if (value && typeof value === "object" && value.type) {
-                this.walkNodeForPolygon2D(value, calls)
-            }
-        }
-    }
-
-    private extractPolygon2DInfo(callNode: CallExpression): Polygon2DCallInfo | null {
-        const loc = callNode.callee.loc
-        if (!loc) return null
+    private extractPolygon2DInfo(callNode: ts.CallExpression): Polygon2DCallInfo | null {
+        const sourceFile = this.#sourceFile!
         if (callNode.arguments.length < 1) return null
 
         const arrayArg = callNode.arguments[0]
-        if (arrayArg.type !== "ArrayExpression") return null
+        if (!ts.isArrayLiteralExpression(arrayArg)) return null
 
         const vertices = this.evaluateVertexArray(arrayArg)
         if (!vertices) return null
 
+        const startPos = callNode.expression.getStart()
+        const loc = tsPosToUser(sourceFile, startPos)
+        const endLoc = tsPosToUser(sourceFile, callNode.expression.getEnd())
+
         return {
-            callStartOffset: callNode.start - ACORN_PREFIX_CHARS,
-            callEndOffset: callNode.end - ACORN_PREFIX_CHARS,
-            arrayStartOffset: arrayArg.start - ACORN_PREFIX_CHARS,
-            arrayEndOffset: arrayArg.end - ACORN_PREFIX_CHARS,
+            callStartOffset: callNode.getStart() - WRAP_PREFIX_CHARS,
+            callEndOffset: callNode.getEnd() - WRAP_PREFIX_CHARS,
+            arrayStartOffset: arrayArg.getStart() - WRAP_PREFIX_CHARS,
+            arrayEndOffset: arrayArg.getEnd() - WRAP_PREFIX_CHARS,
             vertices,
             location: {
-                startLine: loc.start.line - ACORN_PREFIX_LINES,
-                startColumn: loc.start.column + 1,
-                endLine: loc.end.line - ACORN_PREFIX_LINES,
-                endColumn: loc.end.column + 1,
+                startLine: loc.line,
+                startColumn: loc.column,
+                endLine: endLoc.line,
+                endColumn: endLoc.column,
                 functionName: "polygon2d"
             }
         }
     }
 
-    private evaluateVertexArray(node: AcornNode): [number, number][] | null {
-        if (node.type !== "ArrayExpression") return null
-        const elements = (node as any).elements
-        const vertices: [number, number][] = []
-
-        for (const elem of elements) {
-            if (!elem || elem.type !== "ArrayExpression") return null
-            const inner = elem.elements
-            if (!inner || inner.length !== 2) return null
-            const x = this.evaluateExpression(inner[0])
-            const y = this.evaluateExpression(inner[1])
-            if (typeof x !== "number" || typeof y !== "number") return null
-            vertices.push([x, y])
-        }
-
-        return vertices
-    }
-
-    /**
-     * Find an extrude() or loft() call at a given editor position.
-     * Returns info needed to update h and pos after a cap push/pull drag.
-     * Uses exact (line, column) match to avoid editing the wrong call when multiple extrude/loft exist.
-     */
     findExtrudeLoftAtPosition(src: string, line: number, column: number): ExtrudeLoftCallInfo | null {
         const calls: ExtrudeLoftCallInfo[] = []
 
-        try {
-            const wrapped = ACORN_PREFIX + src + ACORN_SUFFIX
-            const ast = parse(wrapped, {
-                ecmaVersion: "latest",
-                sourceType: "script",
-                locations: true,
-                ranges: true
-            })
-            this.walkNodeForExtrudeLoft(ast, calls)
-        } catch {
-            return null
-        }
+        const sourceFile = parseSource(src)
+        this.#sourceFile = sourceFile
 
-        // Exact match: source location maps nodeId to the function name position
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+                const name = node.expression.text
+                if (name === "extrude" || name === "loft") {
+                    const info = this.extractExtrudeLoftInfo(node, name as "extrude" | "loft")
+                    if (info) calls.push(info)
+                }
+            }
+            ts.forEachChild(node, visit)
+        }
+        visit(sourceFile)
+
         for (const call of calls) {
             if (call.location.startLine === line && call.location.startColumn === column) {
                 return call
             }
         }
-        // Fallback: single call only
         return calls.length === 1 ? calls[0] : null
     }
 
-    private walkNodeForExtrudeLoft(node: AcornNode, calls: ExtrudeLoftCallInfo[]): void {
-        if (!node || typeof node !== "object") return
-
-        if (node.type === "CallExpression") {
-            const callNode = node as CallExpression
-            if (callNode.callee.type === "Identifier") {
-                const name = callNode.callee.name
-                if (name === "extrude" || name === "loft") {
-                    const info = this.extractExtrudeLoftInfo(callNode, name as "extrude" | "loft")
-                    if (info) calls.push(info)
-                }
-            }
-        }
-
-        for (const key of Object.keys(node)) {
-            if (key === "type" || key === "loc" || key === "range" || key === "start" || key === "end") continue
-            const value = (node as any)[key]
-            if (Array.isArray(value)) {
-                for (const item of value) {
-                    if (item && typeof item === "object" && item.type) {
-                        this.walkNodeForExtrudeLoft(item, calls)
-                    }
-                }
-            } else if (value && typeof value === "object" && value.type) {
-                this.walkNodeForExtrudeLoft(value, calls)
-            }
-        }
-    }
-
-    /**
-     * Extract h value and pos arg source offsets from an extrude() or loft() call.
-     *
-     * extrude(polygon2d(...), { h: 1.5 })           — no pos
-     * extrude([x, y, z], polygon2d(...), { h: 1.5 }) — with pos
-     * loft([polygon2d(...), polygon2d(...)], { h: 2 })  — no pos
-     * loft([x, y, z], [...], { h: 2 })                   — with pos
-     */
     private extractExtrudeLoftInfo(
-        callNode: CallExpression,
+        callNode: ts.CallExpression,
         name: "extrude" | "loft"
     ): ExtrudeLoftCallInfo | null {
-        const loc = callNode.callee.loc
-        if (!loc) return null
-
+        const sourceFile = this.#sourceFile!
         const args = callNode.arguments
         if (args.length < 2) return null
 
-        // Determine which arg is the options object with { h: ... }
-        // It's always the last argument.
         const optsArg = args[args.length - 1]
-        if (optsArg.type !== "ObjectExpression") return null
+        if (!ts.isObjectLiteralExpression(optsArg)) return null
 
         let hValueStart: number | null = null
         let hValueEnd: number | null = null
 
-        for (const prop of (optsArg as any).properties) {
-            if (prop.type === "Property" && prop.key.type === "Identifier" && prop.key.name === "h") {
-                hValueStart = prop.value.start - ACORN_PREFIX_CHARS
-                hValueEnd = prop.value.end - ACORN_PREFIX_CHARS
+        for (const prop of optsArg.properties) {
+            if (ts.isPropertyAssignment(prop) && this.getPropertyKey(prop) === "h") {
+                hValueStart = prop.initializer.getStart() - WRAP_PREFIX_CHARS
+                hValueEnd = prop.initializer.getEnd() - WRAP_PREFIX_CHARS
                 break
             }
         }
 
         if (hValueStart === null || hValueEnd === null) return null
 
-        // Check if the first arg is a position (string literal or array literal)
         let posArgStart: number | null = null
         let posArgEnd: number | null = null
         const firstArg = args[0]
-        const isPositionArg = firstArg.type === "Literal" ||
-            (firstArg.type === "ArrayExpression" &&
-                (firstArg as any).elements?.length === 3 &&
-                (firstArg as any).elements.every((e: any) =>
-                    e && (e.type === "Literal" || e.type === "UnaryExpression")
-                ))
-        if (isPositionArg) {
-            posArgStart = firstArg.start - ACORN_PREFIX_CHARS
-            posArgEnd = firstArg.end - ACORN_PREFIX_CHARS
+        if (this.isPositionArg(firstArg)) {
+            posArgStart = firstArg.getStart() - WRAP_PREFIX_CHARS
+            posArgEnd = firstArg.getEnd() - WRAP_PREFIX_CHARS
         }
 
-        // The insertion point is right after the opening paren, before the first argument
-        const insertPosOffset = args[0].start - ACORN_PREFIX_CHARS
+        const insertPosOffset = args[0].getStart() - WRAP_PREFIX_CHARS
+
+        const startPos = callNode.expression.getStart()
+        const loc = tsPosToUser(sourceFile, startPos)
+        const endLoc = tsPosToUser(sourceFile, callNode.expression.getEnd())
 
         return {
             functionName: name,
@@ -838,10 +757,10 @@ export class SourceParser {
             posArgEnd,
             insertPosOffset,
             location: {
-                startLine: loc.start.line - ACORN_PREFIX_LINES,
-                startColumn: loc.start.column + 1,
-                endLine: loc.end.line - ACORN_PREFIX_LINES,
-                endColumn: loc.end.column + 1,
+                startLine: loc.line,
+                startColumn: loc.column,
+                endLine: endLoc.line,
+                endColumn: endLoc.column,
                 functionName: name,
             }
         }

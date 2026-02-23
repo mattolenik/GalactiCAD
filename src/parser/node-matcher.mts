@@ -193,28 +193,22 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
 
 /**
  * Match scene nodes to parsed shape calls and create a source location map.
- * 
- * This function takes all nodes from the scene and all parsed shape calls,
- * and tries to match them by comparing property values.
- * 
- * @param nodes All nodes from the scene
- * @param calls All parsed shape calls from the source code
- * @returns Map from node ID to source location
+ *
+ * Alignment: The TypeScript parser processes parent call expressions BEFORE their
+ * children (processCallExpression runs before ts.forEachChild), so calls come out
+ * in the same top-down order as scene build (parent nodes before child nodes).
+ * A simple first-unmatched scan therefore aligns both correctly for all node types.
  */
 export function matchNodesToSource(
     nodes: Node[],
     calls: ParsedShapeCall[]
 ): Map<number, SourceLocation> {
     const result = new Map<number, SourceLocation>()
-
-    // Track which calls have been matched to avoid duplicate matches
     const matchedCalls = new Set<ParsedShapeCall>()
 
     for (const node of nodes) {
-        // Find a matching call for this node
         for (const call of calls) {
             if (matchedCalls.has(call)) continue
-
             if (matchNodeToCall(node, call)) {
                 result.set(node.id, call.location)
                 matchedCalls.add(call)

@@ -12,7 +12,7 @@ import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, 
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
-import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo } from "./parser/source-parser.mjs"
+import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo, type ParsedShapeCall } from "./parser/source-parser.mjs"
 import { matchNodesToSource } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
 import { ResizeHandle } from "./components/resize-handle.mjs"
@@ -39,6 +39,9 @@ function formatSceneError(err: unknown, src: string): string {
     return displayMsg
 }
 
+/** CSG operators that don't render as visible objects — when selected from editor, select only their child shapes. */
+const PURE_CSG_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group"])
+
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
     renderer: SDFRenderer
@@ -53,6 +56,7 @@ class App {
     #updateViewCenter: (() => void) | undefined
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
+    #parsedCalls: ParsedShapeCall[] = []
     #sceneNodeMap: Map<number, import("./scene/scene.mjs").Node> = new Map()  // nodeId -> Node for symbol lookup
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
@@ -86,6 +90,7 @@ class App {
             }
 
             // Match scene nodes to source code by comparing property values
+            this.#parsedCalls = parsedCalls
             this.#sourceLocationMap = matchNodesToSource(sceneNodes, parsedCalls)
 
             console.debug("[App] Source location map:", Array.from(this.#sourceLocationMap.entries()))
@@ -194,23 +199,26 @@ class App {
 
     /**
      * Find node ID at a given editor position (line, column).
-     * Used for editor-to-preview selection sync.
+     * Returns the innermost (smallest containing range) match so that clicking
+     * on a nested call (e.g. inner union) selects that call, not an outer one.
      */
     #findNodeIdAtPosition(line: number, column: number): number | null {
+        let best: { nodeId: number; size: number } | null = null
         for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
-            // Check if position is within the function name range
             if (line >= location.startLine && line <= location.endLine) {
                 if (line === location.startLine && column < location.startColumn) continue
                 if (line === location.endLine && column > location.endColumn) continue
-                return nodeId
+                const size = (location.endLine - location.startLine) * 100000 + (location.endColumn - location.startColumn)
+                if (!best || size < best.size) best = { nodeId, size }
             }
         }
-        return null
+        return best?.nodeId ?? null
     }
 
     /**
-     * Check if the current editor selection exactly matches a function name.
-     * Returns the node ID if matched, null otherwise.
+     * Find node ID for the current editor selection.
+     * Prefers exact match of function name range; falls back to position at selection start
+     * (e.g. when double-click selection boundaries differ slightly from our ranges).
      */
     #findNodeIdForSelection(selection: monaco.Selection): number | null {
         const startLine = selection.startLineNumber
@@ -219,7 +227,6 @@ class App {
         const endColumn = selection.endColumn
 
         for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
-            // Check if selection exactly matches the function name range
             if (startLine === location.startLine &&
                 startColumn === location.startColumn &&
                 endLine === location.endLine &&
@@ -227,7 +234,58 @@ class App {
                 return nodeId
             }
         }
-        return null
+        // Fallback: use position at selection start (double-click may not match exactly)
+        return this.#findNodeIdAtPosition(startLine, startColumn)
+    }
+
+    /**
+     * Find the ParsedShapeCall matching the editor selection.
+     * Exact match first; falls back to the innermost (smallest) identifier range at the selection start.
+     */
+    #findParsedCallForSelection(selection: monaco.Selection): ParsedShapeCall | null {
+        const startLine = selection.startLineNumber
+        const startColumn = selection.startColumn
+        const endLine = selection.endLineNumber
+        const endColumn = selection.endColumn
+
+        for (const call of this.#parsedCalls) {
+            if (startLine === call.location.startLine &&
+                startColumn === call.location.startColumn &&
+                endLine === call.location.endLine &&
+                endColumn === call.location.endColumn) {
+                return call
+            }
+        }
+
+        // Fallback: innermost identifier range containing (startLine, startColumn)
+        let best: { call: ParsedShapeCall; size: number } | null = null
+        for (const call of this.#parsedCalls) {
+            const loc = call.location
+            if (startLine < loc.startLine || startLine > loc.endLine) continue
+            if (startLine === loc.startLine && startColumn < loc.startColumn) continue
+            if (startLine === loc.endLine && startColumn > loc.endColumn) continue
+            const size = (loc.endLine - loc.startLine) * 100000 + (loc.endColumn - loc.startColumn)
+            if (!best || size < best.size) best = { call, size }
+        }
+        return best?.call ?? null
+    }
+
+    /**
+     * Map a list of ParsedShapeCall leaf calls to their matched scene node IDs.
+     * Uses sourceLocationMap which is built from property-based primitive matching.
+     */
+    #getNodeIdsForCalls(calls: ParsedShapeCall[]): number[] {
+        const result: number[] = []
+        for (const call of calls) {
+            for (const [nodeId, loc] of this.#sourceLocationMap.entries()) {
+                if (loc.startLine === call.location.startLine &&
+                    loc.startColumn === call.location.startColumn) {
+                    result.push(nodeId)
+                    break
+                }
+            }
+        }
+        return result
     }
 
     /**
@@ -346,6 +404,7 @@ class App {
         // (lightweight — no shader recompilation)
         const updatedSrc = model.getValue()
         const parsedCalls = this.#sourceParser.parseShapeCalls(updatedSrc)
+        this.#parsedCalls = parsedCalls
         this.#sourceLocationMap = matchNodesToSource(
             Array.from(this.#sceneNodeMap.values()),
             parsedCalls,
@@ -355,7 +414,8 @@ class App {
     /**
      * Handle editor selection to sync with preview.
      * Selects the corresponding object if a function name is fully selected.
-     * For CSG operators (union, subtract, group), selects all descendants too.
+     * For pure CSG operators (union, subtract, group, etc.), selects contained child shapes
+     * using AST containment rather than node matching (which is unreliable for composites).
      */
     #handleEditorSelection() {
         if (this.#isUpdatingFromPreview) return
@@ -363,6 +423,19 @@ class App {
         const selection = this.editor.getSelection()
         if (!selection || selection.isEmpty()) return
 
+        const clickedCall = this.#findParsedCallForSelection(selection)
+        if (!clickedCall) return
+
+        if (PURE_CSG_TYPES.has(clickedCall.functionName)) {
+            // Variable-tracing: resolve logical leaf calls through variable references
+            const leafCalls = this.#sourceParser.resolveLogicalLeafCalls(clickedCall)
+            const ids = this.#getNodeIdsForCalls(leafCalls)
+            this.renderer.setSelection(ids)
+            this.#updateEditorHighlighting()
+            return
+        }
+
+        // For primitives and rendering composites (extrude, loft, etc.), use direct match
         const nodeId = this.#findNodeIdForSelection(selection)
         if (nodeId !== null) {
             // polygon2d is a 2D shape not present in the 3D scene — open the polygon editor
@@ -379,53 +452,50 @@ class App {
                 }
             }
 
-            // Get the node and check if it's a composite (CSG/group)
             const node = this.#sceneNodeMap.get(nodeId)
-            if (node) {
-                // Use getAllDescendantIds to select this node and all children
-                const allIds = node.getAllDescendantIds()
-                this.renderer.setSelection(allIds)
-            } else {
-                this.renderer.setSelection([nodeId])
-            }
-            // Also update editor highlighting to show the selection highlight
+            this.renderer.setSelection(node ? node.getAllDescendantIds() : [nodeId])
             this.#updateEditorHighlighting()
         }
     }
 
     /**
      * Handle mouse click on the editor to check for color indicator clicks.
-     * For CSG operators (union, subtract, group), selects all descendants too.
+     * For pure CSG operators, uses containment-based selection.
      */
     #handleEditorMouseDown(e: monaco.editor.IEditorMouseEvent) {
         if (this.#isUpdatingFromPreview) return
 
-        // Check if clicking on a decoration (the color indicator)
         if (e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT) {
             const position = e.target.position
-            if (position) {
-                // Check if there's a color indicator decoration at this position
-                // by looking for a shape at column 1 of this line or at the clicked position
+            if (!position) return
+
+            // Find the parsed call at the clicked position
+            const clickedCall = this.#parsedCalls.reduce<{ call: ParsedShapeCall; size: number } | null>((best, call) => {
+                const loc = call.location
+                if (position.lineNumber < loc.startLine || position.lineNumber > loc.endLine) return best
+                if (position.lineNumber === loc.startLine && position.column < loc.startColumn) return best
+                if (position.lineNumber === loc.endLine && position.column > loc.endColumn) return best
+                const size = (loc.endLine - loc.startLine) * 100000 + (loc.endColumn - loc.startColumn)
+                return (!best || size < best.size) ? { call, size } : best
+            }, null)?.call ?? null
+
+            if (!clickedCall) return
+
+            // Only act when clicking on or before the function name (where the color indicator is)
+            if (position.column > clickedCall.location.startColumn) return
+
+            if (PURE_CSG_TYPES.has(clickedCall.functionName)) {
+                const leafCalls = this.#sourceParser.resolveLogicalLeafCalls(clickedCall)
+                const ids = this.#getNodeIdsForCalls(leafCalls)
+                this.renderer.setSelection(ids)
+            } else {
                 const nodeId = this.#findNodeIdAtPosition(position.lineNumber, position.column)
                 if (nodeId !== null) {
-                    // Check if clicking on or near the start of a shape function
-                    const location = this.#sourceLocationMap.get(nodeId)
-                    if (location && position.column <= location.startColumn) {
-                        // Clicked on or before the function name (where the indicator is)
-                        const node = this.#sceneNodeMap.get(nodeId)
-                        if (node) {
-                            // Use getAllDescendantIds to select this node and all children
-                            const allIds = node.getAllDescendantIds()
-                            this.renderer.setSelection(allIds)
-                        } else {
-                            this.renderer.setSelection([nodeId])
-                        }
-                        // Also update editor highlighting to show the selection highlight
-                        this.#updateEditorHighlighting()
-                        return
-                    }
+                    const node = this.#sceneNodeMap.get(nodeId)
+                    this.renderer.setSelection(node ? node.getAllDescendantIds() : [nodeId])
                 }
             }
+            this.#updateEditorHighlighting()
         }
     }
 

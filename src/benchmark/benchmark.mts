@@ -92,18 +92,26 @@ function escapeHtml(text: string): string {
 // Offscreen host creation
 // ---------------------------------------------------------------------------
 
-/** Create a hidden host element with canvas for offscreen benchmarking */
-function createOffscreenHost(width: number, height: number): HTMLElement & { canvas: HTMLCanvasElement } {
-    const host = document.createElement("div")
+/** Minimal host for offscreen benchmarking. Implements PreviewWindow interface with no-op stubs. */
+function createOffscreenHost(width: number, height: number): import("../components/preview-window.mjs").PreviewWindow {
+    const host = document.createElement("div") as unknown as HTMLElement & {
+        canvas: HTMLCanvasElement
+        updateSelectionInfo: (info: import("../components/preview-window.mjs").SelectionInfo) => void
+        setSelectionInfoLeft: (offsetPx: number) => void
+        updateFPS: (fps: number) => void
+    }
     host.style.cssText =
         "position:fixed;left:-9999px;top:0;width:" + width + "px;height:" + height + "px;pointer-events:none"
     const canvas = document.createElement("canvas")
     canvas.width = width
     canvas.height = height
     host.appendChild(canvas)
-        ; (host as HTMLElement & { canvas: HTMLCanvasElement }).canvas = canvas
+    host.canvas = canvas
+    host.updateSelectionInfo = () => {}
+    host.setSelectionInfoLeft = () => {}
+    host.updateFPS = () => {}
     document.body.appendChild(host)
-    return host as HTMLElement & { canvas: HTMLCanvasElement }
+    return host as unknown as import("../components/preview-window.mjs").PreviewWindow
 }
 
 function cameraStateFromSettings(cam: CameraSettings): CameraState {
@@ -130,7 +138,7 @@ export async function runBenchmarkSuite(suite: BenchmarkSuite, frameCount = 100)
     }
 
     const host = createOffscreenHost(BENCHMARK_WIDTH, BENCHMARK_HEIGHT)
-    const renderer = new SDFRenderer(host as import("../components/preview-window.mjs").PreviewWindow, null)
+    const renderer = new SDFRenderer(host, null)
 
     try {
         await renderer.ready()

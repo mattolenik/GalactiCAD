@@ -201,6 +201,36 @@ export class DocumentTabs extends HTMLElement {
         return Array.from(this.#docs.keys())
     }
 
+    /** Names of all documents stored in localStorage that are not currently open as tabs */
+    get closedDocumentNames(): string[] {
+        const open = new Set(this.#docs.keys())
+        const names: string[] = []
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i)
+            if (key?.startsWith("document:")) {
+                const name = key.substring("document:".length)
+                if (!open.has(name)) names.push(name)
+            }
+        }
+        return names
+    }
+
+    /** Open a stored document that is not currently a tab */
+    openStoredDocument(name: string): void {
+        if (this.#docs.has(name)) {
+            this.switchTo(name)
+            return
+        }
+        const content = localStorage.getItem(`document:${name}`)
+        if (content === null) return
+        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+        const model = monaco.editor.createModel(content, "typescript", uri)
+        this.#docs.set(name, model)
+        this.#watchModel(name, model)
+        this.switchTo(name)
+        this.#updateStoredOrder()
+    }
+
     /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts */
     newDocument(content = defaultContent, language = "typescript"): string | undefined {
         this.#topUntitledIndex =
@@ -243,20 +273,6 @@ export class DocumentTabs extends HTMLElement {
                 this.#docs.set(name, model)
                 this.#watchModel(name, model)
                 loaded.add(name)
-            }
-        }
-        // load leftovers
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i)
-            if (key?.startsWith(prefix)) {
-                const name = key.substring(prefix.length)
-                if (!loaded.has(name)) {
-                    const content = localStorage.getItem(key) || ""
-                    const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                    const model = monaco.editor.createModel(content, "typescript", uri)
-                    this.#docs.set(name, model)
-                    this.#watchModel(name, model)
-                }
             }
         }
         // default if empty

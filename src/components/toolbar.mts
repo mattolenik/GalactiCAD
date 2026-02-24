@@ -38,6 +38,11 @@ export class ToolbarButton {
 
     get disabled(): boolean { return this.#button.disabled }
     set disabled(v: boolean) { this.#button.disabled = v }
+
+    get active(): boolean { return this.#button.classList.contains("active") }
+    set active(v: boolean) {
+        this.#button.classList.toggle("active", v)
+    }
 }
 
 let radioGroupId = 0
@@ -108,7 +113,7 @@ export class Toolbar extends HTMLElement {
                 padding: 8px 10px;
                 border-radius: 4px;
                 color: rgb(from var(${__fg_color}) r g b / 0.85);
-                font-size: 12px;
+                font-size: 15px;
                 font-family: system-ui, sans-serif;
             }
             label {
@@ -128,7 +133,8 @@ export class Toolbar extends HTMLElement {
                 border-radius: 3px;
                 color: inherit;
                 font: inherit;
-                padding: 2px 8px;
+                padding: 6px 10px;
+                min-height: 28px;
             }
             button:hover {
                 background: rgb(from var(${__fg_color}) r g b / 0.1);
@@ -140,9 +146,15 @@ export class Toolbar extends HTMLElement {
                 opacity: 0.4;
                 cursor: default;
             }
+            button.active {
+                background: rgb(from var(${__fg_color}) r g b / 0.25);
+            }
+            button.active:hover {
+                background: rgb(from var(${__fg_color}) r g b / 0.35);
+            }
             .separator {
                 width: 1px;
-                height: 20px;
+                height: 24px;
                 background: rgb(from var(${__fg_color}) r g b / 0.2);
                 flex-shrink: 0;
             }

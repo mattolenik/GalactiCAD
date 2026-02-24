@@ -36,6 +36,8 @@ export class PreviewWindow extends HTMLElement {
     #framerateThreshold: number = 120
     #showFps: boolean = false
 
+    onVersionDblClick?: () => void
+
     get showFps(): boolean {
         return this.#showFps
     }
@@ -77,6 +79,9 @@ export class PreviewWindow extends HTMLElement {
         .version {
             font-size: 10px;
             color: rgba(255, 255, 255, 0.35);
+            pointer-events: auto;
+            cursor: pointer;
+            user-select: none;
         }
         .sel-info {
             position: absolute;
@@ -103,6 +108,7 @@ export class PreviewWindow extends HTMLElement {
         const versionEl = document.createElement("span")
         versionEl.classList.add("version")
         versionEl.textContent = VERSION
+        versionEl.addEventListener("dblclick", () => this.onVersionDblClick?.())
         overlay.appendChild(versionEl)
 
         this.#selInfo = document.createElement("div")

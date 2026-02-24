@@ -92,7 +92,7 @@ export class DevToolsPanel extends HTMLElement {
         style.textContent = `
         :host {
             position: absolute;
-            top: 46px;
+            top: 76px;
             right: 10px;
             z-index: 1;
             display: flex;

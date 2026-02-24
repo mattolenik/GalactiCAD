@@ -677,6 +677,25 @@ class App {
         pushPullModeRadio.onChange = (value) => {
             this.renderer.setPushPullMode(value)
         }
+        toolbar.addSeparator()
+        const exportBtn = toolbar.addButton("Export STL")
+        const fullscreenBtn = toolbar.addButton("Fullscreen")
+        const updateFullscreenActive = () => {
+            fullscreenBtn.active = !!document.fullscreenElement
+        }
+        updateFullscreenActive()
+        document.addEventListener("fullscreenchange", updateFullscreenActive)
+        if (document.fullscreenEnabled) {
+            fullscreenBtn.onClick = async () => {
+                if (document.fullscreenElement) {
+                    await document.exitFullscreen()
+                } else {
+                    await document.documentElement.requestFullscreen()
+                }
+            }
+        } else {
+            fullscreenBtn.disabled = true
+        }
         this.#viewports.appendChild(toolbar)
 
         // Developer tools panel — positioned over the viewports area
@@ -756,7 +775,9 @@ class App {
                 this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
                 this.#wireEditorAndTabs()
                 this.#wireGlobalUndoRedo()
-                this.#wireMenu(menu, preview, devTools)
+                this.#wireMenu(menu)
+                this.#wireExportButton(exportBtn)
+                this.#wireDevToolsVersionToggle(preview, devTools)
                 this.build()
 
                 fromEventPattern<monaco.editor.IModelContentChangedEvent>(
@@ -901,11 +922,7 @@ class App {
         }
     }
 
-    #wireMenu(
-        menu: HTMLElement,
-        preview: PreviewWindow,
-        devTools: DevToolsPanel
-    ) {
+    #wireMenu(menu: HTMLElement) {
         const newItem = document.createElement("span")
         newItem.innerHTML = "New Scene"
         const renameItem = document.createElement("span")
@@ -914,105 +931,74 @@ class App {
         duplicateItem.innerHTML = "Duplicate"
         const deleteItem = document.createElement("span")
         deleteItem.innerHTML = "Delete"
-        const exportItem = document.createElement("span")
-        exportItem.innerHTML = "Export to STL"
-
-        const devToolsContainer = document.createElement("div")
-        devToolsContainer.style.display = "flex"
-        devToolsContainer.style.alignItems = "center"
-        devToolsContainer.style.gap = "8px"
-        devToolsContainer.style.cursor = "pointer"
-        const devToolsCheckbox = document.createElement("input")
-        devToolsCheckbox.type = "checkbox"
-        devToolsCheckbox.style.pointerEvents = "none"
-        const devToolsEnabled = this.#settings.getGlobal().app.devToolsEnabled
-        devToolsCheckbox.checked = devToolsEnabled
-        devTools.visible = devToolsEnabled
-        const devToolsText = document.createElement("span")
-        devToolsText.textContent = "Developer Tools"
-        devToolsContainer.append(devToolsCheckbox, devToolsText)
-
-        const fullscreenItem = document.createElement("span")
-        const updateFullscreenText = () => {
-            fullscreenItem.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Enter Fullscreen"
-        }
-        updateFullscreenText()
-        document.addEventListener("fullscreenchange", updateFullscreenText)
 
         const menuItems: Array<{ element: HTMLElement; action: () => void }> = [
             { element: newItem, action: () => this.#tabs.newDocument(undefined, "javascript") },
             { element: renameItem, action: () => this.#tabs.renameCurrentTab() },
             { element: duplicateItem, action: () => this.#tabs.duplicateCurrentTab() },
             { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
-            {
-                element: exportItem,
-                action: async () => {
-                    const { StatusDialog } = await import("./components/status-dialog.mjs")
-                    let statusDialog: import("./components/status-dialog.mjs").StatusDialog | null = null
-
-                    try {
-                        const documentName = this.#tabs.active!
-                        const handle = await window.showSaveFilePicker({
-                            suggestedName: documentName,
-                            startIn: "desktop",
-                            types: [
-                                {
-                                    description: "STL file",
-                                    accept: { "model/stl": [".stl"] },
-                                },
-                            ],
-                            excludeAcceptAllOption: false,
-                        })
-                        const mesh = await this.renderer.renderMesh(this.editor.getValue())
-                        await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
-
-                        statusDialog = new StatusDialog("Export successful")
-                        await statusDialog.show()
-                    } catch (err) {
-                        if (`${err}`.includes("AbortError")) {
-                            return
-                        }
-                        if (`${err}`.includes("cancelled")) {
-                            statusDialog = new StatusDialog("Export cancelled")
-                            await statusDialog.show()
-                            return
-                        }
-
-                        const errorMsg = err instanceof Error ? err.message : String(err)
-                        statusDialog = new StatusDialog(`Export failed: ${errorMsg}`)
-                        await statusDialog.show()
-                    }
-                },
-            },
         ]
-        if (document.fullscreenEnabled) {
-            menuItems.push({
-                element: fullscreenItem,
-                action: async () => {
-                    if (document.fullscreenElement) {
-                        await document.exitFullscreen()
-                    } else {
-                        await document.documentElement.requestFullscreen()
-                    }
-                },
-            })
-        }
-        menuItems.push({
-            element: devToolsContainer,
-            action: () => {
-                const enabled = !devToolsCheckbox.checked
-                devToolsCheckbox.checked = enabled
-                devTools.visible = enabled
-                if (!enabled) {
-                    preview.showFps = false
-                } else {
-                    preview.showFps = devTools.showFps
-                }
-                this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
-            },
+        const menuButton = new MenuButton(menuItems, {
+            getClosedDocuments: () => this.#tabs.closedDocumentNames,
+            onOpen: name => this.#tabs.openStoredDocument(name),
         })
-        const menuButton = new MenuButton(menuItems)
         menu.replaceWith(menuButton)
+    }
+
+    async #wireExportButton(exportBtn: import("./components/toolbar.mjs").ToolbarButton) {
+        exportBtn.onClick = async () => {
+            const { StatusDialog } = await import("./components/status-dialog.mjs")
+            let statusDialog: import("./components/status-dialog.mjs").StatusDialog | null = null
+
+            try {
+                const documentName = this.#tabs.active!
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: documentName,
+                    startIn: "desktop",
+                    types: [
+                        {
+                            description: "STL file",
+                            accept: { "model/stl": [".stl"] },
+                        },
+                    ],
+                    excludeAcceptAllOption: false,
+                })
+                const mesh = await this.renderer.renderMesh(this.editor.getValue())
+                await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
+
+                statusDialog = new StatusDialog("Export successful")
+                await statusDialog.show()
+            } catch (err) {
+                if (`${err}`.includes("AbortError")) {
+                    return
+                }
+                if (`${err}`.includes("cancelled")) {
+                    statusDialog = new StatusDialog("Export cancelled")
+                    await statusDialog.show()
+                    return
+                }
+
+                const errorMsg = err instanceof Error ? err.message : String(err)
+                statusDialog = new StatusDialog(`Export failed: ${errorMsg}`)
+                await statusDialog.show()
+            }
+        }
+    }
+
+    #wireDevToolsVersionToggle(preview: PreviewWindow, devTools: DevToolsPanel) {
+        const devToolsEnabled = this.#settings.getGlobal().app.devToolsEnabled
+        devTools.visible = devToolsEnabled
+
+        preview.onVersionDblClick = () => {
+            const enabled = !devTools.visible
+            devTools.visible = enabled
+            if (!enabled) {
+                preview.showFps = false
+            } else {
+                preview.showFps = devTools.showFps
+            }
+            this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
+        }
     }
 
     #openPolygonEditor(info: Polygon2DCallInfo, model: monaco.editor.ITextModel) {

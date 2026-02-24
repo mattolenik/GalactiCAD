@@ -1,14 +1,21 @@
 import { __fg_color, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "../style/style.mjs"
 
+export interface DocumentExplorerConfig {
+    getClosedDocuments: () => string[]
+    onOpen: (name: string) => void
+}
+
 export class MenuButton extends HTMLElement {
     #ac = new AbortController()
     #button: HTMLButtonElement
     #menuContainer: HTMLElement
     #items: Array<{ element: HTMLElement; action: () => void }>
+    #documentExplorer?: DocumentExplorerConfig
 
-    constructor(items: Array<{ element: HTMLElement; action: () => void }>) {
+    constructor(items: Array<{ element: HTMLElement; action: () => void }>, documentExplorer?: DocumentExplorerConfig) {
         super()
         this.#items = items
+        this.#documentExplorer = documentExplorer
 
         const shadow = this.attachShadow({ mode: "open" })
 
@@ -48,6 +55,7 @@ export class MenuButton extends HTMLElement {
                 padding: 0;
                 list-style: none;
                 width: max-content;
+                min-width: 180px;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                 z-index: 100;
                 visibility: hidden;
@@ -70,6 +78,50 @@ export class MenuButton extends HTMLElement {
             .menu li:hover {
                 color: var(${__fg_color});
                 background: var(${__tone_3})
+            }
+
+            .menu li.section-header {
+                cursor: default;
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: rgb(from var(${__fg_color}) r g b / 0.35);
+                padding: 6px 12px 4px;
+            }
+
+            .menu li.section-header:hover {
+                background: none;
+                color: rgb(from var(${__fg_color}) r g b / 0.35);
+            }
+
+            .menu li.doc-item {
+                padding: 6px 12px 6px 20px;
+                font-size: 17px;
+            }
+
+            .menu li.separator {
+                cursor: default;
+                height: 1px;
+                padding: 0;
+                margin: 4px 0;
+                background: rgb(from var(${__fg_color}) r g b / 0.12);
+            }
+
+            .menu li.separator:hover {
+                background: rgb(from var(${__fg_color}) r g b / 0.12);
+            }
+
+            .menu li.empty-docs {
+                cursor: default;
+                padding: 6px 12px 6px 20px;
+                font-size: 14px;
+                font-style: italic;
+                color: rgb(from var(${__fg_color}) r g b / 0.3);
+            }
+
+            .menu li.empty-docs:hover {
+                background: none;
+                color: rgb(from var(${__fg_color}) r g b / 0.3);
             }
         </style>
 
@@ -113,11 +165,52 @@ export class MenuButton extends HTMLElement {
             this.#menuContainer.appendChild(li)
         }
     }
+
+    #renderDocumentExplorer() {
+        // Remove any previously rendered explorer section
+        const existing = this.#menuContainer.querySelectorAll(".explorer-section")
+        existing.forEach(el => el.remove())
+
+        if (!this.#documentExplorer) return
+
+        const closed = this.#documentExplorer.getClosedDocuments()
+
+        const sep = document.createElement("li")
+        sep.classList.add("separator", "explorer-section")
+        this.#menuContainer.appendChild(sep)
+
+        const header = document.createElement("li")
+        header.classList.add("section-header", "explorer-section")
+        header.textContent = "Documents"
+        this.#menuContainer.appendChild(header)
+
+        if (closed.length === 0) {
+            const empty = document.createElement("li")
+            empty.classList.add("empty-docs", "explorer-section")
+            empty.textContent = "No closed documents"
+            this.#menuContainer.appendChild(empty)
+            return
+        }
+
+        for (const name of closed) {
+            const li = document.createElement("li")
+            li.classList.add("doc-item", "explorer-section")
+            li.textContent = name
+            li.onclick = () => {
+                this.#documentExplorer!.onOpen(name)
+                this.hideMenu()
+            }
+            this.#menuContainer.appendChild(li)
+        }
+    }
+
     toggleMenu(e: MouseEvent) {
         if (this.#menuContainer.classList.contains("visible")) {
             this.hideMenu()
             return
         }
+
+        this.#renderDocumentExplorer()
 
         const menuStyle = this.#menuContainer.style
         this.#menuContainer.classList.add("visible")

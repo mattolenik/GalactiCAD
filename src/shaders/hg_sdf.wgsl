@@ -82,6 +82,37 @@ fn applySeam(out: ptr<function, SDFResult>, seam: SDFResult) {
 }
 
 //////////////////////////////
+//   LIGHTWEIGHT HIT DATA
+//
+// Strips fields unused in the fragment shading pipeline (d, g, s, _seamPad)
+// to reduce register pressure in fragmentMain.  Each raymarch call returns one
+// of these; holding two simultaneously (front + back hit) costs 26 scalars
+// instead of 54 with the full RaymarchHit{t, SDFResult}.
+//////////////////////////////
+
+struct HitData {
+    t: f32,              // ray parameter; negative = miss
+    id: u32,             // primary object ID
+    id2: u32,            // secondary ID for blend colour
+    blend: f32,          // smooth-blend weight (0 = fully id, 1 = fully id2)
+    n: vec3f,            // analytical surface normal
+    seamA: u32,
+    seamB: u32,
+    seamOp: u32,         // 0=none, 1=union, 2=intersection, 3=difference
+    seamGap: f32,
+    seamTangent: vec3f,
+}
+
+fn hitDataMiss() -> HitData {
+    return HitData(-1.0, 0u, 0u, 0.0, vec3f(0.0), 0u, 0u, 0u, 1e9, vec3f(0.0));
+}
+
+fn toHitData(t: f32, sdf: SDFResult) -> HitData {
+    return HitData(t, sdf.id, sdf.id2, sdf.blend, sdf.n,
+                   sdf.seamA, sdf.seamB, sdf.seamOp, sdf.seamGap, sdf.seamTangent);
+}
+
+//////////////////////////////
 //       HELPER FUNCTIONS
 //////////////////////////////
 

@@ -249,14 +249,14 @@ fn closestPointOnBoxEdge(localP: vec3f, half: vec3f, feature: u32) -> vec3f {
 }
 
 // Project hit point onto the seam line. Returns hitWorld if projection is degenerate.
-fn projectHitOntoSeam(hitWorld: vec3f, sdf: SDFResult) -> vec3f {
-    let t = sdf.seamTangent;
+fn projectHitOntoSeam(hitWorld: vec3f, hit: HitData) -> vec3f {
+    let t = hit.seamTangent;
     let tLen = max(length(t), 1e-6);
-    let perp = sdf.n - dot(sdf.n, t) / (tLen * tLen) * t;
+    let perp = hit.n - dot(hit.n, t) / (tLen * tLen) * t;
     let perpDot = dot(perp, perp);
     if (perpDot <= 1e-12) { return hitWorld; }
     let perpNorm = perp * inverseSqrt(perpDot);
-    let d = sdf.seamGap / tLen;
+    let d = hit.seamGap / tLen;
     return hitWorld - perpNorm * d;
 }
 
@@ -271,21 +271,21 @@ fn dominantAxisIndex(v: vec3f) -> u32 {
     return 0u;
 }
 
-fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
+fn classifyEdgeAtHit(hitWorld: vec3f, hit: HitData, wppu: f32) -> EdgeHit {
     var out: EdgeHit;
     out.kind = EDGE_KIND_NONE;
     out.primaryId = 0u;
     out.secondaryId = 0u;
     out.featureA = 0u;
     out.opType = 0u;
-    out.objectId = sdf.id;
+    out.objectId = hit.id;
     out.seedPoint = vec4f(hitWorld, 0.0);
     out.seedTangent = vec3f(0.0, 0.0, 0.0);
     out.seedNormal = vec3f(0.0, 0.0, 0.0);
 
     var pos = vec3f(0.0);
     var half = vec3f(0.0);
-    if (getBoxParamsForId(sdf.id, &pos, &half)) {
+    if (getBoxParamsForId(hit.id, &pos, &half)) {
         let localP = hitWorld - pos;
         let feat = nearestBoxEdgeFeature(localP, half);
         let nearestDist = boxEdgeDistance(localP, half, feat);
@@ -293,7 +293,7 @@ fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
         let edgeThreshold = max(minHalf * 0.12, 0.012);
         if (nearestDist < edgeThreshold) {
             out.kind = EDGE_KIND_PRIMITIVE;
-            out.primaryId = sdf.id;
+            out.primaryId = hit.id;
             out.featureA = feat;
             let onEdge = pos + closestPointOnBoxEdge(localP, half, feat);
             out.seedPoint = vec4f(onEdge, 0.0);
@@ -301,42 +301,44 @@ fn classifyEdgeAtHit(hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> EdgeHit {
         }
     }
 
-    if (sdf.seamOp != 0u && sdf.seamGap < 0.10) {
+    if (hit.seamOp != 0u && hit.seamGap < 0.10) {
         out.kind = EDGE_KIND_SEAM;
-        out.primaryId = sdf.seamA;
-        out.secondaryId = sdf.seamB;
-        out.opType = sdf.seamOp;
-        let t = sdf.seamTangent;
+        out.primaryId = hit.seamA;
+        out.secondaryId = hit.seamB;
+        out.opType = hit.seamOp;
+        let t = hit.seamTangent;
         let tLen = max(length(t), 1e-6);
         out.seedTangent = t / tLen;
-        out.seedPoint = vec4f(projectHitOntoSeam(hitWorld, sdf), 0.0);
+        out.seedPoint = vec4f(projectHitOntoSeam(hitWorld, hit), 0.0);
         return out;
     }
     return out;
 }
 
 // Classify seam segment for edge mode: detect corners (tangent changes > 15°) and identify segment by dominant axis.
-fn classifySeamSegment(hitWorld: vec3f, sdf: SDFResult) -> EdgeHit {
+fn classifySeamSegment(hitWorld: vec3f, hit: HitData) -> EdgeHit {
     var out: EdgeHit;
     out.kind = EDGE_KIND_NONE;
-    out.primaryId = sdf.seamA;
-    out.secondaryId = sdf.seamB;
+    out.primaryId = hit.seamA;
+    out.secondaryId = hit.seamB;
     out.featureA = 0u;
-    out.opType = sdf.seamOp;
-    out.objectId = sdf.id;
+    out.opType = hit.seamOp;
+    out.objectId = hit.id;
     out.seedTangent = vec3f(0.0, 0.0, 0.0);
     out.seedNormal = vec3f(0.0, 0.0, 0.0);
-    let t = sdf.seamTangent;
+    let t = hit.seamTangent;
     let tLen = length(t);
-    if (tLen > 1e-6 && sdf.seamOp != 0u && sdf.seamGap < 0.10) {
-        out.seedPoint = vec4f(projectHitOntoSeam(hitWorld, sdf), 0.0);
+    if (tLen > 1e-6 && hit.seamOp != 0u && hit.seamGap < 0.10) {
+        out.seedPoint = vec4f(projectHitOntoSeam(hitWorld, hit), 0.0);
     } else {
         out.seedPoint = vec4f(hitWorld, 0.0);
     }
-    if (sdf.seamOp == 0u || sdf.seamGap >= 0.10) { return out; }
+    if (hit.seamOp == 0u || hit.seamGap >= 0.10) { return out; }
     if (tLen < 1e-6) { return out; }
     let tNorm = t / tLen;
     let epsilon: f32 = 0.02;
+    // sceneSDF is called here for the look-ahead point; its full SDFResult is
+    // only alive for this brief local scope, not held in fragmentMain.
     let sdfAhead = sceneSDF(hitWorld + epsilon * tNorm);
     if (sdfAhead.seamOp == 0u) { return out; }
     let tAhead = sdfAhead.seamTangent;
@@ -345,7 +347,7 @@ fn classifySeamSegment(hitWorld: vec3f, sdf: SDFResult) -> EdgeHit {
     let atCorner = tAheadLen > 1e-6 && dot(tNorm, tAhead / tAheadLen) < cos15;
     let segTangent = select(t, tAhead, atCorner);
     let tangentAxis = dominantAxisIndex(segTangent);
-    let normalAxis = dominantAxisIndex(sdf.n);
+    let normalAxis = dominantAxisIndex(hit.n);
     if (tangentAxis == 0u) { return out; }
     out.kind = EDGE_KIND_SEAM_SEGMENT;
     out.featureA = tangentAxis * 8u + normalAxis;
@@ -363,7 +365,7 @@ fn classifySeamSegment(hitWorld: vec3f, sdf: SDFResult) -> EdgeHit {
     return out;
 }
 
-fn applyEdgeHighlight(result: ptr<function, vec3f>, e: SelectedEdge, hitWorld: vec3f, sdf: SDFResult, wppu: f32, strength: f32) {
+fn applyEdgeHighlight(result: ptr<function, vec3f>, e: SelectedEdge, hitWorld: vec3f, hit: HitData, wppu: f32, strength: f32) {
     let highlight = vec3f(1.0, 1.0, 0.0);
     let lineWidth = e.lineWidthPx;
     let epsilon = e.epsilon;
@@ -371,7 +373,7 @@ fn applyEdgeHighlight(result: ptr<function, vec3f>, e: SelectedEdge, hitWorld: v
     if (e.kind == EDGE_KIND_PRIMITIVE) {
         var pos = vec3f(0.0);
         var half = vec3f(0.0);
-        if (getBoxParamsForId(e.primaryId, &pos, &half) && e.primaryId == sdf.id) {
+        if (getBoxParamsForId(e.primaryId, &pos, &half) && e.primaryId == hit.id) {
             let localP = hitWorld - pos;
             let feat = nearestBoxEdgeFeature(localP, half);
             if (feat == e.featureA) {
@@ -381,29 +383,29 @@ fn applyEdgeHighlight(result: ptr<function, vec3f>, e: SelectedEdge, hitWorld: v
                 *result = *result * (1.0 - t * strength) + highlight * (t * strength);
             }
         }
-    } else if (e.kind == EDGE_KIND_SEAM && sdf.seamOp != 0u && sdf.blend < 0.01) {
-        let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
-        if (objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType) {
-            let tLen = max(length(sdf.seamTangent), 1e-6);
-            let seamDist = sdf.seamGap / tLen;
+    } else if (e.kind == EDGE_KIND_SEAM && hit.seamOp != 0u && hit.blend < 0.01) {
+        let objOnSeam = hit.id == e.primaryId || hit.id == e.secondaryId;
+        if (objOnSeam && hit.seamA == e.primaryId && hit.seamB == e.secondaryId && hit.seamOp == e.opType) {
+            let tLen = max(length(hit.seamTangent), 1e-6);
+            let seamDist = hit.seamGap / tLen;
             let edgeDistPx = seamDist / wppu;
             let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
             *result = *result * (1.0 - t * strength) + highlight * (t * strength);
         }
-    } else if (e.kind == EDGE_KIND_SEAM_SEGMENT && sdf.seamOp != 0u && sdf.blend < 0.01) {
-        let objOnSeam = sdf.id == e.primaryId || sdf.id == e.secondaryId;
-        let idsMatch = objOnSeam && sdf.seamA == e.primaryId && sdf.seamB == e.secondaryId && sdf.seamOp == e.opType;
+    } else if (e.kind == EDGE_KIND_SEAM_SEGMENT && hit.seamOp != 0u && hit.blend < 0.01) {
+        let objOnSeam = hit.id == e.primaryId || hit.id == e.secondaryId;
+        let idsMatch = objOnSeam && hit.seamA == e.primaryId && hit.seamB == e.secondaryId && hit.seamOp == e.opType;
         let toSeed = hitWorld - e.seedPoint;
         let distToSeed = length(toSeed);
-        let tLen = max(length(sdf.seamTangent), 1e-6);
-        let tNorm = sdf.seamTangent / tLen;
+        let tLen = max(length(hit.seamTangent), 1e-6);
+        let tNorm = hit.seamTangent / tLen;
         let seedTanLen = length(e.seedTangent);
         let tangentContinuous = seedTanLen > 1e-6 && dot(tNorm, e.seedTangent / seedTanLen) > 0.342;
         let seedNormLen = length(e.seedNormal);
         let onSamePlane = seedNormLen < 1e-4 || abs(dot(toSeed, e.seedNormal)) < 0.5;
         let onSameSegment = idsMatch && tangentContinuous && onSamePlane && distToSeed < 15.0;
         if (onSameSegment) {
-            let seamDist = sdf.seamGap / tLen;
+            let seamDist = hit.seamGap / tLen;
             let edgeDistPx = seamDist / wppu;
             let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
             *result = *result * (1.0 - t * strength) + highlight * (t * strength);
@@ -411,13 +413,13 @@ fn applyEdgeHighlight(result: ptr<function, vec3f>, e: SelectedEdge, hitWorld: v
     }
 }
 
-fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, sdf: SDFResult, wppu: f32) -> vec3f {
+fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, hit: HitData, wppu: f32) -> vec3f {
     var result = color;
     for (var i: u32 = 0u; i < selectedEdges.count; i = i + 1u) {
-        applyEdgeHighlight(&result, selectedEdges.edges[i], hitWorld, sdf, wppu, 0.8);
+        applyEdgeHighlight(&result, selectedEdges.edges[i], hitWorld, hit, wppu, 0.8);
     }
     for (var j: u32 = 0u; j < hoveredEdge.count; j = j + 1u) {
-        applyEdgeHighlight(&result, hoveredEdge.edges[j], hitWorld, sdf, wppu, 0.4);
+        applyEdgeHighlight(&result, hoveredEdge.edges[j], hitWorld, hit, wppu, 0.4);
     }
     return result;
 }
@@ -437,13 +439,10 @@ fn sceneSDF_fast(p: vec3f) -> vec2f {
     return vec2f(0.0, 1.0); //:) insert sceneSDF_fast
 }
 
-// Raymarch result includes both distance and SDF info at hit point.
-struct RaymarchHit {
-    t: f32,          // distance along ray, or -1 if miss
-    sdf: SDFResult,  // SDF result at hit point (includes normal)
-}
-
-fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> RaymarchHit {
+// Raymarch: returns HitData (slim post-hit struct) rather than the full SDFResult.
+// The full SDFResult is only alive transiently inside this function while
+// projecting to HitData; it does not persist into fragmentMain's register file.
+fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
     var t: f32 = t_start;
     var lastStep: f32 = 0.0;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
@@ -467,11 +466,9 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> RaymarchHit {
                         hi = mid;
                     }
                 }
-                // Get the full SDF result at the refined hit point (includes analytical normal + ID)
-                return RaymarchHit(hi, sceneSDF(origin + hi * dir));
+                return toHitData(hi, sceneSDF(origin + hi * dir));
             }
-            // Clean surface hit - skip binary search, just get full SDF result
-            return RaymarchHit(t, sceneSDF(origin + t * dir));
+            return toHitData(t, sceneSDF(origin + t * dir));
         }
         lastStep = step;
         t = t + step;
@@ -479,8 +476,7 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> RaymarchHit {
             break;
         }
     }
-    // Miss - return sentinel
-    return RaymarchHit(-1.0, sdfTrue(MAX_DIST, 0u, vec3f(0.0)));
+    return hitDataMiss();
 }
 
 fn lighting(normalScene: vec3f) -> f32 {
@@ -507,23 +503,23 @@ fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
     return camPos + vec3f(offsetX, offsetY, 100.0);
 }
 
-// Raymarch starting from inside the surface to find the exit point
-fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
+// Raymarch from inside the surface to find the exit point. Returns HitData; the
+// full SDFResult is only transiently alive during the toHitData() projection.
+fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
     var t: f32 = startT + 0.5;  // Start past the entry surface
     var lastStep: f32 = 0.0;
-    
+
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: only (d, g)
-        
+
         // We're inside, so distance is negative. March by abs(d).
         let step = max(abs(sr.x), 0.1);
-        
+
         // Found an exit surface (going from inside to outside)
         if (sr.x > SURF_DIST) {
             // Only refine exit point when needed: large step (CSG seam) or blend region (g < 1)
             if (lastStep > SURF_DIST * 10.0 || sr.y < 1.0) {
-                // Refine the exit point
                 var lo = max(startT, t - lastStep);
                 var hi = t;
                 for (var j: u32 = 0; j < viewSettings.refinementSteps; j = j + 1) {
@@ -535,44 +531,41 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> RaymarchHit {
                         hi = mid;
                     }
                 }
-                // Full evaluation only at final hit point
-                return RaymarchHit(hi, sceneSDF(origin + hi * dir));
+                return toHitData(hi, sceneSDF(origin + hi * dir));
             }
-            // Clean exit surface - skip binary search, just get full SDF result
-            return RaymarchHit(t, sceneSDF(origin + t * dir));
+            return toHitData(t, sceneSDF(origin + t * dir));
         }
-        
+
         lastStep = step;
         t = t + step;
         if (t >= MAX_DIST) {
             break;
         }
     }
-    return RaymarchHit(-1.0, sdfTrue(MAX_DIST, 0u, vec3f(0.0)));
+    return hitDataMiss();
 }
 
-// Shade a hit point and return the color
-// flipNormal: true if hitting surface from inside (back surface)
-fn shadeHit(hit: RaymarchHit, flipNormal: bool) -> vec3f {
-    // Flip normal for back-facing surfaces
-    let normal = select(hit.sdf.n, -hit.sdf.n, flipNormal);
+// Shade a hit point and return the color.
+// flipNormal: true if hitting surface from inside (back surface).
+fn shadeHit(hit: HitData, flipNormal: bool) -> vec3f {
+    let normal = select(hit.n, -hit.n, flipNormal);
 
     let diffuse = lighting(normal);
 
     // Color and selection: only do second lookups when blending is active
-    let color1 = colorPalette[hit.sdf.id & 31u];
-    let bw = hit.sdf.blend;
+    let color1 = colorPalette[hit.id & 31u];
+    let bw = hit.blend;
     var baseColor = color1;
     if (bw > 0.0) {
-        let color2 = colorPalette[hit.sdf.id2 & 31u];
+        let color2 = colorPalette[hit.id2 & 31u];
         baseColor = color1 * (1.0 - bw) + color2 * bw;
     }
     let shadedColor = baseColor * diffuse;
 
-    let sel1 = f32(selectedObjectIds[hit.sdf.id] != 0u);
+    let sel1 = f32(selectedObjectIds[hit.id] != 0u);
     var selBlend = sel1;
     if (bw > 0.0) {
-        let sel2 = f32(selectedObjectIds[hit.sdf.id2] != 0u);
+        let sel2 = f32(selectedObjectIds[hit.id2] != 0u);
         selBlend = mix(sel1, sel2, bw);
     }
     let selectedColor = shadedColor * 0.9 + vec3f(0.15);
@@ -616,23 +609,24 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         t_start = textureLoad(tStartTex, tileCoord, 0).x;
     }
 
-    // Use standard raymarching, starting from beam distance
+    // Both raymarch calls return HitData (13 scalars) rather than the full
+    // SDFResult (17 scalars).  The full SDFResult only exists transiently inside
+    // those functions; it is projected to HitData before returning, so it never
+    // enters fragmentMain's register file.
     let hit = raymarch(transformedOrigin, transformedDir, t_start);
     let hitPos = transformedOrigin + transformedDir * hit.t;
 
-    // In xray mode, find the back (inner) surface and use it for selection so inner edges are selectable.
-    // We compute backHit here and reuse it for shading below.
-    var selecHit = hit;
-    var selecPos = transformedOrigin + transformedDir * hit.t;
-    var backHit = RaymarchHit(-1.0, sdfTrue(MAX_DIST, 0u, vec3f(0.0)));
+    // In xray mode, find the back (inner) surface and use it for selection so
+    // inner edges are selectable.  useBack replaces the old selecHit alias
+    // (which was a redundant third HitData copy) — saving ~13 live scalars.
+    var backHit = hitDataMiss();
+    var useBack = false;
     if (viewSettings.xrayMode > 0u && hit.t > 0.0) {
         backHit = raymarchFromInside(transformedOrigin, transformedDir, hit.t);
         if (backHit.t > 0.0) {
-            selecHit = backHit;
-            selecPos = transformedOrigin + transformedDir * backHit.t;
+            useBack = true;
         }
     }
-
     // Click detection using pixel-accurate matching
     let needSeamSegment = viewSettings.selectionMode != SELECTION_MODE_SEAM && viewSettings.selectionMode != SELECTION_MODE_OBJECT && viewSettings.selectionMode != SELECTION_MODE_FACE;
     if (clickState.enabled > 0u && hit.t > 0.0) {
@@ -640,23 +634,27 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         let currentPixel = uv * camera.res;
         let pixelDist = distance(clickPixel, currentPixel);
         if (pixelDist < 2.0) {
-            atomicStore(&clickedObjectId, selecHit.sdf.id);
+            // selecPos: world pos of the "selection hit" (back surface in xray, front otherwise).
+            // Computed here rather than at function scope so the 3 FMAs only run for the
+            // 1-2 click pixels per frame, not every pixel.
+            let selecPos = select(hitPos, transformedOrigin + transformedDir * backHit.t, useBack);
+            atomicStore(&clickedObjectId, select(hit.id, backHit.id, useBack));
             clickedHitPos[0] = selecPos.x;
             clickedHitPos[1] = selecPos.y;
             clickedHitPos[2] = selecPos.z;
-            clickedHitPos[3] = selecHit.t;
-            let frontEdge = classifyEdgeAtHit(hitPos, hit.sdf, wppu);
+            clickedHitPos[3] = select(hit.t, backHit.t, useBack);
+            let frontEdge = classifyEdgeAtHit(hitPos, hit, wppu);
             edgeHits[0] = frontEdge;
             if (needSeamSegment) {
-                edgeHits[2] = classifySeamSegment(hitPos, hit.sdf);
+                edgeHits[2] = classifySeamSegment(hitPos, hit);
             } else {
                 edgeHits[2] = EdgeHit();
             }
-            if (viewSettings.xrayMode > 0u && backHit.t > 0.0) {
-                let backEdge = classifyEdgeAtHit(selecPos, selecHit.sdf, wppu);
+            if (useBack) {
+                let backEdge = classifyEdgeAtHit(selecPos, backHit, wppu);
                 edgeHits[1] = backEdge;
                 if (needSeamSegment) {
-                    edgeHits[3] = classifySeamSegment(selecPos, selecHit.sdf);
+                    edgeHits[3] = classifySeamSegment(selecPos, backHit);
                 } else {
                     edgeHits[3] = EdgeHit();
                 }
@@ -672,18 +670,19 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         let currentPixel = uv * camera.res;
         let pixelDist = distance(hoverPixel, currentPixel);
         if (pixelDist < 2.0) {
-            let frontEdge = classifyEdgeAtHit(hitPos, hit.sdf, wppu);
+            let selecPos = select(hitPos, transformedOrigin + transformedDir * backHit.t, useBack);
+            let frontEdge = classifyEdgeAtHit(hitPos, hit, wppu);
             hoverEdgeHits[0] = frontEdge;
             if (needSeamSegment) {
-                hoverEdgeHits[2] = classifySeamSegment(hitPos, hit.sdf);
+                hoverEdgeHits[2] = classifySeamSegment(hitPos, hit);
             } else {
                 hoverEdgeHits[2] = EdgeHit();
             }
-            if (viewSettings.xrayMode > 0u && backHit.t > 0.0) {
-                let backEdge = classifyEdgeAtHit(selecPos, selecHit.sdf, wppu);
+            if (useBack) {
+                let backEdge = classifyEdgeAtHit(selecPos, backHit, wppu);
                 hoverEdgeHits[1] = backEdge;
                 if (needSeamSegment) {
-                    hoverEdgeHits[3] = classifySeamSegment(selecPos, selecHit.sdf);
+                    hoverEdgeHits[3] = classifySeamSegment(selecPos, backHit);
                 } else {
                     hoverEdgeHits[3] = EdgeHit();
                 }
@@ -696,23 +695,23 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
 
     if (hit.t > 0.0) {
         var shadedColor = shadeHit(hit, false);
-        shadedColor = applySelectedEdgeHighlight(shadedColor, hitPos, hit.sdf, wppu);
+        shadedColor = applySelectedEdgeHighlight(shadedColor, hitPos, hit, wppu);
 
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {
             if (backHit.t > 0.0) {
                 var backColor = shadeHit(backHit, true);
                 let backPos = transformedOrigin + transformedDir * backHit.t;
-                backColor = applySelectedEdgeHighlight(backColor, backPos, backHit.sdf, wppu);
+                backColor = applySelectedEdgeHighlight(backColor, backPos, backHit, wppu);
                 let frontAlpha = 0.4;
                 let composited = shadedColor * frontAlpha + backColor * (1.0 - frontAlpha);
-                return FragmentOutput(vec4f(composited, 1.0), vec4<u32>(hit.sdf.id, 0u, 0u, 0u));
+                return FragmentOutput(vec4f(composited, 1.0), vec4<u32>(hit.id, 0u, 0u, 0u));
             } else {
                 let alpha = 0.6;
-                return FragmentOutput(vec4f(shadedColor * alpha, alpha), vec4<u32>(hit.sdf.id, 0u, 0u, 0u));
+                return FragmentOutput(vec4f(shadedColor * alpha, alpha), vec4<u32>(hit.id, 0u, 0u, 0u));
             }
         }
-        return FragmentOutput(vec4f(shadedColor, 1.0), vec4<u32>(hit.sdf.id, 0u, 0u, 0u));
+        return FragmentOutput(vec4f(shadedColor, 1.0), vec4<u32>(hit.id, 0u, 0u, 0u));
     } else {
         return FragmentOutput(vec4f(0, 0, 0, 0), vec4<u32>(0xFFFFFFFFu, 0u, 0u, 0u));
     }

@@ -1600,7 +1600,7 @@ fn ${this.wgslClosestEdgeFuncName}(p: vec2f) -> u32 {
     return closest;
 }
 
-fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec3f {
+fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec4f {
     const N = ${N}u;
     const BASE = ${BASE}u;
     var v: array<vec2f, ${N}>;
@@ -1611,6 +1611,7 @@ fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec3f {
     var s = 1.0;
     var minDist = 1e30;
     var closest = 0u;
+    var closestB = vec2f(0.0);
     var j = N - 1u;
     for (var i = 0u; i < N; i++) {
         let e = v[j] - v[i];
@@ -1618,14 +1619,16 @@ fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec3f {
         let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
         let dd = dot(b, b);
         d = min(d, dd);
-        if (dd < minDist) { minDist = dd; closest = j; }
+        if (dd < minDist) { minDist = dd; closest = j; closestB = b; }
         let c0 = p.y >= v[i].y;
         let c1 = p.y < v[j].y;
         let c2 = e.x * w.y > e.y * w.x;
         if ((c0 && c1 && c2) || (!c0 && !c1 && !c2)) { s = -s; }
         j = i;
     }
-    return vec3f(s * sqrt(d), f32(closest), 0.0);
+    let bLen = length(closestB);
+    let g2d = select(s * (closestB / bLen), vec2f(1.0, 0.0), bLen < 1e-6);
+    return vec4f(s * sqrt(d), f32(closest), g2d.x, g2d.y);
 }
 `
     }
@@ -1744,15 +1747,12 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let dCap = abs(capY) - capH;
     let d = max(d2d, dCap);
     let onSide = d2d > dCap;
-    let eps = 0.001;
-    let gx_pos = ${childFunc}(p.xz + vec2f(eps, 0.0));
-    let gx_neg = ${childFunc}(p.xz - vec2f(eps, 0.0));
-    let gz_pos = ${childFunc}(p.xz + vec2f(0.0, eps));
-    let gz_neg = ${childFunc}(p.xz - vec2f(0.0, eps));
-    var gx = gx_pos - gx_neg;
-    var gz = gz_pos - gz_neg;
+    // Analytical 2D gradient from the combined function (no extra polygon evaluations).
+    var gx = combined.z;
+    var gz = combined.w;
 
-    // In extrude mode, use the combined SDF gradient for normals
+    // In extrude mode, the shape is unioned with a bump rectangle so the gradient
+    // of the modified shape needs finite differences.
     if (faceSelection.mode == 1u && faceSelection.nodeId == id && faceSelection.extrudeOffset != 0.0) {
         let fi = faceSelection.faceIndex;
         let v0 = polygonVertices[${BASE}u + fi];
@@ -1767,6 +1767,11 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         let rectCenter = edgeMid + outNorm * off * 0.5;
         let halfW = edgeLen * 0.5;
         let halfH = abs(off) * 0.5;
+        let eps = 0.001;
+        let gx_pos = ${childFunc}(p.xz + vec2f(eps, 0.0));
+        let gx_neg = ${childFunc}(p.xz - vec2f(eps, 0.0));
+        let gz_pos = ${childFunc}(p.xz + vec2f(0.0, eps));
+        let gz_neg = ${childFunc}(p.xz - vec2f(0.0, eps));
         let sample_xp = p.xz + vec2f(eps, 0.0);
         let sample_xn = p.xz - vec2f(eps, 0.0);
         let sample_zp = p.xz + vec2f(0.0, eps);
@@ -1830,14 +1835,15 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let ca = cos(angle);
     let sa = sin(angle);
     let twisted = vec2f(ca * p.x + sa * p.z, -sa * p.x + ca * p.z);
-    let d2d = ${childFunc}(twisted);
+    let combined = ${combinedFunc}(twisted);
+    let d2d = combined.x;
     let dCap = abs(capY) - h;
     let d = max(d2d, dCap);
     let onSide = (d - dCap) > 0.01;
-    let eps = 0.001;
-    let gx = ${childFunc}(twisted + vec2f(eps, 0.0)) - ${childFunc}(twisted - vec2f(eps, 0.0));
-    let gz = ${childFunc}(twisted + vec2f(0.0, eps)) - ${childFunc}(twisted - vec2f(0.0, eps));
-    let nSide = safeNormalize(vec3f(ca * gx - sa * gz, 0.0, sa * gx + ca * gz), vec3f(1.0, 0.0, 0.0));
+    // Rotate analytical gradient from twisted frame back to world space.
+    let gx_tw = combined.z;
+    let gz_tw = combined.w;
+    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, 0.0, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
     var resultId = select(${childId}u, id, onSide);

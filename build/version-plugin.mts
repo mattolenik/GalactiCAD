@@ -1,19 +1,29 @@
-import { execSync } from "child_process"
+import { exec } from "child_process"
 import type { Plugin } from "esbuild"
 
-/** Same logic as Makefile VERSION: tag at HEAD, else git describe --always --dirty */
-function getVersion(): string {
-    try {
-        const tag = execSync("git tag -l --points-at $(git describe --always)", { encoding: "utf8" }).trim()
-        if (tag) return tag
-        return execSync("git describe --always --dirty", { encoding: "utf8" }).trim()
-    } catch {
-        return "dev"
-    }
+/** Uses the tag pointing to this commit, if any, otherwise use the git hash from: git describe --always --dirty */
+async function getVersion(): Promise<string> {
+    const getTag = sh("git tag -l --points-at $(git describe --always)")
+    const getHash = sh("git describe --always --dirty")
+
+    var [tag] = await getTag
+    if (tag) return tag
+
+    var [hash] = await getHash
+    if (hash) return hash
+    return "dev"
 }
 
-export function versionPlugin(): Plugin {
-    const version = getVersion()
+async function sh(command: string): Promise<[stdout: string, stderr: string, exitCode: number]> {
+    return new Promise((resolve) => {
+        exec(command, { encoding: "utf8" }, (error, stdout, stderr) => {
+            resolve([stdout.trim(), stderr.trim(), error?.code ?? 0])
+        })
+    })
+}
+
+export async function versionPlugin(): Promise<Plugin> {
+    const version = await getVersion()
     return {
         name: "version",
         setup(build) {

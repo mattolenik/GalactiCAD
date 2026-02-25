@@ -24,9 +24,13 @@ export class ToolbarButton {
     #button: HTMLButtonElement
     onClick?: () => void
 
-    constructor(label: string, container: HTMLElement) {
+    constructor(label: string, container: HTMLElement, alt?: string) {
         this.#button = document.createElement("button")
         this.#button.textContent = label
+        if (alt) {
+            this.#button.title = alt
+            this.#button.setAttribute("aria-label", alt)
+        }
         this.#button.addEventListener("click", () => {
             this.onClick?.()
         })
@@ -35,6 +39,12 @@ export class ToolbarButton {
 
     get label(): string { return this.#button.textContent ?? "" }
     set label(v: string) { this.#button.textContent = v }
+
+    get html(): string { return this.#button.innerHTML }
+    set html(v: string) {
+        this.#button.innerHTML = v
+        this.#button.classList.add("icon-btn")
+    }
 
     get disabled(): boolean { return this.#button.disabled }
     set disabled(v: boolean) { this.#button.disabled = v }
@@ -152,6 +162,19 @@ export class Toolbar extends HTMLElement {
             button.active:hover {
                 background: rgb(from var(${__fg_color}) r g b / 0.35);
             }
+            button.icon-btn {
+                padding: 5px;
+                align-self: stretch;
+                aspect-ratio: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                line-height: 0;
+            }
+            button.icon-btn svg {
+                display: block;
+                flex-shrink: 0;
+            }
             .separator {
                 width: 1px;
                 height: 24px;
@@ -185,8 +208,8 @@ export class Toolbar extends HTMLElement {
         return new ToolbarCheckbox(label, checked, this.#container)
     }
 
-    addButton(label: string): ToolbarButton {
-        return new ToolbarButton(label, this.#container)
+    addButton(label: string, alt?: string): ToolbarButton {
+        return new ToolbarButton(label, this.#container, alt)
     }
 
     addRadioGroup<T extends string>(options: { label: string; value: T }[], defaultValue: T): ToolbarRadioGroup<T> {

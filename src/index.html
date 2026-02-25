@@ -209,35 +209,6 @@
             min-width: 0;
         }
 
-        #resize-handle {
-            position: absolute;
-            touch-action: none;
-            user-select: none;
-            -webkit-user-select: none;
-            background: rgba(255, 255, 255, 0.08);
-            z-index: 15;
-        }
-        #workspace:not(.editor-left) #resize-handle {
-            cursor: row-resize;
-            left: 0;
-            right: 0;
-            top: var(--editor-height, 22%);
-            height: 6px;
-        }
-        #workspace.editor-left #resize-handle {
-            cursor: col-resize;
-            top: 0;
-            bottom: 0;
-            left: var(--editor-width, 35%);
-            width: 6px;
-        }
-        #resize-handle:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-        #resize-handle:active {
-            background: rgba(255, 255, 255, 0.35);
-        }
-
         input,
         select,
         textarea {

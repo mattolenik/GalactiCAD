@@ -1,12 +1,80 @@
 import { LayoutSettings, SettingsManager } from "../storage/settings.mjs"
 
 const MIN_PERCENT = 15
+
+const STYLES = `
+#resize-handle {
+    position: absolute;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    background: rgba(255, 255, 255, 0.08);
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#resize-handle::before {
+    content: '';
+    width: 4px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.32);
+    border-radius: 50%;
+    flex-shrink: 0;
+    filter: blur(0.5px);
+}
+#resize-handle:not(.vertical) {
+    cursor: row-resize;
+    left: 0;
+    right: 0;
+    top: var(--editor-height, 22%);
+    height: 6px;
+}
+#resize-handle:not(.vertical)::before {
+    box-shadow: -10px 0 0 rgba(255, 255, 255, 0.32), 10px 0 0 rgba(255, 255, 255, 0.32);
+}
+#resize-handle.vertical {
+    cursor: col-resize;
+    top: 0;
+    bottom: 0;
+    left: var(--editor-width, 35%);
+    width: 6px;
+}
+#resize-handle.vertical::before {
+    box-shadow: 0 -10px 0 rgba(255, 255, 255, 0.32), 0 10px 0 rgba(255, 255, 255, 0.32);
+}
+#resize-handle:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+#resize-handle:hover::before {
+    background: rgba(255, 255, 255, 0.5);
+}
+#resize-handle:not(.vertical):hover::before {
+    box-shadow: -10px 0 0 rgba(255, 255, 255, 0.5), 10px 0 0 rgba(255, 255, 255, 0.5);
+}
+#resize-handle.vertical:hover::before {
+    box-shadow: 0 -10px 0 rgba(255, 255, 255, 0.5), 0 10px 0 rgba(255, 255, 255, 0.5);
+}
+#resize-handle:active {
+    background: rgba(255, 255, 255, 0.35);
+}
+#resize-handle:active::before {
+    background: rgba(255, 255, 255, 0.7);
+}
+#resize-handle:not(.vertical):active::before {
+    box-shadow: -10px 0 0 rgba(255, 255, 255, 0.7), 10px 0 0 rgba(255, 255, 255, 0.7);
+}
+#resize-handle.vertical:active::before {
+    box-shadow: 0 -10px 0 rgba(255, 255, 255, 0.7), 0 10px 0 rgba(255, 255, 255, 0.7);
+}
+`
 const MAX_PERCENT = 70
 
 export class ResizeHandle {
     #handle: HTMLElement
     #mainPanels: HTMLElement
     #workspace: HTMLElement
+    #styleEl: HTMLStyleElement | null = null
     #ac = new AbortController()
     #dragAc: AbortController | null = null
     #isDragging = false
@@ -26,6 +94,11 @@ export class ResizeHandle {
     }
 
     connect(): void {
+        if (!this.#styleEl) {
+            this.#styleEl = document.createElement("style")
+            this.#styleEl.textContent = STYLES
+            document.head.appendChild(this.#styleEl)
+        }
         this.#ac = new AbortController()
         const { signal } = this.#ac
         this.#applyLayout()
@@ -36,6 +109,8 @@ export class ResizeHandle {
     disconnect(): void {
         this.#dragAc?.abort()
         this.#ac.abort()
+        this.#styleEl?.remove()
+        this.#styleEl = null
     }
 
     #onWindowResize = (): void => {
@@ -46,6 +121,7 @@ export class ResizeHandle {
         const layout = SettingsManager.instance.getGlobal().layout
         const editorOnLeft = this.#editorOnLeft
         this.#workspace.classList.toggle("editor-left", editorOnLeft)
+        this.#handle.classList.toggle("vertical", editorOnLeft)
         this.#handle.setAttribute("aria-orientation", editorOnLeft ? "vertical" : "horizontal")
         if (editorOnLeft) {
             this.#mainPanels.style.setProperty("--editor-width", `${layout.editorWidthPercent}%`)

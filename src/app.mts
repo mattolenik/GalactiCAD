@@ -513,12 +513,7 @@ class App {
         codeDiv.style.minHeight = "0"
         codeDiv.style.overflow = "hidden"
         editorContainer.insertBefore(codeDiv, this.log)
-
-        const promptBar = document.createElement("llm-prompt-bar") as import("./components/llm-prompt-bar.mjs").LLMPromptBar
-        promptBar.getDocumentContent = () => this.editor.getValue()
-        promptBar.onInsert = (code) => this.#insertGeneratedCode(code)
-        editorContainer.appendChild(promptBar)
-        editorContainer.appendChild(this.log)  // move log to end (after codeDiv, promptBar)
+        editorContainer.appendChild(this.log)
 
         // Initialize source parser and highlighter for selection sync
         this.#sourceParser = new SourceParser()
@@ -902,8 +897,6 @@ class App {
 
         this.renderer.objectDoubleClick$.subscribe(nodeId => this.#handlePreviewDoubleClick(nodeId))
 
-        devTools.onClearUndoStack = () => this.#clearEditorUndoStack()
-
         this.renderer.pushPullComplete$.subscribe(({ nodeId, vertices }) => {
             this.#handlePushPullComplete(nodeId, vertices)
         })
@@ -988,16 +981,6 @@ class App {
             e.preventDefault()
             this.editor.trigger("keyboard", e.shiftKey ? "redo" : "undo", null)
         })
-    }
-
-    /** Clear undo/redo stack for all open documents. Uses Monaco internal API. */
-    #clearEditorUndoStack() {
-        for (const name of this.#tabs.documentNames) {
-            const model = this.#tabs.getByName(name)
-            if (model && (model as { _commandManager?: { clear: () => void } })._commandManager) {
-                ; (model as { _commandManager: { clear: () => void } })._commandManager.clear()
-            }
-        }
     }
 
     #wireMenu(menu: HTMLElement) {

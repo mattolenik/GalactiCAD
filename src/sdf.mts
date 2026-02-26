@@ -62,13 +62,9 @@ class UniformBuffers {
 type EdgeHitData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; objectId: number; seedPoint: [number, number, number]; seedTangent?: [number, number, number]; seedNormal?: [number, number, number] }
 type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx: number; epsilon: number; seedPoint?: [number, number, number]; seedTangent?: [number, number, number]; seedNormal?: [number, number, number] }
 
-export const EdgeKind = {
-    None: 0,
-    Primitive: 1,
-    Seam: 2,
-    SeamSegment: 3,
-} as const
+import { EdgeKind } from "./edge-kind.mjs"
 
+export { EdgeKind }
 export type SelectionMode = "object" | "seam" | "edge" | "face"
 
 /** Outline style for selected objects. */

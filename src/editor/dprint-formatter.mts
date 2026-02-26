@@ -9,13 +9,15 @@ import { createStreaming } from "@dprint/formatter"
 const WASM_URL = "/assets/dprint-typescript.wasm"
 
 const GLOBAL_CONFIG = {
-    indentWidth: 3,
+    indentWidth: 2,
     lineWidth: 100,
     useTabs: false,
+    quoteStyle: "preferSingle",
+    quoteProps: "asNeeded",
 } as const
 
 const PLUGIN_CONFIG = {
-    semiColons: "always" as const,
+    semiColons: "asi" as const,
 } as const
 
 let formatter: { formatText: (req: { filePath: string; fileText: string }) => string } | null = null

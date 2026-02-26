@@ -5,11 +5,11 @@
  * comparing the actual property values (position, size, radius) rather than
  * relying on traversal order or stack traces.
  * 
- * For composite types (union, subtract, group), matching is done by type name
+ * For composite types (union, subtract, intersect, etc), matching is done by type name
  * and source order since they don't have unique identifying properties.
  */
 
-import { Node, Sphere, Box, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Group, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate, Polygon2D, Extrude, Loft, Lathe } from "../scene/scene.mjs"
+import { Node, Sphere, Box, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate, Polygon2D, Extrude, Loft, Lathe } from "../scene/scene.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
 

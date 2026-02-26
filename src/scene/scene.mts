@@ -92,7 +92,7 @@ export class SceneInfo {
             throw new Error(msg)
         }
         const body = result.outputText + "\nreturn _();"
-        this.root = new Function("box", "group", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", body)(box, group, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, shell, offset, elongate, twist, bend, taper, morph, seam)
+        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", body)(box, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, shell, offset, elongate, twist, bend, taper, morph, seam)
         this.root.scene = this
         this.root.build()
         this.#assignAABBIndices(this.root)
@@ -111,10 +111,6 @@ export class SceneInfo {
             }
         } else if (node instanceof UnaryOperator) {
             this.#assignAABBIndices(node.arg)
-        } else if (node instanceof Group) {
-            for (const child of node.children) {
-                this.#assignAABBIndices(child)
-            }
         }
     }
 
@@ -193,10 +189,6 @@ export class SceneInfo {
             code = this.#collectSubtreeAuxFast(node.lh) + this.#collectSubtreeAuxFast(node.rh) + code
         } else if (node instanceof UnaryOperator) {
             code = this.#collectSubtreeAuxFast(node.arg) + code
-        } else if (node instanceof Group) {
-            for (const child of node.children) {
-                code = this.#collectSubtreeAuxFast(child) + code
-            }
         }
         return code
     }
@@ -382,63 +374,6 @@ function WithSize<TBase extends Constructor>(base: TBase) {
         set h(length: number) {
             this.size.z = length
         }
-    }
-}
-
-export class Group extends WithChildren(Node) {
-    override getShapeType(): string {
-        return "group"
-    }
-
-    protected override _computePrimitiveCount(): number {
-        return this.children.reduce((sum, c) => sum + c.primitiveCount(), 0)
-    }
-
-    override getIndicatorSymbol(): string {
-        return "▢"  // Empty square - represents a container/group
-    }
-
-    override getIndicatorSvg(): string {
-        return `<rect x="1" y="1" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>`
-    }
-
-    override getAllDescendantIds(): number[] {
-        const ids = [this.id]
-        for (const child of this.children) {
-            ids.push(...child.getAllDescendantIds())
-        }
-        return ids
-    }
-
-    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
-        for (let child of this.children) {
-            child.updateScene(writeBuffer)
-        }
-    }
-    override build() {
-        super.build()
-        for (let child of this.children) {
-            child.root = this.root
-            child.build()
-        }
-    }
-    override compile(): CompileResult {
-        const res = this.children[0].compile()
-        return {
-            text: res.text,
-            varName: res.varName,
-        }
-    }
-    override compileFast(): CompileResult {
-        const res = this.children[0].compileFast()
-        return {
-            text: res.text,
-            varName: res.varName,
-        }
-    }
-    constructor(...children: Node[]) {
-        super()
-        this.children = children
     }
 }
 
@@ -2225,10 +2160,6 @@ export class Box extends WithSize(WithPos(Node)) {
 
 function decapitalize(s: string) {
     return s[0].toLowerCase() + s.slice(1)
-}
-
-export function group(...nodes: Node[]): Group {
-    return new Group(...nodes)
 }
 
 export type UnionOptions = { r?: number; mode?: BlendMode; n?: number }

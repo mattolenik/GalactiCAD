@@ -128,11 +128,6 @@ declare class Polygon2D {
 // CSG / combinator nodes
 // ---------------------------------------------------------------------------
 
-/** A group of nodes. */
-declare class Group extends Node {
-    children: Node[];
-}
-
 /** Boolean union of two or more shapes. */
 declare class Union extends Node {}
 
@@ -203,12 +198,6 @@ declare class Lathe extends Node {}
 // (passed as named parameters to user code — declared as globals here)
 // ---------------------------------------------------------------------------
 
-/**
- * Group several nodes together without a CSG operation.
- * @example group(sphere([0,0,0], {r:1}), box([2,0,0], [1,1,1]))
- */
-declare function group(...nodes: Node[]): Group;
-
 /** Options for union / subtract / intersect with optional smooth blending. */
 declare type BlendOptions = {
     /** Blend radius. Larger values create smoother transitions. */
@@ -228,196 +217,166 @@ declare type BlendOptions = {
 
 /**
  * Boolean union of two or more shapes, with optional smooth blending.
- * @example union(sphere([0,0,0], {r:1}), box([2,0,0], [1,1,1]))
- * @example union({r: 0.5}, sphere([0,0,0], {r:1}), box([2,0,0], [1,1,1]))
+ * @example union({r: 5, mode: "chamfer"}, sphere({r:1}), box({size:[1,1,1]}))
+ * @example union(sphere({r:1}), box({size:[1,1,1]}))
  */
 declare function union(opts: BlendOptions, ...parts: Node[]): Union;
-declare function union(radius: number, ...parts: Node[]): Union;
 declare function union(...parts: Node[]): Union;
 
 /**
  * Boolean subtraction. Subtracts each subsequent shape from the first.
- * @example subtract(box([0,0,0], [2,2,2]), sphere([0,0,0], {r:1.2}))
+ * @example subtract({r: 1}, box({size:[2,2,2]}), sphere({r:1.2}))
  */
 declare function subtract(opts: BlendOptions, ...parts: Node[]): Subtract;
-declare function subtract(radius: number, ...parts: Node[]): Subtract;
 declare function subtract(...parts: Node[]): Subtract;
 
 /**
  * Boolean intersection of two shapes.
- * @example intersect(sphere([0,0,0], {r:1.5}), box([0,0,0], [2,2,2]))
+ * @example intersect({r: 1.5}, sphere({r:1.5}), box({size:[2,2,2]}))
  */
 declare function intersect(opts: BlendOptions, lh: Node, rh: Node): Intersect;
 declare function intersect(lh: Node, rh: Node): Intersect;
 
 /**
  * Pipe blend between two shapes.
- * @param radius Blend radius.
+ * @example pipe({r: 0.5}, sphere({r:1}), box({size:[1,1,1]}))
  */
-declare function pipe(lh: Node, rh: Node, radius: number): Pipe;
+declare function pipe(opts: { r: number }, lh: Node, rh: Node): Pipe;
 
 /**
  * Engrave one shape into another.
- * @param radius Blend radius.
+ * @example engrave({r: 1.5}, base, pattern)
  */
-declare function engrave(lh: Node, rh: Node, radius: number): Engrave;
+declare function engrave(opts: { r: number }, base: Node, pattern: Node): Engrave;
 
 /**
  * Groove operation.
- * @param ra Outer blend radius.
- * @param rb Inner blend radius.
+ * @example groove({ra: 1, rb: 0.5}, base, pattern)
  */
-declare function groove(lh: Node, rh: Node, ra: number, rb: number): Groove;
+declare function groove(opts: { ra: number; rb: number }, base: Node, pattern: Node): Groove;
 
 /**
  * Tongue operation.
- * @param ra Outer blend radius.
- * @param rb Inner blend radius.
+ * @example tongue({ra: 1, rb: 0.5}, base, pattern)
  */
-declare function tongue(lh: Node, rh: Node, ra: number, rb: number): Tongue;
+declare function tongue(opts: { ra: number; rb: number }, base: Node, pattern: Node): Tongue;
 
 /**
  * Hard seam between two shapes.
- * @param radius Seam radius.
+ * @example seam({r: 0.5}, lh, rh)
  */
-declare function seam(lh: Node, rh: Node, radius: number): Seam;
+declare function seam(opts: { r: number }, lh: Node, rh: Node): Seam;
 
 /**
  * Smooth morph (interpolation) between two shapes.
- * @param t Blend factor 0..1 (0 = lh, 1 = rh).
+ * @param opts.t Blend factor 0..1 (0 = lh, 1 = rh).
+ * @example morph({t: 0.25}, sphere({r:1}), box({size:[1,1,1]}))
  */
-declare function morph(t: number, lh: Node, rh: Node): Morph;
+declare function morph(opts: { t: number }, lh: Node, rh: Node): Morph;
 
 /**
- * Sphere primitive.
- * @param pos Centre position [x, y, z].
- * @param opts Radius (r) or diameter (d).
- * @example sphere([0, 0, 0], { r: 1 })
+ * Sphere primitive. pos defaults to [0,0,0].
+ * @example sphere({pos: [1,2,3], r: 5})
+ * @example sphere({r: 1})
  */
-declare function sphere(pos: Vec3, opts: { r?: number; d?: number }): Sphere;
+declare function sphere(opts: { pos?: Vec3; r?: number; d?: number }): Sphere;
 
 /**
- * Axis-aligned box.
- * @param pos Centre position [x, y, z].
- * @param size Dimensions [length, width, height].
- * @example box([0, 0, 0], [2, 2, 2])
+ * Axis-aligned box. pos defaults to [0,0,0].
+ * @example box({size: [2, 2, 2]})
  */
-declare function box(pos: Vec3, size: Vec3): Box;
+declare function box(opts: { pos?: Vec3; size: Vec3 }): Box;
 
 /**
- * Cylinder aligned to the Y-axis.
- * @param pos Centre position [x, y, z].
- * @param opts Radius (r) or diameter (d), and height (h).
- * @example cylinder([0, 0, 0], { r: 1, h: 3 })
+ * Cylinder aligned to the Y-axis. pos defaults to [0,0,0].
+ * @example cylinder({r: 1, h: 3})
  */
-declare function cylinder(pos: Vec3, opts: { r?: number; d?: number; h: number }): Cylinder;
+declare function cylinder(opts: { pos?: Vec3; r?: number; d?: number; h: number }): Cylinder;
 
 /**
- * Cone aligned to the Y-axis.
- * @param pos Centre position [x, y, z].
- * @param opts Radius (r) or diameter (d) at the base, and height (h).
- * @example cone([0, 0, 0], { r: 1, h: 2 })
+ * Cone aligned to the Y-axis. pos defaults to [0,0,0].
+ * @example cone({r: 1, h: 2})
  */
-declare function cone(pos: Vec3, opts: { r?: number; d?: number; h: number }): Cone;
+declare function cone(opts: { pos?: Vec3; r?: number; d?: number; h: number }): Cone;
 
 /**
- * Torus lying in the XZ plane.
- * @param pos Centre position [x, y, z].
- * @param opts Small (tube) radius sr and large (ring) radius lr.
- * @example torus([0, 0, 0], { sr: 0.25, lr: 1 })
+ * Torus lying in the XZ plane. pos defaults to [0,0,0].
+ * @example torus({sr: 0.25, lr: 1})
  */
-declare function torus(pos: Vec3, opts: { sr: number; lr: number }): Torus;
+declare function torus(opts: { pos?: Vec3; sr: number; lr: number }): Torus;
 
 /**
- * Capsule (cylinder with hemispherical caps) aligned to the Y-axis.
- * @param pos Centre position [x, y, z].
- * @param opts Radius (r) or diameter (d), and cylinder length (c).
- * @example capsule([0, 0, 0], { r: 0.5, c: 2 })
+ * Capsule (cylinder with hemispherical caps) aligned to the Y-axis. pos defaults to [0,0,0].
+ * @example capsule({r: 0.5, c: 2})
  */
-declare function capsule(pos: Vec3, opts: { r?: number; d?: number; c: number }): Capsule;
+declare function capsule(opts: { pos?: Vec3; r?: number; d?: number; c: number }): Capsule;
 
 /**
- * Infinite plane.
- * @param pos A point on the plane [x, y, z].
- * @param opts Normal vector (n) and optional signed distance (dist).
- * @example plane([0, 0, 0], { n: [0, 1, 0] })
+ * Infinite plane. pos defaults to [0,0,0].
+ * @example plane({n: [0, 1, 0]})
  */
-declare function plane(pos: Vec3, opts: { n: Vec3; dist?: number }): PlaneNode;
+declare function plane(opts: { pos?: Vec3; n: Vec3; dist?: number }): PlaneNode;
 
 /**
- * Hexagonal prism aligned to the Y-axis.
- * @param pos Centre position [x, y, z].
- * @param opts Radius (r) or diameter (d), and height (h).
- * @example hexprism([0, 0, 0], { r: 1, h: 2 })
+ * Hexagonal prism aligned to the Y-axis. pos defaults to [0,0,0].
+ * @example hexprism({r: 1, h: 2})
  */
-declare function hexprism(pos: Vec3, opts: { r?: number; d?: number; h: number }): HexPrism;
+declare function hexprism(opts: { pos?: Vec3; r?: number; d?: number; h: number }): HexPrism;
 
 /**
- * Flat disc lying in the XZ plane.
- * @param pos Centre position [x, y, z].
- * @param opts Radius (r) or diameter (d).
- * @example disc([0, 0, 0], { r: 1.5 })
+ * Flat disc lying in the XZ plane. pos defaults to [0,0,0].
+ * @example disc({r: 1.5})
  */
-declare function disc(pos: Vec3, opts: { r?: number; d?: number }): Disc;
+declare function disc(opts: { pos?: Vec3; r?: number; d?: number }): Disc;
 
 /**
- * Blobby / metaball primitive.
- * @param pos Centre position [x, y, z].
- * @example blob([0, 0, 0])
+ * Blobby / metaball primitive. pos defaults to [0,0,0].
+ * @example blob()
+ * @example blob({pos: [0, 0, 0]})
  */
-declare function blob(pos: Vec3): Blob;
+declare function blob(opts?: { pos?: Vec3 }): Blob;
 
 /**
  * Rotate a child node.
- * @param rotation Euler angles in degrees [rx, ry, rz].
- * @param child The node to rotate.
- * @example rotate([0, 45, 0], box([0,0,0], [1,2,1]))
+ * @example rotate({rot: [0, 45, 0]}, box({size:[1,2,1]}))
  */
-declare function rotate(rotation: Vec3, child: Node): Rotate;
+declare function rotate(opts: { rot: Vec3 }, child: Node): Rotate;
 
 /**
  * Hollow shell of a shape.
- * @param thickness Wall thickness.
- * @param child The node to shell.
- * @example shell(0.1, sphere([0,0,0], {r:2}))
+ * @example shell({t: 0.1}, sphere({r:2}))
  */
-declare function shell(thickness: number, child: Node): Shell;
+declare function shell(opts: { t: number }, child: Node): Shell;
 
 /**
  * Offset a shape outward (positive) or inward (negative).
- * @param amount Offset distance.
- * @param child The node to offset.
+ * @example offset({amount: 0.5}, box({size:[3,3,3]}))
  */
-declare function offset(amount: number, child: Node): Offset;
+declare function offset(opts: { amount: number }, child: Node): Offset;
 
 /**
  * Elongate a shape by stretching it along an axis.
- * @param h Extension amounts [hx, hy, hz].
- * @param child The node to elongate.
+ * @example elongate({h: [0, 4, 0]}, sphere({r:3}))
  */
-declare function elongate(h: Vec3, child: Node): Elongate;
+declare function elongate(opts: { h: Vec3 }, child: Node): Elongate;
 
 /**
  * Twist a shape around the Y-axis.
- * @param rate Twist rate in degrees per unit.
- * @param child The node to twist.
+ * @example twist({rate: 0.4}, box({size:[3,8,3]}))
  */
-declare function twist(rate: number, child: Node): Twist;
+declare function twist(opts: { rate: number }, child: Node): Twist;
 
 /**
  * Bend a shape.
- * @param amount Bend amount.
- * @param child The node to bend.
+ * @example bend({amount: 0.1}, child)
  */
-declare function bend(amount: number, child: Node): Bend;
+declare function bend(opts: { amount: number }, child: Node): Bend;
 
 /**
  * Taper a shape (scale cross-section linearly along the Y-axis).
- * @param ratio Scale at the top relative to the bottom (e.g. 0 = sharp point).
- * @param height Height over which to apply the taper.
- * @param child The node to taper.
+ * @example taper({ratio: 0.5, height: 8}, child)
  */
-declare function taper(ratio: number, height: number, child: Node): Taper;
+declare function taper(opts: { ratio: number; height: number }, child: Node): Taper;
 
 /**
  * 2-D polygon defined by a list of [x, y] vertices.
@@ -427,25 +386,20 @@ declare function taper(ratio: number, height: number, child: Node): Taper;
 declare function polygon2d(vertices: [number, number][]): Polygon2D;
 
 /**
- * Extrude a Polygon2D profile into a 3-D solid along the Y-axis.
- * @example extrude(polygon2d([...]), { h: 5 })
- * @example extrude([0,0,0], polygon2d([...]), { h: 5 })
+ * Extrude a Polygon2D profile into a 3-D solid along the Y-axis. pos defaults to [0,0,0].
+ * @example extrude({ profile: polygon2d([...]), h: 5, t: 22 })
  */
-declare function extrude(child: Polygon2D, opts: { h: number; t?: number }): Extrude;
-declare function extrude(pos: Vec3, child: Polygon2D, opts: { h: number; t?: number }): Extrude;
+declare function extrude(opts: { pos?: Vec3; profile: Polygon2D; h: number; t?: number }): Extrude;
 
 /**
- * Loft between two or more Polygon2D profiles along the Y-axis.
- * @example loft(polygon2d([...]), polygon2d([...]), { h: 5 })
- * @example loft([0,0,0], polygon2d([...]), polygon2d([...]), { h: 5 })
+ * Loft between two or more Polygon2D profiles along the Y-axis. pos defaults to [0,0,0].
+ * @example loft({ sections: [sq, tri], h: 8 })
  */
-declare function loft(...profilesAndOpts: (Polygon2D | { h: number } | Vec3)[]): Loft;
+declare function loft(opts: { pos?: Vec3; sections: Polygon2D[]; h: number }): Loft;
 
 /**
- * Revolve a Polygon2D profile around the Y-axis (lathe / surface of revolution).
- * @example lathe(polygon2d([...]))
- * @example lathe([0,0,0], polygon2d([...]))
+ * Revolve a Polygon2D profile around the Y-axis (lathe / surface of revolution). pos defaults to [0,0,0].
+ * @example lathe({ profile: polygon2d([...]) })
  */
-declare function lathe(child: Polygon2D): Lathe;
-declare function lathe(pos: Vec3, child: Polygon2D): Lathe;
+declare function lathe(opts: { pos?: Vec3; profile: Polygon2D }): Lathe;
 `

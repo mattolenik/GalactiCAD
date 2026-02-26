@@ -46,7 +46,7 @@ function formatSceneError(err: unknown, src: string): string {
 }
 
 /** CSG operators that don't render as visible objects — when selected from editor, select only their child shapes. */
-const PURE_CSG_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group"])
+const PURE_CSG_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam"])
 
 class App {
     editor: monaco.editor.IStandaloneCodeEditor
@@ -380,11 +380,11 @@ class App {
                 })
             }
         } else if (Math.abs(newPosY) > 0.0005) {
-            // No position argument exists, insert one
+            // No position argument exists, insert one (new object format: pos: [0, y, 0])
             const insertPos = model.getPositionAt(info.insertPosOffset)
             edits.push({
                 range: new monaco.Range(insertPos.lineNumber, insertPos.column, insertPos.lineNumber, insertPos.column),
-                text: `"0 ${formatNumber(newPosY)} 0", `,
+                text: `pos: [0, ${formatNumber(newPosY)}, 0], `,
             })
         }
 
@@ -411,7 +411,7 @@ class App {
     /**
      * Handle editor selection to sync with preview.
      * Selects the corresponding object if a function name is fully selected.
-     * For pure CSG operators (union, subtract, group, etc.), selects contained child shapes
+     * For pure CSG operators (union, subtract, etc.), selects contained child shapes
      * using AST containment rather than node matching (which is unreliable for composites).
      */
     #handleEditorSelection() {
@@ -655,16 +655,16 @@ class App {
         }
 
         const shapeInsertions: Array<{ id: string; label: string; varBase: string; call: string }> = [
-            { id: "insertSphere", label: "Sphere", varBase: "newSphere", call: "sphere([0, 0, 0], { r: 1 })" },
-            { id: "insertBox", label: "Box", varBase: "newBox", call: "box([0, 0, 0], [2, 2, 2])" },
-            { id: "insertCylinder", label: "Cylinder", varBase: "newCylinder", call: "cylinder([0, 0, 0], { r: 1, h: 3 })" },
-            { id: "insertCone", label: "Cone", varBase: "newCone", call: "cone([0, 0, 0], { r: 1, h: 2 })" },
-            { id: "insertTorus", label: "Torus", varBase: "newTorus", call: "torus([0, 0, 0], { sr: 0.25, lr: 1 })" },
-            { id: "insertCapsule", label: "Capsule", varBase: "newCapsule", call: "capsule([0, 0, 0], { r: 0.5, c: 2 })" },
-            { id: "insertPlane", label: "Plane", varBase: "newPlane", call: "plane([0, 0, 0], { n: [0, 1, 0] })" },
-            { id: "insertHexPrism", label: "Hex prism", varBase: "newHexPrism", call: "hexprism([0, 0, 0], { r: 1, h: 2 })" },
-            { id: "insertDisc", label: "Disc", varBase: "newDisc", call: "disc([0, 0, 0], { r: 1.5 })" },
-            { id: "insertBlob", label: "Blob", varBase: "newBlob", call: "blob([0, 0, 0])" },
+            { id: "insertSphere", label: "Sphere", varBase: "newSphere", call: "sphere({ r: 1 })" },
+            { id: "insertBox", label: "Box", varBase: "newBox", call: "box({ size: [2, 2, 2] })" },
+            { id: "insertCylinder", label: "Cylinder", varBase: "newCylinder", call: "cylinder({ r: 1, h: 3 })" },
+            { id: "insertCone", label: "Cone", varBase: "newCone", call: "cone({ r: 1, h: 2 })" },
+            { id: "insertTorus", label: "Torus", varBase: "newTorus", call: "torus({ sr: 0.25, lr: 1 })" },
+            { id: "insertCapsule", label: "Capsule", varBase: "newCapsule", call: "capsule({ r: 0.5, c: 2 })" },
+            { id: "insertPlane", label: "Plane", varBase: "newPlane", call: "plane({ n: [0, 1, 0] })" },
+            { id: "insertHexPrism", label: "Hex prism", varBase: "newHexPrism", call: "hexprism({ r: 1, h: 2 })" },
+            { id: "insertDisc", label: "Disc", varBase: "newDisc", call: "disc({ r: 1.5 })" },
+            { id: "insertBlob", label: "Blob", varBase: "newBlob", call: "blob()" },
         ]
 
         addContextSubmenu(this.editor, {

@@ -5,129 +5,129 @@
 
 // === GROTESQUELY LARGE BODY ===
 // Main hull - like a bloated whale
-let hull = box([0, 0, 10], [70, 32, 12])
+let hull = box({ pos: [0, 0, 10], size: [70, 32, 12] })
 
 // Extra thicc bulges everywhere
-let bulgeR = sphere([0, 20, 12], { r: 14 })
-let bulgeL = sphere([0, -20, 12], { r: 14 })
-let bulgeFront = sphere([32, 0, 12], { r: 16 })
-let bulgeRear = sphere([-30, 0, 12], { r: 14 })
-let bulgeTop = sphere([0, 0, 16], { r: 14 })
+let bulgeR = sphere({ pos: [0, 20, 12], r: 14 })
+let bulgeL = sphere({ pos: [0, -20, 12], r: 14 })
+let bulgeFront = sphere({ pos: [32, 0, 12], r: 16 })
+let bulgeRear = sphere({ pos: [-30, 0, 12], r: 14 })
+let bulgeTop = sphere({ pos: [0, 0, 16], r: 14 })
 
 // Merge into one big blob
-let megaBody = union(8, hull, 
+let megaBody = union({ r: 8 }, hull, 
 bulgeR, bulgeL, bulgeFront, bulgeRear, bulgeTop)
 
 // === THE BUBBLE DOMES ===
 // Driver dome - HUGE so Homer has room
-let driverDome = sphere([8, 0, 26], { r: 14 })
-let driverDomeBase = sphere([8, 0, 18], { r: 12 })
-let mainBubble = union(5, driverDome, driverDomeBase)
+let driverDome = sphere({ pos: [8, 0, 26], r: 14 })
+let driverDomeBase = sphere({ pos: [8, 0, 18], r: 12 })
+let mainBubble = union({ r: 5 }, driverDome, driverDomeBase)
 
 // Soundproof kid bubbles - they have their own domes!
 // "The kids sit in the back and you can't even hear them!"
-let kidBubbleR = sphere([-14, 14, 24], { r: 10 })
-let kidBubbleL = sphere([-14, -14, 24], { r: 10 })
-let kidBaseR = sphere([-14, 14, 16], { r: 8 })
-let kidBaseL = sphere([-14, -14, 16], { r: 8 })
-let kidDomeR = union(4, kidBubbleR, kidBaseR)
-let kidDomeL = union(4, kidBubbleL, kidBaseL)
+let kidBubbleR = sphere({ pos: [-14, 14, 24], r: 10 })
+let kidBubbleL = sphere({ pos: [-14, -14, 24], r: 10 })
+let kidBaseR = sphere({ pos: [-14, 14, 16], r: 8 })
+let kidBaseL = sphere({ pos: [-14, -14, 16], r: 8 })
+let kidDomeR = union({ r: 4 }, kidBubbleR, kidBaseR)
+let kidDomeL = union({ r: 4 }, kidBubbleL, kidBaseL)
 
 // All bubbles together
-let allBubbles = union(3, mainBubble, kidDomeR, kidDomeL)
-let bodyWithBubbles = union(6, megaBody, allBubbles)
+let allBubbles = union({ r: 3 }, mainBubble, kidDomeR, kidDomeL)
+let bodyWithBubbles = union({ r: 6 }, megaBody, allBubbles)
 
 // === MASSIVE TAIL FINS ===
 // "Fins to attract a mate"
-let finBaseR = box([-32, 18, 18], [14, 4, 16])
-let finTipR = sphere([-40, 18, 32], { r: 6 })
-let finMidR = sphere([-36, 18, 26], { r: 5 })
-let tailFinR = union(4, finBaseR, finMidR, finTipR)
+let finBaseR = box({ pos: [-32, 18, 18], size: [14, 4, 16] })
+let finTipR = sphere({ pos: [-40, 18, 32], r: 6 })
+let finMidR = sphere({ pos: [-36, 18, 26], r: 5 })
+let tailFinR = union({ r: 4 }, finBaseR, finMidR, finTipR)
 
-let finBaseL = box([-32, -18, 18], [14, 4, 16])
-let finTipL = sphere([-40, -18, 32], { r: 6 })
-let finMidL = sphere([-36, -18, 26], { r: 5 })
-let tailFinL = union(4, finBaseL, finMidL, finTipL)
+let finBaseL = box({ pos: [-32, -18, 18], size: [14, 4, 16] })
+let finTipL = sphere({ pos: [-40, -18, 32], r: 6 })
+let finMidL = sphere({ pos: [-36, -18, 26], r: 5 })
+let tailFinL = union({ r: 4 }, finBaseL, finMidL, finTipL)
 
-let withFins = union(4, bodyWithBubbles, tailFinR, tailFinL)
+let withFins = union({ r: 4 }, bodyWithBubbles, tailFinR, tailFinL)
 
 // === HOOD SCOOPS ===
 // Multiple pointless hood scoops
-let scoop1 = sphere([28, 8, 18], { r: 5 })
-let scoop2 = sphere([28, -8, 18], { r: 5 })
-let scoop3 = sphere([34, 0, 20], { r: 6 })
-let scoops = union(2, scoop1, scoop2, scoop3)
+let scoop1 = sphere({ pos: [28, 8, 18], r: 5 })
+let scoop2 = sphere({ pos: [28, -8, 18], r: 5 })
+let scoop3 = sphere({ pos: [34, 0, 20], r: 6 })
+let scoops = union({ r: 2 }, scoop1, scoop2, scoop3)
 
 // === BOWLING TROPHY HOOD ORNAMENT ===
-let ornamentPost = box([44, 0, 16], [2, 2, 10])
-let ornamentBall = sphere([44, 0, 28], { r: 5 })
-let ornamentBase = sphere([44, 0, 22], { r: 3 })
-let bowlingTrophy = union(2, ornamentPost, ornamentBase, ornamentBall)
+let ornamentPost = box({ pos: [44, 0, 16], size: [2, 2, 10] })
+let ornamentBall = sphere({ pos: [44, 0, 28], r: 5 })
+let ornamentBase = sphere({ pos: [44, 0, 22], r: 3 })
+let bowlingTrophy = union({ r: 2 }, ornamentPost, ornamentBase, ornamentBall)
 
 // === HORN SECTION ===
 // Three horns that play La Cucaracha
-let horn1 = sphere([38, 10, 22], { r: 4 })
-let horn2 = sphere([38, -10, 22], { r: 4 })
-let horn3 = sphere([42, 0, 24], { r: 5 })
-let horns = union(2, horn1, horn2, horn3)
+let horn1 = sphere({ pos: [38, 10, 22], r: 4 })
+let horn2 = sphere({ pos: [38, -10, 22], r: 4 })
+let horn3 = sphere({ pos: [42, 0, 24], r: 5 })
+let horns = union({ r: 2 }, horn1, horn2, horn3)
 
 // === COMICALLY SMALL WHEELS ===
-let wheelFR = sphere([24, 20, 4], { r: 5 })
-let wheelFL = sphere([24, -20, 4], { r: 5 })
-let wheelRR = sphere([-24, 20, 4], { r: 5 })
-let wheelRL = sphere([-24, -20, 4], { r: 5 })
+let wheelFR = sphere({ pos: [24, 20, 4], r: 5 })
+let wheelFL = sphere({ pos: [24, -20, 4], r: 5 })
+let wheelRR = sphere({ pos: [-24, 20, 4], r: 5 })
+let wheelRL = sphere({ pos: [-24, -20, 4], r: 5 })
 let wheels = union(wheelFR, wheelFL, wheelRR, wheelRL)
 
 // Wheel wells
-let wellFR = sphere([24, 22, 6], { r: 8 })
-let wellFL = sphere([24, -22, 6], { r: 8 })
-let wellRR = sphere([-24, 22, 6], { r: 8 })
-let wellRL = sphere([-24, -22, 6], { r: 8 })
+let wellFR = sphere({ pos: [24, 22, 6], r: 8 })
+let wellFL = sphere({ pos: [24, -22, 6], r: 8 })
+let wellRR = sphere({ pos: [-24, 22, 6], r: 8 })
+let wellRL = sphere({ pos: [-24, -22, 6], r: 8 })
 
-let bodyWithWells = subtract(2, withFins, wellFR, wellFL, wellRR, wellRL)
+let bodyWithWells = subtract({ r: 2 }, withFins, wellFR, wellFL, wellRR, wellRL)
 
 // === BUG EYES ===
 // Giant pop-out headlights
-let eyeR = sphere([46, 12, 14], { r: 6 })
-let eyeL = sphere([46, -12, 14], { r: 6 })
+let eyeR = sphere({ pos: [46, 12, 14], r: 6 })
+let eyeL = sphere({ pos: [46, -12, 14], r: 6 })
 let bugEyes = union(eyeR, eyeL)
 
 // === GIGANTIC BUMPERS ===
-let frontBumper = box([48, 0, 8], [6, 30, 6])
-let bumperBulgeR = sphere([50, 14, 8], { r: 5 })
-let bumperBulgeL = sphere([50, -14, 8], { r: 5 })
-let bumperCenter = sphere([52, 0, 8], { r: 6 })
-let megaFrontBumper = union(4, frontBumper, bumperBulgeR, bumperBulgeL, bumperCenter)
+let frontBumper = box({ pos: [48, 0, 8], size: [6, 30, 6] })
+let bumperBulgeR = sphere({ pos: [50, 14, 8], r: 5 })
+let bumperBulgeL = sphere({ pos: [50, -14, 8], r: 5 })
+let bumperCenter = sphere({ pos: [52, 0, 8], r: 6 })
+let megaFrontBumper = union({ r: 4 }, frontBumper, bumperBulgeR, bumperBulgeL, bumperCenter)
 
-let rearBumper = box([-44, 0, 8], [6, 30, 6])
-let rearBumperBulge = sphere([-48, 0, 8], { r: 6 })
-let megaRearBumper = union(4, rearBumper, rearBumperBulge)
+let rearBumper = box({ pos: [-44, 0, 8], size: [6, 30, 6] })
+let rearBumperBulge = sphere({ pos: [-48, 0, 8], r: 6 })
+let megaRearBumper = union({ r: 4 }, rearBumper, rearBumperBulge)
 
 // === EXHAUST MANIFOLD OF DOOM ===
-let ex1 = sphere([-50, 10, 6], { r: 3 })
-let ex2 = sphere([-50, -10, 6], { r: 3 })
-let ex3 = sphere([-50, 5, 10], { r: 2.5 })
-let ex4 = sphere([-50, -5, 10], { r: 2.5 })
-let ex5 = sphere([-50, 0, 6], { r: 3.5 })
-let exhausts = union(1, ex1, ex2, ex3, ex4, ex5)
+let ex1 = sphere({ pos: [-50, 10, 6], r: 3 })
+let ex2 = sphere({ pos: [-50, -10, 6], r: 3 })
+let ex3 = sphere({ pos: [-50, 5, 10], r: 2.5 })
+let ex4 = sphere({ pos: [-50, -5, 10], r: 2.5 })
+let ex5 = sphere({ pos: [-50, 0, 6], r: 3.5 })
+let exhausts = union({ r: 1 }, ex1, ex2, ex3, ex4, ex5)
 
 // === FIN-MOUNTED TAIL LIGHTS ===
-let tailR = sphere([-42, 18, 28], { r: 3 })
-let tailL = sphere([-42, -18, 28], { r: 3 })
+let tailR = sphere({ pos: [-42, 18, 28], r: 3 })
+let tailL = sphere({ pos: [-42, -18, 28], r: 3 })
 let tails = union(tailR, tailL)
 
 // === SIDE PIPES ===
-let pipeR1 = sphere([0, 20, 6], { r: 2.5 })
-let pipeR2 = sphere([8, 20, 6], { r: 2.5 })
-let pipeR3 = sphere([-8, 20, 6], { r: 2.5 })
-let pipeL1 = sphere([0, -20, 6], { r: 2.5 })
-let pipeL2 = sphere([8, -20, 6], { r: 2.5 })
-let pipeL3 = sphere([-8, -20, 6], { r: 2.5 })
+let pipeR1 = sphere({ pos: [0, 20, 6], r: 2.5 })
+let pipeR2 = sphere({ pos: [8, 20, 6], r: 2.5 })
+let pipeR3 = sphere({ pos: [-8, 20, 6], r: 2.5 })
+let pipeL1 = sphere({ pos: [0, -20, 6], r: 2.5 })
+let pipeL2 = sphere({ pos: [8, -20, 6], r: 2.5 })
+let pipeL3 = sphere({ pos: [-8, -20, 6], r: 2.5 })
 let sidePipes = union(pipeR1, pipeR2, pipeR3, pipeL1, pipeL2, pipeL3)
 
 // === ASSEMBLE THIS MONSTROSITY ===
-let hoodStuff = union(3, scoops, bowlingTrophy, horns)
-let bumpers = union(2, megaFrontBumper, megaRearBumper)
-let details = union(2, bugEyes, bumpers, exhausts, tails, sidePipes)
+let hoodStuff = union({ r: 3 }, scoops, bowlingTrophy, horns)
+let bumpers = union({ r: 2 }, megaFrontBumper, megaRearBumper)
+let details = union({ r: 2 }, bugEyes, bumpers, exhausts, tails, sidePipes)
 
-return union(2, bodyWithWells, wheels, hoodStuff, details)
+return union({ r: 2 }, bodyWithWells, wheels, hoodStuff, details)

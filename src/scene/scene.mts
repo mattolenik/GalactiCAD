@@ -13,6 +13,9 @@ export type CompileResult = {
 /** Minimum primitives in a subtree for it to receive an AABB guard. */
 const AABB_GUARD_THRESHOLD = 4
 
+/** Default position when pos is omitted from primitive/operator options. */
+const DEFAULT_POS: Vec3 = [0, 0, 0]
+
 export class SceneInfo {
     readonly root: Node
     numArgs = 0
@@ -2165,16 +2168,12 @@ function decapitalize(s: string) {
 export type UnionOptions = { r?: number; mode?: BlendMode; n?: number }
 
 export function union(opts: UnionOptions, ...parts: Node[]): Union
-export function union(radius: number, ...parts: Node[]): Union
 export function union(...parts: Node[]): Union
 export function union(...args: any[]): Union {
     let radius: number | undefined = undefined
     let mode: BlendMode | undefined = undefined
     let n: number | undefined = undefined
-    if (typeof args[0] === "number") {
-        radius = args[0] as number
-        args.shift()
-    } else if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
+    if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
         const opts = args[0] as UnionOptions
         radius = opts.r
         mode = opts.mode
@@ -2195,16 +2194,12 @@ export function union(...args: any[]): Union {
 export type SubtractOptions = { r?: number; mode?: BlendMode; n?: number }
 
 export function subtract(opts: SubtractOptions, ...parts: Node[]): Subtract
-export function subtract(radius: number, ...parts: Node[]): Subtract
 export function subtract(...parts: Node[]): Subtract
 export function subtract(...args: any[]): Subtract {
     let radius: number | undefined = undefined
     let mode: BlendMode | undefined = undefined
     let n: number | undefined = undefined
-    if (typeof args[0] === "number") {
-        radius = args[0] as number
-        args.shift()
-    } else if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
+    if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
         const opts = args[0] as SubtractOptions
         radius = opts.r
         mode = opts.mode
@@ -2223,48 +2218,58 @@ export function subtract(...args: any[]): Subtract {
     return result
 }
 
-export function box(pos: Vec3, size: Vec3): Box {
-    return new Box(pos, size)
+export function box(opts: { pos?: Vec3; size: Vec3 }): Box {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new Box(pos, opts.size)
 }
 
-export function sphere(pos: Vec3, { r, d }: { r?: number; d?: number }): Sphere {
-    return new Sphere(pos, { r, d })
+export function sphere(opts: { pos?: Vec3; r?: number; d?: number }): Sphere {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new Sphere(pos, { r: opts.r, d: opts.d })
 }
 
-export function cylinder(pos: Vec3, opts: { r?: number; d?: number; h: number }): Cylinder {
-    return new Cylinder(pos, opts)
+export function cylinder(opts: { pos?: Vec3; r?: number; d?: number; h: number }): Cylinder {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new Cylinder(pos, { r: opts.r, d: opts.d, h: opts.h })
 }
 
-export function cone(pos: Vec3, opts: { r?: number; d?: number; h: number }): Cone {
-    return new Cone(pos, opts)
+export function cone(opts: { pos?: Vec3; r?: number; d?: number; h: number }): Cone {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new Cone(pos, { r: opts.r, d: opts.d, h: opts.h })
 }
 
-export function torus(pos: Vec3, opts: { sr: number; lr: number }): Torus {
-    return new Torus(pos, opts)
+export function torus(opts: { pos?: Vec3; sr: number; lr: number }): Torus {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new Torus(pos, { sr: opts.sr, lr: opts.lr })
 }
 
-export function capsule(pos: Vec3, opts: { r?: number; d?: number; c: number }): Capsule {
-    return new Capsule(pos, opts)
+export function capsule(opts: { pos?: Vec3; r?: number; d?: number; c: number }): Capsule {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new Capsule(pos, { r: opts.r, d: opts.d, c: opts.c })
 }
 
-export function plane(pos: Vec3, opts: { n: Vec3; dist?: number }): PlaneNode {
-    return new PlaneNode(pos, opts)
+export function plane(opts: { pos?: Vec3; n: Vec3; dist?: number }): PlaneNode {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new PlaneNode(pos, { n: opts.n, dist: opts.dist })
 }
 
-export function hexprism(pos: Vec3, opts: { r?: number; d?: number; h: number }): HexPrism {
-    return new HexPrism(pos, opts)
+export function hexprism(opts: { pos?: Vec3; r?: number; d?: number; h: number }): HexPrism {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new HexPrism(pos, { r: opts.r, d: opts.d, h: opts.h })
 }
 
-export function disc(pos: Vec3, opts: { r?: number; d?: number }): Disc {
-    return new Disc(pos, opts)
+export function disc(opts: { pos?: Vec3; r?: number; d?: number }): Disc {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new Disc(pos, { r: opts.r, d: opts.d })
 }
 
-export function blob(pos: Vec3): Blob {
+export function blob(opts?: { pos?: Vec3 }): Blob {
+    const pos = opts?.pos ?? DEFAULT_POS
     return new Blob(pos)
 }
 
-export function rotate(rotation: Vec3, child: Node): Rotate {
-    return new Rotate(rotation, child)
+export function rotate(opts: { rot: Vec3 }, child: Node): Rotate {
+    return new Rotate(opts.rot, child)
 }
 
 export type IntersectOptions = { r?: number; mode?: BlendMode; n?: number }
@@ -2288,107 +2293,77 @@ export function intersect(...args: any[]): Intersect {
     return new Intersect(args[0], args[1], radius, mode, n)
 }
 
-export function pipe(lh: Node, rh: Node, radius: number): Pipe {
-    return new Pipe(lh, rh, radius)
+export function pipe(opts: { r: number }, lh: Node, rh: Node): Pipe {
+    return new Pipe(lh, rh, opts.r)
 }
 
-export function engrave(lh: Node, rh: Node, radius: number): Engrave {
-    return new Engrave(lh, rh, radius)
+export function engrave(opts: { r: number }, base: Node, pattern: Node): Engrave {
+    return new Engrave(base, pattern, opts.r)
 }
 
-export function groove(lh: Node, rh: Node, ra: number, rb: number): Groove {
-    return new Groove(lh, rh, ra, rb)
+export function groove(opts: { ra: number; rb: number }, base: Node, pattern: Node): Groove {
+    return new Groove(base, pattern, opts.ra, opts.rb)
 }
 
-export function tongue(lh: Node, rh: Node, ra: number, rb: number): Tongue {
-    return new Tongue(lh, rh, ra, rb)
+export function tongue(opts: { ra: number; rb: number }, base: Node, pattern: Node): Tongue {
+    return new Tongue(base, pattern, opts.ra, opts.rb)
 }
 
-export function shell(thickness: number, child: Node): Shell {
-    return new Shell(thickness, child)
+export function shell(opts: { t: number }, child: Node): Shell {
+    return new Shell(opts.t, child)
 }
 
-export function offset(amount: number, child: Node): Offset {
-    return new Offset(amount, child)
+export function offset(opts: { amount: number }, child: Node): Offset {
+    return new Offset(opts.amount, child)
 }
 
-export function elongate(h: Vec3, child: Node): Elongate {
-    return new Elongate(h, child)
+export function elongate(opts: { h: Vec3 }, child: Node): Elongate {
+    return new Elongate(opts.h, child)
 }
 
-export function twist(rate: number, child: Node): Twist {
-    return new Twist(rate, child)
+export function twist(opts: { rate: number }, child: Node): Twist {
+    return new Twist(opts.rate, child)
 }
 
-export function bend(amount: number, child: Node): Bend {
-    return new Bend(amount, child)
+export function bend(opts: { amount: number }, child: Node): Bend {
+    return new Bend(opts.amount, child)
 }
 
-export function taper(ratio: number, height: number, child: Node): Taper {
-    return new Taper(ratio, height, child)
+export function taper(opts: { ratio: number; height: number }, child: Node): Taper {
+    return new Taper(opts.ratio, opts.height, child)
 }
 
-export function morph(t: number, lh: Node, rh: Node): Morph {
-    return new Morph(t, lh, rh)
+export function morph(opts: { t: number }, lh: Node, rh: Node): Morph {
+    return new Morph(opts.t, lh, rh)
 }
 
-export function seam(lh: Node, rh: Node, radius: number): Seam {
-    return new Seam(lh, rh, radius)
+export function seam(opts: { r: number }, lh: Node, rh: Node): Seam {
+    return new Seam(lh, rh, opts.r)
 }
 
 export function polygon2d(vertices: [number, number][]): Polygon2D {
     return new Polygon2D(vertices)
 }
 
-export function extrude(child: Polygon2D, opts: { h: number; t?: number }): Extrude
-export function extrude(pos: Vec3, child: Polygon2D, opts: { h: number; t?: number }): Extrude
-export function extrude(...args: any[]): Extrude {
-    if (args[0] instanceof Polygon2D) {
-        return new Extrude(args[0], args[1])
-    }
-    return new Extrude(args[0], args[1], args[2])
+export function extrude(opts: { pos?: Vec3; profile: Polygon2D; h: number; t?: number }): Extrude {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new Extrude(pos, opts.profile, { h: opts.h, t: opts.t })
 }
 
-export function loft(...args: any[]): Loft {
-    // loft(profile1, profile2, ..., { h })
-    // loft(pos, profile1, profile2, ..., { h })
-    let pos: Vec3 | undefined
-    let startIdx = 0
-
-    // Check if first arg is a position array (not a Polygon2D)
-    if (!(args[0] instanceof Polygon2D) && Array.isArray(args[0]) && typeof args[0][0] === "number") {
-        pos = args[0] as Vec3
-        startIdx = 1
+export function loft(opts: { pos?: Vec3; sections: Polygon2D[]; h: number }): Loft {
+    const pos = opts.pos ?? DEFAULT_POS
+    if (opts.sections.length < 2) {
+        throw new Error("loft requires at least 2 profiles in sections")
     }
-
-    // Last arg is the options object
-    const opts = args[args.length - 1] as { h: number }
-    if (!opts || typeof opts.h !== "number") {
-        throw new Error("loft requires an options object with { h } as the last argument")
-    }
-
-    // Middle args are profiles
-    const profiles = args.slice(startIdx, args.length - 1) as Polygon2D[]
-    if (profiles.length < 2) {
-        throw new Error("loft requires at least 2 profiles")
-    }
-    for (const p of profiles) {
+    for (const p of opts.sections) {
         if (!(p instanceof Polygon2D)) {
-            throw new Error("loft profiles must be polygon2d() instances")
+            throw new Error("loft sections must be polygon2d() instances")
         }
     }
-
-    if (pos) {
-        return new Loft(pos, profiles, opts)
-    }
-    return new Loft(profiles, opts)
+    return new Loft(pos, opts.sections, { h: opts.h })
 }
 
-export function lathe(child: Polygon2D): Lathe
-export function lathe(pos: Vec3, child: Polygon2D): Lathe
-export function lathe(...args: any[]): Lathe {
-    if (args[0] instanceof Polygon2D) {
-        return new Lathe(args[0])
-    }
-    return new Lathe(args[0], args[1])
+export function lathe(opts: { pos?: Vec3; profile: Polygon2D }): Lathe {
+    const pos = opts.pos ?? DEFAULT_POS
+    return new Lathe(pos, opts.profile)
 }

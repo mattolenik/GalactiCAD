@@ -3,25 +3,25 @@
 
 // === EXTRUDE: Triangle ===
 let tri = polygon2d([[-5, -3], [5, -3], [0, 5]])
-let extrudedTri = extrude(tri, { h: 4 })
+let extrudedTri = extrude({ profile: tri, h: 4 })
 
 // === EXTRUDE: L-shaped profile with position offset ===
 let lShape = polygon2d([[-3, -3], [3, -3], [3, -1], [-1, -1], [-1, 3], [-3, 3]])
-let extrudedL = extrude([20, 0, 0], lShape, { h: 5, t:22 })
+let extrudedL = extrude({ pos: [20, 0, 0], profile: lShape, h: 5, t: 22 })
 
 // === EXTRUDE with TWIST: Star twisted 180° ===
 let star = polygon2d([[0, 4], [4.66, 4.94], [4, 1.2], [3.06, -0.97], [2.5, -3.5], [-0.16, -2.82], [-2.5, -3.5], [-1.52, -1.73], [0.23, -0.04], [-0.69, 2.27]])
-let twistedStar = extrude([40, 0, 0], star, { h: 8, t: 90 })
+let twistedStar = extrude({ pos: [40, 0, 0], profile: star, h: 8, t: 90 })
 
 // === LOFT: Square to triangle ===
 let square = polygon2d([[-4, -4], [4, -4], [4, 4], [-4, 4]])
 let triangle = polygon2d([[-2, -2], [2, -2], [0, 3]])
-let lofted = loft([0, 0, -20], square, triangle, { h: 8 })
+let lofted = loft({ pos: [0, 0, -20], sections: [square, triangle], h: 8 })
 
 // === LATHE: Vase ===
 // Profile is in (radius, height) space — revolved around Y axis
 let vaseProfile = polygon2d([[1.27, -4.97], [3, -5], [5.42, -4.45], [5.19, -3.56], [4.38, -2.83], [6.07, -2.11], [4.82, -1.08], [5.42, -0.34], [5.88, 0.07], [3.91, 1.45], [4.47, 2.77], [2.07, 3.07], [0.93, 0.05]])
-let vase = lathe([-20, 0, 0], vaseProfile)
+let vase = lathe({ pos: [-20, 0, 0], profile: vaseProfile })
 
 // === ASSEMBLY ===
 return union(

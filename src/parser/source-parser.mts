@@ -205,7 +205,7 @@ export function findReturnStatementLine(src: string): number | null {
  * Shape functions we care about for source location tracking
  */
 const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
-const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group", "rotate", "extrude", "loft", "lathe"])
+const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "rotate", "extrude", "loft", "lathe"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS])
 
 /**
@@ -213,7 +213,7 @@ const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTI
  * and should be "looked through" when resolving logical leaf calls.
  * Rendering composites (extrude, loft, lathe, rotate) are NOT in this set.
  */
-const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group"])
+const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam"])
 
 /**
  * Parser for extracting source locations from CAD code
@@ -369,28 +369,35 @@ export class SourceParser {
             this.parsePolygon2DArgs(callNode, parsedCall)
         } else if (funcName === "extrude" || funcName === "loft") {
             this.parseExtrudeLoftArgs(callNode, parsedCall)
+        } else if (funcName === "lathe") {
+            this.parseLatheArgs(callNode, parsedCall)
         }
 
         calls.push(parsedCall)
         this.#callMap.set(callStart, parsedCall)
     }
 
+    /** Parse properties from a single object literal (first arg). */
+    private parseObjectProps(obj: ts.ObjectLiteralExpression, parsedCall: ParsedShapeCall, handlers: Record<string, (v: unknown) => void>): void {
+        for (const prop of obj.properties) {
+            if (ts.isPropertyAssignment(prop)) {
+                const key = this.getPropertyKey(prop)
+                const value = this.evaluateExpression(prop.initializer)
+                const handler = key ? handlers[key] : undefined
+                if (handler) handler(value)
+            }
+        }
+    }
+
     private parseSphereArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const args = callNode.arguments
-            if (args.length >= 1) {
-                const posValue = this.evaluateExpression(args[0])
-                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
-            }
-            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
-                for (const prop of args[1].properties) {
-                    if (ts.isPropertyAssignment(prop)) {
-                        const key = this.getPropertyKey(prop)
-                        const value = this.evaluateExpression(prop.initializer)
-                        if (key === "r" && typeof value === "number") parsedCall.r = value
-                        else if (key === "d" && typeof value === "number") parsedCall.d = value
-                    }
-                }
+            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
+                this.parseObjectProps(args[0], parsedCall, {
+                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
+                    r: (v) => { if (typeof v === "number") parsedCall.r = v },
+                    d: (v) => { if (typeof v === "number") parsedCall.d = v },
+                })
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse sphere args:`, err)
@@ -400,13 +407,11 @@ export class SourceParser {
     private parseBoxArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const args = callNode.arguments
-            if (args.length >= 1) {
-                const posValue = this.evaluateExpression(args[0])
-                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
-            }
-            if (args.length >= 2) {
-                const sizeValue = this.evaluateExpression(args[1])
-                if (sizeValue !== undefined) parsedCall.size = vec3(sizeValue as Vec3)
+            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
+                this.parseObjectProps(args[0], parsedCall, {
+                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
+                    size: (v) => { if (v !== undefined) parsedCall.size = vec3(v as Vec3) },
+                })
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse box args:`, err)
@@ -416,20 +421,13 @@ export class SourceParser {
     private parsePosRadiusHeightArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const args = callNode.arguments
-            if (args.length >= 1) {
-                const posValue = this.evaluateExpression(args[0])
-                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
-            }
-            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
-                for (const prop of args[1].properties) {
-                    if (ts.isPropertyAssignment(prop)) {
-                        const key = this.getPropertyKey(prop)
-                        const value = this.evaluateExpression(prop.initializer)
-                        if (key === "r" && typeof value === "number") parsedCall.r = value
-                        else if (key === "d" && typeof value === "number") parsedCall.d = value
-                        else if (key === "h" && typeof value === "number") parsedCall.h = value
-                    }
-                }
+            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
+                this.parseObjectProps(args[0], parsedCall, {
+                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
+                    r: (v) => { if (typeof v === "number") parsedCall.r = v },
+                    d: (v) => { if (typeof v === "number") parsedCall.d = v },
+                    h: (v) => { if (typeof v === "number") parsedCall.h = v },
+                })
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse ${parsedCall.functionName} args:`, err)
@@ -439,19 +437,12 @@ export class SourceParser {
     private parseTorusArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const args = callNode.arguments
-            if (args.length >= 1) {
-                const posValue = this.evaluateExpression(args[0])
-                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
-            }
-            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
-                for (const prop of args[1].properties) {
-                    if (ts.isPropertyAssignment(prop)) {
-                        const key = this.getPropertyKey(prop)
-                        const value = this.evaluateExpression(prop.initializer)
-                        if (key === "sr" && typeof value === "number") parsedCall.sr = value
-                        else if (key === "lr" && typeof value === "number") parsedCall.lr = value
-                    }
-                }
+            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
+                this.parseObjectProps(args[0], parsedCall, {
+                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
+                    sr: (v) => { if (typeof v === "number") parsedCall.sr = v },
+                    lr: (v) => { if (typeof v === "number") parsedCall.lr = v },
+                })
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse torus args:`, err)
@@ -461,20 +452,13 @@ export class SourceParser {
     private parseCapsuleArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const args = callNode.arguments
-            if (args.length >= 1) {
-                const posValue = this.evaluateExpression(args[0])
-                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
-            }
-            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
-                for (const prop of args[1].properties) {
-                    if (ts.isPropertyAssignment(prop)) {
-                        const key = this.getPropertyKey(prop)
-                        const value = this.evaluateExpression(prop.initializer)
-                        if (key === "r" && typeof value === "number") parsedCall.r = value
-                        else if (key === "d" && typeof value === "number") parsedCall.d = value
-                        else if (key === "c" && typeof value === "number") parsedCall.c = value
-                    }
-                }
+            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
+                this.parseObjectProps(args[0], parsedCall, {
+                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
+                    r: (v) => { if (typeof v === "number") parsedCall.r = v },
+                    d: (v) => { if (typeof v === "number") parsedCall.d = v },
+                    c: (v) => { if (typeof v === "number") parsedCall.c = v },
+                })
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse capsule args:`, err)
@@ -484,23 +468,12 @@ export class SourceParser {
     private parsePlaneArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const args = callNode.arguments
-            if (args.length >= 1) {
-                const posValue = this.evaluateExpression(args[0])
-                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
-            }
-            if (args.length >= 2 && ts.isObjectLiteralExpression(args[1])) {
-                for (const prop of args[1].properties) {
-                    if (ts.isPropertyAssignment(prop)) {
-                        const key = this.getPropertyKey(prop)
-                        if (key === "n") {
-                            const value = this.evaluateExpression(prop.initializer)
-                            if (value !== undefined) parsedCall.normal = vec3(value as Vec3)
-                        } else if (key === "dist") {
-                            const value = this.evaluateExpression(prop.initializer)
-                            if (typeof value === "number") parsedCall.planeOffset = value
-                        }
-                    }
-                }
+            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
+                this.parseObjectProps(args[0], parsedCall, {
+                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
+                    n: (v) => { if (v !== undefined) parsedCall.normal = vec3(v as Vec3) },
+                    dist: (v) => { if (typeof v === "number") parsedCall.planeOffset = v },
+                })
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse plane args:`, err)
@@ -509,9 +482,10 @@ export class SourceParser {
 
     private parseBlobArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            if (callNode.arguments.length >= 1) {
-                const posValue = this.evaluateExpression(callNode.arguments[0])
-                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
+            if (callNode.arguments.length >= 1 && ts.isObjectLiteralExpression(callNode.arguments[0])) {
+                this.parseObjectProps(callNode.arguments[0], parsedCall, {
+                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
+                })
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse blob args:`, err)
@@ -521,27 +495,30 @@ export class SourceParser {
     private parseExtrudeLoftArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const args = callNode.arguments
-            if (args.length < 2) return
+            if (args.length < 1 || !ts.isObjectLiteralExpression(args[0])) return
 
-            const firstArg = args[0]
-            if (this.isPositionArg(firstArg)) {
-                const posValue = this.evaluateExpression(firstArg)
-                if (posValue !== undefined) parsedCall.pos = vec3(posValue as Vec3)
-            }
-
-            const optsArg = args[args.length - 1]
-            if (ts.isObjectLiteralExpression(optsArg)) {
-                for (const prop of optsArg.properties) {
-                    if (ts.isPropertyAssignment(prop)) {
-                        const key = this.getPropertyKey(prop)
-                        const value = this.evaluateExpression(prop.initializer)
-                        if (key === "h" && typeof value === "number") parsedCall.h = value
-                        else if (key === "t" && typeof value === "number") parsedCall.t = value
-                    }
-                }
-            }
+            const opts = args[0]
+            this.parseObjectProps(opts, parsedCall, {
+                pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
+                h: (v) => { if (typeof v === "number") parsedCall.h = v },
+                t: (v) => { if (typeof v === "number") parsedCall.t = v },
+            })
         } catch (err) {
             console.debug(`[SourceParser] Could not parse extrude/loft args:`, err)
+        }
+    }
+
+    private parseLatheArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const args = callNode.arguments
+            if (args.length < 1 || !ts.isObjectLiteralExpression(args[0])) return
+
+            const opts = args[0]
+            this.parseObjectProps(opts, parsedCall, {
+                pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
+            })
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse lathe args:`, err)
         }
     }
 
@@ -719,33 +696,32 @@ export class SourceParser {
         sourceFile: ts.SourceFile
     ): ExtrudeLoftCallInfo | null {
         const args = callNode.arguments
-        if (args.length < 2) return null
+        if (args.length < 1 || !ts.isObjectLiteralExpression(args[0])) return null
 
-        const optsArg = args[args.length - 1]
-        if (!ts.isObjectLiteralExpression(optsArg)) return null
+        const optsArg = args[0]
 
         let hValueStart: number | null = null
         let hValueEnd: number | null = null
 
+        let posArgStart: number | null = null
+        let posArgEnd: number | null = null
+
         for (const prop of optsArg.properties) {
-            if (ts.isPropertyAssignment(prop) && this.getPropertyKey(prop) === "h") {
+            if (!ts.isPropertyAssignment(prop)) continue
+            const key = this.getPropertyKey(prop)
+            if (key === "h") {
                 hValueStart = prop.initializer.getStart() - WRAP_PREFIX_CHARS
                 hValueEnd = prop.initializer.getEnd() - WRAP_PREFIX_CHARS
-                break
+            } else if (key === "pos" && this.isPositionArg(prop.initializer)) {
+                posArgStart = prop.initializer.getStart() - WRAP_PREFIX_CHARS
+                posArgEnd = prop.initializer.getEnd() - WRAP_PREFIX_CHARS
             }
         }
 
         if (hValueStart === null || hValueEnd === null) return null
 
-        let posArgStart: number | null = null
-        let posArgEnd: number | null = null
-        const firstArg = args[0]
-        if (this.isPositionArg(firstArg)) {
-            posArgStart = firstArg.getStart() - WRAP_PREFIX_CHARS
-            posArgEnd = firstArg.getEnd() - WRAP_PREFIX_CHARS
-        }
-
-        const insertPosOffset = args[0].getStart() - WRAP_PREFIX_CHARS
+        // Where to insert "pos: [0,0,0], " if pos is missing (after opening brace)
+        const insertPosOffset = optsArg.getStart() - WRAP_PREFIX_CHARS + 1
 
         const startPos = callNode.expression.getStart()
         const loc = tsPosToUser(sourceFile, startPos)

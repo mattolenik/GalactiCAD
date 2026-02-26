@@ -14,7 +14,7 @@ import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
 
 /** Composite shape types that are matched by name only */
-const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "group", "rotate", "extrude", "loft", "lathe"])
+const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "rotate", "extrude", "loft", "lathe"])
 
 /**
  * Tolerance for floating-point comparisons
@@ -181,7 +181,12 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
-    // For composite types (union, subtract, group), match by type name only.
+    if (node instanceof Lathe) {
+        if (call.pos !== undefined && !vec3ApproxEqual(node.pos, call.pos)) return false
+        return true
+    }
+
+    // For composite types (union, subtract, etc.), match by type name only.
     // Since they don't have unique identifying properties, we match them
     // in source order (first union node matches first union call, etc.)
     if (COMPOSITE_TYPES.has(shapeType)) {

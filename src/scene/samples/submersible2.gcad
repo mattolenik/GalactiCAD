@@ -8,121 +8,119 @@
 // with a carbon fibre cylinder? It's lighter! It's cheaper!
 // (The engineers who quit said something about "compression loads"
 //  but they were just being negative)
-let hull = box([0, 0, 0], [8, 8, 22])
-let hullRound = sphere([0, 0, 0], { r: 24 })
+let hull = box({ pos: [0, 0, 0], size: [8, 8, 22] })
+let hullRound = sphere({ pos: [0, 0, 0], r: 24 })
 let pressureHull = intersect({ r: 3 }, hull, hullRound)
 
 // Glued-on titanium endcaps (the only real engineering here)
-let endcapTop = sphere([0, 0, 20], { r: 9 })
-let endcapBot = sphere([0, 0, -20], { r: 9 })
+let endcapTop = sphere({ pos: [0, 0, 20], r: 9 })
+let endcapBot = sphere({ pos: [0, 0, -20], r: 9 })
 
-let tube = union(2, pressureHull, endcapTop, endcapBot)
+let tube = union({ r: 2 }, pressureHull, endcapTop, endcapBot)
 
 // ═══ VIEWPORT ═══
 // One single acrylic viewport. Not rated for depth.
 // "The supplier said it was fine" (the supplier makes shower doors)
-let viewport = sphere([10, 0, 0], { r: 5 })
+let viewport = sphere({ pos: [10, 0, 0], r: 5 })
 
 // ═══ "FAIRING" ═══
 // No hydrodynamic fairing — just bolted-on flat panels
 // The intern did the CAD over a weekend
-let panelF = box([8, 0, 0], [2, 10, 18])
-let panelR = box([0, 8, 0], [10, 2, 18])
-let panelL = box([0, -8, 0], [10, 2, 18])
-let panelB = box([-8, 0, 0], [2, 10, 18])
-let fairing = union(1, panelF, panelR, panelL, panelB)
+let panelF = box({ pos: [8, 0, 0], size: [2, 10, 18] })
+let panelR = box({ pos: [0, 8, 0], size: [10, 2, 18] })
+let panelL = box({ pos: [0, -8, 0], size: [10, 2, 18] })
+let panelB = box({ pos: [-8, 0, 0], size: [2, 10, 18] })
+let fairing = union({ r: 1 }, panelF, panelR, panelL, panelB)
 
-let bodyRaw = union(2, tube, fairing, viewport)
+let bodyRaw = union({ r: 2 }, tube, fairing, viewport)
 
 // ═══ BALLAST "SYSTEM" ═══
 // Bags of sand zip-tied to the outside
 // (The ballast engineer was "let go" to save costs)
-let sandbag1 = sphere([0, 10, -12], { r: 4 })
-let sandbag2 = sphere([0, -10, -12], { r: 4 })
-let sandbag3 = sphere([0, 10, 12], { r: 3.5 })
-let sandbag4 = sphere([0, -10, 12], { r: 3.5 })
-let sandbag5 = sphere([0, 8, 0], { r: 3 })
-let sandbag6 = sphere([0, -8, 0], { r: 3 })
+let sandbag1 = sphere({ pos: [0, 10, -12], r: 4 })
+let sandbag2 = sphere({ pos: [0, -10, -12], r: 4 })
+let sandbag3 = sphere({ pos: [0, 10, 12], r: 3.5 })
+let sandbag4 = sphere({ pos: [0, -10, 12], r: 3.5 })
+let sandbag5 = sphere({ pos: [0, 8, 0], r: 3 })
+let sandbag6 = sphere({ pos: [0, -8, 0], r: 3 })
 let ballast = union(sandbag1, sandbag2, sandbag3, sandbag4, sandbag5, sandbag6)
 
 // ═══ PROPULSION ═══
 // A single thruster from a jet ski. Mounted off-centre.
 // ("It was on sale!")
-let thruster = sphere([-10, 3, -14], { r: 4 })
-let thrusterMount = box([-8, 3, -14], [4, 3, 3])
-let propulsion = union(1, thruster, thrusterMount)
+let thruster = sphere({ pos: [-10, 3, -14], r: 4 })
+let thrusterMount = box({ pos: [-8, 3, -14], size: [4, 3, 3] })
+let propulsion = union({ r: 1 }, thruster, thrusterMount)
 
 // ═══ LIFE SUPPORT ═══
 // Camping oxygen tanks duct-taped to the roof
 // "Each one is good for like two hours. We have four."
-let tank1 = sphere([4, 4, 20], { r: 2.5 })
-let tank2 = sphere([4, -4, 20], { r: 2.5 })
-let tank3 = sphere([-4, 4, 20], { r: 2.5 })
-let tank4 = sphere([-4, -4, 20], { r: 2.5 })
-let tanks = union(0.5, tank1, tank2, tank3, tank4)
+let tank1 = sphere({ pos: [4, 4, 20], r: 2.5 })
+let tank2 = sphere({ pos: [4, -4, 20], r: 2.5 })
+let tank3 = sphere({ pos: [-4, 4, 20], r: 2.5 })
+let tank4 = sphere({ pos: [-4, -4, 20], r: 2.5 })
+let tanks = union({ r: 0.5 }, tank1, tank2, tank3, tank4)
 
 // ═══ LUXURY INTERIOR DOME ═══
 // Because what's a sub without a glass observation lounge?
 // Rated to 10 metres. We're going to 4,000.
-let loungeDome = sphere([0, 0, 22], { r: 8 })
-let loungeFloor = plane([0, 0, 20], { n: [0, 0, 1] })
+let loungeDome = sphere({ pos: [0, 0, 22], r: 8 })
+let loungeFloor = plane({ pos: [0, 0, 20], n: [0, 0, 1] })
 let lounge = subtract(loungeDome, loungeFloor)
 
 // ═══ COMMUNICATIONS ═══
 // A Starlink dish. Underwater.
 // "Elon said it would work" (he did not say that)
-let dish = sphere([0, 0, 28], { r: 5 })
-let dishCut = sphere([0, 0, 32], { r: 5 })
+let dish = sphere({ pos: [0, 0, 28], r: 5 })
+let dishCut = sphere({ pos: [0, 0, 32], r: 5 })
 let dishScoop = subtract(dish, dishCut)
-let dishMast = box([0, 0, 26], [1, 1, 4])
-let comms = union(0.5, dishScoop, dishMast)
+let dishMast = box({ pos: [0, 0, 26], size: [1, 1, 4] })
+let comms = union({ r: 0.5 }, dishScoop, dishMast)
 
 // ═══ SPONSORSHIP BILLBOARD ═══
 // Giant flat panel on the side for the logo
 // (adds enormous drag but "the brand needs visibility")
-let billboard = box([0, 10, 4], [12, 0.5, 8])
+let billboard = box({ pos: [0, 10, 4], size: [12, 0.5, 8] })
 
 // ═══ "SAFETY" SYSTEM ═══
 // A single road flare and a PlayStation controller
 // (The backup plan is "thoughts and prayers")
 // We'll represent the controller as a small box on top
-let controller = box([6, 0, 22], [2, 3, 1])
+let controller = box({ pos: [6, 0, 22], size: [2, 3, 1] })
 
 // ═══ LANDING GEAR ═══
 // Shopping trolley wheels. Not joking.
-let wheelFR = sphere([6, 6, -22], { r: 2 })
-let wheelFL = sphere([6, -6, -22], { r: 2 })
-let wheelRR = sphere([-6, 6, -22], { r: 2 })
-let wheelRL = sphere([-6, -6, -22], { r: 2 })
+let wheelFR = sphere({ pos: [6, 6, -22], r: 2 })
+let wheelFL = sphere({ pos: [6, -6, -22], r: 2 })
+let wheelRR = sphere({ pos: [-6, 6, -22], r: 2 })
+let wheelRL = sphere({ pos: [-6, -6, -22], r: 2 })
 let wheels = union(wheelFR, wheelFL, wheelRR, wheelRL)
 
 // Axles (zip ties, again)
-let axleF = box([6, 0, -22], [1, 7, 1])
-let axleR = box([-6, 0, -22], [1, 7, 1])
+let axleF = box({ pos: [6, 0, -22], size: [1, 7, 1] })
+let axleR = box({ pos: [-6, 0, -22], size: [1, 7, 1] })
 
 // ═══ DECORATIVE FINS ═══
 // Purely cosmetic. The billionaire saw them on a SpaceX render.
 // They actually make the hydrodynamics worse.
-let finR = rotate([0, 20, 0],
-box([0, 10, -10], [6, 1, 8])
+let finR = rotate({ rot: [0, 20, 0] }, box({ pos: [0, 10, -10], size: [6, 1, 8] })
 )
-let finL = rotate([0, -20, 0],
-box([0, -10, -10], [6, 1, 8])
+let finL = rotate({ rot: [0, -20, 0] }, box({ pos: [0, -10, -10], size: [6, 1, 8] })
 )
-let finTop = box([0, 0, 24], [8, 1, 4])
+let finTop = box({ pos: [0, 0, 24], size: [8, 1, 4] })
 
 // ═══ VIP HANDRAIL ═══
 // For the Instagram photo op before boarding
 // Structurally does nothing. Cost $40,000.
-let railR = box([8, 6, 8], [1, 1, 14])
-let railL = box([8, -6, 8], [1, 1, 14])
-let railTop = box([8, 0, 20], [1, 7, 1])
-let handrail = union(0.5, railR, railL, railTop)
+let railR = box({ pos: [8, 6, 8], size: [1, 1, 14] })
+let railL = box({ pos: [8, -6, 8], size: [1, 1, 14] })
+let railTop = box({ pos: [8, 0, 20], size: [1, 7, 1] })
+let handrail = union({ r: 0.5 }, railR, railL, railTop)
 
 // ═══ ASSEMBLY ═══
-let structure = union(1, bodyRaw, lounge, comms, billboard, controller)
+let structure = union({ r: 1 }, bodyRaw, lounge, comms, billboard, controller)
 let externals = union(ballast, propulsion, tanks, handrail)
 let landing = union(wheels, axleF, axleR)
 let fins = union(finR, finL, finTop)
 
-return union(1, structure, externals, landing, fins)
+return union({ r: 1 }, structure, externals, landing, fins)

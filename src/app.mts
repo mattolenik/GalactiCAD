@@ -20,6 +20,10 @@ import { ResizeHandle } from "./components/resize-handle.mjs"
 import { Toolbar } from "./components/toolbar.mjs"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
 import { addContextSubmenu } from "./editor/context-menu-submenu.mjs"
+import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
+
+// Start loading dprint formatter (non-blocking); registers providers when ready
+initDprintFormatting()
 
 /** Extract the compiler error message for display. Monaco handles location highlighting. */
 function formatSceneError(err: unknown, src: string): string {
@@ -589,7 +593,7 @@ class App {
             fontSize: 16,
             fontVariations: true,
             formatOnPaste: true,
-            formatOnType: true,
+            formatOnType: false,
             language: "typescript",
             lineNumbers: "on",
             minimap: { enabled: false },

@@ -5,29 +5,36 @@ import * as path from "path"
 
 const pluginName = "static-bundler"
 
+// Content value: string = dest dir; [string, string] = [destDir, destFileName]
+type StaticValue = string | [string, string]
+
 // esbuild plugin for bundling (copying, for now) assets like HTML, CSS, images, etc
-export default function staticBundler(content: Record<string, string>, log = console.log): Plugin {
+export default function staticBundler(content: Record<string, StaticValue>, log = console.log): Plugin {
     return {
         name: pluginName,
         setup(build: PluginBuild) {
             build.onStart(async () => {
                 if (!build.initialOptions.outdir) {
-                    throw new Error(`${pluginName} requires that outdir be set`)
+                    throw new Error(`${pluginName} requires that outdir be specified`)
                 }
+                const outdir = build.initialOptions.outdir
 
                 for (const key in content) {
+                    const val = content[key]
+                    const [destDir, destFileName] = Array.isArray(val) ? val : [val, null]
+
                     for await (const file of glob.glob(key)) {
                         const stats = await fs.stat(file)
-                        const outDir = path.join(build.initialOptions.outdir, content[key])
+                        const outDir = path.join(outdir, destDir)
                         await mkdir(outDir, { recursive: true })
-                        const dest = path.join(outDir, path.basename(file))
+                        const dest = path.join(outDir, destFileName ?? path.basename(file))
                         const fileMtimeMs = stats.mtimeMs
                         let destMtimeMs = 0
                         try {
                             destMtimeMs = (await fs.stat(dest)).mtimeMs
                         } catch {}
                         if (fileMtimeMs > destMtimeMs) {
-                            fs.copyFile(file, dest).then(() => log(`‣ Copied ${file} to ${dest}`))
+                            fs.copyFile(file, dest).then(() => log(`‣ Copied ${file} → ${dest}`))
                         }
                     }
                 }

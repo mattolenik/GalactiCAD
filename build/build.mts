@@ -14,6 +14,7 @@ const Static = {
     "src/index.html": "/",
     "src/site.webmanifest": "/",
     "src/assets/*": "/assets",
+    "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"],
 }
 
 const Options = {

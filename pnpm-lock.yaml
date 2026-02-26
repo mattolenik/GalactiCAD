@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@dprint/formatter':
+        specifier: ^0.5.1
+        version: 0.5.1
+      '@dprint/typescript':
+        specifier: ^0.95.15
+        version: 0.95.15
       meshoptimizer:
         specifier: ^1.0.1
         version: 1.0.1
@@ -53,6 +59,12 @@ importers:
         version: 8.19.0
 
 packages:
+
+  '@dprint/formatter@0.5.1':
+    resolution: {integrity: sha512-cdZUrm0iv/FnnY3CKE2dEcVhNEzrC551aE2h2mTFwQCRBrqyARLDnb7D+3PlXTUVp3s34ftlnGOVCmhLT9DeKA==}
+
+  '@dprint/typescript@0.95.15':
+    resolution: {integrity: sha512-PQGYicsjlv7Eq+5BzpI04Ow2N9xeHkjr9O1TG3lDebK2B48IvXFQz0RwO4OhkKj22o7YLcjVIFM6WL7zVuM2ng==}
 
   '@esbuild/aix-ppc64@0.27.3':
     resolution: {integrity: sha512-9fJMTNFTWZMh5qwrBItuziu834eOCUcEqymSH7pY+zoMVEZg3gcPuBNxH1EvfVYe9h0x/Ptw8KBzv7qxb7l8dg==}
@@ -313,6 +325,10 @@ packages:
         optional: true
 
 snapshots:
+
+  '@dprint/formatter@0.5.1': {}
+
+  '@dprint/typescript@0.95.15': {}
 
   '@esbuild/aix-ppc64@0.27.3':
     optional: true

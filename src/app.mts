@@ -651,14 +651,12 @@ class App {
             const textToInsert = declaration
 
             const range = new monaco.Range(insertLine, insertCol, insertLine, insertCol)
-            model.pushEditOperations([], [{ range, text: textToInsert }], () => null)
+            const nameSelection = new monaco.Selection(insertLine, varNameStartCol, insertLine, varNameEndCol)
 
-            // Select the variable name so user can type to replace (inline rename style).
-            // Defer so we override any cursor state from the edit and avoid double-cursor artifact.
-            requestAnimationFrame(() => {
-                ed.setSelection(new monaco.Selection(insertLine, varNameStartCol, insertLine, varNameEndCol))
-                ed.focus()
-            })
+            // executeEdits on the editor (not the model) lets us supply the end cursor state
+            // atomically, so there are no intermediate phantom cursors.
+            ed.executeEdits("insert-shape", [{ range, text: textToInsert }], [nameSelection])
+            ed.focus()
         }
 
         const shapeInsertions: Array<{ id: string; label: string; varBase: string; call: string }> = [

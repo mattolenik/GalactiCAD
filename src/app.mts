@@ -756,7 +756,7 @@ class App {
         } else {
             fullscreenBtn.disabled = true
         }
-        this.#viewports.appendChild(toolbar)
+        document.getElementById("toolbar")!.insertBefore(toolbar, menu)
 
         // Developer tools panel — positioned over the viewports area
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)

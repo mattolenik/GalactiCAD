@@ -1,4 +1,4 @@
-import { __fg_color, __tone_2 } from "../style/style.mjs"
+import { __fg_color, __tone_2, __toolbar_height } from "../style/style.mjs"
 
 export class ToolbarCheckbox {
     #checkbox: HTMLInputElement
@@ -108,20 +108,22 @@ export class Toolbar extends HTMLElement {
         const style = document.createElement("style")
         style.textContent = `
             :host {
-                position: absolute;
-                top: 10px;
-                right: 10px;
-                z-index: 1;
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                height: 100%;
             }
             .toolbar {
                 display: flex;
                 align-items: center;
                 gap: 6px;
+                height: 100%;
+                box-sizing: border-box;
                 background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
                 backdrop-filter: blur(6px);
                 -webkit-backdrop-filter: blur(6px);
-                padding: 8px 10px;
-                border-radius: 4px;
+                padding: 0 8px;
+                border-radius: 0;
                 color: rgb(from var(${__fg_color}) r g b / 0.85);
                 font-size: 15px;
                 font-family: system-ui, sans-serif;
@@ -131,6 +133,7 @@ export class Toolbar extends HTMLElement {
                 display: flex;
                 align-items: center;
                 gap: 4px;
+                white-space: nowrap;
             }
             input[type="checkbox"] {
                 cursor: pointer;
@@ -143,8 +146,9 @@ export class Toolbar extends HTMLElement {
                 border-radius: 3px;
                 color: inherit;
                 font: inherit;
-                padding: 6px 10px;
-                min-height: 28px;
+                padding: 4px 8px;
+                min-height: 0;
+                height: calc(var(${__toolbar_height}) - 8px);
             }
             button:hover {
                 background: rgb(from var(${__fg_color}) r g b / 0.1);
@@ -164,7 +168,6 @@ export class Toolbar extends HTMLElement {
             }
             button.icon-btn {
                 padding: 5px;
-                align-self: stretch;
                 aspect-ratio: 1;
                 display: flex;
                 align-items: center;
@@ -177,7 +180,7 @@ export class Toolbar extends HTMLElement {
             }
             .separator {
                 width: 1px;
-                height: 24px;
+                height: calc(var(${__toolbar_height}) - 12px);
                 background: rgb(from var(${__fg_color}) r g b / 0.2);
                 flex-shrink: 0;
             }

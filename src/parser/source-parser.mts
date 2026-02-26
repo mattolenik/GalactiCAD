@@ -61,6 +61,8 @@ export interface Polygon2DCallInfo {
     arrayStartOffset: number
     arrayEndOffset: number
     vertices: [number, number][]
+    /** User-space offset range [start, end) of each vertex [x,y] for surgical edits */
+    vertexRanges: { start: number; end: number }[]
     location: SourceLocation
 }
 
@@ -655,6 +657,16 @@ export class SourceParser {
         const vertices = this.evaluateVertexArray(arrayArg)
         if (!vertices) return null
 
+        const vertexRanges: { start: number; end: number }[] = []
+        for (const elem of arrayArg.elements) {
+            if (elem && ts.isArrayLiteralExpression(elem)) {
+                vertexRanges.push({
+                    start: elem.getStart() - WRAP_PREFIX_CHARS,
+                    end: elem.getEnd() - WRAP_PREFIX_CHARS,
+                })
+            }
+        }
+
         const startPos = callNode.expression.getStart()
         const loc = tsPosToUser(sourceFile, startPos)
         const endLoc = tsPosToUser(sourceFile, callNode.expression.getEnd())
@@ -665,6 +677,7 @@ export class SourceParser {
             arrayStartOffset: arrayArg.getStart() - WRAP_PREFIX_CHARS,
             arrayEndOffset: arrayArg.getEnd() - WRAP_PREFIX_CHARS,
             vertices,
+            vertexRanges,
             location: {
                 startLine: loc.line,
                 startColumn: loc.column,

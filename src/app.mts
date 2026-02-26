@@ -327,16 +327,7 @@ class App {
         const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn)
         if (!info) return
 
-        const newText = formatVertices(vertices)
-        const startPos = model.getPositionAt(info.arrayStartOffset)
-        const endPos = model.getPositionAt(info.arrayEndOffset)
-        const range = new monaco.Range(
-            startPos.lineNumber, startPos.column,
-            endPos.lineNumber, endPos.column
-        )
-        model.pushStackElement()
-        model.pushEditOperations([], [{ range, text: newText }], () => null)
-        model.pushStackElement()
+        applyVertexUpdates(model, info, vertices)
     }
 
     /**
@@ -1077,21 +1068,14 @@ class App {
         }
 
         const polyEditor = new PolygonEditor(info.vertices)
-        let arrayStart = info.arrayStartOffset
-        let arrayEnd = info.arrayEndOffset
+        const arrayStart = info.arrayStartOffset
 
         polyEditor.onChange = (vertices) => {
-            const newText = formatVertices(vertices)
-            const startPos = model.getPositionAt(arrayStart)
-            const endPos = model.getPositionAt(arrayEnd)
-            const range = new monaco.Range(
-                startPos.lineNumber, startPos.column,
-                endPos.lineNumber, endPos.column
-            )
-            model.pushStackElement()
-            model.pushEditOperations([], [{ range, text: newText }], () => null)
-            model.pushStackElement()
-            arrayEnd = arrayStart + newText.length
+            const src = model.getValue()
+            const pos = model.getPositionAt(arrayStart)
+            const freshInfo = this.#sourceParser.findPolygon2DAtPosition(src, pos.lineNumber, pos.column)
+            if (!freshInfo) return
+            applyVertexUpdates(model, freshInfo, vertices)
         }
 
         // Hide Monaco and insert polygon editor in its place
@@ -1209,13 +1193,81 @@ class App {
     }
 }
 
-function formatVertices(vertices: [number, number][]): string {
-    const pairs = vertices.map(([x, y]) => {
-        const xs = String(Math.round(x * 100) / 100)
-        const ys = String(Math.round(y * 100) / 100)
-        return `[${xs}, ${ys}]`
-    })
+interface ArrayFormat {
+    indent: string
+    newlinePerVertex: boolean
+}
+
+function analyzeArrayFormatting(text: string): ArrayFormat {
+    if (!text.includes("\n")) {
+        return { indent: "", newlinePerVertex: false }
+    }
+    // Find indent: between first "[" (outer) and second "[" (first vertex)
+    const firstBracket = text.indexOf("[")
+    const between = text.slice(firstBracket + 1, text.indexOf("[", firstBracket + 1))
+    const match = between.match(/\n([ \t]*)$/)
+    const indent = match ? match[1] : "   "  // fallback: 3 spaces (matches tabSize)
+    return { indent, newlinePerVertex: true }
+}
+
+function formatVertex([x, y]: [number, number]): string {
+    const xs = String(Math.round(x * 100) / 100)
+    const ys = String(Math.round(y * 100) / 100)
+    return `[${xs}, ${ys}]`
+}
+
+function formatVertices(vertices: [number, number][], format?: ArrayFormat): string {
+    const pairs = vertices.map(formatVertex)
+    if (format?.newlinePerVertex && pairs.length > 0) {
+        const indent = format.indent
+        const lines = pairs.map((p, i) => indent + p + (i < pairs.length - 1 ? "," : ""))
+        return "[\n" + lines.join("\n") + "\n]"
+    }
     return `[${pairs.join(", ")}]`
+}
+
+/**
+ * Apply vertex updates to the model. When vertex count matches, does surgical
+ * in-place edits (no reformatting). Otherwise falls back to full replace with format preservation.
+ */
+function applyVertexUpdates(
+    model: monaco.editor.ITextModel,
+    info: Polygon2DCallInfo,
+    vertices: [number, number][]
+): void {
+    if (vertices.length === info.vertexRanges.length) {
+        // Surgical edits: replace each vertex in place, apply in reverse order
+        const edits = vertices
+            .map((v, i) => {
+                const start = model.getPositionAt(info.vertexRanges[i].start)
+                const end = model.getPositionAt(info.vertexRanges[i].end)
+                return {
+                    range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
+                    text: formatVertex(v),
+                }
+            })
+            .sort((a, b) => {
+                const ap = a.range.getStartPosition()
+                const bp = b.range.getStartPosition()
+                return bp.lineNumber - ap.lineNumber || bp.column - ap.column
+            })
+        model.pushStackElement()
+        model.pushEditOperations([], edits, () => null)
+        model.pushStackElement()
+    } else {
+        const originalText = model.getValue().slice(info.arrayStartOffset, info.arrayEndOffset)
+        const format = analyzeArrayFormatting(originalText)
+        const newText = formatVertices(vertices, format)
+        const startPos = model.getPositionAt(info.arrayStartOffset)
+        const endPos = model.getPositionAt(info.arrayEndOffset)
+        const range = new monaco.Range(
+            startPos.lineNumber, startPos.column,
+            endPos.lineNumber, endPos.column
+        )
+        model.pushStackElement()
+        model.pushEditOperations([], [{ range, text: newText }], () => null)
+        model.pushStackElement()
+    }
 }
 
 function formatNumber(n: number): string {

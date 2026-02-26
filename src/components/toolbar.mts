@@ -20,6 +20,36 @@ export class ToolbarCheckbox {
     set checked(v: boolean) { this.#checkbox.checked = v }
 }
 
+export class ToolbarToggleButton {
+    #button: HTMLButtonElement
+    #checked: boolean
+    onChange?: (checked: boolean) => void
+
+    constructor(icon: string, checked: boolean, container: HTMLElement, alt?: string) {
+        this.#checked = checked
+        this.#button = document.createElement("button")
+        this.#button.innerHTML = icon
+        this.#button.classList.add("icon-btn")
+        if (alt) {
+            this.#button.title = alt
+            this.#button.setAttribute("aria-label", alt)
+        }
+        this.#button.classList.toggle("active", checked)
+        this.#button.addEventListener("click", () => {
+            this.#checked = !this.#checked
+            this.#button.classList.toggle("active", this.#checked)
+            this.onChange?.(this.#checked)
+        })
+        container.appendChild(this.#button)
+    }
+
+    get checked(): boolean { return this.#checked }
+    set checked(v: boolean) {
+        this.#checked = v
+        this.#button.classList.toggle("active", v)
+    }
+}
+
 export class ToolbarButton {
     #button: HTMLButtonElement
     onClick?: () => void
@@ -161,10 +191,12 @@ export class Toolbar extends HTMLElement {
                 cursor: default;
             }
             button.active {
-                background: rgb(from var(${__fg_color}) r g b / 0.25);
+                background: rgb(from var(${__fg_color}) r g b / 0.22);
+                border-color: rgb(from var(${__fg_color}) r g b / 0.45);
+                box-shadow: inset 0 1px 3px rgba(0,0,0,0.35);
             }
             button.active:hover {
-                background: rgb(from var(${__fg_color}) r g b / 0.35);
+                background: rgb(from var(${__fg_color}) r g b / 0.3);
             }
             button.icon-btn {
                 padding: 5px;
@@ -209,6 +241,10 @@ export class Toolbar extends HTMLElement {
 
     addCheckbox(label: string, checked = false): ToolbarCheckbox {
         return new ToolbarCheckbox(label, checked, this.#container)
+    }
+
+    addToggleButton(icon: string, alt?: string, checked = false): ToolbarToggleButton {
+        return new ToolbarToggleButton(icon, checked, this.#container, alt)
     }
 
     addButton(label: string, alt?: string): ToolbarButton {

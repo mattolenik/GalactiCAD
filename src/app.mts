@@ -8,6 +8,7 @@ import { MenuButton } from "./components/menu-button.mjs"
 import { MeshViewer } from "./components/mesh-viewer.mjs"
 import type { PreviewWindow } from "./components/preview-window.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
+import { FLUENT_METHODS } from "./scene/scene.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
@@ -81,12 +82,14 @@ class App {
             src = this.editor.getValue()
             const documentName = this.#tabs.active ?? undefined
 
+            // Parse first (error-tolerant); used for fluent method decorations and node matching.
+            const parsedCalls = this.#sourceParser.parseShapeCalls(src)
+            const fluentLocations = this.#sourceParser.findFluentMethods(FLUENT_METHODS)
+            this.#monacoHighlighter.setFluentMethodDecorations(fluentLocations)
+
             // Build the scene (uses cache when switching back to a tab with unchanged content).
             // Await so camera loads only after scene is ready, avoiding flicker.
             await this.renderer.build(src, documentName)
-
-            // Parse the source code to extract shape function calls with their arguments
-            const parsedCalls = this.#sourceParser.parseShapeCalls(src)
 
             // Get all scene nodes and build a map for quick lookup
             const sceneNodes = this.renderer.getSceneNodes()
@@ -111,17 +114,15 @@ class App {
 
             // Update highlighting for current selection after build
             this.#updateEditorHighlighting()
-            // Update fluent method name decorations (.radius, .shift, etc.)
-            this.#monacoHighlighter.updateFluentMethodDecorations()
         } catch (err) {
             const message = formatSceneError(err, src)
             this.log.innerText = `💢 ${message}`
             this.log.classList.add("has-error")
             console.error("[Scene compilation]", err)
-            // Clear all editor decorations on build error so stale indicators
-            // don't appear at outdated line positions after code changes.
-            this.#monacoHighlighter.clearHighlighting()
-            this.#monacoHighlighter.setColorIndicators([])
+            // Do NOT clear decorations on build error. Parsing and fluent method
+            // decorations run before build (error-tolerant). Color indicators and
+            // selection highlighting from the last successful build remain; Monaco
+            // tracks their positions as the user edits.
         }
     }
 

@@ -67,6 +67,17 @@ export interface Polygon2DCallInfo {
 }
 
 /**
+ * Source location of a fluent method call (e.g. .radius, .shift) for decoration highlighting.
+ */
+export interface FluentMethodLocation {
+    name: string
+    startLine: number
+    startColumn: number
+    endLine: number
+    endColumn: number
+}
+
+/**
  * Information about an extrude() or loft() call for cap push/pull source updates.
  * Tracks the source offsets of the `h:` value and position array so they can be
  * surgically replaced after a drag operation.
@@ -228,6 +239,8 @@ export class SourceParser {
     #varMap: Map<string, ParsedShapeCall> = new Map()
     /** Root positions already added for fluent chains (avoid duplicate ParsedShapeCalls) */
     #fluentChainRoots: Set<number> = new Set()
+    /** Cached AST from last parseShapeCalls, used by findFluentMethods */
+    #lastSourceFile: ts.SourceFile | null = null
 
     /**
      * Parse JavaScript/TypeScript code and extract all shape function calls with their arguments
@@ -237,6 +250,7 @@ export class SourceParser {
     parseShapeCalls(src: string): ParsedShapeCall[] {
         const calls: ParsedShapeCall[] = []
         const sourceFile = parseSource(src)
+        this.#lastSourceFile = sourceFile
         this.#callNodeMap.clear()
         this.#callMap.clear()
         this.#fluentChainRoots.clear()
@@ -269,6 +283,41 @@ export class SourceParser {
         console.debug(`[SourceParser] Found ${calls.length} shape call(s)`)
 
         return calls
+    }
+
+    /**
+     * Find all fluent method calls (e.g. .radius, .shift) whose names are in the provided set.
+     * Uses the cached AST from the last parseShapeCalls() call. Returns [] if parseShapeCalls
+     * has not been called yet or if the cached AST is unavailable.
+     */
+    findFluentMethods(methodNames: Set<string>): FluentMethodLocation[] {
+        const sourceFile = this.#lastSourceFile
+        if (!sourceFile) return []
+
+        const locations: FluentMethodLocation[] = []
+
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+                const prop = node.expression
+                const name = prop.name.text
+                if (methodNames.has(name)) {
+                    const nameNode = prop.name
+                    const startLoc = tsPosToUser(sourceFile, nameNode.getStart())
+                    const endLoc = tsPosToUser(sourceFile, nameNode.getEnd())
+                    locations.push({
+                        name,
+                        startLine: startLoc.line,
+                        startColumn: startLoc.column,
+                        endLine: endLoc.line,
+                        endColumn: endLoc.column,
+                    })
+                }
+            }
+            ts.forEachChild(node, visit)
+        }
+        visit(sourceFile)
+
+        return locations
     }
 
     /**

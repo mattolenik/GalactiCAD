@@ -5,12 +5,7 @@
 
 import * as monaco from "monaco-editor"
 import { DEFAULT_PALETTE, PALETTE_SIZE } from "../colorPalette.mjs"
-import { FLUENT_METHODS } from "../scene/scene.mjs"
-
-const FLUENT_METHOD_PATTERN = new RegExp(
-    `\\.(${[...FLUENT_METHODS].join("|")})\\b`,
-    "g"
-)
+import type { FluentMethodLocation } from "../parser/source-parser.mjs"
 
 /**
  * Range to highlight in the editor (function name position)
@@ -47,19 +42,12 @@ export class MonacoHighlighter {
     private styleElement: HTMLStyleElement | null = null
     private indicatorCounter = 0  // Unique ID counter for indicator CSS classes
 
-    private modelChangeDisposable: monaco.IDisposable | null = null
-
     /**
      * Set the editor instance to work with
      */
     setEditor(editor: monaco.editor.IStandaloneCodeEditor) {
-        this.modelChangeDisposable?.dispose()
         this.editor = editor
         this.ensureStyleElement()
-        this.updateFluentMethodDecorations()
-        this.modelChangeDisposable = editor.onDidChangeModel(() => {
-            this.updateFluentMethodDecorations()
-        })
     }
 
     /**
@@ -234,29 +222,22 @@ export class MonacoHighlighter {
     }
 
     /**
-     * Update decorations for fluent CAD method names (.radius, .shift, .round, etc.)
+     * Set decorations for fluent CAD method names (.radius, .shift, .round, etc.)
      * Makes them stand out with a distinct color.
+     * Receives pre-computed positions from AST-based parsing (app drives updates).
      */
-    updateFluentMethodDecorations() {
+    setFluentMethodDecorations(locations: FluentMethodLocation[]) {
         if (!this.editor) return
-        const model = this.editor.getModel()
-        if (!model) return
 
-        const text = model.getValue()
-        const decorations: monaco.editor.IModelDeltaDecoration[] = []
-
-        for (const match of text.matchAll(FLUENT_METHOD_PATTERN)) {
-            const startOffset = match.index! + 1  // Skip the leading dot
-            const endOffset = startOffset + match[1].length
-            const start = model.getPositionAt(startOffset)
-            const end = model.getPositionAt(endOffset)
-            if (start && end) {
-                decorations.push({
-                    range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
-                    options: { inlineClassName: "cad-fluent-method" }
-                })
-            }
-        }
+        const decorations: monaco.editor.IModelDeltaDecoration[] = locations.map(loc => ({
+            range: new monaco.Range(
+                loc.startLine,
+                loc.startColumn,
+                loc.endLine,
+                loc.endColumn
+            ),
+            options: { inlineClassName: "cad-fluent-method" }
+        }))
 
         this.fluentMethodDecorationIds = this.editor.deltaDecorations(
             this.fluentMethodDecorationIds,

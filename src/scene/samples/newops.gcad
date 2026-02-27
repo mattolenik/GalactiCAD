@@ -10,34 +10,34 @@ let roundedCube = intersect(s1, b1)
 // Smooth intersection with radius
 let s2 = sphere({ pos: [20, 0, 12], r: 8 })
 let b2 = box({ pos: [20, 0, 12], size: [6, 6, 6] })
-let smoothIntersect = intersect({ r: 1.5 }, s2, b2)
+let smoothIntersect = intersect.of(s2, b2).round(1.5)
 
 // === BLEND MODES ON UNION ===
 // Columns blend
 let colA = sphere({ pos: [-20, 0, 6], r: 5 })
 let colB = sphere({ pos: [-20, 0, 14], r: 5 })
-let columnsUnion = union({ r: 2, mode: 'columns', n: 6 }, colA, colB)
+let columnsUnion = union.of(colA, colB).columns(2, 6)
 
 // Stairs blend
 let stA = sphere({ pos: [-40, 0, 6], r: 5 })
 let stB = sphere({ pos: [-40, 0, 14], r: 5 })
-let stairsUnion = union({ r: 2, mode: 'stairs', n: 2 }, stA, stB)
+let stairsUnion = union.of(stA, stB).stairs(2, 2)
 
 // Chamfer blend
 let chA = box({ pos: [40, 0, 6], size: [4, 4, 4] })
 let chB = sphere({ pos: [40, 0, 14], r: 5 })
-let chamferUnion = union({ r: 1.5, mode: 'chamfer' }, chA, chB)
+let chamferUnion = union.of(chA, chB).chamfer(1.5)
 
 // === BLEND MODES ON SUBTRACT ===
 // Columns subtract
 let csA = box({ pos: [-20, 20, 10], size: [6, 6, 6] })
 let csB = sphere({ pos: [-20, 22, 10], r: 5 })
-let columnsSub = subtract({ r: 1.5, mode: 'columns', n: 4 }, csA, csB)
+let columnsSub = subtract.parts(csB).from(csA).columns(1.5, 4)
 
 // Stairs subtract
 let ssA = box({ pos: [0, 20, 6], size: [6, 6, 6] })
 let ssB = sphere({ pos: [0, 20, 10], r: 6 })
-let stairsSub = subtract({ r: 1.5, mode: 'stairs', n: 4 }, ssA, ssB)
+let stairsSub = subtract.parts(ssB).from(ssA).stairs(1.5, 4)
 
 // === PIPE ===
 // Creates a tube-like surface at the intersection of two shapes
@@ -67,7 +67,7 @@ let tongueOp = tongue({ ra: 1.0, rb: 0.5 }, tBase, tPattern)
 // Columns intersect
 let icA = sphere({ pos: [20, -20, 6], r: 6 })
 let icB = box({ pos: [20, -20, 10], size: [5, 5, 5] })
-let columnsIntersect = intersect({ r: 3, mode: 'columns', n: 4 }, icB, icA)
+let columnsIntersect = intersect.of(icB, icA).columns(3, 4)
 
 // === ASSEMBLY ===
 return union(

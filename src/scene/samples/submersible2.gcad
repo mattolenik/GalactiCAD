@@ -10,7 +10,7 @@
 //  but they were just being negative)
 let hull = box({ pos: [0, 0, 0], size: [8, 8, 22] })
 let hullRound = sphere({ pos: [0, 0, 0], r: 24 })
-let pressureHull = intersect({ r: 3 }, hull, hullRound)
+let pressureHull = intersect.of(hull, hullRound).round(3)
 
 // Glued-on titanium endcaps (the only real engineering here)
 let endcapTop = sphere({ pos: [0, 0, 20], r: 9 })

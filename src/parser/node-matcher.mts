@@ -21,6 +21,9 @@ const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engr
  */
 const EPSILON = 1e-6
 
+/** Default position when .shift() is omitted from fluent primitives */
+const DEFAULT_POS = vec3([0, 0, 0])
+
 /**
  * Check if two numbers are approximately equal
  */
@@ -48,10 +51,8 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
 
     if (node instanceof Sphere) {
         // Match sphere: position and radius must match
-        if (!call.pos) return false
-
-        // Check position
-        if (!vec3ApproxEqual(node.pos, call.pos)) {
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) {
             return false
         }
 
@@ -68,10 +69,9 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
 
     if (node instanceof Box) {
         // Match box: position and size must match
-        if (!call.pos || !call.size) return false
-
-        // Check position
-        if (!vec3ApproxEqual(node.pos, call.pos)) {
+        if (!call.size) return false
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) {
             return false
         }
 
@@ -84,8 +84,8 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
     }
 
     if (node instanceof Cylinder) {
-        if (!call.pos) return false
-        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
         const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
         if (expectedRadius === undefined) return false
         if (!approxEqual(node.r, expectedRadius)) return false
@@ -94,8 +94,8 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
     }
 
     if (node instanceof Cone) {
-        if (!call.pos) return false
-        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
         const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
         if (expectedRadius === undefined) return false
         if (!approxEqual(node.r, expectedRadius)) return false
@@ -104,16 +104,16 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
     }
 
     if (node instanceof Torus) {
-        if (!call.pos) return false
-        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.sr !== undefined && !approxEqual(node.sr, call.sr)) return false
         if (call.lr !== undefined && !approxEqual(node.lr, call.lr)) return false
         return true
     }
 
     if (node instanceof Capsule) {
-        if (!call.pos) return false
-        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
         const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
         if (expectedRadius === undefined) return false
         if (!approxEqual(node.r, expectedRadius)) return false
@@ -122,16 +122,16 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
     }
 
     if (node instanceof PlaneNode) {
-        if (!call.pos) return false
-        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.normal && !vec3ApproxEqual(node.normal, call.normal)) return false
         if (call.planeOffset !== undefined && !approxEqual(node.dist, call.planeOffset)) return false
         return true
     }
 
     if (node instanceof HexPrism) {
-        if (!call.pos) return false
-        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
         const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
         if (expectedRadius === undefined) return false
         if (!approxEqual(node.r, expectedRadius)) return false
@@ -140,8 +140,8 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
     }
 
     if (node instanceof Disc) {
-        if (!call.pos) return false
-        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
         const expectedRadius = call.r ?? (call.d !== undefined ? call.d / 2 : undefined)
         if (expectedRadius === undefined) return false
         if (!approxEqual(node.r, expectedRadius)) return false
@@ -149,8 +149,8 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
     }
 
     if (node instanceof Blob) {
-        if (!call.pos) return false
-        if (!vec3ApproxEqual(node.pos, call.pos)) return false
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
         return true
     }
 
@@ -170,7 +170,7 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         if (!approxEqual(node.h, call.h)) return false
         if (call.pos !== undefined && !vec3ApproxEqual(node.pos, call.pos)) return false
         const callTwist = call.t ?? 0
-        if (!approxEqual(node.twist, callTwist)) return false
+        if (!approxEqual(node.twistDegrees, callTwist)) return false
         return true
     }
 

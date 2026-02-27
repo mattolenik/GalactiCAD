@@ -19,14 +19,15 @@
     "@webgpu/types": "^0.1.69",
     "chokidar": "^5.0.0",
     "esbuild": "^0.27.3",
+    "skills": "^1.4.2",
     "tsx": "^4.21.0",
     "webgpu": "^0.3.8",
     "ws": "^8.19.0"
   },
-"dependencies": {
-        "@dprint/formatter": "^0.5.1",
-        "@dprint/typescript": "^0.95.15",
-        "meshoptimizer": "^1.0.1",
+  "dependencies": {
+    "@dprint/formatter": "^0.5.1",
+    "@dprint/typescript": "^0.95.15",
+    "meshoptimizer": "^1.0.1",
     "monaco-editor": "^0.55.1",
     "quaternion": "^2.2.0",
     "rxjs": "^7.8.2",

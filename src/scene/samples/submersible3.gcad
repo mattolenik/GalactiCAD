@@ -11,7 +11,7 @@
 // but was silenced with an NDA and a gift bag.
 let hull = box({ pos: [0, 0, 0], size: [12, 12, 22] })
 let hullRound = sphere({ pos: [0, 0, 0], r: 28 })
-let pressureHull = intersect({ r: 3 }, hull, hullRound)
+let pressureHull = intersect.of(hull, hullRound).round(3)
 
 // Endcaps now held on with construction adhesive
 // "It's the same stuff they use on the space shuttle" (it is not)

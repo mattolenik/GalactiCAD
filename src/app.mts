@@ -651,7 +651,7 @@ class App {
 
         const shapeInsertions: Array<{ id: string; label: string; varBase: string; call: string }> = [
             { id: "insertSphere", label: "Sphere", varBase: "newSphere", call: "sphere({ r: 1 })" },
-            { id: "insertBox", label: "Box", varBase: "newBox", call: "box({ size: [2, 2, 2] })" },
+            { id: "insertBox", label: "Box", varBase: "newBox", call: "box([2, 2, 2])" },
             { id: "insertCylinder", label: "Cylinder", varBase: "newCylinder", call: "cylinder({ r: 1, h: 3 })" },
             { id: "insertCone", label: "Cone", varBase: "newCone", call: "cone({ r: 1, h: 2 })" },
             { id: "insertTorus", label: "Torus", varBase: "newTorus", call: "torus({ sr: 0.25, lr: 1 })" },

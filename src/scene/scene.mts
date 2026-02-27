@@ -95,7 +95,7 @@ export class SceneInfo {
             throw new Error(msg)
         }
         const body = result.outputText + "\nreturn _();"
-        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "rotate", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", body)(box, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, rotate, intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, shell, offset, elongate, twist, bend, taper, morph, seam)
+        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", body)(box, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob, intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam)
         this.root.scene = this
         this.root.build()
         this.#assignAABBIndices(this.root)
@@ -297,6 +297,35 @@ export class Node {
     build() {
         this.scene.add(this)
     }
+
+    /** Fluent: rotate this node. */
+    rotate(rot: Vec3): Rotate {
+        return new Rotate(rot, this)
+    }
+    /** Fluent: hollow shell. */
+    shell(t: number): Shell {
+        return new Shell(t, this)
+    }
+    /** Fluent: offset outward/inward. */
+    offset(amount: number): Offset {
+        return new Offset(amount, this)
+    }
+    /** Fluent: elongate along axis. */
+    elongate(h: Vec3): Elongate {
+        return new Elongate(h, this)
+    }
+    /** Fluent: twist around Y. */
+    twist(rate: number): Twist {
+        return new Twist(rate, this)
+    }
+    /** Fluent: bend. */
+    bend(amount: number): Bend {
+        return new Bend(amount, this)
+    }
+    /** Fluent: taper. */
+    taper(ratio: number, height: number): Taper {
+        return new Taper(ratio, height, this)
+    }
 }
 
 function WithChildren<TBase extends Constructor>(base: TBase) {
@@ -422,6 +451,9 @@ export abstract class BinaryOperator extends Node {
 
 export type BlendMode = 'round' | 'chamfer' | 'soft' | 'columns' | 'stairs'
 
+export type IntersectionType = 'round' | 'chamfer' | 'columns' | 'stairs'
+export type UnionType = IntersectionType | 'soft'
+
 export class Union extends BinaryOperator {
     override getShapeType(): string {
         return "union"
@@ -525,8 +557,52 @@ export class Union extends BinaryOperator {
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
         return { text: this._blendFast(lhResult.text!, rhResult.text!), varName }
     }
-    constructor(lh: Node, rh: Node, public radius?: number, public mode?: BlendMode, public n?: number) {
+    constructor(lh: Node, rh: Node, public radius?: number, public mode?: UnionType, public n?: number) {
         super(lh, rh)
+    }
+
+    round(r: number): this {
+        this.radius = r
+        this.mode = 'round'
+        if (this.lh instanceof Union) this.lh.round(r)
+        if (this.rh instanceof Union) this.rh.round(r)
+        return this
+    }
+    chamfer(r: number): this {
+        this.radius = r
+        this.mode = 'chamfer'
+        if (this.lh instanceof Union) this.lh.chamfer(r)
+        if (this.rh instanceof Union) this.rh.chamfer(r)
+        return this
+    }
+    soft(r: number): this {
+        this.radius = r
+        this.mode = 'soft'
+        if (this.lh instanceof Union) this.lh.soft(r)
+        if (this.rh instanceof Union) this.rh.soft(r)
+        return this
+    }
+    stairs(r: number, n?: number): this {
+        this.radius = r
+        this.mode = 'stairs'
+        this.n = n ?? 4
+        if (this.lh instanceof Union) this.lh.stairs(r, this.n)
+        if (this.rh instanceof Union) this.rh.stairs(r, this.n)
+        return this
+    }
+    columns(r: number, n?: number): this {
+        this.radius = r
+        this.mode = 'columns'
+        this.n = n ?? 4
+        if (this.lh instanceof Union) this.lh.columns(r, this.n)
+        if (this.rh instanceof Union) this.rh.columns(r, this.n)
+        return this
+    }
+    withMode(t: UnionType): this {
+        this.mode = t
+        if (this.lh instanceof Union) this.lh.withMode(t)
+        if (this.rh instanceof Union) this.rh.withMode(t)
+        return this
     }
 }
 
@@ -631,6 +707,38 @@ export class Subtract extends BinaryOperator {
     constructor(lh: Node, rh: Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {
         super(lh, rh)
     }
+
+    round(r: number): this {
+        this.radius = r
+        this.mode = 'round'
+        if (this.lh instanceof Subtract) this.lh.round(r)
+        return this
+    }
+    chamfer(r: number): this {
+        this.radius = r
+        this.mode = 'chamfer'
+        if (this.lh instanceof Subtract) this.lh.chamfer(r)
+        return this
+    }
+    stairs(r: number, n?: number): this {
+        this.radius = r
+        this.mode = 'stairs'
+        this.n = n ?? 4
+        if (this.lh instanceof Subtract) this.lh.stairs(r, this.n)
+        return this
+    }
+    columns(r: number, n?: number): this {
+        this.radius = r
+        this.mode = 'columns'
+        this.n = n ?? 4
+        if (this.lh instanceof Subtract) this.lh.columns(r, this.n)
+        return this
+    }
+    withMode(t: IntersectionType): this {
+        this.mode = t
+        if (this.lh instanceof Subtract) this.lh.withMode(t)
+        return this
+    }
 }
 
 export class Intersect extends BinaryOperator {
@@ -723,62 +831,114 @@ export class Intersect extends BinaryOperator {
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
         return { text: this._interFast(lhResult.text!, rhResult.text!), varName }
     }
-    constructor(lh: Node, rh: Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {
+
+    constructor(lh: Node, rh: Node, public radius = 0, public mode?: BlendMode, public n?: number) {
         super(lh, rh)
+    }
+
+    round(r: number): this {
+        this.radius = r
+        this.mode = 'round'
+        return this
+    }
+    chamfer(r: number): this {
+        this.radius = r
+        this.mode = 'chamfer'
+        return this
+    }
+    stairs(r: number, n?: number): this {
+        this.radius = r
+        this.mode = 'stairs'
+        this.n = n ?? 4
+        return this
+    }
+    columns(r: number, n?: number): this {
+        this.radius = r
+        this.mode = 'columns'
+        this.n = n ?? 4
+        return this
+    }
+    withMode(t: IntersectionType): this {
+        this.mode = t
+        return this
     }
 }
 
 export class Pipe extends BinaryOperator {
+    #pipeRadius = 0
+    constructor(lh: Node, rh: Node, radius = 0) {
+        super(lh, rh)
+        this.#pipeRadius = radius
+    }
     override getShapeType(): string { return "pipe" }
     override getIndicatorSymbol(): string { return "⊘" }
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="10" x2="10" y2="2" stroke="currentColor" stroke-width="1.5"/>`
     }
+    radius(r: number): this {
+        this.#pipeRadius = r
+        return this
+    }
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpPipeEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
+        return { text: `fOpPipeEx(${lhResult.text}, ${rhResult.text}, ${this.#pipeRadius})`, varName }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpPipeFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
-    }
-    constructor(lh: Node, rh: Node, public radius: number) {
-        super(lh, rh)
+        return { text: `fOpPipeFast(${lhResult.text}, ${rhResult.text}, ${this.#pipeRadius})`, varName }
     }
 }
 
 export class Engrave extends BinaryOperator {
+    #engraveRadius = 0
+    constructor(lh: Node, rh: Node, radius = 0) {
+        super(lh, rh)
+        this.#engraveRadius = radius
+    }
     override getShapeType(): string { return "engrave" }
     override getIndicatorSymbol(): string { return "⊜" }
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1"/>`
     }
+    radius(r: number): this {
+        this.#engraveRadius = r
+        return this
+    }
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpEngraveEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
+        return { text: `fOpEngraveEx(${lhResult.text}, ${rhResult.text}, ${this.#engraveRadius})`, varName }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpEngraveFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
-    }
-    constructor(lh: Node, rh: Node, public radius: number) {
-        super(lh, rh)
+        return { text: `fOpEngraveFast(${lhResult.text}, ${rhResult.text}, ${this.#engraveRadius})`, varName }
     }
 }
 
 export class Groove extends BinaryOperator {
+    ra: number
+    rb: number
+    constructor(lh: Node, rh: Node, ra = 0, rb = 0) {
+        super(lh, rh)
+        this.ra = ra
+        this.rb = rb
+    }
     override getShapeType(): string { return "groove" }
     override getIndicatorSymbol(): string { return "⊝" }
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="6" x2="8" y2="6" stroke="currentColor" stroke-width="1.5"/>`
+    }
+    radii(ra: number, rb: number): this {
+        this.ra = ra
+        this.rb = rb
+        return this
     }
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
@@ -792,16 +952,25 @@ export class Groove extends BinaryOperator {
         const varName = `groove_${lhResult.varName}__${rhResult.varName}`
         return { text: `fOpGrooveFast(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
     }
-    constructor(lh: Node, rh: Node, public ra: number, public rb: number) {
-        super(lh, rh)
-    }
 }
 
 export class Tongue extends BinaryOperator {
+    ra: number
+    rb: number
+    constructor(lh: Node, rh: Node, ra = 0, rb = 0) {
+        super(lh, rh)
+        this.ra = ra
+        this.rb = rb
+    }
     override getShapeType(): string { return "tongue" }
     override getIndicatorSymbol(): string { return "⊞" }
     override getIndicatorSvg(): string {
         return `<rect x="1" y="1" width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" stroke-width="1"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1"/>`
+    }
+    radii(ra: number, rb: number): this {
+        this.ra = ra
+        this.rb = rb
+        return this
     }
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
@@ -814,9 +983,6 @@ export class Tongue extends BinaryOperator {
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
         return { text: `fOpTongueFast(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
-    }
-    constructor(lh: Node, rh: Node, public ra: number, public rb: number) {
-        super(lh, rh)
     }
 }
 
@@ -1003,48 +1169,60 @@ export class Taper extends UnaryOperator {
 }
 
 export class Morph extends BinaryOperator {
+    #morphT = 0
+    constructor(lh: Node, rh: Node, t = 0) {
+        super(lh, rh)
+        this.#morphT = t
+    }
     override getShapeType(): string { return "morph" }
     override getIndicatorSymbol(): string { return "⇌" }
     override getIndicatorSvg(): string {
         return `<circle cx="3" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1"/><rect x="7" y="4" width="4" height="4" rx="0.5" fill="none" stroke="currentColor" stroke-width="1"/><line x1="5" y1="6" x2="7" y2="6" stroke="currentColor" stroke-width="1" stroke-dasharray="1,0.5"/>`
     }
+    t(t: number): this {
+        this.#morphT = t
+        return this
+    }
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
         const varName = `morph_${lhResult.varName}__${rhResult.varName}`
-        return { text: `sdfMorphEx(${lhResult.text}, ${rhResult.text}, ${this.t})`, varName }
+        return { text: `sdfMorphEx(${lhResult.text}, ${rhResult.text}, ${this.#morphT})`, varName }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `morph_${lhResult.varName}__${rhResult.varName}`
-        return { text: `sdfMorphFast(${lhResult.text}, ${rhResult.text}, ${this.t})`, varName }
-    }
-    constructor(public t: number, lh: Node, rh: Node) {
-        super(lh, rh)
+        return { text: `sdfMorphFast(${lhResult.text}, ${rhResult.text}, ${this.#morphT})`, varName }
     }
 }
 
 export class Seam extends BinaryOperator {
+    #seamRadius = 0
+    constructor(lh: Node, rh: Node, radius = 0) {
+        super(lh, rh)
+        this.#seamRadius = radius
+    }
     override getShapeType(): string { return "seam" }
     override getIndicatorSymbol(): string { return "⊕" }
     override getIndicatorSvg(): string {
         return `<circle cx="4" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1" fill="currentColor"/>`
     }
+    radius(r: number): this {
+        this.#seamRadius = r
+        return this
+    }
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
-        return { text: `sdfSeamEx(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
+        return { text: `sdfSeamEx(${lhResult.text}, ${rhResult.text}, ${this.#seamRadius})`, varName }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
-        return { text: `sdfSeamFast(${lhResult.text}, ${rhResult.text}, ${this.radius})`, varName }
-    }
-    constructor(lh: Node, rh: Node, public radius: number) {
-        super(lh, rh)
+        return { text: `sdfSeamFast(${lhResult.text}, ${rhResult.text}, ${this.#seamRadius})`, varName }
     }
 }
 
@@ -1217,6 +1395,12 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
             text: `fSphereFast(p - ${this.pos.wgsl}, ${this.r})`,
         }
     }
+
+    /** Fluent: set position (shift) and return this for chaining. */
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
+    }
 }
 
 export class Cylinder extends WithRaD(WithPos(Node)) {
@@ -1245,6 +1429,15 @@ export class Cylinder extends WithRaD(WithPos(Node)) {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fCylinderFast(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
     }
+
+    height(h: number): this {
+        this.h = h
+        return this
+    }
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
+    }
 }
 
 export class Cone extends WithRaD(WithPos(Node)) {
@@ -1272,6 +1465,15 @@ export class Cone extends WithRaD(WithPos(Node)) {
         const funcName = `Cone${this.id}`
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fConeFast(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
+    }
+
+    height(h: number): this {
+        this.h = h
+        return this
+    }
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
     }
 }
 
@@ -1302,6 +1504,19 @@ export class Torus extends WithPos(Node) {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fTorusFast(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr})` }
     }
+
+    smallRadius(sr: number): this {
+        this.sr = sr
+        return this
+    }
+    largeRadius(lr: number): this {
+        this.lr = lr
+        return this
+    }
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
+    }
 }
 
 export class Capsule extends WithRaD(WithPos(Node)) {
@@ -1329,6 +1544,19 @@ export class Capsule extends WithRaD(WithPos(Node)) {
         const funcName = `Capsule${this.id}`
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fCapsuleFast(p - ${this.pos.wgsl}, ${this.r}, ${this.c})` }
+    }
+
+    radius(r: number): this {
+        this.r = r
+        return this
+    }
+    cylinderLength(c: number): this {
+        this.c = c
+        return this
+    }
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
     }
 }
 
@@ -1359,6 +1587,19 @@ export class PlaneNode extends WithPos(Node) {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fPlaneFast(p - ${this.pos.wgsl}, ${this.normal.wgsl}, ${this.dist})` }
     }
+
+    withNormal(n: Vec3): this {
+        this.normal = vec3(n).normalize()
+        return this
+    }
+    withDist(d: number): this {
+        this.dist = d
+        return this
+    }
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
+    }
 }
 
 export class HexPrism extends WithRaD(WithPos(Node)) {
@@ -1387,6 +1628,19 @@ export class HexPrism extends WithRaD(WithPos(Node)) {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fHexagonCircumcircleFast(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}))` }
     }
+
+    radius(r: number): this {
+        this.r = r
+        return this
+    }
+    height(h: number): this {
+        this.h = h
+        return this
+    }
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
+    }
 }
 
 export class Disc extends WithRaD(WithPos(Node)) {
@@ -1412,6 +1666,11 @@ export class Disc extends WithRaD(WithPos(Node)) {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fDiscFast(p - ${this.pos.wgsl}, ${this.r})` }
     }
+
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
+    }
 }
 
 export class Blob extends WithPos(Node) {
@@ -1435,6 +1694,11 @@ export class Blob extends WithPos(Node) {
         const funcName = `Blob${this.id}`
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fBlobFast(p - ${this.pos.wgsl})` }
+    }
+
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
     }
 }
 
@@ -1586,7 +1850,7 @@ fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec4f {
 export class Extrude extends WithPos(Node) {
     h: number
     /** Twist angle in degrees over the full height. 0 = no twist. */
-    twist: number
+    twistDegrees: number
     child: Polygon2D
 
     constructor(child: Polygon2D, opts: { h: number; t?: number })
@@ -1597,12 +1861,12 @@ export class Extrude extends WithPos(Node) {
             this.pos = new Vec3f()
             this.child = args[0]
             this.h = args[1].h
-            this.twist = args[1].t ?? 0
+            this.twistDegrees = args[1].t ?? 0
         } else {
             this.pos = vec3(args[0])
             this.child = args[1]
             this.h = args[2].h
-            this.twist = args[2].t ?? 0
+            this.twistDegrees = args[2].t ?? 0
         }
     }
 
@@ -1634,7 +1898,7 @@ export class Extrude extends WithPos(Node) {
         const h = this.h.toFixed(6)
         const N = this.child.vertices.length
         const BASE = this.child.bufferOffset
-        const hasTwist = this.twist !== 0
+        const hasTwist = this.twistDegrees !== 0
 
         // Precompute polygon winding direction at JS compile time
         const windSign = (() => {
@@ -1762,7 +2026,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
 
         // With twist: analytic 2D gradient in twisted frame, rotated back to world space.
         // Field and Fast functions are emitted by compileAuxFast() only.
-        const twistRad = (this.twist * Math.PI / 180).toFixed(10)
+        const twistRad = (this.twistDegrees * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let h = nodeParams[id].x;
@@ -1799,7 +2063,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     override compileAuxFast(): string {
         const childFunc = this.child.wgslFuncName
         const h = this.h.toFixed(6)
-        const hasTwist = this.twist !== 0
+        const hasTwist = this.twistDegrees !== 0
 
         if (!hasTwist) {
             return `
@@ -1811,7 +2075,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
 `
         }
 
-        const twistRad = (this.twist * Math.PI / 180).toFixed(10)
+        const twistRad = (this.twistDegrees * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
     let h = nodeParams[${this.id}].x;
@@ -1851,6 +2115,24 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
             varName,
             text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
         }
+    }
+
+    /** Fluent: set height and return this for chaining. */
+    height(n: number): this {
+        this.h = n
+        return this
+    }
+
+    /** Fluent: set twist and return this for chaining. */
+    twist(degrees: number): this {
+        this.twistDegrees = degrees
+        return this
+    }
+
+    /** Fluent: set position (shift) and return this for chaining. */
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
     }
 }
 
@@ -1946,6 +2228,12 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
             varName,
             text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
         }
+    }
+
+    /** Fluent: set position (shift) and return this for chaining. */
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
     }
 }
 
@@ -2105,6 +2393,18 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
             text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
         }
     }
+
+    /** Fluent: set height and return this for chaining. */
+    height(n: number): this {
+        this.h = n
+        return this
+    }
+
+    /** Fluent: set position (shift) and return this for chaining. */
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
+    }
 }
 
 export class Box extends WithSize(WithPos(Node)) {
@@ -2159,211 +2459,207 @@ export class Box extends WithSize(WithPos(Node)) {
             text: `fBoxFast(p - ${this.pos.wgsl}, ${this.size.wgsl})`,
         }
     }
+
+    /** Fluent: set position (shift) and return this for chaining. */
+    shift(v: Vec3): this {
+        this.pos = vec3(v)
+        return this
+    }
 }
 
 function decapitalize(s: string) {
     return s[0].toLowerCase() + s.slice(1)
 }
 
-export type UnionOptions = { r?: number; mode?: BlendMode; n?: number }
-
-export function union(opts: UnionOptions, ...parts: Node[]): Union
-export function union(...parts: Node[]): Union
-export function union(...args: any[]): Union {
-    let radius: number | undefined = undefined
-    let mode: BlendMode | undefined = undefined
-    let n: number | undefined = undefined
-    if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
-        const opts = args[0] as UnionOptions
-        radius = opts.r
-        mode = opts.mode
-        n = opts.n
-        args.shift()
-    }
-    if (args.length < 2) {
+function unionImpl(parts: Node[], radius?: number, mode?: BlendMode, n?: number): Union {
+    if (parts.length < 2) {
         throw new Error("union requires at least two things to union together")
     }
+    const args = [...parts]
     while (args.length > 1) {
-        args.push(new Union(args.pop(), args.pop(), radius, mode, n))
+        args.push(new Union(args.pop()!, args.pop()!, radius, mode, n))
     }
     const result = args[0] as Union
     if (!(result instanceof Union)) throw new Error("unexpected type during union stacking")
     return result
 }
 
-export type SubtractOptions = { r?: number; mode?: BlendMode; n?: number }
+export function union(...parts: Node[]): Union {
+    return unionImpl(parts)
+}
 
-export function subtract(opts: SubtractOptions, ...parts: Node[]): Subtract
-export function subtract(...parts: Node[]): Subtract
-export function subtract(...args: any[]): Subtract {
-    let radius: number | undefined = undefined
-    let mode: BlendMode | undefined = undefined
-    let n: number | undefined = undefined
-    if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
-        const opts = args[0] as SubtractOptions
-        radius = opts.r
-        mode = opts.mode
-        n = opts.n
-        args.shift()
+function subtractImpl(base: Node, parts: Node[], radius?: number, mode?: BlendMode, n?: number): Subtract {
+    if (parts.length < 1) {
+        throw new Error("subtract requires at least one shape to subtract")
     }
-    if (args.length < 2) {
-        throw new Error("subtract requires at least two arguments")
+    let result: Node = base
+    for (const p of parts) {
+        result = new Subtract(result, p, radius, mode, n)
     }
-    args.reverse()
-    while (args.length > 1) {
-        args.push(new Subtract(args.pop(), args.pop(), radius, mode, n))
+    return result as Subtract
+}
+
+export function subtract(base: Node, ...parts: Node[]): Subtract {
+    return subtractImpl(base, parts)
+}
+
+function boxImpl(size: Vec3): Box {
+    return new Box(DEFAULT_POS, size)
+}
+
+export function box(size: Vec3): Box
+export function box(l: number, w: number, h: number): Box
+export function box(sizeOrL: Vec3 | number, w?: number, h?: number): Box {
+    if (typeof sizeOrL === "number" && typeof w === "number" && typeof h === "number") {
+        return boxImpl([sizeOrL, w, h])
     }
-    const result = args[0] as Subtract
-    if (!(result instanceof Subtract)) throw new Error("unexpected type during subtract stacking")
-    return result
+    return boxImpl(sizeOrL as Vec3)
 }
 
-export function box(opts: { pos?: Vec3; size: Vec3 }): Box {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new Box(pos, opts.size)
+function sphereRadius(r: number): Sphere {
+    return new Sphere(DEFAULT_POS, { r })
 }
 
-export function sphere(opts: { pos?: Vec3; r?: number; d?: number }): Sphere {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new Sphere(pos, { r: opts.r, d: opts.d })
+export const sphere = { radius: sphereRadius }
+
+function cylinderRadius(r: number): Cylinder {
+    return new Cylinder(DEFAULT_POS, { r, h: 1 })
 }
 
-export function cylinder(opts: { pos?: Vec3; r?: number; d?: number; h: number }): Cylinder {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new Cylinder(pos, { r: opts.r, d: opts.d, h: opts.h })
+export const cylinder = { radius: cylinderRadius }
+
+function coneRadius(r: number): Cone {
+    return new Cone(DEFAULT_POS, { r, h: 1 })
 }
 
-export function cone(opts: { pos?: Vec3; r?: number; d?: number; h: number }): Cone {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new Cone(pos, { r: opts.r, d: opts.d, h: opts.h })
+export const cone = { radius: coneRadius }
+
+function torusSmallRadius(sr: number): Torus {
+    return new Torus(DEFAULT_POS, { sr, lr: 1 })
 }
 
-export function torus(opts: { pos?: Vec3; sr: number; lr: number }): Torus {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new Torus(pos, { sr: opts.sr, lr: opts.lr })
+function torusLargeRadius(lr: number): Torus {
+    return new Torus(DEFAULT_POS, { sr: 0.25, lr })
 }
 
-export function capsule(opts: { pos?: Vec3; r?: number; d?: number; c: number }): Capsule {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new Capsule(pos, { r: opts.r, d: opts.d, c: opts.c })
+export const torus = { smallRadius: torusSmallRadius, largeRadius: torusLargeRadius }
+
+function capsuleRadius(r: number): Capsule {
+    return new Capsule(DEFAULT_POS, { r, c: 1 })
 }
 
-export function plane(opts: { pos?: Vec3; n: Vec3; dist?: number }): PlaneNode {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new PlaneNode(pos, { n: opts.n, dist: opts.dist })
+function capsuleCylinderLength(c: number): Capsule {
+    return new Capsule(DEFAULT_POS, { r: 0.5, c })
 }
 
-export function hexprism(opts: { pos?: Vec3; r?: number; d?: number; h: number }): HexPrism {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new HexPrism(pos, { r: opts.r, d: opts.d, h: opts.h })
+export const capsule = { radius: capsuleRadius, cylinderLength: capsuleCylinderLength }
+
+function planeNormal(n: Vec3): PlaneNode {
+    return new PlaneNode(DEFAULT_POS, { n: vec3(n) })
 }
 
-export function disc(opts: { pos?: Vec3; r?: number; d?: number }): Disc {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new Disc(pos, { r: opts.r, d: opts.d })
+function planeDist(d: number): PlaneNode {
+    return new PlaneNode(DEFAULT_POS, { n: vec3([0, 1, 0]), dist: d })
 }
 
-export function blob(opts?: { pos?: Vec3 }): Blob {
-    const pos = opts?.pos ?? DEFAULT_POS
-    return new Blob(pos)
+export const plane = { normal: planeNormal, dist: planeDist }
+
+function hexprismRadius(r: number): HexPrism {
+    return new HexPrism(DEFAULT_POS, { r, h: 1 })
 }
 
-export function rotate(opts: { rot: Vec3 }, child: Node): Rotate {
-    return new Rotate(opts.rot, child)
+function hexprismHeight(h: number): HexPrism {
+    return new HexPrism(DEFAULT_POS, { r: 1, h })
 }
 
-export type IntersectOptions = { r?: number; mode?: BlendMode; n?: number }
+export const hexprism = { radius: hexprismRadius, height: hexprismHeight }
 
-export function intersect(opts: IntersectOptions, lh: Node, rh: Node): Intersect
-export function intersect(lh: Node, rh: Node): Intersect
-export function intersect(...args: any[]): Intersect {
-    let radius = 0
-    let mode: BlendMode | undefined = undefined
-    let n: number | undefined = undefined
-    if (args[0] !== null && typeof args[0] === "object" && !(args[0] instanceof Node)) {
-        const opts = args[0] as IntersectOptions
-        radius = opts.r ?? 0
-        mode = opts.mode
-        n = opts.n
-        args.shift()
+function discRadius(r: number): Disc {
+    return new Disc(DEFAULT_POS, { r })
+}
+
+export const disc = { radius: discRadius }
+
+function blobCreate(): Blob {
+    return new Blob(DEFAULT_POS)
+}
+
+export const blob = blobCreate
+
+
+export function intersect(lh: Node, rh: Node): Intersect {
+    return new Intersect(lh, rh, 0)
+}
+
+export function pipe(lh: Node, rh: Node): Pipe {
+    return new Pipe(lh, rh, 0)
+}
+
+function engraveBase(base: Node) {
+    return {
+        pattern(pattern: Node): Engrave {
+            return new Engrave(base, pattern, 0)
+        },
     }
-    if (args.length < 2) {
-        throw new Error("intersect requires exactly two shapes")
+}
+
+export const engrave = engraveBase
+
+function grooveBase(base: Node) {
+    return {
+        pattern(pattern: Node): Groove {
+            return new Groove(base, pattern, 0, 0)
+        },
     }
-    return new Intersect(args[0], args[1], radius, mode, n)
 }
 
-export function pipe(opts: { r: number }, lh: Node, rh: Node): Pipe {
-    return new Pipe(lh, rh, opts.r)
+export const groove = grooveBase
+
+function tongueBase(base: Node) {
+    return {
+        pattern(pattern: Node): Tongue {
+            return new Tongue(base, pattern, 0, 0)
+        },
+    }
 }
 
-export function engrave(opts: { r: number }, base: Node, pattern: Node): Engrave {
-    return new Engrave(base, pattern, opts.r)
+export const tongue = tongueBase
+
+
+export function morph(lh: Node, rh: Node): Morph {
+    return new Morph(0, lh, rh)
 }
 
-export function groove(opts: { ra: number; rb: number }, base: Node, pattern: Node): Groove {
-    return new Groove(base, pattern, opts.ra, opts.rb)
-}
-
-export function tongue(opts: { ra: number; rb: number }, base: Node, pattern: Node): Tongue {
-    return new Tongue(base, pattern, opts.ra, opts.rb)
-}
-
-export function shell(opts: { t: number }, child: Node): Shell {
-    return new Shell(opts.t, child)
-}
-
-export function offset(opts: { amount: number }, child: Node): Offset {
-    return new Offset(opts.amount, child)
-}
-
-export function elongate(opts: { h: Vec3 }, child: Node): Elongate {
-    return new Elongate(opts.h, child)
-}
-
-export function twist(opts: { rate: number }, child: Node): Twist {
-    return new Twist(opts.rate, child)
-}
-
-export function bend(opts: { amount: number }, child: Node): Bend {
-    return new Bend(opts.amount, child)
-}
-
-export function taper(opts: { ratio: number; height: number }, child: Node): Taper {
-    return new Taper(opts.ratio, opts.height, child)
-}
-
-export function morph(opts: { t: number }, lh: Node, rh: Node): Morph {
-    return new Morph(opts.t, lh, rh)
-}
-
-export function seam(opts: { r: number }, lh: Node, rh: Node): Seam {
-    return new Seam(lh, rh, opts.r)
+export function seam(lh: Node, rh: Node): Seam {
+    return new Seam(lh, rh, 0)
 }
 
 export function polygon2d(vertices: [number, number][]): Polygon2D {
     return new Polygon2D(vertices)
 }
 
-export function extrude(opts: { pos?: Vec3; profile: Polygon2D; h: number; t?: number }): Extrude {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new Extrude(pos, opts.profile, { h: opts.h, t: opts.t })
+function extrudeProfile(profile: Polygon2D): Extrude {
+    return new Extrude(DEFAULT_POS, profile, { h: 1, t: 0 })
 }
 
-export function loft(opts: { pos?: Vec3; sections: Polygon2D[]; h: number }): Loft {
-    const pos = opts.pos ?? DEFAULT_POS
-    if (opts.sections.length < 2) {
+export const extrude = { profile: extrudeProfile }
+
+function loftSections(sections: Polygon2D[]): Loft {
+    if (sections.length < 2) {
         throw new Error("loft requires at least 2 profiles in sections")
     }
-    for (const p of opts.sections) {
+    for (const p of sections) {
         if (!(p instanceof Polygon2D)) {
             throw new Error("loft sections must be polygon2d() instances")
         }
     }
-    return new Loft(pos, opts.sections, { h: opts.h })
+    return new Loft(DEFAULT_POS, sections, { h: 1 })
 }
 
-export function lathe(opts: { pos?: Vec3; profile: Polygon2D }): Lathe {
-    const pos = opts.pos ?? DEFAULT_POS
-    return new Lathe(pos, opts.profile)
+export const loft = { sections: loftSections }
+
+function latheProfile(profile: Polygon2D): Lathe {
+    return new Lathe(DEFAULT_POS, profile)
 }
+
+export const lathe = { profile: latheProfile }

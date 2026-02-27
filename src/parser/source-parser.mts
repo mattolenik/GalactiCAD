@@ -205,15 +205,16 @@ export function findReturnStatementLine(src: string): number | null {
  * Shape functions we care about for source location tracking
  */
 const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
-const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "rotate", "extrude", "loft", "lathe"])
-const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS])
+const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe"])
+const MODIFIER_NAMES = new Set(["rotate", "shell", "offset", "elongate", "twist", "bend", "taper"])
+const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
 
 /**
  * CSG operators that act as pure pass-throughs: they have no independent visual representation
  * and should be "looked through" when resolving logical leaf calls.
- * Rendering composites (extrude, loft, lathe, rotate) are NOT in this set.
+ * Modifiers (rotate, shell, etc.) and rendering composites (extrude, loft, lathe) are NOT in this set.
  */
-const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam"])
+const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam"])
 
 /**
  * Parser for extracting source locations from CAD code
@@ -225,6 +226,8 @@ export class SourceParser {
     #callMap: Map<number, ParsedShapeCall> = new Map()
     /** Maps variable name → ParsedShapeCall for its initializer, populated by parseShapeCalls */
     #varMap: Map<string, ParsedShapeCall> = new Map()
+    /** Root positions already added for fluent chains (avoid duplicate ParsedShapeCalls) */
+    #fluentChainRoots: Set<number> = new Set()
 
     /**
      * Parse JavaScript/TypeScript code and extract all shape function calls with their arguments
@@ -236,6 +239,7 @@ export class SourceParser {
         const sourceFile = parseSource(src)
         this.#callNodeMap.clear()
         this.#callMap.clear()
+        this.#fluentChainRoots.clear()
 
         const visit = (node: ts.Node) => {
             if (ts.isCallExpression(node)) {
@@ -306,10 +310,20 @@ export class SourceParser {
 
     /** Resolve a single call argument to a shape call and invoke resolve() on it */
     #resolveCallArg(arg: ts.Expression, resolve: (call: ParsedShapeCall) => void): void {
-        if (ts.isCallExpression(arg) && ts.isIdentifier(arg.expression)) {
-            const funcName = arg.expression.text
-            if (ALL_SHAPE_FUNCTIONS.has(funcName)) {
-                const callStart = arg.getStart() - WRAP_PREFIX_CHARS
+        if (ts.isCallExpression(arg)) {
+            let callStart: number | undefined
+            if (ts.isIdentifier(arg.expression)) {
+                const funcName = arg.expression.text
+                if (ALL_SHAPE_FUNCTIONS.has(funcName)) {
+                    callStart = arg.getStart() - WRAP_PREFIX_CHARS
+                }
+            } else if (ts.isPropertyAccessExpression(arg.expression)) {
+                const fluent = this.#getFluentChainInfo(arg)
+                if (fluent && ALL_SHAPE_FUNCTIONS.has(fluent.operator)) {
+                    callStart = fluent.callStart
+                }
+            }
+            if (callStart !== undefined) {
                 const call = this.#callMap.get(callStart)
                 if (call) resolve(call)
             }
@@ -325,23 +339,53 @@ export class SourceParser {
      * Process a CallExpression to extract shape function info
      */
     private processCallExpression(callNode: ts.CallExpression, sourceFile: ts.SourceFile, calls: ParsedShapeCall[]): void {
-        if (!ts.isIdentifier(callNode.expression)) return
+        let funcName: string
+        let rootExpr: ts.Node
+        let callStart: number
+        let callEnd: number
+        let isFluent = false
 
-        const funcName = callNode.expression.text
+        if (ts.isIdentifier(callNode.expression)) {
+            funcName = callNode.expression.text
+            rootExpr = callNode.expression
+            callStart = callNode.getStart() - WRAP_PREFIX_CHARS
+            callEnd = callNode.getEnd() - WRAP_PREFIX_CHARS
+        } else if (ts.isPropertyAccessExpression(callNode.expression)) {
+            const propName = callNode.expression.name.getText()
+            if (MODIFIER_NAMES.has(propName)) {
+                funcName = propName
+                rootExpr = callNode.expression
+                callStart = callNode.getStart() - WRAP_PREFIX_CHARS
+                callEnd = callNode.getEnd() - WRAP_PREFIX_CHARS
+            } else {
+                const fluent = this.#getFluentChainInfo(callNode)
+                if (!fluent) return
+                const rootPos = fluent.rootIdentifier.getStart()
+                if (this.#fluentChainRoots.has(rootPos)) return
+                this.#fluentChainRoots.add(rootPos)
+                funcName = fluent.operator
+                rootExpr = fluent.rootIdentifier
+                callStart = fluent.callStart
+                callEnd = fluent.callEnd
+                isFluent = true
+            }
+        } else {
+            return
+        }
+
         if (!ALL_SHAPE_FUNCTIONS.has(funcName)) return
 
-        const startPos = callNode.expression.getStart()
-        const endPos = callNode.expression.getEnd()
+        const startPos = rootExpr.getStart()
+        const endPos = rootExpr.getEnd()
         const startLoc = tsPosToUser(sourceFile, startPos)
         const endLoc = tsPosToUser(sourceFile, endPos)
 
-        const callStart = callNode.getStart() - WRAP_PREFIX_CHARS
         this.#callNodeMap.set(callStart, callNode)
 
         const parsedCall: ParsedShapeCall = {
             functionName: funcName,
             callStart,
-            callEnd: callNode.getEnd() - WRAP_PREFIX_CHARS,
+            callEnd,
             location: {
                 startLine: startLoc.line,
                 startColumn: startLoc.column,
@@ -352,29 +396,105 @@ export class SourceParser {
         }
 
         if (funcName === "sphere" || funcName === "disc") {
-            this.parseSphereArgs(callNode, parsedCall)
+            this.parseSphereFluentArgs(callNode, parsedCall)
         } else if (funcName === "box") {
-            this.parseBoxArgs(callNode, parsedCall)
+            this.parseBoxFluentArgs(callNode, parsedCall)
         } else if (funcName === "cylinder" || funcName === "cone" || funcName === "hexprism") {
-            this.parsePosRadiusHeightArgs(callNode, parsedCall)
+            this.parsePosRadiusHeightFluentArgs(callNode, parsedCall)
         } else if (funcName === "torus") {
-            this.parseTorusArgs(callNode, parsedCall)
+            this.parseTorusFluentArgs(callNode, parsedCall)
         } else if (funcName === "capsule") {
-            this.parseCapsuleArgs(callNode, parsedCall)
+            this.parseCapsuleFluentArgs(callNode, parsedCall)
         } else if (funcName === "plane") {
-            this.parsePlaneArgs(callNode, parsedCall)
+            this.parsePlaneFluentArgs(callNode, parsedCall)
         } else if (funcName === "blob") {
-            this.parseBlobArgs(callNode, parsedCall)
+            this.parseBlobFluentArgs(callNode, parsedCall)
         } else if (funcName === "polygon2d") {
             this.parsePolygon2DArgs(callNode, parsedCall)
-        } else if (funcName === "extrude" || funcName === "loft") {
-            this.parseExtrudeLoftArgs(callNode, parsedCall)
-        } else if (funcName === "lathe") {
-            this.parseLatheArgs(callNode, parsedCall)
+        } else if ((funcName === "extrude" || funcName === "loft") && isFluent) {
+            this.parseExtrudeLoftFluentArgs(callNode, parsedCall)
+        } else if (funcName === "lathe" && isFluent) {
+            this.parseLatheFluentArgs(callNode, parsedCall)
+        } else if (funcName === "rotate") {
+            this.parseRotateArgs(callNode, parsedCall)
+        } else if (funcName === "shell" || funcName === "offset") {
+            this.parseShellOffsetArgs(callNode, parsedCall)
+        } else if (funcName === "elongate") {
+            this.parseElongateArgs(callNode, parsedCall)
+        } else if (funcName === "twist" || funcName === "bend") {
+            this.parseTwistBendArgs(callNode, parsedCall)
+        } else if (funcName === "taper") {
+            this.parseTaperArgs(callNode, parsedCall)
         }
+        // union, subtract, intersect, pipe, engrave, groove, tongue, morph, seam: match by type only
 
         calls.push(parsedCall)
         this.#callMap.set(callStart, parsedCall)
+    }
+
+    /**
+     * If callNode is part of a fluent chain (e.g. extrude.profile(x).height(n).shift(v)),
+     * return { operator, rootIdentifier, callStart, callEnd }. Otherwise null.
+     */
+    #getFluentChainInfo(callNode: ts.CallExpression): { operator: string; rootIdentifier: ts.Identifier; callStart: number; callEnd: number } | null {
+        let expr: ts.Node = callNode.expression
+        while (true) {
+            if (ts.isPropertyAccessExpression(expr)) {
+                expr = expr.expression
+            } else if (ts.isCallExpression(expr)) {
+                expr = expr.expression
+            } else {
+                break
+            }
+        }
+        if (!ts.isIdentifier(expr)) return null
+        const operator = expr.text
+        if (!ALL_SHAPE_FUNCTIONS.has(operator)) return null
+        return {
+            operator,
+            rootIdentifier: expr,
+            callStart: callNode.getStart() - WRAP_PREFIX_CHARS,
+            callEnd: callNode.getEnd() - WRAP_PREFIX_CHARS,
+        }
+    }
+
+    /** Parse fluent chain args for extrude/loft: .profile(x).height(n).twist(t).shift(v) */
+    private parseExtrudeLoftFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        const chain = this.#collectFluentChain(callNode)
+        for (const { method, args } of chain) {
+            if (method === "height" && args.length >= 1) {
+                const v = this.evaluateExpression(args[0])
+                if (typeof v === "number") parsedCall.h = v
+            } else if (method === "twist" && args.length >= 1) {
+                const v = this.evaluateExpression(args[0])
+                if (typeof v === "number") parsedCall.t = v
+            } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                const v = this.evaluateExpression(args[0])
+                if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+            }
+        }
+    }
+
+    /** Walk the fluent chain and return [{ method, args }, ...] from left to right */
+    #collectFluentChain(callNode: ts.CallExpression): Array<{ method: string; args: ts.Node[] }> {
+        const chain: Array<{ method: string; args: ts.Node[] }> = []
+        let expr: ts.Node = callNode
+        while (true) {
+            if (ts.isCallExpression(expr)) {
+                const method = ts.isPropertyAccessExpression(expr.expression)
+                    ? expr.expression.name.getText()
+                    : null
+                if (method) {
+                    chain.unshift({ method, args: [...expr.arguments] })
+                }
+                expr = expr.expression
+            } else if (ts.isPropertyAccessExpression(expr)) {
+                expr = expr.expression
+            } else {
+                break
+            }
+        }
+        return chain
     }
 
     /** Parse properties from a single object literal (first arg). */
@@ -389,136 +509,217 @@ export class SourceParser {
         }
     }
 
-    private parseSphereArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseSphereFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            const args = callNode.arguments
-            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
-                this.parseObjectProps(args[0], parsedCall, {
-                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
-                    r: (v) => { if (typeof v === "number") parsedCall.r = v },
-                    d: (v) => { if (typeof v === "number") parsedCall.d = v },
-                })
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "radius" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.r = v
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse sphere args:`, err)
+            console.debug(`[SourceParser] Could not parse sphere fluent args:`, err)
         }
     }
 
-    private parseBoxArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseBoxFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            const args = callNode.arguments
-            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
-                this.parseObjectProps(args[0], parsedCall, {
-                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
-                    size: (v) => { if (v !== undefined) parsedCall.size = vec3(v as Vec3) },
-                })
+            const rootCall = this.#getRootCall(callNode, "box")
+            if (rootCall) {
+                const args = rootCall.arguments
+                if (args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.size = vec3(v as Vec3)
+                } else if (args.length >= 3) {
+                    const l = this.evaluateExpression(args[0])
+                    const w = this.evaluateExpression(args[1])
+                    const h = this.evaluateExpression(args[2])
+                    if (typeof l === "number" && typeof w === "number" && typeof h === "number") {
+                        parsedCall.size = vec3([l, w, h])
+                    }
+                }
+            }
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse box args:`, err)
+            console.debug(`[SourceParser] Could not parse box fluent args:`, err)
         }
     }
 
-    private parsePosRadiusHeightArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+    /** Get the root call node for a fluent chain (e.g. box([1,2,3]) from box([1,2,3]).shift(v)) */
+    #getRootCall(callNode: ts.CallExpression, rootName: string): ts.CallExpression | null {
+        let expr: ts.Node = callNode
+        while (true) {
+            if (ts.isCallExpression(expr)) {
+                if (ts.isIdentifier(expr.expression) && expr.expression.text === rootName) {
+                    return expr
+                }
+                expr = expr.expression
+            } else if (ts.isPropertyAccessExpression(expr)) {
+                expr = expr.expression
+            } else {
+                return null
+            }
+        }
+    }
+
+    private parsePosRadiusHeightFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            const args = callNode.arguments
-            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
-                this.parseObjectProps(args[0], parsedCall, {
-                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
-                    r: (v) => { if (typeof v === "number") parsedCall.r = v },
-                    d: (v) => { if (typeof v === "number") parsedCall.d = v },
-                    h: (v) => { if (typeof v === "number") parsedCall.h = v },
-                })
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "radius" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.r = v
+                } else if (method === "height" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.h = v
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse ${parsedCall.functionName} fluent args:`, err)
+        }
+    }
+
+    private parseTorusFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "smallRadius" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.sr = v
+                } else if (method === "largeRadius" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.lr = v
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse torus fluent args:`, err)
+        }
+    }
+
+    private parseCapsuleFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "radius" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.r = v
+                } else if (method === "cylinderLength" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.c = v
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse capsule fluent args:`, err)
+        }
+    }
+
+    private parsePlaneFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "normal" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.normal = vec3(v as Vec3)
+                } else if (method === "dist" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.planeOffset = v
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse plane fluent args:`, err)
+        }
+    }
+
+    private parseBlobFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse blob fluent args:`, err)
+        }
+    }
+
+    private parseRotateArgs(callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {
+        // Rotate matches by type only; no args needed for node matching
+    }
+
+    private parseShellOffsetArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            if (callNode.arguments.length >= 1) {
+                const v = this.evaluateExpression(callNode.arguments[0])
+                if (typeof v === "number") parsedCall.r = v
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse ${parsedCall.functionName} args:`, err)
         }
     }
 
-    private parseTorusArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseElongateArgs(_callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {
+        // Elongate matches by type only
+    }
+
+    private parseTwistBendArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            const args = callNode.arguments
-            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
-                this.parseObjectProps(args[0], parsedCall, {
-                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
-                    sr: (v) => { if (typeof v === "number") parsedCall.sr = v },
-                    lr: (v) => { if (typeof v === "number") parsedCall.lr = v },
-                })
+            if (callNode.arguments.length >= 1) {
+                const v = this.evaluateExpression(callNode.arguments[0])
+                if (typeof v === "number") parsedCall.r = v
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse torus args:`, err)
+            console.debug(`[SourceParser] Could not parse ${parsedCall.functionName} args:`, err)
         }
     }
 
-    private parseCapsuleArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseTaperArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            const args = callNode.arguments
-            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
-                this.parseObjectProps(args[0], parsedCall, {
-                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
-                    r: (v) => { if (typeof v === "number") parsedCall.r = v },
-                    d: (v) => { if (typeof v === "number") parsedCall.d = v },
-                    c: (v) => { if (typeof v === "number") parsedCall.c = v },
-                })
+            if (callNode.arguments.length >= 2) {
+                const v0 = this.evaluateExpression(callNode.arguments[0])
+                const v1 = this.evaluateExpression(callNode.arguments[1])
+                if (typeof v0 === "number") parsedCall.r = v0
+                if (typeof v1 === "number") parsedCall.h = v1
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse capsule args:`, err)
+            console.debug(`[SourceParser] Could not parse taper args:`, err)
         }
     }
 
-    private parsePlaneArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+    private parseLatheFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            const args = callNode.arguments
-            if (args.length >= 1 && ts.isObjectLiteralExpression(args[0])) {
-                this.parseObjectProps(args[0], parsedCall, {
-                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
-                    n: (v) => { if (v !== undefined) parsedCall.normal = vec3(v as Vec3) },
-                    dist: (v) => { if (typeof v === "number") parsedCall.planeOffset = v },
-                })
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse plane args:`, err)
-        }
-    }
-
-    private parseBlobArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
-        try {
-            if (callNode.arguments.length >= 1 && ts.isObjectLiteralExpression(callNode.arguments[0])) {
-                this.parseObjectProps(callNode.arguments[0], parsedCall, {
-                    pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
-                })
-            }
-        } catch (err) {
-            console.debug(`[SourceParser] Could not parse blob args:`, err)
-        }
-    }
-
-    private parseExtrudeLoftArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
-        try {
-            const args = callNode.arguments
-            if (args.length < 1 || !ts.isObjectLiteralExpression(args[0])) return
-
-            const opts = args[0]
-            this.parseObjectProps(opts, parsedCall, {
-                pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
-                h: (v) => { if (typeof v === "number") parsedCall.h = v },
-                t: (v) => { if (typeof v === "number") parsedCall.t = v },
-            })
-        } catch (err) {
-            console.debug(`[SourceParser] Could not parse extrude/loft args:`, err)
-        }
-    }
-
-    private parseLatheArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
-        try {
-            const args = callNode.arguments
-            if (args.length < 1 || !ts.isObjectLiteralExpression(args[0])) return
-
-            const opts = args[0]
-            this.parseObjectProps(opts, parsedCall, {
-                pos: (v) => { if (v !== undefined) parsedCall.pos = vec3(v as Vec3) },
-            })
-        } catch (err) {
-            console.debug(`[SourceParser] Could not parse lathe args:`, err)
+            console.debug(`[SourceParser] Could not parse lathe fluent args:`, err)
         }
     }
 
@@ -671,8 +872,16 @@ export class SourceParser {
         const sourceFile = parseSource(src)
 
         const visit = (node: ts.Node) => {
-            if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-                const name = node.expression.text
+            if (ts.isCallExpression(node)) {
+                let name: string | null = null
+                if (ts.isIdentifier(node.expression)) {
+                    name = node.expression.text
+                } else if (ts.isPropertyAccessExpression(node.expression)) {
+                    const fluent = this.#getFluentChainInfo(node)
+                    if (fluent && (fluent.operator === "extrude" || fluent.operator === "loft")) {
+                        name = fluent.operator
+                    }
+                }
                 if (name === "extrude" || name === "loft") {
                     const info = this.extractExtrudeLoftInfo(node, name as "extrude" | "loft", sourceFile)
                     if (info) calls.push(info)
@@ -695,37 +904,56 @@ export class SourceParser {
         name: "extrude" | "loft",
         sourceFile: ts.SourceFile
     ): ExtrudeLoftCallInfo | null {
-        const args = callNode.arguments
-        if (args.length < 1 || !ts.isObjectLiteralExpression(args[0])) return null
-
-        const optsArg = args[0]
-
         let hValueStart: number | null = null
         let hValueEnd: number | null = null
-
         let posArgStart: number | null = null
         let posArgEnd: number | null = null
+        let insertPosOffset: number
+        let startPos: number
+        let endPos: number
 
-        for (const prop of optsArg.properties) {
-            if (!ts.isPropertyAssignment(prop)) continue
-            const key = this.getPropertyKey(prop)
-            if (key === "h") {
-                hValueStart = prop.initializer.getStart() - WRAP_PREFIX_CHARS
-                hValueEnd = prop.initializer.getEnd() - WRAP_PREFIX_CHARS
-            } else if (key === "pos" && this.isPositionArg(prop.initializer)) {
-                posArgStart = prop.initializer.getStart() - WRAP_PREFIX_CHARS
-                posArgEnd = prop.initializer.getEnd() - WRAP_PREFIX_CHARS
+        if (ts.isPropertyAccessExpression(callNode.expression)) {
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "height" && args.length >= 1) {
+                    hValueStart = args[0].getStart() - WRAP_PREFIX_CHARS
+                    hValueEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    posArgStart = args[0].getStart() - WRAP_PREFIX_CHARS
+                    posArgEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
+                }
             }
+            if (hValueStart === null || hValueEnd === null) return null
+            const fluent = this.#getFluentChainInfo(callNode)
+            if (!fluent) return null
+            insertPosOffset = fluent.rootIdentifier.getEnd() - WRAP_PREFIX_CHARS + 1
+            startPos = fluent.rootIdentifier.getStart()
+            endPos = callNode.getEnd()
+        } else {
+            const args = callNode.arguments
+            if (args.length < 1 || !ts.isObjectLiteralExpression(args[0])) return null
+            const optsArg = args[0]
+
+            for (const prop of optsArg.properties) {
+                if (!ts.isPropertyAssignment(prop)) continue
+                const key = this.getPropertyKey(prop)
+                if (key === "h" || key === "height") {
+                    hValueStart = prop.initializer.getStart() - WRAP_PREFIX_CHARS
+                    hValueEnd = prop.initializer.getEnd() - WRAP_PREFIX_CHARS
+                } else if ((key === "pos" || key === "shift") && this.isPositionArg(prop.initializer)) {
+                    posArgStart = prop.initializer.getStart() - WRAP_PREFIX_CHARS
+                    posArgEnd = prop.initializer.getEnd() - WRAP_PREFIX_CHARS
+                }
+            }
+
+            if (hValueStart === null || hValueEnd === null) return null
+            insertPosOffset = optsArg.getStart() - WRAP_PREFIX_CHARS + 1
+            startPos = callNode.expression.getStart()
+            endPos = callNode.expression.getEnd()
         }
 
-        if (hValueStart === null || hValueEnd === null) return null
-
-        // Where to insert "pos: [0,0,0], " if pos is missing (after opening brace)
-        const insertPosOffset = optsArg.getStart() - WRAP_PREFIX_CHARS + 1
-
-        const startPos = callNode.expression.getStart()
         const loc = tsPosToUser(sourceFile, startPos)
-        const endLoc = tsPosToUser(sourceFile, callNode.expression.getEnd())
+        const endLoc = tsPosToUser(sourceFile, endPos)
 
         return {
             functionName: name,

@@ -529,7 +529,7 @@ export class Vec4f extends Vecf<Vec4n> {
         return vec4(this.data[2], this.data[2], this.data[2], this.data[3])
     }
     override get wgsl(): string {
-        return `vec4f(${this.data[0]}, ${this.data[1]}, ${this.data[2]})`
+        return `vec4f(${this.data[0]}, ${this.data[1]}, ${this.data[2]}, ${this.data[3]})`
     }
 }
 
@@ -551,6 +551,12 @@ export function vec2(vec: Vec2 | number, y?: number): Vec2f {
     if (Array.isArray(vec)) {
         if (vec.length !== 2) {
             throw new Error(`invalid vector length, expected 2, got: ${(vec as any).length}`)
+        }
+        return new Vec2f(vec)
+    }
+    if (vec instanceof Float32Array) {
+        if (vec.length !== 2) {
+            throw new Error(`invalid vector length, expected 2, got: ${vec.length}`)
         }
         return new Vec2f(vec)
     }
@@ -581,6 +587,12 @@ export function vec3(vec: Vec3 | number, y?: number, z?: number): Vec3f {
         }
         return new Vec3f(vec)
     }
+    if (vec instanceof Float32Array) {
+        if (vec.length !== 3) {
+            throw new Error(`invalid vector length, expected 3, got: ${vec.length}`)
+        }
+        return new Vec3f(vec)
+    }
     if (vec instanceof Vec3f) {
         return vec
     }
@@ -605,6 +617,12 @@ export function vec4(vec: Vec4 | number, y?: number, z?: number, w?: number): Ve
     if (Array.isArray(vec)) {
         if (vec.length !== 4) {
             throw new Error(`invalid vector length, expected 4, got: ${(vec as any).length}`)
+        }
+        return new Vec4f(vec)
+    }
+    if (vec instanceof Float32Array) {
+        if (vec.length !== 4) {
+            throw new Error(`invalid vector length, expected 4, got: ${vec.length}`)
         }
         return new Vec4f(vec)
     }

@@ -116,3 +116,13 @@ test("Vec4 arithmetic", () => {
     const zero = vec4(0, 0, 0, 0)
     assert.deepStrictEqual(zero.normalize().data, zero.data, "Vec4 normalization of zero failed")
 })
+
+test("Vec4 wgsl getter includes all four components", () => {
+    assert.strictEqual(vec4(1, 2, 3, 4).wgsl, "vec4f(1, 2, 3, 4)", "Vec4 wgsl getter failed")
+})
+
+test("vec2/vec3/vec4 construct from Float32Array", () => {
+    assert.deepStrictEqual(vec2(new Float32Array([1, 2])).data, vec2(1, 2).data, "vec2 from Float32Array failed")
+    assert.deepStrictEqual(vec3(new Float32Array([1, 2, 3])).data, vec3(1, 2, 3).data, "vec3 from Float32Array failed")
+    assert.deepStrictEqual(vec4(new Float32Array([1, 2, 3, 4])).data, vec4(1, 2, 3, 4).data, "vec4 from Float32Array failed")
+})

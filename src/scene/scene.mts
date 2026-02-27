@@ -16,6 +16,14 @@ const AABB_GUARD_THRESHOLD = 4
 /** Default position when pos is omitted from primitive/operator options. */
 const DEFAULT_POS: Vec3 = [0, 0, 0]
 
+/** Fluent CAD API method names, auto-populated by the @fluent decorator. */
+export const FLUENT_METHODS = new Set<string>()
+
+/** Marks a class method as a fluent API method for editor highlighting. */
+export function fluent(_target: Function, _context: ClassMethodDecoratorContext) {
+    FLUENT_METHODS.add(String(_context.name))
+}
+
 export class SceneInfo {
     readonly root: Node
     numArgs = 0
@@ -302,28 +310,22 @@ export class Node {
     rotate(rot: Vec3): Rotate {
         return new Rotate(rot, this)
     }
-    /** Fluent: hollow shell. */
-    shell(t: number): Shell {
+    @fluent shell(t: number): Shell {
         return new Shell(t, this)
     }
-    /** Fluent: offset outward/inward. */
-    offset(amount: number): Offset {
+    @fluent offset(amount: number): Offset {
         return new Offset(amount, this)
     }
-    /** Fluent: elongate along axis. */
-    elongate(h: Vec3): Elongate {
+    @fluent elongate(h: Vec3): Elongate {
         return new Elongate(h, this)
     }
-    /** Fluent: twist around Y. */
-    twist(rate: number): Twist {
+    @fluent twist(rate: number): Twist {
         return new Twist(rate, this)
     }
-    /** Fluent: bend. */
-    bend(amount: number): Bend {
+    @fluent bend(amount: number): Bend {
         return new Bend(amount, this)
     }
-    /** Fluent: taper. */
-    taper(ratio: number, height: number): Taper {
+    @fluent taper(ratio: number, height: number): Taper {
         return new Taper(ratio, height, this)
     }
 }
@@ -561,28 +563,28 @@ export class Union extends BinaryOperator {
         super(lh, rh)
     }
 
-    round(r: number): this {
+    @fluent round(r: number): this {
         this.radius = r
         this.mode = 'round'
         if (this.lh instanceof Union) this.lh.round(r)
         if (this.rh instanceof Union) this.rh.round(r)
         return this
     }
-    chamfer(r: number): this {
+    @fluent chamfer(r: number): this {
         this.radius = r
         this.mode = 'chamfer'
         if (this.lh instanceof Union) this.lh.chamfer(r)
         if (this.rh instanceof Union) this.rh.chamfer(r)
         return this
     }
-    soft(r: number): this {
+    @fluent soft(r: number): this {
         this.radius = r
         this.mode = 'soft'
         if (this.lh instanceof Union) this.lh.soft(r)
         if (this.rh instanceof Union) this.rh.soft(r)
         return this
     }
-    stairs(r: number, n?: number): this {
+    @fluent stairs(r: number, n?: number): this {
         this.radius = r
         this.mode = 'stairs'
         this.n = n ?? 4
@@ -590,7 +592,7 @@ export class Union extends BinaryOperator {
         if (this.rh instanceof Union) this.rh.stairs(r, this.n)
         return this
     }
-    columns(r: number, n?: number): this {
+    @fluent columns(r: number, n?: number): this {
         this.radius = r
         this.mode = 'columns'
         this.n = n ?? 4
@@ -598,7 +600,7 @@ export class Union extends BinaryOperator {
         if (this.rh instanceof Union) this.rh.columns(r, this.n)
         return this
     }
-    withMode(t: UnionType): this {
+    @fluent withMode(t: UnionType): this {
         this.mode = t
         if (this.lh instanceof Union) this.lh.withMode(t)
         if (this.rh instanceof Union) this.rh.withMode(t)
@@ -708,33 +710,33 @@ export class Subtract extends BinaryOperator {
         super(lh, rh)
     }
 
-    round(r: number): this {
+    @fluent round(r: number): this {
         this.radius = r
         this.mode = 'round'
         if (this.lh instanceof Subtract) this.lh.round(r)
         return this
     }
-    chamfer(r: number): this {
+    @fluent chamfer(r: number): this {
         this.radius = r
         this.mode = 'chamfer'
         if (this.lh instanceof Subtract) this.lh.chamfer(r)
         return this
     }
-    stairs(r: number, n?: number): this {
+    @fluent stairs(r: number, n?: number): this {
         this.radius = r
         this.mode = 'stairs'
         this.n = n ?? 4
         if (this.lh instanceof Subtract) this.lh.stairs(r, this.n)
         return this
     }
-    columns(r: number, n?: number): this {
+    @fluent columns(r: number, n?: number): this {
         this.radius = r
         this.mode = 'columns'
         this.n = n ?? 4
         if (this.lh instanceof Subtract) this.lh.columns(r, this.n)
         return this
     }
-    withMode(t: IntersectionType): this {
+    @fluent withMode(t: IntersectionType): this {
         this.mode = t
         if (this.lh instanceof Subtract) this.lh.withMode(t)
         return this
@@ -836,29 +838,29 @@ export class Intersect extends BinaryOperator {
         super(lh, rh)
     }
 
-    round(r: number): this {
+    @fluent round(r: number): this {
         this.radius = r
         this.mode = 'round'
         return this
     }
-    chamfer(r: number): this {
+    @fluent chamfer(r: number): this {
         this.radius = r
         this.mode = 'chamfer'
         return this
     }
-    stairs(r: number, n?: number): this {
+    @fluent stairs(r: number, n?: number): this {
         this.radius = r
         this.mode = 'stairs'
         this.n = n ?? 4
         return this
     }
-    columns(r: number, n?: number): this {
+    @fluent columns(r: number, n?: number): this {
         this.radius = r
         this.mode = 'columns'
         this.n = n ?? 4
         return this
     }
-    withMode(t: IntersectionType): this {
+    @fluent withMode(t: IntersectionType): this {
         this.mode = t
         return this
     }
@@ -875,7 +877,7 @@ export class Pipe extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="10" x2="10" y2="2" stroke="currentColor" stroke-width="1.5"/>`
     }
-    radius(r: number): this {
+    @fluent radius(r: number): this {
         this.#pipeRadius = r
         return this
     }
@@ -904,7 +906,7 @@ export class Engrave extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1"/>`
     }
-    radius(r: number): this {
+    @fluent radius(r: number): this {
         this.#engraveRadius = r
         return this
     }
@@ -935,7 +937,7 @@ export class Groove extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="6" x2="8" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }
-    radii(ra: number, rb: number): this {
+    @fluent radii(ra: number, rb: number): this {
         this.ra = ra
         this.rb = rb
         return this
@@ -967,7 +969,7 @@ export class Tongue extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<rect x="1" y="1" width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" stroke-width="1"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1"/>`
     }
-    radii(ra: number, rb: number): this {
+    @fluent radii(ra: number, rb: number): this {
         this.ra = ra
         this.rb = rb
         return this
@@ -1179,7 +1181,7 @@ export class Morph extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<circle cx="3" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1"/><rect x="7" y="4" width="4" height="4" rx="0.5" fill="none" stroke="currentColor" stroke-width="1"/><line x1="5" y1="6" x2="7" y2="6" stroke="currentColor" stroke-width="1" stroke-dasharray="1,0.5"/>`
     }
-    t(t: number): this {
+    @fluent t(t: number): this {
         this.#morphT = t
         return this
     }
@@ -1208,7 +1210,7 @@ export class Seam extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<circle cx="4" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1" fill="currentColor"/>`
     }
-    radius(r: number): this {
+    @fluent radius(r: number): this {
         this.#seamRadius = r
         return this
     }
@@ -1396,8 +1398,7 @@ export class Sphere extends WithOpRadii(WithRaD(WithPos(Node))) {
         }
     }
 
-    /** Fluent: set position (shift) and return this for chaining. */
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -1430,11 +1431,11 @@ export class Cylinder extends WithRaD(WithPos(Node)) {
         return { funcName, varName, text: `fCylinderFast(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
     }
 
-    height(h: number): this {
+    @fluent height(h: number): this {
         this.h = h
         return this
     }
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -1467,11 +1468,11 @@ export class Cone extends WithRaD(WithPos(Node)) {
         return { funcName, varName, text: `fConeFast(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
     }
 
-    height(h: number): this {
+    @fluent height(h: number): this {
         this.h = h
         return this
     }
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -1505,15 +1506,15 @@ export class Torus extends WithPos(Node) {
         return { funcName, varName, text: `fTorusFast(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr})` }
     }
 
-    smallRadius(sr: number): this {
+    @fluent smallRadius(sr: number): this {
         this.sr = sr
         return this
     }
-    largeRadius(lr: number): this {
+    @fluent largeRadius(lr: number): this {
         this.lr = lr
         return this
     }
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -1546,15 +1547,15 @@ export class Capsule extends WithRaD(WithPos(Node)) {
         return { funcName, varName, text: `fCapsuleFast(p - ${this.pos.wgsl}, ${this.r}, ${this.c})` }
     }
 
-    radius(r: number): this {
+    @fluent radius(r: number): this {
         this.r = r
         return this
     }
-    cylinderLength(c: number): this {
+    @fluent cylinderLength(c: number): this {
         this.c = c
         return this
     }
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -1588,15 +1589,15 @@ export class PlaneNode extends WithPos(Node) {
         return { funcName, varName, text: `fPlaneFast(p - ${this.pos.wgsl}, ${this.normal.wgsl}, ${this.dist})` }
     }
 
-    withNormal(n: Vec3): this {
+    @fluent withNormal(n: Vec3): this {
         this.normal = vec3(n).normalize()
         return this
     }
-    withDist(d: number): this {
+    @fluent withDist(d: number): this {
         this.dist = d
         return this
     }
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -1629,15 +1630,15 @@ export class HexPrism extends WithRaD(WithPos(Node)) {
         return { funcName, varName, text: `fHexagonCircumcircleFast(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}))` }
     }
 
-    radius(r: number): this {
+    @fluent radius(r: number): this {
         this.r = r
         return this
     }
-    height(h: number): this {
+    @fluent height(h: number): this {
         this.h = h
         return this
     }
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -1667,7 +1668,7 @@ export class Disc extends WithRaD(WithPos(Node)) {
         return { funcName, varName, text: `fDiscFast(p - ${this.pos.wgsl}, ${this.r})` }
     }
 
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -1696,7 +1697,7 @@ export class Blob extends WithPos(Node) {
         return { funcName, varName, text: `fBlobFast(p - ${this.pos.wgsl})` }
     }
 
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -2117,20 +2118,17 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
         }
     }
 
-    /** Fluent: set height and return this for chaining. */
-    height(n: number): this {
+    @fluent height(n: number): this {
         this.h = n
         return this
     }
 
-    /** Fluent: set twist and return this for chaining. */
-    twist(degrees: number): this {
+    @fluent twist(degrees: number): this {
         this.twistDegrees = degrees
         return this
     }
 
-    /** Fluent: set position (shift) and return this for chaining. */
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -2230,8 +2228,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
         }
     }
 
-    /** Fluent: set position (shift) and return this for chaining. */
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -2394,14 +2391,12 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
         }
     }
 
-    /** Fluent: set height and return this for chaining. */
-    height(n: number): this {
+    @fluent height(n: number): this {
         this.h = n
         return this
     }
 
-    /** Fluent: set position (shift) and return this for chaining. */
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -2460,8 +2455,7 @@ export class Box extends WithSize(WithPos(Node)) {
         }
     }
 
-    /** Fluent: set position (shift) and return this for chaining. */
-    shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }
@@ -2663,3 +2657,6 @@ function latheProfile(profile: Polygon2D): Lathe {
 }
 
 export const lathe = { profile: latheProfile }
+
+// Factory entry points: not class methods, so register explicitly
+for (const name of ["pattern", "profile", "sections"]) FLUENT_METHODS.add(name)

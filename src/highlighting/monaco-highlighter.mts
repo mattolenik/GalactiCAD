@@ -1,10 +1,16 @@
 /**
- * Monaco Highlighter - Manages Monaco editor decorations for highlighting selected shapes
- * and showing color indicators for shape functions
+ * Monaco Highlighter - Manages Monaco editor decorations for highlighting selected shapes,
+ * showing color indicators for shape functions, and highlighting fluent CAD method names
  */
 
 import * as monaco from "monaco-editor"
 import { DEFAULT_PALETTE, PALETTE_SIZE } from "../colorPalette.mjs"
+import { FLUENT_METHODS } from "../scene/scene.mjs"
+
+const FLUENT_METHOD_PATTERN = new RegExp(
+    `\\.(${[...FLUENT_METHODS].join("|")})\\b`,
+    "g"
+)
 
 /**
  * Range to highlight in the editor (function name position)
@@ -37,15 +43,23 @@ export class MonacoHighlighter {
     private editor: monaco.editor.IStandaloneCodeEditor | null = null
     private selectionDecorationIds: string[] = []
     private colorIndicatorDecorationIds: string[] = []
+    private fluentMethodDecorationIds: string[] = []
     private styleElement: HTMLStyleElement | null = null
     private indicatorCounter = 0  // Unique ID counter for indicator CSS classes
+
+    private modelChangeDisposable: monaco.IDisposable | null = null
 
     /**
      * Set the editor instance to work with
      */
     setEditor(editor: monaco.editor.IStandaloneCodeEditor) {
+        this.modelChangeDisposable?.dispose()
         this.editor = editor
         this.ensureStyleElement()
+        this.updateFluentMethodDecorations()
+        this.modelChangeDisposable = editor.onDidChangeModel(() => {
+            this.updateFluentMethodDecorations()
+        })
     }
 
     /**
@@ -60,18 +74,17 @@ export class MonacoHighlighter {
     }
 
     /**
-     * Generate a CSS class for a specific indicator with its color and SVG
+     * Generate CSS for a shape indicator.
+     * Two separate classes are used to avoid the ::before pseudo-element firing twice:
+     *   - `className`       → SVG icon only (used with beforeContentClassName)
+     *   - `className-text`  → text color only (used with inlineClassName)
      */
     private generateIndicatorCss(className: string, svg: string, r: number, g: number, b: number): string {
-        // Replace currentColor with the actual color
-        const svgWithColor = svg.replace(/currentColor/g, `rgb(${r},${g},${b})`)
-        
-        // Create the full SVG with viewBox
+        const rgb = `rgb(${r},${g},${b})`
+        const svgWithColor = svg.replace(/currentColor/g, rgb)
         const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">${svgWithColor}</svg>`
-        
-        // Encode as data URI
         const dataUri = `data:image/svg+xml,${encodeURIComponent(fullSvg)}`
-        
+
         return `.${className}::before {
             content: "";
             display: inline-block;
@@ -83,6 +96,9 @@ export class MonacoHighlighter {
             background-size: contain;
             background-repeat: no-repeat;
             cursor: default;
+        }
+        .${className}-text {
+            color: ${rgb} !important;
         }\n`
     }
 
@@ -127,7 +143,8 @@ export class MonacoHighlighter {
                     indicator.endColumn
                 ),
                 options: {
-                    beforeContentClassName: className
+                    beforeContentClassName: className,
+                    inlineClassName: `${className}-text`
                 }
             }
         })
@@ -214,6 +231,37 @@ export class MonacoHighlighter {
                 []
             )
         }
+    }
+
+    /**
+     * Update decorations for fluent CAD method names (.radius, .shift, .round, etc.)
+     * Makes them stand out with a distinct color.
+     */
+    updateFluentMethodDecorations() {
+        if (!this.editor) return
+        const model = this.editor.getModel()
+        if (!model) return
+
+        const text = model.getValue()
+        const decorations: monaco.editor.IModelDeltaDecoration[] = []
+
+        for (const match of text.matchAll(FLUENT_METHOD_PATTERN)) {
+            const startOffset = match.index! + 1  // Skip the leading dot
+            const endOffset = startOffset + match[1].length
+            const start = model.getPositionAt(startOffset)
+            const end = model.getPositionAt(endOffset)
+            if (start && end) {
+                decorations.push({
+                    range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
+                    options: { inlineClassName: "cad-fluent-method" }
+                })
+            }
+        }
+
+        this.fluentMethodDecorationIds = this.editor.deltaDecorations(
+            this.fluentMethodDecorationIds,
+            decorations
+        )
     }
 
     /**

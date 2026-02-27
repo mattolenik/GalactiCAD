@@ -111,6 +111,8 @@ class App {
 
             // Update highlighting for current selection after build
             this.#updateEditorHighlighting()
+            // Update fluent method name decorations (.radius, .shift, etc.)
+            this.#monacoHighlighter.updateFluentMethodDecorations()
         } catch (err) {
             const message = formatSceneError(err, src)
             this.log.innerText = `💢 ${message}`
@@ -698,6 +700,12 @@ class App {
                 border-radius: 2px !important;
                 padding: 0 2px !important;
                 box-shadow: 0 0 4px rgba(255, 255, 0, 0.3) !important;
+            }
+
+            /* Fluent CAD method names (.radius, .shift, .round, etc.) */
+            .cad-fluent-method {
+                color: #4ec9b0 !important;
+                font-weight: 600;
             }
         `
         document.body.appendChild(style)

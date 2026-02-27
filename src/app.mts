@@ -979,13 +979,19 @@ class App {
 
     #wireGlobalUndoRedo() {
         document.addEventListener("keydown", (e: KeyboardEvent) => {
-            if (!(e.metaKey || e.ctrlKey) || e.altKey) return
-            if (e.key.toLowerCase() !== "z") return
-
             const active = document.activeElement
-            if (this.#editorContainer.contains(active)) return
             if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return
             if (this.#polygonEditor) return
+
+            if (e.key === "Escape") {
+                this.renderer.setSelection([], true)
+                return
+            }
+
+            if (this.#editorContainer.contains(active)) return
+
+            if (!(e.metaKey || e.ctrlKey) || e.altKey) return
+            if (e.key.toLowerCase() !== "z") return
 
             e.preventDefault()
             this.editor.trigger("keyboard", e.shiftKey ? "redo" : "undo", null)

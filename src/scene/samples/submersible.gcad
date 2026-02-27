@@ -3,138 +3,138 @@
 
 // ═══ PRESSURE HULL ═══
 // Main titanium crew sphere — this is the sub
-let pressureHull = sphere({ pos: [0, 0, 0], r: 16 })
+let pressureHull = sphere.radius(16).shift([0, 0, 0])
 
 // ═══ OUTER FAIRING ═══
 // Lightweight fiberglass shell streamlining the sphere
-let fairingCore = box({ pos: [0, 0, -2], size: [22, 14, 10] })
-let fairingNose = sphere({ pos: [16, 0, -2], r: 12 })
-let fairingTail = sphere({ pos: [-14, 0, -2], r: 11 })
-let fairingBelly = sphere({ pos: [0, 0, -8], r: 11 })
-let fairing = union({ r: 6 }, fairingCore, fairingNose, fairingTail, fairingBelly)
+let fairingCore = box([22, 14, 10]).shift([0, 0, -2])
+let fairingNose = sphere.radius(12).shift([16, 0, -2])
+let fairingTail = sphere.radius(11).shift([-14, 0, -2])
+let fairingBelly = sphere.radius(11).shift([0, 0, -8])
+let fairing = union(fairingCore, fairingNose, fairingTail, fairingBelly).round(6)
 
 // Hull dome protrudes above the fairing
-let body = union({ r: 4 }, fairing, pressureHull)
+let body = union(fairing, pressureHull).round(4)
 
 // ═══ SAIL (CONNING TOWER) ═══
-let sailBox = box({ pos: [2, 0, 14], size: [5, 4, 6] })
-let sailCap = sphere({ pos: [2, 0, 18], r: 4 })
-let sail = union({ r: 3 }, sailBox, sailCap)
-let bodySail = union({ r: 3 }, body, sail)
+let sailBox = box([5, 4, 6]).shift([2, 0, 14])
+let sailCap = sphere.radius(4).shift([2, 0, 18])
+let sail = union(sailBox, sailCap).round(3)
+let bodySail = union(body, sail).round(3)
 
 // === VIEWPORTS ===
 // Three forward observation windows
-let vpCenter = sphere({ pos: [18, 0, 2], r: 4 })
-let vpStbd = sphere({ pos: [16, 8, -1], r: 3 })
-let vpPort = sphere({ pos: [16, -8, -1], r: 3 })
+let vpCenter = sphere.radius(4).shift([18, 0, 2])
+let vpStbd = sphere.radius(3).shift([16, 8, -1])
+let vpPort = sphere.radius(3).shift([16, -8, -1])
 // Downward viewport for seafloor observation
-let vpBelly = sphere({ pos: [6, 0, -12], r: 3 })
+let vpBelly = sphere.radius(3).shift([6, 0, -12])
 
 // ═══ PROPULSION ═══
 // Main aft thruster with cowl
-let thrusterBody = box({ pos: [-22, 0, -2], size: [6, 7, 7] })
-let thrusterCowl = sphere({ pos: [-26, 0, -2], r: 6 })
-let thrusterTip = sphere({ pos: [-30, 0, -2], r: 4.5 })
-let thrusterAsm = union({ r: 3 }, thrusterBody, thrusterCowl, thrusterTip)
+let thrusterBody = box([6, 7, 7]).shift([-22, 0, -2])
+let thrusterCowl = sphere.radius(6).shift([-26, 0, -2])
+let thrusterTip = sphere.radius(4.5).shift([-30, 0, -2])
+let thrusterAsm = union(thrusterBody, thrusterCowl, thrusterTip).round(3)
 
 // Hollow duct
-let thrusterBore = sphere({ pos: [-28, 0, -2], r: 3 })
-let thruster = subtract({ r: 0.5 }, thrusterAsm, thrusterBore)
+let thrusterBore = sphere.radius(3).shift([-28, 0, -2])
+let thruster = subtract(thrusterAsm, thrusterBore).round(0.5)
 
 // Lateral manoeuvring thrusters (tunnel pods)
-let latPodR = box({ pos: [4, 14, 2], size: [3, 3, 3] })
-let latBulgeR = sphere({ pos: [4, 16, 2], r: 3 })
-let latR = union({ r: 1.5 }, latPodR, latBulgeR)
+let latPodR = box([3, 3, 3]).shift([4, 14, 2])
+let latBulgeR = sphere.radius(3).shift([4, 16, 2])
+let latR = union(latPodR, latBulgeR).round(1.5)
 
-let latPodL = box({ pos: [4, -14, 2], size: [3, 3, 3] })
-let latBulgeL = sphere({ pos: [4, -16, 2], r: 3 })
-let latL = union({ r: 1.5 }, latPodL, latBulgeL)
+let latPodL = box([3, 3, 3]).shift([4, -14, 2])
+let latBulgeL = sphere.radius(3).shift([4, -16, 2])
+let latL = union(latPodL, latBulgeL).round(1.5)
 
 // Vertical thruster atop the sail
-let vertPod = box({ pos: [2, 0, 20], size: [3, 2, 2] })
-let vertBulge = sphere({ pos: [2, 0, 22], r: 2 })
-let vertT = union({ r: 1 }, vertPod, vertBulge)
+let vertPod = box([3, 2, 2]).shift([2, 0, 20])
+let vertBulge = sphere.radius(2).shift([2, 0, 22])
+let vertT = union(vertPod, vertBulge).round(1)
 
 // ═══ MANIPULATOR ARMS ═══
 // Starboard arm — seven linked spheres
-let sR0 = sphere({ pos: [10, 10, -8], r: 3 })
-let sR1 = sphere({ pos: [14, 13, -10], r: 2.5 })
-let sR2 = sphere({ pos: [18, 15, -11], r: 2.2 })
-let sR3 = sphere({ pos: [22, 17, -11], r: 2 })
-let sR4 = sphere({ pos: [25, 18, -11], r: 1.8 })
-let sR5 = sphere({ pos: [28, 19, -11], r: 1.5 })
+let sR0 = sphere.radius(3).shift([10, 10, -8])
+let sR1 = sphere.radius(2.5).shift([14, 13, -10])
+let sR2 = sphere.radius(2.2).shift([18, 15, -11])
+let sR3 = sphere.radius(2).shift([22, 17, -11])
+let sR4 = sphere.radius(1.8).shift([25, 18, -11])
+let sR5 = sphere.radius(1.5).shift([28, 19, -11])
 // Claw jaws
-let sR6 = sphere({ pos: [30, 20, -10], r: 1.2 })
-let sR7 = sphere({ pos: [30, 20, -12], r: 1.2 })
-let armR = union({ r: 1.5 }, sR0, sR1, sR2, sR3, sR4, sR5, sR6, sR7)
+let sR6 = sphere.radius(1.2).shift([30, 20, -10])
+let sR7 = sphere.radius(1.2).shift([30, 20, -12])
+let armR = union(sR0, sR1, sR2, sR3, sR4, sR5, sR6, sR7).round(1.5)
 
 // Port arm — mirror
-let sL0 = sphere({ pos: [10, -10, -8], r: 3 })
-let sL1 = sphere({ pos: [14, -13, -10], r: 2.5 })
-let sL2 = sphere({ pos: [18, -15, -11], r: 2.2 })
-let sL3 = sphere({ pos: [22, -17, -11], r: 2 })
-let sL4 = sphere({ pos: [25, -18, -11], r: 1.8 })
-let sL5 = sphere({ pos: [28, -19, -11], r: 1.5 })
-let sL6 = sphere({ pos: [30, -20, -10], r: 1.2 })
-let sL7 = sphere({ pos: [30, -20, -12], r: 1.2 })
-let armL = union({ r: 1.5 }, sL0, sL1, sL2, sL3, sL4, sL5, sL6, sL7)
+let sL0 = sphere.radius(3).shift([10, -10, -8])
+let sL1 = sphere.radius(2.5).shift([14, -13, -10])
+let sL2 = sphere.radius(2.2).shift([18, -15, -11])
+let sL3 = sphere.radius(2).shift([22, -17, -11])
+let sL4 = sphere.radius(1.8).shift([25, -18, -11])
+let sL5 = sphere.radius(1.5).shift([28, -19, -11])
+let sL6 = sphere.radius(1.2).shift([30, -20, -10])
+let sL7 = sphere.radius(1.2).shift([30, -20, -12])
+let armL = union(sL0, sL1, sL2, sL3, sL4, sL5, sL6, sL7).round(1.5)
 
 // ═══ SAMPLE BASKET ═══
 // Open-top wire basket for collecting specimens
-let basketOuter = box({ pos: [16, 0, -13], size: [7, 8, 4] })
-let basketInner = box({ pos: [16, 0, -12], size: [6, 7, 3.5] })
+let basketOuter = box([7, 8, 4]).shift([16, 0, -13])
+let basketInner = box([6, 7, 3.5]).shift([16, 0, -12])
 let basket = subtract(basketOuter, basketInner)
 
 // ═══ BALLAST ═══
 // Syntactic foam buoyancy blocks along the spine
-let foamR = box({ pos: [-4, 8, 10], size: [10, 3, 3] })
-let foamL = box({ pos: [-4, -8, 10], size: [10, 3, 3] })
-let foamCap1 = sphere({ pos: [4, 8, 10], r: 3 })
-let foamCap2 = sphere({ pos: [4, -8, 10], r: 3 })
-let foam = union({ r: 1 }, foamR, foamL, foamCap1, foamCap2)
+let foamR = box([10, 3, 3]).shift([-4, 8, 10])
+let foamL = box([10, 3, 3]).shift([-4, -8, 10])
+let foamCap1 = sphere.radius(3).shift([4, 8, 10])
+let foamCap2 = sphere.radius(3).shift([4, -8, 10])
+let foam = union(foamR, foamL, foamCap1, foamCap2).round(1)
 
 // Releasable steel drop-weights
-let weightR = sphere({ pos: [0, 8, -15], r: 3.5 })
-let weightL = sphere({ pos: [0, -8, -15], r: 3.5 })
+let weightR = sphere.radius(3.5).shift([0, 8, -15])
+let weightL = sphere.radius(3.5).shift([0, -8, -15])
 
 // ═══ LANDING SKIDS ═══
-let skidR = box({ pos: [0, 10, -18], size: [14, 1, 1] })
-let skidL = box({ pos: [0, -10, -18], size: [14, 1, 1] })
-let xbarF = box({ pos: [12, 0, -18], size: [1, 11, 1] })
-let xbarM = box({ pos: [0, 0, -18], size: [1, 11, 1] })
-let xbarA = box({ pos: [-12, 0, -18], size: [1, 11, 1] })
+let skidR = box([14, 1, 1]).shift([0, 10, -18])
+let skidL = box([14, 1, 1]).shift([0, -10, -18])
+let xbarF = box([1, 11, 1]).shift([12, 0, -18])
+let xbarM = box([1, 11, 1]).shift([0, 0, -18])
+let xbarA = box([1, 11, 1]).shift([-12, 0, -18])
 let skids = union(skidR, skidL, xbarF, xbarM, xbarA)
 
 // ═══ LIGHTS ═══
 // Forward high-intensity spots
-let spotR = sphere({ pos: [18, 7, 6], r: 2 })
-let spotL = sphere({ pos: [18, -7, 6], r: 2 })
+let spotR = sphere.radius(2).shift([18, 7, 6])
+let spotL = sphere.radius(2).shift([18, -7, 6])
 // Work lights above the arms
-let wkR = sphere({ pos: [14, 12, -6], r: 1.5 })
-let wkL = sphere({ pos: [14, -12, -6], r: 1.5 })
+let wkR = sphere.radius(1.5).shift([14, 12, -6])
+let wkL = sphere.radius(1.5).shift([14, -12, -6])
 
 // ═══ EXTERNAL INSTRUMENTS ═══
 // Sonar transponder on the sail
-let sonar = sphere({ pos: [-6, 0, 18], r: 3 })
-let sonarStalk = box({ pos: [-6, 0, 16], size: [2, 2, 4] })
-let sonarUnit = union({ r: 1 }, sonar, sonarStalk)
+let sonar = sphere.radius(3).shift([-6, 0, 18])
+let sonarStalk = box([2, 2, 4]).shift([-6, 0, 16])
+let sonarUnit = union(sonar, sonarStalk).round(1)
 
 // CTD (conductivity-temperature-depth) sensor pod
-let ctdBody = box({ pos: [-10, 12, -4], size: [3, 2, 4] })
-let ctdProbe = sphere({ pos: [-10, 12, -8], r: 2 })
-let ctd = union({ r: 1 }, ctdBody, ctdProbe)
+let ctdBody = box([3, 2, 4]).shift([-10, 12, -4])
+let ctdProbe = sphere.radius(2).shift([-10, 12, -8])
+let ctd = union(ctdBody, ctdProbe).round(1)
 
 // Emergency locator beacon on the stern
-let beacon = sphere({ pos: [-16, 0, 10], r: 2 })
-let beaconMast = box({ pos: [-16, 0, 8], size: [1, 1, 4] })
-let beaconUnit = union({ r: 0.5 }, beacon, beaconMast)
+let beacon = sphere.radius(2).shift([-16, 0, 10])
+let beaconMast = box([1, 1, 4]).shift([-16, 0, 8])
+let beaconUnit = union(beacon, beaconMast).round(0.5)
 
 // ═══ ASSEMBLY ═══
-let hull = union({ r: 2 }, bodySail, vpCenter, vpStbd, vpPort, vpBelly)
-let propulsion = union({ r: 1 }, thruster, latR, latL, vertT)
+let hull = union(bodySail, vpCenter, vpStbd, vpPort, vpBelly).round(2)
+let propulsion = union(thruster, latR, latL, vertT).round(1)
 let arms = union(armR, armL)
-let payload = union({ r: 1 }, basket, foam, weightR, weightL)
+let payload = union(basket, foam, weightR, weightL).round(1)
 let lights = union(spotR, spotL, wkR, wkL)
-let instruments = union({ r: 1 }, sonarUnit, ctd, beaconUnit)
+let instruments = union(sonarUnit, ctd, beaconUnit).round(1)
 
-return union({ r: 1.5 }, hull, propulsion, arms, payload, skids, lights, instruments)
+return union(hull, propulsion, arms, payload, skids, lights, instruments).round(1.5)

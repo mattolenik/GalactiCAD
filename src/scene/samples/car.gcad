@@ -4,105 +4,105 @@
 
 // === MAIN BODY ===
 // Central body tub - narrow and elegant
-let bodyTub = box({ pos: [0, 0, 8], size: [44, 14, 6] })
+let bodyTub = box([44, 14, 6]).shift([0, 0, 8])
 
 // Rounded front cowl
-let cowl = sphere({ pos: [10, 0, 9], r: 10 })
+let cowl = sphere.radius(10).shift([10, 0, 9])
 
 // Rounded rear deck
-let rearDeck = sphere({ pos: [-16, 0, 8], r: 9 })
+let rearDeck = sphere.radius(9).shift([-16, 0, 8])
 
 // Smooth the main body
-let mainBody = union({ r: 4 }, bodyTub, cowl, rearDeck)
+let mainBody = union(bodyTub, cowl, rearDeck).round(4)
 
 // === LONG HOOD ===
 // Classic long hood with power bulge
-let hoodBase = box({ pos: [20, 0, 7], size: [24, 10, 5] })
-let hoodTop = sphere({ pos: [22, 0, 9], r: 7 })
-let hood = union({ r: 3 }, hoodBase, hoodTop)
+let hoodBase = box([24, 10, 5]).shift([20, 0, 7])
+let hoodTop = sphere.radius(7).shift([22, 0, 9])
+let hood = union(hoodBase, hoodTop).round(3)
 
 // Radiator grille at front
-let grille = box({ pos: [34, 0, 7], size: [4, 8, 7] })
-let grilleTop = sphere({ pos: [35, 0, 10], r: 5 })
-let frontEnd = union({ r: 2 }, grille, grilleTop)
+let grille = box([4, 8, 7]).shift([34, 0, 7])
+let grilleTop = sphere.radius(5).shift([35, 0, 10])
+let frontEnd = union(grille, grilleTop).round(2)
 
 // === SEPARATE FENDERS ===
 // Front fenders - swooping pontoon style
-let fenderFR = sphere({ pos: [22, 10, 5], r: 7 })
-let fenderFRext = sphere({ pos: [30, 10, 6], r: 5 })
-let frontFenderR = union({ r: 3 }, fenderFR, fenderFRext)
+let fenderFR = sphere.radius(7).shift([22, 10, 5])
+let fenderFRext = sphere.radius(5).shift([30, 10, 6])
+let frontFenderR = union(fenderFR, fenderFRext).round(3)
 
-let fenderFL = sphere({ pos: [22, -10, 5], r: 7 })
-let fenderFLext = sphere({ pos: [30, -10, 6], r: 5 })
-let frontFenderL = union({ r: 3 }, fenderFL, fenderFLext)
+let fenderFL = sphere.radius(7).shift([22, -10, 5])
+let fenderFLext = sphere.radius(5).shift([30, -10, 6])
+let frontFenderL = union(fenderFL, fenderFLext).round(3)
 
 // Rear fenders - rounded pontoons
-let fenderRR = sphere({ pos: [-18, 10, 5], r: 7 })
-let fenderRRext = sphere({ pos: [-24, 10, 6], r: 5 })
-let rearFenderR = union({ r: 3 }, fenderRR, fenderRRext)
+let fenderRR = sphere.radius(7).shift([-18, 10, 5])
+let fenderRRext = sphere.radius(5).shift([-24, 10, 6])
+let rearFenderR = union(fenderRR, fenderRRext).round(3)
 
-let fenderRL = sphere({ pos: [-18, -10, 5], r: 7 })
-let fenderRLext = sphere({ pos: [-24, -10, 6], r: 5 })
-let rearFenderL = union({ r: 3 }, fenderRL, fenderRLext)
+let fenderRL = sphere.radius(7).shift([-18, -10, 5])
+let fenderRLext = sphere.radius(5).shift([-24, -10, 6])
+let rearFenderL = union(fenderRL, fenderRLext).round(3)
 
 // === RUNNING BOARDS ===
 // Connect front and rear fenders
-let runningBoardR = box({ pos: [2, 10, 3], size: [30, 3, 2] })
-let runningBoardL = box({ pos: [2, -10, 3], size: [30, 3, 2] })
+let runningBoardR = box([30, 3, 2]).shift([2, 10, 3])
+let runningBoardL = box([30, 3, 2]).shift([2, -10, 3])
 
 // === CABIN ===
 // Open cockpit with windshield frame
-let cockpit = box({ pos: [-2, 0, 12], size: [16, 12, 5] })
-let windshieldFrame = box({ pos: [8, 0, 15], size: [2, 11, 4] })
-let cabinArea = union({ r: 2 }, cockpit, windshieldFrame)
+let cockpit = box([16, 12, 5]).shift([-2, 0, 12])
+let windshieldFrame = box([2, 11, 4]).shift([8, 0, 15])
+let cabinArea = union(cockpit, windshieldFrame).round(2)
 
 // Carve out interior
-let interior = box({ pos: [-2, 0, 13], size: [14, 10, 6] })
-let openCockpit = subtract({ r: 1 }, cabinArea, interior)
+let interior = box([14, 10, 6]).shift([-2, 0, 13])
+let openCockpit = subtract(cabinArea, interior).round(1).round(1)
 
 // === SPARE TIRE ===
 // Mounted on rear
-let spareTire = sphere({ pos: [-28, 0, 8], r: 5 })
+let spareTire = sphere.radius(5).shift([-28, 0, 8])
 
 // === HEADLIGHTS ===
 // Classic round headlights on stalks
-let headlightR = sphere({ pos: [32, 9, 9], r: 3 })
-let headlightL = sphere({ pos: [32, -9, 9], r: 3 })
+let headlightR = sphere.radius(3).shift([32, 9, 9])
+let headlightL = sphere.radius(3).shift([32, -9, 9])
 let headlights = union(headlightR, headlightL)
 
 // === WHEELS ===
 // Wire wheels with whitewall look
-let wheelFR = sphere({ pos: [22, 12, 3], r: 5 })
-let wheelFL = sphere({ pos: [22, -12, 3], r: 5 })
-let wheelRR = sphere({ pos: [-18, 12, 3], r: 5 })
-let wheelRL = sphere({ pos: [-18, -12, 3], r: 5 })
+let wheelFR = sphere.radius(5).shift([22, 12, 3])
+let wheelFL = sphere.radius(5).shift([22, -12, 3])
+let wheelRR = sphere.radius(5).shift([-18, 12, 3])
+let wheelRL = sphere.radius(5).shift([-18, -12, 3])
 let wheels = union(wheelFR, wheelFL, wheelRR, wheelRL)
 
 // === TAILLIGHTS ===
-let taillightR = sphere({ pos: [-28, 6, 10], r: 1.5 })
-let taillightL = sphere({ pos: [-28, -6, 10], r: 1.5 })
+let taillightR = sphere.radius(1.5).shift([-28, 6, 10])
+let taillightL = sphere.radius(1.5).shift([-28, -6, 10])
 let taillights = union(taillightR, taillightL)
 
 // === DOOR HANDLES ===
-let handleR = sphere({ pos: [0, 8, 10], r: 1 })
-let handleL = sphere({ pos: [0, -8, 10], r: 1 })
+let handleR = sphere.radius(1).shift([0, 8, 10])
+let handleL = sphere.radius(1).shift([0, -8, 10])
 let handles = union(handleR, handleL)
 
 // === ASSEMBLY ===
 // Build up the body
-let upperBody = union({ r: 3 }, mainBody, hood, frontEnd, openCockpit)
+let upperBody = union(mainBody, hood, frontEnd, openCockpit).round(3)
 
 // Add fenders
-let withFenders = union({ r: 2 }, upperBody,
+let withFenders = union(upperBody,
 frontFenderR, frontFenderL,
-rearFenderR, rearFenderL)
+rearFenderR, rearFenderL).round(2)
 
 // Add running boards
-let withRunning = union({ r: 1 }, withFenders,
-runningBoardR, runningBoardL)
+let withRunning = union(withFenders,
+runningBoardR, runningBoardL).round(1)
 
 // Final details
 let details = union(spareTire, headlights, taillights, handles)
 
 // Complete car
-return union({ r: 1 }, withRunning, wheels, details)
+return union(withRunning, wheels, details).round(1)

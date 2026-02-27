@@ -546,17 +546,6 @@ export class SourceParser {
         return chain
     }
 
-    /** Parse properties from a single object literal (first arg). */
-    private parseObjectProps(obj: ts.ObjectLiteralExpression, parsedCall: ParsedShapeCall, handlers: Record<string, (v: unknown) => void>): void {
-        for (const prop of obj.properties) {
-            if (ts.isPropertyAssignment(prop)) {
-                const key = this.getPropertyKey(prop)
-                const value = this.evaluateExpression(prop.initializer)
-                const handler = key ? handlers[key] : undefined
-                if (handler) handler(value)
-            }
-        }
-    }
 
     private parseSphereFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
@@ -823,6 +812,23 @@ export class SourceParser {
                 if (typeof arg === "number") return -arg
             } else if (node.operator === ts.SyntaxKind.PlusToken) {
                 return this.evaluateExpression(node.operand)
+            }
+        }
+        if (ts.isParenthesizedExpression(node)) {
+            return this.evaluateExpression(node.expression)
+        }
+        if (ts.isBinaryExpression(node)) {
+            const lhs = this.evaluateExpression(node.left)
+            const rhs = this.evaluateExpression(node.right)
+            if (typeof lhs === "number" && typeof rhs === "number") {
+                switch (node.operatorToken.kind) {
+                    case ts.SyntaxKind.PlusToken: return lhs + rhs
+                    case ts.SyntaxKind.MinusToken: return lhs - rhs
+                    case ts.SyntaxKind.AsteriskToken: return lhs * rhs
+                    case ts.SyntaxKind.SlashToken: return rhs !== 0 ? lhs / rhs : undefined
+                    case ts.SyntaxKind.PercentToken: return rhs !== 0 ? lhs % rhs : undefined
+                    case ts.SyntaxKind.AsteriskAsteriskToken: return lhs ** rhs
+                }
             }
         }
         return undefined

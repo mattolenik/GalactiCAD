@@ -1,6 +1,6 @@
+import "monaco-editor-env" // must run before monaco-editor so globalAPI is set for console access
 import * as monaco from "monaco-editor"
 import { CAD_TYPES_DECL } from "./scene/cad-types-decl.mjs"
-import "monaco-editor-env" // used at runtime, do not remove
 import { bufferTime, filter, fromEventPattern } from "rxjs"
 import type { Subscription } from "rxjs"
 import { DocumentTabs } from "./components/document-tabs.mjs"
@@ -560,7 +560,9 @@ class App {
         monaco.editor.defineTheme("galacticad-dark", {
             base: "vs-dark",
             inherit: true,
-            rules: [],
+            rules: [
+                { token: "delimiter.parenthesis.ts", foreground: "#555555" },
+            ],
             colors: {
                 "editor.lineHighlightBackground": "#3a3a3eCC",
             },
@@ -591,7 +593,7 @@ class App {
             showFoldingControls: "always",
             showUnused: true,
             stickyTabStops: true,
-            tabSize: 3,
+            tabSize: 2,
             theme: "galacticad-dark",
             useTabStops: true,
             wordWrap: "on",

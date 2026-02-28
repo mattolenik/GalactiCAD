@@ -63,6 +63,7 @@ export function monacoEditorPlugin(options: MonacoEditorPluginOptions = {}): Plu
                     throw new Error('Monaco Editor requires a browser environment.');
                 }
                 self.MonacoEnvironment = self.MonacoEnvironment ?? {};
+                self.MonacoEnvironment.globalAPI = true;
                 self.MonacoEnvironment.getWorkerUrl = function(moduleId, label) {
                     if (label === 'json') {
                         return '${workerFiles["json"]}';

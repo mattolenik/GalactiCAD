@@ -306,6 +306,20 @@ export class Node {
         this.scene.add(this)
     }
 
+    /** Leaf primitive at the end of a modifier chain. Overridden by UnaryOperator. */
+    getBase(): Node {
+        return this
+    }
+
+    /** Fluent: shift the base primitive's position. Works through modifier chains. */
+    @fluent shift(v: Vec3): this {
+        const base = this.getBase()
+        if (typeof (base as { shift?: (v: Vec3) => unknown }).shift === "function") {
+            ; (base as { shift: (v: Vec3) => unknown }).shift(v)
+        }
+        return this
+    }
+
     /** Fluent: rotate this node. */
     rotate(rot: Vec3): Rotate {
         return new Rotate(rot, this)
@@ -412,6 +426,9 @@ function WithSize<TBase extends Constructor>(base: TBase) {
 }
 
 export abstract class UnaryOperator extends Node {
+    override getBase(): Node {
+        return this.arg.getBase()
+    }
     protected override _computePrimitiveCount(): number {
         return this.arg.primitiveCount()
     }

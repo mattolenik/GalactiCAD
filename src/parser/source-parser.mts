@@ -280,9 +280,73 @@ export class SourceParser {
         }
         visitVars(sourceFile)
 
+        // Propagate locations for modifier chains through variables so all decorators
+        // (primitive + modifiers) appear at the variable, not split between var and init.
+        this.#propagateVariableChainLocations(sourceFile, calls)
+
         console.debug(`[SourceParser] Found ${calls.length} shape call(s)`)
 
         return calls
+    }
+
+    /**
+     * When a modifier chain goes through a variable (e.g. s.shell(3) where s = sphere.radius(5).taper(1, 2)),
+     * update the locations of all calls in the initializer chain to the variable's position,
+     * so all decorators stack at the variable.
+     */
+    #propagateVariableChainLocations(sourceFile: ts.SourceFile, calls: ParsedShapeCall[]): void {
+        for (const call of calls) {
+            if (!MODIFIER_NAMES.has(call.functionName)) continue
+
+            const callNode = this.#callNodeMap.get(call.callStart)
+            if (!callNode || !ts.isPropertyAccessExpression(callNode.expression)) continue
+
+            const rootExpr = callNode.expression.expression
+            if (!ts.isIdentifier(rootExpr)) continue
+
+            const varName = rootExpr.text
+            const initCall = this.#varMap.get(varName)
+            if (!initCall) continue
+
+            const varLoc = {
+                startLine: tsPosToUser(sourceFile, rootExpr.getStart()).line,
+                startColumn: tsPosToUser(sourceFile, rootExpr.getStart()).column,
+                endLine: tsPosToUser(sourceFile, rootExpr.getEnd()).line,
+                endColumn: tsPosToUser(sourceFile, rootExpr.getEnd()).column,
+                functionName: call.functionName,
+            }
+
+            const chainCalls = this.#collectChainCalls(initCall)
+            for (const c of chainCalls) {
+                c.location = { ...varLoc, functionName: c.functionName }
+            }
+        }
+    }
+
+    /** Collect all ParsedShapeCalls in a modifier/fluent chain (primitive + modifiers). */
+    #collectChainCalls(outerCall: ParsedShapeCall): ParsedShapeCall[] {
+        const result: ParsedShapeCall[] = [outerCall]
+        const callNode = this.#callNodeMap.get(outerCall.callStart)
+        if (!callNode || !ts.isPropertyAccessExpression(callNode.expression)) return result
+
+        let expr: ts.Node = callNode.expression.expression
+        while (true) {
+            if (ts.isCallExpression(expr)) {
+                const innerStart = expr.getStart() - WRAP_PREFIX_CHARS
+                const innerCall = this.#callMap.get(innerStart)
+                if (innerCall && innerCall !== outerCall) {
+                    result.push(innerCall)
+                    expr = expr.expression
+                } else {
+                    break
+                }
+            } else if (ts.isPropertyAccessExpression(expr)) {
+                expr = expr.expression
+            } else {
+                break
+            }
+        }
+        return result
     }
 
     /**
@@ -406,6 +470,8 @@ export class SourceParser {
                 rootExpr = callNode.expression
                 callStart = callNode.getStart() - WRAP_PREFIX_CHARS
                 callEnd = callNode.getEnd() - WRAP_PREFIX_CHARS
+                // Ensure we create calls for all modifiers in the chain (visit order may miss some)
+                this.#ensureChainCallsCreated(callNode, sourceFile, calls)
             } else {
                 const fluent = this.#getFluentChainInfo(callNode)
                 if (!fluent) return
@@ -479,6 +545,28 @@ export class SourceParser {
 
         calls.push(parsedCall)
         this.#callMap.set(callStart, parsedCall)
+    }
+
+    /**
+     * When processing a modifier call, traverse the chain and ensure we create ParsedShapeCalls
+     * for all modifiers and the root. ts.forEachChild visit order can miss inner calls in some
+     * AST structures, so this guarantees multiple decorators for chains like a.taper(1,2).shell(3).
+     */
+    #ensureChainCallsCreated(outerCallNode: ts.CallExpression, sourceFile: ts.SourceFile, calls: ParsedShapeCall[]): void {
+        let expr: ts.Node = outerCallNode.expression
+        while (true) {
+            if (ts.isPropertyAccessExpression(expr)) {
+                expr = expr.expression
+            } else if (ts.isCallExpression(expr)) {
+                const innerStart = expr.getStart() - WRAP_PREFIX_CHARS
+                if (!this.#callMap.has(innerStart)) {
+                    this.processCallExpression(expr, sourceFile, calls)
+                }
+                expr = expr.expression
+            } else {
+                break
+            }
+        }
     }
 
     /**

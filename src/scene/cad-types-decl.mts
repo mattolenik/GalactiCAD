@@ -30,6 +30,8 @@ declare class Vec3f {
 
 /** Base class for all scene nodes. */
 declare class Node {
+    /** Shift the base primitive's position. Works through modifier chains (twist, taper, etc.). */
+    shift(v: Vec3): Node;
     rotate(rot: Vec3): Rotate;
     shell(t: number): Shell;
     offset(amount: number): Offset;
@@ -43,12 +45,19 @@ declare class Node {
 // Primitive shapes
 // ---------------------------------------------------------------------------
 
-/** A sphere. sphere.radius(r).shift(v) */
+/** A sphere. sphere.radius(r).shift(v).taper(ratio, height) etc. */
 declare class Sphere extends Node {
     pos: Vec3f;
     r: number;
     d: number;
     shift(v: Vec3): Sphere;
+    rotate(rot: Vec3): Sphere;
+    shell(t: number): Sphere;
+    offset(amount: number): Sphere;
+    elongate(h: Vec3): Sphere;
+    twist(rate: number): Sphere;
+    bend(amount: number): Sphere;
+    taper(ratio: number, height: number): Sphere;
 }
 
 /** An axis-aligned box. box(size).shift(v) or box(l, w, h).shift(v) */
@@ -260,11 +269,25 @@ declare class Extrude extends Node {
 declare class Loft extends Node {
     height(n: number): Loft;
     shift(v: Vec3): Loft;
+    rotate(rot: Vec3): Loft;
+    shell(t: number): Loft;
+    offset(amount: number): Loft;
+    elongate(h: Vec3): Loft;
+    twist(rate: number): Loft;
+    bend(amount: number): Loft;
+    taper(ratio: number, height: number): Loft;
 }
 
 /** Revolve a Polygon2D around the Y-axis (lathe). */
 declare class Lathe extends Node {
     shift(v: Vec3): Lathe;
+    rotate(rot: Vec3): Lathe;
+    shell(t: number): Lathe;
+    offset(amount: number): Lathe;
+    elongate(h: Vec3): Lathe;
+    twist(rate: number): Lathe;
+    bend(amount: number): Lathe;
+    taper(ratio: number, height: number): Lathe;
 }
 
 // ---------------------------------------------------------------------------

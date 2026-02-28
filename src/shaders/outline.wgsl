@@ -41,8 +41,17 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     return output;
 }
 
+// Face highlight IDs (1022, 1023) are used for surface selection; we do not draw
+// an edge outline around them — only object/edge selection gets outlines.
+const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
+const FACE_HIGHLIGHT_TOP: u32 = 1023u;
+
 fn isSelected(id: u32) -> bool {
     if (id >= 1024u) {
+        return false;
+    }
+    // Exclude face selection IDs — no outline for surface selection
+    if (id == FACE_HIGHLIGHT_BOTTOM || id == FACE_HIGHLIGHT_TOP) {
         return false;
     }
     return selectedObjectIds[id] != 0u;

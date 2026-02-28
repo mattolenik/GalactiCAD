@@ -133,6 +133,10 @@ struct SelectionStyles {
     _pad5: f32,
     edgeSelectedStrength: f32,
     edgeHoverStrength: f32,
+    faceDotSpacing: f32,
+    faceDotRadius: f32,
+    faceDotDarken: f32,
+    resolutionScale: f32,  // 1.0 = full res, 0.5 = halfres; dot pattern uses full-canvas pixels
 }
 @group(0) @binding(18) var<uniform> selectionStyles: SelectionStyles;
 
@@ -588,9 +592,14 @@ fn primitiveFaceIndexFromNormal(n: vec3f, mode: u32) -> u32 {
     return 0xFFFFFFFFu;
 }
 
+struct ShadeResult {
+    color: vec3f,
+    faceSelected: f32,
+}
+
 // Shade a hit point and return the color.
 // flipNormal: true if hitting surface from inside (back surface).
-fn shadeHit(hit: HitData, flipNormal: bool) -> vec3f {
+fn shadeHit(hit: HitData, flipNormal: bool) -> ShadeResult {
     let normal = select(hit.n, -hit.n, flipNormal);
 
     let diffuse = lighting(normal);
@@ -625,7 +634,25 @@ fn shadeHit(hit: HitData, flipNormal: bool) -> vec3f {
         selBlend = mix(sel1, sel2, bw);
     }
     let selectedColor = shadedColor * selectionStyles.faceDarken + selectionStyles.faceTint;
-    return shadedColor * (1.0 - selBlend) + selectedColor * selBlend;
+    let color = shadedColor * (1.0 - selBlend) + selectedColor * selBlend;
+    return ShadeResult(color, selBlend);
+}
+
+// Apply dotted grid overlay on face-selected surfaces (screen-space dot pattern).
+// Uses full-canvas pixel space so dots stay consistent regardless of render resolution.
+fn applyFaceDottedPattern(color: vec3f, pixelCoord: vec2f) -> vec3f {
+    let spacing = selectionStyles.faceDotSpacing;
+    let radius = selectionStyles.faceDotRadius;
+    let darken = selectionStyles.faceDotDarken;
+    let scale = max(selectionStyles.resolutionScale, 0.25);
+    let fullResCoord = pixelCoord / scale;
+    let cell = floor(fullResCoord / spacing);
+    let local = (fullResCoord / spacing - cell) * spacing;
+    let center = spacing * 0.5;
+    let dist = length(local - center);
+    let inDot = dist < radius;
+    let dotColor = color * darken;
+    return select(color, dotColor, inDot);
 }
 
 @fragment
@@ -757,13 +784,23 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     }
 
     if (hit.t > 0.0) {
-        var shadedColor = shadeHit(hit, false);
+        var frontResult = shadeHit(hit, false);
+        var shadedColor = frontResult.color;
+        if (frontResult.faceSelected > 0.0) {
+            let pixelCoord = uv * camera.res;
+            shadedColor = applyFaceDottedPattern(shadedColor, pixelCoord);
+        }
         shadedColor = applySelectedEdgeHighlight(shadedColor, hitPos, hit, wppu);
 
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {
             if (backHit.t > 0.0) {
-                var backColor = shadeHit(backHit, true);
+                var backResult = shadeHit(backHit, true);
+                var backColor = backResult.color;
+                if (backResult.faceSelected > 0.0) {
+                    let pixelCoord = uv * camera.res;
+                    backColor = applyFaceDottedPattern(backColor, pixelCoord);
+                }
                 let backPos = transformedOrigin + transformedDir * backHit.t;
                 backColor = applySelectedEdgeHighlight(backColor, backPos, backHit, wppu);
                 let frontAlpha = 0.4;

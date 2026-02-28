@@ -183,7 +183,7 @@ export class SDFRenderer {
     #outlineDashLengthF32 = new Float32Array(this.#outlineBuf, 36, 1)
     #outlineDotSizeMinF32 = new Float32Array(this.#outlineBuf, 40, 1)
     #outlineDotSpacingMultF32 = new Float32Array(this.#outlineBuf, 44, 1)
-    #selectionStylesBuf = new ArrayBuffer(64)
+    #selectionStylesBuf = new ArrayBuffer(80)
 
     // Resolution scaling: render at reduced res during camera movement for responsiveness
     #settings: SettingsManager = SettingsManager.instance
@@ -1765,9 +1765,9 @@ export class SDFRenderer {
             label: "outlineSettings",
         })
 
-        // Selection styles buffer: face + edge params for preview shader
+        // Selection styles buffer: face + edge params + face dot pattern for preview shader
         this.#uniformBuffers.selectionStyles = this.#device.createBuffer({
-            size: 64, // faceDarken + pad + faceTint + pad + edgeColor + pad + edgeSelectedStrength + edgeHoverStrength
+            size: 80, // faceDarken + faceTint + edgeColor + edge strengths + faceDotSpacing/Radius/Darken
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "selectionStyles",
         })
@@ -2020,7 +2020,7 @@ export class SDFRenderer {
         this.#outlineDotSpacingMultF32[0] = DEFAULT_SELECTION_STYLES.outline.dotSpacingMultiplier
         this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, this.#outlineBuf)
 
-        // Write selection styles (face + edge params for preview)
+        // Write selection styles (face + edge params + face dot pattern for preview)
         const ss = DEFAULT_SELECTION_STYLES
         const ssBuf = new Float32Array(this.#selectionStylesBuf)
         ssBuf[0] = ss.face.darken
@@ -2028,6 +2028,10 @@ export class SDFRenderer {
         ssBuf[8] = ss.edge.color[0]; ssBuf[9] = ss.edge.color[1]; ssBuf[10] = ss.edge.color[2]
         ssBuf[12] = ss.edge.selectedStrength
         ssBuf[13] = ss.edge.hoverStrength
+        ssBuf[14] = ss.face.dotSpacing
+        ssBuf[15] = ss.face.dotRadius
+        ssBuf[16] = ss.face.dotDarken
+        ssBuf[17] = this.#resolutionScale
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectionStyles, 0, this.#selectionStylesBuf)
 
         const canvasTexture = this.#context.getCurrentTexture()

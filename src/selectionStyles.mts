@@ -16,6 +16,9 @@ export const DEFAULT_SELECTION_STYLES = {
     face: {
         darken: 0.9,
         tint: [0.15, 0.15, 0.15] as [number, number, number],
+        dotSpacing: 8,
+        dotRadius: 1.5,
+        dotDarken: 0.5,
     },
     edge: {
         color: [1, 1, 0] as [number, number, number],

@@ -352,7 +352,7 @@ export class PushPullController {
         const m = this.#host.controls.viewTransform.data
         const n = this.#face.normal3D
         const dotRight = m[0] * n.x + m[1] * n.y + m[2] * n.z
-        const dotUp    = m[4] * n.x + m[5] * n.y + m[6] * n.z
+        const dotUp = m[4] * n.x + m[5] * n.y + m[6] * n.z
 
         // Screen-space normal. Screen Y is flipped (screen down = +Y, camera up = +Y).
         const snx = dotRight
@@ -562,7 +562,7 @@ export class PushPullController {
 
         const m = this.#host.controls.viewTransform.data
         const dotRight = m[0] * n.x + m[1] * n.y + m[2] * n.z
-        const dotUp    = m[4] * n.x + m[5] * n.y + m[6] * n.z
+        const dotUp = m[4] * n.x + m[5] * n.y + m[6] * n.z
         const snx = dotRight
         const sny = -dotUp
         const snLenSq = snx * snx + sny * sny

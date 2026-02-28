@@ -36,9 +36,6 @@ import { Torus, torus } from "./primitives/torus.mjs"
 export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, Rotate, Seam, Shell, Sphere, Subtract, Taper, Tongue, Torus, Twist, UnaryOperator, Union, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, rotate, seam, shell, sphere, subtract, styleInfo, taper, tongue, torus, twist, union }
 export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
 
-/** Minimum primitives in a subtree for it to receive an AABB guard. */
-const AABB_GUARD_THRESHOLD = 4
-
 /** IDs 1022–1023 reserved for face highlight (cap selection). Scene nodes use 0–1021. */
 const MAX_SCENE_NODE_ID = 1021
 
@@ -46,15 +43,10 @@ export class SceneInfo {
     readonly root: Node
     numArgs = 0
     #nodes = new BijectiveMap<number, Node>()
-    numAABBSlots = 0
     totalPolygonVertices = 0
 
     nextArgIndex(): number {
         return this.numArgs++
-    }
-
-    nextAABBIndex(): number {
-        return this.numAABBSlots++
     }
 
     allocPolygonVertices(count: number): number {
@@ -117,19 +109,6 @@ export class SceneInfo {
             rotate, shell, offset, elongate, twist, bend, taper)
         this.root.scene = this
         this.root.build()
-        this.#assignAABBIndices(this.root)
-    }
-
-    #assignAABBIndices(node: Node) {
-        if (node instanceof BinaryOperator) {
-            this.#assignAABBIndices(node.lh)
-            this.#assignAABBIndices(node.rh)
-            if (node.rh.primitiveCount() >= AABB_GUARD_THRESHOLD) {
-                node.rh.aabbIndex = this.nextAABBIndex()
-            }
-        } else if (node instanceof UnaryOperator) {
-            this.#assignAABBIndices(node.arg)
-        }
     }
 
     compile(): string {
@@ -164,28 +143,6 @@ export class SceneInfo {
         let code = ""
         for (const node of this.#nodes.values()) {
             code += node.compileAuxFast()
-        }
-        return code
-    }
-
-    getGuardedSubtrees(): { aabbIndex: number; node: Node; fastAux: string; fastSDF: string }[] {
-        const result: { aabbIndex: number; node: Node; fastAux: string; fastSDF: string }[] = []
-        for (const node of this.#nodes.values()) {
-            if (node.aabbIndex >= 0) {
-                const fastAux = this.#collectSubtreeAuxFast(node)
-                const fastSDF = node.compileFast().text!
-                result.push({ aabbIndex: node.aabbIndex, node, fastAux, fastSDF })
-            }
-        }
-        return result
-    }
-
-    #collectSubtreeAuxFast(node: Node): string {
-        let code = node.compileAuxFast()
-        if (node instanceof BinaryOperator) {
-            code = this.#collectSubtreeAuxFast(node.lh) + this.#collectSubtreeAuxFast(node.rh) + code
-        } else if (node instanceof UnaryOperator) {
-            code = this.#collectSubtreeAuxFast(node.arg) + code
         }
         return code
     }

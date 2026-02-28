@@ -35,18 +35,7 @@ export class Subtract extends BinaryOperator {
         }
     }
 
-    private get _guardThresholdFast(): string {
-        const r = this.radius
-        return r && r > 0 ? `${r}` : `0.0`
-    }
-    private get _guardThresholdEx(): string {
-        return this._guardThresholdFast
-    }
-
     override compile(indentLevel = 0): CompileResult {
-        if (this.rh.aabbIndex >= 0) {
-            return { text: `sdf_guard_${this.id}(p)`, varName: `guard_${this.id}` }
-        }
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
@@ -54,43 +43,14 @@ export class Subtract extends BinaryOperator {
     }
 
     override compileAux(): string {
-        let code = ""
-        if (this.rh.aabbIndex >= 0) {
-            const L = this.lh.compile().text!
-            const R = this.rh.compile().text!
-            const idx = this.rh.aabbIndex
-            code += `\nfn sdf_guard_${this.id}(p: vec3f) -> SDFResult {\n`
-            code += `    let a = ${L};\n`
-            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
-            code += `    if (bbox_d > ${this._guardThresholdEx}) { return a; }\n`
-            code += `    let b = ${R};\n`
-            code += `    return ${this._diffEx("a", "b")};\n`
-            code += `}\n`
-        }
-        return code
+        return ""
     }
 
     override compileAuxFast(): string {
-        let code = ""
-        if (this.rh.aabbIndex >= 0) {
-            const L = this.lh.compileFast().text!
-            const R = this.rh.compileFast().text!
-            const idx = this.rh.aabbIndex
-            code += `\nfn sdf_fast_guard_${this.id}(p: vec3f) -> vec2f {\n`
-            code += `    let a = ${L};\n`
-            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
-            code += `    if (bbox_d > ${this._guardThresholdFast}) { return a; }\n`
-            code += `    let b = ${R};\n`
-            code += `    return ${this._diffFast("a", "b")};\n`
-            code += `}\n`
-        }
-        return code
+        return ""
     }
 
     override compileFast(indentLevel = 0): CompileResult {
-        if (this.rh.aabbIndex >= 0) {
-            return { text: `sdf_fast_guard_${this.id}(p)`, varName: `guard_${this.id}_f` }
-        }
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`

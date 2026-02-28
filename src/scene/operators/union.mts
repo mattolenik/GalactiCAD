@@ -37,20 +37,7 @@ export class Union extends BinaryOperator {
         }
     }
 
-    private get _guardThreshold(): string {
-        const r = this.radius
-        return r ? `max(a.x, ${r})` : `a.x`
-    }
-
-    private get _guardThresholdEx(): string {
-        const r = this.radius
-        return r ? `max(a.d, ${r})` : `a.d`
-    }
-
     override compile(indentLevel = 0): CompileResult {
-        if (this.rh.aabbIndex >= 0) {
-            return { text: `sdf_guard_${this.id}(p)`, varName: `guard_${this.id}` }
-        }
         const lhResult = this.lh.compile()
         const rhResult = this.rh.compile()
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
@@ -58,43 +45,14 @@ export class Union extends BinaryOperator {
     }
 
     override compileAux(): string {
-        let code = ""
-        if (this.rh.aabbIndex >= 0) {
-            const L = this.lh.compile().text!
-            const R = this.rh.compile().text!
-            const idx = this.rh.aabbIndex
-            code += `\nfn sdf_guard_${this.id}(p: vec3f) -> SDFResult {\n`
-            code += `    let a = ${L};\n`
-            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
-            code += `    if (bbox_d > ${this._guardThresholdEx}) { return a; }\n`
-            code += `    let b = ${R};\n`
-            code += `    return ${this._blendEx("a", "b")};\n`
-            code += `}\n`
-        }
-        return code
+        return ""
     }
 
     override compileAuxFast(): string {
-        let code = ""
-        if (this.rh.aabbIndex >= 0) {
-            const L = this.lh.compileFast().text!
-            const R = this.rh.compileFast().text!
-            const idx = this.rh.aabbIndex
-            code += `\nfn sdf_fast_guard_${this.id}(p: vec3f) -> vec2f {\n`
-            code += `    let a = ${L};\n`
-            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
-            code += `    if (bbox_d > ${this._guardThreshold}) { return a; }\n`
-            code += `    let b = ${R};\n`
-            code += `    return ${this._blendFast("a", "b")};\n`
-            code += `}\n`
-        }
-        return code
+        return ""
     }
 
     override compileFast(indentLevel = 0): CompileResult {
-        if (this.rh.aabbIndex >= 0) {
-            return { text: `sdf_fast_guard_${this.id}(p)`, varName: `guard_${this.id}_f` }
-        }
         const lhResult = this.lh.compileFast()
         const rhResult = this.rh.compileFast()
         const varName = `u_${lhResult.varName}__${rhResult.varName}`

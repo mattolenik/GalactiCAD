@@ -52,9 +52,6 @@ const EDGES_PER_CELL: u32 = 12u;
 // Selection array indexed by object ID (not used in MDC; only needed in preview shader).
 // Deliberately omitted to stay within the 10 storage buffer per-stage limit in Pass 5.
 
-// Subtree AABBs for spatial culling (required by hg_sdf.wgsl subtreeAABBDist).
-@group(0) @binding(26) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
-
 // Polygon vertex buffer (shared storage for all Polygon2D vertex data).
 @group(0) @binding(27) var<storage, read> polygonVertices: array<vec2f>;
 
@@ -548,9 +545,6 @@ fn cellClassification_Pass1(
     @builtin(workgroup_id) workgroupId: vec3u,   // u32 block index (linearized)
     @builtin(num_workgroups) numWg: vec3u
 ) {
-    // Force subtreeAABBs into the bind group layout (auto-layout strips unused bindings)
-    _ = subtreeAABBs[0].center;
-
     let u32_block_index = workgroupId.x + workgroupId.y * numWg.x + workgroupId.z * numWg.x * numWg.y;
     let bit_index_in_u32 = localId.x;
 
@@ -609,7 +603,6 @@ fn edgeDetection_Pass3(
     @builtin(global_invocation_id) globalId: vec3u,
     @builtin(num_workgroups) numWg: vec3u
 ) {
-    _ = subtreeAABBs[0].center;
     // Linearize 2D dispatch for large workgroup counts
     let active_cell_array_idx = globalId.x + globalId.y * (numWg.x * 64u);
 
@@ -900,7 +893,6 @@ fn vertexGeneration_Pass4(
     @builtin(workgroup_id) workgroupId: vec3u,
     @builtin(num_workgroups) numWg: vec3u
 ) {
-    _ = subtreeAABBs[0].center;
     // We generate up to MAX_COMPONENTS_PER_CELL vertices per active cell.
     let wgLinear = workgroupId.x + workgroupId.y * numWg.x + workgroupId.z * numWg.x * numWg.y;
     
@@ -1126,9 +1118,6 @@ fn generateTrianglesAtomic_Pass5(
     @builtin(global_invocation_id) globalId: vec3u,
     @builtin(num_workgroups) numWg: vec3u
 ) {
-    // Force subtreeAABBs into the bind group layout (auto-layout strips unused bindings)
-    _ = subtreeAABBs[0].center;
-
     // Linearize 2D dispatch for large workgroup counts
     let active_cell_array_idx = globalId.x + globalId.y * (numWg.x * 64u);
     

@@ -30,9 +30,6 @@ struct Camera {
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var tStartOut: texture_storage_2d<r32float, write>;
 
-// Subtree AABBs for spatial culling (shared with preview shader).
-@group(0) @binding(2) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
-
 // Polygon vertex buffer (shared storage for all Polygon2D vertex data).
 @group(0) @binding(3) var<storage, read> polygonVertices: array<vec2f>;
 
@@ -52,7 +49,6 @@ fn sceneSDF_fast(p: vec3f) -> vec2f {
 @compute @workgroup_size(8, 8)
 fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
-    _ = subtreeAABBs[0].center;
     _ = polygonVertices[0];
     _ = nodeParams[0];
 

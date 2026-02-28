@@ -54,10 +54,6 @@ struct ViewSettings {
 const BEAM_TILE_SIZE: i32 = 8;
 @group(0) @binding(7) var tStartTex: texture_2d<f32>;
 
-// Subtree AABBs for spatial culling during ray marching.
-// Populated asynchronously after scene build; initialized with infinite extents (no culling).
-@group(0) @binding(8) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
-
 // Polygon vertex buffer: shared storage for all Polygon2D vertex data.
 // Each Polygon2D reads its vertices from a contiguous slice starting at its compile-time BASE offset.
 @group(0) @binding(9) var<storage, read> polygonVertices: array<vec2f>;
@@ -658,7 +654,6 @@ fn applyFaceDottedPattern(color: vec3f, pixelCoord: vec2f) -> vec3f {
 @fragment
 fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
-    _ = subtreeAABBs[0].center;
     _ = polygonVertices[0];
     _ = clickedHitPos[0];
     _ = clickedNormal[0];

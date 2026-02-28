@@ -36,9 +36,6 @@ export class Intersect extends BinaryOperator {
     }
 
     override compile(indentLevel = 0): CompileResult {
-        if (this.rh.aabbIndex >= 0) {
-            return { text: `sdf_guard_${this.id}(p)`, varName: `guard_${this.id}` }
-        }
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
@@ -46,43 +43,14 @@ export class Intersect extends BinaryOperator {
     }
 
     override compileAux(): string {
-        let code = ""
-        if (this.rh.aabbIndex >= 0) {
-            const L = this.lh.compile().text!
-            const R = this.rh.compile().text!
-            const idx = this.rh.aabbIndex
-            code += `\nfn sdf_guard_${this.id}(p: vec3f) -> SDFResult {\n`
-            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
-            code += `    let a = ${L};\n`
-            code += `    if (bbox_d > 0.0) { return sdfTrue(max(a.d, bbox_d), a.id, a.n); }\n`
-            code += `    let b = ${R};\n`
-            code += `    return ${this._interEx("a", "b")};\n`
-            code += `}\n`
-        }
-        return code
+        return ""
     }
 
     override compileAuxFast(): string {
-        let code = ""
-        if (this.rh.aabbIndex >= 0) {
-            const L = this.lh.compileFast().text!
-            const R = this.rh.compileFast().text!
-            const idx = this.rh.aabbIndex
-            code += `\nfn sdf_fast_guard_${this.id}(p: vec3f) -> vec2f {\n`
-            code += `    let bbox_d = subtreeAABBDist(${idx}u, p);\n`
-            code += `    let a = ${L};\n`
-            code += `    if (bbox_d > 0.0) { return vec2f(max(a.x, bbox_d), a.y); }\n`
-            code += `    let b = ${R};\n`
-            code += `    return ${this._interFast("a", "b")};\n`
-            code += `}\n`
-        }
-        return code
+        return ""
     }
 
     override compileFast(indentLevel = 0): CompileResult {
-        if (this.rh.aabbIndex >= 0) {
-            return { text: `sdf_fast_guard_${this.id}(p)`, varName: `guard_${this.id}_f` }
-        }
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`

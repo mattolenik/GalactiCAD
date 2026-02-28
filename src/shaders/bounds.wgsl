@@ -24,9 +24,6 @@ struct BoundsUniforms {
 // Dummy selection array (boolean array indexed by object ID, required for binding compatibility)
 @group(0) @binding(99) var<storage, read> selectedObjectIds: array<u32, 1024>;
 
-// Subtree AABBs for spatial culling (same as preview/beam; initialized to infinite = no culling).
-@group(0) @binding(2) var<uniform> subtreeAABBs: array<SubtreeAABB, 128>;
-
 // Polygon vertex buffer (shared storage for all Polygon2D vertex data).
 @group(0) @binding(3) var<storage, read> polygonVertices: array<vec2f>;
 
@@ -106,7 +103,6 @@ fn computeBounds(
     @builtin(num_workgroups) numWg: vec3u
 ) {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
-    _ = subtreeAABBs[0].center;
     _ = polygonVertices[0];
     _ = faceSelection.nodeId;
     _ = nodeParams[0];

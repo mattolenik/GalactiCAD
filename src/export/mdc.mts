@@ -115,17 +115,15 @@ export class MDCExport {
     #helper: GPUHelper
     #device: GPUDevice
     #localBuffers: GPUBuffer[] = []
-    #subtreeAABBsBuffer: GPUBuffer
     #polygonVerticesBuffer: GPUBuffer
     #faceSelectionBuffer: GPUBuffer
     #nodeParamsBuffer: GPUBuffer
     #cancelled = false
     #cancellationBuffer: GPUBuffer | null = null
 
-    constructor(helper: GPUHelper, private params: MDCParams, subtreeAABBsBuffer: GPUBuffer, polygonVerticesBuffer: GPUBuffer, faceSelectionBuffer: GPUBuffer, nodeParamsBuffer: GPUBuffer) {
+    constructor(helper: GPUHelper, private params: MDCParams, polygonVerticesBuffer: GPUBuffer, faceSelectionBuffer: GPUBuffer, nodeParamsBuffer: GPUBuffer) {
         this.#helper = helper
         this.#device = helper.device
-        this.#subtreeAABBsBuffer = subtreeAABBsBuffer
         this.#polygonVerticesBuffer = polygonVerticesBuffer
         this.#faceSelectionBuffer = faceSelectionBuffer
         this.#nodeParamsBuffer = nodeParamsBuffer
@@ -328,7 +326,6 @@ export class MDCExport {
                 p1_cellClassification,
                 [0, uniformBuffer],
                 [1, activeCellFlagsBuffer],
-                [26, this.#subtreeAABBsBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [29, this.#nodeParamsBuffer],
@@ -497,7 +494,6 @@ export class MDCExport {
                 [22, cellEdgeComponentsBuffer],
                 [9, cellQEFDataBuffer],
                 [10, activeCellCountBuffer],
-                [26, this.#subtreeAABBsBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [29, this.#nodeParamsBuffer],
@@ -513,7 +509,6 @@ export class MDCExport {
                 [12, cellQEFDataBuffer],
                 [13, verticesBuffer],
                 [14, activeCellCountBuffer],
-                [26, this.#subtreeAABBsBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [29, this.#nodeParamsBuffer],
@@ -534,7 +529,6 @@ export class MDCExport {
                 [22, cellEdgeComponentsBuffer],
                 [23, cellToActiveHashBuffer],
                 [24, debugSkipCountersBuffer],
-                [26, this.#subtreeAABBsBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [29, this.#nodeParamsBuffer]

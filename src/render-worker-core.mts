@@ -22,8 +22,6 @@ import type { MainToWorkerMessage, RenderSelectionState, SelectedEdgePayload } f
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
 
-const MAX_AABB_SLOTS = 128
-const AABB_BUFFER_SIZE = MAX_AABB_SLOTS * 32
 const MAX_POLYGON_VERTICES = 1024
 const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8
 const MAX_NODE_PARAMS = 256
@@ -45,7 +43,6 @@ class UniformBuffers {
     viewSettings!: GPUBuffer
     outlineSettings!: GPUBuffer
     selectionStyles!: GPUBuffer
-    subtreeAABBs!: GPUBuffer
     polygonVertices!: GPUBuffer
     clickedHitPos!: GPUBuffer
     clickedNormal!: GPUBuffer
@@ -84,7 +81,6 @@ export class RenderWorkerCore {
     #beamBindGroupInvalid = false
     #sceneBindGroupInvalid = false
     #buildGeneration = 0
-    #aabbGeneration = 0
     #compiledPosY = new Map<number, number>()
     #colorTexture!: GPUTexture
     #idTexture!: GPUTexture
@@ -216,9 +212,7 @@ export class RenderWorkerCore {
             this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
         }
         this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, nodeParamsData)
-        this.#initAABBBufferInfinite()
 
-        this.#aabbGeneration++
         this.#buildGeneration++
         const generation = this.#buildGeneration
 
@@ -350,7 +344,6 @@ export class RenderWorkerCore {
                     entries: [
                         { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
                         { binding: 1, resource: this.#tStartTextureView },
-                        { binding: 2, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
                         { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                         { binding: 4, resource: { buffer: this.#uniformBuffers.nodeParams } },
                     ],
@@ -452,7 +445,6 @@ export class RenderWorkerCore {
             const mdc = new MDCExport(
                 this.#helper,
                 params,
-                this.#uniformBuffers.subtreeAABBs,
                 this.#uniformBuffers.polygonVertices,
                 this.#uniformBuffers.faceSelection,
                 this.#uniformBuffers.nodeParams,
@@ -489,7 +481,7 @@ export class RenderWorkerCore {
         const dispatchedWorkgroups = dispatchX * dispatchY
         const outBuffer = this.#device.createBuffer({
             size: dispatchedWorkgroups * TILE_STRIDE_BYTES,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.MAP_READ,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
             label: "BoundsOut",
         })
         const scene = this.#scene!
@@ -513,7 +505,6 @@ export class RenderWorkerCore {
             entries: [
                 { binding: 0, resource: { buffer: uniformBuffer } },
                 { binding: 1, resource: { buffer: outBuffer } },
-                { binding: 2, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
                 { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                 { binding: 4, resource: { buffer: this.#uniformBuffers.faceSelection } },
                 { binding: 5, resource: { buffer: this.#uniformBuffers.nodeParams } },
@@ -659,7 +650,6 @@ export class RenderWorkerCore {
                     entries: [
                         { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
                         { binding: 1, resource: this.#tStartTextureView },
-                        { binding: 2, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
                         { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                         { binding: 4, resource: { buffer: this.#uniformBuffers.nodeParams } },
                     ],
@@ -683,7 +673,6 @@ export class RenderWorkerCore {
                     { binding: 5, resource: { buffer: this.#uniformBuffers.colorPalette } },
                     { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                     { binding: 7, resource: this.#tStartTextureView },
-                    { binding: 8, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
                     { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                     { binding: 10, resource: { buffer: this.#uniformBuffers.clickedHitPos } },
                     { binding: 11, resource: { buffer: this.#uniformBuffers.faceSelection } },
@@ -772,13 +761,6 @@ export class RenderWorkerCore {
             label: "selectionStyles",
         })
 
-        ub.subtreeAABBs = this.#device.createBuffer({
-            size: AABB_BUFFER_SIZE,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "subtreeAABBs",
-        })
-        this.#initAABBBufferInfinite()
-
         ub.polygonVertices = this.#device.createBuffer({
             size: POLYGON_VERTEX_BUFFER_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
@@ -829,17 +811,6 @@ export class RenderWorkerCore {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             label: "hoveredEdge",
         })
-    }
-
-    #initAABBBufferInfinite(): void {
-        const data = new Float32Array(MAX_AABB_SLOTS * 8)
-        for (let i = 0; i < MAX_AABB_SLOTS; i++) {
-            const base = i * 8
-            data[base + 4] = 9999
-            data[base + 5] = 9999
-            data[base + 6] = 9999
-        }
-        this.#device.queue.writeBuffer(this.#uniformBuffers.subtreeAABBs, 0, data)
     }
 
     #writeClickState(clickUV: [number, number], enableClick: boolean, enableHover: boolean, hoverUV?: [number, number]): void {

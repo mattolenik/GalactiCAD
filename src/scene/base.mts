@@ -38,7 +38,6 @@ export interface ISceneInfo {
     get<T extends Node>(id: number): T
     getAllNodes(): Node[]
     nextArgIndex(): number
-    nextAABBIndex(): number
     allocPolygonVertices(count: number): number
 }
 
@@ -46,8 +45,6 @@ export class Node {
     id!: number
     root: Node
     #scene!: ISceneInfo
-    /** AABB slot index if this subtree is guarded, or -1. */
-    aabbIndex = -1
     #primitiveCount = -1
 
     get scene() {

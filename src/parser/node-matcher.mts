@@ -17,6 +17,12 @@ import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
 const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "rotate", "extrude", "loft", "lathe"])
 
 /**
+ * CSG operators that don't render as visible objects — when selected from editor, select only their child shapes.
+ * Excludes rotate, extrude, loft, lathe which render as visible composites.
+ */
+export const PURE_CSG_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam"])
+
+/**
  * Tolerance for floating-point comparisons
  */
 const EPSILON = 1e-6

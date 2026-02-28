@@ -15,7 +15,7 @@ import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
 import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo, type ParsedShapeCall } from "./parser/source-parser.mjs"
-import { matchNodesToSource } from "./parser/node-matcher.mjs"
+import { matchNodesToSource, PURE_CSG_TYPES } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
 import { ResizeHandle } from "./components/resize-handle.mjs"
 import { Toolbar } from "./components/toolbar.mjs"
@@ -27,6 +27,11 @@ import autoIcon from "./assets/selection-auto.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
 import { addContextSubmenu } from "./editor/context-menu-submenu.mjs"
 import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
+import { findInnermostAtPosition } from "./editor/position-utils.mjs"
+import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
+import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
+import { getEditorLayout } from "./layout/editor-layout.mjs"
+import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
 
 // Start loading dprint formatter (non-blocking); registers providers when ready
 initDprintFormatting()
@@ -51,11 +56,12 @@ function formatSceneError(err: unknown, src: string): string {
     return displayMsg
 }
 
-/** CSG operators that don't render as visible objects — when selected from editor, select only their child shapes. */
-const PURE_CSG_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam"])
+const CONTENT_CHANGE_DEBOUNCE_MS = 200
+const MESH_UPDATE_DEBOUNCE_MS = 600
+const SELECTION_FEEDBACK_DELAY_MS = 50
 
 class App {
-    editor: monaco.editor.IStandaloneCodeEditor
+    editor!: monaco.editor.IStandaloneCodeEditor
     renderer: SDFRenderer
     #tabs: DocumentTabs
     #mesh: MeshViewer | null = null
@@ -72,7 +78,6 @@ class App {
     #sceneNodeMap: Map<number, import("./scene/scene.mjs").Node> = new Map()  // nodeId -> Node for symbol lookup
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
-    #skipNextBuild = false  // When true, skip the next build entirely (nodeParams already correct)
     #polygonEditor: PolygonEditor | null = null
     #editorContainer!: HTMLDivElement
 
@@ -106,8 +111,6 @@ class App {
             // Match scene nodes to source code by comparing property values
             this.#parsedCalls = parsedCalls
             this.#sourceLocationMap = matchNodesToSource(sceneNodes, parsedCalls)
-
-            console.debug("[App] Source location map:", Array.from(this.#sourceLocationMap.entries()))
 
             // Update color indicators for all matched shapes
             this.#updateColorIndicators()
@@ -199,16 +202,7 @@ class App {
      * on a nested call (e.g. inner union) selects that call, not an outer one.
      */
     #findNodeIdAtPosition(line: number, column: number): number | null {
-        let best: { nodeId: number; size: number } | null = null
-        for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
-            if (line >= location.startLine && line <= location.endLine) {
-                if (line === location.startLine && column < location.startColumn) continue
-                if (line === location.endLine && column > location.endColumn) continue
-                const size = (location.endLine - location.startLine) * 100000 + (location.endColumn - location.startColumn)
-                if (!best || size < best.size) best = { nodeId, size }
-            }
-        }
-        return best?.nodeId ?? null
+        return findInnermostAtPosition(this.#sourceLocationMap.entries(), line, column)
     }
 
     /**
@@ -254,16 +248,20 @@ class App {
         }
 
         // Fallback: innermost identifier range containing (startLine, startColumn)
-        let best: { call: ParsedShapeCall; size: number } | null = null
-        for (const call of this.#parsedCalls) {
-            const loc = call.location
-            if (startLine < loc.startLine || startLine > loc.endLine) continue
-            if (startLine === loc.startLine && startColumn < loc.startColumn) continue
-            if (startLine === loc.endLine && startColumn > loc.endColumn) continue
-            const size = (loc.endLine - loc.startLine) * 100000 + (loc.endColumn - loc.startColumn)
-            if (!best || size < best.size) best = { call, size }
-        }
-        return best?.call ?? null
+        return findInnermostAtPosition(
+            this.#parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }]),
+            startLine,
+            startColumn
+        )
+    }
+
+    /** Find the innermost ParsedShapeCall at the given position (for mouse-down). */
+    #findParsedCallAtPosition(line: number, column: number): ParsedShapeCall | null {
+        return findInnermostAtPosition(
+            this.#parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }]),
+            line,
+            column
+        )
     }
 
     /**
@@ -285,20 +283,27 @@ class App {
     }
 
     /**
+     * Try to open the polygon editor at the given source position.
+     * Returns true if opened (polygon2d call found and editor opened).
+     */
+    #tryOpenPolygonEditor(line: number, column: number): boolean {
+        const model = this.editor.getModel()
+        if (!model) return false
+        const src = model.getValue()
+        const info = this.#sourceParser.findPolygon2DAtPosition(src, line, column)
+        if (!info) return false
+        this.#openPolygonEditor(info, model)
+        return true
+    }
+
+    /**
      * Handle double-click on a node in the preview.
      * If the node is a polygon2d (cap face of extrude/loft), open the polygon editor.
      */
     #handlePreviewDoubleClick(nodeId: number) {
         const location = this.#sourceLocationMap.get(nodeId)
         if (location?.functionName === "polygon2d") {
-            const model = this.editor.getModel()
-            if (model) {
-                const src = model.getValue()
-                const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn)
-                if (info) {
-                    this.#openPolygonEditor(info, model)
-                }
-            }
+            this.#tryOpenPolygonEditor(location.startLine, location.startColumn)
         }
     }
 
@@ -335,67 +340,28 @@ class App {
         const info = this.#sourceParser.findExtrudeLoftAtPosition(src, location.startLine, location.startColumn)
         if (!info) return
 
-        // Update the in-memory scene node so the next drag starts from correct values.
+        // Update the in-memory scene node and apply source edits.
         // nodeParams buffer already has the correct h and posYDelta, so rendering is fine
         // without a full shader recompile.
-        const node = this.#sceneNodeMap.get(nodeId) as { h: number; pos: { y: number } } | undefined
-        if (node && "h" in node) {
-            node.h = newH
-            node.pos.y = newPosY
-        }
+        const node = this.#sceneNodeMap.get(nodeId) as ExtrudeLikeNode | undefined
+        applyExtrudeLoftCapUpdates(model, info, newH, newPosY, node)
 
-        this.#skipNextBuild = true
-        model.pushStackElement()
-
-        const edits: { range: import("monaco-editor").IRange; text: string }[] = []
-
-        // Update h value
-        const hStart = model.getPositionAt(info.hValueStart)
-        const hEnd = model.getPositionAt(info.hValueEnd)
-        edits.push({
-            range: new monaco.Range(hStart.lineNumber, hStart.column, hEnd.lineNumber, hEnd.column),
-            text: formatNumber(newH),
-        })
-
-        // Update position if it exists, or insert one if the Y component changed
-        if (info.posArgStart !== null && info.posArgEnd !== null) {
-            const posText = src.substring(info.posArgStart, info.posArgEnd)
-            const updatedPosText = updatePosY(posText, newPosY)
-            if (updatedPosText !== null) {
-                const posStart = model.getPositionAt(info.posArgStart)
-                const posEnd = model.getPositionAt(info.posArgEnd)
-                edits.push({
-                    range: new monaco.Range(posStart.lineNumber, posStart.column, posEnd.lineNumber, posEnd.column),
-                    text: updatedPosText,
-                })
-            }
-        } else if (Math.abs(newPosY) > 0.0005) {
-            // No position argument exists, insert one (new object format: pos: [0, y, 0])
-            const insertPos = model.getPositionAt(info.insertPosOffset)
-            edits.push({
-                range: new monaco.Range(insertPos.lineNumber, insertPos.column, insertPos.lineNumber, insertPos.column),
-                text: `pos: [0, ${formatNumber(newPosY)}, 0], `,
-            })
-        }
-
-        // Apply edits in reverse offset order so earlier edits don't shift later ones
-        edits.sort((a, b) => {
-            if (a.range.startLineNumber !== b.range.startLineNumber)
-                return b.range.startLineNumber - a.range.startLineNumber
-            return b.range.startColumn - a.range.startColumn
-        })
-        model.pushEditOperations([], edits, () => null)
-        model.pushStackElement()
-
-        // Re-parse source locations so subsequent drags find correct offsets
-        // (lightweight — no shader recompilation)
+        // Re-parse source locations so subsequent drags find correct offsets.
         const updatedSrc = model.getValue()
         const parsedCalls = this.#sourceParser.parseShapeCalls(updatedSrc)
         this.#parsedCalls = parsedCalls
+        const prevMap = this.#sourceLocationMap
         this.#sourceLocationMap = matchNodesToSource(
             Array.from(this.#sceneNodeMap.values()),
             parsedCalls,
         )
+        // Preserve polygon2d entries that failed to match due to stale sceneNodeMap
+        // (e.g. polygon push/pull + cap pull in same debounce window).
+        for (const [nodeId, location] of prevMap.entries()) {
+            if (location.functionName === "polygon2d" && !this.#sourceLocationMap.has(nodeId)) {
+                this.#sourceLocationMap.set(nodeId, location)
+            }
+        }
     }
 
     /**
@@ -427,16 +393,8 @@ class App {
         if (nodeId !== null) {
             // polygon2d is a 2D shape not present in the 3D scene — open the polygon editor
             const location = this.#sourceLocationMap.get(nodeId)
-            if (location?.functionName === "polygon2d") {
-                const model = this.editor.getModel()
-                if (model) {
-                    const src = model.getValue()
-                    const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn)
-                    if (info) {
-                        this.#openPolygonEditor(info, model)
-                        return
-                    }
-                }
+            if (location?.functionName === "polygon2d" && this.#tryOpenPolygonEditor(location.startLine, location.startColumn)) {
+                return
             }
 
             const node = this.#sceneNodeMap.get(nodeId)
@@ -457,14 +415,7 @@ class App {
             if (!position) return
 
             // Find the parsed call at the clicked position
-            const clickedCall = this.#parsedCalls.reduce<{ call: ParsedShapeCall; size: number } | null>((best, call) => {
-                const loc = call.location
-                if (position.lineNumber < loc.startLine || position.lineNumber > loc.endLine) return best
-                if (position.lineNumber === loc.startLine && position.column < loc.startColumn) return best
-                if (position.lineNumber === loc.endLine && position.column > loc.endColumn) return best
-                const size = (loc.endLine - loc.startLine) * 100000 + (loc.endColumn - loc.startColumn)
-                return (!best || size < best.size) ? { call, size } : best
-            }, null)?.call ?? null
+            const clickedCall = this.#findParsedCallAtPosition(position.lineNumber, position.column)
 
             if (!clickedCall) return
 
@@ -497,7 +448,59 @@ class App {
         this.#viewports = document.getElementById("viewports")!
         this.#editorContainer = editorContainer
 
-        // Editor panel: code area (flex) + LLM prompt bar (fixed) + error log (hidden until error)
+        this.#setupEditorPanel(editorContainer)
+        this.#sourceParser = new SourceParser()
+        this.#monacoHighlighter = new MonacoHighlighter()
+
+        const existingMesh = document.getElementById("mesh")
+        if (existingMesh) existingMesh.remove()
+
+        this.#setupEditorActions()
+
+        this.#tabs = new DocumentTabs(this.editor)
+        tabs.replaceWith(this.#tabs)
+        this.#tabs.id = tabs.id
+        this.#tabs.restore()
+
+        this.#injectStyles()
+        requestAnimationFrame(() => {
+            const bg = getComputedStyle(document.querySelector(".monaco-editor")!).getPropertyValue("--vscode-editor-background")
+            this.#tabs.style.setProperty("--active-bg", bg)
+        })
+
+        const { xrayCheckbox, selectionModeRadio, exportBtn, devTools } = this.#setupToolbar(menu)
+        const { getVisiblePreviewRect } = this.#setupLayoutObservers(editorContainer)
+
+        this.renderer = new SDFRenderer(preview, this.#tabs, getVisiblePreviewRect)
+
+        this.renderer
+            .ready()
+            .then(() => {
+                this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
+                this.#wireEditorAndTabs()
+                this.#wireGlobalUndoRedo()
+                this.#wireMenu(menu)
+                this.#wireExportButton(exportBtn)
+                this.#wireDevToolsVersionToggle(preview, devTools)
+                this.build()
+
+                fromEventPattern<monaco.editor.IModelContentChangedEvent>(
+                    h => this.editor.onDidChangeModelContent(h),
+                    (_, disp) => disp.dispose()
+                )
+                    .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
+                    .subscribe(() => this.build())
+            })
+            .catch(err => {
+                console.error(`UNEXPECTED ERROR: ${err}`)
+                const msg = document.createElement("p")
+                msg.textContent =
+                    "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
+                preview.replaceWith(msg)
+            })
+    }
+
+    #setupEditorPanel(editorContainer: HTMLDivElement) {
         const codeDiv = document.createElement("div")
         codeDiv.style.flex = "1"
         codeDiv.style.minHeight = "0"
@@ -505,54 +508,27 @@ class App {
         editorContainer.insertBefore(codeDiv, this.log)
         editorContainer.appendChild(this.log)
 
-        // Initialize source parser and highlighter for selection sync
-        this.#sourceParser = new SourceParser()
-        this.#monacoHighlighter = new MonacoHighlighter()
-
-        // Remove any existing mesh viewer from HTML (we create it dynamically when enabled)
-        const existingMesh = document.getElementById("mesh")
-        if (existingMesh) {
-            existingMesh.remove()
-        }
-
-        // Configure the TypeScript language service so user CAD code gets completions
-        // and type-checking for the built-in factory functions (sphere, box, union, …).
-        // (monaco.typescript is the correct top-level API in monaco-editor ≥0.52)
         monaco.typescript.typescriptDefaults.setCompilerOptions({
             target: monaco.typescript.ScriptTarget.ESNext,
-            // Non-strict so casual user code doesn't get flooded with errors.
             strict: false,
             noImplicitAny: false,
             noUnusedLocals: false,
             noUnusedParameters: false,
             allowUnreachableCode: true,
-            // No module system — user code is a standalone function body.
             module: monaco.typescript.ModuleKind.None,
         })
-        // Only show syntax errors and semantic errors the user can actually act on.
         monaco.typescript.typescriptDefaults.setDiagnosticsOptions({
             noSemanticValidation: false,
             noSyntaxValidation: false,
-            // 1108: "A 'return' statement can only be used within a function body."
-            // User code is a function body executed via new Function(), so top-level
-            // return statements are valid at runtime but look illegal to the TS checker.
             diagnosticCodesToIgnore: [1108],
         })
-        // Inject the CAD API declarations as an ambient global library.
-        monaco.typescript.typescriptDefaults.addExtraLib(
-            CAD_TYPES_DECL,
-            "file:///cad-api.d.ts",
-        )
+        monaco.typescript.typescriptDefaults.addExtraLib(CAD_TYPES_DECL, "file:///cad-api.d.ts")
 
         monaco.editor.defineTheme("galacticad-dark", {
             base: "vs-dark",
             inherit: true,
-            rules: [
-                { token: "delimiter.parenthesis.ts", foreground: "#555555" },
-            ],
-            colors: {
-                "editor.lineHighlightBackground": "#3a3a3eCC",
-            },
+            rules: [{ token: "delimiter.parenthesis.ts", foreground: "#555555" }],
+            colors: { "editor.lineHighlightBackground": "#3a3a3eCC" },
         })
         this.editor = monaco.editor.create(codeDiv, {
             "semanticHighlighting.enabled": true,
@@ -588,88 +564,34 @@ class App {
             wrappingIndent: "indent",
             wrappingStrategy: "advanced",
         })
+    }
 
+    #setupEditorActions() {
         this.editor.addAction({
             id: "galacticad.editPolygon",
             label: "Edit polygon",
             contextMenuGroupId: "0_shapes",
             contextMenuOrder: 0,
             run: (ed) => {
-                const model = ed.getModel()
-                if (!model) return
                 const pos = ed.getPosition()
                 if (!pos) return
-                const src = model.getValue()
-                const info = this.#sourceParser.findPolygon2DAtPosition(src, pos.lineNumber, pos.column)
-                if (!info) return
-                this.#openPolygonEditor(info, model)
+                this.#tryOpenPolygonEditor(pos.lineNumber, pos.column)
             },
         })
-
-        const insertShapeDeclaration = (
-            ed: monaco.editor.IStandaloneCodeEditor,
-            varNameBase: string,
-            callText: string
-        ) => {
-            const model = ed.getModel()
-            if (!model) return
-            const src = model.getValue()
-
-            // Collect existing variable names for uniqueness
-            const existing = new Set<string>()
-            for (const m of src.matchAll(/(?:let|const|var)\s+(\w+)/g)) existing.add(m[1])
-            let varName = varNameBase
-            for (let i = 2; existing.has(varName); i++) varName = varNameBase + i
-
-            const declaration = `let ${varName} = ${callText}\n`
-            const varNameStartCol = 1 + "let ".length
-            const varNameEndCol = varNameStartCol + varName.length
-
-            // Insert at the first line above the cursor (cursor on line 5 → insert at line 4)
-            const pos = ed.getPosition()
-            const cursorLine = pos?.lineNumber ?? 1
-            const insertLine = cursorLine > 1 ? cursorLine - 1 : 1
-            const insertCol = 1
-            const textToInsert = declaration
-
-            const range = new monaco.Range(insertLine, insertCol, insertLine, insertCol)
-            const nameSelection = new monaco.Selection(insertLine, varNameStartCol, insertLine, varNameEndCol)
-
-            // executeEdits on the editor (not the model) lets us supply the end cursor state
-            // atomically, so there are no intermediate phantom cursors.
-            ed.executeEdits("insert-shape", [{ range, text: textToInsert }], [nameSelection])
-            ed.focus()
-        }
-
-        const shapeInsertions: Array<{ id: string; label: string; varBase: string; call: string }> = [
-            { id: "insertSphere", label: "Sphere", varBase: "newSphere", call: "sphere({ r: 1 })" },
-            { id: "insertBox", label: "Box", varBase: "newBox", call: "box([2, 2, 2])" },
-            { id: "insertCylinder", label: "Cylinder", varBase: "newCylinder", call: "cylinder({ r: 1, h: 3 })" },
-            { id: "insertCone", label: "Cone", varBase: "newCone", call: "cone({ r: 1, h: 2 })" },
-            { id: "insertTorus", label: "Torus", varBase: "newTorus", call: "torus({ sr: 0.25, lr: 1 })" },
-            { id: "insertCapsule", label: "Capsule", varBase: "newCapsule", call: "capsule({ r: 0.5, c: 2 })" },
-            { id: "insertPlane", label: "Plane", varBase: "newPlane", call: "plane({ n: [0, 1, 0] })" },
-            { id: "insertHexPrism", label: "Hex prism", varBase: "newHexPrism", call: "hexprism({ r: 1, h: 2 })" },
-            { id: "insertDisc", label: "Disc", varBase: "newDisc", call: "disc({ r: 1.5 })" },
-            { id: "insertBlob", label: "Blob", varBase: "newBlob", call: "blob()" },
-        ]
 
         addContextSubmenu(this.editor, {
             title: "Insert shape",
             group: "0_shapes",
             order: 1,
-            actions: shapeInsertions.map(({ id, label, varBase, call }) => ({
+            actions: SHAPE_INSERTIONS.map(({ id, label, varBase, call }) => ({
                 id,
                 label,
-                run: (ed) => insertShapeDeclaration(ed, varBase, call),
+                run: (ed: monaco.editor.IStandaloneCodeEditor) => insertShapeDeclaration(ed, varBase, call),
             })),
         })
+    }
 
-        this.#tabs = new DocumentTabs(this.editor)
-        tabs.replaceWith(this.#tabs)
-        this.#tabs.id = tabs.id
-        this.#tabs.restore()
-
+    #injectStyles() {
         const style = document.createElement("style")
         style.textContent = `
             :root {
@@ -682,8 +604,6 @@ class App {
                 ${__tone_accent}: #007acc;
                 ${__toolbar_height}: 36px;
             }
-
-            /* Highlighted function name styling for selected shapes in Monaco editor */
             .selected-shape-name {
                 background-color: rgba(255, 255, 0, 0.3) !important;
                 border: 1px solid rgba(255, 255, 0, 0.5) !important;
@@ -691,28 +611,17 @@ class App {
                 padding: 0 2px !important;
                 box-shadow: 0 0 4px rgba(255, 255, 0, 0.3) !important;
             }
-
-            /* Fluent CAD method names (.radius, .shift, .round, etc.) */
             .cad-fluent-method {
                 color: #4ec9b0 !important;
                 font-weight: 600;
             }
         `
         document.body.appendChild(style)
+    }
 
-        requestAnimationFrame(() => {
-            const bg = getComputedStyle(document.querySelector(".monaco-editor")!).getPropertyValue("--vscode-editor-background")
-            this.#tabs.style.setProperty("--active-bg", bg)
-        })
-
-        // Viewport toolbar — floating over the preview area
+    #setupToolbar(menu: HTMLElement) {
         const toolbar = new Toolbar()
-        const xrayIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-  <!-- Wide beam cone -->
-  <path d="M 9 17 L 1 4 L 9 1 L 17 4 Z"/>
-  <!-- Circle in the beam -->
-  <circle cx="9" cy="8" r="3"/>
-</svg>`
+        const xrayIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 9 17 L 1 4 L 9 1 L 17 4 Z"/><circle cx="9" cy="8" r="3"/></svg>`
         const xrayCheckbox = toolbar.addToggleButton(xrayIcon, "Toggle X-ray")
         toolbar.addSeparator()
         const selectionModeRadio = toolbar.addRadioGroup(
@@ -728,82 +637,50 @@ class App {
         toolbar.addSeparator()
         const exportBtn = toolbar.addButton("STL", "Export STL")
         const fullscreenBtn = toolbar.addButton("", "Toggle fullscreen")
-        const iconEnterFullscreen = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`
-        const iconExitFullscreen = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>`
+        const iconEnterFullscreen = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`
+        const iconExitFullscreen = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>`
         const updateFullscreenState = () => {
-            const isFullscreen = !!document.fullscreenElement
-            fullscreenBtn.active = isFullscreen
-            fullscreenBtn.html = isFullscreen ? iconExitFullscreen : iconEnterFullscreen
+            fullscreenBtn.active = !!document.fullscreenElement
+            fullscreenBtn.html = document.fullscreenElement ? iconExitFullscreen : iconEnterFullscreen
         }
         updateFullscreenState()
         document.addEventListener("fullscreenchange", updateFullscreenState)
         if (document.fullscreenEnabled) {
             fullscreenBtn.onClick = async () => {
-                if (document.fullscreenElement) {
-                    await document.exitFullscreen()
-                } else {
-                    await document.documentElement.requestFullscreen()
-                }
+                document.fullscreenElement ? await document.exitFullscreen() : await document.documentElement.requestFullscreen()
             }
         } else {
             fullscreenBtn.disabled = true
         }
         document.getElementById("toolbar")!.insertBefore(toolbar, menu)
 
-        // Developer tools panel — positioned over the viewports area
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)
         this.#viewports.appendChild(devTools)
 
-        // Resize handle between editor and preview
-        const workspace = document.getElementById("workspace")!
-        const mainPanels = document.getElementById("main-panels")!
-        const resizeHandleEl = document.getElementById("resize-handle")!
-        const resizeHandle = new ResizeHandle(resizeHandleEl, mainPanels, workspace)
-        resizeHandle.connect()
+        return { xrayCheckbox, selectionModeRadio, exportBtn, devTools }
+    }
 
-        /** Returns the rect of the preview area NOT behind the editor overlay. */
+    #setupLayoutObservers(editorContainer: HTMLDivElement) {
+        const mainPanels = document.getElementById("main-panels")!
+        const workspace = document.getElementById("workspace")!
+        const resizeHandleEl = document.getElementById("resize-handle")!
+        new ResizeHandle(resizeHandleEl, mainPanels, workspace).connect()
+
         const getVisiblePreviewRect = (): DOMRect => {
             const mainRect = mainPanels.getBoundingClientRect()
             if (mainRect.width === 0 || mainRect.height === 0) return mainRect
-            const editorOnLeft = window.innerWidth > window.innerHeight
-            const css = getComputedStyle(mainPanels)
-            const frac = editorOnLeft
-                ? parseFloat(css.getPropertyValue("--editor-width") || "35") / 100
-                : parseFloat(css.getPropertyValue("--editor-height") || "22") / 100
-            if (editorOnLeft) {
-                return new DOMRect(
-                    mainRect.left + mainRect.width * frac,
-                    mainRect.top,
-                    mainRect.width * (1 - frac),
-                    mainRect.height
-                )
-            }
-            return new DOMRect(
-                mainRect.left,
-                mainRect.top + mainRect.height * frac,
-                mainRect.width,
-                mainRect.height * (1 - frac)
-            )
+            return getEditorLayout(mainPanels).visiblePreviewRect(mainRect)
         }
 
-        // ResizeObserver so Monaco layout updates and viewCenter stays in sync.
-        // Use CSS layout vars (not editor rect) so view center is correct when the
-        // polygon editor replaces the code editor (editor has display:none → 0 rect).
         const updateViewCenter = () => {
             const mainRect = mainPanels.getBoundingClientRect()
             if (mainRect.width === 0 || mainRect.height === 0) return
-            const editorOnLeft = window.innerWidth > window.innerHeight
-            const css = getComputedStyle(mainPanels)
-            const frac = editorOnLeft
-                ? parseFloat(css.getPropertyValue("--editor-width") || "35") / 100
-                : parseFloat(css.getPropertyValue("--editor-height") || "22") / 100
-            const vcx = editorOnLeft ? (frac + 1.0) / 2 : 0.5
-            const vcy = editorOnLeft ? 0.5 : (1.0 - frac) / 2
-            const editorOffsetPx = editorOnLeft ? mainRect.width * frac : 0
+            const { vcx, vcy, editorOffsetPx } = getEditorLayout(mainPanels).viewCenter(mainRect)
             this.renderer.setViewCenter(vcx, vcy, editorOffsetPx)
             this.#mesh?.setViewCenter(vcx, vcy)
         }
         this.#updateViewCenter = updateViewCenter
+
         const resizeObserver = new ResizeObserver(() => {
             this.editor.layout()
             updateViewCenter()
@@ -811,7 +688,6 @@ class App {
         resizeObserver.observe(editorContainer)
         resizeObserver.observe(mainPanels)
 
-        // Hide line numbers on narrow screens to maximize code space
         const narrowMedia = window.matchMedia("(max-width: 600px)")
         const updateLineNumbers = () => {
             this.editor.updateOptions({ lineNumbers: narrowMedia.matches ? "off" : "on" })
@@ -819,39 +695,7 @@ class App {
         narrowMedia.addEventListener("change", updateLineNumbers)
         updateLineNumbers()
 
-        this.renderer = new SDFRenderer(preview, this.#tabs, getVisiblePreviewRect)
-
-        this.renderer
-            .ready()
-            .then(() => {
-                this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
-                this.#wireEditorAndTabs()
-                this.#wireGlobalUndoRedo()
-                this.#wireMenu(menu)
-                this.#wireExportButton(exportBtn)
-                this.#wireDevToolsVersionToggle(preview, devTools)
-                this.build()
-
-                fromEventPattern<monaco.editor.IModelContentChangedEvent>(
-                    h => this.editor.onDidChangeModelContent(h),
-                    (_, disp) => disp.dispose()
-                )
-                    .pipe(debounceTime(200))
-                    .subscribe(() => {
-                        if (this.#skipNextBuild) {
-                            this.#skipNextBuild = false
-                            return
-                        }
-                        this.build()
-                    })
-            })
-            .catch(err => {
-                console.error(`UNEXPECTED ERROR: ${err}`)
-                const msg = document.createElement("p")
-                msg.textContent =
-                    "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
-                preview.replaceWith(msg)
-            })
+        return { getVisiblePreviewRect }
     }
 
     #wirePreviewAndRenderer(
@@ -865,7 +709,7 @@ class App {
         this.renderer.selectionChange$.subscribe(() => {
             this.#isUpdatingFromPreview = true
             this.#updateEditorHighlighting()
-            setTimeout(() => { this.#isUpdatingFromPreview = false }, 50)
+            setTimeout(() => { this.#isUpdatingFromPreview = false }, SELECTION_FEEDBACK_DELAY_MS)
         })
 
         this.renderer.objectDoubleClick$.subscribe(nodeId => this.#handlePreviewDoubleClick(nodeId))
@@ -1095,7 +939,7 @@ class App {
                 // Mesh generation failing shouldn't break the live SDF preview.
                 console.error(`Mesh update failed: ${err}`)
             }
-        }, 600)
+        }, MESH_UPDATE_DEBOUNCE_MS)
     }
 
     #setMeshViewerEnabled(enabled: boolean) {
@@ -1171,121 +1015,6 @@ class App {
             this.#meshViewerCameraSubs.length = 0
         }
     }
-}
-
-interface ArrayFormat {
-    indent: string
-    newlinePerVertex: boolean
-}
-
-function analyzeArrayFormatting(text: string): ArrayFormat {
-    if (!text.includes("\n")) {
-        return { indent: "", newlinePerVertex: false }
-    }
-    // Find indent: between first "[" (outer) and second "[" (first vertex)
-    const firstBracket = text.indexOf("[")
-    const between = text.slice(firstBracket + 1, text.indexOf("[", firstBracket + 1))
-    const match = between.match(/\n([ \t]*)$/)
-    const indent = match ? match[1] : "   "  // fallback: 3 spaces (matches tabSize)
-    return { indent, newlinePerVertex: true }
-}
-
-function formatVertex([x, y]: [number, number]): string {
-    const xs = String(Math.round(x * 100) / 100)
-    const ys = String(Math.round(y * 100) / 100)
-    return `[${xs}, ${ys}]`
-}
-
-function formatVertices(vertices: [number, number][], format?: ArrayFormat): string {
-    const pairs = vertices.map(formatVertex)
-    if (format?.newlinePerVertex && pairs.length > 0) {
-        const indent = format.indent
-        const lines = pairs.map((p, i) => indent + p + (i < pairs.length - 1 ? "," : ""))
-        return "[\n" + lines.join("\n") + "\n]"
-    }
-    return `[${pairs.join(", ")}]`
-}
-
-/**
- * Apply vertex updates to the model. When vertex count matches, does surgical
- * in-place edits (no reformatting). Otherwise falls back to full replace with format preservation.
- */
-function applyVertexUpdates(
-    model: monaco.editor.ITextModel,
-    info: Polygon2DCallInfo,
-    vertices: [number, number][]
-): void {
-    if (vertices.length === info.vertexRanges.length) {
-        // Surgical edits: replace each vertex in place, apply in reverse order
-        const edits = vertices
-            .map((v, i) => {
-                const start = model.getPositionAt(info.vertexRanges[i].start)
-                const end = model.getPositionAt(info.vertexRanges[i].end)
-                return {
-                    range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
-                    text: formatVertex(v),
-                }
-            })
-            .sort((a, b) => {
-                const ap = a.range.getStartPosition()
-                const bp = b.range.getStartPosition()
-                return bp.lineNumber - ap.lineNumber || bp.column - ap.column
-            })
-        model.pushStackElement()
-        model.pushEditOperations([], edits, () => null)
-        model.pushStackElement()
-    } else {
-        const originalText = model.getValue().slice(info.arrayStartOffset, info.arrayEndOffset)
-        const format = analyzeArrayFormatting(originalText)
-        const newText = formatVertices(vertices, format)
-        const startPos = model.getPositionAt(info.arrayStartOffset)
-        const endPos = model.getPositionAt(info.arrayEndOffset)
-        const range = new monaco.Range(
-            startPos.lineNumber, startPos.column,
-            endPos.lineNumber, endPos.column
-        )
-        model.pushStackElement()
-        model.pushEditOperations([], [{ range, text: newText }], () => null)
-        model.pushStackElement()
-    }
-}
-
-function formatNumber(n: number): string {
-    const rounded = Math.round(n * 1000) / 1000
-    return String(rounded)
-}
-
-/**
- * Update the Y component of a position argument in source.
- * Handles string-form "x y z" and array-form [x, y, z].
- */
-function updatePosY(posText: string, newY: number): string | null {
-    const trimmed = posText.trim()
-
-    // String form: "x y z"
-    if (trimmed.startsWith('"') || trimmed.startsWith("'")) {
-        const quote = trimmed[0]
-        const inner = trimmed.slice(1, -1).trim()
-        const parts = inner.split(/\s+/)
-        if (parts.length === 3) {
-            parts[1] = formatNumber(newY)
-            return `${quote}${parts.join(" ")}${quote}`
-        }
-        return null
-    }
-
-    // Array form: [x, y, z]
-    if (trimmed.startsWith("[")) {
-        const inner = trimmed.slice(1, -1)
-        const parts = inner.split(",").map(s => s.trim())
-        if (parts.length === 3) {
-            parts[1] = formatNumber(newY)
-            return `[${parts.join(", ")}]`
-        }
-        return null
-    }
-
-    return null
 }
 
 export default App

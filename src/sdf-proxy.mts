@@ -428,8 +428,9 @@ export class SDFRenderer {
         }
         for (const s of serialized) {
             if (s.shapeType === "extrude" && s.pos && s.children.length === 1) {
-                const child = polyById.get(s.children[0])
-                if (child) {
+                const poly = polyById.get(s.children[0])
+                if (poly) {
+                    const child = { ...poly, id: s.children[0] }
                     this.#pushPullNodes.set(s.id, {
                         type: "extrude",
                         id: s.id,

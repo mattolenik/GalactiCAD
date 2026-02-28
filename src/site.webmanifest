@@ -6,7 +6,7 @@
     "categories": ["productivity", "engineering", "cad", "3d printing"],
     "icons": [
         {
-            "src": "/assets/logo1.svg",
+            "src": "/assets/gicon.svg",
             "sizes": "any",
             "type": "image/svg+xml"
         }

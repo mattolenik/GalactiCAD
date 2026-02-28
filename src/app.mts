@@ -726,23 +726,11 @@ class App {
 
         // Viewport toolbar — floating over the preview area
         const toolbar = new Toolbar()
-        const xrayIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-  <g stroke="currentColor" stroke-opacity="0.35" stroke-width="1" fill="none" stroke-dasharray="1.5,1.5" stroke-linecap="round">
-    <line x1="9" y1="10" x2="15" y2="14"/>
-    <line x1="9" y1="10" x2="3" y2="14"/>
-    <line x1="9" y1="10" x2="9" y2="3"/>
-  </g>
-  <polygon points="9,3 15,7 9,10 3,7" fill="rgba(100,160,255,0.15)" stroke="none"/>
-  <polygon points="15,7 15,14 9,17 9,10" fill="rgba(80,140,255,0.10)" stroke="none"/>
-  <polygon points="3,7 9,10 9,17 3,14" fill="rgba(60,120,255,0.08)" stroke="none"/>
-  <g stroke="currentColor" stroke-opacity="0.9" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <polygon points="9,3 15,7 9,10 3,7"/>
-    <line x1="15" y1="7" x2="15" y2="14"/>
-    <line x1="15" y1="14" x2="9" y2="17"/>
-    <line x1="9" y1="17" x2="9" y2="10"/>
-    <line x1="3" y1="7" x2="3" y2="14"/>
-    <line x1="3" y1="14" x2="9" y2="17"/>
-  </g>
+        const xrayIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <!-- Wide beam cone -->
+  <path d="M 9 17 L 1 4 L 9 1 L 17 4 Z"/>
+  <!-- Circle in the beam -->
+  <circle cx="9" cy="8" r="3"/>
 </svg>`
         const xrayCheckbox = toolbar.addToggleButton(xrayIcon, "Toggle X-ray")
         toolbar.addSeparator()

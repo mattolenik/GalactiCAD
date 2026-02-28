@@ -44,14 +44,6 @@ export class Union extends BinaryOperator {
         return { text: this._blendEx(lhResult.text!, rhResult.text!), varName }
     }
 
-    override compileAux(): string {
-        return ""
-    }
-
-    override compileAuxFast(): string {
-        return ""
-    }
-
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast()
         const rhResult = this.rh.compileFast()

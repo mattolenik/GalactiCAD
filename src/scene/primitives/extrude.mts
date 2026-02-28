@@ -165,8 +165,10 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             }
         } else if (!onSide && faceSelection.mode >= 2u) {
             let isTopFace = capY > 0.0;
-            if ((faceSelection.mode == 2u && isTopFace) || (faceSelection.mode == 3u && !isTopFace)) {
-                resultId = FACE_HIGHLIGHT_ID;
+            if (faceSelection.mode == 2u && isTopFace) {
+                resultId = FACE_HIGHLIGHT_TOP;
+            } else if (faceSelection.mode == 3u && !isTopFace) {
+                resultId = FACE_HIGHLIGHT_BOTTOM;
             }
         }
     }
@@ -199,8 +201,10 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     var resultId = select(${childId}u, id, onSide);
     if (!onSide && faceSelection.nodeId == id && faceSelection.mode >= 2u) {
         let isTopFace = capY > 0.0;
-        if ((faceSelection.mode == 2u && isTopFace) || (faceSelection.mode == 3u && !isTopFace)) {
-            resultId = FACE_HIGHLIGHT_ID;
+        if (faceSelection.mode == 2u && isTopFace) {
+            resultId = FACE_HIGHLIGHT_TOP;
+        } else if (faceSelection.mode == 3u && !isTopFace) {
+            resultId = FACE_HIGHLIGHT_BOTTOM;
         }
     }
     return sdfR(d, 0.8, 1.0, resultId, n);

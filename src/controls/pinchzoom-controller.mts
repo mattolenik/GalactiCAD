@@ -5,6 +5,7 @@ export class PinchZoomController {
     #zoom: number
     #zoomSensitivity = 0.1
     #rotateSensitivity = 1
+    #wheelZoomTimer: ReturnType<typeof setTimeout> | null = null
 
     isZooming = false
     onZoom?: (zoom: number) => void
@@ -21,6 +22,12 @@ export class PinchZoomController {
 
     #onWheel(e: WheelEvent) {
         e.preventDefault()
+        this.isZooming = true
+        if (this.#wheelZoomTimer !== null) clearTimeout(this.#wheelZoomTimer)
+        this.#wheelZoomTimer = setTimeout(() => {
+            this.#wheelZoomTimer = null
+            this.isZooming = false
+        }, 150)
         this.#zoom += e.deltaY * this.#zoomSensitivity
         this.#emitZoom()
     }

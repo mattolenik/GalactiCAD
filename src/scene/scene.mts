@@ -39,6 +39,9 @@ export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
 /** Minimum primitives in a subtree for it to receive an AABB guard. */
 const AABB_GUARD_THRESHOLD = 4
 
+/** IDs 1022–1023 reserved for face highlight (cap selection). Scene nodes use 0–1021. */
+const MAX_SCENE_NODE_ID = 1021
+
 export class SceneInfo {
     readonly root: Node
     numArgs = 0
@@ -62,7 +65,11 @@ export class SceneInfo {
 
     add(node: Node) {
         if (this.#nodes.hasValue(node)) return
-        node.id = this.#nodes.size
+        const id = this.#nodes.size
+        if (id > MAX_SCENE_NODE_ID) {
+            throw new Error(`Scene has too many nodes (max ${MAX_SCENE_NODE_ID + 1})`)
+        }
+        node.id = id
         this.#nodes.set(node.id, node)
     }
 

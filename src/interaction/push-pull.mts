@@ -1,8 +1,10 @@
 import { Vec2f, Vec3f, vec2, vec3 } from "../vecmat/vector.mjs"
 import type { Extrude, Loft } from "../scene/scene.mjs"
 
-/** Reserved object ID for face-level highlighting via the existing outline system. */
-const FACE_HIGHLIGHT_ID = 1023
+/** Reserved object IDs for face-level highlighting via the existing outline system. */
+const FACE_HIGHLIGHT_ID = 1023      // Side/edge face
+const FACE_HIGHLIGHT_TOP = 1023     // Top cap
+const FACE_HIGHLIGHT_BOTTOM = 1022  // Bottom cap (distinct so caps can be selected separately)
 
 export interface PushPullHost {
     readonly device: GPUDevice
@@ -47,6 +49,8 @@ export class PushPullController {
     #host: PushPullHost
     #face: FaceState | null = null
     #cap: CapState | null = null
+    /** Cap surface highlight only (single-click) — visual selection without push/pull activation. */
+    #capHighlightOnly: { node: Extrude | Loft; isTop: boolean } | null = null
     #dragging = false
     #dragStartScreen = vec2(0, 0)
     #dragOffset = 0
@@ -82,6 +86,13 @@ export class PushPullController {
                 nodeId: this.#cap.node.id,
                 faceIndex: 0,
                 mode: this.#cap.isTop ? 2 : 3,
+            }
+        }
+        if (this.#capHighlightOnly) {
+            return {
+                nodeId: this.#capHighlightOnly.node.id,
+                faceIndex: 0,
+                mode: this.#capHighlightOnly.isTop ? 2 : 3,
             }
         }
         return null
@@ -155,7 +166,7 @@ export class PushPullController {
         // Write face selection uniform to GPU (mode=0 for initial selection, no offset yet)
         this.#writeFaceSelection(extrude.id, closestEdge, 0, 0)
 
-        // Mark FACE_HIGHLIGHT_ID as selected, deselect everything else
+        // Mark FACE_HIGHLIGHT_ID as selected for side face, deselect everything else
         const selData = new Uint32Array(1024)
         selData[FACE_HIGHLIGHT_ID] = 1
         this.#host.device.queue.writeBuffer(this.#host.selectedObjectIdsBuffer, 0, selData)
@@ -163,9 +174,21 @@ export class PushPullController {
         this.#host.requestRender()
     }
 
+    /** Highlight a cap for surface selection only (single-click). Does not activate push/pull. */
+    highlightCapFace(node: Extrude | Loft, isTop: boolean): void {
+        this.#capHighlightOnly = { node, isTop }
+        const mode = isTop ? 2 : 3
+        this.#writeFaceSelection(node.id, 0, mode, 0)
+        const selData = new Uint32Array(1024)
+        selData[isTop ? FACE_HIGHLIGHT_TOP : FACE_HIGHLIGHT_BOTTOM] = 1
+        this.#host.device.queue.writeBuffer(this.#host.selectedObjectIdsBuffer, 0, selData)
+        this.#host.requestRender()
+    }
+
     /** Select a cap face (top or bottom) of an Extrude or Loft for push/pull. */
     selectCapFace(node: Extrude | Loft, isTop: boolean): void {
         this.#face = null
+        this.#capHighlightOnly = null
         // basePosYDelta = offset from compiled position. When compiledPosY is missing (e.g. node
         // not in map after tab switch or build race), use 0 to avoid the whole object jumping.
         const compiledPosY = this.#host.hasCompiledPosY(node.id)
@@ -184,27 +207,28 @@ export class PushPullController {
         this.#writeFaceSelection(node.id, 0, mode, 0)
 
         const selData = new Uint32Array(1024)
-        selData[FACE_HIGHLIGHT_ID] = 1
+        selData[isTop ? FACE_HIGHLIGHT_TOP : FACE_HIGHLIGHT_BOTTOM] = 1
         this.#host.device.queue.writeBuffer(this.#host.selectedObjectIdsBuffer, 0, selData)
 
         this.#host.requestRender()
     }
 
-    /** Deselect any active face. */
+    /** Deselect any active face or cap highlight. */
     deselect(): void {
-        if (!this.#face && !this.#cap) return
+        if (!this.#face && !this.#cap && !this.#capHighlightOnly) return
         this.#face = null
         this.#cap = null
+        this.#capHighlightOnly = null
         this.#dragging = false
 
         // Clear face selection on GPU
         this.#writeFaceSelection(0, 0)
 
-        // Clear FACE_HIGHLIGHT_ID selection
+        // Clear face highlight IDs (bottom cap 1022, top/side 1023) - 2 slots = 8 bytes
         this.#host.device.queue.writeBuffer(
             this.#host.selectedObjectIdsBuffer,
-            FACE_HIGHLIGHT_ID * 4,
-            new Uint32Array([0])
+            FACE_HIGHLIGHT_BOTTOM * 4,
+            new Uint32Array([0, 0])
         )
 
         this.#host.requestRender()

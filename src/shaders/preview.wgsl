@@ -121,7 +121,9 @@ struct SelectedEdgesBuffer {
 @group(0) @binding(15) var<storage, read_write> hoverEdgeHits: array<EdgeHit, 4>;
 @group(0) @binding(16) var<storage, read> hoveredEdge: SelectedEdgesBuffer;
 
-const FACE_HIGHLIGHT_ID: u32 = 1023u;
+const FACE_HIGHLIGHT_ID: u32 = 1023u;       // Side/edge face highlight (unchanged)
+const FACE_HIGHLIGHT_TOP: u32 = 1023u;     // Top cap when selected
+const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;  // Bottom cap when selected (distinct from top)
 
 // Fragment output: color and object ID for MRT outline detection
 struct FragmentOutput {

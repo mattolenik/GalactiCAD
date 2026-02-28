@@ -42,6 +42,16 @@ export class CameraController {
         this.#host.canvas.style.cursor = val ? "grabbing" : "auto"
     }
 
+    /** True if the user has moved the pointer during the current drag (not just clicked). */
+    get hasDragged(): boolean {
+        return this.#hasDragged
+    }
+
+    /** True when the user is actively moving (dragging with movement, or zooming). Used for half-res optimization. */
+    get isActivelyMoving(): boolean {
+        return (this.#isDragging && this.#hasDragged) || this.#zoomController.isZooming
+    }
+
     #last = new Vec2f()
     #cursorDelta = new Vec2f()
     #lastFocused: Element | null = null

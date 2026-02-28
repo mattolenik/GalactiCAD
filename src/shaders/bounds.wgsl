@@ -34,6 +34,8 @@ struct BoundsUniforms {
 struct FaceSelection { nodeId: u32, faceIndex: u32, mode: u32, extrudeOffset: f32, }
 @group(0) @binding(4) var<uniform> faceSelection: FaceSelection;
 const FACE_HIGHLIGHT_ID: u32 = 1023u;
+const FACE_HIGHLIGHT_TOP: u32 = 1023u;
+const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 
 // Per-node parameters: .x = h, .y = posYDelta. Indexed by node ID.
 @group(0) @binding(5) var<uniform> nodeParams: array<vec4f, 256>;

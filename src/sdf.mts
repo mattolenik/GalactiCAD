@@ -647,9 +647,10 @@ export class SDFRenderer {
 
         setTimeout(async () => {
             try {
-                const [clickedId, edgeHits] = await Promise.all([
+                const [clickedId, edgeHits, hitPos] = await Promise.all([
                     this.#readClickedObjectId(),
                     this.#readEdgeHits(),
+                    this.#readClickedHitPos(),
                 ])
                 this.#clickPending = false
                 const effectiveMode = this.#getEffectiveMode(altKey)
@@ -689,6 +690,22 @@ export class SDFRenderer {
                 // Object mode, Face mode (single-click as object), or Seam/Edge with no hits
                 this.#clearSelectedEdges()
                 if (clickedId !== 0) {
+                    // Cap: surface selection only (highlight that cap, no push/pull)
+                    if (this.#scene && this.#pushPullController) {
+                        const node = this.#scene.get(clickedId)
+                        if (node instanceof Polygon2D) {
+                            const parent = this.#findCapParent(node)
+                            if (parent) {
+                                const isTop = parent instanceof Loft
+                                    ? node === parent.profiles[parent.profiles.length - 1]
+                                    : (hitPos.y - parent.pos.y) >= 0
+                                this.#pushPullController.highlightCapFace(parent, isTop)
+                                this.#pushSelectionInfo()
+                                return
+                            }
+                        }
+                    }
+                    this.#pushPullController?.deselect()
                     this.#updateSelection(clickedId, shiftKey)
                 } else if (!shiftKey) {
                     this.#selectedObjectIds.fill(false)
@@ -834,7 +851,7 @@ export class SDFRenderer {
         const rawObjects = this.selectedObjectIds
         const faceSel = this.#pushPullController?.getFaceSelection()
         const objects = faceSel
-            ? rawObjects.filter(id => id !== 1023)
+            ? rawObjects.filter(id => id !== 1022 && id !== 1023) // exclude face highlight IDs
             : rawObjects
         const objectNames: Record<number, string> = {}
         if (this.#scene) {
@@ -893,7 +910,9 @@ export class SDFRenderer {
             ),
             this.#controls.change$.subscribe(() => {
                 this.#needsRender = true
-                this.#onCameraMovement()
+                if (this.#controls.isActivelyMoving) {
+                    this.#onCameraMovement()
+                }
             })
         )
         this.#movementScale = this.#settings.getGlobal().preview.movementScale
@@ -1393,9 +1412,6 @@ export class SDFRenderer {
             get selectedObjectIdsBuffer() { return self.#uniformBuffers.selectedObjectIds },
             requestRender() {
                 self.#needsRender = true
-                if (self.#pushPullController?.isDragging) {
-                    self.#onCameraMovement()
-                }
             },
             get canvas() { return self.#preview.canvas },
             get controls() { return self.#controls },

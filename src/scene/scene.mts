@@ -1,76 +1,40 @@
 import ts from "typescript"
 import { BijectiveMap } from "../collections/bijectiveMap.mjs"
 import { WRAP_PREFIX, WRAP_SUFFIX } from "../parser/source-parser.mjs"
-import type { Vec3 } from "../vecmat/vector.mjs"
-import {
-    Node,
-    BinaryOperator,
-    UnaryOperator,
-    CompileResult,
-    FLUENT_METHODS,
-    fluent,
-    type BlendMode,
-    type IntersectionType,
-} from "./base.mjs"
-import { Box, box } from "./primitives/box.mjs"
-import { Polygon2D, polygon2d } from "./primitives/polygon2d.mjs"
-import { union } from "./operators/union.mjs"
-import { subtract } from "./operators/subtract.mjs"
-import { intersect } from "./operators/intersect.mjs"
-import { pipe } from "./operators/pipe.mjs"
-import { engrave } from "./operators/engrave.mjs"
-import { groove } from "./operators/groove.mjs"
-import { tongue } from "./operators/tongue.mjs"
-import { morph } from "./operators/morph.mjs"
-import { seam } from "./operators/seam.mjs"
-import "./operators/rotate.mjs"
-import "./operators/shell.mjs"
-import "./operators/offset.mjs"
-import "./operators/elongate.mjs"
-import "./operators/twist.mjs"
-import "./operators/bend.mjs"
-import "./operators/taper.mjs"
-import { Sphere, sphere } from "./primitives/sphere.mjs"
-import { Cylinder, cylinder } from "./primitives/cylinder.mjs"
-import { Cone, cone } from "./primitives/cone.mjs"
-import { Torus, torus } from "./primitives/torus.mjs"
-import { Capsule, capsule } from "./primitives/capsule.mjs"
-import { PlaneNode, plane } from "./primitives/plane.mjs"
-import { HexPrism, hexprism } from "./primitives/hexprism.mjs"
-import { Disc, disc } from "./primitives/disc.mjs"
+import { BinaryOperator, CompileResult, Node, UnaryOperator, fluent, styleInfo, type BlendMode, type IntersectionType, type StyleInfo } from "./base.mjs"
+import { Bend, bend } from "./operators/bend.mjs"
+import { Elongate, elongate } from "./operators/elongate.mjs"
+import { Engrave, engrave } from "./operators/engrave.mjs"
+import { Groove, groove } from "./operators/groove.mjs"
+import { Intersect, intersect } from "./operators/intersect.mjs"
+import { Morph, morph } from "./operators/morph.mjs"
+import { Offset, offset } from "./operators/offset.mjs"
+import { Pipe, pipe } from "./operators/pipe.mjs"
+import { Rotate, rotate } from "./operators/rotate.mjs"
+import { Seam, seam } from "./operators/seam.mjs"
+import { Shell, shell } from "./operators/shell.mjs"
+import { Subtract, subtract } from "./operators/subtract.mjs"
+import { Taper, taper } from "./operators/taper.mjs"
+import { Tongue, tongue } from "./operators/tongue.mjs"
+import { Twist, twist } from "./operators/twist.mjs"
+import { Union, union } from "./operators/union.mjs"
 import { Blob, blob } from "./primitives/blob.mjs"
+import { Box, box } from "./primitives/box.mjs"
+import { Capsule, capsule } from "./primitives/capsule.mjs"
+import { Cone, cone } from "./primitives/cone.mjs"
+import { Cylinder, cylinder } from "./primitives/cylinder.mjs"
+import { Disc, disc } from "./primitives/disc.mjs"
 import { Extrude, extrude } from "./primitives/extrude.mjs"
+import { HexPrism, hexprism } from "./primitives/hexprism.mjs"
 import { Lathe, lathe } from "./primitives/lathe.mjs"
 import { Loft, loft } from "./primitives/loft.mjs"
-import { Union } from "./operators/union.mjs"
-import { Subtract } from "./operators/subtract.mjs"
-import { Intersect } from "./operators/intersect.mjs"
-import { Pipe } from "./operators/pipe.mjs"
-import { Engrave } from "./operators/engrave.mjs"
-import { Groove } from "./operators/groove.mjs"
-import { Tongue } from "./operators/tongue.mjs"
-import { Morph } from "./operators/morph.mjs"
-import { Seam } from "./operators/seam.mjs"
-import { Rotate } from "./operators/rotate.mjs"
-import { Shell } from "./operators/shell.mjs"
-import { Offset } from "./operators/offset.mjs"
-import { Elongate } from "./operators/elongate.mjs"
-import { Twist } from "./operators/twist.mjs"
-import { Bend } from "./operators/bend.mjs"
-import { Taper } from "./operators/taper.mjs"
+import { PlaneNode, plane } from "./primitives/plane.mjs"
+import { Polygon2D, polygon2d } from "./primitives/polygon2d.mjs"
+import { Sphere, sphere } from "./primitives/sphere.mjs"
+import { Torus, torus } from "./primitives/torus.mjs"
 
-export type { CompileResult }
-export { FLUENT_METHODS, fluent }
-export type { BlendMode, IntersectionType }
-export type { UnionType } from "./base.mjs"
-export { Node, UnaryOperator, BinaryOperator }
-export { Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Morph, Seam }
-export { Shell, Offset, Elongate, Twist, Bend, Taper, Rotate }
-export { Box, Sphere, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob }
-export { Polygon2D, Extrude, Lathe, Loft }
-export { box, sphere, cylinder, cone, torus, capsule, plane, hexprism, disc, blob }
-export { polygon2d, extrude, loft, lathe }
-export { union, subtract, intersect, pipe, engrave, groove, tongue, morph, seam }
+export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, Rotate, Seam, Shell, Sphere, Subtract, Taper, Tongue, Torus, Twist, UnaryOperator, Union, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, rotate, seam, shell, sphere, subtract, styleInfo, taper, tongue, torus, twist, union }
+export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
 
 /** Minimum primitives in a subtree for it to receive an AABB guard. */
 const AABB_GUARD_THRESHOLD = 4
@@ -140,9 +104,10 @@ export class SceneInfo {
             throw new Error(msg)
         }
         const body = result.outputText + "\nreturn _();"
-        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", body)(
+        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "shell", "offset", "elongate", "twist", "bend", "taper", body)(
             box, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob,
-            intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam)
+            intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam,
+            rotate, shell, offset, elongate, twist, bend, taper)
         this.root.scene = this
         this.root.build()
         this.#assignAABBIndices(this.root)
@@ -220,4 +185,4 @@ export class SceneInfo {
 }
 
 // Other methods we want to show as "fluent methods" (rotate, shell, etc. are added by their operator modules)
-for (const name of ["pattern", "profile", "sections"]) FLUENT_METHODS.add(name)
+for (const name of ["pattern", "profile", "sections"]) styleInfo.FluentMethods.add(name)

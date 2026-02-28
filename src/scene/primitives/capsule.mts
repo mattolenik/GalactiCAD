@@ -1,16 +1,15 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
-import { asRadius } from "../geom.mjs"
 
 export class Capsule extends Node {
     pos = vec3([0, 0, 0])
     r = 0
     c: number
 
-    constructor(pos: Vec3, { r, d, c }: { r?: number; d?: number; c: number }) {
+    constructor(pos: Vec3, { r, c }: { r: number; c: number }) {
         super()
         this.pos = vec3(pos)
-        this.r = asRadius(r, d)
+        this.r = r
         this.c = c
     }
 
@@ -39,7 +38,7 @@ export class Capsule extends Node {
         this.c = c
         return this
     }
-    @fluent override shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }

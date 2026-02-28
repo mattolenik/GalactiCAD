@@ -100,7 +100,6 @@ interface ParsedShapeCall {
     pos?: Vec3f                 // Parsed position vector
     size?: Vec3f                // Parsed size (for box)
     r?: number                  // Parsed radius (for sphere)
-    d?: number                  // Parsed diameter (alternative)
 }
 
 interface SourceLocation {

@@ -25,39 +25,39 @@ declare class Vec3f {
 }
 
 // ---------------------------------------------------------------------------
-// Base node class
+// Base node classes
 // ---------------------------------------------------------------------------
 
 /** Base class for all scene nodes. */
 declare class Node {
     /** Shift the base primitive's position. Works through modifier chains (twist, taper, etc.). */
     shift(v: Vec3): Node;
-    rotate(rot: Vec3): Rotate;
-    shell(t: number): Shell;
-    offset(amount: number): Offset;
-    elongate(h: Vec3): Elongate;
-    twist(rate: number): Twist;
-    bend(amount: number): Bend;
-    taper(ratio: number, height: number): Taper;
 }
+
+/** Rotate a node. rotate(rot, node) */
+declare function rotate(rot: Vec3, node: Node): Rotate;
+/** Hollow shell of a shape. shell(t, node) */
+declare function shell(t: number, node: Node): Shell;
+/** Uniform offset. offset(amount, node) */
+declare function offset(amount: number, node: Node): Offset;
+/** Elongate a shape. elongate(h, node) */
+declare function elongate(h: Vec3, node: Node): Elongate;
+/** Twist a shape. twist(rate, node) */
+declare function twist(rate: number, node: Node): Twist;
+/** Bend a shape. bend(amount, node) */
+declare function bend(amount: number, node: Node): Bend;
+/** Taper a shape. taper(ratio, height, node) */
+declare function taper(ratio: number, height: number, node: Node): Taper;
 
 // ---------------------------------------------------------------------------
 // Primitive shapes
 // ---------------------------------------------------------------------------
 
-/** A sphere. sphere.radius(r).shift(v).taper(ratio, height) etc. */
+/** A sphere. sphere.radius(r).shift(v) then shell(t, ...), taper(ratio, height, ...) etc. */
 declare class Sphere extends Node {
     pos: Vec3f;
     r: number;
-    d: number;
     shift(v: Vec3): Sphere;
-    rotate(rot: Vec3): Sphere;
-    shell(t: number): Sphere;
-    offset(amount: number): Sphere;
-    elongate(h: Vec3): Sphere;
-    twist(rate: number): Sphere;
-    bend(amount: number): Sphere;
-    taper(ratio: number, height: number): Sphere;
 }
 
 /** An axis-aligned box. box(size).shift(v) or box(l, w, h).shift(v) */
@@ -77,7 +77,6 @@ declare function box(l: number, w: number, h: number): Box;
 declare class Cylinder extends Node {
     pos: Vec3f;
     r: number;
-    d: number;
     h: number;
     height(h: number): Cylinder;
     shift(v: Vec3): Cylinder;
@@ -87,7 +86,6 @@ declare class Cylinder extends Node {
 declare class Cone extends Node {
     pos: Vec3f;
     r: number;
-    d: number;
     h: number;
     height(h: number): Cone;
     shift(v: Vec3): Cone;
@@ -107,7 +105,6 @@ declare class Torus extends Node {
 declare class Capsule extends Node {
     pos: Vec3f;
     r: number;
-    d: number;
     c: number;
     radius(r: number): Capsule;
     cylinderLength(c: number): Capsule;
@@ -128,7 +125,6 @@ declare class PlaneNode extends Node {
 declare class HexPrism extends Node {
     pos: Vec3f;
     r: number;
-    d: number;
     h: number;
     radius(r: number): HexPrism;
     height(h: number): HexPrism;
@@ -139,7 +135,6 @@ declare class HexPrism extends Node {
 declare class Disc extends Node {
     pos: Vec3f;
     r: number;
-    d: number;
     shift(v: Vec3): Disc;
 }
 
@@ -154,7 +149,7 @@ declare class Blob extends Node {
 // ---------------------------------------------------------------------------
 
 /** A 2-D polygon defined by a list of [x, y] vertices. */
-declare class Polygon2D {
+declare class Polygon2D extends Node {
     vertices: [number, number][];
 }
 
@@ -269,25 +264,11 @@ declare class Extrude extends Node {
 declare class Loft extends Node {
     height(n: number): Loft;
     shift(v: Vec3): Loft;
-    rotate(rot: Vec3): Loft;
-    shell(t: number): Loft;
-    offset(amount: number): Loft;
-    elongate(h: Vec3): Loft;
-    twist(rate: number): Loft;
-    bend(amount: number): Loft;
-    taper(ratio: number, height: number): Loft;
 }
 
 /** Revolve a Polygon2D around the Y-axis (lathe). */
 declare class Lathe extends Node {
     shift(v: Vec3): Lathe;
-    rotate(rot: Vec3): Lathe;
-    shell(t: number): Lathe;
-    offset(amount: number): Lathe;
-    elongate(h: Vec3): Lathe;
-    twist(rate: number): Lathe;
-    bend(amount: number): Lathe;
-    taper(ratio: number, height: number): Lathe;
 }
 
 // ---------------------------------------------------------------------------

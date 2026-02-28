@@ -699,17 +699,17 @@ const cockpit = subtract(canopyBubble, canopyFloor)
 
 // ═══ WINGS ═══
 // Swept delta wings with slight anhedral
-const wingR = box([8, 6, 0.35]).shift([10, -2, -0.3]).rotate([0, 0, -2])
-const wingL = box([8, 6, 0.35]).shift([-10, -2, -0.3]).rotate([0, 0, 2])
+const wingR = rotate([0, 0, -2], box([8, 6, 0.35]).shift([10, -2, -0.3]))
+const wingL = rotate([0, 0, 2], box([8, 6, 0.35]).shift([-10, -2, -0.3]))
 
 // ═══ TAIL ═══
 // Canted twin vertical stabilisers
-const vStabR = box([0.2, 3.5, 2.5]).shift([2, -15, 3]).rotate([0, 22, 0])
-const vStabL = box([0.2, 3.5, 2.5]).shift([-2, -15, 3]).rotate([0, -22, 0])
+const vStabR = rotate([0, 22, 0], box([0.2, 3.5, 2.5]).shift([2, -15, 3]))
+const vStabL = rotate([0, -22, 0], box([0.2, 3.5, 2.5]).shift([-2, -15, 3]))
 
 // All-moving horizontal stabilisers
-const hStabR = box([3.5, 2.5, 0.2]).shift([5, -14, -0.2]).rotate([3, 0, -2])
-const hStabL = box([3.5, 2.5, 0.2]).shift([-5, -14, -0.2]).rotate([-3, 0, 2])
+const hStabR = rotate([3, 0, -2], box([3.5, 2.5, 0.2]).shift([5, -14, -0.2]))
+const hStabL = rotate([-3, 0, 2], box([3.5, 2.5, 0.2]).shift([-5, -14, -0.2]))
 
 // ═══ ENGINES ═══
 // Twin exhaust nozzles recessed in the aft body

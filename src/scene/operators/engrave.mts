@@ -2,7 +2,7 @@ import { BinaryOperator, CompileResult, fluent, Node } from "../base.mjs"
 
 export class Engrave extends BinaryOperator {
     #engraveRadius = 0
-    constructor(lh: import("../base.mjs").Node, rh: import("../base.mjs").Node, radius = 0) {
+    constructor(lh: Node, rh: Node, radius = 0) {
         super(lh, rh)
         this.#engraveRadius = radius
     }

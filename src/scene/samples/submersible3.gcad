@@ -132,8 +132,8 @@ let axleR = box([1, 9, 1]).shift([-8, 0, -24])
 // ═══ DECORATIVE FINS ═══
 // Now FOUR fins because "more fins = more stable"
 // The CFD simulation was done in Microsoft Paint
-let finR = box([8, 1, 10]).shift([0, 14, -10]).rotate([0, 20, 0])
-let finL = box([8, 1, 10]).shift([0, -14, -10]).rotate([0, -20, 0])
+let finR = rotate([0, 20, 0], box([8, 1, 10]).shift([0, 14, -10]))
+let finL = rotate([0, -20, 0], box([8, 1, 10]).shift([0, -14, -10]))
 let finTop = box([10, 1, 5]).shift([0, 0, 30])
 let finBot = box([10, 1, 5]).shift([0, 0, -18])
 

@@ -3,7 +3,7 @@ import { BinaryOperator, CompileResult, fluent, Node } from "../base.mjs"
 export class Groove extends BinaryOperator {
     ra: number
     rb: number
-    constructor(lh: import("../base.mjs").Node, rh: import("../base.mjs").Node, ra = 0, rb = 0) {
+    constructor(lh: Node, rh: Node, ra = 0, rb = 0) {
         super(lh, rh)
         this.ra = ra
         this.rb = rb

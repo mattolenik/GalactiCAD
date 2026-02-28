@@ -36,7 +36,6 @@ export interface ParsedShapeCall {
     pos?: Vec3f       // Position for sphere/box/cylinder/cone/etc.
     size?: Vec3f      // Size for box
     r?: number        // Radius for sphere/cylinder/cone/hexprism/disc
-    d?: number        // Diameter (alternative to r)
     h?: number        // Half-height for cylinder/hexprism, full height for cone
     sr?: number       // Small radius (tube) for torus
     lr?: number       // Large radius (ring) for torus
@@ -361,15 +360,28 @@ export class SourceParser {
         const locations: FluentMethodLocation[] = []
 
         const visit = (node: ts.Node) => {
-            if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-                const prop = node.expression
-                const name = prop.name.text
-                if (methodNames.has(name)) {
-                    const nameNode = prop.name
+            if (ts.isCallExpression(node)) {
+                if (ts.isPropertyAccessExpression(node.expression)) {
+                    const prop = node.expression
+                    const name = prop.name.text
+                    if (methodNames.has(name)) {
+                        const nameNode = prop.name
+                        const startLoc = tsPosToUser(sourceFile, nameNode.getStart())
+                        const endLoc = tsPosToUser(sourceFile, nameNode.getEnd())
+                        locations.push({
+                            name,
+                            startLine: startLoc.line,
+                            startColumn: startLoc.column,
+                            endLine: endLoc.line,
+                            endColumn: endLoc.column,
+                        })
+                    }
+                } else if (ts.isIdentifier(node.expression) && methodNames.has(node.expression.text)) {
+                    const nameNode = node.expression
                     const startLoc = tsPosToUser(sourceFile, nameNode.getStart())
                     const endLoc = tsPosToUser(sourceFile, nameNode.getEnd())
                     locations.push({
-                        name,
+                        name: nameNode.text,
                         startLine: startLoc.line,
                         startColumn: startLoc.column,
                         endLine: endLoc.line,

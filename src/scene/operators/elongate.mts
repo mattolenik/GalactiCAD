@@ -1,4 +1,4 @@
-import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Elongate extends UnaryOperator {
@@ -32,7 +32,7 @@ export class Elongate extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: elongatedChild }
     }
-    constructor(h: Vec3, arg: import("../base.mjs").Node) {
+    constructor(h: Vec3, arg: Node) {
         super(arg)
         const v = vec3(h)
         this.hx = v.x
@@ -41,5 +41,6 @@ export class Elongate extends UnaryOperator {
     }
 }
 
-Node.prototype.elongate = function (this: Node, h: Vec3) { return new Elongate(h, this) }
-FLUENT_METHODS.add("elongate")
+export const elongate = fluent(function elongate(h: Vec3, node: Node): Elongate {
+    return new Elongate(h, node)
+})

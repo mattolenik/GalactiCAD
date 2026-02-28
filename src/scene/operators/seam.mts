@@ -2,7 +2,7 @@ import { BinaryOperator, CompileResult, fluent, Node } from "../base.mjs"
 
 export class Seam extends BinaryOperator {
     #seamRadius = 0
-    constructor(lh: import("../base.mjs").Node, rh: import("../base.mjs").Node, radius = 0) {
+    constructor(lh: Node, rh: Node, radius = 0) {
         super(lh, rh)
         this.#seamRadius = radius
     }

@@ -55,7 +55,7 @@ export class Box extends Node {
         }
     }
 
-    @fluent override shift(v: Vec3): this {
+    @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }

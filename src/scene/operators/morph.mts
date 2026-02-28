@@ -2,7 +2,7 @@ import { BinaryOperator, CompileResult, fluent, Node } from "../base.mjs"
 
 export class Morph extends BinaryOperator {
     #morphT = 0
-    constructor(t: number, lh: import("../base.mjs").Node, rh: import("../base.mjs").Node) {
+    constructor(t: number, lh: Node, rh: Node) {
         super(lh, rh)
         this.#morphT = t
     }

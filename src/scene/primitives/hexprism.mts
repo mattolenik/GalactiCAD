@@ -1,16 +1,15 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
-import { asRadius } from "../geom.mjs"
 
 export class HexPrism extends Node {
     pos = vec3([0, 0, 0])
     r = 0
     h: number
 
-    constructor(pos: Vec3, { r, d, h }: { r?: number; d?: number; h: number }) {
+    constructor(pos: Vec3, { r, h }: { r: number; h: number }) {
         super()
         this.pos = vec3(pos)
-        this.r = asRadius(r, d)
+        this.r = r
         this.h = h
     }
 

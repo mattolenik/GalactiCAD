@@ -1,11 +1,4 @@
-import {
-    BinaryOperator,
-    CompileResult,
-    fluent,
-    Node,
-    type BlendMode,
-    type IntersectionType,
-} from "../base.mjs"
+import { BinaryOperator, CompileResult, fluent, Node, type BlendMode, type IntersectionType } from "../base.mjs"
 
 export class Subtract extends BinaryOperator {
     override getShapeType(): string {
@@ -104,7 +97,7 @@ export class Subtract extends BinaryOperator {
         return { text: this._diffFast(lhResult.text!, rhResult.text!), varName }
     }
 
-    constructor(lh: import("../base.mjs").Node, rh: import("../base.mjs").Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {
+    constructor(lh: Node, rh: Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {
         super(lh, rh)
     }
 

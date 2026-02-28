@@ -1,10 +1,4 @@
-import {
-    BinaryOperator,
-    CompileResult,
-    fluent,
-    Node,
-    type UnionType,
-} from "../base.mjs"
+import { BinaryOperator, CompileResult, fluent, Node, type UnionType } from "../base.mjs"
 
 export class Union extends BinaryOperator {
     override getShapeType(): string {
@@ -107,7 +101,7 @@ export class Union extends BinaryOperator {
         return { text: this._blendFast(lhResult.text!, rhResult.text!), varName }
     }
 
-    constructor(lh: import("../base.mjs").Node, rh: import("../base.mjs").Node, public radius?: number, public mode?: UnionType, public n?: number) {
+    constructor(lh: Node, rh: Node, public radius?: number, public mode?: UnionType, public n?: number) {
         super(lh, rh)
     }
 

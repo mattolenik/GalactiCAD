@@ -16,71 +16,54 @@
 // The centre core is slightly taller than the strap-on boosters.
 // LH2/LOX tank stretching from z≈0 to z≈40.
 // (In reality the core is covered in orange foam insulation.)
-let ccTank = (capsule.radius(2.5).cylinderLength(17.5).shift([0, 20, 0]).rotate([90, 0, 0])
-)
+let ccTank = rotate([90, 0, 0], capsule.radius(2.5).cylinderLength(17.5).shift([0, 20, 0]))
 // External LOX feedline running down the tank wall
-let ccPipe = (cylinder.radius(0.18).height(15).shift([2.4, 18, 0]).rotate([90, 0, 0])
-)
+let ccPipe = rotate([90, 0, 0], cylinder.radius(0.18).height(15).shift([2.4, 18, 0]))
 
 // ═══ LEFT BOOSTER (CBC) ═══
 // Offset Y = -5.2  (just touching the center core)
 // Tank from z≈0 to z≈37, then a pointed nose cone to z≈44
-let lbTank = (cylinder.radius(2.5).height(18.5).shift([0, 18.5, 5.2]).rotate([90, 0, 0])
-)
+let lbTank = rotate([90, 0, 0], cylinder.radius(2.5).height(18.5).shift([0, 18.5, 5.2]))
 let lbBotCap = sphere.radius(2.5).shift([0, -5.2, 0])
-let lbNose = (cone.radius(2.5).height(7).shift([0, 37, 5.2]).rotate([90, 0, 0])
-)
-let lbPipe = (cylinder.radius(0.18).height(13).shift([2.4, 16, 5.2]).rotate([90, 0, 0])
-)
+let lbNose = rotate([90, 0, 0], cone.radius(2.5).height(7).shift([0, 37, 5.2]))
+let lbPipe = rotate([90, 0, 0], cylinder.radius(0.18).height(13).shift([2.4, 16, 5.2]))
 let leftBooster = union(lbTank, lbBotCap, lbNose).round(0.2)
 
 // ═══ RIGHT BOOSTER (CBC) ═══
 // Mirror of the left booster at Y = +5.2
-let rbTank = (cylinder.radius(2.5).height(18.5).shift([0, 18.5, -5.2]).rotate([90, 0, 0])
-)
+let rbTank = rotate([90, 0, 0], cylinder.radius(2.5).height(18.5).shift([0, 18.5, -5.2]))
 let rbBotCap = sphere.radius(2.5).shift([0, 5.2, 0])
-let rbNose = (cone.radius(2.5).height(7).shift([0, 37, -5.2]).rotate([90, 0, 0])
-)
-let rbPipe = (cylinder.radius(0.18).height(13).shift([-2.4, 16, -5.2]).rotate([90, 0, 0])
-)
+let rbNose = rotate([90, 0, 0], cone.radius(2.5).height(7).shift([0, 37, -5.2]))
+let rbPipe = rotate([90, 0, 0], cylinder.radius(0.18).height(13).shift([-2.4, 16, -5.2]))
 let rightBooster = union(rbTank, rbBotCap, rbNose).round(0.2)
 
 // ═══ ENGINE SECTION SKIRTS ═══
 // Flared aft structures that house the RS-68 turbopumps
 // and engine gimbal hardware. Cone base (wide) at the
 // bottom, tapering up into the tank walls.
-let ccSkirt = (cone.radius(3.2).height(3).shift([0, -2.5, 0]).rotate([90, 0, 0])
-)
-let lbSkirt = (cone.radius(3.2).height(3).shift([0, -2.5, 5.2]).rotate([90, 0, 0])
-)
-let rbSkirt = (cone.radius(3.2).height(3).shift([0, -2.5, -5.2]).rotate([90, 0, 0])
-)
+let ccSkirt = rotate([90, 0, 0], cone.radius(3.2).height(3).shift([0, -2.5, 0]))
+let lbSkirt = rotate([90, 0, 0], cone.radius(3.2).height(3).shift([0, -2.5, 5.2]))
+let rbSkirt = rotate([90, 0, 0], cone.radius(3.2).height(3).shift([0, -2.5, -5.2]))
 
 // ═══ RS-68 ENGINE NOZZLES ═══
 // One per core. Regeneratively-cooled bell nozzles —
 // wide opening at the bottom, narrowing up into the skirt.
-let ccNozzle = (cone.radius(2).height(4.5).shift([0, -7, 0]).rotate([90, 0, 0])
-)
-let lbNozzle = (cone.radius(2).height(4.5).shift([0, -7, 5.2]).rotate([90, 0, 0])
-)
-let rbNozzle = (cone.radius(2).height(4.5).shift([0, -7, -5.2]).rotate([90, 0, 0])
-)
+let ccNozzle = rotate([90, 0, 0], cone.radius(2).height(4.5).shift([0, -7, 0]))
+let lbNozzle = rotate([90, 0, 0], cone.radius(2).height(4.5).shift([0, -7, 5.2]))
+let rbNozzle = rotate([90, 0, 0], cone.radius(2).height(4.5).shift([0, -7, -5.2]))
 
 // ═══ INTERSTAGE ADAPTER ═══
 // Short cylindrical skirt connecting center core to
 // the second stage — slightly wider than the tanks
-let interstage = (cylinder.radius(2.7).height(1.25).shift([0, 41.25, 0]).rotate([90, 0, 0])
-)
+let interstage = rotate([90, 0, 0], cylinder.radius(2.7).height(1.25).shift([0, 41.25, 0]))
 
 // ═══ UPPER STAGE (DCSS) ═══
 // Delta Cryogenic Second Stage: z≈42 to z≈53
 // Single RL10B-2 engine with extended nozzle
-let usBody = (capsule.radius(2.5).cylinderLength(3).shift([0, 47.5, 0]).rotate([90, 0, 0])
-)
+let usBody = rotate([90, 0, 0], capsule.radius(2.5).cylinderLength(3).shift([0, 47.5, 0]))
 // RL10B-2 engine — long carbon-carbon nozzle extension
 // protrudes below the interstage
-let usNozzle = (cone.radius(1.4).height(5).shift([0, 37, 0]).rotate([90, 0, 0])
-)
+let usNozzle = rotate([90, 0, 0], cone.radius(1.4).height(5).shift([0, 37, 0]))
 
 // ═══ PAYLOAD FAIRING ═══
 // Two-piece clamshell fairing, 5 m diameter
@@ -88,13 +71,11 @@ let usNozzle = (cone.radius(1.4).height(5).shift([0, 37, 0]).rotate([90, 0, 0])
 // conical ogive nose to the tip at z≈72
 
 // Cylindrical barrel section
-let fairingCyl = (cylinder.radius(2.6).height(5).shift([0, 58, 0]).rotate([90, 0, 0])
-)
+let fairingCyl = rotate([90, 0, 0], cylinder.radius(2.6).height(5).shift([0, 58, 0]))
 let fairingBotCap = sphere.radius(2.6).shift([0, 0, 53])
 
 // Conical nose
-let fairingNose = (cone.radius(2.6).height(9).shift([0, 63, 0]).rotate([90, 0, 0])
-)
+let fairingNose = rotate([90, 0, 0], cone.radius(2.6).height(9).shift([0, 63, 0]))
 let fairing = union(fairingCyl, fairingBotCap, fairingNose).round(0.3)
 
 // Vertical split lines where the two fairing halves separate

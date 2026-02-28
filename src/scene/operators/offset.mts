@@ -1,4 +1,4 @@
-import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 
 export class Offset extends UnaryOperator {
     override getShapeType(): string { return "offset" }
@@ -21,10 +21,11 @@ export class Offset extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `sdfOffsetFast(${childResult.text}, ${this.amount})` }
     }
-    constructor(public amount: number, arg: import("../base.mjs").Node) {
+    constructor(public amount: number, arg: Node) {
         super(arg)
     }
 }
 
-Node.prototype.offset = function (this: Node, amount: number) { return new Offset(amount, this) }
-FLUENT_METHODS.add("offset")
+export const offset = fluent(function offset(amount: number, node: Node): Offset {
+    return new Offset(amount, node)
+})

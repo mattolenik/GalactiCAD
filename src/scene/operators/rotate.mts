@@ -1,4 +1,4 @@
-import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Rotate extends UnaryOperator {
@@ -6,7 +6,7 @@ export class Rotate extends UnaryOperator {
     ry: number
     rz: number
 
-    constructor(rotation: Vec3, arg: import("../base.mjs").Node) {
+    constructor(rotation: Vec3, arg: Node) {
         super(arg)
         const r = vec3(rotation)
         this.rx = r.x
@@ -96,5 +96,6 @@ export class Rotate extends UnaryOperator {
     }
 }
 
-Node.prototype.rotate = function (this: Node, rot: Vec3) { return new Rotate(rot, this) }
-FLUENT_METHODS.add("rotate")
+export const rotate = fluent(function rotate(rot: Vec3, node: Node): Rotate {
+    return new Rotate(rot, node)
+})

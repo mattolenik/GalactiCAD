@@ -1,4 +1,4 @@
-import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 
 export class Twist extends UnaryOperator {
     override getShapeType(): string { return "twist" }
@@ -25,10 +25,11 @@ export class Twist extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `sdfTwistFast(${twistedChild}, p, ${this.rate})` }
     }
-    constructor(public rate: number, arg: import("../base.mjs").Node) {
+    constructor(public rate: number, arg: Node) {
         super(arg)
     }
 }
 
-Node.prototype.twist = function (this: Node, rate: number) { return new Twist(rate, this) }
-FLUENT_METHODS.add("twist")
+export const twist = fluent(function twist(rate: number, node: Node): Twist {
+    return new Twist(rate, node)
+})

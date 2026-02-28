@@ -1,11 +1,4 @@
-import {
-    BinaryOperator,
-    CompileResult,
-    fluent,
-    Node,
-    type BlendMode,
-    type IntersectionType,
-} from "../base.mjs"
+import { BinaryOperator, CompileResult, fluent, Node, type BlendMode, type IntersectionType } from "../base.mjs"
 
 export class Intersect extends BinaryOperator {
     override getShapeType(): string {
@@ -96,7 +89,7 @@ export class Intersect extends BinaryOperator {
         return { text: this._interFast(lhResult.text!, rhResult.text!), varName }
     }
 
-    constructor(lh: import("../base.mjs").Node, rh: import("../base.mjs").Node, public radius = 0, public mode?: BlendMode, public n?: number) {
+    constructor(lh: Node, rh: Node, public radius = 0, public mode?: BlendMode, public n?: number) {
         super(lh, rh)
     }
 

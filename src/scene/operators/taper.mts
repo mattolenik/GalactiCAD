@@ -1,4 +1,4 @@
-import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 
 export class Taper extends UnaryOperator {
     override getShapeType(): string { return "taper" }
@@ -25,10 +25,11 @@ export class Taper extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `sdfTaperFast(${taperedChild}, p, ${this.ratio}, ${this.height})` }
     }
-    constructor(public ratio: number, public height: number, arg: import("../base.mjs").Node) {
+    constructor(public ratio: number, public height: number, arg: Node) {
         super(arg)
     }
 }
 
-Node.prototype.taper = function (this: Node, ratio: number, height: number) { return new Taper(ratio, height, this) }
-FLUENT_METHODS.add("taper")
+export const taper = fluent(function taper(ratio: number, height: number, node: Node): Taper {
+    return new Taper(ratio, height, node)
+})

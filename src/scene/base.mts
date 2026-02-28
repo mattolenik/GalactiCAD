@@ -6,12 +6,30 @@ export type CompileResult = {
     text?: string
 }
 
-/** Fluent CAD API method names, auto-populated by the @fluent decorator. */
-export const FLUENT_METHODS = new Set<string>()
+/** Style-related info for editor highlighting (fluent method names, etc.). */
+export interface StyleInfo {
+    FluentMethods: Set<string>
+}
+
+export const styleInfo: StyleInfo = {
+    FluentMethods: new Set<string>(),
+}
 
 /** Marks a class method as a fluent API method for editor highlighting. */
-export function fluent(_target: Function, _context: ClassMethodDecoratorContext) {
-    FLUENT_METHODS.add(String(_context.name))
+export function fluent(_target: Function, _context: ClassMethodDecoratorContext): void
+/** Wraps a standalone function and registers its name for editor highlighting. */
+export function fluent<T extends (...args: any[]) => any>(fn: T): T
+export function fluent<T extends (...args: any[]) => any>(
+    targetOrFn: T | Function,
+    context?: ClassMethodDecoratorContext
+): T | void {
+    if (context !== undefined) {
+        styleInfo.FluentMethods.add(String(context.name))
+        return
+    }
+    const fn = targetOrFn as T
+    styleInfo.FluentMethods.add(fn.name)
+    return fn
 }
 
 /** Minimal interface for SceneInfo to avoid circular imports. */
@@ -95,14 +113,6 @@ export class Node {
     }
 
     getBase(): Node {
-        return this
-    }
-
-    @fluent shift(v: Vec3): this {
-        const base = this.getBase()
-        if (typeof (base as { shift?: (v: Vec3) => unknown }).shift === "function") {
-            ; (base as { shift: (v: Vec3) => unknown }).shift(v)
-        }
         return this
     }
 }

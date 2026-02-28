@@ -8,7 +8,7 @@ import { MenuButton } from "./components/menu-button.mjs"
 import { MeshViewer } from "./components/mesh-viewer.mjs"
 import type { PreviewWindow } from "./components/preview-window.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
-import { FLUENT_METHODS } from "./scene/scene.mjs"
+import { styleInfo } from "./scene/scene.mjs"
 import { SDFRenderer } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
@@ -84,7 +84,7 @@ class App {
 
             // Parse first (error-tolerant); used for fluent method decorations and node matching.
             const parsedCalls = this.#sourceParser.parseShapeCalls(src)
-            const fluentLocations = this.#sourceParser.findFluentMethods(FLUENT_METHODS)
+            const fluentLocations = this.#sourceParser.findFluentMethods(styleInfo.FluentMethods)
             this.#monacoHighlighter.setFluentMethodDecorations(fluentLocations)
 
             // Build the scene (uses cache when switching back to a tab with unchanged content).

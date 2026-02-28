@@ -1,6 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
-import { asRadius } from "../geom.mjs"
 
 export class Sphere extends Node {
     pos = vec3([0, 0, 0])
@@ -10,10 +9,10 @@ export class Sphere extends Node {
         r: 0,
     }
 
-    constructor(pos: Vec3, { r, d }: { r?: number; d?: number }) {
+    constructor(pos: Vec3, { r }: { r: number }) {
         super()
         this.pos = vec3(pos)
-        this.r = asRadius(r, d)
+        this.r = r
     }
 
     override getShapeType(): string {

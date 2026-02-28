@@ -29,7 +29,7 @@ let contained = union(detailed, halo).columns(1, 8)
 // ═══ STABILISER FINS ═══
 // Cross-shaped fins with a terraced stairs-blend transition
 let finA = box([0.3, 13, 3])
-let finB = box([0.3, 13, 3]).rotate([0, 0, 90])
+let finB = rotate([0, 0, 90], box([0.3, 13, 3]))
 let finned = union(contained, union(finA, finB)).stairs(1.2, 4)
 
 // ═══ STRUCTURAL RIBS ═══

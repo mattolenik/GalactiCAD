@@ -3,39 +3,39 @@
 
 // === SHELL ===
 // Hollow out a sphere into a thin shell
-let shellSphere = sphere.radius(5).shift([0, 0, 10]).shell(0.3)
+let shellSphere = shell(0.3, sphere.radius(5).shift([0, 0, 10]))
 
 // Shell of a box - creates a hollow cube
-let shellBox = box([4, 4, 4]).shift([15, 0, 10]).shell(0.3)
+let shellBox = shell(0.3, box([4, 4, 4]).shift([15, 0, 10]))
 
 // === OFFSET ===
 // Offset a box to round all its edges
-let roundedBox = box([3.5, 3.5, 3.5]).shift([30, 0, 10]).offset(0.5)
+let roundedBox = offset(0.5, box([3.5, 3.5, 3.5]).shift([30, 0, 10]))
 
 // Negative offset - shrink a sphere
-let shrunkSphere = sphere.radius(5).shift([45, 0, 10]).offset(-1)
+let shrunkSphere = offset(-1, sphere.radius(5).shift([45, 0, 10]))
 
 // === ELONGATE ===
 // Elongate a sphere along Y to make a capsule-like shape
-let elongatedSphere = sphere.radius(3).shift([0, 20, 10]).elongate([0, 4, 0])
+let elongatedSphere = elongate([0, 4, 0], sphere.radius(3).shift([0, 20, 10]))
 
 // Elongate a box along X
-let elongatedBox = box([2, 3, 3]).shift([20, 20, 10]).elongate([5, 0, 0])
+let elongatedBox = elongate([5, 0, 0], box([2, 3, 3]).shift([20, 20, 10]))
 
 // === TWIST ===
 // Twist a box around the Y axis
-let twistedBox = box([3, 8, 3]).shift([40, 20, 10]).twist(0.4)
+let twistedBox = twist(0.4, box([3, 8, 3]).shift([40, 20, 10]))
 
 // === BEND ===
 // Bend a tall box into an arch
-let bentBox = box([8, 3, 3]).shift([0, -20, 10]).bend(0.1)
+let bentBox = bend(0.1, box([8, 3, 3]).shift([0, -20, 10]))
 
 // === TAPER ===
 // Taper a cylinder: wide at bottom, narrow at top
-let taperedCyl = cylinder.radius(4).height(5).shift([20, -20, 5]).taper(0.3, 10)
+let taperedCyl = taper(0.3, 10, cylinder.radius(4).height(5).shift([20, -20, 5]))
 
 // Taper a box: creates a truncated pyramid
-let taperedBox = box([4, 4, 4]).shift([35, -20, 4]).taper(0.5, 8)
+let taperedBox = taper(0.5, 8, box([4, 4, 4]).shift([35, -20, 4]))
 
 // === MORPH ===
 // Morph 25% between sphere and box (mostly sphere)

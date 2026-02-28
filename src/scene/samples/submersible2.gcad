@@ -103,8 +103,8 @@ let axleR = box([1, 7, 1]).shift([-6, 0, -22])
 // ═══ DECORATIVE FINS ═══
 // Purely cosmetic. The billionaire saw them on a SpaceX render.
 // They actually make the hydrodynamics worse.
-let finR = box([6, 1, 8]).shift([0, 10, -10]).rotate([0, 20, 0])
-let finL = box([6, 1, 8]).shift([0, -10, -10]).rotate([0, -20, 0])
+let finR = rotate([0, 20, 0], box([6, 1, 8]).shift([0, 10, -10]))
+let finL = rotate([0, -20, 0], box([6, 1, 8]).shift([0, -10, -10]))
 let finTop = box([8, 1, 4]).shift([0, 0, 24])
 
 // ═══ VIP HANDRAIL ═══

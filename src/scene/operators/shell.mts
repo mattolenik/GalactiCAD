@@ -1,4 +1,4 @@
-import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 
 export class Shell extends UnaryOperator {
     override getShapeType(): string { return "shell" }
@@ -21,10 +21,11 @@ export class Shell extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `sdfShellFast(${childResult.text}, ${this.thickness})` }
     }
-    constructor(public thickness: number, arg: import("../base.mjs").Node) {
+    constructor(public thickness: number, arg: Node) {
         super(arg)
     }
 }
 
-Node.prototype.shell = function (this: Node, t: number) { return new Shell(t, this) }
-FLUENT_METHODS.add("shell")
+export const shell = fluent(function shell(t: number, node: Node): Shell {
+    return new Shell(t, node)
+})

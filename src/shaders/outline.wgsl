@@ -16,6 +16,10 @@ struct OutlineSettings {
     thickness: f32,
     color: vec3f,
     canvasWidth: f32,
+    dashSpacing: f32,
+    dashLength: f32,
+    dotSizeMin: f32,
+    dotSpacingMultiplier: f32,
 }
 
 @group(0) @binding(3) var<uniform> outlineSettings: OutlineSettings;
@@ -94,15 +98,17 @@ fn fragmentMain(@builtin(position) fragPos: vec4f, @location(0) uv: vec2f) -> @l
         // fragPos is in canvas pixels, so patterns remain consistent at full resolution
         if (outlineSettings.mode == 2u) {
             let dashPos = fragPos.x + fragPos.y;
-            let inDash = (i32(dashPos) % 10) < 5;
+            let dashSpacing = i32(outlineSettings.dashSpacing);
+            let dashLength = i32(outlineSettings.dashLength);
+            let inDash = (i32(dashPos) % dashSpacing) < dashLength;
             if (!inDash) {
                 return color;
             }
         }
         // Dotted mode: evenly spaced dots, sized proportionally to thickness
         if (outlineSettings.mode == 3u) {
-            let dotSize = max(t, 2);
-            let spacing = dotSize * 3;
+            let dotSize = max(t, i32(outlineSettings.dotSizeMin));
+            let spacing = dotSize * i32(outlineSettings.dotSpacingMultiplier);
             let gx = i32(fragPos.x) % spacing;
             let gy = i32(fragPos.y) % spacing;
             let inDot = (gx < dotSize) && (gy < dotSize);

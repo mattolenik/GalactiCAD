@@ -19,6 +19,7 @@ import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
 import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPalette.mjs"
+import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
 
 /** Max AABB slots for subtree culling. Each slot is 32 bytes (center vec4f + halfExtent vec4f). */
@@ -44,6 +45,7 @@ class UniformBuffers {
     colorPalette!: GPUBuffer
     viewSettings!: GPUBuffer
     outlineSettings!: GPUBuffer
+    selectionStyles!: GPUBuffer
     subtreeAABBs!: GPUBuffer
     /** Shared storage buffer for all Polygon2D vertex data (vec2f per vertex). */
     polygonVertices!: GPUBuffer
@@ -142,9 +144,9 @@ export class SDFRenderer {
     #xrayMode: boolean = false
     #beamEnabled: boolean = false
     #selectionMode: SelectionMode = "object"
-    #outlineMode: OutlineMode = "solid"
-    #outlineThickness: number = 3
-    #outlineColor: [number, number, number] = [0.9, 0.9, 0.9]
+    #outlineMode: OutlineMode = DEFAULT_SELECTION_STYLES.outline.mode
+    #outlineThickness: number = DEFAULT_SELECTION_STYLES.outline.thickness
+    #outlineColor: [number, number, number] = [...DEFAULT_SELECTION_STYLES.outline.color]
     #colorTexture!: GPUTexture
     #idTexture!: GPUTexture
     #colorTextureView!: GPUTextureView
@@ -172,11 +174,16 @@ export class SDFRenderer {
     #zoomBuf = new Float32Array(1)
     #lightDirBuf = new Float32Array(12)
     #viewSettingsBuf = new Uint32Array(4)
-    #outlineBuf = new ArrayBuffer(32)
+    #outlineBuf = new ArrayBuffer(48)
     #outlineU32 = new Uint32Array(this.#outlineBuf, 0, 1)
     #outlineThicknessF32 = new Float32Array(this.#outlineBuf, 4, 1)
     #outlineColorF32 = new Float32Array(this.#outlineBuf, 16, 3)
     #outlineWidthF32 = new Float32Array(this.#outlineBuf, 28, 1)
+    #outlineDashSpacingF32 = new Float32Array(this.#outlineBuf, 32, 1)
+    #outlineDashLengthF32 = new Float32Array(this.#outlineBuf, 36, 1)
+    #outlineDotSizeMinF32 = new Float32Array(this.#outlineBuf, 40, 1)
+    #outlineDotSpacingMultF32 = new Float32Array(this.#outlineBuf, 44, 1)
+    #selectionStylesBuf = new ArrayBuffer(64)
 
     // Resolution scaling: render at reduced res during camera movement for responsiveness
     #settings: SettingsManager = SettingsManager.instance
@@ -496,8 +503,8 @@ export class SDFRenderer {
         this.#writeEdgesToBuffer(
             this.#uniformBuffers.selectedEdges,
             this.#selectedEdges,
-            4.0,
-            0.015,
+            DEFAULT_SELECTION_STYLES.edge.lineWidthPx,
+            DEFAULT_SELECTION_STYLES.edge.epsilon,
         )
     }
 
@@ -520,8 +527,8 @@ export class SDFRenderer {
                 secondaryId: hit.secondaryId,
                 featureA: hit.featureA,
                 opType: hit.opType,
-                lineWidthPx: 4.0,
-                epsilon: 0.02,
+                lineWidthPx: DEFAULT_SELECTION_STYLES.edge.lineWidthPx,
+                epsilon: DEFAULT_SELECTION_STYLES.edge.epsilon,
                 seedPoint: hit.seedPoint,
                 seedTangent: hit.seedTangent,
                 seedNormal: hit.seedNormal,
@@ -541,8 +548,8 @@ export class SDFRenderer {
             secondaryId: hit.secondaryId,
             featureA: hit.featureA,
             opType: hit.opType,
-            lineWidthPx: 4.0,
-            epsilon: 0.02,
+            lineWidthPx: DEFAULT_SELECTION_STYLES.edge.lineWidthPx,
+            epsilon: DEFAULT_SELECTION_STYLES.edge.epsilon,
             seedPoint: hit.seedPoint,
             seedTangent: hit.seedTangent,
             seedNormal: hit.seedNormal,
@@ -889,8 +896,8 @@ export class SDFRenderer {
                         secondaryId: h.secondaryId,
                         featureA: h.featureA,
                         opType: h.opType,
-                        lineWidthPx: 6.0,
-                        epsilon: 0.02,
+                        lineWidthPx: DEFAULT_SELECTION_STYLES.edge.seamLineWidthPx,
+                        epsilon: DEFAULT_SELECTION_STYLES.edge.epsilon,
                         seedPoint: h.seedPoint,
                         seedTangent: h.seedTangent,
                         seedNormal: h.seedNormal,
@@ -902,8 +909,8 @@ export class SDFRenderer {
                         secondaryId: h.secondaryId,
                         featureA: h.featureA,
                         opType: h.opType,
-                        lineWidthPx: 6.0,
-                        epsilon: 0.02,
+                        lineWidthPx: DEFAULT_SELECTION_STYLES.edge.seamLineWidthPx,
+                        epsilon: DEFAULT_SELECTION_STYLES.edge.epsilon,
                         seedPoint: h.seedPoint,
                         seedTangent: h.seedTangent,
                         seedNormal: h.seedNormal,
@@ -915,8 +922,8 @@ export class SDFRenderer {
                         secondaryId: h.secondaryId,
                         featureA: h.featureA,
                         opType: h.opType,
-                        lineWidthPx: 6.0,
-                        epsilon: 0.02,
+                        lineWidthPx: DEFAULT_SELECTION_STYLES.edge.seamLineWidthPx,
+                        epsilon: DEFAULT_SELECTION_STYLES.edge.epsilon,
                         seedPoint: h.seedPoint,
                         seedTangent: h.seedTangent,
                         seedNormal: h.seedNormal,
@@ -927,8 +934,8 @@ export class SDFRenderer {
                         secondaryId: h.secondaryId,
                         featureA: h.featureA,
                         opType: h.opType,
-                        lineWidthPx: 6.0,
-                        epsilon: 0.02,
+                        lineWidthPx: DEFAULT_SELECTION_STYLES.edge.seamLineWidthPx,
+                        epsilon: DEFAULT_SELECTION_STYLES.edge.epsilon,
                         seedPoint: h.seedPoint,
                         seedTangent: h.seedTangent,
                         seedNormal: h.seedNormal,
@@ -1751,11 +1758,18 @@ export class SDFRenderer {
             label: "viewSettings",
         })
 
-        // Outline settings buffer: mode (u32) + thickness (f32) + pad + color (vec3f)
+        // Outline settings buffer: mode + thickness + color + canvasWidth + dash/dot params
         this.#uniformBuffers.outlineSettings = this.#device.createBuffer({
-            size: 32, // u32(4) + f32(4) + pad(8) + vec3f(12) + pad(4) = 32
+            size: 48, // u32(4) + f32(4) + pad(8) + vec3f(12) + canvasWidth(4) + dashSpacing(4) + dashLength(4) + dotSizeMin(4) + dotSpacingMult(4)
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "outlineSettings",
+        })
+
+        // Selection styles buffer: face + edge params for preview shader
+        this.#uniformBuffers.selectionStyles = this.#device.createBuffer({
+            size: 64, // faceDarken + pad + faceTint + pad + edgeColor + pad + edgeSelectedStrength + edgeHoverStrength
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "selectionStyles",
         })
 
         // Subtree AABB buffer for spatial culling during ray marching.
@@ -1945,6 +1959,7 @@ export class SDFRenderer {
                     { binding: 15, resource: { buffer: this.#uniformBuffers.hoverEdgeHit } },
                     { binding: 16, resource: { buffer: this.#uniformBuffers.hoveredEdge } },
                     { binding: 17, resource: { buffer: this.#uniformBuffers.clickedNormal } },
+                    { binding: 18, resource: { buffer: this.#uniformBuffers.selectionStyles } },
                 ],
             })
         }
@@ -1994,12 +2009,26 @@ export class SDFRenderer {
         vs[3] = { object: 0, seam: 1, edge: 2, face: 3, auto: 4 }[this.#selectionMode]
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, vs)
 
-        // Write outline settings (mode + thickness + color + canvasWidth)
+        // Write outline settings (mode + thickness + color + canvasWidth + dash/dot)
         this.#outlineU32[0] = OUTLINE_MODE_VALUES[this.#outlineMode]
         this.#outlineThicknessF32[0] = this.#outlineThickness
         this.#outlineColorF32.set(this.#outlineColor)
         this.#outlineWidthF32[0] = this.#fullWidth
+        this.#outlineDashSpacingF32[0] = DEFAULT_SELECTION_STYLES.outline.dashSpacing
+        this.#outlineDashLengthF32[0] = DEFAULT_SELECTION_STYLES.outline.dashLength
+        this.#outlineDotSizeMinF32[0] = DEFAULT_SELECTION_STYLES.outline.dotSizeMin
+        this.#outlineDotSpacingMultF32[0] = DEFAULT_SELECTION_STYLES.outline.dotSpacingMultiplier
         this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, this.#outlineBuf)
+
+        // Write selection styles (face + edge params for preview)
+        const ss = DEFAULT_SELECTION_STYLES
+        const ssBuf = new Float32Array(this.#selectionStylesBuf)
+        ssBuf[0] = ss.face.darken
+        ssBuf[4] = ss.face.tint[0]; ssBuf[5] = ss.face.tint[1]; ssBuf[6] = ss.face.tint[2]
+        ssBuf[8] = ss.edge.color[0]; ssBuf[9] = ss.edge.color[1]; ssBuf[10] = ss.edge.color[2]
+        ssBuf[12] = ss.edge.selectedStrength
+        ssBuf[13] = ss.edge.hoverStrength
+        this.#device.queue.writeBuffer(this.#uniformBuffers.selectionStyles, 0, this.#selectionStylesBuf)
 
         const canvasTexture = this.#context.getCurrentTexture()
         // Offscreen scene textures use scene resolution (may be lower during camera movement);

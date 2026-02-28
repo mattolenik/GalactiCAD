@@ -124,6 +124,18 @@ struct SelectedEdgesBuffer {
 @group(0) @binding(15) var<storage, read_write> hoverEdgeHits: array<EdgeHit, 4>;
 @group(0) @binding(16) var<storage, read> hoveredEdge: SelectedEdgesBuffer;
 
+struct SelectionStyles {
+    faceDarken: f32,
+    _pad1: f32, _pad2: f32, _pad3: f32,
+    faceTint: vec3f,
+    _pad4: f32,
+    edgeColor: vec3f,
+    _pad5: f32,
+    edgeSelectedStrength: f32,
+    edgeHoverStrength: f32,
+}
+@group(0) @binding(18) var<uniform> selectionStyles: SelectionStyles;
+
 const FACE_HIGHLIGHT_ID: u32 = 1023u;       // Side/edge face highlight (unchanged)
 const FACE_HIGHLIGHT_TOP: u32 = 1023u;     // Top cap when selected
 const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;  // Bottom cap when selected (distinct from top)
@@ -371,7 +383,7 @@ fn classifySeamSegment(hitWorld: vec3f, hit: HitData) -> EdgeHit {
 }
 
 fn applyEdgeHighlight(result: ptr<function, vec3f>, e: SelectedEdge, hitWorld: vec3f, hit: HitData, wppu: f32, strength: f32) {
-    let highlight = vec3f(1.0, 1.0, 0.0);
+    let highlight = selectionStyles.edgeColor;
     let lineWidth = e.lineWidthPx;
     let epsilon = e.epsilon;
 
@@ -421,10 +433,10 @@ fn applyEdgeHighlight(result: ptr<function, vec3f>, e: SelectedEdge, hitWorld: v
 fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, hit: HitData, wppu: f32) -> vec3f {
     var result = color;
     for (var i: u32 = 0u; i < selectedEdges.count; i = i + 1u) {
-        applyEdgeHighlight(&result, selectedEdges.edges[i], hitWorld, hit, wppu, 0.8);
+        applyEdgeHighlight(&result, selectedEdges.edges[i], hitWorld, hit, wppu, selectionStyles.edgeSelectedStrength);
     }
     for (var j: u32 = 0u; j < hoveredEdge.count; j = j + 1u) {
-        applyEdgeHighlight(&result, hoveredEdge.edges[j], hitWorld, hit, wppu, 0.4);
+        applyEdgeHighlight(&result, hoveredEdge.edges[j], hitWorld, hit, wppu, selectionStyles.edgeHoverStrength);
     }
     return result;
 }
@@ -612,7 +624,7 @@ fn shadeHit(hit: HitData, flipNormal: bool) -> vec3f {
         }
         selBlend = mix(sel1, sel2, bw);
     }
-    let selectedColor = shadedColor * 0.9 + vec3f(0.15);
+    let selectedColor = shadedColor * selectionStyles.faceDarken + selectionStyles.faceTint;
     return shadedColor * (1.0 - selBlend) + selectedColor * selBlend;
 }
 
@@ -629,6 +641,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     _ = selectedEdges.count;
     _ = hoverEdgeHits[0].kind;
     _ = hoveredEdge.count;
+    _ = selectionStyles.faceDarken;
 
     let uv = fragCoord;
     let aspect = camera.res.x / camera.res.y;

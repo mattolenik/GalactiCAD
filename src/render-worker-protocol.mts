@@ -110,7 +110,6 @@ export type WorkerToMainMessage =
     | { type: "initError"; error: string }
     | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: Record<number, number> }
     | { type: "clickResult"; clickedId: number; edgeHits: EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number]; shiftKey: boolean; altKey: boolean }
-    | { type: "selectionChanged"; ids: number[] }
     | { type: "selectionInfo"; info: SelectionInfo }
     | { type: "objectDoubleClick"; nodeId: number; hitPos?: [number, number, number] }
     | { type: "pushPullComplete"; nodeId: number; vertices: [number, number][] }

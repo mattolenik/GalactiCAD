@@ -15,9 +15,9 @@ import { PushPullController } from "./interaction/push-pull.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import type { MeshData } from "./export/export.mjs"
 import type { WorkerToMainMessage } from "./render-worker-protocol.mjs"
+import type { EdgeHitData, SelectedEdgePayload } from "./render-worker-protocol.mjs"
 import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
-import type { SelectedEdgePayload } from "./render-worker-protocol.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -72,8 +72,6 @@ export class SDFRenderer {
     #pushPullController: PushPullController | null = null
     #tabsElement: EventTarget | null = null
     #tabChangeSub: Subscription | null = null
-    #tabCloseSub: Subscription | null = null
-    #tabRenameSub: Subscription | null = null
     #resizeObserver: ResizeObserver | null = null
     #settings = SettingsManager.instance
     #lastRenderEndTime = 0
@@ -195,10 +193,7 @@ export class SDFRenderer {
                 this.#pendingBuildResolve = null
                 break
             case "clickResult":
-                this.#handleClickResult(msg.clickedId, msg.edgeHits, msg.hitPos, msg.clickedNormal, msg.shiftKey, msg.altKey)
-                break
-            case "selectionChanged":
-                this.selectionChange$.next(msg.ids)
+                this.#handleClickResult(msg.clickedId, msg.edgeHits, msg.shiftKey, msg.altKey)
                 break
             case "selectionInfo":
                 this.#hoveredObjectId = msg.info.hover?.objectId ?? 0
@@ -253,32 +248,35 @@ export class SDFRenderer {
         return this.#selectionMode
     }
 
-    #handleClickResult(
-        clickedId: number,
-        edgeHits: import("./render-worker-protocol.mjs").EdgeHitData[],
-        _hitPos: [number, number, number, number],
-        _clickedNormal: [number, number, number],
-        shiftKey: boolean,
-        altKey: boolean,
-    ): void {
-        const effectiveMode = this.#getEffectiveMode(altKey)
+    #edgeKey(h: { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; seedPoint?: [number, number, number]; seedTangent?: [number, number, number] }): string {
+        const seedKey = h.seedPoint ? `:${h.seedPoint[0].toFixed(3)},${h.seedPoint[1].toFixed(3)},${h.seedPoint[2].toFixed(3)}` : ""
+        const tanKey = h.seedTangent ? `:t${h.seedTangent[0].toFixed(3)},${h.seedTangent[1].toFixed(3)},${h.seedTangent[2].toFixed(3)}` : ""
+        return `${h.kind}:${h.primaryId}:${h.secondaryId}:${h.featureA}:${h.opType}${seedKey}${tanKey}`
+    }
 
-        if (effectiveMode === "seam") {
-            const filtered = edgeHits.filter(h => h.kind === EdgeKind.Seam)
-            if (filtered.length > 0) {
-                if (shiftKey) {
-                    for (const hit of filtered) this.#addSelectedEdgeFromHit(hit)
-                } else {
-                    this.#setSelectedEdgesFromHits(filtered)
-                }
-                this.#selectedObjectIds.fill(false)
-                this.selectionChange$.next([])
-                this.#pushSelectionInfo()
-                this.#needsRender = true
-                return
-            }
-        } else if (effectiveMode === "edge") {
-            const filtered = edgeHits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment)
+    #edgeFromHit(hit: EdgeHitData): SelectedEdgePayload {
+        return {
+            kind: hit.kind,
+            primaryId: hit.primaryId,
+            secondaryId: hit.secondaryId,
+            featureA: hit.featureA,
+            opType: hit.opType,
+            lineWidthPx: DEFAULT_SELECTION_STYLES.edge.lineWidthPx,
+            epsilon: DEFAULT_SELECTION_STYLES.edge.epsilon,
+            seedPoint: hit.seedPoint,
+            seedTangent: hit.seedTangent,
+            seedNormal: hit.seedNormal,
+        }
+    }
+
+    #handleClickResult(clickedId: number, edgeHits: EdgeHitData[], shiftKey: boolean, altKey: boolean): void {
+        const effectiveMode = this.#getEffectiveMode(altKey)
+        if (effectiveMode === "seam" || effectiveMode === "edge") {
+            const edgeFilter =
+                effectiveMode === "seam"
+                    ? (h: EdgeHitData) => h.kind === EdgeKind.Seam
+                    : (h: EdgeHitData) => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment
+            const filtered = edgeHits.filter(edgeFilter)
             if (filtered.length > 0) {
                 if (shiftKey) {
                     for (const hit of filtered) this.#addSelectedEdgeFromHit(hit)
@@ -304,54 +302,23 @@ export class SDFRenderer {
         this.#needsRender = true
     }
 
-    #setSelectedEdgesFromHits(hits: import("./render-worker-protocol.mjs").EdgeHitData[]): void {
+    #setSelectedEdgesFromHits(hits: EdgeHitData[]): void {
         const seen = new Set<string>()
         this.#selectedEdges = []
         for (const hit of hits) {
-            const seedKey = hit.seedPoint ? `:${hit.seedPoint[0].toFixed(3)},${hit.seedPoint[1].toFixed(3)},${hit.seedPoint[2].toFixed(3)}` : ""
-            const tanKey = hit.seedTangent ? `:t${hit.seedTangent[0].toFixed(3)},${hit.seedTangent[1].toFixed(3)},${hit.seedTangent[2].toFixed(3)}` : ""
-            const key = `${hit.kind}:${hit.primaryId}:${hit.secondaryId}:${hit.featureA}:${hit.opType}${seedKey}${tanKey}`
+            const key = this.#edgeKey(hit)
             if (seen.has(key)) continue
             seen.add(key)
-            this.#selectedEdges.push({
-                kind: hit.kind,
-                primaryId: hit.primaryId,
-                secondaryId: hit.secondaryId,
-                featureA: hit.featureA,
-                opType: hit.opType,
-                lineWidthPx: DEFAULT_SELECTION_STYLES.edge.lineWidthPx,
-                epsilon: DEFAULT_SELECTION_STYLES.edge.epsilon,
-                seedPoint: hit.seedPoint,
-                seedTangent: hit.seedTangent,
-                seedNormal: hit.seedNormal,
-            })
+            this.#selectedEdges.push(this.#edgeFromHit(hit))
         }
         if (this.#selectedEdges.length > 16) this.#selectedEdges = this.#selectedEdges.slice(0, 16)
         this.#needsRender = true
     }
 
-    #addSelectedEdgeFromHit(hit: import("./render-worker-protocol.mjs").EdgeHitData): void {
-        const edge: SelectedEdgePayload = {
-            kind: hit.kind,
-            primaryId: hit.primaryId,
-            secondaryId: hit.secondaryId,
-            featureA: hit.featureA,
-            opType: hit.opType,
-            lineWidthPx: DEFAULT_SELECTION_STYLES.edge.lineWidthPx,
-            epsilon: DEFAULT_SELECTION_STYLES.edge.epsilon,
-            seedPoint: hit.seedPoint,
-            seedTangent: hit.seedTangent,
-            seedNormal: hit.seedNormal,
-        }
-        const seedKey = hit.seedPoint ? `:${hit.seedPoint[0].toFixed(3)},${hit.seedPoint[1].toFixed(3)},${hit.seedPoint[2].toFixed(3)}` : ""
-        const tanKey = hit.seedTangent ? `:t${hit.seedTangent[0].toFixed(3)},${hit.seedTangent[1].toFixed(3)},${hit.seedTangent[2].toFixed(3)}` : ""
-        const key = `${hit.kind}:${hit.primaryId}:${hit.secondaryId}:${hit.featureA}:${hit.opType}${seedKey}${tanKey}`
-        if (this.#selectedEdges.some(e => {
-            const eSeed = e.seedPoint ? `:${e.seedPoint[0].toFixed(3)},${e.seedPoint[1].toFixed(3)},${e.seedPoint[2].toFixed(3)}` : ""
-            const eTan = e.seedTangent ? `:t${e.seedTangent[0].toFixed(3)},${e.seedTangent[1].toFixed(3)},${e.seedTangent[2].toFixed(3)}` : ""
-            return `${e.kind}:${e.primaryId}:${e.secondaryId}:${e.featureA}:${e.opType}${eSeed}${eTan}` === key
-        })) return
-        this.#selectedEdges.push(edge)
+    #addSelectedEdgeFromHit(hit: EdgeHitData): void {
+        const key = this.#edgeKey(hit)
+        if (this.#selectedEdges.some(e => this.#edgeKey(e) === key)) return
+        this.#selectedEdges.push(this.#edgeFromHit(hit))
         if (this.#selectedEdges.length > 16) this.#selectedEdges = this.#selectedEdges.slice(-16)
         this.#needsRender = true
     }
@@ -368,7 +335,6 @@ export class SDFRenderer {
                 this.#selectedObjectIds[clickedId] = true
             }
         }
-        this.#worker.postMessage({ type: "setSelection", ids: this.selectedObjectIds })
         this.selectionChange$.next(this.selectedObjectIds)
     }
 
@@ -391,7 +357,7 @@ export class SDFRenderer {
         if (!this.#pushPullController || !hitPos) return false
         const node = this.#pushPullNodes.get(nodeId)
         if (!node) return false
-        const hitVec = hitPos ? vec3(hitPos[0], hitPos[1], hitPos[2]) : vec3(0, 0, 0)
+        const hitVec = vec3(hitPos[0], hitPos[1], hitPos[2])
         if (node.type === "extrude" && (node.twistDegrees ?? 0) === 0) {
             this.#pushPullController.selectFace(node as Parameters<PushPullController["selectFace"]>[0], hitVec)
             this.#pushSelectionInfo()
@@ -722,24 +688,16 @@ export class SDFRenderer {
         requestAnimationFrame((t: number) => this.#update(t))
     }
 
-    #update(time: number): void {
-        requestAnimationFrame((t: number) => this.#update(t))
-        if (!this.#needsRender) return
-        if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
-        const minFrameTime = 1000 / this.#targetFPS
-        const timeSinceLastRender = time - this.#lastRenderEndTime
-        if (timeSinceLastRender < minFrameTime) return
-        this.#needsRender = false
-        this.#lastRenderEndTime = time
-
+    #buildRenderPayload(resOverride?: [number, number]): Parameters<Worker["postMessage"]>[0] {
+        const cam = this.#controls
+        const res =
+            resOverride ??
+            (this.#fullWidth > 0 && this.#fullHeight > 0
+                ? ([this.#fullWidth, this.#fullHeight] as [number, number])
+                : ([1, 1] as [number, number]))
         const selectionModeNum = { object: 0, seam: 1, edge: 2, face: 3, auto: 4 }[this.#selectionMode]
         const outlineModeNum = { none: 0, solid: 1, dashed: 2, dotted: 3 }[this.#outlineMode]
-        const cam = this.#controls
-        const res = this.#fullWidth > 0 && this.#fullHeight > 0
-            ? [this.#fullWidth, this.#fullHeight] as [number, number]
-            : [1, 1] as [number, number]
-
-        this.#worker.postMessage({
+        return {
             type: "render",
             cameraState: cam.state,
             viewTransform: cam.viewTransform.data,
@@ -761,7 +719,19 @@ export class SDFRenderer {
             },
             viewCenter: [this.#viewCenter.x, this.#viewCenter.y],
             resolutionScale: this.#cameraOptimization ? 0.5 : 1.0,
-        })
+        }
+    }
+
+    #update(time: number): void {
+        requestAnimationFrame((t: number) => this.#update(t))
+        if (!this.#needsRender) return
+        if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
+        const minFrameTime = 1000 / this.#targetFPS
+        const timeSinceLastRender = time - this.#lastRenderEndTime
+        if (timeSinceLastRender < minFrameTime) return
+        this.#needsRender = false
+        this.#lastRenderEndTime = time
+        this.#worker.postMessage(this.#buildRenderPayload())
     }
 
     build(src: string, documentName?: string | null): Promise<void> {
@@ -780,33 +750,9 @@ export class SDFRenderer {
     }
 
     async benchmark(frameCount = 100, waitForGPU = true): Promise<{ totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }> {
-        const selectionModeNum = { object: 0, seam: 1, edge: 2, face: 3, auto: 4 }[this.#selectionMode]
-        const outlineModeNum = { none: 0, solid: 1, dashed: 2, dotted: 3 }[this.#outlineMode]
-        const cam = this.#controls
-        const res = [this.#fullWidth || 800, this.#fullHeight || 600] as [number, number]
-        this.#worker.postMessage({
-            type: "render",
-            cameraState: cam.state,
-            viewTransform: cam.viewTransform.data,
-            cameraPosition: [cam.cameraPosition.x, cam.cameraPosition.y, cam.cameraPosition.z],
-            cameraRes: res,
-            selectionState: {
-                selectedObjectIds: this.selectedObjectIds,
-                selectedEdges: this.#selectedEdges,
-                hoveredObjectId: this.#hoveredObjectId,
-                hoveredEdges: this.#hoveredEdges,
-            },
-            viewSettings: {
-                xrayMode: this.#xrayMode,
-                beamEnabled: this.#beamEnabled,
-                selectionMode: selectionModeNum,
-                outlineMode: outlineModeNum,
-                outlineThickness: this.#outlineThickness,
-                outlineColor: this.#outlineColor,
-            },
-            viewCenter: [this.#viewCenter.x, this.#viewCenter.y],
-            resolutionScale: this.#cameraOptimization ? 0.5 : 1.0,
-        })
+        this.#worker.postMessage(
+            this.#buildRenderPayload([this.#fullWidth || 800, this.#fullHeight || 600] as [number, number]),
+        )
         return new Promise(resolve => {
             this.#pendingBenchmarkResolve = resolve
             this.#worker.postMessage({ type: "benchmark", frameCount, waitForGPU })
@@ -817,8 +763,6 @@ export class SDFRenderer {
         for (const sub of this.#controlSubs) sub.unsubscribe()
         this.#controlSubs.length = 0
         this.#tabChangeSub?.unsubscribe()
-        this.#tabCloseSub?.unsubscribe()
-        this.#tabRenameSub?.unsubscribe()
         this.#resizeObserver?.disconnect()
         this.#worker.terminate()
         this.#controls.dispose()

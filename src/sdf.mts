@@ -19,7 +19,7 @@ import { ShaderCompiler } from "./shaders/shader.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "./vecmat/vector.mjs"
 import { MeshData } from "./export/export.mjs"
 import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPalette.mjs"
-import { PushPullController, type PushPullMode } from "./interaction/push-pull.mjs"
+import { PushPullController } from "./interaction/push-pull.mjs"
 
 /** Max AABB slots for subtree culling. Each slot is 32 bytes (center vec4f + halfExtent vec4f). */
 const MAX_AABB_SLOTS = 128
@@ -1866,13 +1866,6 @@ export class SDFRenderer {
     /** Request a re-render (e.g., after scene change) */
     requestRender(): void {
         this.#needsRender = true
-    }
-
-    /** Set the push/pull interaction mode ("slide" or "extrude"). */
-    setPushPullMode(mode: PushPullMode): void {
-        if (this.#pushPullController) {
-            this.#pushPullController.mode = mode
-        }
     }
 
     /**

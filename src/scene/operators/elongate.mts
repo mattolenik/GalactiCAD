@@ -1,4 +1,4 @@
-import { UnaryOperator, CompileResult, decapitalize } from "../base.mjs"
+import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Elongate extends UnaryOperator {
@@ -40,3 +40,6 @@ export class Elongate extends UnaryOperator {
         this.hz = v.z
     }
 }
+
+Node.prototype.elongate = function (this: Node, h: Vec3) { return new Elongate(h, this) }
+FLUENT_METHODS.add("elongate")

@@ -1,4 +1,4 @@
-import { UnaryOperator, CompileResult, decapitalize } from "../base.mjs"
+import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
 
 export class Twist extends UnaryOperator {
     override getShapeType(): string { return "twist" }
@@ -29,3 +29,6 @@ export class Twist extends UnaryOperator {
         super(arg)
     }
 }
+
+Node.prototype.twist = function (this: Node, rate: number) { return new Twist(rate, this) }
+FLUENT_METHODS.add("twist")

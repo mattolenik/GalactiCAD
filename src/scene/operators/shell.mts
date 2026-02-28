@@ -1,4 +1,4 @@
-import { UnaryOperator, CompileResult, decapitalize } from "../base.mjs"
+import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
 
 export class Shell extends UnaryOperator {
     override getShapeType(): string { return "shell" }
@@ -25,3 +25,6 @@ export class Shell extends UnaryOperator {
         super(arg)
     }
 }
+
+Node.prototype.shell = function (this: Node, t: number) { return new Shell(t, this) }
+FLUENT_METHODS.add("shell")

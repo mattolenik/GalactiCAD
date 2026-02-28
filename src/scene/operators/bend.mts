@@ -1,4 +1,4 @@
-import { UnaryOperator, CompileResult, decapitalize } from "../base.mjs"
+import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
 
 export class Bend extends UnaryOperator {
     override getShapeType(): string { return "bend" }
@@ -29,3 +29,6 @@ export class Bend extends UnaryOperator {
         super(arg)
     }
 }
+
+Node.prototype.bend = function (this: Node, amount: number) { return new Bend(amount, this) }
+FLUENT_METHODS.add("bend")

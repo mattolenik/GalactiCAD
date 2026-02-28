@@ -274,7 +274,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
         return this
     }
 
-    @fluent shift(v: Vec3): this {
+    @fluent override shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }

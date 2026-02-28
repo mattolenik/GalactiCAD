@@ -25,7 +25,7 @@ export class Blob extends Node {
         return { funcName, varName, text: `fBlobFast(p - ${this.pos.wgsl})` }
     }
 
-    @fluent shift(v: Vec3): this {
+    @fluent override shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
     }

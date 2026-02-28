@@ -1,4 +1,4 @@
-import { UnaryOperator, CompileResult, decapitalize } from "../base.mjs"
+import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
 
 export class Taper extends UnaryOperator {
     override getShapeType(): string { return "taper" }
@@ -29,3 +29,6 @@ export class Taper extends UnaryOperator {
         super(arg)
     }
 }
+
+Node.prototype.taper = function (this: Node, ratio: number, height: number) { return new Taper(ratio, height, this) }
+FLUENT_METHODS.add("taper")

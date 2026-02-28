@@ -1,4 +1,4 @@
-import { UnaryOperator, CompileResult, decapitalize } from "../base.mjs"
+import { Node, UnaryOperator, CompileResult, decapitalize, FLUENT_METHODS } from "../base.mjs"
 
 export class Offset extends UnaryOperator {
     override getShapeType(): string { return "offset" }
@@ -25,3 +25,6 @@ export class Offset extends UnaryOperator {
         super(arg)
     }
 }
+
+Node.prototype.offset = function (this: Node, amount: number) { return new Offset(amount, this) }
+FLUENT_METHODS.add("offset")

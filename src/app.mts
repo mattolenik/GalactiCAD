@@ -1,7 +1,7 @@
 import "monaco-editor-env" // must run before monaco-editor so globalAPI is set for console access
 import * as monaco from "monaco-editor"
 import { CAD_TYPES_DECL } from "./scene/cad-types-decl.mjs"
-import { debounceTime, filter, fromEventPattern } from "rxjs"
+import { debounceTime, fromEventPattern } from "rxjs"
 import type { Subscription } from "rxjs"
 import { DocumentTabs } from "./components/document-tabs.mjs"
 import { MenuButton } from "./components/menu-button.mjs"
@@ -191,24 +191,6 @@ class App {
         } else {
             this.#monacoHighlighter.clearHighlighting()
         }
-    }
-
-    /**
-     * Insert generated code at the current cursor or replace selection.
-     */
-    #insertGeneratedCode(code: string) {
-        const model = this.editor.getModel()
-        if (!model) return
-        const selection = this.editor.getSelection()
-        if (!selection) return
-        const range = new monaco.Range(
-            selection.startLineNumber,
-            selection.startColumn,
-            selection.endLineNumber,
-            selection.endColumn
-        )
-        this.#skipNextBuild = true
-        model.pushEditOperations([], [{ range, text: code }], () => null)
     }
 
     /**
@@ -632,7 +614,6 @@ class App {
             const model = ed.getModel()
             if (!model) return
             const src = model.getValue()
-            const lineCount = model.getLineCount()
 
             // Collect existing variable names for uniqueness
             const existing = new Set<string>()

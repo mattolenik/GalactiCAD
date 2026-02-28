@@ -6,7 +6,12 @@ declare global {
     const __VERSION__: string
 }
 
-export {}
+export { }
+
+declare module "*.svg" {
+    const value: string
+    export default value
+}
 
 declare module "monaco-editor-env" {
     /**

@@ -23,6 +23,7 @@ import objectIcon from "./assets/selection-object.svg"
 import seamIcon from "./assets/selection-seam.svg"
 import edgeIcon from "./assets/selection-edge.svg"
 import faceIcon from "./assets/selection-face.svg"
+import autoIcon from "./assets/selection-auto.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
 import { addContextSubmenu } from "./editor/context-menu-submenu.mjs"
 import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
@@ -751,6 +752,7 @@ class App {
                 { label: "Seam", value: "seam" as const, icon: seamIcon },
                 { label: "Edge", value: "edge" as const, icon: edgeIcon },
                 { label: "Face", value: "face" as const, icon: faceIcon },
+                { label: "Auto", value: "auto" as const, icon: autoIcon },
             ],
             this.#settings.getGlobal().preview.selectionMode
         )

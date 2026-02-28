@@ -1,7 +1,7 @@
 //:) include "hg_sdf.wgsl"
 
-const MAX_STEPS: i32 = 300;
-const MAX_DIST: f32 = 300.0;
+const MAX_STEPS: i32 = 300;   // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
+const MAX_DIST: f32 = 300.0;  // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
 
 struct Camera {
     transform: mat4x4f,
@@ -41,11 +41,12 @@ const SELECTION_MODE_OBJECT: u32 = 0u;
 const SELECTION_MODE_SEAM: u32 = 1u;
 const SELECTION_MODE_EDGE: u32 = 2u;
 const SELECTION_MODE_FACE: u32 = 3u;
+const SELECTION_MODE_AUTO: u32 = 4u;
 struct ViewSettings {
     xrayMode: u32,        // 0 = normal, 1 = xray/translucent
     refinementSteps: u32, // binary search refinement iterations (e.g. 4 during movement, 8 when idle)
     beamEnabled: u32,     // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
-    selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face
+    selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=auto
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
@@ -63,12 +64,14 @@ const BEAM_TILE_SIZE: i32 = 8;
 
 // Hit position of the clicked pixel — written alongside clickedObjectId for face picking.
 @group(0) @binding(10) var<storage, read_write> clickedHitPos: array<f32, 4>;
+@group(0) @binding(17) var<storage, read_write> clickedNormal: array<f32, 4>;
 
 // Face selection: tells the Extrude shader which face to highlight with FACE_HIGHLIGHT_ID.
+// mode: 0=slide, 1=extrude, 2=top cap, 3=bottom cap, 4=box, 5=cylinder, 6=cone
 struct FaceSelection {
-    nodeId: u32,         // Extrude node ID (0 = disabled)
-    faceIndex: u32,      // edge index of the selected face
-    mode: u32,           // 0 = slide, 1 = extrude
+    nodeId: u32,         // Extrude/primitive node ID (0 = disabled)
+    faceIndex: u32,      // edge index or primitive face index
+    mode: u32,           // 0 = slide, 1 = extrude, 2 = top cap, 3 = bottom cap, 4 = box, 5 = cylinder, 6 = cone
     extrudeOffset: f32,  // world-space offset (extrude mode only)
 }
 @group(0) @binding(11) var<uniform> faceSelection: FaceSelection;
@@ -547,6 +550,32 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
     return hitDataMiss();
 }
 
+// Compute primitive face index from normal. mode 4=box, 5=cylinder, 6=cone.
+fn primitiveFaceIndexFromNormal(n: vec3f, mode: u32) -> u32 {
+    let ax = abs(n.x);
+    let ay = abs(n.y);
+    let az = abs(n.z);
+    if (mode == 4u) {
+        // Box: axis 0=x,1=y,2=z; sign 0=+, 1=-
+        let axis = select(2u, select(1u, 0u, ax >= ay && ax >= az), ay >= ax && ay >= az);
+        let comp = select(n.z, select(n.y, n.x, axis == 0u), axis == 1u);
+        let sign = select(0u, 1u, comp < 0.0);
+        return axis * 2u + sign;
+    }
+    if (mode == 5u) {
+        // Cylinder: 0=bottom, 1=side, 2=top
+        if (n.y > 0.9) { return 2u; }
+        if (n.y < -0.9) { return 0u; }
+        return 1u;
+    }
+    if (mode == 6u) {
+        // Cone: 0=base, 1=side
+        if (n.y < -0.9) { return 0u; }
+        return 1u;
+    }
+    return 0xFFFFFFFFu;
+}
+
 // Shade a hit point and return the color.
 // flipNormal: true if hitting surface from inside (back surface).
 fn shadeHit(hit: HitData, flipNormal: bool) -> vec3f {
@@ -564,10 +593,23 @@ fn shadeHit(hit: HitData, flipNormal: bool) -> vec3f {
     }
     let shadedColor = baseColor * diffuse;
 
-    let sel1 = f32(selectedObjectIds[hit.id] != 0u);
+    var sel1 = f32(selectedObjectIds[hit.id] != 0u);
+    // Primitive face selection (mode 4=box, 5=cylinder, 6=cone)
+    if (faceSelection.mode >= 4u && faceSelection.nodeId == hit.id && bw < 0.01) {
+        let faceIdx = primitiveFaceIndexFromNormal(hit.n, faceSelection.mode);
+        if (faceIdx == faceSelection.faceIndex) {
+            sel1 = 1.0;
+        }
+    }
     var selBlend = sel1;
     if (bw > 0.0) {
-        let sel2 = f32(selectedObjectIds[hit.id2] != 0u);
+        var sel2 = f32(selectedObjectIds[hit.id2] != 0u);
+        if (faceSelection.mode >= 4u && faceSelection.nodeId == hit.id2 && bw > 0.99) {
+            let faceIdx = primitiveFaceIndexFromNormal(hit.n, faceSelection.mode);
+            if (faceIdx == faceSelection.faceIndex) {
+                sel2 = 1.0;
+            }
+        }
         selBlend = mix(sel1, sel2, bw);
     }
     let selectedColor = shadedColor * 0.9 + vec3f(0.15);
@@ -580,6 +622,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     _ = subtreeAABBs[0].center;
     _ = polygonVertices[0];
     _ = clickedHitPos[0];
+    _ = clickedNormal[0];
     _ = faceSelection.nodeId;
     _ = nodeParams[0];
     _ = edgeHits[0].kind;
@@ -630,7 +673,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         }
     }
     // Click detection using pixel-accurate matching
-    let needSeamSegment = viewSettings.selectionMode != SELECTION_MODE_SEAM && viewSettings.selectionMode != SELECTION_MODE_OBJECT && viewSettings.selectionMode != SELECTION_MODE_FACE;
+    let needSeamSegment = viewSettings.selectionMode == SELECTION_MODE_EDGE || viewSettings.selectionMode == SELECTION_MODE_AUTO;
     if (clickState.enabled > 0u && hit.t > 0.0) {
         let clickPixel = clickState.clickPos * camera.res;
         let currentPixel = uv * camera.res;
@@ -645,6 +688,11 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
             clickedHitPos[1] = selecPos.y;
             clickedHitPos[2] = selecPos.z;
             clickedHitPos[3] = select(hit.t, backHit.t, useBack);
+            let selecN = select(hit.n, backHit.n, useBack);
+            clickedNormal[0] = selecN.x;
+            clickedNormal[1] = selecN.y;
+            clickedNormal[2] = selecN.z;
+            clickedNormal[3] = 0.0;
             let frontEdge = classifyEdgeAtHit(hitPos, hit, wppu);
             edgeHits[0] = frontEdge;
             if (needSeamSegment) {

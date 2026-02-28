@@ -1,5 +1,5 @@
 import { Vec2f, Vec3f, vec2, vec3 } from "../vecmat/vector.mjs"
-import type { Extrude, Loft } from "../scene/scene.mjs"
+import { Box, Cone, Cylinder, Extrude, Loft } from "../scene/scene.mjs"
 
 /** Reserved object IDs for face-level highlighting via the existing outline system. */
 const FACE_HIGHLIGHT_ID = 1023      // Side/edge face
@@ -51,6 +51,10 @@ export class PushPullController {
     #cap: CapState | null = null
     /** Cap surface highlight only (single-click) — visual selection without push/pull activation. */
     #capHighlightOnly: { node: Extrude | Loft; isTop: boolean } | null = null
+    /** Side face highlight only (single-click) — visual selection without push/pull activation. */
+    #sideHighlightOnly: { extrude: Extrude; faceIndex: number } | null = null
+    /** Primitive face highlight only (Box, Cylinder, Cone). */
+    #primitiveHighlightOnly: { node: Box | Cylinder | Cone; faceIndex: number } | null = null
     #dragging = false
     #dragStartScreen = vec2(0, 0)
     #dragOffset = 0
@@ -66,6 +70,43 @@ export class PushPullController {
 
     get isActive(): boolean {
         return this.#face !== null || this.#cap !== null
+    }
+
+    /** Highlight a side face for surface selection only (single-click). Does not activate push/pull. */
+    highlightSideFace(extrude: Extrude, hitPos: Vec3f): void {
+        this.#capHighlightOnly = null
+        this.#primitiveHighlightOnly = null
+        const localPos = vec3(
+            hitPos.x - extrude.pos.x,
+            hitPos.y - extrude.pos.y,
+            hitPos.z - extrude.pos.z,
+        )
+        const px = localPos.x
+        const pz = localPos.z
+        const verts = extrude.child.vertices
+        const N = verts.length
+        let minDist = Infinity
+        let closestEdge = 0
+        for (let j = N - 1, i = 0; i < N; j = i, i++) {
+            const ex = verts[i][0] - verts[j][0]
+            const ey = verts[i][1] - verts[j][1]
+            const wx = px - verts[j][0]
+            const wy = pz - verts[j][1]
+            const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey)))
+            const bx = wx - ex * t
+            const by = wy - ey * t
+            const dd = bx * bx + by * by
+            if (dd < minDist) {
+                minDist = dd
+                closestEdge = j
+            }
+        }
+        this.#sideHighlightOnly = { extrude, faceIndex: closestEdge }
+        this.#writeFaceSelection(extrude.id, closestEdge, 0, 0)
+        const selData = new Uint32Array(1024)
+        selData[FACE_HIGHLIGHT_ID] = 1
+        this.#host.device.queue.writeBuffer(this.#host.selectedObjectIdsBuffer, 0, selData)
+        this.#host.requestRender()
     }
 
     get isDragging(): boolean {
@@ -95,6 +136,22 @@ export class PushPullController {
                 mode: this.#capHighlightOnly.isTop ? 2 : 3,
             }
         }
+        if (this.#sideHighlightOnly) {
+            return {
+                nodeId: this.#sideHighlightOnly.extrude.id,
+                faceIndex: this.#sideHighlightOnly.faceIndex,
+                mode: 0,
+            }
+        }
+        if (this.#primitiveHighlightOnly) {
+            const mode = this.#primitiveHighlightOnly.node instanceof Box ? 4
+                : this.#primitiveHighlightOnly.node instanceof Cylinder ? 5 : 6
+            return {
+                nodeId: this.#primitiveHighlightOnly.node.id,
+                faceIndex: this.#primitiveHighlightOnly.faceIndex,
+                mode,
+            }
+        }
         return null
     }
 
@@ -112,6 +169,8 @@ export class PushPullController {
 
     /** Identify and select the face of the given Extrude that was clicked at hitPos. */
     selectFace(extrude: Extrude, hitPos: Vec3f): void {
+        this.#sideHighlightOnly = null
+        this.#primitiveHighlightOnly = null
         const localPos = vec3(
             hitPos.x - extrude.pos.x,
             hitPos.y - extrude.pos.y,
@@ -174,9 +233,19 @@ export class PushPullController {
         this.#host.requestRender()
     }
 
+    /** Highlight a primitive face (Box, Cylinder, Cone) for surface selection only. */
+    highlightPrimitiveFace(node: Box | Cylinder | Cone, faceIndex: number): void {
+        this.#primitiveHighlightOnly = { node, faceIndex }
+        const mode = node instanceof Box ? 4 : node instanceof Cylinder ? 5 : 6
+        this.#writeFaceSelection(node.id, faceIndex, mode, 0)
+        this.#host.requestRender()
+    }
+
     /** Highlight a cap for surface selection only (single-click). Does not activate push/pull. */
     highlightCapFace(node: Extrude | Loft, isTop: boolean): void {
         this.#capHighlightOnly = { node, isTop }
+        this.#sideHighlightOnly = null
+        this.#primitiveHighlightOnly = null
         const mode = isTop ? 2 : 3
         this.#writeFaceSelection(node.id, 0, mode, 0)
         const selData = new Uint32Array(1024)
@@ -189,6 +258,9 @@ export class PushPullController {
     selectCapFace(node: Extrude | Loft, isTop: boolean): void {
         this.#face = null
         this.#capHighlightOnly = null
+        this.#sideHighlightOnly = null
+        this.#primitiveHighlightOnly = null
+        this.#primitiveHighlightOnly = null
         // basePosYDelta = offset from compiled position. When compiledPosY is missing (e.g. node
         // not in map after tab switch or build race), use 0 to avoid the whole object jumping.
         const compiledPosY = this.#host.hasCompiledPosY(node.id)
@@ -215,10 +287,12 @@ export class PushPullController {
 
     /** Deselect any active face or cap highlight. */
     deselect(): void {
-        if (!this.#face && !this.#cap && !this.#capHighlightOnly) return
+        if (!this.#face && !this.#cap && !this.#capHighlightOnly && !this.#sideHighlightOnly && !this.#primitiveHighlightOnly) return
         this.#face = null
         this.#cap = null
         this.#capHighlightOnly = null
+        this.#sideHighlightOnly = null
+        this.#primitiveHighlightOnly = null
         this.#dragging = false
 
         // Clear face selection on GPU

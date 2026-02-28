@@ -8,7 +8,7 @@ import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { MDCParams, MDCExport } from "./export/mdc.mjs"
-import { Extrude, Loft, Polygon2D, SceneInfo } from "./scene/scene.mjs"
+import { Box, Cone, Cylinder, Extrude, Loft, Polygon2D, SceneInfo } from "./scene/scene.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import exportShader from "./shaders/mdc.wgsl"
 import previewShader from "./shaders/preview.wgsl"
@@ -49,6 +49,8 @@ class UniformBuffers {
     polygonVertices!: GPUBuffer
     /** Storage buffer for the 3D hit position of the clicked pixel (vec3f + t). */
     clickedHitPos!: GPUBuffer
+    /** Storage buffer for the surface normal at the clicked pixel (vec3f). */
+    clickedNormal!: GPUBuffer
     /** Uniform buffer for face selection state (nodeId, faceIndex). */
     faceSelection!: GPUBuffer
     /** Per-node parameters (h, posYDelta) for Extrude/Loft. Updated during cap drag. */
@@ -65,7 +67,7 @@ type SelectedEdgeData = { kind: number; primaryId: number; secondaryId: number; 
 import { EdgeKind } from "./edge-kind.mjs"
 
 export { EdgeKind }
-export type SelectionMode = "object" | "seam" | "edge" | "face"
+export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 
 /** Outline style for selected objects. */
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -127,6 +129,8 @@ export class SDFRenderer {
     #hoveredObjectId: number = 0
     #clickPending = false
     #lastClickPos: Vec2f = vec2(0, 0)
+    #lastAutoClickScreenPos: Vec2f = vec2(-9999, -9999)
+    #autoCycleIndex = 0
     #exportBuffers: ExportBuffers
     #shaderCompiler!: ShaderCompiler
     #sceneShader!: GPUShaderModule
@@ -264,15 +268,19 @@ export class SDFRenderer {
     setSelectionMode(mode: SelectionMode): void {
         this.#selectionMode = mode
         this.#settings.updateGlobal({ preview: { selectionMode: mode } })
+        this.#selectedObjectIds.fill(false)
+        this.#selectedEdges = []
+        this.#pushPullController?.deselect()
+        if (this.#device) {
+            this.#writeSelectionBuffer()
+            this.#writeSelectedEdgesBuffer()
+        }
+        this.#pushSelectionInfo()
+        this.selectionChange$.next([])
         this.#needsRender = true
     }
 
     get selectionMode(): SelectionMode {
-        return this.#selectionMode
-    }
-
-    #getEffectiveMode(altKey: boolean): SelectionMode {
-        if (altKey && this.#selectionMode === "object") return "seam"
         return this.#selectionMode
     }
 
@@ -376,6 +384,13 @@ export class SDFRenderer {
     /** Read back the 3D hit position from the GPU storage buffer. */
     async #readClickedHitPos(): Promise<Vec3f> {
         const readback = await this.#helper.readBufferData(this.#uniformBuffers.clickedHitPos, 16)
+        const f = new Float32Array(readback)
+        return vec3(f[0], f[1], f[2])
+    }
+
+    /** Read back the surface normal at the clicked pixel (for primitive face picking). */
+    async #readClickedNormal(): Promise<Vec3f> {
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.clickedNormal, 16)
         const f = new Float32Array(readback)
         return vec3(f[0], f[1], f[2])
     }
@@ -596,6 +611,9 @@ export class SDFRenderer {
             this.#uniformBuffers.clickedHitPos, 0, new Float32Array([0, 0, 0, 0]).buffer
         )
         this.#device.queue.writeBuffer(
+            this.#uniformBuffers.clickedNormal, 0, new Float32Array([0, 0, 0, 0]).buffer
+        )
+        this.#device.queue.writeBuffer(
             this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(192)
         )
 
@@ -640,22 +658,24 @@ export class SDFRenderer {
         }, 200)
     }
 
-    #handleClick(screenPos: Vec2f, shiftKey: boolean, altKey: boolean) {
+    #handleClick(screenPos: Vec2f, shiftKey: boolean, _altKey: boolean) {
         if (!this.#device) return
         this.#clickPending = true
         this.#writeClickState(screenPos)
 
+        const capturedScreenPos = vec2(screenPos.x, screenPos.y)
         setTimeout(async () => {
             try {
-                const [clickedId, edgeHits, hitPos] = await Promise.all([
+                const [clickedId, edgeHits, hitPos, clickedNormal] = await Promise.all([
                     this.#readClickedObjectId(),
                     this.#readEdgeHits(),
                     this.#readClickedHitPos(),
+                    this.#readClickedNormal(),
                 ])
                 this.#clickPending = false
-                const effectiveMode = this.#getEffectiveMode(altKey)
+                const mode = this.#selectionMode
 
-                if (effectiveMode === "seam") {
+                if (mode === "seam") {
                     const filtered = edgeHits.filter(h => h.kind === EdgeKind.Seam)
                     if (filtered.length > 0) {
                         if (shiftKey) {
@@ -670,7 +690,16 @@ export class SDFRenderer {
                         this.selectionChange$.next([])
                         return
                     }
-                } else if (effectiveMode === "edge") {
+                    // No seam hit: select nothing
+                    this.#clearSelectedEdges()
+                    this.#selectedObjectIds.fill(false)
+                    this.#writeSelectionBuffer()
+                    this.#pushPullController?.deselect()
+                    this.#pushSelectionInfo()
+                    this.selectionChange$.next([])
+                    return
+                }
+                if (mode === "edge") {
                     const filtered = edgeHits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment)
                     if (filtered.length > 0) {
                         if (shiftKey) {
@@ -685,13 +714,33 @@ export class SDFRenderer {
                         this.selectionChange$.next([])
                         return
                     }
+                    // No edge hit: select nothing
+                    this.#clearSelectedEdges()
+                    this.#selectedObjectIds.fill(false)
+                    this.#writeSelectionBuffer()
+                    this.#pushPullController?.deselect()
+                    this.#pushSelectionInfo()
+                    this.selectionChange$.next([])
+                    return
                 }
-
-                // Object mode, Face mode (single-click as object), or Seam/Edge with no hits
-                this.#clearSelectedEdges()
-                if (clickedId !== 0) {
-                    // Cap: surface selection only (highlight that cap, no push/pull)
-                    if (this.#scene && this.#pushPullController) {
+                if (mode === "object") {
+                    this.#clearSelectedEdges()
+                    this.#pushPullController?.deselect()
+                    if (clickedId !== 0) {
+                        const objectId = this.#resolveToObjectId(clickedId)
+                        this.#updateSelection(objectId, shiftKey)
+                    } else if (!shiftKey) {
+                        this.#selectedObjectIds.fill(false)
+                        this.#writeSelectionBuffer()
+                        this.selectionChange$.next([])
+                    }
+                    return
+                }
+                if (mode === "face") {
+                    this.#clearSelectedEdges()
+                    this.#selectedObjectIds.fill(false)
+                    this.#writeSelectionBuffer()
+                    if (clickedId !== 0 && this.#scene && this.#pushPullController) {
                         const node = this.#scene.get(clickedId)
                         if (node instanceof Polygon2D) {
                             const parent = this.#findCapParent(node)
@@ -704,7 +753,109 @@ export class SDFRenderer {
                                 return
                             }
                         }
+                        if (node instanceof Extrude && node.twistDegrees === 0) {
+                            this.#pushPullController.highlightSideFace(node, hitPos)
+                            this.#pushSelectionInfo()
+                            return
+                        }
+                        if (node instanceof Box || node instanceof Cylinder || node instanceof Cone) {
+                            const faceIndex = this.#primitiveFaceIndexFromNormal(node, clickedNormal)
+                            if (faceIndex >= 0) {
+                                this.#pushPullController.highlightPrimitiveFace(node, faceIndex)
+                                this.#pushSelectionInfo()
+                                return
+                            }
+                        }
+                        // Sphere and others: select nothing
                     }
+                    this.#pushPullController?.deselect()
+                    this.#pushSelectionInfo()
+                    return
+                }
+                if (mode === "auto") {
+                    const dist = Math.hypot(
+                        capturedScreenPos.x - this.#lastAutoClickScreenPos.x,
+                        capturedScreenPos.y - this.#lastAutoClickScreenPos.y
+                    )
+                    if (dist > 4) {
+                        this.#autoCycleIndex = 0
+                        this.#lastAutoClickScreenPos = vec2(capturedScreenPos.x, capturedScreenPos.y)
+                    }
+                    const candidates: Array<"face" | "seam" | "edge" | "object"> = []
+                    let hasFace = false
+                    if (clickedId !== 0 && this.#scene && this.#pushPullController) {
+                        const node = this.#scene.get(clickedId)
+                        hasFace = !!(
+                            (node instanceof Polygon2D && this.#findCapParent(node)) ||
+                            (node instanceof Extrude && node.twistDegrees === 0) ||
+                            ((node instanceof Box || node instanceof Cylinder || node instanceof Cone) &&
+                                this.#primitiveFaceIndexFromNormal(node, clickedNormal) >= 0)
+                        )
+                    }
+                    const seamHits = edgeHits.filter(h => h.kind === EdgeKind.Seam)
+                    const edgeHitsFiltered = edgeHits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment)
+                    if (hasFace) candidates.push("face")
+                    if (seamHits.length > 0) candidates.push("seam")
+                    if (edgeHitsFiltered.length > 0) candidates.push("edge")
+                    if (clickedId !== 0) candidates.push("object")
+                    const type = candidates[this.#autoCycleIndex % Math.max(1, candidates.length)]
+                    this.#autoCycleIndex++
+                    if (type === "face" && clickedId !== 0 && this.#scene && this.#pushPullController) {
+                        const node = this.#scene.get(clickedId)
+                        if (node instanceof Polygon2D) {
+                            const parent = this.#findCapParent(node)
+                            if (parent) {
+                                const isTop = parent instanceof Loft
+                                    ? node === parent.profiles[parent.profiles.length - 1]
+                                    : (hitPos.y - parent.pos.y) >= 0
+                                this.#pushPullController.highlightCapFace(parent, isTop)
+                            }
+                        } else if (node instanceof Extrude && node.twistDegrees === 0) {
+                            this.#pushPullController.highlightSideFace(node, hitPos)
+                        } else if (node instanceof Box || node instanceof Cylinder || node instanceof Cone) {
+                            const faceIndex = this.#primitiveFaceIndexFromNormal(node, clickedNormal)
+                            if (faceIndex >= 0) this.#pushPullController.highlightPrimitiveFace(node, faceIndex)
+                        }
+                        this.#clearSelectedEdges()
+                        this.#selectedObjectIds.fill(false)
+                        // Do NOT call #writeSelectionBuffer() — push-pull already wrote face highlight IDs (1022/1023)
+                        // to the GPU buffer for the outline. Writing here would overwrite with zeros.
+                    } else if (type === "seam") {
+                        if (shiftKey) {
+                            for (const hit of seamHits) this.#addSelectedEdgeFromHit(hit)
+                        } else {
+                            this.#setSelectedEdgesFromHits(seamHits)
+                        }
+                        this.#selectedObjectIds.fill(false)
+                        this.#writeSelectionBuffer()
+                        this.#pushPullController?.deselect()
+                    } else if (type === "edge") {
+                        if (shiftKey) {
+                            for (const hit of edgeHitsFiltered) this.#addSelectedEdgeFromHit(hit)
+                        } else {
+                            this.#setSelectedEdgesFromHits(edgeHitsFiltered)
+                        }
+                        this.#selectedObjectIds.fill(false)
+                        this.#writeSelectionBuffer()
+                        this.#pushPullController?.deselect()
+                    } else if (type === "object") {
+                        this.#clearSelectedEdges()
+                        this.#pushPullController?.deselect()
+                        const objectId = this.#resolveToObjectId(clickedId)
+                        this.#updateSelection(objectId, shiftKey)
+                    } else {
+                        this.#clearSelectedEdges()
+                        this.#selectedObjectIds.fill(false)
+                        this.#writeSelectionBuffer()
+                        this.#pushPullController?.deselect()
+                        this.selectionChange$.next([])
+                    }
+                    this.#pushSelectionInfo()
+                    return
+                }
+                // Fallback for unknown mode
+                this.#clearSelectedEdges()
+                if (clickedId !== 0) {
                     this.#pushPullController?.deselect()
                     this.#updateSelection(clickedId, shiftKey)
                 } else if (!shiftKey) {
@@ -722,8 +873,8 @@ export class SDFRenderer {
     #handleHover(screenPos: Vec2f, altKey: boolean) {
         if (!this.#device) return
         this.#writeHoverState(screenPos, true)
-        const effectiveMode = this.#getEffectiveMode(altKey)
-        if (effectiveMode === "object" || effectiveMode === "face") {
+        const mode = this.#selectionMode
+        if (mode === "object" || mode === "face") {
             this.#setHoveredEdges([])
         }
         setTimeout(async () => {
@@ -731,7 +882,7 @@ export class SDFRenderer {
                 const hits = await this.#readHoverEdgeHits()
                 this.#hoveredObjectId = hits.length > 0 ? hits[hits.length - 1].objectId : 0
                 let edges: SelectedEdgeData[] = []
-                if (effectiveMode === "seam") {
+                if (mode === "seam") {
                     edges = hits.filter(h => h.kind === EdgeKind.Seam).map(h => ({
                         kind: h.kind,
                         primaryId: h.primaryId,
@@ -744,7 +895,7 @@ export class SDFRenderer {
                         seedTangent: h.seedTangent,
                         seedNormal: h.seedNormal,
                     }))
-                } else if (effectiveMode === "edge") {
+                } else if (mode === "edge") {
                     edges = hits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment).map(h => ({
                         kind: h.kind,
                         primaryId: h.primaryId,
@@ -757,6 +908,32 @@ export class SDFRenderer {
                         seedTangent: h.seedTangent,
                         seedNormal: h.seedNormal,
                     }))
+                } else if (mode === "auto") {
+                    const seamEdges = hits.filter(h => h.kind === EdgeKind.Seam).map(h => ({
+                        kind: h.kind,
+                        primaryId: h.primaryId,
+                        secondaryId: h.secondaryId,
+                        featureA: h.featureA,
+                        opType: h.opType,
+                        lineWidthPx: 6.0,
+                        epsilon: 0.02,
+                        seedPoint: h.seedPoint,
+                        seedTangent: h.seedTangent,
+                        seedNormal: h.seedNormal,
+                    }))
+                    const primEdges = hits.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment).map(h => ({
+                        kind: h.kind,
+                        primaryId: h.primaryId,
+                        secondaryId: h.secondaryId,
+                        featureA: h.featureA,
+                        opType: h.opType,
+                        lineWidthPx: 6.0,
+                        epsilon: 0.02,
+                        seedPoint: h.seedPoint,
+                        seedTangent: h.seedTangent,
+                        seedNormal: h.seedNormal,
+                    }))
+                    edges = seamEdges.length > 0 ? seamEdges : primEdges
                 }
                 this.#setHoveredEdges(edges)
                 this.#pushSelectionInfo()
@@ -781,7 +958,7 @@ export class SDFRenderer {
                     if (this.#scene && this.#pushPullController) {
                         const node = this.#scene.get(clickedId)
                         // Side face of a no-twist Extrude
-                        if (node instanceof Extrude && node.twist === 0) {
+                        if (node instanceof Extrude && node.twistDegrees === 0) {
                             this.#pushPullController.selectFace(node, hitPos)
                             this.#pushSelectionInfo()
                             return
@@ -805,6 +982,39 @@ export class SDFRenderer {
                 console.error("Error reading double-click data:", error)
             }
         }, 200)
+    }
+
+    /** Compute primitive face index from hit normal. Returns -1 if invalid. */
+    #primitiveFaceIndexFromNormal(node: Box | Cylinder | Cone, n: Vec3f): number {
+        const ax = Math.abs(n.x)
+        const ay = Math.abs(n.y)
+        const az = Math.abs(n.z)
+        if (node instanceof Box) {
+            const axis = ax >= ay && ax >= az ? 0 : ay >= ax && ay >= az ? 1 : 2
+            const sign = (axis === 0 ? n.x : axis === 1 ? n.y : n.z) < 0 ? 1 : 0
+            return axis * 2 + sign
+        }
+        if (node instanceof Cylinder) {
+            if (n.y > 0.9) return 2
+            if (n.y < -0.9) return 0
+            return 1
+        }
+        if (node instanceof Cone) {
+            if (n.y < -0.9) return 0
+            return 1
+        }
+        return -1
+    }
+
+    /** Resolve clicked ID to object ID for object-mode selection. Caps resolve to parent. */
+    #resolveToObjectId(clickedId: number): number {
+        if (!this.#scene) return clickedId
+        const node = this.#scene.get(clickedId)
+        if (node instanceof Polygon2D) {
+            const parent = this.#findCapParent(node)
+            if (parent) return parent.id
+        }
+        return clickedId
     }
 
     /** Find the parent Extrude or Loft that owns this Polygon2D cap. */
@@ -1575,6 +1785,13 @@ export class SDFRenderer {
             label: "clickedHitPos",
         })
 
+        // Clicked surface normal: written by fragment shader on click, read back for primitive face picking.
+        this.#uniformBuffers.clickedNormal = this.#device.createBuffer({
+            size: 16, // vec3f (12 bytes) + padding for alignment
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "clickedNormal",
+        })
+
         // Face selection uniform: tells the Extrude shader which face to highlight.
         // Layout: nodeId (u32) + faceIndex (u32) + mode (u32) + extrudeOffset (f32) = 16 bytes.
         this.#uniformBuffers.faceSelection = this.#device.createBuffer({
@@ -1727,6 +1944,7 @@ export class SDFRenderer {
                     { binding: 14, resource: { buffer: this.#uniformBuffers.selectedEdges } },
                     { binding: 15, resource: { buffer: this.#uniformBuffers.hoverEdgeHit } },
                     { binding: 16, resource: { buffer: this.#uniformBuffers.hoveredEdge } },
+                    { binding: 17, resource: { buffer: this.#uniformBuffers.clickedNormal } },
                 ],
             })
         }
@@ -1773,7 +1991,7 @@ export class SDFRenderer {
         vs[0] = this.#xrayMode ? 1 : 0
         vs[1] = refinementSteps
         vs[2] = beamActive ? 1 : 0
-        vs[3] = { object: 0, seam: 1, edge: 2, face: 3 }[this.#selectionMode]
+        vs[3] = { object: 0, seam: 1, edge: 2, face: 3, auto: 4 }[this.#selectionMode]
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, vs)
 
         // Write outline settings (mode + thickness + color + canvasWidth)

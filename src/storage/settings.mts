@@ -28,7 +28,7 @@ export interface DocumentSettings {
     preview: PreviewSettings
 }
 
-export type SelectionMode = "object" | "seam" | "edge" | "face"
+export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 
 export interface GlobalSettings {
     preview: { movementScale: number; selectionMode: SelectionMode }

@@ -12,9 +12,10 @@ const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigat
 
 const Static = {
     "src/index.html": "/",
+    "src/index.css": "/",
     "src/site.webmanifest": "/",
     "src/assets/*": "/assets",
-    "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"],
+    "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
 }
 
 const Options = {

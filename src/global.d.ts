@@ -8,11 +8,6 @@ declare global {
 
 export { }
 
-declare module "*.svg" {
-    const value: string
-    export default value
-}
-
 declare module "monaco-editor-env" {
     /**
      * Re‐use the official Monaco Environment type

@@ -7,7 +7,7 @@
  * submenu and move our actions into it.
  */
 
-import type { IStandaloneCodeEditor } from "monaco-editor"
+import type * as monaco from "monaco-editor"
 // @ts-expect-error internal Monaco API
 import { LinkedList } from "monaco-editor/esm/vs/base/common/linkedList.js"
 // @ts-expect-error internal Monaco API
@@ -16,7 +16,7 @@ import { MenuId, MenuRegistry } from "monaco-editor/esm/vs/platform/actions/comm
 export interface SubmenuActionDescriptor {
     id: string
     label: string
-    run: (editor: IStandaloneCodeEditor) => void
+    run: (editor: monaco.editor.IStandaloneCodeEditor) => void
 }
 
 export interface ContextSubmenuDescriptor {
@@ -37,7 +37,7 @@ export interface ContextSubmenuDescriptor {
  * @returns A disposable that removes the submenu and its actions when called.
  */
 export function addContextSubmenu(
-    editor: IStandaloneCodeEditor,
+    editor: monaco.editor.IStandaloneCodeEditor,
     descriptor: ContextSubmenuDescriptor
 ): () => void {
     const submenuId = `galacticad.submenu.${descriptor.title.replace(/\s+/g, ".").toLowerCase()}`
@@ -63,7 +63,7 @@ export function addContextSubmenu(
 
         const actionId = editor
             .getSupportedActions()
-            .find((a) => a.label === action.label && a.id.endsWith(action.id))?.id
+            .find((a: { id: string; label: string }) => a.label === action.label && a.id.endsWith(action.id))?.id
 
         if (actionId) {
             const item = popMenuItem(editorContextItems, actionId)

@@ -9,7 +9,7 @@ import { MeshViewer } from "./components/mesh-viewer.mjs"
 import type { PreviewWindow } from "./components/preview-window.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
 import { styleInfo } from "./scene/scene.mjs"
-import { SDFRenderer } from "./sdf.mjs"
+import { SDFRenderer, type NodeStub } from "./sdf.mjs"
 import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
@@ -75,7 +75,7 @@ class App {
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
     #parsedCalls: ParsedShapeCall[] = []
-    #sceneNodeMap: Map<number, import("./scene/scene.mjs").Node> = new Map()  // nodeId -> Node for symbol lookup
+    #sceneNodeMap: Map<number, NodeStub> = new Map()  // nodeId -> NodeStub for symbol lookup
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
     #polygonEditor: PolygonEditor | null = null
@@ -147,7 +147,7 @@ class App {
 
         for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
             const node = this.#sceneNodeMap.get(nodeId)
-            const svg = node?.getIndicatorSvg() ?? defaultSvg
+            const svg = node?.getIndicatorSvg?.() ?? defaultSvg
 
             indicators.push({
                 startLine: location.startLine,
@@ -398,7 +398,7 @@ class App {
             }
 
             const node = this.#sceneNodeMap.get(nodeId)
-            this.renderer.setSelection(node ? node.getAllDescendantIds() : [nodeId])
+            this.renderer.setSelection(node ? (node.getAllDescendantIds?.() ?? [nodeId]) : [nodeId])
             this.#updateEditorHighlighting()
         }
     }
@@ -430,7 +430,7 @@ class App {
                 const nodeId = this.#findNodeIdAtPosition(position.lineNumber, position.column)
                 if (nodeId !== null) {
                     const node = this.#sceneNodeMap.get(nodeId)
-                    this.renderer.setSelection(node ? node.getAllDescendantIds() : [nodeId])
+                    this.renderer.setSelection(node ? (node.getAllDescendantIds?.() ?? [nodeId]) : [nodeId])
                 }
             }
             this.#updateEditorHighlighting()

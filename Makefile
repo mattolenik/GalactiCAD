@@ -13,7 +13,7 @@ open:
 	$(BROWSER) http://localhost:$(PORT)
 
 .PHONY: build
-build:
+build: check
 	@mkdir -p $(DIST)
 	rm -rf $(DIST)/vs && mkdir -p $(DIST)/vs/
 	cp -af node_modules/monaco-editor/min/vs/editor $(DIST)/vs/
@@ -22,6 +22,10 @@ build:
 .PHONY: test
 test:
 	$(TSX) --test
+
+.PHONY: check
+check:
+	./node_modules/.bin/tsc --noEmit
 
 watch: BUILD_FLAGS=-w
 watch: clean build

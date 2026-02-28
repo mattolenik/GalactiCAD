@@ -58,25 +58,25 @@ export class BijectiveMap<TKey, TValue> implements Map<TKey, TValue> {
         return this.#forward.size
     }
 
-    entries(): IterableIterator<[TKey, TValue]> {
-        return this.#forward.entries()
+    entries(): ReturnType<Map<TKey, TValue>["entries"]> {
+        return this.#forward.entries() as ReturnType<Map<TKey, TValue>["entries"]>
     }
 
-    keys(): IterableIterator<TKey> {
-        return this.#forward.keys()
+    keys(): ReturnType<Map<TKey, TValue>["keys"]> {
+        return this.#forward.keys() as ReturnType<Map<TKey, TValue>["keys"]>
     }
 
-    values(): IterableIterator<TValue> {
-        return this.#forward.values()
+    values(): ReturnType<Map<TKey, TValue>["values"]> {
+        return this.#forward.values() as ReturnType<Map<TKey, TValue>["values"]>
     }
 
-    forEach(callbackfn: (value: TValue, key: TKey, map: Map<TKey, TValue>) => void, thisArg?: any): void {
+    forEach(callbackfn: (value: TValue, key: TKey, map: Map<TKey, TValue>) => void, thisArg?: unknown): void {
         this.#forward.forEach((value, key) => {
-            callbackfn.call(thisArg, value, key, this)
+            callbackfn.call(thisArg, value, key, this as Map<TKey, TValue>)
         })
     }
 
-    [Symbol.iterator](): IterableIterator<[TKey, TValue]> {
+    [Symbol.iterator](): ReturnType<Map<TKey, TValue>["entries"]> {
         return this.entries()
     }
 

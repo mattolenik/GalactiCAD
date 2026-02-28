@@ -1,0 +1,219 @@
+html {
+    position: fixed;
+    overflow: hidden;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    overscroll-behavior: none;
+}
+
+div,
+span {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    position: fixed;
+    overflow: hidden;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #333;
+    color: whitesmoke;
+    scrollbar-width: none;
+    overscroll-behavior: none;
+}
+
+#preview {
+    display: block;
+}
+
+#viewports {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    background-color: #1a1a1a;
+    touch-action: none;
+}
+
+#viewports > * {
+    min-height: 0;
+    flex: 1 1 0;
+}
+
+preview-window,
+mesh-viewer {
+    display: block !important;
+    width: 100%;
+    height: 100%;
+}
+
+#toolbar {
+    margin: 0;
+    padding: 0;
+    display: inline-block;
+    z-index: 20;
+}
+
+#log {
+    display: none;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Monaco, monospace;
+    padding: 0.4em 0.85em;
+    white-space: pre-wrap;
+    max-height: 6em;
+    overflow-y: auto;
+    line-height: 1.35;
+    background: rgba(180, 60, 60, 0.2);
+    border-top: 1px solid rgba(255, 100, 100, 0.35);
+}
+#log.has-error {
+    display: block;
+}
+
+#editor > llm-prompt-bar {
+    flex-shrink: 0;
+}
+
+#editor {
+    z-index: 10;
+    position: absolute;
+    background-color: rgba(30, 30, 30, 0.82);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    --vscode-focusBorder: transparent;
+}
+
+#editor::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('/assets/g.svg') center/cover no-repeat;
+    opacity: 0;
+    transition: opacity 1s ease;
+    z-index: -1;
+}
+
+#editor.visible::before {
+    opacity: 0.008;
+}
+
+.monaco-editor {
+    opacity: 0.99;
+}
+#editor .monaco-editor,
+#editor .monaco-editor-background,
+#editor .monaco-editor .overflow-guard,
+#editor .monaco-editor .margin {
+    background: transparent !important;
+}
+#editor .monaco-editor,
+#editor .monaco-editor:focus,
+#editor .monaco-editor *:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+#toolbar {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 1fr minmax(min-content, 500px) min-content;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+}
+#toolbar > #tabs {
+    min-width: 0;
+}
+
+#workspace {
+    height: 100vh;
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    grid-template-columns: 1fr;
+    min-width: 400px;
+    margin: auto;
+}
+#main-panels {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+}
+#workspace:not(.editor-left) #editor {
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--editor-height, 22%);
+}
+#workspace.editor-left #editor {
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--editor-width, 35%);
+}
+/* Polygon editor replaces the code editor in the same slot */
+#main-panels polygon-editor {
+    position: absolute;
+    z-index: 10;
+    background-color: rgba(30, 30, 30, 0.82);
+    overflow: hidden;
+}
+#workspace:not(.editor-left) #main-panels polygon-editor {
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--editor-height, 22%);
+}
+#workspace.editor-left #main-panels polygon-editor {
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--editor-width, 35%);
+}
+@media only screen and (max-width: 4in) {
+    #workspace {
+        min-width: 100%;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+}
+
+#workspace>* {
+    min-width: 0;
+}
+
+input,
+select,
+textarea {
+    font-size: 16px;
+}
+
+canvas {
+    /* disable all built-in touch gestures/selection on the element */
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* prevent text selection in editor while dragging resize handle (mobile) */
+body.resize-dragging {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}

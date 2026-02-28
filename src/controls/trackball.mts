@@ -82,9 +82,7 @@ export class Trackball {
             resolvedOpts = { scene: opts as unknown as HTMLElement }
         }
         if (typeof resolvedOpts.scene === "string") {
-            resolvedOpts.scene = document.querySelector(
-                resolvedOpts.scene
-            ) as HTMLElement
+            resolvedOpts.scene = document.querySelector(resolvedOpts.scene) ?? undefined
         }
 
         const {
@@ -101,8 +99,11 @@ export class Trackball {
             speed = 1,
         } = resolvedOpts
 
+        if (!scene) {
+            throw new Error("Trackball requires a scene element")
+        }
         this.#opts = {
-            scene: scene!,
+            scene,
             getInteractionRect,
             rotationMethod,
             onDraw,
@@ -333,7 +334,7 @@ export class Trackball {
         }
     }
 
-    #handleMouseUp(): void {
+    #handleMouseUp(_event?: MouseEvent | Touch): void {
         if (!this.#drag) return
 
         this.#drag = null

@@ -262,7 +262,7 @@ export class RenderWorkerCore {
 
         this.#ensureRenderTextures(sceneWidth, sceneHeight)
 
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, viewTransform)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, viewTransform as GPUAllowSharedBufferSource)
         this.#cameraPosBuf[0] = cameraPosition[0]
         this.#cameraPosBuf[1] = cameraPosition[1]
         this.#cameraPosBuf[2] = cameraPosition[2]
@@ -450,7 +450,7 @@ export class RenderWorkerCore {
                 this.#uniformBuffers.nodeParams,
             )
             const mesh = await mdc.export(mdcShaderModule)
-            self.postMessage({ type: "renderMeshResult", mesh }, [mesh.verts.buffer, mesh.tris.buffer])
+            self.postMessage({ type: "renderMeshResult", mesh }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "renderMeshResult", error: errorMsg })

@@ -1,7 +1,7 @@
 import ts from "typescript"
 import { BijectiveMap } from "../collections/bijectiveMap.mjs"
 import { WRAP_PREFIX, WRAP_SUFFIX } from "../parser/source-parser.mjs"
-import { BinaryOperator, CompileResult, Node, UnaryOperator, fluent, styleInfo, type BlendMode, type IntersectionType, type StyleInfo } from "./base.mjs"
+import { BinaryOperator, CompileResult, Node, UnaryOperator, fluent, styleInfo, type BlendMode, type IntersectionType, type StyleInfo, type UnionType } from "./base.mjs"
 import { Bend, bend } from "./operators/bend.mjs"
 import { Elongate, elongate } from "./operators/elongate.mjs"
 import { Engrave, engrave } from "./operators/engrave.mjs"

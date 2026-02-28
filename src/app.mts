@@ -19,6 +19,10 @@ import { matchNodesToSource } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
 import { ResizeHandle } from "./components/resize-handle.mjs"
 import { Toolbar } from "./components/toolbar.mjs"
+import objectIcon from "./assets/selection-object.svg"
+import seamIcon from "./assets/selection-seam.svg"
+import edgeIcon from "./assets/selection-edge.svg"
+import faceIcon from "./assets/selection-face.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
 import { addContextSubmenu } from "./editor/context-menu-submenu.mjs"
 import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
@@ -743,10 +747,10 @@ class App {
         toolbar.addSeparator()
         const selectionModeRadio = toolbar.addRadioGroup(
             [
-                { label: "Object", value: "object" as const },
-                { label: "Seam", value: "seam" as const },
-                { label: "Edge", value: "edge" as const },
-                { label: "Face", value: "face" as const },
+                { label: "Object", value: "object" as const, icon: objectIcon },
+                { label: "Seam", value: "seam" as const, icon: seamIcon },
+                { label: "Edge", value: "edge" as const, icon: edgeIcon },
+                { label: "Face", value: "face" as const, icon: faceIcon },
             ],
             this.#settings.getGlobal().preview.selectionMode
         )

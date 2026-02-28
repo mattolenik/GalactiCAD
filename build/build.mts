@@ -51,6 +51,7 @@ async function build() {
                 ".woff": "file",
                 ".woff2": "file",
                 ".gcad": "text",
+                ".svg": "text",
             },
             plugins: Options.plugins,
             sourcemap: !Options.isProd,

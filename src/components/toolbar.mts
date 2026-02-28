@@ -87,17 +87,26 @@ export class ToolbarButton {
 
 let radioGroupId = 0
 
+type RadioOption<T> = { label: string; value: T; icon?: string }
+
 export class ToolbarRadioGroup<T extends string> {
     #radios: Map<T, HTMLInputElement> = new Map()
+    #buttons: Map<T, HTMLButtonElement> = new Map()
     #value: T
     onChange?: (value: T) => void
 
-    constructor(options: { label: string; value: T }[], defaultValue: T, container: HTMLElement) {
+    constructor(options: RadioOption<T>[], defaultValue: T, container: HTMLElement) {
         const groupName = `tb-radio-${radioGroupId++}`
         this.#value = defaultValue
 
         const group = document.createElement("div")
         group.classList.add("radio-group")
+
+        const updateActive = () => {
+            for (const [val, btn] of this.#buttons) {
+                btn.classList.toggle("active", val === this.#value)
+            }
+        }
 
         for (const opt of options) {
             const label = document.createElement("label")
@@ -106,14 +115,40 @@ export class ToolbarRadioGroup<T extends string> {
             radio.name = groupName
             radio.value = opt.value
             radio.checked = opt.value === defaultValue
+            radio.classList.add("radio-input")
+            if (opt.icon) radio.classList.add("visually-hidden")
             radio.addEventListener("change", () => {
                 if (radio.checked) {
                     this.#value = opt.value
+                    updateActive()
                     this.onChange?.(opt.value)
                 }
             })
             this.#radios.set(opt.value, radio)
-            label.append(radio, opt.label)
+            label.append(radio)
+
+            if (opt.icon) {
+                const button = document.createElement("button")
+                button.type = "button"
+                button.classList.add("icon-btn")
+                button.classList.toggle("active", opt.value === defaultValue)
+                button.innerHTML = opt.icon
+                button.title = opt.label
+                button.setAttribute("aria-label", opt.label)
+                label.setAttribute("aria-label", opt.label)
+                button.addEventListener("click", (e) => {
+                    e.preventDefault()
+                    if (radio.checked) return
+                    radio.checked = true
+                    this.#value = opt.value
+                    updateActive()
+                    this.onChange?.(opt.value)
+                })
+                this.#buttons.set(opt.value, button)
+                label.appendChild(button)
+            } else {
+                label.append(opt.label)
+            }
             group.appendChild(label)
         }
 
@@ -125,6 +160,9 @@ export class ToolbarRadioGroup<T extends string> {
         this.#value = v
         const radio = this.#radios.get(v)
         if (radio) radio.checked = true
+        for (const [val, btn] of this.#buttons) {
+            btn.classList.toggle("active", val === v)
+        }
     }
 }
 
@@ -231,6 +269,17 @@ export class Toolbar extends HTMLElement {
                 cursor: pointer;
                 margin: 0;
             }
+            input[type="radio"].visually-hidden {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border: 0;
+            }
         `
         shadow.appendChild(style)
 
@@ -251,7 +300,7 @@ export class Toolbar extends HTMLElement {
         return new ToolbarButton(label, this.#container, alt)
     }
 
-    addRadioGroup<T extends string>(options: { label: string; value: T }[], defaultValue: T): ToolbarRadioGroup<T> {
+    addRadioGroup<T extends string>(options: RadioOption<T>[], defaultValue: T): ToolbarRadioGroup<T> {
         return new ToolbarRadioGroup(options, defaultValue, this.#container)
     }
 

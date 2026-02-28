@@ -38,18 +38,21 @@ function vec3ApproxEqual(a: { x: number, y: number, z: number }, b: { x: number,
     return approxEqual(a.x, b.x) && approxEqual(a.y, b.y) && approxEqual(a.z, b.z)
 }
 
+/** Node-like interface for matching (supports both Node and NodeStub from worker proxy). */
+type NodeLike = Node | { id: number; getShapeType(): string; pos?: { x: number; y: number; z: number }; size?: { x: number; y: number; z: number }; r?: number; h?: number; sr?: number; lr?: number; c?: number; normal?: { x: number; y: number; z: number }; dist?: number; planeOffset?: number; vertices?: [number, number][]; twistDegrees?: number }
+
 /**
  * Try to match a scene node to a parsed shape call
  * Returns true if the node's properties match the parsed call's arguments
  */
-function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
+function matchNodeToCall(node: NodeLike, call: ParsedShapeCall): boolean {
     const shapeType = node.getShapeType()
 
     if (shapeType !== call.functionName) {
         return false
     }
 
-    if (node instanceof Sphere) {
+    if (shapeType === "sphere") {
         // Match sphere: position and radius must match
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) {
@@ -66,7 +69,7 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
-    if (node instanceof Box) {
+    if (shapeType === "box") {
         // Match box: position and size must match
         if (!call.size) return false
         const callPos = call.pos ?? DEFAULT_POS
@@ -82,7 +85,7 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
-    if (node instanceof Cylinder) {
+    if (shapeType === "cylinder") {
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.r === undefined || !approxEqual(node.r, call.r)) return false
@@ -90,7 +93,7 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
-    if (node instanceof Cone) {
+    if (shapeType === "cone") {
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.r === undefined || !approxEqual(node.r, call.r)) return false
@@ -98,7 +101,7 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
-    if (node instanceof Torus) {
+    if (shapeType === "torus") {
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.sr !== undefined && !approxEqual(node.sr, call.sr)) return false
@@ -106,7 +109,7 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
-    if (node instanceof Capsule) {
+    if (shapeType === "capsule") {
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.r === undefined || !approxEqual(node.r, call.r)) return false
@@ -114,15 +117,15 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
-    if (node instanceof PlaneNode) {
+    if (shapeType === "plane") {
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.normal && !vec3ApproxEqual(node.normal, call.normal)) return false
-        if (call.planeOffset !== undefined && !approxEqual(node.dist, call.planeOffset)) return false
+        if (call.planeOffset !== undefined && !approxEqual((node as { dist?: number }).dist ?? (node as { planeOffset?: number }).planeOffset ?? 0, call.planeOffset)) return false
         return true
     }
 
-    if (node instanceof HexPrism) {
+    if (shapeType === "hexprism") {
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.r === undefined || !approxEqual(node.r, call.r)) return false
@@ -130,31 +133,32 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
-    if (node instanceof Disc) {
+    if (shapeType === "disc") {
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.r === undefined || !approxEqual(node.r, call.r)) return false
         return true
     }
 
-    if (node instanceof Blob) {
+    if (shapeType === "blob") {
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         return true
     }
 
-    if (node instanceof Polygon2D) {
+    if (shapeType === "polygon2d") {
         // Match polygon2d by comparing vertex arrays
-        if (!call.vertices) return false
-        if (node.vertices.length !== call.vertices.length) return false
-        for (let i = 0; i < node.vertices.length; i++) {
-            if (!approxEqual(node.vertices[i][0], call.vertices[i][0])) return false
-            if (!approxEqual(node.vertices[i][1], call.vertices[i][1])) return false
+        const verts = node.vertices
+        if (!call.vertices || !verts) return false
+        if (verts.length !== call.vertices.length) return false
+        for (let i = 0; i < verts.length; i++) {
+            if (!approxEqual(verts[i][0], call.vertices[i][0])) return false
+            if (!approxEqual(verts[i][1], call.vertices[i][1])) return false
         }
         return true
     }
 
-    if (node instanceof Extrude) {
+    if (shapeType === "extrude") {
         if (call.h === undefined) return false
         if (!approxEqual(node.h, call.h)) return false
         if (call.pos !== undefined && !vec3ApproxEqual(node.pos, call.pos)) return false
@@ -163,14 +167,14 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
         return true
     }
 
-    if (node instanceof Loft) {
+    if (shapeType === "loft") {
         if (call.h === undefined) return false
         if (!approxEqual(node.h, call.h)) return false
         if (call.pos !== undefined && !vec3ApproxEqual(node.pos, call.pos)) return false
         return true
     }
 
-    if (node instanceof Lathe) {
+    if (shapeType === "lathe") {
         if (call.pos !== undefined && !vec3ApproxEqual(node.pos, call.pos)) return false
         return true
     }
@@ -194,7 +198,7 @@ function matchNodeToCall(node: Node, call: ParsedShapeCall): boolean {
  * A simple first-unmatched scan therefore aligns both correctly for all node types.
  */
 export function matchNodesToSource(
-    nodes: Node[],
+    nodes: NodeLike[],
     calls: ParsedShapeCall[]
 ): Map<number, SourceLocation> {
     const result = new Map<number, SourceLocation>()

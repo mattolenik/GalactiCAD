@@ -7,14 +7,16 @@ const FACE_HIGHLIGHT_TOP = 1023     // Top cap
 const FACE_HIGHLIGHT_BOTTOM = 1022  // Bottom cap (distinct so caps can be selected separately)
 
 export interface PushPullHost {
-    readonly device: GPUDevice
-    readonly polygonVerticesBuffer: GPUBuffer
-    readonly faceSelectionBuffer: GPUBuffer
-    readonly nodeParamsBuffer: GPUBuffer
+    /** Write buffers to GPU (or post to worker). */
+    writeBuffers(opts: {
+        faceSelection?: ArrayBuffer
+        polygonVertices?: { offset: number; data: ArrayBuffer }
+        nodeParams?: { nodeId: number; data: ArrayBuffer }
+        selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }
+    }): void
     getCompiledPosY(nodeId: number): number
     /** True if we have a valid compiled pos.y for this node (from last build). */
     hasCompiledPosY(nodeId: number): boolean
-    readonly selectedObjectIdsBuffer: GPUBuffer
     requestRender(): void
     readonly canvas: HTMLCanvasElement
     readonly controls: {
@@ -105,7 +107,7 @@ export class PushPullController {
         this.#writeFaceSelection(extrude.id, closestEdge, 0, 0)
         const selData = new Uint32Array(1024)
         selData[FACE_HIGHLIGHT_ID] = 1
-        this.#host.device.queue.writeBuffer(this.#host.selectedObjectIdsBuffer, 0, selData)
+        this.#host.writeBuffers({ selectedObjectIds: selData.buffer })
         this.#host.requestRender()
     }
 
@@ -228,7 +230,7 @@ export class PushPullController {
         // Mark FACE_HIGHLIGHT_ID as selected for side face, deselect everything else
         const selData = new Uint32Array(1024)
         selData[FACE_HIGHLIGHT_ID] = 1
-        this.#host.device.queue.writeBuffer(this.#host.selectedObjectIdsBuffer, 0, selData)
+        this.#host.writeBuffers({ selectedObjectIds: selData.buffer })
 
         this.#host.requestRender()
     }
@@ -250,7 +252,7 @@ export class PushPullController {
         this.#writeFaceSelection(node.id, 0, mode, 0)
         const selData = new Uint32Array(1024)
         selData[isTop ? FACE_HIGHLIGHT_TOP : FACE_HIGHLIGHT_BOTTOM] = 1
-        this.#host.device.queue.writeBuffer(this.#host.selectedObjectIdsBuffer, 0, selData)
+        this.#host.writeBuffers({ selectedObjectIds: selData.buffer })
         this.#host.requestRender()
     }
 
@@ -280,7 +282,7 @@ export class PushPullController {
 
         const selData = new Uint32Array(1024)
         selData[isTop ? FACE_HIGHLIGHT_TOP : FACE_HIGHLIGHT_BOTTOM] = 1
-        this.#host.device.queue.writeBuffer(this.#host.selectedObjectIdsBuffer, 0, selData)
+        this.#host.writeBuffers({ selectedObjectIds: selData.buffer })
 
         this.#host.requestRender()
     }
@@ -299,11 +301,9 @@ export class PushPullController {
         this.#writeFaceSelection(0, 0)
 
         // Clear face highlight IDs (bottom cap 1022, top/side 1023) - 2 slots = 8 bytes
-        this.#host.device.queue.writeBuffer(
-            this.#host.selectedObjectIdsBuffer,
-            FACE_HIGHLIGHT_BOTTOM * 4,
-            new Uint32Array([0, 0])
-        )
+        this.#host.writeBuffers({
+            selectedObjectIds: { offset: FACE_HIGHLIGHT_BOTTOM * 4, data: new Uint32Array([0, 0]).buffer },
+        })
 
         this.#host.requestRender()
         this.#onDeselect?.()
@@ -438,7 +438,7 @@ export class PushPullController {
         u32[1] = faceIndex
         u32[2] = mode
         f32[3] = extrudeOffset
-        this.#host.device.queue.writeBuffer(this.#host.faceSelectionBuffer, 0, data)
+        this.#host.writeBuffers({ faceSelection: data })
     }
 
     /** Write h and posYDelta into the nodeParams uniform for a single node slot. */
@@ -446,11 +446,7 @@ export class PushPullController {
         const data = new Float32Array(4) // vec4f
         data[0] = h
         data[1] = posYDelta
-        this.#host.device.queue.writeBuffer(
-            this.#host.nodeParamsBuffer,
-            nodeId * 16,
-            data,
-        )
+        this.#host.writeBuffers({ nodeParams: { nodeId, data: data.buffer } })
     }
 
     /** Apply a push/pull offset to the selected face, updating polygon vertices. */
@@ -621,11 +617,7 @@ export class PushPullController {
             data[i * 2] = poly.vertices[i][0]
             data[i * 2 + 1] = poly.vertices[i][1]
         }
-        this.#host.device.queue.writeBuffer(
-            this.#host.polygonVerticesBuffer,
-            poly.bufferOffset * 8, // each vec2f is 8 bytes
-            data,
-        )
+        this.#host.writeBuffers({ polygonVertices: { offset: poly.bufferOffset * 8, data: data.buffer } })
     }
 
 }

@@ -1,0 +1,1086 @@
+/**
+ * Render worker core - GPU logic extracted from SDFRenderer.
+ * Runs in the render worker; owns device, buffers, pipelines.
+ */
+
+import { GPUHelper } from "./gpu/helper.mjs"
+import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPalette.mjs"
+import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
+import outlineShader from "./shaders/outline.wgsl"
+import previewShader from "./shaders/preview.wgsl"
+import beamShader from "./shaders/beam.wgsl"
+import boundsShader from "./shaders/bounds.wgsl"
+import mdcShader from "./shaders/mdc.wgsl"
+import { ShaderCompiler } from "./shaders/shader.mjs"
+import { MDCExport, type MDCParams } from "./export/mdc.mjs"
+import { SceneInfo } from "./scene/scene.mjs"
+import { Extrude, Loft } from "./scene/scene.mjs"
+import { serializeSceneNodes } from "./scene-serializer.mjs"
+import { vec3, Vec3f } from "./vecmat/vector.mjs"
+import { Mat4x4f } from "./vecmat/matrix.mjs"
+import type { MainToWorkerMessage, RenderSelectionState, SelectedEdgePayload } from "./render-worker-protocol.mjs"
+import type { SelectionInfo } from "./components/preview-window.mjs"
+import { EdgeKind } from "./edge-kind.mjs"
+
+const MAX_AABB_SLOTS = 128
+const AABB_BUFFER_SIZE = MAX_AABB_SLOTS * 32
+const MAX_POLYGON_VERTICES = 1024
+const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8
+const MAX_NODE_PARAMS = 256
+const NODE_PARAMS_BUFFER_SIZE = MAX_NODE_PARAMS * 16
+
+const EDGE_HITS_SIZE = 320
+const SELECTED_EDGES_HEADER = 16
+const SELECTED_EDGE_SIZE = 80
+const SELECTED_EDGES_COUNT = 16
+const SELECTED_EDGES_TOTAL = SELECTED_EDGES_HEADER + SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE
+
+class UniformBuffers {
+    camera!: GPUBuffer
+    scene!: GPUBuffer
+    clickState!: GPUBuffer
+    clickedObjectId!: GPUBuffer
+    selectedObjectIds!: GPUBuffer
+    colorPalette!: GPUBuffer
+    viewSettings!: GPUBuffer
+    outlineSettings!: GPUBuffer
+    selectionStyles!: GPUBuffer
+    subtreeAABBs!: GPUBuffer
+    polygonVertices!: GPUBuffer
+    clickedHitPos!: GPUBuffer
+    clickedNormal!: GPUBuffer
+    faceSelection!: GPUBuffer
+    nodeParams!: GPUBuffer
+    edgeHit!: GPUBuffer
+    selectedEdges!: GPUBuffer
+    hoverEdgeHit!: GPUBuffer
+    hoveredEdge!: GPUBuffer
+}
+
+class ExportBuffers {
+    scene!: GPUBuffer
+    vertexBuffer!: GPUBuffer
+    triangleBuffer!: GPUBuffer
+    triCountBuffer!: GPUBuffer
+}
+
+export class RenderWorkerCore {
+    #canvas!: OffscreenCanvas
+    #device!: GPUDevice
+    #context!: GPUCanvasContext
+    #format!: GPUTextureFormat
+    #helper!: GPUHelper
+    #uniformBuffers = new UniformBuffers()
+    #exportBuffers = new ExportBuffers()
+    #colorSampler!: GPUSampler
+    #outlineShaderModule!: GPUShaderModule
+    #outlinePipeline!: GPURenderPipeline
+    #outlineBindGroup!: GPUBindGroup | undefined
+    #scene: SceneInfo | null = null
+    #sceneShader!: GPUShaderModule
+    #beamShader!: GPUShaderModule
+    #pipeline: GPURenderPipeline | null = null
+    #beamPipeline: GPUComputePipeline | null = null
+    #beamBindGroupInvalid = false
+    #sceneBindGroupInvalid = false
+    #buildGeneration = 0
+    #aabbGeneration = 0
+    #compiledPosY = new Map<number, number>()
+    #colorTexture!: GPUTexture
+    #idTexture!: GPUTexture
+    #tStartTexture!: GPUTexture
+    #colorTextureView!: GPUTextureView
+    #idTextureView!: GPUTextureView
+    #tStartTextureView!: GPUTextureView
+    #bindGroup!: GPUBindGroup
+    #beamBindGroup!: GPUBindGroup
+    #renderTextureWidth = 0
+    #renderTextureHeight = 0
+    #fullWidth = 0
+    #fullHeight = 0
+    #zoomBuf = new Float32Array(1)
+    #lightDirBuf = new Float32Array(12)
+    #cameraPosBuf = new Float32Array(4)
+    #cameraResBuf = new Float32Array(3)
+    #viewCenterBuf = new Float32Array(4)
+    #viewSettingsBuf = new Uint32Array(4)
+    #selDataBuf = new Uint32Array(1024)
+    #outlineBuf = new ArrayBuffer(48)
+    #outlineU32 = new Uint32Array(this.#outlineBuf, 0, 1)
+    #outlineThicknessF32 = new Float32Array(this.#outlineBuf, 4, 1)
+    #outlineColorF32 = new Float32Array(this.#outlineBuf, 16, 3)
+    #outlineWidthF32 = new Float32Array(this.#outlineBuf, 28, 1)
+    #selectionStylesBuf = new ArrayBuffer(80)
+    #selectionStylesF32 = new Float32Array(this.#selectionStylesBuf)
+    #lastRenderMsg: Extract<MainToWorkerMessage, { type: "render" }> | null = null
+    #lastSelectionMode = 0
+    #builtSrc: string | null = null
+
+    async init(canvas: OffscreenCanvas): Promise<void> {
+        this.#canvas = canvas
+        const helper = await GPUHelper.create()
+        if (!helper) {
+            throw new Error("No GPU adapter found", { cause: "unsupported" })
+        }
+        this.#helper = helper
+        this.#device = this.#helper.device
+        this.#context = canvas.getContext("webgpu") as GPUCanvasContext
+        if (!this.#context) {
+            throw new Error("Failed to get WebGPU context from OffscreenCanvas")
+        }
+
+        this.#format = navigator.gpu.getPreferredCanvasFormat()
+        this.#context.configure({
+            device: this.#device,
+            format: this.#format,
+            alphaMode: "premultiplied",
+        })
+
+        this.#createBuffers()
+
+        this.#colorSampler = this.#device.createSampler({
+            magFilter: "linear",
+            minFilter: "linear",
+        })
+
+        this.#outlineShaderModule = this.#device.createShaderModule({
+            label: "Outline Post-Process",
+            code: outlineShader,
+        })
+        this.#outlinePipeline = this.#device.createRenderPipeline({
+            label: "Outline Pipeline",
+            layout: "auto",
+            vertex: {
+                module: this.#outlineShaderModule,
+                entryPoint: "vertexMain",
+            },
+            fragment: {
+                module: this.#outlineShaderModule,
+                entryPoint: "fragmentMain",
+                targets: [{ format: this.#format }],
+            },
+            primitive: {
+                topology: "triangle-strip",
+                stripIndexFormat: "uint32",
+            },
+        })
+
+        // Outline bind group created in ensureRenderTextures when we have color/id textures
+
+        // Init click/selection/face buffers
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, new ArrayBuffer(32))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, new Uint32Array(1024))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, new ArrayBuffer(16))
+
+        // Init empty edges
+        this.#writeEdgesToBuffer(this.#uniformBuffers.selectedEdges, [], DEFAULT_SELECTION_STYLES.edge.lineWidthPx, DEFAULT_SELECTION_STYLES.edge.epsilon)
+        this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, [], 6.0, 0.02)
+    }
+
+    async build(src: string, _documentName?: string | null): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: Record<number, number> }> {
+        const trimmed = src.trim()
+        this.#builtSrc = trimmed
+        this.#scene = new SceneInfo(trimmed)
+        const scene = this.#scene
+
+        const sceneAux = scene.compileAux()
+        const sceneAuxFast = scene.compileAuxFast()
+        const sceneSDF = scene.compile()
+        const sceneSDF_fast = scene.compileFast()
+        const sceneEdgeHelpers = scene.compileEdgeHelpers()
+
+        const shaderCompiler = new ShaderCompiler(this.#device)
+            .replace("insert", "sceneAuxFast", sceneAuxFast)
+            .replace("insert", "sceneAux", sceneAux)
+            .replace("insert", "sceneSDF_fast", sceneSDF_fast)
+            .replace("insert", "sceneSDF", sceneSDF)
+            .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
+
+        this.#sceneShader = shaderCompiler.compile(previewShader, "Preview Window")
+        this.#beamShader = shaderCompiler.compile(beamShader, "Beam Pre-Pass")
+
+        const polygonVertexData = scene.totalPolygonVertices > 0
+            ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer)
+            : new ArrayBuffer(0)
+        const nodeParamsData = new Float32Array(MAX_NODE_PARAMS * 4)
+        this.#compiledPosY.clear()
+        for (const node of scene.getAllNodes()) {
+            if ((node instanceof Extrude || node instanceof Loft) && node.id < MAX_NODE_PARAMS) {
+                nodeParamsData[node.id * 4] = node.h
+                nodeParamsData[node.id * 4 + 1] = 0
+                this.#compiledPosY.set(node.id, node.pos.y)
+            }
+        }
+
+        if (scene.totalPolygonVertices > 0) {
+            this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
+        }
+        this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, nodeParamsData)
+        this.#initAABBBufferInfinite()
+
+        this.#aabbGeneration++
+        this.#buildGeneration++
+        const generation = this.#buildGeneration
+
+        const [pipeline, beamPipeline] = await Promise.all([
+            this.#device.createRenderPipelineAsync({
+                label: "Preview Pipeline",
+                layout: "auto",
+                vertex: { module: this.#sceneShader, entryPoint: "vertexMain" },
+                fragment: {
+                    module: this.#sceneShader,
+                    entryPoint: "fragmentMain",
+                    targets: [{ format: this.#format }, { format: "r32uint" as GPUTextureFormat }],
+                },
+                primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+            }),
+            this.#device.createComputePipelineAsync({
+                label: "Beam Pre-Pass Pipeline",
+                layout: "auto",
+                compute: { module: this.#beamShader, entryPoint: "beamMarch" },
+            }),
+        ])
+
+        if (generation !== this.#buildGeneration) return { sceneNodes: serializeSceneNodes(scene), compiledPosY: Object.fromEntries(this.#compiledPosY) }
+        this.#pipeline = pipeline
+        this.#beamPipeline = beamPipeline
+        this.#beamBindGroupInvalid = true
+        this.#sceneBindGroupInvalid = true
+
+        return { sceneNodes: serializeSceneNodes(scene), compiledPosY: Object.fromEntries(this.#compiledPosY) }
+    }
+
+    resize(fullWidth: number, fullHeight: number): void {
+        this.#fullWidth = fullWidth
+        this.#fullHeight = fullHeight
+        this.#canvas.width = fullWidth
+        this.#canvas.height = fullHeight
+    }
+
+    render(msg: Extract<MainToWorkerMessage, { type: "render" }>): void {
+        this.#lastRenderMsg = msg
+        this.#lastSelectionMode = msg.viewSettings.selectionMode
+        const { viewTransform, cameraPosition, cameraRes, viewSettings, viewCenter, resolutionScale, selectionState } = msg
+        if (!this.#pipeline) return
+        const sceneWidth = Math.max(1, Math.round(cameraRes[0] * resolutionScale))
+        const sceneHeight = Math.max(1, Math.round(cameraRes[1] * resolutionScale))
+        if (sceneWidth === 0 || sceneHeight === 0) return
+
+        this.#ensureRenderTextures(sceneWidth, sceneHeight)
+
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, viewTransform)
+        this.#cameraPosBuf[0] = cameraPosition[0]
+        this.#cameraPosBuf[1] = cameraPosition[1]
+        this.#cameraPosBuf[2] = cameraPosition[2]
+        this.#cameraPosBuf[3] = 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#cameraPosBuf)
+        this.#cameraResBuf[0] = sceneWidth
+        this.#cameraResBuf[1] = sceneHeight
+        this.#cameraResBuf[2] = 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraResBuf)
+        this.#zoomBuf[0] = msg.cameraState.zoom
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, this.#zoomBuf)
+
+        const camTransform = new Mat4x4f(viewTransform)
+        const v1 = camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
+        const v2 = camTransform.transformVector(vec3(-0.6, 0.3, 0.8).normalize())
+        const v3 = camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
+        const ld = this.#lightDirBuf
+        ld[0] = v1.x; ld[1] = v1.y; ld[2] = v1.z; ld[3] = 0
+        ld[4] = v2.x; ld[5] = v2.y; ld[6] = v2.z; ld[7] = 0
+        ld[8] = v3.x; ld[9] = v3.y; ld[10] = v3.z; ld[11] = 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 96, ld)
+        this.#viewCenterBuf[0] = viewCenter[0]
+        this.#viewCenterBuf[1] = viewCenter[1]
+        this.#viewCenterBuf[2] = 0
+        this.#viewCenterBuf[3] = 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 144, this.#viewCenterBuf)
+
+        const refinementSteps = resolutionScale < 1.0 ? 6 : 8
+        this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
+        this.#viewSettingsBuf[1] = refinementSteps
+        this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
+        this.#viewSettingsBuf[3] = viewSettings.selectionMode
+        this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, this.#viewSettingsBuf)
+
+        this.#outlineU32[0] = viewSettings.outlineMode
+        this.#outlineThicknessF32[0] = viewSettings.outlineThickness
+        this.#outlineColorF32.set(viewSettings.outlineColor)
+        this.#outlineWidthF32[0] = this.#fullWidth
+        const outline = DEFAULT_SELECTION_STYLES.outline
+        new Float32Array(this.#outlineBuf, 32, 1)[0] = outline.dashSpacing
+        new Float32Array(this.#outlineBuf, 36, 1)[0] = outline.dashLength
+        new Float32Array(this.#outlineBuf, 40, 1)[0] = outline.dotSizeMin
+        new Float32Array(this.#outlineBuf, 44, 1)[0] = outline.dotSpacingMultiplier
+        const ss = DEFAULT_SELECTION_STYLES
+        this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, this.#outlineBuf)
+
+        this.#selectionStylesF32[0] = ss.face.darken
+        this.#selectionStylesF32[4] = ss.face.tint[0]
+        this.#selectionStylesF32[5] = ss.face.tint[1]
+        this.#selectionStylesF32[6] = ss.face.tint[2]
+        this.#selectionStylesF32[8] = ss.edge.color[0]
+        this.#selectionStylesF32[9] = ss.edge.color[1]
+        this.#selectionStylesF32[10] = ss.edge.color[2]
+        this.#selectionStylesF32[12] = ss.edge.selectedStrength
+        this.#selectionStylesF32[13] = ss.edge.hoverStrength
+        this.#selectionStylesF32[14] = ss.face.dotSpacing
+        this.#selectionStylesF32[15] = ss.face.dotRadius
+        this.#selectionStylesF32[16] = ss.face.dotDarken
+        this.#selectionStylesF32[17] = resolutionScale
+        this.#device.queue.writeBuffer(this.#uniformBuffers.selectionStyles, 0, this.#selectionStylesBuf)
+
+        this.#selDataBuf.fill(0)
+        for (const id of selectionState.selectedObjectIds) {
+            this.#selDataBuf[id] = 1
+        }
+        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, this.#selDataBuf)
+
+        this.#writeEdgesToBuffer(this.#uniformBuffers.selectedEdges, selectionState.selectedEdges, DEFAULT_SELECTION_STYLES.edge.lineWidthPx, DEFAULT_SELECTION_STYLES.edge.epsilon)
+        this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, selectionState.hoveredEdges, 6.0, 0.02)
+
+        const canvasTexture = this.#context.getCurrentTexture()
+        const commandEncoder = this.#device.createCommandEncoder()
+
+        if (viewSettings.beamEnabled && this.#beamPipeline) {
+            if (this.#beamBindGroupInvalid) {
+                this.#beamBindGroup = this.#device.createBindGroup({
+                    label: "beamPrePass",
+                    layout: this.#beamPipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
+                        { binding: 1, resource: this.#tStartTextureView },
+                        { binding: 2, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
+                        { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                        { binding: 4, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                    ],
+                })
+                this.#beamBindGroupInvalid = false
+            }
+            const BEAM_TILE_SIZE = 8
+            const tilesX = Math.ceil(sceneWidth / BEAM_TILE_SIZE)
+            const tilesY = Math.ceil(sceneHeight / BEAM_TILE_SIZE)
+            const beamPass = commandEncoder.beginComputePass({ label: "Beam Pre-Pass" })
+            beamPass.setPipeline(this.#beamPipeline)
+            beamPass.setBindGroup(0, this.#beamBindGroup)
+            beamPass.dispatchWorkgroups(Math.ceil(tilesX / 8), Math.ceil(tilesY / 8))
+            beamPass.end()
+        }
+
+        const scenePass = commandEncoder.beginRenderPass({
+            colorAttachments: [
+                { view: this.#colorTextureView, loadOp: "clear", storeOp: "store" },
+                { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xFFFFFFFF, g: 0, b: 0, a: 0 } },
+            ],
+        })
+        scenePass.setPipeline(this.#pipeline)
+        scenePass.setBindGroup(0, this.#bindGroup)
+        scenePass.draw(4)
+        scenePass.end()
+
+        const outlinePass = commandEncoder.beginRenderPass({
+            colorAttachments: [{ view: canvasTexture.createView(), loadOp: "clear", storeOp: "store" }],
+        })
+        outlinePass.setPipeline(this.#outlinePipeline)
+        outlinePass.setBindGroup(0, this.#outlineBindGroup!)
+        outlinePass.draw(4)
+        outlinePass.end()
+
+        this.#device.queue.submit([commandEncoder.finish()])
+    }
+
+    async #renderFrameAndWait(): Promise<void> {
+        if (!this.#lastRenderMsg || !this.#pipeline) return
+        this.render(this.#lastRenderMsg)
+        await this.#device.queue.onSubmittedWorkDone()
+    }
+
+    async handleRenderMesh(src: string): Promise<void> {
+        try {
+            const trimmed = src.trim()
+            if (!this.#scene || this.#builtSrc !== trimmed) {
+                await this.build(trimmed, undefined)
+            }
+            const bounds = await this.#computeSceneBoundsRefined()
+            if (!bounds) {
+                self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?" })
+                return
+            }
+            const voxelSizeMm = 0.5
+            const pad = 3.2
+            const minX = bounds.min[0] - pad
+            const minY = bounds.min[1] - pad
+            const minZ = bounds.min[2] - pad
+            const maxX = bounds.max[0] + pad
+            const maxY = bounds.max[1] + pad
+            const maxZ = bounds.max[2] + pad
+            const sizeX = Math.max(voxelSizeMm, maxX - minX)
+            const sizeY = Math.max(voxelSizeMm, maxY - minY)
+            const sizeZ = Math.max(voxelSizeMm, maxZ - minZ)
+            const gridDimX = Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1)
+            const gridDimY = Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1)
+            const gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelSizeMm) + 1)
+            const params: MDCParams = {
+                gridDimX,
+                gridDimY,
+                gridDimZ,
+                isoValue: 0.0,
+                gridOffsetX: minX,
+                gridOffsetY: minY,
+                gridOffsetZ: minZ,
+                voxelSize: voxelSizeMm,
+                simplifyTargetRatio: 0.1,
+                simplifyRegularize: false,
+                simplifyLockBorder: true,
+                simplifyPrune: false,
+                simplifySparse: false,
+                simplifyTargetError: 0.001,
+            }
+            const scene = this.#scene!
+            const sceneAux = scene.compileAux()
+            const sceneAuxFast = scene.compileAuxFast()
+            const sceneSDF = scene.compile()
+            const sceneSDF_fast = scene.compileFast()
+            const sceneEdgeHelpers = scene.compileEdgeHelpers()
+            const shaderCompiler = new ShaderCompiler(this.#device)
+                .replace("insert", "sceneAuxFast", sceneAuxFast)
+                .replace("insert", "sceneAux", sceneAux)
+                .replace("insert", "sceneSDF_fast", sceneSDF_fast)
+                .replace("insert", "sceneSDF", sceneSDF)
+                .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
+            const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
+            const mdc = new MDCExport(
+                this.#helper,
+                params,
+                this.#uniformBuffers.subtreeAABBs,
+                this.#uniformBuffers.polygonVertices,
+                this.#uniformBuffers.faceSelection,
+                this.#uniformBuffers.nodeParams,
+            )
+            const mesh = await mdc.export(mdcShaderModule)
+            self.postMessage({ type: "renderMeshResult", mesh }, [mesh.verts.buffer, mesh.tris.buffer])
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            self.postMessage({ type: "renderMeshResult", error: errorMsg })
+        }
+    }
+
+    async #computeSceneBounds(searchMin: [number, number, number], searchMax: [number, number, number], stepMm: number): Promise<{ min: readonly [number, number, number]; max: readonly [number, number, number] } | null> {
+        const SCALE = 1000
+        const dimsX = Math.max(1, Math.ceil((searchMax[0] - searchMin[0]) / stepMm) + 1)
+        const dimsY = Math.max(1, Math.ceil((searchMax[1] - searchMin[1]) / stepMm) + 1)
+        const dimsZ = Math.max(1, Math.ceil((searchMax[2] - searchMin[2]) / stepMm) + 1)
+        const uniformsData = new ArrayBuffer(80)
+        new Float32Array(uniformsData, 0, 4).set([searchMin[0], searchMin[1], searchMin[2], stepMm])
+        new Float32Array(uniformsData, 16, 4).set([searchMax[0], searchMax[1], searchMax[2], 0.0])
+        new Uint32Array(uniformsData, 32, 4).set([dimsX >>> 0, dimsY >>> 0, dimsZ >>> 0, 0])
+        new Float32Array(uniformsData, 48, 1).set([SCALE])
+        const uniformBuffer = this.#device.createBuffer({
+            size: 80,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "BoundsUniforms",
+        })
+        this.#device.queue.writeBuffer(uniformBuffer, 0, uniformsData)
+        const TILE_STRIDE_BYTES = 48
+        const totalSamples = dimsX * dimsY * dimsZ
+        const totalWorkgroups = Math.ceil(totalSamples / 256)
+        const dispatchX = Math.min(totalWorkgroups, 65535)
+        const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
+        const dispatchedWorkgroups = dispatchX * dispatchY
+        const outBuffer = this.#device.createBuffer({
+            size: dispatchedWorkgroups * TILE_STRIDE_BYTES,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.MAP_READ,
+            label: "BoundsOut",
+        })
+        const scene = this.#scene!
+        const sceneAux = scene.compileAux()
+        const sceneAuxFast = scene.compileAuxFast()
+        const sceneSDF_fast = scene.compileFast()
+        const sceneEdgeHelpers = scene.compileEdgeHelpers()
+        const shaderCompiler = new ShaderCompiler(this.#device)
+            .replace("insert", "sceneAuxFast", sceneAuxFast)
+            .replace("insert", "sceneAux", sceneAux)
+            .replace("insert", "sceneSDF_fast", sceneSDF_fast)
+            .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
+        const boundsShaderModule = shaderCompiler.compile(boundsShader, "Bounds")
+        const boundsPipeline = this.#device.createComputePipeline({
+            layout: "auto",
+            compute: { module: boundsShaderModule, entryPoint: "computeBounds" },
+        })
+        const layout = boundsPipeline.getBindGroupLayout(0)
+        const bindGroup = this.#device.createBindGroup({
+            layout,
+            entries: [
+                { binding: 0, resource: { buffer: uniformBuffer } },
+                { binding: 1, resource: { buffer: outBuffer } },
+                { binding: 2, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
+                { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                { binding: 4, resource: { buffer: this.#uniformBuffers.faceSelection } },
+                { binding: 5, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                { binding: 99, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
+            ],
+        })
+        const encoder = this.#device.createCommandEncoder()
+        const pass = encoder.beginComputePass()
+        pass.setPipeline(boundsPipeline)
+        pass.setBindGroup(0, bindGroup)
+        pass.dispatchWorkgroups(dispatchedWorkgroups)
+        pass.end()
+        this.#device.queue.submit([encoder.finish()])
+        await this.#device.queue.onSubmittedWorkDone()
+        const readback = await this.#helper.readBufferData(outBuffer, dispatchedWorkgroups * TILE_STRIDE_BYTES)
+        uniformBuffer.destroy()
+        outBuffer.destroy()
+        const dv = new DataView(readback)
+        let any = false
+        let minXq = 2147483647
+        let minYq = 2147483647
+        let minZq = 2147483647
+        let maxXq = -2147483648
+        let maxYq = -2147483648
+        let maxZq = -2147483648
+        for (let t = 0; t < dispatchedWorkgroups; t++) {
+            const base = t * TILE_STRIDE_BYTES
+            const anyInside = dv.getUint32(base + 32, true)
+            if (!anyInside) continue
+            any = true
+            const txMinX = dv.getInt32(base + 0, true)
+            const txMinY = dv.getInt32(base + 4, true)
+            const txMinZ = dv.getInt32(base + 8, true)
+            const txMaxX = dv.getInt32(base + 16, true)
+            const txMaxY = dv.getInt32(base + 20, true)
+            const txMaxZ = dv.getInt32(base + 24, true)
+            if (txMinX < minXq) minXq = txMinX
+            if (txMinY < minYq) minYq = txMinY
+            if (txMinZ < minZq) minZq = txMinZ
+            if (txMaxX > maxXq) maxXq = txMaxX
+            if (txMaxY > maxYq) maxYq = txMaxY
+            if (txMaxZ > maxZq) maxZq = txMaxZ
+        }
+        if (!any) return null
+        return {
+            min: [minXq / SCALE, minYq / SCALE, minZq / SCALE] as const,
+            max: [maxXq / SCALE, maxYq / SCALE, maxZq / SCALE] as const,
+        }
+    }
+
+    async #computeSceneBoundsRefined(): Promise<{ min: readonly [number, number, number]; max: readonly [number, number, number] } | null> {
+        const COARSE_HALF = 250
+        const coarse = await this.#computeSceneBounds([-COARSE_HALF, -COARSE_HALF, -COARSE_HALF], [COARSE_HALF, COARSE_HALF, COARSE_HALF], 2.0)
+        if (!coarse) return null
+        const inflate = 4.0
+        const min = [coarse.min[0] - inflate, coarse.min[1] - inflate, coarse.min[2] - inflate] as const
+        const max = [coarse.max[0] + inflate, coarse.max[1] + inflate, coarse.max[2] + inflate] as const
+        const refined = await this.#computeSceneBounds([min[0], min[1], min[2]], [max[0], max[1], max[2]], 0.5)
+        return refined ?? coarse
+    }
+
+    async handleBenchmark(frameCount: number, waitForGPU: boolean): Promise<void> {
+        if (!this.#pipeline) {
+            self.postMessage({ type: "benchmarkResult", result: { totalTime: 0, averageFrameTime: 0, minFrameTime: 0, maxFrameTime: 0, framesPerSecond: 0, frameTimes: [], error: "Cannot benchmark: renderer not initialized. Call build() first." } })
+            return
+        }
+        const frameTimes: number[] = []
+        const startTime = performance.now()
+        if (waitForGPU) {
+            await this.#renderFrameAndWait()
+        }
+        for (let i = 0; i < frameCount; i++) {
+            const frameStart = performance.now()
+            if (waitForGPU) {
+                await this.#renderFrameAndWait()
+            } else {
+                if (this.#lastRenderMsg) this.render(this.#lastRenderMsg)
+            }
+            frameTimes.push(performance.now() - frameStart)
+        }
+        const totalTime = performance.now() - startTime
+        const averageFrameTime = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length
+        const minFrameTime = Math.min(...frameTimes)
+        const maxFrameTime = Math.max(...frameTimes)
+        const framesPerSecond = 1000 / averageFrameTime
+        self.postMessage({
+            type: "benchmarkResult",
+            result: { totalTime, averageFrameTime, minFrameTime, maxFrameTime, framesPerSecond, frameTimes },
+        })
+    }
+
+    #ensureRenderTextures(width: number, height: number): void {
+        const dimensionsChanged = width !== this.#renderTextureWidth || height !== this.#renderTextureHeight
+        if (!dimensionsChanged && !this.#sceneBindGroupInvalid) return
+
+        if (dimensionsChanged) {
+            if (this.#colorTexture) this.#colorTexture.destroy()
+            if (this.#idTexture) this.#idTexture.destroy()
+            if (this.#tStartTexture) this.#tStartTexture.destroy()
+
+            this.#colorTexture = this.#device.createTexture({
+                label: "Preview Color",
+                size: [width, height],
+                format: this.#format,
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            })
+            this.#idTexture = this.#device.createTexture({
+                label: "Object ID",
+                size: [width, height],
+                format: "r32uint",
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            })
+            this.#colorTextureView = this.#colorTexture.createView()
+            this.#idTextureView = this.#idTexture.createView()
+
+            const BEAM_TILE_SIZE = 8
+            const tilesX = Math.ceil(width / BEAM_TILE_SIZE)
+            const tilesY = Math.ceil(height / BEAM_TILE_SIZE)
+            this.#tStartTexture = this.#device.createTexture({
+                label: "Beam t_start",
+                size: [tilesX, tilesY],
+                format: "r32float",
+                usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+            })
+            this.#tStartTextureView = this.#tStartTexture.createView()
+
+            this.#outlineBindGroup = this.#device.createBindGroup({
+                label: "outlinePostProcess",
+                layout: this.#outlinePipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.#colorTextureView },
+                    { binding: 1, resource: this.#idTextureView },
+                    { binding: 2, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
+                    { binding: 3, resource: { buffer: this.#uniformBuffers.outlineSettings } },
+                    { binding: 4, resource: this.#colorSampler },
+                ],
+            })
+
+            if (this.#beamPipeline) {
+                this.#beamBindGroup = this.#device.createBindGroup({
+                    label: "beamPrePass",
+                    layout: this.#beamPipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
+                        { binding: 1, resource: this.#tStartTextureView },
+                        { binding: 2, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
+                        { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                        { binding: 4, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                    ],
+                })
+                this.#beamBindGroupInvalid = false
+            }
+
+            this.#renderTextureWidth = width
+            this.#renderTextureHeight = height
+        }
+
+        if (dimensionsChanged || this.#sceneBindGroupInvalid) {
+            this.#bindGroup = this.#device.createBindGroup({
+                label: "scenePreview",
+                layout: this.#pipeline!.getBindGroupLayout(0),
+                entries: [
+                    { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                    { binding: 2, resource: { buffer: this.#uniformBuffers.clickState } },
+                    { binding: 3, resource: { buffer: this.#uniformBuffers.clickedObjectId } },
+                    { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
+                    { binding: 5, resource: { buffer: this.#uniformBuffers.colorPalette } },
+                    { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
+                    { binding: 7, resource: this.#tStartTextureView },
+                    { binding: 8, resource: { buffer: this.#uniformBuffers.subtreeAABBs } },
+                    { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                    { binding: 10, resource: { buffer: this.#uniformBuffers.clickedHitPos } },
+                    { binding: 11, resource: { buffer: this.#uniformBuffers.faceSelection } },
+                    { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                    { binding: 13, resource: { buffer: this.#uniformBuffers.edgeHit } },
+                    { binding: 14, resource: { buffer: this.#uniformBuffers.selectedEdges } },
+                    { binding: 15, resource: { buffer: this.#uniformBuffers.hoverEdgeHit } },
+                    { binding: 16, resource: { buffer: this.#uniformBuffers.hoveredEdge } },
+                    { binding: 17, resource: { buffer: this.#uniformBuffers.clickedNormal } },
+                    { binding: 18, resource: { buffer: this.#uniformBuffers.selectionStyles } },
+                ],
+            })
+            this.#sceneBindGroupInvalid = false
+        }
+    }
+
+    #createBuffers(): void {
+        const ub = this.#uniformBuffers
+        ub.scene = this.#device.createBuffer({
+            size: 16384,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+            label: "scene",
+        })
+
+        this.#exportBuffers.scene = this.#device.createBuffer({
+            size: 16384,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "scene",
+        })
+
+        ub.camera = this.#device.createBuffer({
+            size: 160,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "camera",
+        })
+
+        ub.clickState = this.#device.createBuffer({
+            size: 32,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "clickState",
+        })
+
+        ub.clickedObjectId = this.#device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "clickedObjectId",
+        })
+
+        ub.selectedObjectIds = this.#device.createBuffer({
+            size: 4096,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            label: "selectedObjectIds",
+        })
+
+        ub.colorPalette = this.#device.createBuffer({
+            size: PALETTE_SIZE * 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "colorPalette",
+        })
+
+        const paletteData = paletteToFloat32Array(DEFAULT_PALETTE)
+        const alignedData = new Float32Array(PALETTE_SIZE * 4)
+        for (let i = 0; i < PALETTE_SIZE; i++) {
+            alignedData[i * 4] = paletteData[i * 3]
+            alignedData[i * 4 + 1] = paletteData[i * 3 + 1]
+            alignedData[i * 4 + 2] = paletteData[i * 3 + 2]
+            alignedData[i * 4 + 3] = 0.0
+        }
+        this.#device.queue.writeBuffer(ub.colorPalette, 0, alignedData)
+
+        ub.viewSettings = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "viewSettings",
+        })
+
+        ub.outlineSettings = this.#device.createBuffer({
+            size: 48,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "outlineSettings",
+        })
+
+        ub.selectionStyles = this.#device.createBuffer({
+            size: 80,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "selectionStyles",
+        })
+
+        ub.subtreeAABBs = this.#device.createBuffer({
+            size: AABB_BUFFER_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "subtreeAABBs",
+        })
+        this.#initAABBBufferInfinite()
+
+        ub.polygonVertices = this.#device.createBuffer({
+            size: POLYGON_VERTEX_BUFFER_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            label: "polygonVertices",
+        })
+
+        ub.clickedHitPos = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "clickedHitPos",
+        })
+
+        ub.clickedNormal = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "clickedNormal",
+        })
+
+        ub.faceSelection = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "faceSelection",
+        })
+
+        ub.nodeParams = this.#device.createBuffer({
+            size: NODE_PARAMS_BUFFER_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "nodeParams",
+        })
+
+        ub.edgeHit = this.#device.createBuffer({
+            size: EDGE_HITS_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "edgeHit",
+        })
+        ub.selectedEdges = this.#device.createBuffer({
+            size: SELECTED_EDGES_TOTAL,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            label: "selectedEdges",
+        })
+        ub.hoverEdgeHit = this.#device.createBuffer({
+            size: EDGE_HITS_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            label: "hoverEdgeHit",
+        })
+        ub.hoveredEdge = this.#device.createBuffer({
+            size: SELECTED_EDGES_TOTAL,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            label: "hoveredEdge",
+        })
+    }
+
+    #initAABBBufferInfinite(): void {
+        const data = new Float32Array(MAX_AABB_SLOTS * 8)
+        for (let i = 0; i < MAX_AABB_SLOTS; i++) {
+            const base = i * 8
+            data[base + 4] = 9999
+            data[base + 5] = 9999
+            data[base + 6] = 9999
+        }
+        this.#device.queue.writeBuffer(this.#uniformBuffers.subtreeAABBs, 0, data)
+    }
+
+    #writeClickState(clickUV: [number, number], enableClick: boolean, enableHover: boolean, hoverUV?: [number, number]): void {
+        const clickData = new ArrayBuffer(32)
+        const clickF32 = new Float32Array(clickData)
+        const clickU32 = new Uint32Array(clickData)
+        clickF32[0] = clickUV[0]
+        clickF32[1] = clickUV[1]
+        clickU32[2] = enableClick ? 1 : 0
+        clickU32[3] = enableHover ? 1 : 0
+        clickF32[4] = hoverUV?.[0] ?? 0
+        clickF32[5] = hoverUV?.[1] ?? 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
+    }
+
+    async #readClickResult(): Promise<{ clickedId: number; edgeHits: import("./render-worker-protocol.mjs").EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number] }> {
+        const [idBuf, edgeBuf, hitBuf, normalBuf] = await Promise.all([
+            this.#helper.readBufferData(this.#uniformBuffers.clickedObjectId, 4),
+            this.#helper.readBufferData(this.#uniformBuffers.edgeHit, 320),
+            this.#helper.readBufferData(this.#uniformBuffers.clickedHitPos, 16),
+            this.#helper.readBufferData(this.#uniformBuffers.clickedNormal, 16),
+        ])
+        const clickedId = new Uint32Array(idBuf)[0] ?? 0
+        const u32 = new Uint32Array(edgeBuf)
+        const f32 = new Float32Array(edgeBuf)
+        const edgeHits: import("./render-worker-protocol.mjs").EdgeHitData[] = []
+        const STRIDE = 20
+        for (let slot = 0; slot < 4; slot++) {
+            const o = slot * STRIDE
+            const kind = u32[o]
+            if (kind === EdgeKind.None) continue
+            edgeHits.push({
+                kind,
+                primaryId: u32[o + 1],
+                secondaryId: u32[o + 2],
+                featureA: u32[o + 3],
+                opType: u32[o + 4],
+                objectId: u32[o + 5],
+                seedPoint: [f32[o + 8], f32[o + 9], f32[o + 10]],
+                seedTangent: [f32[o + 12], f32[o + 13], f32[o + 14]],
+                seedNormal: [f32[o + 16], f32[o + 17], f32[o + 18]],
+            })
+        }
+        const hitF32 = new Float32Array(hitBuf)
+        const hitPos: [number, number, number, number] = [hitF32[0], hitF32[1], hitF32[2], hitF32[3]]
+        const normF32 = new Float32Array(normalBuf)
+        const clickedNormal: [number, number, number] = [normF32[0], normF32[1], normF32[2]]
+        return { clickedId, edgeHits, hitPos, clickedNormal }
+    }
+
+    async #readHoverResult(): Promise<{ hoveredObjectId: number; hoveredEdges: SelectedEdgePayload[] }> {
+        const readback = await this.#helper.readBufferData(this.#uniformBuffers.hoverEdgeHit, 320)
+        const u32 = new Uint32Array(readback)
+        const f32 = new Float32Array(readback)
+        const edges: SelectedEdgePayload[] = []
+        let hoveredObjectId = 0
+        const STRIDE = 20
+        for (let slot = 0; slot < 4; slot++) {
+            const o = slot * STRIDE
+            const kind = u32[o]
+            const objectId = u32[o + 5]
+            if (kind === EdgeKind.None && objectId === 0) continue
+            hoveredObjectId = objectId
+            if (kind !== EdgeKind.None) {
+                edges.push({
+                    kind,
+                    primaryId: u32[o + 1],
+                    secondaryId: u32[o + 2],
+                    featureA: u32[o + 3],
+                    opType: u32[o + 4],
+                    lineWidthPx: 6.0,
+                    epsilon: 0.02,
+                    seedPoint: [f32[o + 8], f32[o + 9], f32[o + 10]],
+                    seedTangent: [f32[o + 12], f32[o + 13], f32[o + 14]],
+                    seedNormal: [f32[o + 16], f32[o + 17], f32[o + 18]],
+                })
+            }
+        }
+        return { hoveredObjectId, hoveredEdges: edges }
+    }
+
+    async handleClick(clickUV: [number, number], shiftKey: boolean, altKey: boolean): Promise<void> {
+        if (!this.#lastRenderMsg || !this.#pipeline) return
+        this.#writeClickState(clickUV, true, false)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, new Float32Array(4).buffer)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, new Float32Array(4).buffer)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(320))
+
+        this.render(this.#lastRenderMsg)
+        const result = await this.#readClickResult()
+        self.postMessage({
+            type: "clickResult",
+            clickedId: result.clickedId,
+            edgeHits: result.edgeHits,
+            hitPos: result.hitPos,
+            clickedNormal: result.clickedNormal,
+            shiftKey,
+            altKey,
+        })
+    }
+
+    async handleHover(clickUV: [number, number], altKey: boolean): Promise<void> {
+        const selectionMode = this.#lastSelectionMode
+        if (!this.#lastRenderMsg || !this.#pipeline) return
+        const effectiveMode = altKey && selectionMode === 0 ? 1 : selectionMode
+        this.#writeClickState(clickUV, false, true, clickUV)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, new ArrayBuffer(320))
+
+        this.render(this.#lastRenderMsg)
+
+        const { hoveredObjectId, hoveredEdges } = await this.#readHoverResult()
+        let edges: SelectedEdgePayload[] = []
+        if (effectiveMode === 1) {
+            edges = hoveredEdges.filter(h => h.kind === EdgeKind.Seam)
+        } else if (effectiveMode === 2) {
+            edges = hoveredEdges.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment)
+        }
+
+        const objects = this.#lastRenderMsg.selectionState.selectedObjectIds
+        const objectNames: Record<number, string> = {}
+        if (this.#scene) {
+            const ids = new Set([...objects, hoveredObjectId].filter(id => id > 0))
+            for (const id of ids) {
+                const node = this.#scene.get(id)
+                objectNames[id] = node?.getShapeType?.() ?? "?"
+            }
+        }
+        const info: SelectionInfo = {
+            objects,
+            objectNames,
+            edges: this.#lastRenderMsg.selectionState.selectedEdges.map(e => ({
+                kind: e.kind,
+                primaryId: e.primaryId,
+                secondaryId: e.secondaryId,
+                featureA: e.featureA,
+                opType: e.opType,
+            })),
+            face: null,
+            hover: hoveredObjectId > 0 ? {
+                objectId: hoveredObjectId,
+                edges: edges.map(e => ({
+                    kind: e.kind,
+                    primaryId: e.primaryId,
+                    secondaryId: e.secondaryId,
+                    featureA: e.featureA,
+                    opType: e.opType,
+                    seedPoint: e.seedPoint,
+                    seedTangent: e.seedTangent,
+                    seedNormal: e.seedNormal,
+                })),
+            } : null,
+        }
+        self.postMessage({ type: "selectionInfo", info })
+    }
+
+    async handleDoubleClick(clickUV: [number, number]): Promise<void> {
+        if (!this.#lastRenderMsg || !this.#pipeline) return
+        this.#writeClickState(clickUV, true, false)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, new Float32Array(4).buffer)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, new Float32Array(4).buffer)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(320))
+
+        this.render(this.#lastRenderMsg)
+        const result = await this.#readClickResult()
+        if (result.clickedId !== 0) {
+            self.postMessage({
+                type: "objectDoubleClick",
+                nodeId: result.clickedId,
+                hitPos: [result.hitPos[0], result.hitPos[1], result.hitPos[2]],
+            })
+        }
+    }
+
+    writeBuffers(msg: Extract<MainToWorkerMessage, { type: "writeBuffers" }>): void {
+        if (msg.faceSelection) {
+            this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, msg.faceSelection)
+        }
+        if (msg.polygonVertices) {
+            this.#device.queue.writeBuffer(
+                this.#uniformBuffers.polygonVertices,
+                msg.polygonVertices.offset,
+                msg.polygonVertices.data,
+            )
+        }
+        if (msg.nodeParams) {
+            this.#device.queue.writeBuffer(
+                this.#uniformBuffers.nodeParams,
+                msg.nodeParams.nodeId * 16,
+                msg.nodeParams.data,
+            )
+        }
+        if (msg.selectedObjectIds) {
+            if (msg.selectedObjectIds instanceof ArrayBuffer) {
+                this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, msg.selectedObjectIds)
+            } else {
+                this.#device.queue.writeBuffer(
+                    this.#uniformBuffers.selectedObjectIds,
+                    msg.selectedObjectIds.offset,
+                    msg.selectedObjectIds.data,
+                )
+            }
+        }
+    }
+
+    #writeEdgesToBuffer(
+        buffer: GPUBuffer,
+        edges: (SelectedEdgePayload | { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx?: number; epsilon?: number; seedPoint?: [number, number, number]; seedTangent?: [number, number, number]; seedNormal?: [number, number, number] })[],
+        lineWidthPx: number,
+        epsilon: number,
+    ): void {
+        const header = new ArrayBuffer(16)
+        new Uint32Array(header)[0] = Math.min(edges.length, 16)
+        this.#device.queue.writeBuffer(buffer, 0, header)
+        const EDGE_STRIDE = 80
+        for (let i = 0; i < Math.min(edges.length, 16); i++) {
+            const e = edges[i]
+            const buf = new ArrayBuffer(EDGE_STRIDE)
+            const u32 = new Uint32Array(buf)
+            const f32 = new Float32Array(buf)
+            u32[0] = e.kind
+            u32[1] = e.primaryId
+            u32[2] = e.secondaryId
+            u32[3] = e.featureA
+            u32[4] = e.opType
+            f32[5] = e.lineWidthPx ?? lineWidthPx
+            f32[6] = e.epsilon ?? epsilon
+            const sp = e.seedPoint ?? [0, 0, 0]
+            f32[8] = sp[0]
+            f32[9] = sp[1]
+            f32[10] = sp[2]
+            const st = e.seedTangent ?? [0, 0, 0]
+            f32[12] = st[0]
+            f32[13] = st[1]
+            f32[14] = st[2]
+            const sn = e.seedNormal ?? [0, 0, 0]
+            f32[16] = sn[0]
+            f32[17] = sn[1]
+            f32[18] = sn[2]
+            this.#device.queue.writeBuffer(buffer, 16 + i * EDGE_STRIDE, buf)
+        }
+    }
+}

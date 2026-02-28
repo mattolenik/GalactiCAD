@@ -7,6 +7,9 @@ export interface EdgeSelectionInfo {
     secondaryId: number
     featureA?: number
     opType?: number
+    seedPoint?: [number, number, number]
+    seedTangent?: [number, number, number]
+    seedNormal?: [number, number, number]
 }
 
 export interface FaceSelectionInfo {

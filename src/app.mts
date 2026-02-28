@@ -1,7 +1,7 @@
 import "monaco-editor-env" // must run before monaco-editor so globalAPI is set for console access
 import * as monaco from "monaco-editor"
 import { CAD_TYPES_DECL } from "./scene/cad-types-decl.mjs"
-import { bufferTime, filter, fromEventPattern } from "rxjs"
+import { debounceTime, filter, fromEventPattern } from "rxjs"
 import type { Subscription } from "rxjs"
 import { DocumentTabs } from "./components/document-tabs.mjs"
 import { MenuButton } from "./components/menu-button.mjs"
@@ -580,6 +580,7 @@ class App {
             copyWithSyntaxHighlighting: false,
             detectIndentation: true,
             folding: true,
+            fontFamily: "FiraCode",
             fontLigatures: true,
             fontSize: 16,
             fontVariations: true,
@@ -868,18 +869,12 @@ class App {
                     h => this.editor.onDidChangeModelContent(h),
                     (_, disp) => disp.dispose()
                 )
-                    .pipe(
-                        bufferTime(100),
-                        filter(arr => arr.length > 0)
-                    )
-                    .subscribe((changes) => {
-                        // Only skip when we have exactly one change (our programmatic edit).
-                        // Multiple changes (e.g. our edit + user undo/redo) require a build.
-                        if (this.#skipNextBuild && changes.length === 1) {
+                    .pipe(debounceTime(200))
+                    .subscribe(() => {
+                        if (this.#skipNextBuild) {
                             this.#skipNextBuild = false
                             return
                         }
-                        this.#skipNextBuild = false
                         this.build()
                     })
             })

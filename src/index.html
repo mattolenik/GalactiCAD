@@ -254,12 +254,19 @@
         import App from './app.js';
         const editor = document.getElementById("editor")
         editor.classList.add("visible")
-        const app = new App(
-            document.getElementById("preview"),
-            document.getElementById("tabs"),
-            editor,
-            document.getElementById("log"),
-            document.getElementById("menuButton"))
+        const font = new FontFace(
+                'FiraCode',
+                'url(/assets/firacode-vf.woff2) format("woff2")'
+            )
+        font.load().then(() => {
+            document.fonts.add(font)
+            const app = new App(
+                document.getElementById("preview"),
+                document.getElementById("tabs"),
+                editor,
+                document.getElementById("log"),
+                document.getElementById("menuButton"))
+            })
     </script>
 </body>
 </html>

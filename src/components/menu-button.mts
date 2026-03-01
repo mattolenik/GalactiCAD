@@ -3,6 +3,11 @@ import { __fg_color, __tone_2, __tone_3, __tone_accent, __toolbar_height } from 
 export interface DocumentExplorerConfig {
     getClosedDocuments: () => string[]
     onOpen: (name: string) => void
+    /** Unopened .gcad files in the current folder. null = no folder tracked. */
+    getUnopenedFolderFiles?: () => Promise<string[] | null>
+    onOpenFolderFile?: (name: string) => void | Promise<void>
+    /** Called when user chooses to open a folder (e.g. when no folder is tracked). */
+    onOpenFolder?: () => void | Promise<void>
 }
 
 export class MenuButton extends HTMLElement {
@@ -204,13 +209,68 @@ export class MenuButton extends HTMLElement {
         }
     }
 
-    toggleMenu(e: MouseEvent) {
+    async #renderFolderSection() {
+        const folderSep = this.#menuContainer.querySelector(".folder-separator")
+        const folderHeader = this.#menuContainer.querySelector(".folder-header")
+        const folderItems = this.#menuContainer.querySelectorAll(".folder-item")
+        folderSep?.remove()
+        folderHeader?.remove()
+        folderItems.forEach(el => el.remove())
+
+        const cfg = this.#documentExplorer
+        if (!cfg?.getUnopenedFolderFiles) return
+
+        const unopened = await cfg.getUnopenedFolderFiles()
+
+        const sep = document.createElement("li")
+        sep.classList.add("separator", "folder-separator")
+        this.#menuContainer.appendChild(sep)
+
+        const header = document.createElement("li")
+        header.classList.add("section-header", "folder-header")
+        header.textContent = "Folder"
+        this.#menuContainer.appendChild(header)
+
+        if (unopened === null) {
+            const li = document.createElement("li")
+            li.classList.add("doc-item", "folder-item")
+            li.textContent = "Open Folder"
+            li.onclick = () => {
+                void cfg.onOpenFolder?.()
+                this.hideMenu()
+            }
+            this.#menuContainer.appendChild(li)
+            return
+        }
+
+        if (unopened.length === 0) {
+            const empty = document.createElement("li")
+            empty.classList.add("empty-docs", "folder-item")
+            empty.textContent = "All files open"
+            this.#menuContainer.appendChild(empty)
+            return
+        }
+
+        for (const name of unopened) {
+            const li = document.createElement("li")
+            li.classList.add("doc-item", "folder-item")
+            li.textContent = name
+            li.onclick = () => {
+                void cfg.onOpenFolderFile?.(name)
+                this.hideMenu()
+            }
+            this.#menuContainer.appendChild(li)
+        }
+    }
+
+    async toggleMenu(e: MouseEvent) {
         if (this.#menuContainer.classList.contains("visible")) {
             this.hideMenu()
             return
         }
 
         this.#renderDocumentExplorer()
+        await this.#renderFolderSection()
 
         const menuStyle = this.#menuContainer.style
         this.#menuContainer.classList.add("visible")

@@ -473,11 +473,7 @@ class App {
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
 
-        if (this.#shouldShowWelcome()) {
-            this.#showWelcome()
-        } else {
-            this.#tabs.restore()
-        }
+        void this.#restoreOrShowWelcome()
 
         this.#injectStyles()
         requestAnimationFrame(() => {
@@ -622,9 +618,9 @@ class App {
         })
     }
 
-    #shouldShowWelcome(): boolean {
-        const stored = JSON.parse(localStorage.getItem("documents") || "[]") as string[]
-        return stored.length === 0
+    async #restoreOrShowWelcome(): Promise<void> {
+        const restored = await this.#tabs.restore()
+        if (!restored) this.#showWelcome()
     }
 
     #showWelcome(): void {
@@ -931,6 +927,9 @@ class App {
         const menuButton = new MenuButton(menuItems, {
             getClosedDocuments: () => this.#tabs.closedDocumentNames,
             onOpen: name => this.#tabs.openStoredDocument(name),
+            getUnopenedFolderFiles: () => this.#tabs.getUnopenedFolderFiles(),
+            onOpenFolderFile: name => void this.#tabs.openFolderFile(name),
+            onOpenFolder: () => void this.#handleOpenFolder(),
         })
         menu.replaceWith(menuButton)
     }

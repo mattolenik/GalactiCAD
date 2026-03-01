@@ -4,8 +4,10 @@ import { bufferTime } from "rxjs/operators"
 import { OrderedMap } from "../collections/orderedMap.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_0, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
+import { FileConflictDialog } from "./file-conflict-dialog.mjs"
 import { YesNoDialog } from "./yesno-dialog.mjs"
-import { readGcadFiles, saveAsGcad, writeToFile } from "../fs/file-picker.mjs"
+import { listGcadFileNames, readFileContent, readGcadFiles, saveAsGcad, writeToFile } from "../fs/file-picker.mjs"
+import { clearFolderHandle, getFolderHandle, saveFolderHandle } from "../storage/project-storage.mjs"
 
 const LONG_PRESS_MS = 500
 const MOVE_THRESHOLD_PX = 5
@@ -20,6 +22,7 @@ export class DocumentTabs extends HTMLElement {
     #tabContainer: HTMLElement
     #topUntitledIndex: number = 0
     #diskSyncInterval: ReturnType<typeof setInterval> | null = null
+    #lastWrittenContent = new Map<string, string>()
 
     #draggingName: string | null = null
     #longPressTimer: ReturnType<typeof setTimeout> | null = null
@@ -210,6 +213,27 @@ export class DocumentTabs extends HTMLElement {
         return this.#fileHandles.has(name)
     }
 
+    /** Unopened .gcad files in the current folder. Returns null if no folder is tracked. */
+    async getUnopenedFolderFiles(): Promise<string[] | null> {
+        const dirHandle = await getFolderHandle()
+        if (!dirHandle) return null
+        const permission = await dirHandle.queryPermission({ mode: "read" })
+        if (permission !== "granted") return null
+        const allNames = await listGcadFileNames(dirHandle)
+        const open = new Set(this.#docs.keys())
+        return allNames.filter(name => !open.has(name))
+    }
+
+    /** Open a .gcad file from the current folder by name. */
+    async openFolderFile(name: string): Promise<void> {
+        const dirHandle = await getFolderHandle()
+        if (!dirHandle) return
+        const fileHandle = await dirHandle.getFileHandle(name)
+        const file = await fileHandle.getFile()
+        const content = await file.text()
+        this.addDocumentFromFile(name, content, fileHandle)
+    }
+
     /** Names of all documents stored in localStorage that are not currently open as tabs */
     get closedDocumentNames(): string[] {
         const open = new Set(this.#docs.keys())
@@ -233,7 +257,10 @@ export class DocumentTabs extends HTMLElement {
         const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
         const model = monaco.editor.createModel(content, "typescript", uri)
         this.#docs.set(name, model)
-        if (handle) this.#fileHandles.set(name, handle)
+        if (handle) {
+            this.#fileHandles.set(name, handle)
+            this.#lastWrittenContent.set(name, content)
+        }
         this.#watchModel(name, model)
         this.#startDiskSyncIfNeeded()
         this.switchTo(name)
@@ -277,12 +304,13 @@ export class DocumentTabs extends HTMLElement {
         return name
     }
 
-    /** Load all .gcad files from a directory. Clears current docs. */
+    /** Load all .gcad files from a directory. Clears current docs. Persists the folder handle for restore on reload. */
     async loadFromFolder(dirHandle: FileSystemDirectoryHandle): Promise<void> {
         for (const name of Array.from(this.#docs.keys())) {
             this.#subscriptions.get(name)?.unsubscribe()
             this.#subscriptions.delete(name)
             this.#fileHandles.delete(name)
+            this.#lastWrittenContent.delete(name)
             this.#docs.get(name)?.dispose()
             this.#docs.delete(name)
         }
@@ -296,12 +324,14 @@ export class DocumentTabs extends HTMLElement {
             const model = monaco.editor.createModel(content, "typescript", uri)
             this.#docs.set(name, model)
             this.#fileHandles.set(name, handle)
+            this.#lastWrittenContent.set(name, content)
             this.#watchModel(name, model)
         }
         this.#startDiskSyncIfNeeded()
         const first = this.#docs.keys().next().value
         if (first) this.switchTo(first)
         this.#updateStoredOrder()
+        await saveFolderHandle(dirHandle)
     }
 
     /** Load a single file. Adds to tabs with handle. */
@@ -312,12 +342,31 @@ export class DocumentTabs extends HTMLElement {
         this.addDocumentFromFile(name, content, fileHandle)
     }
 
-    /** Write current content of a file-backed doc to disk. No-op if doc has no handle. */
+    /** Write current content of a file-backed doc to disk. Handles external changes with overwrite/revert/cancel dialog. */
     async saveToDisk(name: string): Promise<boolean> {
         const handle = this.#fileHandles.get(name)
         const model = this.#docs.get(name)
         if (!handle || !model) return false
-        await writeToFile(handle, model.getValue())
+        const editorContent = model.getValue()
+        try {
+            const diskContent = await readFileContent(handle)
+            if (diskContent !== editorContent) {
+                const choice = await new FileConflictDialog(name).show()
+                if (choice === "cancel") return false
+                if (choice === "revert") {
+                    model.setValue(diskContent)
+                    this.#lastWrittenContent.set(name, diskContent)
+                    return true
+                }
+                // overwrite: fall through to write
+            } else {
+                return true
+            }
+        } catch {
+            // File may not exist or permission error; proceed with overwrite
+        }
+        await writeToFile(handle, editorContent)
+        this.#lastWrittenContent.set(name, editorContent)
         return true
     }
 
@@ -325,29 +374,115 @@ export class DocumentTabs extends HTMLElement {
     async saveAs(name: string): Promise<boolean> {
         const model = this.#docs.get(name)
         if (!model) return false
+        const content = model.getValue()
         const handle = await saveAsGcad(name)
         if (!handle) return false
-        await writeToFile(handle, model.getValue())
-        this.#fileHandles.set(name, handle)
+        await writeToFile(handle, content)
+
+        const file = await handle.getFile()
+        const newName = file.name
+
+        const oldIndex = Array.from(this.#docs.keys()).indexOf(name)
+        const wasActive = this.#active === name
+
+        this.#subscriptions.get(name)?.unsubscribe()
+        this.#subscriptions.delete(name)
+        this.#fileHandles.delete(name)
+        this.#lastWrittenContent.delete(name)
+        this.#docs.get(name)?.dispose()
+        this.#docs.delete(name)
+        localStorage.removeItem(`document:${name}`)
+
+        SettingsManager.instance.renameDocument(name, newName)
+
+        const uri = monaco.Uri.parse(`inmemory://model/${newName}.ts`)
+        const newModel = monaco.editor.createModel(content, "typescript", uri)
+        this.#docs.set(newName, newModel)
+        this.#fileHandles.set(newName, handle)
+        this.#lastWrittenContent.set(newName, content)
+        this.#watchModel(newName, newModel)
         this.#startDiskSyncIfNeeded()
+
+        if (oldIndex >= 0) {
+            const newIndex = Array.from(this.#docs.keys()).indexOf(newName)
+            this.#docs.moveToIndex(newIndex, oldIndex)
+        }
+
+        if (wasActive) {
+            this.#active = newName
+            localStorage.setItem("activeDocument", newName)
+            this.#editor.setModel(newModel)
+        }
+
         this.#updateStoredOrder()
         this.#renderTabs()
+        this.dispatchEvent(new CustomEvent("tabRenamed", { detail: { oldName: name, newName } }))
+        this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: this.#active }))
         return true
     }
 
-    /** Restore tabs from saved order or localStorage, or default */
-    restore(): void {
+    /** Restore tabs from persisted folder handle (if any) or localStorage. Returns true if any docs were loaded. */
+    async restore(): Promise<boolean> {
         // clear existing
         for (const name of Array.from(this.#docs.keys())) {
             const sub = this.#subscriptions.get(name)
             if (sub) sub.unsubscribe()
             this.#subscriptions.delete(name)
+            this.#fileHandles.delete(name)
+            this.#lastWrittenContent.delete(name)
+            this.#docs.get(name)?.dispose()
             this.#docs.delete(name)
         }
+        this.#stopDiskSync()
+
+        // try persisted folder handle first
+        const dirHandle = await getFolderHandle()
+        if (dirHandle) {
+            let permission = await dirHandle.queryPermission({ mode: "readwrite" })
+            if (permission === "prompt") {
+                permission = await dirHandle.requestPermission({ mode: "readwrite" })
+            }
+            if (permission === "granted") {
+                const storedOrder = JSON.parse(localStorage.getItem("documents") || "[]") as string[]
+                const namesToLoad =
+                    storedOrder.length > 0
+                        ? storedOrder
+                        : (await listGcadFileNames(dirHandle))
+                for (const name of namesToLoad) {
+                    try {
+                        const fileHandle = await dirHandle.getFileHandle(name)
+                        const file = await fileHandle.getFile()
+                        const content = await file.text()
+                        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+                        const model = monaco.editor.createModel(content, "typescript", uri)
+                        this.#docs.set(name, model)
+                        this.#fileHandles.set(name, fileHandle)
+                        this.#lastWrittenContent.set(name, content)
+                        this.#watchModel(name, model)
+                    } catch {
+                        const content = localStorage.getItem(`document:${name}`)
+                        if (content !== null) {
+                            const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+                            const model = monaco.editor.createModel(content, "typescript", uri)
+                            this.#docs.set(name, model)
+                            this.#watchModel(name, model)
+                        }
+                    }
+                }
+                this.#startDiskSyncIfNeeded()
+                const first = this.#docs.keys().next().value
+                if (first) this.switchTo(first)
+                this.#updateStoredOrder()
+                const lastTab = localStorage.getItem("activeDocument") as string
+                if (lastTab && this.#docs.has(lastTab)) this.switchTo(lastTab)
+                return this.#docs.size > 0
+            }
+            await clearFolderHandle()
+        }
+
+        // fall back to localStorage
         const prefix = "document:"
         const storedOrder = JSON.parse(localStorage.getItem("documents") || "[]") as string[]
-        const loaded = new Set<string>()
-        // load in order
         for (const name of storedOrder) {
             const key = `${prefix}${name}`
             const content = localStorage.getItem(key)
@@ -356,22 +491,17 @@ export class DocumentTabs extends HTMLElement {
                 const model = monaco.editor.createModel(content, "typescript", uri)
                 this.#docs.set(name, model)
                 this.#watchModel(name, model)
-                loaded.add(name)
             }
         }
-        // default if empty
-        if (this.#docs.keys().next().done) {
-            this.newDocument()
-            return
+        if (this.#docs.size > 0) {
+            const first = this.#docs.keys().next().value
+            if (first) this.switchTo(first)
+            this.#updateStoredOrder()
+            const lastTab = localStorage.getItem("activeDocument") as string
+            if (lastTab && this.#docs.has(lastTab)) this.switchTo(lastTab)
+            return true
         }
-        // activate first
-        const first = this.#docs.keys().next().value
-        if (first) this.switchTo(first)
-        this.#updateStoredOrder()
-        const lastTab = localStorage.getItem("activeDocument") as string
-        if (lastTab) {
-            this.switchTo(lastTab)
-        }
+        return false
     }
 
     /** Observe model changes and save debounced. File-backed docs sync to disk via periodic timer; localStorage-backed docs save to localStorage. */
@@ -404,6 +534,7 @@ export class DocumentTabs extends HTMLElement {
         if (sub) sub.unsubscribe()
         this.#subscriptions.delete(name)
         this.#fileHandles.delete(name)
+        this.#lastWrittenContent.delete(name)
         this.#docs.get(name)?.dispose()
         this.#docs.delete(name)
         this.#stopDiskSyncIfEmpty()
@@ -516,6 +647,11 @@ export class DocumentTabs extends HTMLElement {
         if (handle) {
             this.#fileHandles.delete(oldName)
             this.#fileHandles.set(newName, handle)
+        }
+        const lastWritten = this.#lastWrittenContent.get(oldName)
+        if (lastWritten !== undefined) {
+            this.#lastWrittenContent.delete(oldName)
+            this.#lastWrittenContent.set(newName, lastWritten)
         }
 
         // Re-watch model with new name for future saves
@@ -788,10 +924,19 @@ export class DocumentTabs extends HTMLElement {
         for (const [name, handle] of this.#fileHandles) {
             const model = this.#docs.get(name)
             if (!model) continue
+            const editorContent = model.getValue()
+            if (editorContent === this.#lastWrittenContent.get(name)) continue
             try {
-                await writeToFile(handle, model.getValue())
+                const diskContent = await readFileContent(handle)
+                if (diskContent !== this.#lastWrittenContent.get(name)) continue
+            } catch {
+                continue
+            }
+            try {
+                await writeToFile(handle, editorContent)
+                this.#lastWrittenContent.set(name, editorContent)
             } catch (err) {
-                console.error(`[DocumentTabs] Disk sync failed for ${name}:`, err)
+                console.error(`[DocumentTabs] Auto-save failed for ${name}:`, err)
             }
         }
     }

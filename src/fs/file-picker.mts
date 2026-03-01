@@ -46,6 +46,17 @@ export async function openFolder(): Promise<FileSystemDirectoryHandle | null> {
     }
 }
 
+/** List .gcad file names in a directory (no content read). */
+export async function listGcadFileNames(dirHandle: FileSystemDirectoryHandle): Promise<string[]> {
+    const names: string[] = []
+    for await (const entry of dirHandle.values()) {
+        if (entry.kind === "file" && entry.name.endsWith(".gcad")) {
+            names.push(entry.name)
+        }
+    }
+    return names.sort()
+}
+
 /** Read all .gcad files from a directory. */
 export async function readGcadFiles(dirHandle: FileSystemDirectoryHandle): Promise<GcadFileEntry[]> {
     const entries: GcadFileEntry[] = []
@@ -57,6 +68,12 @@ export async function readGcadFiles(dirHandle: FileSystemDirectoryHandle): Promi
         }
     }
     return entries
+}
+
+/** Read current content from a file handle. */
+export async function readFileContent(handle: FileSystemFileHandle): Promise<string> {
+    const file = await handle.getFile()
+    return file.text()
 }
 
 /** Save content to a file handle. Overwrites existing content. */

@@ -125,9 +125,6 @@ export class WelcomeScreen extends HTMLElement {
                 .welcome-actions {
                     width: 100%;
                     max-width: 280px;
-                }
-
-                .actions {
                     min-width: unset;
                 }
 
@@ -178,6 +175,12 @@ export class WelcomeScreen extends HTMLElement {
                 display: flex;
                 flex-direction: column;
                 flex-shrink: 0;
+                gap: 1.25em;
+                min-width: 260px;
+            }
+
+            .welcome-actions button {
+                margin: 0;
             }
 
             .brand {
@@ -201,13 +204,6 @@ export class WelcomeScreen extends HTMLElement {
                 color: color-mix(in srgb, var(${__fg_color}) 70%, transparent);
                 letter-spacing: 0.04em;
                 max-width: 300px;
-            }
-
-            .actions {
-                display: flex;
-                flex-direction: column;
-                gap: 1em;
-                min-width: 260px;
             }
 
             button {
@@ -286,7 +282,7 @@ export class WelcomeScreen extends HTMLElement {
                 grid-template-rows: 1fr 1fr;
                 grid-auto-columns: 90px;
                 grid-auto-flow: column;
-                gap: 0.65em;
+                gap: 0.75em;
                 width: max-content;
             }
 
@@ -294,7 +290,7 @@ export class WelcomeScreen extends HTMLElement {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                gap: 0.25em;
+                gap: 0.35em;
                 padding: 0.4em;
                 font-size: 0.8rem;
                 border: 1px solid color-mix(in srgb, var(${__fg_color}) 15%, transparent);

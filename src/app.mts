@@ -495,36 +495,35 @@ class App {
             })
     }
 
-    #createRendererAndWire(preview: PreviewWindow, menu: HTMLElement, isInitial = false): Promise<void> {
+    async #createRendererAndWire(preview: PreviewWindow, menu: HTMLElement, isInitial = false): Promise<void> {
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect)
         const { xrayCheckbox, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
-        return this.renderer
-            .ready()
-            .then(() => {
-                this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
-                if (isInitial) {
-                    this.#wireEditorAndTabs()
-                    this.#wireGlobalUndoRedo()
-                    this.#wireMenu(menu)
-                    this.#wireSaveShortcut()
-                    fromEventPattern<monaco.editor.IModelContentChangedEvent>(
-                        h => this.editor.onDidChangeModelContent(h),
-                        (_, disp) => disp.dispose()
-                    )
-                        .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
-                        .subscribe(() => this.build())
-                }
-                this.#wireExportButton(exportBtn)
-                this.#wireDevToolsVersionToggle(preview, devTools)
-                this.build()
-            })
-            .catch(err => {
-                console.error(`UNEXPECTED ERROR: ${err}`)
-                const msg = document.createElement("p")
-                msg.textContent =
-                    "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
-                preview.replaceWith(msg)
-            })
+        try {
+            await this.renderer
+                .ready()
+            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
+            if (isInitial) {
+                this.#wireEditorAndTabs()
+                this.#wireGlobalUndoRedo()
+                this.#wireMenu(menu)
+                this.#wireSaveShortcut()
+                fromEventPattern<monaco.editor.IModelContentChangedEvent>(
+                    h => this.editor.onDidChangeModelContent(h),
+                    (_, disp) => disp.dispose()
+                )
+                    .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
+                    .subscribe(() => this.build())
+            }
+            this.#wireExportButton(exportBtn)
+            this.#wireDevToolsVersionToggle(preview, devTools)
+            this.build()
+        } catch (err) {
+            console.error(`UNEXPECTED ERROR: ${err}`)
+            const msg = document.createElement("p")
+            msg.textContent =
+                "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
+            preview.replaceWith(msg)
+        }
     }
 
     #setupEditorPanel(editorContainer: HTMLDivElement) {

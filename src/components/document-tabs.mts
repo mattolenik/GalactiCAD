@@ -3,7 +3,7 @@ import { fromEventPattern, Subscription } from "rxjs"
 import { bufferTime, debounceTime } from "rxjs/operators"
 import { OrderedMap } from "../collections/orderedMap.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
-import { db, setDocFileBacked } from "../storage/db.mjs"
+import { addRecentDocument, db, setDocFileBacked } from "../storage/db.mjs"
 import type { DocumentRow } from "../storage/db.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_0, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { DiskConflictDialog } from "./disk-conflict-dialog.mjs"
@@ -344,6 +344,30 @@ export class DocumentTabs extends HTMLElement {
         this.#watchModel(name, model)
         void this.switchTo(name)
         void this.#updateStoredOrder()
+    }
+
+    /** Open a document by name (storage-backed or file-backed). Returns true if opened. */
+    async openDocument(name: string): Promise<boolean> {
+        if (this.#docs.has(name)) {
+            await this.switchTo(name)
+            return true
+        }
+        const docFileRow = await db.docFiles.get(name)
+        if (docFileRow?.handle) {
+            try {
+                await this.addDocumentFromFile(name, "", docFileRow.handle)
+                return true
+            } catch {
+                // Handle may be stale (file moved/deleted, permission revoked)
+                return false
+            }
+        }
+        const docRow = await db.documents.get(name)
+        if (docRow) {
+            await this.openStoredDocument(name)
+            return true
+        }
+        return false
     }
 
     /** Open a stored document that is not currently a tab */
@@ -897,6 +921,7 @@ export class DocumentTabs extends HTMLElement {
         if (save) {
             await db.preferences.put({ key: "activeDocument", value: this.#active })
         }
+        void addRecentDocument(name)
         requestAnimationFrame(() => {
             if (this.#active === name) {
                 this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: name }))

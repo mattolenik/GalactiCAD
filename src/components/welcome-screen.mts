@@ -10,6 +10,9 @@ export interface WelcomeScreenCallbacks {
     onOpenFolder: () => void | Promise<void>
     onSamplePick: (content: string, suggestedName: string) => void
     getThumbnail?: (src: string) => Promise<ImageData>
+    getRecentDocuments?: () => Promise<string[]>
+    getDocumentContent?: (name: string) => Promise<string | undefined>
+    onOpenRecent?: (name: string) => void | Promise<void>
 }
 
 export class WelcomeScreen extends HTMLElement {
@@ -28,6 +31,12 @@ export class WelcomeScreen extends HTMLElement {
         this.#renderMainPanel()
         this.#renderSamplesGrid()
         this.#loadThumbnails()
+        void this.#initRecentDocuments()
+    }
+
+    async #initRecentDocuments(): Promise<void> {
+        await this.#renderRecentDocuments()
+        await this.#loadRecentThumbnails()
     }
 
     #getStyles(): string {
@@ -169,15 +178,14 @@ export class WelcomeScreen extends HTMLElement {
                     font-size: 2.25rem;
                 }
 
-                .samples-scroll {
-                    overflow-x: visible;
-                    overflow-y: visible;
+                .samples-scroll,
+                .recent-scroll {
+                    overflow: visible;
                 }
 
-                .samples-grid {
-                    grid-template-rows: unset;
+                .samples-grid,
+                .recent-grid {
                     grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
-                    grid-auto-flow: row;
                     width: 100%;
                     max-width: 100%;
                 }
@@ -192,12 +200,14 @@ export class WelcomeScreen extends HTMLElement {
                     font-size: 1.85rem;
                 }
 
-                .samples-grid {
+                .samples-grid,
+                .recent-grid {
                     grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
                     gap: 0.5em;
                 }
 
-                .sample-thumb {
+                .sample-thumb,
+                .recent-thumb {
                     width: 56px;
                     height: 56px;
                 }
@@ -302,8 +312,7 @@ export class WelcomeScreen extends HTMLElement {
             }
 
             .samples-scroll {
-                overflow-x: auto;
-                overflow-y: hidden;
+                overflow: auto;
                 padding: 0.25em 0 0.75em;
             }
 
@@ -323,11 +332,10 @@ export class WelcomeScreen extends HTMLElement {
 
             .samples-grid {
                 display: grid;
-                grid-template-rows: 1fr 1fr;
-                grid-auto-columns: 96px;
-                grid-auto-flow: column;
+                grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+                grid-auto-rows: auto;
                 gap: 0.85em;
-                width: max-content;
+                width: 100%;
             }
 
             .sample-item {
@@ -386,6 +394,106 @@ export class WelcomeScreen extends HTMLElement {
                 max-width: 100%;
                 color: color-mix(in srgb, var(${__fg_color}) 90%, transparent);
             }
+
+            .recent-browser {
+                margin-bottom: 1.5em;
+            }
+
+            .recent-browser:empty {
+                display: none;
+            }
+
+            .recent-browser h3 {
+                font-size: 0.82rem;
+                font-weight: 500;
+                color: color-mix(in srgb, var(${__fg_color}) 70%, transparent);
+                margin: 0 0 0.85em;
+                letter-spacing: 0.05em;
+            }
+
+            .recent-scroll {
+                overflow: auto;
+                padding: 0.25em 0 0.75em;
+            }
+
+            .recent-scroll::-webkit-scrollbar {
+                height: 6px;
+            }
+
+            .recent-scroll::-webkit-scrollbar-track {
+                background: color-mix(in srgb, var(${__fg_color}) 6%, transparent);
+                border-radius: 3px;
+            }
+
+            .recent-scroll::-webkit-scrollbar-thumb {
+                background: color-mix(in srgb, var(${__fg_color}) 20%, transparent);
+                border-radius: 3px;
+            }
+
+            .recent-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+                grid-auto-rows: auto;
+                gap: 0.85em;
+                width: 100%;
+            }
+
+            .recent-item {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.4em;
+                padding: 0.5em;
+                font-size: 0.8rem;
+                border: 1px solid color-mix(in srgb, var(${__fg_color}) 10%, transparent);
+                cursor: pointer;
+                color: var(${__fg_color});
+                background: color-mix(in srgb, var(${__tone_1}) 20%, transparent);
+                transition: background 0.2s ease, border-color 0.2s ease, transform 0.12s ease, box-shadow 0.2s ease;
+                text-align: center;
+                border-radius: 8px;
+                backdrop-filter: blur(8px);
+            }
+
+            .recent-item:hover {
+                background: color-mix(in srgb, var(${__tone_3}) 45%, transparent);
+                border-color: color-mix(in srgb, var(${__fg_color}) 20%, transparent);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            }
+
+            .recent-item:focus-visible {
+                outline: 2px solid var(${__tone_accent});
+                outline-offset: 2px;
+            }
+
+            .recent-thumb {
+                width: 68px;
+                height: 68px;
+                background: color-mix(in srgb, var(${__fg_color}) 8%, transparent);
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                flex-shrink: 0;
+            }
+
+            .recent-thumb canvas {
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+            }
+
+            .recent-name {
+                font-size: 0.72rem;
+                line-height: 1.25;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                max-width: 100%;
+                color: color-mix(in srgb, var(${__fg_color}) 90%, transparent);
+            }
         </style>`
     }
 
@@ -399,6 +507,7 @@ export class WelcomeScreen extends HTMLElement {
             <div class="welcome-layout">
                 <div class="welcome-actions"></div>
                 <div class="samples-browser">
+                    <div class="recent-browser"></div>
                     <h3>Samples</h3>
                     <div class="samples-scroll">
                         <div class="samples-grid"></div>
@@ -440,6 +549,42 @@ export class WelcomeScreen extends HTMLElement {
         openFolder.disabled = !isFileSystemAccessAvailable()
         openFolder.onclick = () => void this.#callbacks.onOpenFolder()
         actions.appendChild(openFolder)
+    }
+
+    async #renderRecentDocuments(): Promise<void> {
+        const getRecent = this.#callbacks.getRecentDocuments
+        const onOpen = this.#callbacks.onOpenRecent
+        if (!getRecent || !onOpen) return
+
+        const names = await getRecent()
+        if (names.length === 0) return
+
+        const browser = this.#samplesBrowser.querySelector(".recent-browser")!
+        browser.innerHTML = ""
+        const h3 = document.createElement("h3")
+        h3.textContent = "Recent"
+        browser.appendChild(h3)
+        const scroll = document.createElement("div")
+        scroll.className = "recent-scroll"
+        const grid = document.createElement("div")
+        grid.className = "recent-grid"
+        scroll.appendChild(grid)
+        browser.appendChild(scroll)
+
+        for (const name of names) {
+            const item = document.createElement("button")
+            item.className = "recent-item"
+            item.setAttribute("data-doc-name", name)
+            item.onclick = () => void onOpen(name)
+            const thumb = document.createElement("div")
+            thumb.className = "recent-thumb"
+            const nameEl = document.createElement("span")
+            nameEl.className = "recent-name"
+            nameEl.textContent = name.replace(/\.gcad$/i, "")
+            item.appendChild(thumb)
+            item.appendChild(nameEl)
+            grid.appendChild(item)
+        }
     }
 
     #renderSamplesGrid(): void {
@@ -486,6 +631,32 @@ export class WelcomeScreen extends HTMLElement {
                 thumbDiv.appendChild(canvas)
             } catch (e) {
                 console.warn(`[WelcomeScreen] Failed to load thumbnail for ${name}:`, e)
+            }
+        }
+    }
+
+    async #loadRecentThumbnails(): Promise<void> {
+        const getThumbnail = this.#callbacks.getThumbnail
+        const getContent = this.#callbacks.getDocumentContent
+        if (!getThumbnail || !getContent) return
+
+        const items = this.#samplesBrowser.querySelectorAll(".recent-item")
+        for (const item of items) {
+            const name = item.getAttribute("data-doc-name")
+            if (!name) continue
+            const thumbDiv = item.querySelector(".recent-thumb")!
+            try {
+                const content = await getContent(name)
+                if (!content) continue
+                const imageData = await getThumbnail(content)
+                const canvas = document.createElement("canvas")
+                canvas.width = imageData.width
+                canvas.height = imageData.height
+                canvas.getContext("2d")!.putImageData(imageData, 0, 0)
+                thumbDiv.innerHTML = ""
+                thumbDiv.appendChild(canvas)
+            } catch (e) {
+                console.warn(`[WelcomeScreen] Failed to load thumbnail for recent ${name}:`, e)
             }
         }
     }

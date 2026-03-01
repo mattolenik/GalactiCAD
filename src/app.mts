@@ -35,6 +35,7 @@ import { getEditorLayout } from "./layout/editor-layout.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
+import { getDoc, getRecentDocuments } from "./storage/db.mjs"
 import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
 
 // Start loading dprint formatter (non-blocking); registers providers when ready
@@ -651,6 +652,12 @@ class App {
                 await this.#tabs.newDocument(content, "typescript", suggestedName)
             },
             getThumbnail: (src) => this.renderer.thumbnail(src, 128, 128),
+            getRecentDocuments: () => getRecentDocuments(),
+            getDocumentContent: async (name) => (await getDoc(name))?.content,
+            onOpenRecent: async (name) => {
+                const opened = await this.#tabs.openDocument(name)
+                if (opened) await this.#hideWelcome(menu)
+            },
         })
         this.#welcomeScreen = welcome
         document.body.classList.add("welcome-visible")

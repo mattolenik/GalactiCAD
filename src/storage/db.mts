@@ -146,3 +146,23 @@ export async function setProjectValue(key: string, value: unknown): Promise<void
 export async function deleteProjectValue(key: string): Promise<void> {
     await db.project.delete(key)
 }
+
+// ---------------------------------------------------------------------------
+// Recent documents (max 10)
+// ---------------------------------------------------------------------------
+
+const RECENT_DOCS_KEY = "recentDocuments"
+const RECENT_DOCS_MAX = 10
+
+export async function getRecentDocuments(): Promise<string[]> {
+    const row = await db.preferences.get(RECENT_DOCS_KEY)
+    const arr = row?.value
+    return Array.isArray(arr) ? arr.filter((v): v is string => typeof v === "string") : []
+}
+
+export async function addRecentDocument(name: string): Promise<void> {
+    const current = await getRecentDocuments()
+    const filtered = current.filter((n) => n !== name)
+    const next = [name, ...filtered].slice(0, RECENT_DOCS_MAX)
+    await db.preferences.put({ key: RECENT_DOCS_KEY, value: next })
+}

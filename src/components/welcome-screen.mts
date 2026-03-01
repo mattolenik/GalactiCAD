@@ -86,6 +86,7 @@ export class WelcomeScreen extends HTMLElement {
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
+                gap: 0.5em;
                 min-height: 100%;
                 max-height: 100%;
                 overflow-y: auto;
@@ -97,9 +98,9 @@ export class WelcomeScreen extends HTMLElement {
                 display: flex;
                 flex-direction: row;
                 align-items: stretch;
-                gap: 2.5em;
+                gap: 3em;
                 width: 100%;
-                max-width: 720px;
+                max-width: 760px;
             }
 
             @media (max-width: 640px) {
@@ -110,7 +111,7 @@ export class WelcomeScreen extends HTMLElement {
                 .welcome-layout {
                     flex-direction: column;
                     align-items: center;
-                    gap: 1.5em;
+                    gap: 2em;
                 }
 
                 .brand {
@@ -205,7 +206,7 @@ export class WelcomeScreen extends HTMLElement {
             .actions {
                 display: flex;
                 flex-direction: column;
-                gap: 0.65em;
+                gap: 1em;
                 min-width: 260px;
             }
 
@@ -225,7 +226,7 @@ export class WelcomeScreen extends HTMLElement {
             button:hover {
                 background: color-mix(in srgb, var(${__tone_3}) 60%, transparent);
                 border-color: color-mix(in srgb, var(${__fg_color}) 25%, transparent);
-                transform: translateX(4px);
+                transform: translateX(3px);
             }
 
             button.primary {
@@ -285,7 +286,7 @@ export class WelcomeScreen extends HTMLElement {
                 grid-template-rows: 1fr 1fr;
                 grid-auto-columns: 90px;
                 grid-auto-flow: column;
-                gap: 0.5em;
+                gap: 0.65em;
                 width: max-content;
             }
 

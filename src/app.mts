@@ -32,6 +32,8 @@ import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
 import { getEditorLayout } from "./layout/editor-layout.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
+import { WelcomeScreen } from "./components/welcome-screen.mjs"
+import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
 
 // Start loading dprint formatter (non-blocking); registers providers when ready
 initDprintFormatting()
@@ -62,7 +64,7 @@ const SELECTION_FEEDBACK_DELAY_MS = 50
 
 class App {
     editor!: monaco.editor.IStandaloneCodeEditor
-    renderer: SDFRenderer
+    renderer!: SDFRenderer
     #tabs: DocumentTabs
     #mesh: MeshViewer | null = null
     #meshUpdateToken = 0
@@ -80,6 +82,15 @@ class App {
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
     #polygonEditor: PolygonEditor | null = null
     #editorContainer!: HTMLDivElement
+    #welcomeScreen: WelcomeScreen | null = null
+    #preview: PreviewWindow
+    #getVisiblePreviewRect!: () => DOMRect
+    #toolbarRefs!: {
+        xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton
+        selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
+        exportBtn: import("./components/toolbar.mjs").ToolbarButton
+        devTools: DevToolsPanel
+    }
 
     async build() {
         let src = ""
@@ -445,6 +456,7 @@ class App {
         menu: HTMLElement
     ) {
         this.#settings = SettingsManager.instance
+        this.#preview = preview
         this.#viewports = document.getElementById("viewports")!
         this.#editorContainer = editorContainer
 
@@ -460,7 +472,12 @@ class App {
         this.#tabs = new DocumentTabs(this.editor)
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
-        this.#tabs.restore()
+
+        if (this.#shouldShowWelcome()) {
+            this.#showWelcome()
+        } else {
+            this.#tabs.restore()
+        }
 
         this.#injectStyles()
         requestAnimationFrame(() => {
@@ -468,28 +485,42 @@ class App {
             this.#tabs.style.setProperty("--active-bg", bg)
         })
 
-        const { xrayCheckbox, selectionModeRadio, exportBtn, devTools } = this.#setupToolbar(menu)
+        this.#toolbarRefs = this.#setupToolbar(menu)
         const { getVisiblePreviewRect } = this.#setupLayoutObservers(editorContainer)
+        this.#getVisiblePreviewRect = getVisiblePreviewRect
 
-        this.renderer = new SDFRenderer(preview, this.#tabs, getVisiblePreviewRect)
+        void this.#createRendererAndWire(preview, menu, true)
+            .catch(err => {
+                console.error(`UNEXPECTED ERROR: ${err}`)
+                const msg = document.createElement("p")
+                msg.textContent =
+                    "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
+                preview.replaceWith(msg)
+            })
+    }
 
-        this.renderer
+    #createRendererAndWire(preview: PreviewWindow, menu: HTMLElement, isInitial = false): Promise<void> {
+        this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect)
+        const { xrayCheckbox, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
+        return this.renderer
             .ready()
             .then(() => {
                 this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
-                this.#wireEditorAndTabs()
-                this.#wireGlobalUndoRedo()
-                this.#wireMenu(menu)
+                if (isInitial) {
+                    this.#wireEditorAndTabs()
+                    this.#wireGlobalUndoRedo()
+                    this.#wireMenu(menu)
+                    this.#wireSaveShortcut()
+                    fromEventPattern<monaco.editor.IModelContentChangedEvent>(
+                        h => this.editor.onDidChangeModelContent(h),
+                        (_, disp) => disp.dispose()
+                    )
+                        .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
+                        .subscribe(() => this.build())
+                }
                 this.#wireExportButton(exportBtn)
                 this.#wireDevToolsVersionToggle(preview, devTools)
                 this.build()
-
-                fromEventPattern<monaco.editor.IModelContentChangedEvent>(
-                    h => this.editor.onDidChangeModelContent(h),
-                    (_, disp) => disp.dispose()
-                )
-                    .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
-                    .subscribe(() => this.build())
             })
             .catch(err => {
                 console.error(`UNEXPECTED ERROR: ${err}`)
@@ -591,9 +622,67 @@ class App {
         })
     }
 
+    #shouldShowWelcome(): boolean {
+        const stored = JSON.parse(localStorage.getItem("documents") || "[]") as string[]
+        return stored.length === 0
+    }
+
+    #showWelcome(): void {
+        const menu = (document.querySelector("menu-button") ?? document.getElementById("menuButton")) as HTMLElement
+        const welcome = new WelcomeScreen({
+            onCreateNew: async () => {
+                await this.#hideWelcome(menu)
+                this.#tabs.newDocument()
+            },
+            onOpenModel: async () => {
+                const result = await openSingleGcad()
+                if (result) {
+                    await this.#hideWelcome(menu)
+                    this.#tabs.addDocumentFromFile(result.name, result.content, result.handle)
+                }
+            },
+            onOpenFolder: async () => {
+                const dirHandle = await openFolder()
+                if (dirHandle) {
+                    await this.#hideWelcome(menu)
+                    await this.#tabs.loadFromFolder(dirHandle)
+                }
+            },
+            onSamplePick: async (content, suggestedName) => {
+                await this.#hideWelcome(menu)
+                this.#tabs.newDocument(content, "typescript", suggestedName)
+            },
+        })
+        this.#welcomeScreen = welcome
+        document.body.classList.add("welcome-visible")
+        document.body.appendChild(welcome)
+    }
+
+    #showWelcomeAndDisposePreview(): void {
+        this.renderer.setSelection([], true)
+        this.renderer.stopLoop()
+        this.renderer.dispose()
+        this.#preview.remove()
+        this.#showWelcome()
+    }
+
+    async #hideWelcome(menu?: HTMLElement): Promise<void> {
+        this.#welcomeScreen?.remove()
+        this.#welcomeScreen = null
+        document.body.classList.remove("welcome-visible")
+        if (!this.#viewports.contains(this.#preview)) {
+            this.#viewports.appendChild(this.#preview)
+            const menuEl = menu ?? (document.querySelector("menu-button") ?? document.getElementById("menuButton")) as HTMLElement
+            await this.#createRendererAndWire(this.#preview, menuEl, false)
+        }
+    }
+
     #injectStyles() {
         const style = document.createElement("style")
         style.textContent = `
+            body.welcome-visible #workspace {
+                display: none !important;
+            }
             :root {
                 ${__fg_color}: whitesmoke;
                 ${__bg_color}: #333;
@@ -771,6 +860,11 @@ class App {
     }
 
     #wireEditorAndTabs() {
+        this.#tabs.addEventListener("tabClosed", () => {
+            if (this.#tabs.documentNames.length === 0) {
+                this.#showWelcomeAndDisposePreview()
+            }
+        })
         this.#tabs.addEventListener("activeTabChanged", (e: Event) => {
             const event = e as CustomEvent<string | undefined>
             this.#monacoHighlighter.clearHighlighting()
@@ -807,8 +901,16 @@ class App {
     }
 
     #wireMenu(menu: HTMLElement) {
+        const openModelItem = document.createElement("span")
+        openModelItem.innerHTML = "Open Model"
+        const openFolderItem = document.createElement("span")
+        openFolderItem.innerHTML = "Open Folder"
         const newItem = document.createElement("span")
         newItem.innerHTML = "New Scene"
+        const saveItem = document.createElement("span")
+        saveItem.innerHTML = "Save"
+        const saveAsItem = document.createElement("span")
+        saveAsItem.innerHTML = "Save As"
         const renameItem = document.createElement("span")
         renameItem.innerHTML = "Rename"
         const duplicateItem = document.createElement("span")
@@ -817,7 +919,11 @@ class App {
         deleteItem.innerHTML = "Delete"
 
         const menuItems: Array<{ element: HTMLElement; action: () => void }> = [
+            { element: openModelItem, action: () => void this.#handleOpenModel() },
+            { element: openFolderItem, action: () => void this.#handleOpenFolder() },
             { element: newItem, action: () => this.#tabs.newDocument(undefined, "javascript") },
+            { element: saveItem, action: () => void this.#handleSave() },
+            { element: saveAsItem, action: () => void this.#handleSaveAs() },
             { element: renameItem, action: () => this.#tabs.renameCurrentTab() },
             { element: duplicateItem, action: () => this.#tabs.duplicateCurrentTab() },
             { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
@@ -827,6 +933,49 @@ class App {
             onOpen: name => this.#tabs.openStoredDocument(name),
         })
         menu.replaceWith(menuButton)
+    }
+
+    async #handleOpenModel(): Promise<void> {
+        if (!isFileSystemAccessAvailable()) {
+            alert("File System Access is not available. Use a modern browser (Chrome, Edge) with HTTPS.")
+            return
+        }
+        const result = await openSingleGcad()
+        if (result) this.#tabs.addDocumentFromFile(result.name, result.content, result.handle)
+    }
+
+    async #handleOpenFolder(): Promise<void> {
+        if (!isFileSystemAccessAvailable()) {
+            alert("File System Access is not available. Use a modern browser (Chrome, Edge) with HTTPS.")
+            return
+        }
+        const dirHandle = await openFolder()
+        if (dirHandle) await this.#tabs.loadFromFolder(dirHandle)
+    }
+
+    async #handleSave(): Promise<void> {
+        const name = this.#tabs.active
+        if (!name) return
+        if (this.#tabs.hasFileHandle(name)) {
+            await this.#tabs.saveToDisk(name)
+        }
+        // localStorage-backed docs are auto-saved; use Save As to save to disk
+    }
+
+    async #handleSaveAs(): Promise<void> {
+        const name = this.#tabs.active
+        if (!name) return
+        await this.#tabs.saveAs(name)
+    }
+
+    #wireSaveShortcut(): void {
+        document.addEventListener("keydown", (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "s") return
+            const active = document.activeElement
+            if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return
+            e.preventDefault()
+            void this.#handleSave()
+        })
     }
 
     async #wireExportButton(exportBtn: import("./components/toolbar.mjs").ToolbarButton) {

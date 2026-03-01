@@ -5,6 +5,7 @@ import { OrderedMap } from "../collections/orderedMap.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_0, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { YesNoDialog } from "./yesno-dialog.mjs"
+import { readGcadFiles, saveAsGcad, writeToFile } from "../fs/file-picker.mjs"
 
 const LONG_PRESS_MS = 500
 const MOVE_THRESHOLD_PX = 5
@@ -13,10 +14,12 @@ const DEBOUNCE_SAVE_MS = 1000
 export class DocumentTabs extends HTMLElement {
     #active?: string
     #docs = new OrderedMap<string, monaco.editor.ITextModel>()
+    #fileHandles = new Map<string, FileSystemFileHandle>()
     #editor: monaco.editor.IStandaloneCodeEditor
     #subscriptions = new Map<string, Subscription>()
     #tabContainer: HTMLElement
     #topUntitledIndex: number = 0
+    #diskSyncInterval: ReturnType<typeof setInterval> | null = null
 
     #draggingName: string | null = null
     #longPressTimer: ReturnType<typeof setTimeout> | null = null
@@ -175,6 +178,7 @@ export class DocumentTabs extends HTMLElement {
     disconnectedCallback() {
         this.#preDragAc?.abort()
         this.#dragAc?.abort()
+        this.#stopDiskSync()
         for (const sub of this.#subscriptions.values()) {
             sub.unsubscribe()
         }
@@ -201,6 +205,11 @@ export class DocumentTabs extends HTMLElement {
         return Array.from(this.#docs.keys())
     }
 
+    /** Whether the given document has a file handle (is backed by disk). */
+    hasFileHandle(name: string): boolean {
+        return this.#fileHandles.has(name)
+    }
+
     /** Names of all documents stored in localStorage that are not currently open as tabs */
     get closedDocumentNames(): string[] {
         const open = new Set(this.#docs.keys())
@@ -213,6 +222,22 @@ export class DocumentTabs extends HTMLElement {
             }
         }
         return names
+    }
+
+    /** Add a document from file content, optionally with a file handle for disk sync. */
+    addDocumentFromFile(name: string, content: string, handle?: FileSystemFileHandle): void {
+        if (this.#docs.has(name)) {
+            this.switchTo(name)
+            return
+        }
+        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+        const model = monaco.editor.createModel(content, "typescript", uri)
+        this.#docs.set(name, model)
+        if (handle) this.#fileHandles.set(name, handle)
+        this.#watchModel(name, model)
+        this.#startDiskSyncIfNeeded()
+        this.switchTo(name)
+        this.#updateStoredOrder()
     }
 
     /** Open a stored document that is not currently a tab */
@@ -231,14 +256,15 @@ export class DocumentTabs extends HTMLElement {
         this.#updateStoredOrder()
     }
 
-    /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts */
-    newDocument(content = defaultContent, language = "typescript"): string | undefined {
+    /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts.
+     *  When suggestedName is provided and docs.size is 0, uses it without prompting. */
+    newDocument(content = defaultContent, language = "typescript", suggestedName?: string): string | undefined {
         this.#topUntitledIndex =
             Array.from(this.#docs.keys())
                 .map(s => parseInt(s.match(/^new scene (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
                 .reduce((p, c) => Math.max(p, c), 0) + 1
 
-        const defaultName = `new scene ${this.#topUntitledIndex}`
+        const defaultName = suggestedName ?? `new scene ${this.#topUntitledIndex}`
         const name = this.#docs.size > 0 ? window.prompt("Give the new scene a name", defaultName)?.trim() : defaultName
         if (!name) return
 
@@ -249,6 +275,64 @@ export class DocumentTabs extends HTMLElement {
         this.switchTo(name)
         this.#updateStoredOrder()
         return name
+    }
+
+    /** Load all .gcad files from a directory. Clears current docs. */
+    async loadFromFolder(dirHandle: FileSystemDirectoryHandle): Promise<void> {
+        for (const name of Array.from(this.#docs.keys())) {
+            this.#subscriptions.get(name)?.unsubscribe()
+            this.#subscriptions.delete(name)
+            this.#fileHandles.delete(name)
+            this.#docs.get(name)?.dispose()
+            this.#docs.delete(name)
+        }
+        this.#active = undefined
+        this.#editor.setModel(null!)
+        this.#stopDiskSync()
+
+        const entries = await readGcadFiles(dirHandle)
+        for (const { name, handle, content } of entries) {
+            const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+            const model = monaco.editor.createModel(content, "typescript", uri)
+            this.#docs.set(name, model)
+            this.#fileHandles.set(name, handle)
+            this.#watchModel(name, model)
+        }
+        this.#startDiskSyncIfNeeded()
+        const first = this.#docs.keys().next().value
+        if (first) this.switchTo(first)
+        this.#updateStoredOrder()
+    }
+
+    /** Load a single file. Adds to tabs with handle. */
+    async loadFromSingleFile(fileHandle: FileSystemFileHandle): Promise<void> {
+        const file = await fileHandle.getFile()
+        const content = await file.text()
+        const name = file.name
+        this.addDocumentFromFile(name, content, fileHandle)
+    }
+
+    /** Write current content of a file-backed doc to disk. No-op if doc has no handle. */
+    async saveToDisk(name: string): Promise<boolean> {
+        const handle = this.#fileHandles.get(name)
+        const model = this.#docs.get(name)
+        if (!handle || !model) return false
+        await writeToFile(handle, model.getValue())
+        return true
+    }
+
+    /** Save current doc to a new file. Associates handle and converts to file-backed. Returns true if saved, false if user cancels. */
+    async saveAs(name: string): Promise<boolean> {
+        const model = this.#docs.get(name)
+        if (!model) return false
+        const handle = await saveAsGcad(name)
+        if (!handle) return false
+        await writeToFile(handle, model.getValue())
+        this.#fileHandles.set(name, handle)
+        this.#startDiskSyncIfNeeded()
+        this.#updateStoredOrder()
+        this.#renderTabs()
+        return true
     }
 
     /** Restore tabs from saved order or localStorage, or default */
@@ -290,16 +374,24 @@ export class DocumentTabs extends HTMLElement {
         }
     }
 
-    /** Observe model changes and save debounced */
+    /** Observe model changes and save debounced. File-backed docs sync to disk via periodic timer; localStorage-backed docs save to localStorage. */
     #watchModel(name: string, model: monaco.editor.ITextModel) {
         this.#subscriptions.get(name)?.unsubscribe()
         const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
             handler => model.onDidChangeContent(handler),
             (_handler, subscription) => (subscription as monaco.IDisposable).dispose()
         ).pipe(bufferTime(DEBOUNCE_SAVE_MS))
-        const sub = change$.subscribe(() => localStorage.setItem(`document:${name}`, model.getValue()))
+        const sub = change$.subscribe(() => {
+            if (this.#fileHandles.has(name)) {
+                // File-backed: disk sync happens via periodic timer
+            } else {
+                localStorage.setItem(`document:${name}`, model.getValue())
+            }
+        })
         this.#subscriptions.set(name, sub)
-        localStorage.setItem(`document:${name}`, model.getValue())
+        if (!this.#fileHandles.has(name)) {
+            localStorage.setItem(`document:${name}`, model.getValue())
+        }
     }
 
     closeCurrentTab() {
@@ -311,8 +403,10 @@ export class DocumentTabs extends HTMLElement {
         const sub = this.#subscriptions.get(name)
         if (sub) sub.unsubscribe()
         this.#subscriptions.delete(name)
+        this.#fileHandles.delete(name)
         this.#docs.get(name)?.dispose()
         this.#docs.delete(name)
+        this.#stopDiskSyncIfEmpty()
         this.#renderTabs()
         this.#updateStoredOrder()
         this.dispatchEvent(new CustomEvent("tabClosed", { detail: name }))
@@ -412,11 +506,16 @@ export class DocumentTabs extends HTMLElement {
             }
         }
 
-        // Update subscription key
+        // Update subscription key and file handle
         const sub = this.#subscriptions.get(oldName)
         if (sub) {
             this.#subscriptions.delete(oldName)
             this.#subscriptions.set(newName, sub)
+        }
+        const handle = this.#fileHandles.get(oldName)
+        if (handle) {
+            this.#fileHandles.delete(oldName)
+            this.#fileHandles.set(newName, handle)
         }
 
         // Re-watch model with new name for future saves
@@ -666,6 +765,35 @@ export class DocumentTabs extends HTMLElement {
             this.switchTo(name, true)
         }
         this.#renderTabs()
+    }
+
+    #startDiskSyncIfNeeded(): void {
+        if (this.#fileHandles.size === 0 || this.#diskSyncInterval !== null) return
+        const intervalSec = Math.max(1, SettingsManager.instance.getGlobal().app.diskSyncIntervalSeconds)
+        this.#diskSyncInterval = setInterval(() => this.#syncFileBackedDocs(), intervalSec * 1000)
+    }
+
+    #stopDiskSyncIfEmpty(): void {
+        if (this.#fileHandles.size === 0) this.#stopDiskSync()
+    }
+
+    #stopDiskSync(): void {
+        if (this.#diskSyncInterval !== null) {
+            clearInterval(this.#diskSyncInterval)
+            this.#diskSyncInterval = null
+        }
+    }
+
+    async #syncFileBackedDocs(): Promise<void> {
+        for (const [name, handle] of this.#fileHandles) {
+            const model = this.#docs.get(name)
+            if (!model) continue
+            try {
+                await writeToFile(handle, model.getValue())
+            } catch (err) {
+                console.error(`[DocumentTabs] Disk sync failed for ${name}:`, err)
+            }
+        }
     }
 }
 

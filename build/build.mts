@@ -15,6 +15,7 @@ const Static = {
     "src/index.css": "/",
     "src/site.webmanifest": "/",
     "src/assets/*": "/assets",
+    "src/scene/samples/*.gcad": "/assets/samples",
     "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
 }
 

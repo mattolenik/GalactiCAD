@@ -688,6 +688,10 @@ export class SDFRenderer {
         requestAnimationFrame((t: number) => this.#update(t))
     }
 
+    stopLoop(): void {
+        this.#started = false
+    }
+
     #buildRenderPayload(resOverride?: [number, number]): Parameters<Worker["postMessage"]>[0] {
         const cam = this.#controls
         const res =
@@ -723,7 +727,7 @@ export class SDFRenderer {
     }
 
     #update(time: number): void {
-        requestAnimationFrame((t: number) => this.#update(t))
+        if (this.#started) requestAnimationFrame((t: number) => this.#update(t))
         if (!this.#needsRender) return
         if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
         const minFrameTime = 1000 / this.#targetFPS
@@ -739,6 +743,11 @@ export class SDFRenderer {
             this.#pendingBuildResolve = resolve
             this.#worker.postMessage({ type: "build", src: src.trim(), documentName: documentName ?? undefined })
         })
+    }
+
+    /** Clear the preview by building a minimal empty scene. */
+    clearScene(): Promise<void> {
+        return this.build("return sphere.radius(0.001)")
     }
 
     async renderMesh(_src: string): Promise<MeshData> {

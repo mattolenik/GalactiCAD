@@ -33,7 +33,7 @@ export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export interface GlobalSettings {
     preview: { movementScale: number; selectionMode: SelectionMode }
     meshViewer: { translucentFaces: boolean; wireframe: boolean }
-    app: { meshViewerEnabled: boolean; devToolsEnabled: boolean; showFps: boolean }
+    app: { meshViewerEnabled: boolean; devToolsEnabled: boolean; showFps: boolean; diskSyncIntervalSeconds: number }
     layout: LayoutSettings
 }
 
@@ -61,7 +61,7 @@ function defaultGlobalSettings(): GlobalSettings {
     return {
         preview: { movementScale: 0.5, selectionMode: "object" },
         meshViewer: { translucentFaces: false, wireframe: false },
-        app: { meshViewerEnabled: false, devToolsEnabled: false, showFps: true },
+        app: { meshViewerEnabled: false, devToolsEnabled: false, showFps: true, diskSyncIntervalSeconds: 30 },
         layout: defaultLayout(),
     }
 }
@@ -255,10 +255,12 @@ export class SettingsManager {
                 const preview = { ...def.preview, ...parsed.preview }
                 // Migrate removed contour mode to object
                 if (preview.selectionMode === "contour") preview.selectionMode = "object"
+                const app = { ...def.app, ...parsed.app }
+                if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 this.#globalSettings = {
                     preview,
                     meshViewer: { ...def.meshViewer, ...parsed.meshViewer },
-                    app: { ...def.app, ...parsed.app },
+                    app,
                     layout: { ...def.layout, ...parsed.layout },
                 }
                 return

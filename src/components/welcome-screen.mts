@@ -1,4 +1,4 @@
-import { __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
+import { __fg_color, __tone_1, __tone_3, __tone_accent } from "../style/style.mjs"
 import { isFileSystemAccessAvailable } from "../fs/file-picker.mjs"
 
 declare const __SAMPLE_NAMES__: readonly string[]
@@ -38,46 +38,46 @@ export class WelcomeScreen extends HTMLElement {
                 position: fixed;
                 inset: 0;
                 z-index: 9000;
-                background: linear-gradient(165deg, #1a2332 0%, #0d1520 40%, #0a0f18 100%);
+                background: linear-gradient(180deg, #141b26 0%, #0e1319 50%, #0a0e14 100%);
                 overflow: hidden;
             }
 
             .bg-pattern {
                 position: absolute;
                 inset: 0;
-                opacity: 0.4;
+                opacity: 0.35;
                 background-image:
-                    radial-gradient(1.5px 1.5px at 20px 30px, rgba(255,255,255,0.15), transparent),
-                    radial-gradient(1.5px 1.5px at 40px 70px, rgba(255,255,255,0.1), transparent),
-                    radial-gradient(1.5px 1.5px at 50px 160px, rgba(255,255,255,0.12), transparent),
-                    radial-gradient(1.5px 1.5px at 90px 40px, rgba(255,255,255,0.08), transparent),
-                    radial-gradient(1.5px 1.5px at 130px 80px, rgba(255,255,255,0.1), transparent);
-                background-size: 200px 200px;
-                animation: drift 60s linear infinite;
+                    radial-gradient(1px 1px at 24px 48px, rgba(255,255,255,0.12), transparent),
+                    radial-gradient(1px 1px at 72px 96px, rgba(255,255,255,0.08), transparent),
+                    radial-gradient(1px 1px at 120px 24px, rgba(255,255,255,0.1), transparent),
+                    radial-gradient(1px 1px at 168px 144px, rgba(255,255,255,0.06), transparent),
+                    radial-gradient(1px 1px at 216px 72px, rgba(255,255,255,0.09), transparent);
+                background-size: 240px 240px;
+                animation: drift 80s linear infinite;
             }
 
             .bg-glow {
                 position: absolute;
-                top: -30%;
+                top: -20%;
                 left: 50%;
                 transform: translateX(-50%);
-                width: 80%;
-                height: 60%;
-                background: radial-gradient(ellipse, rgba(0, 122, 204, 0.12) 0%, transparent 70%);
+                width: 100%;
+                height: 50%;
+                background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0, 122, 204, 0.08) 0%, transparent 60%);
                 pointer-events: none;
             }
 
             .bg-g {
                 position: absolute;
                 inset: 0;
-                background: url('/assets/g.svg') center/75vmin no-repeat;
-                opacity: 0.1;
+                background: url('/assets/g.svg') center/60vmin no-repeat;
+                opacity: 0.06;
                 pointer-events: none;
             }
 
             @keyframes drift {
                 from { transform: translate(0, 0); }
-                to { transform: translate(-100px, -100px); }
+                to { transform: translate(-120px, -80px); }
             }
 
             .center {
@@ -86,51 +86,87 @@ export class WelcomeScreen extends HTMLElement {
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                gap: 0.5em;
+                gap: 0;
                 min-height: 100%;
                 max-height: 100%;
                 overflow-y: auto;
-                padding: 2em;
+                padding: 2.5em 2em;
                 box-sizing: border-box;
+            }
+
+            .main-panel {
+                margin-bottom: 2.5em;
             }
 
             .welcome-layout {
                 display: flex;
                 flex-direction: row;
-                align-items: stretch;
-                gap: 3em;
+                align-items: flex-start;
+                gap: 0;
                 width: 100%;
-                max-width: 760px;
+                max-width: 920px;
+                padding: 0 1em;
             }
 
-            @media (max-width: 640px) {
+            .welcome-actions {
+                position: relative;
+                padding-right: 3em;
+                padding-top: 2.05em;
+            }
+
+            .welcome-actions::after {
+                content: "";
+                position: absolute;
+                top: 2.05em;
+                right: 0;
+                bottom: 0;
+                width: 1px;
+                background: color-mix(in srgb, var(${__fg_color}) 8%, transparent);
+            }
+
+            .samples-browser {
+                padding-left: 3em;
+            }
+
+            @media (max-width: 720px) {
                 .center {
-                    padding: 1.25em;
+                    padding: 1.5em 1.25em;
+                }
+
+                .main-panel {
+                    margin-bottom: 2em;
                 }
 
                 .welcome-layout {
                     flex-direction: column;
                     align-items: center;
-                    gap: 2em;
-                }
-
-                .brand {
-                    margin-bottom: 1.5em;
-                }
-
-                h1 {
-                    font-size: 2rem;
+                    gap: 2.5em;
                 }
 
                 .welcome-actions {
+                    padding-right: 0;
+                    padding-top: 0;
                     width: 100%;
-                    max-width: 280px;
+                    max-width: 320px;
                     min-width: unset;
                 }
 
+                .welcome-actions::after {
+                    display: none;
+                }
+
                 .samples-browser {
+                    padding-left: 0;
                     width: 100%;
                     max-width: 100%;
+                }
+
+                .brand {
+                    margin-bottom: 0;
+                }
+
+                h1 {
+                    font-size: 2.25rem;
                 }
 
                 .samples-scroll {
@@ -140,25 +176,25 @@ export class WelcomeScreen extends HTMLElement {
 
                 .samples-grid {
                     grid-template-rows: unset;
-                    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+                    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
                     grid-auto-flow: row;
                     width: 100%;
                     max-width: 100%;
                 }
             }
 
-            @media (max-width: 380px) {
+            @media (max-width: 400px) {
                 .center {
-                    padding: 1em;
+                    padding: 1.25em 1em;
                 }
 
                 h1 {
-                    font-size: 1.65rem;
+                    font-size: 1.85rem;
                 }
 
                 .samples-grid {
-                    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-                    gap: 0.4em;
+                    grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+                    gap: 0.5em;
                 }
 
                 .sample-thumb {
@@ -175,8 +211,8 @@ export class WelcomeScreen extends HTMLElement {
                 display: flex;
                 flex-direction: column;
                 flex-shrink: 0;
-                gap: 1.25em;
-                min-width: 260px;
+                gap: 0.75em;
+                min-width: 280px;
             }
 
             .welcome-actions button {
@@ -185,60 +221,67 @@ export class WelcomeScreen extends HTMLElement {
 
             .brand {
                 text-align: center;
-                margin-bottom: 2.5em;
+                margin-bottom: 0;
             }
 
             h1 {
                 font-family: FiraCode, ui-monospace, monospace;
-                font-size: 2.5rem;
+                font-size: 2.75rem;
                 font-weight: 300;
-                letter-spacing: 0.08em;
+                letter-spacing: 0.1em;
                 color: var(${__fg_color});
-                margin: 0 0 0.35em;
-                text-shadow: 0 0 40px rgba(0, 122, 204, 0.2);
+                margin: 0 0 0.6em;
+                text-shadow: 0 0 60px rgba(0, 122, 204, 0.15);
             }
 
             .tagline {
-                font-size: 0.95rem;
+                font-size: 1rem;
                 font-weight: 400;
-                color: color-mix(in srgb, var(${__fg_color}) 70%, transparent);
-                letter-spacing: 0.04em;
-                max-width: 300px;
+                color: color-mix(in srgb, var(${__fg_color}) 65%, transparent);
+                letter-spacing: 0.03em;
+                line-height: 1.5;
+                margin: 0 auto;
             }
 
             button {
-                padding: 0.85em 1.5em;
-                font-size: 1rem;
-                border: 1px solid color-mix(in srgb, var(${__fg_color}) 15%, transparent);
+                padding: 0.9em 1.4em;
+                font-size: 0.95rem;
+                border: 1px solid color-mix(in srgb, var(${__fg_color}) 12%, transparent);
                 cursor: pointer;
                 color: var(${__fg_color});
-                background: color-mix(in srgb, var(${__tone_1}) 40%, transparent);
-                transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+                background: color-mix(in srgb, var(${__tone_1}) 25%, transparent);
+                transition: background 0.2s ease, border-color 0.2s ease, transform 0.12s ease, box-shadow 0.2s ease;
                 text-align: left;
-                border-radius: 8px;
-                backdrop-filter: blur(8px);
+                border-radius: 10px;
+                backdrop-filter: blur(10px);
             }
 
             button:hover {
-                background: color-mix(in srgb, var(${__tone_3}) 60%, transparent);
-                border-color: color-mix(in srgb, var(${__fg_color}) 25%, transparent);
-                transform: translateX(3px);
+                background: color-mix(in srgb, var(${__tone_3}) 50%, transparent);
+                border-color: color-mix(in srgb, var(${__fg_color}) 22%, transparent);
+                transform: translateX(2px);
+            }
+
+            button:focus-visible {
+                outline: 2px solid var(${__tone_accent});
+                outline-offset: 2px;
             }
 
             button.primary {
                 background: var(${__tone_accent});
-                border-color: color-mix(in srgb, var(${__tone_accent}) 80%, white);
-                box-shadow: 0 4px 20px color-mix(in srgb, var(${__tone_accent}) 35%, transparent);
+                color: #fff;
+                border-color: color-mix(in srgb, var(${__tone_accent}) 85%, white);
+                box-shadow: 0 2px 12px color-mix(in srgb, var(${__tone_accent}) 30%, transparent);
             }
 
             button.primary:hover {
-                background: color-mix(in srgb, var(${__tone_accent}) 90%, white);
+                background: color-mix(in srgb, var(${__tone_accent}) 95%, white);
                 border-color: var(${__tone_accent});
-                box-shadow: 0 6px 28px color-mix(in srgb, var(${__tone_accent}) 45%, transparent);
+                box-shadow: 0 4px 20px color-mix(in srgb, var(${__tone_accent}) 40%, transparent);
             }
 
             button:disabled {
-                opacity: 0.5;
+                opacity: 0.45;
                 cursor: not-allowed;
                 transform: none;
             }
@@ -251,16 +294,17 @@ export class WelcomeScreen extends HTMLElement {
             }
 
             .samples-browser h3 {
-                font-size: 0.95rem;
-                font-weight: 400;
-                color: var(${__fg_color});
-                margin: 0 0 0.5em;
+                font-size: 0.82rem;
+                font-weight: 500;
+                color: color-mix(in srgb, var(${__fg_color}) 70%, transparent);
+                margin: 0 0 0.85em;
+                letter-spacing: 0.05em;
             }
 
             .samples-scroll {
                 overflow-x: auto;
                 overflow-y: hidden;
-                padding-bottom: 0.5em;
+                padding: 0.25em 0 0.75em;
             }
 
             .samples-scroll::-webkit-scrollbar {
@@ -268,21 +312,21 @@ export class WelcomeScreen extends HTMLElement {
             }
 
             .samples-scroll::-webkit-scrollbar-track {
-                background: color-mix(in srgb, var(${__fg_color}) 8%, transparent);
+                background: color-mix(in srgb, var(${__fg_color}) 6%, transparent);
                 border-radius: 3px;
             }
 
             .samples-scroll::-webkit-scrollbar-thumb {
-                background: color-mix(in srgb, var(${__fg_color}) 25%, transparent);
+                background: color-mix(in srgb, var(${__fg_color}) 20%, transparent);
                 border-radius: 3px;
             }
 
             .samples-grid {
                 display: grid;
                 grid-template-rows: 1fr 1fr;
-                grid-auto-columns: 90px;
+                grid-auto-columns: 96px;
                 grid-auto-flow: column;
-                gap: 0.75em;
+                gap: 0.85em;
                 width: max-content;
             }
 
@@ -290,30 +334,36 @@ export class WelcomeScreen extends HTMLElement {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                gap: 0.35em;
-                padding: 0.4em;
+                gap: 0.4em;
+                padding: 0.5em;
                 font-size: 0.8rem;
-                border: 1px solid color-mix(in srgb, var(${__fg_color}) 15%, transparent);
+                border: 1px solid color-mix(in srgb, var(${__fg_color}) 10%, transparent);
                 cursor: pointer;
                 color: var(${__fg_color});
-                background: color-mix(in srgb, var(${__tone_1}) 40%, transparent);
-                transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+                background: color-mix(in srgb, var(${__tone_1}) 20%, transparent);
+                transition: background 0.2s ease, border-color 0.2s ease, transform 0.12s ease, box-shadow 0.2s ease;
                 text-align: center;
-                border-radius: 6px;
+                border-radius: 8px;
                 backdrop-filter: blur(8px);
             }
 
             .sample-item:hover {
-                background: color-mix(in srgb, var(${__tone_3}) 60%, transparent);
-                border-color: color-mix(in srgb, var(${__fg_color}) 25%, transparent);
-                transform: scale(1.02);
+                background: color-mix(in srgb, var(${__tone_3}) 45%, transparent);
+                border-color: color-mix(in srgb, var(${__fg_color}) 20%, transparent);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            }
+
+            .sample-item:focus-visible {
+                outline: 2px solid var(${__tone_accent});
+                outline-offset: 2px;
             }
 
             .sample-thumb {
-                width: 64px;
-                height: 64px;
-                background: color-mix(in srgb, var(${__fg_color}) 10%, transparent);
-                border-radius: 4px;
+                width: 68px;
+                height: 68px;
+                background: color-mix(in srgb, var(${__fg_color}) 8%, transparent);
+                border-radius: 6px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -328,12 +378,13 @@ export class WelcomeScreen extends HTMLElement {
             }
 
             .sample-name {
-                font-size: 0.75rem;
-                line-height: 1.2;
+                font-size: 0.72rem;
+                line-height: 1.25;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
                 max-width: 100%;
+                color: color-mix(in srgb, var(${__fg_color}) 90%, transparent);
             }
         </style>`
     }
@@ -403,6 +454,10 @@ export class WelcomeScreen extends HTMLElement {
             const nameEl = document.createElement("span")
             nameEl.className = "sample-name"
             nameEl.textContent = name
+                .replace(/\.gcad$/i, "")
+                .replace(/([a-z])([A-Z])/g, "$1 $2")
+                .replace(/[-_]/g, " ")
+                .replace(/\b\w/g, (c) => c.toUpperCase())
             item.appendChild(thumb)
             item.appendChild(nameEl)
             grid.appendChild(item)

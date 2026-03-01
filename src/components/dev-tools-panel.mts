@@ -218,6 +218,12 @@ export class DevToolsPanel extends HTMLElement {
         })
         shadow.appendChild(benchmarkThisButton)
 
+        // Factory Reset button
+        const factoryResetButton = document.createElement("button")
+        factoryResetButton.textContent = "Factory Reset"
+        factoryResetButton.addEventListener("click", () => this.#factoryReset())
+        shadow.appendChild(factoryResetButton)
+
         // Hidden by default
         this.style.display = "none"
     }
@@ -352,6 +358,37 @@ export class DevToolsPanel extends HTMLElement {
             statusDialog.updateMessage(`Benchmark failed: ${errorMsg}`, true)
             await dialogPromise
         }
+    }
+
+    async #factoryReset(): Promise<void> {
+        const { YesNoDialog } = await import("./yesno-dialog.mjs")
+        const dialog = new YesNoDialog(
+            "Clear all localStorage, IndexedDB, and CacheStorage, then reload? This cannot be undone."
+        )
+        const confirmed = await dialog.show()
+        if (!confirmed) return
+
+        localStorage.clear()
+        sessionStorage.clear()
+
+        const dbNames = await indexedDB.databases()
+        await Promise.all(
+            (dbNames ?? [])
+                .filter((db): db is { name: string } => !!db.name)
+                .map(
+                    ({ name }) =>
+                        new Promise<void>((resolve, reject) => {
+                            const req = indexedDB.deleteDatabase(name)
+                            req.onsuccess = () => resolve()
+                            req.onerror = () => reject(req.error)
+                        })
+                )
+        )
+
+        const cacheNames = await caches.keys()
+        await Promise.all(cacheNames.map((name) => caches.delete(name)))
+
+        location.reload()
     }
 }
 

@@ -41,6 +41,9 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
         case "benchmark":
             if (core) core.handleBenchmark(msg.frameCount, msg.waitForGPU)
             break
+        case "thumbnail":
+            if (core) core.handleThumbnail(msg.src, msg.width, msg.height)
+            break
         default:
             console.log("[RenderWorker] unknown message", (msg as { type: string }).type)
     }

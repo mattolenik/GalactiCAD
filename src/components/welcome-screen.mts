@@ -9,12 +9,13 @@ export interface WelcomeScreenCallbacks {
     onOpenModel: () => void | Promise<void>
     onOpenFolder: () => void | Promise<void>
     onSamplePick: (content: string, suggestedName: string) => void
+    getThumbnail?: (src: string) => Promise<ImageData>
 }
 
 export class WelcomeScreen extends HTMLElement {
     #callbacks: WelcomeScreenCallbacks
     #mainPanel: HTMLElement
-    #samplesPanel: HTMLElement
+    #samplesBrowser: HTMLElement
     #shadow: ShadowRoot
 
     constructor(callbacks: WelcomeScreenCallbacks) {
@@ -23,10 +24,10 @@ export class WelcomeScreen extends HTMLElement {
         this.#shadow = this.attachShadow({ mode: "open" })
         this.#shadow.innerHTML = this.#getStyles() + this.#getMarkup()
         this.#mainPanel = this.#shadow.querySelector(".main-panel")!
-        this.#samplesPanel = this.#shadow.querySelector(".samples-panel")!
-        this.#samplesPanel.hidden = true
+        this.#samplesBrowser = this.#shadow.querySelector(".samples-browser")!
         this.#renderMainPanel()
-        this.#renderSamplesList()
+        this.#renderSamplesGrid()
+        this.#loadThumbnails()
     }
 
     #getStyles(): string {
@@ -87,6 +88,21 @@ export class WelcomeScreen extends HTMLElement {
                 justify-content: center;
                 min-height: 100%;
                 padding: 2em;
+            }
+
+            .welcome-layout {
+                display: flex;
+                flex-direction: row;
+                align-items: stretch;
+                gap: 2.5em;
+                width: 100%;
+                max-width: 720px;
+            }
+
+            .welcome-actions {
+                display: flex;
+                flex-direction: column;
+                flex-shrink: 0;
             }
 
             .brand {
@@ -156,35 +172,97 @@ export class WelcomeScreen extends HTMLElement {
                 transform: none;
             }
 
-            .samples-panel {
-                width: 100%;
-                max-width: 400px;
-            }
-
-            .samples-panel h2 {
-                font-size: 1.25rem;
-                font-weight: 400;
-                color: var(${__fg_color});
-                margin-bottom: 1em;
-            }
-
-            .samples-list {
+            .samples-browser {
+                flex: 1;
+                min-width: 0;
                 display: flex;
                 flex-direction: column;
-                gap: 0.5em;
-                max-height: 60vh;
-                overflow-y: auto;
             }
 
-            .samples-list button {
-                padding: 0.5em 1em;
+            .samples-browser h3 {
                 font-size: 0.95rem;
+                font-weight: 400;
+                color: var(${__fg_color});
+                margin: 0 0 0.5em;
             }
 
-            .back {
-                margin-bottom: 1em;
-                padding: 0.5em 1em;
-                font-size: 0.9rem;
+            .samples-scroll {
+                overflow-x: auto;
+                overflow-y: hidden;
+                padding-bottom: 0.5em;
+            }
+
+            .samples-scroll::-webkit-scrollbar {
+                height: 6px;
+            }
+
+            .samples-scroll::-webkit-scrollbar-track {
+                background: color-mix(in srgb, var(${__fg_color}) 8%, transparent);
+                border-radius: 3px;
+            }
+
+            .samples-scroll::-webkit-scrollbar-thumb {
+                background: color-mix(in srgb, var(${__fg_color}) 25%, transparent);
+                border-radius: 3px;
+            }
+
+            .samples-grid {
+                display: grid;
+                grid-template-rows: 1fr 1fr;
+                grid-auto-columns: 90px;
+                grid-auto-flow: column;
+                gap: 0.5em;
+                width: max-content;
+            }
+
+            .sample-item {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.25em;
+                padding: 0.4em;
+                font-size: 0.8rem;
+                border: 1px solid color-mix(in srgb, var(${__fg_color}) 15%, transparent);
+                cursor: pointer;
+                color: var(${__fg_color});
+                background: color-mix(in srgb, var(${__tone_1}) 40%, transparent);
+                transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+                text-align: center;
+                border-radius: 6px;
+                backdrop-filter: blur(8px);
+            }
+
+            .sample-item:hover {
+                background: color-mix(in srgb, var(${__tone_3}) 60%, transparent);
+                border-color: color-mix(in srgb, var(${__fg_color}) 25%, transparent);
+                transform: scale(1.02);
+            }
+
+            .sample-thumb {
+                width: 64px;
+                height: 64px;
+                background: color-mix(in srgb, var(${__fg_color}) 10%, transparent);
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                flex-shrink: 0;
+            }
+
+            .sample-thumb canvas {
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+            }
+
+            .sample-name {
+                font-size: 0.75rem;
+                line-height: 1.2;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                max-width: 100%;
             }
         </style>`
     }
@@ -196,7 +274,15 @@ export class WelcomeScreen extends HTMLElement {
         <div class="bg-glow" aria-hidden="true"></div>
         <div class="center">
             <div class="main-panel"></div>
-            <div class="samples-panel"></div>
+            <div class="welcome-layout">
+                <div class="welcome-actions"></div>
+                <div class="samples-browser">
+                    <h3>Samples</h3>
+                    <div class="samples-scroll">
+                        <div class="samples-grid"></div>
+                    </div>
+                </div>
+            </div>
         </div>`
     }
 
@@ -213,8 +299,7 @@ export class WelcomeScreen extends HTMLElement {
         brand.appendChild(tagline)
         this.#mainPanel.appendChild(brand)
 
-        const actions = document.createElement("div")
-        actions.className = "actions"
+        const actions = this.#shadow.querySelector(".welcome-actions")!
 
         const createNew = document.createElement("button")
         createNew.className = "primary"
@@ -233,46 +318,50 @@ export class WelcomeScreen extends HTMLElement {
         openFolder.disabled = !isFileSystemAccessAvailable()
         openFolder.onclick = () => void this.#callbacks.onOpenFolder()
         actions.appendChild(openFolder)
-
-        const browseSamples = document.createElement("button")
-        browseSamples.textContent = "Browse Samples"
-        browseSamples.onclick = () => this.#showSamples()
-        actions.appendChild(browseSamples)
-
-        this.#mainPanel.appendChild(actions)
     }
 
-    #renderSamplesList(): void {
-        this.#samplesPanel.innerHTML = ""
-        const back = document.createElement("button")
-        back.className = "back"
-        back.textContent = "← Back"
-        back.onclick = () => this.#hideSamples()
-        this.#samplesPanel.appendChild(back)
-
-        const h2 = document.createElement("h2")
-        h2.textContent = "Samples"
-        this.#samplesPanel.appendChild(h2)
-
-        const list = document.createElement("div")
-        list.className = "samples-list"
+    #renderSamplesGrid(): void {
+        const grid = this.#samplesBrowser.querySelector(".samples-grid")!
+        grid.innerHTML = ""
         for (const name of SAMPLE_NAMES) {
-            const btn = document.createElement("button")
-            btn.textContent = name
-            btn.onclick = () => this.#loadSample(name)
-            list.appendChild(btn)
+            const item = document.createElement("button")
+            item.className = "sample-item"
+            item.onclick = () => this.#loadSample(name)
+            const thumb = document.createElement("div")
+            thumb.className = "sample-thumb"
+            const nameEl = document.createElement("span")
+            nameEl.className = "sample-name"
+            nameEl.textContent = name
+            item.appendChild(thumb)
+            item.appendChild(nameEl)
+            grid.appendChild(item)
         }
-        this.#samplesPanel.appendChild(list)
     }
 
-    #showSamples(): void {
-        this.#mainPanel.hidden = true
-        this.#samplesPanel.hidden = false
-    }
-
-    #hideSamples(): void {
-        this.#mainPanel.hidden = false
-        this.#samplesPanel.hidden = true
+    async #loadThumbnails(): Promise<void> {
+        const getThumbnail = this.#callbacks.getThumbnail
+        if (!getThumbnail) return
+        const grid = this.#samplesBrowser.querySelector(".samples-grid")!
+        const items = grid.querySelectorAll(".sample-item")
+        for (let i = 0; i < SAMPLE_NAMES.length && i < items.length; i++) {
+            const name = SAMPLE_NAMES[i]
+            const item = items[i]
+            const thumbDiv = item.querySelector(".sample-thumb")!
+            try {
+                const res = await fetch(`/assets/samples/${name}`)
+                if (!res.ok) continue
+                const content = await res.text()
+                const imageData = await getThumbnail(content)
+                const canvas = document.createElement("canvas")
+                canvas.width = imageData.width
+                canvas.height = imageData.height
+                canvas.getContext("2d")!.putImageData(imageData, 0, 0)
+                thumbDiv.innerHTML = ""
+                thumbDiv.appendChild(canvas)
+            } catch {
+                // Leave placeholder on error
+            }
+        }
     }
 
     async #loadSample(name: string): Promise<void> {

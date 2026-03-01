@@ -17,7 +17,7 @@ import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft } from "./scene/scene.mjs"
 import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
-import { Mat4x4f } from "./vecmat/matrix.mjs"
+import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import type { MainToWorkerMessage, RenderSelectionState, SelectedEdgePayload } from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
@@ -251,7 +251,7 @@ export class RenderWorkerCore {
         this.#canvas.height = fullHeight
     }
 
-    render(msg: Extract<MainToWorkerMessage, { type: "render" }>): void {
+    render(msg: Extract<MainToWorkerMessage, { type: "render" }>, outputTextureView?: GPUTextureView): void {
         this.#lastRenderMsg = msg
         this.#lastSelectionMode = msg.viewSettings.selectionMode
         const { viewTransform, cameraPosition, cameraRes, viewSettings, viewCenter, resolutionScale, selectionState } = msg
@@ -300,7 +300,7 @@ export class RenderWorkerCore {
         this.#outlineU32[0] = viewSettings.outlineMode
         this.#outlineThicknessF32[0] = viewSettings.outlineThickness
         this.#outlineColorF32.set(viewSettings.outlineColor)
-        this.#outlineWidthF32[0] = this.#fullWidth
+        this.#outlineWidthF32[0] = outputTextureView ? sceneWidth : this.#fullWidth
         const outline = DEFAULT_SELECTION_STYLES.outline
         new Float32Array(this.#outlineBuf, 32, 1)[0] = outline.dashSpacing
         new Float32Array(this.#outlineBuf, 36, 1)[0] = outline.dashLength
@@ -333,7 +333,8 @@ export class RenderWorkerCore {
         this.#writeEdgesToBuffer(this.#uniformBuffers.selectedEdges, selectionState.selectedEdges, DEFAULT_SELECTION_STYLES.edge.lineWidthPx, DEFAULT_SELECTION_STYLES.edge.epsilon)
         this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, selectionState.hoveredEdges, 6.0, 0.02)
 
-        const canvasTexture = this.#context.getCurrentTexture()
+        const canvasTexture = outputTextureView ? null : this.#context.getCurrentTexture()
+        const outlineTarget = outputTextureView ?? canvasTexture!.createView()
         const commandEncoder = this.#device.createCommandEncoder()
 
         if (viewSettings.beamEnabled && this.#beamPipeline) {
@@ -372,7 +373,7 @@ export class RenderWorkerCore {
         scenePass.end()
 
         const outlinePass = commandEncoder.beginRenderPass({
-            colorAttachments: [{ view: canvasTexture.createView(), loadOp: "clear", storeOp: "store" }],
+            colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
         })
         outlinePass.setPipeline(this.#outlinePipeline)
         outlinePass.setBindGroup(0, this.#outlineBindGroup!)
@@ -594,6 +595,100 @@ export class RenderWorkerCore {
             type: "benchmarkResult",
             result: { totalTime, averageFrameTime, minFrameTime, maxFrameTime, framesPerSecond, frameTimes },
         })
+    }
+
+    async handleThumbnail(src: string, width?: number, height?: number): Promise<void> {
+        const thumbWidth = Math.max(1, Math.min(512, width ?? 256))
+        const thumbHeight = Math.max(1, Math.min(512, height ?? 256))
+        try {
+            const trimmed = src.trim()
+            if (!this.#scene || this.#builtSrc !== trimmed) {
+                await this.build(trimmed, undefined)
+            }
+            if (!this.#pipeline) {
+                self.postMessage({ type: "thumbnailResult", error: "Scene failed to build" })
+                return
+            }
+            const eye = vec3(30, 25, 30)
+            const center = vec3(0, 0, 0)
+            const up = vec3(0, 1, 0)
+            const viewMatrix = lookAt(eye, center, up)
+            const thumbMsg: Extract<MainToWorkerMessage, { type: "render" }> = {
+                type: "render",
+                cameraState: { rotation: [1, 0, 0, 0], zoom: 50, translation: vec3(0, 0, 0) },
+                viewTransform: viewMatrix.data,
+                cameraPosition: [eye.x, eye.y, eye.z],
+                cameraRes: [thumbWidth, thumbHeight],
+                selectionState: {
+                    selectedObjectIds: [],
+                    selectedEdges: [],
+                    hoveredObjectId: 0,
+                    hoveredEdges: [],
+                },
+                viewSettings: {
+                    xrayMode: false,
+                    beamEnabled: false,
+                    selectionMode: 0,
+                    outlineMode: 0,
+                    outlineThickness: 1,
+                    outlineColor: [1, 1, 0],
+                },
+                viewCenter: [0.5, 0.5],
+                resolutionScale: 1.0,
+            }
+            const thumbOutputTexture = this.#device.createTexture({
+                label: "ThumbnailOutput",
+                size: [thumbWidth, thumbHeight],
+                format: this.#format,
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+            })
+            this.render(thumbMsg, thumbOutputTexture.createView())
+            await this.#device.queue.onSubmittedWorkDone()
+            const bytesPerRow = Math.ceil((thumbWidth * 4) / 256) * 256
+            const bufferSize = bytesPerRow * thumbHeight
+            const readbackBuffer = this.#device.createBuffer({
+                label: "ThumbnailReadback",
+                size: bufferSize,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            })
+            const encoder = this.#device.createCommandEncoder()
+            encoder.copyTextureToBuffer(
+                { texture: thumbOutputTexture },
+                { buffer: readbackBuffer, bytesPerRow, rowsPerImage: thumbHeight },
+                [thumbWidth, thumbHeight, 1],
+            )
+            this.#device.queue.submit([encoder.finish()])
+            await readbackBuffer.mapAsync(GPUMapMode.READ)
+            const mapped = new Uint8Array(readbackBuffer.getMappedRange())
+            const imageData = new ImageData(thumbWidth, thumbHeight)
+            const isBgra = this.#format.includes("bgra")
+            for (let y = 0; y < thumbHeight; y++) {
+                const srcRow = y * bytesPerRow
+                const dstRow = y * thumbWidth * 4
+                for (let x = 0; x < thumbWidth; x++) {
+                    const srcOff = srcRow + x * 4
+                    const dstOff = dstRow + x * 4
+                    if (isBgra) {
+                        imageData.data[dstOff + 0] = mapped[srcOff + 2]
+                        imageData.data[dstOff + 1] = mapped[srcOff + 1]
+                        imageData.data[dstOff + 2] = mapped[srcOff + 0]
+                        imageData.data[dstOff + 3] = mapped[srcOff + 3]
+                    } else {
+                        imageData.data[dstOff + 0] = mapped[srcOff + 0]
+                        imageData.data[dstOff + 1] = mapped[srcOff + 1]
+                        imageData.data[dstOff + 2] = mapped[srcOff + 2]
+                        imageData.data[dstOff + 3] = mapped[srcOff + 3]
+                    }
+                }
+            }
+            readbackBuffer.unmap()
+            readbackBuffer.destroy()
+            thumbOutputTexture.destroy()
+            self.postMessage({ type: "thumbnailResult", imageData }, { transfer: [imageData.data.buffer] })
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            self.postMessage({ type: "thumbnailResult", error: errorMsg })
+        }
     }
 
     #ensureRenderTextures(width: number, height: number): void {

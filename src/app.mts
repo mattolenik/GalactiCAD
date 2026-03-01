@@ -647,6 +647,7 @@ class App {
                 await this.#hideWelcome(menu)
                 this.#tabs.newDocument(content, "typescript", suggestedName)
             },
+            getThumbnail: (src) => this.renderer.thumbnail(src, 128, 128),
         })
         this.#welcomeScreen = welcome
         document.body.classList.add("welcome-visible")
@@ -656,8 +657,6 @@ class App {
     #showWelcomeAndDisposePreview(): void {
         this.renderer.setSelection([], true)
         this.renderer.stopLoop()
-        this.renderer.dispose()
-        this.#preview.remove()
         this.#showWelcome()
     }
 

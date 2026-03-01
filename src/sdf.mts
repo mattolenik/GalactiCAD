@@ -85,6 +85,8 @@ export class SDFRenderer {
     #pendingRenderMeshResolve: ((value: MeshData) => void) | null = null
     #pendingRenderMeshReject: ((err: unknown) => void) | null = null
     #pendingBenchmarkResolve: ((value: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void) | null = null
+    #pendingThumbnailResolve: ((value: ImageData) => void) | null = null
+    #pendingThumbnailReject: ((err: unknown) => void) | null = null
 
     readonly selectionChange$ = new Subject<number[]>()
     readonly objectDoubleClick$ = new Subject<number>()
@@ -234,6 +236,15 @@ export class SDFRenderer {
             case "benchmarkResult":
                 this.#pendingBenchmarkResolve?.(msg.result)
                 this.#pendingBenchmarkResolve = null
+                break
+            case "thumbnailResult":
+                if (msg.imageData) {
+                    this.#pendingThumbnailResolve?.(msg.imageData)
+                } else {
+                    this.#pendingThumbnailReject?.(new Error(msg.error ?? "Unknown error"))
+                }
+                this.#pendingThumbnailResolve = null
+                this.#pendingThumbnailReject = null
                 break
         }
     }
@@ -765,6 +776,14 @@ export class SDFRenderer {
         return new Promise(resolve => {
             this.#pendingBenchmarkResolve = resolve
             this.#worker.postMessage({ type: "benchmark", frameCount, waitForGPU })
+        })
+    }
+
+    thumbnail(src: string, width?: number, height?: number): Promise<ImageData> {
+        return new Promise<ImageData>((resolve, reject) => {
+            this.#pendingThumbnailResolve = resolve
+            this.#pendingThumbnailReject = reject
+            this.#worker.postMessage({ type: "thumbnail", src: src.trim(), width, height })
         })
     }
 

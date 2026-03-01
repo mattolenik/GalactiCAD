@@ -71,6 +71,7 @@ export type MainToWorkerMessage =
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer } }
     | { type: "renderMesh"; src: string }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean }
+    | { type: "thumbnail"; src: string; width?: number; height?: number }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]
@@ -116,4 +117,5 @@ export type WorkerToMainMessage =
     | { type: "capPullComplete"; nodeId: number; newH: number; newPosY: number }
     | { type: "renderMeshResult"; mesh?: MeshData; error?: string }
     | { type: "benchmarkResult"; result: BenchmarkResultPayload }
+    | { type: "thumbnailResult"; imageData?: ImageData; error?: string }
     | { type: "fps"; fps: number }

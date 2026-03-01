@@ -194,6 +194,7 @@ export class SDFRenderer {
                 this.#sceneNodeCache = this.#reconstructNodes(msg.sceneNodes)
                 this.#buildPushPullNodes(msg.sceneNodes)
                 this.#compiledPosY = new Map(Object.entries(msg.compiledPosY ?? {}).map(([k, v]) => [parseInt(k, 10), v as number]))
+                this.#controls.loadCameraFromSettings()
                 this.#pendingBuildResolve?.()
                 this.#pendingBuildResolve = null
                 break
@@ -601,6 +602,11 @@ export class SDFRenderer {
 
     get controls(): CameraController {
         return this.#controls
+    }
+
+    /** Current render resolution (device-pixel-scaled). Used for benchmark viewport. */
+    get renderSize(): { width: number; height: number } {
+        return { width: this.#fullWidth || 800, height: this.#fullHeight || 600 }
     }
 
     get selectedObjectIds(): number[] {

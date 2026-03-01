@@ -2,8 +2,8 @@ import { __fg_color, __tone_accent, __toolbar_height } from "../style/style.mjs"
 import { DropdownMenu } from "./dropdown-menu.mjs"
 
 export interface DocumentExplorerConfig {
-    getClosedDocuments: () => string[]
-    onOpen: (name: string) => void
+    getClosedDocuments: () => Promise<string[]>
+    onOpen: (name: string) => void | Promise<void>
     /** Unopened .gcad files in the current folder. null = no folder tracked. */
     getUnopenedFolderFiles?: () => Promise<string[] | null>
     onOpenFolderFile?: (name: string) => void | Promise<void>
@@ -72,14 +72,14 @@ export class MenuButton extends HTMLElement {
         }
     }
 
-    #renderDocumentExplorer() {
+    async #renderDocumentExplorer() {
         // Remove any previously rendered explorer section
         const existing = this.#dropdown.menu.querySelectorAll(".explorer-section")
         existing.forEach(el => el.remove())
 
         if (!this.#documentExplorer) return
 
-        const closed = this.#documentExplorer.getClosedDocuments()
+        const closed = await this.#documentExplorer.getClosedDocuments()
 
         this.#dropdown.appendSeparator("explorer-section")
         this.#dropdown.appendSectionHeader("Documents", "explorer-section")
@@ -92,7 +92,7 @@ export class MenuButton extends HTMLElement {
         for (const name of closed) {
             this.#dropdown.appendDocItem(
                 name,
-                () => this.#documentExplorer!.onOpen(name),
+                () => void this.#documentExplorer!.onOpen(name),
                 "explorer-section"
             )
         }
@@ -139,7 +139,7 @@ export class MenuButton extends HTMLElement {
             return
         }
 
-        this.#renderDocumentExplorer()
+        await this.#renderDocumentExplorer()
         await this.#renderFolderSection()
 
         this.#dropdown.show(this.#button)

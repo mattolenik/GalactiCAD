@@ -3,6 +3,7 @@ import { fromEventPattern, Subscription } from "rxjs"
 import { bufferTime } from "rxjs/operators"
 import { OrderedMap } from "../collections/orderedMap.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
+import { db } from "../storage/db.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_0, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { FileConflictDialog } from "./file-conflict-dialog.mjs"
 import { YesNoDialog } from "./yesno-dialog.mjs"
@@ -234,24 +235,17 @@ export class DocumentTabs extends HTMLElement {
         this.addDocumentFromFile(name, content, fileHandle)
     }
 
-    /** Names of all documents stored in localStorage that are not currently open as tabs */
-    get closedDocumentNames(): string[] {
+    /** Names of all documents stored in storage that are not currently open as tabs */
+    async getClosedDocumentNames(): Promise<string[]> {
         const open = new Set(this.#docs.keys())
-        const names: string[] = []
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i)
-            if (key?.startsWith("document:")) {
-                const name = key.substring("document:".length)
-                if (!open.has(name)) names.push(name)
-            }
-        }
-        return names
+        const all = await db.documents.toArray()
+        return all.map(d => d.name).filter(n => !open.has(n))
     }
 
     /** Add a document from file content, optionally with a file handle for disk sync. */
     addDocumentFromFile(name: string, content: string, handle?: FileSystemFileHandle): void {
         if (this.#docs.has(name)) {
-            this.switchTo(name)
+            void this.switchTo(name)
             return
         }
         const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
@@ -260,32 +254,33 @@ export class DocumentTabs extends HTMLElement {
         if (handle) {
             this.#fileHandles.set(name, handle)
             this.#lastWrittenContent.set(name, content)
+            void db.docFiles.put({ name, handle })
         }
         this.#watchModel(name, model)
         this.#startDiskSyncIfNeeded()
-        this.switchTo(name)
-        this.#updateStoredOrder()
+        void this.switchTo(name)
+        void this.#updateStoredOrder()
     }
 
     /** Open a stored document that is not currently a tab */
-    openStoredDocument(name: string): void {
+    async openStoredDocument(name: string): Promise<void> {
         if (this.#docs.has(name)) {
-            this.switchTo(name)
+            await this.switchTo(name)
             return
         }
-        const content = localStorage.getItem(`document:${name}`)
-        if (content === null) return
+        const row = await db.documents.get(name)
+        if (!row) return
         const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-        const model = monaco.editor.createModel(content, "typescript", uri)
+        const model = monaco.editor.createModel(row.content, "typescript", uri)
         this.#docs.set(name, model)
         this.#watchModel(name, model)
-        this.switchTo(name)
-        this.#updateStoredOrder()
+        await this.switchTo(name)
+        await this.#updateStoredOrder()
     }
 
     /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts.
      *  When suggestedName is provided and docs.size is 0, uses it without prompting. */
-    newDocument(content = defaultContent, language = "typescript", suggestedName?: string): string | undefined {
+    async newDocument(content = defaultContent, language = "typescript", suggestedName?: string): Promise<string | undefined> {
         this.#topUntitledIndex =
             Array.from(this.#docs.keys())
                 .map(s => parseInt(s.match(/^new scene (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
@@ -293,14 +288,14 @@ export class DocumentTabs extends HTMLElement {
 
         const defaultName = suggestedName ?? `new scene ${this.#topUntitledIndex}`
         const name = this.#docs.size > 0 ? window.prompt("Give the new scene a name", defaultName)?.trim() : defaultName
-        if (!name) return
+        if (!name) return undefined
 
         const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
         const model = monaco.editor.createModel(content, "typescript", uri)
         this.#docs.set(name, model)
         this.#watchModel(name, model)
-        this.switchTo(name)
-        this.#updateStoredOrder()
+        await this.switchTo(name)
+        await this.#updateStoredOrder()
         return name
     }
 
@@ -325,12 +320,13 @@ export class DocumentTabs extends HTMLElement {
             this.#docs.set(name, model)
             this.#fileHandles.set(name, handle)
             this.#lastWrittenContent.set(name, content)
+            await db.docFiles.put({ name, handle })
             this.#watchModel(name, model)
         }
         this.#startDiskSyncIfNeeded()
         const first = this.#docs.keys().next().value
-        if (first) this.switchTo(first)
-        this.#updateStoredOrder()
+        if (first) await this.switchTo(first)
+        await this.#updateStoredOrder()
         await saveFolderHandle(dirHandle)
     }
 
@@ -391,15 +387,17 @@ export class DocumentTabs extends HTMLElement {
         this.#lastWrittenContent.delete(name)
         this.#docs.get(name)?.dispose()
         this.#docs.delete(name)
-        localStorage.removeItem(`document:${name}`)
+        await db.documents.delete(name)
+        await db.docFiles.delete(name)
 
-        SettingsManager.instance.renameDocument(name, newName)
+        await SettingsManager.instance.renameDocument(name, newName)
 
         const uri = monaco.Uri.parse(`inmemory://model/${newName}.ts`)
         const newModel = monaco.editor.createModel(content, "typescript", uri)
         this.#docs.set(newName, newModel)
         this.#fileHandles.set(newName, handle)
         this.#lastWrittenContent.set(newName, content)
+        await db.docFiles.put({ name: newName, handle })
         this.#watchModel(newName, newModel)
         this.#startDiskSyncIfNeeded()
 
@@ -410,18 +408,18 @@ export class DocumentTabs extends HTMLElement {
 
         if (wasActive) {
             this.#active = newName
-            localStorage.setItem("activeDocument", newName)
+            await db.preferences.put({ key: "activeDocument", value: newName })
             this.#editor.setModel(newModel)
         }
 
-        this.#updateStoredOrder()
+        await this.#updateStoredOrder()
         this.#renderTabs()
         this.dispatchEvent(new CustomEvent("tabRenamed", { detail: { oldName: name, newName } }))
         this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: this.#active }))
         return true
     }
 
-    /** Restore tabs from persisted folder handle (if any) or localStorage. Returns true if any docs were loaded. */
+    /** Restore tabs from persisted folder handle (if any) or storage. Returns true if any docs were loaded. */
     async restore(): Promise<boolean> {
         // clear existing
         for (const name of Array.from(this.#docs.keys())) {
@@ -435,6 +433,11 @@ export class DocumentTabs extends HTMLElement {
         }
         this.#stopDiskSync()
 
+        const docOrderRow = await db.preferences.get("documentOrder")
+        const storedOrder = (docOrderRow?.value as string[] | undefined) ?? []
+        const activeRow = await db.preferences.get("activeDocument")
+        const lastTab = activeRow?.value as string | undefined
+
         // try persisted folder handle first
         const dirHandle = await getFolderHandle()
         if (dirHandle) {
@@ -443,27 +446,41 @@ export class DocumentTabs extends HTMLElement {
                 permission = await dirHandle.requestPermission({ mode: "readwrite" })
             }
             if (permission === "granted") {
-                const storedOrder = JSON.parse(localStorage.getItem("documents") || "[]") as string[]
                 const namesToLoad =
-                    storedOrder.length > 0
-                        ? storedOrder
-                        : (await listGcadFileNames(dirHandle))
+                    storedOrder.length > 0 ? storedOrder : (await listGcadFileNames(dirHandle))
                 for (const name of namesToLoad) {
                     try {
-                        const fileHandle = await dirHandle.getFileHandle(name)
-                        const file = await fileHandle.getFile()
-                        const content = await file.text()
-                        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                        const model = monaco.editor.createModel(content, "typescript", uri)
-                        this.#docs.set(name, model)
-                        this.#fileHandles.set(name, fileHandle)
-                        this.#lastWrittenContent.set(name, content)
-                        this.#watchModel(name, model)
-                    } catch {
-                        const content = localStorage.getItem(`document:${name}`)
-                        if (content !== null) {
+                        let fileHandle: FileSystemFileHandle | undefined
+                        try {
+                            fileHandle = await dirHandle.getFileHandle(name)
+                        } catch {
+                            const docFileRow = await db.docFiles.get(name)
+                            fileHandle = docFileRow?.handle
+                        }
+                        if (fileHandle) {
+                            const file = await fileHandle.getFile()
+                            const content = await file.text()
                             const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
                             const model = monaco.editor.createModel(content, "typescript", uri)
+                            this.#docs.set(name, model)
+                            this.#fileHandles.set(name, fileHandle)
+                            this.#lastWrittenContent.set(name, content)
+                            await db.docFiles.put({ name, handle: fileHandle })
+                            this.#watchModel(name, model)
+                        } else {
+                            const docRow = await db.documents.get(name)
+                            if (docRow) {
+                                const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+                                const model = monaco.editor.createModel(docRow.content, "typescript", uri)
+                                this.#docs.set(name, model)
+                                this.#watchModel(name, model)
+                            }
+                        }
+                    } catch {
+                        const docRow = await db.documents.get(name)
+                        if (docRow) {
+                            const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+                            const model = monaco.editor.createModel(docRow.content, "typescript", uri)
                             this.#docs.set(name, model)
                             this.#watchModel(name, model)
                         }
@@ -471,40 +488,51 @@ export class DocumentTabs extends HTMLElement {
                 }
                 this.#startDiskSyncIfNeeded()
                 const first = this.#docs.keys().next().value
-                if (first) this.switchTo(first)
-                this.#updateStoredOrder()
-                const lastTab = localStorage.getItem("activeDocument") as string
-                if (lastTab && this.#docs.has(lastTab)) this.switchTo(lastTab)
+                if (first) await this.switchTo(first)
+                await this.#updateStoredOrder()
+                if (lastTab && this.#docs.has(lastTab)) await this.switchTo(lastTab)
                 return this.#docs.size > 0
             }
             await clearFolderHandle()
         }
 
-        // fall back to localStorage
-        const prefix = "document:"
-        const storedOrder = JSON.parse(localStorage.getItem("documents") || "[]") as string[]
+        // fall back to stored documents and doc file handles
         for (const name of storedOrder) {
-            const key = `${prefix}${name}`
-            const content = localStorage.getItem(key)
-            if (content !== null) {
+            const docRow = await db.documents.get(name)
+            if (docRow) {
                 const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                const model = monaco.editor.createModel(content, "typescript", uri)
+                const model = monaco.editor.createModel(docRow.content, "typescript", uri)
                 this.#docs.set(name, model)
                 this.#watchModel(name, model)
+            } else {
+                const docFileRow = await db.docFiles.get(name)
+                if (docFileRow?.handle) {
+                    try {
+                        const file = await docFileRow.handle.getFile()
+                        const content = await file.text()
+                        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+                        const model = monaco.editor.createModel(content, "typescript", uri)
+                        this.#docs.set(name, model)
+                        this.#fileHandles.set(name, docFileRow.handle)
+                        this.#lastWrittenContent.set(name, content)
+                        this.#watchModel(name, model)
+                    } catch {
+                        // Handle may be stale (file moved/deleted)
+                    }
+                }
             }
         }
         if (this.#docs.size > 0) {
             const first = this.#docs.keys().next().value
-            if (first) this.switchTo(first)
-            this.#updateStoredOrder()
-            const lastTab = localStorage.getItem("activeDocument") as string
-            if (lastTab && this.#docs.has(lastTab)) this.switchTo(lastTab)
+            if (first) await this.switchTo(first)
+            await this.#updateStoredOrder()
+            if (lastTab && this.#docs.has(lastTab)) await this.switchTo(lastTab)
             return true
         }
         return false
     }
 
-    /** Observe model changes and save debounced. File-backed docs sync to disk via periodic timer; localStorage-backed docs save to localStorage. */
+    /** Observe model changes and save debounced. File-backed docs sync to disk via periodic timer; storage-backed docs save to Dexie. */
     #watchModel(name: string, model: monaco.editor.ITextModel) {
         this.#subscriptions.get(name)?.unsubscribe()
         const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
@@ -515,12 +543,12 @@ export class DocumentTabs extends HTMLElement {
             if (this.#fileHandles.has(name)) {
                 // File-backed: disk sync happens via periodic timer
             } else {
-                localStorage.setItem(`document:${name}`, model.getValue())
+                void db.documents.put({ name, content: model.getValue() })
             }
         })
         this.#subscriptions.set(name, sub)
         if (!this.#fileHandles.has(name)) {
-            localStorage.setItem(`document:${name}`, model.getValue())
+            void db.documents.put({ name, content: model.getValue() })
         }
     }
 
@@ -539,11 +567,11 @@ export class DocumentTabs extends HTMLElement {
         this.#docs.delete(name)
         this.#stopDiskSyncIfEmpty()
         this.#renderTabs()
-        this.#updateStoredOrder()
+        void this.#updateStoredOrder()
         this.dispatchEvent(new CustomEvent("tabClosed", { detail: name }))
         if (wasActive) {
             const next = this.#docs.keys().next().value
-            if (next) this.switchTo(next)
+            if (next) void this.switchTo(next)
             else {
                 this.#active = undefined
                 this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: undefined }))
@@ -560,28 +588,29 @@ export class DocumentTabs extends HTMLElement {
     async deleteTab(name: string) {
         const cntinue = await new YesNoDialog(`Are you sure you want to delete ${name}?`).show()
         if (cntinue) {
-            localStorage.removeItem(`document:${name}`)
-            SettingsManager.instance.deleteDocument(name)
+            await db.documents.delete(name)
+            await db.docFiles.delete(name)
+            await SettingsManager.instance.deleteDocument(name)
             this.closeTab(name)
         }
     }
 
     /** Rename the current tab, prompting the user for a new name */
-    renameCurrentTab(): boolean {
+    async renameCurrentTab(): Promise<boolean> {
         if (!this.#active) return false
         return this.renameTab(this.#active)
     }
 
     /** Duplicate the current tab into a new one, cloning content and settings. Returns the new tab name, or undefined if user cancels. */
-    duplicateCurrentTab(): string | undefined {
+    async duplicateCurrentTab(): Promise<string | undefined> {
         if (!this.#active) return undefined
 
-        SettingsManager.instance.flushDocNow()
+        await SettingsManager.instance.flushDocNow()
         const model = this.#docs.get(this.#active)
         if (!model) return undefined
 
         const content = model.getValue()
-        const settings = SettingsManager.instance.getDocumentSettings(this.#active)
+        const settings = await SettingsManager.instance.getDocumentSettings(this.#active)
 
         const newName = window.prompt("Name for duplicated scene", this.#active)?.trim()
         if (!newName || newName === this.#active) return undefined
@@ -595,14 +624,17 @@ export class DocumentTabs extends HTMLElement {
         const newModel = monaco.editor.createModel(content, "typescript", uri)
         this.#docs.set(newName, newModel)
         this.#watchModel(newName, newModel)
-        localStorage.setItem(`settings:${newName}`, JSON.stringify(settings))
-        this.#updateStoredOrder()
-        this.switchTo(newName)
+        await db.docSettings.put({
+            name: newName,
+            settings: settings as unknown as Record<string, unknown>,
+        })
+        await this.#updateStoredOrder()
+        await this.switchTo(newName)
         return newName
     }
 
     /** Rename a tab, prompting the user for a new name */
-    renameTab(oldName: string): boolean {
+    async renameTab(oldName: string): Promise<boolean> {
         const model = this.#docs.get(oldName)
         if (!model) return false
 
@@ -615,18 +647,23 @@ export class DocumentTabs extends HTMLElement {
             return false
         }
 
-        // Update localStorage: remove old document content key, add new one
-        const content = localStorage.getItem(`document:${oldName}`)
-        if (content !== null) {
-            localStorage.removeItem(`document:${oldName}`)
-            localStorage.setItem(`document:${newName}`, content)
+        // Update storage: move document content
+        const docRow = await db.documents.get(oldName)
+        if (docRow) {
+            await db.documents.delete(oldName)
+            await db.documents.put({ name: newName, content: docRow.content })
         }
 
-        // Rename per-document settings (camera, preview) in the consolidated settings store
-        SettingsManager.instance.renameDocument(oldName, newName)
+        // Move doc file handle if present
+        const docFileRow = await db.docFiles.get(oldName)
+        if (docFileRow) {
+            await db.docFiles.delete(oldName)
+            await db.docFiles.put({ name: newName, handle: docFileRow.handle })
+        }
+
+        await SettingsManager.instance.renameDocument(oldName, newName)
 
         // Update the ordered map: need to preserve order
-        // Get all entries, update the name, rebuild
         const entries = Array.from(this.#docs.entries())
         this.#docs.clear()
         for (const [name, m] of entries) {
@@ -660,31 +697,27 @@ export class DocumentTabs extends HTMLElement {
         // Update active tab if it was the renamed one
         if (this.#active === oldName) {
             this.#active = newName
-            localStorage.setItem("activeDocument", newName)
+            await db.preferences.put({ key: "activeDocument", value: newName })
         }
 
-        this.#updateStoredOrder()
+        await this.#updateStoredOrder()
         this.#renderTabs()
         this.dispatchEvent(new CustomEvent("tabRenamed", { detail: { oldName, newName } }))
         this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: this.#active }))
         return true
     }
 
-    switchTo(name: string, save = false) {
+    async switchTo(name: string, save = false): Promise<void> {
         const model = this.#docs.get(name)
         if (!model) return
         this.#active = name
-        // Flush the outgoing document's settings and load the incoming document's settings
-        SettingsManager.instance.switchDocument(name)
+        await SettingsManager.instance.switchDocument(name)
         this.#editor.setModel(model)
-        // Render tabs first so the tab bar updates before any event handlers run
         this.#renderTabs()
         if (save) {
-            localStorage.setItem("activeDocument", this.#active)
+            await db.preferences.put({ key: "activeDocument", value: this.#active })
         }
-        // Defer event dispatch so the browser can paint the tab switch + editor before handlers run
         requestAnimationFrame(() => {
-            // Only dispatch if we're still on this tab (user may have switched again)
             if (this.#active === name) {
                 this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: name }))
             }
@@ -692,8 +725,8 @@ export class DocumentTabs extends HTMLElement {
     }
 
     /** Update serialized order */
-    #updateStoredOrder() {
-        localStorage.setItem("documents", JSON.stringify(Array.from(this.#docs.keys())))
+    async #updateStoredOrder(): Promise<void> {
+        await db.preferences.put({ key: "documentOrder", value: Array.from(this.#docs.keys()) })
     }
 
     #renderTabs() {
@@ -894,11 +927,11 @@ export class DocumentTabs extends HTMLElement {
                 const toIndex = Math.min(releaseDropIndex, this.#docs.size)
                 if (fromIndex !== -1 && fromIndex !== toIndex) {
                     this.#docs.moveToIndex(fromIndex, toIndex)
-                    this.#updateStoredOrder()
+                    void this.#updateStoredOrder()
                 }
             }
         } else {
-            this.switchTo(name, true)
+            void this.switchTo(name, true)
         }
         this.#renderTabs()
     }

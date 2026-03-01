@@ -619,6 +619,7 @@ class App {
     }
 
     async #restoreOrShowWelcome(): Promise<void> {
+        await this.#settings.ready()
         const restored = await this.#tabs.restore()
         if (!restored) this.#showWelcome()
     }
@@ -628,7 +629,7 @@ class App {
         const welcome = new WelcomeScreen({
             onCreateNew: async () => {
                 await this.#hideWelcome(menu)
-                this.#tabs.newDocument()
+                await this.#tabs.newDocument()
             },
             onOpenModel: async () => {
                 const result = await openSingleGcad()
@@ -646,7 +647,7 @@ class App {
             },
             onSamplePick: async (content, suggestedName) => {
                 await this.#hideWelcome(menu)
-                this.#tabs.newDocument(content, "typescript", suggestedName)
+                await this.#tabs.newDocument(content, "typescript", suggestedName)
             },
             getThumbnail: (src) => this.renderer.thumbnail(src, 128, 128),
         })
@@ -877,6 +878,7 @@ class App {
                 },
             }
         }
+        devTools.onGetViewportSize = () => this.renderer?.renderSize ?? null
     }
 
     #wireEditorAndTabs() {
@@ -941,16 +943,16 @@ class App {
         const menuItems: Array<{ element: HTMLElement; action: () => void }> = [
             { element: openModelItem, action: () => void this.#handleOpenModel() },
             { element: openFolderItem, action: () => void this.#handleOpenFolder() },
-            { element: newItem, action: () => this.#tabs.newDocument(undefined, "javascript") },
+            { element: newItem, action: () => void this.#tabs.newDocument(undefined, "javascript") },
             { element: saveItem, action: () => void this.#handleSave() },
             { element: saveAsItem, action: () => void this.#handleSaveAs() },
-            { element: renameItem, action: () => this.#tabs.renameCurrentTab() },
-            { element: duplicateItem, action: () => this.#tabs.duplicateCurrentTab() },
+            { element: renameItem, action: () => void this.#tabs.renameCurrentTab() },
+            { element: duplicateItem, action: () => void this.#tabs.duplicateCurrentTab() },
             { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
         ]
         const menuButton = new MenuButton(menuItems, {
-            getClosedDocuments: () => this.#tabs.closedDocumentNames,
-            onOpen: name => this.#tabs.openStoredDocument(name),
+            getClosedDocuments: () => this.#tabs.getClosedDocumentNames(),
+            onOpen: name => void this.#tabs.openStoredDocument(name),
             getUnopenedFolderFiles: () => this.#tabs.getUnopenedFolderFiles(),
             onOpenFolderFile: name => void this.#tabs.openFolderFile(name),
             onOpenFolder: () => void this.#handleOpenFolder(),
@@ -982,7 +984,7 @@ class App {
         if (this.#tabs.hasFileHandle(name)) {
             await this.#tabs.saveToDisk(name)
         }
-        // localStorage-backed docs are auto-saved; use Save As to save to disk
+        // Storage-backed docs are auto-saved; use Save As to save to disk
     }
 
     async #handleSaveAs(): Promise<void> {

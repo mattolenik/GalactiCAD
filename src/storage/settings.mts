@@ -1,5 +1,6 @@
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
+import { db } from "./db.mjs"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -83,18 +84,24 @@ export class SettingsManager {
     #docSave$ = new Subject<void>()
     #globalSave$ = new Subject<void>()
 
+    #initPromise: Promise<void>
+
     constructor() {
-        // Load global settings on construction
-        this.#loadGlobal()
+        this.#initPromise = this.#loadGlobal()
 
         // Camera saves debounce at 300ms -- only persists after movement stops
-        this.#cameraSave$.pipe(debounceTime(300)).subscribe(() => this.#flushDoc())
+        this.#cameraSave$.pipe(debounceTime(300)).subscribe(() => void this.#flushDoc())
 
         // Other per-doc settings debounce at 100ms
-        this.#docSave$.pipe(debounceTime(100)).subscribe(() => this.#flushDoc())
+        this.#docSave$.pipe(debounceTime(100)).subscribe(() => void this.#flushDoc())
 
         // Global settings debounce at 100ms
-        this.#globalSave$.pipe(debounceTime(100)).subscribe(() => this.#flushGlobal())
+        this.#globalSave$.pipe(debounceTime(100)).subscribe(() => void this.#flushGlobal())
+    }
+
+    /** Resolves when settings are loaded from storage. Call before restore. */
+    async ready(): Promise<void> {
+        await this.#initPromise
     }
 
     // -----------------------------------------------------------------------
@@ -102,48 +109,42 @@ export class SettingsManager {
     // -----------------------------------------------------------------------
 
     /** Switch to a different document. Flushes current doc immediately, loads the new one. */
-    switchDocument(name: string | null): void {
-        // Flush current doc synchronously so nothing is lost
-        this.#flushDoc()
+    async switchDocument(name: string | null): Promise<void> {
+        await this.#flushDoc()
         this.#currentDocName = name
         if (name) {
-            this.#loadDoc(name)
+            await this.#loadDoc(name)
         } else {
             this.#docSettings = defaultDocSettings()
         }
     }
 
-    /** Delete a document's settings from localStorage. */
-    deleteDocument(name: string): void {
-        localStorage.removeItem(`settings:${name}`)
+    /** Delete a document's settings from storage. */
+    async deleteDocument(name: string): Promise<void> {
+        await db.docSettings.delete(name)
     }
 
     /** Load document settings for a given document name (without switching). Used for benchmark suite. */
-    getDocumentSettings(name: string): DocumentSettings {
-        const raw = localStorage.getItem(`settings:${name}`)
+    async getDocumentSettings(name: string): Promise<DocumentSettings> {
+        const row = await db.docSettings.get(name)
         const def = defaultDocSettings()
-        if (raw) {
-            try {
-                const parsed = JSON.parse(raw)
-                return {
-                    camera: { ...def.camera, ...parsed.camera },
-                    preview: { ...def.preview, ...parsed.preview },
-                }
-            } catch {
-                // Corrupted JSON -- use defaults
+        if (row?.settings && typeof row.settings === "object") {
+            const parsed = row.settings as Partial<DocumentSettings>
+            return {
+                camera: { ...def.camera, ...parsed.camera },
+                preview: { ...def.preview, ...parsed.preview },
             }
         }
         return def
     }
 
     /** Rename a document's settings entry. */
-    renameDocument(oldName: string, newName: string): void {
-        const raw = localStorage.getItem(`settings:${oldName}`)
-        if (raw !== null) {
-            localStorage.setItem(`settings:${newName}`, raw)
-            localStorage.removeItem(`settings:${oldName}`)
+    async renameDocument(oldName: string, newName: string): Promise<void> {
+        const row = await db.docSettings.get(oldName)
+        if (row) {
+            await db.docSettings.put({ name: newName, settings: row.settings })
+            await db.docSettings.delete(oldName)
         }
-        // If the currently active doc is being renamed, update our tracking
         if (this.#currentDocName === oldName) {
             this.#currentDocName = newName
         }
@@ -202,59 +203,57 @@ export class SettingsManager {
     }
 
     // -----------------------------------------------------------------------
-    // Flush (synchronous write to localStorage)
+    // Flush
     // -----------------------------------------------------------------------
 
-    /** Force-flush the current document settings to localStorage right now. */
-    flushDocNow(): void {
-        this.#flushDoc()
+    /** Force-flush the current document settings to storage right now. */
+    async flushDocNow(): Promise<void> {
+        await this.#flushDoc()
     }
 
-    /** Force-flush global settings to localStorage right now. */
-    flushGlobalNow(): void {
-        this.#flushGlobal()
+    /** Force-flush global settings to storage right now. */
+    async flushGlobalNow(): Promise<void> {
+        await this.#flushGlobal()
     }
 
     // -----------------------------------------------------------------------
     // Private: persistence
     // -----------------------------------------------------------------------
 
-    #flushDoc(): void {
+    async #flushDoc(): Promise<void> {
         if (!this.#currentDocName) return
-        localStorage.setItem(`settings:${this.#currentDocName}`, JSON.stringify(this.#docSettings))
+        await db.docSettings.put({
+            name: this.#currentDocName,
+            settings: this.#docSettings as unknown as Record<string, unknown>,
+        })
     }
 
-    #flushGlobal(): void {
-        localStorage.setItem("settings", JSON.stringify(this.#globalSettings))
+    async #flushGlobal(): Promise<void> {
+        await db.preferences.put({ key: "global", value: this.#globalSettings })
     }
 
-    #loadDoc(name: string): void {
-        const raw = localStorage.getItem(`settings:${name}`)
-        if (raw) {
-            try {
-                const parsed = JSON.parse(raw)
-                const def = defaultDocSettings()
-                this.#docSettings = {
-                    camera: { ...def.camera, ...parsed.camera },
-                    preview: { ...def.preview, ...parsed.preview },
-                }
-                return
-            } catch {
-                // Corrupted JSON -- use defaults
+    async #loadDoc(name: string): Promise<void> {
+        const row = await db.docSettings.get(name)
+        const def = defaultDocSettings()
+        if (row?.settings && typeof row.settings === "object") {
+            const parsed = row.settings as Partial<DocumentSettings>
+            this.#docSettings = {
+                camera: { ...def.camera, ...parsed.camera },
+                preview: { ...def.preview, ...parsed.preview },
             }
+            return
         }
         this.#docSettings = defaultDocSettings()
     }
 
-    #loadGlobal(): void {
-        const raw = localStorage.getItem("settings")
-        if (raw) {
+    async #loadGlobal(): Promise<void> {
+        const row = await db.preferences.get("global")
+        const def = defaultGlobalSettings()
+        if (row?.value && typeof row.value === "object") {
             try {
-                const parsed = JSON.parse(raw)
-                const def = defaultGlobalSettings()
+                const parsed = row.value as Partial<GlobalSettings>
                 const preview = { ...def.preview, ...parsed.preview }
-                // Migrate removed contour mode to object
-                if (preview.selectionMode === "contour") preview.selectionMode = "object"
+                if ((preview.selectionMode as string) === "contour") preview.selectionMode = "object"
                 const app = { ...def.app, ...parsed.app }
                 if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 this.#globalSettings = {
@@ -265,7 +264,7 @@ export class SettingsManager {
                 }
                 return
             } catch {
-                // Corrupted JSON -- use defaults
+                console.error("Failed to load global settings from storage, using defaults")
             }
         }
         this.#globalSettings = defaultGlobalSettings()

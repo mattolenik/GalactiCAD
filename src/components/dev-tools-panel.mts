@@ -40,6 +40,9 @@ export class DevToolsPanel extends HTMLElement {
     /** Callback to get current view as a benchmark case. Returns null if no active document. */
     onBenchmarkThisRequest?: () => BenchmarkCase | null
 
+    /** Callback to get current viewport size for benchmark. When null, benchmark uses 800×600. */
+    onGetViewportSize?: () => { width: number; height: number } | null
+
     get cameraOptimization(): boolean {
         return this.#cameraOptimization$.value
     }
@@ -237,11 +240,11 @@ export class DevToolsPanel extends HTMLElement {
     }
 
     async #saveBenchmarkSuite(): Promise<void> {
-        this.#settings.flushDocNow()
+        await this.#settings.flushDocNow()
         const suite: BenchmarkCase[] = []
         for (const name of this.#tabs.documentNames) {
             const model = this.#tabs.getByName(name)
-            const docSettings = this.#settings.getDocumentSettings(name)
+            const docSettings = await this.#settings.getDocumentSettings(name)
             if (model) {
                 suite.push({
                     name,
@@ -251,10 +254,10 @@ export class DevToolsPanel extends HTMLElement {
                 })
             }
         }
-        saveBenchmarkSuite(suite)
+        await saveBenchmarkSuite(suite)
         const { StatusDialog } = await import("./status-dialog.mjs")
         const statusDialog = new StatusDialog(
-            `Saved benchmark suite with ${suite.length} case(s) to localStorage.`,
+            `Saved benchmark suite with ${suite.length} case(s) to storage.`,
             true
         )
         await statusDialog.show()
@@ -262,7 +265,7 @@ export class DevToolsPanel extends HTMLElement {
 
     async #runBenchmark(): Promise<void> {
         const { StatusDialog } = await import("./status-dialog.mjs")
-        const suite = loadBenchmarkSuite()
+        const suite = await loadBenchmarkSuite()
         if (suite.length === 0) {
             const statusDialog = new StatusDialog(
                 "No benchmark suite found. Save a suite first using the Save Suite button.",
@@ -277,7 +280,8 @@ export class DevToolsPanel extends HTMLElement {
 
         try {
             const frameCount = 100
-            const results = await runBenchmarkSuite(suite, frameCount)
+            const viewport = this.onGetViewportSize?.() ?? undefined
+            const results = await runBenchmarkSuite(suite, frameCount, viewport)
 
             // Log to console
             console.log("Benchmark Results:")
@@ -322,7 +326,8 @@ export class DevToolsPanel extends HTMLElement {
 
         try {
             const frameCount = 100
-            const results = await runBenchmarkSuite([benchCase], frameCount)
+            const viewport = this.onGetViewportSize?.() ?? undefined
+            const results = await runBenchmarkSuite([benchCase], frameCount, viewport)
 
             console.log("Benchmark this Results:")
             console.table(

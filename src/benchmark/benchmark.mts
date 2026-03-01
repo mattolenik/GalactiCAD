@@ -2,6 +2,7 @@ import { vec3 } from "../vecmat/vector.mjs"
 import type { CameraSettings, PreviewSettings } from "../storage/settings.mjs"
 import type { CameraState } from "../controls/camera-controller.mjs"
 import { SDFRenderer } from "../sdf.mjs"
+import { db } from "../storage/db.mjs"
 
 // ---------------------------------------------------------------------------
 // Benchmark suite types
@@ -36,8 +37,6 @@ export interface BenchmarkCaseResult {
 
 export type BenchmarkSuite = BenchmarkCase[]
 
-const BENCHMARK_STORAGE_KEY = "benchmark"
-
 const BENCHMARK_WIDTH = 800
 const BENCHMARK_HEIGHT = 600
 
@@ -45,18 +44,15 @@ const BENCHMARK_HEIGHT = 600
 // Storage
 // ---------------------------------------------------------------------------
 
-export function loadBenchmarkSuite(): BenchmarkSuite {
-    const raw = localStorage.getItem(BENCHMARK_STORAGE_KEY)
-    if (!raw) return []
-    try {
-        return JSON.parse(raw) as BenchmarkSuite
-    } catch {
-        return []
-    }
+export async function loadBenchmarkSuite(): Promise<BenchmarkSuite> {
+    const row = await db.preferences.get("benchmark")
+    const value = row?.value
+    if (Array.isArray(value)) return value as BenchmarkSuite
+    return []
 }
 
-export function saveBenchmarkSuite(suite: BenchmarkSuite): void {
-    localStorage.setItem(BENCHMARK_STORAGE_KEY, JSON.stringify(suite))
+export async function saveBenchmarkSuite(suite: BenchmarkSuite): Promise<void> {
+    await db.preferences.put({ key: "benchmark", value: suite })
 }
 
 /** Format benchmark results as HTML table */
@@ -129,15 +125,22 @@ function cameraStateFromSettings(cam: CameraSettings): CameraState {
 /**
  * Run the benchmark suite using an offscreen renderer.
  * Returns results keyed by document name.
+ * @param viewport - When provided, uses these dimensions for the offscreen canvas. Otherwise 800×600.
  */
-export async function runBenchmarkSuite(suite: BenchmarkSuite, frameCount = 100): Promise<BenchmarkCaseResult[]> {
+export async function runBenchmarkSuite(
+    suite: BenchmarkSuite,
+    frameCount = 100,
+    viewport?: { width: number; height: number }
+): Promise<BenchmarkCaseResult[]> {
     const results: BenchmarkCaseResult[] = []
 
     if (suite.length === 0) {
         return results
     }
 
-    const host = createOffscreenHost(BENCHMARK_WIDTH, BENCHMARK_HEIGHT)
+    const width = viewport?.width ?? BENCHMARK_WIDTH
+    const height = viewport?.height ?? BENCHMARK_HEIGHT
+    const host = createOffscreenHost(width, height)
     const renderer = new SDFRenderer(host, null)
 
     try {

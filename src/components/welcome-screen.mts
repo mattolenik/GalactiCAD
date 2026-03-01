@@ -87,7 +87,10 @@ export class WelcomeScreen extends HTMLElement {
                 align-items: center;
                 justify-content: center;
                 min-height: 100%;
+                max-height: 100%;
+                overflow-y: auto;
                 padding: 2em;
+                box-sizing: border-box;
             }
 
             .welcome-layout {
@@ -97,6 +100,77 @@ export class WelcomeScreen extends HTMLElement {
                 gap: 2.5em;
                 width: 100%;
                 max-width: 720px;
+            }
+
+            @media (max-width: 640px) {
+                .center {
+                    padding: 1.25em;
+                }
+
+                .welcome-layout {
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 1.5em;
+                }
+
+                .brand {
+                    margin-bottom: 1.5em;
+                }
+
+                h1 {
+                    font-size: 2rem;
+                }
+
+                .welcome-actions {
+                    width: 100%;
+                    max-width: 280px;
+                }
+
+                .actions {
+                    min-width: unset;
+                }
+
+                .samples-browser {
+                    width: 100%;
+                    max-width: 100%;
+                }
+
+                .samples-scroll {
+                    overflow-x: visible;
+                    overflow-y: visible;
+                }
+
+                .samples-grid {
+                    grid-template-rows: unset;
+                    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+                    grid-auto-flow: row;
+                    width: 100%;
+                    max-width: 100%;
+                }
+            }
+
+            @media (max-width: 380px) {
+                .center {
+                    padding: 1em;
+                }
+
+                h1 {
+                    font-size: 1.65rem;
+                }
+
+                .samples-grid {
+                    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+                    gap: 0.4em;
+                }
+
+                .sample-thumb {
+                    width: 56px;
+                    height: 56px;
+                }
+
+                .sample-name {
+                    font-size: 0.7rem;
+                }
             }
 
             .welcome-actions {

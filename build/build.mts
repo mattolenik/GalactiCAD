@@ -2,6 +2,7 @@ import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
 import { DevServer } from "./devserver.mjs"
+import { fileListerPlugin } from "./file-lister.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
 import staticBundler from "./static-bundler.mjs"
 import { versionPlugin } from "./version-plugin.mjs"
@@ -21,7 +22,7 @@ const Static = {
 
 const Options = {
     entryPoints: ["./src/app.mts", "./src/components/preview-window.mts", "./src/components/mesh-viewer.mts", "./src/render-worker.mts"],
-    plugins: [await wgslLoader(), await versionPlugin(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
+    plugins: [await wgslLoader(), await versionPlugin(), await fileListerPlugin(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
     outDir: "./dist",
     isProd: !!process.env.PRODUCTION || !!process.env.CI,
 }

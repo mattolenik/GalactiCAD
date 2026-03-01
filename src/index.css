@@ -40,7 +40,7 @@ body {
     bottom: 0;
     display: flex;
     flex-direction: column;
-    background-color: #1a1a1a;
+    background-color: var(--preview-bg, #1a1a1a);
     touch-action: none;
 }
 
@@ -61,6 +61,7 @@ mesh-viewer {
     padding: 0;
     display: inline-block;
     z-index: 20;
+    background: var(--preview-bg, #1a1a1a);
 }
 
 #log {

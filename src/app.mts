@@ -10,7 +10,7 @@ import type { PreviewWindow } from "./components/preview-window.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
 import { styleInfo } from "./scene/scene.mjs"
 import { SDFRenderer, type NodeStub } from "./sdf.mjs"
-import { __bg_color, __bg_color_dark, __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
+import { __bg_color, __bg_color_dark, __fg_color, __preview_bg, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
@@ -682,6 +682,7 @@ class App {
                 ${__fg_color}: whitesmoke;
                 ${__bg_color}: #333;
                 ${__bg_color_dark}: #222;
+                ${__preview_bg}: #1a1a1a;
                 ${__tone_1}: #888;
                 ${__tone_2}: #444;
                 ${__tone_3}: #666;

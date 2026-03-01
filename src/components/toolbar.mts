@@ -1,4 +1,4 @@
-import { __fg_color, __tone_2, __toolbar_height } from "../style/style.mjs"
+import { __fg_color, __preview_bg, __toolbar_height } from "../style/style.mjs"
 
 export class ToolbarCheckbox {
     #checkbox: HTMLInputElement
@@ -187,9 +187,7 @@ export class Toolbar extends HTMLElement {
                 gap: 6px;
                 height: 100%;
                 box-sizing: border-box;
-                background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
-                backdrop-filter: blur(6px);
-                -webkit-backdrop-filter: blur(6px);
+                background: var(${__preview_bg});
                 padding: 0 8px;
                 border-radius: 0;
                 color: rgb(from var(${__fg_color}) r g b / 0.85);

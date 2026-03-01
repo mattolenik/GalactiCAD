@@ -35,7 +35,7 @@ import { getEditorLayout } from "./layout/editor-layout.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
-import { getDoc, getRecentDocuments } from "./storage/db.mjs"
+import { clearRecentDocuments, getDoc, getRecentDocuments } from "./storage/db.mjs"
 import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
 
 // Start loading dprint formatter (non-blocking); registers providers when ready
@@ -657,6 +657,10 @@ class App {
             onOpenRecent: async (name) => {
                 const opened = await this.#tabs.openDocument(name)
                 if (opened) await this.#hideWelcome(menu)
+            },
+            onClearRecent: async () => {
+                await clearRecentDocuments()
+                await this.#welcomeScreen?.refreshRecentDocuments()
             },
         })
         this.#welcomeScreen = welcome

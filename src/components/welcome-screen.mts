@@ -13,6 +13,7 @@ export interface WelcomeScreenCallbacks {
     getRecentDocuments?: () => Promise<string[]>
     getDocumentContent?: (name: string) => Promise<string | undefined>
     onOpenRecent?: (name: string) => void | Promise<void>
+    onClearRecent?: () => void | Promise<void>
 }
 
 export class WelcomeScreen extends HTMLElement {
@@ -37,6 +38,11 @@ export class WelcomeScreen extends HTMLElement {
     async #initRecentDocuments(): Promise<void> {
         await this.#renderRecentDocuments()
         await this.#loadRecentThumbnails()
+    }
+
+    /** Refresh recent documents list (e.g. after clearing history). */
+    async refreshRecentDocuments(): Promise<void> {
+        await this.#initRecentDocuments()
     }
 
     #getStyles(): string {
@@ -403,12 +409,39 @@ export class WelcomeScreen extends HTMLElement {
                 display: none;
             }
 
+            .recent-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.75em;
+                margin-bottom: 0.85em;
+            }
+
             .recent-browser h3 {
                 font-size: 0.82rem;
                 font-weight: 500;
                 color: color-mix(in srgb, var(${__fg_color}) 70%, transparent);
-                margin: 0 0 0.85em;
+                margin: 0;
                 letter-spacing: 0.05em;
+            }
+
+            .clear-history-btn {
+                padding: 0.25em 0.5em;
+                font-size: 0.75rem;
+                border: none;
+                background: transparent;
+                color: color-mix(in srgb, var(${__fg_color}) 55%, transparent);
+                cursor: pointer;
+                transition: color 0.2s ease;
+            }
+
+            .clear-history-btn:hover {
+                color: color-mix(in srgb, var(${__fg_color}) 85%, transparent);
+            }
+
+            .clear-history-btn:focus-visible {
+                outline: 2px solid var(${__tone_accent});
+                outline-offset: 2px;
             }
 
             .recent-scroll {
@@ -557,13 +590,24 @@ export class WelcomeScreen extends HTMLElement {
         if (!getRecent || !onOpen) return
 
         const names = await getRecent()
-        if (names.length === 0) return
-
         const browser = this.#samplesBrowser.querySelector(".recent-browser")!
+        if (names.length === 0) {
+            browser.innerHTML = ""
+            return
+        }
+
         browser.innerHTML = ""
+        const header = document.createElement("div")
+        header.className = "recent-header"
         const h3 = document.createElement("h3")
         h3.textContent = "Recent"
-        browser.appendChild(h3)
+        header.appendChild(h3)
+        const clearBtn = document.createElement("button")
+        clearBtn.className = "clear-history-btn"
+        clearBtn.textContent = "Clear history"
+        clearBtn.onclick = () => void this.#callbacks.onClearRecent?.()
+        header.appendChild(clearBtn)
+        browser.appendChild(header)
         const scroll = document.createElement("div")
         scroll.className = "recent-scroll"
         const grid = document.createElement("div")

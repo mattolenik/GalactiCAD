@@ -166,3 +166,7 @@ export async function addRecentDocument(name: string): Promise<void> {
     const next = [name, ...filtered].slice(0, RECENT_DOCS_MAX)
     await db.preferences.put({ key: RECENT_DOCS_KEY, value: next })
 }
+
+export async function clearRecentDocuments(): Promise<void> {
+    await db.preferences.put({ key: RECENT_DOCS_KEY, value: [] })
+}

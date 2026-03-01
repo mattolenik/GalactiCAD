@@ -656,14 +656,14 @@ export class DocumentTabs extends HTMLElement {
         )
         const sub = isFileBacked
             ? change$.pipe(debounceTime(DEBOUNCE_FILE_BACKED_MS)).subscribe(() => {
-                  const content = model.getValue()
-                  const lastWritten = this.#lastWrittenContent.get(name)
-                  void db.documents.update(name, { content, lastWrittenContent: lastWritten })
-                  this.#renderTabs()
-              })
+                const content = model.getValue()
+                const lastWritten = this.#lastWrittenContent.get(name)
+                void db.documents.update(name, { content, lastWrittenContent: lastWritten })
+                this.#renderTabs()
+            })
             : change$.pipe(bufferTime(DEBOUNCE_SAVE_MS)).subscribe(() => {
-                  void db.documents.put({ name, content: model.getValue() })
-              })
+                void db.documents.put({ name, content: model.getValue() })
+            })
         this.#subscriptions.set(name, sub)
         if (isFileBacked) {
             const content = model.getValue()

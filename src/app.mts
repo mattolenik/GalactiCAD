@@ -643,7 +643,7 @@ class App {
                 const dirHandle = await openFolder()
                 if (dirHandle) {
                     await this.#hideWelcome(menu)
-                    await this.#tabs.loadFromFolder(dirHandle)
+                    await this.#tabs.loadFromFolderOrPrompt(dirHandle)
                 }
             },
             onSamplePick: async (content, suggestedName) => {
@@ -979,7 +979,7 @@ class App {
             return
         }
         const dirHandle = await openFolder()
-        if (dirHandle) await this.#tabs.loadFromFolder(dirHandle)
+        if (dirHandle) await this.#tabs.loadFromFolderOrPrompt(dirHandle)
     }
 
     async #handleCloseFolder(): Promise<void> {
@@ -987,7 +987,7 @@ class App {
         if (this.#tabs.documentNames.length === 0) {
             this.#showWelcomeAndDisposePreview()
         } else {
-            this.#tabs.closeAllTabs()
+            await this.#tabs.closeAllTabsOrPrompt()
         }
     }
 

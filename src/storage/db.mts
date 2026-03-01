@@ -12,6 +12,10 @@ import Dexie, { type EntityTable } from "dexie"
 export interface DocumentRow {
     name: string
     content: string
+    /** Last content written to disk (file-backed only) */
+    lastWrittenContent?: string
+    /** Timestamp of last disk write (file-backed only) */
+    lastWriteToDisk?: number
 }
 
 export interface DocSettingsRow {
@@ -82,6 +86,24 @@ export async function setDoc(name: string, content: string): Promise<void> {
 
 export async function deleteDoc(name: string): Promise<void> {
     await db.documents.delete(name)
+}
+
+export async function setDocFileBacked(
+    name: string,
+    content: string,
+    lastWrittenContent: string,
+    lastWriteToDisk?: number
+): Promise<void> {
+    await db.documents.put({
+        name,
+        content,
+        lastWrittenContent,
+        lastWriteToDisk,
+    })
+}
+
+export async function getDocFileBacked(name: string): Promise<DocumentRow | undefined> {
+    return db.documents.get(name)
 }
 
 export async function getDocSettings(name: string): Promise<DocSettingsRow | undefined> {

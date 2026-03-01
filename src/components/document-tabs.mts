@@ -1,11 +1,12 @@
 import * as monaco from "monaco-editor"
 import { fromEventPattern, Subscription } from "rxjs"
-import { bufferTime } from "rxjs/operators"
+import { bufferTime, debounceTime } from "rxjs/operators"
 import { OrderedMap } from "../collections/orderedMap.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
-import { db } from "../storage/db.mjs"
+import { db, setDocFileBacked } from "../storage/db.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_0, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { FileConflictDialog } from "./file-conflict-dialog.mjs"
+import { UnsavedCloseDialog } from "./unsaved-close-dialog.mjs"
 import { YesNoDialog } from "./yesno-dialog.mjs"
 import { listGcadFileNames, readFileContent, readGcadFiles, saveAsGcad, writeToFile } from "../fs/file-picker.mjs"
 import { clearFolderHandle, getFolderHandle, saveFolderHandle } from "../storage/project-storage.mjs"
@@ -13,6 +14,7 @@ import { clearFolderHandle, getFolderHandle, saveFolderHandle } from "../storage
 const LONG_PRESS_MS = 500
 const MOVE_THRESHOLD_PX = 5
 const DEBOUNCE_SAVE_MS = 1000
+const DEBOUNCE_FILE_BACKED_MS = 500
 
 export class DocumentTabs extends HTMLElement {
     #active?: string
@@ -22,7 +24,6 @@ export class DocumentTabs extends HTMLElement {
     #subscriptions = new Map<string, Subscription>()
     #tabContainer: HTMLElement
     #topUntitledIndex: number = 0
-    #diskSyncInterval: ReturnType<typeof setInterval> | null = null
     #lastWrittenContent = new Map<string, string>()
 
     #draggingName: string | null = null
@@ -166,6 +167,16 @@ export class DocumentTabs extends HTMLElement {
                 flex: 0 0 auto;
                 pointer-events: none;
             }
+            .tab-label.unsaved::after {
+                background: #e74c3c;
+                border-radius: 50%;
+                content: "";
+                display: inline-block;
+                height: 6px;
+                margin-inline-start: 0.25rem;
+                vertical-align: middle;
+                width: 6px;
+            }
         `
         this.shadowRoot!.appendChild(style)
 
@@ -182,7 +193,6 @@ export class DocumentTabs extends HTMLElement {
     disconnectedCallback() {
         this.#preDragAc?.abort()
         this.#dragAc?.abort()
-        this.#stopDiskSync()
         for (const sub of this.#subscriptions.values()) {
             sub.unsubscribe()
         }
@@ -214,6 +224,19 @@ export class DocumentTabs extends HTMLElement {
         return this.#fileHandles.has(name)
     }
 
+    /** Whether the given file-backed document has unsaved changes (content differs from last disk write). */
+    isDirty(name: string): boolean {
+        if (!this.#fileHandles.has(name)) return false
+        const model = this.#docs.get(name)
+        const lastWritten = this.#lastWrittenContent.get(name)
+        return model !== undefined && lastWritten !== undefined && model.getValue() !== lastWritten
+    }
+
+    /** Names of file-backed documents that have unsaved changes. */
+    getUnsavedFileBackedNames(): string[] {
+        return this.documentNames.filter(n => this.isDirty(n))
+    }
+
     /** Unopened .gcad files in the current folder. Returns null if no folder is tracked. */
     async getUnopenedFolderFiles(): Promise<string[] | null> {
         const dirHandle = await getFolderHandle()
@@ -235,11 +258,12 @@ export class DocumentTabs extends HTMLElement {
         this.addDocumentFromFile(name, content, fileHandle)
     }
 
-    /** Names of all documents stored in storage that are not currently open as tabs */
+    /** Names of all storage-backed documents (not file-backed) that are not currently open as tabs */
     async getClosedDocumentNames(): Promise<string[]> {
         const open = new Set(this.#docs.keys())
+        const fileBacked = new Set((await db.docFiles.toArray()).map(r => r.name))
         const all = await db.documents.toArray()
-        return all.map(d => d.name).filter(n => !open.has(n))
+        return all.map(d => d.name).filter(n => !open.has(n) && !fileBacked.has(n))
     }
 
     /** Add a document from file content, optionally with a file handle for disk sync. */
@@ -255,9 +279,9 @@ export class DocumentTabs extends HTMLElement {
             this.#fileHandles.set(name, handle)
             this.#lastWrittenContent.set(name, content)
             void db.docFiles.put({ name, handle })
+            void setDocFileBacked(name, content, content)
         }
         this.#watchModel(name, model)
-        this.#startDiskSyncIfNeeded()
         void this.switchTo(name)
         void this.#updateStoredOrder()
     }
@@ -311,7 +335,6 @@ export class DocumentTabs extends HTMLElement {
         }
         this.#active = undefined
         this.#editor.setModel(null!)
-        this.#stopDiskSync()
 
         const entries = await readGcadFiles(dirHandle)
         for (const { name, handle, content } of entries) {
@@ -321,9 +344,9 @@ export class DocumentTabs extends HTMLElement {
             this.#fileHandles.set(name, handle)
             this.#lastWrittenContent.set(name, content)
             await db.docFiles.put({ name, handle })
+            await setDocFileBacked(name, content, content)
             this.#watchModel(name, model)
         }
-        this.#startDiskSyncIfNeeded()
         const first = this.#docs.keys().next().value
         if (first) await this.switchTo(first)
         await this.#updateStoredOrder()
@@ -352,6 +375,7 @@ export class DocumentTabs extends HTMLElement {
                 if (choice === "revert") {
                     model.setValue(diskContent)
                     this.#lastWrittenContent.set(name, diskContent)
+                    await setDocFileBacked(name, diskContent, diskContent)
                     return true
                 }
                 // overwrite: fall through to write
@@ -363,6 +387,7 @@ export class DocumentTabs extends HTMLElement {
         }
         await writeToFile(handle, editorContent)
         this.#lastWrittenContent.set(name, editorContent)
+        await setDocFileBacked(name, editorContent, editorContent, Date.now())
         return true
     }
 
@@ -398,8 +423,8 @@ export class DocumentTabs extends HTMLElement {
         this.#fileHandles.set(newName, handle)
         this.#lastWrittenContent.set(newName, content)
         await db.docFiles.put({ name: newName, handle })
+        await setDocFileBacked(newName, content, content, Date.now())
         this.#watchModel(newName, newModel)
-        this.#startDiskSyncIfNeeded()
 
         if (oldIndex >= 0) {
             const newIndex = Array.from(this.#docs.keys()).indexOf(newName)
@@ -431,7 +456,6 @@ export class DocumentTabs extends HTMLElement {
             this.#docs.get(name)?.dispose()
             this.#docs.delete(name)
         }
-        this.#stopDiskSync()
 
         const docOrderRow = await db.preferences.get("documentOrder")
         const storedOrder = (docOrderRow?.value as string[] | undefined) ?? []
@@ -458,14 +482,24 @@ export class DocumentTabs extends HTMLElement {
                             fileHandle = docFileRow?.handle
                         }
                         if (fileHandle) {
-                            const file = await fileHandle.getFile()
-                            const content = await file.text()
+                            const docRow = await db.documents.get(name)
+                            let content: string
+                            let lastWritten: string
+                            if (docRow?.content !== undefined) {
+                                content = docRow.content
+                                lastWritten = docRow.lastWrittenContent ?? docRow.content
+                            } else {
+                                const file = await fileHandle.getFile()
+                                content = await file.text()
+                                lastWritten = content
+                            }
                             const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
                             const model = monaco.editor.createModel(content, "typescript", uri)
                             this.#docs.set(name, model)
                             this.#fileHandles.set(name, fileHandle)
-                            this.#lastWrittenContent.set(name, content)
+                            this.#lastWrittenContent.set(name, lastWritten)
                             await db.docFiles.put({ name, handle: fileHandle })
+                            await setDocFileBacked(name, content, lastWritten, docRow?.lastWriteToDisk)
                             this.#watchModel(name, model)
                         } else {
                             const docRow = await db.documents.get(name)
@@ -486,7 +520,6 @@ export class DocumentTabs extends HTMLElement {
                         }
                     }
                 }
-                this.#startDiskSyncIfNeeded()
                 const first = this.#docs.keys().next().value
                 if (first) await this.switchTo(first)
                 await this.#updateStoredOrder()
@@ -508,13 +541,23 @@ export class DocumentTabs extends HTMLElement {
                 const docFileRow = await db.docFiles.get(name)
                 if (docFileRow?.handle) {
                     try {
-                        const file = await docFileRow.handle.getFile()
-                        const content = await file.text()
+                        const docRow = await db.documents.get(name)
+                        let content: string
+                        let lastWritten: string
+                        if (docRow?.content !== undefined) {
+                            content = docRow.content
+                            lastWritten = docRow.lastWrittenContent ?? docRow.content
+                        } else {
+                            const file = await docFileRow.handle.getFile()
+                            content = await file.text()
+                            lastWritten = content
+                        }
                         const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
                         const model = monaco.editor.createModel(content, "typescript", uri)
                         this.#docs.set(name, model)
                         this.#fileHandles.set(name, docFileRow.handle)
-                        this.#lastWrittenContent.set(name, content)
+                        this.#lastWrittenContent.set(name, lastWritten)
+                        await setDocFileBacked(name, content, lastWritten, docRow?.lastWriteToDisk)
                         this.#watchModel(name, model)
                     } catch {
                         // Handle may be stale (file moved/deleted)
@@ -532,38 +575,91 @@ export class DocumentTabs extends HTMLElement {
         return false
     }
 
-    /** Observe model changes and save debounced. File-backed docs sync to disk via periodic timer; storage-backed docs save to Dexie. */
+    /** Observe model changes and save debounced. File-backed docs sync content to IndexedDB; storage-backed docs save to Dexie. */
     #watchModel(name: string, model: monaco.editor.ITextModel) {
         this.#subscriptions.get(name)?.unsubscribe()
+        const isFileBacked = this.#fileHandles.has(name)
         const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
             handler => model.onDidChangeContent(handler),
             (_handler, subscription) => (subscription as monaco.IDisposable).dispose()
-        ).pipe(bufferTime(DEBOUNCE_SAVE_MS))
-        const sub = change$.subscribe(() => {
-            if (this.#fileHandles.has(name)) {
-                // File-backed: disk sync happens via periodic timer
-            } else {
-                void db.documents.put({ name, content: model.getValue() })
-            }
-        })
+        )
+        const sub = isFileBacked
+            ? change$.pipe(debounceTime(DEBOUNCE_FILE_BACKED_MS)).subscribe(() => {
+                  const content = model.getValue()
+                  const lastWritten = this.#lastWrittenContent.get(name)
+                  void db.documents.put({ name, content, lastWrittenContent: lastWritten })
+                  this.#renderTabs()
+              })
+            : change$.pipe(bufferTime(DEBOUNCE_SAVE_MS)).subscribe(() => {
+                  void db.documents.put({ name, content: model.getValue() })
+              })
         this.#subscriptions.set(name, sub)
-        if (!this.#fileHandles.has(name)) {
+        if (isFileBacked) {
+            const content = model.getValue()
+            const lastWritten = this.#lastWrittenContent.get(name)
+            void db.documents.put({ name, content, lastWrittenContent: lastWritten })
+        } else {
             void db.documents.put({ name, content: model.getValue() })
         }
     }
 
-    closeCurrentTab() {
-        this.closeTab(this.#active!)
+    closeCurrentTab(): Promise<boolean> {
+        return this.closeTab(this.#active!)
     }
 
     /** Close all tabs. Dispatches tabClosed for each. */
     closeAllTabs(): void {
         for (const name of Array.from(this.#docs.keys())) {
-            this.closeTab(name)
+            this.#doCloseTab(name)
         }
     }
 
-    closeTab(name: string) {
+    /** Close all tabs, or prompt for unsaved file-backed docs. Returns false if user cancels. */
+    async closeAllTabsOrPrompt(): Promise<boolean> {
+        const unsaved = this.getUnsavedFileBackedNames()
+        if (unsaved.length === 0) {
+            this.closeAllTabs()
+            return true
+        }
+        const choice = await new UnsavedCloseDialog("batch", undefined, unsaved.length).show()
+        if (choice === "cancel") return false
+        if (choice === "save") {
+            for (const name of unsaved) {
+                const saved = await this.saveToDisk(name)
+                if (!saved) return false
+            }
+        }
+        this.closeAllTabs()
+        return true
+    }
+
+    /** Load from folder, or prompt for unsaved file-backed docs first. Returns false if user cancels. */
+    async loadFromFolderOrPrompt(dirHandle: FileSystemDirectoryHandle): Promise<boolean> {
+        const unsaved = this.getUnsavedFileBackedNames()
+        if (unsaved.length === 0) {
+            await this.loadFromFolder(dirHandle)
+            return true
+        }
+        const closed = await this.closeAllTabsOrPrompt()
+        if (!closed) return false
+        await this.loadFromFolder(dirHandle)
+        return true
+    }
+
+    async closeTab(name: string): Promise<boolean> {
+        if (this.#fileHandles.has(name) && this.isDirty(name)) {
+            const choice = await new UnsavedCloseDialog("single", name).show()
+            if (choice === "cancel") return false
+            if (choice === "save") {
+                const saved = await this.saveToDisk(name)
+                if (!saved) return false
+            }
+        }
+        this.#doCloseTab(name)
+        return true
+    }
+
+    #doCloseTab(name: string): void {
         const wasActive = name === this.#active
         const sub = this.#subscriptions.get(name)
         if (sub) sub.unsubscribe()
@@ -572,7 +668,6 @@ export class DocumentTabs extends HTMLElement {
         this.#lastWrittenContent.delete(name)
         this.#docs.get(name)?.dispose()
         this.#docs.delete(name)
-        this.#stopDiskSyncIfEmpty()
         this.#renderTabs()
         void this.#updateStoredOrder()
         this.dispatchEvent(new CustomEvent("tabClosed", { detail: name }))
@@ -588,17 +683,17 @@ export class DocumentTabs extends HTMLElement {
         }
     }
 
-    async deleteCurrentTab() {
-        this.deleteTab(this.active!)
+    async deleteCurrentTab(): Promise<void> {
+        await this.deleteTab(this.active!)
     }
 
-    async deleteTab(name: string) {
+    async deleteTab(name: string): Promise<void> {
         const cntinue = await new YesNoDialog(`Are you sure you want to delete ${name}?`).show()
         if (cntinue) {
             await db.documents.delete(name)
             await db.docFiles.delete(name)
             await SettingsManager.instance.deleteDocument(name)
-            this.closeTab(name)
+            await this.closeTab(name)
         }
     }
 
@@ -658,7 +753,12 @@ export class DocumentTabs extends HTMLElement {
         const docRow = await db.documents.get(oldName)
         if (docRow) {
             await db.documents.delete(oldName)
-            await db.documents.put({ name: newName, content: docRow.content })
+            await db.documents.put({
+                name: newName,
+                content: docRow.content,
+                ...(docRow.lastWrittenContent !== undefined && { lastWrittenContent: docRow.lastWrittenContent }),
+                ...(docRow.lastWriteToDisk !== undefined && { lastWriteToDisk: docRow.lastWriteToDisk }),
+            })
         }
 
         // Move doc file handle if present
@@ -749,15 +849,17 @@ export class DocumentTabs extends HTMLElement {
             tab.addEventListener("pointerdown", (e) => this.#onTabPointerDown(e, name))
 
             const label = document.createElement("span")
+            label.classList.add("tab-label")
             label.textContent = name
+            if (this.hasFileHandle(name) && this.isDirty(name)) label.classList.add("unsaved")
             tab.appendChild(label)
 
             const close = document.createElement("button")
             close.classList.add("close")
             close.textContent = "×"
-            close.addEventListener("click", e => {
+            close.addEventListener("click", async e => {
                 e.stopPropagation()
-                this.closeTab(name)
+                await this.closeTab(name)
             })
             tab.appendChild(close)
             this.#tabContainer.appendChild(tab)
@@ -943,43 +1045,6 @@ export class DocumentTabs extends HTMLElement {
         this.#renderTabs()
     }
 
-    #startDiskSyncIfNeeded(): void {
-        if (this.#fileHandles.size === 0 || this.#diskSyncInterval !== null) return
-        const intervalSec = Math.max(1, SettingsManager.instance.getGlobal().app.diskSyncIntervalSeconds)
-        this.#diskSyncInterval = setInterval(() => this.#syncFileBackedDocs(), intervalSec * 1000)
-    }
-
-    #stopDiskSyncIfEmpty(): void {
-        if (this.#fileHandles.size === 0) this.#stopDiskSync()
-    }
-
-    #stopDiskSync(): void {
-        if (this.#diskSyncInterval !== null) {
-            clearInterval(this.#diskSyncInterval)
-            this.#diskSyncInterval = null
-        }
-    }
-
-    async #syncFileBackedDocs(): Promise<void> {
-        for (const [name, handle] of this.#fileHandles) {
-            const model = this.#docs.get(name)
-            if (!model) continue
-            const editorContent = model.getValue()
-            if (editorContent === this.#lastWrittenContent.get(name)) continue
-            try {
-                const diskContent = await readFileContent(handle)
-                if (diskContent !== this.#lastWrittenContent.get(name)) continue
-            } catch {
-                continue
-            }
-            try {
-                await writeToFile(handle, editorContent)
-                this.#lastWrittenContent.set(name, editorContent)
-            } catch (err) {
-                console.error(`[DocumentTabs] Auto-save failed for ${name}:`, err)
-            }
-        }
-    }
 }
 
 customElements.define("document-tabs", DocumentTabs)

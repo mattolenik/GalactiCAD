@@ -19,7 +19,7 @@ export class FileConflictDialog extends BaseDialog<FileConflictChoice> {
             button.revert { background: var(${__tone_1}); }
             button.cancel { background: var(${__tone_2}); }
         </style>
-        <div class="message">"${fileName.replace(/"/g, "&quot;")}" has been modified externally. How would you like to proceed?</div>
+        <div class="message">"${fileName.replace(/"/g, "&quot;")}" has been modified externally. Your save will overwrite those changes. How would you like to proceed?</div>
         <div class="buttons">
             <button class="overwrite">Overwrite disk</button>
             <button class="revert">Revert to disk</button>

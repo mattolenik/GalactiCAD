@@ -2,7 +2,7 @@
 // Arcane Power Cell
 // A faceted containment vessel with mechanical detailing
 
-// ═══ CORE ═══
+// ══ ═ CORE ═══
 // Chamfer-intersect a cube and sphere to produce a faceted gem shape
 let coreBox = box([7, 7, 7])
 let coreSphere = sphere.radius(9.5)

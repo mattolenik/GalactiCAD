@@ -27,6 +27,7 @@
   "dependencies": {
     "@dprint/formatter": "^0.5.1",
     "@dprint/typescript": "^0.95.15",
+    "dexie": "^4.3.0",
     "meshoptimizer": "^1.0.1",
     "monaco-editor": "^0.55.1",
     "quaternion": "^2.2.0",

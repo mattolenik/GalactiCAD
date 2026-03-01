@@ -187,6 +187,7 @@ export class DocumentTabs extends HTMLElement {
 
         this.#tabContainer = document.createElement("div")
         this.#tabContainer.classList.add("tabs-container")
+        this.#tabContainer.addEventListener("wheel", this.#onWheel, { passive: false })
         this.shadowRoot!.appendChild(this.#tabContainer)
 
         this.#renderTabs()
@@ -936,6 +937,17 @@ export class DocumentTabs extends HTMLElement {
             tab.appendChild(close)
             this.#tabContainer.appendChild(tab)
         }
+    }
+
+    #onWheel = (e: WheelEvent): void => {
+        const el = this.#tabContainer
+        const canScrollLeft = el.scrollLeft > 0
+        const canScrollRight = el.scrollLeft < el.scrollWidth - el.clientWidth
+        if (!canScrollLeft && !canScrollRight) return
+        const dy = e.deltaY
+        if (dy === 0) return
+        el.scrollLeft += dy
+        e.preventDefault()
     }
 
     #onTabPointerDown = (e: PointerEvent, name: string): void => {

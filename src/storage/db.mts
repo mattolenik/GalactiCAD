@@ -16,6 +16,8 @@ export interface DocumentRow {
     lastWrittenContent?: string
     /** Timestamp of last disk write (file-backed only) */
     lastWriteToDisk?: number
+    /** Last known time disk and DB copy were the same (file-backed only) */
+    lastSyncWithDisk?: number
 }
 
 export interface DocSettingsRow {
@@ -92,13 +94,15 @@ export async function setDocFileBacked(
     name: string,
     content: string,
     lastWrittenContent: string,
-    lastWriteToDisk?: number
+    lastWriteToDisk?: number,
+    lastSyncWithDisk?: number
 ): Promise<void> {
     await db.documents.put({
         name,
         content,
         lastWrittenContent,
         lastWriteToDisk,
+        lastSyncWithDisk,
     })
 }
 

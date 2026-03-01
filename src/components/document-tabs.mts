@@ -4,11 +4,13 @@ import { bufferTime, debounceTime } from "rxjs/operators"
 import { OrderedMap } from "../collections/orderedMap.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import { db, setDocFileBacked } from "../storage/db.mjs"
+import type { DocumentRow } from "../storage/db.mjs"
 import { __active_bg, __bg_color, __fg_color, __tone_0, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
+import { DiskConflictDialog } from "./disk-conflict-dialog.mjs"
 import { FileConflictDialog } from "./file-conflict-dialog.mjs"
 import { UnsavedCloseDialog } from "./unsaved-close-dialog.mjs"
 import { YesNoDialog } from "./yesno-dialog.mjs"
-import { listGcadFileNames, readFileContent, readGcadFiles, saveAsGcad, writeToFile } from "../fs/file-picker.mjs"
+import { listGcadFileNames, listGcadFileHandles, readFileContent, saveAsGcad, writeToFile } from "../fs/file-picker.mjs"
 import { clearFolderHandle, getFolderHandle, saveFolderHandle } from "../storage/project-storage.mjs"
 
 const LONG_PRESS_MS = 500
@@ -253,9 +255,7 @@ export class DocumentTabs extends HTMLElement {
         const dirHandle = await getFolderHandle()
         if (!dirHandle) return
         const fileHandle = await dirHandle.getFileHandle(name)
-        const file = await fileHandle.getFile()
-        const content = await file.text()
-        this.addDocumentFromFile(name, content, fileHandle)
+        await this.addDocumentFromFile(name, "", fileHandle)
     }
 
     /** Names of all storage-backed documents (not file-backed) that are not currently open as tabs */
@@ -266,20 +266,79 @@ export class DocumentTabs extends HTMLElement {
         return all.map(d => d.name).filter(n => !open.has(n) && !fileBacked.has(n))
     }
 
-    /** Add a document from file content, optionally with a file handle for disk sync. */
-    addDocumentFromFile(name: string, content: string, handle?: FileSystemFileHandle): void {
+    /** Resolve file content from disk, merging with IndexedDB when doc is dirty and disk is not newer. */
+    async #resolveFileContent(
+        name: string,
+        handle: FileSystemFileHandle,
+        docRow?: DocumentRow
+    ): Promise<{ content: string; lastWritten: string; lastSyncWithDisk: number }> {
+        const file = await handle.getFile()
+        const diskContent = await file.text()
+        const diskLastModified = file.lastModified
+        const row = docRow ?? (await db.documents.get(name))
+        if (!row) {
+            return {
+                content: diskContent,
+                lastWritten: diskContent,
+                lastSyncWithDisk: diskLastModified,
+            }
+        }
+        const dirty = row.content !== (row.lastWrittenContent ?? row.content)
+        const lastSync = row.lastSyncWithDisk ?? row.lastWriteToDisk
+        const diskNewer =
+            lastSync != null && lastSync > 0 ? diskLastModified > lastSync : false
+        if (!dirty) {
+            return {
+                content: diskContent,
+                lastWritten: diskContent,
+                lastSyncWithDisk: diskLastModified,
+            }
+        }
+        if (!diskNewer) {
+            return {
+                content: row.content,
+                lastWritten: row.lastWrittenContent ?? row.content,
+                lastSyncWithDisk: row.lastSyncWithDisk ?? diskLastModified,
+            }
+        }
+        const choice = await new DiskConflictDialog(name).show()
+        if (choice === "keepEdits") {
+            return {
+                content: row.content,
+                lastWritten: row.lastWrittenContent ?? row.content,
+                lastSyncWithDisk: row.lastSyncWithDisk ?? diskLastModified,
+            }
+        }
+        return {
+            content: diskContent,
+            lastWritten: diskContent,
+            lastSyncWithDisk: diskLastModified,
+        }
+    }
+
+    /** Add a document from file content, optionally with a file handle for disk sync. When handle is provided, resolves content via IndexedDB merge. */
+    async addDocumentFromFile(name: string, content: string, handle?: FileSystemFileHandle): Promise<void> {
         if (this.#docs.has(name)) {
             void this.switchTo(name)
             return
         }
+        let resolvedContent = content
+        let lastWritten = content
+        let lastSyncWithDisk: number | undefined
+        if (handle) {
+            const resolved = await this.#resolveFileContent(name, handle)
+            resolvedContent = resolved.content
+            lastWritten = resolved.lastWritten
+            lastSyncWithDisk = resolved.lastSyncWithDisk
+        }
         const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-        const model = monaco.editor.createModel(content, "typescript", uri)
+        const model = monaco.editor.createModel(resolvedContent, "typescript", uri)
         this.#docs.set(name, model)
         if (handle) {
             this.#fileHandles.set(name, handle)
-            this.#lastWrittenContent.set(name, content)
+            this.#lastWrittenContent.set(name, lastWritten)
             void db.docFiles.put({ name, handle })
-            void setDocFileBacked(name, content, content)
+            await setDocFileBacked(name, resolvedContent, lastWritten, undefined, lastSyncWithDisk)
         }
         this.#watchModel(name, model)
         void this.switchTo(name)
@@ -336,15 +395,16 @@ export class DocumentTabs extends HTMLElement {
         this.#active = undefined
         this.#editor.setModel(null!)
 
-        const entries = await readGcadFiles(dirHandle)
-        for (const { name, handle, content } of entries) {
+        const entries = await listGcadFileHandles(dirHandle)
+        for (const { name, handle } of entries) {
+            const resolved = await this.#resolveFileContent(name, handle)
             const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-            const model = monaco.editor.createModel(content, "typescript", uri)
+            const model = monaco.editor.createModel(resolved.content, "typescript", uri)
             this.#docs.set(name, model)
             this.#fileHandles.set(name, handle)
-            this.#lastWrittenContent.set(name, content)
+            this.#lastWrittenContent.set(name, resolved.lastWritten)
             await db.docFiles.put({ name, handle })
-            await setDocFileBacked(name, content, content)
+            await setDocFileBacked(name, resolved.content, resolved.lastWritten, undefined, resolved.lastSyncWithDisk)
             this.#watchModel(name, model)
         }
         const first = this.#docs.keys().next().value
@@ -355,10 +415,8 @@ export class DocumentTabs extends HTMLElement {
 
     /** Load a single file. Adds to tabs with handle. */
     async loadFromSingleFile(fileHandle: FileSystemFileHandle): Promise<void> {
-        const file = await fileHandle.getFile()
-        const content = await file.text()
-        const name = file.name
-        this.addDocumentFromFile(name, content, fileHandle)
+        const name = fileHandle.name
+        await this.addDocumentFromFile(name, "", fileHandle)
     }
 
     /** Write current content of a file-backed doc to disk. Handles external changes with overwrite/revert/cancel dialog. */
@@ -368,14 +426,15 @@ export class DocumentTabs extends HTMLElement {
         if (!handle || !model) return false
         const editorContent = model.getValue()
         try {
-            const diskContent = await readFileContent(handle)
+            const file = await handle.getFile()
+            const diskContent = await file.text()
             if (diskContent !== editorContent) {
                 const choice = await new FileConflictDialog(name).show()
                 if (choice === "cancel") return false
                 if (choice === "revert") {
                     model.setValue(diskContent)
                     this.#lastWrittenContent.set(name, diskContent)
-                    await setDocFileBacked(name, diskContent, diskContent)
+                    await setDocFileBacked(name, diskContent, diskContent, undefined, file.lastModified)
                     return true
                 }
                 // overwrite: fall through to write
@@ -387,7 +446,37 @@ export class DocumentTabs extends HTMLElement {
         }
         await writeToFile(handle, editorContent)
         this.#lastWrittenContent.set(name, editorContent)
-        await setDocFileBacked(name, editorContent, editorContent, Date.now())
+        await setDocFileBacked(name, editorContent, editorContent, Date.now(), Date.now())
+        return true
+    }
+
+    /** Discard unsaved changes and reload from disk (file-backed) or IndexedDB (storage-backed). Returns true if reverted. */
+    async revertTab(name: string): Promise<boolean> {
+        const model = this.#docs.get(name)
+        if (!model) return false
+        let hasChanges = false
+        if (this.#fileHandles.has(name)) {
+            const lastWritten = this.#lastWrittenContent.get(name)
+            hasChanges = lastWritten !== undefined && model.getValue() !== lastWritten
+        } else {
+            const row = await db.documents.get(name)
+            hasChanges = row != null && model.getValue() !== row.content
+        }
+        if (!hasChanges) return false
+        const confirmed = await new YesNoDialog(`Discard unsaved changes to ${name}?`).show()
+        if (!confirmed) return false
+        if (this.#fileHandles.has(name)) {
+            const handle = this.#fileHandles.get(name)!
+            const file = await handle.getFile()
+            const diskContent = await file.text()
+            model.setValue(diskContent)
+            this.#lastWrittenContent.set(name, diskContent)
+            await setDocFileBacked(name, diskContent, diskContent, undefined, file.lastModified)
+        } else {
+            const row = await db.documents.get(name)
+            if (row) model.setValue(row.content)
+        }
+        this.#renderTabs()
         return true
     }
 
@@ -423,7 +512,7 @@ export class DocumentTabs extends HTMLElement {
         this.#fileHandles.set(newName, handle)
         this.#lastWrittenContent.set(newName, content)
         await db.docFiles.put({ name: newName, handle })
-        await setDocFileBacked(newName, content, content, Date.now())
+        await setDocFileBacked(newName, content, content, Date.now(), Date.now())
         this.#watchModel(newName, newModel)
 
         if (oldIndex >= 0) {
@@ -483,23 +572,14 @@ export class DocumentTabs extends HTMLElement {
                         }
                         if (fileHandle) {
                             const docRow = await db.documents.get(name)
-                            let content: string
-                            let lastWritten: string
-                            if (docRow?.content !== undefined) {
-                                content = docRow.content
-                                lastWritten = docRow.lastWrittenContent ?? docRow.content
-                            } else {
-                                const file = await fileHandle.getFile()
-                                content = await file.text()
-                                lastWritten = content
-                            }
+                            const resolved = await this.#resolveFileContent(name, fileHandle, docRow)
                             const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                            const model = monaco.editor.createModel(content, "typescript", uri)
+                            const model = monaco.editor.createModel(resolved.content, "typescript", uri)
                             this.#docs.set(name, model)
                             this.#fileHandles.set(name, fileHandle)
-                            this.#lastWrittenContent.set(name, lastWritten)
+                            this.#lastWrittenContent.set(name, resolved.lastWritten)
                             await db.docFiles.put({ name, handle: fileHandle })
-                            await setDocFileBacked(name, content, lastWritten, docRow?.lastWriteToDisk)
+                            await setDocFileBacked(name, resolved.content, resolved.lastWritten, docRow?.lastWriteToDisk, resolved.lastSyncWithDisk)
                             this.#watchModel(name, model)
                         } else {
                             const docRow = await db.documents.get(name)
@@ -542,22 +622,13 @@ export class DocumentTabs extends HTMLElement {
                 if (docFileRow?.handle) {
                     try {
                         const docRow = await db.documents.get(name)
-                        let content: string
-                        let lastWritten: string
-                        if (docRow?.content !== undefined) {
-                            content = docRow.content
-                            lastWritten = docRow.lastWrittenContent ?? docRow.content
-                        } else {
-                            const file = await docFileRow.handle.getFile()
-                            content = await file.text()
-                            lastWritten = content
-                        }
+                        const resolved = await this.#resolveFileContent(name, docFileRow.handle, docRow)
                         const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                        const model = monaco.editor.createModel(content, "typescript", uri)
+                        const model = monaco.editor.createModel(resolved.content, "typescript", uri)
                         this.#docs.set(name, model)
                         this.#fileHandles.set(name, docFileRow.handle)
-                        this.#lastWrittenContent.set(name, lastWritten)
-                        await setDocFileBacked(name, content, lastWritten, docRow?.lastWriteToDisk)
+                        this.#lastWrittenContent.set(name, resolved.lastWritten)
+                        await setDocFileBacked(name, resolved.content, resolved.lastWritten, docRow?.lastWriteToDisk, resolved.lastSyncWithDisk)
                         this.#watchModel(name, model)
                     } catch {
                         // Handle may be stale (file moved/deleted)
@@ -587,7 +658,7 @@ export class DocumentTabs extends HTMLElement {
             ? change$.pipe(debounceTime(DEBOUNCE_FILE_BACKED_MS)).subscribe(() => {
                   const content = model.getValue()
                   const lastWritten = this.#lastWrittenContent.get(name)
-                  void db.documents.put({ name, content, lastWrittenContent: lastWritten })
+                  void db.documents.update(name, { content, lastWrittenContent: lastWritten })
                   this.#renderTabs()
               })
             : change$.pipe(bufferTime(DEBOUNCE_SAVE_MS)).subscribe(() => {
@@ -597,7 +668,7 @@ export class DocumentTabs extends HTMLElement {
         if (isFileBacked) {
             const content = model.getValue()
             const lastWritten = this.#lastWrittenContent.get(name)
-            void db.documents.put({ name, content, lastWrittenContent: lastWritten })
+            void db.documents.update(name, { content, lastWrittenContent: lastWritten })
         } else {
             void db.documents.put({ name, content: model.getValue() })
         }
@@ -758,6 +829,7 @@ export class DocumentTabs extends HTMLElement {
                 content: docRow.content,
                 ...(docRow.lastWrittenContent !== undefined && { lastWrittenContent: docRow.lastWrittenContent }),
                 ...(docRow.lastWriteToDisk !== undefined && { lastWriteToDisk: docRow.lastWriteToDisk }),
+                ...(docRow.lastSyncWithDisk !== undefined && { lastSyncWithDisk: docRow.lastSyncWithDisk }),
             })
         }
 

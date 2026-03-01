@@ -9,12 +9,6 @@ export interface GcadFileResult {
     name: string
 }
 
-export interface GcadFileEntry {
-    name: string
-    handle: FileSystemFileHandle
-    content: string
-}
-
 /** Check if the File System Access API is available (secure context, feature support). */
 export function isFileSystemAccessAvailable(): boolean {
     return typeof window !== "undefined" && "showOpenFilePicker" in window && "showSaveFilePicker" in window && "showDirectoryPicker" in window
@@ -57,17 +51,17 @@ export async function listGcadFileNames(dirHandle: FileSystemDirectoryHandle): P
     return names.sort()
 }
 
-/** Read all .gcad files from a directory. */
-export async function readGcadFiles(dirHandle: FileSystemDirectoryHandle): Promise<GcadFileEntry[]> {
-    const entries: GcadFileEntry[] = []
+/** List .gcad file handles in a directory (no content read). */
+export async function listGcadFileHandles(
+    dirHandle: FileSystemDirectoryHandle
+): Promise<{ name: string; handle: FileSystemFileHandle }[]> {
+    const entries: { name: string; handle: FileSystemFileHandle }[] = []
     for await (const entry of dirHandle.values()) {
         if (entry.kind === "file" && entry.name.endsWith(".gcad")) {
-            const file = await entry.getFile()
-            const content = await file.text()
-            entries.push({ name: entry.name, handle: entry as FileSystemFileHandle, content })
+            entries.push({ name: entry.name, handle: entry as FileSystemFileHandle })
         }
     }
-    return entries
+    return entries.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** Read current content from a file handle. */

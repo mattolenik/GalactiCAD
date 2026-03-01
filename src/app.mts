@@ -636,7 +636,7 @@ class App {
                 const result = await openSingleGcad()
                 if (result) {
                     await this.#hideWelcome(menu)
-                    this.#tabs.addDocumentFromFile(result.name, result.content, result.handle)
+                    await this.#tabs.addDocumentFromFile(result.name, "", result.handle)
                 }
             },
             onOpenFolder: async () => {
@@ -936,6 +936,8 @@ class App {
         saveItem.innerHTML = "Save"
         const saveAsItem = document.createElement("span")
         saveAsItem.innerHTML = "Save As"
+        const revertItem = document.createElement("span")
+        revertItem.innerHTML = "Revert"
         const renameItem = document.createElement("span")
         renameItem.innerHTML = "Rename"
         const duplicateItem = document.createElement("span")
@@ -949,6 +951,7 @@ class App {
             { element: newItem, action: () => void this.#tabs.newDocument(undefined, "javascript") },
             { element: saveItem, action: () => void this.#handleSave() },
             { element: saveAsItem, action: () => void this.#handleSaveAs() },
+            { element: revertItem, action: () => void (this.#tabs.active && this.#tabs.revertTab(this.#tabs.active)) },
             { element: renameItem, action: () => void this.#tabs.renameCurrentTab() },
             { element: duplicateItem, action: () => void this.#tabs.duplicateCurrentTab() },
             { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
@@ -970,7 +973,7 @@ class App {
             return
         }
         const result = await openSingleGcad()
-        if (result) this.#tabs.addDocumentFromFile(result.name, result.content, result.handle)
+        if (result) await this.#tabs.addDocumentFromFile(result.name, "", result.handle)
     }
 
     async #handleOpenFolder(): Promise<void> {

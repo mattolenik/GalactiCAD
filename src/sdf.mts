@@ -25,6 +25,9 @@ export { EdgeKind } from "./edge-kind.mjs"
 
 export type { SerializedNode } from "./render-worker-protocol.mjs"
 
+/** Default max frames per second for the preview. Main thread throttles render messages to the worker. */
+const DEFAULT_TARGET_FPS = 120
+
 /** Lightweight node stub for main-thread selection logic. Reconstructed from SerializedNode. */
 export interface NodeStub {
     id: number
@@ -75,7 +78,7 @@ export class SDFRenderer {
     #resizeObserver: ResizeObserver | null = null
     #settings = SettingsManager.instance
     #lastRenderEndTime = 0
-    #targetFPS = 120
+    #targetFPS = DEFAULT_TARGET_FPS
     #fullWidth = 0
     #fullHeight = 0
     #devicePixelRatio = 1
@@ -745,9 +748,10 @@ export class SDFRenderer {
         if (this.#started) requestAnimationFrame((t: number) => this.#update(t))
         if (!this.#needsRender) return
         if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
+        // Throttle on main thread: worker is message-driven and has no loop; we cap render messages.
         const minFrameTime = 1000 / this.#targetFPS
         const timeSinceLastRender = time - this.#lastRenderEndTime
-        if (timeSinceLastRender < minFrameTime) return
+        if (this.#lastRenderEndTime > 0 && timeSinceLastRender < minFrameTime) return
         this.#needsRender = false
         this.#lastRenderEndTime = time
         this.#worker.postMessage(this.#buildRenderPayload())

@@ -17,6 +17,7 @@ import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./h
 import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo, type ParsedShapeCall } from "./parser/source-parser.mjs"
 import { matchNodesToSource, PURE_CSG_TYPES } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
+import type { BenchmarkCase } from "./benchmark/benchmark.mjs"
 import { ResizeHandle } from "./components/resize-handle.mjs"
 import { Toolbar } from "./components/toolbar.mjs"
 import objectIcon from "./assets/selection-object.svg"
@@ -851,6 +852,30 @@ class App {
         this.#setMeshViewerEnabled(meshViewerEnabled)
         devTools.onMeshViewerChange = (enabled) => {
             this.#setMeshViewerEnabled(enabled)
+        }
+
+        devTools.onBenchmarkThisRequest = (): BenchmarkCase | null => {
+            const active = this.#tabs.active
+            if (!active) return null
+            const model = this.#tabs.getByName(active)
+            if (!model) return null
+            const state = this.renderer.controls.state
+            const pos = this.renderer.controls.cameraPosition
+            return {
+                name: active,
+                source: model.getValue(),
+                camera: {
+                    position: [pos.x, pos.y, pos.z],
+                    translation: [state.translation.x, state.translation.y, state.translation.z],
+                    zoom: state.zoom,
+                    rotation: state.rotation,
+                },
+                preview: {
+                    xrayMode: this.renderer.xrayMode,
+                    cameraOptimization: this.renderer.cameraOptimization,
+                    beamOptimization: this.renderer.beamEnabled,
+                },
+            }
         }
     }
 

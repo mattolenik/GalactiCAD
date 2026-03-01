@@ -3,6 +3,7 @@
  * Runs in the render worker; owns device, buffers, pipelines.
  */
 
+import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPalette.mjs"
 import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
@@ -94,6 +95,8 @@ export class RenderWorkerCore {
     #renderTextureHeight = 0
     #fullWidth = 0
     #fullHeight = 0
+    #framerate = new AveragedBuffer(4)
+    #lastRenderTime = 0
     #zoomBuf = new Float32Array(1)
     #lightDirBuf = new Float32Array(12)
     #cameraPosBuf = new Float32Array(4)
@@ -252,6 +255,16 @@ export class RenderWorkerCore {
     }
 
     render(msg: Extract<MainToWorkerMessage, { type: "render" }>, outputTextureView?: GPUTextureView): void {
+        const now = performance.now()
+        if (this.#lastRenderTime > 0) {
+            const delta = now - this.#lastRenderTime
+            if (delta > 0) {
+                this.#framerate.update(1000 / delta)
+                self.postMessage({ type: "fps", fps: this.#framerate.average })
+            }
+        }
+        this.#lastRenderTime = now
+
         this.#lastRenderMsg = msg
         this.#lastSelectionMode = msg.viewSettings.selectionMode
         const { viewTransform, cameraPosition, cameraRes, viewSettings, viewCenter, resolutionScale, selectionState } = msg

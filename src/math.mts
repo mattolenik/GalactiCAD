@@ -1,3 +1,11 @@
+export async function sha1Hash(data: string): Promise<string> {
+    const encoder = new TextEncoder()
+    const buffer = await crypto.subtle.digest("SHA-1", encoder.encode(data))
+    return Array.from(new Uint8Array(buffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
+}
+
 export function clamp(x: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, x))
 }

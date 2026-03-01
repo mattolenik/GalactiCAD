@@ -79,9 +79,15 @@ export class PreviewWindow extends HTMLElement {
             align-items: flex-end;
             gap: 2px;
         }
+        .fps-counter {
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.35);
+        }
         .version {
             font-size: 10px;
             color: rgba(255, 255, 255, 0.35);
+        }
+        .version {
             pointer-events: auto;
             cursor: pointer;
             user-select: none;
@@ -105,6 +111,7 @@ export class PreviewWindow extends HTMLElement {
         const overlay = document.createElement("div")
         overlay.classList.add("overlay")
         this.#counter = document.createElement("span")
+        this.#counter.classList.add("fps-counter")
         shadow.appendChild(overlay)
         overlay.appendChild(this.#counter)
 

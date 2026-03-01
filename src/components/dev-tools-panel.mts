@@ -37,6 +37,9 @@ export class DevToolsPanel extends HTMLElement {
     /** Callback when mesh viewer toggle changes */
     onMeshViewerChange?: (enabled: boolean) => void
 
+    /** Callback to get current view as a benchmark case. Returns null if no active document. */
+    onBenchmarkThisRequest?: () => BenchmarkCase | null
+
     get cameraOptimization(): boolean {
         return this.#cameraOptimization$.value
     }
@@ -188,7 +191,7 @@ export class DevToolsPanel extends HTMLElement {
 
         // Benchmark button
         const benchmarkButton = document.createElement("button")
-        benchmarkButton.textContent = "Benchmark"
+        benchmarkButton.textContent = "Bench Suite"
         benchmarkButton.addEventListener("click", async () => {
             benchmarkButton.disabled = true
             try {
@@ -198,6 +201,19 @@ export class DevToolsPanel extends HTMLElement {
             }
         })
         shadow.appendChild(benchmarkButton)
+
+        // Benchmark this button (current view, no save)
+        const benchmarkThisButton = document.createElement("button")
+        benchmarkThisButton.textContent = "Benchmark"
+        benchmarkThisButton.addEventListener("click", async () => {
+            benchmarkThisButton.disabled = true
+            try {
+                await this.#runBenchmarkThis()
+            } finally {
+                benchmarkThisButton.disabled = false
+            }
+        })
+        shadow.appendChild(benchmarkThisButton)
 
         // Hidden by default
         this.style.display = "none"
@@ -265,6 +281,50 @@ export class DevToolsPanel extends HTMLElement {
 
             // Log to console
             console.log("Benchmark Results:")
+            console.table(
+                results.map(r =>
+                    r.result.error
+                        ? { document: r.name, error: r.result.error }
+                        : {
+                            document: r.name,
+                            "avg (ms)": r.result.averageFrameTime.toFixed(2),
+                            fps: r.result.framesPerSecond.toFixed(2),
+                            "min (ms)": r.result.minFrameTime.toFixed(2),
+                            "max (ms)": r.result.maxFrameTime.toFixed(2),
+                        }
+                )
+            )
+
+            const html = formatBenchmarkResultsHtml(results)
+            statusDialog.updateContentHtml(html, true)
+            await dialogPromise
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            statusDialog.updateMessage(`Benchmark failed: ${errorMsg}`, true)
+            await dialogPromise
+        }
+    }
+
+    async #runBenchmarkThis(): Promise<void> {
+        const { StatusDialog } = await import("./status-dialog.mjs")
+        const benchCase = this.onBenchmarkThisRequest?.() ?? null
+        if (!benchCase) {
+            const statusDialog = new StatusDialog(
+                "No active document. Open a document to benchmark the current view.",
+                true
+            )
+            await statusDialog.show()
+            return
+        }
+
+        const statusDialog = new StatusDialog("Running benchmark...", false)
+        const dialogPromise = statusDialog.show()
+
+        try {
+            const frameCount = 100
+            const results = await runBenchmarkSuite([benchCase], frameCount)
+
+            console.log("Benchmark this Results:")
             console.table(
                 results.map(r =>
                     r.result.error

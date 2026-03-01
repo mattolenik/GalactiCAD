@@ -15,6 +15,7 @@ import { PushPullController } from "./interaction/push-pull.mjs"
 import type { MeshData } from "./export/export.mjs"
 import type { WorkerToMainMessage } from "./render-worker-protocol.mjs"
 import type { EdgeHitData, SelectedEdgePayload } from "./render-worker-protocol.mjs"
+import { sha1Hash } from "./math.mjs"
 import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
 
@@ -245,6 +246,9 @@ export class SDFRenderer {
                 }
                 this.#pendingThumbnailResolve = null
                 this.#pendingThumbnailReject = null
+                break
+            case "fps":
+                this.#preview.updateFPS(msg.fps)
                 break
         }
     }
@@ -779,12 +783,50 @@ export class SDFRenderer {
         })
     }
 
-    thumbnail(src: string, width?: number, height?: number): Promise<ImageData> {
-        return new Promise<ImageData>((resolve, reject) => {
+    async thumbnail(src: string, width?: number, height?: number): Promise<ImageData> {
+        const trimmed = src.trim()
+        const w = width ?? 256
+        const h = height ?? 256
+        const key = await sha1Hash(trimmed)
+        const cacheKey = `https://galacticad.local/thumbnail/${key}-${w}x${h}`
+        const cached = await this.#getCachedThumbnail(cacheKey)
+        if (cached) return cached
+        const imageData = await new Promise<ImageData>((resolve, reject) => {
             this.#pendingThumbnailResolve = resolve
             this.#pendingThumbnailReject = reject
-            this.#worker.postMessage({ type: "thumbnail", src: src.trim(), width, height })
+            this.#worker.postMessage({ type: "thumbnail", src: trimmed, width: w, height: h })
         })
+        await this.#setCachedThumbnail(cacheKey, imageData)
+        return imageData
+    }
+
+    async #getCachedThumbnail(cacheKey: string): Promise<ImageData | null> {
+        try {
+            const cache = await caches.open("galacticad-thumbnails")
+            const response = await cache.match(cacheKey)
+            if (!response) return null
+            const blob = await response.blob()
+            const bitmap = await createImageBitmap(blob)
+            const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+            const ctx = canvas.getContext("2d")!
+            ctx.drawImage(bitmap, 0, 0)
+            return ctx.getImageData(0, 0, bitmap.width, bitmap.height)
+        } catch {
+            return null
+        }
+    }
+
+    async #setCachedThumbnail(cacheKey: string, imageData: ImageData): Promise<void> {
+        try {
+            const canvas = new OffscreenCanvas(imageData.width, imageData.height)
+            const ctx = canvas.getContext("2d")!
+            ctx.putImageData(imageData, 0, 0)
+            const blob = await canvas.convertToBlob({ type: "image/png" })
+            const cache = await caches.open("galacticad-thumbnails")
+            await cache.put(cacheKey, new Response(blob, { headers: { "Content-Type": "image/png" } }))
+        } catch {
+            // Ignore cache write failures
+        }
     }
 
     dispose(): void {

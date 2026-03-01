@@ -358,8 +358,8 @@ export class WelcomeScreen extends HTMLElement {
                 canvas.getContext("2d")!.putImageData(imageData, 0, 0)
                 thumbDiv.innerHTML = ""
                 thumbDiv.appendChild(canvas)
-            } catch {
-                // Leave placeholder on error
+            } catch (e) {
+                console.warn(`[WelcomeScreen] Failed to load thumbnail for ${name}:`, e)
             }
         }
     }

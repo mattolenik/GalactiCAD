@@ -556,6 +556,13 @@ export class DocumentTabs extends HTMLElement {
         this.closeTab(this.#active!)
     }
 
+    /** Close all tabs. Dispatches tabClosed for each. */
+    closeAllTabs(): void {
+        for (const name of Array.from(this.#docs.keys())) {
+            this.closeTab(name)
+        }
+    }
+
     closeTab(name: string) {
         const wasActive = name === this.#active
         const sub = this.#subscriptions.get(name)

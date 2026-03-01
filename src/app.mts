@@ -35,6 +35,7 @@ import { getEditorLayout } from "./layout/editor-layout.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
+import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
 
 // Start loading dprint formatter (non-blocking); registers providers when ready
 initDprintFormatting()
@@ -882,9 +883,11 @@ class App {
     }
 
     #wireEditorAndTabs() {
-        this.#tabs.addEventListener("tabClosed", () => {
+        this.#tabs.addEventListener("tabClosed", async () => {
             if (this.#tabs.documentNames.length === 0) {
-                this.#showWelcomeAndDisposePreview()
+                void this.renderer.clearScene()
+                const dirHandle = await getFolderHandle()
+                if (!dirHandle) this.#showWelcomeAndDisposePreview()
             }
         })
         this.#tabs.addEventListener("activeTabChanged", (e: Event) => {
@@ -956,6 +959,7 @@ class App {
             getUnopenedFolderFiles: () => this.#tabs.getUnopenedFolderFiles(),
             onOpenFolderFile: name => void this.#tabs.openFolderFile(name),
             onOpenFolder: () => void this.#handleOpenFolder(),
+            onCloseFolder: () => void this.#handleCloseFolder(),
         })
         menu.replaceWith(menuButton)
     }
@@ -976,6 +980,15 @@ class App {
         }
         const dirHandle = await openFolder()
         if (dirHandle) await this.#tabs.loadFromFolder(dirHandle)
+    }
+
+    async #handleCloseFolder(): Promise<void> {
+        await clearFolderHandle()
+        if (this.#tabs.documentNames.length === 0) {
+            this.#showWelcomeAndDisposePreview()
+        } else {
+            this.#tabs.closeAllTabs()
+        }
     }
 
     async #handleSave(): Promise<void> {

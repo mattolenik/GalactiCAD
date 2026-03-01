@@ -770,9 +770,12 @@ export class SDFRenderer {
         })
     }
 
-    /** Clear the preview by building a minimal empty scene. */
+    /** Source for an empty/null scene: tiny invisible sphere, valid for rendering and interaction. */
+    static readonly EMPTY_SCENE_SRC = "return sphere.radius(0.001)"
+
+    /** Clear the preview by building a minimal empty scene (invisible sphere). */
     clearScene(): Promise<void> {
-        return this.build("return sphere.radius(0.001)")
+        return this.build(SDFRenderer.EMPTY_SCENE_SRC)
     }
 
     async renderMesh(_src: string): Promise<MeshData> {

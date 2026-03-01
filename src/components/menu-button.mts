@@ -9,6 +9,8 @@ export interface DocumentExplorerConfig {
     onOpenFolderFile?: (name: string) => void | Promise<void>
     /** Called when user chooses to open a folder (e.g. when no folder is tracked). */
     onOpenFolder?: () => void | Promise<void>
+    /** Called when user chooses to close the current folder. Only shown when a folder is tracked. */
+    onCloseFolder?: () => void | Promise<void>
 }
 
 export class MenuButton extends HTMLElement {
@@ -117,6 +119,10 @@ export class MenuButton extends HTMLElement {
         if (unopened === null) {
             this.#dropdown.appendDocItem("Open Folder", () => void cfg.onOpenFolder?.(), "folder-item")
             return
+        }
+
+        if (cfg.onCloseFolder) {
+            this.#dropdown.appendDocItem("Close Folder", () => void cfg.onCloseFolder?.(), "folder-item")
         }
 
         if (unopened.length === 0) {

@@ -285,9 +285,9 @@ export class DevToolsPanel extends HTMLElement {
         const dialogPromise = statusDialog.show()
 
         try {
-            const frameCount = 100
+            const durationSeconds = 5
             const viewport = this.onGetViewportSize?.() ?? undefined
-            const results = await runBenchmarkSuite(suite, frameCount, viewport)
+            const results = await runBenchmarkSuite(suite, durationSeconds, viewport)
 
             // Log to console
             console.log("Benchmark Results:")
@@ -331,9 +331,9 @@ export class DevToolsPanel extends HTMLElement {
         const dialogPromise = statusDialog.show()
 
         try {
-            const frameCount = 100
+            const durationSeconds = 5
             const viewport = this.onGetViewportSize?.() ?? undefined
-            const results = await runBenchmarkSuite([benchCase], frameCount, viewport)
+            const results = await runBenchmarkSuite([benchCase], durationSeconds, viewport)
 
             console.log("Benchmark this Results:")
             console.table(

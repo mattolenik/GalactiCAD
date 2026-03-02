@@ -580,17 +580,18 @@ export class RenderWorkerCore {
         return refined ?? coarse
     }
 
-    async handleBenchmark(frameCount: number, waitForGPU: boolean): Promise<void> {
+    async handleBenchmark(durationSeconds: number, waitForGPU: boolean): Promise<void> {
         if (!this.#pipeline) {
             self.postMessage({ type: "benchmarkResult", result: { totalTime: 0, averageFrameTime: 0, minFrameTime: 0, maxFrameTime: 0, framesPerSecond: 0, frameTimes: [], error: "Cannot benchmark: renderer not initialized. Call build() first." } })
             return
         }
         const frameTimes: number[] = []
         const startTime = performance.now()
+        const targetMs = durationSeconds * 1000
         if (waitForGPU) {
             await this.#renderFrameAndWait()
         }
-        for (let i = 0; i < frameCount; i++) {
+        while (performance.now() - startTime < targetMs) {
             const frameStart = performance.now()
             if (waitForGPU) {
                 await this.#renderFrameAndWait()
@@ -600,10 +601,11 @@ export class RenderWorkerCore {
             frameTimes.push(performance.now() - frameStart)
         }
         const totalTime = performance.now() - startTime
-        const averageFrameTime = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length
-        const minFrameTime = Math.min(...frameTimes)
-        const maxFrameTime = Math.max(...frameTimes)
-        const framesPerSecond = 1000 / averageFrameTime
+        const frameCount = frameTimes.length
+        const averageFrameTime = frameCount > 0 ? totalTime / frameCount : 0
+        const minFrameTime = frameCount > 0 ? Math.min(...frameTimes) : 0
+        const maxFrameTime = frameCount > 0 ? Math.max(...frameTimes) : 0
+        const framesPerSecond = totalTime > 0 ? (frameCount / totalTime) * 1000 : 0
         self.postMessage({
             type: "benchmarkResult",
             result: { totalTime, averageFrameTime, minFrameTime, maxFrameTime, framesPerSecond, frameTimes },

@@ -39,7 +39,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             if (core) core.handleRenderMesh(msg.src)
             break
         case "benchmark":
-            if (core) core.handleBenchmark(msg.frameCount, msg.waitForGPU)
+            if (core) core.handleBenchmark(msg.durationSeconds, msg.waitForGPU)
             break
         case "thumbnail":
             if (core) core.handleThumbnail(msg.src, msg.width, msg.height)

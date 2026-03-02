@@ -792,13 +792,13 @@ export class SDFRenderer {
         })
     }
 
-    async benchmark(frameCount = 100, waitForGPU = true): Promise<{ totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }> {
+    async benchmark(durationSeconds = 5, waitForGPU = true): Promise<{ totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }> {
         this.#worker.postMessage(
             this.#buildRenderPayload([this.#fullWidth || 800, this.#fullHeight || 600] as [number, number]),
         )
         return new Promise(resolve => {
             this.#pendingBenchmarkResolve = resolve
-            this.#worker.postMessage({ type: "benchmark", frameCount, waitForGPU })
+            this.#worker.postMessage({ type: "benchmark", durationSeconds, waitForGPU })
         })
     }
 

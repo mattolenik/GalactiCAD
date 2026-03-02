@@ -125,11 +125,12 @@ function cameraStateFromSettings(cam: CameraSettings): CameraState {
 /**
  * Run the benchmark suite using an offscreen renderer.
  * Returns results keyed by document name.
+ * @param durationSeconds - How long to render each case (default 5 seconds). FPS = frames / duration.
  * @param viewport - When provided, uses these dimensions for the offscreen canvas. Otherwise 800×600.
  */
 export async function runBenchmarkSuite(
     suite: BenchmarkSuite,
-    frameCount = 100,
+    durationSeconds = 5,
     viewport?: { width: number; height: number }
 ): Promise<BenchmarkCaseResult[]> {
     const results: BenchmarkCaseResult[] = []
@@ -159,7 +160,7 @@ export async function runBenchmarkSuite(
                 renderer.beamEnabled = benchCase.preview.beamOptimization
                 renderer.cameraOptimization = benchCase.preview.cameraOptimization
 
-                const result = await renderer.benchmark(frameCount, true)
+                const result = await renderer.benchmark(durationSeconds, true)
                 results.push({ name: benchCase.name, result })
             } catch (err) {
                 const errorMsg = err instanceof Error ? err.message : String(err)

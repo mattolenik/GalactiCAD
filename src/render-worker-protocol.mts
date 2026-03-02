@@ -70,7 +70,7 @@ export type MainToWorkerMessage =
     | { type: "resize"; fullWidth: number; fullHeight: number; devicePixelRatio: number }
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer } }
     | { type: "renderMesh"; src: string }
-    | { type: "benchmark"; frameCount: number; waitForGPU: boolean }
+    | { type: "benchmark"; durationSeconds: number; waitForGPU: boolean }
     | { type: "thumbnail"; src: string; width?: number; height?: number }
 
 export interface RenderSelectionState {

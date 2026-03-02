@@ -97,6 +97,8 @@ export class RenderWorkerCore {
     #fullHeight = 0
     #framerate = new AveragedBuffer(4)
     #lastRenderTime = 0
+    #fpsFrameCount = 0
+    #lastFpsSendTime = 0
     #zoomBuf = new Float32Array(1)
     #lightDirBuf = new Float32Array(12)
     #cameraPosBuf = new Float32Array(4)
@@ -267,7 +269,13 @@ export class RenderWorkerCore {
             const delta = now - this.#lastRenderTime
             if (delta > 0) {
                 this.#framerate.update(1000 / delta)
-                self.postMessage({ type: "fps", fps: this.#framerate.average })
+                this.#fpsFrameCount++
+                const timeSinceFps = now - this.#lastFpsSendTime
+                if (this.#fpsFrameCount >= 5 || timeSinceFps >= 100) {
+                    this.#fpsFrameCount = 0
+                    this.#lastFpsSendTime = now
+                    self.postMessage({ type: "fps", fps: this.#framerate.average })
+                }
             }
         }
         this.#lastRenderTime = now

@@ -39,6 +39,8 @@ export type BenchmarkSuite = BenchmarkCase[]
 
 const BENCHMARK_WIDTH = 800
 const BENCHMARK_HEIGHT = 600
+/** Duration in seconds to render each benchmark case (time-based, not frame count). */
+const BENCHMARK_DURATION_SECONDS = 5
 
 // ---------------------------------------------------------------------------
 // Storage
@@ -125,12 +127,13 @@ function cameraStateFromSettings(cam: CameraSettings): CameraState {
 /**
  * Run the benchmark suite using an offscreen renderer.
  * Returns results keyed by document name.
- * @param durationSeconds - How long to render each case (default 5 seconds). FPS = frames / duration.
+ * Renders each case for a fixed duration (not a fixed frame count). FPS = frames / duration.
+ * @param durationSeconds - How long to render each case (default BENCHMARK_DURATION_SECONDS).
  * @param viewport - When provided, uses these dimensions for the offscreen canvas. Otherwise 800×600.
  */
 export async function runBenchmarkSuite(
     suite: BenchmarkSuite,
-    durationSeconds = 5,
+    durationSeconds = BENCHMARK_DURATION_SECONDS,
     viewport?: { width: number; height: number }
 ): Promise<BenchmarkCaseResult[]> {
     const results: BenchmarkCaseResult[] = []

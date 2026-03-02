@@ -761,7 +761,7 @@ export class SDFRenderer {
         const cam = this.#controls
         const p = this.#renderPayload
         p.cameraState = cam.state
-        p.viewTransform = cam.viewTransform.data
+        p.viewTransform = new Float32Array(cam.viewTransform.data)
         p.cameraPosition[0] = cam.cameraPosition.x
         p.cameraPosition[1] = cam.cameraPosition.y
         p.cameraPosition[2] = cam.cameraPosition.z
@@ -803,7 +803,7 @@ export class SDFRenderer {
         this.#lastRenderEndTime = time
         const payload = this.#buildRenderPayload()
         this.#lastRenderedResolutionScale = payload.resolutionScale
-        this.#worker.postMessage(payload)
+        this.#worker.postMessage(payload, [payload.viewTransform.buffer])
     }
 
     build(src: string, documentName?: string | null): Promise<void> {
@@ -830,9 +830,8 @@ export class SDFRenderer {
     }
 
     async benchmark(durationSeconds = 5, waitForGPU = true): Promise<{ totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }> {
-        this.#worker.postMessage(
-            this.#buildRenderPayload([this.#fullWidth || 800, this.#fullHeight || 600] as [number, number]),
-        )
+        const payload = this.#buildRenderPayload([this.#fullWidth || 800, this.#fullHeight || 600] as [number, number])
+        this.#worker.postMessage(payload, [payload.viewTransform.buffer])
         return new Promise(resolve => {
             this.#pendingBenchmarkResolve = resolve
             this.#worker.postMessage({ type: "benchmark", durationSeconds, waitForGPU })

@@ -68,6 +68,6 @@ async function handleBuild(src: string, documentName?: string | null): Promise<v
         self.postMessage({ type: "buildComplete", sceneNodes, compiledPosY })
     } catch (err) {
         console.error("[RenderWorker] build failed:", err)
-        self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: {} })
+        self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [] })
     }
 }

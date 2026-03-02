@@ -13,7 +13,7 @@ import { CameraController } from "./controls/camera-controller.mjs"
 import { vec2, vec3 } from "./vecmat/vector.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
 import type { MeshData } from "./export/export.mjs"
-import type { WorkerToMainMessage } from "./render-worker-protocol.mjs"
+import type { MainToWorkerMessage, WorkerToMainMessage } from "./render-worker-protocol.mjs"
 import type { EdgeHitData, SelectedEdgePayload } from "./render-worker-protocol.mjs"
 import { sha1Hash } from "./math.mjs"
 import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
@@ -94,6 +94,32 @@ export class SDFRenderer {
     #pendingBenchmarkResolve: ((value: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void) | null = null
     #pendingThumbnailResolve: ((value: ImageData) => void) | null = null
     #pendingThumbnailReject: ((err: unknown) => void) | null = null
+    #renderPayload: Extract<MainToWorkerMessage, { type: "render" }> = this.#createRenderPayloadCache()
+    #createRenderPayloadCache(): Extract<MainToWorkerMessage, { type: "render" }> {
+        return {
+            type: "render",
+            cameraState: {} as Extract<MainToWorkerMessage, { type: "render" }>["cameraState"],
+            viewTransform: new Float32Array(16),
+            cameraPosition: [0, 0, 0],
+            cameraRes: [1, 1],
+            selectionState: {
+                selectedObjectIds: [],
+                selectedEdges: [],
+                hoveredObjectId: 0,
+                hoveredEdges: [],
+            },
+            viewSettings: {
+                xrayMode: false,
+                beamEnabled: false,
+                selectionMode: 0,
+                outlineMode: 0,
+                outlineThickness: 1,
+                outlineColor: [0, 0, 0],
+            },
+            viewCenter: [0.5, 0.5],
+            resolutionScale: 1.0,
+        }
+    }
 
     readonly selectionChange$ = new Subject<number[]>()
     readonly objectDoubleClick$ = new Subject<number>()
@@ -196,7 +222,7 @@ export class SDFRenderer {
             case "buildComplete":
                 this.#sceneNodeCache = this.#reconstructNodes(msg.sceneNodes)
                 this.#buildPushPullNodes(msg.sceneNodes)
-                this.#compiledPosY = new Map(Object.entries(msg.compiledPosY ?? {}).map(([k, v]) => [parseInt(k, 10), v as number]))
+                this.#compiledPosY = new Map(msg.compiledPosY ?? [])
                 this.#controls.loadCameraFromSettings()
                 this.#pendingBuildResolve?.()
                 this.#pendingBuildResolve = null
@@ -437,11 +463,9 @@ export class SDFRenderer {
     #buildPushPullNodes(serialized: import("./render-worker-protocol.mjs").SerializedNode[]): void {
         this.#pushPullNodes.clear()
         this.#childrenByParent.clear()
-        for (const s of serialized) {
-            this.#childrenByParent.set(s.id, s.children)
-        }
         const polyById = new Map<number, { vertices: [number, number][]; bufferOffset: number }>()
         for (const s of serialized) {
+            this.#childrenByParent.set(s.id, s.children)
             if (s.shapeType === "polygon2d" && s.vertices && s.bufferOffset !== undefined && s.bufferOffset >= 0) {
                 const poly = {
                     vertices: s.vertices.map(v => [v[0], v[1]] as [number, number]),
@@ -482,6 +506,7 @@ export class SDFRenderer {
 
     #reconstructNodes(serialized: import("./render-worker-protocol.mjs").SerializedNode[]): NodeStub[] {
         const byId = new Map<number, NodeStub>()
+        const result: NodeStub[] = []
         for (const s of serialized) {
             const stub: NodeStub = {
                 id: s.id,
@@ -505,8 +530,9 @@ export class SDFRenderer {
                 ...s.children.flatMap(cid => byId.get(cid)?.getAllDescendantIds?.() ?? [cid]),
             ]
             byId.set(s.id, stub)
+            result.push(stub)
         }
-        return serialized.map(s => byId.get(s.id)!).filter(Boolean)
+        return result
     }
 
     async ready(): Promise<void> {
@@ -731,38 +757,35 @@ export class SDFRenderer {
         this.#started = false
     }
 
-    #buildRenderPayload(resOverride?: [number, number]): Parameters<Worker["postMessage"]>[0] {
+    #buildRenderPayload(resOverride?: [number, number]): Extract<MainToWorkerMessage, { type: "render" }> {
         const cam = this.#controls
-        const res =
-            resOverride ??
-            (this.#fullWidth > 0 && this.#fullHeight > 0
-                ? ([this.#fullWidth, this.#fullHeight] as [number, number])
-                : ([1, 1] as [number, number]))
-        const selectionModeNum = { object: 0, seam: 1, edge: 2, face: 3, auto: 4 }[this.#selectionMode]
-        const outlineModeNum = { none: 0, solid: 1, dashed: 2, dotted: 3 }[this.#outlineMode]
-        return {
-            type: "render",
-            cameraState: cam.state,
-            viewTransform: cam.viewTransform.data,
-            cameraPosition: [cam.cameraPosition.x, cam.cameraPosition.y, cam.cameraPosition.z],
-            cameraRes: res,
-            selectionState: {
-                selectedObjectIds: this.#getCompactSelectedIds(),
-                selectedEdges: this.#selectedEdges,
-                hoveredObjectId: this.#hoveredObjectId,
-                hoveredEdges: this.#hoveredEdges,
-            },
-            viewSettings: {
-                xrayMode: this.#xrayMode,
-                beamEnabled: this.#beamEnabled,
-                selectionMode: selectionModeNum,
-                outlineMode: outlineModeNum,
-                outlineThickness: this.#outlineThickness,
-                outlineColor: this.#outlineColor,
-            },
-            viewCenter: [this.#viewCenter.x, this.#viewCenter.y],
-            resolutionScale: this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0,
+        const p = this.#renderPayload
+        p.cameraState = cam.state
+        p.viewTransform = cam.viewTransform.data
+        p.cameraPosition[0] = cam.cameraPosition.x
+        p.cameraPosition[1] = cam.cameraPosition.y
+        p.cameraPosition[2] = cam.cameraPosition.z
+        if (resOverride) {
+            p.cameraRes[0] = resOverride[0]
+            p.cameraRes[1] = resOverride[1]
+        } else {
+            p.cameraRes[0] = this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullWidth : 1
+            p.cameraRes[1] = this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullHeight : 1
         }
+        p.selectionState.selectedObjectIds = this.#getCompactSelectedIds()
+        p.selectionState.selectedEdges = this.#selectedEdges
+        p.selectionState.hoveredObjectId = this.#hoveredObjectId
+        p.selectionState.hoveredEdges = this.#hoveredEdges
+        p.viewSettings.xrayMode = this.#xrayMode
+        p.viewSettings.beamEnabled = this.#beamEnabled
+        p.viewSettings.selectionMode = { object: 0, seam: 1, edge: 2, face: 3, auto: 4 }[this.#selectionMode]
+        p.viewSettings.outlineMode = { none: 0, solid: 1, dashed: 2, dotted: 3 }[this.#outlineMode]
+        p.viewSettings.outlineThickness = this.#outlineThickness
+        p.viewSettings.outlineColor = this.#outlineColor
+        p.viewCenter[0] = this.#viewCenter.x
+        p.viewCenter[1] = this.#viewCenter.y
+        p.resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0
+        return p
     }
 
     #update(time: number): void {

@@ -109,7 +109,7 @@ export interface RenderViewSettings {
 export type WorkerToMainMessage =
     | { type: "ready" }
     | { type: "initError"; error: string }
-    | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: Record<number, number> }
+    | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: [number, number][] }
     | { type: "clickResult"; clickedId: number; edgeHits: EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number]; shiftKey: boolean; altKey: boolean }
     | { type: "selectionInfo"; info: SelectionInfo }
     | { type: "objectDoubleClick"; nodeId: number; hitPos?: [number, number, number] }

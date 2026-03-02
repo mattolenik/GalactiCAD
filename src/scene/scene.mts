@@ -122,11 +122,11 @@ export class SceneInfo {
     }
 
     compileEdgeHelpers(): string {
-        const boxes = Array.from(this.#nodes.values())
-            .filter((node): node is Box => node instanceof Box)
         let code = ""
-        for (const b of boxes) {
-            code += `case ${b.id}u: { (*posOut) = ${b.pos.wgsl}; (*halfOut) = ${b.size.wgsl}; return true; }\n`
+        for (const node of this.#nodes.values()) {
+            if (node instanceof Box) {
+                code += `case ${node.id}u: { (*posOut) = ${node.pos.wgsl}; (*halfOut) = ${node.size.wgsl}; return true; }\n`
+            }
         }
         return code
     }

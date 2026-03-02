@@ -76,7 +76,7 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
     return s
 }
 
-export function serializeSceneNodes(scene: { root?: Node; getAllNodes(): Node[] }): SerializedNode[] {
+export function serializeSceneNodes(scene: { root?: Node; getAllNodes(): Node[] }, allNodes?: Node[]): SerializedNode[] {
     const result: SerializedNode[] = []
     const visited = new Set<number>()
 
@@ -92,7 +92,8 @@ export function serializeSceneNodes(scene: { root?: Node; getAllNodes(): Node[] 
     if (scene.root) {
         visit(scene.root, -1)
     } else {
-        for (const node of scene.getAllNodes()) {
+        const nodes = allNodes ?? scene.getAllNodes()
+        for (const node of nodes) {
             visit(node, -1)
         }
     }

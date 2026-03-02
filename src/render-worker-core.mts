@@ -111,6 +111,12 @@ export class RenderWorkerCore {
     #outlineWidthF32 = new Float32Array(this.#outlineBuf, 28, 1)
     #selectionStylesBuf = new ArrayBuffer(80)
     #selectionStylesF32 = new Float32Array(this.#selectionStylesBuf)
+    #edgeHeaderBuf = new ArrayBuffer(SELECTED_EDGES_HEADER)
+    #edgeHeaderU32 = new Uint32Array(this.#edgeHeaderBuf)
+    #edgeStrideBuf = new ArrayBuffer(SELECTED_EDGE_SIZE)
+    #edgeStrideU32 = new Uint32Array(this.#edgeStrideBuf)
+    #edgeStrideF32 = new Float32Array(this.#edgeStrideBuf)
+    #camTransform = new Mat4x4f(new Float32Array(16))
     #lastRenderMsg: Extract<MainToWorkerMessage, { type: "render" }> | null = null
     #lastSelectionMode = 0
     #builtSrc: string | null = null
@@ -176,11 +182,12 @@ export class RenderWorkerCore {
         this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, [], 6.0, 0.02)
     }
 
-    async build(src: string, _documentName?: string | null): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: Record<number, number> }> {
+    async build(src: string, _documentName?: string | null): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] }> {
         const trimmed = src.trim()
         this.#builtSrc = trimmed
         this.#scene = new SceneInfo(trimmed)
         const scene = this.#scene
+        const allNodes = scene.getAllNodes()
 
         const sceneAux = scene.compileAux()
         const sceneAuxFast = scene.compileAuxFast()
@@ -203,7 +210,7 @@ export class RenderWorkerCore {
             : new ArrayBuffer(0)
         const nodeParamsData = new Float32Array(MAX_NODE_PARAMS * 4)
         this.#compiledPosY.clear()
-        for (const node of scene.getAllNodes()) {
+        for (const node of allNodes) {
             if ((node instanceof Extrude || node instanceof Loft) && node.id < MAX_NODE_PARAMS) {
                 nodeParamsData[node.id * 4] = node.h
                 nodeParamsData[node.id * 4 + 1] = 0
@@ -238,13 +245,13 @@ export class RenderWorkerCore {
             }),
         ])
 
-        if (generation !== this.#buildGeneration) return { sceneNodes: serializeSceneNodes(scene), compiledPosY: Object.fromEntries(this.#compiledPosY) }
+        if (generation !== this.#buildGeneration) return { sceneNodes: serializeSceneNodes(scene, allNodes), compiledPosY: Array.from(this.#compiledPosY) }
         this.#pipeline = pipeline
         this.#beamPipeline = beamPipeline
         this.#beamBindGroupInvalid = true
         this.#sceneBindGroupInvalid = true
 
-        return { sceneNodes: serializeSceneNodes(scene), compiledPosY: Object.fromEntries(this.#compiledPosY) }
+        return { sceneNodes: serializeSceneNodes(scene, allNodes), compiledPosY: Array.from(this.#compiledPosY) }
     }
 
     resize(fullWidth: number, fullHeight: number): void {
@@ -288,10 +295,10 @@ export class RenderWorkerCore {
         this.#zoomBuf[0] = msg.cameraState.zoom
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, this.#zoomBuf)
 
-        const camTransform = new Mat4x4f(viewTransform)
-        const v1 = camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
-        const v2 = camTransform.transformVector(vec3(-0.6, 0.3, 0.8).normalize())
-        const v3 = camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
+        this.#camTransform.data.set(viewTransform)
+        const v1 = this.#camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
+        const v2 = this.#camTransform.transformVector(vec3(-0.6, 0.3, 0.8).normalize())
+        const v3 = this.#camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
         const ld = this.#lightDirBuf
         ld[0] = v1.x; ld[1] = v1.y; ld[2] = v1.z; ld[3] = 0
         ld[4] = v2.x; ld[5] = v2.y; ld[6] = v2.z; ld[7] = 0
@@ -1133,14 +1140,11 @@ export class RenderWorkerCore {
         lineWidthPx: number,
         epsilon: number,
     ): void {
-        const header = new ArrayBuffer(16)
-        new Uint32Array(header)[0] = Math.min(edges.length, 16)
-        this.#device.queue.writeBuffer(buffer, 0, header)
-        const EDGE_STRIDE = 80
-        const buf = new ArrayBuffer(EDGE_STRIDE)
-        const u32 = new Uint32Array(buf)
-        const f32 = new Float32Array(buf)
-        for (let i = 0; i < Math.min(edges.length, 16); i++) {
+        this.#edgeHeaderU32[0] = Math.min(edges.length, SELECTED_EDGES_COUNT)
+        this.#device.queue.writeBuffer(buffer, 0, this.#edgeHeaderBuf)
+        const u32 = this.#edgeStrideU32
+        const f32 = this.#edgeStrideF32
+        for (let i = 0; i < Math.min(edges.length, SELECTED_EDGES_COUNT); i++) {
             const e = edges[i]
             u32[0] = e.kind
             u32[1] = e.primaryId
@@ -1161,7 +1165,7 @@ export class RenderWorkerCore {
             f32[16] = sn[0]
             f32[17] = sn[1]
             f32[18] = sn[2]
-            this.#device.queue.writeBuffer(buffer, 16 + i * EDGE_STRIDE, buf)
+            this.#device.queue.writeBuffer(buffer, SELECTED_EDGES_HEADER + i * SELECTED_EDGE_SIZE, this.#edgeStrideBuf)
         }
     }
 }

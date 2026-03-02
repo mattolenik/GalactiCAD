@@ -78,6 +78,7 @@ export class SDFRenderer {
     #resizeObserver: ResizeObserver | null = null
     #settings = SettingsManager.instance
     #lastRenderEndTime = 0
+    #lastRenderedResolutionScale = 1.0
     #targetFPS = DEFAULT_TARGET_FPS
     #fullWidth = 0
     #fullHeight = 0
@@ -746,12 +747,15 @@ export class SDFRenderer {
                 outlineColor: this.#outlineColor,
             },
             viewCenter: [this.#viewCenter.x, this.#viewCenter.y],
-            resolutionScale: this.#cameraOptimization ? 0.5 : 1.0,
+            resolutionScale: this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0,
         }
     }
 
     #update(time: number): void {
         if (this.#started) requestAnimationFrame((t: number) => this.#update(t))
+        // Re-render when camera stops moving so we transition from half-res to full-res
+        const resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0
+        if (resolutionScale !== this.#lastRenderedResolutionScale) this.#needsRender = true
         if (!this.#needsRender) return
         if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
         // Throttle on main thread: worker is message-driven and has no loop; we cap render messages.
@@ -760,7 +764,9 @@ export class SDFRenderer {
         if (this.#lastRenderEndTime > 0 && timeSinceLastRender < minFrameTime) return
         this.#needsRender = false
         this.#lastRenderEndTime = time
-        this.#worker.postMessage(this.#buildRenderPayload())
+        const payload = this.#buildRenderPayload()
+        this.#lastRenderedResolutionScale = payload.resolutionScale
+        this.#worker.postMessage(payload)
     }
 
     build(src: string, documentName?: string | null): Promise<void> {

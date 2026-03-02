@@ -1,6 +1,8 @@
 import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
+import { Subject } from "rxjs"
+import { debounceTime } from "rxjs/operators"
 import { DevServer } from "./devserver.mjs"
 import { fileListerPlugin } from "./file-lister.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
@@ -111,12 +113,18 @@ async function main() {
     if (process.argv.includes("-w")) {
         log("Watching for changes")
         let server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err)
-        let watcher = watch(
-            ".",
-            async (event, path) => {
+        const change$ = new Subject<{ event: EventName; path: string }>()
+        change$
+            .pipe(debounceTime(300))
+            .subscribe(async ({ event, path }) => {
                 log(`Build triggered by ${event}: ${path}`)
                 await build()
                 server.reload()
+            })
+        let watcher = watch(
+            ".",
+            async (event, path) => {
+                change$.next({ event, path })
             },
             async (event, path) => {
                 if (!process.execve) {

@@ -1137,11 +1137,11 @@ export class RenderWorkerCore {
         new Uint32Array(header)[0] = Math.min(edges.length, 16)
         this.#device.queue.writeBuffer(buffer, 0, header)
         const EDGE_STRIDE = 80
+        const buf = new ArrayBuffer(EDGE_STRIDE)
+        const u32 = new Uint32Array(buf)
+        const f32 = new Float32Array(buf)
         for (let i = 0; i < Math.min(edges.length, 16); i++) {
             const e = edges[i]
-            const buf = new ArrayBuffer(EDGE_STRIDE)
-            const u32 = new Uint32Array(buf)
-            const f32 = new Float32Array(buf)
             u32[0] = e.kind
             u32[1] = e.primaryId
             u32[2] = e.secondaryId

@@ -128,6 +128,11 @@ function cameraStateFromSettings(cam: CameraSettings): CameraState {
  * Run the benchmark suite using an offscreen renderer.
  * Returns results keyed by document name.
  * Renders each case for a fixed duration (not a fixed frame count). FPS = frames / duration.
+ *
+ * Note: This measures GPU render throughput. The worker receives one payload via postMessage,
+ * then runs a tight loop reusing it—no per-frame IPC. Shared memory (used for the interactive
+ * preview) is not exercised here, so benchmark results are unchanged by the shared-memory migration.
+ *
  * @param durationSeconds - How long to render each case (default BENCHMARK_DURATION_SECONDS).
  * @param viewport - When provided, uses these dimensions for the offscreen canvas. Otherwise 800×600.
  */

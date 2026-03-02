@@ -18,6 +18,12 @@ import type { EdgeHitData, SelectedEdgePayload } from "./render-worker-protocol.
 import { sha1Hash } from "./math.mjs"
 import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
+import {
+    isSharedMemoryAvailable,
+    writeRenderPayload,
+    readFps,
+    SHARED_RENDER_BUFFER_SIZE,
+} from "./shared-render-buffer.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -89,11 +95,15 @@ export class SDFRenderer {
     #outlineThickness: number = DEFAULT_SELECTION_STYLES.outline.thickness
     #outlineColor: [number, number, number] = [...DEFAULT_SELECTION_STYLES.outline.color]
     #pendingBuildResolve: ((value: void) => void) | null = null
+    #pendingBuildReject: ((reason: unknown) => void) | null = null
     #pendingRenderMeshResolve: ((value: MeshData) => void) | null = null
     #pendingRenderMeshReject: ((err: unknown) => void) | null = null
     #pendingBenchmarkResolve: ((value: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void) | null = null
     #pendingThumbnailResolve: ((value: ImageData) => void) | null = null
     #pendingThumbnailReject: ((err: unknown) => void) | null = null
+    #sharedBuffer: SharedArrayBuffer | null = null
+    #renderVersion = 0
+    #useSharedMemory = false
     #renderPayload: Extract<MainToWorkerMessage, { type: "render" }> = this.#createRenderPayloadCache()
     #createRenderPayloadCache(): Extract<MainToWorkerMessage, { type: "render" }> {
         return {
@@ -220,12 +230,20 @@ export class SDFRenderer {
                 this.#readyReject(new Error(msg.error))
                 break
             case "buildComplete":
-                this.#sceneNodeCache = this.#reconstructNodes(msg.sceneNodes)
-                this.#buildPushPullNodes(msg.sceneNodes)
-                this.#compiledPosY = new Map(msg.compiledPosY ?? [])
-                this.#controls.loadCameraFromSettings()
-                this.#pendingBuildResolve?.()
-                this.#pendingBuildResolve = null
+                if (msg.error) {
+                    this.#pendingBuildReject?.(new Error(msg.error))
+                    this.#pendingBuildResolve = null
+                    this.#pendingBuildReject = null
+                } else {
+                    this.#sceneNodeCache = this.#reconstructNodes(msg.sceneNodes)
+                    this.#buildPushPullNodes(msg.sceneNodes)
+                    this.#compiledPosY = new Map(msg.compiledPosY ?? [])
+                    this.#controls.loadCameraFromSettings()
+                    this.#needsRender = true
+                    this.#pendingBuildResolve?.()
+                    this.#pendingBuildResolve = null
+                    this.#pendingBuildReject = null
+                }
                 break
             case "clickResult":
                 this.#handleClickResult(msg.clickedId, msg.edgeHits, msg.shiftKey, msg.altKey)
@@ -281,7 +299,7 @@ export class SDFRenderer {
                 this.#pendingThumbnailReject = null
                 break
             case "fps":
-                this.#preview.updateFPS(msg.fps)
+                if (!this.#useSharedMemory) this.#preview.updateFPS(msg.fps)
                 break
         }
     }
@@ -549,7 +567,15 @@ export class SDFRenderer {
             canvas.height = this.#fullHeight
         }
         const offscreen = canvas.transferControlToOffscreen()
-        this.#worker.postMessage({ type: "init", canvas: offscreen }, [offscreen])
+        this.#useSharedMemory = isSharedMemoryAvailable()
+        console.log("useSharedMemory", this.#useSharedMemory)
+        if (this.#useSharedMemory) {
+            this.#sharedBuffer = new SharedArrayBuffer(SHARED_RENDER_BUFFER_SIZE)
+        }
+        this.#worker.postMessage(
+            { type: "init", canvas: offscreen, sharedBuffer: this.#sharedBuffer ?? undefined },
+            [offscreen]
+        )
         this.#worker.postMessage({ type: "resize", fullWidth: this.#fullWidth, fullHeight: this.#fullHeight, devicePixelRatio: this.#devicePixelRatio })
         await this.#readyPromise
         this.#initPushPull()
@@ -803,12 +829,25 @@ export class SDFRenderer {
         this.#lastRenderEndTime = time
         const payload = this.#buildRenderPayload()
         this.#lastRenderedResolutionScale = payload.resolutionScale
-        this.#worker.postMessage(payload, [payload.viewTransform.buffer])
+        if (this.#useSharedMemory && this.#sharedBuffer) {
+            this.#renderVersion++
+            writeRenderPayload(
+                this.#sharedBuffer,
+                payload,
+                this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullWidth : 1,
+                this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullHeight : 1,
+                this.#renderVersion
+            )
+            this.#preview.updateFPS(readFps(this.#sharedBuffer))
+        } else {
+            this.#worker.postMessage(payload, [payload.viewTransform.buffer])
+        }
     }
 
     build(src: string, documentName?: string | null): Promise<void> {
-        return new Promise<void>(resolve => {
+        return new Promise<void>((resolve, reject) => {
             this.#pendingBuildResolve = resolve
+            this.#pendingBuildReject = reject
             this.#worker.postMessage({ type: "build", src: src.trim(), documentName: documentName ?? undefined })
         })
     }

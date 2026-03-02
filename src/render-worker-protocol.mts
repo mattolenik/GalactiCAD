@@ -61,7 +61,7 @@ export interface EdgeHitData {
 // ---------------------------------------------------------------------------
 
 export type MainToWorkerMessage =
-    | { type: "init"; canvas: OffscreenCanvas }
+    | { type: "init"; canvas: OffscreenCanvas; sharedBuffer?: SharedArrayBuffer }
     | { type: "build"; src: string; documentName?: string | null }
     | { type: "render"; cameraState: CameraState; viewTransform: Float32Array; cameraPosition: [number, number, number]; cameraRes: [number, number]; selectionState: RenderSelectionState; viewSettings: RenderViewSettings; viewCenter: [number, number]; resolutionScale: number }
     | { type: "click"; clickUV: [number, number]; shiftKey: boolean; altKey: boolean }
@@ -109,7 +109,7 @@ export interface RenderViewSettings {
 export type WorkerToMainMessage =
     | { type: "ready" }
     | { type: "initError"; error: string }
-    | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: [number, number][] }
+    | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: [number, number][]; error?: string }
     | { type: "clickResult"; clickedId: number; edgeHits: EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number]; shiftKey: boolean; altKey: boolean }
     | { type: "selectionInfo"; info: SelectionInfo }
     | { type: "objectDoubleClick"; nodeId: number; hitPos?: [number, number, number] }

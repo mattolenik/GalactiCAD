@@ -22,6 +22,7 @@ import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import type { MainToWorkerMessage, RenderSelectionState, SelectedEdgePayload } from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
+import { writeFps } from "./shared-render-buffer.mjs"
 
 const MAX_POLYGON_VERTICES = 1024
 const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8
@@ -122,6 +123,7 @@ export class RenderWorkerCore {
     #lastRenderMsg: Extract<MainToWorkerMessage, { type: "render" }> | null = null
     #lastSelectionMode = 0
     #builtSrc: string | null = null
+    #fpsVersion = 0
 
     async init(canvas: OffscreenCanvas): Promise<void> {
         this.#canvas = canvas
@@ -263,7 +265,7 @@ export class RenderWorkerCore {
         this.#canvas.height = fullHeight
     }
 
-    render(msg: Extract<MainToWorkerMessage, { type: "render" }>, outputTextureView?: GPUTextureView): void {
+    render(msg: Extract<MainToWorkerMessage, { type: "render" }>, outputTextureView?: GPUTextureView, sharedBuffer?: SharedArrayBuffer): void {
         const now = performance.now()
         if (this.#lastRenderTime > 0) {
             const delta = now - this.#lastRenderTime
@@ -274,7 +276,12 @@ export class RenderWorkerCore {
                 if (this.#fpsFrameCount >= 5 || timeSinceFps >= 100) {
                     this.#fpsFrameCount = 0
                     this.#lastFpsSendTime = now
-                    self.postMessage({ type: "fps", fps: this.#framerate.average })
+                    if (sharedBuffer) {
+                        this.#fpsVersion++
+                        writeFps(sharedBuffer, this.#framerate.average, this.#fpsVersion)
+                    } else {
+                        self.postMessage({ type: "fps", fps: this.#framerate.average })
+                    }
                 }
             }
         }
@@ -409,6 +416,11 @@ export class RenderWorkerCore {
         outlinePass.end()
 
         this.#device.queue.submit([commandEncoder.finish()])
+    }
+
+    /** Render from shared buffer payload; writes FPS to shared buffer instead of postMessage. */
+    renderFromSharedBuffer(buffer: SharedArrayBuffer, msg: Extract<MainToWorkerMessage, { type: "render" }>): void {
+        this.render(msg, undefined, buffer)
     }
 
     async #renderFrameAndWait(): Promise<void> {

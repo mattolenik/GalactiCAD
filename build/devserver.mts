@@ -11,7 +11,7 @@ export class DevServer {
         public serveRoot: string,
         public port: number,
         public indexFileName = "index.html",
-    ) {}
+    ) { }
 
     static async create(
         serveRoot: string,
@@ -96,7 +96,11 @@ function createHttpServer(dir: string, clientScript = "", indexFileName = "index
                     file = path.join(dir, indexFileName)
                 }
                 let data = await fs.readFile(file)
-                res.writeHead(200, { "content-type": contentType[path.extname(file)] || defaultContentType })
+                res.writeHead(200, {
+                    "content-type": contentType[path.extname(file)] || defaultContentType,
+                    "Cross-Origin-Opener-Policy": "same-origin",
+                    "Cross-Origin-Embedder-Policy": "credentialless",
+                })
                 if (path.extname(file) === ".html") {
                     const doc = data.toString().replace("</body>", clientScript + "</body>")
                     data = Buffer.from(doc)
@@ -105,11 +109,19 @@ function createHttpServer(dir: string, clientScript = "", indexFileName = "index
                 res.end()
             } catch (err: any) {
                 if (err.code === "ENOENT") {
-                    res.writeHead(404, { "content-type": "text/plain" })
+                    res.writeHead(404, {
+                        "content-type": "text/plain",
+                        "Cross-Origin-Opener-Policy": "same-origin",
+                        "Cross-Origin-Embedder-Policy": "credentialless",
+                    })
                     res.end("404 not found")
                 } else {
                     console.error(`Internal error: ${err}`)
-                    res.writeHead(500, { "content-type": "text/plain" })
+                    res.writeHead(500, {
+                        "content-type": "text/plain",
+                        "Cross-Origin-Opener-Policy": "same-origin",
+                        "Cross-Origin-Embedder-Policy": "credentialless",
+                    })
                     res.end("500 unknown server error")
                 }
             }

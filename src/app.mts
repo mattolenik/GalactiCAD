@@ -476,12 +476,13 @@ class App {
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
 
-        void this.#restoreOrShowWelcome()
-
         this.#injectStyles()
         requestAnimationFrame(() => {
-            const bg = getComputedStyle(document.querySelector(".monaco-editor")!).getPropertyValue("--vscode-editor-background")
-            this.#tabs.style.setProperty("--active-bg", bg)
+            const el = document.querySelector(".monaco-editor")
+            if (el) {
+                const bg = getComputedStyle(el).getPropertyValue("--vscode-editor-background")
+                this.#tabs.style.setProperty("--active-bg", bg)
+            }
         })
 
         this.#toolbarRefs = this.#setupToolbar(menu)
@@ -499,12 +500,14 @@ class App {
     }
 
     async #createRendererAndWire(preview: PreviewWindow, menu: HTMLElement, isInitial = false): Promise<void> {
+        await this.#restoreOrShowWelcome()
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect)
         const { xrayCheckbox, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
         try {
             await this.renderer
                 .ready()
             this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
+            this.#updateViewCenter?.()
             if (isInitial) {
                 this.#wireEditorAndTabs()
                 this.#wireGlobalUndoRedo()
@@ -771,6 +774,7 @@ class App {
         }
 
         const updateViewCenter = () => {
+            if (!this.renderer) return
             const mainRect = mainPanels.getBoundingClientRect()
             if (mainRect.width === 0 || mainRect.height === 0) return
             const { vcx, vcy, editorOffsetPx } = getEditorLayout(mainPanels).viewCenter(mainRect)

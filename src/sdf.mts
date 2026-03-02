@@ -57,6 +57,8 @@ export class SDFRenderer {
     #readyPromise: Promise<void>
     #sceneNodeCache: NodeStub[] = []
     #selectedObjectIds: boolean[] = new Array(1024).fill(false)
+    #cachedSelectedIds: number[] = []
+    #selectionDirty = true
     #selectedEdges: SelectedEdgePayload[] = []
     #hoveredObjectId = 0
     #hoveredEdges: SelectedEdgePayload[] = []
@@ -303,6 +305,7 @@ export class SDFRenderer {
                     this.#setSelectedEdgesFromHits(filtered)
                 }
                 this.#selectedObjectIds.fill(false)
+                this.#selectionDirty = true
                 this.selectionChange$.next([])
                 this.#pushSelectionInfo()
                 this.#needsRender = true
@@ -315,6 +318,7 @@ export class SDFRenderer {
             this.#updateSelection(clickedId, shiftKey)
         } else {
             this.#selectedObjectIds.fill(false)
+            this.#selectionDirty = true
             this.selectionChange$.next([])
         }
         this.#pushSelectionInfo()
@@ -354,6 +358,7 @@ export class SDFRenderer {
                 this.#selectedObjectIds[clickedId] = true
             }
         }
+        this.#selectionDirty = true
         this.selectionChange$.next(this.selectedObjectIds)
     }
 
@@ -397,8 +402,9 @@ export class SDFRenderer {
 
     #writeSelectionBuffer(): void {
         const selData = new Uint32Array(1024)
-        for (let i = 0; i < this.#selectedObjectIds.length && i < 1024; i++) {
-            selData[i] = this.#selectedObjectIds[i] ? 1 : 0
+        selData.fill(0)
+        for (const id of this.#getCompactSelectedIds()) {
+            selData[id] = 1
         }
         this.#worker.postMessage({ type: "writeBuffers", selectedObjectIds: selData.buffer }, [selData.buffer])
     }
@@ -610,12 +616,18 @@ export class SDFRenderer {
         return { width: this.#fullWidth || 800, height: this.#fullHeight || 600 }
     }
 
-    get selectedObjectIds(): number[] {
-        const ids: number[] = []
+    #getCompactSelectedIds(): number[] {
+        if (!this.#selectionDirty) return this.#cachedSelectedIds
+        this.#cachedSelectedIds.length = 0
         for (let i = 0; i < this.#selectedObjectIds.length; i++) {
-            if (this.#selectedObjectIds[i]) ids.push(i)
+            if (this.#selectedObjectIds[i]) this.#cachedSelectedIds.push(i)
         }
-        return ids
+        this.#selectionDirty = false
+        return this.#cachedSelectedIds
+    }
+
+    get selectedObjectIds(): number[] {
+        return [...this.#getCompactSelectedIds()]
     }
 
     setSelection(ids: number[], notify = false): void {
@@ -624,6 +636,7 @@ export class SDFRenderer {
             this.#selectedObjectIds[id] = true
         }
         this.#selectedEdges = []
+        this.#selectionDirty = true
         if (notify) this.selectionChange$.next(this.selectedObjectIds)
         this.#pushSelectionInfo()
         this.#needsRender = true
@@ -662,6 +675,7 @@ export class SDFRenderer {
         this.#settings.updateGlobal({ preview: { selectionMode: mode } })
         this.#selectedObjectIds.fill(false)
         this.#selectedEdges = []
+        this.#selectionDirty = true
         this.selectionChange$.next([])
         this.#pushSelectionInfo()
         this.#needsRender = true
@@ -733,7 +747,7 @@ export class SDFRenderer {
             cameraPosition: [cam.cameraPosition.x, cam.cameraPosition.y, cam.cameraPosition.z],
             cameraRes: res,
             selectionState: {
-                selectedObjectIds: this.selectedObjectIds,
+                selectedObjectIds: this.#getCompactSelectedIds(),
                 selectedEdges: this.#selectedEdges,
                 hoveredObjectId: this.#hoveredObjectId,
                 hoveredEdges: this.#hoveredEdges,

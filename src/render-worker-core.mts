@@ -644,6 +644,10 @@ export class RenderWorkerCore {
         const thumbWidth = Math.max(1, Math.min(512, width ?? 256))
         const thumbHeight = Math.max(1, Math.min(512, height ?? 256))
         try {
+            if (!this.#device) {
+                self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable" })
+                return
+            }
             const trimmed = src.trim()
             if (!this.#scene || this.#builtSrc !== trimmed) {
                 await this.build(trimmed, undefined)

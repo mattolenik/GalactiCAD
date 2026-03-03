@@ -114,7 +114,11 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             }
             break
         case "thumbnail":
-            if (core) core.handleThumbnail(msg.src, msg.width, msg.height)
+            if (core) {
+                core.handleThumbnail(msg.src, msg.width, msg.height)
+            } else {
+                self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready" })
+            }
             break
         default:
             console.log("[RenderWorker] unknown message", (msg as { type: string }).type)

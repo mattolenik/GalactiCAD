@@ -16,6 +16,9 @@ export class ShaderCompiler {
     }
 
     compile(code: string, label: string) {
+        if (!this.device) {
+            throw new Error("WebGPU device unavailable (cannot create shader module)")
+        }
         for (const t of this.transforms) {
             code = t(code)
         }

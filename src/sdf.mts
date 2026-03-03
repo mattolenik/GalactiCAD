@@ -878,6 +878,7 @@ export class SDFRenderer {
     }
 
     async thumbnail(src: string, width?: number, height?: number): Promise<ImageData> {
+        await this.#readyPromise
         const trimmed = src.trim()
         const w = width ?? 256
         const h = height ?? 256

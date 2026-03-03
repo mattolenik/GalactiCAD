@@ -119,6 +119,11 @@ class App {
             // Await so camera loads only after scene is ready, avoiding flicker.
             await this.renderer.build(src, documentName)
 
+            // Guard: user may have closed the tab or switched documents while build was in flight.
+            // The renderer skips applying stale buildComplete, but we must not overwrite state here.
+            if (documentName !== (this.#tabs.active ?? undefined)) return
+            if (this.editor.getModel() !== model) return
+
             // Get all scene nodes and build a map for quick lookup
             const sceneNodes = this.renderer.getSceneNodes()
             this.#sceneNodeMap.clear()

@@ -906,7 +906,9 @@ export class SDFRenderer {
         const cached = await this.#getCachedThumbnail(cacheKey)
         if (cached) return cached
         const requestId = ++this.#requestIdCounter
-        const docName = documentName ?? this.#getActiveDocument?.() ?? undefined
+        // Only pass documentName when caller provides it (e.g. tab preview). Welcome screen samples
+        // have no document context; passing undefined ensures we accept the result.
+        const docName = documentName ?? undefined
         const imageData = await new Promise<ImageData>((resolve, reject) => {
             this.#pendingThumbnail.set(requestId, { resolve, reject })
             this.#worker.postMessage({ type: "thumbnail", src: trimmed, width: w, height: h, requestId, documentName: docName })

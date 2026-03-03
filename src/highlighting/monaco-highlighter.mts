@@ -101,10 +101,7 @@ export class MonacoHighlighter {
         }
 
         const model = this.editor.getModel()
-        if (!model) {
-            console.warn("[MonacoHighlighter] No model available")
-            return
-        }
+        if (!model) return
 
         this.ensureStyleElement()
 
@@ -170,10 +167,7 @@ export class MonacoHighlighter {
         }
 
         const model = this.editor.getModel()
-        if (!model) {
-            console.warn("[MonacoHighlighter] No model available")
-            return
-        }
+        if (!model) return
 
         if (ranges.length === 0) {
             this.clearHighlighting()

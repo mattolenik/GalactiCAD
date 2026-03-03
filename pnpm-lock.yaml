@@ -34,8 +34,8 @@ importers:
         version: 5.9.3
     devDependencies:
       '@types/node':
-        specifier: ^25.3.2
-        version: 25.3.2
+        specifier: ^25.3.3
+        version: 25.3.3
       '@types/wicg-file-system-access':
         specifier: ^2023.10.7
         version: 2023.10.7
@@ -52,8 +52,8 @@ importers:
         specifier: ^0.27.3
         version: 0.27.3
       skills:
-        specifier: ^1.4.2
-        version: 1.4.2
+        specifier: ^1.4.3
+        version: 1.4.3
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -228,8 +228,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@types/node@25.3.2':
-    resolution: {integrity: sha512-RpV6r/ij22zRRdyBPcxDeKAzH43phWVKEjL2iksqo1Vz3CuBUrgmPpPhALKiRfU7OMCmeeO9vECBMsV0hMTG8Q==}
+  '@types/node@25.3.3':
+    resolution: {integrity: sha512-DpzbrH7wIcBaJibpKo9nnSQL0MTRdnWttGyE5haGwK86xgMOkFLp7vEyfQPGLOJh5wNYiJ3V9PmUMDhV9u8kkQ==}
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
@@ -302,8 +302,8 @@ packages:
   rxjs@7.8.2:
     resolution: {integrity: sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==}
 
-  skills@1.4.2:
-    resolution: {integrity: sha512-tSYQbF1xMA6ZmhW6yk0zMMqyJRqKgJn3H9dv+MNtW7hVDjshkP/P2dobtLYkONXvlxYpqonhIN8Tv895kn8nUQ==}
+  skills@1.4.3:
+    resolution: {integrity: sha512-/HCJQSoaXZ1vXiFv/Xd/2ptex1VhPlQf/nbdHBB3b7ZlJJiCFwiKk5RXgmcfF2OcFM0Yz/qtIWCzJ9bHWsrPcQ==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -422,7 +422,7 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
-  '@types/node@25.3.2':
+  '@types/node@25.3.3':
     dependencies:
       undici-types: 7.18.2
 
@@ -433,7 +433,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 25.3.2
+      '@types/node': 25.3.3
 
   '@webgpu/types@0.1.69': {}
 
@@ -508,7 +508,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  skills@1.4.2: {}
+  skills@1.4.3: {}
 
   tslib@2.8.1: {}
 

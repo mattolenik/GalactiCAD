@@ -13,13 +13,13 @@
   "packageManager": "pnpm@10.10.0",
   "type": "module",
   "devDependencies": {
-    "@types/node": "^25.3.2",
+    "@types/node": "^25.3.3",
     "@types/wicg-file-system-access": "^2023.10.7",
     "@types/ws": "^8.18.1",
     "@webgpu/types": "^0.1.69",
     "chokidar": "^5.0.0",
     "esbuild": "^0.27.3",
-    "skills": "^1.4.2",
+    "skills": "^1.4.3",
     "tsx": "^4.21.0",
     "webgpu": "^0.3.8",
     "ws": "^8.19.0"

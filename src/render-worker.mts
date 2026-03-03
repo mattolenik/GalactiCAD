@@ -119,7 +119,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             break
         case "thumbnail":
             if (core) {
-                core.handleThumbnail(msg.src, msg.width, msg.height, msg.requestId)
+                core.handleThumbnail(msg.src, msg.width, msg.height, msg.requestId, msg.documentName)
             } else {
                 self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready", requestId: msg.requestId })
             }
@@ -152,6 +152,9 @@ async function handleInit(canvas: OffscreenCanvas, buf?: SharedArrayBuffer): Pro
 }
 
 function enqueueBuild(src: string, documentName?: string | null, requestId?: number): void {
+    if (pendingBuild?.requestId != null) {
+        self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: pendingBuild.requestId, documentName: pendingBuild.documentName ?? undefined, superseded: true })
+    }
     pendingBuild = { src, documentName, requestId }
     if (!buildInProgress) runNextBuild()
 }
@@ -163,7 +166,10 @@ async function runNextBuild(): Promise<void> {
     buildInProgress = true
     try {
         const result = await core.build(req.src, req.documentName)
-        if ("superseded" in result) return
+        if ("superseded" in result) {
+            self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: req.requestId, documentName: req.documentName ?? undefined, superseded: true })
+            return
+        }
         self.postMessage({ type: "buildComplete", sceneNodes: result.sceneNodes, compiledPosY: result.compiledPosY, requestId: req.requestId, documentName: req.documentName ?? undefined })
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

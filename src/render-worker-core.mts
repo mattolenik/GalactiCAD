@@ -654,12 +654,12 @@ export class RenderWorkerCore {
         })
     }
 
-    async handleThumbnail(src: string, width?: number, height?: number, requestId?: number): Promise<void> {
+    async handleThumbnail(src: string, width?: number, height?: number, requestId?: number, documentName?: string): Promise<void> {
         const thumbWidth = Math.max(1, Math.min(512, width ?? 256))
         const thumbHeight = Math.max(1, Math.min(512, height ?? 256))
         try {
             if (!this.#device) {
-                self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable", requestId })
+                self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable", requestId, documentName })
                 return
             }
             const trimmed = src.trim()
@@ -667,7 +667,7 @@ export class RenderWorkerCore {
                 await this.build(trimmed, undefined)
             }
             if (!this.#pipeline) {
-                self.postMessage({ type: "thumbnailResult", error: "Scene failed to build", requestId })
+                self.postMessage({ type: "thumbnailResult", error: "Scene failed to build", requestId, documentName })
                 return
             }
             const eye = vec3(30, 25, 30)
@@ -745,10 +745,10 @@ export class RenderWorkerCore {
             readbackBuffer.unmap()
             readbackBuffer.destroy()
             thumbOutputTexture.destroy()
-            self.postMessage({ type: "thumbnailResult", imageData, requestId }, { transfer: [imageData.data.buffer] })
+            self.postMessage({ type: "thumbnailResult", imageData, requestId, documentName }, { transfer: [imageData.data.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
-            self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId })
+            self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId, documentName })
         }
     }
 

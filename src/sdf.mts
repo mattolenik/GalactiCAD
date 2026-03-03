@@ -234,14 +234,16 @@ export class SDFRenderer {
                 if (msg.error) {
                     pending?.reject(new Error(msg.error))
                 } else if (pending) {
-                    const active = this.#getActiveDocument?.()
-                    const stillActive = msg.documentName === undefined || msg.documentName === active
-                    if (stillActive) {
-                        this.#sceneNodeCache = this.#reconstructNodes(msg.sceneNodes)
-                        this.#buildPushPullNodes(msg.sceneNodes)
-                        this.#compiledPosY = new Map(msg.compiledPosY ?? [])
-                        this.#controls.loadCameraFromSettings()
-                        this.#needsRender = true
+                    if (!msg.superseded) {
+                        const active = this.#getActiveDocument?.()
+                        const stillActive = msg.documentName === undefined || msg.documentName === active
+                        if (stillActive) {
+                            this.#sceneNodeCache = this.#reconstructNodes(msg.sceneNodes)
+                            this.#buildPushPullNodes(msg.sceneNodes)
+                            this.#compiledPosY = new Map(msg.compiledPosY ?? [])
+                            this.#controls.loadCameraFromSettings()
+                            this.#needsRender = true
+                        }
                     }
                     pending.resolve()
                 }
@@ -276,12 +278,6 @@ export class SDFRenderer {
                     this.objectDoubleClick$.next(msg.nodeId)
                 }
                 break
-            case "pushPullComplete":
-                this.pushPullComplete$.next({ nodeId: msg.nodeId, vertices: msg.vertices })
-                break
-            case "capPullComplete":
-                this.capPullComplete$.next({ nodeId: msg.nodeId, newH: msg.newH, newPosY: msg.newPosY })
-                break
             case "renderMeshResult": {
                 const pending = msg.requestId != null ? this.#pendingRenderMesh.get(msg.requestId) : null
                 if (pending) {
@@ -307,8 +303,15 @@ export class SDFRenderer {
             case "thumbnailResult": {
                 const pending = msg.requestId != null ? this.#pendingThumbnail.get(msg.requestId) : null
                 if (pending) {
-                    if (msg.imageData) pending.resolve(msg.imageData)
-                    else pending.reject(new Error(msg.error ?? "Unknown error"))
+                    const active = this.#getActiveDocument?.()
+                    const stillActive = msg.documentName === undefined || msg.documentName === active
+                    if (!stillActive) {
+                        pending.reject(new Error("Document changed"))
+                    } else if (msg.imageData) {
+                        pending.resolve(msg.imageData)
+                    } else {
+                        pending.reject(new Error(msg.error ?? "Unknown error"))
+                    }
                 }
                 if (msg.requestId != null) this.#pendingThumbnail.delete(msg.requestId)
                 break
@@ -893,7 +896,7 @@ export class SDFRenderer {
         })
     }
 
-    async thumbnail(src: string, width?: number, height?: number): Promise<ImageData> {
+    async thumbnail(src: string, width?: number, height?: number, documentName?: string): Promise<ImageData> {
         await this.#readyPromise
         const trimmed = src.trim()
         const w = width ?? 256
@@ -903,9 +906,10 @@ export class SDFRenderer {
         const cached = await this.#getCachedThumbnail(cacheKey)
         if (cached) return cached
         const requestId = ++this.#requestIdCounter
+        const docName = documentName ?? this.#getActiveDocument?.() ?? undefined
         const imageData = await new Promise<ImageData>((resolve, reject) => {
             this.#pendingThumbnail.set(requestId, { resolve, reject })
-            this.#worker.postMessage({ type: "thumbnail", src: trimmed, width: w, height: h, requestId })
+            this.#worker.postMessage({ type: "thumbnail", src: trimmed, width: w, height: h, requestId, documentName: docName })
         })
         await this.#setCachedThumbnail(cacheKey, imageData)
         return imageData

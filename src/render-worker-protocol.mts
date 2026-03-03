@@ -71,7 +71,7 @@ export type MainToWorkerMessage =
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer } }
     | { type: "renderMesh"; src: string; requestId?: number; documentName?: string }
     | { type: "benchmark"; durationSeconds: number; waitForGPU: boolean; requestId?: number }
-    | { type: "thumbnail"; src: string; width?: number; height?: number; requestId?: number }
+    | { type: "thumbnail"; src: string; width?: number; height?: number; requestId?: number; documentName?: string }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]
@@ -109,13 +109,11 @@ export interface RenderViewSettings {
 export type WorkerToMainMessage =
     | { type: "ready" }
     | { type: "initError"; error: string }
-    | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: [number, number][]; error?: string; requestId?: number; documentName?: string }
+    | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: [number, number][]; error?: string; requestId?: number; documentName?: string; superseded?: boolean }
     | { type: "clickResult"; clickedId: number; edgeHits: EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number]; shiftKey: boolean; altKey: boolean; documentName?: string }
     | { type: "selectionInfo"; info: SelectionInfo; documentName?: string }
     | { type: "objectDoubleClick"; nodeId: number; hitPos?: [number, number, number]; documentName?: string }
-    | { type: "pushPullComplete"; nodeId: number; vertices: [number, number][] }
-    | { type: "capPullComplete"; nodeId: number; newH: number; newPosY: number }
     | { type: "renderMeshResult"; mesh?: MeshData; error?: string; requestId?: number; documentName?: string }
     | { type: "benchmarkResult"; result: BenchmarkResultPayload; requestId?: number }
-    | { type: "thumbnailResult"; imageData?: ImageData; error?: string; requestId?: number }
+    | { type: "thumbnailResult"; imageData?: ImageData; error?: string; requestId?: number; documentName?: string }
     | { type: "fps"; fps: number }

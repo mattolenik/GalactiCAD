@@ -94,13 +94,11 @@ export class SDFRenderer {
     #outlineMode: OutlineMode = DEFAULT_SELECTION_STYLES.outline.mode
     #outlineThickness: number = DEFAULT_SELECTION_STYLES.outline.thickness
     #outlineColor: [number, number, number] = [...DEFAULT_SELECTION_STYLES.outline.color]
-    #pendingBuildResolve: ((value: void) => void) | null = null
-    #pendingBuildReject: ((reason: unknown) => void) | null = null
-    #pendingRenderMeshResolve: ((value: MeshData) => void) | null = null
-    #pendingRenderMeshReject: ((err: unknown) => void) | null = null
-    #pendingBenchmarkResolve: ((value: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void) | null = null
-    #pendingThumbnailResolve: ((value: ImageData) => void) | null = null
-    #pendingThumbnailReject: ((err: unknown) => void) | null = null
+    #requestIdCounter = 0
+    #pendingBuild = new Map<number, { resolve: () => void; reject: (err: unknown) => void }>()
+    #pendingRenderMesh = new Map<number, { resolve: (v: MeshData) => void; reject: (err: unknown) => void }>()
+    #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
+    #pendingThumbnail = new Map<number, { resolve: (v: ImageData) => void; reject: (err: unknown) => void }>()
     #sharedBuffer: SharedArrayBuffer | null = null
     #renderVersion = 0
     #useSharedMemory = false
@@ -229,22 +227,21 @@ export class SDFRenderer {
             case "initError":
                 this.#readyReject(new Error(msg.error))
                 break
-            case "buildComplete":
+            case "buildComplete": {
+                const pending = msg.requestId != null ? this.#pendingBuild.get(msg.requestId) : null
                 if (msg.error) {
-                    this.#pendingBuildReject?.(new Error(msg.error))
-                    this.#pendingBuildResolve = null
-                    this.#pendingBuildReject = null
-                } else {
+                    pending?.reject(new Error(msg.error))
+                } else if (pending) {
                     this.#sceneNodeCache = this.#reconstructNodes(msg.sceneNodes)
                     this.#buildPushPullNodes(msg.sceneNodes)
                     this.#compiledPosY = new Map(msg.compiledPosY ?? [])
                     this.#controls.loadCameraFromSettings()
                     this.#needsRender = true
-                    this.#pendingBuildResolve?.()
-                    this.#pendingBuildResolve = null
-                    this.#pendingBuildReject = null
+                    pending.resolve()
                 }
+                if (msg.requestId != null) this.#pendingBuild.delete(msg.requestId)
                 break
+            }
             case "clickResult":
                 this.#handleClickResult(msg.clickedId, msg.edgeHits, msg.shiftKey, msg.altKey)
                 break
@@ -276,28 +273,30 @@ export class SDFRenderer {
             case "capPullComplete":
                 this.capPullComplete$.next({ nodeId: msg.nodeId, newH: msg.newH, newPosY: msg.newPosY })
                 break
-            case "renderMeshResult":
-                if (msg.mesh) {
-                    this.#pendingRenderMeshResolve?.(msg.mesh)
-                } else {
-                    this.#pendingRenderMeshReject?.(new Error(msg.error ?? "Unknown error"))
+            case "renderMeshResult": {
+                const pending = msg.requestId != null ? this.#pendingRenderMesh.get(msg.requestId) : null
+                if (pending) {
+                    if (msg.mesh) pending.resolve(msg.mesh)
+                    else pending.reject(new Error(msg.error ?? "Unknown error"))
                 }
-                this.#pendingRenderMeshResolve = null
-                this.#pendingRenderMeshReject = null
+                if (msg.requestId != null) this.#pendingRenderMesh.delete(msg.requestId)
                 break
-            case "benchmarkResult":
-                this.#pendingBenchmarkResolve?.(msg.result)
-                this.#pendingBenchmarkResolve = null
+            }
+            case "benchmarkResult": {
+                const pending = msg.requestId != null ? this.#pendingBenchmark.get(msg.requestId) : null
+                pending?.resolve(msg.result)
+                if (msg.requestId != null) this.#pendingBenchmark.delete(msg.requestId)
                 break
-            case "thumbnailResult":
-                if (msg.imageData) {
-                    this.#pendingThumbnailResolve?.(msg.imageData)
-                } else {
-                    this.#pendingThumbnailReject?.(new Error(msg.error ?? "Unknown error"))
+            }
+            case "thumbnailResult": {
+                const pending = msg.requestId != null ? this.#pendingThumbnail.get(msg.requestId) : null
+                if (pending) {
+                    if (msg.imageData) pending.resolve(msg.imageData)
+                    else pending.reject(new Error(msg.error ?? "Unknown error"))
                 }
-                this.#pendingThumbnailResolve = null
-                this.#pendingThumbnailReject = null
+                if (msg.requestId != null) this.#pendingThumbnail.delete(msg.requestId)
                 break
+            }
             case "fps":
                 if (!this.#useSharedMemory) this.#preview.updateFPS(msg.fps)
                 break
@@ -845,10 +844,10 @@ export class SDFRenderer {
     }
 
     build(src: string, documentName?: string | null): Promise<void> {
+        const requestId = ++this.#requestIdCounter
         return new Promise<void>((resolve, reject) => {
-            this.#pendingBuildResolve = resolve
-            this.#pendingBuildReject = reject
-            this.#worker.postMessage({ type: "build", src: src.trim(), documentName: documentName ?? undefined })
+            this.#pendingBuild.set(requestId, { resolve, reject })
+            this.#worker.postMessage({ type: "build", src: src.trim(), documentName: documentName ?? undefined, requestId })
         })
     }
 
@@ -861,19 +860,20 @@ export class SDFRenderer {
     }
 
     async renderMesh(_src: string): Promise<MeshData> {
+        const requestId = ++this.#requestIdCounter
         return new Promise<MeshData>((resolve, reject) => {
-            this.#pendingRenderMeshResolve = resolve
-            this.#pendingRenderMeshReject = reject
-            this.#worker.postMessage({ type: "renderMesh", src: _src })
+            this.#pendingRenderMesh.set(requestId, { resolve, reject })
+            this.#worker.postMessage({ type: "renderMesh", src: _src, requestId })
         })
     }
 
     async benchmark(durationSeconds = 5, waitForGPU = true): Promise<{ totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }> {
+        const requestId = ++this.#requestIdCounter
         const payload = this.#buildRenderPayload([this.#fullWidth || 800, this.#fullHeight || 600] as [number, number])
         this.#worker.postMessage(payload, [payload.viewTransform.buffer])
         return new Promise(resolve => {
-            this.#pendingBenchmarkResolve = resolve
-            this.#worker.postMessage({ type: "benchmark", durationSeconds, waitForGPU })
+            this.#pendingBenchmark.set(requestId, { resolve })
+            this.#worker.postMessage({ type: "benchmark", durationSeconds, waitForGPU, requestId })
         })
     }
 
@@ -886,10 +886,10 @@ export class SDFRenderer {
         const cacheKey = `https://galacticad.local/thumbnail/${key}-${w}x${h}`
         const cached = await this.#getCachedThumbnail(cacheKey)
         if (cached) return cached
+        const requestId = ++this.#requestIdCounter
         const imageData = await new Promise<ImageData>((resolve, reject) => {
-            this.#pendingThumbnailResolve = resolve
-            this.#pendingThumbnailReject = reject
-            this.#worker.postMessage({ type: "thumbnail", src: trimmed, width: w, height: h })
+            this.#pendingThumbnail.set(requestId, { resolve, reject })
+            this.#worker.postMessage({ type: "thumbnail", src: trimmed, width: w, height: h, requestId })
         })
         await this.#setCachedThumbnail(cacheKey, imageData)
         return imageData

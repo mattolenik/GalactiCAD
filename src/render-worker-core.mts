@@ -83,6 +83,7 @@ export class RenderWorkerCore {
     #beamBindGroupInvalid = false
     #sceneBindGroupInvalid = false
     #buildGeneration = 0
+    #buildLock: Promise<void> = Promise.resolve()
     #compiledPosY = new Map<number, number>()
     #colorTexture!: GPUTexture
     #idTexture!: GPUTexture
@@ -186,7 +187,19 @@ export class RenderWorkerCore {
         this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, [], 6.0, 0.02)
     }
 
-    async build(src: string, _documentName?: string | null): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] }> {
+    async build(src: string, _documentName?: string | null): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
+        const prev = this.#buildLock
+        let release!: () => void
+        this.#buildLock = new Promise<void>(r => (release = r))
+        await prev
+        try {
+            return await this.#doBuild(src)
+        } finally {
+            release()
+        }
+    }
+
+    async #doBuild(src: string): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
         const trimmed = src.trim()
         this.#builtSrc = trimmed
         this.#scene = new SceneInfo(trimmed)
@@ -249,7 +262,7 @@ export class RenderWorkerCore {
             }),
         ])
 
-        if (generation !== this.#buildGeneration) return { sceneNodes: serializeSceneNodes(scene, allNodes), compiledPosY: Array.from(this.#compiledPosY) }
+        if (generation !== this.#buildGeneration) return { superseded: true } as { sceneNodes: never; compiledPosY: never; superseded: true }
         this.#pipeline = pipeline
         this.#beamPipeline = beamPipeline
         this.#beamBindGroupInvalid = true
@@ -430,7 +443,7 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(src: string): Promise<void> {
+    async handleRenderMesh(src: string, requestId?: number): Promise<void> {
         try {
             const trimmed = src.trim()
             if (!this.#scene || this.#builtSrc !== trimmed) {
@@ -438,7 +451,7 @@ export class RenderWorkerCore {
             }
             const bounds = await this.#computeSceneBoundsRefined()
             if (!bounds) {
-                self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?" })
+                self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId })
                 return
             }
             const voxelSizeMm = 0.5
@@ -492,10 +505,10 @@ export class RenderWorkerCore {
                 this.#uniformBuffers.nodeParams,
             )
             const mesh = await mdc.export(mdcShaderModule)
-            self.postMessage({ type: "renderMeshResult", mesh }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
+            self.postMessage({ type: "renderMeshResult", mesh, requestId }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
-            self.postMessage({ type: "renderMeshResult", error: errorMsg })
+            self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId })
         }
     }
 
@@ -608,9 +621,9 @@ export class RenderWorkerCore {
         return refined ?? coarse
     }
 
-    async handleBenchmark(durationSeconds: number, waitForGPU: boolean): Promise<void> {
+    async handleBenchmark(durationSeconds: number, waitForGPU: boolean, requestId?: number): Promise<void> {
         if (!this.#pipeline) {
-            self.postMessage({ type: "benchmarkResult", result: { totalTime: 0, averageFrameTime: 0, minFrameTime: 0, maxFrameTime: 0, framesPerSecond: 0, frameTimes: [], error: "Cannot benchmark: renderer not initialized. Call build() first." } })
+            self.postMessage({ type: "benchmarkResult", result: { totalTime: 0, averageFrameTime: 0, minFrameTime: 0, maxFrameTime: 0, framesPerSecond: 0, frameTimes: [], error: "Cannot benchmark: renderer not initialized. Call build() first." }, requestId })
             return
         }
         const frameTimes: number[] = []
@@ -637,15 +650,16 @@ export class RenderWorkerCore {
         self.postMessage({
             type: "benchmarkResult",
             result: { totalTime, averageFrameTime, minFrameTime, maxFrameTime, framesPerSecond, frameTimes },
+            requestId,
         })
     }
 
-    async handleThumbnail(src: string, width?: number, height?: number): Promise<void> {
+    async handleThumbnail(src: string, width?: number, height?: number, requestId?: number): Promise<void> {
         const thumbWidth = Math.max(1, Math.min(512, width ?? 256))
         const thumbHeight = Math.max(1, Math.min(512, height ?? 256))
         try {
             if (!this.#device) {
-                self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable" })
+                self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable", requestId })
                 return
             }
             const trimmed = src.trim()
@@ -653,7 +667,7 @@ export class RenderWorkerCore {
                 await this.build(trimmed, undefined)
             }
             if (!this.#pipeline) {
-                self.postMessage({ type: "thumbnailResult", error: "Scene failed to build" })
+                self.postMessage({ type: "thumbnailResult", error: "Scene failed to build", requestId })
                 return
             }
             const eye = vec3(30, 25, 30)
@@ -731,10 +745,10 @@ export class RenderWorkerCore {
             readbackBuffer.unmap()
             readbackBuffer.destroy()
             thumbOutputTexture.destroy()
-            self.postMessage({ type: "thumbnailResult", imageData }, { transfer: [imageData.data.buffer] })
+            self.postMessage({ type: "thumbnailResult", imageData, requestId }, { transfer: [imageData.data.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
-            self.postMessage({ type: "thumbnailResult", error: errorMsg })
+            self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId })
         }
     }
 

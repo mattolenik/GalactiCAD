@@ -506,6 +506,7 @@ class App {
 
     async #createRendererAndWire(preview: PreviewWindow, menu: HTMLElement, isInitial = false): Promise<void> {
         await this.#restoreOrShowWelcome()
+        this.renderer?.dispose()
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect)
         const { xrayCheckbox, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
         try {

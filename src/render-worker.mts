@@ -15,6 +15,10 @@ let pollHandle: ReturnType<typeof setTimeout> | null = null
 /** Pending resize to apply when init completes (avoids race where resize arrives before core exists). */
 let pendingResize: { fullWidth: number; fullHeight: number } | null = null
 
+/** Build serialization: only one build at a time; latest request wins. */
+let buildInProgress = false
+let pendingBuild: { src: string; documentName?: string | null; requestId?: number } | null = null
+
 /** Pending render message for coalescing; used for benchmark/thumbnail which still send render via postMessage. */
 let pendingRender: Extract<MainToWorkerMessage, { type: "render" }> | null = null
 let renderScheduled = false
@@ -67,7 +71,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             handleInit(msg.canvas, msg.sharedBuffer)
             break
         case "build":
-            if (core) handleBuild(msg.src, msg.documentName)
+            if (core) enqueueBuild(msg.src, msg.documentName, msg.requestId)
             break
         case "render":
             pendingRender = msg
@@ -99,7 +103,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             if (core) core.writeBuffers(msg)
             break
         case "renderMesh":
-            if (core) core.handleRenderMesh(msg.src)
+            if (core) core.handleRenderMesh(msg.src, msg.requestId)
             break
         case "benchmark":
             if (core) {
@@ -110,14 +114,14 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
                         renderScheduled = false
                     }
                 }
-                core.handleBenchmark(msg.durationSeconds, msg.waitForGPU)
+                core.handleBenchmark(msg.durationSeconds, msg.waitForGPU, msg.requestId)
             }
             break
         case "thumbnail":
             if (core) {
-                core.handleThumbnail(msg.src, msg.width, msg.height)
+                core.handleThumbnail(msg.src, msg.width, msg.height, msg.requestId)
             } else {
-                self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready" })
+                self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready", requestId: msg.requestId })
             }
             break
         default:
@@ -147,14 +151,26 @@ async function handleInit(canvas: OffscreenCanvas, buf?: SharedArrayBuffer): Pro
     }
 }
 
-async function handleBuild(src: string, documentName?: string | null): Promise<void> {
-    if (!core) return
+function enqueueBuild(src: string, documentName?: string | null, requestId?: number): void {
+    pendingBuild = { src, documentName, requestId }
+    if (!buildInProgress) runNextBuild()
+}
+
+async function runNextBuild(): Promise<void> {
+    const req = pendingBuild
+    pendingBuild = null
+    if (!req || !core) return
+    buildInProgress = true
     try {
-        const { sceneNodes, compiledPosY } = await core.build(src, documentName)
-        self.postMessage({ type: "buildComplete", sceneNodes, compiledPosY })
+        const result = await core.build(req.src, req.documentName)
+        if ("superseded" in result) return
+        self.postMessage({ type: "buildComplete", sceneNodes: result.sceneNodes, compiledPosY: result.compiledPosY, requestId: req.requestId })
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error("[RenderWorker] build failed:", err)
-        self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], error: msg })
+        self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], error: msg, requestId: req.requestId })
+    } finally {
+        buildInProgress = false
+        if (pendingBuild) runNextBuild()
     }
 }

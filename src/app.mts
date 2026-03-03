@@ -37,6 +37,9 @@ import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
 import { clearRecentDocuments, getDoc, getRecentDocuments } from "./storage/db.mjs"
 import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
+import { VERSION } from "./version.mjs"
+
+console.log(`GalactiCAD ${VERSION}`)
 
 // Start loading dprint formatter (non-blocking); registers providers when ready
 initDprintFormatting()

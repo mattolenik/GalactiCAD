@@ -62,7 +62,6 @@ export function writeRenderPayload(
     const u32 = new Uint32Array(buffer)
     const f32 = new Float32Array(buffer)
 
-    Atomics.store(u32, O_VERSION / 4, version)
     u32[O_FULL_WIDTH / 4] = fullWidth
     u32[O_FULL_HEIGHT / 4] = fullHeight
     f32[O_RESOLUTION_SCALE / 4] = payload.resolutionScale
@@ -104,6 +103,8 @@ export function writeRenderPayload(
     writeEdgesToBuffer(buffer, O_SELECTED_EDGES_HEADER, O_SELECTED_EDGES_DATA, sel.selectedEdges, 6, 0.02)
     writeEdgesToBuffer(buffer, O_HOVERED_EDGES_HEADER, O_HOVERED_EDGES_DATA, sel.hoveredEdges, 6, 0.02)
     u32[O_HOVERED_OBJECT_ID / 4] = sel.hoveredObjectId
+
+    Atomics.store(u32, O_VERSION / 4, version)
 }
 
 function writeEdgesToBuffer(

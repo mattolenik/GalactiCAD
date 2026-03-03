@@ -507,7 +507,7 @@ class App {
     async #createRendererAndWire(preview: PreviewWindow, menu: HTMLElement, isInitial = false): Promise<void> {
         await this.#restoreOrShowWelcome()
         this.renderer?.dispose()
-        this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect)
+        this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect, () => this.#tabs.active)
         const { xrayCheckbox, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
         try {
             await this.renderer
@@ -1058,7 +1058,7 @@ class App {
                     ],
                     excludeAcceptAllOption: false,
                 })
-                const mesh = await this.renderer.renderMesh(this.editor.getValue())
+                const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName)
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
                 statusDialog = new StatusDialog("Export successful")
@@ -1142,7 +1142,7 @@ class App {
         const token = ++this.#meshUpdateToken
         this.#meshUpdateTimer = window.setTimeout(async () => {
             try {
-                const mesh = await this.renderer.renderMesh(src)
+                const mesh = await this.renderer.renderMesh(src, this.#tabs.active)
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {
                     await this.#mesh.setMesh(mesh)

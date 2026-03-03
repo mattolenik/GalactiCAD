@@ -82,6 +82,7 @@ export class SDFRenderer {
     #controlSubs: Subscription[] = []
     #pushPullController: PushPullController | null = null
     #tabsElement: EventTarget | null = null
+    #getActiveDocument: (() => string | undefined) | null = null
     #tabChangeSub: Subscription | null = null
     #resizeObserver: ResizeObserver | null = null
     #settings = SettingsManager.instance
@@ -135,11 +136,12 @@ export class SDFRenderer {
     readonly capPullComplete$ = new Subject<{ nodeId: number; newH: number; newPosY: number }>()
     readonly previewSettingsLoaded$ = new Subject<void>()
 
-    constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect) {
+    constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect, getActiveDocument?: () => string | undefined) {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement ?? null, getInteractionRect ?? undefined)
         this.#tabsElement = tabsElement ?? null
         this.#getInteractionRect = getInteractionRect ?? null
+        this.#getActiveDocument = getActiveDocument ?? null
 
         this.#readyPromise = new Promise<void>((resolve, reject) => {
             this.#readyResolve = resolve
@@ -153,15 +155,15 @@ export class SDFRenderer {
         this.#controlSubs.push(
             this.#controls.select$.subscribe(({ screenPos, shiftKey, altKey }) => {
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
-                if (uv) this.#worker.postMessage({ type: "click", clickUV: uv, shiftKey, altKey })
+                if (uv) this.#worker.postMessage({ type: "click", clickUV: uv, shiftKey, altKey, documentName: this.#getActiveDocument?.() ?? undefined })
             }),
             this.#controls.doubleClick$.subscribe((screenPos) => {
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
-                if (uv) this.#worker.postMessage({ type: "doubleClick", clickUV: uv })
+                if (uv) this.#worker.postMessage({ type: "doubleClick", clickUV: uv, documentName: this.#getActiveDocument?.() ?? undefined })
             }),
             this.#controls.hover$.pipe(throttleTime(80)).subscribe(({ screenPos, altKey }) => {
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
-                if (uv) this.#worker.postMessage({ type: "hover", clickUV: uv, altKey })
+                if (uv) this.#worker.postMessage({ type: "hover", clickUV: uv, altKey, documentName: this.#getActiveDocument?.() ?? undefined })
             }),
             this.#controls.change$.subscribe(() => {
                 this.#needsRender = true
@@ -232,20 +234,26 @@ export class SDFRenderer {
                 if (msg.error) {
                     pending?.reject(new Error(msg.error))
                 } else if (pending) {
-                    this.#sceneNodeCache = this.#reconstructNodes(msg.sceneNodes)
-                    this.#buildPushPullNodes(msg.sceneNodes)
-                    this.#compiledPosY = new Map(msg.compiledPosY ?? [])
-                    this.#controls.loadCameraFromSettings()
-                    this.#needsRender = true
+                    const active = this.#getActiveDocument?.()
+                    const stillActive = msg.documentName === undefined || msg.documentName === active
+                    if (stillActive) {
+                        this.#sceneNodeCache = this.#reconstructNodes(msg.sceneNodes)
+                        this.#buildPushPullNodes(msg.sceneNodes)
+                        this.#compiledPosY = new Map(msg.compiledPosY ?? [])
+                        this.#controls.loadCameraFromSettings()
+                        this.#needsRender = true
+                    }
                     pending.resolve()
                 }
                 if (msg.requestId != null) this.#pendingBuild.delete(msg.requestId)
                 break
             }
             case "clickResult":
+                if (msg.documentName !== undefined && msg.documentName !== this.#getActiveDocument?.()) return
                 this.#handleClickResult(msg.clickedId, msg.edgeHits, msg.shiftKey, msg.altKey)
                 break
             case "selectionInfo":
+                if (msg.documentName !== undefined && msg.documentName !== this.#getActiveDocument?.()) return
                 this.#hoveredObjectId = msg.info.hover?.objectId ?? 0
                 this.#hoveredEdges = msg.info.hover?.edges?.map(e => ({
                     kind: e.kind,
@@ -263,6 +271,7 @@ export class SDFRenderer {
                 this.#needsRender = true
                 break
             case "objectDoubleClick":
+                if (msg.documentName !== undefined && msg.documentName !== this.#getActiveDocument?.()) return
                 if (!this.#handleObjectDoubleClick(msg.nodeId, msg.hitPos)) {
                     this.objectDoubleClick$.next(msg.nodeId)
                 }
@@ -276,8 +285,15 @@ export class SDFRenderer {
             case "renderMeshResult": {
                 const pending = msg.requestId != null ? this.#pendingRenderMesh.get(msg.requestId) : null
                 if (pending) {
-                    if (msg.mesh) pending.resolve(msg.mesh)
-                    else pending.reject(new Error(msg.error ?? "Unknown error"))
+                    const active = this.#getActiveDocument?.()
+                    const stillActive = msg.documentName === undefined || msg.documentName === active
+                    if (!stillActive) {
+                        pending.reject(new Error("Document changed"))
+                    } else if (msg.mesh) {
+                        pending.resolve(msg.mesh)
+                    } else {
+                        pending.reject(new Error(msg.error ?? "Unknown error"))
+                    }
                 }
                 if (msg.requestId != null) this.#pendingRenderMesh.delete(msg.requestId)
                 break
@@ -859,11 +875,11 @@ export class SDFRenderer {
         return this.build(SDFRenderer.EMPTY_SCENE_SRC)
     }
 
-    async renderMesh(_src: string): Promise<MeshData> {
+    async renderMesh(_src: string, documentName?: string): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
         return new Promise<MeshData>((resolve, reject) => {
             this.#pendingRenderMesh.set(requestId, { resolve, reject })
-            this.#worker.postMessage({ type: "renderMesh", src: _src, requestId })
+            this.#worker.postMessage({ type: "renderMesh", src: _src, requestId, documentName })
         })
     }
 
@@ -929,6 +945,16 @@ export class SDFRenderer {
         this.#controlSubs.length = 0
         this.#tabChangeSub?.unsubscribe()
         this.#resizeObserver?.disconnect()
+        const err = new Error("Renderer disposed")
+        for (const [, { reject }] of this.#pendingBuild) reject(err)
+        this.#pendingBuild.clear()
+        for (const [, { reject }] of this.#pendingRenderMesh) reject(err)
+        this.#pendingRenderMesh.clear()
+        for (const [, { reject }] of this.#pendingThumbnail) reject(err)
+        this.#pendingThumbnail.clear()
+        const emptyBenchmark = { totalTime: 0, averageFrameTime: 0, minFrameTime: 0, maxFrameTime: 0, framesPerSecond: 0, frameTimes: [] }
+        for (const [, { resolve }] of this.#pendingBenchmark) resolve(emptyBenchmark)
+        this.#pendingBenchmark.clear()
         this.#worker.terminate()
         this.#controls.dispose()
         this.selectionChange$.complete()

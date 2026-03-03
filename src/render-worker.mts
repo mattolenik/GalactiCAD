@@ -84,13 +84,13 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             }
             break
         case "click":
-            if (core) core.handleClick(msg.clickUV, msg.shiftKey, msg.altKey)
+            if (core) core.handleClick(msg.clickUV, msg.shiftKey, msg.altKey, msg.documentName)
             break
         case "doubleClick":
-            if (core) core.handleDoubleClick(msg.clickUV)
+            if (core) core.handleDoubleClick(msg.clickUV, msg.documentName)
             break
         case "hover":
-            if (core) core.handleHover(msg.clickUV, msg.altKey)
+            if (core) core.handleHover(msg.clickUV, msg.altKey, msg.documentName)
             break
         case "resize":
             if (core) {
@@ -103,7 +103,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             if (core) core.writeBuffers(msg)
             break
         case "renderMesh":
-            if (core) core.handleRenderMesh(msg.src, msg.requestId)
+            if (core) core.handleRenderMesh(msg.src, msg.requestId, msg.documentName)
             break
         case "benchmark":
             if (core) {
@@ -164,11 +164,11 @@ async function runNextBuild(): Promise<void> {
     try {
         const result = await core.build(req.src, req.documentName)
         if ("superseded" in result) return
-        self.postMessage({ type: "buildComplete", sceneNodes: result.sceneNodes, compiledPosY: result.compiledPosY, requestId: req.requestId })
+        self.postMessage({ type: "buildComplete", sceneNodes: result.sceneNodes, compiledPosY: result.compiledPosY, requestId: req.requestId, documentName: req.documentName ?? undefined })
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error("[RenderWorker] build failed:", err)
-        self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], error: msg, requestId: req.requestId })
+        self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], error: msg, requestId: req.requestId, documentName: req.documentName ?? undefined })
     } finally {
         buildInProgress = false
         if (pendingBuild) runNextBuild()

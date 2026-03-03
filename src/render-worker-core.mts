@@ -443,7 +443,7 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(src: string, requestId?: number): Promise<void> {
+    async handleRenderMesh(src: string, requestId?: number, documentName?: string): Promise<void> {
         try {
             const trimmed = src.trim()
             if (!this.#scene || this.#builtSrc !== trimmed) {
@@ -451,7 +451,7 @@ export class RenderWorkerCore {
             }
             const bounds = await this.#computeSceneBoundsRefined()
             if (!bounds) {
-                self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId })
+                self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId, documentName })
                 return
             }
             const voxelSizeMm = 0.5
@@ -505,10 +505,10 @@ export class RenderWorkerCore {
                 this.#uniformBuffers.nodeParams,
             )
             const mesh = await mdc.export(mdcShaderModule)
-            self.postMessage({ type: "renderMeshResult", mesh, requestId }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
+            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
-            self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId })
+            self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId, documentName })
         }
     }
 
@@ -1050,7 +1050,7 @@ export class RenderWorkerCore {
         return { hoveredObjectId, hoveredEdges: edges }
     }
 
-    async handleClick(clickUV: [number, number], shiftKey: boolean, altKey: boolean): Promise<void> {
+    async handleClick(clickUV: [number, number], shiftKey: boolean, altKey: boolean, documentName?: string): Promise<void> {
         if (!this.#lastRenderMsg || !this.#pipeline) return
         this.#writeClickState(clickUV, true, false)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
@@ -1068,10 +1068,11 @@ export class RenderWorkerCore {
             clickedNormal: result.clickedNormal,
             shiftKey,
             altKey,
+            documentName,
         })
     }
 
-    async handleHover(clickUV: [number, number], altKey: boolean): Promise<void> {
+    async handleHover(clickUV: [number, number], altKey: boolean, documentName?: string): Promise<void> {
         const selectionMode = this.#lastSelectionMode
         if (!this.#lastRenderMsg || !this.#pipeline) return
         const effectiveMode = altKey && selectionMode === 0 ? 1 : selectionMode
@@ -1122,10 +1123,10 @@ export class RenderWorkerCore {
                 })),
             } : null,
         }
-        self.postMessage({ type: "selectionInfo", info })
+        self.postMessage({ type: "selectionInfo", info, documentName })
     }
 
-    async handleDoubleClick(clickUV: [number, number]): Promise<void> {
+    async handleDoubleClick(clickUV: [number, number], documentName?: string): Promise<void> {
         if (!this.#lastRenderMsg || !this.#pipeline) return
         this.#writeClickState(clickUV, true, false)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
@@ -1140,6 +1141,7 @@ export class RenderWorkerCore {
                 type: "objectDoubleClick",
                 nodeId: result.clickedId,
                 hitPos: [result.hitPos[0], result.hitPos[1], result.hitPos[2]],
+                documentName,
             })
         }
     }

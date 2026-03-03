@@ -80,6 +80,7 @@ class App {
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
     #parsedCalls: ParsedShapeCall[] = []
+    #parsedCallsWithRanges: [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }][] = []
     #sceneNodeMap: Map<number, NodeStub> = new Map()  // nodeId -> NodeStub for symbol lookup
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
@@ -124,6 +125,7 @@ class App {
 
             // Match scene nodes to source code by comparing property values
             this.#parsedCalls = parsedCalls
+            this.#parsedCallsWithRanges = parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }])
             this.#sourceLocationMap = matchNodesToSource(sceneNodes, parsedCalls)
 
             // Update color indicators for all matched shapes
@@ -262,20 +264,12 @@ class App {
         }
 
         // Fallback: innermost identifier range containing (startLine, startColumn)
-        return findInnermostAtPosition(
-            this.#parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }]),
-            startLine,
-            startColumn
-        )
+        return findInnermostAtPosition(this.#parsedCallsWithRanges, startLine, startColumn)
     }
 
     /** Find the innermost ParsedShapeCall at the given position (for mouse-down). */
     #findParsedCallAtPosition(line: number, column: number): ParsedShapeCall | null {
-        return findInnermostAtPosition(
-            this.#parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }]),
-            line,
-            column
-        )
+        return findInnermostAtPosition(this.#parsedCallsWithRanges, line, column)
     }
 
     /**
@@ -285,12 +279,15 @@ class App {
     #getNodeIdsForCalls(calls: ParsedShapeCall[]): number[] {
         const result: number[] = []
         for (const call of calls) {
+            const matchingIds: number[] = []
             for (const [nodeId, loc] of this.#sourceLocationMap.entries()) {
                 if (loc.startLine === call.location.startLine &&
                     loc.startColumn === call.location.startColumn) {
-                    result.push(nodeId)
-                    break
+                    matchingIds.push(nodeId)
                 }
+            }
+            if (matchingIds.length > 0) {
+                result.push(Math.max(...matchingIds))
             }
         }
         return result
@@ -304,7 +301,8 @@ class App {
         const model = this.editor.getModel()
         if (!model) return false
         const src = model.getValue()
-        const info = this.#sourceParser.findPolygon2DAtPosition(src, line, column)
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const info = this.#sourceParser.findPolygon2DAtPosition(src, line, column, cached ?? undefined)
         if (!info) return false
         this.#openPolygonEditor(info, model)
         return true
@@ -333,7 +331,8 @@ class App {
         if (!model) return
 
         const src = model.getValue()
-        const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn)
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
         if (!info) return
 
         applyVertexUpdates(model, info, vertices)
@@ -351,7 +350,9 @@ class App {
         if (!model) return
 
         const src = model.getValue()
-        const info = this.#sourceParser.findExtrudeLoftAtPosition(src, location.startLine, location.startColumn)
+        this.#sourceParser.parseShapeCalls(src)
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const info = this.#sourceParser.findExtrudeLoftAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
         if (!info) return
 
         // Update the in-memory scene node and apply source edits.
@@ -364,6 +365,7 @@ class App {
         const updatedSrc = model.getValue()
         const parsedCalls = this.#sourceParser.parseShapeCalls(updatedSrc)
         this.#parsedCalls = parsedCalls
+        this.#parsedCallsWithRanges = parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }])
         const prevMap = this.#sourceLocationMap
         this.#sourceLocationMap = matchNodesToSource(
             Array.from(this.#sceneNodeMap.values()),
@@ -1102,7 +1104,8 @@ class App {
         polyEditor.onChange = (vertices) => {
             const src = model.getValue()
             const pos = model.getPositionAt(arrayStart)
-            const freshInfo = this.#sourceParser.findPolygon2DAtPosition(src, pos.lineNumber, pos.column)
+            const cached = this.#sourceParser.getCachedSourceFile(src)
+            const freshInfo = this.#sourceParser.findPolygon2DAtPosition(src, pos.lineNumber, pos.column, cached ?? undefined)
             if (!freshInfo) return
             applyVertexUpdates(model, freshInfo, vertices)
         }

@@ -236,8 +236,17 @@ export function matchNodesToSource(
     const result = new Map<number, SourceLocation>()
     const matchedCalls = new Set<ParsedShapeCall>()
 
+    const callsByType = new Map<string, ParsedShapeCall[]>()
+    for (const call of calls) {
+        const list = callsByType.get(call.functionName) ?? []
+        list.push(call)
+        callsByType.set(call.functionName, list)
+    }
+
     for (const node of nodes) {
-        for (const call of calls) {
+        const typeCalls = callsByType.get(node.getShapeType())
+        if (!typeCalls) continue
+        for (const call of typeCalls) {
             if (matchedCalls.has(call)) continue
             if (matchNodeToCall(node, call)) {
                 result.set(node.id, call.location)

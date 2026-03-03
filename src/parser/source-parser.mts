@@ -349,6 +349,16 @@ export class SourceParser {
     }
 
     /**
+     * Return the cached SourceFile from the last parseShapeCalls if it was parsed from the given src.
+     * Use when calling findPolygon2DAtPosition or findExtrudeLoftAtPosition to avoid re-parsing.
+     */
+    getCachedSourceFile(src: string): ts.SourceFile | null {
+        const sf = this.#lastSourceFile
+        if (!sf || sf.getFullText() !== wrapSource(src)) return null
+        return sf
+    }
+
+    /**
      * Find all fluent method calls (e.g. .radius, .shift) whose names are in the provided set.
      * Uses the cached AST from the last parseShapeCalls() call. Returns [] if parseShapeCalls
      * has not been called yet or if the cached AST is unavailable.
@@ -948,20 +958,20 @@ export class SourceParser {
         return vertices
     }
 
-    findPolygon2DAtPosition(src: string, line: number, column: number): Polygon2DCallInfo | null {
+    findPolygon2DAtPosition(src: string, line: number, column: number, sourceFile?: ts.SourceFile): Polygon2DCallInfo | null {
         const offset = this.positionToOffset(src, line, column)
         const calls: Polygon2DCallInfo[] = []
 
-        const sourceFile = parseSource(src)
+        const sf = sourceFile && sourceFile.getFullText() === wrapSource(src) ? sourceFile : parseSource(src)
 
         const visit = (node: ts.Node) => {
             if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "polygon2d") {
-                const info = this.extractPolygon2DInfo(node, sourceFile)
+                const info = this.extractPolygon2DInfo(node, sf)
                 if (info) calls.push(info)
             }
             ts.forEachChild(node, visit)
         }
-        visit(sourceFile)
+        visit(sf)
 
         for (const call of calls) {
             if (offset >= call.callStartOffset && offset <= call.callEndOffset) {
@@ -973,12 +983,13 @@ export class SourceParser {
 
     private positionToOffset(src: string, line: number, column: number): number {
         const lines = src.split("\n")
+        if (line > lines.length) return src.length
         let offset = 0
         for (let i = 0; i < line - 1 && i < lines.length; i++) {
             offset += lines[i].length + 1
         }
         offset += column - 1
-        return offset
+        return Math.max(0, Math.min(offset, src.length))
     }
 
     private extractPolygon2DInfo(callNode: ts.CallExpression, sourceFile: ts.SourceFile): Polygon2DCallInfo | null {
@@ -1021,10 +1032,10 @@ export class SourceParser {
         }
     }
 
-    findExtrudeLoftAtPosition(src: string, line: number, column: number): ExtrudeLoftCallInfo | null {
+    findExtrudeLoftAtPosition(src: string, line: number, column: number, sourceFile?: ts.SourceFile): ExtrudeLoftCallInfo | null {
         const calls: ExtrudeLoftCallInfo[] = []
 
-        const sourceFile = parseSource(src)
+        const sf = sourceFile && sourceFile.getFullText() === wrapSource(src) ? sourceFile : parseSource(src)
 
         const visit = (node: ts.Node) => {
             if (ts.isCallExpression(node)) {
@@ -1038,20 +1049,42 @@ export class SourceParser {
                     }
                 }
                 if (name === "extrude" || name === "loft") {
-                    const info = this.extractExtrudeLoftInfo(node, name as "extrude" | "loft", sourceFile)
+                    const info = this.extractExtrudeLoftInfo(node, name as "extrude" | "loft", sf)
                     if (info) calls.push(info)
                 }
             }
             ts.forEachChild(node, visit)
         }
-        visit(sourceFile)
+        visit(sf)
 
         for (const call of calls) {
             if (call.location.startLine === line && call.location.startColumn === column) {
                 return call
             }
         }
-        return calls.length === 1 ? calls[0] : null
+        if (calls.length === 1) return calls[0]
+        const containmentMatch = this.#findInnermostExtrudeLoftAtPosition(calls, line, column)
+        return containmentMatch
+    }
+
+    #findInnermostExtrudeLoftAtPosition(calls: ExtrudeLoftCallInfo[], line: number, column: number): ExtrudeLoftCallInfo | null {
+        const RANGE_SIZE_FACTOR = 100_000
+        const contains = (loc: { startLine: number; startColumn: number; endLine: number; endColumn: number }) => {
+            if (line < loc.startLine || line > loc.endLine) return false
+            if (line === loc.startLine && column < loc.startColumn) return false
+            if (line === loc.endLine && column > loc.endColumn) return false
+            return true
+        }
+        const rangeSize = (loc: { startLine: number; startColumn: number; endLine: number; endColumn: number }) =>
+            (loc.endLine - loc.startLine) * RANGE_SIZE_FACTOR + (loc.endColumn - loc.startColumn)
+
+        let best: ExtrudeLoftCallInfo | null = null
+        for (const call of calls) {
+            if (!contains(call.location)) continue
+            const size = rangeSize(call.location)
+            if (!best || size < rangeSize(best.location)) best = call
+        }
+        return best
     }
 
     private extractExtrudeLoftInfo(
@@ -1059,53 +1092,31 @@ export class SourceParser {
         name: "extrude" | "loft",
         sourceFile: ts.SourceFile
     ): ExtrudeLoftCallInfo | null {
+        if (!ts.isPropertyAccessExpression(callNode.expression)) return null
+
         let hValueStart: number | null = null
         let hValueEnd: number | null = null
         let posArgStart: number | null = null
         let posArgEnd: number | null = null
-        let insertPosOffset: number
-        let startPos: number
-        let endPos: number
 
-        if (ts.isPropertyAccessExpression(callNode.expression)) {
-            const chain = this.#collectFluentChain(callNode)
-            for (const { method, args } of chain) {
-                if (method === "height" && args.length >= 1) {
-                    hValueStart = args[0].getStart() - WRAP_PREFIX_CHARS
-                    hValueEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
-                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    posArgStart = args[0].getStart() - WRAP_PREFIX_CHARS
-                    posArgEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
-                }
+        const chain = this.#collectFluentChain(callNode)
+        for (const { method, args } of chain) {
+            if (method === "height" && args.length >= 1) {
+                hValueStart = args[0].getStart() - WRAP_PREFIX_CHARS
+                hValueEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
+            } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                posArgStart = args[0].getStart() - WRAP_PREFIX_CHARS
+                posArgEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
             }
-            if (hValueStart === null || hValueEnd === null) return null
-            const fluent = this.#getFluentChainInfo(callNode)
-            if (!fluent) return null
-            insertPosOffset = fluent.rootIdentifier.getEnd() - WRAP_PREFIX_CHARS + 1
-            startPos = fluent.rootIdentifier.getStart()
-            endPos = callNode.getEnd()
-        } else {
-            const args = callNode.arguments
-            if (args.length < 1 || !ts.isObjectLiteralExpression(args[0])) return null
-            const optsArg = args[0]
-
-            for (const prop of optsArg.properties) {
-                if (!ts.isPropertyAssignment(prop)) continue
-                const key = this.getPropertyKey(prop)
-                if (key === "h" || key === "height") {
-                    hValueStart = prop.initializer.getStart() - WRAP_PREFIX_CHARS
-                    hValueEnd = prop.initializer.getEnd() - WRAP_PREFIX_CHARS
-                } else if ((key === "pos" || key === "shift") && this.isPositionArg(prop.initializer)) {
-                    posArgStart = prop.initializer.getStart() - WRAP_PREFIX_CHARS
-                    posArgEnd = prop.initializer.getEnd() - WRAP_PREFIX_CHARS
-                }
-            }
-
-            if (hValueStart === null || hValueEnd === null) return null
-            insertPosOffset = optsArg.getStart() - WRAP_PREFIX_CHARS + 1
-            startPos = callNode.expression.getStart()
-            endPos = callNode.expression.getEnd()
         }
+        if (hValueStart === null || hValueEnd === null) return null
+
+        const fluent = this.#getFluentChainInfo(callNode)
+        if (!fluent) return null
+
+        const insertPosOffset = fluent.rootIdentifier.getEnd() - WRAP_PREFIX_CHARS + 1
+        const startPos = fluent.rootIdentifier.getStart()
+        const endPos = callNode.getEnd()
 
         const loc = tsPosToUser(sourceFile, startPos)
         const endLoc = tsPosToUser(sourceFile, endPos)

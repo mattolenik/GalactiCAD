@@ -173,12 +173,12 @@ export class SDFRenderer {
         this.#resizeObserver = new ResizeObserver(entries => {
             requestAnimationFrame(() => {
                 for (const entry of entries) {
-                    const w =
+                    const w = Math.max(1,
                         entry.devicePixelContentBoxSize?.[0].inlineSize ??
-                        Math.max(1, Math.round(entry.contentRect.width * devicePixelRatio))
-                    const h =
+                        Math.round(entry.contentRect.width * devicePixelRatio))
+                    const h = Math.max(1,
                         entry.devicePixelContentBoxSize?.[0].blockSize ??
-                        Math.max(1, Math.round(entry.contentRect.height * devicePixelRatio))
+                        Math.round(entry.contentRect.height * devicePixelRatio))
                     this.#fullWidth = w
                     this.#fullHeight = h
                     this.#devicePixelRatio = devicePixelRatio

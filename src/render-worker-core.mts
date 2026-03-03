@@ -259,10 +259,10 @@ export class RenderWorkerCore {
     }
 
     resize(fullWidth: number, fullHeight: number): void {
-        this.#fullWidth = fullWidth
-        this.#fullHeight = fullHeight
-        this.#canvas.width = fullWidth
-        this.#canvas.height = fullHeight
+        this.#fullWidth = Math.max(0, fullWidth)
+        this.#fullHeight = Math.max(0, fullHeight)
+        this.#canvas.width = Math.max(1, fullWidth)
+        this.#canvas.height = Math.max(1, fullHeight)
     }
 
     render(msg: Extract<MainToWorkerMessage, { type: "render" }>, outputTextureView?: GPUTextureView, sharedBuffer?: SharedArrayBuffer): void {
@@ -294,6 +294,7 @@ export class RenderWorkerCore {
         const sceneWidth = Math.max(1, Math.round(cameraRes[0] * resolutionScale))
         const sceneHeight = Math.max(1, Math.round(cameraRes[1] * resolutionScale))
         if (sceneWidth === 0 || sceneHeight === 0) return
+        if (!outputTextureView && (this.#fullWidth <= 0 || this.#fullHeight <= 0)) return
 
         this.#ensureRenderTextures(sceneWidth, sceneHeight)
 
@@ -734,7 +735,9 @@ export class RenderWorkerCore {
     }
 
     #ensureRenderTextures(width: number, height: number): void {
-        const dimensionsChanged = width !== this.#renderTextureWidth || height !== this.#renderTextureHeight
+        const w = Math.max(1, width)
+        const h = Math.max(1, height)
+        const dimensionsChanged = w !== this.#renderTextureWidth || h !== this.#renderTextureHeight
         if (!dimensionsChanged && !this.#sceneBindGroupInvalid) return
 
         if (dimensionsChanged) {
@@ -744,13 +747,13 @@ export class RenderWorkerCore {
 
             this.#colorTexture = this.#device.createTexture({
                 label: "Preview Color",
-                size: [width, height],
+                size: [w, h],
                 format: this.#format,
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
             })
             this.#idTexture = this.#device.createTexture({
                 label: "Object ID",
-                size: [width, height],
+                size: [w, h],
                 format: "r32uint",
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
             })
@@ -758,8 +761,8 @@ export class RenderWorkerCore {
             this.#idTextureView = this.#idTexture.createView()
 
             const BEAM_TILE_SIZE = 8
-            const tilesX = Math.ceil(width / BEAM_TILE_SIZE)
-            const tilesY = Math.ceil(height / BEAM_TILE_SIZE)
+            const tilesX = Math.ceil(w / BEAM_TILE_SIZE)
+            const tilesY = Math.ceil(h / BEAM_TILE_SIZE)
             this.#tStartTexture = this.#device.createTexture({
                 label: "Beam t_start",
                 size: [tilesX, tilesY],
@@ -794,8 +797,8 @@ export class RenderWorkerCore {
                 this.#beamBindGroupInvalid = false
             }
 
-            this.#renderTextureWidth = width
-            this.#renderTextureHeight = height
+            this.#renderTextureWidth = w
+            this.#renderTextureHeight = h
         }
 
         if (dimensionsChanged || this.#sceneBindGroupInvalid) {

@@ -123,7 +123,7 @@ export class RenderWorkerCore {
     #camTransform = new Mat4x4f(new Float32Array(16))
     #lastRenderMsg: Extract<MainToWorkerMessage, { type: "render" }> | null = null
     #lastSelectionMode = 0
-    #builtSrc: string | null = null
+    #builtBody: string | null = null
     #fpsVersion = 0
 
     async init(canvas: OffscreenCanvas): Promise<void> {
@@ -187,22 +187,21 @@ export class RenderWorkerCore {
         this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, [], 6.0, 0.02)
     }
 
-    async build(src: string, _documentName?: string | null): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
+    async build(body: string, _documentName?: string | null): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
         const prev = this.#buildLock
         let release!: () => void
         this.#buildLock = new Promise<void>(r => (release = r))
         await prev
         try {
-            return await this.#doBuild(src)
+            return await this.#doBuild(body)
         } finally {
             release()
         }
     }
 
-    async #doBuild(src: string): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
-        const trimmed = src.trim()
-        this.#builtSrc = trimmed
-        this.#scene = new SceneInfo(trimmed)
+    async #doBuild(body: string): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
+        this.#builtBody = body
+        this.#scene = new SceneInfo(body)
         const scene = this.#scene
         const allNodes = scene.getAllNodes()
 
@@ -443,11 +442,10 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(src: string, requestId?: number, documentName?: string): Promise<void> {
+    async handleRenderMesh(body: string, requestId?: number, documentName?: string): Promise<void> {
         try {
-            const trimmed = src.trim()
-            if (!this.#scene || this.#builtSrc !== trimmed) {
-                await this.build(trimmed, undefined)
+            if (!this.#scene || this.#builtBody !== body) {
+                await this.build(body, undefined)
             }
             const bounds = await this.#computeSceneBoundsRefined()
             if (!bounds) {
@@ -654,7 +652,7 @@ export class RenderWorkerCore {
         })
     }
 
-    async handleThumbnail(src: string, width?: number, height?: number, requestId?: number, documentName?: string): Promise<void> {
+    async handleThumbnail(body: string, width?: number, height?: number, requestId?: number, documentName?: string): Promise<void> {
         const thumbWidth = Math.max(1, Math.min(512, width ?? 256))
         const thumbHeight = Math.max(1, Math.min(512, height ?? 256))
         try {
@@ -662,9 +660,8 @@ export class RenderWorkerCore {
                 self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable", requestId, documentName })
                 return
             }
-            const trimmed = src.trim()
-            if (!this.#scene || this.#builtSrc !== trimmed) {
-                await this.build(trimmed, undefined)
+            if (!this.#scene || this.#builtBody !== body) {
+                await this.build(body, undefined)
             }
             if (!this.#pipeline) {
                 self.postMessage({ type: "thumbnailResult", error: "Scene failed to build", requestId, documentName })

@@ -17,6 +17,9 @@ importers:
       dexie:
         specifier: ^4.3.0
         version: 4.3.0
+      esbuild-wasm:
+        specifier: ^0.27.3
+        version: 0.27.3
       meshoptimizer:
         specifier: ^1.0.1
         version: 1.0.1
@@ -262,6 +265,11 @@ packages:
   dompurify@3.2.7:
     resolution: {integrity: sha512-WhL/YuveyGXJaerVlMYGWhvQswa7myDG17P7Vu65EWC05o8vfeNbvNf4d/BOvH99+ZW+LlQsc1GDKMa1vNK6dw==}
 
+  esbuild-wasm@0.27.3:
+    resolution: {integrity: sha512-AUXuOxZ145/5Az+lIqk6TdJbxKTyDGkXMJpTExmBdbnHR6n6qAFx+F4oG9ORpVYJ9dQYeQAqzv51TO4DFKsbXw==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   esbuild@0.27.3:
     resolution: {integrity: sha512-8VwMnyGCONIs6cWue2IdpHxHnAjzxnw2Zr7MkVxB2vjmQ2ivqGFb4LEG3SMnv0Gb2F/G/2yA8zUaiL1gywDCCg==}
     engines: {node: '>=18'}
@@ -450,6 +458,8 @@ snapshots:
   dompurify@3.2.7:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
+
+  esbuild-wasm@0.27.3: {}
 
   esbuild@0.27.3:
     optionalDependencies:

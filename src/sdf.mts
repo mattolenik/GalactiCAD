@@ -24,6 +24,7 @@ import {
     readFps,
     SHARED_RENDER_BUFFER_SIZE,
 } from "./shared-render-buffer.mjs"
+import type { TranspileKind, TranspileToMainMessage } from "./transpile-worker-protocol.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -58,6 +59,7 @@ export class SDFRenderer {
     #preview: PreviewWindow
     #controls: CameraController
     #worker: Worker
+    #transpileWorker: Worker
     #readyResolve!: () => void
     #readyReject!: (err: unknown) => void
     #readyPromise: Promise<void>
@@ -96,6 +98,10 @@ export class SDFRenderer {
     #outlineThickness: number = DEFAULT_SELECTION_STYLES.outline.thickness
     #outlineColor: [number, number, number] = [...DEFAULT_SELECTION_STYLES.outline.color]
     #requestIdCounter = 0
+    #latestBuildRequestId = 0
+    #latestRenderMeshRequestId = 0
+    #latestThumbnailRequestId = 0
+    #pendingTranspile = new Map<number, { kind: TranspileKind; documentName?: string; width?: number; height?: number }>()
     #pendingBuild = new Map<number, { resolve: () => void; reject: (err: unknown) => void }>()
     #pendingRenderMesh = new Map<number, { resolve: (v: MeshData) => void; reject: (err: unknown) => void }>()
     #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
@@ -151,6 +157,10 @@ export class SDFRenderer {
         const workerUrl = new URL("./render-worker.js", import.meta.url)
         this.#worker = new Worker(workerUrl, { type: "module" })
         this.#worker.onmessage = (e: MessageEvent<WorkerToMainMessage>) => this.#handleWorkerMessage(e.data)
+
+        const transpileWorkerUrl = new URL("./transpile-worker.js", import.meta.url)
+        this.#transpileWorker = new Worker(transpileWorkerUrl, { type: "module" })
+        this.#transpileWorker.onmessage = (e: MessageEvent<TranspileToMainMessage>) => this.#handleTranspileMessage(e.data)
 
         this.#controlSubs.push(
             this.#controls.select$.subscribe(({ screenPos, shiftKey, altKey }) => {
@@ -319,6 +329,53 @@ export class SDFRenderer {
             case "fps":
                 if (!this.#useSharedMemory) this.#preview.updateFPS(msg.fps)
                 break
+        }
+    }
+
+    #handleTranspileMessage(msg: TranspileToMainMessage): void {
+        if (msg.type !== "transpileComplete") return
+        const { body, error, requestId } = msg
+        const pending = this.#pendingTranspile.get(requestId)
+        this.#pendingTranspile.delete(requestId)
+        if (!pending) return
+
+        if (error) {
+            if (pending.kind === "build") {
+                this.#pendingBuild.get(requestId)?.reject(new Error(error))
+                this.#pendingBuild.delete(requestId)
+            } else if (pending.kind === "renderMesh") {
+                this.#pendingRenderMesh.get(requestId)?.reject(new Error(error))
+                this.#pendingRenderMesh.delete(requestId)
+            } else if (pending.kind === "thumbnail") {
+                this.#pendingThumbnail.get(requestId)?.reject(new Error(error))
+                this.#pendingThumbnail.delete(requestId)
+            }
+            return
+        }
+
+        if (!body) return
+
+        if (pending.kind === "build") {
+            if (requestId !== this.#latestBuildRequestId) {
+                this.#pendingBuild.get(requestId)?.resolve()
+                this.#pendingBuild.delete(requestId)
+                return
+            }
+            this.#worker.postMessage({ type: "build", body, documentName: pending.documentName ?? undefined, requestId })
+        } else if (pending.kind === "renderMesh") {
+            if (requestId !== this.#latestRenderMeshRequestId) {
+                this.#pendingRenderMesh.get(requestId)?.reject(new Error("Superseded"))
+                this.#pendingRenderMesh.delete(requestId)
+                return
+            }
+            this.#worker.postMessage({ type: "renderMesh", body, requestId, documentName: pending.documentName })
+        } else if (pending.kind === "thumbnail") {
+            if (requestId !== this.#latestThumbnailRequestId) {
+                this.#pendingThumbnail.get(requestId)?.reject(new Error("Superseded"))
+                this.#pendingThumbnail.delete(requestId)
+                return
+            }
+            this.#worker.postMessage({ type: "thumbnail", body, width: pending.width, height: pending.height, requestId, documentName: pending.documentName })
         }
     }
 
@@ -864,9 +921,11 @@ export class SDFRenderer {
 
     build(src: string, documentName?: string | null): Promise<void> {
         const requestId = ++this.#requestIdCounter
+        this.#latestBuildRequestId = requestId
+        this.#pendingTranspile.set(requestId, { kind: "build", documentName: documentName ?? undefined })
         return new Promise<void>((resolve, reject) => {
             this.#pendingBuild.set(requestId, { resolve, reject })
-            this.#worker.postMessage({ type: "build", src: src.trim(), documentName: documentName ?? undefined, requestId })
+            this.#transpileWorker.postMessage({ type: "transpile", src: src.trim(), requestId, kind: "build", documentName: documentName ?? undefined })
         })
     }
 
@@ -880,9 +939,11 @@ export class SDFRenderer {
 
     async renderMesh(_src: string, documentName?: string): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
+        this.#latestRenderMeshRequestId = requestId
+        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName })
         return new Promise<MeshData>((resolve, reject) => {
             this.#pendingRenderMesh.set(requestId, { resolve, reject })
-            this.#worker.postMessage({ type: "renderMesh", src: _src, requestId, documentName })
+            this.#transpileWorker.postMessage({ type: "transpile", src: _src.trim(), requestId, kind: "renderMesh", documentName })
         })
     }
 
@@ -906,12 +967,12 @@ export class SDFRenderer {
         const cached = await this.#getCachedThumbnail(cacheKey)
         if (cached) return cached
         const requestId = ++this.#requestIdCounter
-        // Only pass documentName when caller provides it (e.g. tab preview). Welcome screen samples
-        // have no document context; passing undefined ensures we accept the result.
+        this.#latestThumbnailRequestId = requestId
         const docName = documentName ?? undefined
+        this.#pendingTranspile.set(requestId, { kind: "thumbnail", documentName: docName, width: w, height: h })
         const imageData = await new Promise<ImageData>((resolve, reject) => {
             this.#pendingThumbnail.set(requestId, { resolve, reject })
-            this.#worker.postMessage({ type: "thumbnail", src: trimmed, width: w, height: h, requestId, documentName: docName })
+            this.#transpileWorker.postMessage({ type: "transpile", src: trimmed, requestId, kind: "thumbnail", documentName: docName, width: w, height: h })
         })
         await this.#setCachedThumbnail(cacheKey, imageData)
         return imageData
@@ -961,6 +1022,7 @@ export class SDFRenderer {
         const emptyBenchmark = { totalTime: 0, averageFrameTime: 0, minFrameTime: 0, maxFrameTime: 0, framesPerSecond: 0, frameTimes: [] }
         for (const [, { resolve }] of this.#pendingBenchmark) resolve(emptyBenchmark)
         this.#pendingBenchmark.clear()
+        this.#transpileWorker.terminate()
         this.#worker.terminate()
         this.#controls.dispose()
         this.selectionChange$.complete()

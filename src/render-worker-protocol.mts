@@ -62,16 +62,16 @@ export interface EdgeHitData {
 
 export type MainToWorkerMessage =
     | { type: "init"; canvas: OffscreenCanvas; sharedBuffer?: SharedArrayBuffer }
-    | { type: "build"; src: string; documentName?: string | null; requestId?: number }
+    | { type: "build"; body: string; documentName?: string | null; requestId?: number }
     | { type: "render"; cameraState: CameraState; viewTransform: Float32Array; cameraPosition: [number, number, number]; cameraRes: [number, number]; selectionState: RenderSelectionState; viewSettings: RenderViewSettings; viewCenter: [number, number]; resolutionScale: number }
     | { type: "click"; clickUV: [number, number]; shiftKey: boolean; altKey: boolean; documentName?: string }
     | { type: "doubleClick"; clickUV: [number, number]; documentName?: string }
     | { type: "hover"; clickUV: [number, number]; altKey: boolean; documentName?: string }
     | { type: "resize"; fullWidth: number; fullHeight: number; devicePixelRatio: number }
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer } }
-    | { type: "renderMesh"; src: string; requestId?: number; documentName?: string }
+    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string }
     | { type: "benchmark"; durationSeconds: number; waitForGPU: boolean; requestId?: number }
-    | { type: "thumbnail"; src: string; width?: number; height?: number; requestId?: number; documentName?: string }
+    | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]

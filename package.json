@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@dprint/formatter": "^0.5.1",
+    "esbuild-wasm": "^0.27.3",
     "@dprint/typescript": "^0.95.15",
     "dexie": "^4.3.0",
     "meshoptimizer": "^1.0.1",

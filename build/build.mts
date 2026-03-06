@@ -21,10 +21,11 @@ const Static = {
     "src/assets/*": "/assets",
     "src/scene/samples/*.gcad": "/assets/samples",
     "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
+    "node_modules/esbuild-wasm/esbuild.wasm": ["/assets", "esbuild.wasm"] as [string, string],
 }
 
 const Options = {
-    entryPoints: ["./src/app.mts", "./src/components/preview-window.mts", "./src/components/mesh-viewer.mts", "./src/render-worker.mts"],
+    entryPoints: ["./src/app.mts", "./src/components/preview-window.mts", "./src/components/mesh-viewer.mts", "./src/render-worker.mts", "./src/transpile-worker.mts"],
     plugins: [await wgslLoader(), await versionPlugin(), await fileListerPlugin(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
     outDir: "./dist",
     isProd: !!process.env.PRODUCTION || !!process.env.CI,
@@ -49,7 +50,7 @@ async function build() {
             outdir: Options.outDir,
             platform: "browser",
             format: "esm",
-            mainFields: ["module", "main"],
+            mainFields: ["browser", "module", "main"],
             assetNames: "assets/[name]-[hash]",
             loader: {
                 ".css": "css",

@@ -17,7 +17,7 @@ let pendingResize: { fullWidth: number; fullHeight: number } | null = null
 
 /** Build serialization: only one build at a time; latest request wins. */
 let buildInProgress = false
-let pendingBuild: { src: string; documentName?: string | null; requestId?: number } | null = null
+let pendingBuild: { body: string; documentName?: string | null; requestId?: number } | null = null
 
 /** Pending render message for coalescing; used for benchmark/thumbnail which still send render via postMessage. */
 let pendingRender: Extract<MainToWorkerMessage, { type: "render" }> | null = null
@@ -71,7 +71,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             handleInit(msg.canvas, msg.sharedBuffer)
             break
         case "build":
-            if (core) enqueueBuild(msg.src, msg.documentName, msg.requestId)
+            if (core) enqueueBuild(msg.body, msg.documentName, msg.requestId)
             break
         case "render":
             pendingRender = msg
@@ -103,7 +103,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             if (core) core.writeBuffers(msg)
             break
         case "renderMesh":
-            if (core) core.handleRenderMesh(msg.src, msg.requestId, msg.documentName)
+            if (core) core.handleRenderMesh(msg.body, msg.requestId, msg.documentName)
             break
         case "benchmark":
             if (core) {
@@ -119,7 +119,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             break
         case "thumbnail":
             if (core) {
-                core.handleThumbnail(msg.src, msg.width, msg.height, msg.requestId, msg.documentName)
+                core.handleThumbnail(msg.body, msg.width, msg.height, msg.requestId, msg.documentName)
             } else {
                 self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready", requestId: msg.requestId })
             }
@@ -151,11 +151,11 @@ async function handleInit(canvas: OffscreenCanvas, buf?: SharedArrayBuffer): Pro
     }
 }
 
-function enqueueBuild(src: string, documentName?: string | null, requestId?: number): void {
+function enqueueBuild(body: string, documentName?: string | null, requestId?: number): void {
     if (pendingBuild?.requestId != null) {
         self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: pendingBuild.requestId, documentName: pendingBuild.documentName ?? undefined, superseded: true })
     }
-    pendingBuild = { src, documentName, requestId }
+    pendingBuild = { body, documentName, requestId }
     if (!buildInProgress) runNextBuild()
 }
 
@@ -165,7 +165,7 @@ async function runNextBuild(): Promise<void> {
     if (!req || !core) return
     buildInProgress = true
     try {
-        const result = await core.build(req.src, req.documentName)
+        const result = await core.build(req.body, req.documentName)
         if ("superseded" in result) {
             self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: req.requestId, documentName: req.documentName ?? undefined, superseded: true })
             return

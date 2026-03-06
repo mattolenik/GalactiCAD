@@ -1,6 +1,4 @@
-import ts from "typescript"
 import { BijectiveMap } from "../collections/bijectiveMap.mjs"
-import { WRAP_PREFIX, WRAP_SUFFIX } from "../parser/source-parser.mjs"
 import { BinaryOperator, CompileResult, Node, UnaryOperator, fluent, styleInfo, type BlendMode, type IntersectionType, type StyleInfo, type UnionType } from "./base.mjs"
 import { Bend, bend } from "./operators/bend.mjs"
 import { Elongate, elongate } from "./operators/elongate.mjs"
@@ -87,23 +85,8 @@ export class SceneInfo {
         return data
     }
 
-    constructor(src: string) {
-        const wrapped = WRAP_PREFIX + src + WRAP_SUFFIX
-        const result = ts.transpileModule(wrapped, {
-            compilerOptions: {
-                module: ts.ModuleKind.None,
-                target: ts.ScriptTarget.ESNext,
-            },
-        })
-        if (result.diagnostics && result.diagnostics.length > 0) {
-            const first = result.diagnostics[0]
-            const msg = typeof first.messageText === "string"
-                ? first.messageText
-                : first.messageText.messageText
-            throw new Error(msg)
-        }
-        const body = result.outputText + "\nreturn _();"
-        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "shell", "offset", "elongate", "twist", "bend", "taper", body)(
+    constructor(transpiledBody: string) {
+        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "shell", "offset", "elongate", "twist", "bend", "taper", transpiledBody)(
             box, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob,
             intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam,
             rotate, shell, offset, elongate, twist, bend, taper)

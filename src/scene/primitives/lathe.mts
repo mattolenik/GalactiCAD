@@ -43,21 +43,20 @@ export class Lathe extends Node {
     get wgslFastFuncName(): string { return `fLathe_${this.id}_Fast` }
 
     override compileAux(): string {
-        const childFunc = this.child.wgslFuncName
+        const combinedFunc = this.child.wgslCombinedFuncName
 
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let r = length(p.xz);
     let q = vec2f(r, p.y);
-    let d = ${childFunc}(q);
-    let eps = 0.001;
-    let gr = ${childFunc}(q + vec2f(eps, 0.0)) - ${childFunc}(q - vec2f(eps, 0.0));
-    let gy = ${childFunc}(q + vec2f(0.0, eps)) - ${childFunc}(q - vec2f(0.0, eps));
+    let combined = ${combinedFunc}(q);
+    let d = combined.x;
+    let g2d = combined.zw;
     var radDir = vec2f(1.0, 0.0);
     if (r > 1e-8) {
         radDir = p.xz / r;
     }
-    let n = safeNormalize(vec3f(gr * radDir.x, gy, gr * radDir.y), vec3f(0.0, 1.0, 0.0));
+    let n = safeNormalize(vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y), vec3f(0.0, 1.0, 0.0));
     return sdfTrue(d, id, n);
 }
 `

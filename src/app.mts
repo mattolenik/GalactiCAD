@@ -531,7 +531,7 @@ class App {
                     .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
                     .subscribe(() => this.build())
             }
-            this.#wireExportButton(exportBtn)
+            this.#wireExportButton(exportBtn, devTools)
             this.#wireDevToolsVersionToggle(preview, devTools)
             this.build()
         } catch (err) {
@@ -882,6 +882,8 @@ class App {
             this.#setMeshViewerEnabled(enabled)
         }
 
+        devTools.meshSimplifyOnExport = this.#settings.getGlobal().app.meshSimplifyOnExport
+
         devTools.onBenchmarkThisRequest = (): BenchmarkCase | null => {
             const active = this.#tabs.active
             if (!active) return null
@@ -1045,7 +1047,7 @@ class App {
         })
     }
 
-    async #wireExportButton(exportBtn: import("./components/toolbar.mjs").ToolbarButton) {
+    async #wireExportButton(exportBtn: import("./components/toolbar.mjs").ToolbarButton, devTools: DevToolsPanel) {
         exportBtn.onClick = async () => {
             const { StatusDialog } = await import("./components/status-dialog.mjs")
             let statusDialog: import("./components/status-dialog.mjs").StatusDialog | null = null
@@ -1063,7 +1065,9 @@ class App {
                     ],
                     excludeAcceptAllOption: false,
                 })
-                const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName)
+                const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName, {
+                    simplifyOnExport: devTools.meshSimplifyOnExport,
+                })
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
                 statusDialog = new StatusDialog("Export successful")
@@ -1147,7 +1151,9 @@ class App {
         const token = ++this.#meshUpdateToken
         this.#meshUpdateTimer = window.setTimeout(async () => {
             try {
-                const mesh = await this.renderer.renderMesh(src, this.#tabs.active)
+                const mesh = await this.renderer.renderMesh(src, this.#tabs.active, {
+                    simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
+                })
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {
                     await this.#mesh.setMesh(mesh)

@@ -21,6 +21,8 @@ export class DevToolsPanel extends HTMLElement {
     #showFps$: BehaviorSubject<boolean>
     #meshViewerCheckbox: HTMLInputElement
     #meshViewer$: BehaviorSubject<boolean>
+    #meshSimplifyCheckbox: HTMLInputElement
+    #meshSimplify$: BehaviorSubject<boolean>
     #settings: SettingsManager
     #tabs: DocumentTabs
     #subscriptions: Subscription[] = []
@@ -36,6 +38,9 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback when mesh viewer toggle changes */
     onMeshViewerChange?: (enabled: boolean) => void
+
+    /** Callback when mesh simplify on export toggle changes */
+    onMeshSimplifyChange?: (enabled: boolean) => void
 
     /** Callback to get current view as a benchmark case. Returns null if no active document. */
     onBenchmarkThisRequest?: () => BenchmarkCase | null
@@ -73,6 +78,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set meshViewer(enabled: boolean) {
         this.#meshViewer$.next(enabled)
+    }
+
+    get meshSimplifyOnExport(): boolean {
+        return this.#meshSimplify$.value
+    }
+
+    set meshSimplifyOnExport(enabled: boolean) {
+        this.#meshSimplify$.next(enabled)
     }
 
     /** Show or hide the panel */
@@ -150,6 +163,7 @@ export class DevToolsPanel extends HTMLElement {
         const g = this.#settings.getGlobal().app
         this.#showFps$ = new BehaviorSubject(g.showFps)
         this.#meshViewer$ = new BehaviorSubject(g.meshViewerEnabled)
+        this.#meshSimplify$ = new BehaviorSubject(g.meshSimplifyOnExport)
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
 
@@ -165,6 +179,13 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshViewer$.pipe(skip(1)).subscribe(v => {
             this.#settings.updateGlobal({ app: { meshViewerEnabled: v } })
             this.onMeshViewerChange?.(v)
+        })
+
+        this.#meshSimplifyCheckbox = this.#addCheckbox(shadow, "Mesh simplify", this.#meshSimplify$.value)
+        this.#subscriptions.push(connectCheckbox(this.#meshSimplifyCheckbox, this.#meshSimplify$))
+        this.#meshSimplify$.pipe(skip(1)).subscribe(v => {
+            this.#settings.updateGlobal({ app: { meshSimplifyOnExport: v } })
+            this.onMeshSimplifyChange?.(v)
         })
 
         this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)

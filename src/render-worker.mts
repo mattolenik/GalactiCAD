@@ -103,7 +103,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             if (core) core.writeBuffers(msg)
             break
         case "renderMesh":
-            if (core) core.handleRenderMesh(msg.body, msg.requestId, msg.documentName)
+            if (core) core.handleRenderMesh(msg.body, msg.requestId, msg.documentName, msg.simplifyOnExport)
             break
         case "benchmark":
             if (core) {

@@ -69,7 +69,7 @@ export type MainToWorkerMessage =
     | { type: "hover"; clickUV: [number, number]; altKey: boolean; documentName?: string }
     | { type: "resize"; fullWidth: number; fullHeight: number; devicePixelRatio: number }
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer } }
-    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string }
+    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
     | { type: "benchmark"; durationSeconds: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
 

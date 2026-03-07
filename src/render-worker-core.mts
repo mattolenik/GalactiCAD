@@ -442,7 +442,7 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(body: string, requestId?: number, documentName?: string): Promise<void> {
+    async handleRenderMesh(body: string, requestId?: number, documentName?: string, simplifyOnExport = true): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
                 await this.build(body, undefined)
@@ -475,12 +475,14 @@ export class RenderWorkerCore {
                 gridOffsetY: minY,
                 gridOffsetZ: minZ,
                 voxelSize: voxelSizeMm,
-                simplifyTargetRatio: 0.1,
-                simplifyRegularize: false,
-                simplifyLockBorder: true,
-                simplifyPrune: false,
-                simplifySparse: false,
-                simplifyTargetError: 0.001,
+                ...(simplifyOnExport && {
+                    simplifyTargetRatio: 0.1,
+                    simplifyRegularize: false,
+                    simplifyLockBorder: true,
+                    simplifyPrune: false,
+                    simplifySparse: false,
+                    simplifyTargetError: 0.001,
+                }),
             }
             const scene = this.#scene!
             const sceneAux = scene.compileAux()

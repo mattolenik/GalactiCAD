@@ -35,7 +35,9 @@ export class Taper extends UnaryOperator {
 
         if (childResult.prelude) {
             const taperedPrelude = childResult.prelude.replace(/\bp\b/g, `taperPoint(p, ${this.ratio}, ${this.height})`)
-            return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: taperedPrelude }
+            const accVar = childResult.varName!
+            const prelude = taperedPrelude + `${accVar} = sdfTaperFast(${accVar}, p, ${this.ratio}, ${this.height});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
         }
 
         return { funcName, varName, text: `sdfTaperFast(${taperedChild}, p, ${this.ratio}, ${this.height})` }

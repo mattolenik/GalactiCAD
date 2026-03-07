@@ -35,7 +35,9 @@ export class Bend extends UnaryOperator {
 
         if (childResult.prelude) {
             const bentPrelude = childResult.prelude.replace(/\bp\b/g, `bendPoint(p, ${this.amount})`)
-            return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: bentPrelude }
+            const accVar = childResult.varName!
+            const prelude = bentPrelude + `${accVar} = sdfBendFast(${accVar}, p, ${this.amount});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
         }
 
         return { funcName, varName, text: `sdfBendFast(${bentChild}, p, ${this.amount})` }

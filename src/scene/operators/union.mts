@@ -78,6 +78,9 @@ export class Union extends BinaryOperator {
      * Emit the body to evaluate a child and union it into the accumulator `accVar`.
      * If the child has a prelude (is itself a BVH union), we embed it.
      * `mergeExpr(acc, child)` is the WGSL merge expression (opUnionFast or opUnionEx).
+     * `blendRadius` is added to the accumulator distance threshold so smooth-union
+     * blend regions are not incorrectly culled when the child is within blending range
+     * but beyond the current best distance.
      */
     private _emitChildContrib(
         childResult: CompileResult,
@@ -85,6 +88,7 @@ export class Union extends BinaryOperator {
         accDistField: string,
         mergeExprFn: (acc: string, child: string) => string,
         childBounds: AABB | null,
+        blendRadius: number,
     ): string {
         if (!childBounds || !childResult.text) {
             // No bounds or no expression: always evaluate
@@ -96,15 +100,18 @@ export class Union extends BinaryOperator {
 
         const center = aabbCenterWgsl(childBounds)
         const half = aabbHalfWgsl(childBounds)
+        const threshold = blendRadius > 0
+            ? `${accVar}.${accDistField} + ${blendRadius}`
+            : `${accVar}.${accDistField}`
         if (childResult.prelude) {
             // Child has its own prelude; embed inside our bound check
             const innerCode = this._indent(
                 childResult.prelude + `${accVar} = ${mergeExprFn(accVar, childResult.text!)};\n`,
                 4
             )
-            return `if (sdBound(p, ${center}, ${half}) < ${accVar}.${accDistField}) {\n${innerCode}}\n`
+            return `if (sdBound(p, ${center}, ${half}) < ${threshold}) {\n${innerCode}}\n`
         } else {
-            return `if (sdBound(p, ${center}, ${half}) < ${accVar}.${accDistField}) { ${accVar} = ${mergeExprFn(accVar, childResult.text!)}; }\n`
+            return `if (sdBound(p, ${center}, ${half}) < ${threshold}) { ${accVar} = ${mergeExprFn(accVar, childResult.text!)}; }\n`
         }
     }
 
@@ -124,13 +131,14 @@ export class Union extends BinaryOperator {
             return { text: this._blendEx(lhResult.text!, rhResult.text!), varName, prelude }
         }
 
+        const blendRadius = this.radius ?? 0
         const accVar = `_u${this.id}ex`
         let prelude = `var ${accVar} = sdfTrue(1e10, 0u, vec3f(0.0));\n`
 
         prelude += this._emitChildContrib(lhResult, accVar, "d",
-            (acc, child) => this._blendEx(acc, child), lhBounds)
+            (acc, child) => this._blendEx(acc, child), lhBounds, blendRadius)
         prelude += this._emitChildContrib(rhResult, accVar, "d",
-            (acc, child) => this._blendEx(acc, child), rhBounds)
+            (acc, child) => this._blendEx(acc, child), rhBounds, blendRadius)
 
         return { prelude, varName: accVar, text: accVar }
     }
@@ -149,13 +157,14 @@ export class Union extends BinaryOperator {
             return { text: this._blendFast(lhResult.text!, rhResult.text!), varName, prelude }
         }
 
+        const blendRadius = this.radius ?? 0
         const accVar = `_u${this.id}`
         let prelude = `var ${accVar} = vec2f(1e10, 1.0);\n`
 
         prelude += this._emitChildContrib(lhResult, accVar, "x",
-            (acc, child) => this._blendFast(acc, child), lhBounds)
+            (acc, child) => this._blendFast(acc, child), lhBounds, blendRadius)
         prelude += this._emitChildContrib(rhResult, accVar, "x",
-            (acc, child) => this._blendFast(acc, child), rhBounds)
+            (acc, child) => this._blendFast(acc, child), rhBounds, blendRadius)
 
         return { prelude, varName: accVar, text: accVar }
     }

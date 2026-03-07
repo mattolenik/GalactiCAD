@@ -35,7 +35,9 @@ export class Twist extends UnaryOperator {
 
         if (childResult.prelude) {
             const twistedPrelude = childResult.prelude.replace(/\bp\b/g, `twistPoint(p, ${this.rate})`)
-            return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: twistedPrelude }
+            const accVar = childResult.varName!
+            const prelude = twistedPrelude + `${accVar} = sdfTwistFast(${accVar}, p, ${this.rate});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
         }
 
         return { funcName, varName, text: `sdfTwistFast(${twistedChild}, p, ${this.rate})` }

@@ -134,6 +134,14 @@ fn toHitData(t: f32, sdf: SDFResult) -> HitData {
 //       HELPER FUNCTIONS
 //////////////////////////////
 
+// Cheap axis-aligned bounding box distance for BVH early-out.
+// Returns the signed distance to the box surface (negative = inside).
+// No gradient computation, no sqrt — just a fast lower-bound test.
+fn sdBound(p: vec3f, center: vec3f, half: vec3f) -> f32 {
+    let q = abs(p - center) - half;
+    return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
 fn modF(x: f32, y: f32) -> f32 {
     // Emulates GLSL mod() for negative values.
     // WGSL % is a remainder operator, which differs from GLSL mod.

@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, Node } from "../base.mjs"
+import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 
 export class Morph extends BinaryOperator {
     #morphT = 0
@@ -18,14 +18,16 @@ export class Morph extends BinaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `morph_${lhResult.varName}__${rhResult.varName}`
-        return { text: `sdfMorphEx(${lhResult.text}, ${rhResult.text}, ${this.#morphT})`, varName }
+        return { text: `sdfMorphEx(${lText}, ${rText}, ${this.#morphT})`, varName, prelude }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `morph_${lhResult.varName}__${rhResult.varName}`
-        return { text: `sdfMorphFast(${lhResult.text}, ${rhResult.text}, ${this.#morphT})`, varName }
+        return { text: `sdfMorphFast(${lText}, ${rText}, ${this.#morphT})`, varName, prelude }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)

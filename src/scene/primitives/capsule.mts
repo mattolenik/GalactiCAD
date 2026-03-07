@@ -1,4 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Capsule extends Node {
@@ -33,6 +34,10 @@ export class Capsule extends Node {
         const funcName = `Capsule${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         return { funcName, varName, text: `fCapsuleMid(p - ${this.pos.wgsl}, ${this.r}, ${this.c})` }
+    }
+
+    override computeBounds(): AABB {
+        return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, this.c + this.r, this.r)
     }
 
     @fluent radius(r: number): this {

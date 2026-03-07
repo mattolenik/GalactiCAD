@@ -1,4 +1,10 @@
 import { BinaryOperator, CompileResult, fluent, Node, type UnionType } from "../base.mjs"
+import { aabbUnion, aabbExpand, aabbCenterWgsl, aabbHalfWgsl, type AABB } from "../aabb.mjs"
+
+// Minimum primitive count for a child to get a BVH bounding check.
+// The sdBound() call + branch overhead costs roughly as much as evaluating
+// ~8 cheap primitives, so only guard subtrees larger than this threshold.
+const BVH_MIN_PRIMITIVES = 8
 
 export class Union extends BinaryOperator {
     override getShapeType(): string {
@@ -49,18 +55,122 @@ export class Union extends BinaryOperator {
         }
     }
 
+    /**
+     * Returns true if we should emit a BVH bound check for a child node.
+     * Requires the child to have computable bounds and enough primitives to
+     * make the check worth the overhead. Also requires BVH to be enabled globally.
+     */
+    private _shouldBound(child: Node): boolean {
+        return this.scene.bvhEnabled &&
+            child.primitiveCount() >= BVH_MIN_PRIMITIVES &&
+            child.computeBounds() !== null
+    }
+
+    /**
+     * Indents each line of a multi-line string by `spaces` spaces.
+     */
+    private _indent(code: string, spaces: number): string {
+        const pad = " ".repeat(spaces)
+        return code.split("\n").map(l => l.length > 0 ? pad + l : l).join("\n")
+    }
+
+    /**
+     * Emit the body to evaluate a child and union it into the accumulator `accVar`.
+     * If the child has a prelude (is itself a BVH union), we embed it.
+     * `mergeExpr(acc, child)` is the WGSL merge expression (opUnionFast or opUnionEx).
+     */
+    private _emitChildContrib(
+        childResult: CompileResult,
+        accVar: string,
+        accDistField: string,
+        mergeExprFn: (acc: string, child: string) => string,
+        childBounds: AABB | null,
+    ): string {
+        if (!childBounds || !childResult.text) {
+            // No bounds or no expression: always evaluate
+            if (childResult.prelude) {
+                return childResult.prelude + `${accVar} = ${mergeExprFn(accVar, childResult.text!)};\n`
+            }
+            return `${accVar} = ${mergeExprFn(accVar, childResult.text!)};\n`
+        }
+
+        const center = aabbCenterWgsl(childBounds)
+        const half = aabbHalfWgsl(childBounds)
+        if (childResult.prelude) {
+            // Child has its own prelude; embed inside our bound check
+            const innerCode = this._indent(
+                childResult.prelude + `${accVar} = ${mergeExprFn(accVar, childResult.text!)};\n`,
+                4
+            )
+            return `if (sdBound(p, ${center}, ${half}) < ${accVar}.${accDistField}) {\n${innerCode}}\n`
+        } else {
+            return `if (sdBound(p, ${center}, ${half}) < ${accVar}.${accDistField}) { ${accVar} = ${mergeExprFn(accVar, childResult.text!)}; }\n`
+        }
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile()
         const rhResult = this.rh.compile()
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._blendEx(lhResult.text!, rhResult.text!), varName }
+
+        const lhBounds = this._shouldBound(this.lh) ? this.lh.computeBounds() : null
+        const rhBounds = this._shouldBound(this.rh) ? this.rh.computeBounds() : null
+
+        // Only emit BVH accumulator if at least one direct child gets a bound check.
+        // If neither child qualifies but one has a prelude, pass the prelude through
+        // without wrapping in an unnecessary accumulator.
+        if (!lhBounds && !rhBounds) {
+            const prelude = [lhResult.prelude, rhResult.prelude].filter(Boolean).join("") || undefined
+            return { text: this._blendEx(lhResult.text!, rhResult.text!), varName, prelude }
+        }
+
+        const accVar = `_u${this.id}ex`
+        let prelude = `var ${accVar} = sdfTrue(1e10, 0u, vec3f(0.0));\n`
+
+        prelude += this._emitChildContrib(lhResult, accVar, "d",
+            (acc, child) => this._blendEx(acc, child), lhBounds)
+        prelude += this._emitChildContrib(rhResult, accVar, "d",
+            (acc, child) => this._blendEx(acc, child), rhBounds)
+
+        return { prelude, varName: accVar, text: accVar }
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast()
         const rhResult = this.rh.compileFast()
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._blendFast(lhResult.text!, rhResult.text!), varName }
+
+        const lhBounds = this._shouldBound(this.lh) ? this.lh.computeBounds() : null
+        const rhBounds = this._shouldBound(this.rh) ? this.rh.computeBounds() : null
+
+        // Only emit BVH accumulator if at least one direct child gets a bound check.
+        if (!lhBounds && !rhBounds) {
+            const prelude = [lhResult.prelude, rhResult.prelude].filter(Boolean).join("") || undefined
+            return { text: this._blendFast(lhResult.text!, rhResult.text!), varName, prelude }
+        }
+
+        const accVar = `_u${this.id}`
+        let prelude = `var ${accVar} = vec2f(1e10, 1.0);\n`
+
+        prelude += this._emitChildContrib(lhResult, accVar, "x",
+            (acc, child) => this._blendFast(acc, child), lhBounds)
+        prelude += this._emitChildContrib(rhResult, accVar, "x",
+            (acc, child) => this._blendFast(acc, child), rhBounds)
+
+        return { prelude, varName: accVar, text: accVar }
+    }
+
+    override computeBounds(): AABB | null {
+        const lb = this.lh.computeBounds()
+        const rb = this.rh.computeBounds()
+        let b: AABB | null = null
+        if (!lb && !rb) return null
+        if (!lb) b = rb
+        else if (!rb) b = lb
+        else b = aabbUnion(lb, rb)
+        // Inflate by blend radius so smooth union blend region is not skipped
+        if (b && this.radius) b = aabbExpand(b, this.radius)
+        return b
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid()

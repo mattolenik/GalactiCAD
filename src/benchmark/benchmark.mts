@@ -167,6 +167,7 @@ export async function runBenchmarkSuite(
                 renderer.xrayMode = benchCase.preview.xrayMode
                 renderer.beamEnabled = benchCase.preview.beamOptimization
                 renderer.cameraOptimization = benchCase.preview.cameraOptimization
+                renderer.bvhEnabled = benchCase.preview.bvhOptimization
 
                 const result = await renderer.benchmark(durationSeconds, true)
                 results.push({ name: benchCase.name, result })

@@ -1,4 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Blob extends Node {
@@ -28,6 +29,11 @@ export class Blob extends Node {
         const funcName = `Blob${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         return { funcName, varName, text: `fBlobMid(p - ${this.pos.wgsl})` }
+    }
+
+    override computeBounds(): AABB {
+        // Blob is a procedural icosahedron-like shape; conservative bound at ~1.7 units
+        return aabb(this.pos.x, this.pos.y, this.pos.z, 1.7, 1.7, 1.7)
     }
 
     @fluent shift(v: Vec3): this {

@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, Node } from "../base.mjs"
+import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 
 export class Groove extends BinaryOperator {
     ra: number
@@ -21,14 +21,16 @@ export class Groove extends BinaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `groove_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpGrooveEx(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
+        return { text: `fOpGrooveEx(${lText}, ${rText}, ${this.ra}, ${this.rb})`, varName, prelude }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `groove_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpGrooveFast(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
+        return { text: `fOpGrooveFast(${lText}, ${rText}, ${this.ra}, ${this.rb})`, varName, prelude }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)

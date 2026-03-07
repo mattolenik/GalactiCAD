@@ -1,4 +1,5 @@
 import { Node, CompileResult, decapitalize, fluent, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 
@@ -119,6 +120,19 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
             varName,
             text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
         }
+    }
+
+    override computeBounds(): AABB {
+        // Profile vertices are (r, y) in lathe space; revolve around Y
+        let maxR = 0, minY = 0, maxY = 0
+        for (const [r, y] of this.child.vertices) {
+            maxR = Math.max(maxR, Math.abs(r))
+            minY = Math.min(minY, y)
+            maxY = Math.max(maxY, y)
+        }
+        const cy = (minY + maxY) * 0.5
+        const hy = (maxY - minY) * 0.5
+        return aabb(this.pos.x, this.pos.y + cy, this.pos.z, maxR, hy, maxR)
     }
 
     @fluent shift(v: Vec3): this {

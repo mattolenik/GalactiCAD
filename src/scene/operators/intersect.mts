@@ -1,4 +1,5 @@
-import { BinaryOperator, CompileResult, fluent, Node, type BlendMode, type IntersectionType } from "../base.mjs"
+import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
+import { aabbIntersect, type AABB } from "../aabb.mjs"
 
 export class Intersect extends BinaryOperator {
     override getShapeType(): string {
@@ -49,15 +50,28 @@ export class Intersect extends BinaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._interEx(lhResult.text!, rhResult.text!), varName }
+        return { text: this._interEx(lText, rText), varName, prelude }
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._interFast(lhResult.text!, rhResult.text!), varName }
+        return { text: this._interFast(lText, rText), varName, prelude }
+    }
+
+    override computeBounds(): AABB | null {
+        const lb = this.lh.computeBounds()
+        const rb = this.rh.computeBounds()
+        if (!lb) return rb
+        if (!rb) return lb
+        // Intersection AABB can only be as large as the smaller of the two
+        const intersection = aabbIntersect(lb, rb)
+        // If they don't overlap at all, fall back to the lh bound (conservative)
+        return intersection ?? lb
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)

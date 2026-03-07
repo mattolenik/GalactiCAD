@@ -17,6 +17,8 @@ export class DevToolsPanel extends HTMLElement {
     #cameraOptimization$: BehaviorSubject<boolean>
     #beamOptCheckbox: HTMLInputElement
     #beamOptimization$: BehaviorSubject<boolean>
+    #bvhOptCheckbox: HTMLInputElement
+    #bvhOptimization$: BehaviorSubject<boolean>
     #showFpsCheckbox: HTMLInputElement
     #showFps$: BehaviorSubject<boolean>
     #meshViewerCheckbox: HTMLInputElement
@@ -32,6 +34,9 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback when beam optimization changes */
     onBeamOptimizationChange?: (enabled: boolean) => void
+
+    /** Callback when BVH optimization changes */
+    onBvhOptimizationChange?: (enabled: boolean) => void
 
     /** Callback when show FPS changes */
     onShowFpsChange?: (enabled: boolean) => void
@@ -62,6 +67,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set beamOptimization(enabled: boolean) {
         this.#beamOptimization$.next(enabled)
+    }
+
+    get bvhOptimization(): boolean {
+        return this.#bvhOptimization$.value
+    }
+
+    set bvhOptimization(enabled: boolean) {
+        this.#bvhOptimization$.next(enabled)
     }
 
     get showFps(): boolean {
@@ -166,6 +179,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshSimplify$ = new BehaviorSubject(g.meshSimplifyOnExport)
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
+        this.#bvhOptimization$ = new BehaviorSubject(true)
 
         this.#showFpsCheckbox = this.#addCheckbox(shadow, "Show FPS", this.#showFps$.value)
         this.#subscriptions.push(connectCheckbox(this.#showFpsCheckbox, this.#showFps$))
@@ -198,6 +212,12 @@ export class DevToolsPanel extends HTMLElement {
         this.#subscriptions.push(connectCheckbox(this.#beamOptCheckbox, this.#beamOptimization$))
         this.#beamOptimization$.pipe(skip(1)).subscribe(v => {
             this.onBeamOptimizationChange?.(v)
+        })
+
+        this.#bvhOptCheckbox = this.#addCheckbox(shadow, "BVH optimize", this.#bvhOptimization$.value)
+        this.#subscriptions.push(connectCheckbox(this.#bvhOptCheckbox, this.#bvhOptimization$))
+        this.#bvhOptimization$.pipe(skip(1)).subscribe(v => {
+            this.onBvhOptimizationChange?.(v)
         })
 
         // Save Suite button

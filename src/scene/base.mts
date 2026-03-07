@@ -1,9 +1,18 @@
 import { Vec3 } from "../vecmat/vector.mjs"
+import type { AABB } from "./aabb.mjs"
+import { aabbUnion } from "./aabb.mjs"
 
 export type CompileResult = {
     funcName?: string
     varName?: string
     text?: string
+    /**
+     * Optional WGSL statements that must precede the expression in `text`.
+     * Used by BVH-guarded union code generation: the prelude declares an
+     * accumulator variable and emits bounding-checked if-blocks for each
+     * child, so the parent can use the accumulator varName as its expression.
+     */
+    prelude?: string
 }
 
 /** Style-related info for editor highlighting (fluent method names, etc.). */
@@ -39,6 +48,8 @@ export interface ISceneInfo {
     getAllNodes(): Node[]
     nextArgIndex(): number
     allocPolygonVertices(count: number): number
+    /** Whether to emit BVH bounding checks during code generation. */
+    bvhEnabled: boolean
 }
 
 export class Node {
@@ -97,6 +108,14 @@ export class Node {
         return ""
     }
 
+    /**
+     * Compute a conservative axis-aligned bounding box for this node.
+     * Returns null for unbounded primitives (e.g. Plane).
+     */
+    computeBounds(): AABB | null {
+        return null
+    }
+
     compile(_indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
@@ -129,6 +148,9 @@ export abstract class UnaryOperator extends Node {
     protected override _computePrimitiveCount(): number {
         return this.arg.primitiveCount()
     }
+    override computeBounds(): AABB | null {
+        return this.arg.computeBounds()
+    }
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         this.arg.updateScene(writeBuffer)
     }
@@ -145,6 +167,14 @@ export abstract class UnaryOperator extends Node {
 export abstract class BinaryOperator extends Node {
     protected override _computePrimitiveCount(): number {
         return this.lh.primitiveCount() + this.rh.primitiveCount()
+    }
+    override computeBounds(): AABB | null {
+        const lb = this.lh.computeBounds()
+        const rb = this.rh.computeBounds()
+        if (!lb && !rb) return null
+        if (!lb) return rb
+        if (!rb) return lb
+        return aabbUnion(lb, rb)
     }
     override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
         this.lh.updateScene(writeBuffer)
@@ -163,6 +193,26 @@ export abstract class BinaryOperator extends Node {
     constructor(public lh: Node, public rh: Node) {
         super()
     }
+}
+
+/**
+ * Merge the preludes of two child CompileResults and return the combined
+ * prelude string along with each child's expression text. When a child has a
+ * prelude, its `varName` (the accumulator) is the correct expression to use
+ * rather than `text`, which is just an alias for `varName`.
+ *
+ * Usage in a binary operator that cannot emit its own prelude logic:
+ *   const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
+ *   return { text: `someOp(${lText}, ${rText})`, varName, prelude }
+ */
+export function mergeChildPreludes(
+    lh: CompileResult,
+    rh: CompileResult,
+): { prelude: string | undefined; lText: string; rText: string } {
+    const lText = lh.text!
+    const rText = rh.text!
+    const combined = [lh.prelude, rh.prelude].filter(Boolean).join("")
+    return { prelude: combined || undefined, lText, rText }
 }
 
 /** Default position when pos is omitted from primitive/operator options. */

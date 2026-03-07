@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, Node } from "../base.mjs"
+import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 
 export class Engrave extends BinaryOperator {
     #engraveRadius = 0
@@ -18,14 +18,16 @@ export class Engrave extends BinaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpEngraveEx(${lhResult.text}, ${rhResult.text}, ${this.#engraveRadius})`, varName }
+        return { text: `fOpEngraveEx(${lText}, ${rText}, ${this.#engraveRadius})`, varName, prelude }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpEngraveFast(${lhResult.text}, ${rhResult.text}, ${this.#engraveRadius})`, varName }
+        return { text: `fOpEngraveFast(${lText}, ${rText}, ${this.#engraveRadius})`, varName, prelude }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)

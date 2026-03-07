@@ -1,4 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Box extends Node {
@@ -62,6 +63,10 @@ export class Box extends Node {
             varName,
             text: `fBoxMid(p - ${this.pos.wgsl}, ${this.size.wgsl})`,
         }
+    }
+
+    override computeBounds(): AABB {
+        return aabb(this.pos.x, this.pos.y, this.pos.z, this.size.x, this.size.y, this.size.z)
     }
 
     @fluent shift(v: Vec3): this {

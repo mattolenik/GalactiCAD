@@ -82,6 +82,7 @@ export class RenderWorkerCore {
     #beamPipeline: GPUComputePipeline | null = null
     #beamBindGroupInvalid = false
     #sceneBindGroupInvalid = false
+    #bvhEnabled = true
     #buildGeneration = 0
     #buildLock: Promise<void> = Promise.resolve()
     #compiledPosY = new Map<number, number>()
@@ -199,9 +200,13 @@ export class RenderWorkerCore {
         }
     }
 
+    setBvhEnabled(enabled: boolean): void {
+        this.#bvhEnabled = enabled
+    }
+
     async #doBuild(body: string): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
         this.#builtBody = body
-        this.#scene = new SceneInfo(body)
+        this.#scene = new SceneInfo(body, { bvhEnabled: this.#bvhEnabled })
         const scene = this.#scene
         const allNodes = scene.getAllNodes()
 

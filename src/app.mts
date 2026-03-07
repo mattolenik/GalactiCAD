@@ -903,17 +903,23 @@ class App {
 
         devTools.cameraOptimization = this.renderer.cameraOptimization
         devTools.beamOptimization = this.renderer.beamEnabled
+        devTools.bvhOptimization = this.renderer.bvhEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
         }
         devTools.onBeamOptimizationChange = (enabled) => {
             this.renderer.beamEnabled = enabled
         }
+        devTools.onBvhOptimizationChange = (enabled) => {
+            this.renderer.bvhEnabled = enabled
+            void this.build()
+        }
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
             selectionModeRadio.value = this.renderer.selectionMode
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
+            devTools.bvhOptimization = this.renderer.bvhEnabled
         })
 
         const showFps = this.#settings.getGlobal().app.showFps
@@ -952,6 +958,7 @@ class App {
                     xrayMode: this.renderer.xrayMode,
                     cameraOptimization: this.renderer.cameraOptimization,
                     beamOptimization: this.renderer.beamEnabled,
+                    bvhOptimization: this.renderer.bvhEnabled,
                 },
             }
         }

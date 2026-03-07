@@ -1,4 +1,5 @@
 import { Node, CompileResult, decapitalize, fluent, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 
@@ -184,6 +185,18 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
             varName,
             text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
         }
+    }
+
+    override computeBounds(): AABB {
+        // Union of extents across all profile vertices in XZ, plus half-height
+        let maxX = 0, maxZ = 0
+        for (const profile of this.profiles) {
+            for (const [x, z] of profile.vertices) {
+                maxX = Math.max(maxX, Math.abs(x))
+                maxZ = Math.max(maxZ, Math.abs(z))
+            }
+        }
+        return aabb(this.pos.x, this.pos.y, this.pos.z, maxX, this.h, maxZ)
     }
 
     @fluent height(n: number): this {

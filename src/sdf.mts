@@ -78,6 +78,7 @@ export class SDFRenderer {
     #started = false
     #xrayMode = false
     #beamEnabled = false
+    #bvhEnabled = true
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
     #viewCenter = vec2(0.5, 0.5)
@@ -249,6 +250,7 @@ export class SDFRenderer {
         this.#xrayMode = prev.xrayMode
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
+        this.#bvhEnabled = prev.bvhOptimization
         this.#selectionMode = global.preview.selectionMode
         this.previewSettingsLoaded$.next()
         this.#needsRender = true
@@ -257,6 +259,7 @@ export class SDFRenderer {
     #handleWorkerMessage(msg: WorkerToMainMessage): void {
         switch (msg.type) {
             case "ready":
+                this.#worker.postMessage({ type: "setBvhEnabled", enabled: this.#bvhEnabled })
                 this.#readyResolve()
                 break
             case "initError":
@@ -937,6 +940,17 @@ export class SDFRenderer {
     }
     get beamEnabled(): boolean {
         return this.#beamEnabled
+    }
+
+    set bvhEnabled(enabled: boolean) {
+        if (this.#bvhEnabled === enabled) return
+        this.#bvhEnabled = enabled
+        this.#settings.updatePreview("bvhOptimization", enabled)
+        // BVH is baked into the shader at compile time; caller must trigger a rebuild
+        this.#worker.postMessage({ type: "setBvhEnabled", enabled })
+    }
+    get bvhEnabled(): boolean {
+        return this.#bvhEnabled
     }
 
     setSelectionMode(mode: SelectionMode): void {

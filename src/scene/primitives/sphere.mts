@@ -1,4 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Sphere extends Node {
@@ -62,6 +63,10 @@ export class Sphere extends Node {
             varName,
             text: `fSphereMid(p - ${this.pos.wgsl}, ${this.r})`,
         }
+    }
+
+    override computeBounds(): AABB {
+        return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, this.r, this.r)
     }
 
     @fluent shift(v: Vec3): this {

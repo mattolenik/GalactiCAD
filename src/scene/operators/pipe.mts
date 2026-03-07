@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, Node } from "../base.mjs"
+import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 
 export class Pipe extends BinaryOperator {
     #pipeRadius = 0
@@ -18,14 +18,16 @@ export class Pipe extends BinaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpPipeEx(${lhResult.text}, ${rhResult.text}, ${this.#pipeRadius})`, varName }
+        return { text: `fOpPipeEx(${lText}, ${rText}, ${this.#pipeRadius})`, varName, prelude }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpPipeFast(${lhResult.text}, ${rhResult.text}, ${this.#pipeRadius})`, varName }
+        return { text: `fOpPipeFast(${lText}, ${rText}, ${this.#pipeRadius})`, varName, prelude }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)

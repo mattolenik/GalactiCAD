@@ -1,4 +1,5 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
+import { aabbRotate, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Rotate extends UnaryOperator {
@@ -67,10 +68,20 @@ export class Rotate extends UnaryOperator {
 
         const invMat = this.matToWgsl(inv)
         const fwdMat = this.matToWgsl(fwd)
-        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
 
         const funcName = `Rotate${this.id}`
         const varName = decapitalize(funcName)
+
+        if (childResult.prelude) {
+            // Child has a BVH prelude; apply p-replacement to the prelude and
+            // then rotate the accumulated normal.
+            const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
+            const accVar = childResult.varName!
+            const prelude = rotatedPrelude + `${accVar} = sdfRotateNormal(${accVar}, ${fwdMat});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
+
+        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
         return {
             funcName,
             varName,
@@ -84,10 +95,17 @@ export class Rotate extends UnaryOperator {
         const childText = childResult.text!
 
         const invMat = this.matToWgsl(inv)
-        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
 
         const funcName = `Rotate${this.id}`
         const varName = `${decapitalize(funcName)}_f`
+
+        if (childResult.prelude) {
+            // Apply p-replacement to the entire prelude
+            const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
+            return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: rotatedPrelude }
+        }
+
+        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
         return {
             funcName,
             varName,
@@ -111,6 +129,14 @@ export class Rotate extends UnaryOperator {
             varName,
             text: `sdfRotateNormalMid(${rotatedChildText}, ${fwdMat})`,
         }
+    }
+
+    override computeBounds(): AABB | null {
+        const childBounds = this.arg.computeBounds()
+        if (!childBounds) return null
+        // Transform the child AABB using the forward rotation matrix
+        const { fwd } = this.getWgslMatrices()
+        return aabbRotate(childBounds, fwd)
     }
 }
 

@@ -1,4 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class HexPrism extends Node {
@@ -33,6 +34,10 @@ export class HexPrism extends Node {
         const funcName = `HexPrism${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         return { funcName, varName, text: `fHexagonCircumcircleMid(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}))` }
+    }
+
+    override computeBounds(): AABB {
+        return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, this.h, this.r)
     }
 
     @fluent radius(r: number): this {

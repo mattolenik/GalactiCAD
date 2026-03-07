@@ -131,6 +131,9 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
                 self.postMessage({ type: "pickPosResult", hitPos: null, requestId: msg.requestId })
             }
             break
+        case "setBvhEnabled":
+            if (core) core.setBvhEnabled(msg.enabled)
+            break
         default:
             console.log("[RenderWorker] unknown message", (msg as { type: string }).type)
     }

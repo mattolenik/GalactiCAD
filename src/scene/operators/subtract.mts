@@ -1,4 +1,5 @@
-import { BinaryOperator, CompileResult, fluent, Node, type BlendMode, type IntersectionType } from "../base.mjs"
+import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
+import type { AABB } from "../aabb.mjs"
 
 export class Subtract extends BinaryOperator {
     override getShapeType(): string {
@@ -49,15 +50,22 @@ export class Subtract extends BinaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._diffEx(lhResult.text!, rhResult.text!), varName }
+        return { text: this._diffEx(lText, rText), varName, prelude }
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._diffFast(lhResult.text!, rhResult.text!), varName }
+        return { text: this._diffFast(lText, rText), varName, prelude }
+    }
+
+    override computeBounds(): AABB | null {
+        // Subtraction can only remove from lh; bounds are at most the lh bounds
+        return this.lh.computeBounds()
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)

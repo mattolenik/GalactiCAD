@@ -1,4 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Disc extends Node {
@@ -30,6 +31,11 @@ export class Disc extends Node {
         const funcName = `Disc${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         return { funcName, varName, text: `fDiscMid(p - ${this.pos.wgsl}, ${this.r})` }
+    }
+
+    override computeBounds(): AABB {
+        // Disc is flat in XZ; use a small Y half-extent for numerical stability
+        return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, 0.001, this.r)
     }
 
     @fluent shift(v: Vec3): this {

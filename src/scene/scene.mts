@@ -43,6 +43,8 @@ export class SceneInfo {
     numArgs = 0
     #nodes = new BijectiveMap<number, Node>()
     totalPolygonVertices = 0
+    /** Whether to emit BVH bounding checks during code generation. Default: true. */
+    bvhEnabled = true
 
     nextArgIndex(): number {
         return this.numArgs++
@@ -86,7 +88,10 @@ export class SceneInfo {
         return data
     }
 
-    constructor(transpiledBody: string) {
+    constructor(transpiledBody: string, options?: { bvhEnabled?: boolean }) {
+        if (options?.bvhEnabled !== undefined) {
+            this.bvhEnabled = options.bvhEnabled
+        }
         this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "shell", "offset", "elongate", "twist", "bend", "taper", transpiledBody)(
             box, sphere, subtract, union, cylinder, cone, torus, capsule, plane, hexprism, disc, blob,
             intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam,
@@ -97,11 +102,17 @@ export class SceneInfo {
 
     compile(): string {
         const compiledResult = this.root.compile(1)
+        if (compiledResult.prelude) {
+            return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
+        }
         return `\nreturn ${compiledResult.text};\n`
     }
 
     compileFast(): string {
         const compiledResult = this.root.compileFast(1)
+        if (compiledResult.prelude) {
+            return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
+        }
         return `\nreturn ${compiledResult.text};\n`
     }
 

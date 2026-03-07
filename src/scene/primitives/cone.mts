@@ -1,4 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Cone extends Node {
@@ -33,6 +34,11 @@ export class Cone extends Node {
         const funcName = `Cone${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         return { funcName, varName, text: `fConeMid(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
+    }
+
+    override computeBounds(): AABB {
+        // Cone base at pos.y, tip at pos.y + h
+        return aabb(this.pos.x, this.pos.y + this.h * 0.5, this.pos.z, this.r, this.h * 0.5, this.r)
     }
 
     @fluent height(h: number): this {

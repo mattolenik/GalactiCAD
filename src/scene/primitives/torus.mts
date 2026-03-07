@@ -1,4 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Torus extends Node {
@@ -33,6 +34,11 @@ export class Torus extends Node {
         const funcName = `Torus${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         return { funcName, varName, text: `fTorusMid(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr})` }
+    }
+
+    override computeBounds(): AABB {
+        const r = this.lr + this.sr
+        return aabb(this.pos.x, this.pos.y, this.pos.z, r, this.sr, r)
     }
 
     @fluent smallRadius(sr: number): this {

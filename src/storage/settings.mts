@@ -17,6 +17,7 @@ export interface PreviewSettings {
     xrayMode: boolean
     cameraOptimization: boolean
     beamOptimization: boolean
+    bvhOptimization: boolean
 }
 
 export interface LayoutSettings {
@@ -49,7 +50,7 @@ function defaultCamera(): CameraSettings {
 }
 
 function defaultPreview(): PreviewSettings {
-    return { xrayMode: false, cameraOptimization: true, beamOptimization: true }
+    return { xrayMode: false, cameraOptimization: true, beamOptimization: true, bvhOptimization: true }
 }
 
 function defaultLayout(): LayoutSettings {

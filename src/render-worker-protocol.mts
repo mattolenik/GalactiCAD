@@ -77,6 +77,7 @@ export type MainToWorkerMessage =
     | { type: "benchmark"; durationSeconds: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
+    | { type: "setBvhEnabled"; enabled: boolean }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]

@@ -1,4 +1,5 @@
 import { Node, CompileResult, decapitalize, fluent, DEFAULT_POS } from "../base.mjs"
+import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
@@ -338,6 +339,22 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             varName,
             text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
         }
+    }
+
+    override computeBounds(): AABB {
+        // Compute 2D extents of polygon profile, then add extrusion height
+        let maxX = 0, maxZ = 0
+        for (const [x, z] of this.child.vertices) {
+            maxX = Math.max(maxX, Math.abs(x))
+            maxZ = Math.max(maxZ, Math.abs(z))
+        }
+        // When twisted, the profile sweeps out a wider area; use circumradius as conservative bound
+        if (this.twistDegrees !== 0) {
+            const circ = Math.sqrt(maxX * maxX + maxZ * maxZ)
+            maxX = circ
+            maxZ = circ
+        }
+        return aabb(this.pos.x, this.pos.y, this.pos.z, maxX, this.h, maxZ)
     }
 
     @fluent height(n: number): this {

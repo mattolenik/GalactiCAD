@@ -12,6 +12,10 @@ default: build test
 open:
 	$(BROWSER) http://localhost:$(PORT)
 
+.PHONY: setup
+setup:
+	pnpm install
+
 .PHONY: build
 build: check
 	@mkdir -p $(DIST)
@@ -24,7 +28,7 @@ test:
 	$(TSX) --test
 
 .PHONY: check
-check:
+check: setup
 	./node_modules/.bin/tsc --noEmit
 
 watch: BUILD_FLAGS=-w

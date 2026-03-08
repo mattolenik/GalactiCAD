@@ -35,7 +35,7 @@ import { getEditorLayout } from "./layout/editor-layout.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
-import { clearRecentDocuments, getDoc, getRecentDocuments } from "./storage/db.mjs"
+import { clearRecentDocuments, db, getDoc, getRecentDocuments } from "./storage/db.mjs"
 import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
 import { VERSION } from "./version.mjs"
 
@@ -91,6 +91,7 @@ class App {
     #editorContainer!: HTMLDivElement
     #welcomeScreen: WelcomeScreen | null = null
     #preview: PreviewWindow
+    #isHandlingPopstate = false
     #getVisiblePreviewRect!: () => DOMRect
     #toolbarRefs!: {
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton
@@ -634,8 +635,34 @@ class App {
         })
     }
 
+    #resolveAnchor(): string | null {
+        const hash = window.location.hash
+        if (!hash || hash.length < 2) return null
+        try {
+            const decoded = decodeURIComponent(hash.slice(1))
+            return decoded.trim() || null
+        } catch {
+            return null
+        }
+    }
+
     async #restoreOrShowWelcome(): Promise<void> {
         await this.#settings.ready()
+        const anchor = this.#resolveAnchor()
+        if (anchor) {
+            const docRow = await db.documents.get(anchor)
+            const docFileRow = await db.docFiles.get(anchor)
+            const docExists = !!docRow || !!docFileRow?.handle
+            if (docExists) {
+                await this.#tabs.restore()
+                const opened = await this.#tabs.openDocument(anchor)
+                if (opened) return
+                console.warn(`[GalactiCAD] Anchor document "${anchor}" could not be opened (e.g. stale file handle) — ignoring`)
+            } else {
+                console.warn(`[GalactiCAD] Anchor document "${anchor}" not found — ignoring`)
+            }
+            history.replaceState(null, "", location.pathname + location.search)
+        }
         const restored = await this.#tabs.restore()
         if (!restored) this.#showWelcome()
     }
@@ -913,6 +940,7 @@ class App {
     #wireEditorAndTabs() {
         this.#tabs.addEventListener("tabClosed", async () => {
             if (this.#tabs.documentNames.length === 0) {
+                history.replaceState(null, "", location.pathname + location.search)
                 void this.renderer.clearScene()
                 const dirHandle = await getFolderHandle()
                 if (!dirHandle) this.#showWelcomeAndDisposePreview()
@@ -920,14 +948,37 @@ class App {
         })
         this.#tabs.addEventListener("activeTabChanged", (e: Event) => {
             const event = e as CustomEvent<string | undefined>
+            const name = event.detail
+            if (name !== undefined && !this.#isHandlingPopstate) {
+                const url = `${location.pathname}${location.search}#${encodeURIComponent(name)}`
+                if (location.hash === "#" + encodeURIComponent(name)) {
+                    history.replaceState(null, "", url)
+                } else {
+                    history.pushState(null, "", url)
+                }
+            }
             this.#monacoHighlighter.clearHighlighting()
-            if (event.detail !== undefined) {
+            if (name !== undefined) {
                 requestAnimationFrame(() => {
                     void this.build()
                 })
             } else {
                 this.log.innerText = ""
                 this.log.classList.remove("has-error")
+            }
+        })
+        window.addEventListener("popstate", () => {
+            const anchor = this.#resolveAnchor()
+            if (anchor) {
+                this.#isHandlingPopstate = true
+                void this.#tabs.openDocument(anchor).then(opened => {
+                    if (!opened) {
+                        console.warn(`[GalactiCAD] Anchor document "${anchor}" not found — ignoring`)
+                        history.replaceState(null, "", location.pathname + location.search)
+                    }
+                }).finally(() => {
+                    this.#isHandlingPopstate = false
+                })
             }
         })
     }

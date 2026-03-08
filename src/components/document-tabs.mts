@@ -453,7 +453,10 @@ export class DocumentTabs extends HTMLElement {
         try {
             const file = await handle.getFile()
             const diskContent = await file.text()
-            if (diskContent !== editorContent) {
+            const lastWritten = this.#lastWrittenContent.get(name)
+            // Only show conflict when disk was modified externally (differs from our last write or load).
+            // If disk === lastWritten, user just has unsaved edits—we write normally.
+            if (lastWritten !== undefined && diskContent !== lastWritten) {
                 const choice = await new FileConflictDialog(name).show()
                 if (choice === "cancel") return false
                 if (choice === "revert") {
@@ -463,9 +466,10 @@ export class DocumentTabs extends HTMLElement {
                     return true
                 }
                 // overwrite: fall through to write
-            } else {
-                return true
+            } else if (editorContent === diskContent) {
+                return true // nothing to save
             }
+            // else: disk === lastWritten, user has edits—fall through to write
         } catch {
             // File may not exist or permission error; proceed with overwrite
         }
@@ -581,41 +585,36 @@ export class DocumentTabs extends HTMLElement {
         if (dirHandle) {
             let permission = await dirHandle.queryPermission({ mode: "readwrite" })
             if (permission === "prompt") {
-                permission = await dirHandle.requestPermission({ mode: "readwrite" })
+                try {
+                    permission = await dirHandle.requestPermission({ mode: "readwrite" })
+                } catch {
+                    permission = "denied"
+                }
             }
-            if (permission === "granted") {
-                const namesToLoad =
-                    storedOrder.length > 0 ? storedOrder : (await listGcadFileNames(dirHandle))
-                for (const name of namesToLoad) {
+            if (permission !== "granted") return false
+            const namesToLoad =
+                storedOrder.length > 0 ? storedOrder : (await listGcadFileNames(dirHandle))
+            for (const name of namesToLoad) {
+                try {
+                    let fileHandle: FileSystemFileHandle | undefined
                     try {
-                        let fileHandle: FileSystemFileHandle | undefined
-                        try {
-                            fileHandle = await dirHandle.getFileHandle(name)
-                        } catch {
-                            const docFileRow = await db.docFiles.get(name)
-                            fileHandle = docFileRow?.handle
-                        }
-                        if (fileHandle) {
-                            const docRow = await db.documents.get(name)
-                            const resolved = await this.#resolveFileContent(name, fileHandle, docRow)
-                            const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                            const model = monaco.editor.createModel(resolved.content, "typescript", uri)
-                            this.#docs.set(name, model)
-                            this.#fileHandles.set(name, fileHandle)
-                            this.#lastWrittenContent.set(name, resolved.lastWritten)
-                            await db.docFiles.put({ name, handle: fileHandle })
-                            await setDocFileBacked(name, resolved.content, resolved.lastWritten, docRow?.lastWriteToDisk, resolved.lastSyncWithDisk)
-                            this.#watchModel(name, model)
-                        } else {
-                            const docRow = await db.documents.get(name)
-                            if (docRow) {
-                                const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                                const model = monaco.editor.createModel(docRow.content, "typescript", uri)
-                                this.#docs.set(name, model)
-                                this.#watchModel(name, model)
-                            }
-                        }
+                        fileHandle = await dirHandle.getFileHandle(name)
                     } catch {
+                        const docFileRow = await db.docFiles.get(name)
+                        fileHandle = docFileRow?.handle
+                    }
+                    if (fileHandle) {
+                        const docRow = await db.documents.get(name)
+                        const resolved = await this.#resolveFileContent(name, fileHandle, docRow)
+                        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+                        const model = monaco.editor.createModel(resolved.content, "typescript", uri)
+                        this.#docs.set(name, model)
+                        this.#fileHandles.set(name, fileHandle)
+                        this.#lastWrittenContent.set(name, resolved.lastWritten)
+                        await db.docFiles.put({ name, handle: fileHandle })
+                        await setDocFileBacked(name, resolved.content, resolved.lastWritten, docRow?.lastWriteToDisk, resolved.lastSyncWithDisk)
+                        this.#watchModel(name, model)
+                    } else {
                         const docRow = await db.documents.get(name)
                         if (docRow) {
                             const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
@@ -624,14 +623,21 @@ export class DocumentTabs extends HTMLElement {
                             this.#watchModel(name, model)
                         }
                     }
+                } catch {
+                    const docRow = await db.documents.get(name)
+                    if (docRow) {
+                        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
+                        const model = monaco.editor.createModel(docRow.content, "typescript", uri)
+                        this.#docs.set(name, model)
+                        this.#watchModel(name, model)
+                    }
                 }
-                const first = this.#docs.keys().next().value
-                if (first) await this.switchTo(first)
-                await this.#updateStoredOrder()
-                if (lastTab && this.#docs.has(lastTab)) await this.switchTo(lastTab)
-                return this.#docs.size > 0
             }
-            await clearFolderHandle()
+            const first = this.#docs.keys().next().value
+            if (first) await this.switchTo(first)
+            await this.#updateStoredOrder()
+            if (lastTab && this.#docs.has(lastTab)) await this.switchTo(lastTab)
+            return this.#docs.size > 0
         }
 
         // fall back to stored documents and doc file handles

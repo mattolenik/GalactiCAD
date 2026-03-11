@@ -180,12 +180,14 @@ export class Toolbar extends HTMLElement {
                 align-items: center;
                 justify-content: flex-end;
                 height: 100%;
+                width: 100%;
             }
             .toolbar {
                 display: flex;
                 align-items: center;
                 gap: 6px;
                 height: 100%;
+                width: 100%;
                 box-sizing: border-box;
                 background: var(${__preview_bg});
                 padding: 0 8px;
@@ -306,6 +308,12 @@ export class Toolbar extends HTMLElement {
         const sep = document.createElement("div")
         sep.classList.add("separator")
         this.#container.appendChild(sep)
+    }
+
+    addSpacer(): void {
+        const spacer = document.createElement("div")
+        spacer.style.flex = "1"
+        this.#container.appendChild(spacer)
     }
 }
 

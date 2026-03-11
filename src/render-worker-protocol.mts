@@ -72,6 +72,7 @@ export type MainToWorkerMessage =
     | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
     | { type: "benchmark"; durationSeconds: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
+    | { type: "pickPos"; clickUV: [number, number]; requestId: number }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]
@@ -116,4 +117,5 @@ export type WorkerToMainMessage =
     | { type: "renderMeshResult"; mesh?: MeshData; error?: string; requestId?: number; documentName?: string }
     | { type: "benchmarkResult"; result: BenchmarkResultPayload; requestId?: number }
     | { type: "thumbnailResult"; imageData?: ImageData; error?: string; requestId?: number; documentName?: string }
+    | { type: "pickPosResult"; hitPos: [number, number, number] | null; requestId: number }
     | { type: "fps"; fps: number }

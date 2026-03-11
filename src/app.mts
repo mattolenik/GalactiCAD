@@ -760,6 +760,14 @@ class App {
 
     #setupToolbar(menu: HTMLElement) {
         const toolbar = new Toolbar()
+
+        const resetCameraIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="8" width="20" height="12" rx="2"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><circle cx="12" cy="14" r="2.5"/><line x1="12" y1="11.5" x2="12" y2="8"/></svg>`
+        const resetCameraBtn = toolbar.addButton("", "Reset camera")
+        resetCameraBtn.html = resetCameraIcon
+        resetCameraBtn.onClick = () => this.renderer.resetCamera()
+
+        toolbar.addSpacer()
+
         const xrayIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 9 17 L 1 4 L 9 1 L 17 4 Z"/><circle cx="9" cy="8" r="3"/></svg>`
         const xrayCheckbox = toolbar.addToggleButton(xrayIcon, "Toggle X-ray")
         toolbar.addSeparator()

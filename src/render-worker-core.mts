@@ -1145,6 +1145,27 @@ export class RenderWorkerCore {
         }
     }
 
+    async handlePickPos(clickUV: [number, number], requestId: number): Promise<void> {
+        if (!this.#lastRenderMsg || !this.#pipeline) {
+            self.postMessage({ type: "pickPosResult", hitPos: null, requestId })
+            return
+        }
+        this.#writeClickState(clickUV, true, false)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, new Float32Array(4).buffer)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, new Float32Array(4).buffer)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(320))
+        this.render(this.#lastRenderMsg)
+        const result = await this.#readClickResult()
+        // hitPos[3] is the ray travel distance t; 0 means no hit
+        const hasHit = result.hitPos[3] > 0
+        self.postMessage({
+            type: "pickPosResult",
+            hitPos: hasHit ? [result.hitPos[0], result.hitPos[1], result.hitPos[2]] : null,
+            requestId,
+        })
+    }
+
     writeBuffers(msg: Extract<MainToWorkerMessage, { type: "writeBuffers" }>): void {
         if (msg.faceSelection) {
             this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, msg.faceSelection)

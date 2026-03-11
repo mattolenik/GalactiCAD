@@ -124,6 +124,13 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
                 self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready", requestId: msg.requestId })
             }
             break
+        case "pickPos":
+            if (core) {
+                core.handlePickPos(msg.clickUV, msg.requestId)
+            } else {
+                self.postMessage({ type: "pickPosResult", hitPos: null, requestId: msg.requestId })
+            }
+            break
         default:
             console.log("[RenderWorker] unknown message", (msg as { type: string }).type)
     }

@@ -106,6 +106,7 @@ export class SDFRenderer {
     #pendingRenderMesh = new Map<number, { resolve: (v: MeshData) => void; reject: (err: unknown) => void }>()
     #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
     #pendingThumbnail = new Map<number, { resolve: (v: ImageData) => void; reject: (err: unknown) => void }>()
+    #pendingPickPos = new Map<number, { resolve: (v: [number, number, number] | null) => void }>()
     #sharedBuffer: SharedArrayBuffer | null = null
     #renderVersion = 0
     #useSharedMemory = false
@@ -145,6 +146,7 @@ export class SDFRenderer {
     constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect, getActiveDocument?: () => string | undefined) {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement ?? null, getInteractionRect ?? undefined)
+        this.#controls.pickPosAtScreen = (clientX, clientY) => this.pickPosAtScreen(clientX, clientY)
         this.#tabsElement = tabsElement ?? null
         this.#getInteractionRect = getInteractionRect ?? null
         this.#getActiveDocument = getActiveDocument ?? null
@@ -167,7 +169,14 @@ export class SDFRenderer {
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
                 if (uv) this.#worker.postMessage({ type: "click", clickUV: uv, shiftKey, altKey, documentName: this.#getActiveDocument?.() ?? undefined })
             }),
-            this.#controls.doubleClick$.subscribe((screenPos) => {
+            this.#controls.doubleClick$.subscribe(({ screenPos, metaKey, ctrlKey }) => {
+                if (metaKey || ctrlKey) {
+                    // Cmd/Ctrl+double-click: recenter camera on the hit point
+                    this.pickPosAtScreen(screenPos.x, screenPos.y).then(pos => {
+                        if (pos) this.#controls.recenterOnPoint(vec3(pos[0], pos[1], pos[2]))
+                    })
+                    return
+                }
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
                 if (uv) this.#worker.postMessage({ type: "doubleClick", clickUV: uv, documentName: this.#getActiveDocument?.() ?? undefined })
             }),
@@ -218,6 +227,17 @@ export class SDFRenderer {
         const u = (clientX - rect.left) / rect.width
         const v = 1 - (clientY - rect.top) / rect.height
         return [u, v]
+    }
+
+    /** Query the 3D world-space position under the given screen coordinate. Returns null if no surface is hit. */
+    pickPosAtScreen(clientX: number, clientY: number): Promise<[number, number, number] | null> {
+        const uv = this.#screenToClickUV(clientX, clientY)
+        if (!uv) return Promise.resolve(null)
+        const requestId = ++this.#requestIdCounter
+        return new Promise(resolve => {
+            this.#pendingPickPos.set(requestId, { resolve })
+            this.#worker.postMessage({ type: "pickPos", clickUV: uv, requestId })
+        })
     }
 
     #loadPreviewSettings(): void {
@@ -329,6 +349,14 @@ export class SDFRenderer {
             case "fps":
                 if (!this.#useSharedMemory) this.#preview.updateFPS(msg.fps)
                 break
+            case "pickPosResult": {
+                const pending = this.#pendingPickPos.get(msg.requestId)
+                if (pending) {
+                    pending.resolve(msg.hitPos)
+                    this.#pendingPickPos.delete(msg.requestId)
+                }
+                break
+            }
         }
     }
 
@@ -736,6 +764,10 @@ export class SDFRenderer {
 
     get controls(): CameraController {
         return this.#controls
+    }
+
+    resetCamera(): void {
+        this.#controls.resetView()
     }
 
     /** Current render resolution (device-pixel-scaled). Used for benchmark viewport. */

@@ -192,18 +192,24 @@ export class CameraController {
 
     #onKeyPress(e: KeyboardEvent) {
         if (this.#lastFocused?.id !== this.#host.id) return
+        const R180_X = Quaternion.fromAxisAngle([1, 0, 0], Math.PI)
+        const R180_Y = Quaternion.fromAxisAngle([0, 1, 0], Math.PI)
+        const R180_Z = Quaternion.fromAxisAngle([0, 0, 1], Math.PI)
         if (e.code === "Digit1") {
             this.#rotation = Quaternion.fromEuler(-Math.PI, -Math.PI, 0, "YXZ")
         } else if (e.code === "Digit2") {
-            this.#rotation = Quaternion.fromEuler(-Math.PI, 0, 0, "YXZ")
+            // Back: same as front (1) rotated 180° around Y — no vertical flip
+            this.#rotation = Quaternion.fromEuler(-Math.PI, -Math.PI, 0, "YXZ").mul(R180_Y)
         } else if (e.code === "Digit3") {
             this.#rotation = Quaternion.fromEuler(0, Math.PI / 2, 0, "YXZ")
         } else if (e.code === "Digit4") {
-            this.#rotation = Quaternion.fromEuler(0, -Math.PI / 2, 0, "YXZ")
+            // Left: same as right (3) rotated 180° around Z — no vertical flip
+            this.#rotation = Quaternion.fromEuler(0, Math.PI / 2, 0, "YXZ").mul(R180_Z)
         } else if (e.code === "Digit5") {
             this.#rotation = Quaternion.fromEuler(-Math.PI / 2, Math.PI, 0, "YXZ")
         } else if (e.code === "Digit6") {
-            this.#rotation = Quaternion.fromEuler(Math.PI / 2, Math.PI, 0, "YXZ")
+            // Bottom: same as top (5) rotated 180° around Y — no vertical flip
+            this.#rotation = Quaternion.fromEuler(-Math.PI / 2, Math.PI, 0, "YXZ").mul(R180_Y)
         } else if (e.code === "Backquote") {
             this.#rotation = Quaternion.fromEuler(-Math.PI / 8, (5 / 4) * Math.PI, 0, "YXZ")
             this.#cameraTranslation = new Vec3f()

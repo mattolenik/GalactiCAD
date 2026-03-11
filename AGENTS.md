@@ -93,6 +93,14 @@ That results in previewShader being a string with the processed content of the c
 
 When making changes to binding groups, make sure all the bindings and mappings are the same in TypeScript and WGSL, make sure you always keep them in sync and don't forget to update things like byte offsets or indexes, etc.
 
+## Learned User Preferences
+
+## Learned Workspace Facts
+
+- Camera hotkeys 2, 4, 6: derive from 1, 3, 5 by 180° rotation to avoid vertical flip — 2=1×R_Y, 4=3×R_Z, 6=5×R_Y.
+- External-change conflict: compare disk to `lastWritten`, not editor content, when deciding whether to show "modified externally" dialog.
+- Async pick (Cmd/Ctrl+drag): use drag session ID so stale pick results do not apply to a new drag session.
+
 ## Building and Linting
 
 See `.cursor/rules/build-commands.mdc` for build/test command rules.

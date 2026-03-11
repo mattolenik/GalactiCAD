@@ -24,7 +24,7 @@ The scene SDF is compiled into two variants that serve different roles in the pi
 
 `sceneSDF` results contain everything `sceneSDF_fast` returns and more. The fast path is cheaper and is used wherever distance and gradient are sufficient; the full path is used when normals, IDs, or other attributes are needed.
 
-### Regular vs _fast Primitives and Operators
+### Regular vs \_fast Primitives and Operators
 
 Each primitive and CSG operator has two implementations:
 
@@ -41,11 +41,11 @@ The fast operators still compute gradient magnitude `g` because it is needed to 
 - **g**: Gradient magnitude estimate (1.0 for true SDFs, <1.0 in smooth blend regions). Used to correct projection steps when |∇f| < 1.
 - **s**: Sign for inside/outside.
 - **id**: Primary object ID for coloring and selection.
-- **n**: Analytical normal (unit vector). Not available from _fast functions.
+- **n**: Analytical normal (unit vector). Not available from \_fast functions.
 - **id2**, **blend**: Secondary ID and blend weight for smooth blend color interpolation (0 = fully id, 1 = fully id2).
 - **seamA**, **seamB**, **seamOp**, **seamGap**, **seamTangent**: Metadata for hard CSG seams (union/intersection/difference). Used for seam selection and edge classification.
 
-None of these attributes (normals, IDs, blend, seam) are present in the _fast path.
+None of these attributes (normals, IDs, blend, seam) are present in the \_fast path.
 
 ### Using SDFResult to Avoid Unnecessary Computations
 
@@ -56,9 +56,9 @@ The pipeline uses `sceneSDF_fast` where the full result is not needed, because i
 1. **Ray marching (preview.wgsl)**: Every step uses `sceneSDF_fast`. When a hit is detected, the shader calls `sceneSDF` once at the hit point to get the analytical normal and IDs for shading. Binary-search refinement uses `sceneSDF_fast` (only the distance is needed).
 
 2. **MDC (mdc.wgsl)**: Voxel distance sampling uses `sceneSDF_fast`. The full `sceneSDF` is used for:
-   - **resolveSignAtPos**: When a sample is near the iso-surface (epsilon band), the analytical normal `sdf.n` is used to nudge the point and resolve inside/outside deterministically. Finite-difference gradients would be unstable at CSG seams.
-   - **Edge projection**: After bisection finds an approximate intersection, projection to the surface uses analytic normals from `sceneSDF` instead of finite-difference gradients for stability at seams where gradients are discontinuous.
-   - **Vertex normals**: Final mesh vertex normals come from `sceneSDF` at the converged position.
+    - **resolveSignAtPos**: When a sample is near the iso-surface (epsilon band), the analytical normal `sdf.n` is used to nudge the point and resolve inside/outside deterministically. Finite-difference gradients would be unstable at CSG seams.
+    - **Edge projection**: After bisection finds an approximate intersection, projection to the surface uses analytic normals from `sceneSDF` instead of finite-difference gradients for stability at seams where gradients are discontinuous.
+    - **Vertex normals**: Final mesh vertex normals come from `sceneSDF` at the converged position.
 
 3. **Bounds and beam shaders**: Use `sceneSDF_fast`; they never need normals or IDs.
 
@@ -88,6 +88,10 @@ A shader can be loaded into TypeScript like this:
 import previewShader from "./shaders/preview.wgsl"
 
 That results in previewShader being a string with the processed content of the code.
+
+### Intercting with WebGPU on the TypeScript side
+
+When making changes to binding groups, make sure all the bindings and mappings are the same in TypeScript and WGSL, make sure you always keep them in sync and don't forget to update things like byte offsets or indexes, etc.
 
 ## Building and Linting
 

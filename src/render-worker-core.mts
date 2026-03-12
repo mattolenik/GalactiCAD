@@ -225,19 +225,14 @@ export class RenderWorkerCore {
             ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer)
             : new ArrayBuffer(0)
         const nodeParamsData = new Float32Array(MAX_NODE_PARAMS * 4)
-        this.#compiledPosY.clear()
+        const newCompiledPosY = new Map<number, number>()
         for (const node of allNodes) {
             if ((node instanceof Extrude || node instanceof Loft) && node.id < MAX_NODE_PARAMS) {
                 nodeParamsData[node.id * 4] = node.h
                 nodeParamsData[node.id * 4 + 1] = 0
-                this.#compiledPosY.set(node.id, node.pos.y)
+                newCompiledPosY.set(node.id, node.pos.y)
             }
         }
-
-        if (scene.totalPolygonVertices > 0) {
-            this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
-        }
-        this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, nodeParamsData)
 
         this.#buildGeneration++
         const generation = this.#buildGeneration
@@ -264,6 +259,16 @@ export class RenderWorkerCore {
         if (generation !== this.#buildGeneration) return { superseded: true } as { sceneNodes: never; compiledPosY: never; superseded: true }
         this.#pipeline = pipeline
         this.#beamPipeline = beamPipeline
+
+        // Write GPU buffers only after the new pipeline is ready so the old pipeline
+        // continues rendering with the correct drag-time nodeParams (posYDelta != 0)
+        // until the atomic swap. This prevents the visible jump where the object briefly
+        // snaps back to its pre-drag position during pipeline compilation.
+        this.#compiledPosY = newCompiledPosY
+        if (scene.totalPolygonVertices > 0) {
+            this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
+        }
+        this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, nodeParamsData)
         this.#beamBindGroupInvalid = true
         this.#sceneBindGroupInvalid = true
 

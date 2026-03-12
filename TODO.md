@@ -16,3 +16,4 @@
 - [ ] Object movement and handles
 - [ ] Snapping to selections/objects/edges
 - [ ] Auto adjust requested buffer allocations
+- [ ] SDF debugging plane

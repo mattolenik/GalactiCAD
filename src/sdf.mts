@@ -83,6 +83,9 @@ export class SDFRenderer {
     #viewCenter = vec2(0.5, 0.5)
     #controlSubs: Subscription[] = []
     #pushPullController: PushPullController | null = null
+    /** Hit position from the most recent click, keyed by clicked object ID. Used for shift-to-push/pull. */
+    #lastClickHitPos: [number, number, number] | null = null
+    #lastClickedId = 0
     #tabsElement: EventTarget | null = null
     #getActiveDocument: (() => string | undefined) | null = null
     #tabChangeSub: Subscription | null = null
@@ -282,6 +285,8 @@ export class SDFRenderer {
             }
             case "clickResult":
                 if (msg.documentName !== undefined && msg.documentName !== this.#getActiveDocument?.()) return
+                this.#lastClickHitPos = msg.hitPos ? [msg.hitPos[0], msg.hitPos[1], msg.hitPos[2]] : null
+                this.#lastClickedId = msg.clickedId
                 this.#handleClickResult(msg.clickedId, msg.edgeHits, msg.shiftKey, msg.altKey)
                 break
             case "selectionInfo":
@@ -304,9 +309,7 @@ export class SDFRenderer {
                 break
             case "objectDoubleClick":
                 if (msg.documentName !== undefined && msg.documentName !== this.#getActiveDocument?.()) return
-                if (!this.#handleObjectDoubleClick(msg.nodeId, msg.hitPos)) {
-                    this.objectDoubleClick$.next(msg.nodeId)
-                }
+                this.objectDoubleClick$.next(msg.nodeId)
                 break
             case "renderMeshResult": {
                 const pending = msg.requestId != null ? this.#pendingRenderMesh.get(msg.requestId) : null
@@ -465,6 +468,8 @@ export class SDFRenderer {
             this.#updateSelection(clickedId, shiftKey)
         } else {
             this.#selectedObjectIds.fill(false)
+            this.#lastClickedId = 0
+            this.#lastClickHitPos = null
             this.#selectionDirty = true
             this.selectionChange$.next([])
         }
@@ -540,6 +545,42 @@ export class SDFRenderer {
                 const localY = hitVec.y - parent.node.pos.y
                 const isTop = localY >= 0
                 this.#pushPullController.selectCapFace(parent.node as unknown as Parameters<PushPullController["selectCapFace"]>[0], isTop)
+                this.#pushSelectionInfo()
+                return true
+            }
+        }
+        return false
+    }
+
+    /** Activate push/pull mode using the currently selected object + last click hit position. */
+    #tryActivatePushPullFromSelection(): boolean {
+        if (!this.#pushPullController || this.#pushPullController.isActive) return false
+        const nodeId = this.#lastClickedId
+        const hitPos = this.#lastClickHitPos
+        if (!nodeId || !hitPos) return false
+        return this.#handleObjectDoubleClick(nodeId, hitPos)
+    }
+
+    /** Show face highlight (without activating drag) for the currently selected object. */
+    #tryHighlightPushPullFromSelection(): boolean {
+        if (!this.#pushPullController || this.#pushPullController.isActive) return false
+        const nodeId = this.#lastClickedId
+        const hitPos = this.#lastClickHitPos
+        if (!nodeId || !hitPos) return false
+        const node = this.#pushPullNodes.get(nodeId)
+        if (!node) return false
+        const hitVec = vec3(hitPos[0], hitPos[1], hitPos[2])
+        if (node.type === "extrude" && (node.twistDegrees ?? 0) === 0) {
+            this.#pushPullController.highlightSideFace(node as unknown as Parameters<PushPullController["highlightSideFace"]>[0], hitVec)
+            this.#pushSelectionInfo()
+            return true
+        }
+        if (node.type === "polygon2d") {
+            const parent = this.#findCapParent(nodeId)
+            if (parent) {
+                const localY = hitVec.y - parent.node.pos.y
+                const isTop = localY >= 0
+                this.#pushPullController.highlightCapFace(parent.node as unknown as Parameters<PushPullController["highlightCapFace"]>[0], isTop)
                 this.#pushSelectionInfo()
                 return true
             }
@@ -731,7 +772,23 @@ export class SDFRenderer {
             self.#needsRender = true
         }
         const canvas = this.#preview.canvas
+        canvas.addEventListener("click", (e: MouseEvent) => {
+            if (this.#pushPullController?.isActive || this.#pushPullController?.getFaceSelection() !== null) {
+                e.stopImmediatePropagation()
+            }
+        }, { capture: true })
         canvas.addEventListener("pointerdown", (e: PointerEvent) => {
+            // If shift is held and we have a highlight-only state, promote to full push/pull selection
+            if (e.shiftKey && this.#pushPullController && !this.#pushPullController.isActive) {
+                if (this.#pushPullController.getFaceSelection() !== null) {
+                    // Already have a highlight — promote directly from existing highlight state
+                    this.#pushPullController.promoteToActive()
+                } else {
+                    // No highlight yet — derive from last click
+                    this.#tryActivatePushPullFromSelection()
+                }
+                this.#pushSelectionInfo()
+            }
             if (this.#pushPullController?.isActive && !this.#pushPullController.isDragging) {
                 if (this.#pushPullController.handlePointerDown(e)) {
                     e.preventDefault()
@@ -758,6 +815,21 @@ export class SDFRenderer {
         document.addEventListener("keydown", (e: KeyboardEvent) => {
             if (this.#pushPullController?.isActive) {
                 this.#pushPullController.handleKeyDown(e)
+            }
+            // Shift held: enter push/pull highlight mode on the selected object
+            if (e.key === "Shift" && !e.repeat && !this.#pushPullController?.isActive) {
+                this.#tryHighlightPushPullFromSelection()
+            }
+        })
+        document.addEventListener("keyup", (e: KeyboardEvent) => {
+            // Shift released: exit push/pull mode (active or highlight-only)
+            if (e.key === "Shift" && this.#pushPullController) {
+                if (this.#pushPullController.isActive || this.#pushPullController.getFaceSelection() !== null) {
+                    this.#pushPullController.deselect()
+                    this.#writeSelectionBuffer()
+                    this.#pushSelectionInfo()
+                    this.#needsRender = true
+                }
             }
         })
     }
@@ -924,7 +996,18 @@ export class SDFRenderer {
             p.cameraRes[0] = this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullWidth : 1
             p.cameraRes[1] = this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullHeight : 1
         }
-        p.selectionState.selectedObjectIds = this.#getCompactSelectedIds()
+        const faceSel = this.#pushPullController?.getFaceSelection?.()
+        if (faceSel && faceSel.mode <= 3) {
+            const children = this.#childrenByParent.get(faceSel.nodeId) ?? []
+            const ids = this.#getCompactSelectedIds().filter(
+                id => id !== this.#lastClickedId && !children.includes(id)
+            )
+            const highlightId = faceSel.mode === 3 ? 1022 : 1023
+            if (!ids.includes(highlightId)) ids.push(highlightId)
+            p.selectionState.selectedObjectIds = ids
+        } else {
+            p.selectionState.selectedObjectIds = this.#getCompactSelectedIds()
+        }
         p.selectionState.selectedEdges = this.#selectedEdges
         p.selectionState.hoveredObjectId = this.#hoveredObjectId
         p.selectionState.hoveredEdges = this.#hoveredEdges

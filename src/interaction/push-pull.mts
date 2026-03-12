@@ -287,6 +287,86 @@ export class PushPullController {
         this.#host.requestRender()
     }
 
+    /** Drop from active push/pull back to highlight-only, keeping the surface visually selected. */
+    dropToHighlight(): void {
+        if (this.#face) {
+            const { extrude, faceIndex } = this.#face
+            this.#face = null
+            this.#dragging = false
+            this.#sideHighlightOnly = { extrude, faceIndex }
+            this.#writeFaceSelection(extrude.id, faceIndex, 0, 0)
+            const selData = new Uint32Array(1024)
+            selData[FACE_HIGHLIGHT_ID] = 1
+            this.#host.writeBuffers({ selectedObjectIds: selData.buffer })
+            this.#host.requestRender()
+        } else if (this.#cap) {
+            const { node, isTop } = this.#cap
+            this.#cap = null
+            this.#dragging = false
+            this.#capHighlightOnly = { node, isTop }
+            const mode = isTop ? 2 : 3
+            this.#writeFaceSelection(node.id, 0, mode, 0)
+            const selData = new Uint32Array(1024)
+            selData[isTop ? FACE_HIGHLIGHT_TOP : FACE_HIGHLIGHT_BOTTOM] = 1
+            this.#host.writeBuffers({ selectedObjectIds: selData.buffer })
+            this.#host.requestRender()
+        }
+    }
+
+    /** Promote highlight-only state to fully active push/pull (face or cap selected). */
+    promoteToActive(): boolean {
+        if (this.isActive) return true
+        if (this.#sideHighlightOnly) {
+            const { extrude, faceIndex } = this.#sideHighlightOnly
+            this.#sideHighlightOnly = null
+            const verts = extrude.child.vertices
+            const N = verts.length
+            const i0 = faceIndex
+            const i1 = (i0 + 1) % N
+            const edgeX = verts[i1][0] - verts[i0][0]
+            const edgeY = verts[i1][1] - verts[i0][1]
+            const edgeLen = Math.sqrt(edgeX * edgeX + edgeY * edgeY)
+            const windingSign = computeSignedArea(verts) < 0 ? -1 : 1
+            const nx = windingSign * edgeY / edgeLen
+            const ny = windingSign * -edgeX / edgeLen
+            this.#face = {
+                extrude,
+                faceIndex,
+                normal2D: vec2(nx, ny),
+                normal3D: vec3(nx, 0, ny),
+                originalVertices: verts.map(v => [v[0], v[1]] as [number, number]),
+            }
+            this.#writeFaceSelection(extrude.id, faceIndex, 0, 0)
+            const selData = new Uint32Array(1024)
+            selData[FACE_HIGHLIGHT_ID] = 1
+            this.#host.writeBuffers({ selectedObjectIds: selData.buffer })
+            this.#host.requestRender()
+            return true
+        }
+        if (this.#capHighlightOnly) {
+            const { node, isTop } = this.#capHighlightOnly
+            this.#capHighlightOnly = null
+            const compiledPosY = this.#host.hasCompiledPosY(node.id)
+                ? this.#host.getCompiledPosY(node.id)
+                : node.pos.y
+            this.#cap = {
+                node,
+                isTop,
+                originalH: node.h,
+                originalPosY: node.pos.y,
+                basePosYDelta: node.pos.y - compiledPosY,
+            }
+            const mode = isTop ? 2 : 3
+            this.#writeFaceSelection(node.id, 0, mode, 0)
+            const selData = new Uint32Array(1024)
+            selData[isTop ? FACE_HIGHLIGHT_TOP : FACE_HIGHLIGHT_BOTTOM] = 1
+            this.#host.writeBuffers({ selectedObjectIds: selData.buffer })
+            this.#host.requestRender()
+            return true
+        }
+        return false
+    }
+
     /** Deselect any active face or cap highlight. */
     deselect(): void {
         if (!this.#face && !this.#cap && !this.#capHighlightOnly && !this.#sideHighlightOnly && !this.#primitiveHighlightOnly) return
@@ -406,8 +486,8 @@ export class PushPullController {
             }
         }
 
-        // Deselect after completing the drag
-        this.deselect()
+        // Drop back to highlight-only so the surface stays highlighted while shift is held
+        this.dropToHighlight()
         return true
     }
 
@@ -590,10 +670,13 @@ export class PushPullController {
             const newPosY = cap.isTop
                 ? cap.originalPosY + delta * 0.5
                 : cap.originalPosY - delta * 0.5
+            cap.node.h = newH
+            cap.node.pos.y = newPosY
             this.#onCapComplete?.(cap.node.id, newH, newPosY)
         }
 
-        this.deselect()
+        // Drop back to highlight-only so the surface stays highlighted while shift is held
+        this.dropToHighlight()
         return true
     }
 

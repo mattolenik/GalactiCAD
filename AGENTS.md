@@ -100,6 +100,9 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Camera hotkeys 2, 4, 6: derive from 1, 3, 5 by 180° rotation to avoid vertical flip — 2=1×R_Y, 4=3×R_Z, 6=5×R_Y.
 - External-change conflict: compare disk to `lastWritten`, not editor content, when deciding whether to show "modified externally" dialog.
 - Async pick (Cmd/Ctrl+drag): use drag session ID so stale pick results do not apply to a new drag session.
+- GPU `nodeParams`/`polygonVertices` buffer writes in `render-worker-core.mts` must be deferred until after the new pipeline is swapped in (`this.#pipeline = pipeline`), otherwise the old shader renders with reset params causing a visual snap.
+- Push/pull activation: shift-hold on a selected surface (not double-click). `dropToHighlight()` must NOT call `onDeselect` — it overwrites the GPU face-highlight buffers. After cap drag completion, update `node.h`/`node.pos.y` on the stored reference before `dropToHighlight` so subsequent drags don't snap back.
+- Click events on the canvas must be suppressed (`stopImmediatePropagation` in capture phase) while push/pull has any face state, to prevent CameraController's click handler from toggling selection via shift-click.
 
 ## Building and Linting
 

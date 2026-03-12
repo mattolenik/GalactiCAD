@@ -1044,6 +1044,8 @@ class App {
         duplicateItem.innerHTML = "Duplicate"
         const deleteItem = document.createElement("span")
         deleteItem.innerHTML = "Delete"
+        const settingsItem = document.createElement("span")
+        settingsItem.innerHTML = "Settings"
 
         const menuItems: Array<{ element: HTMLElement; action: () => void }> = [
             { element: openModelItem, action: () => void this.#handleOpenModel() },
@@ -1055,6 +1057,7 @@ class App {
             { element: renameItem, action: () => void this.#tabs.renameCurrentTab() },
             { element: duplicateItem, action: () => void this.#tabs.duplicateCurrentTab() },
             { element: deleteItem, action: () => this.#tabs.deleteCurrentTab() },
+            { element: settingsItem, action: () => void this.#showSettingsModal() },
         ]
         const menuButton = new MenuButton(menuItems, {
             getClosedDocuments: () => this.#tabs.getClosedDocumentNames(),
@@ -1092,6 +1095,16 @@ class App {
         } else {
             await this.#tabs.closeAllTabsOrPrompt()
         }
+    }
+
+    async #showSettingsModal(): Promise<void> {
+        const { SettingsModal } = await import("./components/settings-modal.mjs")
+        const initialMode = this.#settings.getGlobal().preview.cameraRotationMethod ?? "rounded_arcball"
+        const modal = new SettingsModal(initialMode, method => {
+            this.#settings.updateGlobal({ preview: { cameraRotationMethod: method } })
+            this.renderer?.controls.setRotationMethod(method)
+        })
+        await modal.show()
     }
 
     async #handleSave(): Promise<void> {

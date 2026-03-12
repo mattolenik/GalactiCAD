@@ -31,8 +31,10 @@ export interface DocumentSettings {
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 
+export type CameraRotationMethod = "rounded_arcball" | "azel"
+
 export interface GlobalSettings {
-    preview: { movementScale: number; selectionMode: SelectionMode }
+    preview: { movementScale: number; selectionMode: SelectionMode; cameraRotationMethod: CameraRotationMethod }
     meshViewer: { translucentFaces: boolean; wireframe: boolean }
     app: { meshViewerEnabled: boolean; devToolsEnabled: boolean; showFps: boolean; meshSimplifyOnExport: boolean; diskSyncIntervalSeconds: number }
     layout: LayoutSettings
@@ -60,7 +62,7 @@ function defaultDocSettings(): DocumentSettings {
 
 function defaultGlobalSettings(): GlobalSettings {
     return {
-        preview: { movementScale: 0.5, selectionMode: "object" },
+        preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
         meshViewer: { translucentFaces: false, wireframe: false },
         app: { meshViewerEnabled: false, devToolsEnabled: false, showFps: true, meshSimplifyOnExport: true, diskSyncIntervalSeconds: 30 },
         layout: defaultLayout(),
@@ -253,7 +255,6 @@ export class SettingsManager {
             try {
                 const parsed = row.value as Partial<GlobalSettings>
                 const preview = { ...def.preview, ...parsed.preview }
-                if ((preview.selectionMode as string) === "contour") preview.selectionMode = "object"
                 const app = { ...def.app, ...parsed.app }
                 if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true

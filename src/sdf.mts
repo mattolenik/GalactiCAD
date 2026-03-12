@@ -770,6 +770,25 @@ export class SDFRenderer {
         this.#controls.resetView()
     }
 
+    setViewFront(): void {
+        this.#controls.setViewFront()
+    }
+    setViewBack(): void {
+        this.#controls.setViewBack()
+    }
+    setViewRight(): void {
+        this.#controls.setViewRight()
+    }
+    setViewLeft(): void {
+        this.#controls.setViewLeft()
+    }
+    setViewTop(): void {
+        this.#controls.setViewTop()
+    }
+    setViewBottom(): void {
+        this.#controls.setViewBottom()
+    }
+
     /** Current render resolution (device-pixel-scaled). Used for benchmark viewport. */
     get renderSize(): { width: number; height: number } {
         return { width: this.#fullWidth || 800, height: this.#fullHeight || 600 }

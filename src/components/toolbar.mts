@@ -1,4 +1,5 @@
 import { __fg_color, __preview_bg, __toolbar_height } from "../style/style.mjs"
+import { DropdownMenu } from "./dropdown-menu.mjs"
 
 export class ToolbarCheckbox {
     #checkbox: HTMLInputElement
@@ -280,6 +281,16 @@ export class Toolbar extends HTMLElement {
                 white-space: nowrap;
                 border: 0;
             }
+            .dropdown-btn-wrapper {
+                position: relative;
+                display: flex;
+                align-items: center;
+            }
+            .dropdown-btn-wrapper .dropdown-chevron {
+                font-size: 8px;
+                margin-left: 2px;
+                opacity: 0.7;
+            }
         `
         shadow.appendChild(style)
 
@@ -314,6 +325,54 @@ export class Toolbar extends HTMLElement {
         const spacer = document.createElement("div")
         spacer.style.flex = "1"
         this.#container.appendChild(spacer)
+    }
+
+    addDropdownButton(
+        icon: string,
+        label: string,
+        items: Array<
+            | { label: string; shortcut?: string; icon?: string; action: () => void }
+            | { type: "separator" }
+        >
+    ): HTMLElement {
+        const wrapper = document.createElement("div")
+        wrapper.classList.add("dropdown-btn-wrapper")
+
+        const button = document.createElement("button")
+        button.classList.add("icon-btn")
+        button.title = label
+        button.setAttribute("aria-label", label)
+        button.innerHTML = icon + '<span class="dropdown-chevron">▼</span>'
+        wrapper.appendChild(button)
+
+        const dropdown = new DropdownMenu()
+        wrapper.appendChild(dropdown)
+
+        button.addEventListener("click", (e) => {
+            e.stopPropagation()
+            if (dropdown.visible) {
+                dropdown.hide()
+                return
+            }
+            dropdown.clear()
+            for (const item of items) {
+                if ("type" in item && item.type === "separator") {
+                    dropdown.appendSeparator()
+                } else {
+                    const actionItem = item as { label: string; shortcut?: string; icon?: string; action: () => void }
+                    const displayLabel = actionItem.shortcut ? `${actionItem.label} (${actionItem.shortcut})` : actionItem.label
+                    if (actionItem.icon) {
+                        dropdown.appendDocItemWithIcon(displayLabel, actionItem.icon, actionItem.action)
+                    } else {
+                        dropdown.appendDocItem(displayLabel, actionItem.action)
+                    }
+                }
+            }
+            dropdown.show(button)
+        })
+
+        this.#container.appendChild(wrapper)
+        return wrapper
     }
 }
 

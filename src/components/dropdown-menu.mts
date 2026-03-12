@@ -71,6 +71,25 @@ export class DropdownMenu extends HTMLElement {
                 font-size: 17px;
             }
 
+            .menu li.doc-item.doc-item-with-icon {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .menu li.doc-item .doc-item-icon {
+                flex-shrink: 0;
+                width: 18px;
+                height: 18px;
+                opacity: 0.85;
+            }
+
+            .menu li.doc-item .doc-item-icon svg {
+                width: 100%;
+                height: 100%;
+                display: block;
+            }
+
             .menu li.separator {
                 cursor: default;
                 height: 1px;
@@ -114,9 +133,11 @@ export class DropdownMenu extends HTMLElement {
     }
 
     #onDocumentClick = (e: MouseEvent) => {
-        const target = e.target as Node
-        if (this.contains(target)) return
-        if (this.#anchor?.contains(target)) return
+        // Use composedPath() so we see the real target inside shadow DOM (event.target is retargeted to shadow host)
+        const path = e.composedPath() as EventTarget[]
+        const isNode = (n: EventTarget): n is Node => n instanceof Node
+        if (path.some(n => isNode(n) && (n === this || this.contains(n)))) return
+        if (this.#anchor && path.some(n => isNode(n) && (n === this.#anchor || this.#anchor!.contains(n)))) return
         this.hide()
     }
 
@@ -154,6 +175,23 @@ export class DropdownMenu extends HTMLElement {
         li.classList.add("doc-item")
         if (className) li.classList.add(className)
         li.textContent = label
+        li.onclick = () => {
+            action()
+            this.hide()
+        }
+        this.#menuContainer.appendChild(li)
+    }
+
+    appendDocItemWithIcon(label: string, iconSvg: string, action: () => void, className?: string) {
+        const li = document.createElement("li")
+        li.classList.add("doc-item", "doc-item-with-icon")
+        if (className) li.classList.add(className)
+        const iconSpan = document.createElement("span")
+        iconSpan.classList.add("doc-item-icon")
+        iconSpan.innerHTML = iconSvg
+        const labelSpan = document.createElement("span")
+        labelSpan.textContent = label
+        li.append(iconSpan, labelSpan)
         li.onclick = () => {
             action()
             this.hide()

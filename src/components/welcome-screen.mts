@@ -572,7 +572,7 @@ export class WelcomeScreen extends HTMLElement {
         actions.appendChild(createNew)
 
         const openModel = document.createElement("button")
-        openModel.textContent = "Open Model"
+        openModel.textContent = "Open File"
         openModel.disabled = !isFileSystemAccessAvailable()
         openModel.onclick = () => void this.#callbacks.onOpenModel()
         actions.appendChild(openModel)

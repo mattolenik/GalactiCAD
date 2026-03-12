@@ -25,6 +25,12 @@ import seamIcon from "./assets/selection-seam.svg"
 import edgeIcon from "./assets/selection-edge.svg"
 import faceIcon from "./assets/selection-face.svg"
 import autoIcon from "./assets/selection-auto.svg"
+import cameraViewFrontIcon from "./assets/camera-view-front.svg"
+import cameraViewBackIcon from "./assets/camera-view-back.svg"
+import cameraViewRightIcon from "./assets/camera-view-right.svg"
+import cameraViewLeftIcon from "./assets/camera-view-left.svg"
+import cameraViewTopIcon from "./assets/camera-view-top.svg"
+import cameraViewBottomIcon from "./assets/camera-view-bottom.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
 import { addContextSubmenu } from "./editor/context-menu-submenu.mjs"
 import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
@@ -762,9 +768,16 @@ class App {
         const toolbar = new Toolbar()
 
         const resetCameraIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="8" width="20" height="12" rx="2"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><circle cx="12" cy="14" r="2.5"/><line x1="12" y1="11.5" x2="12" y2="8"/></svg>`
-        const resetCameraBtn = toolbar.addButton("", "Reset camera")
-        resetCameraBtn.html = resetCameraIcon
-        resetCameraBtn.onClick = () => this.renderer.resetCamera()
+        toolbar.addDropdownButton(resetCameraIcon, "Camera views", [
+            { label: "Front", shortcut: "1", icon: cameraViewFrontIcon, action: () => this.renderer.setViewFront() },
+            { label: "Back", shortcut: "2", icon: cameraViewBackIcon, action: () => this.renderer.setViewBack() },
+            { label: "Right", shortcut: "3", icon: cameraViewRightIcon, action: () => this.renderer.setViewRight() },
+            { label: "Left", shortcut: "4", icon: cameraViewLeftIcon, action: () => this.renderer.setViewLeft() },
+            { label: "Top", shortcut: "5", icon: cameraViewTopIcon, action: () => this.renderer.setViewTop() },
+            { label: "Bottom", shortcut: "6", icon: cameraViewBottomIcon, action: () => this.renderer.setViewBottom() },
+            { type: "separator" },
+            { label: "Reset camera", icon: resetCameraIcon, action: () => this.renderer.resetCamera() },
+        ])
 
         toolbar.addSpacer()
 
@@ -1014,7 +1027,7 @@ class App {
 
     #wireMenu(menu: HTMLElement) {
         const openModelItem = document.createElement("span")
-        openModelItem.innerHTML = "Open Model"
+        openModelItem.innerHTML = "Open File"
         const openFolderItem = document.createElement("span")
         openFolderItem.innerHTML = "Open Folder"
         const newItem = document.createElement("span")

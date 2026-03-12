@@ -192,33 +192,63 @@ export class CameraController {
 
     #onKeyPress(e: KeyboardEvent) {
         if (this.#lastFocused?.id !== this.#host.id) return
-        const R180_X = Quaternion.fromAxisAngle([1, 0, 0], Math.PI)
-        const R180_Y = Quaternion.fromAxisAngle([0, 1, 0], Math.PI)
-        const R180_Z = Quaternion.fromAxisAngle([0, 0, 1], Math.PI)
         if (e.code === "Digit1") {
-            this.#rotation = Quaternion.fromEuler(-Math.PI, -Math.PI, 0, "YXZ")
+            this.setViewFront()
         } else if (e.code === "Digit2") {
-            // Back: same as front (1) rotated 180° around Y — no vertical flip
-            this.#rotation = Quaternion.fromEuler(-Math.PI, -Math.PI, 0, "YXZ").mul(R180_Y)
+            this.setViewBack()
         } else if (e.code === "Digit3") {
-            this.#rotation = Quaternion.fromEuler(0, Math.PI / 2, 0, "YXZ")
+            this.setViewRight()
         } else if (e.code === "Digit4") {
-            // Left: same as right (3) rotated 180° around Z — no vertical flip
-            this.#rotation = Quaternion.fromEuler(0, Math.PI / 2, 0, "YXZ").mul(R180_Z)
+            this.setViewLeft()
         } else if (e.code === "Digit5") {
-            this.#rotation = Quaternion.fromEuler(-Math.PI / 2, Math.PI, 0, "YXZ")
+            this.setViewTop()
         } else if (e.code === "Digit6") {
-            // Bottom: same as top (5) rotated 180° around Y — no vertical flip
-            this.#rotation = Quaternion.fromEuler(-Math.PI / 2, Math.PI, 0, "YXZ").mul(R180_Y)
+            this.setViewBottom()
         } else if (e.code === "Backquote") {
-            this.#rotation = Quaternion.fromEuler(-Math.PI / 8, (5 / 4) * Math.PI, 0, "YXZ")
-            this.#cameraTranslation = new Vec3f()
+            this.resetView()
         } else {
             return
         }
         e.preventDefault()
+    }
+
+    setViewFront(): void {
+        this.#rotation = Quaternion.fromEuler(-Math.PI, -Math.PI, 0, "YXZ")
+        this.#applyViewPreset()
+    }
+
+    setViewBack(): void {
+        const R180_Y = Quaternion.fromAxisAngle([0, 1, 0], Math.PI)
+        this.#rotation = Quaternion.fromEuler(-Math.PI, -Math.PI, 0, "YXZ").mul(R180_Y)
+        this.#applyViewPreset()
+    }
+
+    setViewRight(): void {
+        this.#rotation = Quaternion.fromEuler(0, Math.PI / 2, 0, "YXZ")
+        this.#applyViewPreset()
+    }
+
+    setViewLeft(): void {
+        const R180_Z = Quaternion.fromAxisAngle([0, 0, 1], Math.PI)
+        this.#rotation = Quaternion.fromEuler(0, Math.PI / 2, 0, "YXZ").mul(R180_Z)
+        this.#applyViewPreset()
+    }
+
+    setViewTop(): void {
+        this.#rotation = Quaternion.fromEuler(-Math.PI / 2, Math.PI, 0, "YXZ")
+        this.#applyViewPreset()
+    }
+
+    setViewBottom(): void {
+        const R180_Y = Quaternion.fromAxisAngle([0, 1, 0], Math.PI)
+        this.#rotation = Quaternion.fromEuler(-Math.PI / 2, Math.PI, 0, "YXZ").mul(R180_Y)
+        this.#applyViewPreset()
+    }
+
+    #applyViewPreset(): void {
         this.#syncTrackball()
         this.#updateTransforms()
+        this.#saveCameraState()
     }
 
     #onClick(e: MouseEvent) {

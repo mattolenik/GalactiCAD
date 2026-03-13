@@ -1,3 +1,4 @@
+import { execSync } from "child_process"
 import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
@@ -33,7 +34,7 @@ const Options = {
 
 const WatchOptions = {
     ignored: [".cursor", ".github", ".DS_Store", ".git", "node_modules", "assets", Options.outDir],
-    causesRebuild: [/^build\//, /\.lock$/, /tsconfig\.json$/],
+    causesRebuild: [/^build\//, /\.lock$/, /tsconfig\.json$/, /package\.json$/],
 }
 
 const ServerOptions = {
@@ -128,16 +129,20 @@ async function main() {
             async (event, path) => {
                 change$.next({ event, path })
             },
-            async (event, path) => {
+            async (event, eventPath) => {
                 if (!process.execve) {
                     throw new Error("rebuild only supported on Node v23.11.0 or higher")
                 }
-                const tsxPath = process.env.TSX ?? "./node_modules/.bin/tsx"
-                log(`REBUILD triggered by ${event}: ${path}`)
+                // const tsxPath = process.env.TSX ?? "./node_modules/.bin/tsx"
+                log(`REBUILD triggered by ${event}: ${eventPath}`)
+                const makePath = execSync("which make", { encoding: "utf8" }).trim()
+                const args = [makePath, "serve"]
+                log(`Restarting build with ${args.join(" ")}`)
+                process.execve(makePath, args, process.env)
                 // log(`Cleaning ${Options.outDir}`)
                 // await rm(Options.outDir, { recursive: true, force: true })
-                const args = [tsxPath, "--disable-warning=ExperimentalWarning"].concat(process.argv.slice(1))
-                process.execve(tsxPath, args, process.env)
+                // const args = [tsxPath, "--disable-warning=ExperimentalWarning"].concat(process.argv.slice(1))
+                // process.execve(tsxPath, args, process.env)
             }
         )
 

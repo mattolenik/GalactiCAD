@@ -72,7 +72,7 @@ export class SDFRenderer {
     #hoveredEdges: SelectedEdgePayload[] = []
     #compiledPosY = new Map<number, number>()
     #getInteractionRect: (() => DOMRect) | null = null
-    #pushPullNodes: Map<number, { type: "extrude"; id: number; pos: { x: number; y: number; z: number }; h: number; child: { vertices: [number, number][]; bufferOffset: number }; twistDegrees?: number } | { type: "loft"; id: number; pos: { x: number; y: number; z: number }; h: number; profiles: { vertices: [number, number][]; bufferOffset: number }[] } | { type: "polygon2d"; id: number; vertices: [number, number][]; bufferOffset: number }> = new Map()
+    #pushPullNodes: Map<number, { type: "extrude"; id: number; pos: { x: number; y: number; z: number }; h: number; child: { vertices: [number, number][]; bufferOffset: number }; twistDegrees?: number; capTopId?: number; capBottomId?: number } | { type: "loft"; id: number; pos: { x: number; y: number; z: number }; h: number; profiles: { vertices: [number, number][]; bufferOffset: number }[] } | { type: "polygon2d"; id: number; vertices: [number, number][]; bufferOffset: number } | { type: "virtualCap"; id: number; parentId: number; isTop: boolean }> = new Map()
     #childrenByParent = new Map<number, number[]>()
     #needsRender = true
     #started = false
@@ -515,6 +515,12 @@ export class SDFRenderer {
     }
 
     #findCapParent(polygonId: number): { node: { id: number; pos: { x: number; y: number; z: number }; h: number }; isTop: boolean } | null {
+        const vcap = this.#pushPullNodes.get(polygonId)
+        if (vcap?.type === "virtualCap") {
+            const node = this.#pushPullNodes.get(vcap.parentId)
+            if (node && (node.type === "extrude" || node.type === "loft")) return { node, isTop: vcap.isTop }
+            return null
+        }
         for (const [parentId, children] of this.#childrenByParent) {
             const idx = children.indexOf(polygonId)
             if (idx < 0) continue
@@ -539,11 +545,10 @@ export class SDFRenderer {
             this.#pushSelectionInfo()
             return true
         }
-        if (node.type === "polygon2d") {
+        if (node.type === "virtualCap" || node.type === "polygon2d") {
             const parent = this.#findCapParent(nodeId)
             if (parent) {
-                const localY = hitVec.y - parent.node.pos.y
-                const isTop = localY >= 0
+                const isTop = node.type === "virtualCap" ? node.isTop : (hitVec.y - parent.node.pos.y) >= 0
                 this.#pushPullController.selectCapFace(parent.node as unknown as Parameters<PushPullController["selectCapFace"]>[0], isTop)
                 this.#pushSelectionInfo()
                 return true
@@ -575,11 +580,10 @@ export class SDFRenderer {
             this.#pushSelectionInfo()
             return true
         }
-        if (node.type === "polygon2d") {
+        if (node.type === "virtualCap" || node.type === "polygon2d") {
             const parent = this.#findCapParent(nodeId)
             if (parent) {
-                const localY = hitVec.y - parent.node.pos.y
-                const isTop = localY >= 0
+                const isTop = node.type === "virtualCap" ? node.isTop : (hitVec.y - parent.node.pos.y) >= 0
                 this.#pushPullController.highlightCapFace(parent.node as unknown as Parameters<PushPullController["highlightCapFace"]>[0], isTop)
                 this.#pushSelectionInfo()
                 return true
@@ -626,6 +630,7 @@ export class SDFRenderer {
         this.#pushPullNodes.clear()
         this.#childrenByParent.clear()
         const polyById = new Map<number, { vertices: [number, number][]; bufferOffset: number }>()
+        const byId = new Map(serialized.map(s => [s.id, s]))
         for (const s of serialized) {
             this.#childrenByParent.set(s.id, s.children)
             if (s.shapeType === "polygon2d" && s.vertices && s.bufferOffset !== undefined && s.bufferOffset >= 0) {
@@ -636,12 +641,24 @@ export class SDFRenderer {
                 polyById.set(s.id, poly)
                 this.#pushPullNodes.set(s.id, { type: "polygon2d", id: s.id, vertices: poly.vertices, bufferOffset: poly.bufferOffset })
             }
+            if (s.isVirtualCap && s.capSide != null) {
+                const parentId = s.parentId
+                this.#pushPullNodes.set(s.id, { type: "virtualCap", id: s.id, parentId, isTop: s.capSide === "top" })
+            }
         }
         for (const s of serialized) {
-            if (s.shapeType === "extrude" && s.pos && s.children.length === 1) {
-                const poly = polyById.get(s.children[0])
+            if (s.shapeType === "extrude" && s.pos && s.children.length >= 1) {
+                const polygonId = s.children[0]
+                const poly = polyById.get(polygonId)
                 if (poly) {
-                    const child = { ...poly, id: s.children[0] }
+                    const child = { ...poly, id: polygonId }
+                    let capTopId: number | undefined
+                    let capBottomId: number | undefined
+                    for (let i = 1; i < s.children.length; i++) {
+                        const c = byId.get(s.children[i])
+                        if (c?.isVirtualCap && c.capSide === "top") capTopId = s.children[i]
+                        else if (c?.isVirtualCap && c.capSide === "bottom") capBottomId = s.children[i]
+                    }
                     this.#pushPullNodes.set(s.id, {
                         type: "extrude",
                         id: s.id,
@@ -649,6 +666,8 @@ export class SDFRenderer {
                         h: s.h ?? 1,
                         child,
                         twistDegrees: s.twistDegrees,
+                        capTopId,
+                        capBottomId,
                     })
                 }
             } else if (s.shapeType === "loft" && s.pos && s.children.length >= 2) {

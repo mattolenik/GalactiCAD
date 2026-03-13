@@ -6,7 +6,7 @@
 import type { Node } from "./scene/base.mjs"
 import type { SerializedNode } from "./render-worker-protocol.mjs"
 import { BinaryOperator, UnaryOperator } from "./scene/base.mjs"
-import { Box, Cone, Cylinder, Extrude, Loft, PlaneNode, Polygon2D } from "./scene/scene.mjs"
+import { Box, Cone, Cylinder, Extrude, Loft, PlaneNode, Polygon2D, VirtualCapNode } from "./scene/scene.mjs"
 
 function getChildren(node: Node): Node[] {
     if (node instanceof BinaryOperator) {
@@ -16,7 +16,7 @@ function getChildren(node: Node): Node[] {
         return [node.arg]
     }
     if (node instanceof Extrude) {
-        return [node.child]
+        return [node.child, node.capTop, node.capBottom]
     }
     if (node instanceof Loft) {
         return [...node.profiles]
@@ -71,6 +71,11 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
 
     if (node instanceof Extrude) {
         s.twistDegrees = node.twistDegrees
+    }
+
+    if (node instanceof VirtualCapNode) {
+        s.isVirtualCap = true
+        s.capSide = node.isTop ? "top" : "bottom"
     }
 
     return s

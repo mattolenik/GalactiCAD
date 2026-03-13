@@ -41,6 +41,10 @@ export interface SerializedNode {
     twistDegrees?: number
     /** Polygon2D buffer offset in the shared vertex buffer (bytes / 8). */
     bufferOffset?: number
+    /** True if this is a virtual cap node (Extrude top/bottom). */
+    isVirtualCap?: boolean
+    /** For virtual cap nodes: which cap. */
+    capSide?: "top" | "bottom"
 }
 
 /** Edge hit data from GPU readback. */

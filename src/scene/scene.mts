@@ -29,9 +29,10 @@ import { Loft, loft } from "./primitives/loft.mjs"
 import { PlaneNode, plane } from "./primitives/plane.mjs"
 import { Polygon2D, polygon2d } from "./primitives/polygon2d.mjs"
 import { Sphere, sphere } from "./primitives/sphere.mjs"
+import { VirtualCapNode } from "./primitives/virtual-cap.mjs"
 import { Torus, torus } from "./primitives/torus.mjs"
 
-export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, Rotate, Seam, Shell, Sphere, Subtract, Taper, Tongue, Torus, Twist, UnaryOperator, Union, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, rotate, seam, shell, sphere, subtract, styleInfo, taper, tongue, torus, twist, union }
+export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, Rotate, Seam, Shell, Sphere, Subtract, Taper, Tongue, Torus, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, rotate, seam, shell, sphere, subtract, styleInfo, taper, tongue, torus, twist, union }
 export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
 
 /** IDs 1022–1023 reserved for face highlight (cap selection). Scene nodes use 0–1021. */

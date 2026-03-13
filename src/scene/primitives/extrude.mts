@@ -1,6 +1,7 @@
 import { Node, CompileResult, decapitalize, fluent, DEFAULT_POS } from "../base.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
+import { VirtualCapNode } from "./virtual-cap.mjs"
 
 /**
  * Extrudes a 2D SDF child along the Y axis to produce a 3D solid.
@@ -11,11 +12,15 @@ export class Extrude extends Node {
     h: number
     twistDegrees: number
     child: Polygon2D
+    readonly capTop: VirtualCapNode
+    readonly capBottom: VirtualCapNode
 
     constructor(child: Polygon2D, opts: { h: number; t?: number })
     constructor(pos: Vec3, child: Polygon2D, opts: { h: number; t?: number })
     constructor(...args: any[]) {
         super()
+        this.capTop = new VirtualCapNode(true)
+        this.capBottom = new VirtualCapNode(false)
         if (args[0] instanceof Polygon2D) {
             this.pos = new Vec3f()
             this.child = args[0]
@@ -40,10 +45,14 @@ export class Extrude extends Node {
         super.build()
         this.child.root = this.root
         this.child.build()
+        this.capTop.root = this.root
+        this.capTop.build()
+        this.capBottom.root = this.root
+        this.capBottom.build()
     }
 
     override getAllDescendantIds(): number[] {
-        return [this.id, ...this.child.getAllDescendantIds()]
+        return [this.id, ...this.child.getAllDescendantIds(), this.capTop.id, this.capBottom.id]
     }
 
     get wgslFieldFuncName(): string { return `fExtrude_${this.id}_field` }
@@ -53,7 +62,8 @@ export class Extrude extends Node {
     override compileAux(): string {
         const childFunc = this.child.wgslFuncName
         const combinedFunc = this.child.wgslCombinedFuncName
-        const childId = this.child.id
+        const capTopId = this.capTop.id
+        const capBottomId = this.capBottom.id
         const N = this.child.vertices.length
         const BASE = this.child.bufferOffset
         const hasTwist = this.twistDegrees !== 0
@@ -138,7 +148,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
-    var resultId = select(${childId}u, id, onSide);
+    let capId = select(${capBottomId}u, ${capTopId}u, capY > 0.0);
+    var resultId = select(capId, id, onSide);
     if (faceSelection.nodeId == id) {
         if (onSide && faceSelection.mode == 0u) {
             let edge = u32(combined.y);
@@ -198,7 +209,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, 0.0, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
-    var resultId = select(${childId}u, id, onSide);
+    let capId = select(${capBottomId}u, ${capTopId}u, capY > 0.0);
+    var resultId = select(capId, id, onSide);
     if (!onSide && faceSelection.nodeId == id && faceSelection.mode >= 2u) {
         let isTopFace = capY > 0.0;
         if (faceSelection.mode == 2u && isTopFace) {

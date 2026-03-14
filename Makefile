@@ -22,7 +22,7 @@ setup:
 .PHONY: editor
 editor:
 	@mkdir -p $(DIST)/vs
-	cp -af node_modules/monaco-editor/min/vs/editor $(DIST)/vs/
+	cp -af node_modules/monaco-editor/min/vs $(DIST)/
 
 .PHONY: build
 build: check editor
@@ -41,7 +41,7 @@ serve: editor
 	$(BUILD) -w $(BUILD_FLAGS)
 
 .PHONY: start
-start:
+start: editor
 	nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
 	@echo "View logs with: make logs"
 

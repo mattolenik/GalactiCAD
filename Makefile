@@ -33,7 +33,7 @@ check: setup
 	$(TSC) --noEmit
 
 .PHONY: serve
-serve: check
+serve: build
 	$(BUILD) -w $(BUILD_FLAGS)
 
 .PHONY: start

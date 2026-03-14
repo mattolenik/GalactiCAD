@@ -19,9 +19,13 @@ setup:
 	@mkdir -p $(DIST)
 	pnpm install
 
-.PHONY: build
-build: check
+.PHONY: editor
+editor:
+	@mkdir -p $(DIST)/vs
 	cp -af node_modules/monaco-editor/min/vs/editor $(DIST)/vs/
+
+.PHONY: build
+build: check editor
 	$(BUILD) $(BUILD_FLAGS)
 
 .PHONY: test
@@ -33,7 +37,7 @@ check: setup
 	$(TSC) --noEmit
 
 .PHONY: serve
-serve: build
+serve: editor
 	$(BUILD) -w $(BUILD_FLAGS)
 
 .PHONY: start

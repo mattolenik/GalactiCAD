@@ -94,7 +94,7 @@ async function build() {
             },
             plugins: Options.plugins,
             sourcemap: !Options.isProd,
-            target: "esnext",
+            target: "es2024",
         })
         const elapsed = performance.now() - startTime
         log(`🌱🐢 ${elapsed.toFixed(2)}ms`)

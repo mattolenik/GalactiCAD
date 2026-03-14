@@ -43,9 +43,9 @@ const SELECTION_MODE_EDGE: u32 = 2u;
 const SELECTION_MODE_FACE: u32 = 3u;
 const SELECTION_MODE_AUTO: u32 = 4u;
 struct ViewSettings {
-    xrayMode: u32,        // 0 = normal, 1 = xray/translucent
-    refinementSteps: u32, // binary search refinement iterations (e.g. 4 during movement, 8 when idle)
-    beamEnabled: u32,     // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
+    xrayMode: u32,       // 0 = normal, 1 = xray/translucent
+    _pad: u32,           // unused (was refinementSteps)
+    beamEnabled: u32,    // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
     selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=auto
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
@@ -461,7 +461,6 @@ fn sceneSDF_fast(p: vec3f) -> vec2f {
 // projecting to HitData; it does not persist into fragmentMain's register file.
 fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
     var t: f32 = t_start;
-    var lastStep: f32 = 0.0;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: only (d, g), no normals/IDs
@@ -469,25 +468,8 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
         // when |nabla f| < 1 (smooth CSG), stepping by raw d overshoots.
         let step = sr.x * min(sr.y, 1.0);
         if (sr.x < SURF_DIST) {
-            // Only refine hit when needed: large step (CSG seam) or blend region (g < 1)
-            if (lastStep > SURF_DIST * 10.0 || sr.y < 1.0) {
-                // Refine hit to reduce view-dependent jitter at CSG seams.
-                var lo = max(0.0, t - lastStep);
-                var hi = t;
-                for (var j: u32 = 0; j < viewSettings.refinementSteps; j = j + 1) {
-                    let mid = 0.5 * (lo + hi);
-                    let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
-                    if (md > 0.0) {
-                        lo = mid;
-                    } else {
-                        hi = mid;
-                    }
-                }
-                return toHitData(hi, sceneSDF(origin + hi * dir));
-            }
             return toHitData(t, sceneSDF(origin + t * dir));
         }
-        lastStep = step;
         t = t + step;
         if (t >= MAX_DIST) {
             break;
@@ -524,7 +506,6 @@ fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
 // full SDFResult is only transiently alive during the toHitData() projection.
 fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
     var t: f32 = startT + 0.5;  // Start past the entry surface
-    var lastStep: f32 = 0.0;
 
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
@@ -535,25 +516,9 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
 
         // Found an exit surface (going from inside to outside)
         if (sr.x > SURF_DIST) {
-            // Only refine exit point when needed: large step (CSG seam) or blend region (g < 1)
-            if (lastStep > SURF_DIST * 10.0 || sr.y < 1.0) {
-                var lo = max(startT, t - lastStep);
-                var hi = t;
-                for (var j: u32 = 0; j < viewSettings.refinementSteps; j = j + 1) {
-                    let mid = 0.5 * (lo + hi);
-                    let md = sceneSDF_fast(origin + mid * dir).x;  // Fast: only need d
-                    if (md < 0.0) {
-                        lo = mid;
-                    } else {
-                        hi = mid;
-                    }
-                }
-                return toHitData(hi, sceneSDF(origin + hi * dir));
-            }
             return toHitData(t, sceneSDF(origin + t * dir));
         }
 
-        lastStep = step;
         t = t + step;
         if (t >= MAX_DIST) {
             break;

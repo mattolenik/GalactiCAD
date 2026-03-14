@@ -343,9 +343,8 @@ export class RenderWorkerCore {
         this.#viewCenterBuf[3] = 0
         this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 144, this.#viewCenterBuf)
 
-        const refinementSteps = resolutionScale < 1.0 ? 6 : 8
         this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
-        this.#viewSettingsBuf[1] = refinementSteps
+        this.#viewSettingsBuf[1] = 0  // unused (was refinementSteps)
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
         this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, this.#viewSettingsBuf)

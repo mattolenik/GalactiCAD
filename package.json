@@ -6,7 +6,8 @@
     "author": "Matthew Olenik",
     "license": "AGPL-3.0-only",
     "scripts": {
-        "serve": "make serve",
+        "start": "make start",
+        "stop": "make stop",
         "build": "make build",
         "test": "make test"
     },

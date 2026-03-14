@@ -2,9 +2,10 @@ import { execSync } from "child_process"
 import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
+import fs from "fs/promises"
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
-import { DevServer } from "./devserver.mjs"
+import { DevServer, ephemeralPort } from "./devserver.mjs"
 import { fileListerPlugin } from "./file-lister.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
 import staticBundler from "./static-bundler.mjs"
@@ -41,6 +42,36 @@ const ServerOptions = {
     port: parseInt(process.env.PORT || "6900", 10),
 }
 
+const RUN_FILE = process.env.RUN_FILE ?? ".devserver.run"
+
+interface RunFileData {
+    pid: number
+    port: number
+    lr_port: number
+}
+
+async function checkRunFile(): Promise<boolean> {
+    try {
+        const data = JSON.parse(await fs.readFile(RUN_FILE, "utf8")) as RunFileData
+        const { pid, port } = data
+        try {
+            process.kill(pid, 0)
+        } catch {
+            return false
+        }
+        log("An existing server is already running.")
+        log(`  PID: ${pid}`)
+        log(`  http://localhost:${port}`)
+        return true
+    } catch {
+        return false
+    }
+}
+
+async function writeRunFile(data: RunFileData): Promise<void> {
+    await fs.writeFile(RUN_FILE, JSON.stringify(data, null, 2))
+}
+
 async function build() {
     const startTime = performance.now()
     try {
@@ -63,7 +94,7 @@ async function build() {
             },
             plugins: Options.plugins,
             sourcemap: !Options.isProd,
-            target: "es2023",
+            target: "esnext",
         })
         const elapsed = performance.now() - startTime
         log(`🌱🐢 ${elapsed.toFixed(2)}ms`)
@@ -115,7 +146,13 @@ async function main() {
 
     if (process.argv.includes("-w")) {
         log("Watching for changes")
-        let server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err)
+        if (await checkRunFile()) {
+            process.exit(0)
+        }
+        const lrPort = parseInt(process.env.LRPORT ?? "0", 10) || ephemeralPort()
+        process.env.LRPORT = lrPort.toString()
+        let server = await DevServer.create(Options.outDir, ServerOptions.port, lrPort, "index.html", log, err)
+        await writeRunFile({ pid: process.pid, port: server.port, lr_port: lrPort })
         const change$ = new Subject<{ event: EventName; path: string }>()
         change$
             .pipe(debounceTime(300))
@@ -146,13 +183,8 @@ async function main() {
             }
         )
 
-        const shutdown = async () => {
-            await watcher.close()
-            server.close()
-            process.exit(0)
-        }
-        process.on("SIGINT", shutdown)
-        process.on("SIGTERM", shutdown)
+        process.on("SIGINT", () => { log("SIGINT, shutting down."); process.exit(0) })
+        process.on("SIGTERM", () => { log("SIGTERM, shutting down."); process.exit(0) })
     }
 }
 

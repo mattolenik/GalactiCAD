@@ -4,3 +4,8 @@ dist/
 .DS_Store
 node_modules/
 .cursor/hooks/state/
+<<<<<<< Updated upstream
+.devserver.*
+=======
+.devserver.run
+>>>>>>> Stashed changes

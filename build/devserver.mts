@@ -16,15 +16,11 @@ export class DevServer {
     static async create(
         serveRoot: string,
         port: number,
+        liveReloadPort: number,
         indexFileName = "index.html",
         log = console.log,
         err = console.error
     ): Promise<DevServer> {
-        // Use an ephemeral port for live reload, but, store it in the environment
-        // so that upon rebuild (an execve call), the port can be reused, preventing
-        // the browser from having to refresh to get the new port.
-        const liveReloadPort = parseInt(process.env.LRPORT ?? "0") || ephemeralPort()
-        process.env.LRPORT = liveReloadPort.toString()
         const wsURL = `ws://localhost:${liveReloadPort}`
 
         const clientScript = `
@@ -67,7 +63,7 @@ export class DevServer {
     }
 }
 
-function ephemeralPort() {
+export function ephemeralPort() {
     return 49152 + Math.floor(Math.random() * (65535 - 49152))
 }
 

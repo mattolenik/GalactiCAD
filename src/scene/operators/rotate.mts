@@ -94,6 +94,24 @@ export class Rotate extends UnaryOperator {
             text: rotatedChildText,
         }
     }
+
+    override compileMid(indentLevel = 0): CompileResult {
+        const { fwd, inv } = this.getWgslMatrices()
+        const childResult = this.arg.compileMid(indentLevel)
+        const childText = childResult.text!
+
+        const invMat = this.matToWgsl(inv)
+        const fwdMat = this.matToWgsl(fwd)
+        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
+
+        const funcName = `Rotate${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return {
+            funcName,
+            varName,
+            text: `sdfRotateNormalMid(${rotatedChildText}, ${fwdMat})`,
+        }
+    }
 }
 
 export const rotate = fluent(function rotate(rot: Vec3, node: Node): Rotate {

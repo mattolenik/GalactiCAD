@@ -54,6 +54,15 @@ export class Box extends Node {
             text: `fBoxFast(p - ${this.pos.wgsl}, ${this.size.wgsl})`,
         }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Box${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return {
+            funcName,
+            varName,
+            text: `fBoxMid(p - ${this.pos.wgsl}, ${this.size.wgsl})`,
+        }
+    }
 
     @fluent shift(v: Vec3): this {
         this.pos = vec3(v)

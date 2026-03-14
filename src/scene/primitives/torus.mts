@@ -29,6 +29,11 @@ export class Torus extends Node {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fTorusFast(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Torus${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `fTorusMid(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr})` }
+    }
 
     @fluent smallRadius(sr: number): this {
         this.sr = sr

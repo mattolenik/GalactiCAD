@@ -23,7 +23,6 @@ const SURF_DIST: f32 = 0.001;
 struct SDFResult {
     d: f32,
     g: f32,
-    s: f32,
     id: u32,
     n: vec3<f32>,
     id2: u32,     // secondary ID for smooth blend color interpolation
@@ -33,19 +32,18 @@ struct SDFResult {
     seamOp: u32,  // 0=none, 1=union, 2=intersection, 3=difference
     seamGap: f32, // |dA - dB| near seam
     seamTangent: vec3f,
-    _seamPad: f32,
 }
 
-fn sdfR(d: f32, g: f32, s: f32, id: u32, n: vec3f) -> SDFResult {
-    return SDFResult(d, g, s, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0);
+fn sdfR(d: f32, g: f32, id: u32, n: vec3f) -> SDFResult {
+    return SDFResult(d, g, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0));
 }
 
 fn sdfTrue(d: f32, id: u32, n: vec3<f32>) -> SDFResult {
-    return SDFResult(d, 1.0, 1.0, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0);
+    return SDFResult(d, 1.0, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0));
 }
 
 fn sdfNeg(r: SDFResult) -> SDFResult {
-    return SDFResult(-r.d, r.g, -r.s, r.id, -r.n, r.id2, r.blend, r.seamA, r.seamB, r.seamOp, r.seamGap, r.seamTangent, r._seamPad);
+    return SDFResult(-r.d, r.g, r.id, -r.n, r.id2, r.blend, r.seamA, r.seamB, r.seamOp, r.seamGap, r.seamTangent);
 }
 
 fn bestSeam(a: SDFResult, b: SDFResult, outerGap: f32, outerOp: u32, outerTangent: vec3f) -> SDFResult {
@@ -81,10 +79,30 @@ fn applySeam(out: ptr<function, SDFResult>, seam: SDFResult) {
     (*out).seamTangent = seam.seamTangent;
 }
 
+// SDFResultMid: d, g, n only — no IDs, blend, or seam. Used by MDC for edge/vertex projection.
+struct SDFResultMid {
+    d: f32,
+    g: f32,
+    n: vec3f,
+}
+
+fn sdfRMid(d: f32, g: f32, n: vec3f) -> SDFResultMid {
+    return SDFResultMid(d, g, n);
+}
+
+fn sdfNegMid(r: SDFResultMid) -> SDFResultMid {
+    return SDFResultMid(-r.d, r.g, -r.n);
+}
+
+fn selectMid(falseVal: SDFResultMid, trueVal: SDFResultMid, cond: bool) -> SDFResultMid {
+    if (cond) { return trueVal; }
+    return falseVal;
+}
+
 //////////////////////////////
 //   LIGHTWEIGHT HIT DATA
 //
-// Strips fields unused in the fragment shading pipeline (d, g, s, _seamPad)
+// Strips fields unused in the fragment shading pipeline (d, g)
 // to reduce register pressure in fragmentMain.  Each raymarch call returns one
 // of these; holding two simultaneously (front + back hit) costs 26 scalars
 // instead of 54 with the full RaymarchHit{t, SDFResult}.
@@ -361,6 +379,167 @@ fn fBlobEx(pIn: vec3<f32>, id: u32) -> SDFResult {
     let nz = fBlob(pIn + vec3f(0.0, 0.0, eps)) - fBlob(pIn - vec3f(0.0, 0.0, eps));
     let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
     return sdfTrue(d, id, n);
+}
+
+////////////////////////////////////////
+//  MID PRIMITIVES (SDFResultMid: d, g, n only)
+////////////////////////////////////////
+
+fn fSphereMid(p: vec3<f32>, r: f32) -> SDFResultMid {
+    let d = length(p) - r;
+    let n = normalize(p);
+    return sdfRMid(d, 1.0, n);
+}
+
+fn fBoxMid(p: vec3<f32>, b: vec3<f32>) -> SDFResultMid {
+    let d = abs(p) - b;
+    let outside = max(d, vec3<f32>(0.0));
+    let outsideLen = length(outside);
+    var n = vec3<f32>(0.0, 0.0, 0.0);
+    if (outsideLen > 0.0) {
+        n = normalize(outside * sgnVec3(p));
+    } else {
+        if (d.x > d.y && d.x > d.z) {
+            n = vec3<f32>(sgn(p.x), 0.0, 0.0);
+        } else if (d.y > d.z) {
+            n = vec3<f32>(0.0, sgn(p.y), 0.0);
+        } else {
+            n = vec3<f32>(0.0, 0.0, sgn(p.z));
+        }
+    }
+    return sdfRMid(length(outside) + vmax3(min(d, vec3<f32>(0.0))), 1.0, n);
+}
+
+fn fCylinderMid(p: vec3<f32>, r: f32, height: f32) -> SDFResultMid {
+    let dRadial = length(p.xz) - r;
+    let dCap = abs(p.y) - height;
+    let d = max(dRadial, dCap);
+    let onBarrel = dRadial > dCap;
+    let nBarrel = safeNormalize(vec3f(p.x, 0.0, p.z), vec3f(1.0, 0.0, 0.0));
+    let nCap = vec3f(0.0, sgn(p.y), 0.0);
+    let n = select(nCap, nBarrel, onBarrel);
+    return sdfRMid(d, 1.0, n);
+}
+
+fn fConeMid(p: vec3<f32>, radius: f32, height: f32) -> SDFResultMid {
+    let lenXZ = length(p.xz);
+    let q = vec2f(lenXZ, p.y);
+    let tip = q - vec2f(0.0, height);
+    let L = length(vec2f(height, radius));
+    let mantleDir = vec2f(height, radius) / L;
+    let mantle = dot(tip, mantleDir);
+    let base = -q.y;
+    var d = mantle;
+    var region: i32 = 0;
+    if (base > d) {
+        d = base;
+        region = 1;
+    }
+    let perpDir = vec2f(mantleDir.y, -mantleDir.x);
+    let projected = dot(tip, perpDir);
+    if (q.y > height && projected < 0.0) {
+        let tipDist = length(tip);
+        if (tipDist > d) {
+            d = tipDist;
+            region = 2;
+        }
+    }
+    if (q.x > radius && projected > L) {
+        let baseDist = length(q - vec2f(radius, 0.0));
+        if (baseDist > d) {
+            d = baseDist;
+            region = 3;
+        }
+    }
+    var radDir = vec3f(1.0, 0.0, 0.0);
+    if (lenXZ > 1e-8) {
+        radDir = vec3f(p.x / lenXZ, 0.0, p.z / lenXZ);
+    }
+    var n = vec3f(0.0, 1.0, 0.0);
+    if (region == 3) {
+        n = safeNormalize(vec3f(p.x - radius * radDir.x, p.y, p.z - radius * radDir.z), vec3f(0.0, -1.0, 0.0));
+    } else if (region == 2) {
+        n = safeNormalize(vec3f(p.x, p.y - height, p.z), vec3f(0.0, 1.0, 0.0));
+    } else if (region == 1) {
+        n = vec3f(0.0, -1.0, 0.0);
+    } else {
+        n = safeNormalize(vec3f(mantleDir.x * radDir.x, mantleDir.y, mantleDir.x * radDir.z), vec3f(0.0, 1.0, 0.0));
+    }
+    return sdfRMid(d, 1.0, n);
+}
+
+fn fTorusMid(p: vec3<f32>, smallRadius: f32, largeRadius: f32) -> SDFResultMid {
+    let lenXZ = length(p.xz);
+    let d = length(vec2f(lenXZ - largeRadius, p.y)) - smallRadius;
+    var ringX = largeRadius;
+    var ringZ = 0.0;
+    if (lenXZ > 1e-8) {
+        ringX = p.x / lenXZ * largeRadius;
+        ringZ = p.z / lenXZ * largeRadius;
+    }
+    let n = safeNormalize(vec3f(p.x - ringX, p.y, p.z - ringZ), vec3f(0.0, 1.0, 0.0));
+    return sdfRMid(d, 1.0, n);
+}
+
+fn fCapsuleMid(p: vec3<f32>, r: f32, c: f32) -> SDFResultMid {
+    let inCap = abs(p.y) >= c;
+    let q = vec3f(p.x, p.y - sgn(p.y) * c, p.z);
+    let dBarrel = length(p.xz) - r;
+    let dCap = length(q) - r;
+    let d = select(dBarrel, dCap, inCap);
+    let nBarrel = safeNormalize(vec3f(p.x, 0.0, p.z), vec3f(1.0, 0.0, 0.0));
+    let nCap = safeNormalize(q, vec3f(0.0, sgn(p.y), 0.0));
+    let n = select(nBarrel, nCap, inCap);
+    return sdfRMid(d, 1.0, n);
+}
+
+fn fPlaneMid(p: vec3<f32>, n_param: vec3<f32>, distanceFromOrigin: f32) -> SDFResultMid {
+    let d = dot(p, n_param) + distanceFromOrigin;
+    return sdfRMid(d, 1.0, n_param);
+}
+
+fn fHexagonCircumcircleMid(p: vec3<f32>, h: vec2<f32>) -> SDFResultMid {
+    let q = abs(p);
+    let dCap = q.y - h.y;
+    let dHexA = q.x * sqrt(3.0) * 0.5 + q.z * 0.5 - h.x;
+    let dHexB = q.z - h.x;
+    let dHex = max(dHexA, dHexB);
+    let d = max(dCap, dHex);
+    var n = vec3f(0.0, 1.0, 0.0);
+    if (dCap > dHex) {
+        n = vec3f(0.0, sgn(p.y), 0.0);
+    } else if (dHexA > dHexB) {
+        n = vec3f(sgn(p.x) * sqrt(3.0) * 0.5, 0.0, sgn(p.z) * 0.5);
+    } else {
+        n = vec3f(0.0, 0.0, sgn(p.z));
+    }
+    return sdfRMid(d, 1.0, n);
+}
+
+fn fDiscMid(p: vec3<f32>, r: f32) -> SDFResultMid {
+    let lenXZ = length(p.xz);
+    let l = lenXZ - r;
+    if (l < 0.0) {
+        return sdfRMid(abs(p.y), 1.0, vec3f(0.0, sgn(p.y), 0.0));
+    }
+    let d = length(vec2f(p.y, l));
+    var radDir = vec3f(1.0, 0.0, 0.0);
+    if (lenXZ > 1e-8) {
+        radDir = vec3f(p.x / lenXZ, 0.0, p.z / lenXZ);
+    }
+    let nearest = radDir * r;
+    let n = safeNormalize(p - nearest, vec3f(0.0, sgn(p.y), 0.0));
+    return sdfRMid(d, 1.0, n);
+}
+
+fn fBlobMid(pIn: vec3<f32>) -> SDFResultMid {
+    let d = fBlob(pIn);
+    let eps = 0.001;
+    let nx = fBlob(pIn + vec3f(eps, 0.0, 0.0)) - fBlob(pIn - vec3f(eps, 0.0, 0.0));
+    let ny = fBlob(pIn + vec3f(0.0, eps, 0.0)) - fBlob(pIn - vec3f(0.0, eps, 0.0));
+    let nz = fBlob(pIn + vec3f(0.0, 0.0, eps)) - fBlob(pIn - vec3f(0.0, 0.0, eps));
+    let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
+    return sdfRMid(d, 1.0, n);
 }
 
 // 2D boxes
@@ -1007,12 +1186,236 @@ fn fOpTongueFast(a: vec2f, b: vec2f, ra: f32, rb: f32) -> vec2f {
 }
 
 ////////////////////////////////////////////////////
+//  MID OPERATORS (SDFResultMid: d, g, n — no IDs, blend, seam)
+////////////////////////////////////////////////////
+
+// Hard union Mid: pick by distance, blend normals when coplanar
+fn opUnionMid(a: SDFResultMid, b: SDFResultMid) -> SDFResultMid {
+    if (abs(a.d - b.d) < SURF_DIST) {
+        return SDFResultMid(min(a.d, b.d), min(a.g, b.g), normalize(a.n + b.n));
+    }
+    return selectMid(b, a, a.d < b.d);
+}
+
+// Hard intersection Mid
+fn opIntersectionMid(a: SDFResultMid, b: SDFResultMid) -> SDFResultMid {
+    if (abs(a.d - b.d) < SURF_DIST) {
+        return SDFResultMid(max(a.d, b.d), min(a.g, b.g), normalize(a.n + b.n));
+    }
+    return selectMid(b, a, a.d > b.d);
+}
+
+// Hard difference Mid
+fn opDifferenceMid(a: SDFResultMid, b: SDFResultMid) -> SDFResultMid {
+    return opIntersectionMid(a, sdfNegMid(b));
+}
+
+// Chamfer union Mid
+fn fOpUnionChamferMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let chamferD = (a.d - r + b.d) * sqrt(0.5);
+    let d = min(min(a.d, b.d), chamferD);
+    if (chamferD < a.d && chamferD < b.d) {
+        let n = normalize(a.n + b.n);
+        return sdfRMid(d, 1.0, n);
+    }
+    return selectMid(b, a, a.d < b.d);
+}
+
+fn fOpIntersectionChamferMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let chamferD = (a.d + r + b.d) * sqrt(0.5);
+    let d = max(max(a.d, b.d), chamferD);
+    if (chamferD > a.d && chamferD > b.d) {
+        let n = normalize(a.n + b.n);
+        return sdfRMid(d, 1.0, n);
+    }
+    return selectMid(b, a, a.d > b.d);
+}
+
+fn fOpDifferenceChamferMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    return fOpIntersectionChamferMid(a, sdfNegMid(b), r);
+}
+
+// Round union Mid
+fn fOpUnionRoundMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let u = max(vec2f(r - a.d, r - b.d), vec2f(0.0));
+    let d = max(r, min(a.d, b.d)) - length(u);
+    if (a.d < r && b.d < r) {
+        let n = normalize(a.n * u.x + b.n * u.y);
+        return sdfRMid(d, INVERSESQRT2 * min(a.g, b.g), n);
+    }
+    return selectMid(b, a, a.d < b.d);
+}
+
+fn fOpUnionSoftMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let e = max(r - abs(a.d - b.d), 0.0);
+    let d = min(a.d, b.d) - e * e * 0.25 / r;
+    if (e > 0.0) {
+        let n = normalize(a.n * (r - a.d) + b.n * (r - b.d));
+        return sdfRMid(d, min(a.g, b.g), n);
+    }
+    return selectMid(b, a, a.d < b.d);
+}
+
+fn fOpIntersectionRoundMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let u = max(vec2f(r + a.d, r + b.d), vec2f(0.0));
+    let d = min(-r, max(a.d, b.d)) + length(u);
+    if (a.d > -r && b.d > -r) {
+        let n = normalize(a.n * u.x + b.n * u.y);
+        return sdfRMid(d, INVERSESQRT2 * min(a.g, b.g), n);
+    }
+    return selectMid(b, a, a.d > b.d);
+}
+
+fn fOpDifferenceRoundMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    return fOpIntersectionRoundMid(a, sdfNegMid(b), r);
+}
+
+// Columns union Mid
+fn fOpUnionColumnsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
+    if (a.d < r) && (b.d < r) {
+        var p = vec2f(a.d, b.d);
+        let columnradius = r * sqrt(2.0) / ((n - 1.0) * 2.0 + sqrt(2.0));
+        let tmp = p + vec2f(p.y, -p.x);
+        p = tmp * sqrt(0.5);
+        p.x = p.x - sqrt(0.5) * r + columnradius * sqrt(2.0);
+        if (n % 2.0) != 0.0 {
+            p.y = p.y + columnradius;
+        }
+        let py = modF(p.y, columnradius * 2.0);
+        let dist = length(vec2f(p.x, py)) - columnradius;
+        let res = min(min(dist, p.x), a.d);
+        let d = min(res, b.d);
+        let wa = r - a.d;
+        let wb = r - b.d;
+        let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
+        return sdfRMid(d, 1.0, blendN);
+    }
+    return selectMid(b, a, a.d < b.d);
+}
+
+fn fOpDifferenceColumnsMid(aIn: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
+    let aD = -aIn.d;
+    if (aD < r) && (b.d < r) {
+        var p = vec2f(aD, b.d);
+        let columnradius = r * sqrt(2.0) / ((n - 1.0) * 2.0 + sqrt(2.0));
+        let tmp = p + vec2f(p.y, -p.x);
+        p = tmp * sqrt(0.5);
+        p.y = p.y + columnradius;
+        p.x = p.x - sqrt(0.5) * r - columnradius * sqrt(2.0) * 0.5;
+        if (n % 2.0) != 0.0 {
+            p.y = p.y + columnradius;
+        }
+        let py = modF(p.y, columnradius * 2.0);
+        let res = min(max(-length(vec2f(p.x, py)) + columnradius, p.x), aD);
+        let d = -min(res, b.d);
+        let wa = r + aIn.d;
+        let wb = r - b.d;
+        let blendN = safeNormalize(aIn.n * wa - b.n * wb, aIn.n);
+        return sdfRMid(d, 1.0, blendN);
+    }
+    let d = max(aIn.d, -b.d);
+    return selectMid(sdfRMid(d, b.g, -b.n), sdfRMid(d, aIn.g, aIn.n), aIn.d > -b.d);
+}
+
+fn fOpIntersectionColumnsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
+    return fOpDifferenceColumnsMid(a, sdfNegMid(b), r, n);
+}
+
+// Stairs union Mid
+fn fOpUnionStairsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
+    let s = r / n;
+    let u = b.d - r;
+    let stairD = 0.5 * (u + a.d + abs(modF(u - a.d + s, 2.0 * s) - s));
+    let d = min(min(a.d, b.d), stairD);
+    if (a.d < r && b.d < r) {
+        let wa = r - a.d;
+        let wb = r - b.d;
+        let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
+        return sdfRMid(d, 1.0, blendN);
+    }
+    return selectMid(b, a, a.d < b.d);
+}
+
+fn fOpIntersectionStairsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
+    var result = fOpUnionStairsMid(sdfNegMid(a), sdfNegMid(b), r, n);
+    result.d = -result.d;
+    result.n = -result.n;
+    return result;
+}
+
+fn fOpDifferenceStairsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
+    var result = fOpUnionStairsMid(sdfNegMid(a), b, r, n);
+    result.d = -result.d;
+    result.n = -result.n;
+    return result;
+}
+
+// Pipe Mid
+fn fOpPipeMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let pipeLen = length(vec2f(a.d, b.d));
+    let d = pipeLen - r;
+    var blendN = a.n;
+    if (pipeLen > 1e-6) {
+        blendN = safeNormalize(a.n * a.d + b.n * b.d, a.n);
+    }
+    return sdfRMid(d, 1.0, blendN);
+}
+
+// Engrave Mid
+fn fOpEngraveMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let engraveD = (a.d + r - abs(b.d)) * sqrt(0.5);
+    let d = max(a.d, engraveD);
+    if (engraveD > a.d) {
+        let blendN = safeNormalize(a.n - sgn(b.d) * b.n, a.n);
+        return sdfRMid(d, 1.0, blendN);
+    }
+    return sdfRMid(d, a.g, a.n);
+}
+
+// Groove Mid
+fn fOpGrooveMid(a: SDFResultMid, b: SDFResultMid, ra: f32, rb: f32) -> SDFResultMid {
+    let depthD = a.d + ra;
+    let widthD = rb - abs(b.d);
+    let grooveD = min(depthD, widthD);
+    let d = max(a.d, grooveD);
+    if (grooveD > a.d) {
+        if (depthD < widthD) {
+            return sdfRMid(d, 1.0, a.n);
+        }
+        return sdfRMid(d, 1.0, -sgn(b.d) * b.n);
+    }
+    return sdfRMid(d, a.g, a.n);
+}
+
+// Tongue Mid
+fn fOpTongueMid(a: SDFResultMid, b: SDFResultMid, ra: f32, rb: f32) -> SDFResultMid {
+    let depthD = a.d - ra;
+    let widthD = abs(b.d) - rb;
+    let tongueD = max(depthD, widthD);
+    let d = min(a.d, tongueD);
+    if (tongueD < a.d) {
+        if (depthD > widthD) {
+            return sdfRMid(d, 1.0, a.n);
+        }
+        return sdfRMid(d, 1.0, sgn(b.d) * b.n);
+    }
+    return sdfRMid(d, a.g, a.n);
+}
+
+////////////////////////////////////////////////////
 //  DOMAIN TRANSFORM HELPERS (SDFResult)
 ////////////////////////////////////////////////////
 
 // Rotate the normal of an SDFResult by a forward rotation matrix.
 // Used after evaluating a child SDF in a rotated coordinate system.
 fn sdfRotateNormal(r: SDFResult, m: mat3x3f) -> SDFResult {
+    var out = r;
+    out.n = safeNormalize(m * out.n, out.n);
+    return out;
+}
+
+// Rotate the normal of an SDFResultMid by a forward rotation matrix.
+fn sdfRotateNormalMid(r: SDFResultMid, m: mat3x3f) -> SDFResultMid {
     var out = r;
     out.n = safeNormalize(m * out.n, out.n);
     return out;
@@ -1033,7 +1436,6 @@ fn sdfShellEx(a: SDFResult, thickness: f32) -> SDFResult {
     out.d = abs(a.d) - thickness;
     if (a.d < 0.0) {
         out.n = -out.n;
-        out.s = -out.s;
     }
     return out;
 }
@@ -1045,6 +1447,23 @@ fn sdfOffsetFast(a: vec2f, amount: f32) -> vec2f {
 
 // Offset Ex: shift distance, normals unchanged
 fn sdfOffsetEx(a: SDFResult, amount: f32) -> SDFResult {
+    var out = a;
+    out.d = a.d - amount;
+    return out;
+}
+
+// Shell Mid: hollow out a shape, flip normal when interior
+fn sdfShellMid(a: SDFResultMid, thickness: f32) -> SDFResultMid {
+    var out = a;
+    out.d = abs(a.d) - thickness;
+    if (a.d < 0.0) {
+        out.n = -out.n;
+    }
+    return out;
+}
+
+// Offset Mid: shift distance, normals unchanged
+fn sdfOffsetMid(a: SDFResultMid, amount: f32) -> SDFResultMid {
     var out = a;
     out.d = a.d - amount;
     return out;
@@ -1087,6 +1506,16 @@ fn sdfTwistNormal(r: SDFResult, p: vec3f, rate: f32) -> SDFResult {
     return out;
 }
 
+// Twist Mid: untwist the normal back to world space
+fn sdfTwistNormalMid(r: SDFResultMid, p: vec3f, rate: f32) -> SDFResultMid {
+    var out = r;
+    let a = -(p.y * rate);
+    let c = cos(a);
+    let s = sin(a);
+    out.n = safeNormalize(vec3f(c * out.n.x + s * out.n.z, out.n.y, -s * out.n.x + c * out.n.z), out.n);
+    return out;
+}
+
 // Bend: rotate XY plane by p.x * amount (cheap bend, iq)
 fn bendPoint(p: vec3f, amount: f32) -> vec3f {
     let a = amount * p.x;
@@ -1104,6 +1533,16 @@ fn sdfBendFast(r: vec2f, p: vec3f, amount: f32) -> vec2f {
 
 // Bend Ex: unbend the normal back to world space at the original point p.
 fn sdfBendNormal(r: SDFResult, p: vec3f, amount: f32) -> SDFResult {
+    var out = r;
+    let a = -(amount * p.x);
+    let c = cos(a);
+    let s = sin(a);
+    out.n = safeNormalize(vec3f(c * out.n.x - s * out.n.y, s * out.n.x + c * out.n.y, out.n.z), out.n);
+    return out;
+}
+
+// Bend Mid: unbend the normal back to world space
+fn sdfBendNormalMid(r: SDFResultMid, p: vec3f, amount: f32) -> SDFResultMid {
     var out = r;
     let a = -(amount * p.x);
     let c = cos(a);
@@ -1143,6 +1582,15 @@ fn sdfTaperNormal(r: SDFResult, p: vec3f, ratio: f32, height: f32) -> SDFResult 
     return out;
 }
 
+// Taper Mid: correct the normal for the non-uniform scaling
+fn sdfTaperNormalMid(r: SDFResultMid, p: vec3f, ratio: f32, height: f32) -> SDFResultMid {
+    var out = r;
+    let t = clamp(p.y / height, 0.0, 1.0);
+    let s = 1.0 + (ratio - 1.0) * t;
+    out.n = safeNormalize(vec3f(out.n.x / s, out.n.y, out.n.z / s), out.n);
+    return out;
+}
+
 ////////////////////////////////////////////////////
 //  BINARY SDF OPERATORS (Morph, Seam)
 ////////////////////////////////////////////////////
@@ -1159,9 +1607,9 @@ fn sdfMorphEx(a: SDFResult, b: SDFResult, t: f32) -> SDFResult {
     let n = safeNormalize(a.n * (1.0 - t) + b.n * t, a.n);
     let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
     if (t < 0.5) {
-        return SDFResult(d, g, a.s, a.id, n, b.id, t, a.id, b.id, 0u, 1e9, seamT, 0.0);
+        return SDFResult(d, g, a.id, n, b.id, t, a.id, b.id, 0u, 1e9, seamT);
     }
-    return SDFResult(d, g, b.s, b.id, n, a.id, 1.0 - t, a.id, b.id, 0u, 1e9, seamT, 0.0);
+    return SDFResult(d, g, b.id, n, a.id, 1.0 - t, a.id, b.id, 0u, 1e9, seamT);
 }
 
 // Seam Fast: union of both shapes plus a pipe tube at their intersection (weld bead).
@@ -1185,8 +1633,31 @@ fn sdfSeamEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
         if (pipeLen > 1e-6) {
             blendN = safeNormalize(a.n * a.d + b.n * b.d, a.n);
         }
-        if (a.id <= b.id) { return sdfR(pipeD, 1.0, a.s, a.id, blendN); }
-        return sdfR(pipeD, 1.0, b.s, b.id, blendN);
+        if (a.id <= b.id) { return sdfR(pipeD, 1.0, a.id, blendN); }
+        return sdfR(pipeD, 1.0, b.id, blendN);
+    }
+    return unionResult;
+}
+
+// Morph Mid: interpolate distance and normals
+fn sdfMorphMid(a: SDFResultMid, b: SDFResultMid, t: f32) -> SDFResultMid {
+    let d = a.d * (1.0 - t) + b.d * t;
+    let g = a.g * (1.0 - t) + b.g * t;
+    let n = safeNormalize(a.n * (1.0 - t) + b.n * t, a.n);
+    return sdfRMid(d, g, n);
+}
+
+// Seam Mid: union + pipe tube with proper normals
+fn sdfSeamMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let unionResult = opUnionMid(a, b);
+    let pipeLen = length(vec2f(a.d, b.d));
+    let pipeD = pipeLen - r;
+    if (pipeD < unionResult.d) {
+        var blendN = a.n;
+        if (pipeLen > 1e-6) {
+            blendN = safeNormalize(a.n * a.d + b.n * b.d, a.n);
+        }
+        return sdfRMid(pipeD, 1.0, blendN);
     }
     return unionResult;
 }
@@ -1203,7 +1674,7 @@ fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
     let seam = bestSeam(a, b, gap, 1u, seamTangent);
     if (gap < SURF_DIST) {
         let n = normalize(a.n + b.n);
-        var out = selectSDF(sdfR(b.d, b.g, b.s, b.id, n), sdfR(a.d, a.g, a.s, a.id, n), a.id <= b.id);
+        var out = selectSDF(sdfR(b.d, b.g, b.id, n), sdfR(a.d, a.g, a.id, n), a.id <= b.id);
         applySeam(&out, seam);
         return out;
     }
@@ -1219,7 +1690,7 @@ fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
     let seam = bestSeam(a, b, gap, 2u, seamTangent);
     if (gap < SURF_DIST) {
         let n = normalize(a.n + b.n);
-        var out = selectSDF(sdfR(b.d, b.g, b.s, b.id, n), sdfR(a.d, a.g, a.s, a.id, n), a.id <= b.id);
+        var out = selectSDF(sdfR(b.d, b.g, b.id, n), sdfR(a.d, a.g, a.id, n), a.id <= b.id);
         applySeam(&out, seam);
         return out;
     }
@@ -1249,14 +1720,14 @@ fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     var out: SDFResult;
     if (chamferD < a.d && chamferD < b.d) {
         if (coplanar || a.d < b.d) {
-            out = selectSDF(sdfR(d, 1.0, b.s, b.id, n), sdfR(d, 1.0, a.s, a.id, n), coplanar && b.id < a.id);
+            out = selectSDF(sdfR(d, 1.0, b.id, n), sdfR(d, 1.0, a.id, n), coplanar && b.id < a.id);
         } else {
-            out = sdfR(d, 1.0, b.s, b.id, n);
+            out = sdfR(d, 1.0, b.id, n);
         }
     } else if (coplanar) {
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), a.id <= b.id);
+        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), a.id <= b.id);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), a.d < b.d);
+        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), a.d < b.d);
     }
     applySeam(&out, seam);
     return out;
@@ -1273,14 +1744,14 @@ fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     var out: SDFResult;
     if (chamferD > a.d && chamferD > b.d) {
         if (coplanar || a.d > b.d) {
-            out = selectSDF(sdfR(d, 1.0, b.s, b.id, n), sdfR(d, 1.0, a.s, a.id, n), coplanar && b.id < a.id);
+            out = selectSDF(sdfR(d, 1.0, b.id, n), sdfR(d, 1.0, a.id, n), coplanar && b.id < a.id);
         } else {
-            out = sdfR(d, 1.0, b.s, b.id, n);
+            out = sdfR(d, 1.0, b.id, n);
         }
     } else if (coplanar) {
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), a.id <= b.id);
+        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), a.id <= b.id);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), a.d > b.d);
+        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), a.d > b.d);
     }
     applySeam(&out, seam);
     return out;
@@ -1301,14 +1772,14 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     if (a.d < r && b.d < r) {
         let n = normalize(a.n * u.x + b.n * u.y);
         let w = u.y / (u.x + u.y);
-        return SDFResult(d, 0.5, select(b.s, a.s, a.d < b.d), a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
+        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT);
     }
     var out: SDFResult;
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), aWins);
+        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), aWins);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), aWins);
+        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), aWins);
     }
     applySeam(&out, seam);
     return out;
@@ -1326,14 +1797,14 @@ fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
         let wa = max(r - a.d, 0.0);
         let wb = max(r - b.d, 0.0);
         let w = wb / (wa + wb);
-        return SDFResult(d, 0.5, select(b.s, a.s, a.d < b.d), a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
+        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT);
     }
     var out: SDFResult;
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), aWins);
+        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), aWins);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), aWins);
+        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), aWins);
     }
     applySeam(&out, seam);
     return out;
@@ -1349,14 +1820,14 @@ fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     if (a.d > -r && b.d > -r) {
         let n = normalize(a.n * u.x + b.n * u.y);
         let w = u.y / (u.x + u.y);
-        return SDFResult(d, 0.5, select(b.s, a.s, a.d > b.d), a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
+        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT);
     }
     var out: SDFResult;
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, n), sdfR(d, a.g, a.s, a.id, n), aWins);
+        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), aWins);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, b.n), sdfR(d, a.g, a.s, a.id, a.n), aWins);
+        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), aWins);
     }
     applySeam(&out, seam);
     return out;
@@ -1387,17 +1858,17 @@ fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
         let wb = r - b.d;
         let w = wb / (wa + wb);
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return SDFResult(d, 1.0, select(b.s, a.s, a.d < b.d), a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
+        return SDFResult(d, 1.0, a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT);
     }
     var out: SDFResult;
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(a.n + b.n, a.n);
-        out = selectSDF(sdfR(min(a.d, b.d), b.g, b.s, b.id, cn), sdfR(min(a.d, b.d), a.g, a.s, a.id, cn), a.id <= b.id);
+        out = selectSDF(sdfR(min(a.d, b.d), b.g, b.id, cn), sdfR(min(a.d, b.d), a.g, a.id, cn), a.id <= b.id);
     } else if (a.d < b.d) {
-        out = sdfR(a.d, a.g, a.s, a.id, a.n);
+        out = sdfR(a.d, a.g, a.id, a.n);
     } else {
-        out = sdfR(b.d, b.g, b.s, b.id, b.n);
+        out = sdfR(b.d, b.g, b.id, b.n);
     }
     applySeam(&out, seam);
     return out;
@@ -1429,7 +1900,7 @@ fn fOpDifferenceColumnsEx(aIn: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRe
         let wb = r - b.d;
         let blendN = safeNormalize(aIn.n * wa - b.n * wb, aIn.n);
         let w = wb / (wa + wb);
-        var out = SDFResult(d, 1.0, select(b.s, aIn.s, aIn.d < b.d), aIn.id, blendN, b.id, w, aIn.id, b.id, 0u, 1e9, seamT, 0.0);
+        var out = SDFResult(d, 1.0, aIn.id, blendN, b.id, w, aIn.id, b.id, 0u, 1e9, seamT);
         applySeam(&out, seam);
         return out;
     }
@@ -1438,11 +1909,11 @@ fn fOpDifferenceColumnsEx(aIn: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRe
     let coplanar = abs(aIn.d + b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(aIn.n - b.n, aIn.n);
-        out = selectSDF(sdfR(d, b.g, -b.s, b.id, cn), sdfR(d, aIn.g, aIn.s, aIn.id, cn), aIn.id <= b.id);
+        out = selectSDF(sdfR(d, b.g, b.id, cn), sdfR(d, aIn.g, aIn.id, cn), aIn.id <= b.id);
     } else if (aIn.d > -b.d) {
-        out = sdfR(d, aIn.g, aIn.s, aIn.id, aIn.n);
+        out = sdfR(d, aIn.g, aIn.id, aIn.n);
     } else {
-        out = sdfR(d, b.g, -b.s, b.id, -b.n);
+        out = sdfR(d, b.g, b.id, -b.n);
     }
     applySeam(&out, seam);
     return out;
@@ -1467,17 +1938,17 @@ fn fOpUnionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
         let wb = r - b.d;
         let w = wb / (wa + wb);
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return SDFResult(d, 1.0, select(b.s, a.s, a.d < b.d), a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0);
+        return SDFResult(d, 1.0, a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT);
     }
     var out: SDFResult;
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(a.n + b.n, a.n);
-        out = selectSDF(sdfR(d, b.g, b.s, b.id, cn), sdfR(d, a.g, a.s, a.id, cn), a.id <= b.id);
+        out = selectSDF(sdfR(d, b.g, b.id, cn), sdfR(d, a.g, a.id, cn), a.id <= b.id);
     } else if (a.d < b.d) {
-        out = sdfR(d, a.g, a.s, a.id, a.n);
+        out = sdfR(d, a.g, a.id, a.n);
     } else {
-        out = sdfR(d, b.g, b.s, b.id, b.n);
+        out = sdfR(d, b.g, b.id, b.n);
     }
     applySeam(&out, seam);
     return out;
@@ -1487,7 +1958,6 @@ fn fOpUnionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
 fn fOpIntersectionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
     var result = fOpUnionStairsEx(sdfNeg(a), sdfNeg(b), r, n);
     result.d = -result.d;
-    result.s = -result.s;
     result.n = -result.n;
     return result;
 }
@@ -1496,7 +1966,6 @@ fn fOpIntersectionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRes
 fn fOpDifferenceStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
     var result = fOpUnionStairsEx(sdfNeg(a), b, r, n);
     result.d = -result.d;
-    result.s = -result.s;
     result.n = -result.n;
     return result;
 }
@@ -1510,8 +1979,8 @@ fn fOpPipeEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     if (pipeLen > 1e-6) {
         blendN = safeNormalize(a.n * a.d + b.n * b.d, a.n);
     }
-    if (a.id <= b.id) { return sdfR(d, 1.0, a.s, a.id, blendN); }
-    return sdfR(d, 1.0, b.s, b.id, blendN);
+    if (a.id <= b.id) { return sdfR(d, 1.0, a.id, blendN); }
+    return sdfR(d, 1.0, b.id, blendN);
 }
 
 // Engrave Ex — carved groove in surface a using surface b as profile
@@ -1521,9 +1990,9 @@ fn fOpEngraveEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     if (engraveD > a.d) {
         // Gradient of (a.d + r - |b.d|) is (∇a - sign(b.d)·∇b)
         let blendN = safeNormalize(a.n - sgn(b.d) * b.n, a.n);
-        return sdfR(d, 1.0, a.s, a.id, blendN);
+        return sdfR(d, 1.0, a.id, blendN);
     }
-    return sdfR(d, a.g, a.s, a.id, a.n);
+    return sdfR(d, a.g, a.id, a.n);
 }
 
 // Groove Ex — carpenter groove (rectangular channel in surface a along surface b)
@@ -1535,12 +2004,12 @@ fn fOpGrooveEx(a: SDFResult, b: SDFResult, ra: f32, rb: f32) -> SDFResult {
     if (grooveD > a.d) {
         if (depthD < widthD) {
             // Depth-limited: normal is a's surface normal
-            return sdfR(d, 1.0, a.s, a.id, a.n);
+            return sdfR(d, 1.0, a.id, a.n);
         }
         // Width-limited: gradient of (rb - |b.d|) is -sign(b.d)·∇b
-        return sdfR(d, 1.0, a.s, a.id, -sgn(b.d) * b.n);
+        return sdfR(d, 1.0, a.id, -sgn(b.d) * b.n);
     }
-    return sdfR(d, a.g, a.s, a.id, a.n);
+    return sdfR(d, a.g, a.id, a.n);
 }
 
 // Tongue Ex — carpenter tongue (inverse of groove: protrusion from surface a)
@@ -1552,11 +2021,11 @@ fn fOpTongueEx(a: SDFResult, b: SDFResult, ra: f32, rb: f32) -> SDFResult {
     if (tongueD < a.d) {
         if (depthD > widthD) {
             // Depth-limited: normal is a's surface normal
-            return sdfR(d, 1.0, a.s, a.id, a.n);
+            return sdfR(d, 1.0, a.id, a.n);
         }
         // Width-limited: gradient of (|b.d| - rb) is sign(b.d)·∇b
-        return sdfR(d, 1.0, a.s, a.id, sgn(b.d) * b.n);
+        return sdfR(d, 1.0, a.id, sgn(b.d) * b.n);
     }
-    return sdfR(d, a.g, a.s, a.id, a.n);
+    return sdfR(d, a.g, a.id, a.n);
 }
 

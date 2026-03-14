@@ -24,6 +24,11 @@ export class Blob extends Node {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fBlobFast(p - ${this.pos.wgsl})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Blob${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `fBlobMid(p - ${this.pos.wgsl})` }
+    }
 
     @fluent shift(v: Vec3): this {
         this.pos = vec3(v)

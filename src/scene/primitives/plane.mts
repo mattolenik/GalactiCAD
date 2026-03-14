@@ -29,6 +29,11 @@ export class PlaneNode extends Node {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fPlaneFast(p - ${this.pos.wgsl}, ${this.normal.wgsl}, ${this.dist})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Plane${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `fPlaneMid(p - ${this.pos.wgsl}, ${this.normal.wgsl}, ${this.dist})` }
+    }
 
     @fluent withNormal(n: Vec3): this {
         this.normal = vec3(n).normalize()

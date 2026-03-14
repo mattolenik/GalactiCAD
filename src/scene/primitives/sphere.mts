@@ -54,6 +54,15 @@ export class Sphere extends Node {
             text: `fSphereFast(p - ${this.pos.wgsl}, ${this.r})`,
         }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Sphere${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return {
+            funcName,
+            varName,
+            text: `fSphereMid(p - ${this.pos.wgsl}, ${this.r})`,
+        }
+    }
 
     @fluent shift(v: Vec3): this {
         this.pos = vec3(v)

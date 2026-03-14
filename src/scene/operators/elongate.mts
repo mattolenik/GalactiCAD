@@ -32,6 +32,15 @@ export class Elongate extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: elongatedChild }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileMid(indentLevel)
+        const childText = childResult.text!
+        const h = `vec3f(${this.hx}, ${this.hy}, ${this.hz})`
+        const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
+        const funcName = `Elongate${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: elongatedChild }
+    }
     constructor(h: Vec3, arg: Node) {
         super(arg)
         const v = vec3(h)

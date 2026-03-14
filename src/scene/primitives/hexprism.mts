@@ -29,6 +29,11 @@ export class HexPrism extends Node {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fHexagonCircumcircleFast(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}))` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `HexPrism${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `fHexagonCircumcircleMid(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}))` }
+    }
 
     @fluent radius(r: number): this {
         this.r = r

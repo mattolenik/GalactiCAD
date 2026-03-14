@@ -26,6 +26,11 @@ export class Disc extends Node {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fDiscFast(p - ${this.pos.wgsl}, ${this.r})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Disc${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `fDiscMid(p - ${this.pos.wgsl}, ${this.r})` }
+    }
 
     @fluent shift(v: Vec3): this {
         this.pos = vec3(v)

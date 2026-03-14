@@ -135,6 +135,9 @@ fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec4f {
     override compileFast(_indentLevel = 0): CompileResult {
         throw new Error("Polygon2D cannot be used directly in a 3D scene. Wrap it in extrude() or loft().")
     }
+    override compileMid(_indentLevel = 0): CompileResult {
+        throw new Error("Polygon2D cannot be used directly in a 3D scene. Wrap it in extrude() or loft().")
+    }
 }
 
 export function polygon2d(vertices: [number, number][]): Polygon2D {

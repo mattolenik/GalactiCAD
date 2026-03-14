@@ -25,6 +25,14 @@ export class Bend extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `sdfBendFast(${bentChild}, p, ${this.amount})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileMid(indentLevel)
+        const childText = childResult.text!
+        const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${this.amount})`)
+        const funcName = `Bend${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `sdfBendNormalMid(${bentChild}, p, ${this.amount})` }
+    }
     constructor(public amount: number, arg: Node) {
         super(arg)
     }

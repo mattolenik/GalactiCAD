@@ -25,6 +25,14 @@ export class Taper extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `sdfTaperFast(${taperedChild}, p, ${this.ratio}, ${this.height})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileMid(indentLevel)
+        const childText = childResult.text!
+        const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${this.ratio}, ${this.height})`)
+        const funcName = `Taper${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `sdfTaperNormalMid(${taperedChild}, p, ${this.ratio}, ${this.height})` }
+    }
     constructor(public ratio: number, public height: number, arg: Node) {
         super(arg)
     }

@@ -27,6 +27,12 @@ export class Pipe extends BinaryOperator {
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
         return { text: `fOpPipeFast(${lhResult.text}, ${rhResult.text}, ${this.#pipeRadius})`, varName }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileMid(indentLevel)
+        const rhResult = this.rh.compileMid(indentLevel)
+        const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpPipeMid(${lhResult.text}, ${rhResult.text}, ${this.#pipeRadius})`, varName }
+    }
 }
 
 export function pipe(lh: Node, rh: Node): Pipe {

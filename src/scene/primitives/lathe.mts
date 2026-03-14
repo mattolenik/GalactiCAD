@@ -41,6 +41,7 @@ export class Lathe extends Node {
 
     get wgslExFuncName(): string { return `fLathe_${this.id}_Ex` }
     get wgslFastFuncName(): string { return `fLathe_${this.id}_Fast` }
+    get wgslMidFuncName(): string { return `fLathe_${this.id}_Mid` }
 
     override compileAux(): string {
         const combinedFunc = this.child.wgslCombinedFuncName
@@ -58,6 +59,25 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     }
     let n = safeNormalize(vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y), vec3f(0.0, 1.0, 0.0));
     return sdfTrue(d, id, n);
+}
+`
+    }
+
+    override compileAuxMid(): string {
+        const combinedFunc = this.child.wgslCombinedFuncName
+        return `
+fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
+    let r = length(p.xz);
+    let q = vec2f(r, p.y);
+    let combined = ${combinedFunc}(q);
+    let d = combined.x;
+    let g2d = combined.zw;
+    var radDir = vec2f(1.0, 0.0);
+    if (r > 1e-8) {
+        radDir = p.xz / r;
+    }
+    let n = safeNormalize(vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y), vec3f(0.0, 1.0, 0.0));
+    return sdfRMid(d, 1.0, n);
 }
 `
     }
@@ -89,6 +109,15 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
             funcName,
             varName,
             text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+        }
+    }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Lathe${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return {
+            funcName,
+            varName,
+            text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
         }
     }
 

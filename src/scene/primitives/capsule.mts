@@ -29,6 +29,11 @@ export class Capsule extends Node {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fCapsuleFast(p - ${this.pos.wgsl}, ${this.r}, ${this.c})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Capsule${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `fCapsuleMid(p - ${this.pos.wgsl}, ${this.r}, ${this.c})` }
+    }
 
     @fluent radius(r: number): this {
         this.r = r

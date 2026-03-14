@@ -105,6 +105,11 @@ export class SceneInfo {
         return `\nreturn ${compiledResult.text};\n`
     }
 
+    compileMid(): string {
+        const compiledResult = this.root.compileMid(1)
+        return `\nreturn ${compiledResult.text};\n`
+    }
+
     compileEdgeHelpers(): string {
         let code = ""
         for (const node of this.#nodes.values()) {
@@ -127,6 +132,14 @@ export class SceneInfo {
         let code = ""
         for (const node of this.#nodes.values()) {
             code += node.compileAuxFast()
+        }
+        return code
+    }
+
+    compileAuxMid(): string {
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            code += node.compileAuxMid()
         }
         return code
     }

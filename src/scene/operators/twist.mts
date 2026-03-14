@@ -25,6 +25,14 @@ export class Twist extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `sdfTwistFast(${twistedChild}, p, ${this.rate})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileMid(indentLevel)
+        const childText = childResult.text!
+        const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${this.rate})`)
+        const funcName = `Twist${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `sdfTwistNormalMid(${twistedChild}, p, ${this.rate})` }
+    }
     constructor(public rate: number, arg: Node) {
         super(arg)
     }

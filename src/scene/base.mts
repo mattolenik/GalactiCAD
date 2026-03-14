@@ -93,11 +93,19 @@ export class Node {
         return ""
     }
 
+    compileAuxMid(): string {
+        return ""
+    }
+
     compile(_indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
 
     compileFast(_indentLevel = 0): CompileResult {
+        throw new Error("Method not implemented.")
+    }
+
+    compileMid(_indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
 

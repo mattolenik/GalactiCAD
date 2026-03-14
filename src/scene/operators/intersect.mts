@@ -35,6 +35,17 @@ export class Intersect extends BinaryOperator {
         }
     }
 
+    private _interMid(L: string, R: string): string {
+        const r = this.radius
+        if (!r || r <= 0) return `opIntersectionMid(${L}, ${R})`
+        switch (this.mode) {
+            case 'chamfer': return `fOpIntersectionChamferMid(${L}, ${R}, ${r})`
+            case 'columns': return `fOpIntersectionColumnsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            case 'stairs': return `fOpIntersectionStairsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            default: return `fOpIntersectionRoundMid(${L}, ${R}, ${r})`
+        }
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
@@ -47,6 +58,12 @@ export class Intersect extends BinaryOperator {
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
         return { text: this._interFast(lhResult.text!, rhResult.text!), varName }
+    }
+    override compileMid(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileMid(indentLevel)
+        const rhResult = this.rh.compileMid(indentLevel)
+        const varName = `i_${lhResult.varName}__${rhResult.varName}`
+        return { text: this._interMid(lhResult.text!, rhResult.text!), varName }
     }
 
     constructor(lh: Node, rh: Node, public radius = 0, public mode?: BlendMode, public n?: number) {

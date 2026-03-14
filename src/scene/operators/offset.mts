@@ -21,6 +21,12 @@ export class Offset extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `sdfOffsetFast(${childResult.text}, ${this.amount})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileMid(indentLevel)
+        const funcName = `Offset${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `sdfOffsetMid(${childResult.text}, ${this.amount})` }
+    }
     constructor(public amount: number, arg: Node) {
         super(arg)
     }

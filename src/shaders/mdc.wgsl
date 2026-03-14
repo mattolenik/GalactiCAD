@@ -121,6 +121,7 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
 // Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 //:) insert sceneAuxFast
 //:) insert sceneAux
+//:) insert sceneAuxMid
 
 // Placeholder for the actual scene Signed Distance Function
 fn sceneSDF(p: vec3f) -> SDFResult {
@@ -128,6 +129,14 @@ fn sceneSDF(p: vec3f) -> SDFResult {
     _ = faceSelection.nodeId;
     _ = nodeParams[0];
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
+}
+
+// Mid-tier SDF: d, g, n only — used by MDC for edge/vertex projection and sign resolution.
+fn sceneSDF_mid(p: vec3f) -> SDFResultMid {
+    _ = polygonVertices[0];
+    _ = faceSelection.nodeId;
+    _ = nodeParams[0];
+    return sdfRMid(0.0, 1.0, vec3f(0.0)); //:) insert sceneSDF_mid
 }
 
 // Fast version for distance-only evaluations - only returns vec2f(distance, gradientMagnitude).
@@ -272,8 +281,8 @@ fn resolveSignAtPos(p: vec3f, d: f32) -> i32 {
     if (d < -eps) { return -1; }
 
     // Use analytic normal to resolve on-surface samples deterministically.
-    let sdf = sceneSDF(p);
-    let n = sdf.n * sdf.s;
+    let sdf = sceneSDF_mid(p);
+    let n = sdf.n * select(-1.0, 1.0, sdf.d >= 0.0);
     if (length(n) > 0.0) {
         let nudge = min(eps, uniforms.voxelSize * 0.02);
         let d2p = sceneSDF_fast(p + n * nudge).x - uniforms.isoValue;
@@ -785,13 +794,13 @@ fn edgeDetection_Pass3(
             }
             
             // Final projection with gradient-magnitude correction
-            // Use analytic normals from SDFResult instead of finite-difference gradients
+            // Use analytic normals from SDFResultMid instead of finite-difference gradients
             // for stability at CSG seams where gradients are discontinuous.
             // Note: n is already correctly oriented by CSG operators (they negate n when needed)
-            var sdfResult = sceneSDF(intersectionPos);
+            var sdfResult = sceneSDF_mid(intersectionPos);
             var normal = sdfResult.n;
             for (var iter = 0u; iter < uniforms.mdcU0.x; iter = iter + 1u) {
-                sdfResult = sceneSDF(intersectionPos);
+                sdfResult = sceneSDF_mid(intersectionPos);
                 let d = sdfResult.d - uniforms.isoValue;
                 if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.z) { break; }
                 // Use analytic normal from SDF result (already correctly oriented)
@@ -805,7 +814,7 @@ fn edgeDetection_Pass3(
                 intersectionPos = intersectionPos - normal * clampedStep;
             }
             // Get final analytic normal at converged position
-            let finalSdf = sceneSDF(intersectionPos);
+            let finalSdf = sceneSDF_mid(intersectionPos);
             normal = finalSdf.n;
             
             crossingPos[e] = intersectionPos;
@@ -938,11 +947,11 @@ fn vertexGeneration_Pass4(
     // Iterative projection to ensure vertex is on the true iso-surface.
     // Uses gradient-magnitude-aware stepping to handle smooth CSG regions
     // where |∇f| < 1 and naive projection overshoots.
-    // Uses analytic normals from SDFResult for stability at CSG seams.
+    // Uses analytic normals from SDFResultMid for stability at CSG seams.
     // Note: n is already correctly oriented by CSG operators (they negate n when needed)
-    var finalSdfResult = sceneSDF(vertexPos);
+    var finalSdfResult = sceneSDF_mid(vertexPos);
     for (var iter = 0u; iter < uniforms.mdcU0.y; iter = iter + 1u) {
-        let sdfResult = sceneSDF(vertexPos);
+        let sdfResult = sceneSDF_mid(vertexPos);
         let d = sdfResult.d - uniforms.isoValue;
         if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { 
             finalSdfResult = sdfResult;

@@ -30,6 +30,12 @@ export class Groove extends BinaryOperator {
         const varName = `groove_${lhResult.varName}__${rhResult.varName}`
         return { text: `fOpGrooveFast(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileMid(indentLevel)
+        const rhResult = this.rh.compileMid(indentLevel)
+        const varName = `groove_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpGrooveMid(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
+    }
 }
 
 function grooveBase(base: Node) {

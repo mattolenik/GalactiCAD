@@ -37,6 +37,18 @@ export class Union extends BinaryOperator {
         }
     }
 
+    private _blendMid(L: string, R: string): string {
+        const r = this.radius
+        if (!r) return `opUnionMid(${L}, ${R})`
+        switch (this.mode) {
+            case 'chamfer': return `fOpUnionChamferMid(${L}, ${R}, ${r})`
+            case 'soft': return `fOpUnionSoftMid(${L}, ${R}, ${r})`
+            case 'columns': return `fOpUnionColumnsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            case 'stairs': return `fOpUnionStairsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            default: return `fOpUnionRoundMid(${L}, ${R}, ${r})`
+        }
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile()
         const rhResult = this.rh.compile()
@@ -49,6 +61,12 @@ export class Union extends BinaryOperator {
         const rhResult = this.rh.compileFast()
         const varName = `u_${lhResult.varName}__${rhResult.varName}`
         return { text: this._blendFast(lhResult.text!, rhResult.text!), varName }
+    }
+    override compileMid(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileMid()
+        const rhResult = this.rh.compileMid()
+        const varName = `u_${lhResult.varName}__${rhResult.varName}`
+        return { text: this._blendMid(lhResult.text!, rhResult.text!), varName }
     }
 
     constructor(lh: Node, rh: Node, public radius?: number, public mode?: UnionType, public n?: number) {

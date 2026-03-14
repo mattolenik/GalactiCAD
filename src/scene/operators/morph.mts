@@ -27,6 +27,12 @@ export class Morph extends BinaryOperator {
         const varName = `morph_${lhResult.varName}__${rhResult.varName}`
         return { text: `sdfMorphFast(${lhResult.text}, ${rhResult.text}, ${this.#morphT})`, varName }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileMid(indentLevel)
+        const rhResult = this.rh.compileMid(indentLevel)
+        const varName = `morph_${lhResult.varName}__${rhResult.varName}`
+        return { text: `sdfMorphMid(${lhResult.text}, ${rhResult.text}, ${this.#morphT})`, varName }
+    }
 }
 
 export function morph(lh: Node, rh: Node): Morph {

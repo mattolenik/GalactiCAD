@@ -27,6 +27,12 @@ export class Engrave extends BinaryOperator {
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
         return { text: `fOpEngraveFast(${lhResult.text}, ${rhResult.text}, ${this.#engraveRadius})`, varName }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileMid(indentLevel)
+        const rhResult = this.rh.compileMid(indentLevel)
+        const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpEngraveMid(${lhResult.text}, ${rhResult.text}, ${this.#engraveRadius})`, varName }
+    }
 }
 
 function engraveBase(base: Node) {

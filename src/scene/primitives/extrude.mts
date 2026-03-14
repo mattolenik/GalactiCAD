@@ -58,6 +58,7 @@ export class Extrude extends Node {
     get wgslFieldFuncName(): string { return `fExtrude_${this.id}_field` }
     get wgslExFuncName(): string { return `fExtrude_${this.id}_Ex` }
     get wgslFastFuncName(): string { return `fExtrude_${this.id}_Fast` }
+    get wgslMidFuncName(): string { return `fExtrude_${this.id}_Mid` }
 
     override compileAux(): string {
         const childFunc = this.child.wgslFuncName
@@ -219,7 +220,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             resultId = FACE_HIGHLIGHT_BOTTOM;
         }
     }
-    return sdfR(d, 0.8, 1.0, resultId, n);
+    return sdfR(d, 0.8, resultId, n);
 }
 `
     }
@@ -260,6 +261,56 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
 `
     }
 
+    override compileAuxMid(): string {
+        const combinedFunc = this.child.wgslCombinedFuncName
+        const hasTwist = this.twistDegrees !== 0
+
+        if (!hasTwist) {
+            return `
+fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
+    let combined = ${combinedFunc}(p.xz);
+    let d2d = combined.x;
+    let capH = nodeParams[${this.id}].x;
+    let capY = p.y - nodeParams[${this.id}].y;
+    let dCap = abs(capY) - capH;
+    let d = max(d2d, dCap);
+    let onSide = d2d > dCap;
+    let gx = combined.z;
+    let gz = combined.w;
+    let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
+    let nCap = vec3f(0.0, sgn(capY), 0.0);
+    let n = select(nCap, nSide, onSide);
+    return sdfRMid(d, 1.0, n);
+}
+`
+        }
+
+        const twistRad = (this.twistDegrees * Math.PI / 180).toFixed(10)
+        return `
+fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
+    let h = nodeParams[${this.id}].x;
+    let capY = p.y - nodeParams[${this.id}].y;
+    let twist = ${twistRad};
+    let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
+    let angle = twist * t;
+    let ca = cos(angle);
+    let sa = sin(angle);
+    let twisted = vec2f(ca * p.x + sa * p.z, -sa * p.x + ca * p.z);
+    let combined = ${combinedFunc}(twisted);
+    let d2d = combined.x;
+    let dCap = abs(capY) - h;
+    let d = max(d2d, dCap);
+    let onSide = (d - dCap) > 0.01;
+    let gx_tw = combined.z;
+    let gz_tw = combined.w;
+    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, 0.0, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
+    let nCap = vec3f(0.0, sgn(capY), 0.0);
+    let n = select(nCap, nSide, onSide);
+    return sdfRMid(d, 0.8, n);
+}
+`
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Extrude${this.id}`
         const varName = decapitalize(funcName)
@@ -277,6 +328,15 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
             funcName,
             varName,
             text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+        }
+    }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Extrude${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return {
+            funcName,
+            varName,
+            text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
         }
     }
 

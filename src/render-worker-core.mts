@@ -207,15 +207,19 @@ export class RenderWorkerCore {
 
         const sceneAux = scene.compileAux()
         const sceneAuxFast = scene.compileAuxFast()
+        const sceneAuxMid = scene.compileAuxMid()
         const sceneSDF = scene.compile()
         const sceneSDF_fast = scene.compileFast()
+        const sceneSDF_mid = scene.compileMid()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
 
         const shaderCompiler = new ShaderCompiler(this.#device)
             .replace("insert", "sceneAuxFast", sceneAuxFast)
             .replace("insert", "sceneAux", sceneAux)
+            .replace("insert", "sceneAuxMid", sceneAuxMid)
             .replace("insert", "sceneSDF_fast", sceneSDF_fast)
             .replace("insert", "sceneSDF", sceneSDF)
+            .replace("insert", "sceneSDF_mid", sceneSDF_mid)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
 
         this.#sceneShader = shaderCompiler.compile(previewShader, "Preview Window")
@@ -491,14 +495,18 @@ export class RenderWorkerCore {
             const scene = this.#scene!
             const sceneAux = scene.compileAux()
             const sceneAuxFast = scene.compileAuxFast()
+            const sceneAuxMid = scene.compileAuxMid()
             const sceneSDF = scene.compile()
             const sceneSDF_fast = scene.compileFast()
+            const sceneSDF_mid = scene.compileMid()
             const sceneEdgeHelpers = scene.compileEdgeHelpers()
             const shaderCompiler = new ShaderCompiler(this.#device)
                 .replace("insert", "sceneAuxFast", sceneAuxFast)
                 .replace("insert", "sceneAux", sceneAux)
+                .replace("insert", "sceneAuxMid", sceneAuxMid)
                 .replace("insert", "sceneSDF_fast", sceneSDF_fast)
                 .replace("insert", "sceneSDF", sceneSDF)
+                .replace("insert", "sceneSDF_mid", sceneSDF_mid)
                 .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
             const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
             const mdc = new MDCExport(

@@ -35,6 +35,17 @@ export class Subtract extends BinaryOperator {
         }
     }
 
+    private _diffMid(L: string, R: string): string {
+        const r = this.radius
+        if (!r || r <= 0) return `opDifferenceMid(${L}, ${R})`
+        switch (this.mode) {
+            case 'chamfer': return `fOpDifferenceChamferMid(${L}, ${R}, ${r})`
+            case 'columns': return `fOpDifferenceColumnsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            case 'stairs': return `fOpDifferenceStairsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
+            default: return `fOpDifferenceRoundMid(${L}, ${R}, ${r})`
+        }
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
@@ -47,6 +58,12 @@ export class Subtract extends BinaryOperator {
         const rhResult = this.rh.compileFast(indentLevel)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
         return { text: this._diffFast(lhResult.text!, rhResult.text!), varName }
+    }
+    override compileMid(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileMid(indentLevel)
+        const rhResult = this.rh.compileMid(indentLevel)
+        const varName = `d_${lhResult.varName}__${rhResult.varName}`
+        return { text: this._diffMid(lhResult.text!, rhResult.text!), varName }
     }
 
     constructor(lh: Node, rh: Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {

@@ -21,6 +21,12 @@ export class Shell extends UnaryOperator {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `sdfShellFast(${childResult.text}, ${this.thickness})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const childResult = this.arg.compileMid(indentLevel)
+        const funcName = `Shell${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `sdfShellMid(${childResult.text}, ${this.thickness})` }
+    }
     constructor(public thickness: number, arg: Node) {
         super(arg)
     }

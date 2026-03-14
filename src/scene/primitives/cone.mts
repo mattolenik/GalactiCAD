@@ -29,6 +29,11 @@ export class Cone extends Node {
         const varName = `${decapitalize(funcName)}_f`
         return { funcName, varName, text: `fConeFast(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Cone${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return { funcName, varName, text: `fConeMid(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
+    }
 
     @fluent height(h: number): this {
         this.h = h

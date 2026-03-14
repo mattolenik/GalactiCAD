@@ -30,6 +30,12 @@ export class Tongue extends BinaryOperator {
         const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
         return { text: `fOpTongueFast(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileMid(indentLevel)
+        const rhResult = this.rh.compileMid(indentLevel)
+        const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
+        return { text: `fOpTongueMid(${lhResult.text}, ${rhResult.text}, ${this.ra}, ${this.rb})`, varName }
+    }
 }
 
 function tongueBase(base: Node) {

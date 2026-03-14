@@ -55,6 +55,7 @@ export class Loft extends Node {
     get wgslFieldFuncName(): string { return `fLoft_${this.id}_field` }
     get wgslExFuncName(): string { return `fLoft_${this.id}_Ex` }
     get wgslFastFuncName(): string { return `fLoft_${this.id}_Fast` }
+    get wgslMidFuncName(): string { return `fLoft_${this.id}_Mid` }
 
     private generateFieldBody(_h: string): string {
         const N = this.profiles.length
@@ -115,6 +116,27 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
 `
     }
 
+    override compileAuxMid(): string {
+        const h = this.h.toFixed(6)
+        const fieldBody = this.generateFieldBody(h)
+        return `
+fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
+    let d = ${this.wgslFieldFuncName}(p);
+    let capH = nodeParams[${this.id}].x;
+    let capY = p.y - nodeParams[${this.id}].y;
+    let dCap = abs(capY) - capH;
+    let onSide = (d - dCap) > 0.01;
+    let eps = 0.001;
+    let gx = ${this.wgslFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
+    let gz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
+    let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
+    let nCap = vec3f(0.0, sgn(capY), 0.0);
+    let n = select(nCap, nSide, onSide);
+    return sdfRMid(d, 0.8, n);
+}
+`
+    }
+
     override compileAuxFast(): string {
         const h = this.h.toFixed(6)
         const fieldBody = this.generateFieldBody(h)
@@ -152,6 +174,15 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
             funcName,
             varName,
             text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+        }
+    }
+    override compileMid(indentLevel = 0): CompileResult {
+        const funcName = `Loft${this.id}`
+        const varName = `${decapitalize(funcName)}_m`
+        return {
+            funcName,
+            varName,
+            text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
         }
     }
 

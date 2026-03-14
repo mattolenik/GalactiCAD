@@ -27,6 +27,12 @@ export class Seam extends BinaryOperator {
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
         return { text: `sdfSeamFast(${lhResult.text}, ${rhResult.text}, ${this.#seamRadius})`, varName }
     }
+    override compileMid(indentLevel = 0): CompileResult {
+        const lhResult = this.lh.compileMid(indentLevel)
+        const rhResult = this.rh.compileMid(indentLevel)
+        const varName = `seam_${lhResult.varName}__${rhResult.varName}`
+        return { text: `sdfSeamMid(${lhResult.text}, ${rhResult.text}, ${this.#seamRadius})`, varName }
+    }
 }
 
 export function seam(lh: Node, rh: Node): Seam {

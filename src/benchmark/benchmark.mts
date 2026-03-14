@@ -39,8 +39,8 @@ export type BenchmarkSuite = BenchmarkCase[]
 
 const BENCHMARK_WIDTH = 800
 const BENCHMARK_HEIGHT = 600
-/** Duration in seconds to render each benchmark case (time-based, not frame count). */
-const BENCHMARK_DURATION_SECONDS = 5
+/** Number of frames to render each benchmark case. */
+const BENCHMARK_FRAME_COUNT = 3 * 60
 
 // ---------------------------------------------------------------------------
 // Storage
@@ -127,18 +127,18 @@ function cameraStateFromSettings(cam: CameraSettings): CameraState {
 /**
  * Run the benchmark suite using an offscreen renderer.
  * Returns results keyed by document name.
- * Renders each case for a fixed duration (not a fixed frame count). FPS = frames / duration.
+ * Renders each case for a fixed frame count. FPS = frames / totalTime.
  *
  * Note: This measures GPU render throughput. The worker receives one payload via postMessage,
  * then runs a tight loop reusing it—no per-frame IPC. Shared memory (used for the interactive
  * preview) is not exercised here, so benchmark results are unchanged by the shared-memory migration.
  *
- * @param durationSeconds - How long to render each case (default BENCHMARK_DURATION_SECONDS).
+ * @param frameCount - Number of frames to render each case (default BENCHMARK_FRAME_COUNT).
  * @param viewport - When provided, uses these dimensions for the offscreen canvas. Otherwise 800×600.
  */
 export async function runBenchmarkSuite(
     suite: BenchmarkSuite,
-    durationSeconds = BENCHMARK_DURATION_SECONDS,
+    frameCount = BENCHMARK_FRAME_COUNT,
     viewport?: { width: number; height: number }
 ): Promise<BenchmarkCaseResult[]> {
     const results: BenchmarkCaseResult[] = []
@@ -169,7 +169,7 @@ export async function runBenchmarkSuite(
                 renderer.cameraOptimization = benchCase.preview.cameraOptimization
                 renderer.bvhEnabled = benchCase.preview.bvhOptimization
 
-                const result = await renderer.benchmark(durationSeconds, true)
+                const result = await renderer.benchmark(frameCount, true)
                 results.push({ name: benchCase.name, result })
             } catch (err) {
                 const errorMsg = err instanceof Error ? err.message : String(err)

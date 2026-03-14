@@ -74,7 +74,7 @@ export type MainToWorkerMessage =
     | { type: "resize"; fullWidth: number; fullHeight: number; devicePixelRatio: number }
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer } }
     | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
-    | { type: "benchmark"; durationSeconds: number; waitForGPU: boolean; requestId?: number }
+    | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
     | { type: "setBvhEnabled"; enabled: boolean }

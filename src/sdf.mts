@@ -1115,13 +1115,13 @@ export class SDFRenderer {
         })
     }
 
-    async benchmark(durationSeconds = 5, waitForGPU = true): Promise<{ totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }> {
+    async benchmark(frameCount = 3 * 60, waitForGPU = true): Promise<{ totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }> {
         const requestId = ++this.#requestIdCounter
         const payload = this.#buildRenderPayload([this.#fullWidth || 800, this.#fullHeight || 600] as [number, number])
         this.#worker.postMessage(payload, [payload.viewTransform.buffer])
         return new Promise(resolve => {
             this.#pendingBenchmark.set(requestId, { resolve })
-            this.#worker.postMessage({ type: "benchmark", durationSeconds, waitForGPU, requestId })
+            this.#worker.postMessage({ type: "benchmark", frameCount, waitForGPU, requestId })
         })
     }
 

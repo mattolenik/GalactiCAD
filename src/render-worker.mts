@@ -114,7 +114,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
                         renderScheduled = false
                     }
                 }
-                core.handleBenchmark(msg.durationSeconds, msg.waitForGPU, msg.requestId)
+                core.handleBenchmark(msg.frameCount, msg.waitForGPU, msg.requestId)
             }
             break
         case "thumbnail":

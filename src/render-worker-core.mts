@@ -638,18 +638,17 @@ export class RenderWorkerCore {
         return refined ?? coarse
     }
 
-    async handleBenchmark(durationSeconds: number, waitForGPU: boolean, requestId?: number): Promise<void> {
+    async handleBenchmark(frameCount: number, waitForGPU: boolean, requestId?: number): Promise<void> {
         if (!this.#pipeline) {
             self.postMessage({ type: "benchmarkResult", result: { totalTime: 0, averageFrameTime: 0, minFrameTime: 0, maxFrameTime: 0, framesPerSecond: 0, frameTimes: [], error: "Cannot benchmark: renderer not initialized. Call build() first." }, requestId })
             return
         }
         const frameTimes: number[] = []
         const startTime = performance.now()
-        const targetMs = durationSeconds * 1000
         if (waitForGPU) {
             await this.#renderFrameAndWait()
         }
-        while (performance.now() - startTime < targetMs) {
+        for (let i = 0; i < frameCount; i++) {
             const frameStart = performance.now()
             if (waitForGPU) {
                 await this.#renderFrameAndWait()
@@ -659,11 +658,11 @@ export class RenderWorkerCore {
             frameTimes.push(performance.now() - frameStart)
         }
         const totalTime = performance.now() - startTime
-        const frameCount = frameTimes.length
-        const averageFrameTime = frameCount > 0 ? totalTime / frameCount : 0
-        const minFrameTime = frameCount > 0 ? Math.min(...frameTimes) : 0
-        const maxFrameTime = frameCount > 0 ? Math.max(...frameTimes) : 0
-        const framesPerSecond = totalTime > 0 ? (frameCount / totalTime) * 1000 : 0
+        const n = frameTimes.length
+        const averageFrameTime = n > 0 ? totalTime / n : 0
+        const minFrameTime = n > 0 ? Math.min(...frameTimes) : 0
+        const maxFrameTime = n > 0 ? Math.max(...frameTimes) : 0
+        const framesPerSecond = totalTime > 0 ? (n / totalTime) * 1000 : 0
         self.postMessage({
             type: "benchmarkResult",
             result: { totalTime, averageFrameTime, minFrameTime, maxFrameTime, framesPerSecond, frameTimes },

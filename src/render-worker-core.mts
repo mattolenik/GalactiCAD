@@ -128,6 +128,8 @@ export class RenderWorkerCore {
     #hoveredEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #cameraStagingBuf = new ArrayBuffer(160)
     #edgesStagingBuf = new ArrayBuffer(SELECTED_EDGES_TOTAL)
+    /** Worker-owned staging for SAB snapshot; max(SELECTED_OBJECT_IDS_SIZE, SELECTED_EDGES_TOTAL) */
+    #sabStagingBuf = new ArrayBuffer(4096)
     #lastRenderMsg: Extract<MainToWorkerMessage, { type: "render" }> | null = null
     #lastSharedBuffer: SharedArrayBuffer | null = null
     #lastSelectionMode = 0
@@ -535,9 +537,9 @@ export class RenderWorkerCore {
         this.#selectionStylesF32[17] = resolutionScale
         this.#writeBufferViewIfDirty(this.#uniformBuffers.selectionStyles, this.#selectionStylesF32, this.#selectionStylesCache)
 
-        this.#writeBufferIfDirty(this.#uniformBuffers.selectedObjectIds, buffer, L.O_SELECTED_OBJECT_IDS, L.SELECTED_OBJECT_IDS_SIZE, this.#selectedIdsCache)
-        this.#writeBufferIfDirty(this.#uniformBuffers.selectedEdges, buffer, L.O_SELECTED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#selectedEdgesCache)
-        this.#writeBufferIfDirty(this.#uniformBuffers.hoveredEdge, buffer, L.O_HOVERED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#hoveredEdgesCache)
+        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.selectedObjectIds, buffer, L.O_SELECTED_OBJECT_IDS, L.SELECTED_OBJECT_IDS_SIZE, this.#selectedIdsCache)
+        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.selectedEdges, buffer, L.O_SELECTED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#selectedEdgesCache)
+        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.hoveredEdge, buffer, L.O_HOVERED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#hoveredEdgesCache)
 
         const canvasTexture = this.#context.getCurrentTexture()
         const outlineTarget = canvasTexture.createView()
@@ -1426,6 +1428,23 @@ export class RenderWorkerCore {
             }
         }
         return false
+    }
+
+    /**
+     * SAB variant: snapshot byte range into worker-owned staging, then compare/write/update
+     * from that snapshot. Ensures GPU upload and cache state stay consistent when the main
+     * thread may be modifying the SAB concurrently.
+     */
+    #writeBufferFromSABIfDirty(
+        gpuBuffer: GPUBuffer,
+        sab: SharedArrayBuffer,
+        sabOffset: number,
+        byteLength: number,
+        cache: ArrayBuffer,
+    ): boolean {
+        const staging = new Uint8Array(this.#sabStagingBuf, 0, byteLength)
+        staging.set(new Uint8Array(sab, sabOffset, byteLength))
+        return this.#writeBufferIfDirty(gpuBuffer, this.#sabStagingBuf, 0, byteLength, cache)
     }
 
     /** Compare src view with cache; if different, write to GPU and update cache. Returns true if wrote. */

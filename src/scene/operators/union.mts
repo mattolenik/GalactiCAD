@@ -234,30 +234,25 @@ export class Union extends BinaryOperator {
 }
 
 /**
- * Build a union tree using balanced pairing instead of right-heavy stacking.
- * Pairs adjacent elements in rounds, reducing worst-case evaluation depth from
- * O(n) to O(log n). Optionally sorts by codegenCost descending so expensive
- * nodes are paired together and get BVH guards more effectively.
+ * Build a union tree. Operand order must be preserved for smooth/blended unions
+ * (round, soft, chamfer, columns, stairs) because pairwise operators are not
+ * associative. Since union() is called before .round() etc., we cannot know at
+ * build time whether the result will be smooth; we always preserve operand
+ * order to ensure correct behavior when smooth mode is applied.
+ *
+ * Uses left-to-right fold (union(union(union(a,b),c),d)) to preserve order.
+ * BVH thresholding and cost-based guards remain in place per-node.
  */
 function unionImpl(parts: Node[], radius?: number, mode?: UnionType, n?: number): Union {
     if (parts.length < 2) {
         throw new Error("union requires at least two things to union together")
     }
-    let level = [...parts].sort((a, b) => b.codegenCost() - a.codegenCost())
-    while (level.length > 1) {
-        const next: Node[] = []
-        for (let i = 0; i < level.length; i += 2) {
-            if (i + 1 < level.length) {
-                next.push(new Union(level[i]!, level[i + 1]!, radius, mode, n))
-            } else {
-                next.push(level[i]!)
-            }
-        }
-        level = next
+    // Left-to-right fold preserves operand order for smooth unions
+    let acc = parts[0]!
+    for (let i = 1; i < parts.length; i++) {
+        acc = new Union(acc, parts[i]!, radius, mode, n)
     }
-    const result = level[0]
-    if (!(result instanceof Union)) throw new Error("unexpected type during union stacking")
-    return result
+    return acc as Union
 }
 
 export function union(...parts: Node[]): Union {

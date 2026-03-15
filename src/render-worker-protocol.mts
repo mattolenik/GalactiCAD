@@ -71,7 +71,7 @@ export type MainToWorkerMessage =
     | { type: "render"; cameraState: CameraState; viewTransform: Float32Array; cameraPosition: [number, number, number]; cameraRes: [number, number]; selectionState: RenderSelectionState; viewSettings: RenderViewSettings; viewCenter: [number, number]; resolutionScale: number }
     | { type: "click"; clickUV: [number, number]; shiftKey: boolean; altKey: boolean; documentName?: string }
     | { type: "doubleClick"; clickUV: [number, number]; documentName?: string }
-    | { type: "hover"; clickUV: [number, number]; altKey: boolean; documentName?: string }
+    | { type: "hover"; clickUV: [number, number]; altKey: boolean; documentName?: string; hoverRequestId?: number }
     | { type: "resize"; fullWidth: number; fullHeight: number; devicePixelRatio: number }
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer } }
     | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
@@ -118,7 +118,7 @@ export type WorkerToMainMessage =
     | { type: "initError"; error: string }
     | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: [number, number][]; error?: string; requestId?: number; documentName?: string; superseded?: boolean }
     | { type: "clickResult"; clickedId: number; edgeHits: EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number]; shiftKey: boolean; altKey: boolean; documentName?: string }
-    | { type: "selectionInfo"; info: SelectionInfo; documentName?: string }
+    | { type: "selectionInfo"; info: SelectionInfo; documentName?: string; hoverRequestId?: number }
     | { type: "objectDoubleClick"; nodeId: number; hitPos?: [number, number, number]; documentName?: string }
     | { type: "renderMeshResult"; mesh?: MeshData; error?: string; requestId?: number; documentName?: string }
     | { type: "benchmarkResult"; result: BenchmarkResultPayload; requestId?: number }

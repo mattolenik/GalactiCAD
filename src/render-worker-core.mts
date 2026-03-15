@@ -1231,7 +1231,7 @@ export class RenderWorkerCore {
         })
     }
 
-    async handleHover(clickUV: [number, number], altKey: boolean, documentName?: string, sab?: SharedArrayBuffer): Promise<void> {
+    async handleHover(clickUV: [number, number], altKey: boolean, documentName?: string, hoverRequestId?: number, sab?: SharedArrayBuffer): Promise<void> {
         const selectionMode = this.#lastSelectionMode
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return
@@ -1285,7 +1285,7 @@ export class RenderWorkerCore {
                 })),
             } : null,
         }
-        self.postMessage({ type: "selectionInfo", info, documentName })
+        self.postMessage({ type: "selectionInfo", info, documentName, hoverRequestId })
     }
 
     async handleDoubleClick(clickUV: [number, number], documentName?: string, sab?: SharedArrayBuffer): Promise<void> {

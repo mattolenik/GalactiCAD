@@ -79,7 +79,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             if (core) core.handleDoubleClick(msg.clickUV, msg.documentName, sharedBuffer ?? undefined)
             break
         case "hover":
-            if (core) core.handleHover(msg.clickUV, msg.altKey, msg.documentName, sharedBuffer ?? undefined)
+            if (core) core.handleHover(msg.clickUV, msg.altKey, msg.documentName, msg.hoverRequestId, sharedBuffer ?? undefined)
             break
         case "resize":
             if (core) {

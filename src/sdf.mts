@@ -75,6 +75,9 @@ export class SDFRenderer {
     #lastHoverAltKey = false
     /** Tracks previous frame's isActivelyMoving for motion transition detection. */
     #wasActivelyMoving = false
+    /** Monotonic hover request ID; -1 means ignore all in-flight hover results (e.g. during movement). */
+    #hoverRequestId = 0
+    #latestHoverRequestId = -1
     #compiledPosY = new Map<number, number>()
     #getInteractionRect: (() => DOMRect) | null = null
     #pushPullNodes: Map<number, { type: "extrude"; id: number; pos: { x: number; y: number; z: number }; h: number; child: { vertices: [number, number][]; bufferOffset: number }; twistDegrees?: number; capTopId?: number; capBottomId?: number } | { type: "loft"; id: number; pos: { x: number; y: number; z: number }; h: number; profiles: { vertices: [number, number][]; bufferOffset: number }[] } | { type: "polygon2d"; id: number; vertices: [number, number][]; bufferOffset: number } | { type: "virtualCap"; id: number; parentId: number; isTop: boolean }> = new Map()
@@ -194,7 +197,11 @@ export class SDFRenderer {
                 this.#lastHoverAltKey = altKey
                 if (this.#controls.isActivelyMoving) return
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
-                if (uv) this.#worker.postMessage({ type: "hover", clickUV: uv, altKey, documentName: this.#getActiveDocument?.() ?? undefined })
+                if (uv) {
+                    const id = ++this.#hoverRequestId
+                    this.#latestHoverRequestId = id
+                    this.#worker.postMessage({ type: "hover", clickUV: uv, altKey, documentName: this.#getActiveDocument?.() ?? undefined, hoverRequestId: id })
+                }
             }),
             this.#controls.change$.subscribe(() => {
                 this.#needsRender = true
@@ -302,6 +309,7 @@ export class SDFRenderer {
                 break
             case "selectionInfo":
                 if (msg.documentName !== undefined && msg.documentName !== this.#getActiveDocument?.()) return
+                if (msg.hoverRequestId !== undefined && msg.hoverRequestId !== this.#latestHoverRequestId) return
                 this.#hoveredObjectId = msg.info.hover?.objectId ?? 0
                 this.#hoveredEdges = msg.info.hover?.edges?.map(e => ({
                     kind: e.kind,
@@ -614,6 +622,7 @@ export class SDFRenderer {
 
     /** Clear cached hover state and refresh UI when camera movement starts. */
     #clearHoverWhenMovingStarted(): void {
+        this.#latestHoverRequestId = -1
         this.#hoveredObjectId = 0
         this.#hoveredEdges = []
         this.#pushSelectionInfo()
@@ -626,11 +635,14 @@ export class SDFRenderer {
         if (!pos) return
         const uv = this.#screenToClickUV(pos.x, pos.y)
         if (uv) {
+            const id = ++this.#hoverRequestId
+            this.#latestHoverRequestId = id
             this.#worker.postMessage({
                 type: "hover",
                 clickUV: uv,
                 altKey: this.#lastHoverAltKey,
                 documentName: this.#getActiveDocument?.() ?? undefined,
+                hoverRequestId: id,
             })
         }
     }

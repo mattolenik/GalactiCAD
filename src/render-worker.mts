@@ -5,12 +5,11 @@
 
 import type { MainToWorkerMessage } from "./render-worker-protocol.mjs"
 import { RenderWorkerCore } from "./render-worker-core.mjs"
-import { readRenderPayload } from "./shared-render-buffer.mjs"
 
 let core: RenderWorkerCore | null = null
 let sharedBuffer: SharedArrayBuffer | null = null
 let lastRenderedVersion = 0
-let pollHandle: ReturnType<typeof setTimeout> | null = null
+let renderKickScheduled = false
 
 /** Pending resize to apply when init completes (avoids race where resize arrives before core exists). */
 let pendingResize: { fullWidth: number; fullHeight: number } | null = null
@@ -34,34 +33,21 @@ function scheduleRender(): void {
     }, 0)
 }
 
-/** When no new frame for this many polls, throttle to reduce idle CPU. */
-const IDLE_THROTTLE_MS = 4
-
-function pollLoop(idleCount = 0): void {
+function runRenderFromSharedBuffer(): void {
+    renderKickScheduled = false
     if (!core || !sharedBuffer) return
     const u32 = new Uint32Array(sharedBuffer)
     const version = Atomics.load(u32, 0)
     if (version !== lastRenderedVersion) {
         lastRenderedVersion = version
-        const payload = readRenderPayload(sharedBuffer)
-        core.renderFromSharedBuffer(sharedBuffer, payload)
-        pollHandle = setTimeout(() => pollLoop(0), 0)
-    } else {
-        const delay = idleCount > 3 ? IDLE_THROTTLE_MS : 0
-        pollHandle = setTimeout(() => pollLoop(idleCount + 1), delay)
+        core.renderFromSharedBuffer(sharedBuffer)
     }
 }
 
-function startPollLoop(): void {
-    if (pollHandle != null) return
-    pollLoop()
-}
-
-function stopPollLoop(): void {
-    if (pollHandle != null) {
-        clearTimeout(pollHandle)
-        pollHandle = null
-    }
+function scheduleRenderFromKick(): void {
+    if (renderKickScheduled || !core || !sharedBuffer) return
+    renderKickScheduled = true
+    setTimeout(runRenderFromSharedBuffer, 0)
 }
 
 self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
@@ -69,6 +55,9 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
     switch (msg.type) {
         case "init":
             handleInit(msg.canvas, msg.sharedBuffer)
+            break
+        case "renderKick":
+            scheduleRenderFromKick()
             break
         case "build":
             if (core) enqueueBuild(msg.body, msg.documentName, msg.requestId)
@@ -84,13 +73,13 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             }
             break
         case "click":
-            if (core) core.handleClick(msg.clickUV, msg.shiftKey, msg.altKey, msg.documentName)
+            if (core) core.handleClick(msg.clickUV, msg.shiftKey, msg.altKey, msg.documentName, sharedBuffer ?? undefined)
             break
         case "doubleClick":
-            if (core) core.handleDoubleClick(msg.clickUV, msg.documentName)
+            if (core) core.handleDoubleClick(msg.clickUV, msg.documentName, sharedBuffer ?? undefined)
             break
         case "hover":
-            if (core) core.handleHover(msg.clickUV, msg.altKey, msg.documentName)
+            if (core) core.handleHover(msg.clickUV, msg.altKey, msg.documentName, sharedBuffer ?? undefined)
             break
         case "resize":
             if (core) {
@@ -126,7 +115,7 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             break
         case "pickPos":
             if (core) {
-                core.handlePickPos(msg.clickUV, msg.requestId)
+                core.handlePickPos(msg.clickUV, msg.requestId, sharedBuffer ?? undefined)
             } else {
                 self.postMessage({ type: "pickPosResult", hitPos: null, requestId: msg.requestId })
             }
@@ -145,7 +134,6 @@ async function handleInit(canvas: OffscreenCanvas, buf?: SharedArrayBuffer): Pro
         await core.init(canvas)
         if (buf) {
             sharedBuffer = buf
-            startPollLoop()
         }
         if (pendingResize) {
             core.resize(pendingResize.fullWidth, pendingResize.fullHeight)
@@ -155,7 +143,6 @@ async function handleInit(canvas: OffscreenCanvas, buf?: SharedArrayBuffer): Pro
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error("[RenderWorker] init failed:", err)
-        stopPollLoop()
         sharedBuffer = null
         self.postMessage({ type: "initError", error: msg })
     }

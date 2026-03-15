@@ -1080,6 +1080,7 @@ export class SDFRenderer {
                 this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullHeight : 1,
                 this.#renderVersion
             )
+            this.#worker.postMessage({ type: "renderKick", version: this.#renderVersion })
             this.#preview.updateFPS(readFps(this.#sharedBuffer))
         } else {
             this.#worker.postMessage(payload, [payload.viewTransform.buffer])

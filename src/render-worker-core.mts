@@ -22,7 +22,7 @@ import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import type { MainToWorkerMessage, RenderSelectionState, SelectedEdgePayload } from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
-import { writeFps } from "./shared-render-buffer.mjs"
+import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB } from "./shared-render-buffer.mjs"
 
 const MAX_POLYGON_VERTICES = 1024
 const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8
@@ -102,11 +102,7 @@ export class RenderWorkerCore {
     #lastRenderTime = 0
     #fpsFrameCount = 0
     #lastFpsSendTime = 0
-    #zoomBuf = new Float32Array(1)
     #lightDirBuf = new Float32Array(12)
-    #cameraPosBuf = new Float32Array(4)
-    #cameraResBuf = new Float32Array(3)
-    #viewCenterBuf = new Float32Array(4)
     #viewSettingsBuf = new Uint32Array(4)
     #selDataBuf = new Uint32Array(1024)
     #outlineBuf = new ArrayBuffer(48)
@@ -122,7 +118,18 @@ export class RenderWorkerCore {
     #edgeStrideU32 = new Uint32Array(this.#edgeStrideBuf)
     #edgeStrideF32 = new Float32Array(this.#edgeStrideBuf)
     #camTransform = new Mat4x4f(new Float32Array(16))
+    /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
+    #cameraCache = new ArrayBuffer(160)
+    #viewSettingsCache = new ArrayBuffer(16)
+    #outlineCache = new ArrayBuffer(48)
+    #selectionStylesCache = new ArrayBuffer(80)
+    #selectedIdsCache = new ArrayBuffer(4096)
+    #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
+    #hoveredEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
+    #cameraStagingBuf = new ArrayBuffer(160)
+    #edgesStagingBuf = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #lastRenderMsg: Extract<MainToWorkerMessage, { type: "render" }> | null = null
+    #lastSharedBuffer: SharedArrayBuffer | null = null
     #lastSelectionMode = 0
     #builtBody: string | null = null
     #fpsVersion = 0
@@ -324,39 +331,20 @@ export class RenderWorkerCore {
 
         this.#ensureRenderTextures(sceneWidth, sceneHeight)
 
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 0, viewTransform as GPUAllowSharedBufferSource)
-        this.#cameraPosBuf[0] = cameraPosition[0]
-        this.#cameraPosBuf[1] = cameraPosition[1]
-        this.#cameraPosBuf[2] = cameraPosition[2]
-        this.#cameraPosBuf[3] = 0
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64, this.#cameraPosBuf)
-        this.#cameraResBuf[0] = sceneWidth
-        this.#cameraResBuf[1] = sceneHeight
-        this.#cameraResBuf[2] = 0
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16, this.#cameraResBuf)
-        this.#zoomBuf[0] = msg.cameraState.zoom
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 64 + 16 + 8, this.#zoomBuf)
-
-        this.#camTransform.data.set(viewTransform)
-        const v1 = this.#camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
-        const v2 = this.#camTransform.transformVector(vec3(-0.6, 0.3, 0.8).normalize())
-        const v3 = this.#camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
-        const ld = this.#lightDirBuf
-        ld[0] = v1.x; ld[1] = v1.y; ld[2] = v1.z; ld[3] = 0
-        ld[4] = v2.x; ld[5] = v2.y; ld[6] = v2.z; ld[7] = 0
-        ld[8] = v3.x; ld[9] = v3.y; ld[10] = v3.z; ld[11] = 0
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 96, ld)
-        this.#viewCenterBuf[0] = viewCenter[0]
-        this.#viewCenterBuf[1] = viewCenter[1]
-        this.#viewCenterBuf[2] = 0
-        this.#viewCenterBuf[3] = 0
-        this.#device.queue.writeBuffer(this.#uniformBuffers.camera, 144, this.#viewCenterBuf)
+        this.#uploadCameraIfDirty(
+            viewTransform,
+            cameraPosition,
+            sceneWidth,
+            sceneHeight,
+            msg.cameraState.zoom,
+            viewCenter,
+        )
 
         this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
         this.#viewSettingsBuf[1] = 0  // unused (was refinementSteps)
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
-        this.#device.queue.writeBuffer(this.#uniformBuffers.viewSettings, 0, this.#viewSettingsBuf)
+        this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         this.#outlineU32[0] = viewSettings.outlineMode
         this.#outlineThicknessF32[0] = viewSettings.outlineThickness
@@ -367,9 +355,9 @@ export class RenderWorkerCore {
         new Float32Array(this.#outlineBuf, 36, 1)[0] = outline.dashLength
         new Float32Array(this.#outlineBuf, 40, 1)[0] = outline.dotSizeMin
         new Float32Array(this.#outlineBuf, 44, 1)[0] = outline.dotSpacingMultiplier
-        const ss = DEFAULT_SELECTION_STYLES
-        this.#device.queue.writeBuffer(this.#uniformBuffers.outlineSettings, 0, this.#outlineBuf)
+        this.#writeBufferViewIfDirty(this.#uniformBuffers.outlineSettings, new Uint8Array(this.#outlineBuf), this.#outlineCache)
 
+        const ss = DEFAULT_SELECTION_STYLES
         this.#selectionStylesF32[0] = ss.face.darken
         this.#selectionStylesF32[4] = ss.face.tint[0]
         this.#selectionStylesF32[5] = ss.face.tint[1]
@@ -383,16 +371,28 @@ export class RenderWorkerCore {
         this.#selectionStylesF32[15] = ss.face.dotRadius
         this.#selectionStylesF32[16] = ss.face.dotDarken
         this.#selectionStylesF32[17] = resolutionScale
-        this.#device.queue.writeBuffer(this.#uniformBuffers.selectionStyles, 0, this.#selectionStylesBuf)
+        this.#writeBufferViewIfDirty(this.#uniformBuffers.selectionStyles, this.#selectionStylesF32, this.#selectionStylesCache)
 
         this.#selDataBuf.fill(0)
         for (const id of selectionState.selectedObjectIds) {
             this.#selDataBuf[id] = 1
         }
-        this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, this.#selDataBuf)
+        this.#writeBufferViewIfDirty(this.#uniformBuffers.selectedObjectIds, this.#selDataBuf, this.#selectedIdsCache)
 
-        this.#writeEdgesToBuffer(this.#uniformBuffers.selectedEdges, selectionState.selectedEdges, DEFAULT_SELECTION_STYLES.edge.lineWidthPx, DEFAULT_SELECTION_STYLES.edge.epsilon)
-        this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, selectionState.hoveredEdges, 6.0, 0.02)
+        this.#writeEdgesToBufferIfDirty(
+            this.#uniformBuffers.selectedEdges,
+            selectionState.selectedEdges,
+            DEFAULT_SELECTION_STYLES.edge.lineWidthPx,
+            DEFAULT_SELECTION_STYLES.edge.epsilon,
+            this.#selectedEdgesCache,
+        )
+        this.#writeEdgesToBufferIfDirty(
+            this.#uniformBuffers.hoveredEdge,
+            selectionState.hoveredEdges,
+            6.0,
+            0.02,
+            this.#hoveredEdgesCache,
+        )
 
         const canvasTexture = outputTextureView ? null : this.#context.getCurrentTexture()
         const outlineTarget = outputTextureView ?? canvasTexture!.createView()
@@ -444,9 +444,149 @@ export class RenderWorkerCore {
         this.#device.queue.submit([commandEncoder.finish()])
     }
 
-    /** Render from shared buffer payload; writes FPS to shared buffer instead of postMessage. */
-    renderFromSharedBuffer(buffer: SharedArrayBuffer, msg: Extract<MainToWorkerMessage, { type: "render" }>): void {
-        this.render(msg, undefined, buffer)
+    /**
+     * Render from SAB-backed scratch storage. Reads directly from typed-array views
+     * without rebuilding a full payload object. Use for the interactive preview hot path.
+     */
+    renderFromSharedBuffer(buffer: SharedArrayBuffer): void {
+        this.#lastSharedBuffer = buffer
+        this.#renderFromSAB(buffer)
+    }
+
+    #renderFromSAB(buffer: SharedArrayBuffer): void {
+        const now = performance.now()
+        if (this.#lastRenderTime > 0) {
+            const delta = now - this.#lastRenderTime
+            if (delta > 0) {
+                this.#framerate.update(1000 / delta)
+                this.#fpsFrameCount++
+                const timeSinceFps = now - this.#lastFpsSendTime
+                if (this.#fpsFrameCount >= 5 || timeSinceFps >= 100) {
+                    this.#fpsFrameCount = 0
+                    this.#lastFpsSendTime = now
+                    this.#fpsVersion++
+                    writeFps(buffer, this.#framerate.average, this.#fpsVersion)
+                }
+            }
+        }
+        this.#lastRenderTime = now
+
+        const L = SAB_LAYOUT
+        const u32 = new Uint32Array(buffer)
+        const f32 = new Float32Array(buffer)
+
+        const resolutionScale = f32[L.O_RESOLUTION_SCALE / 4]
+        const cameraRes0 = f32[L.O_CAMERA_RES / 4]
+        const cameraRes1 = f32[L.O_CAMERA_RES / 4 + 1]
+        const sceneWidth = Math.max(1, Math.round(cameraRes0 * resolutionScale))
+        const sceneHeight = Math.max(1, Math.round(cameraRes1 * resolutionScale))
+
+        if (!this.#pipeline) return
+        if (sceneWidth === 0 || sceneHeight === 0) return
+        if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
+
+        const packed = u32[L.O_VIEW_SETTINGS / 4]
+        this.#lastSelectionMode = (packed >> 2) & 7
+        const beamEnabled = (packed & 2) !== 0
+
+        this.#ensureRenderTextures(sceneWidth, sceneHeight)
+
+        const viewTransform = new Float32Array(buffer, L.O_VIEW_TRANSFORM, 16)
+        const cameraPosition: [number, number, number] = [
+            f32[L.O_CAMERA_POSITION / 4],
+            f32[L.O_CAMERA_POSITION / 4 + 1],
+            f32[L.O_CAMERA_POSITION / 4 + 2],
+        ]
+        const viewCenter: [number, number] = [f32[L.O_VIEW_CENTER / 4], f32[L.O_VIEW_CENTER / 4 + 1]]
+        this.#uploadCameraIfDirty(viewTransform, cameraPosition, sceneWidth, sceneHeight, f32[L.O_ZOOM / 4], viewCenter)
+
+        this.#viewSettingsBuf[0] = (packed & 1) ? 1 : 0
+        this.#viewSettingsBuf[1] = 0
+        this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
+        this.#viewSettingsBuf[3] = this.#lastSelectionMode
+        this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
+
+        this.#outlineU32[0] = (packed >> 5) & 3
+        this.#outlineThicknessF32[0] = u32[L.O_OUTLINE_THICKNESS / 4]
+        this.#outlineColorF32[0] = f32[L.O_OUTLINE_COLOR / 4]
+        this.#outlineColorF32[1] = f32[L.O_OUTLINE_COLOR / 4 + 1]
+        this.#outlineColorF32[2] = f32[L.O_OUTLINE_COLOR / 4 + 2]
+        this.#outlineWidthF32[0] = this.#fullWidth
+        const outline = DEFAULT_SELECTION_STYLES.outline
+        new Float32Array(this.#outlineBuf, 32, 1)[0] = outline.dashSpacing
+        new Float32Array(this.#outlineBuf, 36, 1)[0] = outline.dashLength
+        new Float32Array(this.#outlineBuf, 40, 1)[0] = outline.dotSizeMin
+        new Float32Array(this.#outlineBuf, 44, 1)[0] = outline.dotSpacingMultiplier
+        this.#writeBufferViewIfDirty(this.#uniformBuffers.outlineSettings, new Uint8Array(this.#outlineBuf), this.#outlineCache)
+
+        const ss = DEFAULT_SELECTION_STYLES
+        this.#selectionStylesF32[0] = ss.face.darken
+        this.#selectionStylesF32[4] = ss.face.tint[0]
+        this.#selectionStylesF32[5] = ss.face.tint[1]
+        this.#selectionStylesF32[6] = ss.face.tint[2]
+        this.#selectionStylesF32[8] = ss.edge.color[0]
+        this.#selectionStylesF32[9] = ss.edge.color[1]
+        this.#selectionStylesF32[10] = ss.edge.color[2]
+        this.#selectionStylesF32[12] = ss.edge.selectedStrength
+        this.#selectionStylesF32[13] = ss.edge.hoverStrength
+        this.#selectionStylesF32[14] = ss.face.dotSpacing
+        this.#selectionStylesF32[15] = ss.face.dotRadius
+        this.#selectionStylesF32[16] = ss.face.dotDarken
+        this.#selectionStylesF32[17] = resolutionScale
+        this.#writeBufferViewIfDirty(this.#uniformBuffers.selectionStyles, this.#selectionStylesF32, this.#selectionStylesCache)
+
+        this.#writeBufferIfDirty(this.#uniformBuffers.selectedObjectIds, buffer, L.O_SELECTED_OBJECT_IDS, L.SELECTED_OBJECT_IDS_SIZE, this.#selectedIdsCache)
+        this.#writeBufferIfDirty(this.#uniformBuffers.selectedEdges, buffer, L.O_SELECTED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#selectedEdgesCache)
+        this.#writeBufferIfDirty(this.#uniformBuffers.hoveredEdge, buffer, L.O_HOVERED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#hoveredEdgesCache)
+
+        const canvasTexture = this.#context.getCurrentTexture()
+        const outlineTarget = canvasTexture.createView()
+        const commandEncoder = this.#device.createCommandEncoder()
+
+        if (beamEnabled && this.#beamPipeline) {
+            if (this.#beamBindGroupInvalid) {
+                this.#beamBindGroup = this.#device.createBindGroup({
+                    label: "beamPrePass",
+                    layout: this.#beamPipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
+                        { binding: 1, resource: this.#tStartTextureView },
+                        { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                        { binding: 4, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                    ],
+                })
+                this.#beamBindGroupInvalid = false
+            }
+            const BEAM_TILE_SIZE = 8
+            const tilesX = Math.ceil(sceneWidth / BEAM_TILE_SIZE)
+            const tilesY = Math.ceil(sceneHeight / BEAM_TILE_SIZE)
+            const beamPass = commandEncoder.beginComputePass({ label: "Beam Pre-Pass" })
+            beamPass.setPipeline(this.#beamPipeline)
+            beamPass.setBindGroup(0, this.#beamBindGroup)
+            beamPass.dispatchWorkgroups(Math.ceil(tilesX / 8), Math.ceil(tilesY / 8))
+            beamPass.end()
+        }
+
+        const scenePass = commandEncoder.beginRenderPass({
+            colorAttachments: [
+                { view: this.#colorTextureView, loadOp: "clear", storeOp: "store" },
+                { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xFFFFFFFF, g: 0, b: 0, a: 0 } },
+            ],
+        })
+        scenePass.setPipeline(this.#pipeline)
+        scenePass.setBindGroup(0, this.#bindGroup)
+        scenePass.draw(4)
+        scenePass.end()
+
+        const outlinePass = commandEncoder.beginRenderPass({
+            colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
+        })
+        outlinePass.setPipeline(this.#outlinePipeline)
+        outlinePass.setBindGroup(0, this.#outlineBindGroup!)
+        outlinePass.draw(4)
+        outlinePass.end()
+
+        this.#device.queue.submit([commandEncoder.finish()])
     }
 
     async #renderFrameAndWait(): Promise<void> {
@@ -1065,15 +1205,17 @@ export class RenderWorkerCore {
         return { hoveredObjectId, hoveredEdges: edges }
     }
 
-    async handleClick(clickUV: [number, number], shiftKey: boolean, altKey: boolean, documentName?: string): Promise<void> {
-        if (!this.#lastRenderMsg || !this.#pipeline) return
+    async handleClick(clickUV: [number, number], shiftKey: boolean, altKey: boolean, documentName?: string, sab?: SharedArrayBuffer): Promise<void> {
+        if (!this.#pipeline) return
+        if (!sab && !this.#lastRenderMsg) return
         this.#writeClickState(clickUV, true, false)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, new Float32Array(4).buffer)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, new Float32Array(4).buffer)
         this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(320))
 
-        this.render(this.#lastRenderMsg)
+        if (sab) this.#renderFromSAB(sab)
+        else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
         self.postMessage({
             type: "clickResult",
@@ -1087,14 +1229,16 @@ export class RenderWorkerCore {
         })
     }
 
-    async handleHover(clickUV: [number, number], altKey: boolean, documentName?: string): Promise<void> {
+    async handleHover(clickUV: [number, number], altKey: boolean, documentName?: string, sab?: SharedArrayBuffer): Promise<void> {
         const selectionMode = this.#lastSelectionMode
-        if (!this.#lastRenderMsg || !this.#pipeline) return
+        if (!this.#pipeline) return
+        if (!sab && !this.#lastRenderMsg) return
         const effectiveMode = altKey && selectionMode === 0 ? 1 : selectionMode
         this.#writeClickState(clickUV, false, true, clickUV)
         this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, new ArrayBuffer(320))
 
-        this.render(this.#lastRenderMsg)
+        if (sab) this.#renderFromSAB(sab)
+        else this.render(this.#lastRenderMsg!)
 
         const { hoveredObjectId, hoveredEdges } = await this.#readHoverResult()
         let edges: SelectedEdgePayload[] = []
@@ -1104,7 +1248,8 @@ export class RenderWorkerCore {
             edges = hoveredEdges.filter(h => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment)
         }
 
-        const objects = this.#lastRenderMsg.selectionState.selectedObjectIds
+        const selectionState = sab ? readSelectionStateFromSAB(sab) : this.#lastRenderMsg!.selectionState
+        const objects = selectionState.selectedObjectIds
         const objectNames: Record<number, string> = {}
         if (this.#scene) {
             const ids = new Set([...objects, hoveredObjectId].filter(id => id > 0))
@@ -1116,7 +1261,7 @@ export class RenderWorkerCore {
         const info: SelectionInfo = {
             objects,
             objectNames,
-            edges: this.#lastRenderMsg.selectionState.selectedEdges.map(e => ({
+            edges: selectionState.selectedEdges.map(e => ({
                 kind: e.kind,
                 primaryId: e.primaryId,
                 secondaryId: e.secondaryId,
@@ -1141,15 +1286,17 @@ export class RenderWorkerCore {
         self.postMessage({ type: "selectionInfo", info, documentName })
     }
 
-    async handleDoubleClick(clickUV: [number, number], documentName?: string): Promise<void> {
-        if (!this.#lastRenderMsg || !this.#pipeline) return
+    async handleDoubleClick(clickUV: [number, number], documentName?: string, sab?: SharedArrayBuffer): Promise<void> {
+        if (!this.#pipeline) return
+        if (!sab && !this.#lastRenderMsg) return
         this.#writeClickState(clickUV, true, false)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, new Float32Array(4).buffer)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, new Float32Array(4).buffer)
         this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(320))
 
-        this.render(this.#lastRenderMsg)
+        if (sab) this.#renderFromSAB(sab)
+        else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
         if (result.clickedId !== 0) {
             self.postMessage({
@@ -1161,8 +1308,12 @@ export class RenderWorkerCore {
         }
     }
 
-    async handlePickPos(clickUV: [number, number], requestId: number): Promise<void> {
-        if (!this.#lastRenderMsg || !this.#pipeline) {
+    async handlePickPos(clickUV: [number, number], requestId: number, sab?: SharedArrayBuffer): Promise<void> {
+        if (!this.#pipeline) {
+            self.postMessage({ type: "pickPosResult", hitPos: null, requestId })
+            return
+        }
+        if (!sab && !this.#lastRenderMsg) {
             self.postMessage({ type: "pickPosResult", hitPos: null, requestId })
             return
         }
@@ -1171,7 +1322,8 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, new Float32Array(4).buffer)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, new Float32Array(4).buffer)
         this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(320))
-        this.render(this.#lastRenderMsg)
+        if (sab) this.#renderFromSAB(sab)
+        else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
         // hitPos[3] is the ray travel distance t; 0 means no hit
         const hasHit = result.hitPos[3] > 0
@@ -1203,14 +1355,126 @@ export class RenderWorkerCore {
         if (msg.selectedObjectIds) {
             if (msg.selectedObjectIds instanceof ArrayBuffer) {
                 this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, msg.selectedObjectIds)
+                new Uint8Array(this.#selectedIdsCache).set(new Uint8Array(msg.selectedObjectIds))
             } else {
                 this.#device.queue.writeBuffer(
                     this.#uniformBuffers.selectedObjectIds,
                     msg.selectedObjectIds.offset,
                     msg.selectedObjectIds.data,
                 )
+                new Uint8Array(this.#selectedIdsCache, msg.selectedObjectIds.offset, msg.selectedObjectIds.data.byteLength).set(
+                    new Uint8Array(msg.selectedObjectIds.data),
+                )
             }
         }
+    }
+
+    /** Build full 160-byte camera uniform and upload if dirty. */
+    #uploadCameraIfDirty(
+        viewTransform: Float32Array | ArrayBuffer,
+        cameraPosition: [number, number, number],
+        sceneWidth: number,
+        sceneHeight: number,
+        zoom: number,
+        viewCenter: [number, number],
+    ): void {
+        this.#camTransform.data.set(viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform))
+        const v1 = this.#camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
+        const v2 = this.#camTransform.transformVector(vec3(-0.6, 0.3, 0.8).normalize())
+        const v3 = this.#camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
+        const ld = this.#lightDirBuf
+        ld[0] = v1.x; ld[1] = v1.y; ld[2] = v1.z; ld[3] = 0
+        ld[4] = v2.x; ld[5] = v2.y; ld[6] = v2.z; ld[7] = 0
+        ld[8] = v3.x; ld[9] = v3.y; ld[10] = v3.z; ld[11] = 0
+        const staging = new Uint8Array(this.#cameraStagingBuf)
+        const f32 = new Float32Array(this.#cameraStagingBuf)
+        const viewF32 = viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform)
+        staging.set(new Uint8Array(viewF32.buffer, viewF32.byteOffset, 64), 0)
+        f32[16] = cameraPosition[0]
+        f32[17] = cameraPosition[1]
+        f32[18] = cameraPosition[2]
+        f32[19] = 0
+        f32[20] = sceneWidth
+        f32[21] = sceneHeight
+        f32[22] = zoom
+        f32[23] = 0
+        f32[24] = ld[0]; f32[25] = ld[1]; f32[26] = ld[2]; f32[27] = 0
+        f32[28] = ld[4]; f32[29] = ld[5]; f32[30] = ld[6]; f32[31] = 0
+        f32[32] = ld[8]; f32[33] = ld[9]; f32[34] = ld[10]; f32[35] = 0
+        f32[36] = viewCenter[0]
+        f32[37] = viewCenter[1]
+        f32[38] = 0
+        f32[39] = 0
+        this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 160, this.#cameraCache)
+    }
+
+    /** Compare src[offset:offset+byteLength] with cache; if different, write to GPU and update cache. Returns true if wrote. */
+    #writeBufferIfDirty(
+        gpuBuffer: GPUBuffer,
+        src: ArrayBuffer | SharedArrayBuffer,
+        srcOffset: number,
+        byteLength: number,
+        cache: ArrayBuffer,
+    ): boolean {
+        const srcU8 = new Uint8Array(src, srcOffset, byteLength)
+        const cacheU8 = new Uint8Array(cache)
+        for (let i = 0; i < byteLength; i++) {
+            if (srcU8[i] !== cacheU8[i]) {
+                this.#device.queue.writeBuffer(gpuBuffer, 0, src, srcOffset, byteLength)
+                cacheU8.set(srcU8)
+                return true
+            }
+        }
+        return false
+    }
+
+    /** Compare src view with cache; if different, write to GPU and update cache. Returns true if wrote. */
+    #writeBufferViewIfDirty(gpuBuffer: GPUBuffer, src: ArrayBufferView, cache: ArrayBuffer): boolean {
+        const byteLength = src.byteLength
+        const srcU8 = new Uint8Array(src.buffer, src.byteOffset, byteLength)
+        const cacheU8 = new Uint8Array(cache)
+        for (let i = 0; i < byteLength; i++) {
+            if (srcU8[i] !== cacheU8[i]) {
+                this.#device.queue.writeBuffer(gpuBuffer, 0, src as BufferSource)
+                cacheU8.set(srcU8)
+                return true
+            }
+        }
+        return false
+    }
+
+    /** Build edges into staging, upload to GPU if dirty. */
+    #writeEdgesToBufferIfDirty(
+        gpuBuffer: GPUBuffer,
+        edges: (SelectedEdgePayload | { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx?: number; epsilon?: number; seedPoint?: [number, number, number]; seedTangent?: [number, number, number]; seedNormal?: [number, number, number] })[],
+        lineWidthPx: number,
+        epsilon: number,
+        cache: ArrayBuffer,
+    ): void {
+        const u32 = new Uint32Array(this.#edgesStagingBuf)
+        const f32 = new Float32Array(this.#edgesStagingBuf)
+        const count = Math.min(edges.length, SELECTED_EDGES_COUNT)
+        u32[0] = count
+        for (let i = 1; i < SELECTED_EDGES_HEADER / 4; i++) u32[i] = 0
+        for (let i = 0; i < count; i++) {
+            const e = edges[i]
+            const base = SELECTED_EDGES_HEADER / 4 + i * (SELECTED_EDGE_SIZE / 4)
+            u32[base] = e.kind
+            u32[base + 1] = e.primaryId
+            u32[base + 2] = e.secondaryId
+            u32[base + 3] = e.featureA
+            u32[base + 4] = e.opType
+            f32[base + 5] = e.lineWidthPx ?? lineWidthPx
+            f32[base + 6] = e.epsilon ?? epsilon
+            const sp = e.seedPoint ?? [0, 0, 0]
+            f32[base + 8] = sp[0]; f32[base + 9] = sp[1]; f32[base + 10] = sp[2]
+            const st = e.seedTangent ?? [0, 0, 0]
+            f32[base + 12] = st[0]; f32[base + 13] = st[1]; f32[base + 14] = st[2]
+            const sn = e.seedNormal ?? [0, 0, 0]
+            f32[base + 16] = sn[0]; f32[base + 17] = sn[1]; f32[base + 18] = sn[2]
+        }
+        new Uint8Array(this.#edgesStagingBuf).fill(0, SELECTED_EDGES_HEADER + count * SELECTED_EDGE_SIZE, SELECTED_EDGES_TOTAL)
+        this.#writeBufferIfDirty(gpuBuffer, this.#edgesStagingBuf, 0, SELECTED_EDGES_TOTAL, cache)
     }
 
     #writeEdgesToBuffer(

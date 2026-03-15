@@ -48,6 +48,44 @@ const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 /** Total buffer size in bytes */
 export const SHARED_RENDER_BUFFER_SIZE = O_HOVERED_OBJECT_ID + 4
 
+/**
+ * Layout constants for hot-path SAB reads (worker). Use these to read directly from
+ * typed-array views without rebuilding a full payload object.
+ */
+export const SAB_LAYOUT = {
+    O_VIEW_TRANSFORM,
+    O_CAMERA_POSITION,
+    O_CAMERA_RES,
+    O_ZOOM,
+    O_VIEW_CENTER,
+    O_VIEW_SETTINGS,
+    O_OUTLINE_THICKNESS,
+    O_OUTLINE_COLOR,
+    O_SELECTED_OBJECT_IDS,
+    O_SELECTED_EDGES_HEADER,
+    O_HOVERED_EDGES_HEADER,
+    O_RESOLUTION_SCALE,
+    SELECTED_OBJECT_IDS_SIZE,
+    SELECTED_EDGES_TOTAL: EDGES_HEADER_SIZE + EDGES_DATA_SIZE,
+} as const
+
+/**
+ * Read selection state from SAB. Allocates; use only for event handlers (hover) that need
+ * the full selection structure, not on the hot render path.
+ */
+export function readSelectionStateFromSAB(buffer: SharedArrayBuffer): RenderSelectionState {
+    const u32 = new Uint32Array(buffer)
+    const selectedObjectIds: number[] = []
+    const selIds = new Uint32Array(buffer, O_SELECTED_OBJECT_IDS, 1024)
+    for (let i = 0; i < 1024; i++) {
+        if (selIds[i]) selectedObjectIds.push(i)
+    }
+    const selectedEdges = readEdgesFromBuffer(buffer, O_SELECTED_EDGES_HEADER, O_SELECTED_EDGES_DATA, 6, 0.02)
+    const hoveredEdges = readEdgesFromBuffer(buffer, O_HOVERED_EDGES_HEADER, O_HOVERED_EDGES_DATA, 6, 0.02)
+    const hoveredObjectId = u32[O_HOVERED_OBJECT_ID / 4]
+    return { selectedObjectIds, selectedEdges, hoveredObjectId, hoveredEdges }
+}
+
 // ---------------------------------------------------------------------------
 // Main thread: write render payload to shared buffer
 // ---------------------------------------------------------------------------

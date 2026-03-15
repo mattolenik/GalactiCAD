@@ -22,6 +22,7 @@ const Static = {
     "src/_headers": "/",
     "src/assets/*": "/assets",
     "src/scene/samples/*.gcad": "/assets/samples",
+    "node_modules/monaco-editor/min/vs/**/*": "/vs",
     "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
     "node_modules/esbuild-wasm/esbuild.wasm": ["/assets", "esbuild.wasm"] as [string, string],
 }

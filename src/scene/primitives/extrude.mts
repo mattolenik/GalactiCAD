@@ -39,7 +39,7 @@ export class Extrude extends Node {
     override getIndicatorSymbol(): string { return "⬒" }
 
     protected override _computeCodegenCost(): number {
-        return BVH_MIN_COST * 2
+        return this.child.codegenCost() + BVH_MIN_COST
     }
     override getIndicatorSvg(): string {
         return `<rect x="2" y="1" width="8" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1"/>`

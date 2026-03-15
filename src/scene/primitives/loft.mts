@@ -34,7 +34,8 @@ export class Loft extends Node {
     override getIndicatorSymbol(): string { return "⏥" }
 
     protected override _computeCodegenCost(): number {
-        return BVH_MIN_COST * 2 * this.profiles.length
+        const profileCost = this.profiles.reduce((sum, p) => sum + p.codegenCost(), 0)
+        return profileCost + BVH_MIN_COST * this.profiles.length
     }
     override getIndicatorSvg(): string {
         return `<polygon points="3,1 9,1 11,11 1,11" fill="none" stroke="currentColor" stroke-width="1.5"/>`

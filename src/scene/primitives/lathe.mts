@@ -27,7 +27,7 @@ export class Lathe extends Node {
     override getIndicatorSymbol(): string { return "◐" }
 
     protected override _computeCodegenCost(): number {
-        return BVH_MIN_COST * 2
+        return this.child.codegenCost() + BVH_MIN_COST
     }
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" stroke-width="1" stroke-dasharray="2,1"/>`

@@ -1,4 +1,4 @@
-import { Node, CompileResult } from "../base.mjs"
+import { Node, CompileResult, BVH_MIN_COST } from "../base.mjs"
 
 /**
  * A 2D SDF primitive defined by a closed polygon of vertices.
@@ -19,6 +19,10 @@ export class Polygon2D extends Node {
 
     override getShapeType(): string { return "polygon2d" }
     override getIndicatorSymbol(): string { return "⬠" }
+
+    protected override _computeCodegenCost(): number {
+        return Math.max(BVH_MIN_COST, this.vertices.length)
+    }
     override getIndicatorSvg(): string {
         return `<polygon points="6,1 11,5 9,11 3,11 1,5" fill="currentColor"/>`
     }

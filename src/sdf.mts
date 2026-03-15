@@ -70,6 +70,11 @@ export class SDFRenderer {
     #selectedEdges: SelectedEdgePayload[] = []
     #hoveredObjectId = 0
     #hoveredEdges: SelectedEdgePayload[] = []
+    /** Last hover screen position and altKey, cached for replay when camera movement stops. */
+    #lastHoverScreenPos: { x: number; y: number } | null = null
+    #lastHoverAltKey = false
+    /** Tracks previous frame's isActivelyMoving for motion transition detection. */
+    #wasActivelyMoving = false
     #compiledPosY = new Map<number, number>()
     #getInteractionRect: (() => DOMRect) | null = null
     #pushPullNodes: Map<number, { type: "extrude"; id: number; pos: { x: number; y: number; z: number }; h: number; child: { vertices: [number, number][]; bufferOffset: number }; twistDegrees?: number; capTopId?: number; capBottomId?: number } | { type: "loft"; id: number; pos: { x: number; y: number; z: number }; h: number; profiles: { vertices: [number, number][]; bufferOffset: number }[] } | { type: "polygon2d"; id: number; vertices: [number, number][]; bufferOffset: number } | { type: "virtualCap"; id: number; parentId: number; isTop: boolean }> = new Map()
@@ -185,6 +190,9 @@ export class SDFRenderer {
                 if (uv) this.#worker.postMessage({ type: "doubleClick", clickUV: uv, documentName: this.#getActiveDocument?.() ?? undefined })
             }),
             this.#controls.hover$.pipe(throttleTime(80)).subscribe(({ screenPos, altKey }) => {
+                this.#lastHoverScreenPos = { x: screenPos.x, y: screenPos.y }
+                this.#lastHoverAltKey = altKey
+                if (this.#controls.isActivelyMoving) return
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
                 if (uv) this.#worker.postMessage({ type: "hover", clickUV: uv, altKey, documentName: this.#getActiveDocument?.() ?? undefined })
             }),
@@ -602,6 +610,29 @@ export class SDFRenderer {
             selData[id] = 1
         }
         this.#worker.postMessage({ type: "writeBuffers", selectedObjectIds: selData.buffer }, [selData.buffer])
+    }
+
+    /** Clear cached hover state and refresh UI when camera movement starts. */
+    #clearHoverWhenMovingStarted(): void {
+        this.#hoveredObjectId = 0
+        this.#hoveredEdges = []
+        this.#pushSelectionInfo()
+        this.#needsRender = true
+    }
+
+    /** Issue one fresh hover query at the last cached position when camera movement stops. */
+    #replayHoverWhenSettled(): void {
+        const pos = this.#lastHoverScreenPos
+        if (!pos) return
+        const uv = this.#screenToClickUV(pos.x, pos.y)
+        if (uv) {
+            this.#worker.postMessage({
+                type: "hover",
+                clickUV: uv,
+                altKey: this.#lastHoverAltKey,
+                documentName: this.#getActiveDocument?.() ?? undefined,
+            })
+        }
     }
 
     #pushSelectionInfo(): void {
@@ -1061,6 +1092,17 @@ export class SDFRenderer {
         // Re-render when camera stops moving so we transition from half-res to full-res
         const resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0
         if (resolutionScale !== this.#lastRenderedResolutionScale) this.#needsRender = true
+
+        // Motion transition: clear hover when movement starts, replay when it stops
+        const isMoving = this.#controls.isActivelyMoving
+        const wasMoving = this.#wasActivelyMoving
+        this.#wasActivelyMoving = isMoving
+        if (wasMoving && !isMoving) {
+            this.#replayHoverWhenSettled()
+        } else if (!wasMoving && isMoving) {
+            this.#clearHoverWhenMovingStarted()
+        }
+
         if (!this.#needsRender) return
         if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
         // Throttle on main thread: worker is message-driven and has no loop; we cap render messages.

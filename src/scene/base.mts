@@ -52,11 +52,18 @@ export interface ISceneInfo {
     bvhEnabled: boolean
 }
 
+/** Cost of one cheap primitive (e.g. sphere, box) for BVH heuristics. */
+export const COST_ONE_PRIMITIVE = 1
+
+/** Minimum codegen cost for a subtree to warrant a BVH bounding check. */
+export const BVH_MIN_COST = 8
+
 export class Node {
     id!: number
     root: Node
     #scene!: ISceneInfo
     #primitiveCount = -1
+    #codegenCost = -1
 
     get scene() {
         return this.root.#scene
@@ -78,6 +85,22 @@ export class Node {
 
     protected _computePrimitiveCount(): number {
         return 1
+    }
+
+    /**
+     * Estimated shader evaluation cost for codegen heuristics (e.g. BVH gating).
+     * Separate from primitiveCount; expensive polygon-derived or deformation nodes
+     * score higher so they get BVH guards even when primitiveCount is low.
+     */
+    codegenCost(): number {
+        if (this.#codegenCost < 0) {
+            this.#codegenCost = this._computeCodegenCost()
+        }
+        return this.#codegenCost
+    }
+
+    protected _computeCodegenCost(): number {
+        return COST_ONE_PRIMITIVE
     }
 
     getShapeType(): string {
@@ -148,6 +171,9 @@ export abstract class UnaryOperator extends Node {
     protected override _computePrimitiveCount(): number {
         return this.arg.primitiveCount()
     }
+    protected override _computeCodegenCost(): number {
+        return this.arg.codegenCost()
+    }
     override computeBounds(): AABB | null {
         return this.arg.computeBounds()
     }
@@ -167,6 +193,9 @@ export abstract class UnaryOperator extends Node {
 export abstract class BinaryOperator extends Node {
     protected override _computePrimitiveCount(): number {
         return this.lh.primitiveCount() + this.rh.primitiveCount()
+    }
+    protected override _computeCodegenCost(): number {
+        return this.lh.codegenCost() + this.rh.codegenCost()
     }
     override computeBounds(): AABB | null {
         const lb = this.lh.computeBounds()

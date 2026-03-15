@@ -1,10 +1,5 @@
-import { BinaryOperator, CompileResult, fluent, Node, type UnionType } from "../base.mjs"
+import { BinaryOperator, BVH_MIN_COST, CompileResult, fluent, Node, type UnionType } from "../base.mjs"
 import { aabbUnion, aabbExpand, aabbCenterWgsl, aabbHalfWgsl, type AABB } from "../aabb.mjs"
-
-// Minimum primitive count for a child to get a BVH bounding check.
-// The sdBound() call + branch overhead costs roughly as much as evaluating
-// ~8 cheap primitives, so only guard subtrees larger than this threshold.
-const BVH_MIN_PRIMITIVES = 8
 
 export class Union extends BinaryOperator {
     override getShapeType(): string {
@@ -57,12 +52,13 @@ export class Union extends BinaryOperator {
 
     /**
      * Returns true if we should emit a BVH bound check for a child node.
-     * Requires the child to have computable bounds and enough primitives to
-     * make the check worth the overhead. Also requires BVH to be enabled globally.
+     * Requires the child to have computable bounds and enough estimated cost to
+     * make the check worth the overhead. Uses codegenCost() so expensive polygon-
+     * derived and deformation nodes get guards even when primitiveCount is low.
      */
     private _shouldBound(child: Node): boolean {
         return this.scene.bvhEnabled &&
-            child.primitiveCount() >= BVH_MIN_PRIMITIVES &&
+            child.codegenCost() >= BVH_MIN_COST &&
             child.computeBounds() !== null
     }
 
@@ -237,15 +233,29 @@ export class Union extends BinaryOperator {
     }
 }
 
+/**
+ * Build a union tree using balanced pairing instead of right-heavy stacking.
+ * Pairs adjacent elements in rounds, reducing worst-case evaluation depth from
+ * O(n) to O(log n). Optionally sorts by codegenCost descending so expensive
+ * nodes are paired together and get BVH guards more effectively.
+ */
 function unionImpl(parts: Node[], radius?: number, mode?: UnionType, n?: number): Union {
     if (parts.length < 2) {
         throw new Error("union requires at least two things to union together")
     }
-    const args = [...parts]
-    while (args.length > 1) {
-        args.push(new Union(args.pop()!, args.pop()!, radius, mode, n))
+    let level = [...parts].sort((a, b) => b.codegenCost() - a.codegenCost())
+    while (level.length > 1) {
+        const next: Node[] = []
+        for (let i = 0; i < level.length; i += 2) {
+            if (i + 1 < level.length) {
+                next.push(new Union(level[i]!, level[i + 1]!, radius, mode, n))
+            } else {
+                next.push(level[i]!)
+            }
+        }
+        level = next
     }
-    const result = args[0] as Union
+    const result = level[0]
     if (!(result instanceof Union)) throw new Error("unexpected type during union stacking")
     return result
 }

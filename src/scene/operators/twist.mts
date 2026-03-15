@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
 import { aabbExpand, type AABB } from "../aabb.mjs"
 
 export class Twist extends UnaryOperator {
@@ -10,6 +10,11 @@ export class Twist extends UnaryOperator {
     override getAllDescendantIds(): number[] {
         return [this.id, ...this.arg.getAllDescendantIds()]
     }
+
+    protected override _computeCodegenCost(): number {
+        return this.arg.codegenCost() + BVH_MIN_COST
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
         const childText = childResult.text!

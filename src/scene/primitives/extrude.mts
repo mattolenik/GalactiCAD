@@ -1,4 +1,4 @@
-import { Node, CompileResult, decapitalize, fluent, DEFAULT_POS } from "../base.mjs"
+import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
@@ -37,6 +37,10 @@ export class Extrude extends Node {
 
     override getShapeType(): string { return "extrude" }
     override getIndicatorSymbol(): string { return "⬒" }
+
+    protected override _computeCodegenCost(): number {
+        return BVH_MIN_COST * 2
+    }
     override getIndicatorSvg(): string {
         return `<rect x="2" y="1" width="8" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1"/>`
     }

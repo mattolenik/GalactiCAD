@@ -1,4 +1,4 @@
-import { Node, CompileResult, decapitalize, fluent, DEFAULT_POS } from "../base.mjs"
+import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
@@ -25,6 +25,10 @@ export class Lathe extends Node {
 
     override getShapeType(): string { return "lathe" }
     override getIndicatorSymbol(): string { return "◐" }
+
+    protected override _computeCodegenCost(): number {
+        return BVH_MIN_COST * 2
+    }
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" stroke-width="1" stroke-dasharray="2,1"/>`
     }

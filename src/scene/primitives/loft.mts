@@ -1,4 +1,4 @@
-import { Node, CompileResult, decapitalize, fluent, DEFAULT_POS } from "../base.mjs"
+import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
@@ -32,6 +32,10 @@ export class Loft extends Node {
 
     override getShapeType(): string { return "loft" }
     override getIndicatorSymbol(): string { return "⏥" }
+
+    protected override _computeCodegenCost(): number {
+        return BVH_MIN_COST * 2 * this.profiles.length
+    }
     override getIndicatorSvg(): string {
         return `<polygon points="3,1 9,1 11,11 1,11" fill="none" stroke="currentColor" stroke-width="1.5"/>`
     }

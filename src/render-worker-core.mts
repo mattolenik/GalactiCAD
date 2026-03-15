@@ -22,7 +22,7 @@ import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import type { MainToWorkerMessage, RenderSelectionState, SelectedEdgePayload } from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
-import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB } from "./shared-render-buffer.mjs"
+import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset } from "./shared-render-buffer.mjs"
 
 const MAX_POLYGON_VERTICES = 1024
 const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8
@@ -473,13 +473,16 @@ export class RenderWorkerCore {
         }
         this.#lastRenderTime = now
 
+        const slot = getPublishedRenderSlot(buffer)
+        const slotBase = getSlotByteOffset(slot)
         const L = SAB_LAYOUT
         const u32 = new Uint32Array(buffer)
         const f32 = new Float32Array(buffer)
+        const b4 = slotBase / 4
 
-        const resolutionScale = f32[L.O_RESOLUTION_SCALE / 4]
-        const cameraRes0 = f32[L.O_CAMERA_RES / 4]
-        const cameraRes1 = f32[L.O_CAMERA_RES / 4 + 1]
+        const resolutionScale = f32[b4 + L.O_RESOLUTION_SCALE / 4]
+        const cameraRes0 = f32[b4 + L.O_CAMERA_RES / 4]
+        const cameraRes1 = f32[b4 + L.O_CAMERA_RES / 4 + 1]
         const sceneWidth = Math.max(1, Math.round(cameraRes0 * resolutionScale))
         const sceneHeight = Math.max(1, Math.round(cameraRes1 * resolutionScale))
 
@@ -487,20 +490,20 @@ export class RenderWorkerCore {
         if (sceneWidth === 0 || sceneHeight === 0) return
         if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
 
-        const packed = u32[L.O_VIEW_SETTINGS / 4]
+        const packed = u32[b4 + L.O_VIEW_SETTINGS / 4]
         this.#lastSelectionMode = (packed >> 2) & 7
         const beamEnabled = (packed & 2) !== 0
 
         this.#ensureRenderTextures(sceneWidth, sceneHeight)
 
-        const viewTransform = new Float32Array(buffer, L.O_VIEW_TRANSFORM, 16)
+        const viewTransform = new Float32Array(buffer, slotBase + L.O_VIEW_TRANSFORM, 16)
         const cameraPosition: [number, number, number] = [
-            f32[L.O_CAMERA_POSITION / 4],
-            f32[L.O_CAMERA_POSITION / 4 + 1],
-            f32[L.O_CAMERA_POSITION / 4 + 2],
+            f32[b4 + L.O_CAMERA_POSITION / 4],
+            f32[b4 + L.O_CAMERA_POSITION / 4 + 1],
+            f32[b4 + L.O_CAMERA_POSITION / 4 + 2],
         ]
-        const viewCenter: [number, number] = [f32[L.O_VIEW_CENTER / 4], f32[L.O_VIEW_CENTER / 4 + 1]]
-        this.#uploadCameraIfDirty(viewTransform, cameraPosition, sceneWidth, sceneHeight, f32[L.O_ZOOM / 4], viewCenter)
+        const viewCenter: [number, number] = [f32[b4 + L.O_VIEW_CENTER / 4], f32[b4 + L.O_VIEW_CENTER / 4 + 1]]
+        this.#uploadCameraIfDirty(viewTransform, cameraPosition, sceneWidth, sceneHeight, f32[b4 + L.O_ZOOM / 4], viewCenter)
 
         this.#viewSettingsBuf[0] = (packed & 1) ? 1 : 0
         this.#viewSettingsBuf[1] = 0
@@ -509,10 +512,10 @@ export class RenderWorkerCore {
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         this.#outlineU32[0] = (packed >> 5) & 3
-        this.#outlineThicknessF32[0] = u32[L.O_OUTLINE_THICKNESS / 4]
-        this.#outlineColorF32[0] = f32[L.O_OUTLINE_COLOR / 4]
-        this.#outlineColorF32[1] = f32[L.O_OUTLINE_COLOR / 4 + 1]
-        this.#outlineColorF32[2] = f32[L.O_OUTLINE_COLOR / 4 + 2]
+        this.#outlineThicknessF32[0] = u32[b4 + L.O_OUTLINE_THICKNESS / 4]
+        this.#outlineColorF32[0] = f32[b4 + L.O_OUTLINE_COLOR / 4]
+        this.#outlineColorF32[1] = f32[b4 + L.O_OUTLINE_COLOR / 4 + 1]
+        this.#outlineColorF32[2] = f32[b4 + L.O_OUTLINE_COLOR / 4 + 2]
         this.#outlineWidthF32[0] = this.#fullWidth
         const outline = DEFAULT_SELECTION_STYLES.outline
         new Float32Array(this.#outlineBuf, 32, 1)[0] = outline.dashSpacing
@@ -537,9 +540,9 @@ export class RenderWorkerCore {
         this.#selectionStylesF32[17] = resolutionScale
         this.#writeBufferViewIfDirty(this.#uniformBuffers.selectionStyles, this.#selectionStylesF32, this.#selectionStylesCache)
 
-        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.selectedObjectIds, buffer, L.O_SELECTED_OBJECT_IDS, L.SELECTED_OBJECT_IDS_SIZE, this.#selectedIdsCache)
-        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.selectedEdges, buffer, L.O_SELECTED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#selectedEdgesCache)
-        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.hoveredEdge, buffer, L.O_HOVERED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#hoveredEdgesCache)
+        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.selectedObjectIds, buffer, slotBase + L.O_SELECTED_OBJECT_IDS, L.SELECTED_OBJECT_IDS_SIZE, this.#selectedIdsCache)
+        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.selectedEdges, buffer, slotBase + L.O_SELECTED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#selectedEdgesCache)
+        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.hoveredEdge, buffer, slotBase + L.O_HOVERED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#hoveredEdgesCache)
 
         const canvasTexture = this.#context.getCurrentTexture()
         const outlineTarget = canvasTexture.createView()
@@ -1232,15 +1235,20 @@ export class RenderWorkerCore {
     }
 
     async handleHover(clickUV: [number, number], altKey: boolean, documentName?: string, hoverRequestId?: number, sab?: SharedArrayBuffer): Promise<void> {
-        const selectionMode = this.#lastSelectionMode
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return
-        const effectiveMode = altKey && selectionMode === 0 ? 1 : selectionMode
         this.#writeClickState(clickUV, false, true, clickUV)
         this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, new ArrayBuffer(320))
 
-        if (sab) this.#renderFromSAB(sab)
-        else this.render(this.#lastRenderMsg!)
+        if (sab) {
+            this.#renderFromSAB(sab)
+        } else {
+            this.render(this.#lastRenderMsg!)
+        }
+        const selectionMode = sab
+            ? (new Uint32Array(sab)[(getSlotByteOffset(getPublishedRenderSlot(sab)) + SAB_LAYOUT.O_VIEW_SETTINGS) / 4] >> 2) & 7
+            : this.#lastSelectionMode
+        const effectiveMode = altKey && selectionMode === 0 ? 1 : selectionMode
 
         const { hoveredObjectId, hoveredEdges } = await this.#readHoverResult()
         let edges: SelectedEdgePayload[] = []

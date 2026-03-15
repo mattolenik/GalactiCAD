@@ -50,7 +50,13 @@ function scheduleRenderFromKick(): void {
     setTimeout(runRenderFromSharedBuffer, 0)
 }
 
-self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
+function markSABVersionConsumed(): void {
+    if (sharedBuffer) {
+        lastRenderedVersion = Atomics.load(new Uint32Array(sharedBuffer), 0)
+    }
+}
+
+self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
     const msg = e.data
     switch (msg.type) {
         case "init":
@@ -73,13 +79,22 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             }
             break
         case "click":
-            if (core) core.handleClick(msg.clickUV, msg.shiftKey, msg.altKey, msg.documentName, sharedBuffer ?? undefined)
+            if (core) {
+                await core.handleClick(msg.clickUV, msg.shiftKey, msg.altKey, msg.documentName, sharedBuffer ?? undefined)
+                markSABVersionConsumed()
+            }
             break
         case "doubleClick":
-            if (core) core.handleDoubleClick(msg.clickUV, msg.documentName, sharedBuffer ?? undefined)
+            if (core) {
+                await core.handleDoubleClick(msg.clickUV, msg.documentName, sharedBuffer ?? undefined)
+                markSABVersionConsumed()
+            }
             break
         case "hover":
-            if (core) core.handleHover(msg.clickUV, msg.altKey, msg.documentName, msg.hoverRequestId, sharedBuffer ?? undefined)
+            if (core) {
+                await core.handleHover(msg.clickUV, msg.altKey, msg.documentName, msg.hoverRequestId, sharedBuffer ?? undefined)
+                markSABVersionConsumed()
+            }
             break
         case "resize":
             if (core) {
@@ -115,7 +130,8 @@ self.onmessage = (e: MessageEvent<MainToWorkerMessage>) => {
             break
         case "pickPos":
             if (core) {
-                core.handlePickPos(msg.clickUV, msg.requestId, sharedBuffer ?? undefined)
+                await core.handlePickPos(msg.clickUV, msg.requestId, sharedBuffer ?? undefined)
+                markSABVersionConsumed()
             } else {
                 self.postMessage({ type: "pickPosResult", hitPos: null, requestId: msg.requestId })
             }

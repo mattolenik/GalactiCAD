@@ -1,6 +1,10 @@
 /**
  * Shared memory layout for main thread <-> render worker communication.
  * Replaces per-frame postMessage for render payload and FPS.
+ *
+ * Double-buffered layout: header + two payload slots. Main thread writes into
+ * the inactive slot, then atomically publishes slot/version. Worker reads only
+ * from the published slot, avoiding torn-frame reads.
  */
 
 import type { CameraState } from "./controls/camera-controller.mjs"
@@ -15,111 +19,150 @@ const SELECTED_EDGE_SIZE = 80
 const SELECTED_EDGES_COUNT = 16
 
 // ---------------------------------------------------------------------------
-// Layout offsets (bytes)
+// Header layout (bytes 0–15)
 // ---------------------------------------------------------------------------
 
-const O_VERSION = 0
-const O_FPS = 4
-const O_FPS_VERSION = 8
-const O_FULL_WIDTH = 12
-const O_FULL_HEIGHT = 16
-const O_RESOLUTION_SCALE = 20
-const O_VIEW_TRANSFORM = 24
-const O_CAMERA_POSITION = 88
-const O_CAMERA_RES = 100
-const O_ZOOM = 108
-const O_QUATERNION = 112
-const O_TRANSLATION = 128
-const O_VIEW_CENTER = 140
-const O_VIEW_SETTINGS = 148
-const O_OUTLINE_THICKNESS = 152
-const O_OUTLINE_COLOR = 156
-const O_SELECTED_OBJECT_IDS = 168
-const O_SELECTED_EDGES_HEADER = 4264
-const O_SELECTED_EDGES_DATA = 4280
-const O_HOVERED_EDGES_HEADER = 5560
-const O_HOVERED_EDGES_DATA = 5576
-const O_HOVERED_OBJECT_ID = 6856
+const O_PUBLISHED_VERSION = 0
+const O_PUBLISHED_SLOT = 4
+const O_FPS = 8
+const O_FPS_VERSION = 12
+
+const HEADER_SIZE = 16
+
+// ---------------------------------------------------------------------------
+// Slot-relative payload layout (each slot is SLOT_SIZE bytes)
+// ---------------------------------------------------------------------------
+
+const S_O_FULL_WIDTH = 0
+const S_O_FULL_HEIGHT = 4
+const S_O_RESOLUTION_SCALE = 8
+const S_O_VIEW_TRANSFORM = 12
+const S_O_CAMERA_POSITION = 76
+const S_O_CAMERA_RES = 88
+const S_O_ZOOM = 96
+const S_O_QUATERNION = 100
+const S_O_TRANSLATION = 116
+const S_O_VIEW_CENTER = 128
+const S_O_VIEW_SETTINGS = 136
+const S_O_OUTLINE_THICKNESS = 140
+const S_O_OUTLINE_COLOR = 144
+const S_O_SELECTED_OBJECT_IDS = 156
+const S_O_SELECTED_EDGES_HEADER = 4252
+const S_O_SELECTED_EDGES_DATA = 4268
+const S_O_HOVERED_EDGES_HEADER = 5548
+const S_O_HOVERED_EDGES_DATA = 5564
+const S_O_HOVERED_OBJECT_ID = 6844
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16
 const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 
+/** Size of one payload slot in bytes */
+export const SLOT_SIZE = 6848
+
 /** Total buffer size in bytes */
-export const SHARED_RENDER_BUFFER_SIZE = O_HOVERED_OBJECT_ID + 4
+export const SHARED_RENDER_BUFFER_SIZE = HEADER_SIZE + 2 * SLOT_SIZE
 
 /**
- * Layout constants for hot-path SAB reads (worker). Use these to read directly from
- * typed-array views without rebuilding a full payload object.
+ * Get the byte offset of the start of a slot (0 or 1).
+ */
+export function getSlotByteOffset(slot: 0 | 1): number {
+    return HEADER_SIZE + slot * SLOT_SIZE
+}
+
+/**
+ * Read the currently published slot index from the SAB header.
+ */
+export function getPublishedRenderSlot(buffer: SharedArrayBuffer): 0 | 1 {
+    const u32 = new Uint32Array(buffer)
+    return (Atomics.load(u32, O_PUBLISHED_SLOT / 4) & 1) as 0 | 1
+}
+
+/**
+ * Layout constants for hot-path SAB reads (worker). All offsets are slot-relative.
+ * Use getSlotByteOffset(slot) + SAB_LAYOUT.* to get absolute offset.
  */
 export const SAB_LAYOUT = {
-    O_VIEW_TRANSFORM,
-    O_CAMERA_POSITION,
-    O_CAMERA_RES,
-    O_ZOOM,
-    O_VIEW_CENTER,
-    O_VIEW_SETTINGS,
-    O_OUTLINE_THICKNESS,
-    O_OUTLINE_COLOR,
-    O_SELECTED_OBJECT_IDS,
-    O_SELECTED_EDGES_HEADER,
-    O_HOVERED_EDGES_HEADER,
-    O_RESOLUTION_SCALE,
+    O_FULL_WIDTH: S_O_FULL_WIDTH,
+    O_VIEW_TRANSFORM: S_O_VIEW_TRANSFORM,
+    O_CAMERA_POSITION: S_O_CAMERA_POSITION,
+    O_CAMERA_RES: S_O_CAMERA_RES,
+    O_ZOOM: S_O_ZOOM,
+    O_VIEW_CENTER: S_O_VIEW_CENTER,
+    O_VIEW_SETTINGS: S_O_VIEW_SETTINGS,
+    O_OUTLINE_THICKNESS: S_O_OUTLINE_THICKNESS,
+    O_OUTLINE_COLOR: S_O_OUTLINE_COLOR,
+    O_SELECTED_OBJECT_IDS: S_O_SELECTED_OBJECT_IDS,
+    O_SELECTED_EDGES_HEADER: S_O_SELECTED_EDGES_HEADER,
+    O_HOVERED_EDGES_HEADER: S_O_HOVERED_EDGES_HEADER,
+    O_RESOLUTION_SCALE: S_O_RESOLUTION_SCALE,
     SELECTED_OBJECT_IDS_SIZE,
     SELECTED_EDGES_TOTAL: EDGES_HEADER_SIZE + EDGES_DATA_SIZE,
 } as const
 
 /**
- * Read selection state from SAB. Allocates; use only for event handlers (hover) that need
- * the full selection structure, not on the hot render path.
+ * Read selection state from the published slot in SAB. Allocates; use only for
+ * event handlers (hover) that need the full selection structure, not on the hot render path.
  */
 export function readSelectionStateFromSAB(buffer: SharedArrayBuffer): RenderSelectionState {
+    const slot = getPublishedRenderSlot(buffer)
+    const base = getSlotByteOffset(slot)
+    return readSelectionStateFromSlot(buffer, base)
+}
+
+/**
+ * Read selection state from a specific slot base offset.
+ */
+function readSelectionStateFromSlot(buffer: SharedArrayBuffer, slotBase: number): RenderSelectionState {
     const u32 = new Uint32Array(buffer)
     const selectedObjectIds: number[] = []
-    const selIds = new Uint32Array(buffer, O_SELECTED_OBJECT_IDS, 1024)
+    const selIds = new Uint32Array(buffer, slotBase + S_O_SELECTED_OBJECT_IDS, 1024)
     for (let i = 0; i < 1024; i++) {
         if (selIds[i]) selectedObjectIds.push(i)
     }
-    const selectedEdges = readEdgesFromBuffer(buffer, O_SELECTED_EDGES_HEADER, O_SELECTED_EDGES_DATA, 6, 0.02)
-    const hoveredEdges = readEdgesFromBuffer(buffer, O_HOVERED_EDGES_HEADER, O_HOVERED_EDGES_DATA, 6, 0.02)
-    const hoveredObjectId = u32[O_HOVERED_OBJECT_ID / 4]
+    const selectedEdges = readEdgesFromBuffer(buffer, slotBase + S_O_SELECTED_EDGES_HEADER, slotBase + S_O_SELECTED_EDGES_DATA, 6, 0.02)
+    const hoveredEdges = readEdgesFromBuffer(buffer, slotBase + S_O_HOVERED_EDGES_HEADER, slotBase + S_O_HOVERED_EDGES_DATA, 6, 0.02)
+    const hoveredObjectId = u32[(slotBase + S_O_HOVERED_OBJECT_ID) / 4]
     return { selectedObjectIds, selectedEdges, hoveredObjectId, hoveredEdges }
 }
 
 // ---------------------------------------------------------------------------
-// Main thread: write render payload to shared buffer
+// Main thread: write render payload to a slot (no publish)
 // ---------------------------------------------------------------------------
 
-export function writeRenderPayload(
+export function writeRenderPayloadSlot(
     buffer: SharedArrayBuffer,
+    slot: 0 | 1,
     payload: Extract<MainToWorkerMessage, { type: "render" }>,
     fullWidth: number,
-    fullHeight: number,
-    version: number
+    fullHeight: number
 ): void {
+    const base = getSlotByteOffset(slot)
     const u32 = new Uint32Array(buffer)
     const f32 = new Float32Array(buffer)
 
-    u32[O_FULL_WIDTH / 4] = fullWidth
-    u32[O_FULL_HEIGHT / 4] = fullHeight
-    f32[O_RESOLUTION_SCALE / 4] = payload.resolutionScale
+    const b4 = base / 4
 
-    f32.set(payload.viewTransform, O_VIEW_TRANSFORM / 4)
-    f32[O_CAMERA_POSITION / 4] = payload.cameraPosition[0]
-    f32[O_CAMERA_POSITION / 4 + 1] = payload.cameraPosition[1]
-    f32[O_CAMERA_POSITION / 4 + 2] = payload.cameraPosition[2]
-    f32[O_CAMERA_RES / 4] = payload.cameraRes[0]
-    f32[O_CAMERA_RES / 4 + 1] = payload.cameraRes[1]
+    u32[b4 + S_O_FULL_WIDTH / 4] = fullWidth
+    u32[b4 + S_O_FULL_HEIGHT / 4] = fullHeight
+    f32[b4 + S_O_RESOLUTION_SCALE / 4] = payload.resolutionScale
+
+    f32.set(payload.viewTransform, base / 4 + S_O_VIEW_TRANSFORM / 4)
+    f32[b4 + S_O_CAMERA_POSITION / 4] = payload.cameraPosition[0]
+    f32[b4 + S_O_CAMERA_POSITION / 4 + 1] = payload.cameraPosition[1]
+    f32[b4 + S_O_CAMERA_POSITION / 4 + 2] = payload.cameraPosition[2]
+    f32[b4 + S_O_CAMERA_RES / 4] = payload.cameraRes[0]
+    f32[b4 + S_O_CAMERA_RES / 4 + 1] = payload.cameraRes[1]
 
     const cam = payload.cameraState
-    f32[O_ZOOM / 4] = cam.zoom
-    f32.set(cam.rotation, O_QUATERNION / 4)
-    f32[O_TRANSLATION / 4] = cam.translation.x
-    f32[O_TRANSLATION / 4 + 1] = cam.translation.y
-    f32[O_TRANSLATION / 4 + 2] = cam.translation.z
+    f32[b4 + S_O_ZOOM / 4] = cam.zoom
+    f32.set(cam.rotation, base / 4 + S_O_QUATERNION / 4)
+    f32[b4 + S_O_TRANSLATION / 4] = cam.translation.x
+    f32[b4 + S_O_TRANSLATION / 4 + 1] = cam.translation.y
+    f32[b4 + S_O_TRANSLATION / 4 + 2] = cam.translation.z
 
-    f32[O_VIEW_CENTER / 4] = payload.viewCenter[0]
-    f32[O_VIEW_CENTER / 4 + 1] = payload.viewCenter[1]
+    f32[b4 + S_O_VIEW_CENTER / 4] = payload.viewCenter[0]
+    f32[b4 + S_O_VIEW_CENTER / 4 + 1] = payload.viewCenter[1]
 
     const vs = payload.viewSettings
     const packed =
@@ -127,22 +170,29 @@ export function writeRenderPayload(
         (vs.beamEnabled ? 2 : 0) |
         (vs.selectionMode << 2) |
         (vs.outlineMode << 5)
-    u32[O_VIEW_SETTINGS / 4] = packed
-    u32[O_OUTLINE_THICKNESS / 4] = vs.outlineThickness
-    f32.set(vs.outlineColor, O_OUTLINE_COLOR / 4)
+    u32[b4 + S_O_VIEW_SETTINGS / 4] = packed
+    u32[b4 + S_O_OUTLINE_THICKNESS / 4] = vs.outlineThickness
+    f32.set(vs.outlineColor, base / 4 + S_O_OUTLINE_COLOR / 4)
 
     const sel = payload.selectionState
-    const selIds = new Uint32Array(buffer, O_SELECTED_OBJECT_IDS, 1024)
+    const selIds = new Uint32Array(buffer, base + S_O_SELECTED_OBJECT_IDS, 1024)
     selIds.fill(0)
     for (const id of sel.selectedObjectIds) {
         selIds[id] = 1
     }
 
-    writeEdgesToBuffer(buffer, O_SELECTED_EDGES_HEADER, O_SELECTED_EDGES_DATA, sel.selectedEdges, 6, 0.02)
-    writeEdgesToBuffer(buffer, O_HOVERED_EDGES_HEADER, O_HOVERED_EDGES_DATA, sel.hoveredEdges, 6, 0.02)
-    u32[O_HOVERED_OBJECT_ID / 4] = sel.hoveredObjectId
+    writeEdgesToBuffer(buffer, base + S_O_SELECTED_EDGES_HEADER, base + S_O_SELECTED_EDGES_DATA, sel.selectedEdges, 6, 0.02)
+    writeEdgesToBuffer(buffer, base + S_O_HOVERED_EDGES_HEADER, base + S_O_HOVERED_EDGES_DATA, sel.hoveredEdges, 6, 0.02)
+    u32[b4 + S_O_HOVERED_OBJECT_ID / 4] = sel.hoveredObjectId
+}
 
-    Atomics.store(u32, O_VERSION / 4, version)
+/**
+ * Atomically publish a slot and version. Call after writeRenderPayloadSlot.
+ */
+export function publishRenderSlot(buffer: SharedArrayBuffer, slot: 0 | 1, version: number): void {
+    const u32 = new Uint32Array(buffer)
+    Atomics.store(u32, O_PUBLISHED_SLOT / 4, slot)
+    Atomics.store(u32, O_PUBLISHED_VERSION / 4, version)
 }
 
 function writeEdgesToBuffer(
@@ -187,37 +237,40 @@ function writeEdgesToBuffer(
 // ---------------------------------------------------------------------------
 
 export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWorkerMessage, { type: "render" }> {
+    const slot = getPublishedRenderSlot(buffer)
+    const base = getSlotByteOffset(slot)
     const u32 = new Uint32Array(buffer)
     const f32 = new Float32Array(buffer)
+    const b4 = base / 4
 
-    const packed = u32[O_VIEW_SETTINGS / 4]
+    const packed = u32[b4 + S_O_VIEW_SETTINGS / 4]
     const viewSettings: RenderViewSettings = {
         xrayMode: (packed & 1) !== 0,
         beamEnabled: (packed & 2) !== 0,
         selectionMode: (packed >> 2) & 7,
         outlineMode: (packed >> 5) & 3,
-        outlineThickness: u32[O_OUTLINE_THICKNESS / 4],
-        outlineColor: [f32[O_OUTLINE_COLOR / 4], f32[O_OUTLINE_COLOR / 4 + 1], f32[O_OUTLINE_COLOR / 4 + 2]],
+        outlineThickness: u32[b4 + S_O_OUTLINE_THICKNESS / 4],
+        outlineColor: [f32[b4 + S_O_OUTLINE_COLOR / 4], f32[b4 + S_O_OUTLINE_COLOR / 4 + 1], f32[b4 + S_O_OUTLINE_COLOR / 4 + 2]],
     }
 
     const selectedObjectIds: number[] = []
-    const selIds = new Uint32Array(buffer, O_SELECTED_OBJECT_IDS, 1024)
+    const selIds = new Uint32Array(buffer, base + S_O_SELECTED_OBJECT_IDS, 1024)
     for (let i = 0; i < 1024; i++) {
         if (selIds[i]) selectedObjectIds.push(i)
     }
 
-    const selectedEdges = readEdgesFromBuffer(buffer, O_SELECTED_EDGES_HEADER, O_SELECTED_EDGES_DATA, 6, 0.02)
-    const hoveredEdges = readEdgesFromBuffer(buffer, O_HOVERED_EDGES_HEADER, O_HOVERED_EDGES_DATA, 6, 0.02)
-    const hoveredObjectId = u32[O_HOVERED_OBJECT_ID / 4]
+    const selectedEdges = readEdgesFromBuffer(buffer, base + S_O_SELECTED_EDGES_HEADER, base + S_O_SELECTED_EDGES_DATA, 6, 0.02)
+    const hoveredEdges = readEdgesFromBuffer(buffer, base + S_O_HOVERED_EDGES_HEADER, base + S_O_HOVERED_EDGES_DATA, 6, 0.02)
+    const hoveredObjectId = u32[b4 + S_O_HOVERED_OBJECT_ID / 4]
 
     const cameraState: CameraState = {
-        rotation: [f32[O_QUATERNION / 4], f32[O_QUATERNION / 4 + 1], f32[O_QUATERNION / 4 + 2], f32[O_QUATERNION / 4 + 3]],
-        zoom: f32[O_ZOOM / 4],
-        translation: { x: f32[O_TRANSLATION / 4], y: f32[O_TRANSLATION / 4 + 1], z: f32[O_TRANSLATION / 4 + 2] } as CameraState["translation"],
+        rotation: [f32[b4 + S_O_QUATERNION / 4], f32[b4 + S_O_QUATERNION / 4 + 1], f32[b4 + S_O_QUATERNION / 4 + 2], f32[b4 + S_O_QUATERNION / 4 + 3]],
+        zoom: f32[b4 + S_O_ZOOM / 4],
+        translation: { x: f32[b4 + S_O_TRANSLATION / 4], y: f32[b4 + S_O_TRANSLATION / 4 + 1], z: f32[b4 + S_O_TRANSLATION / 4 + 2] } as CameraState["translation"],
     }
 
     const viewTransform = new Float32Array(16)
-    viewTransform.set(new Float32Array(buffer, O_VIEW_TRANSFORM, 16))
+    viewTransform.set(new Float32Array(buffer, base + S_O_VIEW_TRANSFORM, 16))
 
     const selectionState: RenderSelectionState = {
         selectedObjectIds,
@@ -230,12 +283,12 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
         type: "render",
         cameraState,
         viewTransform,
-        cameraPosition: [f32[O_CAMERA_POSITION / 4], f32[O_CAMERA_POSITION / 4 + 1], f32[O_CAMERA_POSITION / 4 + 2]],
-        cameraRes: [f32[O_CAMERA_RES / 4], f32[O_CAMERA_RES / 4 + 1]],
+        cameraPosition: [f32[b4 + S_O_CAMERA_POSITION / 4], f32[b4 + S_O_CAMERA_POSITION / 4 + 1], f32[b4 + S_O_CAMERA_POSITION / 4 + 2]],
+        cameraRes: [f32[b4 + S_O_CAMERA_RES / 4], f32[b4 + S_O_CAMERA_RES / 4 + 1]],
         selectionState,
         viewSettings,
-        viewCenter: [f32[O_VIEW_CENTER / 4], f32[O_VIEW_CENTER / 4 + 1]],
-        resolutionScale: f32[O_RESOLUTION_SCALE / 4],
+        viewCenter: [f32[b4 + S_O_VIEW_CENTER / 4], f32[b4 + S_O_VIEW_CENTER / 4 + 1]],
+        resolutionScale: f32[b4 + S_O_RESOLUTION_SCALE / 4],
     }
 }
 
@@ -269,7 +322,7 @@ function readEdgesFromBuffer(
 }
 
 // ---------------------------------------------------------------------------
-// Worker: write FPS to shared buffer
+// Worker: write FPS to shared buffer (header)
 // ---------------------------------------------------------------------------
 
 export function writeFps(buffer: SharedArrayBuffer, fps: number, version: number): void {

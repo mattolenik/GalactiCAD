@@ -20,7 +20,9 @@ import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
 import {
     isSharedMemoryAvailable,
-    writeRenderPayload,
+    writeRenderPayloadSlot,
+    publishRenderSlot,
+    getPublishedRenderSlot,
     readFps,
     SHARED_RENDER_BUFFER_SIZE,
 } from "./shared-render-buffer.mjs"
@@ -75,6 +77,8 @@ export class SDFRenderer {
     #lastHoverAltKey = false
     /** Tracks previous frame's isActivelyMoving for motion transition detection. */
     #wasActivelyMoving = false
+    /** Defer hover replay until after the settled frame is published (avoids stale first-hover). */
+    #shouldReplayHoverAfterRender = false
     /** Monotonic hover request ID; -1 means ignore all in-flight hover results (e.g. during movement). */
     #hoverRequestId = 0
     #latestHoverRequestId = -1
@@ -1105,12 +1109,12 @@ export class SDFRenderer {
         const resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0
         if (resolutionScale !== this.#lastRenderedResolutionScale) this.#needsRender = true
 
-        // Motion transition: clear hover when movement starts, replay when it stops
+        // Motion transition: clear hover when movement starts, defer replay until after settled frame is published
         const isMoving = this.#controls.isActivelyMoving
         const wasMoving = this.#wasActivelyMoving
         this.#wasActivelyMoving = isMoving
         if (wasMoving && !isMoving) {
-            this.#replayHoverWhenSettled()
+            this.#shouldReplayHoverAfterRender = true
         } else if (!wasMoving && isMoving) {
             this.#clearHoverWhenMovingStarted()
         }
@@ -1127,17 +1131,23 @@ export class SDFRenderer {
         this.#lastRenderedResolutionScale = payload.resolutionScale
         if (this.#useSharedMemory && this.#sharedBuffer) {
             this.#renderVersion++
-            writeRenderPayload(
+            const nextSlot = (1 - getPublishedRenderSlot(this.#sharedBuffer)) as 0 | 1
+            writeRenderPayloadSlot(
                 this.#sharedBuffer,
+                nextSlot,
                 payload,
                 this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullWidth : 1,
-                this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullHeight : 1,
-                this.#renderVersion
+                this.#fullWidth > 0 && this.#fullHeight > 0 ? this.#fullHeight : 1
             )
+            publishRenderSlot(this.#sharedBuffer, nextSlot, this.#renderVersion)
             this.#worker.postMessage({ type: "renderKick", version: this.#renderVersion })
             this.#preview.updateFPS(readFps(this.#sharedBuffer))
         } else {
             this.#worker.postMessage(payload, [payload.viewTransform.buffer])
+        }
+        if (this.#shouldReplayHoverAfterRender) {
+            this.#shouldReplayHoverAfterRender = false
+            this.#replayHoverWhenSettled()
         }
     }
 

@@ -53,6 +53,14 @@ export class MenuButton extends HTMLElement {
                 background: color-mix(in srgb, var(${__tone_accent}) 85%, white);
                 color: var(${__fg_color});
             }
+
+            :host-context([data-theme="light"]) button {
+                color: white;
+            }
+
+            :host-context([data-theme="light"]) button:hover {
+                color: white;
+            }
         </style>
 
         <button>⌄</button>

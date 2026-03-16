@@ -20,7 +20,7 @@ import {
 import { getShapePalette } from "./colorPalette.mjs"
 import { getSelectionStylesForTheme } from "./selectionStyles.mjs"
 import { GALACTICAD_DARK_THEME, GALACTICAD_LIGHT_THEME } from "./themes.mjs"
-import type { ThemeMode } from "./storage/settings.mjs"
+import type { EditorSettings, ThemeMode } from "./storage/settings.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
@@ -591,6 +591,7 @@ class App {
 
         monaco.editor.defineTheme("galacticad-dark", GALACTICAD_DARK_THEME)
         monaco.editor.defineTheme("galacticad-light", GALACTICAD_LIGHT_THEME)
+        const editorOpts = this.#settings.getGlobal().app.editor
         this.editor = monaco.editor.create(codeDiv, {
             "semanticHighlighting.enabled": true,
             autoClosingBrackets: "beforeWhitespace",
@@ -603,24 +604,25 @@ class App {
             colorDecoratorsActivatedOn: "click",
             copyWithSyntaxHighlighting: false,
             detectIndentation: true,
-            folding: true,
+            folding: editorOpts.folding,
             fontFamily: "FiraCode",
             fontLigatures: true,
-            fontSize: 16,
+            fontSize: editorOpts.fontSize,
             fontVariations: true,
             formatOnPaste: true,
             formatOnType: false,
             language: "typescript",
-            lineNumbers: "on",
-            minimap: { enabled: false },
+            lineNumbers: editorOpts.lineNumbers,
+            minimap: { enabled: editorOpts.minimap },
             model: null,
+            renderWhitespace: editorOpts.renderWhitespace,
             scrollBeyondLastLine: false,
             showFoldingControls: "always",
             showUnused: true,
             stickyTabStops: true,
-            tabSize: 2,
+            tabSize: editorOpts.tabSize,
             useTabStops: true,
-            wordWrap: "on",
+            wordWrap: editorOpts.wordWrap,
             wrappingIndent: "indent",
             wrappingStrategy: "advanced",
         })
@@ -886,7 +888,10 @@ class App {
 
         const narrowMedia = window.matchMedia("(max-width: 600px)")
         const updateLineNumbers = () => {
-            this.editor.updateOptions({ lineNumbers: narrowMedia.matches ? "off" : "on" })
+            const preferred = this.#settings.getGlobal().app.editor.lineNumbers
+            this.editor.updateOptions({
+                lineNumbers: narrowMedia.matches ? "off" : preferred,
+            })
         }
         narrowMedia.addEventListener("change", updateLineNumbers)
         updateLineNumbers()
@@ -1148,10 +1153,12 @@ class App {
         const initialMode = g.preview.cameraRotationMethod ?? "rounded_arcball"
         const initialTheme = g.app.theme ?? "dark"
         const initialDevToolsEnabled = g.app.devToolsEnabled ?? false
+        const initialEditorSettings = g.app.editor
         const modal = new SettingsModal(
             initialMode,
             initialTheme,
             initialDevToolsEnabled,
+            initialEditorSettings,
             method => {
                 this.#settings.updateGlobal({ preview: { cameraRotationMethod: method } })
                 this.renderer?.controls.setRotationMethod(method)
@@ -1170,6 +1177,19 @@ class App {
                 } else {
                     this.#preview.showFps = this.#toolbarRefs.devTools.showFps
                 }
+            },
+            settings => {
+                this.#settings.updateGlobal({ app: { editor: settings } })
+                const narrow = window.matchMedia("(max-width: 600px)").matches
+                this.editor.updateOptions({
+                    lineNumbers: narrow ? "off" : settings.lineNumbers,
+                    wordWrap: settings.wordWrap,
+                    minimap: { enabled: settings.minimap },
+                    fontSize: settings.fontSize,
+                    renderWhitespace: settings.renderWhitespace,
+                    folding: settings.folding,
+                    tabSize: settings.tabSize,
+                })
             }
         )
         await modal.show()

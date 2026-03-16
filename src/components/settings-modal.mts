@@ -1,42 +1,86 @@
 import { VERSION } from "../version.mjs"
-import { __fg_color, __tone_1, __tone_2, __tone_3 } from "../style/style.mjs"
+import { __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { BaseDialog } from "./base-dialog.mjs"
-import type { CameraRotationMethod, ThemeMode } from "../storage/settings.mjs"
+import type {
+    CameraRotationMethod,
+    EditorSettings,
+    LineNumbersMode,
+    RenderWhitespaceMode,
+    ThemeMode,
+} from "../storage/settings.mjs"
 
 export class SettingsModal extends BaseDialog<void> {
     #initialMode: CameraRotationMethod
     #initialTheme: ThemeMode
     #initialDevToolsEnabled: boolean
+    #initialEditorSettings: EditorSettings
     #onCameraModeChange: (method: CameraRotationMethod) => void
     #onThemeChange: (theme: ThemeMode) => void
     #onDevToolsChange: (enabled: boolean) => void
+    #onEditorChange: (settings: EditorSettings) => void
 
     constructor(
         initialMode: CameraRotationMethod,
         initialTheme: ThemeMode,
         initialDevToolsEnabled: boolean,
+        initialEditorSettings: EditorSettings,
         onCameraModeChange: (method: CameraRotationMethod) => void,
         onThemeChange: (theme: ThemeMode) => void,
-        onDevToolsChange: (enabled: boolean) => void
+        onDevToolsChange: (enabled: boolean) => void,
+        onEditorChange: (settings: EditorSettings) => void
     ) {
         super()
         this.#initialMode = initialMode
         this.#initialTheme = initialTheme
         this.#initialDevToolsEnabled = initialDevToolsEnabled
+        this.#initialEditorSettings = initialEditorSettings
         this.#onCameraModeChange = onCameraModeChange
         this.#onThemeChange = onThemeChange
         this.#onDevToolsChange = onDevToolsChange
+        this.#onEditorChange = onEditorChange
         this.renderContent()
     }
 
     protected renderContent() {
+        const e = this.#initialEditorSettings
         this.dialog.innerHTML = `
         <style>
             .settings-content {
                 display: flex;
                 flex-direction: column;
                 gap: 1em;
-                min-width: 280px;
+                min-width: 320px;
+            }
+            .tab-bar {
+                display: flex;
+                gap: 0;
+                border-bottom: 1px solid rgb(from var(${__fg_color}) r g b / 0.2);
+            }
+            .tab-btn {
+                padding: 0.5em 1em;
+                border: none;
+                background: transparent;
+                color: var(${__fg_color});
+                font: inherit;
+                cursor: pointer;
+                opacity: 0.7;
+                border-bottom: 2px solid transparent;
+                margin-bottom: -1px;
+            }
+            .tab-btn:hover {
+                opacity: 1;
+            }
+            .tab-btn[data-active="true"] {
+                opacity: 1;
+                border-bottom-color: var(${__tone_accent});
+            }
+            .tab-panel {
+                display: none;
+            }
+            .tab-panel[data-active="true"] {
+                display: flex;
+                flex-direction: column;
+                gap: 1em;
             }
             .setting-row {
                 display: flex;
@@ -45,6 +89,7 @@ export class SettingsModal extends BaseDialog<void> {
             }
             .setting-row label {
                 flex-shrink: 0;
+                min-width: 7em;
                 color: var(${__fg_color});
             }
             .setting-row select {
@@ -65,6 +110,15 @@ export class SettingsModal extends BaseDialog<void> {
                 height: 1em;
                 cursor: pointer;
             }
+            .setting-row input[type="number"] {
+                flex: 1;
+                padding: 0.4em 0.6em;
+                background: var(${__tone_2});
+                color: var(${__fg_color});
+                border: 1px solid rgb(from var(${__fg_color}) r g b / 0.2);
+                border-radius: 3px;
+                font: inherit;
+            }
             .version-info {
                 font-size: 0.85em;
                 color: var(${__tone_1});
@@ -78,26 +132,78 @@ export class SettingsModal extends BaseDialog<void> {
         </style>
         <div class="settings-content">
             <h2 style="margin: 0 0 0.5em 0; font-size: 1.1em; color: var(${__fg_color});">Settings</h2>
-            <div class="setting-row">
-                <label for="theme">Theme</label>
-                <select id="theme">
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                    <option value="auto">Auto (system)</option>
-                </select>
+            <div class="tab-bar">
+                <button type="button" class="tab-btn" data-tab="general" data-active="true">General</button>
+                <button type="button" class="tab-btn" data-tab="editor" data-active="false">Editor</button>
             </div>
-            <div class="setting-row">
-                <label for="camera-mode">Camera mode</label>
-                <select id="camera-mode">
-                    <option value="rounded_arcball">Rounded Arcball</option>
-                    <option value="azel">Azimuth/Elevation</option>
-                </select>
+            <div class="tab-panel" data-tab="general" data-active="true">
+                <div class="setting-row">
+                    <label for="theme">Theme</label>
+                    <select id="theme">
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                        <option value="auto">Auto (system)</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="camera-mode">Camera mode</label>
+                    <select id="camera-mode">
+                        <option value="rounded_arcball">Rounded Arcball</option>
+                        <option value="azel">Azimuth/Elevation</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="devtools">Developer tools</label>
+                    <input type="checkbox" id="devtools" />
+                </div>
+                <div class="version-info">Version ${VERSION}</div>
             </div>
-            <div class="setting-row">
-                <label for="devtools">Developer tools</label>
-                <input type="checkbox" id="devtools" />
+            <div class="tab-panel" data-tab="editor" data-active="false">
+                <div class="setting-row">
+                    <label for="line-numbers">Line numbers</label>
+                    <select id="line-numbers">
+                        <option value="on">On</option>
+                        <option value="off">Off</option>
+                        <option value="relative">Relative</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="word-wrap">Word wrap</label>
+                    <input type="checkbox" id="word-wrap" />
+                </div>
+                <div class="setting-row">
+                    <label for="minimap">Minimap</label>
+                    <input type="checkbox" id="minimap" />
+                </div>
+                <div class="setting-row">
+                    <label for="font-size">Font size</label>
+                    <select id="font-size">
+                        ${[12, 14, 16, 18, 20, 22, 24].map(n => `<option value="${n}">${n}</option>`).join("")}
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="render-whitespace">Render whitespace</label>
+                    <select id="render-whitespace">
+                        <option value="none">None</option>
+                        <option value="boundary">Boundary</option>
+                        <option value="selection">Selection</option>
+                        <option value="all">All</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="folding">Folding</label>
+                    <input type="checkbox" id="folding" />
+                </div>
+                <div class="setting-row">
+                    <label for="tab-size">Tab size</label>
+                    <select id="tab-size">
+                        <option value="2">2</option>
+                        <option value="4">4</option>
+                        <option value="6">6</option>
+                        <option value="8">8</option>
+                    </select>
+                </div>
             </div>
-            <div class="version-info">Version ${VERSION}</div>
             <div class="buttons">
                 <button class="close-btn">Close</button>
             </div>
@@ -109,12 +215,66 @@ export class SettingsModal extends BaseDialog<void> {
         cameraSelect.value = this.#initialMode
         const devToolsCheckbox = this.dialog.querySelector("#devtools") as HTMLInputElement
         devToolsCheckbox.checked = this.#initialDevToolsEnabled
+
+        const lineNumbersSelect = this.dialog.querySelector("#line-numbers") as HTMLSelectElement
+        lineNumbersSelect.value = e.lineNumbers
+        const wordWrapCheckbox = this.dialog.querySelector("#word-wrap") as HTMLInputElement
+        wordWrapCheckbox.checked = e.wordWrap === "on"
+        const minimapCheckbox = this.dialog.querySelector("#minimap") as HTMLInputElement
+        minimapCheckbox.checked = e.minimap
+        const fontSizeSelect = this.dialog.querySelector("#font-size") as HTMLSelectElement
+        fontSizeSelect.value = String(e.fontSize)
+        const renderWhitespaceSelect = this.dialog.querySelector("#render-whitespace") as HTMLSelectElement
+        renderWhitespaceSelect.value = e.renderWhitespace
+        const foldingCheckbox = this.dialog.querySelector("#folding") as HTMLInputElement
+        foldingCheckbox.checked = e.folding
+        const tabSizeSelect = this.dialog.querySelector("#tab-size") as HTMLSelectElement
+        tabSizeSelect.value = String(e.tabSize)
+    }
+
+    #getEditorSettingsFromForm(): EditorSettings {
+        const lineNumbers = (this.dialog.querySelector("#line-numbers") as HTMLSelectElement)
+            .value as LineNumbersMode
+        const wordWrap = (this.dialog.querySelector("#word-wrap") as HTMLInputElement).checked ? "on" : "off"
+        const minimap = (this.dialog.querySelector("#minimap") as HTMLInputElement).checked
+        const fontSize = parseInt((this.dialog.querySelector("#font-size") as HTMLSelectElement).value, 10)
+        const renderWhitespace = (this.dialog.querySelector("#render-whitespace") as HTMLSelectElement)
+            .value as RenderWhitespaceMode
+        const folding = (this.dialog.querySelector("#folding") as HTMLInputElement).checked
+        const tabSize = parseInt((this.dialog.querySelector("#tab-size") as HTMLSelectElement).value, 10)
+        return {
+            lineNumbers,
+            wordWrap,
+            minimap,
+            fontSize: Math.max(12, Math.min(24, fontSize)),
+            renderWhitespace,
+            folding,
+            tabSize: Math.max(2, Math.min(8, tabSize)),
+        }
+    }
+
+    #emitEditorChange() {
+        this.#onEditorChange(this.#getEditorSettingsFromForm())
     }
 
     protected setupEventListeners(signal: AbortSignal) {
         this.overlay.addEventListener("click", () => this.close(), { signal })
         this.shadow.querySelector(".close-btn")!.addEventListener("click", () => this.close(), { signal })
         window.addEventListener("keydown", this.#onKeyDown, { signal })
+
+        this.shadow.querySelectorAll(".tab-btn").forEach(btn => {
+            btn.addEventListener(
+                "click",
+                () => {
+                    const tab = (btn as HTMLElement).dataset.tab!
+                    this.shadow.querySelectorAll(".tab-btn").forEach(b => b.setAttribute("data-active", "false"))
+                    this.shadow.querySelectorAll(".tab-panel").forEach(p => p.setAttribute("data-active", "false"))
+                    btn.setAttribute("data-active", "true")
+                    this.shadow.querySelector(`.tab-panel[data-tab="${tab}"]`)!.setAttribute("data-active", "true")
+                },
+                { signal }
+            )
+        })
 
         const themeSelect = this.dialog.querySelector("#theme") as HTMLSelectElement
         themeSelect.addEventListener(
@@ -146,6 +306,22 @@ export class SettingsModal extends BaseDialog<void> {
             () => this.#onDevToolsChange(devToolsCheckbox.checked),
             { signal }
         )
+
+        const editorInputs = [
+            "#line-numbers",
+            "#word-wrap",
+            "#minimap",
+            "#font-size",
+            "#render-whitespace",
+            "#folding",
+            "#tab-size",
+        ]
+        editorInputs.forEach(sel => {
+            const el = this.dialog.querySelector(sel)
+            if (el) {
+                el.addEventListener("change", () => this.#emitEditorChange(), { signal })
+            }
+        })
     }
 
     #onKeyDown = (e: KeyboardEvent) => {

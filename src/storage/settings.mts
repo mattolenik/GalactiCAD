@@ -45,10 +45,31 @@ export type CameraRotationMethod = "rounded_arcball" | "azel"
 
 export type ThemeMode = "light" | "dark" | "auto"
 
+export type LineNumbersMode = "on" | "off" | "relative"
+export type RenderWhitespaceMode = "none" | "boundary" | "selection" | "all"
+
+export interface EditorSettings {
+    lineNumbers: LineNumbersMode
+    wordWrap: "on" | "off"
+    minimap: boolean
+    fontSize: number
+    renderWhitespace: RenderWhitespaceMode
+    folding: boolean
+    tabSize: number
+}
+
 export interface GlobalSettings {
     preview: { movementScale: number; selectionMode: SelectionMode; cameraRotationMethod: CameraRotationMethod }
     meshViewer: { translucentFaces: boolean; wireframe: boolean }
-    app: { meshViewerEnabled: boolean; devToolsEnabled: boolean; showFps: boolean; meshSimplifyOnExport: boolean; diskSyncIntervalSeconds: number; theme: ThemeMode }
+    app: {
+        meshViewerEnabled: boolean
+        devToolsEnabled: boolean
+        showFps: boolean
+        meshSimplifyOnExport: boolean
+        diskSyncIntervalSeconds: number
+        theme: ThemeMode
+        editor: EditorSettings
+    }
     layout: LayoutSettings
 }
 
@@ -76,6 +97,18 @@ function defaultSelection(): EditorSelection {
     return { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }
 }
 
+function defaultEditorSettings(): EditorSettings {
+    return {
+        lineNumbers: "on",
+        wordWrap: "on",
+        minimap: false,
+        fontSize: 16,
+        renderWhitespace: "none",
+        folding: true,
+        tabSize: 2,
+    }
+}
+
 function defaultDocSettings(): DocumentSettings {
     return { camera: defaultCamera(), preview: defaultPreview(), cursorPosition: defaultCursorPosition(), selection: defaultSelection() }
 }
@@ -84,7 +117,15 @@ function defaultGlobalSettings(): GlobalSettings {
     return {
         preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
         meshViewer: { translucentFaces: false, wireframe: false },
-        app: { meshViewerEnabled: false, devToolsEnabled: false, showFps: true, meshSimplifyOnExport: true, diskSyncIntervalSeconds: 30, theme: "dark" },
+        app: {
+            meshViewerEnabled: false,
+            devToolsEnabled: false,
+            showFps: true,
+            meshSimplifyOnExport: true,
+            diskSyncIntervalSeconds: 30,
+            theme: "dark",
+            editor: defaultEditorSettings(),
+        },
         layout: defaultLayout(),
     }
 }
@@ -316,6 +357,25 @@ export class SettingsManager {
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"
+                const editorDef = defaultEditorSettings()
+                const editor = { ...editorDef, ...(parsed.app as { editor?: Partial<EditorSettings> })?.editor }
+                if (editor.lineNumbers !== "on" && editor.lineNumbers !== "off" && editor.lineNumbers !== "relative")
+                    editor.lineNumbers = editorDef.lineNumbers
+                if (editor.wordWrap !== "on" && editor.wordWrap !== "off") editor.wordWrap = editorDef.wordWrap
+                if (typeof editor.minimap !== "boolean") editor.minimap = editorDef.minimap
+                if (typeof editor.fontSize !== "number" || editor.fontSize < 12 || editor.fontSize > 24)
+                    editor.fontSize = editorDef.fontSize
+                if (
+                    editor.renderWhitespace !== "none" &&
+                    editor.renderWhitespace !== "boundary" &&
+                    editor.renderWhitespace !== "selection" &&
+                    editor.renderWhitespace !== "all"
+                )
+                    editor.renderWhitespace = editorDef.renderWhitespace
+                if (typeof editor.folding !== "boolean") editor.folding = editorDef.folding
+                if (typeof editor.tabSize !== "number" || editor.tabSize < 2 || editor.tabSize > 8)
+                    editor.tabSize = editorDef.tabSize
+                app.editor = editor
                 this.#globalSettings = {
                     preview,
                     meshViewer: { ...def.meshViewer, ...parsed.meshViewer },

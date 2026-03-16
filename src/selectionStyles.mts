@@ -8,7 +8,7 @@ import type { EffectiveTheme } from "./style/theme.mjs"
 export const DEFAULT_SELECTION_STYLES = {
     outline: {
         mode: "solid" as const,
-        thickness: 3,
+        thickness: 2,
         color: [0.9, 0.9, 0.9] as [number, number, number],
         dashSpacing: 10,
         dashLength: 5,
@@ -26,8 +26,8 @@ export const DEFAULT_SELECTION_STYLES = {
         color: [1, 1, 0] as [number, number, number],
         selectedStrength: 0.8,
         hoverStrength: 0.4,
-        lineWidthPx: 4,
-        seamLineWidthPx: 6,
+        lineWidthPx: 2,
+        seamLineWidthPx: 4,
         epsilon: 0.02,
     },
 } as const

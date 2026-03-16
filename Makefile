@@ -51,7 +51,7 @@ start:
 	@echo "View logs at $(LOG_FILE) or with 'make logs'"
 
 logs:
-	@tail -f $(LOG_FILE)
+	@tail -fn 50 $(LOG_FILE)
 
 .PHONY: stop
 stop:

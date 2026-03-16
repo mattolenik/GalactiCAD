@@ -1002,7 +1002,18 @@ class App {
             if (this.#contextMenu?.visible) return
             this.#contextMenu?.hide()
         }
-        this.#contextMenuEditorMoveDispose = this.editor.onMouseMove(e => {
+        const cancelMonacoHoverForRightClick = () => {
+            if (this.#contextMenuShowTimer) {
+                clearTimeout(this.#contextMenuShowTimer)
+                this.#contextMenuShowTimer = null
+            }
+            this.#contextMenuLastKey = null
+            this.#contextMenu?.hide()
+        }
+        const editorDom = this.editor.getDomNode()
+        const onEditorContextMenu = () => cancelMonacoHoverForRightClick()
+        editorDom?.addEventListener("contextmenu", onEditorContextMenu)
+        const moveDispose = this.editor.onMouseMove(e => {
             if (e.target.type !== monaco.editor.MouseTargetType.CONTENT_TEXT) {
                 cancelMonacoHover()
                 return
@@ -1020,6 +1031,12 @@ class App {
                 cancelMonacoHover()
             }
         })
+        this.#contextMenuEditorMoveDispose = {
+            dispose: () => {
+                moveDispose.dispose()
+                editorDom?.removeEventListener("contextmenu", onEditorContextMenu)
+            },
+        }
 
         this.renderer.pushPullComplete$.subscribe(({ nodeId, vertices }) => {
             this.#handlePushPullComplete(nodeId, vertices)

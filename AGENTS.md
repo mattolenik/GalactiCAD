@@ -107,6 +107,7 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Click events on the canvas must be suppressed (`stopImmediatePropagation` in capture phase) while push/pull has any face state, to prevent CameraController's click handler from toggling selection via shift-click.
 - WebGPU: when removing bindings from shader, remove them from the TypeScript bind group as well.
 - Double-clicking polygon2d, loft, union, or other cross-selectable symbols selects (syncs with preview); use hover context menu "Edit Polygon" for polygon2d.
+- Right-click in Monaco over polygon2d: use Monaco's built-in context menu; custom "Edit Polygon" menu appears only on hover, not on right-click.
 - Monaco: set `occurrencesHighlight: "off"` and `selectionHighlight: false` so double-clicking cross-selectable symbols does not highlight other occurrences.
 - Hover context menus: use a safe zone (AABB from trigger to menu) so the menu stays open while the user moves the cursor toward it.
 

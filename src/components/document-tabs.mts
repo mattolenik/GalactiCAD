@@ -994,6 +994,13 @@ export class DocumentTabs extends HTMLElement {
             tab.classList.add("tab")
             if (name === this.#active) tab.classList.add("active")
             tab.addEventListener("pointerdown", (e) => this.#onTabPointerDown(e, name))
+            tab.addEventListener("auxclick", (e) => {
+                if (e.button === 1) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    void this.closeTab(name)
+                }
+            })
 
             const label = document.createElement("span")
             label.classList.add("tab-label")

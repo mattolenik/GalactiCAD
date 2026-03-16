@@ -46,10 +46,10 @@ export function formatVertices(vertices: [number, number][], format?: ArrayForma
 export function applyVertexUpdates(
     model: monaco.editor.ITextModel,
     info: Polygon2DCallInfo,
-    vertices: [number, number][]
+    vertices: [number, number][],
+    groupEdits = false
 ): void {
     if (vertices.length === info.vertexRanges.length) {
-        // Surgical edits: replace each vertex in place, apply in reverse order
         const edits = vertices
             .map((v, i) => {
                 const start = model.getPositionAt(info.vertexRanges[i].start)
@@ -64,9 +64,9 @@ export function applyVertexUpdates(
                 const bp = b.range.getStartPosition()
                 return bp.lineNumber - ap.lineNumber || bp.column - ap.column
             })
-        model.pushStackElement()
+        if (!groupEdits) model.pushStackElement()
         model.pushEditOperations([], edits, () => null)
-        model.pushStackElement()
+        if (!groupEdits) model.pushStackElement()
     } else {
         const originalText = model.getValue().slice(info.arrayStartOffset, info.arrayEndOffset)
         const format = analyzeArrayFormatting(originalText)
@@ -77,8 +77,8 @@ export function applyVertexUpdates(
             startPos.lineNumber, startPos.column,
             endPos.lineNumber, endPos.column
         )
-        model.pushStackElement()
+        if (!groupEdits) model.pushStackElement()
         model.pushEditOperations([], [{ range, text: newText }], () => null)
-        model.pushStackElement()
+        if (!groupEdits) model.pushStackElement()
     }
 }

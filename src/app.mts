@@ -105,6 +105,8 @@ class App {
     #sceneNodeMap: Map<number, NodeStub> = new Map()  // nodeId -> NodeStub for symbol lookup
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
+    #pushPullBuildPending = false
+    #pushPullUndoOpen = false
     #polygonEditor: PolygonEditor | null = null
     #contextMenu: ContextMenu | null = null
     #contextMenuHoverSub: Subscription | null = null
@@ -144,7 +146,8 @@ class App {
 
             // Build the scene (uses cache when switching back to a tab with unchanged content).
             // Await so camera loads only after scene is ready, avoiding flicker.
-            await this.renderer.build(src, documentName)
+            const applied = await this.renderer.build(src, documentName)
+            if (!applied) return
 
             // Guard: user may have closed the tab or switched documents while build was in flight.
             // The renderer skips applying stale buildComplete, but we must not overwrite state here.
@@ -370,7 +373,11 @@ class App {
         const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
         if (!info) return
 
-        applyVertexUpdates(model, info, vertices)
+        if (!this.#pushPullUndoOpen) {
+            model.pushStackElement()
+            this.#pushPullUndoOpen = true
+        }
+        applyVertexUpdates(model, info, vertices, true)
     }
 
     /**
@@ -390,11 +397,12 @@ class App {
         const info = this.#sourceParser.findExtrudeLoftAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
         if (!info) return
 
-        // Update the in-memory scene node and apply source edits.
-        // nodeParams buffer already has the correct h and posYDelta, so rendering is fine
-        // without a full shader recompile.
+        if (!this.#pushPullUndoOpen) {
+            model.pushStackElement()
+            this.#pushPullUndoOpen = true
+        }
         const node = this.#sceneNodeMap.get(nodeId) as ExtrudeLikeNode | undefined
-        applyExtrudeLoftCapUpdates(model, info, newH, newPosY, node)
+        applyExtrudeLoftCapUpdates(model, info, newH, newPosY, node, true)
 
         // Re-parse source locations so subsequent drags find correct offsets.
         const updatedSrc = model.getValue()
@@ -552,7 +560,13 @@ class App {
                     (_, disp) => disp.dispose()
                 )
                     .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
-                    .subscribe(() => this.build())
+                    .subscribe(() => {
+                        if (this.renderer.isPushPullActive) {
+                            this.#pushPullBuildPending = true
+                            return
+                        }
+                        this.build()
+                    })
             }
             this.#wireExportButton(exportBtn, devTools)
             this.#wireDevToolsFromSettings(devTools)
@@ -1013,6 +1027,17 @@ class App {
 
         this.renderer.capPullComplete$.subscribe(({ nodeId, newH, newPosY }) => {
             this.#handleCapPullComplete(nodeId, newH, newPosY)
+        })
+
+        this.renderer.pushPullExit$.subscribe(() => {
+            if (this.#pushPullUndoOpen) {
+                this.editor.getModel()?.pushStackElement()
+                this.#pushPullUndoOpen = false
+            }
+            if (this.#pushPullBuildPending) {
+                this.#pushPullBuildPending = false
+                this.build()
+            }
         })
 
         this.editor.onDidChangeCursorSelection(() => {

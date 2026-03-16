@@ -68,6 +68,9 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "build":
             if (core) enqueueBuild(msg.body, msg.documentName, msg.requestId)
             break
+        case "cancelBuilds":
+            cancelBuilds()
+            break
         case "render":
             pendingRender = msg
             if (core) {
@@ -178,6 +181,14 @@ function enqueueBuild(body: string, documentName?: string | null, requestId?: nu
     }
     pendingBuild = { body, documentName, requestId }
     if (!buildInProgress) runNextBuild()
+}
+
+function cancelBuilds(): void {
+    core?.cancelBuilds()
+    if (pendingBuild?.requestId != null) {
+        self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: pendingBuild.requestId, documentName: pendingBuild.documentName ?? undefined, superseded: true })
+    }
+    pendingBuild = null
 }
 
 async function runNextBuild(): Promise<void> {

@@ -59,7 +59,8 @@ export function applyExtrudeLoftCapUpdates(
     info: ExtrudeLoftCallInfo,
     newH: number,
     newPosY: number,
-    node?: ExtrudeLikeNode
+    node?: ExtrudeLikeNode,
+    groupEdits = false
 ): void {
     if (node && "h" in node) {
         node.h = newH
@@ -67,7 +68,7 @@ export function applyExtrudeLoftCapUpdates(
     }
 
     const src = model.getValue()
-    model.pushStackElement()
+    if (!groupEdits) model.pushStackElement()
 
     const edits: { range: monaco.IRange; text: string }[] = []
 
@@ -107,5 +108,5 @@ export function applyExtrudeLoftCapUpdates(
         return b.range.startColumn - a.range.startColumn
     })
     model.pushEditOperations([], edits, () => null)
-    model.pushStackElement()
+    if (!groupEdits) model.pushStackElement()
 }

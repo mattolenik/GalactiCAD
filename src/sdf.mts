@@ -126,7 +126,7 @@ export class SDFRenderer {
     #latestRenderMeshRequestId = 0
     #latestThumbnailRequestId = 0
     #pendingTranspile = new Map<number, { kind: TranspileKind; documentName?: string; width?: number; height?: number; simplifyOnExport?: boolean }>()
-    #pendingBuild = new Map<number, { resolve: () => void; reject: (err: unknown) => void }>()
+    #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
     #pendingRenderMesh = new Map<number, { resolve: (v: MeshData) => void; reject: (err: unknown) => void }>()
     #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
     #pendingThumbnail = new Map<number, { resolve: (v: ImageData) => void; reject: (err: unknown) => void }>()
@@ -175,6 +175,7 @@ export class SDFRenderer {
     readonly contextMenu$ = new Subject<{ objectId: number; clientX: number; clientY: number }>()
     readonly pushPullComplete$ = new Subject<{ nodeId: number; vertices: [number, number][] }>()
     readonly capPullComplete$ = new Subject<{ nodeId: number; newH: number; newPosY: number }>()
+    readonly pushPullExit$ = new Subject<void>()
     readonly previewSettingsLoaded$ = new Subject<void>()
 
     constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect, getActiveDocument?: () => string | undefined) {
@@ -327,7 +328,7 @@ export class SDFRenderer {
                             this.#needsRender = true
                         }
                     }
-                    pending.resolve()
+                    pending.resolve(!msg.superseded)
                 }
                 if (msg.requestId != null) this.#pendingBuild.delete(msg.requestId)
                 break
@@ -449,7 +450,7 @@ export class SDFRenderer {
 
         if (pending.kind === "build") {
             if (requestId !== this.#latestBuildRequestId) {
-                this.#pendingBuild.get(requestId)?.resolve()
+                this.#pendingBuild.get(requestId)?.resolve(false)
                 this.#pendingBuild.delete(requestId)
                 return
             }
@@ -625,6 +626,10 @@ export class SDFRenderer {
         const hitPos = this.#lastClickHitPos
         if (!nodeId || !hitPos) return false
         return this.#handleObjectDoubleClick(nodeId, hitPos)
+    }
+
+    #cancelBuildsForPushPull(): void {
+        this.#worker.postMessage({ type: "cancelBuilds" })
     }
 
     /** Show face highlight (without activating drag) for the currently selected object. */
@@ -919,6 +924,7 @@ export class SDFRenderer {
             self.#writeSelectionBuffer()
             self.#pushSelectionInfo()
             self.#needsRender = true
+            self.pushPullExit$.next()
         }
         const canvas = this.#preview.canvas
         canvas.addEventListener("click", (e: MouseEvent) => {
@@ -929,13 +935,15 @@ export class SDFRenderer {
         canvas.addEventListener("pointerdown", (e: PointerEvent) => {
             // If shift is held and we have a highlight-only state, promote to full push/pull selection
             if (e.shiftKey && this.#pushPullController && !this.#pushPullController.isActive) {
+                let activated = false
                 if (this.#pushPullController.getFaceSelection() !== null) {
                     // Already have a highlight — promote directly from existing highlight state
-                    this.#pushPullController.promoteToActive()
+                    activated = this.#pushPullController.promoteToActive()
                 } else {
                     // No highlight yet — derive from last click
-                    this.#tryActivatePushPullFromSelection()
+                    activated = this.#tryActivatePushPullFromSelection()
                 }
+                if (activated) this.#cancelBuildsForPushPull()
                 this.#pushSelectionInfo()
             }
             if (this.#pushPullController?.isActive && !this.#pushPullController.isDragging) {
@@ -967,7 +975,9 @@ export class SDFRenderer {
             }
             // Shift held: enter push/pull highlight mode on the selected object
             if (e.key === "Shift" && !e.repeat && !this.#pushPullController?.isActive) {
-                this.#tryHighlightPushPullFromSelection()
+                if (this.#tryHighlightPushPullFromSelection()) {
+                    this.#cancelBuildsForPushPull()
+                }
             }
         })
         document.addEventListener("keyup", (e: KeyboardEvent) => {
@@ -981,6 +991,10 @@ export class SDFRenderer {
                 }
             }
         })
+    }
+
+    get isPushPullActive(): boolean {
+        return this.#pushPullController?.getFaceSelection() !== null
     }
 
     get controls(): CameraController {
@@ -1308,11 +1322,11 @@ export class SDFRenderer {
         }
     }
 
-    build(src: string, documentName?: string | null): Promise<void> {
+    build(src: string, documentName?: string | null): Promise<boolean> {
         const requestId = ++this.#requestIdCounter
         this.#latestBuildRequestId = requestId
         this.#pendingTranspile.set(requestId, { kind: "build", documentName: documentName ?? undefined })
-        return new Promise<void>((resolve, reject) => {
+        return new Promise<boolean>((resolve, reject) => {
             this.#pendingBuild.set(requestId, { resolve, reject })
             this.#transpileWorker.postMessage({ type: "transpile", src: src.trim(), requestId, kind: "build", documentName: documentName ?? undefined })
         })
@@ -1322,8 +1336,8 @@ export class SDFRenderer {
     static readonly EMPTY_SCENE_SRC = "return sphere.radius(0.001)"
 
     /** Clear the preview by building a minimal empty scene (invisible sphere). */
-    clearScene(): Promise<void> {
-        return this.build(SDFRenderer.EMPTY_SCENE_SRC)
+    async clearScene(): Promise<void> {
+        await this.build(SDFRenderer.EMPTY_SCENE_SRC)
     }
 
     async renderMesh(_src: string, documentName?: string, options?: { simplifyOnExport?: boolean }): Promise<MeshData> {
@@ -1421,6 +1435,7 @@ export class SDFRenderer {
         this.contextMenu$.complete()
         this.pushPullComplete$.complete()
         this.capPullComplete$.complete()
+        this.pushPullExit$.complete()
         this.previewSettingsLoaded$.complete()
     }
 }

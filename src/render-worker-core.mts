@@ -213,6 +213,10 @@ export class RenderWorkerCore {
         this.#bvhEnabled = enabled
     }
 
+    cancelBuilds(): void {
+        this.#buildGeneration++
+    }
+
     async #doBuild(body: string): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
         this.#builtBody = body
         this.#scene = new SceneInfo(body, { bvhEnabled: this.#bvhEnabled })

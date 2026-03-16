@@ -262,7 +262,7 @@ export class DevToolsPanel extends HTMLElement {
         // Factory Reset button
         const factoryResetButton = document.createElement("button")
         factoryResetButton.textContent = "Factory Reset"
-        factoryResetButton.addEventListener("click", () => this.#factoryReset())
+        factoryResetButton.addEventListener("click", () => this.factoryReset())
         shadow.appendChild(factoryResetButton)
 
         // Hidden by default
@@ -399,7 +399,12 @@ export class DevToolsPanel extends HTMLElement {
         }
     }
 
-    async #factoryReset(): Promise<void> {
+    /** Public API for console: factoryReset() */
+    async factoryReset(): Promise<void> {
+        return this.#doFactoryReset()
+    }
+
+    async #doFactoryReset(): Promise<void> {
         const { YesNoDialog } = await import("./yesno-dialog.mjs")
         const dialog = new YesNoDialog(
             "Clear all localStorage, IndexedDB, and CacheStorage, then reload? This cannot be undone."

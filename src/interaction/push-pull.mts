@@ -511,13 +511,14 @@ export class PushPullController {
     }
 
     #writeFaceSelection(nodeId: number, faceIndex: number, mode: number = 0, extrudeOffset: number = 0): void {
-        const data = new ArrayBuffer(16)
+        const data = new ArrayBuffer(20)
         const u32 = new Uint32Array(data)
         const f32 = new Float32Array(data)
         u32[0] = nodeId
         u32[1] = faceIndex
         u32[2] = mode
         f32[3] = extrudeOffset
+        u32[4] = this.getFaceSelection() !== null ? 1 : 0
         this.#host.writeBuffers({ faceSelection: data })
     }
 

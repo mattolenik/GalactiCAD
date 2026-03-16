@@ -190,7 +190,7 @@ export class RenderWorkerCore {
         // Init click/selection/face buffers
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, new ArrayBuffer(32))
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, new Uint32Array(1024))
-        this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, new ArrayBuffer(16))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, new ArrayBuffer(20))
 
         // Init empty edges
         this.#writeEdgesToBuffer(this.#uniformBuffers.selectedEdges, [], DEFAULT_SELECTION_STYLES.edge.lineWidthPx, DEFAULT_SELECTION_STYLES.edge.epsilon)
@@ -1104,7 +1104,7 @@ export class RenderWorkerCore {
         })
 
         ub.faceSelection = this.#device.createBuffer({
-            size: 16,
+            size: 20,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "faceSelection",
         })

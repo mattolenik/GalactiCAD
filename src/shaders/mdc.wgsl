@@ -56,7 +56,7 @@ const EDGES_PER_CELL: u32 = 12u;
 @group(0) @binding(27) var<storage, read> polygonVertices: array<vec2f>;
 
 // Face selection (for Extrude face highlighting; not used in MDC, but must exist for compilation).
-struct FaceSelection { nodeId: u32, faceIndex: u32, mode: u32, extrudeOffset: f32, }
+struct FaceSelection { nodeId: u32, faceIndex: u32, mode: u32, extrudeOffset: f32, pushPullActive: u32, }
 @group(0) @binding(28) var<uniform> faceSelection: FaceSelection;
 const FACE_HIGHLIGHT_ID: u32 = 1023u;
 const FACE_HIGHLIGHT_TOP: u32 = 1023u;

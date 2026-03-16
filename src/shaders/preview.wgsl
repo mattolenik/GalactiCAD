@@ -69,6 +69,7 @@ struct FaceSelection {
     faceIndex: u32,      // edge index or primitive face index
     mode: u32,           // 0 = slide, 1 = extrude, 2 = top cap, 3 = bottom cap, 4 = box, 5 = cylinder, 6 = cone
     extrudeOffset: f32,  // world-space offset (extrude mode only)
+    pushPullActive: u32, // 1 = push/pull active (dither); 0 = normal selection (no dither)
 }
 @group(0) @binding(11) var<uniform> faceSelection: FaceSelection;
 
@@ -746,7 +747,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     if (hit.t > 0.0) {
         var frontResult = shadeHit(hit, false);
         var shadedColor = frontResult.color;
-        if (frontResult.faceSelected > 0.0) {
+        if (frontResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
             let pixelCoord = uv * camera.res;
             shadedColor = applyFaceDottedPattern(shadedColor, pixelCoord);
         }
@@ -757,7 +758,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
             if (backHit.t > 0.0) {
                 var backResult = shadeHit(backHit, true);
                 var backColor = backResult.color;
-                if (backResult.faceSelected > 0.0) {
+                if (backResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
                     let pixelCoord = uv * camera.res;
                     backColor = applyFaceDottedPattern(backColor, pixelCoord);
                 }

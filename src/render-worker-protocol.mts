@@ -78,6 +78,7 @@ export type MainToWorkerMessage =
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
+    | { type: "pickObject"; clickUV: [number, number]; requestId: number }
     | { type: "setBvhEnabled"; enabled: boolean }
 
 export interface RenderSelectionState {
@@ -131,4 +132,5 @@ export type WorkerToMainMessage =
     | { type: "benchmarkResult"; result: BenchmarkResultPayload; requestId?: number }
     | { type: "thumbnailResult"; imageData?: ImageData; error?: string; requestId?: number; documentName?: string }
     | { type: "pickPosResult"; hitPos: [number, number, number] | null; requestId: number }
+    | { type: "pickObjectResult"; objectId: number; requestId: number }
     | { type: "fps"; fps: number }

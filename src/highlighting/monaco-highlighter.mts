@@ -8,6 +8,11 @@ import { getShapePalette, PALETTE_SIZE } from "../colorPalette.mjs"
 import type { Vec3f } from "../vecmat/vector.mjs"
 import type { FluentMethodLocation } from "../parser/source-parser.mjs"
 
+/** Inverse RGB for contrast on colored backgrounds. Input/output in 0–255. */
+function invertRgb(r: number, g: number, b: number): [number, number, number] {
+    return [255 - r, 255 - g, 255 - b]
+}
+
 /**
  * Range to highlight in the editor (function name position)
  */
@@ -63,18 +68,27 @@ export class MonacoHighlighter {
     }
 
     /**
-     * Generate CSS for a shape indicator.
-     * Two separate classes are used to avoid the ::before pseudo-element firing twice:
-     *   - `className`       → SVG icon only (used with beforeContentClassName)
-     *   - `className-text`  → text color only (used with inlineClassName)
+     * Generate CSS for a shape indicator pill.
+     * Single class: rounded rect background (object color), text and icon in inverse color.
      */
     private generateIndicatorCss(className: string, svg: string, r: number, g: number, b: number): string {
-        const rgb = `rgb(${r},${g},${b})`
-        const svgWithColor = svg.replace(/currentColor/g, rgb)
+        const [invR, invG, invB] = invertRgb(r, g, b)
+        const bgRgb = `rgb(${r},${g},${b})`
+        const textRgb = `rgb(${invR},${invG},${invB})`
+        const svgWithColor = svg.replace(/currentColor/g, textRgb)
         const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">${svgWithColor}</svg>`
         const dataUri = `data:image/svg+xml,${encodeURIComponent(fullSvg)}`
 
-        return `.${className}::before {
+        return `.${className} {
+            background-color: ${bgRgb};
+            border-radius: 8px;
+            padding: 0 6px 0 4px;
+            color: ${textRgb} !important;
+            -webkit-box-decoration-break: clone;
+            box-decoration-break: clone;
+            box-sizing: border-box;
+        }
+        .${className}::before {
             content: "";
             display: inline-block;
             width: 12px;
@@ -85,9 +99,6 @@ export class MonacoHighlighter {
             background-size: contain;
             background-repeat: no-repeat;
             cursor: default;
-        }
-        .${className}-text {
-            color: ${rgb} !important;
         }\n`
     }
 
@@ -132,11 +143,16 @@ export class MonacoHighlighter {
                     indicator.endColumn
                 ),
                 options: {
-                    beforeContentClassName: className,
-                    inlineClassName: `${className}-text`
+                    inlineClassName: className
                 }
             }
         })
+
+        // Append selection modifiers: solid for primary, dashed for children
+        css += `.shape-indicator-selected { box-shadow: 0 0 0 2px currentColor; }
+        [data-theme="dark"] .shape-indicator-selected { box-shadow: 0 0 0 2px #fff; }
+        .shape-indicator-selected-child { box-shadow: none; border: 2px dashed currentColor; border-radius: 8px; box-sizing: border-box; }
+        [data-theme="dark"] .shape-indicator-selected-child { border-color: #fff; }\n`
 
         // Update the style element with generated CSS
         this.styleElement!.textContent = css
@@ -161,11 +177,13 @@ export class MonacoHighlighter {
     }
 
     /**
-     * Highlight function name ranges corresponding to selected shapes
-     * @param ranges Array of ranges to highlight (function name positions)
+     * Highlight function name ranges corresponding to selected shapes.
+     * Primary ranges get solid border; child ranges get dashed border.
+     * @param primaryRanges Ranges for primary selection (solid border)
+     * @param childRanges Ranges for children of selection (dashed border)
      * @param overviewRulerColor Theme-aware color for the overview ruler (default: yellow for dark theme)
      */
-    highlightRanges(ranges: HighlightRange[], overviewRulerColor = "#ffff00") {
+    highlightRanges(primaryRanges: HighlightRange[], childRanges: HighlightRange[], overviewRulerColor = "#ffff00") {
         if (!this.editor) {
             console.warn("[MonacoHighlighter] No editor set")
             return
@@ -174,38 +192,28 @@ export class MonacoHighlighter {
         const model = this.editor.getModel()
         if (!model) return
 
-        if (ranges.length === 0) {
+        if (primaryRanges.length === 0 && childRanges.length === 0) {
             this.clearHighlighting()
             return
         }
 
-        // Create decorations for each range (just the function name, not whole line)
-        const newDecorations: monaco.editor.IModelDeltaDecoration[] = ranges.map(range => ({
-            range: new monaco.Range(
-                range.startLine,
-                range.startColumn,
-                range.endLine,
-                range.endColumn
-            ),
-            options: {
-                inlineClassName: "selected-shape-name",
-                overviewRuler: {
-                    color: overviewRulerColor,
-                    position: monaco.editor.OverviewRulerLane.Full
-                }
-            }
+        const ruler = { color: overviewRulerColor, position: monaco.editor.OverviewRulerLane.Full as const }
+        const primaryDecorations: monaco.editor.IModelDeltaDecoration[] = primaryRanges.map(range => ({
+            range: new monaco.Range(range.startLine, range.startColumn, range.endLine, range.endColumn),
+            options: { inlineClassName: "shape-indicator-selected", overviewRuler: ruler }
+        }))
+        const childDecorations: monaco.editor.IModelDeltaDecoration[] = childRanges.map(range => ({
+            range: new monaco.Range(range.startLine, range.startColumn, range.endLine, range.endColumn),
+            options: { inlineClassName: "shape-indicator-selected-child", overviewRuler: ruler }
         }))
 
-        // Update decorations (removes old, adds new)
         this.selectionDecorationIds = this.editor.deltaDecorations(
-            this.selectionDecorationIds, 
-            newDecorations
+            this.selectionDecorationIds,
+            [...primaryDecorations, ...childDecorations]
         )
 
-        // Scroll to first selected range
-        if (ranges.length > 0) {
-            this.editor.revealLineInCenterIfOutsideViewport(ranges[0].startLine)
-        }
+        const firstRange = primaryRanges[0] ?? childRanges[0]
+        if (firstRange) this.editor.revealLineInCenterIfOutsideViewport(firstRange.startLine)
     }
 
     /**

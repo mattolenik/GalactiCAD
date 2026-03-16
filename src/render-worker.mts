@@ -136,6 +136,14 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
                 self.postMessage({ type: "pickPosResult", hitPos: null, requestId: msg.requestId })
             }
             break
+        case "pickObject":
+            if (core) {
+                await core.handlePickObject(msg.clickUV, msg.requestId, sharedBuffer ?? undefined)
+                markSABVersionConsumed()
+            } else {
+                self.postMessage({ type: "pickObjectResult", objectId: 0, requestId: msg.requestId })
+            }
+            break
         case "setBvhEnabled":
             if (core) core.setBvhEnabled(msg.enabled)
             break

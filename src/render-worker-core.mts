@@ -1302,6 +1302,23 @@ export class RenderWorkerCore {
         self.postMessage({ type: "selectionInfo", info, documentName, hoverRequestId })
     }
 
+    async handlePickObject(clickUV: [number, number], requestId: number, sab?: SharedArrayBuffer): Promise<void> {
+        if (!this.#pipeline) {
+            self.postMessage({ type: "pickObjectResult", objectId: 0, requestId })
+            return
+        }
+        if (!sab && !this.#lastRenderMsg) {
+            self.postMessage({ type: "pickObjectResult", objectId: 0, requestId })
+            return
+        }
+        this.#writeClickState(clickUV, false, true, clickUV)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, new ArrayBuffer(320))
+        if (sab) this.#renderFromSAB(sab)
+        else this.render(this.#lastRenderMsg!)
+        const { hoveredObjectId } = await this.#readHoverResult()
+        self.postMessage({ type: "pickObjectResult", objectId: hoveredObjectId, requestId })
+    }
+
     async handleDoubleClick(clickUV: [number, number], documentName?: string, sab?: SharedArrayBuffer): Promise<void> {
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return

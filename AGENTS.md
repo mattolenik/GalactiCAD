@@ -106,6 +106,9 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Push/pull activation: shift-hold on a selected surface (not double-click). `dropToHighlight()` must NOT call `onDeselect` — it overwrites the GPU face-highlight buffers. After cap drag completion, update `node.h`/`node.pos.y` on the stored reference before `dropToHighlight` so subsequent drags don't snap back.
 - Click events on the canvas must be suppressed (`stopImmediatePropagation` in capture phase) while push/pull has any face state, to prevent CameraController's click handler from toggling selection via shift-click.
 - WebGPU: when removing bindings from shader, remove them from the TypeScript bind group as well.
+- Double-clicking polygon2d, loft, union, or other cross-selectable symbols selects (syncs with preview); use hover context menu "Edit Polygon" for polygon2d.
+- Monaco: set `occurrencesHighlight: "off"` and `selectionHighlight: false` so double-clicking cross-selectable symbols does not highlight other occurrences.
+- Hover context menus: use a safe zone (AABB from trigger to menu) so the menu stays open while the user moves the cursor toward it.
 
 ## Building and Linting
 

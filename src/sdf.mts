@@ -89,6 +89,7 @@ export class SDFRenderer {
     #getInteractionRect: (() => DOMRect) | null = null
     #pushPullNodes: Map<number, { type: "extrude"; id: number; pos: { x: number; y: number; z: number }; h: number; child: { vertices: [number, number][]; bufferOffset: number }; twistDegrees?: number; capTopId?: number; capBottomId?: number } | { type: "loft"; id: number; pos: { x: number; y: number; z: number }; h: number; profiles: { vertices: [number, number][]; bufferOffset: number }[] } | { type: "polygon2d"; id: number; vertices: [number, number][]; bufferOffset: number } | { type: "virtualCap"; id: number; parentId: number; isTop: boolean }> = new Map()
     #childrenByParent = new Map<number, number[]>()
+    #parentById = new Map<number, number>()
     #needsRender = true
     #started = false
     #xrayMode = false
@@ -130,6 +131,8 @@ export class SDFRenderer {
     #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
     #pendingThumbnail = new Map<number, { resolve: (v: ImageData) => void; reject: (err: unknown) => void }>()
     #pendingPickPos = new Map<number, { resolve: (v: [number, number, number] | null) => void }>()
+    #pendingPickObject = new Map<number, { clientX: number; clientY: number }>()
+    #pickObjectRequestId = 0
     #sharedBuffer: SharedArrayBuffer | null = null
     #renderVersion = 0
     #useSharedMemory = false
@@ -166,6 +169,10 @@ export class SDFRenderer {
 
     readonly selectionChange$ = new Subject<number[]>()
     readonly objectDoubleClick$ = new Subject<number>()
+    /** Emits when hover changes: objectId and screen position. objectId 0 means no hover. */
+    readonly hoverInfo$ = new Subject<{ objectId: number; screenPos: { x: number; y: number } }>()
+    /** Emits when right-clicking on the preview: objectId and client position. */
+    readonly contextMenu$ = new Subject<{ objectId: number; clientX: number; clientY: number }>()
     readonly pushPullComplete$ = new Subject<{ nodeId: number; vertices: [number, number][] }>()
     readonly capPullComplete$ = new Subject<{ nodeId: number; newH: number; newPosY: number }>()
     readonly previewSettingsLoaded$ = new Subject<void>()
@@ -251,6 +258,15 @@ export class SDFRenderer {
                 this.#loadPreviewSettings()
             })
         }
+
+        preview.canvas.addEventListener("contextmenu", (e: MouseEvent) => {
+            e.preventDefault()
+            const uv = this.#screenToClickUV(e.clientX, e.clientY)
+            if (!uv) return
+            const requestId = ++this.#pickObjectRequestId
+            this.#worker.postMessage({ type: "pickObject", clickUV: uv, requestId })
+            this.#pendingPickObject.set(requestId, { clientX: e.clientX, clientY: e.clientY })
+        })
 
         this.#loadPreviewSettings()
     }
@@ -339,6 +355,9 @@ export class SDFRenderer {
                     seedNormal: e.seedNormal,
                 })) ?? []
                 this.#preview.updateSelectionInfo(msg.info)
+                if (this.#lastHoverScreenPos) {
+                    this.hoverInfo$.next({ objectId: this.#hoveredObjectId, screenPos: this.#lastHoverScreenPos })
+                }
                 this.#needsRender = true
                 break
             case "objectDoubleClick":
@@ -391,6 +410,14 @@ export class SDFRenderer {
                 if (pending) {
                     pending.resolve(msg.hitPos)
                     this.#pendingPickPos.delete(msg.requestId)
+                }
+                break
+            }
+            case "pickObjectResult": {
+                const pending = this.#pendingPickObject.get(msg.requestId)
+                if (pending) {
+                    this.contextMenu$.next({ objectId: msg.objectId, clientX: pending.clientX, clientY: pending.clientY })
+                    this.#pendingPickObject.delete(msg.requestId)
                 }
                 break
             }
@@ -640,8 +667,48 @@ export class SDFRenderer {
         this.#latestHoverRequestId = -1
         this.#hoveredObjectId = 0
         this.#hoveredEdges = []
+        if (this.#lastHoverScreenPos) {
+            this.hoverInfo$.next({ objectId: 0, screenPos: this.#lastHoverScreenPos })
+        }
         this.#pushSelectionInfo()
         this.#needsRender = true
+    }
+
+    /**
+     * Resolve a hovered object ID to the polygon2d node ID for source lookup.
+     * Returns the polygon2d id when hovering over a polygon2d, extrude/loft cap, or extrude side; null otherwise.
+     */
+    resolvePolygon2dForHover(objectId: number): number | null {
+        if (objectId <= 0) return null
+        const node = this.#pushPullNodes.get(objectId)
+        if (!node) return null
+        if (node.type === "polygon2d") return objectId
+        if (node.type === "virtualCap") {
+            const children = this.#childrenByParent.get(node.parentId)
+            if (!children || children.length === 0) return null
+            return children[0]
+        }
+        if (node.type === "extrude") {
+            const children = this.#childrenByParent.get(objectId)
+            if (!children || children.length === 0) return null
+            return children[0]
+        }
+        return null
+    }
+
+    /**
+     * IDs that count as "selected" for polygon context menu: the object itself, resolved polygon2d,
+     * and parent extrude/loft (so right-click on cap works when extrude body was selected).
+     */
+    getPolygonContextMenuSelectionIds(objectId: number): number[] {
+        const ids: number[] = []
+        if (objectId <= 0) return ids
+        ids.push(objectId)
+        const polyId = this.resolvePolygon2dForHover(objectId)
+        if (polyId != null) ids.push(polyId)
+        const node = this.#pushPullNodes.get(objectId)
+        if (node?.type === "virtualCap") ids.push(node.parentId)
+        return ids
     }
 
     /** Issue one fresh hover query at the last cached position when camera movement stops. */
@@ -690,10 +757,12 @@ export class SDFRenderer {
     #buildPushPullNodes(serialized: import("./render-worker-protocol.mjs").SerializedNode[]): void {
         this.#pushPullNodes.clear()
         this.#childrenByParent.clear()
+        this.#parentById.clear()
         const polyById = new Map<number, { vertices: [number, number][]; bufferOffset: number }>()
         const byId = new Map(serialized.map(s => [s.id, s]))
         for (const s of serialized) {
             this.#childrenByParent.set(s.id, s.children)
+            for (const cid of s.children) this.#parentById.set(cid, s.id)
             if (s.shapeType === "polygon2d" && s.vertices && s.bufferOffset !== undefined && s.bufferOffset >= 0) {
                 const poly = {
                     vertices: s.vertices.map(v => [v[0], v[1]] as [number, number]),
@@ -958,6 +1027,58 @@ export class SDFRenderer {
 
     get selectedObjectIds(): number[] {
         return [...this.#getCompactSelectedIds()]
+    }
+
+    /**
+     * Given leaf node IDs from a CSG operator selection (union, subtract, etc.),
+     * find the root (smallest ancestor containing all) and return its full descendant tree.
+     * This allows primary (solid) vs child (dashed) highlighting for all operators.
+     */
+    getSelectionIdsWithRoot(leafIds: number[]): number[] {
+        if (leafIds.length === 0) return []
+        const nodeById = new Map(this.#sceneNodeCache.map(n => [n.id, n]))
+        const leafSet = new Set(leafIds)
+        let candidate: number | undefined = this.#parentById.get(leafIds[0])
+        while (candidate !== undefined) {
+            const node = nodeById.get(candidate)
+            const descendants = node?.getAllDescendantIds?.() ?? [candidate]
+            if (leafIds.every(id => descendants.includes(id))) {
+                return descendants
+            }
+            candidate = this.#parentById.get(candidate)
+        }
+        return leafIds
+    }
+
+    /**
+     * Split selected IDs into primary (no selected ancestor) and children (have selected ancestor).
+     * Used for Monaco editor highlighting: primary gets solid border, children get dashed.
+     * Resolves virtual caps (extrude top/bottom) to their polygon2d so the profile is highlighted.
+     */
+    getSelectionPrimaryAndChildIds(): { primary: number[]; children: number[] } {
+        const rawIds = this.#getCompactSelectedIds()
+        const ids = new Set<number>()
+        for (const id of rawIds) {
+            const node = this.#pushPullNodes.get(id)
+            const resolved = node?.type === "virtualCap" ? this.resolvePolygon2dForHover(id) : null
+            ids.add(resolved ?? id)
+        }
+        const selectedSet = new Set(ids)
+        const primary: number[] = []
+        const children: number[] = []
+        for (const id of ids) {
+            let pid: number | undefined = id
+            let hasSelectedAncestor = false
+            while ((pid = this.#parentById.get(pid)) !== undefined) {
+                if (selectedSet.has(pid)) {
+                    hasSelectedAncestor = true
+                    break
+                }
+            }
+            if (hasSelectedAncestor) children.push(id)
+            else primary.push(id)
+        }
+        return { primary, children }
     }
 
     setSelection(ids: number[], notify = false): void {
@@ -1296,6 +1417,8 @@ export class SDFRenderer {
         this.#controls.dispose()
         this.selectionChange$.complete()
         this.objectDoubleClick$.complete()
+        this.hoverInfo$.complete()
+        this.contextMenu$.complete()
         this.pushPullComplete$.complete()
         this.capPullComplete$.complete()
         this.previewSettingsLoaded$.complete()

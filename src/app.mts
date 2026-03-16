@@ -42,6 +42,7 @@ import cameraViewLeftIcon from "./assets/camera-view-left.svg"
 import cameraViewTopIcon from "./assets/camera-view-top.svg"
 import cameraViewBottomIcon from "./assets/camera-view-bottom.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
+import { ContextMenu } from "./components/context-menu.mjs"
 import { addContextSubmenu } from "./editor/context-menu-submenu.mjs"
 import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
 import { findInnermostAtPosition } from "./editor/position-utils.mjs"
@@ -105,6 +106,12 @@ class App {
     #monacoHighlighter: MonacoHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
     #polygonEditor: PolygonEditor | null = null
+    #contextMenu: ContextMenu | null = null
+    #contextMenuHoverSub: Subscription | null = null
+    #contextMenuShowTimer: number | null = null
+    #contextMenuLastKey: string | null = null
+    #contextMenuEditorMoveDispose: monaco.IDisposable | null = null
+    #contextMenuSafeZoneCleanup: (() => void) | null = null
     #editorContainer!: HTMLDivElement
     #welcomeScreen: WelcomeScreen | null = null
     #preview: PreviewWindow
@@ -208,34 +215,34 @@ class App {
     }
 
     /**
-     * Update Monaco editor highlighting based on selected object IDs
+     * Update Monaco editor highlighting based on selected object IDs.
+     * Primary selection (no selected ancestor) gets solid border; children get dashed.
      */
     #updateEditorHighlighting() {
-        const selectedIds = this.renderer.selectedObjectIds
+        const { primary, children } = this.renderer.getSelectionPrimaryAndChildIds()
 
-        if (selectedIds.length === 0) {
+        if (primary.length === 0 && children.length === 0) {
             this.#monacoHighlighter.clearHighlighting()
             return
         }
 
-        // Map selected IDs to their source ranges
-        const highlightRanges: HighlightRange[] = []
-        for (const id of selectedIds) {
+        const toRange = (id: number): HighlightRange | null => {
             const location = this.#sourceLocationMap.get(id)
-            if (location) {
-                // The AST parser provides exact start/end positions for the function name
-                highlightRanges.push({
-                    startLine: location.startLine,
-                    startColumn: location.startColumn,
-                    endLine: location.endLine,
-                    endColumn: location.endColumn
-                })
+            if (!location) return null
+            return {
+                startLine: location.startLine,
+                startColumn: location.startColumn,
+                endLine: location.endLine,
+                endColumn: location.endColumn,
             }
         }
 
-        if (highlightRanges.length > 0) {
+        const primaryRanges = primary.map(toRange).filter((r): r is HighlightRange => r !== null)
+        const childRanges = children.map(toRange).filter((r): r is HighlightRange => r !== null)
+
+        if (primaryRanges.length > 0 || childRanges.length > 0) {
             const overviewRulerColor = this.#effectiveTheme === "dark" ? "#ffff00" : "#8b6914"
-            this.#monacoHighlighter.highlightRanges(highlightRanges, overviewRulerColor)
+            this.#monacoHighlighter.highlightRanges(primaryRanges, childRanges, overviewRulerColor)
         } else {
             this.#monacoHighlighter.clearHighlighting()
         }
@@ -339,13 +346,12 @@ class App {
 
     /**
      * Handle double-click on a node in the preview.
-     * If the node is a polygon2d (cap face of extrude/loft), open the polygon editor.
+     * Syncs selection (including polygon2d) between preview and editor.
      */
     #handlePreviewDoubleClick(nodeId: number) {
-        const location = this.#sourceLocationMap.get(nodeId)
-        if (location?.functionName === "polygon2d") {
-            this.#tryOpenPolygonEditor(location.startLine, location.startColumn)
-        }
+        const node = this.#sceneNodeMap.get(nodeId)
+        this.renderer.setSelection(node ? (node.getAllDescendantIds?.() ?? [nodeId]) : [nodeId])
+        this.#updateEditorHighlighting()
     }
 
     /**
@@ -427,8 +433,9 @@ class App {
         if (PURE_CSG_TYPES.has(clickedCall.functionName)) {
             // Variable-tracing: resolve logical leaf calls through variable references
             const leafCalls = this.#sourceParser.resolveLogicalLeafCalls(clickedCall)
-            const ids = this.#getNodeIdsForCalls(leafCalls)
-            this.renderer.setSelection(ids)
+            const leafIds = this.#getNodeIdsForCalls(leafCalls)
+            const idsWithRoot = this.renderer.getSelectionIdsWithRoot(leafIds)
+            this.renderer.setSelection(idsWithRoot)
             this.#updateEditorHighlighting()
             return
         }
@@ -436,12 +443,6 @@ class App {
         // For primitives and rendering composites (extrude, loft, etc.), use direct match
         const nodeId = this.#findNodeIdForSelection(selection)
         if (nodeId !== null) {
-            // polygon2d is a 2D shape not present in the 3D scene — open the polygon editor
-            const location = this.#sourceLocationMap.get(nodeId)
-            if (location?.functionName === "polygon2d" && this.#tryOpenPolygonEditor(location.startLine, location.startColumn)) {
-                return
-            }
-
             const node = this.#sceneNodeMap.get(nodeId)
             this.renderer.setSelection(node ? (node.getAllDescendantIds?.() ?? [nodeId]) : [nodeId])
             this.#updateEditorHighlighting()
@@ -469,8 +470,9 @@ class App {
 
             if (PURE_CSG_TYPES.has(clickedCall.functionName)) {
                 const leafCalls = this.#sourceParser.resolveLogicalLeafCalls(clickedCall)
-                const ids = this.#getNodeIdsForCalls(leafCalls)
-                this.renderer.setSelection(ids)
+                const leafIds = this.#getNodeIdsForCalls(leafCalls)
+                const idsWithRoot = this.renderer.getSelectionIdsWithRoot(leafIds)
+                this.renderer.setSelection(idsWithRoot)
             } else {
                 const nodeId = this.#findNodeIdAtPosition(position.lineNumber, position.column)
                 if (nodeId !== null) {
@@ -594,6 +596,8 @@ class App {
         const editorOpts = this.#settings.getGlobal().app.editor
         this.editor = monaco.editor.create(codeDiv, {
             "semanticHighlighting.enabled": true,
+            occurrencesHighlight: "off",
+            selectionHighlight: false,
             autoClosingBrackets: "beforeWhitespace",
             autoClosingDelete: "always",
             autoClosingOvertype: "always",
@@ -750,20 +754,6 @@ class App {
             body.welcome-visible #workspace {
                 display: none !important;
             }
-            [data-theme="dark"] .selected-shape-name {
-                background-color: rgba(255, 255, 0, 0.3) !important;
-                border: 1px solid rgba(255, 255, 0, 0.5) !important;
-                border-radius: 2px !important;
-                padding: 0 2px !important;
-                box-shadow: 0 0 4px rgba(255, 255, 0, 0.3) !important;
-            }
-            [data-theme="light"] .selected-shape-name {
-                background-color: rgba(179, 140, 25, 0.25) !important;
-                border: 1px solid rgba(179, 140, 25, 0.5) !important;
-                border-radius: 2px !important;
-                padding: 0 2px !important;
-                box-shadow: 0 0 4px rgba(179, 140, 25, 0.3) !important;
-            }
             .cad-fluent-method {
                 color: #4ec9b0 !important;
                 font-weight: 600;
@@ -917,6 +907,105 @@ class App {
         })
 
         this.renderer.objectDoubleClick$.subscribe(nodeId => this.#handlePreviewDoubleClick(nodeId))
+
+        this.#contextMenuHoverSub?.unsubscribe()
+        this.#contextMenuHoverSub = null
+        if (this.#contextMenuShowTimer) {
+            clearTimeout(this.#contextMenuShowTimer)
+            this.#contextMenuShowTimer = null
+        }
+        this.#contextMenuLastKey = null
+        this.#contextMenuSafeZoneCleanup?.()
+        this.#contextMenuSafeZoneCleanup = null
+        this.#contextMenuEditorMoveDispose?.dispose()
+        this.#contextMenuEditorMoveDispose = null
+        if (!this.#contextMenu) {
+            this.#contextMenu = new ContextMenu()
+            document.body.appendChild(this.#contextMenu)
+        }
+        const TRIGGER_PADDING = 24
+        const SAFE_ZONE_PADDING = 8
+        const showPolygonMenu = (loc: SourceLocation, clientX: number, clientY: number) => {
+            if (!this.#contextMenu) return
+            this.#contextMenuSafeZoneCleanup?.()
+            this.#contextMenuSafeZoneCleanup = null
+            this.#contextMenu.setItems([
+                { label: "Edit Polygon", action: () => this.#tryOpenPolygonEditor(loc.startLine, loc.startColumn) },
+            ])
+            this.#contextMenu.showAt(clientX, clientY, () => {
+                if (!this.#contextMenu) return
+                const menuRect = this.#contextMenu.getMenuRect()
+                const triggerLeft = clientX - TRIGGER_PADDING
+                const triggerTop = clientY - TRIGGER_PADDING
+                const triggerRight = clientX + TRIGGER_PADDING
+                const triggerBottom = clientY + TRIGGER_PADDING
+                const safeLeft = Math.min(triggerLeft, menuRect.left) - SAFE_ZONE_PADDING
+                const safeTop = Math.min(triggerTop, menuRect.top) - SAFE_ZONE_PADDING
+                const safeRight = Math.max(triggerRight, menuRect.right) + SAFE_ZONE_PADDING
+                const safeBottom = Math.max(triggerBottom, menuRect.bottom) + SAFE_ZONE_PADDING
+                const inSafeZone = (x: number, y: number) =>
+                    x >= safeLeft && x <= safeRight && y >= safeTop && y <= safeBottom
+                const onMouseMove = (e: MouseEvent) => {
+                    if (inSafeZone(e.clientX, e.clientY)) return
+                    this.#contextMenu?.hide()
+                }
+                document.addEventListener("mousemove", onMouseMove, { capture: true })
+                const cleanup = () => {
+                    document.removeEventListener("mousemove", onMouseMove, { capture: true })
+                    this.#contextMenuSafeZoneCleanup = null
+                    this.#contextMenuLastKey = null
+                }
+                this.#contextMenuSafeZoneCleanup = cleanup
+                this.#contextMenu.onHide = cleanup
+            })
+        }
+        this.#contextMenuHoverSub = this.renderer.contextMenu$.subscribe(({ objectId, clientX, clientY }) => {
+            const polyId = objectId > 0 ? this.renderer.resolvePolygon2dForHover(objectId) : null
+            const loc = polyId != null ? this.#sourceLocationMap.get(polyId) : null
+            const relatedIds = this.renderer.getPolygonContextMenuSelectionIds(objectId)
+            const isSelected = relatedIds.some(id => this.renderer.selectedObjectIds.includes(id))
+            if (loc?.functionName === "polygon2d" && isSelected) {
+                showPolygonMenu(loc, clientX, clientY)
+            }
+        })
+        const CONTEXT_MENU_DELAY_MS = 350
+        const scheduleOrShowMonaco = (key: string, loc: SourceLocation, clientX: number, clientY: number) => {
+            if (key !== this.#contextMenuLastKey) {
+                if (this.#contextMenuShowTimer) clearTimeout(this.#contextMenuShowTimer)
+                this.#contextMenuLastKey = key
+                this.#contextMenuShowTimer = window.setTimeout(() => {
+                    this.#contextMenuShowTimer = null
+                    showPolygonMenu(loc, clientX, clientY)
+                }, CONTEXT_MENU_DELAY_MS)
+            }
+        }
+        const cancelMonacoHover = () => {
+            if (this.#contextMenuShowTimer) {
+                clearTimeout(this.#contextMenuShowTimer)
+                this.#contextMenuShowTimer = null
+            }
+            this.#contextMenuLastKey = null
+            if (this.#contextMenu?.visible) return
+            this.#contextMenu?.hide()
+        }
+        this.#contextMenuEditorMoveDispose = this.editor.onMouseMove(e => {
+            if (e.target.type !== monaco.editor.MouseTargetType.CONTENT_TEXT) {
+                cancelMonacoHover()
+                return
+            }
+            const pos = e.target.position
+            if (!pos) {
+                cancelMonacoHover()
+                return
+            }
+            const call = this.#findParsedCallAtPosition(pos.lineNumber, pos.column)
+            if (call?.functionName === "polygon2d" && call.location) {
+                const be = e.event.browserEvent
+                scheduleOrShowMonaco(`monaco-${call.location.startLine}-${call.location.startColumn}`, call.location, be.clientX, be.clientY)
+            } else {
+                cancelMonacoHover()
+            }
+        })
 
         this.renderer.pushPullComplete$.subscribe(({ nodeId, vertices }) => {
             this.#handlePushPullComplete(nodeId, vertices)

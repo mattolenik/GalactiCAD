@@ -359,7 +359,8 @@ export class RenderWorkerCore {
         new Float32Array(this.#outlineBuf, 44, 1)[0] = outline.dotSpacingMultiplier
         this.#writeBufferViewIfDirty(this.#uniformBuffers.outlineSettings, new Uint8Array(this.#outlineBuf), this.#outlineCache)
 
-        const ss = DEFAULT_SELECTION_STYLES
+        const ss = viewSettings.selectionStyles
+        const def = DEFAULT_SELECTION_STYLES
         this.#selectionStylesF32[0] = ss.face.darken
         this.#selectionStylesF32[4] = ss.face.tint[0]
         this.#selectionStylesF32[5] = ss.face.tint[1]
@@ -367,11 +368,11 @@ export class RenderWorkerCore {
         this.#selectionStylesF32[8] = ss.edge.color[0]
         this.#selectionStylesF32[9] = ss.edge.color[1]
         this.#selectionStylesF32[10] = ss.edge.color[2]
-        this.#selectionStylesF32[12] = ss.edge.selectedStrength
-        this.#selectionStylesF32[13] = ss.edge.hoverStrength
-        this.#selectionStylesF32[14] = ss.face.dotSpacing
-        this.#selectionStylesF32[15] = ss.face.dotRadius
-        this.#selectionStylesF32[16] = ss.face.dotDarken
+        this.#selectionStylesF32[12] = def.edge.selectedStrength
+        this.#selectionStylesF32[13] = def.edge.hoverStrength
+        this.#selectionStylesF32[14] = def.face.dotSpacing
+        this.#selectionStylesF32[15] = def.face.dotRadius
+        this.#selectionStylesF32[16] = def.face.dotDarken
         this.#selectionStylesF32[17] = resolutionScale
         this.#writeBufferViewIfDirty(this.#uniformBuffers.selectionStyles, this.#selectionStylesF32, this.#selectionStylesCache)
 
@@ -524,19 +525,20 @@ export class RenderWorkerCore {
         new Float32Array(this.#outlineBuf, 44, 1)[0] = outline.dotSpacingMultiplier
         this.#writeBufferViewIfDirty(this.#uniformBuffers.outlineSettings, new Uint8Array(this.#outlineBuf), this.#outlineCache)
 
-        const ss = DEFAULT_SELECTION_STYLES
-        this.#selectionStylesF32[0] = ss.face.darken
-        this.#selectionStylesF32[4] = ss.face.tint[0]
-        this.#selectionStylesF32[5] = ss.face.tint[1]
-        this.#selectionStylesF32[6] = ss.face.tint[2]
-        this.#selectionStylesF32[8] = ss.edge.color[0]
-        this.#selectionStylesF32[9] = ss.edge.color[1]
-        this.#selectionStylesF32[10] = ss.edge.color[2]
-        this.#selectionStylesF32[12] = ss.edge.selectedStrength
-        this.#selectionStylesF32[13] = ss.edge.hoverStrength
-        this.#selectionStylesF32[14] = ss.face.dotSpacing
-        this.#selectionStylesF32[15] = ss.face.dotRadius
-        this.#selectionStylesF32[16] = ss.face.dotDarken
+        const def = DEFAULT_SELECTION_STYLES
+        const so = L.O_SELECTION_STYLES / 4
+        this.#selectionStylesF32[0] = f32[b4 + so]
+        this.#selectionStylesF32[4] = f32[b4 + so + 1]
+        this.#selectionStylesF32[5] = f32[b4 + so + 2]
+        this.#selectionStylesF32[6] = f32[b4 + so + 3]
+        this.#selectionStylesF32[8] = f32[b4 + so + 4]
+        this.#selectionStylesF32[9] = f32[b4 + so + 5]
+        this.#selectionStylesF32[10] = f32[b4 + so + 6]
+        this.#selectionStylesF32[12] = def.edge.selectedStrength
+        this.#selectionStylesF32[13] = def.edge.hoverStrength
+        this.#selectionStylesF32[14] = def.face.dotSpacing
+        this.#selectionStylesF32[15] = def.face.dotRadius
+        this.#selectionStylesF32[16] = def.face.dotDarken
         this.#selectionStylesF32[17] = resolutionScale
         this.#writeBufferViewIfDirty(this.#uniformBuffers.selectionStyles, this.#selectionStylesF32, this.#selectionStylesCache)
 
@@ -853,6 +855,10 @@ export class RenderWorkerCore {
                     outlineMode: 0,
                     outlineThickness: 1,
                     outlineColor: [1, 1, 0],
+                    selectionStyles: {
+                        face: { darken: DEFAULT_SELECTION_STYLES.face.darken, tint: [...DEFAULT_SELECTION_STYLES.face.tint] },
+                        edge: { color: [...DEFAULT_SELECTION_STYLES.edge.color] },
+                    },
                 },
                 viewCenter: [0.5, 0.5],
                 resolutionScale: 1.0,
@@ -1376,6 +1382,9 @@ export class RenderWorkerCore {
                     new Uint8Array(msg.selectedObjectIds.data),
                 )
             }
+        }
+        if (msg.colorPalette) {
+            this.#device.queue.writeBuffer(this.#uniformBuffers.colorPalette, 0, msg.colorPalette)
         }
     }
 

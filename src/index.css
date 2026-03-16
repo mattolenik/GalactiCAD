@@ -22,8 +22,8 @@ body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #333;
-    color: whitesmoke;
+    background-color: var(--bg-color, #333);
+    color: var(--fg-color, whitesmoke);
     scrollbar-width: none;
     overscroll-behavior: none;
 }
@@ -74,8 +74,8 @@ mesh-viewer {
     max-height: 6em;
     overflow-y: auto;
     line-height: 1.35;
-    background: rgba(180, 60, 60, 0.2);
-    border-top: 1px solid rgba(255, 100, 100, 0.35);
+    background: var(--error-bg, rgba(180, 60, 60, 0.2));
+    border-top: 1px solid color-mix(in srgb, red 35%, transparent);
 }
 #log.has-error {
     display: block;
@@ -88,7 +88,7 @@ mesh-viewer {
 #editor {
     z-index: 10;
     position: absolute;
-    background-color: rgba(30, 30, 30, 0.82);
+    background-color: var(--editor-panel-bg, rgba(30, 30, 30, 0.82));
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -132,7 +132,7 @@ mesh-viewer {
     display: grid;
     width: 100%;
     grid-template-columns: 1fr min-content min-content;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 12px color-mix(in srgb, var(--fg-color, whitesmoke) 15%, transparent);
 }
 #toolbar > #tabs {
     min-width: 0;
@@ -168,7 +168,7 @@ mesh-viewer {
 #main-panels polygon-editor {
     position: absolute;
     z-index: 10;
-    background-color: rgba(30, 30, 30, 0.82);
+    background-color: var(--editor-panel-bg, rgba(30, 30, 30, 0.82));
     overflow: hidden;
 }
 #workspace:not(.editor-left) #main-panels polygon-editor {

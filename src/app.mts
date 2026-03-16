@@ -10,7 +10,16 @@ import type { PreviewWindow } from "./components/preview-window.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
 import { styleInfo } from "./scene/scene.mjs"
 import { SDFRenderer, type NodeStub } from "./sdf.mjs"
-import { __bg_color, __bg_color_dark, __fg_color, __preview_bg, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
+import { __active_bg, __bg_color, __bg_color_dark, __fg_color, __preview_bg, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
+import {
+    resolveEffectiveTheme,
+    subscribeToThemeChanges,
+    THEME_PALETTES,
+    type EffectiveTheme,
+} from "./style/theme.mjs"
+import { getShapePalette } from "./colorPalette.mjs"
+import { getSelectionStylesForTheme } from "./selectionStyles.mjs"
+import type { ThemeMode } from "./storage/settings.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
@@ -99,6 +108,8 @@ class App {
     #welcomeScreen: WelcomeScreen | null = null
     #preview: PreviewWindow
     #isHandlingPopstate = false
+    #effectiveTheme: EffectiveTheme = "dark"
+    #themeUnsubscribe: (() => void) | null = null
     #getVisiblePreviewRect!: () => DOMRect
     #toolbarRefs!: {
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton
@@ -192,7 +203,7 @@ class App {
             })
         }
 
-        this.#monacoHighlighter.setColorIndicators(indicators)
+        this.#monacoHighlighter.setColorIndicators(indicators, getShapePalette(this.#effectiveTheme))
     }
 
     /**
@@ -495,12 +506,10 @@ class App {
         this.#tabs.id = tabs.id
 
         this.#injectStyles()
-        requestAnimationFrame(() => {
-            const el = document.querySelector(".monaco-editor")
-            if (el) {
-                const bg = getComputedStyle(el).getPropertyValue("--vscode-editor-background")
-                this.#tabs.style.setProperty("--active-bg", bg)
-            }
+        const initialTheme = resolveEffectiveTheme(this.#settings.getGlobal().app.theme)
+        this.#applyTheme(initialTheme)
+        this.#themeUnsubscribe = subscribeToThemeChanges(this.#settings.getGlobal().app.theme, effective => {
+            this.#applyTheme(effective)
         })
 
         this.#toolbarRefs = this.#setupToolbar(menu)
@@ -525,6 +534,7 @@ class App {
         try {
             await this.renderer
                 .ready()
+            this.renderer.setSelectionStyles(getSelectionStylesForTheme(this.#effectiveTheme))
             this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
             this.#updateViewCenter?.()
             if (isInitial) {
@@ -582,6 +592,12 @@ class App {
             rules: [{ token: "delimiter.parenthesis.ts", foreground: "#555555" }],
             colors: { "editor.lineHighlightBackground": "#3a3a3eCC" },
         })
+        monaco.editor.defineTheme("galacticad-light", {
+            base: "vs",
+            inherit: true,
+            rules: [{ token: "delimiter.parenthesis.ts", foreground: "#6a737d" }],
+            colors: { "editor.lineHighlightBackground": "#e8e8e8CC" },
+        })
         this.editor = monaco.editor.create(codeDiv, {
             "semanticHighlighting.enabled": true,
             autoClosingBrackets: "beforeWhitespace",
@@ -610,7 +626,6 @@ class App {
             showUnused: true,
             stickyTabStops: true,
             tabSize: 2,
-            theme: "galacticad-dark",
             useTabStops: true,
             wordWrap: "on",
             wrappingIndent: "indent",
@@ -740,17 +755,6 @@ class App {
             body.welcome-visible #workspace {
                 display: none !important;
             }
-            :root {
-                ${__fg_color}: whitesmoke;
-                ${__bg_color}: #333;
-                ${__bg_color_dark}: #222;
-                ${__preview_bg}: #1a1a1a;
-                ${__tone_1}: #888;
-                ${__tone_2}: #444;
-                ${__tone_3}: #666;
-                ${__tone_accent}: #007acc;
-                ${__toolbar_height}: 36px;
-            }
             .selected-shape-name {
                 background-color: rgba(255, 255, 0, 0.3) !important;
                 border: 1px solid rgba(255, 255, 0, 0.5) !important;
@@ -764,6 +768,22 @@ class App {
             }
         `
         document.body.appendChild(style)
+    }
+
+    #applyTheme(effective: EffectiveTheme) {
+        this.#effectiveTheme = effective
+        const palette = THEME_PALETTES[effective]
+        const root = document.documentElement
+        root.dataset.theme = effective
+        root.style.colorScheme = effective
+        for (const [key, value] of Object.entries(palette)) {
+            root.style.setProperty(key, value)
+        }
+        monaco.editor.setTheme(effective === "dark" ? "galacticad-dark" : "galacticad-light")
+        this.#tabs.style.setProperty("--active-bg", palette[__active_bg])
+        this.renderer?.setShapePalette(getShapePalette(effective))
+        this.renderer?.setSelectionStyles(getSelectionStylesForTheme(effective))
+        this.#updateColorIndicators()
     }
 
     #setupToolbar(menu: HTMLElement) {
@@ -1108,11 +1128,23 @@ class App {
 
     async #showSettingsModal(): Promise<void> {
         const { SettingsModal } = await import("./components/settings-modal.mjs")
-        const initialMode = this.#settings.getGlobal().preview.cameraRotationMethod ?? "rounded_arcball"
-        const modal = new SettingsModal(initialMode, method => {
-            this.#settings.updateGlobal({ preview: { cameraRotationMethod: method } })
-            this.renderer?.controls.setRotationMethod(method)
-        })
+        const g = this.#settings.getGlobal()
+        const initialMode = g.preview.cameraRotationMethod ?? "rounded_arcball"
+        const initialTheme = g.app.theme ?? "dark"
+        const modal = new SettingsModal(
+            initialMode,
+            initialTheme,
+            method => {
+                this.#settings.updateGlobal({ preview: { cameraRotationMethod: method } })
+                this.renderer?.controls.setRotationMethod(method)
+            },
+            theme => {
+                this.#settings.updateGlobal({ app: { theme } })
+                this.#themeUnsubscribe?.()
+                this.#applyTheme(resolveEffectiveTheme(theme))
+                this.#themeUnsubscribe = subscribeToThemeChanges(theme, effective => this.#applyTheme(effective))
+            }
+        )
         await modal.show()
     }
 

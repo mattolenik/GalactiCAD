@@ -81,11 +81,11 @@ export class PreviewWindow extends HTMLElement {
         }
         .fps-counter {
             font-size: 20px;
-            color: rgba(255, 255, 255, 0.35);
+            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.35);
         }
         .version {
             font-size: 10px;
-            color: rgba(255, 255, 255, 0.35);
+            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.35);
         }
         .version {
             pointer-events: auto;
@@ -99,7 +99,7 @@ export class PreviewWindow extends HTMLElement {
             pointer-events: none;
             z-index: 1;
             font-size: 11px;
-            color: rgba(255, 255, 255, 0.6);
+            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.6);
         }
 `
         this.canvas = document.createElement("canvas")

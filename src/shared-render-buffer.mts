@@ -46,19 +46,20 @@ const S_O_VIEW_CENTER = 128
 const S_O_VIEW_SETTINGS = 136
 const S_O_OUTLINE_THICKNESS = 140
 const S_O_OUTLINE_COLOR = 144
-const S_O_SELECTED_OBJECT_IDS = 156
-const S_O_SELECTED_EDGES_HEADER = 4252
-const S_O_SELECTED_EDGES_DATA = 4268
-const S_O_HOVERED_EDGES_HEADER = 5548
-const S_O_HOVERED_EDGES_DATA = 5564
-const S_O_HOVERED_OBJECT_ID = 6844
+const S_O_SELECTION_STYLES = 156  // faceDarken(1) + faceTint(3) + edgeColor(3) = 7 floats = 28 bytes
+const S_O_SELECTED_OBJECT_IDS = 184
+const S_O_SELECTED_EDGES_HEADER = 4280
+const S_O_SELECTED_EDGES_DATA = 4296
+const S_O_HOVERED_EDGES_HEADER = 5576
+const S_O_HOVERED_EDGES_DATA = 5592
+const S_O_HOVERED_OBJECT_ID = 6872
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16
 const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 
 /** Size of one payload slot in bytes */
-export const SLOT_SIZE = 6848
+export const SLOT_SIZE = 6876
 
 /** Total buffer size in bytes */
 export const SHARED_RENDER_BUFFER_SIZE = HEADER_SIZE + 2 * SLOT_SIZE
@@ -92,6 +93,7 @@ export const SAB_LAYOUT = {
     O_VIEW_SETTINGS: S_O_VIEW_SETTINGS,
     O_OUTLINE_THICKNESS: S_O_OUTLINE_THICKNESS,
     O_OUTLINE_COLOR: S_O_OUTLINE_COLOR,
+    O_SELECTION_STYLES: S_O_SELECTION_STYLES,
     O_SELECTED_OBJECT_IDS: S_O_SELECTED_OBJECT_IDS,
     O_SELECTED_EDGES_HEADER: S_O_SELECTED_EDGES_HEADER,
     O_HOVERED_EDGES_HEADER: S_O_HOVERED_EDGES_HEADER,
@@ -173,6 +175,10 @@ export function writeRenderPayloadSlot(
     u32[b4 + S_O_VIEW_SETTINGS / 4] = packed
     u32[b4 + S_O_OUTLINE_THICKNESS / 4] = vs.outlineThickness
     f32.set(vs.outlineColor, base / 4 + S_O_OUTLINE_COLOR / 4)
+    const ss = vs.selectionStyles
+    f32[b4 + S_O_SELECTION_STYLES / 4] = ss.face.darken
+    f32.set(ss.face.tint, base / 4 + S_O_SELECTION_STYLES / 4 + 1)
+    f32.set(ss.edge.color, base / 4 + S_O_SELECTION_STYLES / 4 + 4)
 
     const sel = payload.selectionState
     const selIds = new Uint32Array(buffer, base + S_O_SELECTED_OBJECT_IDS, 1024)
@@ -251,6 +257,15 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
         outlineMode: (packed >> 5) & 3,
         outlineThickness: u32[b4 + S_O_OUTLINE_THICKNESS / 4],
         outlineColor: [f32[b4 + S_O_OUTLINE_COLOR / 4], f32[b4 + S_O_OUTLINE_COLOR / 4 + 1], f32[b4 + S_O_OUTLINE_COLOR / 4 + 2]],
+        selectionStyles: {
+            face: {
+                darken: f32[b4 + S_O_SELECTION_STYLES / 4],
+                tint: [f32[b4 + S_O_SELECTION_STYLES / 4 + 1], f32[b4 + S_O_SELECTION_STYLES / 4 + 2], f32[b4 + S_O_SELECTION_STYLES / 4 + 3]],
+            },
+            edge: {
+                color: [f32[b4 + S_O_SELECTION_STYLES / 4 + 4], f32[b4 + S_O_SELECTION_STYLES / 4 + 5], f32[b4 + S_O_SELECTION_STYLES / 4 + 6]],
+            },
+        },
     }
 
     const selectedObjectIds: number[] = []

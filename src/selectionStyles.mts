@@ -1,7 +1,9 @@
 /**
  * Selection styling constants for outline, face shading, and edge highlight.
- * Centralized for future theming support.
+ * Theme-aware: dark theme uses light colors on dark preview bg; light theme uses dark colors on light bg.
  */
+
+import type { EffectiveTheme } from "./style/theme.mjs"
 
 export const DEFAULT_SELECTION_STYLES = {
     outline: {
@@ -30,4 +32,26 @@ export const DEFAULT_SELECTION_STYLES = {
     },
 } as const
 
-export type SelectionStyles = typeof DEFAULT_SELECTION_STYLES
+/** Theme-variant selection styles. Uses number for theme-dependent fields (outline color, face darken/tint, edge color). */
+export interface SelectionStyles {
+    readonly outline: Omit<typeof DEFAULT_SELECTION_STYLES.outline, "color"> & { color: [number, number, number] }
+    readonly face: Omit<typeof DEFAULT_SELECTION_STYLES.face, "darken" | "tint"> & { darken: number; tint: [number, number, number] }
+    readonly edge: Omit<typeof DEFAULT_SELECTION_STYLES.edge, "color"> & { color: [number, number, number] }
+}
+
+/** Selection styles for light theme (preview bg #e8e8e8). Dark theme uses DEFAULT_SELECTION_STYLES. */
+const SELECTION_STYLES_LIGHT: SelectionStyles = {
+    ...DEFAULT_SELECTION_STYLES,
+    outline: { ...DEFAULT_SELECTION_STYLES.outline, color: [0.25, 0.25, 0.25] },
+    face: {
+        ...DEFAULT_SELECTION_STYLES.face,
+        darken: 0.85,
+        tint: [0.08, 0.08, 0.08],
+    },
+    edge: { ...DEFAULT_SELECTION_STYLES.edge, color: [0.7, 0.55, 0.1] },
+}
+
+/** Theme-aware selection styles for the preview window. */
+export function getSelectionStylesForTheme(theme: EffectiveTheme): SelectionStyles {
+    return theme === "light" ? SELECTION_STYLES_LIGHT : DEFAULT_SELECTION_STYLES
+}

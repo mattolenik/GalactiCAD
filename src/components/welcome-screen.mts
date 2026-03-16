@@ -53,7 +53,7 @@ export class WelcomeScreen extends HTMLElement {
                 position: fixed;
                 inset: 0;
                 z-index: 9000;
-                background: linear-gradient(180deg, #141b26 0%, #0e1319 50%, #0a0e14 100%);
+                background: linear-gradient(180deg, var(--welcome-bg-start, #141b26) 0%, var(--welcome-bg-mid, #0e1319) 50%, var(--welcome-bg-end, #0a0e14) 100%);
                 overflow: hidden;
             }
 

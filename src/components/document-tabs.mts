@@ -59,12 +59,6 @@ export class DocumentTabs extends HTMLElement {
         style.textContent = `
             :host {
                 display: block;
-                ${__fg_color}: whitesmoke;
-                ${__tone_0}: #EEE;
-                ${__tone_1}: #888;
-                ${__tone_2}: #444;
-                ${__tone_3}: #666;
-                ${__tone_accent}: #007acc;
             }
             button {
                 color: var(${__fg_color});

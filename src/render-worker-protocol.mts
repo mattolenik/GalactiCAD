@@ -73,7 +73,7 @@ export type MainToWorkerMessage =
     | { type: "doubleClick"; clickUV: [number, number]; documentName?: string }
     | { type: "hover"; clickUV: [number, number]; altKey: boolean; documentName?: string; hoverRequestId?: number }
     | { type: "resize"; fullWidth: number; fullHeight: number; devicePixelRatio: number }
-    | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer } }
+    | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
     | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
@@ -100,6 +100,12 @@ export interface SelectedEdgePayload {
     seedNormal?: [number, number, number]
 }
 
+/** Theme-aware selection styles for face tint and edge highlight (passed from main thread). */
+export interface RenderSelectionStyles {
+    face: { darken: number; tint: [number, number, number] }
+    edge: { color: [number, number, number] }
+}
+
 export interface RenderViewSettings {
     xrayMode: boolean
     beamEnabled: boolean
@@ -107,6 +113,7 @@ export interface RenderViewSettings {
     outlineMode: number
     outlineThickness: number
     outlineColor: [number, number, number]
+    selectionStyles: RenderSelectionStyles
 }
 
 // ---------------------------------------------------------------------------

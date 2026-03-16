@@ -10,13 +10,16 @@ import type { Subscription } from "rxjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController } from "./controls/camera-controller.mjs"
+import type { Vec3f } from "./vecmat/vector.mjs"
 import { vec2, vec3 } from "./vecmat/vector.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
 import type { MeshData } from "./export/export.mjs"
 import type { MainToWorkerMessage, WorkerToMainMessage } from "./render-worker-protocol.mjs"
 import type { EdgeHitData, SelectedEdgePayload } from "./render-worker-protocol.mjs"
+import { PALETTE_SIZE, paletteToFloat32Array } from "./colorPalette.mjs"
 import { sha1Hash } from "./math.mjs"
-import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
+import { DEFAULT_SELECTION_STYLES, type SelectionStyles } from "./selectionStyles.mjs"
+import type { RenderSelectionStyles } from "./render-worker-protocol.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
 import {
     isSharedMemoryAvailable,
@@ -113,6 +116,10 @@ export class SDFRenderer {
     #outlineMode: OutlineMode = DEFAULT_SELECTION_STYLES.outline.mode
     #outlineThickness: number = DEFAULT_SELECTION_STYLES.outline.thickness
     #outlineColor: [number, number, number] = [...DEFAULT_SELECTION_STYLES.outline.color]
+    #selectionStyles: RenderSelectionStyles = {
+        face: { darken: DEFAULT_SELECTION_STYLES.face.darken, tint: [...DEFAULT_SELECTION_STYLES.face.tint] },
+        edge: { color: [...DEFAULT_SELECTION_STYLES.edge.color] },
+    }
     #requestIdCounter = 0
     #latestBuildRequestId = 0
     #latestRenderMeshRequestId = 0
@@ -147,6 +154,10 @@ export class SDFRenderer {
                 outlineMode: 0,
                 outlineThickness: 1,
                 outlineColor: [0, 0, 0],
+                selectionStyles: {
+                    face: { darken: 0.9, tint: [0.15, 0.15, 0.15] },
+                    edge: { color: [1, 1, 0] },
+                },
             },
             viewCenter: [0.5, 0.5],
             resolutionScale: 1.0,
@@ -1038,6 +1049,30 @@ export class SDFRenderer {
         return [...this.#outlineColor]
     }
 
+    /** Update the shape color palette on the GPU. Call when theme changes. */
+    setShapePalette(palette: Vec3f[]): void {
+        const paletteData = paletteToFloat32Array(palette)
+        const alignedData = new Float32Array(PALETTE_SIZE * 4)
+        for (let i = 0; i < PALETTE_SIZE; i++) {
+            alignedData[i * 4] = paletteData[i * 3]
+            alignedData[i * 4 + 1] = paletteData[i * 3 + 1]
+            alignedData[i * 4 + 2] = paletteData[i * 3 + 2]
+            alignedData[i * 4 + 3] = 0.0
+        }
+        this.#worker.postMessage({ type: "writeBuffers", colorPalette: alignedData.buffer }, [alignedData.buffer])
+        this.#needsRender = true
+    }
+
+    /** Update selection styles (outline, face tint, edge color). Call when theme changes. */
+    setSelectionStyles(styles: SelectionStyles): void {
+        this.#outlineColor = [styles.outline.color[0], styles.outline.color[1], styles.outline.color[2]]
+        this.#selectionStyles = {
+            face: { darken: styles.face.darken, tint: [...styles.face.tint] },
+            edge: { color: [...styles.edge.color] },
+        }
+        this.#needsRender = true
+    }
+
     set cameraOptimization(enabled: boolean) {
         this.#cameraOptimization = enabled
         this.#settings.updatePreview("cameraOptimization", enabled)
@@ -1097,6 +1132,7 @@ export class SDFRenderer {
         p.viewSettings.outlineMode = { none: 0, solid: 1, dashed: 2, dotted: 3 }[this.#outlineMode]
         p.viewSettings.outlineThickness = this.#outlineThickness
         p.viewSettings.outlineColor = this.#outlineColor
+        p.viewSettings.selectionStyles = this.#selectionStyles
         p.viewCenter[0] = this.#viewCenter.x
         p.viewCenter[1] = this.#viewCenter.y
         p.resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0

@@ -43,10 +43,12 @@ export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 
 export type CameraRotationMethod = "rounded_arcball" | "azel"
 
+export type ThemeMode = "light" | "dark" | "auto"
+
 export interface GlobalSettings {
     preview: { movementScale: number; selectionMode: SelectionMode; cameraRotationMethod: CameraRotationMethod }
     meshViewer: { translucentFaces: boolean; wireframe: boolean }
-    app: { meshViewerEnabled: boolean; devToolsEnabled: boolean; showFps: boolean; meshSimplifyOnExport: boolean; diskSyncIntervalSeconds: number }
+    app: { meshViewerEnabled: boolean; devToolsEnabled: boolean; showFps: boolean; meshSimplifyOnExport: boolean; diskSyncIntervalSeconds: number; theme: ThemeMode }
     layout: LayoutSettings
 }
 
@@ -82,7 +84,7 @@ function defaultGlobalSettings(): GlobalSettings {
     return {
         preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
         meshViewer: { translucentFaces: false, wireframe: false },
-        app: { meshViewerEnabled: false, devToolsEnabled: false, showFps: true, meshSimplifyOnExport: true, diskSyncIntervalSeconds: 30 },
+        app: { meshViewerEnabled: false, devToolsEnabled: false, showFps: true, meshSimplifyOnExport: true, diskSyncIntervalSeconds: 30, theme: "dark" },
         layout: defaultLayout(),
     }
 }
@@ -312,6 +314,7 @@ export class SettingsManager {
                 const app = { ...def.app, ...parsed.app }
                 if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
+                if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"
                 this.#globalSettings = {
                     preview,
                     meshViewer: { ...def.meshViewer, ...parsed.meshViewer },

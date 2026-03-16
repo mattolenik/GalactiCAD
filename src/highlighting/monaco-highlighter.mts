@@ -4,7 +4,8 @@
  */
 
 import * as monaco from "monaco-editor"
-import { DEFAULT_PALETTE, PALETTE_SIZE } from "../colorPalette.mjs"
+import { getShapePalette, PALETTE_SIZE } from "../colorPalette.mjs"
+import type { Vec3f } from "../vecmat/vector.mjs"
 import type { FluentMethodLocation } from "../parser/source-parser.mjs"
 
 /**
@@ -93,8 +94,9 @@ export class MonacoHighlighter {
     /**
      * Update color indicators for all shape functions
      * @param indicators Array of shape indicators with nodeId for color lookup and SVG content
+     * @param palette Optional palette for colors; defaults to dark theme palette
      */
-    setColorIndicators(indicators: ShapeIndicator[]) {
+    setColorIndicators(indicators: ShapeIndicator[], palette?: Vec3f[]) {
         if (!this.editor) {
             console.warn("[MonacoHighlighter] No editor set")
             return
@@ -105,6 +107,8 @@ export class MonacoHighlighter {
 
         this.ensureStyleElement()
 
+        const colorPalette = palette ?? getShapePalette("dark")
+
         // Reset counter for new batch of indicators
         this.indicatorCounter = 0
         
@@ -112,7 +116,7 @@ export class MonacoHighlighter {
         let css = ""
         const newDecorations: monaco.editor.IModelDeltaDecoration[] = indicators.map(indicator => {
             const colorIndex = indicator.nodeId % PALETTE_SIZE
-            const color = DEFAULT_PALETTE[colorIndex]
+            const color = colorPalette[colorIndex]
             const r = Math.round(color.x * 255)
             const g = Math.round(color.y * 255)
             const b = Math.round(color.z * 255)

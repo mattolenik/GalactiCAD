@@ -101,13 +101,13 @@ export class PolygonEditor extends HTMLElement {
                     line-height: 1;
                 }
                 .close-btn:hover {
-                    background: rgba(255, 255, 255, 0.1);
+                    background: rgb(from var(${__fg_color}) r g b / 0.1);
                 }
                 .canvas-container {
                     flex: 1;
                     min-height: 0;
                     position: relative;
-                    background: #1a1a1a;
+                    background: var(--preview-bg, #1a1a1a);
                 }
                 canvas {
                     width: 100%;
@@ -169,10 +169,10 @@ export class PolygonEditor extends HTMLElement {
                     -webkit-user-select: none;
                 }
                 .vertex-row:hover {
-                    background: rgba(255, 255, 255, 0.04);
+                    background: rgb(from var(${__fg_color}) r g b / 0.04);
                 }
                 .vertex-row.selected {
-                    background: rgba(0, 122, 204, 0.15);
+                    background: color-mix(in srgb, var(${__tone_accent}) 15%, transparent);
                 }
                 .vertex-label {
                     width: 32px;

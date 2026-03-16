@@ -8,7 +8,7 @@ const STYLES = `
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--resize-handle-base, rgba(255, 255, 255, 0.08));
     z-index: 15;
     display: flex;
     align-items: center;
@@ -18,7 +18,7 @@ const STYLES = `
     content: '';
     width: 4px;
     height: 4px;
-    background: rgba(255, 255, 255, 0.32);
+    background: var(--resize-handle-hover, rgba(255, 255, 255, 0.32));
     border-radius: 50%;
     flex-shrink: 0;
     filter: blur(0.5px);
@@ -31,7 +31,7 @@ const STYLES = `
     height: 6px;
 }
 #resize-handle:not(.vertical)::before {
-    box-shadow: -10px 0 0 rgba(255, 255, 255, 0.32), 10px 0 0 rgba(255, 255, 255, 0.32);
+    box-shadow: -10px 0 0 var(--resize-handle-hover, rgba(255, 255, 255, 0.32)), 10px 0 0 var(--resize-handle-hover, rgba(255, 255, 255, 0.32));
 }
 #resize-handle.vertical {
     cursor: col-resize;
@@ -41,31 +41,31 @@ const STYLES = `
     width: 6px;
 }
 #resize-handle.vertical::before {
-    box-shadow: 0 -10px 0 rgba(255, 255, 255, 0.32), 0 10px 0 rgba(255, 255, 255, 0.32);
+    box-shadow: 0 -10px 0 var(--resize-handle-hover, rgba(255, 255, 255, 0.32)), 0 10px 0 var(--resize-handle-hover, rgba(255, 255, 255, 0.32));
 }
 #resize-handle:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--resize-handle-hover, rgba(255, 255, 255, 0.2));
 }
 #resize-handle:hover::before {
-    background: rgba(255, 255, 255, 0.5);
+    background: var(--resize-handle-active, rgba(255, 255, 255, 0.5));
 }
 #resize-handle:not(.vertical):hover::before {
-    box-shadow: -10px 0 0 rgba(255, 255, 255, 0.5), 10px 0 0 rgba(255, 255, 255, 0.5);
+    box-shadow: -10px 0 0 var(--resize-handle-active, rgba(255, 255, 255, 0.5)), 10px 0 0 var(--resize-handle-active, rgba(255, 255, 255, 0.5));
 }
 #resize-handle.vertical:hover::before {
-    box-shadow: 0 -10px 0 rgba(255, 255, 255, 0.5), 0 10px 0 rgba(255, 255, 255, 0.5);
+    box-shadow: 0 -10px 0 var(--resize-handle-active, rgba(255, 255, 255, 0.5)), 0 10px 0 var(--resize-handle-active, rgba(255, 255, 255, 0.5));
 }
 #resize-handle:active {
-    background: rgba(255, 255, 255, 0.35);
+    background: var(--resize-handle-active, rgba(255, 255, 255, 0.35));
 }
 #resize-handle:active::before {
-    background: rgba(255, 255, 255, 0.7);
+    background: var(--resize-handle-active, rgba(255, 255, 255, 0.7));
 }
 #resize-handle:not(.vertical):active::before {
-    box-shadow: -10px 0 0 rgba(255, 255, 255, 0.7), 10px 0 0 rgba(255, 255, 255, 0.7);
+    box-shadow: -10px 0 0 var(--resize-handle-active, rgba(255, 255, 255, 0.7)), 10px 0 0 var(--resize-handle-active, rgba(255, 255, 255, 0.7));
 }
 #resize-handle.vertical:active::before {
-    box-shadow: 0 -10px 0 rgba(255, 255, 255, 0.7), 0 10px 0 rgba(255, 255, 255, 0.7);
+    box-shadow: 0 -10px 0 var(--resize-handle-active, rgba(255, 255, 255, 0.7)), 0 10px 0 var(--resize-handle-active, rgba(255, 255, 255, 0.7));
 }
 `
 const MAX_PERCENT = 70

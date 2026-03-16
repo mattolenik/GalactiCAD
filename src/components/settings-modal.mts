@@ -1,18 +1,24 @@
-import { __fg_color, __tone_1, __tone_3 } from "../style/style.mjs"
+import { __fg_color, __tone_1, __tone_2, __tone_3 } from "../style/style.mjs"
 import { BaseDialog } from "./base-dialog.mjs"
-import type { CameraRotationMethod } from "../storage/settings.mjs"
+import type { CameraRotationMethod, ThemeMode } from "../storage/settings.mjs"
 
 export class SettingsModal extends BaseDialog<void> {
     #initialMode: CameraRotationMethod
+    #initialTheme: ThemeMode
     #onCameraModeChange: (method: CameraRotationMethod) => void
+    #onThemeChange: (theme: ThemeMode) => void
 
     constructor(
         initialMode: CameraRotationMethod,
-        onCameraModeChange: (method: CameraRotationMethod) => void
+        initialTheme: ThemeMode,
+        onCameraModeChange: (method: CameraRotationMethod) => void,
+        onThemeChange: (theme: ThemeMode) => void
     ) {
         super()
         this.#initialMode = initialMode
+        this.#initialTheme = initialTheme
         this.#onCameraModeChange = onCameraModeChange
+        this.#onThemeChange = onThemeChange
         this.renderContent()
     }
 
@@ -37,7 +43,7 @@ export class SettingsModal extends BaseDialog<void> {
             .setting-row select {
                 flex: 1;
                 padding: 0.4em 0.6em;
-                background: var(${__tone_1});
+                background: var(${__tone_2});
                 color: var(${__fg_color});
                 border: 1px solid rgb(from var(${__fg_color}) r g b / 0.2);
                 border-radius: 3px;
@@ -56,6 +62,14 @@ export class SettingsModal extends BaseDialog<void> {
         <div class="settings-content">
             <h2 style="margin: 0 0 0.5em 0; font-size: 1.1em; color: var(${__fg_color});">Settings</h2>
             <div class="setting-row">
+                <label for="theme">Theme</label>
+                <select id="theme">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="auto">Auto (system)</option>
+                </select>
+            </div>
+            <div class="setting-row">
                 <label for="camera-mode">Camera mode</label>
                 <select id="camera-mode">
                     <option value="rounded_arcball">Rounded Arcball</option>
@@ -67,8 +81,10 @@ export class SettingsModal extends BaseDialog<void> {
             </div>
         </div>`
 
-        const select = this.dialog.querySelector("#camera-mode") as HTMLSelectElement
-        select.value = this.#initialMode
+        const themeSelect = this.dialog.querySelector("#theme") as HTMLSelectElement
+        themeSelect.value = this.#initialTheme
+        const cameraSelect = this.dialog.querySelector("#camera-mode") as HTMLSelectElement
+        cameraSelect.value = this.#initialMode
     }
 
     protected setupEventListeners(signal: AbortSignal) {
@@ -76,11 +92,23 @@ export class SettingsModal extends BaseDialog<void> {
         this.shadow.querySelector(".close-btn")!.addEventListener("click", () => this.close(), { signal })
         window.addEventListener("keydown", this.#onKeyDown, { signal })
 
-        const select = this.dialog.querySelector("#camera-mode") as HTMLSelectElement
-        select.addEventListener(
+        const themeSelect = this.dialog.querySelector("#theme") as HTMLSelectElement
+        themeSelect.addEventListener(
             "change",
             () => {
-                const value = select.value as CameraRotationMethod
+                const value = themeSelect.value as ThemeMode
+                if (value === "light" || value === "dark" || value === "auto") {
+                    this.#onThemeChange(value)
+                }
+            },
+            { signal }
+        )
+
+        const cameraSelect = this.dialog.querySelector("#camera-mode") as HTMLSelectElement
+        cameraSelect.addEventListener(
+            "change",
+            () => {
+                const value = cameraSelect.value as CameraRotationMethod
                 if (value === "rounded_arcball" || value === "azel") {
                     this.#onCameraModeChange(value)
                 }

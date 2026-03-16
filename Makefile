@@ -43,7 +43,17 @@ serve: editor
 .PHONY: start
 start: editor
 	nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
-	@echo "View logs with: make logs"
+	@i=0; while (( $$i < 20 )); do \
+		sleep 0.2; \
+		if [[ -f "$(RUN_FILE)" ]]; then \
+			port=$$(jq -r .port "$(RUN_FILE)"); \
+			echo ""; \
+			echo "Server running at http://localhost:$$port"; \
+			break; \
+		fi; \
+		i=$$((i+1)); \
+	done
+	@echo "View logs at $(LOG_FILE) or with 'make logs'"
 
 logs:
 	@tail -f $(LOG_FILE)
@@ -55,6 +65,9 @@ stop:
 		[ -n $$pid ] && kill -TERM $$pid; \
 		rm -f "$(RUN_FILE)"; \
 	fi
+
+.PHONY: restart
+restart: stop start
 
 .PHONY: release
 release: export PRODUCTION=1

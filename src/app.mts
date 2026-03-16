@@ -517,6 +517,8 @@ class App {
         })
 
         this.#toolbarRefs = this.#setupToolbar(menu)
+        ;(window as unknown as { factoryReset: () => Promise<void> }).factoryReset = () =>
+            this.#toolbarRefs.devTools.factoryReset()
         const { getVisiblePreviewRect } = this.#setupLayoutObservers(editorContainer)
         this.#getVisiblePreviewRect = getVisiblePreviewRect
 

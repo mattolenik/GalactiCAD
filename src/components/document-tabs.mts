@@ -43,6 +43,7 @@ export class DocumentTabs extends HTMLElement {
     #dragOffsetY = 0
     #dragTabWidth = 0
     #dragTabHeight = 0
+    #cursorDisposable: monaco.IDisposable | null = null
 
     constructor(editor: monaco.editor.IStandaloneCodeEditor) {
         super()
@@ -191,11 +192,24 @@ export class DocumentTabs extends HTMLElement {
         this.shadowRoot!.appendChild(this.#tabContainer)
 
         this.#renderTabs()
+
+        this.#cursorDisposable = editor.onDidChangeCursorSelection(() => {
+            const sel = editor.getSelection()
+            const pos = editor.getPosition()
+            if (sel && pos && this.#active) {
+                SettingsManager.instance.setCursorAndSelection(
+                    { line: pos.lineNumber, column: pos.column },
+                    { startLine: sel.startLineNumber, startColumn: sel.startColumn, endLine: sel.endLineNumber, endColumn: sel.endColumn }
+                )
+            }
+        })
     }
 
     disconnectedCallback() {
         this.#preDragAc?.abort()
         this.#dragAc?.abort()
+        this.#cursorDisposable?.dispose()
+        this.#cursorDisposable = null
         for (const sub of this.#subscriptions.values()) {
             sub.unsubscribe()
         }
@@ -920,9 +934,38 @@ export class DocumentTabs extends HTMLElement {
     async switchTo(name: string, save = false): Promise<void> {
         const model = this.#docs.get(name)
         if (!model) return
+
+        // Save current doc's cursor and selection before switching (updates in-memory; switchDocument will flush)
+        const sel = this.#editor.getSelection()
+        const pos = this.#editor.getPosition()
+        if (sel && pos && this.#active) {
+            SettingsManager.instance.setCursorAndSelection(
+                { line: pos.lineNumber, column: pos.column },
+                { startLine: sel.startLineNumber, startColumn: sel.startColumn, endLine: sel.endLineNumber, endColumn: sel.endColumn }
+            )
+        }
+
         this.#active = name
         await SettingsManager.instance.switchDocument(name)
         this.#editor.setModel(model)
+
+        // Restore selection for new doc (clamp to valid range)
+        const s = SettingsManager.instance.getSelection()
+        const lineCount = model.getLineCount()
+        const clampLine = (l: number) => Math.min(Math.max(1, l), lineCount)
+        const clampCol = (ln: number, c: number) => Math.min(Math.max(1, c), model.getLineMaxColumn(ln))
+        const startLine = clampLine(s.startLine)
+        const endLine = clampLine(s.endLine)
+        const startColumn = clampCol(startLine, s.startColumn)
+        const endColumn = clampCol(endLine, s.endColumn)
+        this.#editor.setSelection({
+            startLineNumber: startLine,
+            startColumn,
+            endLineNumber: endLine,
+            endColumn,
+        })
+        this.#editor.revealLineInCenterIfOutsideViewport(endLine)
+
         this.#renderTabs()
         if (save) {
             await db.preferences.put({ key: "activeDocument", value: this.#active })

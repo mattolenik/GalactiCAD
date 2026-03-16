@@ -25,9 +25,18 @@ export interface LayoutSettings {
     editorWidthPercent: number
 }
 
+export interface EditorSelection {
+    startLine: number
+    startColumn: number
+    endLine: number
+    endColumn: number
+}
+
 export interface DocumentSettings {
     camera: CameraSettings
     preview: PreviewSettings
+    cursorPosition: { line: number; column: number }
+    selection: EditorSelection
 }
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
@@ -57,8 +66,16 @@ function defaultLayout(): LayoutSettings {
     return { editorHeightPercent: 22, editorWidthPercent: 35 }
 }
 
+function defaultCursorPosition(): { line: number; column: number } {
+    return { line: 1, column: 1 }
+}
+
+function defaultSelection(): EditorSelection {
+    return { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }
+}
+
 function defaultDocSettings(): DocumentSettings {
-    return { camera: defaultCamera(), preview: defaultPreview() }
+    return { camera: defaultCamera(), preview: defaultPreview(), cursorPosition: defaultCursorPosition(), selection: defaultSelection() }
 }
 
 function defaultGlobalSettings(): GlobalSettings {
@@ -85,6 +102,7 @@ export class SettingsManager {
     // RxJS subjects for debounced persistence
     #cameraSave$ = new Subject<void>()
     #docSave$ = new Subject<void>()
+    #cursorSave$ = new Subject<void>()
     #globalSave$ = new Subject<void>()
 
     #initPromise: Promise<void>
@@ -97,6 +115,9 @@ export class SettingsManager {
 
         // Other per-doc settings debounce at 100ms
         this.#docSave$.pipe(debounceTime(100)).subscribe(() => void this.#flushDoc())
+
+        // Cursor position debounce at 500ms
+        this.#cursorSave$.pipe(debounceTime(500)).subscribe(() => void this.#flushDoc())
 
         // Global settings debounce at 100ms
         this.#globalSave$.pipe(debounceTime(100)).subscribe(() => void this.#flushGlobal())
@@ -133,9 +154,16 @@ export class SettingsManager {
         const def = defaultDocSettings()
         if (row?.settings && typeof row.settings === "object") {
             const parsed = row.settings as Partial<DocumentSettings>
+            const cursor = { ...def.cursorPosition, ...parsed.cursorPosition }
+            let selection = { ...def.selection, ...parsed.selection }
+            if (!parsed.selection && parsed.cursorPosition) {
+                selection = { startLine: cursor.line, startColumn: cursor.column, endLine: cursor.line, endColumn: cursor.column }
+            }
             return {
                 camera: { ...def.camera, ...parsed.camera },
                 preview: { ...def.preview, ...parsed.preview },
+                cursorPosition: cursor,
+                selection,
             }
         }
         return def
@@ -190,6 +218,24 @@ export class SettingsManager {
     }
 
     // -----------------------------------------------------------------------
+    // Cursor and selection (per-document)
+    // -----------------------------------------------------------------------
+
+    getCursorPosition(): { line: number; column: number } {
+        return this.#docSettings.cursorPosition
+    }
+
+    getSelection(): EditorSelection {
+        return this.#docSettings.selection
+    }
+
+    setCursorAndSelection(pos: { line: number; column: number }, selection: EditorSelection): void {
+        this.#docSettings.cursorPosition = pos
+        this.#docSettings.selection = selection
+        this.#cursorSave$.next()
+    }
+
+    // -----------------------------------------------------------------------
     // Global settings
     // -----------------------------------------------------------------------
 
@@ -240,9 +286,16 @@ export class SettingsManager {
         const def = defaultDocSettings()
         if (row?.settings && typeof row.settings === "object") {
             const parsed = row.settings as Partial<DocumentSettings>
+            const cursor = { ...def.cursorPosition, ...parsed.cursorPosition }
+            let selection = { ...def.selection, ...parsed.selection }
+            if (!parsed.selection && parsed.cursorPosition) {
+                selection = { startLine: cursor.line, startColumn: cursor.column, endLine: cursor.line, endColumn: cursor.column }
+            }
             this.#docSettings = {
                 camera: { ...def.camera, ...parsed.camera },
                 preview: { ...def.preview, ...parsed.preview },
+                cursorPosition: cursor,
+                selection,
             }
             return
         }

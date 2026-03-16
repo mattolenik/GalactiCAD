@@ -38,6 +38,7 @@ import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
 import { getEditorLayout } from "./layout/editor-layout.mjs"
+import { initCadDocumentHighlights } from "./editor/cad-document-highlights.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
@@ -573,6 +574,7 @@ class App {
             diagnosticCodesToIgnore: [1108],
         })
         monaco.typescript.typescriptDefaults.addExtraLib(CAD_TYPES_DECL, "file:///cad-api.d.ts")
+        initCadDocumentHighlights()
 
         monaco.editor.defineTheme("galacticad-dark", {
             base: "vs-dark",

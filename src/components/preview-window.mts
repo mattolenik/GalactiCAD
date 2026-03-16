@@ -1,5 +1,5 @@
-import { VERSION } from "../version.mjs"
 import { EdgeKind } from "../edge-kind.mjs"
+import type { ThemeMode } from "../storage/settings.mjs"
 
 export interface EdgeSelectionInfo {
     kind: number
@@ -31,15 +31,19 @@ export type SelectionInfo = {
     hover: HoverInfo | null
 }
 
+const THEME_CYCLE: ThemeMode[] = ["light", "dark", "auto"]
+const THEME_LABELS: Record<ThemeMode, string> = { light: "☀", dark: "☽", auto: "◐" }
+
 export class PreviewWindow extends HTMLElement {
     readonly canvas: HTMLCanvasElement
 
     #counter: HTMLSpanElement
     #selInfo: HTMLDivElement
+    #themeBtn: HTMLButtonElement
     #framerateThreshold: number = 120
     #showFps: boolean = false
 
-    onVersionDblClick?: () => void
+    onThemeCycle?: () => void
 
     get showFps(): boolean {
         return this.#showFps
@@ -83,23 +87,38 @@ export class PreviewWindow extends HTMLElement {
             font-size: 20px;
             color: rgb(from var(--fg-color, whitesmoke) r g b / 0.35);
         }
-        .version {
-            font-size: 10px;
-            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.35);
-        }
-        .version {
-            pointer-events: auto;
-            cursor: pointer;
-            user-select: none;
-        }
         .sel-info {
             position: absolute;
             bottom: 10px;
-            left: calc(var(--sel-info-left, 0px) + 10px);
+            left: calc(10px + var(--sel-info-left, 0px));
             pointer-events: none;
             z-index: 1;
             font-size: 11px;
             color: rgb(from var(--fg-color, whitesmoke) r g b / 0.6);
+        }
+        .theme-btn {
+            pointer-events: auto;
+            flex-shrink: 0;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            border: none;
+            border-radius: 6px;
+            background: rgb(from var(--fg-color, whitesmoke) r g b / 0.12);
+            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.7);
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+        }
+        .theme-btn:hover {
+            background: rgb(from var(--fg-color, whitesmoke) r g b / 0.2);
+            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.9);
+        }
+        .theme-btn:active {
+            background: rgb(from var(--fg-color, whitesmoke) r g b / 0.28);
         }
 `
         this.canvas = document.createElement("canvas")
@@ -115,15 +134,21 @@ export class PreviewWindow extends HTMLElement {
         shadow.appendChild(overlay)
         overlay.appendChild(this.#counter)
 
-        const versionEl = document.createElement("span")
-        versionEl.classList.add("version")
-        versionEl.textContent = VERSION
-        versionEl.addEventListener("dblclick", () => this.onVersionDblClick?.())
-        overlay.appendChild(versionEl)
+        this.#themeBtn = document.createElement("button")
+        this.#themeBtn.classList.add("theme-btn")
+        this.#themeBtn.type = "button"
+        this.#themeBtn.title = "Cycle theme (light / dark / auto)"
+        this.#themeBtn.setAttribute("aria-label", "Cycle theme")
+        this.#themeBtn.addEventListener("click", () => this.onThemeCycle?.())
+        overlay.appendChild(this.#themeBtn)
 
         this.#selInfo = document.createElement("div")
         this.#selInfo.classList.add("sel-info")
         shadow.appendChild(this.#selInfo)
+    }
+
+    setThemeMode(mode: ThemeMode): void {
+        this.#themeBtn.textContent = THEME_LABELS[mode]
     }
 
     updateSelectionInfo(info: SelectionInfo): void {

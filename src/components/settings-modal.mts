@@ -1,3 +1,4 @@
+import { VERSION } from "../version.mjs"
 import { __fg_color, __tone_1, __tone_2, __tone_3 } from "../style/style.mjs"
 import { BaseDialog } from "./base-dialog.mjs"
 import type { CameraRotationMethod, ThemeMode } from "../storage/settings.mjs"
@@ -5,20 +6,26 @@ import type { CameraRotationMethod, ThemeMode } from "../storage/settings.mjs"
 export class SettingsModal extends BaseDialog<void> {
     #initialMode: CameraRotationMethod
     #initialTheme: ThemeMode
+    #initialDevToolsEnabled: boolean
     #onCameraModeChange: (method: CameraRotationMethod) => void
     #onThemeChange: (theme: ThemeMode) => void
+    #onDevToolsChange: (enabled: boolean) => void
 
     constructor(
         initialMode: CameraRotationMethod,
         initialTheme: ThemeMode,
+        initialDevToolsEnabled: boolean,
         onCameraModeChange: (method: CameraRotationMethod) => void,
-        onThemeChange: (theme: ThemeMode) => void
+        onThemeChange: (theme: ThemeMode) => void,
+        onDevToolsChange: (enabled: boolean) => void
     ) {
         super()
         this.#initialMode = initialMode
         this.#initialTheme = initialTheme
+        this.#initialDevToolsEnabled = initialDevToolsEnabled
         this.#onCameraModeChange = onCameraModeChange
         this.#onThemeChange = onThemeChange
+        this.#onDevToolsChange = onDevToolsChange
         this.renderContent()
     }
 
@@ -53,6 +60,16 @@ export class SettingsModal extends BaseDialog<void> {
             .setting-row select:hover {
                 background: var(${__tone_3});
             }
+            .setting-row input[type="checkbox"] {
+                width: 1em;
+                height: 1em;
+                cursor: pointer;
+            }
+            .version-info {
+                font-size: 0.85em;
+                color: var(${__tone_1});
+                margin-top: 0.5em;
+            }
             .buttons {
                 display: flex;
                 justify-content: flex-end;
@@ -76,6 +93,11 @@ export class SettingsModal extends BaseDialog<void> {
                     <option value="azel">Azimuth/Elevation</option>
                 </select>
             </div>
+            <div class="setting-row">
+                <label for="devtools">Developer tools</label>
+                <input type="checkbox" id="devtools" />
+            </div>
+            <div class="version-info">Version ${VERSION}</div>
             <div class="buttons">
                 <button class="close-btn">Close</button>
             </div>
@@ -85,6 +107,8 @@ export class SettingsModal extends BaseDialog<void> {
         themeSelect.value = this.#initialTheme
         const cameraSelect = this.dialog.querySelector("#camera-mode") as HTMLSelectElement
         cameraSelect.value = this.#initialMode
+        const devToolsCheckbox = this.dialog.querySelector("#devtools") as HTMLInputElement
+        devToolsCheckbox.checked = this.#initialDevToolsEnabled
     }
 
     protected setupEventListeners(signal: AbortSignal) {
@@ -113,6 +137,13 @@ export class SettingsModal extends BaseDialog<void> {
                     this.#onCameraModeChange(value)
                 }
             },
+            { signal }
+        )
+
+        const devToolsCheckbox = this.dialog.querySelector("#devtools") as HTMLInputElement
+        devToolsCheckbox.addEventListener(
+            "change",
+            () => this.#onDevToolsChange(devToolsCheckbox.checked),
             { signal }
         )
     }

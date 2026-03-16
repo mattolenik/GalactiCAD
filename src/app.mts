@@ -537,6 +537,7 @@ class App {
             await this.renderer
                 .ready()
             this.renderer.setSelectionStyles(getSelectionStylesForTheme(this.#effectiveTheme))
+            this.renderer.setShapePalette(getShapePalette(this.#effectiveTheme))
             this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
             this.#updateViewCenter?.()
             if (isInitial) {
@@ -552,7 +553,7 @@ class App {
                     .subscribe(() => this.build())
             }
             this.#wireExportButton(exportBtn, devTools)
-            this.#wireDevToolsVersionToggle(preview, devTools)
+            this.#wireDevToolsFromSettings(devTools)
             this.build()
         } catch (err) {
             console.error(`UNEXPECTED ERROR: ${err}`)
@@ -784,6 +785,18 @@ class App {
         this.renderer?.setSelectionStyles(getSelectionStylesForTheme(effective))
         this.#updateColorIndicators()
         if (this.renderer) this.#updateEditorHighlighting()
+        this.#preview?.setThemeMode(this.#settings.getGlobal().app.theme)
+    }
+
+    #cycleTheme(): void {
+        const cycle: ThemeMode[] = ["light", "dark", "auto"]
+        const current = this.#settings.getGlobal().app.theme
+        const idx = cycle.indexOf(current)
+        const next = cycle[(idx + 1) % cycle.length]
+        this.#settings.updateGlobal({ app: { theme: next } })
+        this.#themeUnsubscribe?.()
+        this.#applyTheme(resolveEffectiveTheme(next))
+        this.#themeUnsubscribe = subscribeToThemeChanges(next, effective => this.#applyTheme(effective))
     }
 
     #setupToolbar(menu: HTMLElement) {
@@ -887,6 +900,9 @@ class App {
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton,
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
     ) {
+        preview.setThemeMode(this.#settings.getGlobal().app.theme)
+        preview.onThemeCycle = () => this.#cycleTheme()
+
         this.#monacoHighlighter.setEditor(this.editor)
 
         this.renderer.selectionChange$.subscribe(() => {
@@ -1131,9 +1147,11 @@ class App {
         const g = this.#settings.getGlobal()
         const initialMode = g.preview.cameraRotationMethod ?? "rounded_arcball"
         const initialTheme = g.app.theme ?? "dark"
+        const initialDevToolsEnabled = g.app.devToolsEnabled ?? false
         const modal = new SettingsModal(
             initialMode,
             initialTheme,
+            initialDevToolsEnabled,
             method => {
                 this.#settings.updateGlobal({ preview: { cameraRotationMethod: method } })
                 this.renderer?.controls.setRotationMethod(method)
@@ -1143,6 +1161,15 @@ class App {
                 this.#themeUnsubscribe?.()
                 this.#applyTheme(resolveEffectiveTheme(theme))
                 this.#themeUnsubscribe = subscribeToThemeChanges(theme, effective => this.#applyTheme(effective))
+            },
+            enabled => {
+                this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
+                this.#toolbarRefs.devTools.visible = enabled
+                if (!enabled) {
+                    this.#preview.showFps = false
+                } else {
+                    this.#preview.showFps = this.#toolbarRefs.devTools.showFps
+                }
             }
         )
         await modal.show()
@@ -1215,20 +1242,9 @@ class App {
         }
     }
 
-    #wireDevToolsVersionToggle(preview: PreviewWindow, devTools: DevToolsPanel) {
+    #wireDevToolsFromSettings(devTools: DevToolsPanel) {
         const devToolsEnabled = this.#settings.getGlobal().app.devToolsEnabled
         devTools.visible = devToolsEnabled
-
-        preview.onVersionDblClick = () => {
-            const enabled = !devTools.visible
-            devTools.visible = enabled
-            if (!enabled) {
-                preview.showFps = false
-            } else {
-                preview.showFps = devTools.showFps
-            }
-            this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
-        }
     }
 
     #openPolygonEditor(info: Polygon2DCallInfo, model: monaco.editor.ITextModel) {

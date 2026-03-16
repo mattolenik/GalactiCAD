@@ -314,6 +314,7 @@ export class SettingsManager {
                 const app = { ...def.app, ...parsed.app }
                 if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
+                if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"
                 this.#globalSettings = {
                     preview,

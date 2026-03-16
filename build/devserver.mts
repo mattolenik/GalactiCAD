@@ -3,6 +3,12 @@ import http from "http"
 import path from "path"
 import WebSocket, { WebSocketServer } from "ws"
 
+export interface RunFileData {
+    pid: number
+    port: number
+    lr_port: number
+}
+
 export class DevServer {
     httpServer!: http.Server
     wsServer!: WebSocketServer
@@ -19,7 +25,8 @@ export class DevServer {
         liveReloadPort: number,
         indexFileName = "index.html",
         log = console.log,
-        err = console.error
+        err = console.error,
+        options?: { runFile: string; pid: number }
     ): Promise<DevServer> {
         const wsURL = `ws://localhost:${liveReloadPort}`
 
@@ -37,6 +44,9 @@ export class DevServer {
         const { server, port: actualPort } = await listenWithPortRetry(serveRoot, port, clientScript, indexFileName, log, err)
         const instance = new DevServer(serveRoot, actualPort, indexFileName)
         instance.httpServer = server
+        if (options) {
+            await fs.writeFile(options.runFile, JSON.stringify({ pid: options.pid, port: actualPort, lr_port: liveReloadPort } satisfies RunFileData, null, 2))
+        }
         instance.wsServer = new WebSocketServer({ port: liveReloadPort })
             .on("connection", (ws: WebSocket) => {
                 ws.on("error", (error: Error) => {
@@ -125,9 +135,9 @@ function createHttpServer(dir: string, clientScript = "", indexFileName = "index
 }
 
 function listenWithPortRetry(dir: string, port: number, clientScript: string, indexFileName: string, log = console.log, err = console.error): Promise<{ server: http.Server; port: number }> {
-    const server = createHttpServer(dir, clientScript, indexFileName, log, err)
     return new Promise((resolve, reject) => {
         function tryPort(p: number) {
+            const server = createHttpServer(dir, clientScript, indexFileName, log, err)
             const onError = (e: NodeJS.ErrnoException) => {
                 if (e.code === "EADDRINUSE") {
                     log(`Port ${p} in use, trying ${p + 1}...`)
@@ -138,7 +148,6 @@ function listenWithPortRetry(dir: string, port: number, clientScript: string, in
             }
             server.once("error", onError)
             server.listen(p, () => {
-                server.removeListener("error", onError)
                 log(`Serving at http://localhost:${p}`)
                 resolve({ server, port: p })
             })

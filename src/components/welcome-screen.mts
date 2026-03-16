@@ -91,6 +91,7 @@ export class WelcomeScreen extends HTMLElement {
             }
             :host-context([data-theme="light"]) .bg-g {
                 background-image: url('/assets/g-dark.svg');
+                opacity: 0.12;
             }
 
             @keyframes drift {

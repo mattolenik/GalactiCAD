@@ -121,6 +121,9 @@ mesh-viewer {
 #editor.visible::before {
     opacity: 0.008;
 }
+[data-theme="light"] #editor.visible::before {
+    opacity: 0.04;
+}
 
 .monaco-editor {
     opacity: 0.99;

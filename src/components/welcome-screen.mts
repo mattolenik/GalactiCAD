@@ -89,6 +89,9 @@ export class WelcomeScreen extends HTMLElement {
                 opacity: 0.06;
                 pointer-events: none;
             }
+            :host-context([data-theme="light"]) .bg-g {
+                background-image: url('/assets/g-dark.svg');
+            }
 
             @keyframes drift {
                 from { transform: translate(0, 0); }

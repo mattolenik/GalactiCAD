@@ -42,6 +42,13 @@ body {
     flex-direction: column;
     background-color: var(--preview-bg, #1a1a1a);
     touch-action: none;
+    /* Shadow only on preview (right/bottom of divider), as if cast by toolbar/editor. Dark shadow for both themes. */
+    box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+#workspace.editor-left #viewports {
+    box-shadow:
+        inset 0 2px 12px rgba(0, 0, 0, 0.25),
+        inset 2px 0 12px rgba(0, 0, 0, 0.25);
 }
 
 #viewports > * {
@@ -107,6 +114,9 @@ mesh-viewer {
     transition: opacity 1s ease;
     z-index: -1;
 }
+[data-theme="light"] #editor::before {
+    background-image: url('/assets/g-dark.svg');
+}
 
 #editor.visible::before {
     opacity: 0.008;
@@ -132,7 +142,6 @@ mesh-viewer {
     display: grid;
     width: 100%;
     grid-template-columns: 1fr min-content min-content;
-    box-shadow: 0 2px 12px color-mix(in srgb, var(--fg-color, whitesmoke) 15%, transparent);
 }
 #toolbar > #tabs {
     min-width: 0;

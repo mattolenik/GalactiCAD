@@ -19,6 +19,7 @@ import {
 } from "./style/theme.mjs"
 import { getShapePalette } from "./colorPalette.mjs"
 import { getSelectionStylesForTheme } from "./selectionStyles.mjs"
+import { GALACTICAD_DARK_THEME, GALACTICAD_LIGHT_THEME } from "./themes.mjs"
 import type { ThemeMode } from "./storage/settings.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
@@ -233,7 +234,8 @@ class App {
         }
 
         if (highlightRanges.length > 0) {
-            this.#monacoHighlighter.highlightRanges(highlightRanges)
+            const overviewRulerColor = this.#effectiveTheme === "dark" ? "#ffff00" : "#8b6914"
+            this.#monacoHighlighter.highlightRanges(highlightRanges, overviewRulerColor)
         } else {
             this.#monacoHighlighter.clearHighlighting()
         }
@@ -586,18 +588,8 @@ class App {
         monaco.typescript.typescriptDefaults.addExtraLib(CAD_TYPES_DECL, "file:///cad-api.d.ts")
         initCadDocumentHighlights()
 
-        monaco.editor.defineTheme("galacticad-dark", {
-            base: "vs-dark",
-            inherit: true,
-            rules: [{ token: "delimiter.parenthesis.ts", foreground: "#555555" }],
-            colors: { "editor.lineHighlightBackground": "#3a3a3eCC" },
-        })
-        monaco.editor.defineTheme("galacticad-light", {
-            base: "vs",
-            inherit: true,
-            rules: [{ token: "delimiter.parenthesis.ts", foreground: "#6a737d" }],
-            colors: { "editor.lineHighlightBackground": "#e8e8e8CC" },
-        })
+        monaco.editor.defineTheme("galacticad-dark", GALACTICAD_DARK_THEME)
+        monaco.editor.defineTheme("galacticad-light", GALACTICAD_LIGHT_THEME)
         this.editor = monaco.editor.create(codeDiv, {
             "semanticHighlighting.enabled": true,
             autoClosingBrackets: "beforeWhitespace",
@@ -755,12 +747,19 @@ class App {
             body.welcome-visible #workspace {
                 display: none !important;
             }
-            .selected-shape-name {
+            [data-theme="dark"] .selected-shape-name {
                 background-color: rgba(255, 255, 0, 0.3) !important;
                 border: 1px solid rgba(255, 255, 0, 0.5) !important;
                 border-radius: 2px !important;
                 padding: 0 2px !important;
                 box-shadow: 0 0 4px rgba(255, 255, 0, 0.3) !important;
+            }
+            [data-theme="light"] .selected-shape-name {
+                background-color: rgba(179, 140, 25, 0.25) !important;
+                border: 1px solid rgba(179, 140, 25, 0.5) !important;
+                border-radius: 2px !important;
+                padding: 0 2px !important;
+                box-shadow: 0 0 4px rgba(179, 140, 25, 0.3) !important;
             }
             .cad-fluent-method {
                 color: #4ec9b0 !important;
@@ -784,6 +783,7 @@ class App {
         this.renderer?.setShapePalette(getShapePalette(effective))
         this.renderer?.setSelectionStyles(getSelectionStylesForTheme(effective))
         this.#updateColorIndicators()
+        if (this.renderer) this.#updateEditorHighlighting()
     }
 
     #setupToolbar(menu: HTMLElement) {

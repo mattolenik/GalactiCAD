@@ -163,8 +163,9 @@ export class MonacoHighlighter {
     /**
      * Highlight function name ranges corresponding to selected shapes
      * @param ranges Array of ranges to highlight (function name positions)
+     * @param overviewRulerColor Theme-aware color for the overview ruler (default: yellow for dark theme)
      */
-    highlightRanges(ranges: HighlightRange[]) {
+    highlightRanges(ranges: HighlightRange[], overviewRulerColor = "#ffff00") {
         if (!this.editor) {
             console.warn("[MonacoHighlighter] No editor set")
             return
@@ -189,7 +190,7 @@ export class MonacoHighlighter {
             options: {
                 inlineClassName: "selected-shape-name",
                 overviewRuler: {
-                    color: "#ffff00",
+                    color: overviewRulerColor,
                     position: monaco.editor.OverviewRulerLane.Full
                 }
             }

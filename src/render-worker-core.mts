@@ -824,6 +824,8 @@ export class RenderWorkerCore {
     async handleThumbnail(body: string, width?: number, height?: number, requestId?: number, documentName?: string): Promise<void> {
         const thumbWidth = Math.max(1, Math.min(512, width ?? 256))
         const thumbHeight = Math.max(1, Math.min(512, height ?? 256))
+        const previousBody = this.#builtBody
+        let builtForThisThumb = false
         try {
             if (!this.#device) {
                 self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable", requestId, documentName })
@@ -831,6 +833,7 @@ export class RenderWorkerCore {
             }
             if (!this.#scene || this.#builtBody !== body) {
                 await this.build(body, undefined)
+                builtForThisThumb = true
             }
             if (!this.#pipeline) {
                 self.postMessage({ type: "thumbnailResult", error: "Scene failed to build", requestId, documentName })
@@ -919,6 +922,22 @@ export class RenderWorkerCore {
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId, documentName })
+        } finally {
+            // Thumbnails call build() directly (not the render worker queue). If the user opens a document
+            // while welcome thumbnails are still loading, a later thumb can overwrite the preview pipeline.
+            // Restore whatever scene was current before this thumbnail when we actually switched bodies.
+            if (
+                builtForThisThumb &&
+                previousBody !== null &&
+                previousBody !== body &&
+                this.#builtBody === body
+            ) {
+                try {
+                    await this.build(previousBody, undefined)
+                } catch {
+                    // Ignore: preview may rebuild on next main-thread build()
+                }
+            }
         }
     }
 

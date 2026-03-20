@@ -8,7 +8,7 @@ export interface WelcomeScreenCallbacks {
     onCreateNew: () => void
     onOpenModel: () => void | Promise<void>
     onOpenFolder: () => void | Promise<void>
-    onSamplePick: (content: string, suggestedName: string) => void
+    onSamplePick: (content: string, suggestedName: string) => void | Promise<void>
     getThumbnail?: (src: string) => Promise<ImageData>
     getRecentDocuments?: () => Promise<string[]>
     getDocumentContent?: (name: string) => Promise<string | undefined>
@@ -21,6 +21,8 @@ export class WelcomeScreen extends HTMLElement {
     #mainPanel: HTMLElement
     #samplesBrowser: HTMLElement
     #shadow: ShadowRoot
+    /** Stops sample thumbnail fetches when the welcome overlay is removed (avoids racing the live preview). */
+    #thumbAbort = new AbortController()
 
     constructor(callbacks: WelcomeScreenCallbacks) {
         super()
@@ -31,8 +33,12 @@ export class WelcomeScreen extends HTMLElement {
         this.#samplesBrowser = this.#shadow.querySelector(".samples-browser")!
         this.#renderMainPanel()
         this.#renderSamplesGrid()
-        this.#loadThumbnails()
+        void this.#loadThumbnails()
         void this.#initRecentDocuments()
+    }
+
+    disconnectedCallback(): void {
+        this.#thumbAbort.abort()
     }
 
     async #initRecentDocuments(): Promise<void> {
@@ -660,6 +666,7 @@ export class WelcomeScreen extends HTMLElement {
     async #loadThumbnails(): Promise<void> {
         const getThumbnail = this.#callbacks.getThumbnail
         if (!getThumbnail) return
+        const signal = this.#thumbAbort.signal
         const grid = this.#samplesBrowser.querySelector(".samples-grid")!
         const items = grid.querySelectorAll(".sample-item")
         for (let i = 0; i < SAMPLE_NAMES.length && i < items.length; i++) {
@@ -667,7 +674,7 @@ export class WelcomeScreen extends HTMLElement {
             const item = items[i]
             const thumbDiv = item.querySelector(".sample-thumb")!
             try {
-                const res = await fetch(`/assets/samples/${name}`)
+                const res = await fetch(`/assets/samples/${name}`, { signal })
                 if (!res.ok) continue
                 const content = await res.text()
                 const imageData = await getThumbnail(content)
@@ -678,6 +685,7 @@ export class WelcomeScreen extends HTMLElement {
                 thumbDiv.innerHTML = ""
                 thumbDiv.appendChild(canvas)
             } catch (e) {
+                if ((e as Error)?.name === "AbortError") return
                 console.warn(`[WelcomeScreen] Failed to load thumbnail for ${name}:`, e)
             }
         }
@@ -715,7 +723,7 @@ export class WelcomeScreen extends HTMLElement {
             if (!res.ok) throw new Error(`Failed to load ${name}`)
             const content = await res.text()
             const suggestedName = name.replace(/\.gcad$/, "")
-            this.#callbacks.onSamplePick(content, suggestedName)
+            await this.#callbacks.onSamplePick(content, suggestedName)
         } catch (err) {
             console.error(`[WelcomeScreen] Failed to load sample ${name}:`, err)
             alert(`Could not load sample: ${name}`)

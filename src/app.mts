@@ -41,6 +41,10 @@ import cameraViewRightIcon from "./assets/camera-view-right.svg"
 import cameraViewLeftIcon from "./assets/camera-view-left.svg"
 import cameraViewTopIcon from "./assets/camera-view-top.svg"
 import cameraViewBottomIcon from "./assets/camera-view-bottom.svg"
+import toolbarCameraViewsIcon from "./assets/toolbar-camera-views.svg"
+import toolbarXrayIcon from "./assets/toolbar-xray.svg"
+import toolbarFullscreenEnterIcon from "./assets/toolbar-fullscreen-enter.svg"
+import toolbarFullscreenExitIcon from "./assets/toolbar-fullscreen-exit.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
 import { ContextMenu } from "./components/context-menu.mjs"
 import { addContextSubmenu } from "./editor/context-menu-submenu.mjs"
@@ -810,8 +814,7 @@ class App {
     #setupToolbar(menu: HTMLElement) {
         const toolbar = new Toolbar()
 
-        const resetCameraIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="8" width="20" height="12" rx="2"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><circle cx="12" cy="14" r="2.5"/><line x1="12" y1="11.5" x2="12" y2="8"/></svg>`
-        toolbar.addDropdownButton(resetCameraIcon, "Camera views", [
+        toolbar.addDropdownButton(toolbarCameraViewsIcon, "Camera views", [
             { label: "Front", shortcut: "1", icon: cameraViewFrontIcon, action: () => this.renderer.setViewFront() },
             { label: "Back", shortcut: "2", icon: cameraViewBackIcon, action: () => this.renderer.setViewBack() },
             { label: "Right", shortcut: "3", icon: cameraViewRightIcon, action: () => this.renderer.setViewRight() },
@@ -819,13 +822,12 @@ class App {
             { label: "Top", shortcut: "5", icon: cameraViewTopIcon, action: () => this.renderer.setViewTop() },
             { label: "Bottom", shortcut: "6", icon: cameraViewBottomIcon, action: () => this.renderer.setViewBottom() },
             { type: "separator" },
-            { label: "Reset camera", icon: resetCameraIcon, action: () => this.renderer.resetCamera() },
+            { label: "Reset camera", icon: toolbarCameraViewsIcon, action: () => this.renderer.resetCamera() },
         ])
 
         toolbar.addSpacer()
 
-        const xrayIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 9 17 L 1 4 L 9 1 L 17 4 Z"/><circle cx="9" cy="8" r="3"/></svg>`
-        const xrayCheckbox = toolbar.addToggleButton(xrayIcon, "Toggle X-ray")
+        const xrayCheckbox = toolbar.addToggleButton(toolbarXrayIcon, "Toggle X-ray")
         toolbar.addSeparator()
         const selectionModeRadio = toolbar.addRadioGroup(
             [
@@ -840,11 +842,9 @@ class App {
         toolbar.addSeparator()
         const exportBtn = toolbar.addButton("STL", "Export STL")
         const fullscreenBtn = toolbar.addButton("", "Toggle fullscreen")
-        const iconEnterFullscreen = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`
-        const iconExitFullscreen = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>`
         const updateFullscreenState = () => {
             fullscreenBtn.active = !!document.fullscreenElement
-            fullscreenBtn.html = document.fullscreenElement ? iconExitFullscreen : iconEnterFullscreen
+            fullscreenBtn.html = document.fullscreenElement ? toolbarFullscreenExitIcon : toolbarFullscreenEnterIcon
         }
         updateFullscreenState()
         document.addEventListener("fullscreenchange", updateFullscreenState)

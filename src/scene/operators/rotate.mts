@@ -24,7 +24,7 @@ export class Rotate extends UnaryOperator {
         return [this.id, ...this.arg.getAllDescendantIds()]
     }
 
-    getWgslMatrices(): { fwd: number[], inv: number[] } {
+    private getWgslMatrices(): { fwd: number[], inv: number[] } {
         const toRad = Math.PI / 180
         const cx = Math.cos(this.rx * toRad), sx = Math.sin(this.rx * toRad)
         const cy = Math.cos(this.ry * toRad), sy = Math.sin(this.ry * toRad)
@@ -41,18 +41,6 @@ export class Rotate extends UnaryOperator {
             -sy, sx * cy, cx * cy,
         ]
         return { fwd, inv }
-    }
-
-    applyInvRotation(px: number, py: number, pz: number): [number, number, number] {
-        const toRad = Math.PI / 180
-        const cx = Math.cos(this.rx * toRad), sx = Math.sin(this.rx * toRad)
-        const cy = Math.cos(this.ry * toRad), sy = Math.sin(this.ry * toRad)
-        const cz = Math.cos(this.rz * toRad), sz = Math.sin(this.rz * toRad)
-        return [
-            (cy * cz) * px + (cy * sz) * py + (-sy) * pz,
-            (sx * sy * cz - cx * sz) * px + (sx * sy * sz + cx * cz) * py + (sx * cy) * pz,
-            (cx * sy * cz + sx * sz) * px + (cx * sy * sz - sx * cz) * py + (cx * cy) * pz,
-        ]
     }
 
     private matToWgsl(m: number[]): string {

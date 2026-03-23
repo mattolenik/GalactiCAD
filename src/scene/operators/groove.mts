@@ -9,7 +9,6 @@ export class Groove extends BinaryOperator {
         this.rb = rb
     }
     override getShapeType(): string { return "groove" }
-    override getIndicatorSymbol(): string { return "⊝" }
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="6" x2="8" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }

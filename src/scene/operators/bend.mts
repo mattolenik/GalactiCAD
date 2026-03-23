@@ -3,7 +3,6 @@ import { aabbExpand, type AABB } from "../aabb.mjs"
 
 export class Bend extends UnaryOperator {
     override getShapeType(): string { return "bend" }
-    override getIndicatorSymbol(): string { return "⌒" }
     override getIndicatorSvg(): string {
         return `<path d="M2,10 Q6,1 10,10" fill="none" stroke="currentColor" stroke-width="1.5"/>`
     }

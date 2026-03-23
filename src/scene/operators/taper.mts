@@ -3,7 +3,6 @@ import type { AABB } from "../aabb.mjs"
 
 export class Taper extends UnaryOperator {
     override getShapeType(): string { return "taper" }
-    override getIndicatorSymbol(): string { return "△" }
     override getIndicatorSvg(): string {
         return `<polygon points="3,11 9,11 7,1 5,1" fill="none" stroke="currentColor" stroke-width="1.5"/>`
     }

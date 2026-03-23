@@ -3,7 +3,6 @@ import { aabbExpand, type AABB } from "../aabb.mjs"
 
 export class Offset extends UnaryOperator {
     override getShapeType(): string { return "offset" }
-    override getIndicatorSymbol(): string { return "⊕" }
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="3" fill="currentColor"/><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2,1"/>`
     }

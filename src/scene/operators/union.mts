@@ -6,10 +6,6 @@ export class Union extends BinaryOperator {
         return "union"
     }
 
-    override getIndicatorSymbol(): string {
-        return "⊕"
-    }
-
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }

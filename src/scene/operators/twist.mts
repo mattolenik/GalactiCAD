@@ -1,9 +1,8 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
-import { aabbExpand, type AABB } from "../aabb.mjs"
+import { type AABB } from "../aabb.mjs"
 
 export class Twist extends UnaryOperator {
     override getShapeType(): string { return "twist" }
-    override getIndicatorSymbol(): string { return "⌀" }
     override getIndicatorSvg(): string {
         return `<path d="M3,2 C9,4 3,8 9,10" fill="none" stroke="currentColor" stroke-width="1.5"/>`
     }

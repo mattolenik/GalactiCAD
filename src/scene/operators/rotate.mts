@@ -16,7 +16,6 @@ export class Rotate extends UnaryOperator {
     }
 
     override getShapeType(): string { return "rotate" }
-    override getIndicatorSymbol(): string { return "↻" }
     override getIndicatorSvg(): string {
         return `<path d="M6,1 A5,5 0 1,1 1,6" fill="none" stroke="currentColor" stroke-width="1.5"/><polygon points="1,3 1,7 3,5" fill="currentColor"/>`
     }

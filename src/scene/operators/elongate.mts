@@ -8,7 +8,6 @@ export class Elongate extends UnaryOperator {
     hz: number
 
     override getShapeType(): string { return "elongate" }
-    override getIndicatorSymbol(): string { return "⟷" }
     override getIndicatorSvg(): string {
         return `<line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.5"/><polygon points="0,6 3,4 3,8" fill="currentColor"/><polygon points="12,6 9,4 9,8" fill="currentColor"/>`
     }

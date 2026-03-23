@@ -3,7 +3,6 @@ import { aabbExpand, type AABB } from "../aabb.mjs"
 
 export class Shell extends UnaryOperator {
     override getShapeType(): string { return "shell" }
-    override getIndicatorSymbol(): string { return "◯" }
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="0.5" stroke-dasharray="1,1"/>`
     }

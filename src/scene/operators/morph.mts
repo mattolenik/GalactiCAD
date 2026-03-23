@@ -7,7 +7,6 @@ export class Morph extends BinaryOperator {
         this.#morphT = t
     }
     override getShapeType(): string { return "morph" }
-    override getIndicatorSymbol(): string { return "⇌" }
     override getIndicatorSvg(): string {
         return `<circle cx="3" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1"/><rect x="7" y="4" width="4" height="4" rx="0.5" fill="none" stroke="currentColor" stroke-width="1"/><line x1="5" y1="6" x2="7" y2="6" stroke="currentColor" stroke-width="1" stroke-dasharray="1,0.5"/>`
     }

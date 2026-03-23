@@ -7,7 +7,6 @@ export class Seam extends BinaryOperator {
         this.#seamRadius = radius
     }
     override getShapeType(): string { return "seam" }
-    override getIndicatorSymbol(): string { return "⊕" }
     override getIndicatorSvg(): string {
         return `<circle cx="4" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1" fill="currentColor"/>`
     }

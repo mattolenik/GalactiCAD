@@ -131,20 +131,20 @@ export interface PreviewShadingParams {
 }
 
 export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
-    ambient: 0.18,
-    diffuseWrap: 0.25,
-    keyWeight: 0.55,
-    fillWeight: 0.3,
-    rimWeight: 0.2,
-    backWeight: 0.15,
-    specIntensity: 0.12,
-    specShininess: 64,
-    fresnelPower: 3,
-    fresnelIntensity: 0.08,
-    aoStrength: 0.35,
-    aoRadius: 0.08,
-    aoSteps: 5,
-    aoBias: 0.02,
+    ambient: 0.1,
+    diffuseWrap: 0,
+    keyWeight: 0.62,
+    fillWeight: 0.16,
+    rimWeight: 0.18,
+    backWeight: 0.12,
+    specIntensity: 0.13,
+    specShininess: 246,
+    fresnelPower: 8,
+    fresnelIntensity: 0.27,
+    aoStrength: 0.34,
+    aoRadius: 0.5,
+    aoSteps: 8,
+    aoBias: 0,
 }
 
 export interface RenderViewSettings {

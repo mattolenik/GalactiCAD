@@ -25,6 +25,12 @@ struct Camera {
     lightDir2: vec3f,
     lightDir3: vec3f,
     viewCenter: vec2f,
+    _padView: vec2f,
+    lightDir4: vec3f,
+    _padLight4: f32,
+    previewShade0: vec4f,
+    previewShade1: vec4f,
+    previewShade2: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;

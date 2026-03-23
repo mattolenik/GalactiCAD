@@ -1090,12 +1090,17 @@ class App {
             this.renderer.bvhEnabled = enabled
             void this.build()
         }
+        devTools.onPreviewShadingChange = (params) => {
+            this.renderer.setPreviewShading(params)
+        }
+        devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
             selectionModeRadio.value = this.renderer.selectionMode
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
             devTools.bvhOptimization = this.renderer.bvhEnabled
+            devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
         })
 
         const showFps = this.#settings.getGlobal().app.showFps

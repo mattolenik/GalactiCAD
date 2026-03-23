@@ -8,7 +8,12 @@
  */
 
 import type { CameraState } from "./controls/camera-controller.mjs"
-import type { RenderSelectionState, RenderViewSettings, SelectedEdgePayload } from "./render-worker-protocol.mjs"
+import {
+    DEFAULT_PREVIEW_SHADING,
+    type RenderSelectionState,
+    type RenderViewSettings,
+    type SelectedEdgePayload,
+} from "./render-worker-protocol.mjs"
 import type { MainToWorkerMessage } from "./render-worker-protocol.mjs"
 
 /** FPS scale factor: stored as fps * FPS_SCALE for integer storage */
@@ -47,19 +52,20 @@ const S_O_VIEW_SETTINGS = 136
 const S_O_OUTLINE_THICKNESS = 140
 const S_O_OUTLINE_COLOR = 144
 const S_O_SELECTION_STYLES = 156  // faceDarken(1) + faceTint(3) + edgeColor(3) = 7 floats = 28 bytes
-const S_O_SELECTED_OBJECT_IDS = 184
-const S_O_SELECTED_EDGES_HEADER = 4280
-const S_O_SELECTED_EDGES_DATA = 4296
-const S_O_HOVERED_EDGES_HEADER = 5576
-const S_O_HOVERED_EDGES_DATA = 5592
-const S_O_HOVERED_OBJECT_ID = 6872
+const S_O_PREVIEW_SHADING = 184 // 10 floats: PreviewShadingParams
+const S_O_SELECTED_OBJECT_IDS = 224
+const S_O_SELECTED_EDGES_HEADER = 4320
+const S_O_SELECTED_EDGES_DATA = 4336
+const S_O_HOVERED_EDGES_HEADER = 5616
+const S_O_HOVERED_EDGES_DATA = 5632
+const S_O_HOVERED_OBJECT_ID = 6912
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16
 const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 
 /** Size of one payload slot in bytes */
-export const SLOT_SIZE = 6876
+export const SLOT_SIZE = 6916
 
 /** Total buffer size in bytes */
 export const SHARED_RENDER_BUFFER_SIZE = HEADER_SIZE + 2 * SLOT_SIZE
@@ -94,6 +100,7 @@ export const SAB_LAYOUT = {
     O_OUTLINE_THICKNESS: S_O_OUTLINE_THICKNESS,
     O_OUTLINE_COLOR: S_O_OUTLINE_COLOR,
     O_SELECTION_STYLES: S_O_SELECTION_STYLES,
+    O_PREVIEW_SHADING: S_O_PREVIEW_SHADING,
     O_SELECTED_OBJECT_IDS: S_O_SELECTED_OBJECT_IDS,
     O_SELECTED_EDGES_HEADER: S_O_SELECTED_EDGES_HEADER,
     O_HOVERED_EDGES_HEADER: S_O_HOVERED_EDGES_HEADER,
@@ -180,6 +187,19 @@ export function writeRenderPayloadSlot(
     f32.set(ss.face.tint, base / 4 + S_O_SELECTION_STYLES / 4 + 1)
     f32.set(ss.edge.color, base / 4 + S_O_SELECTION_STYLES / 4 + 4)
 
+    const ps = payload.viewSettings.previewShading ?? DEFAULT_PREVIEW_SHADING
+    const psB = b4 + S_O_PREVIEW_SHADING / 4
+    f32[psB] = ps.ambient
+    f32[psB + 1] = ps.diffuseWrap
+    f32[psB + 2] = ps.keyWeight
+    f32[psB + 3] = ps.fillWeight
+    f32[psB + 4] = ps.rimWeight
+    f32[psB + 5] = ps.backWeight
+    f32[psB + 6] = ps.specIntensity
+    f32[psB + 7] = ps.specShininess
+    f32[psB + 8] = ps.fresnelPower
+    f32[psB + 9] = ps.fresnelIntensity
+
     const sel = payload.selectionState
     const selIds = new Uint32Array(buffer, base + S_O_SELECTED_OBJECT_IDS, 1024)
     selIds.fill(0)
@@ -250,6 +270,7 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
     const b4 = base / 4
 
     const packed = u32[b4 + S_O_VIEW_SETTINGS / 4]
+    const psB = b4 + S_O_PREVIEW_SHADING / 4
     const viewSettings: RenderViewSettings = {
         xrayMode: (packed & 1) !== 0,
         beamEnabled: (packed & 2) !== 0,
@@ -265,6 +286,18 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
             edge: {
                 color: [f32[b4 + S_O_SELECTION_STYLES / 4 + 4], f32[b4 + S_O_SELECTION_STYLES / 4 + 5], f32[b4 + S_O_SELECTION_STYLES / 4 + 6]],
             },
+        },
+        previewShading: {
+            ambient: f32[psB],
+            diffuseWrap: f32[psB + 1],
+            keyWeight: f32[psB + 2],
+            fillWeight: f32[psB + 3],
+            rimWeight: f32[psB + 4],
+            backWeight: f32[psB + 5],
+            specIntensity: f32[psB + 6],
+            specShininess: f32[psB + 7],
+            fresnelPower: f32[psB + 8],
+            fresnelIntensity: f32[psB + 9],
         },
     }
 

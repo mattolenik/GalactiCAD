@@ -14,7 +14,12 @@ import type { Vec3f } from "./vecmat/vector.mjs"
 import { vec2, vec3 } from "./vecmat/vector.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
 import type { MeshData } from "./export/export.mjs"
-import type { MainToWorkerMessage, WorkerToMainMessage } from "./render-worker-protocol.mjs"
+import {
+    DEFAULT_PREVIEW_SHADING,
+    type MainToWorkerMessage,
+    type PreviewShadingParams,
+    type WorkerToMainMessage,
+} from "./render-worker-protocol.mjs"
 import type { EdgeHitData, SelectedEdgePayload } from "./render-worker-protocol.mjs"
 import { PALETTE_SIZE, paletteToFloat32Array } from "./colorPalette.mjs"
 import { sha1Hash } from "./math.mjs"
@@ -94,6 +99,7 @@ export class SDFRenderer {
     #started = false
     #xrayMode = false
     #beamEnabled = false
+    #previewShading: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
     #bvhEnabled = true
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
@@ -161,6 +167,7 @@ export class SDFRenderer {
                     face: { darken: 0.9, tint: [0.15, 0.15, 0.15] },
                     edge: { color: [1, 1, 0] },
                 },
+                previewShading: { ...DEFAULT_PREVIEW_SHADING },
             },
             viewCenter: [0.5, 0.5],
             resolutionScale: 1.0,
@@ -1135,6 +1142,16 @@ export class SDFRenderer {
         return this.#beamEnabled
     }
 
+    get previewShading(): PreviewShadingParams {
+        return { ...this.#previewShading }
+    }
+
+    /** Dev tools: tune SDF preview diffuse/specular/fresnel (not persisted). */
+    setPreviewShading(params: PreviewShadingParams): void {
+        this.#previewShading = { ...params }
+        this.#needsRender = true
+    }
+
     set bvhEnabled(enabled: boolean) {
         if (this.#bvhEnabled === enabled) return
         this.#bvhEnabled = enabled
@@ -1268,6 +1285,7 @@ export class SDFRenderer {
         p.viewSettings.outlineThickness = this.#outlineThickness
         p.viewSettings.outlineColor = this.#outlineColor
         p.viewSettings.selectionStyles = this.#selectionStyles
+        p.viewSettings.previewShading = { ...this.#previewShading }
         p.viewCenter[0] = this.#viewCenter.x
         p.viewCenter[1] = this.#viewCenter.y
         p.resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0

@@ -108,6 +108,33 @@ export interface RenderSelectionStyles {
     edge: { color: [number, number, number] }
 }
 
+/** Preview fragment shading (SDF raymarch); tunable from dev tools. */
+export interface PreviewShadingParams {
+    ambient: number
+    diffuseWrap: number
+    keyWeight: number
+    fillWeight: number
+    rimWeight: number
+    backWeight: number
+    specIntensity: number
+    specShininess: number
+    fresnelPower: number
+    fresnelIntensity: number
+}
+
+export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
+    ambient: 0.18,
+    diffuseWrap: 0.25,
+    keyWeight: 0.55,
+    fillWeight: 0.3,
+    rimWeight: 0.2,
+    backWeight: 0.15,
+    specIntensity: 0.12,
+    specShininess: 64,
+    fresnelPower: 3,
+    fresnelIntensity: 0.08,
+}
+
 export interface RenderViewSettings {
     xrayMode: boolean
     beamEnabled: boolean
@@ -116,6 +143,7 @@ export interface RenderViewSettings {
     outlineThickness: number
     outlineColor: [number, number, number]
     selectionStyles: RenderSelectionStyles
+    previewShading: PreviewShadingParams
 }
 
 // ---------------------------------------------------------------------------

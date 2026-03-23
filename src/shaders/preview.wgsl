@@ -15,6 +15,15 @@ struct Camera {
     // Center of the visible (non-editor) area in UV space (0-1).
     // When the editor overlays part of the canvas, the scene is centered here.
     viewCenter: vec2f,
+    _padView: vec2f,
+    lightDir4: vec3f,  // Back / bounce fill
+    _padLight4: f32,
+    // x=ambient, y=diffuseWrap, z=keyWeight, w=fillWeight
+    previewShade0: vec4f,
+    // x=rimWeight, y=backWeight, z=specIntensity, w=specShininess
+    previewShade1: vec4f,
+    // x=fresnelPower, y=fresnelIntensity
+    previewShade2: vec4f,
 };
 
 @group(0) @binding(1) var<uniform> camera: Camera;
@@ -479,13 +488,32 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
     return hitDataMiss();
 }
 
-fn lighting(normalScene: vec3f) -> f32 {
-    // Light directions are pre-transformed on the CPU and passed via the camera uniform.
-    let key  = 0.45 * dot(normalScene, camera.lightDir1);
-    let fill = 0.25 * dot(normalScene, camera.lightDir2);
-    let rim  = 0.15 * dot(normalScene, camera.lightDir3);
+fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
+    return clamp((dot(n, l) + wrap) / (1.0 + wrap), 0.0, 1.0);
+}
 
-    return clamp(0.25 + key + fill + rim, 0.0, 1.2);
+fn lightingDiffuse(normalScene: vec3f) -> f32 {
+    let wrap = camera.previewShade0.y;
+    let amb = camera.previewShade0.x;
+    let key = camera.previewShade0.z * diffuseWrap(normalScene, camera.lightDir1, wrap);
+    let fill = camera.previewShade0.w * diffuseWrap(normalScene, camera.lightDir2, wrap);
+    let rim = camera.previewShade1.x * diffuseWrap(normalScene, camera.lightDir3, wrap);
+    let back = camera.previewShade1.y * diffuseWrap(normalScene, camera.lightDir4, wrap);
+    return clamp(amb + key + fill + rim + back, 0.0, 1.35);
+}
+
+// View-dependent specular (Blinn–Phong, key light) + fresnel rim; linear RGB add.
+fn specularAndFresnelRim(n: vec3f, viewDir: vec3f) -> vec3f {
+    let specInt = camera.previewShade1.z;
+    let specPow = camera.previewShade1.w;
+    let frPow = camera.previewShade2.x;
+    let frInt = camera.previewShade2.y;
+    let H = normalize(camera.lightDir1 + viewDir);
+    let spec = pow(max(dot(n, H), 0.0), specPow) * specInt;
+    let ndv = max(dot(n, viewDir), 0.0);
+    let fresnel = pow(clamp(1.0 - ndv, 0.0, 1.0), frPow) * frInt;
+    let specColor = vec3f(0.96, 0.98, 1.0);
+    return specColor * spec + vec3f(fresnel);
 }
 
 @vertex
@@ -561,10 +589,12 @@ struct ShadeResult {
 
 // Shade a hit point and return the color.
 // flipNormal: true if hitting surface from inside (back surface).
-fn shadeHit(hit: HitData, flipNormal: bool) -> ShadeResult {
+// viewDir: direction from hit toward camera (unit), for specular / fresnel.
+fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f) -> ShadeResult {
     let normal = select(hit.n, -hit.n, flipNormal);
 
-    let diffuse = lighting(normal);
+    let diffuse = lightingDiffuse(normal);
+    let specRim = specularAndFresnelRim(normal, viewDir);
 
     // Color and selection: only do second lookups when blending is active
     let color1 = colorPalette[hit.id & 31u];
@@ -574,7 +604,7 @@ fn shadeHit(hit: HitData, flipNormal: bool) -> ShadeResult {
         let color2 = colorPalette[hit.id2 & 31u];
         baseColor = color1 * (1.0 - bw) + color2 * bw;
     }
-    let shadedColor = baseColor * diffuse;
+    let shadedColor = baseColor * diffuse + specRim;
 
     var sel1 = f32(selectedObjectIds[hit.id] != 0u);
     // Primitive face selection (mode 4=box, 5=cylinder, 6=cone)
@@ -647,6 +677,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     // Transform the ray from camera space into scene space
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
     let transformedDir = -camera.transform[2].xyz;
+    let viewDir = normalize(-transformedDir);
 
     // Read beam pre-pass starting distance for this tile (or 0 if beam disabled)
     var t_start = 0.0;
@@ -745,7 +776,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     }
 
     if (hit.t > 0.0) {
-        var frontResult = shadeHit(hit, false);
+        var frontResult = shadeHit(hit, false, viewDir);
         var shadedColor = frontResult.color;
         if (frontResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
             let pixelCoord = uv * camera.res;
@@ -756,7 +787,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {
             if (backHit.t > 0.0) {
-                var backResult = shadeHit(backHit, true);
+                var backResult = shadeHit(backHit, true, viewDir);
                 var backColor = backResult.color;
                 if (backResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
                     let pixelCoord = uv * camera.res;

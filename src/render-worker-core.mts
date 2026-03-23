@@ -19,7 +19,13 @@ import { Extrude, Loft } from "./scene/scene.mjs"
 import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
-import type { MainToWorkerMessage, RenderSelectionState, SelectedEdgePayload } from "./render-worker-protocol.mjs"
+import {
+    DEFAULT_PREVIEW_SHADING,
+    type MainToWorkerMessage,
+    type PreviewShadingParams,
+    type RenderSelectionState,
+    type SelectedEdgePayload,
+} from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
 import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset } from "./shared-render-buffer.mjs"
@@ -119,14 +125,14 @@ export class RenderWorkerCore {
     #edgeStrideF32 = new Float32Array(this.#edgeStrideBuf)
     #camTransform = new Mat4x4f(new Float32Array(16))
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
-    #cameraCache = new ArrayBuffer(160)
+    #cameraCache = new ArrayBuffer(224)
     #viewSettingsCache = new ArrayBuffer(16)
     #outlineCache = new ArrayBuffer(48)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #hoveredEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
-    #cameraStagingBuf = new ArrayBuffer(160)
+    #cameraStagingBuf = new ArrayBuffer(224)
     #edgesStagingBuf = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     /** Worker-owned staging for SAB snapshot; max(SELECTED_OBJECT_IDS_SIZE, SELECTED_EDGES_TOTAL) */
     #sabStagingBuf = new ArrayBuffer(4096)
@@ -344,6 +350,7 @@ export class RenderWorkerCore {
             sceneHeight,
             msg.cameraState.zoom,
             viewCenter,
+            msg.viewSettings.previewShading ?? DEFAULT_PREVIEW_SHADING,
         )
 
         this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
@@ -508,7 +515,28 @@ export class RenderWorkerCore {
             f32[b4 + L.O_CAMERA_POSITION / 4 + 2],
         ]
         const viewCenter: [number, number] = [f32[b4 + L.O_VIEW_CENTER / 4], f32[b4 + L.O_VIEW_CENTER / 4 + 1]]
-        this.#uploadCameraIfDirty(viewTransform, cameraPosition, sceneWidth, sceneHeight, f32[b4 + L.O_ZOOM / 4], viewCenter)
+        const psBase = b4 + L.O_PREVIEW_SHADING / 4
+        const previewShading: PreviewShadingParams = {
+            ambient: f32[psBase],
+            diffuseWrap: f32[psBase + 1],
+            keyWeight: f32[psBase + 2],
+            fillWeight: f32[psBase + 3],
+            rimWeight: f32[psBase + 4],
+            backWeight: f32[psBase + 5],
+            specIntensity: f32[psBase + 6],
+            specShininess: f32[psBase + 7],
+            fresnelPower: f32[psBase + 8],
+            fresnelIntensity: f32[psBase + 9],
+        }
+        this.#uploadCameraIfDirty(
+            viewTransform,
+            cameraPosition,
+            sceneWidth,
+            sceneHeight,
+            f32[b4 + L.O_ZOOM / 4],
+            viewCenter,
+            previewShading,
+        )
 
         this.#viewSettingsBuf[0] = (packed & 1) ? 1 : 0
         this.#viewSettingsBuf[1] = 0
@@ -866,6 +894,7 @@ export class RenderWorkerCore {
                         face: { darken: DEFAULT_SELECTION_STYLES.face.darken, tint: [...DEFAULT_SELECTION_STYLES.face.tint] },
                         edge: { color: [...DEFAULT_SELECTION_STYLES.edge.color] },
                     },
+                    previewShading: DEFAULT_PREVIEW_SHADING,
                 },
                 viewCenter: [0.5, 0.5],
                 resolutionScale: 1.0,
@@ -1051,7 +1080,7 @@ export class RenderWorkerCore {
         })
 
         ub.camera = this.#device.createBuffer({
-            size: 160,
+            size: 224,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "camera",
         })
@@ -1428,7 +1457,7 @@ export class RenderWorkerCore {
         }
     }
 
-    /** Build full 160-byte camera uniform and upload if dirty. */
+    /** Build full 224-byte camera uniform and upload if dirty. */
     #uploadCameraIfDirty(
         viewTransform: Float32Array | ArrayBuffer,
         cameraPosition: [number, number, number],
@@ -1436,11 +1465,13 @@ export class RenderWorkerCore {
         sceneHeight: number,
         zoom: number,
         viewCenter: [number, number],
+        previewShading: PreviewShadingParams,
     ): void {
         this.#camTransform.data.set(viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform))
         const v1 = this.#camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
         const v2 = this.#camTransform.transformVector(vec3(-0.6, 0.3, 0.8).normalize())
         const v3 = this.#camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
+        const v4 = this.#camTransform.transformVector(vec3(-0.2, 0.2, 1.0).normalize())
         const ld = this.#lightDirBuf
         ld[0] = v1.x; ld[1] = v1.y; ld[2] = v1.z; ld[3] = 0
         ld[4] = v2.x; ld[5] = v2.y; ld[6] = v2.z; ld[7] = 0
@@ -1464,7 +1495,21 @@ export class RenderWorkerCore {
         f32[37] = viewCenter[1]
         f32[38] = 0
         f32[39] = 0
-        this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 160, this.#cameraCache)
+        f32[40] = v4.x; f32[41] = v4.y; f32[42] = v4.z; f32[43] = 0
+        const ps = previewShading
+        f32[44] = ps.ambient
+        f32[45] = ps.diffuseWrap
+        f32[46] = ps.keyWeight
+        f32[47] = ps.fillWeight
+        f32[48] = ps.rimWeight
+        f32[49] = ps.backWeight
+        f32[50] = ps.specIntensity
+        f32[51] = ps.specShininess
+        f32[52] = ps.fresnelPower
+        f32[53] = ps.fresnelIntensity
+        f32[54] = 0
+        f32[55] = 0
+        this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 224, this.#cameraCache)
     }
 
     /** Compare src[offset:offset+byteLength] with cache; if different, write to GPU and update cache. Returns true if wrote. */

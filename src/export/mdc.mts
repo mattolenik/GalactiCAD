@@ -115,6 +115,8 @@ export class MDCExport {
     #helper: GPUHelper
     #device: GPUDevice
     #localBuffers: GPUBuffer[] = []
+    #localPipelines: GPUComputePipeline[] = []
+    #localBindGroups: GPUBindGroup[] = []
     #polygonVerticesBuffer: GPUBuffer
     #faceSelectionBuffer: GPUBuffer
     #nodeParamsBuffer: GPUBuffer
@@ -135,6 +137,17 @@ export class MDCExport {
             buffer.destroy()
         }
         this.#localBuffers = []
+    }
+
+    #destroyPassResources() {
+        for (const bg of this.#localBindGroups) {
+            bg.destroy()
+        }
+        this.#localBindGroups = []
+        for (const p of this.#localPipelines) {
+            p.destroy()
+        }
+        this.#localPipelines = []
     }
 
     async export(mdcShaderModule: GPUShaderModule, progressCallback?: ProgressCallback): Promise<MeshData> {
@@ -319,6 +332,7 @@ export class MDCExport {
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
             )
             const p1_cellClassification = this.#helper.createComputePipeline(mdcShaderModule, "cellClassification_Pass1")
+            this.#localPipelines.push(p1_cellClassification)
 
             const bindGroupPass1 = this.#helper.createBindGroup(
                 0,
@@ -331,6 +345,7 @@ export class MDCExport {
                 [29, this.#nodeParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
+            this.#localBindGroups.push(bindGroupPass1[1])
 
             // --- Stage 1: classify cells into bit flags ---
             {
@@ -483,6 +498,7 @@ export class MDCExport {
             const p3_edgeDetection = this.#helper.createComputePipeline(mdcShaderModule, "edgeDetection_Pass3")
             const p4_vertexGeneration = this.#helper.createComputePipeline(mdcShaderModule, "vertexGeneration_Pass4")
             const p5_generateTrianglesAtomic = this.#helper.createComputePipeline(mdcShaderModule, "generateTrianglesAtomic_Pass5")
+            this.#localPipelines.push(p3_edgeDetection, p4_vertexGeneration, p5_generateTrianglesAtomic)
 
             const bindGroupPass3 = this.#helper.createBindGroup(
                 0,
@@ -499,6 +515,7 @@ export class MDCExport {
                 [29, this.#nodeParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
+            this.#localBindGroups.push(bindGroupPass3[1])
 
             const bindGroupPass4 = this.#helper.createBindGroup(
                 0,
@@ -514,6 +531,7 @@ export class MDCExport {
                 [29, this.#nodeParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
+            this.#localBindGroups.push(bindGroupPass4[1])
 
             const bindGroupPass5 = this.#helper.createBindGroup(
                 0,
@@ -533,6 +551,7 @@ export class MDCExport {
                 [28, this.#faceSelectionBuffer],
                 [29, this.#nodeParamsBuffer]
             )
+            this.#localBindGroups.push(bindGroupPass5[1])
 
             // === Pass 3: Edge detection and per-cell union-find ===
             {
@@ -857,7 +876,7 @@ export class MDCExport {
             return { verts, tris }
 
         } finally {
-            // Clean up all GPU buffers created during export
+            this.#destroyPassResources()
             this.#destroyLocalBuffers()
             logDiag("GPU buffers destroyed")
         }

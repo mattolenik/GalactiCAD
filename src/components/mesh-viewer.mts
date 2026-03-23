@@ -40,6 +40,12 @@ export class MeshViewer extends HTMLElement {
     #compositeBindGroupLayout!: GPUBindGroupLayout
     #compositePipelineLayout!: GPUPipelineLayout
     #compositeBindGroup: GPUBindGroup | null = null
+    #shaderModuleOpaque!: GPUShaderModule
+    #shaderModuleTranslucent!: GPUShaderModule
+    #shaderModuleComposite!: GPUShaderModule
+    #shaderModuleWireframe!: GPUShaderModule
+    /** Stops the render loop and skips GPU work after disconnect. */
+    #disposed = false
 
     #settings: SettingsManager
     #translucentFaces = false
@@ -175,8 +181,16 @@ export class MeshViewer extends HTMLElement {
     }
 
     disconnectedCallback(): void {
-        // Clean up camera controller when element is removed from DOM
+        this.#disposed = true
         this.#controls.dispose()
+        void (async () => {
+            try {
+                await this.ready()
+            } catch {
+                return
+            }
+            this.#disposeGpu()
+        })()
     }
 
     connectedCallback(): void {
@@ -227,19 +241,19 @@ export class MeshViewer extends HTMLElement {
             bindGroupLayouts: [this.#bindGroupLayout],
         })
 
-        const shaderModuleOpaque = this.#device.createShaderModule({
+        this.#shaderModuleOpaque = this.#device.createShaderModule({
             label: "meshViewer.shader.opaque",
             code: MESH_SHADER_OPAQUE,
         })
-        const shaderModuleTranslucent = this.#device.createShaderModule({
+        this.#shaderModuleTranslucent = this.#device.createShaderModule({
             label: "meshViewer.shader.translucent",
             code: MESH_SHADER_TRANSLUCENT,
         })
-        const shaderModuleComposite = this.#device.createShaderModule({
+        this.#shaderModuleComposite = this.#device.createShaderModule({
             label: "meshViewer.shader.composite",
             code: COMPOSITE_SHADER,
         })
-        const shaderModuleWireframe = this.#device.createShaderModule({
+        this.#shaderModuleWireframe = this.#device.createShaderModule({
             label: "meshViewer.shader.wireframe",
             code: MESH_SHADER_WIREFRAME,
         })
@@ -248,7 +262,7 @@ export class MeshViewer extends HTMLElement {
             label: "MeshViewer Pipeline (opaque)",
             layout: this.#pipelineLayout,
             vertex: {
-                module: shaderModuleOpaque,
+                module: this.#shaderModuleOpaque,
                 entryPoint: "vertexMain",
                 buffers: [
                     {
@@ -261,7 +275,7 @@ export class MeshViewer extends HTMLElement {
                 ],
             },
             fragment: {
-                module: shaderModuleOpaque,
+                module: this.#shaderModuleOpaque,
                 entryPoint: "fragmentMain",
                 targets: [{ format: this.#format }],
             },
@@ -283,7 +297,7 @@ export class MeshViewer extends HTMLElement {
             label: "MeshViewer Pipeline (wireframe)",
             layout: this.#pipelineLayout,
             vertex: {
-                module: shaderModuleWireframe,
+                module: this.#shaderModuleWireframe,
                 entryPoint: "vertexMain",
                 buffers: [
                     {
@@ -296,7 +310,7 @@ export class MeshViewer extends HTMLElement {
                 ],
             },
             fragment: {
-                module: shaderModuleWireframe,
+                module: this.#shaderModuleWireframe,
                 entryPoint: "fragmentMain",
                 targets: [{ format: this.#format }],
             },
@@ -316,7 +330,7 @@ export class MeshViewer extends HTMLElement {
             label: "MeshViewer Pipeline (translucent)",
             layout: this.#pipelineLayout,
             vertex: {
-                module: shaderModuleTranslucent,
+                module: this.#shaderModuleTranslucent,
                 entryPoint: "vertexMain",
                 buffers: [
                     {
@@ -329,7 +343,7 @@ export class MeshViewer extends HTMLElement {
                 ],
             },
             fragment: {
-                module: shaderModuleTranslucent,
+                module: this.#shaderModuleTranslucent,
                 entryPoint: "fragmentMain",
                 targets: [
                     {
@@ -380,9 +394,9 @@ export class MeshViewer extends HTMLElement {
         this.#compositePipeline = this.#device.createRenderPipeline({
             label: "MeshViewer Pipeline (translucent composite)",
             layout: this.#compositePipelineLayout,
-            vertex: { module: shaderModuleComposite, entryPoint: "vertexMain" },
+            vertex: { module: this.#shaderModuleComposite, entryPoint: "vertexMain" },
             fragment: {
-                module: shaderModuleComposite,
+                module: this.#shaderModuleComposite,
                 entryPoint: "fragmentMain",
                 targets: [{ format: this.#format }],
             },
@@ -404,7 +418,46 @@ export class MeshViewer extends HTMLElement {
         }
     }
 
+    #disposeGpu(): void {
+        if (!this.#device) return
+        try {
+            this.#context.unconfigure()
+        } catch {
+            /* ignore */
+        }
+        this.#compositeBindGroup?.destroy()
+        this.#compositeBindGroup = null
+        this.#bindGroup.destroy()
+        this.#depthTexture?.destroy()
+        this.#depthTexture = null
+        this.#oitAccumTexture?.destroy()
+        this.#oitAccumTexture = null
+        this.#oitRevealTexture?.destroy()
+        this.#oitRevealTexture = null
+        this.#vertexBuffer?.destroy()
+        this.#vertexBuffer = null
+        this.#indexBuffer?.destroy()
+        this.#indexBuffer = null
+        this.#edgeIndexBuffer?.destroy()
+        this.#edgeIndexBuffer = null
+        this.#uniformBuffer?.destroy()
+        this.#uniformBuffer = null
+        this.#pipelineOpaque.destroy()
+        this.#pipelineWireframe.destroy()
+        this.#pipelineTranslucent.destroy()
+        this.#compositePipeline.destroy()
+        this.#pipelineLayout.destroy()
+        this.#compositePipelineLayout.destroy()
+        this.#bindGroupLayout.destroy()
+        this.#compositeBindGroupLayout.destroy()
+        this.#shaderModuleOpaque.destroy()
+        this.#shaderModuleTranslucent.destroy()
+        this.#shaderModuleComposite.destroy()
+        this.#shaderModuleWireframe.destroy()
+    }
+
     #recreateAttachments() {
+        if (this.#disposed) return
         this.#depthTexture?.destroy()
         this.#depthTexture = this.#device.createTexture({
             label: "meshViewer.depth",
@@ -429,6 +482,7 @@ export class MeshViewer extends HTMLElement {
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         })
         if (this.#compositeBindGroupLayout) {
+            this.#compositeBindGroup?.destroy()
             this.#compositeBindGroup = this.#device.createBindGroup({
                 label: "meshViewer.compositeBindGroup",
                 layout: this.#compositeBindGroupLayout,
@@ -451,6 +505,7 @@ export class MeshViewer extends HTMLElement {
     }
 
     #uploadMesh(mesh: MeshData) {
+        if (this.#disposed) return
         const { verts, tris } = mesh
 
         this.#indexCount = tris.length
@@ -522,14 +577,16 @@ export class MeshViewer extends HTMLElement {
     }
 
     update(): void {
+        if (this.#disposed) return
+
         if (!this.#device || !this.#uniformBuffer) {
-            requestAnimationFrame(() => this.update())
+            if (!this.#disposed) requestAnimationFrame(() => this.update())
             return
         }
 
         // Skip rendering if canvas is collapsed (0x0 size)
         if (this.canvas.width === 0 || this.canvas.height === 0) {
-            requestAnimationFrame(() => this.update())
+            if (!this.#disposed) requestAnimationFrame(() => this.update())
             return
         }
 
@@ -657,7 +714,7 @@ export class MeshViewer extends HTMLElement {
         }
         this.#device.queue.submit([commandEncoder.finish()])
 
-        requestAnimationFrame(() => this.update())
+        if (!this.#disposed) requestAnimationFrame(() => this.update())
     }
 
     get translucentFaces(): boolean {

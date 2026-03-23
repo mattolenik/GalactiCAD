@@ -82,8 +82,8 @@ export class RenderWorkerCore {
     #outlinePipeline!: GPURenderPipeline
     #outlineBindGroup!: GPUBindGroup | undefined
     #scene: SceneInfo | null = null
-    #sceneShader!: GPUShaderModule
-    #beamShader!: GPUShaderModule
+    #sceneShader: GPUShaderModule | null = null
+    #beamShader: GPUShaderModule | null = null
     #pipeline: GPURenderPipeline | null = null
     #beamPipeline: GPUComputePipeline | null = null
     #beamBindGroupInvalid = false
@@ -98,8 +98,8 @@ export class RenderWorkerCore {
     #colorTextureView!: GPUTextureView
     #idTextureView!: GPUTextureView
     #tStartTextureView!: GPUTextureView
-    #bindGroup!: GPUBindGroup
-    #beamBindGroup!: GPUBindGroup
+    #bindGroup?: GPUBindGroup
+    #beamBindGroup?: GPUBindGroup
     #renderTextureWidth = 0
     #renderTextureHeight = 0
     #fullWidth = 0
@@ -246,8 +246,8 @@ export class RenderWorkerCore {
             .replace("insert", "sceneSDF_mid", sceneSDF_mid)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
 
-        this.#sceneShader = shaderCompiler.compile(previewShader, "Preview Window")
-        this.#beamShader = shaderCompiler.compile(beamShader, "Beam Pre-Pass")
+        const nextSceneShader = shaderCompiler.compile(previewShader, "Preview Window")
+        const nextBeamShader = shaderCompiler.compile(beamShader, "Beam Pre-Pass")
 
         const polygonVertexData = scene.totalPolygonVertices > 0
             ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer)
@@ -269,9 +269,9 @@ export class RenderWorkerCore {
             this.#device.createRenderPipelineAsync({
                 label: "Preview Pipeline",
                 layout: "auto",
-                vertex: { module: this.#sceneShader, entryPoint: "vertexMain" },
+                vertex: { module: nextSceneShader, entryPoint: "vertexMain" },
                 fragment: {
-                    module: this.#sceneShader,
+                    module: nextSceneShader,
                     entryPoint: "fragmentMain",
                     targets: [{ format: this.#format }, { format: "r32uint" as GPUTextureFormat }],
                 },
@@ -280,13 +280,27 @@ export class RenderWorkerCore {
             this.#device.createComputePipelineAsync({
                 label: "Beam Pre-Pass Pipeline",
                 layout: "auto",
-                compute: { module: this.#beamShader, entryPoint: "beamMarch" },
+                compute: { module: nextBeamShader, entryPoint: "beamMarch" },
             }),
         ])
 
-        if (generation !== this.#buildGeneration) return { superseded: true } as { sceneNodes: never; compiledPosY: never; superseded: true }
+        if (generation !== this.#buildGeneration) {
+            pipeline.destroy()
+            beamPipeline.destroy()
+            nextSceneShader.destroy()
+            nextBeamShader.destroy()
+            return { superseded: true } as { sceneNodes: never; compiledPosY: never; superseded: true }
+        }
+
+        this.#pipeline?.destroy()
+        this.#beamPipeline?.destroy()
+        this.#sceneShader?.destroy()
+        this.#beamShader?.destroy()
+
         this.#pipeline = pipeline
         this.#beamPipeline = beamPipeline
+        this.#sceneShader = nextSceneShader
+        this.#beamShader = nextBeamShader
 
         // Write GPU buffers only after the new pipeline is ready so the old pipeline
         // continues rendering with the correct drag-time nodeParams (posYDelta != 0)
@@ -414,6 +428,7 @@ export class RenderWorkerCore {
 
         if (viewSettings.beamEnabled && this.#beamPipeline) {
             if (this.#beamBindGroupInvalid) {
+                this.#beamBindGroup?.destroy()
                 this.#beamBindGroup = this.#device.createBindGroup({
                     label: "beamPrePass",
                     layout: this.#beamPipeline.getBindGroupLayout(0),
@@ -431,7 +446,7 @@ export class RenderWorkerCore {
             const tilesY = Math.ceil(sceneHeight / BEAM_TILE_SIZE)
             const beamPass = commandEncoder.beginComputePass({ label: "Beam Pre-Pass" })
             beamPass.setPipeline(this.#beamPipeline)
-            beamPass.setBindGroup(0, this.#beamBindGroup)
+            beamPass.setBindGroup(0, this.#beamBindGroup!)
             beamPass.dispatchWorkgroups(Math.ceil(tilesX / 8), Math.ceil(tilesY / 8))
             beamPass.end()
         }
@@ -443,7 +458,7 @@ export class RenderWorkerCore {
             ],
         })
         scenePass.setPipeline(this.#pipeline)
-        scenePass.setBindGroup(0, this.#bindGroup)
+        scenePass.setBindGroup(0, this.#bindGroup!)
         scenePass.draw(4)
         scenePass.end()
 
@@ -588,6 +603,7 @@ export class RenderWorkerCore {
 
         if (beamEnabled && this.#beamPipeline) {
             if (this.#beamBindGroupInvalid) {
+                this.#beamBindGroup?.destroy()
                 this.#beamBindGroup = this.#device.createBindGroup({
                     label: "beamPrePass",
                     layout: this.#beamPipeline.getBindGroupLayout(0),
@@ -605,7 +621,7 @@ export class RenderWorkerCore {
             const tilesY = Math.ceil(sceneHeight / BEAM_TILE_SIZE)
             const beamPass = commandEncoder.beginComputePass({ label: "Beam Pre-Pass" })
             beamPass.setPipeline(this.#beamPipeline)
-            beamPass.setBindGroup(0, this.#beamBindGroup)
+            beamPass.setBindGroup(0, this.#beamBindGroup!)
             beamPass.dispatchWorkgroups(Math.ceil(tilesX / 8), Math.ceil(tilesY / 8))
             beamPass.end()
         }
@@ -617,7 +633,7 @@ export class RenderWorkerCore {
             ],
         })
         scenePass.setPipeline(this.#pipeline)
-        scenePass.setBindGroup(0, this.#bindGroup)
+        scenePass.setBindGroup(0, this.#bindGroup!)
         scenePass.draw(4)
         scenePass.end()
 
@@ -696,16 +712,21 @@ export class RenderWorkerCore {
                 .replace("insert", "sceneSDF", sceneSDF)
                 .replace("insert", "sceneSDF_mid", sceneSDF_mid)
                 .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
-            const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
-            const mdc = new MDCExport(
-                this.#helper,
-                params,
-                this.#uniformBuffers.polygonVertices,
-                this.#uniformBuffers.faceSelection,
-                this.#uniformBuffers.nodeParams,
-            )
-            const mesh = await mdc.export(mdcShaderModule)
-            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
+            let mdcShaderModule: GPUShaderModule | undefined
+            try {
+                mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
+                const mdc = new MDCExport(
+                    this.#helper,
+                    params,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.nodeParams,
+                )
+                const mesh = await mdc.export(mdcShaderModule)
+                self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
+            } finally {
+                mdcShaderModule?.destroy()
+            }
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId, documentName })
@@ -749,64 +770,73 @@ export class RenderWorkerCore {
             .replace("insert", "sceneAux", sceneAux)
             .replace("insert", "sceneSDF_fast", sceneSDF_fast)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
-        const boundsShaderModule = shaderCompiler.compile(boundsShader, "Bounds")
-        const boundsPipeline = this.#device.createComputePipeline({
-            layout: "auto",
-            compute: { module: boundsShaderModule, entryPoint: "computeBounds" },
-        })
-        const layout = boundsPipeline.getBindGroupLayout(0)
-        const bindGroup = this.#device.createBindGroup({
-            layout,
-            entries: [
-                { binding: 0, resource: { buffer: uniformBuffer } },
-                { binding: 1, resource: { buffer: outBuffer } },
-                { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                { binding: 4, resource: { buffer: this.#uniformBuffers.faceSelection } },
-                { binding: 5, resource: { buffer: this.#uniformBuffers.nodeParams } },
-                { binding: 99, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
-            ],
-        })
-        const encoder = this.#device.createCommandEncoder()
-        const pass = encoder.beginComputePass()
-        pass.setPipeline(boundsPipeline)
-        pass.setBindGroup(0, bindGroup)
-        pass.dispatchWorkgroups(dispatchedWorkgroups)
-        pass.end()
-        this.#device.queue.submit([encoder.finish()])
-        await this.#device.queue.onSubmittedWorkDone()
-        const readback = await this.#helper.readBufferData(outBuffer, dispatchedWorkgroups * TILE_STRIDE_BYTES)
-        uniformBuffer.destroy()
-        outBuffer.destroy()
-        const dv = new DataView(readback)
-        let any = false
-        let minXq = 2147483647
-        let minYq = 2147483647
-        let minZq = 2147483647
-        let maxXq = -2147483648
-        let maxYq = -2147483648
-        let maxZq = -2147483648
-        for (let t = 0; t < dispatchedWorkgroups; t++) {
-            const base = t * TILE_STRIDE_BYTES
-            const anyInside = dv.getUint32(base + 32, true)
-            if (!anyInside) continue
-            any = true
-            const txMinX = dv.getInt32(base + 0, true)
-            const txMinY = dv.getInt32(base + 4, true)
-            const txMinZ = dv.getInt32(base + 8, true)
-            const txMaxX = dv.getInt32(base + 16, true)
-            const txMaxY = dv.getInt32(base + 20, true)
-            const txMaxZ = dv.getInt32(base + 24, true)
-            if (txMinX < minXq) minXq = txMinX
-            if (txMinY < minYq) minYq = txMinY
-            if (txMinZ < minZq) minZq = txMinZ
-            if (txMaxX > maxXq) maxXq = txMaxX
-            if (txMaxY > maxYq) maxYq = txMaxY
-            if (txMaxZ > maxZq) maxZq = txMaxZ
-        }
-        if (!any) return null
-        return {
-            min: [minXq / SCALE, minYq / SCALE, minZq / SCALE] as const,
-            max: [maxXq / SCALE, maxYq / SCALE, maxZq / SCALE] as const,
+        let boundsShaderModule: GPUShaderModule | undefined
+        let boundsPipeline: GPUComputePipeline | undefined
+        let bindGroup: GPUBindGroup | undefined
+        try {
+            boundsShaderModule = shaderCompiler.compile(boundsShader, "Bounds")
+            boundsPipeline = this.#device.createComputePipeline({
+                layout: "auto",
+                compute: { module: boundsShaderModule, entryPoint: "computeBounds" },
+            })
+            const layout = boundsPipeline.getBindGroupLayout(0)
+            bindGroup = this.#device.createBindGroup({
+                layout,
+                entries: [
+                    { binding: 0, resource: { buffer: uniformBuffer } },
+                    { binding: 1, resource: { buffer: outBuffer } },
+                    { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                    { binding: 4, resource: { buffer: this.#uniformBuffers.faceSelection } },
+                    { binding: 5, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                    { binding: 99, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
+                ],
+            })
+            const encoder = this.#device.createCommandEncoder()
+            const pass = encoder.beginComputePass()
+            pass.setPipeline(boundsPipeline)
+            pass.setBindGroup(0, bindGroup)
+            pass.dispatchWorkgroups(dispatchedWorkgroups)
+            pass.end()
+            this.#device.queue.submit([encoder.finish()])
+            await this.#device.queue.onSubmittedWorkDone()
+            const readback = await this.#helper.readBufferData(outBuffer, dispatchedWorkgroups * TILE_STRIDE_BYTES)
+            const dv = new DataView(readback)
+            let any = false
+            let minXq = 2147483647
+            let minYq = 2147483647
+            let minZq = 2147483647
+            let maxXq = -2147483648
+            let maxYq = -2147483648
+            let maxZq = -2147483648
+            for (let t = 0; t < dispatchedWorkgroups; t++) {
+                const base = t * TILE_STRIDE_BYTES
+                const anyInside = dv.getUint32(base + 32, true)
+                if (!anyInside) continue
+                any = true
+                const txMinX = dv.getInt32(base + 0, true)
+                const txMinY = dv.getInt32(base + 4, true)
+                const txMinZ = dv.getInt32(base + 8, true)
+                const txMaxX = dv.getInt32(base + 16, true)
+                const txMaxY = dv.getInt32(base + 20, true)
+                const txMaxZ = dv.getInt32(base + 24, true)
+                if (txMinX < minXq) minXq = txMinX
+                if (txMinY < minYq) minYq = txMinY
+                if (txMinZ < minZq) minZq = txMinZ
+                if (txMaxX > maxXq) maxXq = txMaxX
+                if (txMaxY > maxYq) maxYq = txMaxY
+                if (txMaxZ > maxZq) maxZq = txMaxZ
+            }
+            if (!any) return null
+            return {
+                min: [minXq / SCALE, minYq / SCALE, minZq / SCALE] as const,
+                max: [maxXq / SCALE, maxYq / SCALE, maxZq / SCALE] as const,
+            }
+        } finally {
+            bindGroup?.destroy()
+            boundsPipeline?.destroy()
+            boundsShaderModule?.destroy()
+            uniformBuffer.destroy()
+            outBuffer.destroy()
         }
     }
 
@@ -903,55 +933,68 @@ export class RenderWorkerCore {
                 viewCenter: [0.5, 0.5],
                 resolutionScale: 1.0,
             }
-            const thumbOutputTexture = this.#device.createTexture({
-                label: "ThumbnailOutput",
-                size: [thumbWidth, thumbHeight],
-                format: this.#format,
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
-            })
-            this.render(thumbMsg, thumbOutputTexture.createView())
-            await this.#device.queue.onSubmittedWorkDone()
-            const bytesPerRow = Math.ceil((thumbWidth * 4) / 256) * 256
-            const bufferSize = bytesPerRow * thumbHeight
-            const readbackBuffer = this.#device.createBuffer({
-                label: "ThumbnailReadback",
-                size: bufferSize,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-            })
-            const encoder = this.#device.createCommandEncoder()
-            encoder.copyTextureToBuffer(
-                { texture: thumbOutputTexture },
-                { buffer: readbackBuffer, bytesPerRow, rowsPerImage: thumbHeight },
-                [thumbWidth, thumbHeight, 1],
-            )
-            this.#device.queue.submit([encoder.finish()])
-            await readbackBuffer.mapAsync(GPUMapMode.READ)
-            const mapped = new Uint8Array(readbackBuffer.getMappedRange())
-            const imageData = new ImageData(thumbWidth, thumbHeight)
-            const isBgra = this.#format.includes("bgra")
-            for (let y = 0; y < thumbHeight; y++) {
-                const srcRow = y * bytesPerRow
-                const dstRow = y * thumbWidth * 4
-                for (let x = 0; x < thumbWidth; x++) {
-                    const srcOff = srcRow + x * 4
-                    const dstOff = dstRow + x * 4
-                    if (isBgra) {
-                        imageData.data[dstOff + 0] = mapped[srcOff + 2]
-                        imageData.data[dstOff + 1] = mapped[srcOff + 1]
-                        imageData.data[dstOff + 2] = mapped[srcOff + 0]
-                        imageData.data[dstOff + 3] = mapped[srcOff + 3]
-                    } else {
-                        imageData.data[dstOff + 0] = mapped[srcOff + 0]
-                        imageData.data[dstOff + 1] = mapped[srcOff + 1]
-                        imageData.data[dstOff + 2] = mapped[srcOff + 2]
-                        imageData.data[dstOff + 3] = mapped[srcOff + 3]
+            let thumbOutputTexture: GPUTexture | undefined
+            let readbackBuffer: GPUBuffer | undefined
+            let readbackMapped = false
+            try {
+                thumbOutputTexture = this.#device.createTexture({
+                    label: "ThumbnailOutput",
+                    size: [thumbWidth, thumbHeight],
+                    format: this.#format,
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+                })
+                this.render(thumbMsg, thumbOutputTexture.createView())
+                await this.#device.queue.onSubmittedWorkDone()
+                const bytesPerRow = Math.ceil((thumbWidth * 4) / 256) * 256
+                const bufferSize = bytesPerRow * thumbHeight
+                readbackBuffer = this.#device.createBuffer({
+                    label: "ThumbnailReadback",
+                    size: bufferSize,
+                    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+                })
+                const encoder = this.#device.createCommandEncoder()
+                encoder.copyTextureToBuffer(
+                    { texture: thumbOutputTexture },
+                    { buffer: readbackBuffer, bytesPerRow, rowsPerImage: thumbHeight },
+                    [thumbWidth, thumbHeight, 1],
+                )
+                this.#device.queue.submit([encoder.finish()])
+                await readbackBuffer.mapAsync(GPUMapMode.READ)
+                readbackMapped = true
+                const mapped = new Uint8Array(readbackBuffer.getMappedRange())
+                const imageData = new ImageData(thumbWidth, thumbHeight)
+                const isBgra = this.#format.includes("bgra")
+                for (let y = 0; y < thumbHeight; y++) {
+                    const srcRow = y * bytesPerRow
+                    const dstRow = y * thumbWidth * 4
+                    for (let x = 0; x < thumbWidth; x++) {
+                        const srcOff = srcRow + x * 4
+                        const dstOff = dstRow + x * 4
+                        if (isBgra) {
+                            imageData.data[dstOff + 0] = mapped[srcOff + 2]
+                            imageData.data[dstOff + 1] = mapped[srcOff + 1]
+                            imageData.data[dstOff + 2] = mapped[srcOff + 0]
+                            imageData.data[dstOff + 3] = mapped[srcOff + 3]
+                        } else {
+                            imageData.data[dstOff + 0] = mapped[srcOff + 0]
+                            imageData.data[dstOff + 1] = mapped[srcOff + 1]
+                            imageData.data[dstOff + 2] = mapped[srcOff + 2]
+                            imageData.data[dstOff + 3] = mapped[srcOff + 3]
+                        }
                     }
                 }
+                self.postMessage({ type: "thumbnailResult", imageData, requestId, documentName }, { transfer: [imageData.data.buffer] })
+            } finally {
+                if (readbackMapped) {
+                    try {
+                        readbackBuffer?.unmap()
+                    } catch {
+                        /* ignore */
+                    }
+                }
+                readbackBuffer?.destroy()
+                thumbOutputTexture?.destroy()
             }
-            readbackBuffer.unmap()
-            readbackBuffer.destroy()
-            thumbOutputTexture.destroy()
-            self.postMessage({ type: "thumbnailResult", imageData, requestId, documentName }, { transfer: [imageData.data.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId, documentName })
@@ -981,6 +1024,11 @@ export class RenderWorkerCore {
         if (!dimensionsChanged && !this.#sceneBindGroupInvalid) return
 
         if (dimensionsChanged) {
+            this.#outlineBindGroup?.destroy()
+            this.#outlineBindGroup = undefined
+            this.#beamBindGroup?.destroy()
+            this.#beamBindGroup = undefined
+
             if (this.#colorTexture) this.#colorTexture.destroy()
             if (this.#idTexture) this.#idTexture.destroy()
             if (this.#tStartTexture) this.#tStartTexture.destroy()
@@ -1042,6 +1090,7 @@ export class RenderWorkerCore {
         }
 
         if (dimensionsChanged || this.#sceneBindGroupInvalid) {
+            this.#bindGroup?.destroy()
             this.#bindGroup = this.#device.createBindGroup({
                 label: "scenePreview",
                 layout: this.#pipeline!.getBindGroupLayout(0),

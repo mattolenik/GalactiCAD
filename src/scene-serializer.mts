@@ -6,9 +6,12 @@
 import type { Node } from "./scene/base.mjs"
 import type { SerializedNode } from "./render-worker-protocol.mjs"
 import { BinaryOperator, UnaryOperator } from "./scene/base.mjs"
-import { Box, Cone, Cylinder, Extrude, Lathe, Loft, PlaneNode, Polygon2D, VirtualCapNode } from "./scene/scene.mjs"
+import { Box, Cone, Cylinder, Extrude, Lathe, Loft, PlaneNode, Polygon2D, Union, VirtualCapNode } from "./scene/scene.mjs"
 
 function getChildren(node: Node): Node[] {
+    if (node instanceof Union) {
+        return [...node.children]
+    }
     if (node instanceof BinaryOperator) {
         return [node.lh, node.rh]
     }

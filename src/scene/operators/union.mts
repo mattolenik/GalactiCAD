@@ -1,13 +1,43 @@
-import { BinaryOperator, BVH_MIN_COST, CompileResult, fluent, Node, type UnionType } from "../base.mjs"
+import { BVH_MIN_COST, CompileResult, fluent, Node, type UnionType } from "../base.mjs"
 import { aabbUnion, aabbExpand, aabbCenterWgsl, aabbHalfWgsl, type AABB } from "../aabb.mjs"
 
-export class Union extends BinaryOperator {
+type UnionVariant = "ex" | "fast" | "mid"
+
+export class Union extends Node {
+    readonly children: Node[]
+
     override getShapeType(): string {
         return "union"
     }
 
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/>`
+    }
+
+    protected override _computePrimitiveCount(): number {
+        return this.children.reduce((sum, child) => sum + child.primitiveCount(), 0)
+    }
+
+    protected override _computeCodegenCost(): number {
+        return this.children.reduce((sum, child) => sum + child.codegenCost(), 0)
+    }
+
+    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
+        for (const child of this.children) {
+            child.updateScene(writeBuffer)
+        }
+    }
+
+    override build() {
+        super.build()
+        for (const child of this.children) {
+            child.root = this.root
+            child.build()
+        }
+    }
+
+    override getAllDescendantIds(): number[] {
+        return [this.id, ...this.children.flatMap(child => child.getAllDescendantIds())]
     }
 
     private _blendEx(L: string, R: string): string {
@@ -58,6 +88,43 @@ export class Union extends BinaryOperator {
             child.computeBounds() !== null
     }
 
+    private _resultInit(kind: UnionVariant): string {
+        switch (kind) {
+            case "fast":
+                return "vec2f(1e10, 1.0)"
+            case "mid":
+                return "sdfRMid(1e10, 1.0, vec3f(0.0, 0.0, 1.0))"
+            default:
+                return "sdfTrue(1e10, 0u, vec3f(0.0))"
+        }
+    }
+
+    private _distField(kind: UnionVariant): string {
+        return kind === "fast" ? "x" : "d"
+    }
+
+    private _blendExpr(kind: UnionVariant, left: string, right: string): string {
+        switch (kind) {
+            case "fast":
+                return this._blendFast(left, right)
+            case "mid":
+                return this._blendMid(left, right)
+            default:
+                return this._blendEx(left, right)
+        }
+    }
+
+    private _compileChildResults(kind: UnionVariant, indentLevel: number): CompileResult[] {
+        switch (kind) {
+            case "fast":
+                return this.children.map(child => child.compileFast(indentLevel))
+            case "mid":
+                return this.children.map(child => child.compileMid(indentLevel))
+            default:
+                return this.children.map(child => child.compile(indentLevel))
+        }
+    }
+
     /**
      * Indents each line of a multi-line string by `spaces` spaces.
      */
@@ -67,188 +134,177 @@ export class Union extends BinaryOperator {
     }
 
     /**
-     * Emit the body to evaluate a child and union it into the accumulator `accVar`.
-     * If the child has a prelude (is itself a BVH union), we embed it.
-     * `mergeExpr(acc, child)` is the WGSL merge expression (opUnionFast or opUnionEx).
-     * `blendRadius` is added to the accumulator distance threshold so smooth-union
-     * blend regions are not incorrectly culled when the child is within blending range
-     * but beyond the current best distance.
+     * Emit the body to evaluate a child under an optional BVH guard. The body
+     * must reference the child's compiled expression via childResult.text.
      */
-    private _emitChildContrib(
+    private _emitChildBlock(
+        child: Node,
         childResult: CompileResult,
-        accVar: string,
-        accDistField: string,
-        mergeExprFn: (acc: string, child: string) => string,
-        childBounds: AABB | null,
-        blendRadius: number,
+        threshold: string,
+        body: string,
     ): string {
+        const childBounds = this._shouldBound(child) ? child.computeBounds() : null
+        const block = (childResult.prelude ?? "") + body
         if (!childBounds || !childResult.text) {
-            // No bounds or no expression: always evaluate
-            if (childResult.prelude) {
-                return childResult.prelude + `${accVar} = ${mergeExprFn(accVar, childResult.text!)};\n`
-            }
-            return `${accVar} = ${mergeExprFn(accVar, childResult.text!)};\n`
+            return block
         }
-
         const center = aabbCenterWgsl(childBounds)
         const half = aabbHalfWgsl(childBounds)
-        const threshold = blendRadius > 0
-            ? `${accVar}.${accDistField} + ${blendRadius}`
-            : `${accVar}.${accDistField}`
-        if (childResult.prelude) {
-            // Child has its own prelude; embed inside our bound check
-            const innerCode = this._indent(
-                childResult.prelude + `${accVar} = ${mergeExprFn(accVar, childResult.text!)};\n`,
-                4
+        const innerCode = this._indent(block, 4)
+        return `if (sdBound(p, ${center}, ${half}) < ${threshold}) {\n${innerCode}}\n`
+    }
+
+    private _compileFold(kind: UnionVariant, indentLevel: number): CompileResult {
+        const childResults = this._compileChildResults(kind, indentLevel)
+        const accVar = `_u${this.id}_${kind}`
+        const distField = this._distField(kind)
+        const blendRadius = this.radius ?? 0
+        let prelude = `var ${accVar} = ${this._resultInit(kind)};\n`
+
+        for (let i = 0; i < this.children.length; i++) {
+            const childResult = childResults[i]!
+            const threshold = blendRadius > 0 ? `${accVar}.${distField} + ${blendRadius}` : `${accVar}.${distField}`
+            prelude += this._emitChildBlock(
+                this.children[i]!,
+                childResult,
+                threshold,
+                `${accVar} = ${this._blendExpr(kind, accVar, childResult.text!)};\n`,
             )
-            return `if (sdBound(p, ${center}, ${half}) < ${threshold}) {\n${innerCode}}\n`
-        } else {
-            return `if (sdBound(p, ${center}, ${half}) < ${threshold}) { ${accVar} = ${mergeExprFn(accVar, childResult.text!)}; }\n`
         }
+
+        return { prelude, varName: accVar, text: accVar }
+    }
+
+    private _compileNearestPair(kind: UnionVariant, indentLevel: number): CompileResult {
+        const childResults = this._compileChildResults(kind, indentLevel)
+        const distField = this._distField(kind)
+        const bestA = `_u${this.id}_${kind}_bestA`
+        const bestB = `_u${this.id}_${kind}_bestB`
+        const outVar = `_u${this.id}_${kind}`
+        const blendRadius = this.radius ?? 0
+        let prelude =
+            `var ${bestA} = ${this._resultInit(kind)};\n` +
+            `var ${bestB} = ${this._resultInit(kind)};\n`
+
+        for (let i = 0; i < this.children.length; i++) {
+            const childResult = childResults[i]!
+            const childVar = `_u${this.id}_${kind}_child${i}`
+            const threshold = blendRadius > 0 ? `${bestB}.${distField} + ${blendRadius}` : `${bestB}.${distField}`
+            prelude += `var ${childVar} = ${this._resultInit(kind)};\n`
+            prelude += this._emitChildBlock(
+                this.children[i]!,
+                childResult,
+                threshold,
+                `${childVar} = ${childResult.text!};\n` +
+                `if (${childVar}.${distField} < ${bestA}.${distField}) {\n` +
+                `    ${bestB} = ${bestA};\n` +
+                `    ${bestA} = ${childVar};\n` +
+                `} else if (${childVar}.${distField} < ${bestB}.${distField}) {\n` +
+                `    ${bestB} = ${childVar};\n` +
+                `}\n`,
+            )
+        }
+
+        prelude += `var ${outVar} = ${this._blendExpr(kind, bestA, bestB)};\n`
+        return { prelude, varName: outVar, text: outVar }
+    }
+
+    private _compileVariant(kind: UnionVariant, indentLevel: number): CompileResult {
+        const useNearestPair = !!this.radius && this.children.length > 2
+        return useNearestPair ? this._compileNearestPair(kind, indentLevel) : this._compileFold(kind, indentLevel)
     }
 
     override compile(indentLevel = 0): CompileResult {
-        const lhResult = this.lh.compile()
-        const rhResult = this.rh.compile()
-        const varName = `u_${lhResult.varName}__${rhResult.varName}`
-
-        const lhBounds = this._shouldBound(this.lh) ? this.lh.computeBounds() : null
-        const rhBounds = this._shouldBound(this.rh) ? this.rh.computeBounds() : null
-
-        // Only emit BVH accumulator if at least one direct child gets a bound check.
-        // If neither child qualifies but one has a prelude, pass the prelude through
-        // without wrapping in an unnecessary accumulator.
-        if (!lhBounds && !rhBounds) {
-            const prelude = [lhResult.prelude, rhResult.prelude].filter(Boolean).join("") || undefined
-            return { text: this._blendEx(lhResult.text!, rhResult.text!), varName, prelude }
-        }
-
-        const blendRadius = this.radius ?? 0
-        const accVar = `_u${this.id}ex`
-        let prelude = `var ${accVar} = sdfTrue(1e10, 0u, vec3f(0.0));\n`
-
-        prelude += this._emitChildContrib(lhResult, accVar, "d",
-            (acc, child) => this._blendEx(acc, child), lhBounds, blendRadius)
-        prelude += this._emitChildContrib(rhResult, accVar, "d",
-            (acc, child) => this._blendEx(acc, child), rhBounds, blendRadius)
-
-        return { prelude, varName: accVar, text: accVar }
+        return this._compileVariant("ex", indentLevel)
     }
 
     override compileFast(indentLevel = 0): CompileResult {
-        const lhResult = this.lh.compileFast()
-        const rhResult = this.rh.compileFast()
-        const varName = `u_${lhResult.varName}__${rhResult.varName}`
-
-        const lhBounds = this._shouldBound(this.lh) ? this.lh.computeBounds() : null
-        const rhBounds = this._shouldBound(this.rh) ? this.rh.computeBounds() : null
-
-        // Only emit BVH accumulator if at least one direct child gets a bound check.
-        if (!lhBounds && !rhBounds) {
-            const prelude = [lhResult.prelude, rhResult.prelude].filter(Boolean).join("") || undefined
-            return { text: this._blendFast(lhResult.text!, rhResult.text!), varName, prelude }
-        }
-
-        const blendRadius = this.radius ?? 0
-        const accVar = `_u${this.id}`
-        let prelude = `var ${accVar} = vec2f(1e10, 1.0);\n`
-
-        prelude += this._emitChildContrib(lhResult, accVar, "x",
-            (acc, child) => this._blendFast(acc, child), lhBounds, blendRadius)
-        prelude += this._emitChildContrib(rhResult, accVar, "x",
-            (acc, child) => this._blendFast(acc, child), rhBounds, blendRadius)
-
-        return { prelude, varName: accVar, text: accVar }
+        return this._compileVariant("fast", indentLevel)
     }
 
     override computeBounds(): AABB | null {
-        const lb = this.lh.computeBounds()
-        const rb = this.rh.computeBounds()
         let b: AABB | null = null
-        if (!lb && !rb) return null
-        if (!lb) b = rb
-        else if (!rb) b = lb
-        else b = aabbUnion(lb, rb)
+        for (const child of this.children) {
+            const childBounds = child.computeBounds()
+            if (!childBounds) continue
+            b = b ? aabbUnion(b, childBounds) : childBounds
+        }
+        if (!b) return null
         // Inflate by blend radius so smooth union blend region is not skipped
         if (b && this.radius) b = aabbExpand(b, this.radius)
         return b
     }
     override compileMid(indentLevel = 0): CompileResult {
-        const lhResult = this.lh.compileMid()
-        const rhResult = this.rh.compileMid()
-        const varName = `u_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._blendMid(lhResult.text!, rhResult.text!), varName }
+        return this._compileVariant("mid", indentLevel)
     }
 
-    constructor(lh: Node, rh: Node, public radius?: number, public mode?: UnionType, public n?: number) {
-        super(lh, rh)
+    constructor(children: Node[], public radius?: number, public mode?: UnionType, public n?: number) {
+        super()
+        this.children = children
     }
 
     @fluent round(r: number): this {
         this.radius = r
         this.mode = 'round'
-        if (this.lh instanceof Union) this.lh.round(r)
-        if (this.rh instanceof Union) this.rh.round(r)
+        for (const child of this.children) {
+            if (child instanceof Union) child.round(r)
+        }
         return this
     }
     @fluent chamfer(r: number): this {
         this.radius = r
         this.mode = 'chamfer'
-        if (this.lh instanceof Union) this.lh.chamfer(r)
-        if (this.rh instanceof Union) this.rh.chamfer(r)
+        for (const child of this.children) {
+            if (child instanceof Union) child.chamfer(r)
+        }
         return this
     }
     @fluent soft(r: number): this {
         this.radius = r
         this.mode = 'soft'
-        if (this.lh instanceof Union) this.lh.soft(r)
-        if (this.rh instanceof Union) this.rh.soft(r)
+        for (const child of this.children) {
+            if (child instanceof Union) child.soft(r)
+        }
         return this
     }
     @fluent stairs(r: number, n?: number): this {
         this.radius = r
         this.mode = 'stairs'
         this.n = n ?? 4
-        if (this.lh instanceof Union) this.lh.stairs(r, this.n)
-        if (this.rh instanceof Union) this.rh.stairs(r, this.n)
+        for (const child of this.children) {
+            if (child instanceof Union) child.stairs(r, this.n)
+        }
         return this
     }
     @fluent columns(r: number, n?: number): this {
         this.radius = r
         this.mode = 'columns'
         this.n = n ?? 4
-        if (this.lh instanceof Union) this.lh.columns(r, this.n)
-        if (this.rh instanceof Union) this.rh.columns(r, this.n)
+        for (const child of this.children) {
+            if (child instanceof Union) child.columns(r, this.n)
+        }
         return this
     }
     @fluent withMode(t: UnionType): this {
         this.mode = t
-        if (this.lh instanceof Union) this.lh.withMode(t)
-        if (this.rh instanceof Union) this.rh.withMode(t)
+        for (const child of this.children) {
+            if (child instanceof Union) child.withMode(t)
+        }
         return this
     }
 }
 
 /**
- * Build a union tree. Operand order must be preserved for smooth/blended unions
- * (round, soft, chamfer, columns, stairs) because pairwise operators are not
- * associative. Since union() is called before .round() etc., we cannot know at
- * build time whether the result will be smooth; we always preserve operand
- * order to ensure correct behavior when smooth mode is applied.
- *
- * Uses left-to-right fold (union(union(union(a,b),c),d)) to preserve order.
- * BVH thresholding and cost-based guards remain in place per-node.
+ * Build a union node that preserves the full operand list from union(a, b, c, ...).
+ * Smooth/blended unions with 3+ operands no longer left-fold through binary WGSL
+ * operators; codegen can inspect all direct children at once and blend the
+ * nearest contributors per sample.
  */
 function unionImpl(parts: Node[], radius?: number, mode?: UnionType, n?: number): Union {
     if (parts.length < 2) {
         throw new Error("union requires at least two things to union together")
     }
-    // Left-to-right fold preserves operand order for smooth unions
-    let acc = parts[0]!
-    for (let i = 1; i < parts.length; i++) {
-        acc = new Union(acc, parts[i]!, radius, mode, n)
-    }
-    return acc as Union
+    return new Union(parts, radius, mode, n)
 }
 
 export function union(...parts: Node[]): Union {

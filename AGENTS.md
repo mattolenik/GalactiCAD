@@ -109,10 +109,10 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Push/pull activation: shift-hold on a selected surface (not double-click). `dropToHighlight()` must NOT call `onDeselect` — it overwrites the GPU face-highlight buffers. After cap drag completion, update `node.h`/`node.pos.y` on the stored reference before `dropToHighlight` so subsequent drags don't snap back.
 - Click events on the canvas must be suppressed (`stopImmediatePropagation` in capture phase) while push/pull has any face state, to prevent CameraController's click handler from toggling selection via shift-click.
 - WebGPU: when removing bindings from shader, remove them from the TypeScript bind group as well.
-- Double-clicking polygon2d, loft, union, or other cross-selectable symbols selects (syncs with preview); use hover context menu "Edit Polygon" for polygon2d.
-- Right-click in Monaco over polygon2d: use Monaco's built-in context menu; custom "Edit Polygon" menu appears only on hover, not on right-click.
+- All scene SDF evaluation for rendering and export pipelines must stay on the GPU; do not reimplement the scene SDF on the CPU.
+- On startup/refresh, restore only previously open documents; closed documents stay available from the document explorer / closed-document list.
+- Polygon editing UX: double-clicking polygon2d, loft, union, or other cross-selectable symbols selects in the preview; polygon editing opens from a hover-only "Edit Polygon" menu, not right-click; keep a safe-zone AABB between trigger and menu so it stays open while the cursor moves toward it.
 - Monaco: set `occurrencesHighlight: "off"` and `selectionHighlight: false` so double-clicking cross-selectable symbols does not highlight other occurrences.
-- Hover context menus: use a safe zone (AABB from trigger to menu) so the menu stays open while the user moves the cursor toward it.
 
 ## Building and Linting
 

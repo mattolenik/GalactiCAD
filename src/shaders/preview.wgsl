@@ -2,6 +2,7 @@
 
 const MAX_STEPS: i32 = 300;   // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
 const MAX_DIST: f32 = 300.0;  // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
+const HIT_REFINE_STEPS: i32 = 6;
 
 struct Camera {
     transform: mat4x4f,
@@ -468,11 +469,29 @@ fn sceneSDF_fast(p: vec3f) -> vec2f {
     return vec2f(0.0, 1.0); //:) insert sceneSDF_fast
 }
 
+// Narrow the ray parameter so the full sceneSDF sample is not stuck at the first
+// in-band fast sample (important when t_start is shared per 8x8 beam tile).
+fn refineRayHit(origin: vec3f, dir: vec3f, tLo: f32, tHi: f32) -> f32 {
+    var lo = tLo;
+    var hi = tHi;
+    for (var r: i32 = 0; r < HIT_REFINE_STEPS; r = r + 1) {
+        let mid = 0.5 * (lo + hi);
+        let dm = sceneSDF_fast(origin + mid * dir).x;
+        if (dm < SURF_DIST) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    return hi;
+}
+
 // Raymarch: returns HitData (slim post-hit struct) rather than the full SDFResult.
 // The full SDFResult is only alive transiently inside this function while
 // projecting to HitData; it does not persist into fragmentMain's register file.
 fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
     var t: f32 = t_start;
+    var tLastOutside: f32 = -1.0;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: only (d, g), no normals/IDs
@@ -480,8 +499,11 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
         // when |nabla f| < 1 (smooth CSG), stepping by raw d overshoots.
         let step = sr.x * min(sr.y, 1.0);
         if (sr.x < SURF_DIST) {
-            return toHitData(t, sceneSDF(origin + t * dir));
+            let tLo = select(0.0, tLastOutside, tLastOutside >= 0.0);
+            let tHit = refineRayHit(origin, dir, tLo, t);
+            return toHitData(tHit, sceneSDF(origin + tHit * dir));
         }
+        tLastOutside = t;
         t = t + step;
         if (t >= MAX_DIST) {
             break;

@@ -118,6 +118,9 @@ export class SceneInfo {
 
     compileMid(): string {
         const compiledResult = this.root.compileMid(1)
+        if (compiledResult.prelude) {
+            return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
+        }
         return `\nreturn ${compiledResult.text};\n`
     }
 

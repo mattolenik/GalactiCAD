@@ -3,12 +3,20 @@
 // Beam optimization compute shader.
 //
 // Groups adjacent pixels into TILE_SIZE x TILE_SIZE tiles and performs a single
-// beam march per tile at the tile center. Because the camera is orthographic
-// (all rays share the same direction), the SDF distance at the center bounds
-// the distance for every pixel in the tile, minus the tile's spatial radius.
+// beam march per tile at the centroid of the tile's actual pixels (clamped to
+// the framebuffer). Partial tiles along the right/bottom (or when W or H < 8)
+// no longer use the center of a fictitious full tile, which previously skewed
+// the ray origin and broke the empty-space skip bound.
+//
+// Because the camera is orthographic (all rays share the same direction), the
+// SDF at the beam anchor bounds the distance for every pixel in the tile, minus
+// a world-space radius derived from the tile's real pixel footprint. Horizontal
+// and vertical world spacing differ when aspect != 1 (matches preview.wgsl).
 //
 // The result (a safe starting-t for per-pixel ray marching) is written to a
 // low-resolution storage texture that the fragment shader reads.
+// Stored value backs off by tile footprint plus a small multiple of SURF_DIST
+// for float / inexact-SDF slack (see textureStore below).
 
 const TILE_SIZE: u32 = 8u;
 const MAX_BEAM_STEPS: i32 = 200;
@@ -68,11 +76,19 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     // Full pixel resolution from camera uniform
     let res = camera.res;
     let aspect = res.x / res.y;
+    let resX = max(u32(res.x), 1u);
+    let resY = max(u32(res.y), 1u);
 
-    // Compute tile center in pixel coordinates, then convert to UV (0-1)
+    // Clamped pixel index ranges for this tile (handles partial edge/small viewports)
+    let pMin = gid.x * TILE_SIZE;
+    let pMax = min(pMin + TILE_SIZE - 1u, resX - 1u);
+    let qMin = gid.y * TILE_SIZE;
+    let qMax = min(qMin + TILE_SIZE - 1u, resY - 1u);
+
+    // Centroid of pixel centers in pixel coordinates, then UV (0-1)
     let tileCenterPixel = vec2f(
-        f32(gid.x) * f32(TILE_SIZE) + f32(TILE_SIZE) * 0.5,
-        f32(gid.y) * f32(TILE_SIZE) + f32(TILE_SIZE) * 0.5
+        (f32(pMin) + f32(pMax)) * 0.5 + 0.5,
+        (f32(qMin) + f32(qMax)) * 0.5 + 0.5
     );
     let uv = tileCenterPixel / res;
 
@@ -91,10 +107,12 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
     let transformedDir = -camera.transform[2].xyz;
 
-    // Tile radius in world space (half-diagonal of the tile).
-    // Pixel spacing is uniform in orthographic: pixelSize = 2 * zoom / resY.
-    let pixelSize = 2.0 * camera.zoom / res.y;
-    let tileRadius = pixelSize * f32(TILE_SIZE) * 0.707;
+    // World-space radius: max distance from anchor to any pixel center in the tile (camera plane).
+    let pixelSizeY = 2.0 * camera.zoom / res.y;
+    let pixelSizeX = 2.0 * camera.zoom * aspect / res.x;
+    let hx = 0.5 * f32(pMax - pMin) * pixelSizeX;
+    let hy = 0.5 * f32(qMax - qMin) * pixelSizeY;
+    let tileRadius = sqrt(hx * hx + hy * hy);
 
     // Beam march: advance conservatively through empty space
     var t: f32 = 0.001;
@@ -113,7 +131,11 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
         t = t + safeStep;
     }
 
-    // Write the safe starting-t for this tile.
-    // Back off by tileRadius for extra safety at tile boundaries.
-    textureStore(tStartOut, vec2i(gid.xy), vec4f(max(t - tileRadius, 0.0), 0.0, 0.0, 0.0));
+    // Write the safe starting-t for this tile: tile footprint backoff plus numeric margin.
+    let beamTStartExtra = 2.0 * SURF_DIST;
+    textureStore(
+        tStartOut,
+        vec2i(gid.xy),
+        vec4f(max(t - tileRadius - beamTStartExtra, 0.0), 0.0, 0.0, 0.0),
+    );
 }

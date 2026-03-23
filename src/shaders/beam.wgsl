@@ -31,6 +31,7 @@ struct Camera {
     previewShade0: vec4f,
     previewShade1: vec4f,
     previewShade2: vec4f,
+    previewShade3: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;

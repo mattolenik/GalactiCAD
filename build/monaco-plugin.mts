@@ -11,10 +11,7 @@ export interface MonacoEditorPluginOptions {
 }
 
 const workers: Record<string, string> = {
-    // css: require.resolve("monaco-editor/esm/vs/language/css/css.worker"),
     editor: require.resolve("monaco-editor/esm/vs/editor/editor.worker"),
-    // html: require.resolve("monaco-editor/esm/vs/language/html/html.worker"),
-    // json: require.resolve("monaco-editor/esm/vs/language/json/json.worker"),
     ts: require.resolve("monaco-editor/esm/vs/language/typescript/ts.worker"),
 }
 

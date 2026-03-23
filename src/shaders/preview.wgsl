@@ -24,6 +24,8 @@ struct Camera {
     previewShade1: vec4f,
     // x=fresnelPower, y=fresnelIntensity
     previewShade2: vec4f,
+    // x=aoStrength, y=aoRadius, z=aoSteps (rounded 1–8), w=aoBias
+    previewShade3: vec4f,
 };
 
 @group(0) @binding(1) var<uniform> camera: Camera;
@@ -488,6 +490,37 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
     return hitDataMiss();
 }
 
+// Relax t toward the ray–surface crossing. Beam pre-pass uses one t_start per tile, so raw
+// hit.t can jump at 8px tile edges; ambient occlusion samples are sensitive and show seams.
+fn refineHitAlongRay(origin: vec3f, dir: vec3f, t0: f32) -> f32 {
+    var t = t0;
+    for (var k: i32 = 0; k < 6; k = k + 1) {
+        let sr = sceneSDF_fast(origin + t * dir);
+        t = t + sr.x * min(sr.y, 1.0);
+        if (abs(sr.x) < SURF_DIST * 0.5) {
+            break;
+        }
+    }
+    return t;
+}
+
+// Refine a sign change bracket along the ray. lo must be inside (d < 0),
+// hi must be outside (d >= 0).
+fn bisectSurfaceCrossing(origin: vec3f, dir: vec3f, tInside: f32, tOutside: f32) -> f32 {
+    var lo = tInside;
+    var hi = tOutside;
+    for (var k: i32 = 0; k < 6; k = k + 1) {
+        let mid = 0.5 * (lo + hi);
+        let d = sceneSDF_fast(origin + mid * dir).x;
+        if (d < 0.0) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    return hi;
+}
+
 fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
     return clamp((dot(n, l) + wrap) / (1.0 + wrap), 0.0, 1.0);
 }
@@ -516,6 +549,27 @@ fn specularAndFresnelRim(n: vec3f, viewDir: vec3f) -> vec3f {
     return specColor * spec + vec3f(fresnel);
 }
 
+// Contact AO along analytical normal; sceneSDF_fast only. Returns multiplier in [0,1] for diffuse (1 = no darkening).
+fn sdfAmbientOcclusion(worldPos: vec3f, n: vec3f) -> f32 {
+    let cfg = camera.previewShade3;
+    let strength = cfg.x;
+    if (strength <= 0.0) {
+        return 1.0;
+    }
+    let radius = max(cfg.y, 1e-6);
+    let nSteps = i32(clamp(round(cfg.z), 1.0, 8.0));
+    let bias = max(cfg.w, 0.0);
+    let p0 = worldPos + n * bias;
+    var sum = 0.0;
+    for (var i: i32 = 1; i <= nSteps; i = i + 1) {
+        let h = radius * f32(i) / f32(nSteps);
+        let d = sceneSDF_fast(p0 + n * h).x;
+        sum = sum + clamp((h - d) / h, 0.0, 1.0);
+    }
+    let occ = sum / f32(nSteps);
+    return clamp(1.0 - strength * occ, 0.0, 1.0);
+}
+
 @vertex
 fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     var pos = array(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(1.0, 1.0));
@@ -534,20 +588,28 @@ fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
 // Raymarch from inside the surface to find the exit point. Returns HitData; the
 // full SDFResult is only transiently alive during the toHitData() projection.
 fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
-    var t: f32 = startT + 0.5;  // Start past the entry surface
+    let eps = max(SURF_DIST * 4.0, 1e-3);
+    var t: f32 = startT + eps;  // Start just inside the entry surface
+    var tInside = startT;
 
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: only (d, g)
 
-        // We're inside, so distance is negative. March by abs(d).
-        let step = max(abs(sr.x), 0.1);
+        // We're inside, so distance is negative. Use the same gradient-aware
+        // correction as the front march so smooth blends do not overshoot.
+        let step = max(abs(sr.x) * min(sr.y, 1.0), eps);
 
         // Found an exit surface (going from inside to outside)
         if (sr.x > SURF_DIST) {
+            let tExit = bisectSurfaceCrossing(origin, dir, tInside, t);
+            return toHitData(tExit, sceneSDF(origin + tExit * dir));
+        }
+        if (sr.x >= 0.0) {
             return toHitData(t, sceneSDF(origin + t * dir));
         }
 
+        tInside = t;
         t = t + step;
         if (t >= MAX_DIST) {
             break;
@@ -590,11 +652,17 @@ struct ShadeResult {
 // Shade a hit point and return the color.
 // flipNormal: true if hitting surface from inside (back surface).
 // viewDir: direction from hit toward camera (unit), for specular / fresnel.
-fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f) -> ShadeResult {
+// worldPos: hit position in scene space (for ambient occlusion samples).
+fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f) -> ShadeResult {
     let normal = select(hit.n, -hit.n, flipNormal);
+    // AO should sample away from the actual surface, not the x-ray lighting normal.
+    // For back/exit surfaces, the flipped shading normal points into the solid and
+    // creates contour-like bands inside the volume.
+    let aoNormal = hit.n;
 
     let diffuse = lightingDiffuse(normal);
     let specRim = specularAndFresnelRim(normal, viewDir);
+    let ao = sdfAmbientOcclusion(worldPos, aoNormal);
 
     // Color and selection: only do second lookups when blending is active
     let color1 = colorPalette[hit.id & 31u];
@@ -604,7 +672,7 @@ fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f) -> ShadeResult {
         let color2 = colorPalette[hit.id2 & 31u];
         baseColor = color1 * (1.0 - bw) + color2 * bw;
     }
-    let shadedColor = baseColor * diffuse + specRim;
+    let shadedColor = baseColor * diffuse * ao + specRim;
 
     var sel1 = f32(selectedObjectIds[hit.id] != 0u);
     // Primitive face selection (mode 4=box, 5=cylinder, 6=cone)
@@ -692,16 +760,34 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     // enters fragmentMain's register file.
     let hit = raymarch(transformedOrigin, transformedDir, t_start);
     let hitPos = transformedOrigin + transformedDir * hit.t;
+    // Refined position for AO only — keeps original HitData (IDs, normal, seam)
+    // untouched so coplanar union faces don't flicker.
+    var aoPos = hitPos;
+    if (hit.t > 0.0 && camera.previewShade3.x > 0.0) {
+        let tRef = refineHitAlongRay(transformedOrigin, transformedDir, hit.t);
+        aoPos = transformedOrigin + transformedDir * tRef;
+    }
 
     // In xray mode, find the back (inner) surface and use it for selection so
     // inner edges are selectable.  useBack replaces the old selecHit alias
     // (which was a redundant third HitData copy) — saving ~13 live scalars.
     var backHit = hitDataMiss();
+    var backAoPos = vec3f(0.0);
     var useBack = false;
     if (viewSettings.xrayMode > 0u && hit.t > 0.0) {
         backHit = raymarchFromInside(transformedOrigin, transformedDir, hit.t);
         if (backHit.t > 0.0) {
             useBack = true;
+            backAoPos = transformedOrigin + transformedDir * backHit.t;
+            if (camera.previewShade3.x > 0.0) {
+                let tb = bisectSurfaceCrossing(
+                    transformedOrigin,
+                    transformedDir,
+                    hit.t + max(SURF_DIST * 4.0, 1e-3),
+                    backHit.t
+                );
+                backAoPos = transformedOrigin + transformedDir * tb;
+            }
         }
     }
     // Click detection using pixel-accurate matching
@@ -776,7 +862,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     }
 
     if (hit.t > 0.0) {
-        var frontResult = shadeHit(hit, false, viewDir);
+        var frontResult = shadeHit(hit, false, viewDir, aoPos);
         var shadedColor = frontResult.color;
         if (frontResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
             let pixelCoord = uv * camera.res;
@@ -787,7 +873,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {
             if (backHit.t > 0.0) {
-                var backResult = shadeHit(backHit, true, viewDir);
+                var backResult = shadeHit(backHit, true, viewDir, backAoPos);
                 var backColor = backResult.color;
                 if (backResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
                     let pixelCoord = uv * camera.res;

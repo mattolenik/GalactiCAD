@@ -120,6 +120,14 @@ export interface PreviewShadingParams {
     specShininess: number
     fresnelPower: number
     fresnelIntensity: number
+    /** 0 = AO off; otherwise scales contact shadowing on diffuse only. */
+    aoStrength: number
+    /** World-space max distance along normal for AO samples. */
+    aoRadius: number
+    /** Integer step count 1–8 (stored as float for uniform packing). */
+    aoSteps: number
+    /** Surface offset along normal before sampling (avoids self-hit). */
+    aoBias: number
 }
 
 export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
@@ -133,6 +141,10 @@ export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
     specShininess: 64,
     fresnelPower: 3,
     fresnelIntensity: 0.08,
+    aoStrength: 0.35,
+    aoRadius: 0.08,
+    aoSteps: 5,
+    aoBias: 0.02,
 }
 
 export interface RenderViewSettings {

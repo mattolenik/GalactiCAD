@@ -125,14 +125,14 @@ export class RenderWorkerCore {
     #edgeStrideF32 = new Float32Array(this.#edgeStrideBuf)
     #camTransform = new Mat4x4f(new Float32Array(16))
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
-    #cameraCache = new ArrayBuffer(224)
+    #cameraCache = new ArrayBuffer(240)
     #viewSettingsCache = new ArrayBuffer(16)
     #outlineCache = new ArrayBuffer(48)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #hoveredEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
-    #cameraStagingBuf = new ArrayBuffer(224)
+    #cameraStagingBuf = new ArrayBuffer(240)
     #edgesStagingBuf = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     /** Worker-owned staging for SAB snapshot; max(SELECTED_OBJECT_IDS_SIZE, SELECTED_EDGES_TOTAL) */
     #sabStagingBuf = new ArrayBuffer(4096)
@@ -527,6 +527,10 @@ export class RenderWorkerCore {
             specShininess: f32[psBase + 7],
             fresnelPower: f32[psBase + 8],
             fresnelIntensity: f32[psBase + 9],
+            aoStrength: f32[psBase + 10],
+            aoRadius: f32[psBase + 11],
+            aoSteps: f32[psBase + 12],
+            aoBias: f32[psBase + 13],
         }
         this.#uploadCameraIfDirty(
             viewTransform,
@@ -1080,7 +1084,7 @@ export class RenderWorkerCore {
         })
 
         ub.camera = this.#device.createBuffer({
-            size: 224,
+            size: 240,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "camera",
         })
@@ -1457,7 +1461,7 @@ export class RenderWorkerCore {
         }
     }
 
-    /** Build full 224-byte camera uniform and upload if dirty. */
+    /** Build full 240-byte camera uniform and upload if dirty. */
     #uploadCameraIfDirty(
         viewTransform: Float32Array | ArrayBuffer,
         cameraPosition: [number, number, number],
@@ -1509,7 +1513,11 @@ export class RenderWorkerCore {
         f32[53] = ps.fresnelIntensity
         f32[54] = 0
         f32[55] = 0
-        this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 224, this.#cameraCache)
+        f32[56] = ps.aoStrength
+        f32[57] = ps.aoRadius
+        f32[58] = ps.aoSteps
+        f32[59] = ps.aoBias
+        this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 240, this.#cameraCache)
     }
 
     /** Compare src[offset:offset+byteLength] with cache; if different, write to GPU and update cache. Returns true if wrote. */

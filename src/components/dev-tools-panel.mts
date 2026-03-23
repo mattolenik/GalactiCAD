@@ -33,6 +33,10 @@ const PREVIEW_SHADING_KNOBS: {
     { key: "specShininess", label: "Spec power", min: 1, max: 256, step: 1 },
     { key: "fresnelPower", label: "Fresnel pow", min: 0.5, max: 8, step: 0.1 },
     { key: "fresnelIntensity", label: "Fresnel", min: 0, max: 0.45, step: 0.01 },
+    { key: "aoStrength", label: "AO strength", min: 0, max: 1, step: 0.02 },
+    { key: "aoRadius", label: "AO radius", min: 0.01, max: 0.5, step: 0.01 },
+    { key: "aoSteps", label: "AO steps", min: 1, max: 8, step: 1 },
+    { key: "aoBias", label: "AO bias", min: 0, max: 0.1, step: 0.005 },
 ]
 
 export class DevToolsPanel extends HTMLElement {
@@ -383,7 +387,7 @@ export class DevToolsPanel extends HTMLElement {
     }
 
     static #formatShadeValue(key: keyof PreviewShadingParams, v: number): string {
-        if (key === "specShininess") return String(Math.round(v))
+        if (key === "specShininess" || key === "aoSteps") return String(Math.round(v))
         return v.toFixed(2)
     }
 

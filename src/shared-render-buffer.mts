@@ -52,20 +52,20 @@ const S_O_VIEW_SETTINGS = 136
 const S_O_OUTLINE_THICKNESS = 140
 const S_O_OUTLINE_COLOR = 144
 const S_O_SELECTION_STYLES = 156  // faceDarken(1) + faceTint(3) + edgeColor(3) = 7 floats = 28 bytes
-const S_O_PREVIEW_SHADING = 184 // 10 floats: PreviewShadingParams
-const S_O_SELECTED_OBJECT_IDS = 224
-const S_O_SELECTED_EDGES_HEADER = 4320
-const S_O_SELECTED_EDGES_DATA = 4336
-const S_O_HOVERED_EDGES_HEADER = 5616
-const S_O_HOVERED_EDGES_DATA = 5632
-const S_O_HOVERED_OBJECT_ID = 6912
+const S_O_PREVIEW_SHADING = 184 // 14 floats: PreviewShadingParams
+const S_O_SELECTED_OBJECT_IDS = 240
+const S_O_SELECTED_EDGES_HEADER = 4336
+const S_O_SELECTED_EDGES_DATA = 4352
+const S_O_HOVERED_EDGES_HEADER = 5632
+const S_O_HOVERED_EDGES_DATA = 5648
+const S_O_HOVERED_OBJECT_ID = 6928
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16
 const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 
 /** Size of one payload slot in bytes */
-export const SLOT_SIZE = 6916
+export const SLOT_SIZE = 6932
 
 /** Total buffer size in bytes */
 export const SHARED_RENDER_BUFFER_SIZE = HEADER_SIZE + 2 * SLOT_SIZE
@@ -199,6 +199,10 @@ export function writeRenderPayloadSlot(
     f32[psB + 7] = ps.specShininess
     f32[psB + 8] = ps.fresnelPower
     f32[psB + 9] = ps.fresnelIntensity
+    f32[psB + 10] = ps.aoStrength
+    f32[psB + 11] = ps.aoRadius
+    f32[psB + 12] = ps.aoSteps
+    f32[psB + 13] = ps.aoBias
 
     const sel = payload.selectionState
     const selIds = new Uint32Array(buffer, base + S_O_SELECTED_OBJECT_IDS, 1024)
@@ -298,6 +302,10 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
             specShininess: f32[psB + 7],
             fresnelPower: f32[psB + 8],
             fresnelIntensity: f32[psB + 9],
+            aoStrength: f32[psB + 10],
+            aoRadius: f32[psB + 11],
+            aoSteps: f32[psB + 12],
+            aoBias: f32[psB + 13],
         },
     }
 

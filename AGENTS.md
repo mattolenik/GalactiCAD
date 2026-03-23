@@ -95,7 +95,9 @@ When making changes to binding groups, make sure all the bindings and mappings a
 
 ## Learned User Preferences
 
-- Do not browse to the app; user will do manual testing.
+- Do not browse to the app; the user runs manual visual QA. For WGSL and preview rendering work, use `make build` for compile validation—do not rely on in-agent visual verification as part of the task.
+- When only the SDF preview should change, skip mesh viewer shader parity unless the user asks to update the mesh viewer too.
+- Add artist-facing preview/rendering tunables to the dev tools panel when the user wants on-screen knobs.
 
 ## Learned Workspace Facts
 
@@ -103,7 +105,7 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - External-change conflict: compare disk to `lastWritten`, not editor content, when deciding whether to show "modified externally" dialog.
 - Async pick (Cmd/Ctrl+drag): use drag session ID so stale pick results do not apply to a new drag session.
 - GPU `nodeParams`/`polygonVertices` buffer writes in `render-worker-core.mts` must be deferred until after the new pipeline is swapped in (`this.#pipeline = pipeline`), otherwise the old shader renders with reset params causing a visual snap.
-- Welcome sample thumbnails use the same render-worker preview `build` path as the live document; overlapping thumbnail generation with opening a sample can show the wrong scene in the viewport until the next rebuild (mitigations: abort sample fetches when the welcome screen is removed; restore the prior built scene body after each thumbnail render in the worker).
+- Welcome-screen thumbnails and opening a sample from the welcome screen share the render-worker preview `build` path and can race; the viewport may show the wrong sample until the next rebuild (mitigations: abort sample fetches when the welcome screen is removed; restore the prior built scene body after each thumbnail render in the worker).
 - Push/pull activation: shift-hold on a selected surface (not double-click). `dropToHighlight()` must NOT call `onDeselect` — it overwrites the GPU face-highlight buffers. After cap drag completion, update `node.h`/`node.pos.y` on the stored reference before `dropToHighlight` so subsequent drags don't snap back.
 - Click events on the canvas must be suppressed (`stopImmediatePropagation` in capture phase) while push/pull has any face state, to prevent CameraController's click handler from toggling selection via shift-click.
 - WebGPU: when removing bindings from shader, remove them from the TypeScript bind group as well.

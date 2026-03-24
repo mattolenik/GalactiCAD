@@ -283,20 +283,12 @@ export class RenderWorkerCore {
                 compute: { module: nextBeamShader, entryPoint: "beamMarch" },
             }),
         ])
-
         if (generation !== this.#buildGeneration) {
-            pipeline.destroy()
-            beamPipeline.destroy()
-            nextSceneShader.destroy()
-            nextBeamShader.destroy()
             return { superseded: true } as { sceneNodes: never; compiledPosY: never; superseded: true }
         }
 
-        this.#pipeline?.destroy()
-        this.#beamPipeline?.destroy()
-        this.#sceneShader?.destroy()
-        this.#beamShader?.destroy()
-
+        // WebGPU: only buffers, textures, and query sets have destroy(). Pipelines, shader modules,
+        // and bind groups do not — replace fields so previous objects can be GC'd.
         this.#pipeline = pipeline
         this.#beamPipeline = beamPipeline
         this.#sceneShader = nextSceneShader
@@ -428,7 +420,6 @@ export class RenderWorkerCore {
 
         if (viewSettings.beamEnabled && this.#beamPipeline) {
             if (this.#beamBindGroupInvalid) {
-                this.#beamBindGroup?.destroy()
                 this.#beamBindGroup = this.#device.createBindGroup({
                     label: "beamPrePass",
                     layout: this.#beamPipeline.getBindGroupLayout(0),
@@ -603,7 +594,6 @@ export class RenderWorkerCore {
 
         if (beamEnabled && this.#beamPipeline) {
             if (this.#beamBindGroupInvalid) {
-                this.#beamBindGroup?.destroy()
                 this.#beamBindGroup = this.#device.createBindGroup({
                     label: "beamPrePass",
                     layout: this.#beamPipeline.getBindGroupLayout(0),
@@ -712,21 +702,16 @@ export class RenderWorkerCore {
                 .replace("insert", "sceneSDF", sceneSDF)
                 .replace("insert", "sceneSDF_mid", sceneSDF_mid)
                 .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
-            let mdcShaderModule: GPUShaderModule | undefined
-            try {
-                mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
-                const mdc = new MDCExport(
-                    this.#helper,
-                    params,
-                    this.#uniformBuffers.polygonVertices,
-                    this.#uniformBuffers.faceSelection,
-                    this.#uniformBuffers.nodeParams,
-                )
-                const mesh = await mdc.export(mdcShaderModule)
-                self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
-            } finally {
-                mdcShaderModule?.destroy()
-            }
+            const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
+            const mdc = new MDCExport(
+                this.#helper,
+                params,
+                this.#uniformBuffers.polygonVertices,
+                this.#uniformBuffers.faceSelection,
+                this.#uniformBuffers.nodeParams,
+            )
+            const mesh = await mdc.export(mdcShaderModule)
+            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId, documentName })
@@ -832,9 +817,7 @@ export class RenderWorkerCore {
                 max: [maxXq / SCALE, maxYq / SCALE, maxZq / SCALE] as const,
             }
         } finally {
-            bindGroup?.destroy()
-            boundsPipeline?.destroy()
-            boundsShaderModule?.destroy()
+            // Shader module, pipeline, bind group: no destroy(); locals go out of scope. Buffers we allocated:
             uniformBuffer.destroy()
             outBuffer.destroy()
         }
@@ -1024,9 +1007,8 @@ export class RenderWorkerCore {
         if (!dimensionsChanged && !this.#sceneBindGroupInvalid) return
 
         if (dimensionsChanged) {
-            this.#outlineBindGroup?.destroy()
+            // Bind groups: no destroy(); clear refs before attaching new textures.
             this.#outlineBindGroup = undefined
-            this.#beamBindGroup?.destroy()
             this.#beamBindGroup = undefined
 
             if (this.#colorTexture) this.#colorTexture.destroy()
@@ -1090,7 +1072,7 @@ export class RenderWorkerCore {
         }
 
         if (dimensionsChanged || this.#sceneBindGroupInvalid) {
-            this.#bindGroup?.destroy()
+            // Previous #bindGroup is dropped here (no destroy() on GPUBindGroup).
             this.#bindGroup = this.#device.createBindGroup({
                 label: "scenePreview",
                 layout: this.#pipeline!.getBindGroupLayout(0),

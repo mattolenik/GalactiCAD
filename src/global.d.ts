@@ -4,26 +4,6 @@ declare global {
 
     /** Build-injected version string (via esbuild version plugin) */
     const __VERSION__: string
-
-    /** @webgpu/types omits destroy() on several objects; runtime WebGPU implements it. */
-    interface GPUBindGroup {
-        destroy(): void
-    }
-    interface GPUBindGroupLayout {
-        destroy(): void
-    }
-    interface GPUPipelineLayout {
-        destroy(): void
-    }
-    interface GPURenderPipeline {
-        destroy(): void
-    }
-    interface GPUComputePipeline {
-        destroy(): void
-    }
-    interface GPUShaderModule {
-        destroy(): void
-    }
 }
 
 export { }

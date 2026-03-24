@@ -420,14 +420,14 @@ export class MeshViewer extends HTMLElement {
 
     #disposeGpu(): void {
         if (!this.#device) return
+        // WebGPU: call destroy() only on GPUBuffer / GPUTexture. Pipelines, layouts, shader modules,
+        // and bind groups have no destroy(); they are released when this instance is collected.
         try {
             this.#context.unconfigure()
         } catch {
             /* ignore */
         }
-        this.#compositeBindGroup?.destroy()
         this.#compositeBindGroup = null
-        this.#bindGroup.destroy()
         this.#depthTexture?.destroy()
         this.#depthTexture = null
         this.#oitAccumTexture?.destroy()
@@ -442,18 +442,6 @@ export class MeshViewer extends HTMLElement {
         this.#edgeIndexBuffer = null
         this.#uniformBuffer?.destroy()
         this.#uniformBuffer = null
-        this.#pipelineOpaque.destroy()
-        this.#pipelineWireframe.destroy()
-        this.#pipelineTranslucent.destroy()
-        this.#compositePipeline.destroy()
-        this.#pipelineLayout.destroy()
-        this.#compositePipelineLayout.destroy()
-        this.#bindGroupLayout.destroy()
-        this.#compositeBindGroupLayout.destroy()
-        this.#shaderModuleOpaque.destroy()
-        this.#shaderModuleTranslucent.destroy()
-        this.#shaderModuleComposite.destroy()
-        this.#shaderModuleWireframe.destroy()
     }
 
     #recreateAttachments() {
@@ -482,7 +470,6 @@ export class MeshViewer extends HTMLElement {
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         })
         if (this.#compositeBindGroupLayout) {
-            this.#compositeBindGroup?.destroy()
             this.#compositeBindGroup = this.#device.createBindGroup({
                 label: "meshViewer.compositeBindGroup",
                 layout: this.#compositeBindGroupLayout,

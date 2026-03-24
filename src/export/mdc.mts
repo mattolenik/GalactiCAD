@@ -139,14 +139,9 @@ export class MDCExport {
         this.#localBuffers = []
     }
 
-    #destroyPassResources() {
-        for (const bg of this.#localBindGroups) {
-            bg.destroy()
-        }
+    /** Clear tracked bind groups / pipelines (no destroy() on those types in WebGPU). */
+    #clearPassResourceLists() {
         this.#localBindGroups = []
-        for (const p of this.#localPipelines) {
-            p.destroy()
-        }
         this.#localPipelines = []
     }
 
@@ -876,9 +871,9 @@ export class MDCExport {
             return { verts, tris }
 
         } finally {
-            this.#destroyPassResources()
+            this.#clearPassResourceLists()
             this.#destroyLocalBuffers()
-            logDiag("GPU buffers destroyed")
+            logDiag("GPU cleanup (buffers destroyed, pass lists cleared)")
         }
     }
 }

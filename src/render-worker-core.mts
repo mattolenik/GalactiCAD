@@ -225,10 +225,13 @@ export class RenderWorkerCore {
 
     async #doBuild(body: string): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
         this.#builtBody = body
+        const tSceneScript0 = performance.now()
         this.#scene = new SceneInfo(body, { bvhEnabled: this.#bvhEnabled })
         const scene = this.#scene
         const allNodes = scene.getAllNodes()
+        const tSceneScript1 = performance.now()
 
+        const tWgsl0 = performance.now()
         const sceneAux = scene.compileAux()
         const sceneAuxFast = scene.compileAuxFast()
         const sceneAuxMid = scene.compileAuxMid()
@@ -236,6 +239,7 @@ export class RenderWorkerCore {
         const sceneSDF_fast = scene.compileFast()
         const sceneSDF_mid = scene.compileMid()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
+        const tWgsl1 = performance.now()
 
         const shaderCompiler = new ShaderCompiler(this.#device)
             .replace("insert", "sceneAuxFast", sceneAuxFast)
@@ -246,8 +250,10 @@ export class RenderWorkerCore {
             .replace("insert", "sceneSDF_mid", sceneSDF_mid)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
 
+        const tShaderMod0 = performance.now()
         const nextSceneShader = shaderCompiler.compile(previewShader, "Preview Window")
         const nextBeamShader = shaderCompiler.compile(beamShader, "Beam Pre-Pass")
+        const tShaderMod1 = performance.now()
 
         const polygonVertexData = scene.totalPolygonVertices > 0
             ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer)
@@ -265,6 +271,7 @@ export class RenderWorkerCore {
         this.#buildGeneration++
         const generation = this.#buildGeneration
 
+        const tPipeline0 = performance.now()
         const [pipeline, beamPipeline] = await Promise.all([
             this.#device.createRenderPipelineAsync({
                 label: "Preview Pipeline",
@@ -283,9 +290,18 @@ export class RenderWorkerCore {
                 compute: { module: nextBeamShader, entryPoint: "beamMarch" },
             }),
         ])
+        const tPipeline1 = performance.now()
         if (generation !== this.#buildGeneration) {
             return { superseded: true } as { sceneNodes: never; compiledPosY: never; superseded: true }
         }
+
+        console.debug("[render-worker] scene build (ms)", {
+            sceneScript: Math.round((tSceneScript1 - tSceneScript0) * 100) / 100,
+            wgslScene: Math.round((tWgsl1 - tWgsl0) * 100) / 100,
+            shaderModules: Math.round((tShaderMod1 - tShaderMod0) * 100) / 100,
+            pipelines: Math.round((tPipeline1 - tPipeline0) * 100) / 100,
+            total: Math.round((tPipeline1 - tSceneScript0) * 100) / 100,
+        })
 
         // WebGPU: only buffers, textures, and query sets have destroy(). Pipelines, shader modules,
         // and bind groups do not — replace fields so previous objects can be GC'd.

@@ -108,11 +108,11 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Welcome-screen thumbnails and opening a sample from the welcome screen share the render-worker preview `build` path and can race; the viewport may show the wrong sample until the next rebuild (mitigations: abort sample fetches when the welcome screen is removed; restore the prior built scene body after each thumbnail render in the worker).
 - Push/pull activation: shift-hold on a selected surface (not double-click). `dropToHighlight()` must NOT call `onDeselect` — it overwrites the GPU face-highlight buffers. After cap drag completion, update `node.h`/`node.pos.y` on the stored reference before `dropToHighlight` so subsequent drags don't snap back.
 - Click events on the canvas must be suppressed (`stopImmediatePropagation` in capture phase) while push/pull has any face state, to prevent CameraController's click handler from toggling selection via shift-click.
-- WebGPU: when removing bindings from shader, remove them from the TypeScript bind group as well.
 - All scene SDF evaluation for rendering and export pipelines must stay on the GPU; do not reimplement the scene SDF on the CPU.
 - On startup/refresh, restore only previously open documents; closed documents stay available from the document explorer / closed-document list.
 - Polygon editing UX: double-clicking polygon2d, loft, union, or other cross-selectable symbols selects in the preview; polygon editing opens from a hover-only "Edit Polygon" menu, not right-click; keep a safe-zone AABB between trigger and menu so it stays open while the cursor moves toward it.
 - Monaco: set `occurrencesHighlight: "off"` and `selectionHighlight: false` so double-clicking cross-selectable symbols does not highlight other occurrences.
+- Multi-operand smooth unions (`round`, `soft`, `chamfer`, `columns`, `stairs`, etc.) are not associative when folded left; for three or more operands the evaluator blends the two nearest children at each sample instead of chaining pairwise blends—see `docs/smooth_union_ordering.md` for behavior and implications.
 
 ## Building and Linting
 

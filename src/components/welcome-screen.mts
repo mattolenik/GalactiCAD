@@ -1,5 +1,6 @@
 import { __fg_color, __tone_1, __tone_3, __tone_accent } from "../style/style.mjs"
 import { isFileSystemAccessAvailable } from "../fs/file-picker.mjs"
+import { VERSION } from "../version.mjs"
 
 declare const __SAMPLE_NAMES__: readonly string[]
 const SAMPLE_NAMES = __SAMPLE_NAMES__
@@ -194,6 +195,11 @@ export class WelcomeScreen extends HTMLElement {
                     font-size: 2.25rem;
                 }
 
+                .release-label {
+                    font-size: 0.88rem;
+                    letter-spacing: 0.18em;
+                }
+
                 .samples-scroll,
                 .recent-scroll {
                     overflow: visible;
@@ -214,6 +220,11 @@ export class WelcomeScreen extends HTMLElement {
 
                 h1 {
                     font-size: 1.85rem;
+                }
+
+                .release-label {
+                    font-size: 0.78rem;
+                    letter-spacing: 0.14em;
                 }
 
                 .samples-grid,
@@ -256,8 +267,17 @@ export class WelcomeScreen extends HTMLElement {
                 font-weight: 300;
                 letter-spacing: 0.1em;
                 color: var(${__fg_color});
-                margin: 0 0 0.6em;
+                margin: 0 0 0.28em;
                 text-shadow: 0 0 60px rgba(0, 122, 204, 0.15);
+            }
+
+            .release-label {
+                font-family: FiraCode, ui-monospace, monospace;
+                font-size: 1.05rem;
+                font-weight: 700;
+                letter-spacing: 0.2em;
+                color: color-mix(in srgb, var(${__tone_accent}) 75%, var(${__fg_color}));
+                margin: 0 0 0.85em;
             }
 
             .tagline {
@@ -567,9 +587,14 @@ export class WelcomeScreen extends HTMLElement {
         const h1 = document.createElement("h1")
         h1.textContent = "GalactiCAD"
         brand.appendChild(h1)
+        const releaseLabel = document.createElement("p")
+        releaseLabel.className = "release-label"
+        const versionLabel = VERSION.startsWith("v") ? VERSION : `v${VERSION}`
+        releaseLabel.textContent = `EARLY ALPHA RELEASE ${versionLabel}`
+        brand.appendChild(releaseLabel)
         const tagline = document.createElement("p")
         tagline.className = "tagline"
-        tagline.textContent = "True hybrid code-as-CAD, powered by SDFs and built for FDM 3D printing"
+        tagline.textContent = "True hybrid CAD-as-code, powered by SDFs and built for FDM 3D printing"
         brand.appendChild(tagline)
         this.#mainPanel.appendChild(brand)
 

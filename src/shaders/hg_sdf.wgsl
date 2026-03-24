@@ -14,12 +14,14 @@ const SURF_DIST: f32 = 0.001;
 //  EXTENDED SDF RESULT TYPE
 //////////////////////////////
 
-// SDFResult carries both the distance value and gradient magnitude estimate.
-// - d: The distance value (may not be true Euclidean distance for smooth CSG)
-// - g: Gradient magnitude estimate (1.0 for true SDFs, <1.0 in smooth blend regions)
+// SDFResult carries both the distance value and a gradient-magnitude estimate.
+// - d: The distance value (may not be true Euclidean distance for non-SDF operators)
+// - g: Gradient magnitude estimate of the field itself.
 //
-// The gradient magnitude is used to correct projection steps in MDC:
-// when |∇f| < 1, naive projection by `d` overshoots the surface.
+// IMPORTANT:
+// g is not the same thing as the safe march multiplier used by the fast path.
+// Those are tracked separately in FastSDFResult so the code no longer overloads
+// one number with two meanings.
 struct SDFResult {
     d: f32,
     g: f32,
@@ -95,6 +97,29 @@ fn sdfNegMid(r: SDFResultMid) -> SDFResultMid {
 }
 
 fn selectMid(falseVal: SDFResultMid, trueVal: SDFResultMid, cond: bool) -> SDFResultMid {
+    if (cond) { return trueVal; }
+    return falseVal;
+}
+
+// Fast-path sample used by ray marching / broad sampling.
+// - d: field value
+// - g: gradient-magnitude estimate for the field
+// - safeStepMul: conservative multiplier for marching by d
+struct FastSDFResult {
+    d: f32,
+    g: f32,
+    safeStepMul: f32,
+}
+
+fn sdfFast(d: f32, g: f32, safeStepMul: f32) -> FastSDFResult {
+    return FastSDFResult(d, g, safeStepMul);
+}
+
+fn sdfFastNeg(r: FastSDFResult) -> FastSDFResult {
+    return FastSDFResult(-r.d, r.g, r.safeStepMul);
+}
+
+fn selectFast(falseVal: FastSDFResult, trueVal: FastSDFResult, cond: bool) -> FastSDFResult {
     if (cond) { return trueVal; }
     return falseVal;
 }
@@ -966,74 +991,75 @@ fn fOpTongue(a: f32, b: f32, ra: f32, rb: f32) -> f32 {
 //  Used during ray marching where normals/IDs are not needed.
 ////////////////////////////////////////////////////
 
-// Fast sphere: returns vec2f(distance, gradientMagnitude=1.0)
-fn fSphereFast(p: vec3<f32>, r: f32) -> vec2f {
-    return vec2f(length(p) - r, 1.0);
+// Fast sphere: exact field, exact march step.
+fn fSphereFast(p: vec3<f32>, r: f32) -> FastSDFResult {
+    return sdfFast(length(p) - r, 1.0, 1.0);
 }
 
-// Fast box: returns vec2f(distance, gradientMagnitude=1.0)
-fn fBoxFast(p: vec3<f32>, b: vec3<f32>) -> vec2f {
+// Fast box: exact field, exact march step.
+fn fBoxFast(p: vec3<f32>, b: vec3<f32>) -> FastSDFResult {
     let d = abs(p) - b;
-    return vec2f(length(max(d, vec3<f32>(0.0))) + vmax3(min(d, vec3<f32>(0.0))), 1.0);
+    return sdfFast(length(max(d, vec3<f32>(0.0))) + vmax3(min(d, vec3<f32>(0.0))), 1.0, 1.0);
 }
 
-fn fCylinderFast(p: vec3<f32>, r: f32, height: f32) -> vec2f {
-    return vec2f(fCylinder(p, r, height), 1.0);
+fn fCylinderFast(p: vec3<f32>, r: f32, height: f32) -> FastSDFResult {
+    return sdfFast(fCylinder(p, r, height), 1.0, 1.0);
 }
 
-fn fConeFast(p: vec3<f32>, radius: f32, height: f32) -> vec2f {
-    return vec2f(fCone(p, radius, height), 1.0);
+fn fConeFast(p: vec3<f32>, radius: f32, height: f32) -> FastSDFResult {
+    return sdfFast(fCone(p, radius, height), 1.0, 1.0);
 }
 
-fn fTorusFast(p: vec3<f32>, smallRadius: f32, largeRadius: f32) -> vec2f {
-    return vec2f(fTorus(p, smallRadius, largeRadius), 1.0);
+fn fTorusFast(p: vec3<f32>, smallRadius: f32, largeRadius: f32) -> FastSDFResult {
+    return sdfFast(fTorus(p, smallRadius, largeRadius), 1.0, 1.0);
 }
 
-fn fCapsuleFast(p: vec3<f32>, r: f32, c: f32) -> vec2f {
-    return vec2f(fCapsule(p, r, c), 1.0);
+fn fCapsuleFast(p: vec3<f32>, r: f32, c: f32) -> FastSDFResult {
+    return sdfFast(fCapsule(p, r, c), 1.0, 1.0);
 }
 
-fn fPlaneFast(p: vec3<f32>, n: vec3<f32>, distanceFromOrigin: f32) -> vec2f {
-    return vec2f(fPlane(p, n, distanceFromOrigin), 1.0);
+fn fPlaneFast(p: vec3<f32>, n: vec3<f32>, distanceFromOrigin: f32) -> FastSDFResult {
+    return sdfFast(fPlane(p, n, distanceFromOrigin), 1.0, 1.0);
 }
 
-fn fHexagonCircumcircleFast(p: vec3<f32>, h: vec2<f32>) -> vec2f {
-    return vec2f(fHexagonCircumcircle(p, h), 1.0);
+fn fHexagonCircumcircleFast(p: vec3<f32>, h: vec2<f32>) -> FastSDFResult {
+    return sdfFast(fHexagonCircumcircle(p, h), 1.0, 1.0);
 }
 
-fn fDiscFast(p: vec3<f32>, r: f32) -> vec2f {
-    return vec2f(fDisc(p, r), 1.0);
+fn fDiscFast(p: vec3<f32>, r: f32) -> FastSDFResult {
+    return sdfFast(fDisc(p, r), 1.0, 1.0);
 }
 
-fn fBlobFast(p: vec3<f32>) -> vec2f {
-    return vec2f(fBlob(p), 1.0);
+fn fBlobFast(p: vec3<f32>) -> FastSDFResult {
+    return sdfFast(fBlob(p), 1.0, 1.0);
 }
 
 // Fast hard union: just pick min distance, no tie-breaking or normals
-fn opUnionFast(a: vec2f, b: vec2f) -> vec2f {
-    return select(b, a, a.x < b.x);
+fn opUnionFast(a: FastSDFResult, b: FastSDFResult) -> FastSDFResult {
+    return selectFast(b, a, a.d < b.d);
 }
 
 // Fast hard intersection: just pick max distance
-fn opIntersectionFast(a: vec2f, b: vec2f) -> vec2f {
-    return select(b, a, a.x > b.x);
+fn opIntersectionFast(a: FastSDFResult, b: FastSDFResult) -> FastSDFResult {
+    return selectFast(b, a, a.d > b.d);
 }
 
 // Fast hard difference: intersection with complement
-fn opDifferenceFast(a: vec2f, b: vec2f) -> vec2f {
-    return opIntersectionFast(a, vec2f(-b.x, b.y));
+fn opDifferenceFast(a: FastSDFResult, b: FastSDFResult) -> FastSDFResult {
+    return opIntersectionFast(a, sdfFastNeg(b));
 }
 
 // Fast round union: distance + gradient only, no normal blending.
 // Gradient magnitude in the blend region: the round min formula d = r - |u| has
 // Lipschitz constant sqrt(2) (worst case when operand gradients are aligned), so
 // the safe step multiplier is 1/sqrt(2). This is tighter than the previous 0.5.
-fn fOpUnionRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    let u = max(vec2f(r - a.x, r - b.x), vec2f(0.0));
-    let d = max(r, min(a.x, b.x)) - length(u);
-    let inBlend = a.x < r && b.x < r;
-    let g = select(select(b.y, a.y, a.x < b.x), INVERSESQRT2 * min(a.y, b.y), inBlend);
-    return vec2f(d, g);
+fn fOpUnionRoundFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    let u = max(vec2f(r - a.d, r - b.d), vec2f(0.0));
+    let d = max(r, min(a.d, b.d)) - length(u);
+    let inBlend = a.d < r && b.d < r;
+    let gradMag = select(select(b.g, a.g, a.d < b.d), INVERSESQRT2 * min(a.g, b.g), inBlend);
+    let safeStepMul = select(select(b.safeStepMul, a.safeStepMul, a.d < b.d), INVERSESQRT2 * min(a.safeStepMul, b.safeStepMul), inBlend);
+    return sdfFast(d, gradMag, safeStepMul);
 }
 
 // Fast soft union.
@@ -1041,57 +1067,61 @@ fn fOpUnionRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
 // combination of the operand gradients: ∇d = ∇a·(1-e/2r) + ∇b·(e/2r).
 // This means |∇d| ≤ max(|∇a|, |∇b|) ≤ 1 — it is Lipschitz-1, so g can be the
 // operand gradient (no additional reduction needed).
-fn fOpUnionSoftFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    let e = max(r - abs(a.x - b.x), 0.0);
-    let d = min(a.x, b.x) - e * e * 0.25 / r;
+fn fOpUnionSoftFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    let e = max(r - abs(a.d - b.d), 0.0);
+    let d = min(a.d, b.d) - e * e * 0.25 / r;
     let inBlend = e > 0.0;
-    let g = select(select(b.y, a.y, a.x < b.x), min(a.y, b.y), inBlend);
-    return vec2f(d, g);
+    let gradMag = select(select(b.g, a.g, a.d < b.d), min(a.g, b.g), inBlend);
+    let safeStepMul = select(select(b.safeStepMul, a.safeStepMul, a.d < b.d), min(a.safeStepMul, b.safeStepMul), inBlend);
+    return sdfFast(d, gradMag, safeStepMul);
 }
 
 // Fast round intersection.
 // Same Lipschitz analysis as round union (sqrt(2) worst case).
-fn fOpIntersectionRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    let u = max(vec2f(r + a.x, r + b.x), vec2f(0.0));
-    let d = min(-r, max(a.x, b.x)) + length(u);
-    let inBlend = a.x > -r && b.x > -r;
-    let g = select(select(b.y, a.y, a.x > b.x), INVERSESQRT2 * min(a.y, b.y), inBlend);
-    return vec2f(d, g);
+fn fOpIntersectionRoundFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    let u = max(vec2f(r + a.d, r + b.d), vec2f(0.0));
+    let d = min(-r, max(a.d, b.d)) + length(u);
+    let inBlend = a.d > -r && b.d > -r;
+    let gradMag = select(select(b.g, a.g, a.d > b.d), INVERSESQRT2 * min(a.g, b.g), inBlend);
+    let safeStepMul = select(select(b.safeStepMul, a.safeStepMul, a.d > b.d), INVERSESQRT2 * min(a.safeStepMul, b.safeStepMul), inBlend);
+    return sdfFast(d, gradMag, safeStepMul);
 }
 
 // Fast round difference
-fn fOpDifferenceRoundFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    return fOpIntersectionRoundFast(a, vec2f(-b.x, b.y), r);
+fn fOpDifferenceRoundFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    return fOpIntersectionRoundFast(a, sdfFastNeg(b), r);
 }
 
 // Fast chamfer union.
 // Chamfer gradient is (∇a + ∇b)/√2, with |∇d| ≤ √2 (Lipschitz-√2).
-fn fOpUnionChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    let chamferD = (a.x - r + b.x) * sqrt(0.5);
-    let d = min(min(a.x, b.x), chamferD);
-    let inChamfer = chamferD < a.x && chamferD < b.x;
-    let g = select(select(b.y, a.y, a.x < b.x), INVERSESQRT2 * min(a.y, b.y), inChamfer);
-    return vec2f(d, g);
+fn fOpUnionChamferFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    let chamferD = (a.d - r + b.d) * sqrt(0.5);
+    let d = min(min(a.d, b.d), chamferD);
+    let inChamfer = chamferD < a.d && chamferD < b.d;
+    let gradMag = select(select(b.g, a.g, a.d < b.d), INVERSESQRT2 * min(a.g, b.g), inChamfer);
+    let safeStepMul = select(select(b.safeStepMul, a.safeStepMul, a.d < b.d), INVERSESQRT2 * min(a.safeStepMul, b.safeStepMul), inChamfer);
+    return sdfFast(d, gradMag, safeStepMul);
 }
 
 // Fast chamfer intersection.
-fn fOpIntersectionChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    let chamferD = (a.x + r + b.x) * sqrt(0.5);
-    let d = max(max(a.x, b.x), chamferD);
-    let inChamfer = chamferD > a.x && chamferD > b.x;
-    let g = select(select(b.y, a.y, a.x > b.x), INVERSESQRT2 * min(a.y, b.y), inChamfer);
-    return vec2f(d, g);
+fn fOpIntersectionChamferFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    let chamferD = (a.d + r + b.d) * sqrt(0.5);
+    let d = max(max(a.d, b.d), chamferD);
+    let inChamfer = chamferD > a.d && chamferD > b.d;
+    let gradMag = select(select(b.g, a.g, a.d > b.d), INVERSESQRT2 * min(a.g, b.g), inChamfer);
+    let safeStepMul = select(select(b.safeStepMul, a.safeStepMul, a.d > b.d), INVERSESQRT2 * min(a.safeStepMul, b.safeStepMul), inChamfer);
+    return sdfFast(d, gradMag, safeStepMul);
 }
 
 // Fast chamfer difference
-fn fOpDifferenceChamferFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    return fOpIntersectionChamferFast(a, vec2f(-b.x, b.y), r);
+fn fOpDifferenceChamferFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    return fOpIntersectionChamferFast(a, sdfFastNeg(b), r);
 }
 
 // Fast columns union
-fn fOpUnionColumnsFast(a: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
-    if (a.x < r) && (b.x < r) {
-        var p = vec2f(a.x, b.x);
+fn fOpUnionColumnsFast(a: FastSDFResult, b: FastSDFResult, r: f32, n: f32) -> FastSDFResult {
+    if (a.d < r) && (b.d < r) {
+        var p = vec2f(a.d, b.d);
         let columnradius = r * sqrt(2.0) / ((n - 1.0) * 2.0 + sqrt(2.0));
         let tmp = p + vec2f(p.y, -p.x);
         p = tmp * sqrt(0.5);
@@ -1101,21 +1131,21 @@ fn fOpUnionColumnsFast(a: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
         }
         let py = modF(p.y, columnradius * 2.0);
         let dist = length(vec2f(p.x, py)) - columnradius;
-        let d = min(min(dist, p.x), a.x);
-        return vec2f(min(d, b.x), 1.0);
+        let d = min(min(dist, p.x), a.d);
+        return sdfFast(min(d, b.d), 1.0, 1.0);
     }
-    return select(b, a, a.x < b.x);
+    return selectFast(b, a, a.d < b.d);
 }
 
 // Fast columns difference
 // Soft-clamp: allow column protrusions up to columnradius beyond the hard surface,
 // but prevent unbounded overestimation far from the surface that breaks ray marching.
-fn fOpDifferenceColumnsFast(aIn: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
-    let a = -aIn.x;
-    let hardD = -min(a, b.x);  // standard hard difference = max(aIn.x, -b.x)
-    if (a < r) && (b.x < r) {
+fn fOpDifferenceColumnsFast(aIn: FastSDFResult, b: FastSDFResult, r: f32, n: f32) -> FastSDFResult {
+    let a = -aIn.d;
+    let hardD = -min(a, b.d);  // standard hard difference = max(aIn.d, -b.d)
+    if (a < r) && (b.d < r) {
         let columnradius = r * sqrt(2.0) / ((n - 1.0) * 2.0 + sqrt(2.0));
-        var p = vec2f(a, b.x);
+        var p = vec2f(a, b.d);
         let tmp = p + vec2f(p.y, -p.x);
         p = tmp * sqrt(0.5);
         p.y = p.y + columnradius;
@@ -1125,72 +1155,76 @@ fn fOpDifferenceColumnsFast(aIn: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
         }
         let py = modF(p.y, columnradius * 2.0);
         let res = min(max(-length(vec2f(p.x, py)) + columnradius, p.x), a);
-        let colD = -min(res, b.x);
+        let colD = -min(res, b.d);
         // Bound overshoot to columnradius — prevents massive overestimation far from surface
         // while preserving column geometry near the surface where colD < hardD + columnradius.
-        return vec2f(min(colD, hardD + columnradius), 1.0);
+        return sdfFast(min(colD, hardD + columnradius), 1.0, 1.0);
     }
-    return vec2f(hardD, select(b.y, aIn.y, a < b.x));
+    return sdfFast(hardD, select(b.g, aIn.g, a < b.d), select(b.safeStepMul, aIn.safeStepMul, a < b.d));
 }
 
 // Fast columns intersection
-fn fOpIntersectionColumnsFast(a: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
-    return fOpDifferenceColumnsFast(a, vec2f(-b.x, b.y), r, n);
+fn fOpIntersectionColumnsFast(a: FastSDFResult, b: FastSDFResult, r: f32, n: f32) -> FastSDFResult {
+    return fOpDifferenceColumnsFast(a, sdfFastNeg(b), r, n);
 }
 
 // Fast stairs union
-fn fOpUnionStairsFast(a: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
+fn fOpUnionStairsFast(a: FastSDFResult, b: FastSDFResult, r: f32, n: f32) -> FastSDFResult {
     let s = r / n;
-    let u = b.x - r;
-    let stairD = 0.5 * (u + a.x + abs(modF(u - a.x + s, 2.0 * s) - s));
-    let d = min(min(a.x, b.x), stairD);
-    let inStair = stairD < a.x && stairD < b.x;
-    let g = select(select(b.y, a.y, a.x < b.x), INVERSESQRT2 * min(a.y, b.y), inStair);
-    return vec2f(d, g);
+    let u = b.d - r;
+    let stairD = 0.5 * (u + a.d + abs(modF(u - a.d + s, 2.0 * s) - s));
+    let d = min(min(a.d, b.d), stairD);
+    let inStair = stairD < a.d && stairD < b.d;
+    let gradMag = select(select(b.g, a.g, a.d < b.d), INVERSESQRT2 * min(a.g, b.g), inStair);
+    let safeStepMul = select(select(b.safeStepMul, a.safeStepMul, a.d < b.d), INVERSESQRT2 * min(a.safeStepMul, b.safeStepMul), inStair);
+    return sdfFast(d, gradMag, safeStepMul);
 }
 
 // Fast stairs intersection
-fn fOpIntersectionStairsFast(a: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
-    let result = fOpUnionStairsFast(vec2f(-a.x, a.y), vec2f(-b.x, b.y), r, n);
-    return vec2f(-result.x, result.y);
+fn fOpIntersectionStairsFast(a: FastSDFResult, b: FastSDFResult, r: f32, n: f32) -> FastSDFResult {
+    let result = fOpUnionStairsFast(sdfFastNeg(a), sdfFastNeg(b), r, n);
+    return sdfFast(-result.d, result.g, result.safeStepMul);
 }
 
 // Fast stairs difference
-fn fOpDifferenceStairsFast(a: vec2f, b: vec2f, r: f32, n: f32) -> vec2f {
-    let result = fOpUnionStairsFast(vec2f(-a.x, a.y), b, r, n);
-    return vec2f(-result.x, result.y);
+fn fOpDifferenceStairsFast(a: FastSDFResult, b: FastSDFResult, r: f32, n: f32) -> FastSDFResult {
+    let result = fOpUnionStairsFast(sdfFastNeg(a), b, r, n);
+    return sdfFast(-result.d, result.g, result.safeStepMul);
 }
 
 // Fast pipe (cylindrical hole at intersection)
 // The pipe SDF length(a,b)-r can overestimate 3D distance by up to sqrt(2)
 // when the two input gradients are parallel.  Scale by 1/sqrt(2) to guarantee
 // conservative steps.  No clamp discontinuity, just uniformly smaller steps.
-fn fOpPipeFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    return vec2f((length(vec2f(a.x, b.x)) - r) * INVERSESQRT2, 1.0);
+fn fOpPipeFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    return sdfFast((length(vec2f(a.d, b.d)) - r) * INVERSESQRT2, 1.0, 1.0);
 }
 
 // Fast engrave
-fn fOpEngraveFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    let engraveD = (a.x + r - abs(b.x)) * sqrt(0.5);
-    let d = max(a.x, engraveD);
-    let g = select(a.y, 1.0, engraveD > a.x);
-    return vec2f(d, g);
+fn fOpEngraveFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    let engraveD = (a.d + r - abs(b.d)) * sqrt(0.5);
+    let d = max(a.d, engraveD);
+    let gradMag = select(a.g, 1.0, engraveD > a.d);
+    let safeStepMul = select(a.safeStepMul, 1.0, engraveD > a.d);
+    return sdfFast(d, gradMag, safeStepMul);
 }
 
 // Fast groove
-fn fOpGrooveFast(a: vec2f, b: vec2f, ra: f32, rb: f32) -> vec2f {
-    let grooveD = min(a.x + ra, rb - abs(b.x));
-    let d = max(a.x, grooveD);
-    let g = select(a.y, 1.0, grooveD > a.x);
-    return vec2f(d, g);
+fn fOpGrooveFast(a: FastSDFResult, b: FastSDFResult, ra: f32, rb: f32) -> FastSDFResult {
+    let grooveD = min(a.d + ra, rb - abs(b.d));
+    let d = max(a.d, grooveD);
+    let gradMag = select(a.g, 1.0, grooveD > a.d);
+    let safeStepMul = select(a.safeStepMul, 1.0, grooveD > a.d);
+    return sdfFast(d, gradMag, safeStepMul);
 }
 
 // Fast tongue
-fn fOpTongueFast(a: vec2f, b: vec2f, ra: f32, rb: f32) -> vec2f {
-    let tongueD = max(a.x - ra, abs(b.x) - rb);
-    let d = min(a.x, tongueD);
-    let g = select(a.y, 1.0, tongueD < a.x);
-    return vec2f(d, g);
+fn fOpTongueFast(a: FastSDFResult, b: FastSDFResult, ra: f32, rb: f32) -> FastSDFResult {
+    let tongueD = max(a.d - ra, abs(b.d) - rb);
+    let d = min(a.d, tongueD);
+    let gradMag = select(a.g, 1.0, tongueD < a.d);
+    let safeStepMul = select(a.safeStepMul, 1.0, tongueD < a.d);
+    return sdfFast(d, gradMag, safeStepMul);
 }
 
 ////////////////////////////////////////////////////
@@ -1434,8 +1468,8 @@ fn sdfRotateNormalMid(r: SDFResultMid, m: mat3x3f) -> SDFResultMid {
 ////////////////////////////////////////////////////
 
 // Shell Fast: hollow out a shape to a thin wall of given thickness
-fn sdfShellFast(a: vec2f, thickness: f32) -> vec2f {
-    return vec2f(abs(a.x) - thickness, a.y);
+fn sdfShellFast(a: FastSDFResult, thickness: f32) -> FastSDFResult {
+    return sdfFast(abs(a.d) - thickness, a.g, a.safeStepMul);
 }
 
 // Shell Ex: flip normal when evaluating the interior side
@@ -1449,8 +1483,8 @@ fn sdfShellEx(a: SDFResult, thickness: f32) -> SDFResult {
 }
 
 // Offset Fast: grow (positive) or shrink (negative) a shape uniformly
-fn sdfOffsetFast(a: vec2f, amount: f32) -> vec2f {
-    return vec2f(a.x - amount, a.y);
+fn sdfOffsetFast(a: FastSDFResult, amount: f32) -> FastSDFResult {
+    return sdfFast(a.d - amount, a.g, a.safeStepMul);
 }
 
 // Offset Ex: shift distance, normals unchanged
@@ -1497,10 +1531,10 @@ fn twistPoint(p: vec3f, rate: f32) -> vec3f {
 // Twist Fast: correct gradient overestimation from non-uniform domain distortion.
 // The twist stretches space by sqrt(1 + (rate * rho)^2) where rho = length(p.xz).
 // Divide distance by this factor to keep ray marching conservative.
-fn sdfTwistFast(r: vec2f, p: vec3f, rate: f32) -> vec2f {
+fn sdfTwistFast(r: FastSDFResult, p: vec3f, rate: f32) -> FastSDFResult {
     let rho = length(p.xz);
     let stretch = sqrt(1.0 + rate * rate * rho * rho);
-    return vec2f(r.x / stretch, r.y);
+    return sdfFast(r.d / stretch, r.g * stretch, r.safeStepMul);
 }
 
 // Twist Ex: untwist the normal back to world space at the original point p.
@@ -1510,7 +1544,10 @@ fn sdfTwistNormal(r: SDFResult, p: vec3f, rate: f32) -> SDFResult {
     let a = -(p.y * rate);
     let c = cos(a);
     let s = sin(a);
+    let rho = length(p.xz);
+    let stretch = sqrt(1.0 + rate * rate * rho * rho);
     out.n = safeNormalize(vec3f(c * out.n.x + s * out.n.z, out.n.y, -s * out.n.x + c * out.n.z), out.n);
+    out.g = out.g * stretch;
     return out;
 }
 
@@ -1520,7 +1557,10 @@ fn sdfTwistNormalMid(r: SDFResultMid, p: vec3f, rate: f32) -> SDFResultMid {
     let a = -(p.y * rate);
     let c = cos(a);
     let s = sin(a);
+    let rho = length(p.xz);
+    let stretch = sqrt(1.0 + rate * rate * rho * rho);
     out.n = safeNormalize(vec3f(c * out.n.x + s * out.n.z, out.n.y, -s * out.n.x + c * out.n.z), out.n);
+    out.g = out.g * stretch;
     return out;
 }
 
@@ -1534,9 +1574,9 @@ fn bendPoint(p: vec3f, amount: f32) -> vec3f {
 
 // Bend Fast: correct gradient overestimation.
 // Same principle as twist but in XY plane: stretch = sqrt(1 + (amount * |p.y|)^2).
-fn sdfBendFast(r: vec2f, p: vec3f, amount: f32) -> vec2f {
+fn sdfBendFast(r: FastSDFResult, p: vec3f, amount: f32) -> FastSDFResult {
     let stretch = sqrt(1.0 + amount * amount * p.y * p.y);
-    return vec2f(r.x / stretch, r.y);
+    return sdfFast(r.d / stretch, r.g * stretch, r.safeStepMul);
 }
 
 // Bend Ex: unbend the normal back to world space at the original point p.
@@ -1545,7 +1585,9 @@ fn sdfBendNormal(r: SDFResult, p: vec3f, amount: f32) -> SDFResult {
     let a = -(amount * p.x);
     let c = cos(a);
     let s = sin(a);
+    let stretch = sqrt(1.0 + amount * amount * p.y * p.y);
     out.n = safeNormalize(vec3f(c * out.n.x - s * out.n.y, s * out.n.x + c * out.n.y, out.n.z), out.n);
+    out.g = out.g * stretch;
     return out;
 }
 
@@ -1555,7 +1597,9 @@ fn sdfBendNormalMid(r: SDFResultMid, p: vec3f, amount: f32) -> SDFResultMid {
     let a = -(amount * p.x);
     let c = cos(a);
     let s = sin(a);
+    let stretch = sqrt(1.0 + amount * amount * p.y * p.y);
     out.n = safeNormalize(vec3f(c * out.n.x - s * out.n.y, s * out.n.x + c * out.n.y, out.n.z), out.n);
+    out.g = out.g * stretch;
     return out;
 }
 
@@ -1569,13 +1613,13 @@ fn taperPoint(p: vec3f, ratio: f32, height: f32) -> vec3f {
 // Taper Fast: correct gradient overestimation from non-uniform scaling.
 // The taper shrinks/grows XZ by scale s.  Gradient magnitude scales as ~1/s.
 // When s < 1 (narrowing), gradient > 1, distance overestimates: divide by 1/s.
-fn sdfTaperFast(r: vec2f, p: vec3f, ratio: f32, height: f32) -> vec2f {
+fn sdfTaperFast(r: FastSDFResult, p: vec3f, ratio: f32, height: f32) -> FastSDFResult {
     let t = clamp(p.y / height, 0.0, 1.0);
     let s = 1.0 + (ratio - 1.0) * t;
     // Only correct when s < 1 (narrowing taper overestimates).
     // When s >= 1 (widening), the SDF is conservative or exact.
     let correction = min(s, 1.0);
-    return vec2f(r.x * correction, r.y);
+    return sdfFast(r.d * correction, r.g / correction, r.safeStepMul);
 }
 
 // Taper Ex: correct the normal for the non-uniform scaling.
@@ -1585,8 +1629,10 @@ fn sdfTaperNormal(r: SDFResult, p: vec3f, ratio: f32, height: f32) -> SDFResult 
     var out = r;
     let t = clamp(p.y / height, 0.0, 1.0);
     let s = 1.0 + (ratio - 1.0) * t;
+    let correction = min(s, 1.0);
     // Normal in tapered space has XZ scaled by 1/s; undo this
     out.n = safeNormalize(vec3f(out.n.x / s, out.n.y, out.n.z / s), out.n);
+    out.g = out.g / correction;
     return out;
 }
 
@@ -1595,7 +1641,9 @@ fn sdfTaperNormalMid(r: SDFResultMid, p: vec3f, ratio: f32, height: f32) -> SDFR
     var out = r;
     let t = clamp(p.y / height, 0.0, 1.0);
     let s = 1.0 + (ratio - 1.0) * t;
+    let correction = min(s, 1.0);
     out.n = safeNormalize(vec3f(out.n.x / s, out.n.y, out.n.z / s), out.n);
+    out.g = out.g / correction;
     return out;
 }
 
@@ -1604,8 +1652,12 @@ fn sdfTaperNormalMid(r: SDFResultMid, p: vec3f, ratio: f32, height: f32) -> SDFR
 ////////////////////////////////////////////////////
 
 // Morph Fast: interpolate between two SDFs
-fn sdfMorphFast(a: vec2f, b: vec2f, t: f32) -> vec2f {
-    return vec2f(a.x * (1.0 - t) + b.x * t, a.y * (1.0 - t) + b.y * t);
+fn sdfMorphFast(a: FastSDFResult, b: FastSDFResult, t: f32) -> FastSDFResult {
+    return sdfFast(
+        a.d * (1.0 - t) + b.d * t,
+        a.g * (1.0 - t) + b.g * t,
+        a.safeStepMul * (1.0 - t) + b.safeStepMul * t,
+    );
 }
 
 // Morph Ex: interpolate distance, blend normals, use id/id2 for color
@@ -1622,10 +1674,13 @@ fn sdfMorphEx(a: SDFResult, b: SDFResult, t: f32) -> SDFResult {
 
 // Seam Fast: union of both shapes plus a pipe tube at their intersection (weld bead).
 // The pipe component uses INVERSESQRT2 to prevent overestimation.
-fn sdfSeamFast(a: vec2f, b: vec2f, r: f32) -> vec2f {
-    let unionD = min(a.x, b.x);
-    let pipeD = (length(vec2f(a.x, b.x)) - r) * INVERSESQRT2;
-    return vec2f(min(unionD, pipeD), select(1.0, 0.5, pipeD < unionD));
+fn sdfSeamFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    let unionD = min(a.d, b.d);
+    let pipeD = (length(vec2f(a.d, b.d)) - r) * INVERSESQRT2;
+    let usePipe = pipeD < unionD;
+    let gradMag = select(select(b.g, a.g, a.d < b.d), 0.5, usePipe);
+    let safeStepMul = select(select(b.safeStepMul, a.safeStepMul, a.d < b.d), 0.5, usePipe);
+    return sdfFast(min(unionD, pipeD), gradMag, safeStepMul);
 }
 
 // Seam Ex: union + pipe tube with proper normals

@@ -236,10 +236,10 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
 
         if (!hasTwist) {
             return `
-fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     let d2d = ${childFunc}(p.xz);
     let dCap = abs(p.y - nodeParams[${this.id}].y) - nodeParams[${this.id}].x;
-    return vec2f(max(d2d, dCap), 1.0);
+    return sdfFast(max(d2d, dCap), 1.0, 1.0);
 }
 `
         }
@@ -260,8 +260,8 @@ fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
     return max(d2d, dCap);
 }
 
-fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
-    return vec2f(${this.wgslFieldFuncName}(p), 0.8);
+fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
+    return sdfFast(${this.wgslFieldFuncName}(p), 0.8, 0.8);
 }
 `
     }

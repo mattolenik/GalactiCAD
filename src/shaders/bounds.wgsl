@@ -64,16 +64,15 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
 //:) insert sceneAuxFast
 //:) insert sceneAux
 
-// Fast version for distance-only evaluations - only returns vec2f(distance, gradientMagnitude).
-// No tie-breaking, no normals, no normalize() calls.
-fn sceneSDF_fast(p: vec3f) -> vec2f {
-    return vec2f(0.0, 1.0); //:) insert sceneSDF_fast
+// Fast version for distance-only evaluations.
+fn sceneSDF_fast(p: vec3f) -> FastSDFResult {
+    return sdfFast(0.0, 1.0, 1.0); //:) insert sceneSDF_fast
 }
 
 fn isInside(p: vec3f) -> bool {
     // Reference selectedObjectIds to prevent optimization (unused but required for binding)
     let dummy = selectedObjectIds[0];
-    return sceneSDF_fast(p).x <= uniforms.searchMaxIso.w;
+    return sceneSDF_fast(p).d <= uniforms.searchMaxIso.w;
 }
 
 fn linearToGrid(i: u32, dims: vec3u) -> vec3u {

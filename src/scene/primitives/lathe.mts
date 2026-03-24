@@ -90,9 +90,9 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compileAuxFast(): string {
         const childFunc = this.child.wgslFuncName
         return `
-fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
+fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     let q = vec2f(length(p.xz), p.y);
-    return vec2f(${childFunc}(q), 1.0);
+    return sdfFast(${childFunc}(q), 1.0, 1.0);
 }
 `
     }

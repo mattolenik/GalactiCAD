@@ -91,7 +91,7 @@ export class Union extends Node {
     private _resultInit(kind: UnionVariant): string {
         switch (kind) {
             case "fast":
-                return "vec2f(1e10, 1.0)"
+                return "sdfFast(1e10, 1.0, 1.0)"
             case "mid":
                 return "sdfRMid(1e10, 1.0, vec3f(0.0, 0.0, 1.0))"
             default:
@@ -100,7 +100,7 @@ export class Union extends Node {
     }
 
     private _distField(kind: UnionVariant): string {
-        return kind === "fast" ? "x" : "d"
+        return "d"
     }
 
     private _blendExpr(kind: UnionVariant, left: string, right: string): string {

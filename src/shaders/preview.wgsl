@@ -466,10 +466,11 @@ fn sceneSDF(p: vec3f) -> SDFResult {
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
-// Fast version for ray marching - only returns vec2f(distance, gradientMagnitude).
-// No tie-breaking, no normals, no normalize() calls.
-fn sceneSDF_fast(p: vec3f) -> vec2f {
-    return vec2f(0.0, 1.0); //:) insert sceneSDF_fast
+// Fast version for ray marching.
+// Returns field value, gradient-magnitude estimate, and a separate conservative
+// march-step multiplier.
+fn sceneSDF_fast(p: vec3f) -> FastSDFResult {
+    return sdfFast(0.0, 1.0, 1.0); //:) insert sceneSDF_fast
 }
 
 // Narrow the ray parameter so the full sceneSDF sample is not stuck at the first
@@ -479,7 +480,7 @@ fn refineRayHit(origin: vec3f, dir: vec3f, tLo: f32, tHi: f32) -> f32 {
     var hi = tHi;
     for (var r: i32 = 0; r < HIT_REFINE_STEPS; r = r + 1) {
         let mid = 0.5 * (lo + hi);
-        let dm = sceneSDF_fast(origin + mid * dir).x;
+        let dm = sceneSDF_fast(origin + mid * dir).d;
         if (dm < SURF_DIST) {
             hi = mid;
         } else {
@@ -497,11 +498,9 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
     var tLastOutside: f32 = -1.0;
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
-        let sr = sceneSDF_fast(p);  // Fast: only (d, g), no normals/IDs
-        // Correct for gradient magnitude in smooth blend regions:
-        // when |nabla f| < 1 (smooth CSG), stepping by raw d overshoots.
-        let step = sr.x * min(sr.y, 1.0);
-        if (sr.x < SURF_DIST) {
+        let sr = sceneSDF_fast(p);  // Fast: distance + gradMag + safeStepMul
+        let step = sr.d * sr.safeStepMul;
+        if (sr.d < SURF_DIST) {
             let tLo = select(0.0, tLastOutside, tLastOutside >= 0.0);
             let tHit = refineRayHit(origin, dir, tLo, t);
             return toHitData(tHit, sceneSDF(origin + tHit * dir));
@@ -521,8 +520,8 @@ fn refineHitAlongRay(origin: vec3f, dir: vec3f, t0: f32) -> f32 {
     var t = t0;
     for (var k: i32 = 0; k < 6; k = k + 1) {
         let sr = sceneSDF_fast(origin + t * dir);
-        t = t + sr.x * min(sr.y, 1.0);
-        if (abs(sr.x) < SURF_DIST * 0.5) {
+        t = t + sr.d * sr.safeStepMul;
+        if (abs(sr.d) < SURF_DIST * 0.5) {
             break;
         }
     }
@@ -536,7 +535,7 @@ fn bisectSurfaceCrossing(origin: vec3f, dir: vec3f, tInside: f32, tOutside: f32)
     var hi = tOutside;
     for (var k: i32 = 0; k < 6; k = k + 1) {
         let mid = 0.5 * (lo + hi);
-        let d = sceneSDF_fast(origin + mid * dir).x;
+        let d = sceneSDF_fast(origin + mid * dir).d;
         if (d < 0.0) {
             lo = mid;
         } else {
@@ -588,7 +587,7 @@ fn sdfAmbientOcclusion(worldPos: vec3f, n: vec3f) -> f32 {
     var sum = 0.0;
     for (var i: i32 = 1; i <= nSteps; i = i + 1) {
         let h = radius * f32(i) / f32(nSteps);
-        let d = sceneSDF_fast(p0 + n * h).x;
+        let d = sceneSDF_fast(p0 + n * h).d;
         sum = sum + clamp((h - d) / h, 0.0, 1.0);
     }
     let occ = sum / f32(nSteps);
@@ -619,18 +618,15 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
 
     for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
         let p = origin + t * dir;
-        let sr = sceneSDF_fast(p);  // Fast: only (d, g)
-
-        // We're inside, so distance is negative. Use the same gradient-aware
-        // correction as the front march so smooth blends do not overshoot.
-        let step = max(abs(sr.x) * min(sr.y, 1.0), eps);
+        let sr = sceneSDF_fast(p);  // Fast: distance + gradMag + safeStepMul
+        let step = max(abs(sr.d) * sr.safeStepMul, eps);
 
         // Found an exit surface (going from inside to outside)
-        if (sr.x > SURF_DIST) {
+        if (sr.d > SURF_DIST) {
             let tExit = bisectSurfaceCrossing(origin, dir, tInside, t);
             return toHitData(tExit, sceneSDF(origin + tExit * dir));
         }
-        if (sr.x >= 0.0) {
+        if (sr.d >= 0.0) {
             return toHitData(t, sceneSDF(origin + t * dir));
         }
 

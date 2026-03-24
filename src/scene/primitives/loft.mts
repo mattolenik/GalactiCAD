@@ -157,8 +157,8 @@ ${fieldBody}
     return max(d_profile, dCap);
 }
 
-fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
-    return vec2f(${this.wgslFieldFuncName}(p), 0.8);
+fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
+    return sdfFast(${this.wgslFieldFuncName}(p), 0.8, 0.8);
 }
 `
     }

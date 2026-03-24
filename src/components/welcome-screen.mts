@@ -589,8 +589,7 @@ export class WelcomeScreen extends HTMLElement {
         brand.appendChild(h1)
         const releaseLabel = document.createElement("p")
         releaseLabel.className = "release-label"
-        const versionLabel = VERSION.startsWith("v") ? VERSION : `v${VERSION}`
-        releaseLabel.textContent = `EARLY ALPHA RELEASE ${versionLabel}`
+        releaseLabel.textContent = `EARLY ALPHA RELEASE ${VERSION}`
         brand.appendChild(releaseLabel)
         const tagline = document.createElement("p")
         tagline.className = "tagline"

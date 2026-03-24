@@ -84,7 +84,7 @@ export interface FluentMethodLocation {
  * surgically replaced after a drag operation.
  */
 export interface ExtrudeLoftCallInfo {
-    functionName: "extrude" | "loft"
+    functionName: "extrude" | "loft" | "threadedRod"
     /** Offset in source of the `h:` value expression (start, end). */
     hValueStart: number
     hValueEnd: number
@@ -1115,6 +1115,84 @@ export class SourceParser {
             if (!best || size < rangeSize(best.location)) best = call
         }
         return best
+    }
+
+    findThreadedRodAtPosition(src: string, line: number, column: number, sourceFile?: ts.SourceFile): ExtrudeLoftCallInfo | null {
+        const calls: ExtrudeLoftCallInfo[] = []
+        const sf = sourceFile && sourceFile.getFullText() === wrapSource(src) ? sourceFile : parseSource(src)
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node)) {
+                let name: string | null = null
+                if (ts.isIdentifier(node.expression)) {
+                    name = node.expression.text
+                } else if (ts.isPropertyAccessExpression(node.expression)) {
+                    const fluent = this.#getFluentChainInfo(node)
+                    if (fluent && fluent.operator === "threadedRod") {
+                        name = fluent.operator
+                    }
+                }
+                if (name === "threadedRod") {
+                    const info = this.extractThreadedRodInfo(node, sf)
+                    if (info) calls.push(info)
+                }
+            }
+            ts.forEachChild(node, visit)
+        }
+        visit(sf)
+        for (const call of calls) {
+            if (call.location.startLine === line && call.location.startColumn === column) {
+                return call
+            }
+        }
+        if (calls.length === 1) return calls[0]
+        return this.#findInnermostExtrudeLoftAtPosition(calls, line, column)
+    }
+
+    private extractThreadedRodInfo(callNode: ts.CallExpression, sourceFile: ts.SourceFile): ExtrudeLoftCallInfo | null {
+        if (!ts.isPropertyAccessExpression(callNode.expression)) return null
+
+        let hValueStart: number | null = null
+        let hValueEnd: number | null = null
+        let posArgStart: number | null = null
+        let posArgEnd: number | null = null
+
+        const chain = this.#collectFluentChain(callNode)
+        for (const { method, args } of chain) {
+            if (method === "height" && args.length >= 1) {
+                hValueStart = args[0].getStart() - WRAP_PREFIX_CHARS
+                hValueEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
+            } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                posArgStart = args[0].getStart() - WRAP_PREFIX_CHARS
+                posArgEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
+            }
+        }
+        if (hValueStart === null || hValueEnd === null) return null
+
+        const fluent = this.#getFluentChainInfo(callNode)
+        if (!fluent) return null
+
+        const insertPosOffset = fluent.rootIdentifier.getEnd() - WRAP_PREFIX_CHARS + 1
+        const startPos = fluent.rootIdentifier.getStart()
+        const endPos = callNode.getEnd()
+
+        const loc = tsPosToUser(sourceFile, startPos)
+        const endLoc = tsPosToUser(sourceFile, endPos)
+
+        return {
+            functionName: "threadedRod",
+            hValueStart,
+            hValueEnd,
+            posArgStart,
+            posArgEnd,
+            insertPosOffset,
+            location: {
+                startLine: loc.line,
+                startColumn: loc.column,
+                endLine: endLoc.line,
+                endColumn: endLoc.column,
+                functionName: "threadedRod",
+            },
+        }
     }
 
     private extractExtrudeLoftInfo(

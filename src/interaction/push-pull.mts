@@ -1,5 +1,5 @@
 import { Vec2f, Vec3f, vec2, vec3 } from "../vecmat/vector.mjs"
-import { Box, Cone, Cylinder, Extrude, Loft } from "../scene/scene.mjs"
+import { Box, Cone, Cylinder, Extrude, Loft, ThreadedRod } from "../scene/scene.mjs"
 
 /** Reserved object IDs for face-level highlighting via the existing outline system. */
 const FACE_HIGHLIGHT_ID = 1023      // Side/edge face
@@ -38,7 +38,7 @@ interface FaceState {
 }
 
 interface CapState {
-    node: Extrude | Loft
+    node: Extrude | Loft | ThreadedRod
     isTop: boolean
     originalH: number
     originalPosY: number
@@ -52,7 +52,7 @@ export class PushPullController {
     #face: FaceState | null = null
     #cap: CapState | null = null
     /** Cap surface highlight only (single-click) — visual selection without push/pull activation. */
-    #capHighlightOnly: { node: Extrude | Loft; isTop: boolean } | null = null
+    #capHighlightOnly: { node: Extrude | Loft | ThreadedRod; isTop: boolean } | null = null
     /** Side face highlight only (single-click) — visual selection without push/pull activation. */
     #sideHighlightOnly: { extrude: Extrude; faceIndex: number } | null = null
     /** Primitive face highlight only (Box, Cylinder, Cone). */
@@ -244,7 +244,7 @@ export class PushPullController {
     }
 
     /** Highlight a cap for surface selection only (single-click). Does not activate push/pull. */
-    highlightCapFace(node: Extrude | Loft, isTop: boolean): void {
+    highlightCapFace(node: Extrude | Loft | ThreadedRod, isTop: boolean): void {
         this.#capHighlightOnly = { node, isTop }
         this.#sideHighlightOnly = null
         this.#primitiveHighlightOnly = null
@@ -257,7 +257,7 @@ export class PushPullController {
     }
 
     /** Select a cap face (top or bottom) of an Extrude or Loft for push/pull. */
-    selectCapFace(node: Extrude | Loft, isTop: boolean): void {
+    selectCapFace(node: Extrude | Loft | ThreadedRod, isTop: boolean): void {
         this.#face = null
         this.#capHighlightOnly = null
         this.#sideHighlightOnly = null

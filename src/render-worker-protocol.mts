@@ -39,6 +39,9 @@ export interface SerializedNode {
     planeOffset?: number
     vertices?: [number, number][]
     twistDegrees?: number
+    /** ThreadedRod: axial pitch and sinusoidal amplitude (scene fields). */
+    turnPitch?: number
+    threadAmp?: number
     /** Polygon2D buffer offset in the shared vertex buffer (bytes / 8). */
     bufferOffset?: number
     /** True if this is a virtual cap node (Extrude top/bottom). */

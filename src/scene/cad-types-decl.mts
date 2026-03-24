@@ -101,6 +101,19 @@ declare class Torus extends Node {
     shift(v: Vec3): Torus;
 }
 
+/** Y-axis rod with helical sinusoidal thread profile. threadedRod.radius(r).height(h).pitch(p).depth(d).shift(v) */
+declare class ThreadedRod extends Node {
+    pos: Vec3f;
+    r: number;
+    h: number;
+    turnPitch: number;
+    threadAmp: number;
+    height(h: number): ThreadedRod;
+    pitch(p: number): ThreadedRod;
+    depth(d: number): ThreadedRod;
+    shift(v: Vec3): ThreadedRod;
+}
+
 /** A capsule. capsule.radius(r).cylinderLength(c).shift(v) */
 declare class Capsule extends Node {
     pos: Vec3f;
@@ -354,6 +367,11 @@ declare const cone: { radius(r: number): Cone };
  * Torus lying in the XZ plane. torus.smallRadius(sr).largeRadius(lr).shift(v)
  */
 declare const torus: { smallRadius(sr: number): Torus; largeRadius(lr: number): Torus };
+
+/**
+ * Threaded rod (sinusoidal helical radius). threadedRod.radius(r).height(h).pitch(axialPeriod).depth(amplitude).shift(v)
+ */
+declare const threadedRod: { radius(r: number): ThreadedRod };
 
 /**
  * Capsule. capsule.radius(r).cylinderLength(c).shift(v)

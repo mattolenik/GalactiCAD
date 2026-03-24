@@ -268,6 +268,30 @@ fn fCylinderEx(p: vec3<f32>, r: f32, height: f32, id: u32) -> SDFResult {
     return sdfTrue(d, id, n);
 }
 
+// Y-axis rod; radius r + depth*sin(TAU*y/pitch - atan2(z,x)) (helical sinusoidal thread profile).
+// Not an exact Euclidean SDF for large depth; fine for modest depth vs. r.
+fn fThreadedRodEx(p: vec3<f32>, r: f32, height: f32, pitch: f32, depth: f32, id: u32) -> SDFResult {
+    let rho = length(p.xz);
+    let k = TAU / max(pitch, 1e-6);
+    let theta = atan2(p.z, p.x);
+    let phase = k * p.y - theta;
+    let s = sin(phase);
+    let c = cos(phase);
+    let mod_r = r + depth * s;
+    let dRadial = rho - mod_r;
+    let dCap = abs(p.y) - height;
+    let d = max(dRadial, dCap);
+    let onBarrel = dRadial > dCap;
+    let invRho2 = 1.0 / max(rho * rho, 1e-12);
+    let gx = p.x / max(rho, 1e-6) - depth * c * p.z * invRho2;
+    let gy = -depth * c * k;
+    let gz = p.z / max(rho, 1e-6) + depth * c * p.x * invRho2;
+    let nBarrel = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
+    let nCap = vec3f(0.0, sgn(p.y), 0.0);
+    let n = select(nCap, nBarrel, onBarrel);
+    return sdfTrue(d, id, n);
+}
+
 fn fConeEx(p: vec3<f32>, radius: f32, height: f32, id: u32) -> SDFResult {
     let lenXZ = length(p.xz);
     let q = vec2f(lenXZ, p.y);
@@ -429,6 +453,28 @@ fn fCylinderMid(p: vec3<f32>, r: f32, height: f32) -> SDFResultMid {
     return sdfRMid(d, 1.0, n);
 }
 
+fn fThreadedRodMid(p: vec3<f32>, r: f32, height: f32, pitch: f32, depth: f32) -> SDFResultMid {
+    let rho = length(p.xz);
+    let k = TAU / max(pitch, 1e-6);
+    let theta = atan2(p.z, p.x);
+    let phase = k * p.y - theta;
+    let s = sin(phase);
+    let c = cos(phase);
+    let mod_r = r + depth * s;
+    let dRadial = rho - mod_r;
+    let dCap = abs(p.y) - height;
+    let d = max(dRadial, dCap);
+    let onBarrel = dRadial > dCap;
+    let invRho2 = 1.0 / max(rho * rho, 1e-12);
+    let gx = p.x / max(rho, 1e-6) - depth * c * p.z * invRho2;
+    let gy = -depth * c * k;
+    let gz = p.z / max(rho, 1e-6) + depth * c * p.x * invRho2;
+    let nBarrel = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
+    let nCap = vec3f(0.0, sgn(p.y), 0.0);
+    let n = select(nCap, nBarrel, onBarrel);
+    return sdfRMid(d, 1.0, n);
+}
+
 fn fConeMid(p: vec3<f32>, radius: f32, height: f32) -> SDFResultMid {
     let lenXZ = length(p.xz);
     let q = vec2f(lenXZ, p.y);
@@ -576,6 +622,14 @@ fn fBlob(pIn: vec3<f32>) -> f32 {
 fn fCylinder(p: vec3<f32>, r: f32, height: f32) -> f32 {
     let d = max(length(p.xz) - r, abs(p.y) - height);
     return d;
+}
+
+fn fThreadedRod(p: vec3<f32>, r: f32, height: f32, pitch: f32, depth: f32) -> f32 {
+    let rho = length(p.xz);
+    let k = TAU / max(pitch, 1e-6);
+    let phase = k * p.y - atan2(p.z, p.x);
+    let mod_r = r + depth * sin(phase);
+    return max(rho - mod_r, abs(p.y) - height);
 }
 
 // Capsule with vertical round caps
@@ -979,6 +1033,10 @@ fn fBoxFast(p: vec3<f32>, b: vec3<f32>) -> vec2f {
 
 fn fCylinderFast(p: vec3<f32>, r: f32, height: f32) -> vec2f {
     return vec2f(fCylinder(p, r, height), 1.0);
+}
+
+fn fThreadedRodFast(p: vec3<f32>, r: f32, height: f32, pitch: f32, depth: f32) -> vec2f {
+    return vec2f(fThreadedRod(p, r, height, pitch, depth), 1.0);
 }
 
 fn fConeFast(p: vec3<f32>, radius: f32, height: f32) -> vec2f {

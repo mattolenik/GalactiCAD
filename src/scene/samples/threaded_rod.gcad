@@ -1,0 +1,28 @@
+// Threaded rod (sinusoidal helical profile)
+// Y-axis shank; radius oscillates as r + depth*sin(TAU*y/pitch - atan2(z,x))
+
+// Coarse thread — easy to see the helix in preview
+let coarse = threadedRod
+  .radius(1.2)
+  .height(5)
+  .pitch(0.55)
+  .depth(0.1)
+  .shift([0, 5, 0])
+
+// Finer pitch, smaller amplitude
+let fine = threadedRod
+  .radius(0.85)
+  .height(3.5)
+  .pitch(0.28)
+  .depth(0.055)
+  .shift([9, 3.5, 0])
+
+// Short stub with a gentle wave
+let stub = threadedRod
+  .radius(1.5)
+  .height(1.8)
+  .pitch(0.4)
+  .depth(0.12)
+  .shift([-10, 1.8, 0])
+
+return union(coarse, fine, stub)

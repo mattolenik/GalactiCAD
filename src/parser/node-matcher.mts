@@ -65,6 +65,8 @@ interface NodeLikeMatch {
     h?: number
     sr?: number
     lr?: number
+    turnPitch?: number
+    threadAmp?: number
     c?: number
     normal?: { x: number; y: number; z: number }
     dist?: number
@@ -138,6 +140,16 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.sr !== undefined && !approxEqualOrUndefined(node.sr, call.sr)) return false
         if (call.lr !== undefined && !approxEqualOrUndefined(node.lr, call.lr)) return false
+        return true
+    }
+
+    if (shapeType === "threadedRod") {
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
+        if (call.r === undefined || !approxEqualOrUndefined(node.r, call.r)) return false
+        if (call.h !== undefined && !approxEqualOrUndefined(node.h, call.h)) return false
+        if (call.pitch !== undefined && !approxEqualOrUndefined(node.turnPitch, call.pitch)) return false
+        if (call.depth !== undefined && !approxEqualOrUndefined(node.threadAmp, call.depth)) return false
         return true
     }
 

@@ -39,6 +39,8 @@ export interface ParsedShapeCall {
     h?: number        // Half-height for cylinder/hexprism, full height for cone
     sr?: number       // Small radius (tube) for torus
     lr?: number       // Large radius (ring) for torus
+    pitch?: number    // Axial distance per 360° for threadedRod
+    depth?: number    // Sinusoidal radial amplitude for threadedRod
     c?: number        // Center half-height for capsule
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
@@ -214,7 +216,7 @@ export function findReturnStatementLine(src: string): number | null {
 /**
  * Shape functions we care about for source location tracking
  */
-const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
+const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threadedRod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
 const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe"])
 const MODIFIER_NAMES = new Set(["rotate", "shell", "offset", "elongate", "twist", "bend", "taper"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
@@ -540,6 +542,8 @@ export class SourceParser {
             this.parsePosRadiusHeightFluentArgs(callNode, parsedCall)
         } else if (funcName === "torus") {
             this.parseTorusFluentArgs(callNode, parsedCall)
+        } else if (funcName === "threadedRod") {
+            this.parseThreadedRodFluentArgs(callNode, parsedCall)
         } else if (funcName === "capsule") {
             this.parseCapsuleFluentArgs(callNode, parsedCall)
         } else if (funcName === "plane") {
@@ -757,6 +761,32 @@ export class SourceParser {
             }
         } catch (err) {
             console.debug(`[SourceParser] Could not parse torus fluent args:`, err)
+        }
+    }
+
+    private parseThreadedRodFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "radius" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.r = v
+                } else if (method === "height" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.h = v
+                } else if (method === "pitch" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.pitch = v
+                } else if (method === "depth" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.depth = v
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse threadedRod fluent args:`, err)
         }
     }
 

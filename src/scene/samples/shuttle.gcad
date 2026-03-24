@@ -20,7 +20,7 @@ let noseCone = rotate([0, 0, -90], cone.radius(6).height(12).shift([0, 30, 0.5])
 let noseFair = union(fuseRaw, noseCone).round(4)
 
 // Flatten the belly for the heat shield
-let bellyPlane = plane.withNormal([0, 0, 1]).shift([0, 0, -4])
+let bellyPlane = plane.normal([0, 0, 1]).shift([0, 0, -4])
 let fuselage = subtract(noseFair, bellyPlane).round(0.3)
 
 // ═══ CREW CABIN / FLIGHT DECK ═══

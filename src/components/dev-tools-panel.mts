@@ -230,6 +230,7 @@ export class DevToolsPanel extends HTMLElement {
         .shade-row input[type="range"] {
             flex: 1;
             min-width: 0;
+            margin: 0;
         }
         .shade-val {
             flex: 0 0 44px;
@@ -240,12 +241,29 @@ export class DevToolsPanel extends HTMLElement {
         .lighting-section {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 2px;
             align-self: stretch;
             width: 100%;
         }
+        .lighting-section > .shade-head {
+            margin-top: 2px;
+        }
         .lighting-section[hidden] {
             display: none !important;
+        }
+        .debug-log-list {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1px;
+            align-self: start;
+        }
+        .debug-log-list label {
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            width: max-content;
         }
 `
         shadow.appendChild(style)
@@ -304,7 +322,7 @@ export class DevToolsPanel extends HTMLElement {
 
         const debugHead = document.createElement("div")
         debugHead.className = "shade-head"
-        debugHead.textContent = "Debug logs"
+        debugHead.textContent = "Logs"
         shadow.appendChild(debugHead)
 
         const debugAllRow = document.createElement("div")
@@ -312,9 +330,9 @@ export class DevToolsPanel extends HTMLElement {
         debugAllRow.style.gap = "6px"
         debugAllRow.style.flexWrap = "wrap"
         const allOn = document.createElement("button")
-        allOn.textContent = "Log modules all on"
+        allOn.textContent = "All on"
         const allOff = document.createElement("button")
-        allOff.textContent = "Log modules all off"
+        allOff.textContent = "All off"
         const setAllDebugLogs = (on: boolean) => {
             const base = { ...this.#settings.getGlobal().app.debugLogModules }
             for (const mod of DEBUG_LOG_MODULES) {
@@ -330,9 +348,13 @@ export class DevToolsPanel extends HTMLElement {
         debugAllRow.append(allOn, allOff)
         shadow.appendChild(debugAllRow)
 
+        const debugLogGrid = document.createElement("div")
+        debugLogGrid.className = "debug-log-list"
+        shadow.appendChild(debugLogGrid)
+
         for (const mod of DEBUG_LOG_MODULES) {
             const checked = g.debugLogModules?.[mod] === true
-            const cb = this.#addCheckbox(shadow, `Log: ${mod}`, checked)
+            const cb = this.#addCheckbox(debugLogGrid, mod, checked)
             this.#debugLogCheckboxes.set(mod, cb)
             cb.addEventListener("change", () => {
                 const next = { ...this.#settings.getGlobal().app.debugLogModules, [mod]: cb.checked }
@@ -469,13 +491,13 @@ export class DevToolsPanel extends HTMLElement {
         return v.toFixed(2)
     }
 
-    #addCheckbox(shadow: ShadowRoot, label: string, checked: boolean): HTMLInputElement {
+    #addCheckbox(parent: ParentNode, label: string, checked: boolean): HTMLInputElement {
         const el = document.createElement("label")
         const cb = document.createElement("input")
         cb.type = "checkbox"
         cb.checked = checked
         el.append(cb, label)
-        shadow.appendChild(el)
+        parent.appendChild(el)
         return cb
     }
 

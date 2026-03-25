@@ -9,7 +9,6 @@ import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPal
 import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
 import outlineShader from "./shaders/outline.wgsl"
 import previewShader from "./shaders/preview.wgsl"
-import beamShader from "./shaders/beam.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import mdcShader from "./shaders/mdc.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
@@ -83,7 +82,6 @@ export class RenderWorkerCore {
     #outlineBindGroup!: GPUBindGroup | undefined
     #scene: SceneInfo | null = null
     #sceneShader: GPUShaderModule | null = null
-    #beamShader: GPUShaderModule | null = null
     #pipeline: GPURenderPipeline | null = null
     #beamPipeline: GPUComputePipeline | null = null
     #beamBindGroupInvalid = false
@@ -251,8 +249,7 @@ export class RenderWorkerCore {
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
 
         const tShaderMod0 = performance.now()
-        const nextSceneShader = shaderCompiler.compile(previewShader, "Preview Window")
-        const nextBeamShader = shaderCompiler.compile(beamShader, "Beam Pre-Pass")
+        const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
         const tShaderMod1 = performance.now()
 
         const polygonVertexData = scene.totalPolygonVertices > 0
@@ -276,9 +273,9 @@ export class RenderWorkerCore {
             this.#device.createRenderPipelineAsync({
                 label: "Preview Pipeline",
                 layout: "auto",
-                vertex: { module: nextSceneShader, entryPoint: "vertexMain" },
+                vertex: { module: nextShader, entryPoint: "vertexMain" },
                 fragment: {
-                    module: nextSceneShader,
+                    module: nextShader,
                     entryPoint: "fragmentMain",
                     targets: [{ format: this.#format }, { format: "r32uint" as GPUTextureFormat }],
                 },
@@ -287,7 +284,7 @@ export class RenderWorkerCore {
             this.#device.createComputePipelineAsync({
                 label: "Beam Pre-Pass Pipeline",
                 layout: "auto",
-                compute: { module: nextBeamShader, entryPoint: "beamMarch" },
+                compute: { module: nextShader, entryPoint: "beamMarch" },
             }),
         ])
         const tPipeline1 = performance.now()
@@ -307,8 +304,7 @@ export class RenderWorkerCore {
         // and bind groups do not — replace fields so previous objects can be GC'd.
         this.#pipeline = pipeline
         this.#beamPipeline = beamPipeline
-        this.#sceneShader = nextSceneShader
-        this.#beamShader = nextBeamShader
+        this.#sceneShader = nextShader
 
         // Write GPU buffers only after the new pipeline is ready so the old pipeline
         // continues rendering with the correct drag-time nodeParams (posYDelta != 0)
@@ -440,10 +436,10 @@ export class RenderWorkerCore {
                     label: "beamPrePass",
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
-                        { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
-                        { binding: 1, resource: this.#tStartTextureView },
-                        { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                        { binding: 4, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                        { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                        { binding: 8, resource: this.#tStartTextureView },
+                        { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                        { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -614,10 +610,10 @@ export class RenderWorkerCore {
                     label: "beamPrePass",
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
-                        { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
-                        { binding: 1, resource: this.#tStartTextureView },
-                        { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                        { binding: 4, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                        { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                        { binding: 8, resource: this.#tStartTextureView },
+                        { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                        { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -1074,10 +1070,10 @@ export class RenderWorkerCore {
                     label: "beamPrePass",
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
-                        { binding: 0, resource: { buffer: this.#uniformBuffers.camera } },
-                        { binding: 1, resource: this.#tStartTextureView },
-                        { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                        { binding: 4, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                        { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                        { binding: 8, resource: this.#tStartTextureView },
+                        { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+                        { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false

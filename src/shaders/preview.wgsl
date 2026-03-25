@@ -2,6 +2,7 @@
 
 const MAX_STEPS: i32 = 300;   // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
 const MAX_DIST: f32 = 300.0;  // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
+const MAX_BEAM_STEPS: i32 = 200;
 const HIT_REFINE_STEPS: i32 = 6;
 
 struct Camera {
@@ -65,6 +66,8 @@ struct ViewSettings {
 // Beam optimization: low-res texture with per-tile starting-t from beam pre-pass
 const BEAM_TILE_SIZE: i32 = 8;
 @group(0) @binding(7) var tStartTex: texture_2d<f32>;
+// Beam compute writes tile t_start here (same GPUTexture as tStartTex, storage view in bind group).
+@group(0) @binding(8) var tStartOut: texture_storage_2d<r32float, write>;
 
 // Polygon vertex buffer: shared storage for all Polygon2D vertex data.
 // Each Polygon2D reads its vertices from a contiguous slice starting at its compile-time BASE offset.
@@ -915,4 +918,71 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     } else {
         return FragmentOutput(vec4f(0, 0, 0, 0), vec4<u32>(0xFFFFFFFFu, 0u, 0u, 0u));
     }
+}
+
+// Beam optimization compute: one march per tile; shares sceneSDF_fast / sceneAuxFast with preview (single shader module).
+@compute @workgroup_size(8, 8)
+fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
+    let tileU = u32(BEAM_TILE_SIZE);
+    _ = polygonVertices[0];
+    _ = nodeParams[0];
+
+    let outDims = textureDimensions(tStartOut);
+    if (gid.x >= outDims.x || gid.y >= outDims.y) {
+        return;
+    }
+
+    let res = camera.res;
+    let aspect = res.x / res.y;
+    let resX = max(u32(res.x), 1u);
+    let resY = max(u32(res.y), 1u);
+
+    let pMin = gid.x * tileU;
+    let pMax = min(pMin + tileU - 1u, resX - 1u);
+    let qMin = gid.y * tileU;
+    let qMax = min(qMin + tileU - 1u, resY - 1u);
+
+    let tileCenterPixel = vec2f(
+        (f32(pMin) + f32(pMax)) * 0.5 + 0.5,
+        (f32(qMin) + f32(qMax)) * 0.5 + 0.5
+    );
+    let uv = tileCenterPixel / res;
+
+    let uvAspect = vec2f(
+        (uv.x - camera.viewCenter.x) * aspect + 0.5,
+        uv.y - camera.viewCenter.y + 0.5
+    );
+
+    let offsetX = (uvAspect.x * 2.0 - 1.0) * camera.zoom;
+    let offsetY = (uvAspect.y * 2.0 - 1.0) * camera.zoom;
+    let rayOrigin = camera.position + vec3f(offsetX, offsetY, 100.0);
+
+    let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
+    let transformedDir = -camera.transform[2].xyz;
+
+    let pixelSizeY = 2.0 * camera.zoom / res.y;
+    let pixelSizeX = 2.0 * camera.zoom * aspect / res.x;
+    let hx = 0.5 * f32(pMax - pMin) * pixelSizeX;
+    let hy = 0.5 * f32(qMax - qMin) * pixelSizeY;
+    let tileRadius = sqrt(hx * hx + hy * hy);
+
+    var t: f32 = 0.001;
+    for (var i: i32 = 0; i < MAX_BEAM_STEPS; i = i + 1) {
+        let p = transformedOrigin + t * transformedDir;
+        let sr = sceneSDF_fast(p);
+        let d = sr.x * min(sr.y, 1.0);
+        let safeStep = d - tileRadius;
+
+        if (safeStep < tileRadius || t >= MAX_DIST) {
+            break;
+        }
+        t = t + safeStep;
+    }
+
+    let beamTStartExtra = 2.0 * SURF_DIST;
+    textureStore(
+        tStartOut,
+        vec2i(gid.xy),
+        vec4f(max(t - tileRadius - beamTStartExtra, 0.0), 0.0, 0.0, 0.0),
+    );
 }

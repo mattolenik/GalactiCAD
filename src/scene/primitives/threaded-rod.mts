@@ -189,8 +189,8 @@ fn fThreadedRod_${id}_field(p: vec3f) -> f32 {
     return max(dSide, dCap);
 }
 
-fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
-    return vec2f(fThreadedRod_${id}_field(p), 1.0);
+fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
+    return sdfFast(fThreadedRod_${id}_field(p), 1.0, 1.0);
 }
 `
     }

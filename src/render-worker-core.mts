@@ -14,7 +14,7 @@ import mdcShader from "./shaders/mdc.wgsl"
 import { ShaderCompiler } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
-import { Extrude, Loft } from "./scene/scene.mjs"
+import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
@@ -259,7 +259,7 @@ export class RenderWorkerCore {
         const nodeParamsData = new Float32Array(MAX_NODE_PARAMS * 4)
         const newCompiledPosY = new Map<number, number>()
         for (const node of allNodes) {
-            if ((node instanceof Extrude || node instanceof Loft) && node.id < MAX_NODE_PARAMS) {
+            if ((node instanceof Extrude || node instanceof Loft || node instanceof ThreadedRod) && node.id < MAX_NODE_PARAMS) {
                 nodeParamsData[node.id * 4] = node.h
                 nodeParamsData[node.id * 4 + 1] = 0
                 newCompiledPosY.set(node.id, node.pos.y)

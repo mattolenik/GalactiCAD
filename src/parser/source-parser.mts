@@ -40,6 +40,11 @@ export interface ParsedShapeCall {
     h?: number        // Half-height for cylinder/hexprism, full height for cone
     sr?: number       // Small radius (tube) for torus
     lr?: number       // Large radius (ring) for torus
+    pitch?: number    // Axial distance per 360° for threadedRod
+    depth?: number    // Radial amplitude override for threadedRod (disables pitch+angle amp)
+    threadAngle?: number // Meridional flank angle (deg) for threadedRod; with pitch sets amp unless depth()
+    threadProfile?: "fdm" | "iso" // From .profile.fdm() / .profile.iso() chain
+    threadHandedness?: "left" | "right" // From .left / .right property chain (default right)
     c?: number        // Center half-height for capsule
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
@@ -83,14 +88,14 @@ export interface FluentMethodLocation {
  * surgically replaced after a drag operation.
  */
 export interface ExtrudeLoftCallInfo {
-    functionName: "extrude" | "loft"
+    functionName: "extrude" | "loft" | "threadedRod"
     /** Offset in source of the `h:` value expression (start, end). */
     hValueStart: number
     hValueEnd: number
     /** Offset in source of the position array argument, if present. null when no pos arg. */
     posArgStart: number | null
     posArgEnd: number | null
-    /** Offset in source where a position argument would be inserted (after the opening paren). */
+    /** Offset in user source where `.shift([...])` is appended when there is no shift (end of the full fluent call). */
     insertPosOffset: number
     location: SourceLocation
 }
@@ -215,7 +220,7 @@ export function findReturnStatementLine(src: string): number | null {
 /**
  * Shape functions we care about for source location tracking
  */
-const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
+const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threadedRod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
 const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe"])
 const MODIFIER_NAMES = new Set(["rotate", "shell", "offset", "elongate", "twist", "bend", "taper"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
@@ -541,6 +546,8 @@ export class SourceParser {
             this.parsePosRadiusHeightFluentArgs(callNode, parsedCall)
         } else if (funcName === "torus") {
             this.parseTorusFluentArgs(callNode, parsedCall)
+        } else if (funcName === "threadedRod") {
+            this.parseThreadedRodFluentArgs(callNode, parsedCall)
         } else if (funcName === "capsule") {
             this.parseCapsuleFluentArgs(callNode, parsedCall)
         } else if (funcName === "plane") {
@@ -758,6 +765,67 @@ export class SourceParser {
             }
         } catch (err) {
             log("SourceParser").debug(`Could not parse torus fluent args:`, err)
+        }
+    }
+
+    /** Detect threadedRod.left / .right in the property chain (.profile etc. are not calls). */
+    #threadedRodHandFromExpression(expr: ts.Node): "left" | "right" | undefined {
+        let hand: "left" | "right" | undefined
+        const visit = (n: ts.Node): void => {
+            if (ts.isPropertyAccessExpression(n)) {
+                visit(n.expression)
+                const t = n.name.getText()
+                if (t === "left" || t === "right") {
+                    hand = t
+                }
+            } else if (ts.isCallExpression(n)) {
+                visit(n.expression)
+            }
+        }
+        visit(expr)
+        return hand
+    }
+
+    private parseThreadedRodFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const hand = this.#threadedRodHandFromExpression(callNode.expression)
+            if (hand !== undefined) {
+                parsedCall.threadHandedness = hand
+            }
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "iso" && args.length === 0) {
+                    parsedCall.threadProfile = "iso"
+                    break
+                }
+                if (method === "fdm" && args.length === 0) {
+                    parsedCall.threadProfile = "fdm"
+                    break
+                }
+            }
+            for (const { method, args } of chain) {
+                if (method === "radius" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.r = v
+                } else if (method === "height" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.h = v
+                } else if (method === "pitch" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.pitch = v
+                } else if (method === "depth" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.depth = v
+                } else if (method === "threadAngle" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.threadAngle = v
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
+            }
+        } catch (err) {
+            console.debug(`[SourceParser] Could not parse threadedRod fluent args:`, err)
         }
     }
 
@@ -1088,6 +1156,84 @@ export class SourceParser {
         return best
     }
 
+    findThreadedRodAtPosition(src: string, line: number, column: number, sourceFile?: ts.SourceFile): ExtrudeLoftCallInfo | null {
+        const calls: ExtrudeLoftCallInfo[] = []
+        const sf = sourceFile && sourceFile.getFullText() === wrapSource(src) ? sourceFile : parseSource(src)
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node)) {
+                let name: string | null = null
+                if (ts.isIdentifier(node.expression)) {
+                    name = node.expression.text
+                } else if (ts.isPropertyAccessExpression(node.expression)) {
+                    const fluent = this.#getFluentChainInfo(node)
+                    if (fluent && fluent.operator === "threadedRod") {
+                        name = fluent.operator
+                    }
+                }
+                if (name === "threadedRod") {
+                    const info = this.extractThreadedRodInfo(node, sf)
+                    if (info) calls.push(info)
+                }
+            }
+            ts.forEachChild(node, visit)
+        }
+        visit(sf)
+        for (const call of calls) {
+            if (call.location.startLine === line && call.location.startColumn === column) {
+                return call
+            }
+        }
+        if (calls.length === 1) return calls[0]
+        return this.#findInnermostExtrudeLoftAtPosition(calls, line, column)
+    }
+
+    private extractThreadedRodInfo(callNode: ts.CallExpression, sourceFile: ts.SourceFile): ExtrudeLoftCallInfo | null {
+        if (!ts.isPropertyAccessExpression(callNode.expression)) return null
+
+        let hValueStart: number | null = null
+        let hValueEnd: number | null = null
+        let posArgStart: number | null = null
+        let posArgEnd: number | null = null
+
+        const chain = this.#collectFluentChain(callNode)
+        for (const { method, args } of chain) {
+            if (method === "height" && args.length >= 1) {
+                hValueStart = args[0].getStart() - WRAP_PREFIX_CHARS
+                hValueEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
+            } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                posArgStart = args[0].getStart() - WRAP_PREFIX_CHARS
+                posArgEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
+            }
+        }
+        if (hValueStart === null || hValueEnd === null) return null
+
+        const fluent = this.#getFluentChainInfo(callNode)
+        if (!fluent) return null
+
+        const insertPosOffset = callNode.getEnd() - WRAP_PREFIX_CHARS
+        const startPos = fluent.rootIdentifier.getStart()
+        const endPos = callNode.getEnd()
+
+        const loc = tsPosToUser(sourceFile, startPos)
+        const endLoc = tsPosToUser(sourceFile, endPos)
+
+        return {
+            functionName: "threadedRod",
+            hValueStart,
+            hValueEnd,
+            posArgStart,
+            posArgEnd,
+            insertPosOffset,
+            location: {
+                startLine: loc.line,
+                startColumn: loc.column,
+                endLine: endLoc.line,
+                endColumn: endLoc.column,
+                functionName: "threadedRod",
+            },
+        }
+    }
+
     private extractExtrudeLoftInfo(
         callNode: ts.CallExpression,
         name: "extrude" | "loft",
@@ -1115,7 +1261,7 @@ export class SourceParser {
         const fluent = this.#getFluentChainInfo(callNode)
         if (!fluent) return null
 
-        const insertPosOffset = fluent.rootIdentifier.getEnd() - WRAP_PREFIX_CHARS + 1
+        const insertPosOffset = callNode.getEnd() - WRAP_PREFIX_CHARS
         const startPos = fluent.rootIdentifier.getStart()
         const endPos = callNode.getEnd()
 

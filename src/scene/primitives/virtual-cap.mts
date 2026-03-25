@@ -1,7 +1,7 @@
 import { Node } from "../base.mjs"
 
 /**
- * Virtual node representing one cap (top or bottom) of an Extrude.
+ * Virtual node representing one cap (top or bottom) of an Extrude or ThreadedRod.
  * Holds no geometry; used only to allocate a distinct ID for the outline/selection system
  * so top and bottom caps can be selected independently.
  */

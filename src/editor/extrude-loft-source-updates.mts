@@ -1,6 +1,6 @@
 /**
- * Source code updates for extrude() and loft() cap push/pull.
- * Updates the h value and position in the source when the user drags a cap.
+ * Source code updates for extrude, loft, and threadedRod cap push/pull.
+ * Updates the `height` value and `.shift([...])` in source when the user drags a cap.
  */
 
 import * as monaco from "monaco-editor"
@@ -93,11 +93,11 @@ export function applyExtrudeLoftCapUpdates(
             })
         }
     } else if (Math.abs(newPosY) > 0.0005) {
-        // No position argument exists, insert one (new object format: pos: [0, y, 0])
+        // No .shift() yet: append fluent `.shift([0, y, 0])` at the end of the full call (not object-style `pos:`).
         const insertPos = model.getPositionAt(info.insertPosOffset)
         edits.push({
             range: new monaco.Range(insertPos.lineNumber, insertPos.column, insertPos.lineNumber, insertPos.column),
-            text: `pos: [0, ${formatNumber(newPosY)}, 0], `,
+            text: `.shift([0, ${formatNumber(newPosY)}, 0])`,
         })
     }
 

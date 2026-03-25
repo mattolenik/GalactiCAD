@@ -66,6 +66,11 @@ interface NodeLikeMatch {
     h?: number
     sr?: number
     lr?: number
+    turnPitch?: number
+    threadAmp?: number
+    threadFlankAngleDeg?: number
+    threadProfile?: "fdm" | "iso"
+    threadHandedness?: "left" | "right"
     c?: number
     normal?: { x: number; y: number; z: number }
     dist?: number
@@ -139,6 +144,23 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.sr !== undefined && !approxEqualOrUndefined(node.sr, call.sr)) return false
         if (call.lr !== undefined && !approxEqualOrUndefined(node.lr, call.lr)) return false
+        return true
+    }
+
+    if (shapeType === "threadedRod") {
+        const callPos = call.pos ?? DEFAULT_POS
+        if (!vec3ApproxEqual(node.pos, callPos)) return false
+        if (call.r === undefined || !approxEqualOrUndefined(node.r, call.r)) return false
+        if (call.h !== undefined && !approxEqualOrUndefined(node.h, call.h)) return false
+        if (call.pitch !== undefined && !approxEqualOrUndefined(node.turnPitch, call.pitch)) return false
+        if (call.threadAngle !== undefined && !approxEqualOrUndefined(node.threadFlankAngleDeg, call.threadAngle)) return false
+        if (call.depth !== undefined && !approxEqualOrUndefined(node.threadAmp, call.depth)) return false
+        const callProfile = call.threadProfile ?? "fdm"
+        const nodeProfile = node.threadProfile ?? "fdm"
+        if (callProfile !== nodeProfile) return false
+        const callHand = call.threadHandedness ?? "right"
+        const nodeHand = node.threadHandedness ?? "right"
+        if (callHand !== nodeHand) return false
         return true
     }
 

@@ -101,6 +101,32 @@ declare class Torus extends Node {
     shift(v: Vec3): Torus;
 }
 
+/**
+ * Y-axis rod with helical thread on the barrel.
+ * Default threadedRod.radius(...) is FDM (smooth sine). Use threadedRod.profile.iso() for a triangular V-groove.
+ * Radial amplitude follows pitch and threadAngle (tan(ψ)·pitch/(2π)) unless depth() overrides.
+ */
+declare class ThreadedRod extends Node {
+    pos: Vec3f;
+    r: number;
+    h: number;
+    turnPitch: number;
+    /** Meridional flank angle (deg); with pitch sets threadAmp unless depth() was used. */
+    threadFlankAngleDeg: number;
+    threadAmp: number;
+    /** fdm = sinusoidal barrel; iso = triangular helical. */
+    threadProfile: "fdm" | "iso";
+    /** Default right-hand; use threadedRod.left... for left-hand. */
+    threadHandedness: "left" | "right";
+    height(h: number): ThreadedRod;
+    pitch(p: number): ThreadedRod;
+    /** Flank angle in degrees (default 60). */
+    threadAngle(deg: number): ThreadedRod;
+    /** Explicit radial amplitude (disables automatic depth from pitch + threadAngle). */
+    depth(d: number): ThreadedRod;
+    shift(v: Vec3): ThreadedRod;
+}
+
 /** A capsule. capsule.radius(r).cylinderLength(c).shift(v) */
 declare class Capsule extends Node {
     pos: Vec3f;
@@ -354,6 +380,31 @@ declare const cone: { radius(r: number): Cone };
  * Torus lying in the XZ plane. torus.smallRadius(sr).largeRadius(lr).shift(v)
  */
 declare const torus: { smallRadius(sr: number): Torus; largeRadius(lr: number): Torus };
+
+/** Entry after threadedRod.left / .right (same shape as root profile + radius). */
+type ThreadedRodHandSide = {
+    radius(r: number): ThreadedRod;
+    readonly profile: {
+        fdm(): { radius(r: number): ThreadedRod };
+        iso(): { radius(r: number): ThreadedRod };
+    };
+};
+
+/**
+ * Threaded rod. Default is right-hand FDM: threadedRod.radius(...).
+ * threadedRod.left.radius(...) / threadedRod.left.profile.iso().radius(...) = left-hand.
+ * threadedRod.right matches explicit right-hand; threadedRod.profile.* is right-hand.
+ * After .radius: .height(h).pitch(axialPeriod).threadAngle(deg).depth(override).shift(v)
+ */
+declare const threadedRod: {
+    radius(r: number): ThreadedRod;
+    readonly left: ThreadedRodHandSide;
+    readonly right: ThreadedRodHandSide;
+    readonly profile: {
+        fdm(): { radius(r: number): ThreadedRod };
+        iso(): { radius(r: number): ThreadedRod };
+    };
+};
 
 /**
  * Capsule. capsule.radius(r).cylinderLength(c).shift(v)

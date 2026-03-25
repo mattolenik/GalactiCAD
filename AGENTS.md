@@ -20,18 +20,18 @@ The scene SDF is compiled into two variants that serve different roles in the pi
 ### sceneSDF vs sceneSDF_fast
 
 - **sceneSDF(p)** returns a full `SDFResult` struct: distance (`d`), gradient magnitude (`g`), analytical normal (`n`), object IDs, blend weights, and seam metadata.
-- **sceneSDF_fast(p)** returns only `vec2f(distance, gradientMagnitude)`. It has no normals, no IDs, no tie-breaking, and no `normalize()` calls.
+- **sceneSDF_fast(p)** returns a `FastSDFResult` struct: `d`, `g`, and `safeStepMul` (conservative step scaling). It has no normals, no IDs, no tie-breaking, and no `normalize()` calls.
 
-`sceneSDF` results contain everything `sceneSDF_fast` returns and more. The fast path is cheaper and is used wherever distance and gradient are sufficient; the full path is used when normals, IDs, or other attributes are needed.
+`sceneSDF` results contain everything the fast path needs for distance/gradient stepping and more. The fast path is cheaper and is used wherever distance, gradient magnitude, and step scaling are sufficient; the full path is used when normals, IDs, or other attributes are needed.
 
 ### Regular vs \_fast Primitives and Operators
 
 Each primitive and CSG operator has two implementations:
 
 - **Regular (Ex)**: e.g. `fSphereEx`, `fBoxEx`, `opUnionEx`, `fOpUnionRound` — return `SDFResult` with analytical normals, object IDs, and gradient magnitude. Used by `sceneSDF`.
-- **Fast**: e.g. `fSphereFast`, `fBoxFast`, `opUnionFast`, `fOpUnionRoundFast` — return `vec2f(d, g)` only. Used by `sceneSDF_fast`.
+- **Fast**: e.g. `fSphereFast`, `fBoxFast`, `opUnionFast`, `fOpUnionRoundFast` — return `FastSDFResult` (`d`, `g`, `safeStepMul`). Used by `sceneSDF_fast`.
 
-The fast operators still compute gradient magnitude `g` because it is needed to correct ray-march step size in smooth blend regions (where |∇f| < 1). They omit normals, IDs, and tie-breaking to avoid `normalize()` and extra branching.
+The fast operators still compute gradient magnitude `g` and `safeStepMul` for correct ray-march steps in smooth blend regions (where |∇f| < 1). They omit normals, IDs, and tie-breaking to avoid `normalize()` and extra branching.
 
 ### SDFResult Struct
 
@@ -47,6 +47,8 @@ The fast operators still compute gradient magnitude `g` because it is needed to 
 
 None of these attributes (normals, IDs, blend, seam) are present in the \_fast path.
 
+`FastSDFResult` is defined in `hg_sdf.wgsl` alongside `SDFResult`; use `.d`, `.g`, and `.safeStepMul` (e.g. step as `sr.d * sr.safeStepMul`) instead of legacy `vec2` swizzles.
+
 ### Using SDFResult to Avoid Unnecessary Computations
 
 `sceneSDF` returns everything `sceneSDF_fast` returns and more: `SDFResult.d` is the distance, `SDFResult.g` is the gradient magnitude. If you already have an `SDFResult`, use it—do not call `sceneSDF_fast` to recalculate distance or gradient.
@@ -60,9 +62,9 @@ The pipeline uses `sceneSDF_fast` where the full result is not needed, because i
     - **Edge projection**: After bisection finds an approximate intersection, projection to the surface uses analytic normals from `sceneSDF` instead of finite-difference gradients for stability at seams where gradients are discontinuous.
     - **Vertex normals**: Final mesh vertex normals come from `sceneSDF` at the converged position.
 
-3. **Bounds and beam shaders**: Use `sceneSDF_fast`; they never need normals or IDs.
+3. **Bounds pass and beam pre-pass** (`beamMarch` in `preview.wgsl`): Use `sceneSDF_fast`; they never need normals or IDs. Preview and beam share one compiled shader module.
 
-When adding new scene operations: use `sceneSDF_fast` when you only need distance or gradient and can avoid the extra cost. Use `sceneSDF` when you need analytical normals, object IDs, blend weights, or seam metadata—or when you need distance and will use the other attributes anyway. If you already have an `SDFResult`, do not recalculate; use `r.d` and `r.g` instead of calling `sceneSDF_fast`.
+When adding new scene operations: use `sceneSDF_fast` when you only need distance, gradient magnitude, and step scaling and can avoid the extra cost. Use `sceneSDF` when you need analytical normals, object IDs, blend weights, or seam metadata—or when you need distance and will use the other attributes anyway. If you already have an `SDFResult`, do not recalculate; use `r.d` and `r.g` instead of calling `sceneSDF_fast`.
 
 ## Camera Resolution and Resolution Scale
 
@@ -111,8 +113,8 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - All scene SDF evaluation for rendering and export pipelines must stay on the GPU; do not reimplement the scene SDF on the CPU.
 - On startup/refresh, restore only previously open documents; closed documents stay available from the document explorer / closed-document list.
 - Polygon editing UX: double-clicking polygon2d, loft, union, or other cross-selectable symbols selects in the preview; Monaco should keep `occurrencesHighlight: "off"` and `selectionHighlight: false`; polygon editing opens from a hover-only "Edit Polygon" menu, not right-click; right-click over `polygon2d` in Monaco should use Monaco's built-in context menu; keep a safe-zone AABB between trigger and menu so it stays open while the cursor moves toward it.
-- CAD scene source is transpiled with the TypeScript compiler (`transpileModule` in `cad-transpile.mts`, transpile worker), not esbuild-wasm.
-- Multi-operand smooth unions (`round`, `soft`, `chamfer`, `columns`, `stairs`, etc.) are not associative when folded left; for three or more operands the evaluator blends the two nearest children at each sample instead of chaining pairwise blends—see `docs/smooth_union_ordering.md` for behavior and implications.
+- CAD scene source is transpiled with the TypeScript compiler (`transpileModule` in `cad-transpile.mts`, transpile worker), not esbuild-wasm. Multi-operand smooth unions (`round`, `soft`, `chamfer`, `columns`, `stairs`, etc.) are not associative when folded left; for three or more operands the evaluator blends the two nearest children at each sample—see `docs/smooth_union_ordering.md`.
+- Toggleable diagnostic logging: `src/logging/debug-log.mts` (`log("ModuleName").debug` / `.info` / `.warn` / `.error`), persisted as `app.debugLogModules`, toggles under Dev Tools **Logs**, flags pushed to the render worker with `setDebugLogModules` on ready and when toggles change.
 
 ## Building and Linting
 

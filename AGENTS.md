@@ -95,7 +95,7 @@ When making changes to binding groups, make sure all the bindings and mappings a
 
 ## Learned User Preferences
 
-- Do not browse to the app; the user runs manual visual QA. For WGSL and preview rendering work, use `make build` for compile validation—do not rely on in-agent visual verification as part of the task.
+- Do not browse to the app or attempt in-agent visual validation; the user runs manual visual QA. For WGSL and preview rendering work, use `make build` for compile validation instead of relying on automated visual checks.
 - When only the SDF preview should change, skip mesh viewer shader parity unless the user asks to update the mesh viewer too.
 - Add artist-facing preview/rendering tunables to the dev tools panel when the user wants on-screen knobs.
 
@@ -104,14 +104,14 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Camera hotkeys 2, 4, 6: derive from 1, 3, 5 by 180° rotation to avoid vertical flip — 2=1×R_Y, 4=3×R_Z, 6=5×R_Y.
 - External-change conflict: compare disk to `lastWritten`, not editor content, when deciding whether to show "modified externally" dialog.
 - Async pick (Cmd/Ctrl+drag): use drag session ID so stale pick results do not apply to a new drag session.
-- GPU `nodeParams`/`polygonVertices` buffer writes in `render-worker-core.mts` must be deferred until after the new pipeline is swapped in (`this.#pipeline = pipeline`), otherwise the old shader renders with reset params causing a visual snap.
+- In `render-worker-core.mts`, defer `nodeParams`/`polygonVertices` buffer writes until after the new pipeline is assigned (`this.#pipeline = pipeline`), or the old shader can briefly render with reset params. Only call `destroy()` on buffers, textures, and other actually destroyable GPU resources; do not declare fake `destroy()` on WebGPU interface types in `global.d.ts`.
 - Welcome-screen thumbnails and opening a sample from the welcome screen share the render-worker preview `build` path and can race; the viewport may show the wrong sample until the next rebuild (mitigations: abort sample fetches when the welcome screen is removed; restore the prior built scene body after each thumbnail render in the worker).
 - Push/pull activation: shift-hold on a selected surface (not double-click). `dropToHighlight()` must NOT call `onDeselect` — it overwrites the GPU face-highlight buffers. After cap drag completion, update `node.h`/`node.pos.y` on the stored reference before `dropToHighlight` so subsequent drags don't snap back.
 - Click events on the canvas must be suppressed (`stopImmediatePropagation` in capture phase) while push/pull has any face state, to prevent CameraController's click handler from toggling selection via shift-click.
 - All scene SDF evaluation for rendering and export pipelines must stay on the GPU; do not reimplement the scene SDF on the CPU.
 - On startup/refresh, restore only previously open documents; closed documents stay available from the document explorer / closed-document list.
 - Polygon editing UX: double-clicking polygon2d, loft, union, or other cross-selectable symbols selects in the preview; Monaco should keep `occurrencesHighlight: "off"` and `selectionHighlight: false`; polygon editing opens from a hover-only "Edit Polygon" menu, not right-click; right-click over `polygon2d` in Monaco should use Monaco's built-in context menu; keep a safe-zone AABB between trigger and menu so it stays open while the cursor moves toward it.
-- Do not add `destroy()` typings in `global.d.ts` for non-destroyable WebGPU interface types; only call `destroy()` on actual destroyable resources such as `GPUBuffer` and `GPUTexture`.
+- CAD scene source is transpiled with the TypeScript compiler (`transpileModule` in `cad-transpile.mts`, transpile worker), not esbuild-wasm.
 - Multi-operand smooth unions (`round`, `soft`, `chamfer`, `columns`, `stairs`, etc.) are not associative when folded left; for three or more operands the evaluator blends the two nearest children at each sample instead of chaining pairwise blends—see `docs/smooth_union_ordering.md` for behavior and implications.
 
 ## Building and Linting

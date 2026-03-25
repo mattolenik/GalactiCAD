@@ -1,21 +1,20 @@
 /**
- * Transpile CAD source (TypeScript/JavaScript) to executable JavaScript using esbuild-wasm.
- * Used by the render worker for scene builds. TypeScript remains in the main thread for
+ * Transpile CAD source (TypeScript/JavaScript) to executable JavaScript using the TypeScript compiler.
+ * Used by the transpile worker for scene builds. TypeScript remains in the main thread for
  * SourceParser (AST-based source matching).
  */
 
-import * as esbuild from "esbuild-wasm"
+import * as ts from "typescript"
 import { WRAP_PREFIX, WRAP_SUFFIX } from "./parser/source-parser.mjs"
 
-const WASM_URL = "/assets/esbuild.wasm"
-
-let initPromise: Promise<void> | null = null
-
-async function ensureInitialized(): Promise<void> {
-    if (!initPromise) {
-        initPromise = esbuild.initialize({ wasmURL: WASM_URL })
+function firstCompileErrorMessage(diagnostics: readonly ts.Diagnostic[] | undefined): string | undefined {
+    if (!diagnostics?.length) return undefined
+    for (const d of diagnostics) {
+        if (d.category === ts.DiagnosticCategory.Error) {
+            return ts.flattenDiagnosticMessageText(d.messageText, "\n")
+        }
     }
-    await initPromise
+    return undefined
 }
 
 /**
@@ -23,20 +22,21 @@ async function ensureInitialized(): Promise<void> {
  * Wraps source in function _() { ... }, transpiles, and appends "return _();".
  * @throws Error with first diagnostic message on syntax/compile errors
  */
-export async function transpileCadSource(src: string): Promise<string> {
-    await ensureInitialized()
+export function transpileCadSource(src: string): string {
     const wrapped = WRAP_PREFIX + src + WRAP_SUFFIX
-    try {
-        const result = await esbuild.transform(wrapped, {
-            loader: "ts",
-            target: "esnext",
-        })
-        return result.code + "\nreturn _();"
-    } catch (err) {
-        const failure = err as { errors?: Array<{ text: string }> }
-        if (failure.errors && failure.errors.length > 0) {
-            throw new Error(failure.errors[0].text)
-        }
-        throw err
+    const result = ts.transpileModule(wrapped, {
+        compilerOptions: {
+            target: ts.ScriptTarget.ESNext,
+            module: ts.ModuleKind.ESNext,
+            esModuleInterop: true,
+            skipLibCheck: true,
+        },
+        fileName: "cad-scene.ts",
+        reportDiagnostics: true,
+    })
+    const errMsg = firstCompileErrorMessage(result.diagnostics)
+    if (errMsg) {
+        throw new Error(errMsg)
     }
+    return result.outputText + "\nreturn _();"
 }

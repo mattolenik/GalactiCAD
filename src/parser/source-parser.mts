@@ -91,7 +91,7 @@ export interface ExtrudeLoftCallInfo {
     /** Offset in source of the position array argument, if present. null when no pos arg. */
     posArgStart: number | null
     posArgEnd: number | null
-    /** Offset in source where a position argument would be inserted (after the opening paren). */
+    /** Offset in user source where `.shift([...])` is appended when there is no shift (end of the full fluent call). */
     insertPosOffset: number
     location: SourceLocation
 }
@@ -1171,7 +1171,7 @@ export class SourceParser {
         const fluent = this.#getFluentChainInfo(callNode)
         if (!fluent) return null
 
-        const insertPosOffset = fluent.rootIdentifier.getEnd() - WRAP_PREFIX_CHARS + 1
+        const insertPosOffset = callNode.getEnd() - WRAP_PREFIX_CHARS
         const startPos = fluent.rootIdentifier.getStart()
         const endPos = callNode.getEnd()
 
@@ -1222,7 +1222,7 @@ export class SourceParser {
         const fluent = this.#getFluentChainInfo(callNode)
         if (!fluent) return null
 
-        const insertPosOffset = fluent.rootIdentifier.getEnd() - WRAP_PREFIX_CHARS + 1
+        const insertPosOffset = callNode.getEnd() - WRAP_PREFIX_CHARS
         const startPos = fluent.rootIdentifier.getStart()
         const endPos = callNode.getEnd()
 

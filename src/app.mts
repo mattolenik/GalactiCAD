@@ -59,6 +59,7 @@ import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
 import { clearRecentDocuments, db, getDoc, getRecentDocuments } from "./storage/db.mjs"
 import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
+import { applyDebugLogModules, log } from "./logging/debug-log.mjs"
 import { VERSION } from "./version.mjs"
 
 console.log(`GalactiCAD ${VERSION}`)
@@ -694,6 +695,7 @@ class App {
 
     async #restoreOrShowWelcome(): Promise<void> {
         await this.#settings.ready()
+        applyDebugLogModules(this.#settings.getGlobal().app.debugLogModules)
         const anchor = this.#resolveAnchor()
         if (anchor) {
             const docRow = await db.documents.get(anchor)
@@ -703,9 +705,9 @@ class App {
                 await this.#tabs.restore()
                 const opened = await this.#tabs.openDocument(anchor)
                 if (opened) return
-                console.warn(`[GalactiCAD] Anchor document "${anchor}" could not be opened (e.g. stale file handle) — ignoring`)
+                log("GalactiCAD").warn(`Anchor document "${anchor}" could not be opened (e.g. stale file handle) — ignoring`)
             } else {
-                console.warn(`[GalactiCAD] Anchor document "${anchor}" not found — ignoring`)
+                log("GalactiCAD").warn(`Anchor document "${anchor}" not found — ignoring`)
             }
             history.replaceState(null, "", location.pathname + location.search)
         }
@@ -1123,6 +1125,12 @@ class App {
 
         devTools.meshSimplifyOnExport = this.#settings.getGlobal().app.meshSimplifyOnExport
 
+        devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)
+        devTools.onDebugLogModulesChange = () => {
+            applyDebugLogModules(this.#settings.getGlobal().app.debugLogModules)
+            this.renderer.syncDebugLogModulesToWorker()
+        }
+
         devTools.onBenchmarkThisRequest = (): BenchmarkCase | null => {
             const active = this.#tabs.active
             if (!active) return null
@@ -1186,7 +1194,7 @@ class App {
                 this.#isHandlingPopstate = true
                 void this.#tabs.openDocument(anchor).then(opened => {
                     if (!opened) {
-                        console.warn(`[GalactiCAD] Anchor document "${anchor}" not found — ignoring`)
+                        log("GalactiCAD").warn(`Anchor document "${anchor}" not found — ignoring`)
                         history.replaceState(null, "", location.pathname + location.search)
                     }
                 }).finally(() => {

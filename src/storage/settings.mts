@@ -1,5 +1,7 @@
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
+import type { DebugLogModulesState } from "../logging/debug-log.mjs"
+import { mergeDebugLogModulesFromStorage } from "../logging/debug-log.mjs"
 import { db } from "./db.mjs"
 
 // ---------------------------------------------------------------------------
@@ -71,6 +73,8 @@ export interface GlobalSettings {
         diskSyncIntervalSeconds: number
         theme: ThemeMode
         editor: EditorSettings
+        /** Per-module debug logging; Dev Tools checkboxes. */
+        debugLogModules: DebugLogModulesState
     }
     layout: LayoutSettings
 }
@@ -128,6 +132,7 @@ function defaultGlobalSettings(): GlobalSettings {
             diskSyncIntervalSeconds: 30,
             theme: "dark",
             editor: defaultEditorSettings(),
+            debugLogModules: {},
         },
         layout: defaultLayout(),
     }
@@ -380,6 +385,7 @@ export class SettingsManager {
                 if (typeof editor.tabSize !== "number" || editor.tabSize < 2 || editor.tabSize > 8)
                     editor.tabSize = editorDef.tabSize
                 app.editor = editor
+                app.debugLogModules = mergeDebugLogModulesFromStorage(app.debugLogModules)
                 this.#globalSettings = {
                     preview,
                     meshViewer: { ...def.meshViewer, ...parsed.meshViewer },

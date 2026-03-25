@@ -35,6 +35,7 @@ import {
     SHARED_RENDER_BUFFER_SIZE,
 } from "./shared-render-buffer.mjs"
 import type { TranspileKind, TranspileToMainMessage } from "./transpile-worker-protocol.mjs"
+import { log, snapshotDebugLogModules } from "./logging/debug-log.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -314,6 +315,7 @@ export class SDFRenderer {
         switch (msg.type) {
             case "ready":
                 this.#worker.postMessage({ type: "setBvhEnabled", enabled: this.#bvhEnabled })
+                this.syncDebugLogModulesToWorker()
                 this.#readyResolve()
                 break
             case "initError":
@@ -873,7 +875,7 @@ export class SDFRenderer {
         }
         const offscreen = canvas.transferControlToOffscreen()
         this.#useSharedMemory = isSharedMemoryAvailable()
-        console.log("useSharedMemory", this.#useSharedMemory)
+        log("Sdf").info("useSharedMemory", this.#useSharedMemory)
         if (this.#useSharedMemory) {
             this.#sharedBuffer = new SharedArrayBuffer(SHARED_RENDER_BUFFER_SIZE)
         }
@@ -884,6 +886,12 @@ export class SDFRenderer {
         this.#worker.postMessage({ type: "resize", fullWidth: this.#fullWidth, fullHeight: this.#fullHeight, devicePixelRatio: this.#devicePixelRatio })
         await this.#readyPromise
         this.#initPushPull()
+    }
+
+    /** Push current debug-log flags to the render worker (call after settings change). */
+    syncDebugLogModulesToWorker(): void {
+        const mods = this.#settings.getGlobal().app.debugLogModules
+        this.#worker.postMessage({ type: "setDebugLogModules", modules: snapshotDebugLogModules(mods) })
     }
 
     #initPushPull(): void {

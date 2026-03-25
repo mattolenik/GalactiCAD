@@ -27,6 +27,7 @@ import {
 } from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
+import { log } from "./logging/debug-log.mjs"
 import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset } from "./shared-render-buffer.mjs"
 
 const MAX_POLYGON_VERTICES = 1024
@@ -292,7 +293,7 @@ export class RenderWorkerCore {
             return { superseded: true } as { sceneNodes: never; compiledPosY: never; superseded: true }
         }
 
-        console.debug("[render-worker] scene build (ms)", {
+        log("RenderWorker").debug("scene build (ms)", {
             sceneScript: Math.round((tSceneScript1 - tSceneScript0) * 100) / 100,
             wgslScene: Math.round((tWgsl1 - tWgsl0) * 100) / 100,
             shaderModules: Math.round((tShaderMod1 - tShaderMod0) * 100) / 100,

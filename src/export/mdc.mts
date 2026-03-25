@@ -1,4 +1,5 @@
 import { GPUHelper } from "../gpu/helper.mjs"
+import { log as dbgLog } from "../logging/debug-log.mjs"
 import { MeshData } from "./export.mjs"
 import { exportStlAscii } from "./stl.mjs"
 
@@ -207,7 +208,7 @@ export class MDCExport {
 
         const logDiag = (phase: string, extra?: Record<string, unknown>) => {
             const elapsedMs = perfNow() - t0
-            console.log(`[mdc-export] ${phase}`, {
+            dbgLog("MdcExport").debug(`${phase}`, {
                 elapsedMs: Math.round(elapsedMs * 1000) / 1000,
                 estimatedGpuBuffers: fmtBytes(estimatedGpuBufferBytes),
                 estimatedGpuReadback: fmtBytes(estimatedGpuReadbackBytes),
@@ -250,7 +251,7 @@ export class MDCExport {
             orientationProbeScale = 0.5,
             orientationProbeMin = 1e-4,
         } = this.params
-        console.log(
+        dbgLog("MdcExport").info(
             `MDCExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
         )
         logDiag("start", {
@@ -389,7 +390,7 @@ export class MDCExport {
             }
 
             let activeCellCount = activeList.length
-            console.log(`Active cells from flags: ${activeCellCount}`)
+            dbgLog("MdcExport").debug(`Active cells from flags: ${activeCellCount}`)
             if (activeCellCount === 0) {
                 throw new Error("No active cells found, check grid bounds and scene")
             }
@@ -601,26 +602,25 @@ export class MDCExport {
             }
             logDiag("after pass5 (triangle generation)")
 
-            console.log("Reading back data from GPU...")
+            dbgLog("MdcExport").debug("Reading back data from GPU...")
             const debugCountsData = await readBufferData(debugSkipCountersBuffer, 8 * Uint32Array.BYTES_PER_ELEMENT)
             const debugCounts = new Uint32Array(debugCountsData)
-            console.log(
-                "MDC debug:",
-                {
-                    skippedQuadsNeighborMissing: debugCounts[0],
-                    skippedQuadsComponentMissing: debugCounts[1],
-                    edgesBothNearIso: debugCounts[2],
-                    edgesOneNearIsoNoCross: debugCounts[3],
-                    cornersNearIso: debugCounts[4],
-                    edgesCrossing: debugCounts[5],
-                    faceCenterNearIso: debugCounts[6],
-                    faceCaseAmbiguous: debugCounts[7],
-                }
-            )
+            dbgLog("MdcExport").debug("MDC debug:", {
+                skippedQuadsNeighborMissing: debugCounts[0],
+                skippedQuadsComponentMissing: debugCounts[1],
+                edgesBothNearIso: debugCounts[2],
+                edgesOneNearIsoNoCross: debugCounts[3],
+                cornersNearIso: debugCounts[4],
+                edgesCrossing: debugCounts[5],
+                faceCenterNearIso: debugCounts[6],
+                faceCaseAmbiguous: debugCounts[7],
+            })
             const indexCountData = await readBufferData(indexCountFaceBuffer)
             const rawIndexCount = new Uint32Array(indexCountData)[0]!
             const actualIndexCount = Math.min(rawIndexCount, maxIndices)
-            console.log(`Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`)
+            dbgLog("MdcExport").debug(
+                `Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`
+            )
 
             const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
             const verticesData = await readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
@@ -861,7 +861,7 @@ export class MDCExport {
                     if (c === 1) boundaryEdges++
                     else if (c !== 2) nonManifoldEdges++
                 }
-                console.log(
+                dbgLog("MdcExport").debug(
                     `MDC mesh stats: tris=${triCount} degenerateTris=${degenerate} boundaryEdges=${boundaryEdges} nonManifoldEdges=${nonManifoldEdges}`
                 )
             }

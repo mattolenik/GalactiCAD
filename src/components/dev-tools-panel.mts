@@ -15,6 +15,7 @@ import {
     DEFAULT_PREVIEW_SHADING,
     type PreviewShadingParams,
 } from "../render-worker-protocol.mjs"
+import { DEBUG_LOG_MODULES, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
 
 const PREVIEW_SHADING_KNOBS: {
     key: keyof PreviewShadingParams
@@ -60,6 +61,7 @@ export class DevToolsPanel extends HTMLElement {
     #settings: SettingsManager
     #tabs: DocumentTabs
     #subscriptions: Subscription[] = []
+    #debugLogCheckboxes = new Map<LogModule, HTMLInputElement>()
 
     /** Callback when camera optimization changes */
     onCameraOptimizationChange?: (enabled: boolean) => void
@@ -87,6 +89,9 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback to get current viewport size for benchmark. When null, benchmark uses 800×600. */
     onGetViewportSize?: () => { width: number; height: number } | null
+
+    /** After debug log toggles are persisted; apply flags and sync worker. */
+    onDebugLogModulesChange?: () => void
 
     get cameraOptimization(): boolean {
         return this.#cameraOptimization$.value
@@ -297,6 +302,45 @@ export class DevToolsPanel extends HTMLElement {
             this.onBvhOptimizationChange?.(v)
         })
 
+        const debugHead = document.createElement("div")
+        debugHead.className = "shade-head"
+        debugHead.textContent = "Debug logs"
+        shadow.appendChild(debugHead)
+
+        const debugAllRow = document.createElement("div")
+        debugAllRow.style.display = "flex"
+        debugAllRow.style.gap = "6px"
+        debugAllRow.style.flexWrap = "wrap"
+        const allOn = document.createElement("button")
+        allOn.textContent = "Log modules all on"
+        const allOff = document.createElement("button")
+        allOff.textContent = "Log modules all off"
+        const setAllDebugLogs = (on: boolean) => {
+            const base = { ...this.#settings.getGlobal().app.debugLogModules }
+            for (const mod of DEBUG_LOG_MODULES) {
+                base[mod] = on
+                const cb = this.#debugLogCheckboxes.get(mod)
+                if (cb) cb.checked = on
+            }
+            this.#settings.updateGlobal({ app: { debugLogModules: base } })
+            this.onDebugLogModulesChange?.()
+        }
+        allOn.addEventListener("click", () => setAllDebugLogs(true))
+        allOff.addEventListener("click", () => setAllDebugLogs(false))
+        debugAllRow.append(allOn, allOff)
+        shadow.appendChild(debugAllRow)
+
+        for (const mod of DEBUG_LOG_MODULES) {
+            const checked = g.debugLogModules?.[mod] === true
+            const cb = this.#addCheckbox(shadow, `Log: ${mod}`, checked)
+            this.#debugLogCheckboxes.set(mod, cb)
+            cb.addEventListener("change", () => {
+                const next = { ...this.#settings.getGlobal().app.debugLogModules, [mod]: cb.checked }
+                this.#settings.updateGlobal({ app: { debugLogModules: next } })
+                this.onDebugLogModulesChange?.()
+            })
+        }
+
         this.#lightingExpandedCheckbox = this.#addCheckbox(shadow, "Show lighting", this.#lightingExpanded$.value)
         this.#subscriptions.push(connectCheckbox(this.#lightingExpandedCheckbox, this.#lightingExpanded$))
         this.#lightingExpanded$.pipe(skip(1)).subscribe(v => {
@@ -398,6 +442,14 @@ export class DevToolsPanel extends HTMLElement {
 
         // Hidden by default
         this.style.display = "none"
+    }
+
+    /** Sync debug-log checkboxes from persisted settings (e.g. after storage load). */
+    syncDebugLogModulesFromSettings(state: DebugLogModulesState): void {
+        for (const mod of DEBUG_LOG_MODULES) {
+            const cb = this.#debugLogCheckboxes.get(mod)
+            if (cb) cb.checked = state[mod] === true
+        }
     }
 
     /** Sync range UI from renderer (e.g. after settings load). */

@@ -9,6 +9,7 @@
  * and source order since they don't have unique identifying properties.
  */
 
+import { log } from "../logging/debug-log.mjs"
 import { Node, Sphere, Box, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate, Polygon2D, Extrude, Loft, Lathe } from "../scene/scene.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
@@ -251,13 +252,15 @@ export function matchNodesToSource(
             if (matchNodeToCall(node, call)) {
                 result.set(node.id, call.location)
                 matchedCalls.add(call)
-                console.debug(`[NodeMatcher] Matched node ${node.id} (${node.getShapeType()}) to ${call.functionName} at line ${call.location.startLine}`)
+                log("NodeMatcher").debug(
+                    `Matched node ${node.id} (${node.getShapeType()}) to ${call.functionName} at line ${call.location.startLine}`
+                )
                 break
             }
         }
     }
 
-    console.debug(`[NodeMatcher] Matched ${result.size}/${nodes.length} nodes`)
+    log("NodeMatcher").debug(`Matched ${result.size}/${nodes.length} nodes`)
 
     return result
 }

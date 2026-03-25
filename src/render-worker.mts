@@ -4,6 +4,7 @@
  */
 
 import type { MainToWorkerMessage } from "./render-worker-protocol.mjs"
+import { applyDebugLogModules, log } from "./logging/debug-log.mjs"
 import { RenderWorkerCore } from "./render-worker-core.mjs"
 
 let core: RenderWorkerCore | null = null
@@ -150,8 +151,11 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "setBvhEnabled":
             if (core) core.setBvhEnabled(msg.enabled)
             break
+        case "setDebugLogModules":
+            applyDebugLogModules(msg.modules)
+            break
         default:
-            console.log("[RenderWorker] unknown message", (msg as { type: string }).type)
+            log("RenderWorker").info("unknown message", (msg as { type: string }).type)
     }
 }
 

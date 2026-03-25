@@ -81,6 +81,7 @@ export type MainToWorkerMessage =
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
     | { type: "pickObject"; clickUV: [number, number]; requestId: number }
     | { type: "setBvhEnabled"; enabled: boolean }
+    | { type: "setDebugLogModules"; modules: Record<string, boolean> }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]

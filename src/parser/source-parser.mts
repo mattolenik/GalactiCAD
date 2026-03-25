@@ -4,6 +4,7 @@
  */
 
 import * as ts from "typescript"
+import { log } from "../logging/debug-log.mjs"
 import { vec3, type Vec3, Vec3f } from "../vecmat/vector.mjs"
 
 /**
@@ -283,7 +284,7 @@ export class SourceParser {
         // (primitive + modifiers) appear at the variable, not split between var and init.
         this.#propagateVariableChainLocations(sourceFile, calls)
 
-        console.debug(`[SourceParser] Found ${calls.length} shape call(s)`)
+        log("SourceParser").debug(`Found ${calls.length} shape call(s)`)
 
         return calls
     }
@@ -670,7 +671,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse sphere fluent args:`, err)
+            log("SourceParser").debug(`Could not parse sphere fluent args:`, err)
         }
     }
 
@@ -699,7 +700,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse box fluent args:`, err)
+            log("SourceParser").debug(`Could not parse box fluent args:`, err)
         }
     }
 
@@ -736,7 +737,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse ${parsedCall.functionName} fluent args:`, err)
+            log("SourceParser").debug(`Could not parse ${parsedCall.functionName} fluent args:`, err)
         }
     }
 
@@ -756,7 +757,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse torus fluent args:`, err)
+            log("SourceParser").debug(`Could not parse torus fluent args:`, err)
         }
     }
 
@@ -776,7 +777,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse capsule fluent args:`, err)
+            log("SourceParser").debug(`Could not parse capsule fluent args:`, err)
         }
     }
 
@@ -796,7 +797,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse plane fluent args:`, err)
+            log("SourceParser").debug(`Could not parse plane fluent args:`, err)
         }
     }
 
@@ -810,7 +811,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse blob fluent args:`, err)
+            log("SourceParser").debug(`Could not parse blob fluent args:`, err)
         }
     }
 
@@ -825,7 +826,7 @@ export class SourceParser {
                 if (typeof v === "number") parsedCall.r = v
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse ${parsedCall.functionName} args:`, err)
+            log("SourceParser").debug(`Could not parse ${parsedCall.functionName} args:`, err)
         }
     }
 
@@ -840,7 +841,7 @@ export class SourceParser {
                 if (typeof v === "number") parsedCall.r = v
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse ${parsedCall.functionName} args:`, err)
+            log("SourceParser").debug(`Could not parse ${parsedCall.functionName} args:`, err)
         }
     }
 
@@ -853,7 +854,7 @@ export class SourceParser {
                 if (typeof v1 === "number") parsedCall.h = v1
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse taper args:`, err)
+            log("SourceParser").debug(`Could not parse taper args:`, err)
         }
     }
 
@@ -867,7 +868,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse lathe fluent args:`, err)
+            log("SourceParser").debug(`Could not parse lathe fluent args:`, err)
         }
     }
 
@@ -878,7 +879,7 @@ export class SourceParser {
                 if (vertices) parsedCall.vertices = vertices
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse polygon2d args:`, err)
+            log("SourceParser").debug(`Could not parse polygon2d args:`, err)
         }
     }
 

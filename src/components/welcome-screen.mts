@@ -1,3 +1,4 @@
+import { log } from "../logging/debug-log.mjs"
 import { __fg_color, __tone_1, __tone_3, __tone_accent } from "../style/style.mjs"
 import { isFileSystemAccessAvailable } from "../fs/file-picker.mjs"
 import { VERSION } from "../version.mjs"
@@ -710,7 +711,7 @@ export class WelcomeScreen extends HTMLElement {
                 thumbDiv.appendChild(canvas)
             } catch (e) {
                 if ((e as Error)?.name === "AbortError") return
-                console.warn(`[WelcomeScreen] Failed to load thumbnail for ${name}:`, e)
+                log("WelcomeScreen").warn(`Failed to load thumbnail for ${name}:`, e)
             }
         }
     }
@@ -736,7 +737,7 @@ export class WelcomeScreen extends HTMLElement {
                 thumbDiv.innerHTML = ""
                 thumbDiv.appendChild(canvas)
             } catch (e) {
-                console.warn(`[WelcomeScreen] Failed to load thumbnail for recent ${name}:`, e)
+                log("WelcomeScreen").warn(`Failed to load thumbnail for recent ${name}:`, e)
             }
         }
     }

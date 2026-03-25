@@ -5,6 +5,7 @@
 
 import * as monaco from "monaco-editor"
 import { getShapePalette, PALETTE_SIZE } from "../colorPalette.mjs"
+import { log } from "../logging/debug-log.mjs"
 import type { Vec3f } from "../vecmat/vector.mjs"
 import type { FluentMethodLocation } from "../parser/source-parser.mjs"
 
@@ -109,7 +110,7 @@ export class MonacoHighlighter {
      */
     setColorIndicators(indicators: ShapeIndicator[], palette?: Vec3f[]) {
         if (!this.editor) {
-            console.warn("[MonacoHighlighter] No editor set")
+            log("MonacoHighlighter").warn("No editor set")
             return
         }
 
@@ -185,7 +186,7 @@ export class MonacoHighlighter {
      */
     highlightRanges(primaryRanges: HighlightRange[], childRanges: HighlightRange[], overviewRulerColor = "#ffff00") {
         if (!this.editor) {
-            console.warn("[MonacoHighlighter] No editor set")
+            log("MonacoHighlighter").warn("No editor set")
             return
         }
 

@@ -4,24 +4,24 @@
 
 // Coarse thread — easy to see the helix in preview
 let coarse = threadedRod
-  .radius(1.2)
-  .height(5)
-  .pitch(0.55)
-  .shift([0, 5, 0])
+  .radius(12)
+  .height(50)
+  .pitch(5.5)
+  .shift([0, 50, 0])
 
 // Finer pitch — depth follows automatically (smaller A)
 let fine = threadedRod
-  .radius(0.85)
-  .height(3.5)
-  .pitch(0.28)
-  .shift([9, 3.5, 0])
+  .radius(8.5)
+  .height(35)
+  .pitch(2.8)
+  .shift([90, 35, 0])
 
 // Explicit radial amplitude (optional): disables pitch+angle depth
 let stub = threadedRod
-  .radius(1.5)
-  .height(1.8)
-  .pitch(0.4)
-  .depth(0.12)
-  .shift([-10, 1.8, 0])
+  .radius(15)
+  .height(18)
+  .pitch(4)
+  .depth(1.2)
+  .shift([-100, 18, 0])
 
 return union(coarse, fine, stub)

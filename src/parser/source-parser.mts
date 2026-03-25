@@ -43,7 +43,7 @@ export interface ParsedShapeCall {
     pitch?: number    // Axial distance per 360° for threaded_rod
     depth?: number    // Radial amplitude override for threaded_rod (disables pitch+angle amp)
     threadAngle?: number // Meridional flank angle (deg) for threaded_rod; with pitch sets amp unless depth()
-    threadProfile?: "fdm" | "iso" // From .profile.fdm() / .profile.iso() chain
+    threadProfile?: "fdm" | "iso" | "acme" // From .profile.fdm() / .iso() / .acme() chain
     threadHandedness?: "left" | "right" // From .left / .right property chain (default right)
     c?: number        // Center half-height for capsule
     normal?: Vec3f    // Normal vector for plane
@@ -800,6 +800,10 @@ export class SourceParser {
                 }
                 if (method === "fdm" && args.length === 0) {
                     parsedCall.threadProfile = "fdm"
+                    break
+                }
+                if (method === "acme" && args.length === 0) {
+                    parsedCall.threadProfile = "acme"
                     break
                 }
             }

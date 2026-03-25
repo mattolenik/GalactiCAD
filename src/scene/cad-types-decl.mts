@@ -103,7 +103,7 @@ declare class Torus extends Node {
 
 /**
  * Y-axis rod with helical thread on the barrel.
- * Default threaded_rod.radius(...) is FDM (smooth sine). Use threaded_rod.profile.iso() for a triangular V-groove.
+ * Default threaded_rod.radius(...) is FDM (smooth sine). profile.iso() = V-groove; profile.acme() = trapezoidal (default threadAngle 61° = 90° − nominal 29° ACME measure).
  * Radial amplitude follows pitch and threadAngle (tan(ψ)·pitch/(2π)) unless depth() overrides.
  */
 declare class ThreadedRod extends Node {
@@ -114,8 +114,8 @@ declare class ThreadedRod extends Node {
     /** Meridional flank angle (deg); with pitch sets threadAmp unless depth() was used. */
     threadFlankAngleDeg: number;
     threadAmp: number;
-    /** fdm = sinusoidal barrel; iso = triangular helical. */
-    threadProfile: "fdm" | "iso";
+    /** fdm = sinusoidal; iso = triangular; acme = trapezoidal. */
+    threadProfile: "fdm" | "iso" | "acme";
     /** Default right-hand; use threaded_rod.left... for left-hand. */
     threadHandedness: "left" | "right";
     height(h: number): ThreadedRod;
@@ -387,6 +387,7 @@ type ThreadedRodHandSide = {
     readonly profile: {
         fdm(): { radius(r: number): ThreadedRod };
         iso(): { radius(r: number): ThreadedRod };
+        acme(): { radius(r: number): ThreadedRod };
     };
 };
 
@@ -403,6 +404,7 @@ declare const threaded_rod: {
     readonly profile: {
         fdm(): { radius(r: number): ThreadedRod };
         iso(): { radius(r: number): ThreadedRod };
+        acme(): { radius(r: number): ThreadedRod };
     };
 };
 

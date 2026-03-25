@@ -40,4 +40,12 @@ let leftIso = threaded_rod.left.profile
   .pitch(3.5)
   .shift([110, 38, -120])
 
-return union(coarse, fine, stub, isoRod, leftIso)
+// ACME-style trapezoidal helix (flat crest/root); profile.acme() defaults threadAngle to 61° (90° − 29° ACME reference).
+let acmeRod = threaded_rod.profile
+  .acme()
+  .radius(11)
+  .height(42)
+  .pitch(5)
+  .shift([-110, 42, -120])
+
+return union(coarse, fine, stub, isoRod, leftIso, acmeRod)

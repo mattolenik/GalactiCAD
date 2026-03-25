@@ -69,7 +69,7 @@ interface NodeLikeMatch {
     turnPitch?: number
     threadAmp?: number
     threadFlankAngleDeg?: number
-    threadProfile?: "fdm" | "iso"
+    threadProfile?: "fdm" | "iso" | "acme"
     threadHandedness?: "left" | "right"
     c?: number
     normal?: { x: number; y: number; z: number }

@@ -16,10 +16,10 @@ function threadAmpForPitchAndAngle(pitch: number, flankAngleDeg: number): number
     return (Math.tan(rad) * p) / (2 * Math.PI)
 }
 
-export type ThreadedRodProfile = "fdm" | "iso"
+export type ThreadedRodProfile = "fdm" | "iso" | "acme"
 export type ThreadedRodHandedness = "left" | "right"
 
-/** Finite Y-axis rod with a helical thread on the barrel (FDM = smooth sine, ISO = triangular V-groove). */
+/** Finite Y-axis rod with a helical thread on the barrel (FDM = sine, ISO = V-groove triangle, ACME = trapezoid). */
 export class ThreadedRod extends Node {
     pos = vec3([0, 0, 0])
     r = 0
@@ -32,7 +32,7 @@ export class ThreadedRod extends Node {
     explicitDepth = false
     /** Radial amplitude about mean radius `r` (same meaning for both profiles). */
     threadAmp = 0
-    /** `fdm` = sinusoidal barrel; `iso` = triangular helical profile. */
+    /** `fdm` = sinusoidal barrel; `iso` = triangular; `acme` = trapezoidal (flat crest/root). */
     threadProfile: ThreadedRodProfile = "fdm"
     /** Right-hand thread by default; left-hand flips helix direction. */
     threadHandedness: ThreadedRodHandedness = "right"
@@ -128,7 +128,9 @@ export class ThreadedRod extends Node {
     }
 
     get #wgslBarrelFn(): string {
-        return this.threadProfile === "iso" ? "fThreadedRodBarrelDistIso" : "fThreadedRodBarrelDist"
+        if (this.threadProfile === "iso") return "fThreadedRodBarrelDistIso"
+        if (this.threadProfile === "acme") return "fThreadedRodBarrelDistAcme"
+        return "fThreadedRodBarrelDist"
     }
 
     get #wgslHelixSign(): string {
@@ -293,12 +295,25 @@ function threadedRodRadius(r: number): ThreadedRod {
     return new ThreadedRod(DEFAULT_POS, { r, h: 1, pitch: 0.5, threadProfile: "fdm", threadHandedness: "right" })
 }
 
+/** Default meridional `threadAngle` for ACME entry points: 90° − 29° (ACME thread angle uses a different reference than `threadAngle`). */
+const DEFAULT_ACME_THREAD_ANGLE_DEG = 61
+
 function threadedRodProfileEntry(
     profile: ThreadedRodProfile,
     hand: ThreadedRodHandedness
 ): { radius(r: number): ThreadedRod } {
     return {
         radius(r: number): ThreadedRod {
+            if (profile === "acme") {
+                return new ThreadedRod(DEFAULT_POS, {
+                    r,
+                    h: 1,
+                    pitch: 0.5,
+                    threadProfile: "acme",
+                    threadHandedness: hand,
+                    threadAngle: DEFAULT_ACME_THREAD_ANGLE_DEG,
+                })
+            }
             return new ThreadedRod(DEFAULT_POS, { r, h: 1, pitch: 0.5, threadProfile: profile, threadHandedness: hand })
         },
     }
@@ -306,7 +321,11 @@ function threadedRodProfileEntry(
 
 function threadedRodHandSide(hand: ThreadedRodHandedness): {
     radius(r: number): ThreadedRod
-    profile: { fdm(): { radius(r: number): ThreadedRod }; iso(): { radius(r: number): ThreadedRod } }
+    profile: {
+        fdm(): { radius(r: number): ThreadedRod }
+        iso(): { radius(r: number): ThreadedRod }
+        acme(): { radius(r: number): ThreadedRod }
+    }
 } {
     return {
         radius(r: number): ThreadedRod {
@@ -318,6 +337,9 @@ function threadedRodHandSide(hand: ThreadedRodHandedness): {
             },
             iso(): { radius(r: number): ThreadedRod } {
                 return threadedRodProfileEntry("iso", hand)
+            },
+            acme(): { radius(r: number): ThreadedRod } {
+                return threadedRodProfileEntry("acme", hand)
             },
         },
     }
@@ -333,6 +355,9 @@ export const threaded_rod = {
         },
         iso(): { radius(r: number): ThreadedRod } {
             return threadedRodProfileEntry("iso", "right")
+        },
+        acme(): { radius(r: number): ThreadedRod } {
+            return threadedRodProfileEntry("acme", "right")
         },
     },
 }

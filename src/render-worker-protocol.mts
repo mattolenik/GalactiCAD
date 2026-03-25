@@ -43,8 +43,8 @@ export interface SerializedNode {
     turnPitch?: number
     threadAmp?: number
     threadFlankAngleDeg?: number
-    /** `fdm` = sinusoidal; `iso` = triangular V-groove helical. */
-    threadProfile?: "fdm" | "iso"
+    /** `fdm` = sinusoidal; `iso` = triangular V-groove; `acme` = trapezoidal. */
+    threadProfile?: "fdm" | "iso" | "acme"
     /** Default right-hand; left-hand flips helix. */
     threadHandedness?: "left" | "right"
     /** Polygon2D buffer offset in the shared vertex buffer (bytes / 8). */

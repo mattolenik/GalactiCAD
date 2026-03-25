@@ -67,7 +67,7 @@ export interface NodeStub {
     turnPitch?: number
     threadAmp?: number
     threadFlankAngleDeg?: number
-    threadProfile?: "fdm" | "iso"
+    threadProfile?: "fdm" | "iso" | "acme"
     threadHandedness?: "left" | "right"
 }
 

@@ -313,6 +313,31 @@ fn fThreadedRodBarrelDistIso(p: vec3f, r: f32, pitch: f32, amp: f32, helixSign: 
     return rho - (r + amp * tri);
 }
 
+// ACME-style threaded rod: symmetric trapezoidal helical profile (flat crest and root, two linear flanks per turn).
+// Same phase as FDM/ISO; flank/flat fractions are a preview approximation (radial depth still from scene threadAmp).
+fn fThreadedRodBarrelDistAcme(p: vec3f, r: f32, pitch: f32, amp: f32, helixSign: f32) -> f32 {
+    let rho = length(p.xz);
+    let k = TAU / max(pitch, 1e-6);
+    let phase = helixSign * k * p.y - atan2(p.z, p.x);
+    let u = fract(phase / TAU);
+    let fw = 0.35;
+    let fc = 0.15;
+    let t0 = fw;
+    let t1 = fw + fc;
+    let t2 = t1 + fw;
+    var tr: f32;
+    if (u < t0) {
+        tr = -1.0 + 2.0 * (u / fw);
+    } else if (u < t1) {
+        tr = 1.0;
+    } else if (u < t2) {
+        tr = 1.0 - 2.0 * ((u - t1) / fw);
+    } else {
+        tr = -1.0;
+    }
+    return rho - (r + amp * tr);
+}
+
 fn fConeEx(p: vec3<f32>, radius: f32, height: f32, id: u32) -> SDFResult {
     let lenXZ = length(p.xz);
     let q = vec2f(lenXZ, p.y);

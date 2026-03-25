@@ -49,6 +49,11 @@ export interface SerializedNode {
     threadHandedness?: "left" | "right"
     /** Polygon2D buffer offset in the shared vertex buffer (bytes / 8). */
     bufferOffset?: number
+    /**
+     * Start index (f32 slot) into the packed `sceneParams` buffer for this node's scalar params.
+     * Present when `paramCount > 0` after build (used for cap push/pull partial GPU writes).
+     */
+    paramOffset?: number
     /** True if this is a virtual cap node (Extrude top/bottom). */
     isVirtualCap?: boolean
     /** For virtual cap nodes: which cap. */
@@ -82,7 +87,7 @@ export type MainToWorkerMessage =
     | { type: "doubleClick"; clickUV: [number, number]; documentName?: string }
     | { type: "hover"; clickUV: [number, number]; altKey: boolean; documentName?: string; hoverRequestId?: number }
     | { type: "resize"; fullWidth: number; fullHeight: number; devicePixelRatio: number }
-    | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; nodeParams?: { nodeId: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
+    | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; sceneParams?: { byteOffset: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
     | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }

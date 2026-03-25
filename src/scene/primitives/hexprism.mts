@@ -1,5 +1,6 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spVec2Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class HexPrism extends Node {
@@ -19,21 +20,47 @@ export class HexPrism extends Node {
     override getIndicatorSvg(): string {
         return `<polygon points="6,1 10.5,3.5 10.5,8.5 6,11 1.5,8.5 1.5,3.5" fill="currentColor"/>`
     }
-    override updateScene(): void { }
+
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.#paramSlice())
+    }
+
+    #paramSlice(): Float32Array {
+        const buf = new Float32Array(5)
+        buf.set(this.pos.data, 0)
+        buf[3] = this.r
+        buf[4] = this.h
+        return buf
+    }
+
+    override build() {
+        super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(5)
+        this.paramCount = 5
+    }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `HexPrism${this.id}`
         const varName = decapitalize(funcName)
-        return { funcName, varName, text: `fHexagonCircumcircleEx(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}), ${this.id}u)` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const rh = spVec2Wgsl(o + 3)
+        return { funcName, varName, text: `fHexagonCircumcircleEx(p - ${pos}, ${rh}, ${this.id}u)` }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `HexPrism${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        return { funcName, varName, text: `fHexagonCircumcircleFast(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}))` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const rh = spVec2Wgsl(o + 3)
+        return { funcName, varName, text: `fHexagonCircumcircleFast(p - ${pos}, ${rh})` }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `HexPrism${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        return { funcName, varName, text: `fHexagonCircumcircleMid(p - ${this.pos.wgsl}, vec2f(${this.r}, ${this.h}))` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const rh = spVec2Wgsl(o + 3)
+        return { funcName, varName, text: `fHexagonCircumcircleMid(p - ${pos}, ${rh})` }
     }
 
     override computeBounds(): AABB {

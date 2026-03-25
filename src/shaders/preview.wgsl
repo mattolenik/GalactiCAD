@@ -89,9 +89,9 @@ struct FaceSelection {
 }
 @group(0) @binding(11) var<uniform> faceSelection: FaceSelection;
 
-// Per-node parameters: .x = h (half-height), .y = posYDelta (Y offset from compiled position).
-// Indexed by node ID. Updated during cap push/pull drag.
-@group(0) @binding(12) var<uniform> nodeParams: array<vec4f, 256>;
+// Packed f32 scene parameters (primitive dims, transforms, BVH bounds, etc.).
+@group(0) @binding(19) var<storage, read> sceneParams: array<f32>;
+//:) include "scene_params_read.wgsl"
 
 // Edge selection: hit at click/hover pixel
 const EDGE_KIND_NONE: u32 = 0u;
@@ -744,7 +744,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     _ = clickedHitPos[0];
     _ = clickedNormal[0];
     _ = faceSelection.nodeId;
-    _ = nodeParams[0];
+    _ = sceneParams[0];
     _ = edgeHits[0].kind;
     _ = selectedEdges.count;
     _ = hoverEdgeHits[0].kind;
@@ -922,7 +922,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
 fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     let tileU = u32(BEAM_TILE_SIZE);
     _ = polygonVertices[0];
-    _ = nodeParams[0];
+    _ = sceneParams[0];
 
     let outDims = textureDimensions(tStartOut);
     if (gid.x >= outDims.x || gid.y >= outDims.y) {

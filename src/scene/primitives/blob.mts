@@ -1,5 +1,6 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Blob extends Node {
@@ -14,25 +15,40 @@ export class Blob extends Node {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="4" fill="currentColor"/>`
     }
-    override updateScene(): void { }
+
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.#paramSlice())
+    }
+
+    #paramSlice(): Float32Array {
+        return Float32Array.from(this.pos.data)
+    }
+
+    override build() {
+        super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(3)
+        this.paramCount = 3
+    }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Blob${this.id}`
         const varName = decapitalize(funcName)
-        return { funcName, varName, text: `fBlobEx(p - ${this.pos.wgsl}, ${this.id}u)` }
+        const pos = spVec3Wgsl(this.paramOffset)
+        return { funcName, varName, text: `fBlobEx(p - ${pos}, ${this.id}u)` }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Blob${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        return { funcName, varName, text: `fBlobFast(p - ${this.pos.wgsl})` }
+        const pos = spVec3Wgsl(this.paramOffset)
+        return { funcName, varName, text: `fBlobFast(p - ${pos})` }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Blob${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        return { funcName, varName, text: `fBlobMid(p - ${this.pos.wgsl})` }
+        const pos = spVec3Wgsl(this.paramOffset)
+        return { funcName, varName, text: `fBlobMid(p - ${pos})` }
     }
 
     override computeBounds(): AABB {
-        // Blob is a procedural icosahedron-like shape; conservative bound at ~1.7 units
         return aabb(this.pos.x, this.pos.y, this.pos.z, 1.7, 1.7, 1.7)
     }
 

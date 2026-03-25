@@ -1,5 +1,6 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 import { aabbExpandVec, type AABB } from "../aabb.mjs"
+import { spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Elongate extends UnaryOperator {
@@ -14,10 +15,22 @@ export class Elongate extends UnaryOperator {
     override getAllDescendantIds(): number[] {
         return [this.id, ...this.arg.getAllDescendantIds()]
     }
+
+    protected override reserveUnarySceneParams(): void {
+        this.paramOffset = this.scene.allocSceneParamFloats(3)
+        this.paramCount = 3
+    }
+
+    override writeSceneParams(view: Float32Array): void {
+        view[0] = this.hx
+        view[1] = this.hy
+        view[2] = this.hz
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
         const childText = childResult.text!
-        const h = `vec3f(${this.hx}, ${this.hy}, ${this.hz})`
+        const h = spVec3Wgsl(this.paramOffset)
         const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
         const funcName = `Elongate${this.id}`
         const varName = decapitalize(funcName)
@@ -32,7 +45,7 @@ export class Elongate extends UnaryOperator {
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
         const childText = childResult.text!
-        const h = `vec3f(${this.hx}, ${this.hy}, ${this.hz})`
+        const h = spVec3Wgsl(this.paramOffset)
         const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
         const funcName = `Elongate${this.id}`
         const varName = `${decapitalize(funcName)}_f`
@@ -47,7 +60,7 @@ export class Elongate extends UnaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
-        const h = `vec3f(${this.hx}, ${this.hy}, ${this.hz})`
+        const h = spVec3Wgsl(this.paramOffset)
         const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
         const funcName = `Elongate${this.id}`
         const varName = `${decapitalize(funcName)}_m`

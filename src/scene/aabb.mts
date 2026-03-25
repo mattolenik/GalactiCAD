@@ -1,7 +1,7 @@
 /**
  * Axis-Aligned Bounding Box utilities for BVH-accelerated SDF evaluation.
- * AABBs are computed at compile time (TypeScript) and emitted as inline WGSL
- * bounding checks to guard expensive SDF subtree evaluations.
+ * Bounds are computed on the CPU (`computeBounds`) and uploaded in the shared `sceneParams` buffer;
+ * union BVH guards read center/half via `sp_vec3` (see `Union._emitChildBlock`).
  */
 
 export interface AABB {

@@ -1,5 +1,6 @@
 import { BijectiveMap } from "../collections/bijectiveMap.mjs"
-import { BinaryOperator, CompileResult, Node, UnaryOperator, fluent, styleInfo, type BlendMode, type IntersectionType, type StyleInfo, type UnionType } from "./base.mjs"
+import { BinaryOperator, BVH_MIN_COST, CompileResult, Node, UnaryOperator, fluent, styleInfo, type BlendMode, type IntersectionType, type StyleInfo, type UnionType } from "./base.mjs"
+import { SCENE_PARAM_BOUNDS_F32_COUNT, SCENE_PARAMS_F32_CAPACITY, spVec3Wgsl } from "./scene-params.mjs"
 import { Bend, bend } from "./operators/bend.mjs"
 import { Elongate, elongate } from "./operators/elongate.mjs"
 import { Engrave, engrave } from "./operators/engrave.mjs"
@@ -42,14 +43,71 @@ const MAX_SCENE_NODE_ID = 1021
 
 export class SceneInfo {
     readonly root: Node
-    numArgs = 0
     #nodes = new BijectiveMap<number, Node>()
+    #sceneParamFloatUsed = 0
     totalPolygonVertices = 0
     /** Whether to emit BVH bounding checks during code generation. Default: true. */
     bvhEnabled = true
 
-    nextArgIndex(): number {
-        return this.numArgs++
+    allocSceneParamFloats(count: number): number {
+        if (count <= 0) return 0
+        const start = this.#sceneParamFloatUsed
+        const next = start + count
+        if (next > SCENE_PARAMS_F32_CAPACITY) {
+            throw new Error(
+                `Scene parameter buffer overflow (need ${next} f32 slots, max ${SCENE_PARAMS_F32_CAPACITY})`,
+            )
+        }
+        this.#sceneParamFloatUsed = next
+        return start
+    }
+
+    get sceneParamFloatCount(): number {
+        return this.#sceneParamFloatUsed
+    }
+
+    /** Pack all node-owned floats into a dense array for GPU upload (registration / build order). */
+    packSceneParams(): Float32Array {
+        const out = new Float32Array(this.#sceneParamFloatUsed)
+        for (const node of this.getAllNodes()) {
+            if (node.paramCount > 0) {
+                node.writeSceneParams(out.subarray(node.paramOffset, node.paramOffset + node.paramCount))
+            }
+            if (node.bvhBoundsOffset >= 0) {
+                const b = node.computeBounds()
+                if (b) {
+                    const v = out.subarray(node.bvhBoundsOffset, node.bvhBoundsOffset + SCENE_PARAM_BOUNDS_F32_COUNT)
+                    v[0] = b.cx
+                    v[1] = b.cy
+                    v[2] = b.cz
+                    v[3] = b.hx
+                    v[4] = b.hy
+                    v[5] = b.hz
+                }
+            }
+        }
+        return out
+    }
+
+    /**
+     * Reserve a contiguous tail region of `sceneParams` for BVH AABBs (6 f32 per qualifying node).
+     * Runs after `root.build()` so all `paramOffset` regions are allocated first; bounds slots are packed
+     * together for cache locality when union guards walk children.
+     */
+    #assignBvhBoundsSlots(): void {
+        if (!this.bvhEnabled) {
+            for (const node of this.getAllNodes()) {
+                node.bvhBoundsOffset = -1
+            }
+            return
+        }
+        for (const node of this.getAllNodes()) {
+            if (node.codegenCost() >= BVH_MIN_COST && node.computeBounds() !== null) {
+                node.bvhBoundsOffset = this.allocSceneParamFloats(SCENE_PARAM_BOUNDS_F32_COUNT)
+            } else {
+                node.bvhBoundsOffset = -1
+            }
+        }
     }
 
     allocPolygonVertices(count: number): number {
@@ -90,6 +148,17 @@ export class SceneInfo {
         return data
     }
 
+    /**
+     * Structural identity for choosing param-only GPU updates vs full WGSL recompilation.
+     * Ignores runtime scalar geometry parameters; includes topology, polygon counts, winding,
+     * discretized code-path selectors (twist, CSG blend family), BVH eligibility per node, and `bvhEnabled`.
+     */
+    structuralFingerprint(): string {
+        const parts: string[] = [`meta:bvhEnabled:${this.bvhEnabled ? "1" : "0"}`]
+        this.root.appendStructuralFingerprint(parts)
+        return parts.join("|")
+    }
+
     constructor(transpiledBody: string, options?: { bvhEnabled?: boolean }) {
         if (options?.bvhEnabled !== undefined) {
             this.bvhEnabled = options.bvhEnabled
@@ -100,6 +169,7 @@ export class SceneInfo {
             rotate, scale, shell, offset, elongate, twist, bend, taper)
         this.root.scene = this
         this.root.build()
+        this.#assignBvhBoundsSlots()
     }
 
     compile(): string {
@@ -130,7 +200,8 @@ export class SceneInfo {
         let code = ""
         for (const node of this.#nodes.values()) {
             if (node instanceof Box) {
-                code += `case ${node.id}u: { (*posOut) = ${node.pos.wgsl}; (*halfOut) = ${node.size.wgsl}; return true; }\n`
+                const o = node.paramOffset
+                code += `case ${node.id}u: { (*posOut) = ${spVec3Wgsl(o)}; (*halfOut) = ${spVec3Wgsl(o + 3)}; return true; }\n`
             }
         }
         return code

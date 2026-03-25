@@ -15,6 +15,7 @@ import { ShaderCompiler } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
+import { SCENE_PARAMS_BYTE_SIZE } from "./scene/scene-params.mjs"
 import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
@@ -32,9 +33,6 @@ import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot
 
 const MAX_POLYGON_VERTICES = 1024
 const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8
-const MAX_NODE_PARAMS = 256
-const NODE_PARAMS_BUFFER_SIZE = MAX_NODE_PARAMS * 16
-
 const EDGE_HITS_SIZE = 320
 const SELECTED_EDGES_HEADER = 16
 const SELECTED_EDGE_SIZE = 80
@@ -55,7 +53,7 @@ class UniformBuffers {
     clickedHitPos!: GPUBuffer
     clickedNormal!: GPUBuffer
     faceSelection!: GPUBuffer
-    nodeParams!: GPUBuffer
+    sceneParams!: GPUBuffer
     edgeHit!: GPUBuffer
     selectedEdges!: GPUBuffer
     hoverEdgeHit!: GPUBuffer
@@ -139,6 +137,8 @@ export class RenderWorkerCore {
     #lastSharedBuffer: SharedArrayBuffer | null = null
     #lastSelectionMode = 0
     #builtBody: string | null = null
+    /** Set after a successful full shader rebuild; used to skip compilation when `structuralFingerprint()` is unchanged. */
+    #builtStructuralFingerprint: string | null = null
     #fpsVersion = 0
 
     async init(canvas: OffscreenCanvas): Promise<void> {
@@ -224,11 +224,53 @@ export class RenderWorkerCore {
 
     async #doBuild(body: string): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
         this.#builtBody = body
-        const tSceneScript0 = performance.now()
+        const t0 = performance.now()
         this.#scene = new SceneInfo(body, { bvhEnabled: this.#bvhEnabled })
         const scene = this.#scene
         const allNodes = scene.getAllNodes()
-        const tSceneScript1 = performance.now()
+        const fingerprint = scene.structuralFingerprint()
+        const tEvaluate = performance.now()
+
+        const paramOnly =
+            this.#builtStructuralFingerprint !== null &&
+            fingerprint === this.#builtStructuralFingerprint &&
+            this.#pipeline !== null &&
+            this.#beamPipeline !== null &&
+            this.#sceneShader !== null
+
+        const polygonVertexData = scene.totalPolygonVertices > 0
+            ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer)
+            : new ArrayBuffer(0)
+        const newCompiledPosY = new Map<number, number>()
+        for (const node of allNodes) {
+            if (node instanceof Extrude || node instanceof Loft || node instanceof ThreadedRod) {
+                newCompiledPosY.set(node.id, node.pos.y)
+            }
+        }
+        const sceneParamData = scene.packSceneParams()
+        const sceneParamUpload = sceneParamData.byteLength > 0 ? sceneParamData : new Float32Array([0])
+        const tPacked = performance.now()
+
+        if (paramOnly) {
+            const tBuf0 = performance.now()
+            this.#compiledPosY = newCompiledPosY
+            if (scene.totalPolygonVertices > 0) {
+                this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
+            }
+            this.#device.queue.writeBuffer(this.#uniformBuffers.sceneParams, 0, sceneParamUpload as BufferSource)
+            this.#beamBindGroupInvalid = true
+            this.#sceneBindGroupInvalid = true
+            const t1 = performance.now()
+            const roundMs = (x: number) => Math.round(x * 100) / 100
+            log("RenderWorker").debug("scene build param-only (ms)", {
+                evaluate: roundMs(tEvaluate - t0),
+                pack: roundMs(tPacked - tEvaluate),
+                gpuBuffers: roundMs(t1 - tBuf0),
+                total: roundMs(t1 - t0),
+                under10msTarget: t1 - t0 < 10,
+            })
+            return { sceneNodes: serializeSceneNodes(scene, allNodes), compiledPosY: Array.from(this.#compiledPosY) }
+        }
 
         const tWgsl0 = performance.now()
         const sceneAux = scene.compileAux()
@@ -252,19 +294,6 @@ export class RenderWorkerCore {
         const tShaderMod0 = performance.now()
         const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
         const tShaderMod1 = performance.now()
-
-        const polygonVertexData = scene.totalPolygonVertices > 0
-            ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer)
-            : new ArrayBuffer(0)
-        const nodeParamsData = new Float32Array(MAX_NODE_PARAMS * 4)
-        const newCompiledPosY = new Map<number, number>()
-        for (const node of allNodes) {
-            if ((node instanceof Extrude || node instanceof Loft || node instanceof ThreadedRod) && node.id < MAX_NODE_PARAMS) {
-                nodeParamsData[node.id * 4] = node.h
-                nodeParamsData[node.id * 4 + 1] = 0
-                newCompiledPosY.set(node.id, node.pos.y)
-            }
-        }
 
         this.#buildGeneration++
         const generation = this.#buildGeneration
@@ -293,12 +322,14 @@ export class RenderWorkerCore {
             return { superseded: true } as { sceneNodes: never; compiledPosY: never; superseded: true }
         }
 
-        log("RenderWorker").debug("scene build (ms)", {
-            sceneScript: Math.round((tSceneScript1 - tSceneScript0) * 100) / 100,
-            wgslScene: Math.round((tWgsl1 - tWgsl0) * 100) / 100,
-            shaderModules: Math.round((tShaderMod1 - tShaderMod0) * 100) / 100,
-            pipelines: Math.round((tPipeline1 - tPipeline0) * 100) / 100,
-            total: Math.round((tPipeline1 - tSceneScript0) * 100) / 100,
+        const roundMs = (x: number) => Math.round(x * 100) / 100
+        log("RenderWorker").debug("scene build full (ms)", {
+            evaluate: roundMs(tEvaluate - t0),
+            wgslScene: roundMs(tWgsl1 - tWgsl0),
+            shaderModules: roundMs(tShaderMod1 - tShaderMod0),
+            pipelines: roundMs(tPipeline1 - tPipeline0),
+            pack: roundMs(tPacked - tEvaluate),
+            total: roundMs(tPipeline1 - t0),
         })
 
         // WebGPU: only buffers, textures, and query sets have destroy(). Pipelines, shader modules,
@@ -306,18 +337,22 @@ export class RenderWorkerCore {
         this.#pipeline = pipeline
         this.#beamPipeline = beamPipeline
         this.#sceneShader = nextShader
+        this.#builtStructuralFingerprint = fingerprint
 
         // Write GPU buffers only after the new pipeline is ready so the old pipeline
-        // continues rendering with the correct drag-time nodeParams (posYDelta != 0)
+        // continues rendering with the correct drag-time sceneParams cap slots (posYDelta != 0)
         // until the atomic swap. This prevents the visible jump where the object briefly
         // snaps back to its pre-drag position during pipeline compilation.
+        const tBuf0 = performance.now()
         this.#compiledPosY = newCompiledPosY
         if (scene.totalPolygonVertices > 0) {
             this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
         }
-        this.#device.queue.writeBuffer(this.#uniformBuffers.nodeParams, 0, nodeParamsData)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.sceneParams, 0, sceneParamUpload as BufferSource)
         this.#beamBindGroupInvalid = true
         this.#sceneBindGroupInvalid = true
+        const tBuf1 = performance.now()
+        log("RenderWorker").debug("scene build full buffer upload (ms)", { gpuBuffers: roundMs(tBuf1 - tBuf0) })
 
         return { sceneNodes: serializeSceneNodes(scene, allNodes), compiledPosY: Array.from(this.#compiledPosY) }
     }
@@ -440,7 +475,7 @@ export class RenderWorkerCore {
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                        { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                        { binding: 19, resource: { buffer: this.#uniformBuffers.sceneParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -614,7 +649,7 @@ export class RenderWorkerCore {
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                        { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                        { binding: 19, resource: { buffer: this.#uniformBuffers.sceneParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -721,7 +756,7 @@ export class RenderWorkerCore {
                 params,
                 this.#uniformBuffers.polygonVertices,
                 this.#uniformBuffers.faceSelection,
-                this.#uniformBuffers.nodeParams,
+                this.#uniformBuffers.sceneParams,
             )
             const mesh = await mdc.export(mdcShaderModule)
             self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
@@ -785,7 +820,7 @@ export class RenderWorkerCore {
                     { binding: 1, resource: { buffer: outBuffer } },
                     { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                     { binding: 4, resource: { buffer: this.#uniformBuffers.faceSelection } },
-                    { binding: 5, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                    { binding: 6, resource: { buffer: this.#uniformBuffers.sceneParams } },
                     { binding: 99, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
                 ],
             })
@@ -1074,7 +1109,7 @@ export class RenderWorkerCore {
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                        { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
+                        { binding: 19, resource: { buffer: this.#uniformBuffers.sceneParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -1100,13 +1135,13 @@ export class RenderWorkerCore {
                     { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                     { binding: 10, resource: { buffer: this.#uniformBuffers.clickedHitPos } },
                     { binding: 11, resource: { buffer: this.#uniformBuffers.faceSelection } },
-                    { binding: 12, resource: { buffer: this.#uniformBuffers.nodeParams } },
                     { binding: 13, resource: { buffer: this.#uniformBuffers.edgeHit } },
                     { binding: 14, resource: { buffer: this.#uniformBuffers.selectedEdges } },
                     { binding: 15, resource: { buffer: this.#uniformBuffers.hoverEdgeHit } },
                     { binding: 16, resource: { buffer: this.#uniformBuffers.hoveredEdge } },
                     { binding: 17, resource: { buffer: this.#uniformBuffers.clickedNormal } },
                     { binding: 18, resource: { buffer: this.#uniformBuffers.selectionStyles } },
+                    { binding: 19, resource: { buffer: this.#uniformBuffers.sceneParams } },
                 ],
             })
             this.#sceneBindGroupInvalid = false
@@ -1209,10 +1244,10 @@ export class RenderWorkerCore {
             label: "faceSelection",
         })
 
-        ub.nodeParams = this.#device.createBuffer({
-            size: NODE_PARAMS_BUFFER_SIZE,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "nodeParams",
+        ub.sceneParams = this.#device.createBuffer({
+            size: SCENE_PARAMS_BYTE_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            label: "sceneParams",
         })
 
         ub.edgeHit = this.#device.createBuffer({
@@ -1478,11 +1513,11 @@ export class RenderWorkerCore {
                 msg.polygonVertices.data,
             )
         }
-        if (msg.nodeParams) {
+        if (msg.sceneParams) {
             this.#device.queue.writeBuffer(
-                this.#uniformBuffers.nodeParams,
-                msg.nodeParams.nodeId * 16,
-                msg.nodeParams.data,
+                this.#uniformBuffers.sceneParams,
+                msg.sceneParams.byteOffset,
+                msg.sceneParams.data,
             )
         }
         if (msg.selectedObjectIds) {

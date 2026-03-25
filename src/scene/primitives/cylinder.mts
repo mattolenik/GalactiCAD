@@ -1,5 +1,6 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Cylinder extends Node {
@@ -19,21 +20,50 @@ export class Cylinder extends Node {
     override getIndicatorSvg(): string {
         return `<rect x="1" y="2" width="10" height="8" rx="3" fill="currentColor"/>`
     }
-    override updateScene(): void { }
+
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.#paramSlice())
+    }
+
+    #paramSlice(): Float32Array {
+        const buf = new Float32Array(5)
+        buf.set(this.pos.data, 0)
+        buf[3] = this.r
+        buf[4] = this.h
+        return buf
+    }
+
+    override build() {
+        super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(5)
+        this.paramCount = 5
+    }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Cylinder${this.id}`
         const varName = decapitalize(funcName)
-        return { funcName, varName, text: `fCylinderEx(p - ${this.pos.wgsl}, ${this.r}, ${this.h}, ${this.id}u)` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const r = spF32Wgsl(o + 3)
+        const h = spF32Wgsl(o + 4)
+        return { funcName, varName, text: `fCylinderEx(p - ${pos}, ${r}, ${h}, ${this.id}u)` }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Cylinder${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        return { funcName, varName, text: `fCylinderFast(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const r = spF32Wgsl(o + 3)
+        const h = spF32Wgsl(o + 4)
+        return { funcName, varName, text: `fCylinderFast(p - ${pos}, ${r}, ${h})` }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Cylinder${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        return { funcName, varName, text: `fCylinderMid(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const r = spF32Wgsl(o + 3)
+        const h = spF32Wgsl(o + 4)
+        return { funcName, varName, text: `fCylinderMid(p - ${pos}, ${r}, ${h})` }
     }
 
     override computeBounds(): AABB {

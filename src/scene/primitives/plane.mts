@@ -1,4 +1,5 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
+import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, type Vec3f } from "../../vecmat/vector.mjs"
 
 export class PlaneNode extends Node {
@@ -18,21 +19,50 @@ export class PlaneNode extends Node {
     override getIndicatorSvg(): string {
         return `<line x1="0" y1="6" x2="12" y2="6" stroke="currentColor" stroke-width="2"/>`
     }
-    override updateScene(): void { }
+
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.#paramSlice())
+    }
+
+    #paramSlice(): Float32Array {
+        const buf = new Float32Array(7)
+        buf.set(this.pos.data, 0)
+        buf.set(this.normal.data, 3)
+        buf[6] = this.dist
+        return buf
+    }
+
+    override build() {
+        super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(7)
+        this.paramCount = 7
+    }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Plane${this.id}`
         const varName = decapitalize(funcName)
-        return { funcName, varName, text: `fPlaneEx(p - ${this.pos.wgsl}, ${this.normal.wgsl}, ${this.dist}, ${this.id}u)` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const nrm = spVec3Wgsl(o + 3)
+        const d = spF32Wgsl(o + 6)
+        return { funcName, varName, text: `fPlaneEx(p - ${pos}, ${nrm}, ${d}, ${this.id}u)` }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Plane${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        return { funcName, varName, text: `fPlaneFast(p - ${this.pos.wgsl}, ${this.normal.wgsl}, ${this.dist})` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const nrm = spVec3Wgsl(o + 3)
+        const d = spF32Wgsl(o + 6)
+        return { funcName, varName, text: `fPlaneFast(p - ${pos}, ${nrm}, ${d})` }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Plane${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        return { funcName, varName, text: `fPlaneMid(p - ${this.pos.wgsl}, ${this.normal.wgsl}, ${this.dist})` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const nrm = spVec3Wgsl(o + 3)
+        const d = spF32Wgsl(o + 6)
+        return { funcName, varName, text: `fPlaneMid(p - ${pos}, ${nrm}, ${d})` }
     }
 
     @fluent withNormal(n: Vec3): this {

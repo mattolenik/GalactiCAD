@@ -34,8 +34,8 @@ const FACE_HIGHLIGHT_ID: u32 = 1023u;
 const FACE_HIGHLIGHT_TOP: u32 = 1023u;
 const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 
-// Per-node parameters: .x = h, .y = posYDelta. Indexed by node ID.
-@group(0) @binding(5) var<uniform> nodeParams: array<vec4f, 256>;
+@group(0) @binding(6) var<storage, read> sceneParams: array<f32>;
+//:) include "scene_params_read.wgsl"
 
 // One output record per dispatched workgroup (no atomics).
 struct TileBounds {
@@ -104,7 +104,7 @@ fn computeBounds(
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = polygonVertices[0];
     _ = faceSelection.nodeId;
-    _ = nodeParams[0];
+    _ = sceneParams[0];
 
     let dims = uniforms.dims.xyz;
     let total = dims.x * dims.y * dims.z;

@@ -1,5 +1,6 @@
 import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
 import { aabbIntersect, type AABB } from "../aabb.mjs"
+import { spF32Wgsl } from "../scene-params.mjs"
 
 export class Intersect extends BinaryOperator {
     override getShapeType(): string {
@@ -10,36 +11,56 @@ export class Intersect extends BinaryOperator {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="3" x2="9" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="9" y1="3" x2="3" y2="9" stroke="currentColor" stroke-width="1.5"/>`
     }
 
+    protected override reserveBinarySceneParams(): void {
+        if (this.radius > 0) {
+            this.paramOffset = this.scene.allocSceneParamFloats(2)
+            this.paramCount = 2
+        }
+    }
+
+    override writeSceneParams(view: Float32Array): void {
+        if (this.paramCount >= 2) {
+            view[0] = this.radius
+            view[1] = this.n ?? 4
+        }
+    }
+
     private _interEx(L: string, R: string): string {
         const r = this.radius
         if (!r || r <= 0) return `opIntersectionEx(${L}, ${R})`
+        const rW = spF32Wgsl(this.paramOffset)
+        const nW = spF32Wgsl(this.paramOffset + 1)
         switch (this.mode) {
-            case 'chamfer': return `fOpIntersectionChamferEx(${L}, ${R}, ${r})`
-            case 'columns': return `fOpIntersectionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            case 'stairs': return `fOpIntersectionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            default: return `fOpIntersectionRoundEx(${L}, ${R}, ${r})`
+            case 'chamfer': return `fOpIntersectionChamferEx(${L}, ${R}, ${rW})`
+            case 'columns': return `fOpIntersectionColumnsEx(${L}, ${R}, ${rW}, ${nW})`
+            case 'stairs': return `fOpIntersectionStairsEx(${L}, ${R}, ${rW}, ${nW})`
+            default: return `fOpIntersectionRoundEx(${L}, ${R}, ${rW})`
         }
     }
 
     private _interFast(L: string, R: string): string {
         const r = this.radius
         if (!r || r <= 0) return `opIntersectionFast(${L}, ${R})`
+        const rW = spF32Wgsl(this.paramOffset)
+        const nW = spF32Wgsl(this.paramOffset + 1)
         switch (this.mode) {
-            case 'chamfer': return `fOpIntersectionChamferFast(${L}, ${R}, ${r})`
-            case 'columns': return `fOpIntersectionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            case 'stairs': return `fOpIntersectionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            default: return `fOpIntersectionRoundFast(${L}, ${R}, ${r})`
+            case 'chamfer': return `fOpIntersectionChamferFast(${L}, ${R}, ${rW})`
+            case 'columns': return `fOpIntersectionColumnsFast(${L}, ${R}, ${rW}, ${nW})`
+            case 'stairs': return `fOpIntersectionStairsFast(${L}, ${R}, ${rW}, ${nW})`
+            default: return `fOpIntersectionRoundFast(${L}, ${R}, ${rW})`
         }
     }
 
     private _interMid(L: string, R: string): string {
         const r = this.radius
         if (!r || r <= 0) return `opIntersectionMid(${L}, ${R})`
+        const rW = spF32Wgsl(this.paramOffset)
+        const nW = spF32Wgsl(this.paramOffset + 1)
         switch (this.mode) {
-            case 'chamfer': return `fOpIntersectionChamferMid(${L}, ${R}, ${r})`
-            case 'columns': return `fOpIntersectionColumnsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            case 'stairs': return `fOpIntersectionStairsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            default: return `fOpIntersectionRoundMid(${L}, ${R}, ${r})`
+            case 'chamfer': return `fOpIntersectionChamferMid(${L}, ${R}, ${rW})`
+            case 'columns': return `fOpIntersectionColumnsMid(${L}, ${R}, ${rW}, ${nW})`
+            case 'stairs': return `fOpIntersectionStairsMid(${L}, ${R}, ${rW}, ${nW})`
+            default: return `fOpIntersectionRoundMid(${L}, ${R}, ${rW})`
         }
     }
 
@@ -64,9 +85,7 @@ export class Intersect extends BinaryOperator {
         const rb = this.rh.computeBounds()
         if (!lb) return rb
         if (!rb) return lb
-        // Intersection AABB can only be as large as the smaller of the two
         const intersection = aabbIntersect(lb, rb)
-        // If they don't overlap at all, fall back to the lh bound (conservative)
         return intersection ?? lb
     }
     override compileMid(indentLevel = 0): CompileResult {
@@ -74,6 +93,14 @@ export class Intersect extends BinaryOperator {
         const rhResult = this.rh.compileMid(indentLevel)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
         return { text: this._interMid(lhResult.text!, rhResult.text!), varName }
+    }
+
+    override appendStructuralFingerprint(parts: string[]): void {
+        const rPos = this.radius > 0 ? "1" : "0"
+        const mode = this.radius > 0 ? (this.mode ?? "round") : "-"
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}:blend:${rPos}:mode:${mode}`)
+        this.lh.appendStructuralFingerprint(parts)
+        this.rh.appendStructuralFingerprint(parts)
     }
 
     constructor(lh: Node, rh: Node, public radius = 0, public mode?: BlendMode, public n?: number) {

@@ -1,6 +1,9 @@
 import { Vec2f, Vec3f, vec2, vec3 } from "../vecmat/vector.mjs"
 import { Box, Cone, Cylinder, Extrude, Loft, ThreadedRod } from "../scene/scene.mjs"
 
+/** Extrude / loft / threaded rod stub from the worker graph; includes byte offset for cap `h` + posYDelta in `sceneParams`. */
+export type PushPullCapNode = (Extrude | Loft | ThreadedRod) & { sceneCapParamsByteOffset: number }
+
 /** Reserved object IDs for face-level highlighting via the existing outline system. */
 const FACE_HIGHLIGHT_ID = 1023      // Side/edge face
 const FACE_HIGHLIGHT_TOP = 1023     // Top cap
@@ -11,7 +14,7 @@ export interface PushPullHost {
     writeBuffers(opts: {
         faceSelection?: ArrayBuffer
         polygonVertices?: { offset: number; data: ArrayBuffer }
-        nodeParams?: { nodeId: number; data: ArrayBuffer }
+        sceneParams?: { byteOffset: number; data: ArrayBuffer }
         selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }
     }): void
     getCompiledPosY(nodeId: number): number
@@ -38,7 +41,7 @@ interface FaceState {
 }
 
 interface CapState {
-    node: Extrude | Loft | ThreadedRod
+    node: PushPullCapNode
     isTop: boolean
     originalH: number
     originalPosY: number
@@ -52,7 +55,7 @@ export class PushPullController {
     #face: FaceState | null = null
     #cap: CapState | null = null
     /** Cap surface highlight only (single-click) — visual selection without push/pull activation. */
-    #capHighlightOnly: { node: Extrude | Loft | ThreadedRod; isTop: boolean } | null = null
+    #capHighlightOnly: { node: PushPullCapNode; isTop: boolean } | null = null
     /** Side face highlight only (single-click) — visual selection without push/pull activation. */
     #sideHighlightOnly: { extrude: Extrude; faceIndex: number } | null = null
     /** Primitive face highlight only (Box, Cylinder, Cone). */
@@ -244,7 +247,7 @@ export class PushPullController {
     }
 
     /** Highlight a cap for surface selection only (single-click). Does not activate push/pull. */
-    highlightCapFace(node: Extrude | Loft | ThreadedRod, isTop: boolean): void {
+    highlightCapFace(node: PushPullCapNode, isTop: boolean): void {
         this.#capHighlightOnly = { node, isTop }
         this.#sideHighlightOnly = null
         this.#primitiveHighlightOnly = null
@@ -257,7 +260,7 @@ export class PushPullController {
     }
 
     /** Select a cap face (top or bottom) of an Extrude or Loft for push/pull. */
-    selectCapFace(node: Extrude | Loft | ThreadedRod, isTop: boolean): void {
+    selectCapFace(node: PushPullCapNode, isTop: boolean): void {
         this.#face = null
         this.#capHighlightOnly = null
         this.#sideHighlightOnly = null
@@ -499,7 +502,7 @@ export class PushPullController {
                     this.#restoreOriginalVertices()
                 }
                 if (this.#cap) {
-                    this.#writeNodeParams(this.#cap.node.id, this.#cap.originalH, this.#cap.basePosYDelta)
+                    this.#writeCapSceneParams(this.#cap.node.sceneCapParamsByteOffset, this.#cap.originalH, this.#cap.basePosYDelta)
                 }
                 this.#dragging = false
                 this.#host.controls.isDragging = false
@@ -522,12 +525,12 @@ export class PushPullController {
         this.#host.writeBuffers({ faceSelection: data })
     }
 
-    /** Write h and posYDelta into the nodeParams uniform for a single node slot. */
-    #writeNodeParams(nodeId: number, h: number, posYDelta: number): void {
-        const data = new Float32Array(4) // vec4f
+    /** Write half-height `h` and Y offset `posYDelta` into `sceneParams` (two consecutive f32). */
+    #writeCapSceneParams(byteOffset: number, h: number, posYDelta: number): void {
+        const data = new Float32Array(2)
         data[0] = h
         data[1] = posYDelta
-        this.#host.writeBuffers({ nodeParams: { nodeId, data: data.buffer } })
+        this.#host.writeBuffers({ sceneParams: { byteOffset, data: data.buffer } })
     }
 
     /** Apply a push/pull offset to the selected face, updating polygon vertices. */
@@ -654,7 +657,7 @@ export class PushPullController {
 
         const newH = cap.originalH + this.#dragOffset * 0.5
         const dragPosYDelta = cap.isTop ? this.#dragOffset * 0.5 : -this.#dragOffset * 0.5
-        this.#writeNodeParams(cap.node.id, newH, cap.basePosYDelta + dragPosYDelta)
+        this.#writeCapSceneParams(cap.node.sceneCapParamsByteOffset, newH, cap.basePosYDelta + dragPosYDelta)
         this.#host.requestRender()
         return true
     }

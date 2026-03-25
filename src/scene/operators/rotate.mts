@@ -1,5 +1,6 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 import { aabbRotate, type AABB } from "../aabb.mjs"
+import { spMat3x3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Rotate extends UnaryOperator {
@@ -24,6 +25,23 @@ export class Rotate extends UnaryOperator {
         return [this.id, ...this.arg.getAllDescendantIds()]
     }
 
+    protected override reserveUnarySceneParams(): void {
+        this.paramOffset = this.scene.allocSceneParamFloats(18)
+        this.paramCount = 18
+    }
+
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.#paramSlice())
+    }
+
+    #paramSlice(): Float32Array {
+        const { fwd, inv } = this.getWgslMatrices()
+        const buf = new Float32Array(18)
+        buf.set(inv, 0)
+        buf.set(fwd, 9)
+        return buf
+    }
+
     private getWgslMatrices(): { fwd: number[], inv: number[] } {
         const toRad = Math.PI / 180
         const cx = Math.cos(this.rx * toRad), sx = Math.sin(this.rx * toRad)
@@ -43,25 +61,17 @@ export class Rotate extends UnaryOperator {
         return { fwd, inv }
     }
 
-    private matToWgsl(m: number[]): string {
-        const f = (v: number) => v.toFixed(10)
-        return `mat3x3f(vec3f(${f(m[0])}, ${f(m[1])}, ${f(m[2])}), vec3f(${f(m[3])}, ${f(m[4])}, ${f(m[5])}), vec3f(${f(m[6])}, ${f(m[7])}, ${f(m[8])}))`
-    }
-
     override compile(indentLevel = 0): CompileResult {
-        const { fwd, inv } = this.getWgslMatrices()
         const childResult = this.arg.compile(indentLevel)
         const childText = childResult.text!
-
-        const invMat = this.matToWgsl(inv)
-        const fwdMat = this.matToWgsl(fwd)
+        const o = this.paramOffset
+        const invMat = spMat3x3Wgsl(o)
+        const fwdMat = spMat3x3Wgsl(o + 9)
 
         const funcName = `Rotate${this.id}`
         const varName = decapitalize(funcName)
 
         if (childResult.prelude) {
-            // Child has a BVH prelude; apply p-replacement to the prelude and
-            // then rotate the accumulated normal.
             const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
             const accVar = childResult.varName!
             const prelude = rotatedPrelude + `${accVar} = sdfRotateNormal(${accVar}, ${fwdMat});\n`
@@ -77,17 +87,14 @@ export class Rotate extends UnaryOperator {
     }
 
     override compileFast(indentLevel = 0): CompileResult {
-        const { inv } = this.getWgslMatrices()
         const childResult = this.arg.compileFast(indentLevel)
         const childText = childResult.text!
-
-        const invMat = this.matToWgsl(inv)
+        const invMat = spMat3x3Wgsl(this.paramOffset)
 
         const funcName = `Rotate${this.id}`
         const varName = `${decapitalize(funcName)}_f`
 
         if (childResult.prelude) {
-            // Apply p-replacement to the entire prelude
             const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
             return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: rotatedPrelude }
         }
@@ -101,12 +108,11 @@ export class Rotate extends UnaryOperator {
     }
 
     override compileMid(indentLevel = 0): CompileResult {
-        const { fwd, inv } = this.getWgslMatrices()
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
-
-        const invMat = this.matToWgsl(inv)
-        const fwdMat = this.matToWgsl(fwd)
+        const o = this.paramOffset
+        const invMat = spMat3x3Wgsl(o)
+        const fwdMat = spMat3x3Wgsl(o + 9)
         const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
 
         const funcName = `Rotate${this.id}`
@@ -121,7 +127,6 @@ export class Rotate extends UnaryOperator {
     override computeBounds(): AABB | null {
         const childBounds = this.arg.computeBounds()
         if (!childBounds) return null
-        // Transform the child AABB using the forward rotation matrix
         const { fwd } = this.getWgslMatrices()
         return aabbRotate(childBounds, fwd)
     }

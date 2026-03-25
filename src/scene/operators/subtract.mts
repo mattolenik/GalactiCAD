@@ -1,5 +1,6 @@
 import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
 import type { AABB } from "../aabb.mjs"
+import { spF32Wgsl } from "../scene-params.mjs"
 
 export class Subtract extends BinaryOperator {
     override getShapeType(): string {
@@ -10,36 +11,56 @@ export class Subtract extends BinaryOperator {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }
 
+    protected override reserveBinarySceneParams(): void {
+        if (this.radius > 0) {
+            this.paramOffset = this.scene.allocSceneParamFloats(2)
+            this.paramCount = 2
+        }
+    }
+
+    override writeSceneParams(view: Float32Array): void {
+        if (this.paramCount >= 2) {
+            view[0] = this.radius
+            view[1] = this.n ?? 4
+        }
+    }
+
     private _diffEx(L: string, R: string): string {
         const r = this.radius
         if (!r || r <= 0) return `opDifferenceEx(${L}, ${R})`
+        const rW = spF32Wgsl(this.paramOffset)
+        const nW = spF32Wgsl(this.paramOffset + 1)
         switch (this.mode) {
-            case 'chamfer': return `fOpDifferenceChamferEx(${L}, ${R}, ${r})`
-            case 'columns': return `fOpDifferenceColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            case 'stairs': return `fOpDifferenceStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            default: return `fOpDifferenceRoundEx(${L}, ${R}, ${r})`
+            case 'chamfer': return `fOpDifferenceChamferEx(${L}, ${R}, ${rW})`
+            case 'columns': return `fOpDifferenceColumnsEx(${L}, ${R}, ${rW}, ${nW})`
+            case 'stairs': return `fOpDifferenceStairsEx(${L}, ${R}, ${rW}, ${nW})`
+            default: return `fOpDifferenceRoundEx(${L}, ${R}, ${rW})`
         }
     }
 
     private _diffFast(L: string, R: string): string {
         const r = this.radius
         if (!r || r <= 0) return `opDifferenceFast(${L}, ${R})`
+        const rW = spF32Wgsl(this.paramOffset)
+        const nW = spF32Wgsl(this.paramOffset + 1)
         switch (this.mode) {
-            case 'chamfer': return `fOpDifferenceChamferFast(${L}, ${R}, ${r})`
-            case 'columns': return `fOpDifferenceColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            case 'stairs': return `fOpDifferenceStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            default: return `fOpDifferenceRoundFast(${L}, ${R}, ${r})`
+            case 'chamfer': return `fOpDifferenceChamferFast(${L}, ${R}, ${rW})`
+            case 'columns': return `fOpDifferenceColumnsFast(${L}, ${R}, ${rW}, ${nW})`
+            case 'stairs': return `fOpDifferenceStairsFast(${L}, ${R}, ${rW}, ${nW})`
+            default: return `fOpDifferenceRoundFast(${L}, ${R}, ${rW})`
         }
     }
 
     private _diffMid(L: string, R: string): string {
         const r = this.radius
         if (!r || r <= 0) return `opDifferenceMid(${L}, ${R})`
+        const rW = spF32Wgsl(this.paramOffset)
+        const nW = spF32Wgsl(this.paramOffset + 1)
         switch (this.mode) {
-            case 'chamfer': return `fOpDifferenceChamferMid(${L}, ${R}, ${r})`
-            case 'columns': return `fOpDifferenceColumnsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            case 'stairs': return `fOpDifferenceStairsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            default: return `fOpDifferenceRoundMid(${L}, ${R}, ${r})`
+            case 'chamfer': return `fOpDifferenceChamferMid(${L}, ${R}, ${rW})`
+            case 'columns': return `fOpDifferenceColumnsMid(${L}, ${R}, ${rW}, ${nW})`
+            case 'stairs': return `fOpDifferenceStairsMid(${L}, ${R}, ${rW}, ${nW})`
+            default: return `fOpDifferenceRoundMid(${L}, ${R}, ${rW})`
         }
     }
 
@@ -60,7 +81,6 @@ export class Subtract extends BinaryOperator {
     }
 
     override computeBounds(): AABB | null {
-        // Subtraction can only remove from lh; bounds are at most the lh bounds
         return this.lh.computeBounds()
     }
     override compileMid(indentLevel = 0): CompileResult {
@@ -68,6 +88,14 @@ export class Subtract extends BinaryOperator {
         const rhResult = this.rh.compileMid(indentLevel)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
         return { text: this._diffMid(lhResult.text!, rhResult.text!), varName }
+    }
+
+    override appendStructuralFingerprint(parts: string[]): void {
+        const rPos = this.radius > 0 ? "1" : "0"
+        const mode = this.radius > 0 ? (this.mode ?? "round") : "-"
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}:blend:${rPos}:mode:${mode}`)
+        this.lh.appendStructuralFingerprint(parts)
+        this.rh.appendStructuralFingerprint(parts)
     }
 
     constructor(lh: Node, rh: Node, public radius: number = 0, public mode?: BlendMode, public n?: number) {

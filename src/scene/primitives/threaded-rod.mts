@@ -3,6 +3,19 @@ import { aabb, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
 
+/**
+ * Default meridional thread angle (degrees): max angle between rod axis and local thread tangent
+ * in an axial–radial plane, i.e. ψ with tan(ψ) = A·k for ρ = r + A·sin(k·y − θ), k = 2π/pitch.
+ */
+const DEFAULT_THREAD_FLANK_ANGLE_DEG = 60
+
+/** Amplitude A for given pitch P and flank angle ψ (degrees): A = tan(ψ) · P / (2π). */
+function threadAmpForPitchAndAngle(pitch: number, flankAngleDeg: number): number {
+    const p = Math.max(pitch, 1e-12)
+    const rad = (flankAngleDeg * Math.PI) / 180
+    return (Math.tan(rad) * p) / (2 * Math.PI)
+}
+
 /** Finite Y-axis rod with a helical sinusoidal radius (screw-thread silhouette). */
 export class ThreadedRod extends Node {
     pos = vec3([0, 0, 0])
@@ -10,12 +23,19 @@ export class ThreadedRod extends Node {
     h = 0
     /** Axial distance for one full 360° turn (same units as scene). */
     turnPitch = 0
+    /** Meridional flank angle (degrees); with pitch determines threadAmp unless explicitDepth. */
+    threadFlankAngleDeg = DEFAULT_THREAD_FLANK_ANGLE_DEG
+    /** When true, threadAmp was set by depth() and is not overwritten by pitch/threadAngle. */
+    explicitDepth = false
     /** Sinusoidal radial amplitude about mean radius `r`. */
     threadAmp = 0
     readonly capTop: VirtualCapNode
     readonly capBottom: VirtualCapNode
 
-    constructor(pos: Vec3, { r, h, pitch, depth }: { r: number; h: number; pitch: number; depth: number }) {
+    constructor(
+        pos: Vec3,
+        { r, h, pitch, depth, threadAngle }: { r: number; h: number; pitch: number; depth?: number; threadAngle?: number }
+    ) {
         super()
         this.capTop = new VirtualCapNode(true)
         this.capBottom = new VirtualCapNode(false)
@@ -23,7 +43,21 @@ export class ThreadedRod extends Node {
         this.r = r
         this.h = h
         this.turnPitch = pitch
-        this.threadAmp = depth
+        if (threadAngle !== undefined) {
+            this.threadFlankAngleDeg = threadAngle
+        }
+        if (depth !== undefined) {
+            this.explicitDepth = true
+            this.threadAmp = depth
+        } else {
+            this.explicitDepth = false
+            this.#syncThreadAmpFromAngle()
+        }
+    }
+
+    #syncThreadAmpFromAngle(): void {
+        if (this.explicitDepth) return
+        this.threadAmp = threadAmpForPitchAndAngle(this.turnPitch, this.threadFlankAngleDeg)
     }
 
     override getShapeType(): string {
@@ -184,9 +218,18 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     }
     @fluent pitch(p: number): this {
         this.turnPitch = p
+        this.#syncThreadAmpFromAngle()
         return this
     }
+    /** Flank angle in degrees (default 60). Updates radial amplitude from pitch unless depth() was used. */
+    @fluent threadAngle(deg: number): this {
+        this.threadFlankAngleDeg = deg
+        this.#syncThreadAmpFromAngle()
+        return this
+    }
+    /** Explicit radial amplitude; disables automatic depth from pitch and threadAngle. */
     @fluent depth(d: number): this {
+        this.explicitDepth = true
         this.threadAmp = d
         return this
     }
@@ -204,7 +247,7 @@ function formatWgslFloat(n: number): string {
 }
 
 function threadedRodRadius(r: number): ThreadedRod {
-    return new ThreadedRod(DEFAULT_POS, { r, h: 1, pitch: 0.5, depth: 0.06 })
+    return new ThreadedRod(DEFAULT_POS, { r, h: 1, pitch: 0.5 })
 }
 
 export const threadedRod = { radius: threadedRodRadius }

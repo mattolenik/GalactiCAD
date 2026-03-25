@@ -101,15 +101,23 @@ declare class Torus extends Node {
     shift(v: Vec3): Torus;
 }
 
-/** Y-axis rod with helical sinusoidal thread profile. threadedRod.radius(r).height(h).pitch(p).depth(d).shift(v) */
+/**
+ * Y-axis rod with helical sinusoidal thread profile.
+ * Radial amplitude follows pitch and threadAngle (tan(ψ)·pitch/(2π)) unless depth() overrides.
+ */
 declare class ThreadedRod extends Node {
     pos: Vec3f;
     r: number;
     h: number;
     turnPitch: number;
+    /** Meridional flank angle (deg); with pitch sets threadAmp unless depth() was used. */
+    threadFlankAngleDeg: number;
     threadAmp: number;
     height(h: number): ThreadedRod;
     pitch(p: number): ThreadedRod;
+    /** Flank angle in degrees (default 60). */
+    threadAngle(deg: number): ThreadedRod;
+    /** Explicit radial amplitude (disables automatic depth from pitch + threadAngle). */
     depth(d: number): ThreadedRod;
     shift(v: Vec3): ThreadedRod;
 }
@@ -369,7 +377,8 @@ declare const cone: { radius(r: number): Cone };
 declare const torus: { smallRadius(sr: number): Torus; largeRadius(lr: number): Torus };
 
 /**
- * Threaded rod (sinusoidal helical radius). threadedRod.radius(r).height(h).pitch(axialPeriod).depth(amplitude).shift(v)
+ * Threaded rod (sinusoidal helical radius).
+ * threadedRod.radius(r).height(h).pitch(axialPeriod).threadAngle(deg).depth(override).shift(v)
  */
 declare const threadedRod: { radius(r: number): ThreadedRod };
 

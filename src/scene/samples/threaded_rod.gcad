@@ -1,23 +1,22 @@
 // Threaded rod (sinusoidal helical profile)
-// Y-axis shank; radius oscillates as r + depth*sin(TAU*y/pitch - atan2(z,x))
+// ρ = r + A·sin(k·y − atan2(z,x)), k = 2π/pitch. By default A = tan(ψ)·pitch/(2π) with ψ = 60°
+// so changing pitch keeps the meridional flank angle; use .depth() to set A explicitly.
 
 // Coarse thread — easy to see the helix in preview
 let coarse = threadedRod
   .radius(1.2)
   .height(5)
   .pitch(0.55)
-  .depth(0.1)
   .shift([0, 5, 0])
 
-// Finer pitch, smaller amplitude
+// Finer pitch — depth follows automatically (smaller A)
 let fine = threadedRod
   .radius(0.85)
   .height(3.5)
   .pitch(0.28)
-  .depth(0.055)
   .shift([9, 3.5, 0])
 
-// Short stub with a gentle wave
+// Explicit radial amplitude (optional): disables pitch+angle depth
 let stub = threadedRod
   .radius(1.5)
   .height(1.8)

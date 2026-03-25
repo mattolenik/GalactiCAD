@@ -67,6 +67,7 @@ interface NodeLikeMatch {
     lr?: number
     turnPitch?: number
     threadAmp?: number
+    threadFlankAngleDeg?: number
     c?: number
     normal?: { x: number; y: number; z: number }
     dist?: number
@@ -149,6 +150,7 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         if (call.r === undefined || !approxEqualOrUndefined(node.r, call.r)) return false
         if (call.h !== undefined && !approxEqualOrUndefined(node.h, call.h)) return false
         if (call.pitch !== undefined && !approxEqualOrUndefined(node.turnPitch, call.pitch)) return false
+        if (call.threadAngle !== undefined && !approxEqualOrUndefined(node.threadFlankAngleDeg, call.threadAngle)) return false
         if (call.depth !== undefined && !approxEqualOrUndefined(node.threadAmp, call.depth)) return false
         return true
     }

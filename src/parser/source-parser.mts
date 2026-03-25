@@ -40,7 +40,8 @@ export interface ParsedShapeCall {
     sr?: number       // Small radius (tube) for torus
     lr?: number       // Large radius (ring) for torus
     pitch?: number    // Axial distance per 360° for threadedRod
-    depth?: number    // Sinusoidal radial amplitude for threadedRod
+    depth?: number    // Radial amplitude override for threadedRod (disables pitch+angle amp)
+    threadAngle?: number // Meridional flank angle (deg) for threadedRod; with pitch sets amp unless depth()
     c?: number        // Center half-height for capsule
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
@@ -780,6 +781,9 @@ export class SourceParser {
                 } else if (method === "depth" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.depth = v
+                } else if (method === "threadAngle" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.threadAngle = v
                 } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
                     const v = this.evaluateExpression(args[0])
                     if (v !== undefined) parsedCall.pos = vec3(v as Vec3)

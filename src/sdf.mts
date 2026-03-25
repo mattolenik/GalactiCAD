@@ -65,6 +65,7 @@ export interface NodeStub {
     twistDegrees?: number
     turnPitch?: number
     threadAmp?: number
+    threadFlankAngleDeg?: number
 }
 
 export class SDFRenderer {
@@ -869,6 +870,7 @@ export class SDFRenderer {
                 twistDegrees: s.twistDegrees,
                 turnPitch: s.turnPitch,
                 threadAmp: s.threadAmp,
+                threadFlankAngleDeg: s.threadFlankAngleDeg,
             }
             stub.getAllDescendantIds = () => [
                 s.id,

@@ -1,5 +1,6 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Torus extends Node {
@@ -19,21 +20,50 @@ export class Torus extends Node {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1"/>`
     }
-    override updateScene(): void { }
+
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.#paramSlice())
+    }
+
+    #paramSlice(): Float32Array {
+        const buf = new Float32Array(5)
+        buf.set(this.pos.data, 0)
+        buf[3] = this.sr
+        buf[4] = this.lr
+        return buf
+    }
+
+    override build() {
+        super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(5)
+        this.paramCount = 5
+    }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Torus${this.id}`
         const varName = decapitalize(funcName)
-        return { funcName, varName, text: `fTorusEx(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr}, ${this.id}u)` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const sr = spF32Wgsl(o + 3)
+        const lr = spF32Wgsl(o + 4)
+        return { funcName, varName, text: `fTorusEx(p - ${pos}, ${sr}, ${lr}, ${this.id}u)` }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Torus${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        return { funcName, varName, text: `fTorusFast(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr})` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const sr = spF32Wgsl(o + 3)
+        const lr = spF32Wgsl(o + 4)
+        return { funcName, varName, text: `fTorusFast(p - ${pos}, ${sr}, ${lr})` }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Torus${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        return { funcName, varName, text: `fTorusMid(p - ${this.pos.wgsl}, ${this.sr}, ${this.lr})` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const sr = spF32Wgsl(o + 3)
+        const lr = spF32Wgsl(o + 4)
+        return { funcName, varName, text: `fTorusMid(p - ${pos}, ${sr}, ${lr})` }
     }
 
     override computeBounds(): AABB {

@@ -95,6 +95,10 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
         s.capSide = node.isTop ? "top" : "bottom"
     }
 
+    if (node.paramCount > 0) {
+        s.paramOffset = node.paramOffset
+    }
+
     return s
 }
 

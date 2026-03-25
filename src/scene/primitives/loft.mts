@@ -1,5 +1,6 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 
@@ -40,13 +41,26 @@ export class Loft extends Node {
     override getIndicatorSvg(): string {
         return `<polygon points="3,1 9,1 11,11 1,11" fill="none" stroke="currentColor" stroke-width="1.5"/>`
     }
-    override updateScene(): void { }
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.pos.data, 0)
+        view[3] = this.h
+        view[4] = 0
+    }
 
     override build() {
         super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(5)
+        this.paramCount = 5
         for (const profile of this.profiles) {
             profile.root = this.root
             profile.build()
+        }
+    }
+
+    override appendStructuralFingerprint(parts: string[]): void {
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}:profiles:${this.profiles.length}`)
+        for (const profile of this.profiles) {
+            profile.appendStructuralFingerprint(parts)
         }
     }
 
@@ -93,11 +107,13 @@ export class Loft extends Node {
     }
 
     override compileAux(): string {
+        const capH = spF32Wgsl(this.paramOffset + 3)
+        const capYOff = spF32Wgsl(this.paramOffset + 4)
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d = ${this.wgslFieldFuncName}(p);
-    let capH = nodeParams[id].x;
-    let capY = p.y - nodeParams[id].y;
+    let capH = ${capH};
+    let capY = p.y - ${capYOff};
     let dCap = abs(capY) - capH;
     let onSide = (d - dCap) > 0.01;
     let eps = 0.001;
@@ -125,11 +141,13 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     override compileAuxMid(): string {
         const h = this.h.toFixed(6)
         const fieldBody = this.generateFieldBody(h)
+        const capH = spF32Wgsl(this.paramOffset + 3)
+        const capYOff = spF32Wgsl(this.paramOffset + 4)
         return `
 fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let d = ${this.wgslFieldFuncName}(p);
-    let capH = nodeParams[${this.id}].x;
-    let capY = p.y - nodeParams[${this.id}].y;
+    let capH = ${capH};
+    let capY = p.y - ${capYOff};
     let dCap = abs(capY) - capH;
     let onSide = (d - dCap) > 0.01;
     let eps = 0.001;
@@ -146,11 +164,13 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compileAuxFast(): string {
         const h = this.h.toFixed(6)
         const fieldBody = this.generateFieldBody(h)
+        const capH = spF32Wgsl(this.paramOffset + 3)
+        const capYOff = spF32Wgsl(this.paramOffset + 4)
 
         return `
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
-    let h = nodeParams[${this.id}].x;
-    let capY = p.y - nodeParams[${this.id}].y;
+    let h = ${capH};
+    let capY = p.y - ${capYOff};
     let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
 ${fieldBody}
     let dCap = abs(capY) - h;
@@ -166,29 +186,32 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Loft${this.id}`
         const varName = decapitalize(funcName)
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslExFuncName}(p - ${this.pos.wgsl}, ${this.id}u)`,
+            text: `${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`,
         }
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Loft${this.id}`
         const varName = `${decapitalize(funcName)}_f`
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+            text: `${this.wgslFastFuncName}(p - ${pos})`,
         }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Loft${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
+            text: `${this.wgslMidFuncName}(p - ${pos})`,
         }
     }
 

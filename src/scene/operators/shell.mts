@@ -1,5 +1,6 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 import { aabbExpand, type AABB } from "../aabb.mjs"
+import { spF32Wgsl } from "../scene-params.mjs"
 
 export class Shell extends UnaryOperator {
     override getShapeType(): string { return "shell" }
@@ -9,43 +10,55 @@ export class Shell extends UnaryOperator {
     override getAllDescendantIds(): number[] {
         return [this.id, ...this.arg.getAllDescendantIds()]
     }
+
+    protected override reserveUnarySceneParams(): void {
+        this.paramOffset = this.scene.allocSceneParamFloats(1)
+        this.paramCount = 1
+    }
+
+    override writeSceneParams(view: Float32Array): void {
+        view[0] = this.thickness
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
         const funcName = `Shell${this.id}`
         const varName = decapitalize(funcName)
+        const t = spF32Wgsl(this.paramOffset)
 
         if (childResult.prelude) {
             const accVar = childResult.varName!
-            const prelude = childResult.prelude + `${accVar} = sdfShellEx(${accVar}, ${this.thickness});\n`
+            const prelude = childResult.prelude + `${accVar} = sdfShellEx(${accVar}, ${t});\n`
             return { funcName, varName: accVar, text: accVar, prelude }
         }
 
-        return { funcName, varName, text: `sdfShellEx(${childResult.text}, ${this.thickness})` }
+        return { funcName, varName, text: `sdfShellEx(${childResult.text}, ${t})` }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
         const funcName = `Shell${this.id}`
         const varName = `${decapitalize(funcName)}_f`
+        const t = spF32Wgsl(this.paramOffset)
 
         if (childResult.prelude) {
             const accVar = childResult.varName!
-            const prelude = childResult.prelude + `${accVar} = sdfShellFast(${accVar}, ${this.thickness});\n`
+            const prelude = childResult.prelude + `${accVar} = sdfShellFast(${accVar}, ${t});\n`
             return { funcName, varName: accVar, text: accVar, prelude }
         }
 
-        return { funcName, varName, text: `sdfShellFast(${childResult.text}, ${this.thickness})` }
+        return { funcName, varName, text: `sdfShellFast(${childResult.text}, ${t})` }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
         const funcName = `Shell${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        return { funcName, varName, text: `sdfShellMid(${childResult.text}, ${this.thickness})` }
+        const t = spF32Wgsl(this.paramOffset)
+        return { funcName, varName, text: `sdfShellMid(${childResult.text}, ${t})` }
     }
 
     override computeBounds(): AABB | null {
         const b = this.arg.computeBounds()
         if (!b) return null
-        // Shell hollows out the interior but the outer surface is child bounds + thickness/2
         return aabbExpand(b, this.thickness * 0.5)
     }
     constructor(public thickness: number, arg: Node) {

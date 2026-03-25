@@ -1,5 +1,6 @@
 import { BVH_MIN_COST, CompileResult, fluent, Node, type UnionType } from "../base.mjs"
-import { aabbUnion, aabbExpand, aabbCenterWgsl, aabbHalfWgsl, type AABB } from "../aabb.mjs"
+import { aabbUnion, aabbExpand, type AABB } from "../aabb.mjs"
+import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 
 type UnionVariant = "ex" | "fast" | "mid"
 
@@ -22,17 +23,33 @@ export class Union extends Node {
         return this.children.reduce((sum, child) => sum + child.codegenCost(), 0)
     }
 
-    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
-        for (const child of this.children) {
-            child.updateScene(writeBuffer)
+    override writeSceneParams(view: Float32Array): void {
+        if (this.paramCount >= 2) {
+            view[0] = this.radius ?? 0
+            view[1] = this.n ?? 4
         }
     }
 
     override build() {
         super.build()
+        if (this.radius) {
+            this.paramOffset = this.scene.allocSceneParamFloats(2)
+            this.paramCount = 2
+        }
         for (const child of this.children) {
             child.root = this.root
             child.build()
+        }
+    }
+
+    override appendStructuralFingerprint(parts: string[]): void {
+        const blended = this.radius ? "1" : "0"
+        const mode = this.radius ? (this.mode ?? "round") : "-"
+        parts.push(
+            `${this.getShapeType()}:${this.structuralBvhSlot()}:arity:${this.children.length}:blend:${blended}:mode:${mode}`,
+        )
+        for (const child of this.children) {
+            child.appendStructuralFingerprint(parts)
         }
     }
 
@@ -43,36 +60,42 @@ export class Union extends Node {
     private _blendEx(L: string, R: string): string {
         const r = this.radius
         if (!r) return `opUnionEx(${L}, ${R})`
+        const rW = spF32Wgsl(this.paramOffset)
+        const nW = spF32Wgsl(this.paramOffset + 1)
         switch (this.mode) {
-            case 'chamfer': return `fOpUnionChamferEx(${L}, ${R}, ${r})`
-            case 'soft': return `fOpUnionSoftEx(${L}, ${R}, ${r})`
-            case 'columns': return `fOpUnionColumnsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            case 'stairs': return `fOpUnionStairsEx(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            default: return `fOpUnionRoundEx(${L}, ${R}, ${r})`
+            case 'chamfer': return `fOpUnionChamferEx(${L}, ${R}, ${rW})`
+            case 'soft': return `fOpUnionSoftEx(${L}, ${R}, ${rW})`
+            case 'columns': return `fOpUnionColumnsEx(${L}, ${R}, ${rW}, ${nW})`
+            case 'stairs': return `fOpUnionStairsEx(${L}, ${R}, ${rW}, ${nW})`
+            default: return `fOpUnionRoundEx(${L}, ${R}, ${rW})`
         }
     }
 
     private _blendFast(L: string, R: string): string {
         const r = this.radius
         if (!r) return `opUnionFast(${L}, ${R})`
+        const rW = spF32Wgsl(this.paramOffset)
+        const nW = spF32Wgsl(this.paramOffset + 1)
         switch (this.mode) {
-            case 'chamfer': return `fOpUnionChamferFast(${L}, ${R}, ${r})`
-            case 'soft': return `fOpUnionSoftFast(${L}, ${R}, ${r})`
-            case 'columns': return `fOpUnionColumnsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            case 'stairs': return `fOpUnionStairsFast(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            default: return `fOpUnionRoundFast(${L}, ${R}, ${r})`
+            case 'chamfer': return `fOpUnionChamferFast(${L}, ${R}, ${rW})`
+            case 'soft': return `fOpUnionSoftFast(${L}, ${R}, ${rW})`
+            case 'columns': return `fOpUnionColumnsFast(${L}, ${R}, ${rW}, ${nW})`
+            case 'stairs': return `fOpUnionStairsFast(${L}, ${R}, ${rW}, ${nW})`
+            default: return `fOpUnionRoundFast(${L}, ${R}, ${rW})`
         }
     }
 
     private _blendMid(L: string, R: string): string {
         const r = this.radius
         if (!r) return `opUnionMid(${L}, ${R})`
+        const rW = spF32Wgsl(this.paramOffset)
+        const nW = spF32Wgsl(this.paramOffset + 1)
         switch (this.mode) {
-            case 'chamfer': return `fOpUnionChamferMid(${L}, ${R}, ${r})`
-            case 'soft': return `fOpUnionSoftMid(${L}, ${R}, ${r})`
-            case 'columns': return `fOpUnionColumnsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            case 'stairs': return `fOpUnionStairsMid(${L}, ${R}, ${r}, ${this.n ?? 4.0})`
-            default: return `fOpUnionRoundMid(${L}, ${R}, ${r})`
+            case 'chamfer': return `fOpUnionChamferMid(${L}, ${R}, ${rW})`
+            case 'soft': return `fOpUnionSoftMid(${L}, ${R}, ${rW})`
+            case 'columns': return `fOpUnionColumnsMid(${L}, ${R}, ${rW}, ${nW})`
+            case 'stairs': return `fOpUnionStairsMid(${L}, ${R}, ${rW}, ${nW})`
+            default: return `fOpUnionRoundMid(${L}, ${R}, ${rW})`
         }
     }
 
@@ -148,8 +171,12 @@ export class Union extends Node {
         if (!childBounds || !childResult.text) {
             return block
         }
-        const center = aabbCenterWgsl(childBounds)
-        const half = aabbHalfWgsl(childBounds)
+        const off = child.bvhBoundsOffset
+        if (off < 0) {
+            return block
+        }
+        const center = spVec3Wgsl(off)
+        const half = spVec3Wgsl(off + 3)
         const innerCode = this._indent(block, 4)
         return `if (sdBound(p, ${center}, ${half}) < ${threshold}) {\n${innerCode}}\n`
     }
@@ -159,11 +186,12 @@ export class Union extends Node {
         const accVar = `_u${this.id}_${kind}`
         const distField = this._distField(kind)
         const blendRadius = this.radius ?? 0
+        const blendExtra = blendRadius > 0 ? spF32Wgsl(this.paramOffset) : ""
         let prelude = `var ${accVar} = ${this._resultInit(kind)};\n`
 
         for (let i = 0; i < this.children.length; i++) {
             const childResult = childResults[i]!
-            const threshold = blendRadius > 0 ? `${accVar}.${distField} + ${blendRadius}` : `${accVar}.${distField}`
+            const threshold = blendRadius > 0 ? `${accVar}.${distField} + ${blendExtra}` : `${accVar}.${distField}`
             prelude += this._emitChildBlock(
                 this.children[i]!,
                 childResult,
@@ -182,6 +210,7 @@ export class Union extends Node {
         const bestB = `_u${this.id}_${kind}_bestB`
         const outVar = `_u${this.id}_${kind}`
         const blendRadius = this.radius ?? 0
+        const blendExtra = blendRadius > 0 ? spF32Wgsl(this.paramOffset) : ""
         let prelude =
             `var ${bestA} = ${this._resultInit(kind)};\n` +
             `var ${bestB} = ${this._resultInit(kind)};\n`
@@ -189,7 +218,7 @@ export class Union extends Node {
         for (let i = 0; i < this.children.length; i++) {
             const childResult = childResults[i]!
             const childVar = `_u${this.id}_${kind}_child${i}`
-            const threshold = blendRadius > 0 ? `${bestB}.${distField} + ${blendRadius}` : `${bestB}.${distField}`
+            const threshold = blendRadius > 0 ? `${bestB}.${distField} + ${blendExtra}` : `${bestB}.${distField}`
             prelude += `var ${childVar} = ${this._resultInit(kind)};\n`
             prelude += this._emitChildBlock(
                 this.children[i]!,

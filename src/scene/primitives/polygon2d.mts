@@ -1,5 +1,16 @@
 import { Node, CompileResult, BVH_MIN_COST } from "../base.mjs"
 
+/** Winding sign consistent with extrude WGSL `windSignStr` (shoelace sum on polygon vertices). */
+export function polygon2dWindingSign(vertices: [number, number][]): 1 | -1 {
+    let area = 0
+    for (let i = 0; i < vertices.length; i++) {
+        const [ax, ay] = vertices[i]!
+        const [bx, by] = vertices[(i + 1) % vertices.length]!
+        area += (ax + bx) * (ay - by)
+    }
+    return area < 0 ? -1 : 1
+}
+
 /**
  * A 2D SDF primitive defined by a closed polygon of vertices.
  * Cannot be used directly in a 3D scene — must be wrapped in Extrude or Loft.
@@ -26,11 +37,16 @@ export class Polygon2D extends Node {
     override getIndicatorSvg(): string {
         return `<polygon points="6,1 11,5 9,11 3,11 1,5" fill="currentColor"/>`
     }
-    override updateScene(): void { }
 
     override build() {
         super.build()
         this.bufferOffset = this.scene.allocPolygonVertices(this.vertices.length)
+    }
+
+    override appendStructuralFingerprint(parts: string[]): void {
+        parts.push(
+            `${this.getShapeType()}:${this.structuralBvhSlot()}:n:${this.vertices.length}:wind:${polygon2dWindingSign(this.vertices)}`,
+        )
     }
 
     /** Generate a unique WGSL function name for this polygon instance */

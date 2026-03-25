@@ -1,5 +1,6 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
 
@@ -103,14 +104,37 @@ export class ThreadedRod extends Node {
         return BVH_MIN_COST
     }
 
-    override updateScene(): void { }
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.#paramSlice())
+    }
+
+    #paramSlice(): Float32Array {
+        const buf = new Float32Array(8)
+        buf.set(this.pos.data, 0)
+        buf[3] = this.r
+        buf[4] = this.turnPitch
+        buf[5] = this.threadAmp
+        buf[6] = this.h
+        buf[7] = 0
+        return buf
+    }
 
     override build() {
         super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(8)
+        this.paramCount = 8
         this.capTop.root = this.root
         this.capTop.build()
         this.capBottom.root = this.root
         this.capBottom.build()
+    }
+
+    override appendStructuralFingerprint(parts: string[]): void {
+        parts.push(
+            `${this.getShapeType()}:${this.structuralBvhSlot()}:profile:${this.threadProfile}:hand:${this.threadHandedness}`,
+        )
+        this.capTop.appendStructuralFingerprint(parts)
+        this.capBottom.appendStructuralFingerprint(parts)
     }
 
     override getAllDescendantIds(): number[] {
@@ -140,16 +164,19 @@ export class ThreadedRod extends Node {
     override compileAux(): string {
         const capTopId = this.capTop.id
         const capBottomId = this.capBottom.id
-        const R = formatWgslFloat(this.r)
-        const P = formatWgslFloat(this.turnPitch)
-        const A = formatWgslFloat(this.threadAmp)
+        const ro = this.paramOffset
+        const R = spF32Wgsl(ro + 3)
+        const P = spF32Wgsl(ro + 4)
+        const A = spF32Wgsl(ro + 5)
+        const capH = spF32Wgsl(ro + 6)
+        const capYOff = spF32Wgsl(ro + 7)
         const S = this.#wgslHelixSign
         const B = this.#wgslBarrelFn
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let dSide = ${B}(p, ${R}, ${P}, ${A}, ${S});
-    let capH = nodeParams[id].x;
-    let capY = p.y - nodeParams[id].y;
+    let capH = ${capH};
+    let capY = p.y - ${capYOff};
     let dCap = abs(capY) - capH;
     let d = max(dSide, dCap);
     let onSide = dSide > dCap;
@@ -176,17 +203,20 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     }
 
     override compileAuxFast(): string {
-        const R = formatWgslFloat(this.r)
-        const P = formatWgslFloat(this.turnPitch)
-        const A = formatWgslFloat(this.threadAmp)
+        const ro = this.paramOffset
+        const R = spF32Wgsl(ro + 3)
+        const P = spF32Wgsl(ro + 4)
+        const A = spF32Wgsl(ro + 5)
+        const capH = spF32Wgsl(ro + 6)
+        const capYOff = spF32Wgsl(ro + 7)
         const S = this.#wgslHelixSign
         const B = this.#wgslBarrelFn
         const id = this.id
         return `
 fn fThreadedRod_${id}_field(p: vec3f) -> f32 {
     let dSide = ${B}(p, ${R}, ${P}, ${A}, ${S});
-    let h = nodeParams[${id}].x;
-    let capY = p.y - nodeParams[${id}].y;
+    let h = ${capH};
+    let capY = p.y - ${capYOff};
     let dCap = abs(capY) - h;
     return max(dSide, dCap);
 }
@@ -198,17 +228,20 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     }
 
     override compileAuxMid(): string {
-        const R = formatWgslFloat(this.r)
-        const P = formatWgslFloat(this.turnPitch)
-        const A = formatWgslFloat(this.threadAmp)
+        const ro = this.paramOffset
+        const R = spF32Wgsl(ro + 3)
+        const P = spF32Wgsl(ro + 4)
+        const A = spF32Wgsl(ro + 5)
+        const capH = spF32Wgsl(ro + 6)
+        const capYOff = spF32Wgsl(ro + 7)
         const S = this.#wgslHelixSign
         const B = this.#wgslBarrelFn
         const id = this.id
         return `
 fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let dSide = ${B}(p, ${R}, ${P}, ${A}, ${S});
-    let capH = nodeParams[${id}].x;
-    let capY = p.y - nodeParams[${id}].y;
+    let capH = ${capH};
+    let capY = p.y - ${capYOff};
     let dCap = abs(capY) - capH;
     let d = max(dSide, dCap);
     let onSide = dSide > dCap;
@@ -227,28 +260,31 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compile(indentLevel = 0): CompileResult {
         const funcName = `ThreadedRod${this.id}`
         const varName = decapitalize(funcName)
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslExFuncName}(p - ${this.pos.wgsl}, ${this.id}u)`,
+            text: `${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`,
         }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `ThreadedRod${this.id}`
         const varName = `${decapitalize(funcName)}_f`
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+            text: `${this.wgslFastFuncName}(p - ${pos})`,
         }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `ThreadedRod${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
+            text: `${this.wgslMidFuncName}(p - ${pos})`,
         }
     }
 
@@ -282,13 +318,6 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         this.pos = vec3(v)
         return this
     }
-}
-
-function formatWgslFloat(n: number): string {
-    if (!Number.isFinite(n)) return "0.0"
-    const t = n.toFixed(8)
-    const trimmed = t.includes(".") ? t.replace(/\.?0+$/, "") : t
-    return trimmed === "" || trimmed === "-" ? "0.0" : trimmed
 }
 
 function threadedRodRadius(r: number): ThreadedRod {

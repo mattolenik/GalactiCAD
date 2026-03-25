@@ -1,14 +1,11 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Sphere extends Node {
     pos = vec3([0, 0, 0])
     r = 0
-    argIndex = {
-        pos: 0,
-        r: 0,
-    }
 
     constructor(pos: Vec3, { r }: { r: number }) {
         super()
@@ -28,40 +25,56 @@ export class Sphere extends Node {
         return `<circle cx="6" cy="6" r="5" fill="currentColor"/>`
     }
 
-    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
-        writeBuffer(this.argIndex.pos, this.pos.data)
-        writeBuffer(this.argIndex.r, new Float32Array([this.r]))
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.#paramSlice())
     }
+
+    #paramSlice(): Float32Array {
+        const buf = new Float32Array(4)
+        buf.set(this.pos.data, 0)
+        buf[3] = this.r
+        return buf
+    }
+
     override build() {
         super.build()
-        this.argIndex.pos = this.scene.nextArgIndex()
-        this.argIndex.r = this.scene.nextArgIndex()
+        this.paramOffset = this.scene.allocSceneParamFloats(4)
+        this.paramCount = 4
     }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Sphere${this.id}`
         const varName = decapitalize(funcName)
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const r = spF32Wgsl(o + 3)
         return {
             funcName,
             varName,
-            text: `fSphereEx(p - ${this.pos.wgsl}, ${this.r}, ${this.id}u)`,
+            text: `fSphereEx(p - ${pos}, ${r}, ${this.id}u)`,
         }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Sphere${this.id}`
         const varName = `${decapitalize(funcName)}_f`
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const r = spF32Wgsl(o + 3)
         return {
             funcName,
             varName,
-            text: `fSphereFast(p - ${this.pos.wgsl}, ${this.r})`,
+            text: `fSphereFast(p - ${pos}, ${r})`,
         }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Sphere${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const r = spF32Wgsl(o + 3)
         return {
             funcName,
             varName,
-            text: `fSphereMid(p - ${this.pos.wgsl}, ${this.r})`,
+            text: `fSphereMid(p - ${pos}, ${r})`,
         }
     }
 

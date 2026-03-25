@@ -1,5 +1,6 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Cone extends Node {
@@ -19,25 +20,53 @@ export class Cone extends Node {
     override getIndicatorSvg(): string {
         return `<polygon points="6,1 11,11 1,11" fill="currentColor"/>`
     }
-    override updateScene(): void { }
+
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.#paramSlice())
+    }
+
+    #paramSlice(): Float32Array {
+        const buf = new Float32Array(5)
+        buf.set(this.pos.data, 0)
+        buf[3] = this.r
+        buf[4] = this.h
+        return buf
+    }
+
+    override build() {
+        super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(5)
+        this.paramCount = 5
+    }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Cone${this.id}`
         const varName = decapitalize(funcName)
-        return { funcName, varName, text: `fConeEx(p - ${this.pos.wgsl}, ${this.r}, ${this.h}, ${this.id}u)` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const r = spF32Wgsl(o + 3)
+        const h = spF32Wgsl(o + 4)
+        return { funcName, varName, text: `fConeEx(p - ${pos}, ${r}, ${h}, ${this.id}u)` }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Cone${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        return { funcName, varName, text: `fConeFast(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const r = spF32Wgsl(o + 3)
+        const h = spF32Wgsl(o + 4)
+        return { funcName, varName, text: `fConeFast(p - ${pos}, ${r}, ${h})` }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Cone${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        return { funcName, varName, text: `fConeMid(p - ${this.pos.wgsl}, ${this.r}, ${this.h})` }
+        const o = this.paramOffset
+        const pos = spVec3Wgsl(o)
+        const r = spF32Wgsl(o + 3)
+        const h = spF32Wgsl(o + 4)
+        return { funcName, varName, text: `fConeMid(p - ${pos}, ${r}, ${h})` }
     }
 
     override computeBounds(): AABB {
-        // Cone base at pos.y, tip at pos.y + h
         return aabb(this.pos.x, this.pos.y + this.h * 0.5, this.pos.z, this.r, this.h * 0.5, this.r)
     }
 

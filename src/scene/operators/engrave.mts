@@ -1,4 +1,5 @@
 import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
+import { spF32Wgsl } from "../scene-params.mjs"
 
 export class Engrave extends BinaryOperator {
     #engraveRadius = 0
@@ -10,6 +11,16 @@ export class Engrave extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1"/>`
     }
+
+    protected override reserveBinarySceneParams(): void {
+        this.paramOffset = this.scene.allocSceneParamFloats(1)
+        this.paramCount = 1
+    }
+
+    override writeSceneParams(view: Float32Array): void {
+        view[0] = this.#engraveRadius
+    }
+
     @fluent radius(r: number): this {
         this.#engraveRadius = r
         return this
@@ -19,20 +30,23 @@ export class Engrave extends BinaryOperator {
         const rhResult = this.rh.compile(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpEngraveEx(${lText}, ${rText}, ${this.#engraveRadius})`, varName, prelude }
+        const er = spF32Wgsl(this.paramOffset)
+        return { text: `fOpEngraveEx(${lText}, ${rText}, ${er})`, varName, prelude }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpEngraveFast(${lText}, ${rText}, ${this.#engraveRadius})`, varName, prelude }
+        const er = spF32Wgsl(this.paramOffset)
+        return { text: `fOpEngraveFast(${lText}, ${rText}, ${er})`, varName, prelude }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpEngraveMid(${lhResult.text}, ${rhResult.text}, ${this.#engraveRadius})`, varName }
+        const er = spF32Wgsl(this.paramOffset)
+        return { text: `fOpEngraveMid(${lhResult.text}, ${rhResult.text}, ${er})`, varName }
     }
 }
 

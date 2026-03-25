@@ -1,5 +1,6 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
@@ -44,16 +45,30 @@ export class Extrude extends Node {
     override getIndicatorSvg(): string {
         return `<rect x="2" y="1" width="8" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1"/>`
     }
-    override updateScene(): void { }
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.pos.data, 0)
+        view[3] = this.h
+        view[4] = 0
+    }
 
     override build() {
         super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(5)
+        this.paramCount = 5
         this.child.root = this.root
         this.child.build()
         this.capTop.root = this.root
         this.capTop.build()
         this.capBottom.root = this.root
         this.capBottom.build()
+    }
+
+    override appendStructuralFingerprint(parts: string[]): void {
+        const twist = this.twistDegrees !== 0 ? "1" : "0"
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}:twist:${twist}`)
+        this.child.appendStructuralFingerprint(parts)
+        this.capTop.appendStructuralFingerprint(parts)
+        this.capBottom.appendStructuralFingerprint(parts)
     }
 
     override getAllDescendantIds(): number[] {
@@ -85,6 +100,8 @@ export class Extrude extends Node {
             return area < 0 ? -1.0 : 1.0
         })()
         const windSignStr = windSign.toFixed(1)
+        const capH = spF32Wgsl(this.paramOffset + 3)
+        const capYOff = spF32Wgsl(this.paramOffset + 4)
 
         if (!hasTwist) {
             return `
@@ -114,8 +131,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         d2d = min(d2d, bumpDist);
     }
 
-    let capH = nodeParams[id].x;
-    let capY = p.y - nodeParams[id].y;
+    let capH = ${capH};
+    let capY = p.y - ${capYOff};
     let dCap = abs(capY) - capH;
     let d = max(d2d, dCap);
     let onSide = d2d > dCap;
@@ -197,8 +214,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         const twistRad = (this.twistDegrees * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
-    let h = nodeParams[id].x;
-    let capY = p.y - nodeParams[id].y;
+    let h = ${capH};
+    let capY = p.y - ${capYOff};
     let twist = ${twistRad};
     let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
     let angle = twist * t;
@@ -233,12 +250,14 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     override compileAuxFast(): string {
         const childFunc = this.child.wgslFuncName
         const hasTwist = this.twistDegrees !== 0
+        const capH = spF32Wgsl(this.paramOffset + 3)
+        const capYOff = spF32Wgsl(this.paramOffset + 4)
 
         if (!hasTwist) {
             return `
 fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     let d2d = ${childFunc}(p.xz);
-    let dCap = abs(p.y - nodeParams[${this.id}].y) - nodeParams[${this.id}].x;
+    let dCap = abs(p.y - ${capYOff}) - ${capH};
     return sdfFast(max(d2d, dCap), 1.0, 1.0);
 }
 `
@@ -247,8 +266,8 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         const twistRad = (this.twistDegrees * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
-    let h = nodeParams[${this.id}].x;
-    let capY = p.y - nodeParams[${this.id}].y;
+    let h = ${capH};
+    let capY = p.y - ${capYOff};
     let twist = ${twistRad};
     let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
     let angle = twist * t;
@@ -269,14 +288,16 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compileAuxMid(): string {
         const combinedFunc = this.child.wgslCombinedFuncName
         const hasTwist = this.twistDegrees !== 0
+        const capH = spF32Wgsl(this.paramOffset + 3)
+        const capYOff = spF32Wgsl(this.paramOffset + 4)
 
         if (!hasTwist) {
             return `
 fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let combined = ${combinedFunc}(p.xz);
     let d2d = combined.x;
-    let capH = nodeParams[${this.id}].x;
-    let capY = p.y - nodeParams[${this.id}].y;
+    let capH = ${capH};
+    let capY = p.y - ${capYOff};
     let dCap = abs(capY) - capH;
     let d = max(d2d, dCap);
     let onSide = d2d > dCap;
@@ -293,8 +314,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         const twistRad = (this.twistDegrees * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
-    let h = nodeParams[${this.id}].x;
-    let capY = p.y - nodeParams[${this.id}].y;
+    let h = ${capH};
+    let capY = p.y - ${capYOff};
     let twist = ${twistRad};
     let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
     let angle = twist * t;
@@ -319,29 +340,32 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Extrude${this.id}`
         const varName = decapitalize(funcName)
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslExFuncName}(p - ${this.pos.wgsl}, ${this.id}u)`,
+            text: `${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`,
         }
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Extrude${this.id}`
         const varName = `${decapitalize(funcName)}_f`
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+            text: `${this.wgslFastFuncName}(p - ${pos})`,
         }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Extrude${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
+            text: `${this.wgslMidFuncName}(p - ${pos})`,
         }
     }
 

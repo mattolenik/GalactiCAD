@@ -295,7 +295,7 @@ fn fCylinderEx(p: vec3<f32>, r: f32, height: f32, id: u32) -> SDFResult {
 
 // FDM threaded rod: sinusoidal helical radius (smooth, prints reliably).
 // helixSign: +1 = right-hand (default), -1 = left-hand (flip advance along +Y vs azimuth).
-// Barrel-only SDF (sceneAux emits capped variants with nodeParams + virtual cap IDs).
+// Barrel-only SDF (sceneAux emits capped variants with sceneParams + virtual cap IDs).
 fn fThreadedRodBarrelDist(p: vec3f, r: f32, pitch: f32, amp: f32, helixSign: f32) -> f32 {
     let rho = length(p.xz);
     let k = TAU / max(pitch, 1e-6);

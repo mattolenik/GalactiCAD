@@ -2,6 +2,10 @@
 
 // Beam optimization compute shader.
 //
+// The render worker uses `beamMarch` in preview.wgsl (same shader module as the
+// fragment pass). This file is a standalone variant; bindings mirror preview's
+// beam subset (camera, t_start, polygonVertices, sceneParams).
+//
 // Groups adjacent pixels into TILE_SIZE x TILE_SIZE tiles and performs a single
 // beam march per tile at the centroid of the tile's actual pixels (clamped to
 // the framebuffer). Partial tiles along the right/bottom (or when W or H < 8)
@@ -48,8 +52,9 @@ struct Camera {
 // Polygon vertex buffer (shared storage for all Polygon2D vertex data).
 @group(0) @binding(3) var<storage, read> polygonVertices: array<vec2f>;
 
-// Per-node parameters: .x = h, .y = posYDelta. Indexed by node ID.
-@group(0) @binding(4) var<uniform> nodeParams: array<vec4f, 256>;
+// Packed f32 scene parameters (primitive dims, transforms, BVH bounds, etc.).
+@group(0) @binding(5) var<storage, read> sceneParams: array<f32>;
+//:) include "scene_params_read.wgsl"
 
 // Fast-path-only auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 // Uses sceneAuxFast to exclude full SDFResult functions not needed by the beam shader.
@@ -65,7 +70,7 @@ fn sceneSDF_fast(p: vec3f) -> FastSDFResult {
 fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = polygonVertices[0];
-    _ = nodeParams[0];
+    _ = sceneParams[0];
 
     // Output texture is at tile resolution: ceil(W/TILE_SIZE) x ceil(H/TILE_SIZE)
     let outDims = textureDimensions(tStartOut);

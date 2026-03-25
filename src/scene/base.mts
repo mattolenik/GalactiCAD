@@ -46,7 +46,10 @@ export interface ISceneInfo {
     add(node: Node): void
     get<T extends Node>(id: number): T
     getAllNodes(): Node[]
-    nextArgIndex(): number
+    /** Reserve `count` consecutive f32 slots in the packed scene param buffer; returns the start index. */
+    allocSceneParamFloats(count: number): number
+    /** Total f32 slots reserved after `build()` (size of the packed CPU/GPU upload). */
+    readonly sceneParamFloatCount: number
     allocPolygonVertices(count: number): number
     /** Whether to emit BVH bounding checks during code generation. */
     bvhEnabled: boolean
@@ -64,6 +67,15 @@ export class Node {
     #scene!: ISceneInfo
     #primitiveCount = -1
     #codegenCost = -1
+    /** Start index into the shared `sceneParams` f32 buffer; valid when `paramCount > 0`. */
+    paramOffset = 0
+    /** Number of consecutive f32 slots owned by this node (`0` = none). */
+    paramCount = 0
+    /**
+     * Base f32 index into `sceneParams` for this node's BVH AABB (center xyz, half xyz), or `-1` if unused.
+     * Assigned after `build()` for nodes that qualify when `bvhEnabled` is on (see `SceneInfo`).
+     */
+    bvhBoundsOffset = -1
 
     get scene() {
         return this.root.#scene
@@ -151,9 +163,8 @@ export class Node {
         throw new Error("Method not implemented.")
     }
 
-    updateScene(_writeBuffer: (index: number, data: Float32Array) => void): void {
-        throw new Error("Method not implemented.")
-    }
+    /** Write this node's `paramCount` floats into `view` (a subarray at `paramOffset` of the full pack). */
+    writeSceneParams(_view: Float32Array): void {}
 
     build() {
         this.scene.add(this)
@@ -161,6 +172,24 @@ export class Node {
 
     getBase(): Node {
         return this
+    }
+
+    /**
+     * Whether this node receives a BVH `sdBound` slot when `scene.bvhEnabled` is on — must match
+     * `SceneInfo` bounds assignment (`codegenCost` threshold and `computeBounds()` present).
+     */
+    protected structuralBvhSlot(): "0" | "1" {
+        return this.scene.bvhEnabled && this.codegenCost() >= BVH_MIN_COST && this.computeBounds() !== null
+            ? "1"
+            : "0"
+    }
+
+    /**
+     * DFS in the same order as `build()`: type, discretized shape selectors, then children.
+     * Used for structural fingerprinting (param-only vs full shader rebuild).
+     */
+    appendStructuralFingerprint(parts: string[]): void {
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}`)
     }
 }
 
@@ -177,13 +206,17 @@ export abstract class UnaryOperator extends Node {
     override computeBounds(): AABB | null {
         return this.arg.computeBounds()
     }
-    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
-        this.arg.updateScene(writeBuffer)
-    }
+    /** Reserve `paramOffset` / `paramCount` after this node is registered; runs before the child subtree `build()`. */
+    protected reserveUnarySceneParams(): void {}
     override build() {
         super.build()
+        this.reserveUnarySceneParams()
         this.arg.root = this.root
         this.arg.build()
+    }
+    override appendStructuralFingerprint(parts: string[]): void {
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}`)
+        this.arg.appendStructuralFingerprint(parts)
     }
     constructor(public arg: Node) {
         super()
@@ -205,12 +238,11 @@ export abstract class BinaryOperator extends Node {
         if (!rb) return lb
         return aabbUnion(lb, rb)
     }
-    override updateScene(writeBuffer: (index: number, data: Float32Array) => void): void {
-        this.lh.updateScene(writeBuffer)
-        this.rh.updateScene(writeBuffer)
-    }
+    /** Reserve `paramOffset` / `paramCount` after this node is registered; runs before left/right subtree `build()`. */
+    protected reserveBinarySceneParams(): void {}
     override build() {
         super.build()
+        this.reserveBinarySceneParams()
         this.lh.root = this.root
         this.rh.root = this.root
         this.lh.build()
@@ -218,6 +250,11 @@ export abstract class BinaryOperator extends Node {
     }
     override getAllDescendantIds(): number[] {
         return [this.id, ...this.lh.getAllDescendantIds(), ...this.rh.getAllDescendantIds()]
+    }
+    override appendStructuralFingerprint(parts: string[]): void {
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}`)
+        this.lh.appendStructuralFingerprint(parts)
+        this.rh.appendStructuralFingerprint(parts)
     }
     constructor(public lh: Node, public rh: Node) {
         super()

@@ -1,4 +1,5 @@
 import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
+import { spF32Wgsl } from "../scene-params.mjs"
 
 export class Pipe extends BinaryOperator {
     #pipeRadius = 0
@@ -10,6 +11,16 @@ export class Pipe extends BinaryOperator {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="10" x2="10" y2="2" stroke="currentColor" stroke-width="1.5"/>`
     }
+
+    protected override reserveBinarySceneParams(): void {
+        this.paramOffset = this.scene.allocSceneParamFloats(1)
+        this.paramCount = 1
+    }
+
+    override writeSceneParams(view: Float32Array): void {
+        view[0] = this.#pipeRadius
+    }
+
     @fluent radius(r: number): this {
         this.#pipeRadius = r
         return this
@@ -19,20 +30,23 @@ export class Pipe extends BinaryOperator {
         const rhResult = this.rh.compile(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpPipeEx(${lText}, ${rText}, ${this.#pipeRadius})`, varName, prelude }
+        const pr = spF32Wgsl(this.paramOffset)
+        return { text: `fOpPipeEx(${lText}, ${rText}, ${pr})`, varName, prelude }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpPipeFast(${lText}, ${rText}, ${this.#pipeRadius})`, varName, prelude }
+        const pr = spF32Wgsl(this.paramOffset)
+        return { text: `fOpPipeFast(${lText}, ${rText}, ${pr})`, varName, prelude }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
-        return { text: `fOpPipeMid(${lhResult.text}, ${rhResult.text}, ${this.#pipeRadius})`, varName }
+        const pr = spF32Wgsl(this.paramOffset)
+        return { text: `fOpPipeMid(${lhResult.text}, ${rhResult.text}, ${pr})`, varName }
     }
 }
 

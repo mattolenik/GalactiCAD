@@ -20,4 +20,8 @@ export class VirtualCapNode extends Node {
     override build(): void {
         this.scene.add(this)
     }
+
+    override appendStructuralFingerprint(parts: string[]): void {
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}:${this.isTop ? "top" : "bot"}`)
+    }
 }

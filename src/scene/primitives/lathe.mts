@@ -1,5 +1,6 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
+import { spVec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 
@@ -32,12 +33,21 @@ export class Lathe extends Node {
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" stroke-width="1" stroke-dasharray="2,1"/>`
     }
-    override updateScene(): void { }
+    override writeSceneParams(view: Float32Array): void {
+        view.set(this.pos.data)
+    }
 
     override build() {
         super.build()
+        this.paramOffset = this.scene.allocSceneParamFloats(3)
+        this.paramCount = 3
         this.child.root = this.root
         this.child.build()
+    }
+
+    override appendStructuralFingerprint(parts: string[]): void {
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}`)
+        this.child.appendStructuralFingerprint(parts)
     }
 
     override getAllDescendantIds(): number[] {
@@ -100,29 +110,32 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Lathe${this.id}`
         const varName = decapitalize(funcName)
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslExFuncName}(p - ${this.pos.wgsl}, ${this.id}u)`,
+            text: `${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`,
         }
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Lathe${this.id}`
         const varName = `${decapitalize(funcName)}_f`
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslFastFuncName}(p - ${this.pos.wgsl})`,
+            text: `${this.wgslFastFuncName}(p - ${pos})`,
         }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Lathe${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        const pos = spVec3Wgsl(this.paramOffset)
         return {
             funcName,
             varName,
-            text: `${this.wgslMidFuncName}(p - ${this.pos.wgsl})`,
+            text: `${this.wgslMidFuncName}(p - ${pos})`,
         }
     }
 

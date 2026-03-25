@@ -401,4 +401,13 @@ declare const loft: { sections(s: Polygon2D[]): Loft };
  * Revolve a Polygon2D profile around the Y-axis. lathe.profile(p).shift(v)
  */
 declare const lathe: { profile(p: Polygon2D): Lathe };
+
+/** Minimal console (editor lib excludes DOM; this keeps debug logging typed). */
+declare const console: {
+    log(...args: unknown[]): void;
+    error(...args: unknown[]): void;
+    warn(...args: unknown[]): void;
+    debug(...args: unknown[]): void;
+    info(...args: unknown[]): void;
+};
 `

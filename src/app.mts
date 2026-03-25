@@ -529,8 +529,8 @@ class App {
         })
 
         this.#toolbarRefs = this.#setupToolbar(menu)
-        ;(window as unknown as { factoryReset: () => Promise<void> }).factoryReset = () =>
-            this.#toolbarRefs.devTools.factoryReset()
+            ; (window as unknown as { factoryReset: () => Promise<void> }).factoryReset = () =>
+                this.#toolbarRefs.devTools.factoryReset()
         const { getVisiblePreviewRect } = this.#setupLayoutObservers(editorContainer)
         this.#getVisiblePreviewRect = getVisiblePreviewRect
 
@@ -594,7 +594,7 @@ class App {
         editorContainer.insertBefore(codeDiv, this.log)
         editorContainer.appendChild(this.log)
 
-        monaco.typescript.typescriptDefaults.setCompilerOptions({
+        const cadCompilerOptions: monaco.typescript.CompilerOptions = {
             target: monaco.typescript.ScriptTarget.ESNext,
             strict: false,
             noImplicitAny: false,
@@ -602,7 +602,11 @@ class App {
             noUnusedParameters: false,
             allowUnreachableCode: true,
             module: monaco.typescript.ModuleKind.None,
-        })
+            // Omit default "dom" lib so tab completion isn't flooded with DOM junk
+            lib: ["esnext"],
+        }
+        monaco.typescript.typescriptDefaults.setCompilerOptions(cadCompilerOptions)
+        monaco.typescript.javascriptDefaults.setCompilerOptions(cadCompilerOptions)
         monaco.typescript.typescriptDefaults.setDiagnosticsOptions({
             noSemanticValidation: false,
             noSyntaxValidation: false,

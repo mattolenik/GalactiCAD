@@ -1,9 +1,10 @@
 //:) include "hg_sdf.wgsl"
 
 const MAX_STEPS: i32 = 300;   // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
-const MAX_DIST: f32 = 300.0;  // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
+const MAX_DIST: f32 = 600.0;  // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
 const MAX_BEAM_STEPS: i32 = 200;
 const HIT_REFINE_STEPS: i32 = 6;
+const RAY_ORIGIN_DEPTH: f32 = 300.0;
 
 struct Camera {
     transform: mat4x4f,
@@ -607,7 +608,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
     let offsetX = (uv.x * 2.0 - 1.0) * camera.zoom;
     let offsetY = (uv.y * 2.0 - 1.0) * camera.zoom;
-    return camPos + vec3f(offsetX, offsetY, 100.0);
+    return camPos + vec3f(offsetX, offsetY, RAY_ORIGIN_DEPTH);
 }
 
 // Raymarch from inside the surface to find the exit point. Returns HitData; the
@@ -955,7 +956,7 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
 
     let offsetX = (uvAspect.x * 2.0 - 1.0) * camera.zoom;
     let offsetY = (uvAspect.y * 2.0 - 1.0) * camera.zoom;
-    let rayOrigin = camera.position + vec3f(offsetX, offsetY, 100.0);
+    let rayOrigin = camera.position + vec3f(offsetX, offsetY, RAY_ORIGIN_DEPTH);
 
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
     let transformedDir = -camera.transform[2].xyz;

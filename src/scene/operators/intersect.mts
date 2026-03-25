@@ -1,6 +1,7 @@
 import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
 import { aabbIntersect, type AABB } from "../aabb.mjs"
-import { spF32Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { f32Wgsl } from "../scene-params.mjs"
 
 export class Intersect extends BinaryOperator {
     override getShapeType(): string {
@@ -15,6 +16,7 @@ export class Intersect extends BinaryOperator {
         if (this.radius > 0) {
             this.paramOffset = this.scene.allocSceneParamFloats(2)
             this.paramCount = 2
+            this.previewF32Slot = this.scene.allocPreviewF32(2)
         }
     }
 
@@ -25,11 +27,18 @@ export class Intersect extends BinaryOperator {
         }
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        if (this.paramCount >= 2) {
+            out.f32[this.previewF32Slot] = this.radius
+            out.f32[this.previewF32Slot + 1] = this.n ?? 4
+        }
+    }
+
     private _interEx(L: string, R: string): string {
         const r = this.radius
         if (!r || r <= 0) return `opIntersectionEx(${L}, ${R})`
-        const rW = spF32Wgsl(this.paramOffset)
-        const nW = spF32Wgsl(this.paramOffset + 1)
+        const rW = f32Wgsl(this.paramOffset, this.previewF32Slot)
+        const nW = f32Wgsl(this.paramOffset + 1, this.previewF32Slot + 1)
         switch (this.mode) {
             case 'chamfer': return `fOpIntersectionChamferEx(${L}, ${R}, ${rW})`
             case 'columns': return `fOpIntersectionColumnsEx(${L}, ${R}, ${rW}, ${nW})`
@@ -41,8 +50,8 @@ export class Intersect extends BinaryOperator {
     private _interFast(L: string, R: string): string {
         const r = this.radius
         if (!r || r <= 0) return `opIntersectionFast(${L}, ${R})`
-        const rW = spF32Wgsl(this.paramOffset)
-        const nW = spF32Wgsl(this.paramOffset + 1)
+        const rW = f32Wgsl(this.paramOffset, this.previewF32Slot)
+        const nW = f32Wgsl(this.paramOffset + 1, this.previewF32Slot + 1)
         switch (this.mode) {
             case 'chamfer': return `fOpIntersectionChamferFast(${L}, ${R}, ${rW})`
             case 'columns': return `fOpIntersectionColumnsFast(${L}, ${R}, ${rW}, ${nW})`
@@ -54,8 +63,8 @@ export class Intersect extends BinaryOperator {
     private _interMid(L: string, R: string): string {
         const r = this.radius
         if (!r || r <= 0) return `opIntersectionMid(${L}, ${R})`
-        const rW = spF32Wgsl(this.paramOffset)
-        const nW = spF32Wgsl(this.paramOffset + 1)
+        const rW = f32Wgsl(this.paramOffset, this.previewF32Slot)
+        const nW = f32Wgsl(this.paramOffset + 1, this.previewF32Slot + 1)
         switch (this.mode) {
             case 'chamfer': return `fOpIntersectionChamferMid(${L}, ${R}, ${rW})`
             case 'columns': return `fOpIntersectionColumnsMid(${L}, ${R}, ${rW}, ${nW})`

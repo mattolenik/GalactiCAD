@@ -15,7 +15,16 @@ import { ShaderCompiler } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
-import { SCENE_PARAMS_BYTE_SIZE } from "./scene/scene-params.mjs"
+import {
+    SCENE_PARAMS_BYTE_SIZE,
+    PREVIEW_PARAMS_F32_BYTE_SIZE,
+    PREVIEW_PARAMS_VEC2_BYTE_SIZE,
+    PREVIEW_PARAMS_VEC3_BYTE_SIZE,
+    PREVIEW_UNIFORM_F32_COUNT,
+    PREVIEW_UNIFORM_VEC2_COUNT,
+    PREVIEW_UNIFORM_VEC3_COUNT,
+    type PreviewParamsOut,
+} from "./scene/scene-params.mjs"
 import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
@@ -53,7 +62,13 @@ class UniformBuffers {
     clickedHitPos!: GPUBuffer
     clickedNormal!: GPUBuffer
     faceSelection!: GPUBuffer
-    sceneParams!: GPUBuffer
+    /** Flat f32 layout from `packSceneParams` (bounds pass). */
+    boundsSceneParams!: GPUBuffer
+    /** Same layout as `boundsSceneParams`; MDC export pass. */
+    mdcSceneParams!: GPUBuffer
+    previewParamsF32!: GPUBuffer
+    previewParamsVec2!: GPUBuffer
+    previewParamsVec3!: GPUBuffer
     edgeHit!: GPUBuffer
     selectedEdges!: GPUBuffer
     hoverEdgeHit!: GPUBuffer
@@ -135,6 +150,10 @@ export class RenderWorkerCore {
     #sabStagingBuf = new ArrayBuffer(4096)
     #lastRenderMsg: Extract<MainToWorkerMessage, { type: "render" }> | null = null
     #lastSharedBuffer: SharedArrayBuffer | null = null
+    /** CPU mirrors for preview param banks: full reupload from `packPreviewParams()` on build; cap push/pull patches `f32` shadow then full `previewParamsF32` upload (uniform writes are 256-byte-offset aligned). */
+    #previewF32Shadow!: Float32Array
+    #previewVec2Shadow!: Float32Array
+    #previewVec3Shadow!: Float32Array
     #lastSelectionMode = 0
     #builtBody: string | null = null
     /** Set after a successful full shader rebuild; used to skip compilation when `structuralFingerprint()` is unchanged. */
@@ -249,6 +268,7 @@ export class RenderWorkerCore {
         }
         const sceneParamData = scene.packSceneParams()
         const sceneParamUpload = sceneParamData.byteLength > 0 ? sceneParamData : new Float32Array([0])
+        const previewPacked = scene.packPreviewParams()
         const tPacked = performance.now()
 
         if (paramOnly) {
@@ -257,7 +277,9 @@ export class RenderWorkerCore {
             if (scene.totalPolygonVertices > 0) {
                 this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
             }
-            this.#device.queue.writeBuffer(this.#uniformBuffers.sceneParams, 0, sceneParamUpload as BufferSource)
+            this.#device.queue.writeBuffer(this.#uniformBuffers.boundsSceneParams, 0, sceneParamUpload as BufferSource)
+            this.#device.queue.writeBuffer(this.#uniformBuffers.mdcSceneParams, 0, sceneParamUpload as BufferSource)
+            this.#uploadPreviewUniforms(previewPacked)
             this.#beamBindGroupInvalid = true
             this.#sceneBindGroupInvalid = true
             const t1 = performance.now()
@@ -273,12 +295,12 @@ export class RenderWorkerCore {
         }
 
         const tWgsl0 = performance.now()
-        const sceneAux = scene.compileAux()
-        const sceneAuxFast = scene.compileAuxFast()
-        const sceneAuxMid = scene.compileAuxMid()
-        const sceneSDF = scene.compile()
-        const sceneSDF_fast = scene.compileFast()
-        const sceneSDF_mid = scene.compileMid()
+        const sceneAux = scene.compileAuxPreview()
+        const sceneAuxFast = scene.compileAuxFastPreview()
+        const sceneAuxMid = scene.compileAuxMidPreview()
+        const sceneSDF = scene.compileForPreview()
+        const sceneSDF_fast = scene.compileFastForPreview()
+        const sceneSDF_mid = scene.compileMidForPreview()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
         const tWgsl1 = performance.now()
 
@@ -340,7 +362,7 @@ export class RenderWorkerCore {
         this.#builtStructuralFingerprint = fingerprint
 
         // Write GPU buffers only after the new pipeline is ready so the old pipeline
-        // continues rendering with the correct drag-time sceneParams cap slots (posYDelta != 0)
+        // continues rendering with the correct drag-time preview cap slots (posYDelta != 0)
         // until the atomic swap. This prevents the visible jump where the object briefly
         // snaps back to its pre-drag position during pipeline compilation.
         const tBuf0 = performance.now()
@@ -348,13 +370,27 @@ export class RenderWorkerCore {
         if (scene.totalPolygonVertices > 0) {
             this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
         }
-        this.#device.queue.writeBuffer(this.#uniformBuffers.sceneParams, 0, sceneParamUpload as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.boundsSceneParams, 0, sceneParamUpload as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.mdcSceneParams, 0, sceneParamUpload as BufferSource)
+        this.#uploadPreviewUniforms(previewPacked)
         this.#beamBindGroupInvalid = true
         this.#sceneBindGroupInvalid = true
         const tBuf1 = performance.now()
         log("RenderWorker").debug("scene build full buffer upload (ms)", { gpuBuffers: roundMs(tBuf1 - tBuf0) })
 
         return { sceneNodes: serializeSceneNodes(scene, allNodes), compiledPosY: Array.from(this.#compiledPosY) }
+    }
+
+    #uploadPreviewUniforms(p: PreviewParamsOut): void {
+        this.#previewF32Shadow.fill(0)
+        this.#previewF32Shadow.set(p.f32)
+        this.#previewVec2Shadow.fill(0)
+        this.#previewVec2Shadow.set(p.vec2)
+        this.#previewVec3Shadow.fill(0)
+        this.#previewVec3Shadow.set(p.vec3)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsF32, 0, this.#previewF32Shadow as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsVec2, 0, this.#previewVec2Shadow as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsVec3, 0, this.#previewVec3Shadow as BufferSource)
     }
 
     resize(fullWidth: number, fullHeight: number): void {
@@ -475,7 +511,9 @@ export class RenderWorkerCore {
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                        { binding: 19, resource: { buffer: this.#uniformBuffers.sceneParams } },
+                        { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
+                        { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
+                        { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -649,7 +687,9 @@ export class RenderWorkerCore {
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                        { binding: 19, resource: { buffer: this.#uniformBuffers.sceneParams } },
+                        { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
+                        { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
+                        { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -756,7 +796,7 @@ export class RenderWorkerCore {
                 params,
                 this.#uniformBuffers.polygonVertices,
                 this.#uniformBuffers.faceSelection,
-                this.#uniformBuffers.sceneParams,
+                this.#uniformBuffers.mdcSceneParams,
             )
             const mesh = await mdc.export(mdcShaderModule)
             self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
@@ -820,7 +860,7 @@ export class RenderWorkerCore {
                     { binding: 1, resource: { buffer: outBuffer } },
                     { binding: 3, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                     { binding: 4, resource: { buffer: this.#uniformBuffers.faceSelection } },
-                    { binding: 6, resource: { buffer: this.#uniformBuffers.sceneParams } },
+                    { binding: 6, resource: { buffer: this.#uniformBuffers.boundsSceneParams } },
                     { binding: 99, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
                 ],
             })
@@ -1109,7 +1149,9 @@ export class RenderWorkerCore {
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                        { binding: 19, resource: { buffer: this.#uniformBuffers.sceneParams } },
+                        { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
+                        { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
+                        { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -1141,7 +1183,9 @@ export class RenderWorkerCore {
                     { binding: 16, resource: { buffer: this.#uniformBuffers.hoveredEdge } },
                     { binding: 17, resource: { buffer: this.#uniformBuffers.clickedNormal } },
                     { binding: 18, resource: { buffer: this.#uniformBuffers.selectionStyles } },
-                    { binding: 19, resource: { buffer: this.#uniformBuffers.sceneParams } },
+                    { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
+                    { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
+                    { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                 ],
             })
             this.#sceneBindGroupInvalid = false
@@ -1244,11 +1288,35 @@ export class RenderWorkerCore {
             label: "faceSelection",
         })
 
-        ub.sceneParams = this.#device.createBuffer({
+        ub.boundsSceneParams = this.#device.createBuffer({
             size: SCENE_PARAMS_BYTE_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            label: "sceneParams",
+            label: "boundsSceneParams",
         })
+        ub.mdcSceneParams = this.#device.createBuffer({
+            size: SCENE_PARAMS_BYTE_SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            label: "mdcSceneParams",
+        })
+        ub.previewParamsF32 = this.#device.createBuffer({
+            size: PREVIEW_PARAMS_F32_BYTE_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "previewParamsF32",
+        })
+        ub.previewParamsVec2 = this.#device.createBuffer({
+            size: PREVIEW_PARAMS_VEC2_BYTE_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "previewParamsVec2",
+        })
+        ub.previewParamsVec3 = this.#device.createBuffer({
+            size: PREVIEW_PARAMS_VEC3_BYTE_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "previewParamsVec3",
+        })
+
+        this.#previewF32Shadow = new Float32Array(PREVIEW_UNIFORM_F32_COUNT)
+        this.#previewVec2Shadow = new Float32Array(PREVIEW_UNIFORM_VEC2_COUNT * 2)
+        this.#previewVec3Shadow = new Float32Array(PREVIEW_UNIFORM_VEC3_COUNT * 4)
 
         ub.edgeHit = this.#device.createBuffer({
             size: EDGE_HITS_SIZE,
@@ -1513,12 +1581,14 @@ export class RenderWorkerCore {
                 msg.polygonVertices.data,
             )
         }
-        if (msg.sceneParams) {
-            this.#device.queue.writeBuffer(
-                this.#uniformBuffers.sceneParams,
-                msg.sceneParams.byteOffset,
-                msg.sceneParams.data,
-            )
+        if (msg.previewParamsF32Patch) {
+            const patch = new Float32Array(msg.previewParamsF32Patch.data)
+            const byteOffset = msg.previewParamsF32Patch.byteOffset
+            const f32Off = byteOffset >> 2
+            this.#previewF32Shadow[f32Off] = patch[0]!
+            this.#previewF32Shadow[f32Off + 1] = patch[1]!
+            // Uniform buffer writes must be 256-byte aligned; cap drag updates shadow then re-upload whole bank.
+            this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsF32, 0, this.#previewF32Shadow as BufferSource)
         }
         if (msg.selectedObjectIds) {
             if (msg.selectedObjectIds instanceof ArrayBuffer) {

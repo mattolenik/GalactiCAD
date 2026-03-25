@@ -89,9 +89,12 @@ struct FaceSelection {
 }
 @group(0) @binding(11) var<uniform> faceSelection: FaceSelection;
 
-// Packed f32 scene parameters (primitive dims, transforms, BVH bounds, etc.).
-@group(0) @binding(19) var<storage, read> sceneParams: array<f32>;
-//:) include "scene_params_read.wgsl"
+// Preview-only typed uniform banks (≤64 KiB each). Logical f32/vec2 slots are packed into `vec4` arrays so
+// dense CPU packing matches WGSL uniform layout (a raw `array<f32>` in uniform has 16-byte stride per element).
+@group(0) @binding(19) var<uniform> previewParamsF32: array<vec4f, 4096>;
+@group(0) @binding(20) var<uniform> previewParamsVec2: array<vec4f, 4096>;
+@group(0) @binding(21) var<uniform> previewParamsVec3: array<vec4f, 4096>;
+//:) include "preview_scene_params_read.wgsl"
 
 // Edge selection: hit at click/hover pixel
 const EDGE_KIND_NONE: u32 = 0u;
@@ -744,7 +747,9 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     _ = clickedHitPos[0];
     _ = clickedNormal[0];
     _ = faceSelection.nodeId;
-    _ = sceneParams[0];
+    _ = previewParamsF32[0];
+    _ = previewParamsVec2[0];
+    _ = previewParamsVec3[0];
     _ = edgeHits[0].kind;
     _ = selectedEdges.count;
     _ = hoverEdgeHits[0].kind;
@@ -921,8 +926,11 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
 @compute @workgroup_size(8, 8)
 fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     let tileU = u32(BEAM_TILE_SIZE);
+    // Match fragmentMain: keep preview uniform banks in layout (Tint strips unused bindings).
     _ = polygonVertices[0];
-    _ = sceneParams[0];
+    _ = previewParamsF32[0];
+    _ = previewParamsVec2[0];
+    _ = previewParamsVec3[0];
 
     let outDims = textureDimensions(tStartOut);
     if (gid.x >= outDims.x || gid.y >= outDims.y) {

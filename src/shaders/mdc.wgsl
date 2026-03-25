@@ -62,8 +62,8 @@ const FACE_HIGHLIGHT_ID: u32 = 1023u;
 const FACE_HIGHLIGHT_TOP: u32 = 1023u;
 const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 
-@group(0) @binding(30) var<storage, read> sceneParams: array<f32>;
-//:) include "scene_params_read.wgsl"
+@group(0) @binding(30) var<storage, read> mdcSceneParams: array<f32>;
+//:) include "mdc_scene_params_read.wgsl"
 
 // Pass 1: Cell Classification
 @group(0) @binding(1) var<storage, read_write> activeCellFlags: array<u32>; // Bit-packed flags
@@ -127,7 +127,7 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
 fn sceneSDF(p: vec3f) -> SDFResult {
     _ = polygonVertices[0];
     _ = faceSelection.nodeId;
-    _ = sceneParams[0];
+    _ = mdcSceneParams[0];
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
@@ -135,13 +135,13 @@ fn sceneSDF(p: vec3f) -> SDFResult {
 fn sceneSDF_mid(p: vec3f) -> SDFResultMid {
     _ = polygonVertices[0];
     _ = faceSelection.nodeId;
-    _ = sceneParams[0];
+    _ = mdcSceneParams[0];
     return sdfRMid(0.0, 1.0, vec3f(0.0)); //:) insert sceneSDF_mid
 }
 
 // Fast version for distance-only evaluations.
 fn sceneSDF_fast(p: vec3f) -> FastSDFResult {
-    _ = sceneParams[0];
+    _ = mdcSceneParams[0];
     return sdfFast(0.0, 1.0, 1.0); //:) insert sceneSDF_fast
 }
 

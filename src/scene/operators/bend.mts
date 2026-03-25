@@ -1,6 +1,7 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
 import { aabbExpand, type AABB } from "../aabb.mjs"
-import { spF32Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { f32Wgsl } from "../scene-params.mjs"
 
 export class Bend extends UnaryOperator {
     override getShapeType(): string { return "bend" }
@@ -18,16 +19,21 @@ export class Bend extends UnaryOperator {
     protected override reserveUnarySceneParams(): void {
         this.paramOffset = this.scene.allocSceneParamFloats(1)
         this.paramCount = 1
+        this.previewF32Slot = this.scene.allocPreviewF32(1)
     }
 
     override writeSceneParams(view: Float32Array): void {
         view[0] = this.amount
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        out.f32[this.previewF32Slot] = this.amount
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
         const childText = childResult.text!
-        const amt = spF32Wgsl(this.paramOffset)
+        const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
         const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
         const funcName = `Bend${this.id}`
         const varName = decapitalize(funcName)
@@ -44,7 +50,7 @@ export class Bend extends UnaryOperator {
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
         const childText = childResult.text!
-        const amt = spF32Wgsl(this.paramOffset)
+        const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
         const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
         const funcName = `Bend${this.id}`
         const varName = `${decapitalize(funcName)}_f`
@@ -61,7 +67,7 @@ export class Bend extends UnaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
-        const amt = spF32Wgsl(this.paramOffset)
+        const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
         const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
         const funcName = `Bend${this.id}`
         const varName = `${decapitalize(funcName)}_m`

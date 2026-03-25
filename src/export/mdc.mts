@@ -120,7 +120,7 @@ export class MDCExport {
     #localBindGroups: GPUBindGroup[] = []
     #polygonVerticesBuffer: GPUBuffer
     #faceSelectionBuffer: GPUBuffer
-    #sceneParamsBuffer: GPUBuffer
+    #mdcSceneParamsBuffer: GPUBuffer
     #cancelled = false
     #cancellationBuffer: GPUBuffer | null = null
 
@@ -129,13 +129,13 @@ export class MDCExport {
         private params: MDCParams,
         polygonVerticesBuffer: GPUBuffer,
         faceSelectionBuffer: GPUBuffer,
-        sceneParamsBuffer: GPUBuffer,
+        mdcSceneParamsBuffer: GPUBuffer,
     ) {
         this.#helper = helper
         this.#device = helper.device
         this.#polygonVerticesBuffer = polygonVerticesBuffer
         this.#faceSelectionBuffer = faceSelectionBuffer
-        this.#sceneParamsBuffer = sceneParamsBuffer
+        this.#mdcSceneParamsBuffer = mdcSceneParamsBuffer
     }
 
     /** Destroy all GPU buffers created during export */
@@ -344,7 +344,7 @@ export class MDCExport {
                 [1, activeCellFlagsBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
-                [30, this.#sceneParamsBuffer],
+                [30, this.#mdcSceneParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
             this.#localBindGroups.push(bindGroupPass1[1])
@@ -514,7 +514,7 @@ export class MDCExport {
                 [10, activeCellCountBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
-                [30, this.#sceneParamsBuffer],
+                [30, this.#mdcSceneParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
             this.#localBindGroups.push(bindGroupPass3[1])
@@ -530,7 +530,7 @@ export class MDCExport {
                 [14, activeCellCountBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
-                [30, this.#sceneParamsBuffer],
+                [30, this.#mdcSceneParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
             this.#localBindGroups.push(bindGroupPass4[1])
@@ -551,7 +551,7 @@ export class MDCExport {
                 [24, debugSkipCountersBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
-                [30, this.#sceneParamsBuffer]
+                [30, this.#mdcSceneParamsBuffer]
             )
             this.#localBindGroups.push(bindGroupPass5[1])
 

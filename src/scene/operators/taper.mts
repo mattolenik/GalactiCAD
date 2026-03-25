@@ -1,6 +1,7 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
 import type { AABB } from "../aabb.mjs"
-import { spF32Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { f32Wgsl } from "../scene-params.mjs"
 
 export class Taper extends UnaryOperator {
     override getShapeType(): string { return "taper" }
@@ -18,6 +19,7 @@ export class Taper extends UnaryOperator {
     protected override reserveUnarySceneParams(): void {
         this.paramOffset = this.scene.allocSceneParamFloats(2)
         this.paramCount = 2
+        this.previewF32Slot = this.scene.allocPreviewF32(2)
     }
 
     override writeSceneParams(view: Float32Array): void {
@@ -25,12 +27,17 @@ export class Taper extends UnaryOperator {
         view[1] = this.height
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        out.f32[this.previewF32Slot + 0] = this.ratio
+        out.f32[this.previewF32Slot + 1] = this.height
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
         const childText = childResult.text!
         const o = this.paramOffset
-        const ratio = spF32Wgsl(o)
-        const height = spF32Wgsl(o + 1)
+        const ratio = f32Wgsl(o, this.previewF32Slot)
+        const height = f32Wgsl(o + 1, this.previewF32Slot + 1)
         const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
         const funcName = `Taper${this.id}`
         const varName = decapitalize(funcName)
@@ -48,8 +55,8 @@ export class Taper extends UnaryOperator {
         const childResult = this.arg.compileFast(indentLevel)
         const childText = childResult.text!
         const o = this.paramOffset
-        const ratio = spF32Wgsl(o)
-        const height = spF32Wgsl(o + 1)
+        const ratio = f32Wgsl(o, this.previewF32Slot)
+        const height = f32Wgsl(o + 1, this.previewF32Slot + 1)
         const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
         const funcName = `Taper${this.id}`
         const varName = `${decapitalize(funcName)}_f`
@@ -67,8 +74,8 @@ export class Taper extends UnaryOperator {
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
         const o = this.paramOffset
-        const ratio = spF32Wgsl(o)
-        const height = spF32Wgsl(o + 1)
+        const ratio = f32Wgsl(o, this.previewF32Slot)
+        const height = f32Wgsl(o + 1, this.previewF32Slot + 1)
         const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
         const funcName = `Taper${this.id}`
         const varName = `${decapitalize(funcName)}_m`

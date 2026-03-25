@@ -79,12 +79,21 @@ export class MonacoHighlighter {
         const svgWithColor = svg.replace(/currentColor/g, textRgb)
         const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">${svgWithColor}</svg>`
         const dataUri = `data:image/svg+xml,${encodeURIComponent(fullSvg)}`
+        // Fira Code VF: small cardinal shadows add a touch of weight without heavy faux-bold.
+        const subtleBoldShadow = [
+            `0.2px 0 0 ${textRgb}`,
+            `-0.2px 0 0 ${textRgb}`,
+            `0 0.2px 0 ${textRgb}`,
+            `0 -0.2px 0 ${textRgb}`,
+        ].join(", ")
 
         return `.${className} {
             background-color: ${bgRgb};
             border-radius: 8px;
             padding: 0 6px 0 4px;
             color: ${textRgb} !important;
+            font-weight: 600 !important;
+            text-shadow: ${subtleBoldShadow};
             -webkit-box-decoration-break: clone;
             box-decoration-break: clone;
             box-sizing: border-box;
@@ -123,7 +132,7 @@ export class MonacoHighlighter {
 
         // Reset counter for new batch of indicators
         this.indicatorCounter = 0
-        
+
         // Generate CSS for all indicators and build decorations
         let css = ""
         const newDecorations: monaco.editor.IModelDeltaDecoration[] = indicators.map(indicator => {
@@ -132,10 +141,10 @@ export class MonacoHighlighter {
             const r = Math.round(color.x * 255)
             const g = Math.round(color.y * 255)
             const b = Math.round(color.z * 255)
-            
+
             const className = `shape-indicator-${this.indicatorCounter++}`
             css += this.generateIndicatorCss(className, indicator.svg, r, g, b)
-            
+
             return {
                 range: new monaco.Range(
                     indicator.startLine,
@@ -160,7 +169,7 @@ export class MonacoHighlighter {
 
         // Update decorations (removes old, adds new)
         this.colorIndicatorDecorationIds = this.editor.deltaDecorations(
-            this.colorIndicatorDecorationIds, 
+            this.colorIndicatorDecorationIds,
             newDecorations
         )
     }
@@ -171,7 +180,7 @@ export class MonacoHighlighter {
     clearColorIndicators() {
         if (this.editor) {
             this.colorIndicatorDecorationIds = this.editor.deltaDecorations(
-                this.colorIndicatorDecorationIds, 
+                this.colorIndicatorDecorationIds,
                 []
             )
         }
@@ -223,7 +232,7 @@ export class MonacoHighlighter {
     clearHighlighting() {
         if (this.editor) {
             this.selectionDecorationIds = this.editor.deltaDecorations(
-                this.selectionDecorationIds, 
+                this.selectionDecorationIds,
                 []
             )
         }

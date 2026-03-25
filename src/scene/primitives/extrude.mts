@@ -1,6 +1,7 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
-import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
@@ -53,8 +54,21 @@ export class Extrude extends Node {
         view[5] = (this.twistDegrees * Math.PI) / 180
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        const b = this.previewVec3Slot * 4
+        out.vec3[b] = this.pos.data[0]!
+        out.vec3[b + 1] = this.pos.data[1]!
+        out.vec3[b + 2] = this.pos.data[2]!
+        out.vec3[b + 3] = 0
+        out.f32[this.previewF32Slot + 0] = this.h
+        out.f32[this.previewF32Slot + 1] = 0
+        out.f32[this.previewF32Slot + 2] = (this.twistDegrees * Math.PI) / 180
+    }
+
     override build() {
         super.build()
+        this.previewVec3Slot = this.scene.allocPreviewVec3(1)
+        this.previewF32Slot = this.scene.allocPreviewF32(3)
         this.paramOffset = this.scene.allocSceneParamFloats(6)
         this.paramCount = 6
         this.child.root = this.root
@@ -102,9 +116,9 @@ export class Extrude extends Node {
             return area < 0 ? -1.0 : 1.0
         })()
         const windSignStr = windSign.toFixed(1)
-        const capH = spF32Wgsl(this.paramOffset + 3)
-        const capYOff = spF32Wgsl(this.paramOffset + 4)
-        const twistRad = spF32Wgsl(this.paramOffset + 5)
+        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
+        const twistRad = f32Wgsl(this.paramOffset + 5, this.previewF32Slot + 2)
 
         if (!hasTwist) {
             return `
@@ -252,9 +266,9 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     override compileAuxFast(): string {
         const childFunc = this.child.wgslFuncName
         const hasTwist = this.twistDegrees !== 0
-        const capH = spF32Wgsl(this.paramOffset + 3)
-        const capYOff = spF32Wgsl(this.paramOffset + 4)
-        const twistRad = spF32Wgsl(this.paramOffset + 5)
+        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
+        const twistRad = f32Wgsl(this.paramOffset + 5, this.previewF32Slot + 2)
 
         if (!hasTwist) {
             return `
@@ -290,9 +304,9 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compileAuxMid(): string {
         const combinedFunc = this.child.wgslCombinedFuncName
         const hasTwist = this.twistDegrees !== 0
-        const capH = spF32Wgsl(this.paramOffset + 3)
-        const capYOff = spF32Wgsl(this.paramOffset + 4)
-        const twistRad = spF32Wgsl(this.paramOffset + 5)
+        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
+        const twistRad = f32Wgsl(this.paramOffset + 5, this.previewF32Slot + 2)
 
         if (!hasTwist) {
             return `
@@ -342,7 +356,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Extrude${this.id}`
         const varName = decapitalize(funcName)
-        const pos = spVec3Wgsl(this.paramOffset)
+        const pos = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         return {
             funcName,
             varName,
@@ -353,7 +367,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Extrude${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        const pos = spVec3Wgsl(this.paramOffset)
+        const pos = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         return {
             funcName,
             varName,
@@ -363,7 +377,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Extrude${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        const pos = spVec3Wgsl(this.paramOffset)
+        const pos = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         return {
             funcName,
             varName,

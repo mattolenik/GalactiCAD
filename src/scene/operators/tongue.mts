@@ -1,5 +1,6 @@
 import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
-import { spF32Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { f32Wgsl } from "../scene-params.mjs"
 
 export class Tongue extends BinaryOperator {
     ra: number
@@ -17,11 +18,17 @@ export class Tongue extends BinaryOperator {
     protected override reserveBinarySceneParams(): void {
         this.paramOffset = this.scene.allocSceneParamFloats(2)
         this.paramCount = 2
+        this.previewF32Slot = this.scene.allocPreviewF32(2)
     }
 
     override writeSceneParams(view: Float32Array): void {
         view[0] = this.ra
         view[1] = this.rb
+    }
+
+    override writePreviewParams(out: PreviewParamsOut): void {
+        out.f32[this.previewF32Slot] = this.ra
+        out.f32[this.previewF32Slot + 1] = this.rb
     }
 
     @fluent radii(ra: number, rb: number): this {
@@ -35,8 +42,8 @@ export class Tongue extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
         const o = this.paramOffset
-        const ra = spF32Wgsl(o)
-        const rb = spF32Wgsl(o + 1)
+        const ra = f32Wgsl(o, this.previewF32Slot)
+        const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
         return { text: `fOpTongueEx(${lText}, ${rText}, ${ra}, ${rb})`, varName, prelude }
     }
     override compileFast(indentLevel = 0): CompileResult {
@@ -45,8 +52,8 @@ export class Tongue extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
         const o = this.paramOffset
-        const ra = spF32Wgsl(o)
-        const rb = spF32Wgsl(o + 1)
+        const ra = f32Wgsl(o, this.previewF32Slot)
+        const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
         return { text: `fOpTongueFast(${lText}, ${rText}, ${ra}, ${rb})`, varName, prelude }
     }
     override compileMid(indentLevel = 0): CompileResult {
@@ -54,8 +61,8 @@ export class Tongue extends BinaryOperator {
         const rhResult = this.rh.compileMid(indentLevel)
         const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
         const o = this.paramOffset
-        const ra = spF32Wgsl(o)
-        const rb = spF32Wgsl(o + 1)
+        const ra = f32Wgsl(o, this.previewF32Slot)
+        const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
         return { text: `fOpTongueMid(${lhResult.text}, ${rhResult.text}, ${ra}, ${rb})`, varName }
     }
 }

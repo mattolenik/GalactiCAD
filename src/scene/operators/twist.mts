@@ -1,6 +1,7 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
 import { type AABB } from "../aabb.mjs"
-import { spF32Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { f32Wgsl } from "../scene-params.mjs"
 
 export class Twist extends UnaryOperator {
     override getShapeType(): string { return "twist" }
@@ -18,16 +19,21 @@ export class Twist extends UnaryOperator {
     protected override reserveUnarySceneParams(): void {
         this.paramOffset = this.scene.allocSceneParamFloats(1)
         this.paramCount = 1
+        this.previewF32Slot = this.scene.allocPreviewF32(1)
     }
 
     override writeSceneParams(view: Float32Array): void {
         view[0] = this.rate
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        out.f32[this.previewF32Slot] = this.rate
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
         const childText = childResult.text!
-        const rate = spF32Wgsl(this.paramOffset)
+        const rate = f32Wgsl(this.paramOffset, this.previewF32Slot)
         const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
         const funcName = `Twist${this.id}`
         const varName = decapitalize(funcName)
@@ -44,7 +50,7 @@ export class Twist extends UnaryOperator {
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
         const childText = childResult.text!
-        const rate = spF32Wgsl(this.paramOffset)
+        const rate = f32Wgsl(this.paramOffset, this.previewF32Slot)
         const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
         const funcName = `Twist${this.id}`
         const varName = `${decapitalize(funcName)}_f`
@@ -61,7 +67,7 @@ export class Twist extends UnaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
-        const rate = spF32Wgsl(this.paramOffset)
+        const rate = f32Wgsl(this.paramOffset, this.previewF32Slot)
         const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
         const funcName = `Twist${this.id}`
         const varName = `${decapitalize(funcName)}_m`

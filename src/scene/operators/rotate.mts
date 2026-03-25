@@ -1,6 +1,7 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 import { aabbRotate, type AABB } from "../aabb.mjs"
-import { spMat3x3Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { mat3x3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Rotate extends UnaryOperator {
@@ -28,10 +29,15 @@ export class Rotate extends UnaryOperator {
     protected override reserveUnarySceneParams(): void {
         this.paramOffset = this.scene.allocSceneParamFloats(18)
         this.paramCount = 18
+        this.previewF32Slot = this.scene.allocPreviewF32(18)
     }
 
     override writeSceneParams(view: Float32Array): void {
         view.set(this.#paramSlice())
+    }
+
+    override writePreviewParams(out: PreviewParamsOut): void {
+        out.f32.set(this.#paramSlice(), this.previewF32Slot)
     }
 
     #paramSlice(): Float32Array {
@@ -42,7 +48,7 @@ export class Rotate extends UnaryOperator {
         return buf
     }
 
-    private getWgslMatrices(): { fwd: number[], inv: number[] } {
+    private getWgslMatrices(): { fwd: number[]; inv: number[] } {
         const toRad = Math.PI / 180
         const cx = Math.cos(this.rx * toRad), sx = Math.sin(this.rx * toRad)
         const cy = Math.cos(this.ry * toRad), sy = Math.sin(this.ry * toRad)
@@ -65,8 +71,8 @@ export class Rotate extends UnaryOperator {
         const childResult = this.arg.compile(indentLevel)
         const childText = childResult.text!
         const o = this.paramOffset
-        const invMat = spMat3x3Wgsl(o)
-        const fwdMat = spMat3x3Wgsl(o + 9)
+        const invMat = mat3x3Wgsl(o, this.previewF32Slot)
+        const fwdMat = mat3x3Wgsl(o + 9, this.previewF32Slot + 9)
 
         const funcName = `Rotate${this.id}`
         const varName = decapitalize(funcName)
@@ -89,7 +95,7 @@ export class Rotate extends UnaryOperator {
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
         const childText = childResult.text!
-        const invMat = spMat3x3Wgsl(this.paramOffset)
+        const invMat = mat3x3Wgsl(this.paramOffset, this.previewF32Slot)
 
         const funcName = `Rotate${this.id}`
         const varName = `${decapitalize(funcName)}_f`
@@ -111,8 +117,8 @@ export class Rotate extends UnaryOperator {
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
         const o = this.paramOffset
-        const invMat = spMat3x3Wgsl(o)
-        const fwdMat = spMat3x3Wgsl(o + 9)
+        const invMat = mat3x3Wgsl(o, this.previewF32Slot)
+        const fwdMat = mat3x3Wgsl(o + 9, this.previewF32Slot + 9)
         const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
 
         const funcName = `Rotate${this.id}`

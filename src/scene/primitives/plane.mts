@@ -1,5 +1,6 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
-import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, type Vec3f } from "../../vecmat/vector.mjs"
 
 export class PlaneNode extends Node {
@@ -24,6 +25,20 @@ export class PlaneNode extends Node {
         view.set(this.#paramSlice())
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        let b = this.previewVec3Slot * 4
+        out.vec3[b] = this.pos.data[0]!
+        out.vec3[b + 1] = this.pos.data[1]!
+        out.vec3[b + 2] = this.pos.data[2]!
+        out.vec3[b + 3] = 0
+        b = (this.previewVec3Slot + 1) * 4
+        out.vec3[b] = this.normal.data[0]!
+        out.vec3[b + 1] = this.normal.data[1]!
+        out.vec3[b + 2] = this.normal.data[2]!
+        out.vec3[b + 3] = 0
+        out.f32[this.previewF32Slot] = this.dist
+    }
+
     #paramSlice(): Float32Array {
         const buf = new Float32Array(7)
         buf.set(this.pos.data, 0)
@@ -34,6 +49,8 @@ export class PlaneNode extends Node {
 
     override build() {
         super.build()
+        this.previewVec3Slot = this.scene.allocPreviewVec3(2)
+        this.previewF32Slot = this.scene.allocPreviewF32(1)
         this.paramOffset = this.scene.allocSceneParamFloats(7)
         this.paramCount = 7
     }
@@ -41,27 +58,27 @@ export class PlaneNode extends Node {
         const funcName = `Plane${this.id}`
         const varName = decapitalize(funcName)
         const o = this.paramOffset
-        const pos = spVec3Wgsl(o)
-        const nrm = spVec3Wgsl(o + 3)
-        const d = spF32Wgsl(o + 6)
+        const pos = vec3Wgsl(o, this.previewVec3Slot)
+        const nrm = vec3Wgsl(o + 3, this.previewVec3Slot + 1)
+        const d = f32Wgsl(o + 6, this.previewF32Slot)
         return { funcName, varName, text: `fPlaneEx(p - ${pos}, ${nrm}, ${d}, ${this.id}u)` }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Plane${this.id}`
         const varName = `${decapitalize(funcName)}_f`
         const o = this.paramOffset
-        const pos = spVec3Wgsl(o)
-        const nrm = spVec3Wgsl(o + 3)
-        const d = spF32Wgsl(o + 6)
+        const pos = vec3Wgsl(o, this.previewVec3Slot)
+        const nrm = vec3Wgsl(o + 3, this.previewVec3Slot + 1)
+        const d = f32Wgsl(o + 6, this.previewF32Slot)
         return { funcName, varName, text: `fPlaneFast(p - ${pos}, ${nrm}, ${d})` }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Plane${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         const o = this.paramOffset
-        const pos = spVec3Wgsl(o)
-        const nrm = spVec3Wgsl(o + 3)
-        const d = spF32Wgsl(o + 6)
+        const pos = vec3Wgsl(o, this.previewVec3Slot)
+        const nrm = vec3Wgsl(o + 3, this.previewVec3Slot + 1)
+        const d = f32Wgsl(o + 6, this.previewF32Slot)
         return { funcName, varName, text: `fPlaneMid(p - ${pos}, ${nrm}, ${d})` }
     }
 

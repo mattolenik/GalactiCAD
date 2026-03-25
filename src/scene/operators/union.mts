@@ -1,6 +1,7 @@
 import { BVH_MIN_COST, CompileResult, fluent, Node, type UnionType } from "../base.mjs"
 import { aabbUnion, aabbExpand, type AABB } from "../aabb.mjs"
-import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { bvhCenterWgsl, bvhHalfWgsl, f32Wgsl } from "../scene-params.mjs"
 
 type UnionVariant = "ex" | "fast" | "mid"
 
@@ -30,11 +31,19 @@ export class Union extends Node {
         }
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        if (this.paramCount >= 2) {
+            out.f32[this.previewF32Slot] = this.radius ?? 0
+            out.f32[this.previewF32Slot + 1] = this.n ?? 4
+        }
+    }
+
     override build() {
         super.build()
         if (this.radius) {
             this.paramOffset = this.scene.allocSceneParamFloats(2)
             this.paramCount = 2
+            this.previewF32Slot = this.scene.allocPreviewF32(2)
         }
         for (const child of this.children) {
             child.root = this.root
@@ -60,8 +69,8 @@ export class Union extends Node {
     private _blendEx(L: string, R: string): string {
         const r = this.radius
         if (!r) return `opUnionEx(${L}, ${R})`
-        const rW = spF32Wgsl(this.paramOffset)
-        const nW = spF32Wgsl(this.paramOffset + 1)
+        const rW = f32Wgsl(this.paramOffset, this.previewF32Slot)
+        const nW = f32Wgsl(this.paramOffset + 1, this.previewF32Slot + 1)
         switch (this.mode) {
             case 'chamfer': return `fOpUnionChamferEx(${L}, ${R}, ${rW})`
             case 'soft': return `fOpUnionSoftEx(${L}, ${R}, ${rW})`
@@ -74,8 +83,8 @@ export class Union extends Node {
     private _blendFast(L: string, R: string): string {
         const r = this.radius
         if (!r) return `opUnionFast(${L}, ${R})`
-        const rW = spF32Wgsl(this.paramOffset)
-        const nW = spF32Wgsl(this.paramOffset + 1)
+        const rW = f32Wgsl(this.paramOffset, this.previewF32Slot)
+        const nW = f32Wgsl(this.paramOffset + 1, this.previewF32Slot + 1)
         switch (this.mode) {
             case 'chamfer': return `fOpUnionChamferFast(${L}, ${R}, ${rW})`
             case 'soft': return `fOpUnionSoftFast(${L}, ${R}, ${rW})`
@@ -88,8 +97,8 @@ export class Union extends Node {
     private _blendMid(L: string, R: string): string {
         const r = this.radius
         if (!r) return `opUnionMid(${L}, ${R})`
-        const rW = spF32Wgsl(this.paramOffset)
-        const nW = spF32Wgsl(this.paramOffset + 1)
+        const rW = f32Wgsl(this.paramOffset, this.previewF32Slot)
+        const nW = f32Wgsl(this.paramOffset + 1, this.previewF32Slot + 1)
         switch (this.mode) {
             case 'chamfer': return `fOpUnionChamferMid(${L}, ${R}, ${rW})`
             case 'soft': return `fOpUnionSoftMid(${L}, ${R}, ${rW})`
@@ -175,8 +184,8 @@ export class Union extends Node {
         if (off < 0) {
             return block
         }
-        const center = spVec3Wgsl(off)
-        const half = spVec3Wgsl(off + 3)
+        const center = bvhCenterWgsl(off, child.previewBvhBoundsF32Slot)
+        const half = bvhHalfWgsl(off + 3, child.previewBvhBoundsF32Slot + 3)
         const innerCode = this._indent(block, 4)
         return `if (sdBound(p, ${center}, ${half}) < ${threshold}) {\n${innerCode}}\n`
     }
@@ -186,7 +195,7 @@ export class Union extends Node {
         const accVar = `_u${this.id}_${kind}`
         const distField = this._distField(kind)
         const blendRadius = this.radius ?? 0
-        const blendExtra = blendRadius > 0 ? spF32Wgsl(this.paramOffset) : ""
+        const blendExtra = blendRadius > 0 ? f32Wgsl(this.paramOffset, this.previewF32Slot) : ""
         let prelude = `var ${accVar} = ${this._resultInit(kind)};\n`
 
         for (let i = 0; i < this.children.length; i++) {
@@ -210,7 +219,7 @@ export class Union extends Node {
         const bestB = `_u${this.id}_${kind}_bestB`
         const outVar = `_u${this.id}_${kind}`
         const blendRadius = this.radius ?? 0
-        const blendExtra = blendRadius > 0 ? spF32Wgsl(this.paramOffset) : ""
+        const blendExtra = blendRadius > 0 ? f32Wgsl(this.paramOffset, this.previewF32Slot) : ""
         let prelude =
             `var ${bestA} = ${this._resultInit(kind)};\n` +
             `var ${bestB} = ${this._resultInit(kind)};\n`

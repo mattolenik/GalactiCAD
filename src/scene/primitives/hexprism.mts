@@ -1,6 +1,7 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
-import { spVec2Wgsl, spVec3Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { vec2Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class HexPrism extends Node {
@@ -25,6 +26,17 @@ export class HexPrism extends Node {
         view.set(this.#paramSlice())
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        let b = this.previewVec3Slot * 4
+        out.vec3[b] = this.pos.data[0]!
+        out.vec3[b + 1] = this.pos.data[1]!
+        out.vec3[b + 2] = this.pos.data[2]!
+        out.vec3[b + 3] = 0
+        const b2 = this.previewVec2Slot * 2
+        out.vec2[b2] = this.r
+        out.vec2[b2 + 1] = this.h
+    }
+
     #paramSlice(): Float32Array {
         const buf = new Float32Array(5)
         buf.set(this.pos.data, 0)
@@ -35,6 +47,8 @@ export class HexPrism extends Node {
 
     override build() {
         super.build()
+        this.previewVec3Slot = this.scene.allocPreviewVec3(1)
+        this.previewVec2Slot = this.scene.allocPreviewVec2(1)
         this.paramOffset = this.scene.allocSceneParamFloats(5)
         this.paramCount = 5
     }
@@ -42,24 +56,24 @@ export class HexPrism extends Node {
         const funcName = `HexPrism${this.id}`
         const varName = decapitalize(funcName)
         const o = this.paramOffset
-        const pos = spVec3Wgsl(o)
-        const rh = spVec2Wgsl(o + 3)
+        const pos = vec3Wgsl(o, this.previewVec3Slot)
+        const rh = vec2Wgsl(o + 3, this.previewVec2Slot)
         return { funcName, varName, text: `fHexagonCircumcircleEx(p - ${pos}, ${rh}, ${this.id}u)` }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `HexPrism${this.id}`
         const varName = `${decapitalize(funcName)}_f`
         const o = this.paramOffset
-        const pos = spVec3Wgsl(o)
-        const rh = spVec2Wgsl(o + 3)
+        const pos = vec3Wgsl(o, this.previewVec3Slot)
+        const rh = vec2Wgsl(o + 3, this.previewVec2Slot)
         return { funcName, varName, text: `fHexagonCircumcircleFast(p - ${pos}, ${rh})` }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `HexPrism${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         const o = this.paramOffset
-        const pos = spVec3Wgsl(o)
-        const rh = spVec2Wgsl(o + 3)
+        const pos = vec3Wgsl(o, this.previewVec3Slot)
+        const rh = vec2Wgsl(o + 3, this.previewVec2Slot)
         return { funcName, varName, text: `fHexagonCircumcircleMid(p - ${pos}, ${rh})` }
     }
 

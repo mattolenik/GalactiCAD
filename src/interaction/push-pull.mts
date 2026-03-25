@@ -1,7 +1,7 @@
 import { Vec2f, Vec3f, vec2, vec3 } from "../vecmat/vector.mjs"
 import { Box, Cone, Cylinder, Extrude, Loft, ThreadedRod } from "../scene/scene.mjs"
 
-/** Extrude / loft / threaded rod stub from the worker graph; includes byte offset for cap `h` + posYDelta in `sceneParams`. */
+/** Extrude / loft / threaded rod stub from the worker graph; includes byte offset for cap `h` + posYDelta in the preview f32 bank (worker re-uploads full uniform buffer). */
 export type PushPullCapNode = (Extrude | Loft | ThreadedRod) & { sceneCapParamsByteOffset: number }
 
 /** Reserved object IDs for face-level highlighting via the existing outline system. */
@@ -14,7 +14,7 @@ export interface PushPullHost {
     writeBuffers(opts: {
         faceSelection?: ArrayBuffer
         polygonVertices?: { offset: number; data: ArrayBuffer }
-        sceneParams?: { byteOffset: number; data: ArrayBuffer }
+        previewParamsF32Patch?: { byteOffset: number; data: ArrayBuffer }
         selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }
     }): void
     getCompiledPosY(nodeId: number): number
@@ -525,12 +525,12 @@ export class PushPullController {
         this.#host.writeBuffers({ faceSelection: data })
     }
 
-    /** Write half-height `h` and Y offset `posYDelta` into `sceneParams` (two consecutive f32). */
+    /** Write half-height `h` and Y offset `posYDelta` into the preview f32 bank (worker patches shadow + full uniform upload). */
     #writeCapSceneParams(byteOffset: number, h: number, posYDelta: number): void {
         const data = new Float32Array(2)
         data[0] = h
         data[1] = posYDelta
-        this.#host.writeBuffers({ sceneParams: { byteOffset, data: data.buffer } })
+        this.#host.writeBuffers({ previewParamsF32Patch: { byteOffset, data: data.buffer } })
     }
 
     /** Apply a push/pull offset to the selected face, updating polygon vertices. */

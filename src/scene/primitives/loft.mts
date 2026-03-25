@@ -1,6 +1,7 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
-import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 
@@ -47,8 +48,20 @@ export class Loft extends Node {
         view[4] = 0
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        const b = this.previewVec3Slot * 4
+        out.vec3[b] = this.pos.data[0]!
+        out.vec3[b + 1] = this.pos.data[1]!
+        out.vec3[b + 2] = this.pos.data[2]!
+        out.vec3[b + 3] = 0
+        out.f32[this.previewF32Slot + 0] = this.h
+        out.f32[this.previewF32Slot + 1] = 0
+    }
+
     override build() {
         super.build()
+        this.previewVec3Slot = this.scene.allocPreviewVec3(1)
+        this.previewF32Slot = this.scene.allocPreviewF32(2)
         this.paramOffset = this.scene.allocSceneParamFloats(5)
         this.paramCount = 5
         for (const profile of this.profiles) {
@@ -107,8 +120,8 @@ export class Loft extends Node {
     }
 
     override compileAux(): string {
-        const capH = spF32Wgsl(this.paramOffset + 3)
-        const capYOff = spF32Wgsl(this.paramOffset + 4)
+        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d = ${this.wgslFieldFuncName}(p);
@@ -141,8 +154,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     override compileAuxMid(): string {
         const h = this.h.toFixed(6)
         const fieldBody = this.generateFieldBody(h)
-        const capH = spF32Wgsl(this.paramOffset + 3)
-        const capYOff = spF32Wgsl(this.paramOffset + 4)
+        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         return `
 fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let d = ${this.wgslFieldFuncName}(p);
@@ -164,8 +177,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compileAuxFast(): string {
         const h = this.h.toFixed(6)
         const fieldBody = this.generateFieldBody(h)
-        const capH = spF32Wgsl(this.paramOffset + 3)
-        const capYOff = spF32Wgsl(this.paramOffset + 4)
+        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
 
         return `
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
@@ -186,7 +199,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Loft${this.id}`
         const varName = decapitalize(funcName)
-        const pos = spVec3Wgsl(this.paramOffset)
+        const pos = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         return {
             funcName,
             varName,
@@ -197,7 +210,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Loft${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        const pos = spVec3Wgsl(this.paramOffset)
+        const pos = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         return {
             funcName,
             varName,
@@ -207,7 +220,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Loft${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        const pos = spVec3Wgsl(this.paramOffset)
+        const pos = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         return {
             funcName,
             varName,

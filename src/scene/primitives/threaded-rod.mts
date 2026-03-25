@@ -1,6 +1,7 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
-import { spF32Wgsl, spVec3Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
 
@@ -108,6 +109,20 @@ export class ThreadedRod extends Node {
         view.set(this.#paramSlice())
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        const b = this.previewVec3Slot * 4
+        out.vec3[b] = this.pos.data[0]!
+        out.vec3[b + 1] = this.pos.data[1]!
+        out.vec3[b + 2] = this.pos.data[2]!
+        out.vec3[b + 3] = 0
+        const f = this.previewF32Slot
+        out.f32[f + 0] = this.r
+        out.f32[f + 1] = this.turnPitch
+        out.f32[f + 2] = this.threadAmp
+        out.f32[f + 3] = this.h
+        out.f32[f + 4] = 0
+    }
+
     #paramSlice(): Float32Array {
         const buf = new Float32Array(8)
         buf.set(this.pos.data, 0)
@@ -121,6 +136,8 @@ export class ThreadedRod extends Node {
 
     override build() {
         super.build()
+        this.previewVec3Slot = this.scene.allocPreviewVec3(1)
+        this.previewF32Slot = this.scene.allocPreviewF32(5)
         this.paramOffset = this.scene.allocSceneParamFloats(8)
         this.paramCount = 8
         this.capTop.root = this.root
@@ -165,11 +182,11 @@ export class ThreadedRod extends Node {
         const capTopId = this.capTop.id
         const capBottomId = this.capBottom.id
         const ro = this.paramOffset
-        const R = spF32Wgsl(ro + 3)
-        const P = spF32Wgsl(ro + 4)
-        const A = spF32Wgsl(ro + 5)
-        const capH = spF32Wgsl(ro + 6)
-        const capYOff = spF32Wgsl(ro + 7)
+        const R = f32Wgsl(ro + 3, this.previewF32Slot + 0)
+        const P = f32Wgsl(ro + 4, this.previewF32Slot + 1)
+        const A = f32Wgsl(ro + 5, this.previewF32Slot + 2)
+        const capH = f32Wgsl(ro + 6, this.previewF32Slot + 3)
+        const capYOff = f32Wgsl(ro + 7, this.previewF32Slot + 4)
         const S = this.#wgslHelixSign
         const B = this.#wgslBarrelFn
         return `
@@ -204,11 +221,11 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
 
     override compileAuxFast(): string {
         const ro = this.paramOffset
-        const R = spF32Wgsl(ro + 3)
-        const P = spF32Wgsl(ro + 4)
-        const A = spF32Wgsl(ro + 5)
-        const capH = spF32Wgsl(ro + 6)
-        const capYOff = spF32Wgsl(ro + 7)
+        const R = f32Wgsl(ro + 3, this.previewF32Slot + 0)
+        const P = f32Wgsl(ro + 4, this.previewF32Slot + 1)
+        const A = f32Wgsl(ro + 5, this.previewF32Slot + 2)
+        const capH = f32Wgsl(ro + 6, this.previewF32Slot + 3)
+        const capYOff = f32Wgsl(ro + 7, this.previewF32Slot + 4)
         const S = this.#wgslHelixSign
         const B = this.#wgslBarrelFn
         const id = this.id
@@ -229,11 +246,11 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
 
     override compileAuxMid(): string {
         const ro = this.paramOffset
-        const R = spF32Wgsl(ro + 3)
-        const P = spF32Wgsl(ro + 4)
-        const A = spF32Wgsl(ro + 5)
-        const capH = spF32Wgsl(ro + 6)
-        const capYOff = spF32Wgsl(ro + 7)
+        const R = f32Wgsl(ro + 3, this.previewF32Slot + 0)
+        const P = f32Wgsl(ro + 4, this.previewF32Slot + 1)
+        const A = f32Wgsl(ro + 5, this.previewF32Slot + 2)
+        const capH = f32Wgsl(ro + 6, this.previewF32Slot + 3)
+        const capYOff = f32Wgsl(ro + 7, this.previewF32Slot + 4)
         const S = this.#wgslHelixSign
         const B = this.#wgslBarrelFn
         const id = this.id
@@ -260,7 +277,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compile(indentLevel = 0): CompileResult {
         const funcName = `ThreadedRod${this.id}`
         const varName = decapitalize(funcName)
-        const pos = spVec3Wgsl(this.paramOffset)
+        const pos = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         return {
             funcName,
             varName,
@@ -270,7 +287,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `ThreadedRod${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        const pos = spVec3Wgsl(this.paramOffset)
+        const pos = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         return {
             funcName,
             varName,
@@ -280,7 +297,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `ThreadedRod${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        const pos = spVec3Wgsl(this.paramOffset)
+        const pos = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         return {
             funcName,
             varName,

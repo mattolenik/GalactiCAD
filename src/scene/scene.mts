@@ -1,6 +1,14 @@
 import { BijectiveMap } from "../collections/bijectiveMap.mjs"
 import { BinaryOperator, BVH_MIN_COST, CompileResult, Node, UnaryOperator, fluent, styleInfo, type BlendMode, type IntersectionType, type StyleInfo, type UnionType } from "./base.mjs"
-import { SCENE_PARAM_BOUNDS_F32_COUNT, SCENE_PARAMS_F32_CAPACITY, spVec3Wgsl } from "./scene-params.mjs"
+import {
+    PREVIEW_UNIFORM_F32_COUNT,
+    PREVIEW_UNIFORM_VEC2_COUNT,
+    PREVIEW_UNIFORM_VEC3_COUNT,
+    SCENE_PARAM_BOUNDS_F32_COUNT,
+    SCENE_PARAMS_F32_CAPACITY,
+    setCompileParamMode,
+    vec3Wgsl,
+} from "./scene-params.mjs"
 import { Bend, bend } from "./operators/bend.mjs"
 import { Elongate, elongate } from "./operators/elongate.mjs"
 import { Engrave, engrave } from "./operators/engrave.mjs"
@@ -44,6 +52,9 @@ export class SceneInfo {
     readonly root: Node
     #nodes = new BijectiveMap<number, Node>()
     #sceneParamFloatUsed = 0
+    #previewF32Used = 0
+    #previewVec2Used = 0
+    #previewVec3Used = 0
     totalPolygonVertices = 0
     /** Whether to emit BVH bounding checks during code generation. Default: true. */
     bvhEnabled = true
@@ -61,8 +72,51 @@ export class SceneInfo {
         return start
     }
 
+    allocPreviewF32(count: number): number {
+        if (count <= 0) return 0
+        const start = this.#previewF32Used
+        const next = start + count
+        if (next > PREVIEW_UNIFORM_F32_COUNT) {
+            throw new Error(
+                `Preview f32 uniform bank overflow (need ${next} slots, max ${PREVIEW_UNIFORM_F32_COUNT})`,
+            )
+        }
+        this.#previewF32Used = next
+        return start
+    }
+
+    allocPreviewVec2(count: number): number {
+        if (count <= 0) return 0
+        const start = this.#previewVec2Used
+        const next = start + count
+        if (next > PREVIEW_UNIFORM_VEC2_COUNT) {
+            throw new Error(
+                `Preview vec2 uniform bank overflow (need ${next} slots, max ${PREVIEW_UNIFORM_VEC2_COUNT})`,
+            )
+        }
+        this.#previewVec2Used = next
+        return start
+    }
+
+    allocPreviewVec3(count: number): number {
+        if (count <= 0) return 0
+        const start = this.#previewVec3Used
+        const next = start + count
+        if (next > PREVIEW_UNIFORM_VEC3_COUNT) {
+            throw new Error(
+                `Preview vec3 uniform bank overflow (need ${next} slots, max ${PREVIEW_UNIFORM_VEC3_COUNT})`,
+            )
+        }
+        this.#previewVec3Used = next
+        return start
+    }
+
     get sceneParamFloatCount(): number {
         return this.#sceneParamFloatUsed
+    }
+
+    get previewParamFingerprint(): string {
+        return `${this.#previewF32Used}:${this.#previewVec2Used}:${this.#previewVec3Used}`
     }
 
     /** Pack all node-owned floats into a dense array for GPU upload (registration / build order). */
@@ -88,8 +142,34 @@ export class SceneInfo {
         return out
     }
 
+    /** Pack preview uniform banks (typed); separate from `packSceneParams` used by bounds/MDC. */
+    packPreviewParams(): import("./scene-params.mjs").PreviewParamsOut {
+        const f32 = new Float32Array(this.#previewF32Used)
+        const vec2 = new Float32Array(this.#previewVec2Used * 2)
+        const vec3 = new Float32Array(this.#previewVec3Used * 4)
+        const out = { f32, vec2, vec3 }
+        for (const node of this.getAllNodes()) {
+            node.writePreviewParams(out)
+        }
+        for (const node of this.getAllNodes()) {
+            if (node.previewBvhBoundsF32Slot >= 0) {
+                const b = node.computeBounds()
+                if (b) {
+                    const s = node.previewBvhBoundsF32Slot
+                    f32[s] = b.cx
+                    f32[s + 1] = b.cy
+                    f32[s + 2] = b.cz
+                    f32[s + 3] = b.hx
+                    f32[s + 4] = b.hy
+                    f32[s + 5] = b.hz
+                }
+            }
+        }
+        return out
+    }
+
     /**
-     * Reserve a contiguous tail region of `sceneParams` for BVH AABBs (6 f32 per qualifying node).
+     * Reserve a contiguous tail region of the `packSceneParams()` layout for BVH AABBs (6 f32 per qualifying node).
      * Runs after `root.build()` so all `paramOffset` regions are allocated first; bounds slots are packed
      * together for cache locality when union guards walk children.
      */
@@ -97,14 +177,17 @@ export class SceneInfo {
         if (!this.bvhEnabled) {
             for (const node of this.getAllNodes()) {
                 node.bvhBoundsOffset = -1
+                node.previewBvhBoundsF32Slot = -1
             }
             return
         }
         for (const node of this.getAllNodes()) {
             if (node.codegenCost() >= BVH_MIN_COST && node.computeBounds() !== null) {
                 node.bvhBoundsOffset = this.allocSceneParamFloats(SCENE_PARAM_BOUNDS_F32_COUNT)
+                node.previewBvhBoundsF32Slot = this.allocPreviewF32(SCENE_PARAM_BOUNDS_F32_COUNT)
             } else {
                 node.bvhBoundsOffset = -1
+                node.previewBvhBoundsF32Slot = -1
             }
         }
     }
@@ -153,7 +236,10 @@ export class SceneInfo {
      * discretized code-path selectors (twist, CSG blend family), BVH eligibility per node, and `bvhEnabled`.
      */
     structuralFingerprint(): string {
-        const parts: string[] = [`meta:bvhEnabled:${this.bvhEnabled ? "1" : "0"}`]
+        const parts: string[] = [
+            `meta:bvhEnabled:${this.bvhEnabled ? "1" : "0"}`,
+            `meta:preview:${this.previewParamFingerprint}`,
+        ]
         this.root.appendStructuralFingerprint(parts)
         return parts.join("|")
     }
@@ -172,6 +258,16 @@ export class SceneInfo {
     }
 
     compile(): string {
+        setCompileParamMode("storage")
+        const compiledResult = this.root.compile(1)
+        if (compiledResult.prelude) {
+            return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
+        }
+        return `\nreturn ${compiledResult.text};\n`
+    }
+
+    compileForPreview(): string {
+        setCompileParamMode("preview")
         const compiledResult = this.root.compile(1)
         if (compiledResult.prelude) {
             return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
@@ -180,6 +276,16 @@ export class SceneInfo {
     }
 
     compileFast(): string {
+        setCompileParamMode("storage")
+        const compiledResult = this.root.compileFast(1)
+        if (compiledResult.prelude) {
+            return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
+        }
+        return `\nreturn ${compiledResult.text};\n`
+    }
+
+    compileFastForPreview(): string {
+        setCompileParamMode("preview")
         const compiledResult = this.root.compileFast(1)
         if (compiledResult.prelude) {
             return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
@@ -188,6 +294,16 @@ export class SceneInfo {
     }
 
     compileMid(): string {
+        setCompileParamMode("storage")
+        const compiledResult = this.root.compileMid(1)
+        if (compiledResult.prelude) {
+            return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
+        }
+        return `\nreturn ${compiledResult.text};\n`
+    }
+
+    compileMidForPreview(): string {
+        setCompileParamMode("preview")
         const compiledResult = this.root.compileMid(1)
         if (compiledResult.prelude) {
             return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
@@ -196,17 +312,29 @@ export class SceneInfo {
     }
 
     compileEdgeHelpers(): string {
+        setCompileParamMode("preview")
         let code = ""
         for (const node of this.#nodes.values()) {
             if (node instanceof Box) {
                 const o = node.paramOffset
-                code += `case ${node.id}u: { (*posOut) = ${spVec3Wgsl(o)}; (*halfOut) = ${spVec3Wgsl(o + 3)}; return true; }\n`
+                const pv = node.previewVec3Slot
+                code += `case ${node.id}u: { (*posOut) = ${vec3Wgsl(o, pv)}; (*halfOut) = ${vec3Wgsl(o + 3, pv + 1)}; return true; }\n`
             }
         }
         return code
     }
 
     compileAux(): string {
+        setCompileParamMode("storage")
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            code += node.compileAux()
+        }
+        return code
+    }
+
+    compileAuxPreview(): string {
+        setCompileParamMode("preview")
         let code = ""
         for (const node of this.#nodes.values()) {
             code += node.compileAux()
@@ -215,6 +343,16 @@ export class SceneInfo {
     }
 
     compileAuxFast(): string {
+        setCompileParamMode("storage")
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            code += node.compileAuxFast()
+        }
+        return code
+    }
+
+    compileAuxFastPreview(): string {
+        setCompileParamMode("preview")
         let code = ""
         for (const node of this.#nodes.values()) {
             code += node.compileAuxFast()
@@ -223,6 +361,16 @@ export class SceneInfo {
     }
 
     compileAuxMid(): string {
+        setCompileParamMode("storage")
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            code += node.compileAuxMid()
+        }
+        return code
+    }
+
+    compileAuxMidPreview(): string {
+        setCompileParamMode("preview")
         let code = ""
         for (const node of this.#nodes.values()) {
             code += node.compileAuxMid()

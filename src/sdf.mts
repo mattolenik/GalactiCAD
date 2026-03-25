@@ -810,8 +810,9 @@ export class SDFRenderer {
                         if (c?.isVirtualCap && c.capSide === "top") capTopId = s.children[i]
                         else if (c?.isVirtualCap && c.capSide === "bottom") capBottomId = s.children[i]
                     }
-                    const po = s.paramOffset ?? 0
-                    const capSlot = 3
+                    if (s.sceneCapParamsByteOffset === undefined) {
+                        continue
+                    }
                     this.#pushPullNodes.set(s.id, {
                         type: "extrude",
                         id: s.id,
@@ -821,20 +822,19 @@ export class SDFRenderer {
                         twistDegrees: s.twistDegrees,
                         capTopId,
                         capBottomId,
-                        sceneCapParamsByteOffset: (po + capSlot) * 4,
+                        sceneCapParamsByteOffset: s.sceneCapParamsByteOffset,
                     })
                 }
             } else if (s.shapeType === "loft" && s.pos && s.children.length >= 2) {
                 const profiles = s.children.map(cid => polyById.get(cid)).filter((p): p is { vertices: [number, number][]; bufferOffset: number } => p != null)
-                if (profiles.length === s.children.length) {
-                    const poLoft = s.paramOffset ?? 0
+                if (profiles.length === s.children.length && s.sceneCapParamsByteOffset !== undefined) {
                     this.#pushPullNodes.set(s.id, {
                         type: "loft",
                         id: s.id,
                         pos: { x: s.pos[0], y: s.pos[1], z: s.pos[2] },
                         h: s.h ?? 1,
                         profiles,
-                        sceneCapParamsByteOffset: (poLoft + 3) * 4,
+                        sceneCapParamsByteOffset: s.sceneCapParamsByteOffset,
                     })
                 }
             } else if (s.shapeType === "threaded_rod" && s.pos && s.h !== undefined && s.children.length >= 2) {
@@ -845,14 +845,13 @@ export class SDFRenderer {
                     if (c?.isVirtualCap && c.capSide === "top") hasTop = true
                     if (c?.isVirtualCap && c.capSide === "bottom") hasBottom = true
                 }
-                if (hasTop && hasBottom) {
-                    const poRod = s.paramOffset ?? 0
+                if (hasTop && hasBottom && s.sceneCapParamsByteOffset !== undefined) {
                     this.#pushPullNodes.set(s.id, {
                         type: "threaded_rod",
                         id: s.id,
                         pos: { x: s.pos[0], y: s.pos[1], z: s.pos[2] },
                         h: s.h,
-                        sceneCapParamsByteOffset: (poRod + 6) * 4,
+                        sceneCapParamsByteOffset: s.sceneCapParamsByteOffset,
                     })
                 }
             }
@@ -936,7 +935,7 @@ export class SDFRenderer {
                 const transfer: ArrayBuffer[] = []
                 if (opts.faceSelection) transfer.push(opts.faceSelection)
                 if (opts.polygonVertices) transfer.push(opts.polygonVertices.data)
-                if (opts.sceneParams) transfer.push(opts.sceneParams.data)
+                if (opts.previewParamsF32Patch) transfer.push(opts.previewParamsF32Patch.data)
                 if (opts.selectedObjectIds) {
                     transfer.push(opts.selectedObjectIds instanceof ArrayBuffer ? opts.selectedObjectIds : opts.selectedObjectIds.data)
                 }

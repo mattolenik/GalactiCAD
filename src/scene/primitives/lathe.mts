@@ -1,6 +1,7 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
-import { spVec3Wgsl } from "../scene-params.mjs"
+import type { PreviewParamsOut } from "../scene-params.mjs"
+import { vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 
@@ -37,8 +38,17 @@ export class Lathe extends Node {
         view.set(this.pos.data)
     }
 
+    override writePreviewParams(out: PreviewParamsOut): void {
+        const b = this.previewVec3Slot * 4
+        out.vec3[b] = this.pos.data[0]!
+        out.vec3[b + 1] = this.pos.data[1]!
+        out.vec3[b + 2] = this.pos.data[2]!
+        out.vec3[b + 3] = 0
+    }
+
     override build() {
         super.build()
+        this.previewVec3Slot = this.scene.allocPreviewVec3(1)
         this.paramOffset = this.scene.allocSceneParamFloats(3)
         this.paramCount = 3
         this.child.root = this.root
@@ -110,7 +120,8 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Lathe${this.id}`
         const varName = decapitalize(funcName)
-        const pos = spVec3Wgsl(this.paramOffset)
+        const o = this.paramOffset
+        const pos = vec3Wgsl(o, this.previewVec3Slot)
         return {
             funcName,
             varName,
@@ -121,7 +132,8 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Lathe${this.id}`
         const varName = `${decapitalize(funcName)}_f`
-        const pos = spVec3Wgsl(this.paramOffset)
+        const o = this.paramOffset
+        const pos = vec3Wgsl(o, this.previewVec3Slot)
         return {
             funcName,
             varName,
@@ -131,7 +143,8 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Lathe${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        const pos = spVec3Wgsl(this.paramOffset)
+        const o = this.paramOffset
+        const pos = vec3Wgsl(o, this.previewVec3Slot)
         return {
             funcName,
             varName,

@@ -80,6 +80,11 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
 
     if (node instanceof Extrude) {
         s.twistDegrees = node.twistDegrees
+        s.sceneCapParamsByteOffset = node.previewF32Slot * 4
+    }
+
+    if (node instanceof Loft) {
+        s.sceneCapParamsByteOffset = node.previewF32Slot * 4
     }
 
     if (node instanceof ThreadedRod) {
@@ -88,6 +93,7 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
         s.threadFlankAngleDeg = node.threadFlankAngleDeg
         s.threadProfile = node.threadProfile
         s.threadHandedness = node.threadHandedness
+        s.sceneCapParamsByteOffset = (node.previewF32Slot + 3) * 4
     }
 
     if (node instanceof VirtualCapNode) {

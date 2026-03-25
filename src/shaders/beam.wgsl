@@ -4,7 +4,7 @@
 //
 // The render worker uses `beamMarch` in preview.wgsl (same shader module as the
 // fragment pass). This file is a standalone variant; bindings mirror preview's
-// beam subset (camera, t_start, polygonVertices, sceneParams).
+// beam subset (camera, t_start, polygonVertices, previewParams* uniform banks).
 //
 // Groups adjacent pixels into TILE_SIZE x TILE_SIZE tiles and performs a single
 // beam march per tile at the centroid of the tile's actual pixels (clamped to
@@ -46,15 +46,16 @@ struct Camera {
     previewShade3: vec4f,
 };
 
-@group(0) @binding(0) var<uniform> camera: Camera;
-@group(0) @binding(1) var tStartOut: texture_storage_2d<r32float, write>;
+@group(0) @binding(1) var<uniform> camera: Camera;
+@group(0) @binding(8) var tStartOut: texture_storage_2d<r32float, write>;
 
 // Polygon vertex buffer (shared storage for all Polygon2D vertex data).
-@group(0) @binding(3) var<storage, read> polygonVertices: array<vec2f>;
+@group(0) @binding(9) var<storage, read> polygonVertices: array<vec2f>;
 
-// Packed f32 scene parameters (primitive dims, transforms, BVH bounds, etc.).
-@group(0) @binding(5) var<storage, read> sceneParams: array<f32>;
-//:) include "scene_params_read.wgsl"
+@group(0) @binding(19) var<uniform> previewParamsF32: array<vec4f, 4096>;
+@group(0) @binding(20) var<uniform> previewParamsVec2: array<vec4f, 4096>;
+@group(0) @binding(21) var<uniform> previewParamsVec3: array<vec4f, 4096>;
+//:) include "preview_scene_params_read.wgsl"
 
 // Fast-path-only auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 // Uses sceneAuxFast to exclude full SDFResult functions not needed by the beam shader.
@@ -70,7 +71,9 @@ fn sceneSDF_fast(p: vec3f) -> FastSDFResult {
 fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = polygonVertices[0];
-    _ = sceneParams[0];
+    _ = previewParamsF32[0];
+    _ = previewParamsVec2[0];
+    _ = previewParamsVec3[0];
 
     // Output texture is at tile resolution: ceil(W/TILE_SIZE) x ceil(H/TILE_SIZE)
     let outDims = textureDimensions(tStartOut);

@@ -1,4 +1,5 @@
 import { Vec3 } from "../vecmat/vector.mjs"
+import type { PreviewParamsOut } from "./scene-params.mjs"
 import type { AABB } from "./aabb.mjs"
 import { aabbUnion } from "./aabb.mjs"
 
@@ -48,8 +49,15 @@ export interface ISceneInfo {
     getAllNodes(): Node[]
     /** Reserve `count` consecutive f32 slots in the packed scene param buffer; returns the start index. */
     allocSceneParamFloats(count: number): number
+    /** Preview uniform bank: scalar slots (see `SceneInfo.allocPreviewF32`). */
+    allocPreviewF32(count: number): number
+    allocPreviewVec2(count: number): number
+    /** vec3 stored as vec4; returns first slot index. */
+    allocPreviewVec3(count: number): number
     /** Total f32 slots reserved after `build()` (size of the packed CPU/GPU upload). */
     readonly sceneParamFloatCount: number
+    /** Fingerprint fragment for preview bank sizes (param-only vs full rebuild). */
+    readonly previewParamFingerprint: string
     allocPolygonVertices(count: number): number
     /** Whether to emit BVH bounding checks during code generation. */
     bvhEnabled: boolean
@@ -67,15 +75,21 @@ export class Node {
     #scene!: ISceneInfo
     #primitiveCount = -1
     #codegenCost = -1
-    /** Start index into the shared `sceneParams` f32 buffer; valid when `paramCount > 0`. */
+    /** Start index into `SceneInfo.packSceneParams()` (bounds + MDC storage uploads); valid when `paramCount > 0`. */
     paramOffset = 0
     /** Number of consecutive f32 slots owned by this node (`0` = none). */
     paramCount = 0
     /**
-     * Base f32 index into `sceneParams` for this node's BVH AABB (center xyz, half xyz), or `-1` if unused.
+     * Base f32 index into `packSceneParams()` for this node's BVH AABB (center xyz, half xyz), or `-1` if unused.
      * Assigned after `build()` for nodes that qualify when `bvhEnabled` is on (see `SceneInfo`).
      */
     bvhBoundsOffset = -1
+    /** First slot in preview `f32` uniform bank for this node's scalars; `-1` if none. */
+    previewF32Slot = -1
+    previewVec2Slot = -1
+    previewVec3Slot = -1
+    /** First of six consecutive `f32` slots for BVH AABB in preview uniforms; `-1` if unused. */
+    previewBvhBoundsF32Slot = -1
 
     get scene() {
         return this.root.#scene
@@ -165,6 +179,9 @@ export class Node {
 
     /** Write this node's `paramCount` floats into `view` (a subarray at `paramOffset` of the full pack). */
     writeSceneParams(_view: Float32Array): void {}
+
+    /** Pack preview uniform banks (orthogonal to `writeSceneParams`, which feeds bounds/MDC storage). */
+    writePreviewParams(_out: PreviewParamsOut): void {}
 
     build() {
         this.scene.add(this)

@@ -1,7 +1,7 @@
 /**
  * Axis-Aligned Bounding Box utilities for BVH-accelerated SDF evaluation.
- * Bounds are computed on the CPU (`computeBounds`) and uploaded in the shared `sceneParams` buffer;
- * union BVH guards read center/half via `sp_vec3` (see `Union._emitChildBlock`).
+ * Bounds are computed on the CPU (`computeBounds`) and uploaded into the bounds/MDC packed buffer and the preview f32 bank (`previewBvhBoundsF32Slot`);
+ * union BVH guards read center/half via `sp_*` / `pp_*` (see `Union._emitChildBlock`).
  */
 
 export interface AABB {

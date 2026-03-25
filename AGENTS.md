@@ -13,6 +13,20 @@ code for rendering the SDF scene, which will then be injected into the shader co
 Rendering is done with ray marching in preview.wgsl and related files. Keep in mind all rendering is done manually with
 this fragment shader, so no traditional rendering techniques with polygons will work, we must handle it all.
 
+### Scene parameter buffers (pass split)
+
+Scene parameters are **not** packed into one shared buffer for every pass. The preview and beam paths share three read-only **uniform** bindings (`previewParamsF32`, `previewParamsVec2`, `previewParamsVec3`) filled from `SceneInfo.packPreviewParams()`; WGSL packs logical scalars into `array<vec4f>` for the f32 and vec2 banks so each binding stays within typical 64 KiB uniform limits while matching dense CPU layout. `compile*ForPreview` emits `pp_*` reads. Bounds (`bounds.wgsl`) and mesh export (`mdc.wgsl`) each use their own **storage** buffer (`boundsSceneParams`, `mdcSceneParams`) with the same flat `f32` layout from `SceneInfo.packSceneParams()` and `sp_*` codegen. Parity across passes is not required; the worker uploads both packed layouts on build.
+
+### Preview param updates (param-only build and push/pull)
+
+- **`paramOffset` vs preview-only keys:** `SerializedNode.paramOffset` is the start index (in `f32`) into the **bounds/MDC** packed layout (`packSceneParams()`). It is **not** the address of preview uniform data. Cap push/pull and any logic that must patch the ray-march path must use **`sceneCapParamsByteOffset`**: the byte offset into the worker’s dense **`previewParamsF32` CPU shadow** (same layout as the GPU uniform), i.e. `previewF32Slot * 4` from the scene graph. Do not derive preview patch addresses from `paramOffset`; the preview f32 allocator and scene-param allocator are independent pools.
+
+- **Param-only scene build** (`structuralFingerprint()` unchanged, worker `#doBuild`): The worker re-uploads `boundsSceneParams` and `mdcSceneParams` from `packSceneParams()`, and all three preview banks from `packPreviewParams()` via `#uploadPreviewUniforms` (full shadow fill + `writeBuffer` per bank). Polygon vertex data is written when the scene has polygons. No WGSL recompilation; preview/beam bind groups are marked invalid so the next frame uses the new uniforms.
+
+- **Cap push/pull (extrude / loft / threaded rod):** The main thread sends `writeBuffers.previewParamsF32Patch` with `{ byteOffset, data }` where `byteOffset` is `sceneCapParamsByteOffset` and `data` is two `f32` (`h`, `posYDelta`). The worker applies the patch into `#previewF32Shadow` at `byteOffset / 4` and then **re-uploads the entire `previewParamsF32` uniform buffer** from the shadow. Sub-range `writeBuffer` into uniform buffers requires 256-byte alignment on the destination offset; patching the shadow plus a full-bank upload avoids that constraint. Bounds and MDC storage buffers are **not** updated during the drag; they refresh on the next build (or param-only build when source changes).
+
+- **Polygon edge push/pull:** Uses `writeBuffers.polygonVertices` with byte `offset` into the shared polygon vertex buffer (unchanged). Preview uniforms pick up new geometry on the next param-only or full build as needed.
+
 ## Rendering Pipeline: Full vs Fast SDF Evaluation
 
 The scene SDF is compiled into two variants that serve different roles in the pipeline:
@@ -106,7 +120,7 @@ When making changes to binding groups, make sure all the bindings and mappings a
 
 - Camera hotkeys 2, 4, 6: derive from 1, 3, 5 by 180° rotation to avoid vertical flip — 2=1×R_Y, 4=3×R_Z, 6=5×R_Y.
 - External-change conflict: compare disk to `lastWritten`, not editor content, when deciding whether to show "modified externally" dialog. Async pick (Cmd/Ctrl+drag): use drag session ID so stale pick results do not apply to a new drag session.
-- In `render-worker-core.mts`, defer `sceneParams`/`polygonVertices` buffer writes until after the new pipeline is assigned (`this.#pipeline = pipeline`), or the old shader can briefly render with reset params. Only call `destroy()` on buffers, textures, and other actually destroyable GPU resources; do not declare fake `destroy()` on WebGPU interface types in `global.d.ts`.
+- In `render-worker-core.mts`, defer `previewParams*` uniform uploads, `boundsSceneParams`/`mdcSceneParams` storage writes, and `polygonVertices` writes until after the new pipeline is assigned (`this.#pipeline = pipeline`), or the old shader can briefly render with reset params. Only call `destroy()` on buffers, textures, and other actually destroyable GPU resources; do not declare fake `destroy()` on WebGPU interface types in `global.d.ts`.
 - Welcome-screen thumbnails and opening a sample from the welcome screen share the render-worker preview `build` path and can race; the viewport may show the wrong sample until the next rebuild (mitigations: abort sample fetches when the welcome screen is removed; restore the prior built scene body after each thumbnail render in the worker).
 - Push/pull activation: shift-hold on a selected surface (not double-click). `dropToHighlight()` must NOT call `onDeselect` — it overwrites the GPU face-highlight buffers. After cap drag completion, update `node.h`/`node.pos.y` on the stored reference before `dropToHighlight` so subsequent drags don't snap back. For extrude, loft, and threaded_rod, cap length source rewrites expect a `.height()` call in the fluent chain (mirrors extrude).
 - Click events on the canvas must be suppressed (`stopImmediatePropagation` in capture phase) while push/pull has any face state, to prevent CameraController's click handler from toggling selection via shift-click.

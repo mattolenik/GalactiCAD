@@ -54,6 +54,9 @@ export class DevToolsPanel extends HTMLElement {
     #meshViewer$: BehaviorSubject<boolean>
     #meshSimplifyCheckbox: HTMLInputElement
     #meshSimplify$: BehaviorSubject<boolean>
+    #lightingExpandedCheckbox: HTMLInputElement
+    #lightingExpanded$: BehaviorSubject<boolean>
+    #lightingSection: HTMLDivElement
     #settings: SettingsManager
     #tabs: DocumentTabs
     #subscriptions: Subscription[] = []
@@ -76,7 +79,7 @@ export class DevToolsPanel extends HTMLElement {
     /** Callback when mesh simplify on export toggle changes */
     onMeshSimplifyChange?: (enabled: boolean) => void
 
-    /** SDF preview lighting (uniform knobs); not persisted. */
+    /** Preview shading uniforms; knob values are not persisted (section visibility is). */
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
 
     /** Callback to get current view as a benchmark case. Returns null if no active document. */
@@ -229,6 +232,16 @@ export class DevToolsPanel extends HTMLElement {
             font-variant-numeric: tabular-nums;
             font-size: 11px;
         }
+        .lighting-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-self: stretch;
+            width: 100%;
+        }
+        .lighting-section[hidden] {
+            display: none !important;
+        }
 `
         shadow.appendChild(style)
 
@@ -239,6 +252,11 @@ export class DevToolsPanel extends HTMLElement {
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
+
+        this.#lightingExpanded$ = new BehaviorSubject(g.devToolsLightingExpanded)
+        this.#lightingSection = document.createElement("div")
+        this.#lightingSection.className = "lighting-section"
+        this.#lightingSection.hidden = !this.#lightingExpanded$.value
 
         this.#showFpsCheckbox = this.#addCheckbox(shadow, "Show FPS", this.#showFps$.value)
         this.#subscriptions.push(connectCheckbox(this.#showFpsCheckbox, this.#showFps$))
@@ -279,10 +297,18 @@ export class DevToolsPanel extends HTMLElement {
             this.onBvhOptimizationChange?.(v)
         })
 
+        this.#lightingExpandedCheckbox = this.#addCheckbox(shadow, "Show lighting", this.#lightingExpanded$.value)
+        this.#subscriptions.push(connectCheckbox(this.#lightingExpandedCheckbox, this.#lightingExpanded$))
+        this.#lightingExpanded$.pipe(skip(1)).subscribe(v => {
+            this.#settings.updateGlobal({ app: { devToolsLightingExpanded: v } })
+            this.#lightingSection.hidden = !v
+        })
+        shadow.appendChild(this.#lightingSection)
+
         const shadeHead = document.createElement("div")
         shadeHead.className = "shade-head"
         shadeHead.textContent = "Preview lighting"
-        shadow.appendChild(shadeHead)
+        this.#lightingSection.appendChild(shadeHead)
 
         for (const k of PREVIEW_SHADING_KNOBS) {
             const row = document.createElement("div")
@@ -307,7 +333,7 @@ export class DevToolsPanel extends HTMLElement {
                 this.onPreviewShadingChange?.({ ...this.#shadingState })
             })
             row.append(lab, range, valueEl)
-            shadow.appendChild(row)
+            this.#lightingSection.appendChild(row)
             this.#shadingRows.set(k.key, { range, valueEl })
         }
 
@@ -323,7 +349,7 @@ export class DevToolsPanel extends HTMLElement {
             }
             this.onPreviewShadingChange?.({ ...this.#shadingState })
         })
-        shadow.appendChild(shadeDefaults)
+        this.#lightingSection.appendChild(shadeDefaults)
 
         // Save Suite button
         const saveSuiteButton = document.createElement("button")

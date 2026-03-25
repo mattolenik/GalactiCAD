@@ -64,6 +64,8 @@ export interface GlobalSettings {
     app: {
         meshViewerEnabled: boolean
         devToolsEnabled: boolean
+        /** When true, dev tools shows the preview lighting sliders. */
+        devToolsLightingExpanded: boolean
         showFps: boolean
         meshSimplifyOnExport: boolean
         diskSyncIntervalSeconds: number
@@ -120,6 +122,7 @@ function defaultGlobalSettings(): GlobalSettings {
         app: {
             meshViewerEnabled: false,
             devToolsEnabled: false,
+            devToolsLightingExpanded: false,
             showFps: true,
             meshSimplifyOnExport: true,
             diskSyncIntervalSeconds: 30,
@@ -356,6 +359,7 @@ export class SettingsManager {
                 if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
+                if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false
                 if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"
                 const editorDef = defaultEditorSettings()
                 const editor = { ...editorDef, ...(parsed.app as { editor?: Partial<EditorSettings> })?.editor }

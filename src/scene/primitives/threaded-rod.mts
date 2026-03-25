@@ -90,7 +90,7 @@ export class ThreadedRod extends Node {
     }
 
     override getShapeType(): string {
-        return "threadedRod"
+        return "threaded_rod"
     }
     override getIndicatorSymbol(): string {
         return "⍉"
@@ -103,7 +103,7 @@ export class ThreadedRod extends Node {
         return BVH_MIN_COST
     }
 
-    override updateScene(): void {}
+    override updateScene(): void { }
 
     override build() {
         super.build()
@@ -323,7 +323,7 @@ function threadedRodHandSide(hand: ThreadedRodHandedness): {
     }
 }
 
-export const threadedRod = {
+export const threaded_rod = {
     radius: threadedRodRadius,
     left: threadedRodHandSide("left"),
     right: threadedRodHandSide("right"),

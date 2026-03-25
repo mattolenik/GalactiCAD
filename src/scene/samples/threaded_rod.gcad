@@ -3,37 +3,37 @@
 // so changing pitch keeps the meridional flank angle; use .depth() to set A explicitly.
 
 // Coarse thread — easy to see the helix in preview
-let coarse = threadedRod
+let coarse = threaded_rod
   .radius(12)
   .height(50)
   .pitch(5.5)
   .shift([0, 50, 0])
 
 // Finer pitch — depth follows automatically (smaller A)
-let fine = threadedRod
+let fine = threaded_rod
   .radius(8.5)
   .height(35)
   .pitch(2.8)
   .shift([90, 35, 0])
 
 // Explicit radial amplitude (optional): disables pitch+angle depth
-let stub = threadedRod
+let stub = threaded_rod
   .radius(15)
   .height(18)
   .pitch(4)
   .depth(1.2)
   .shift([-100, 18, 0])
 
-// Default threadedRod.radius(...) is FDM (smooth sine). profile.iso() is a triangular V-groove / ISO-ish silhouette.
-let isoRod = threadedRod.profile
+// Default threaded_rod.radius(...) is FDM (smooth sine). profile.iso() is a triangular V-groove / ISO-ish silhouette.
+let isoRod = threaded_rod.profile
   .iso()
   .radius(10)
   .height(40)
   .pitch(4)
   .shift([0, 40, -120])
 
-// Left-hand ISO: helix advances the opposite way along +Y vs threadedRod / .right (default right-hand).
-let leftIso = threadedRod.left.profile
+// Left-hand ISO: helix advances the opposite way along +Y vs threaded_rod / .right (default right-hand).
+let leftIso = threaded_rod.left.profile
   .iso()
   .radius(9)
   .height(38)

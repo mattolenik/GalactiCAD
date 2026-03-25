@@ -48,7 +48,7 @@ export const SHAPE_INSERTIONS: ShapeInsertion[] = [
     { id: "insertCylinder", label: "Cylinder", varBase: "newCylinder", call: "cylinder({ r: 1, h: 3 })" },
     { id: "insertCone", label: "Cone", varBase: "newCone", call: "cone({ r: 1, h: 2 })" },
     { id: "insertTorus", label: "Torus", varBase: "newTorus", call: "torus({ sr: 0.25, lr: 1 })" },
-    { id: "insertThreadedRod", label: "Threaded rod", varBase: "newThreadedRod", call: "threadedRod.radius(1).height(3).pitch(0.5)" },
+    { id: "insertThreadedRod", label: "Threaded rod", varBase: "newThreadedRod", call: "threaded_rod.radius(1).height(3).pitch(0.5)" },
     { id: "insertCapsule", label: "Capsule", varBase: "newCapsule", call: "capsule({ r: 0.5, c: 2 })" },
     { id: "insertPlane", label: "Plane", varBase: "newPlane", call: "plane({ n: [0, 1, 0] })" },
     { id: "insertHexPrism", label: "Hex prism", varBase: "newHexPrism", call: "hexprism({ r: 1, h: 2 })" },

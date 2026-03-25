@@ -13,7 +13,7 @@ const CAD_SYMBOLS = new Set([
     "cylinder",
     "cone",
     "torus",
-    "threadedRod",
+    "threaded_rod",
     "capsule",
     "plane",
     "hexprism",

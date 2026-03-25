@@ -98,7 +98,7 @@ export class SDFRenderer {
     #latestHoverRequestId = -1
     #compiledPosY = new Map<number, number>()
     #getInteractionRect: (() => DOMRect) | null = null
-    #pushPullNodes: Map<number, { type: "extrude"; id: number; pos: { x: number; y: number; z: number }; h: number; child: { vertices: [number, number][]; bufferOffset: number }; twistDegrees?: number; capTopId?: number; capBottomId?: number } | { type: "loft"; id: number; pos: { x: number; y: number; z: number }; h: number; profiles: { vertices: [number, number][]; bufferOffset: number }[] } | { type: "threadedRod"; id: number; pos: { x: number; y: number; z: number }; h: number } | { type: "polygon2d"; id: number; vertices: [number, number][]; bufferOffset: number } | { type: "virtualCap"; id: number; parentId: number; isTop: boolean }> = new Map()
+    #pushPullNodes: Map<number, { type: "extrude"; id: number; pos: { x: number; y: number; z: number }; h: number; child: { vertices: [number, number][]; bufferOffset: number }; twistDegrees?: number; capTopId?: number; capBottomId?: number } | { type: "loft"; id: number; pos: { x: number; y: number; z: number }; h: number; profiles: { vertices: [number, number][]; bufferOffset: number }[] } | { type: "threaded_rod"; id: number; pos: { x: number; y: number; z: number }; h: number } | { type: "polygon2d"; id: number; vertices: [number, number][]; bufferOffset: number } | { type: "virtualCap"; id: number; parentId: number; isTop: boolean }> = new Map()
     #childrenByParent = new Map<number, number[]>()
     #parentById = new Map<number, number>()
     #needsRender = true
@@ -594,7 +594,7 @@ export class SDFRenderer {
         const vcap = this.#pushPullNodes.get(polygonId)
         if (vcap?.type === "virtualCap") {
             const node = this.#pushPullNodes.get(vcap.parentId)
-            if (node && (node.type === "extrude" || node.type === "loft" || node.type === "threadedRod")) return { node, isTop: vcap.isTop }
+            if (node && (node.type === "extrude" || node.type === "loft" || node.type === "threaded_rod")) return { node, isTop: vcap.isTop }
             return null
         }
         for (const [parentId, children] of this.#childrenByParent) {
@@ -704,7 +704,7 @@ export class SDFRenderer {
         if (node.type === "polygon2d") return objectId
         if (node.type === "virtualCap") {
             const parent = this.#pushPullNodes.get(node.parentId)
-            if (parent?.type === "threadedRod") return null
+            if (parent?.type === "threaded_rod") return null
             const children = this.#childrenByParent.get(node.parentId)
             if (!children || children.length === 0) return null
             return children[0]
@@ -832,7 +832,7 @@ export class SDFRenderer {
                         profiles,
                     })
                 }
-            } else if (s.shapeType === "threadedRod" && s.pos && s.h !== undefined && s.children.length >= 2) {
+            } else if (s.shapeType === "threaded_rod" && s.pos && s.h !== undefined && s.children.length >= 2) {
                 let hasTop = false
                 let hasBottom = false
                 for (const cid of s.children) {
@@ -842,7 +842,7 @@ export class SDFRenderer {
                 }
                 if (hasTop && hasBottom) {
                     this.#pushPullNodes.set(s.id, {
-                        type: "threadedRod",
+                        type: "threaded_rod",
                         id: s.id,
                         pos: { x: s.pos[0], y: s.pos[1], z: s.pos[2] },
                         h: s.h,

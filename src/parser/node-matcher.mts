@@ -147,7 +147,7 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         return true
     }
 
-    if (shapeType === "threadedRod") {
+    if (shapeType === "threaded_rod") {
         const callPos = call.pos ?? DEFAULT_POS
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.r === undefined || !approxEqualOrUndefined(node.r, call.r)) return false

@@ -391,7 +391,7 @@ class App {
      */
     #handleCapPullComplete(nodeId: number, newH: number, newPosY: number) {
         const location = this.#sourceLocationMap.get(nodeId)
-        if (!location || (location.functionName !== "extrude" && location.functionName !== "loft" && location.functionName !== "threadedRod")) return
+        if (!location || (location.functionName !== "extrude" && location.functionName !== "loft" && location.functionName !== "threaded_rod")) return
 
         const model = this.editor.getModel()
         if (!model) return
@@ -400,7 +400,7 @@ class App {
         this.#sourceParser.parseShapeCalls(src)
         const cached = this.#sourceParser.getCachedSourceFile(src)
         const info =
-            location.functionName === "threadedRod"
+            location.functionName === "threaded_rod"
                 ? this.#sourceParser.findThreadedRodAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
                 : this.#sourceParser.findExtrudeLoftAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
         if (!info) return

@@ -103,7 +103,7 @@ declare class Torus extends Node {
 
 /**
  * Y-axis rod with helical thread on the barrel.
- * Default threadedRod.radius(...) is FDM (smooth sine). Use threadedRod.profile.iso() for a triangular V-groove.
+ * Default threaded_rod.radius(...) is FDM (smooth sine). Use threaded_rod.profile.iso() for a triangular V-groove.
  * Radial amplitude follows pitch and threadAngle (tan(ψ)·pitch/(2π)) unless depth() overrides.
  */
 declare class ThreadedRod extends Node {
@@ -116,7 +116,7 @@ declare class ThreadedRod extends Node {
     threadAmp: number;
     /** fdm = sinusoidal barrel; iso = triangular helical. */
     threadProfile: "fdm" | "iso";
-    /** Default right-hand; use threadedRod.left... for left-hand. */
+    /** Default right-hand; use threaded_rod.left... for left-hand. */
     threadHandedness: "left" | "right";
     height(h: number): ThreadedRod;
     pitch(p: number): ThreadedRod;
@@ -381,7 +381,7 @@ declare const cone: { radius(r: number): Cone };
  */
 declare const torus: { smallRadius(sr: number): Torus; largeRadius(lr: number): Torus };
 
-/** Entry after threadedRod.left / .right (same shape as root profile + radius). */
+/** Entry after threaded_rod.left / .right (same shape as root profile + radius). */
 type ThreadedRodHandSide = {
     radius(r: number): ThreadedRod;
     readonly profile: {
@@ -391,12 +391,12 @@ type ThreadedRodHandSide = {
 };
 
 /**
- * Threaded rod. Default is right-hand FDM: threadedRod.radius(...).
- * threadedRod.left.radius(...) / threadedRod.left.profile.iso().radius(...) = left-hand.
- * threadedRod.right matches explicit right-hand; threadedRod.profile.* is right-hand.
+ * Threaded rod. Default is right-hand FDM: threaded_rod.radius(...).
+ * threaded_rod.left.radius(...) / threaded_rod.left.profile.iso().radius(...) = left-hand.
+ * threaded_rod.right matches explicit right-hand; threaded_rod.profile.* is right-hand.
  * After .radius: .height(h).pitch(axialPeriod).threadAngle(deg).depth(override).shift(v)
  */
-declare const threadedRod: {
+declare const threaded_rod: {
     radius(r: number): ThreadedRod;
     readonly left: ThreadedRodHandSide;
     readonly right: ThreadedRodHandSide;

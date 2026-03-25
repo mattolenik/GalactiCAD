@@ -1,5 +1,5 @@
 /**
- * Source code updates for extrude, loft, and threadedRod cap push/pull.
+ * Source code updates for extrude, loft, and threaded_rod cap push/pull.
  * Updates the `height` value and `.shift([...])` in source when the user drags a cap.
  */
 

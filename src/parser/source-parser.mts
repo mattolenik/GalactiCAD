@@ -40,9 +40,9 @@ export interface ParsedShapeCall {
     h?: number        // Half-height for cylinder/hexprism, full height for cone
     sr?: number       // Small radius (tube) for torus
     lr?: number       // Large radius (ring) for torus
-    pitch?: number    // Axial distance per 360° for threadedRod
-    depth?: number    // Radial amplitude override for threadedRod (disables pitch+angle amp)
-    threadAngle?: number // Meridional flank angle (deg) for threadedRod; with pitch sets amp unless depth()
+    pitch?: number    // Axial distance per 360° for threaded_rod
+    depth?: number    // Radial amplitude override for threaded_rod (disables pitch+angle amp)
+    threadAngle?: number // Meridional flank angle (deg) for threaded_rod; with pitch sets amp unless depth()
     threadProfile?: "fdm" | "iso" // From .profile.fdm() / .profile.iso() chain
     threadHandedness?: "left" | "right" // From .left / .right property chain (default right)
     c?: number        // Center half-height for capsule
@@ -88,7 +88,7 @@ export interface FluentMethodLocation {
  * surgically replaced after a drag operation.
  */
 export interface ExtrudeLoftCallInfo {
-    functionName: "extrude" | "loft" | "threadedRod"
+    functionName: "extrude" | "loft" | "threaded_rod"
     /** Offset in source of the `h:` value expression (start, end). */
     hValueStart: number
     hValueEnd: number
@@ -145,7 +145,7 @@ function parseSourceWithDiagnostics(src: string): { sourceFile: ts.SourceFile; d
     const program = ts.createProgram(["cad.ts"], {}, {
         getSourceFile: () => sourceFile,
         getDefaultLibFileName: () => "lib.d.ts",
-        writeFile: () => {},
+        writeFile: () => { },
         getCurrentDirectory: () => "",
         getDirectories: () => [],
         fileExists: () => true,
@@ -220,7 +220,7 @@ export function findReturnStatementLine(src: string): number | null {
 /**
  * Shape functions we care about for source location tracking
  */
-const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threadedRod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
+const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
 const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe"])
 const MODIFIER_NAMES = new Set(["rotate", "shell", "offset", "elongate", "twist", "bend", "taper"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
@@ -546,7 +546,7 @@ export class SourceParser {
             this.parsePosRadiusHeightFluentArgs(callNode, parsedCall)
         } else if (funcName === "torus") {
             this.parseTorusFluentArgs(callNode, parsedCall)
-        } else if (funcName === "threadedRod") {
+        } else if (funcName === "threaded_rod") {
             this.parseThreadedRodFluentArgs(callNode, parsedCall)
         } else if (funcName === "capsule") {
             this.parseCapsuleFluentArgs(callNode, parsedCall)
@@ -768,7 +768,7 @@ export class SourceParser {
         }
     }
 
-    /** Detect threadedRod.left / .right in the property chain (.profile etc. are not calls). */
+    /** Detect threaded_rod.left / .right in the property chain (.profile etc. are not calls). */
     #threadedRodHandFromExpression(expr: ts.Node): "left" | "right" | undefined {
         let hand: "left" | "right" | undefined
         const visit = (n: ts.Node): void => {
@@ -825,7 +825,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse threadedRod fluent args:`, err)
+            console.debug(`[SourceParser] Could not parse threaded_rod fluent args:`, err)
         }
     }
 
@@ -1166,11 +1166,11 @@ export class SourceParser {
                     name = node.expression.text
                 } else if (ts.isPropertyAccessExpression(node.expression)) {
                     const fluent = this.#getFluentChainInfo(node)
-                    if (fluent && fluent.operator === "threadedRod") {
+                    if (fluent && fluent.operator === "threaded_rod") {
                         name = fluent.operator
                     }
                 }
-                if (name === "threadedRod") {
+                if (name === "threaded_rod") {
                     const info = this.extractThreadedRodInfo(node, sf)
                     if (info) calls.push(info)
                 }
@@ -1218,7 +1218,7 @@ export class SourceParser {
         const endLoc = tsPosToUser(sourceFile, endPos)
 
         return {
-            functionName: "threadedRod",
+            functionName: "threaded_rod",
             hValueStart,
             hValueEnd,
             posArgStart,
@@ -1229,7 +1229,7 @@ export class SourceParser {
                 startColumn: loc.column,
                 endLine: endLoc.line,
                 endColumn: endLoc.column,
-                functionName: "threadedRod",
+                functionName: "threaded_rod",
             },
         }
     }

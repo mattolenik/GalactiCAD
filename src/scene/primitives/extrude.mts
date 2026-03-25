@@ -49,12 +49,14 @@ export class Extrude extends Node {
         view.set(this.pos.data, 0)
         view[3] = this.h
         view[4] = 0
+        // Total twist in radians (runtime); twist WGSL path reads this so param-only rebuilds see angle changes.
+        view[5] = (this.twistDegrees * Math.PI) / 180
     }
 
     override build() {
         super.build()
-        this.paramOffset = this.scene.allocSceneParamFloats(5)
-        this.paramCount = 5
+        this.paramOffset = this.scene.allocSceneParamFloats(6)
+        this.paramCount = 6
         this.child.root = this.root
         this.child.build()
         this.capTop.root = this.root
@@ -65,7 +67,7 @@ export class Extrude extends Node {
 
     override appendStructuralFingerprint(parts: string[]): void {
         const twist = this.twistDegrees !== 0 ? "1" : "0"
-        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}:twist:${twist}`)
+        parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}:twist:${twist}:p:${this.paramCount}`)
         this.child.appendStructuralFingerprint(parts)
         this.capTop.appendStructuralFingerprint(parts)
         this.capBottom.appendStructuralFingerprint(parts)
@@ -102,6 +104,7 @@ export class Extrude extends Node {
         const windSignStr = windSign.toFixed(1)
         const capH = spF32Wgsl(this.paramOffset + 3)
         const capYOff = spF32Wgsl(this.paramOffset + 4)
+        const twistRad = spF32Wgsl(this.paramOffset + 5)
 
         if (!hasTwist) {
             return `
@@ -211,7 +214,6 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
 `
         }
 
-        const twistRad = (this.twistDegrees * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let h = ${capH};
@@ -252,6 +254,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         const hasTwist = this.twistDegrees !== 0
         const capH = spF32Wgsl(this.paramOffset + 3)
         const capYOff = spF32Wgsl(this.paramOffset + 4)
+        const twistRad = spF32Wgsl(this.paramOffset + 5)
 
         if (!hasTwist) {
             return `
@@ -263,7 +266,6 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
 `
         }
 
-        const twistRad = (this.twistDegrees * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
     let h = ${capH};
@@ -290,6 +292,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         const hasTwist = this.twistDegrees !== 0
         const capH = spF32Wgsl(this.paramOffset + 3)
         const capYOff = spF32Wgsl(this.paramOffset + 4)
+        const twistRad = spF32Wgsl(this.paramOffset + 5)
 
         if (!hasTwist) {
             return `
@@ -311,7 +314,6 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
 `
         }
 
-        const twistRad = (this.twistDegrees * Math.PI / 180).toFixed(10)
         return `
 fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let h = ${capH};

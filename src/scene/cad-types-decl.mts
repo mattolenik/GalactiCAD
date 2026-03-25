@@ -102,7 +102,8 @@ declare class Torus extends Node {
 }
 
 /**
- * Y-axis rod with helical sinusoidal thread profile.
+ * Y-axis rod with helical thread on the barrel.
+ * Default threadedRod.radius(...) is FDM (smooth sine). Use threadedRod.profile.iso() for a triangular V-groove.
  * Radial amplitude follows pitch and threadAngle (tan(ψ)·pitch/(2π)) unless depth() overrides.
  */
 declare class ThreadedRod extends Node {
@@ -113,6 +114,8 @@ declare class ThreadedRod extends Node {
     /** Meridional flank angle (deg); with pitch sets threadAmp unless depth() was used. */
     threadFlankAngleDeg: number;
     threadAmp: number;
+    /** fdm = sinusoidal barrel; iso = triangular helical. */
+    threadProfile: "fdm" | "iso";
     height(h: number): ThreadedRod;
     pitch(p: number): ThreadedRod;
     /** Flank angle in degrees (default 60). */
@@ -377,10 +380,16 @@ declare const cone: { radius(r: number): Cone };
 declare const torus: { smallRadius(sr: number): Torus; largeRadius(lr: number): Torus };
 
 /**
- * Threaded rod (sinusoidal helical radius).
- * threadedRod.radius(r).height(h).pitch(axialPeriod).threadAngle(deg).depth(override).shift(v)
+ * Threaded rod. threadedRod.radius(...) = FDM (sinusoidal). threadedRod.profile.iso().radius(...) = triangular / ISO-ish.
+ * After .radius: .height(h).pitch(axialPeriod).threadAngle(deg).depth(override).shift(v)
  */
-declare const threadedRod: { radius(r: number): ThreadedRod };
+declare const threadedRod: {
+    radius(r: number): ThreadedRod;
+    readonly profile: {
+        fdm(): { radius(r: number): ThreadedRod };
+        iso(): { radius(r: number): ThreadedRod };
+    };
+};
 
 /**
  * Capsule. capsule.radius(r).cylinderLength(c).shift(v)

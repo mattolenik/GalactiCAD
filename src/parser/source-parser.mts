@@ -42,6 +42,7 @@ export interface ParsedShapeCall {
     pitch?: number    // Axial distance per 360° for threadedRod
     depth?: number    // Radial amplitude override for threadedRod (disables pitch+angle amp)
     threadAngle?: number // Meridional flank angle (deg) for threadedRod; with pitch sets amp unless depth()
+    threadProfile?: "fdm" | "iso" // From .profile.fdm() / .profile.iso() chain
     c?: number        // Center half-height for capsule
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
@@ -768,6 +769,16 @@ export class SourceParser {
     private parseThreadedRodFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "iso" && args.length === 0) {
+                    parsedCall.threadProfile = "iso"
+                    break
+                }
+                if (method === "fdm" && args.length === 0) {
+                    parsedCall.threadProfile = "fdm"
+                    break
+                }
+            }
             for (const { method, args } of chain) {
                 if (method === "radius" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])

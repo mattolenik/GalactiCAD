@@ -16,7 +16,9 @@ function threadAmpForPitchAndAngle(pitch: number, flankAngleDeg: number): number
     return (Math.tan(rad) * p) / (2 * Math.PI)
 }
 
-/** Finite Y-axis rod with a helical sinusoidal radius (screw-thread silhouette). */
+export type ThreadedRodProfile = "fdm" | "iso"
+
+/** Finite Y-axis rod with a helical thread on the barrel (FDM = smooth sine, ISO = triangular V-groove). */
 export class ThreadedRod extends Node {
     pos = vec3([0, 0, 0])
     r = 0
@@ -27,14 +29,23 @@ export class ThreadedRod extends Node {
     threadFlankAngleDeg = DEFAULT_THREAD_FLANK_ANGLE_DEG
     /** When true, threadAmp was set by depth() and is not overwritten by pitch/threadAngle. */
     explicitDepth = false
-    /** Sinusoidal radial amplitude about mean radius `r`. */
+    /** Radial amplitude about mean radius `r` (same meaning for both profiles). */
     threadAmp = 0
+    /** `fdm` = sinusoidal barrel; `iso` = triangular helical profile. */
+    threadProfile: ThreadedRodProfile = "fdm"
     readonly capTop: VirtualCapNode
     readonly capBottom: VirtualCapNode
 
     constructor(
         pos: Vec3,
-        { r, h, pitch, depth, threadAngle }: { r: number; h: number; pitch: number; depth?: number; threadAngle?: number }
+        {
+            r,
+            h,
+            pitch,
+            depth,
+            threadAngle,
+            threadProfile,
+        }: { r: number; h: number; pitch: number; depth?: number; threadAngle?: number; threadProfile?: ThreadedRodProfile }
     ) {
         super()
         this.capTop = new VirtualCapNode(true)
@@ -43,6 +54,9 @@ export class ThreadedRod extends Node {
         this.r = r
         this.h = h
         this.turnPitch = pitch
+        if (threadProfile !== undefined) {
+            this.threadProfile = threadProfile
+        }
         if (threadAngle !== undefined) {
             this.threadFlankAngleDeg = threadAngle
         }
@@ -98,24 +112,29 @@ export class ThreadedRod extends Node {
         return `fThreadedRod_${this.id}_Mid`
     }
 
+    get #wgslBarrelFn(): string {
+        return this.threadProfile === "iso" ? "fThreadedRodBarrelDistIso" : "fThreadedRodBarrelDist"
+    }
+
     override compileAux(): string {
         const capTopId = this.capTop.id
         const capBottomId = this.capBottom.id
         const R = formatWgslFloat(this.r)
         const P = formatWgslFloat(this.turnPitch)
         const A = formatWgslFloat(this.threadAmp)
+        const B = this.#wgslBarrelFn
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
-    let dSide = fThreadedRodBarrelDist(p, ${R}, ${P}, ${A});
+    let dSide = ${B}(p, ${R}, ${P}, ${A});
     let capH = nodeParams[id].x;
     let capY = p.y - nodeParams[id].y;
     let dCap = abs(capY) - capH;
     let d = max(dSide, dCap);
     let onSide = dSide > dCap;
     let eps = 0.001;
-    let gx = fThreadedRodBarrelDist(p + vec3f(eps, 0.0, 0.0), ${R}, ${P}, ${A}) - fThreadedRodBarrelDist(p - vec3f(eps, 0.0, 0.0), ${R}, ${P}, ${A});
-    let gy = fThreadedRodBarrelDist(p + vec3f(0.0, eps, 0.0), ${R}, ${P}, ${A}) - fThreadedRodBarrelDist(p - vec3f(0.0, eps, 0.0), ${R}, ${P}, ${A});
-    let gz = fThreadedRodBarrelDist(p + vec3f(0.0, 0.0, eps), ${R}, ${P}, ${A}) - fThreadedRodBarrelDist(p - vec3f(0.0, 0.0, eps), ${R}, ${P}, ${A});
+    let gx = ${B}(p + vec3f(eps, 0.0, 0.0), ${R}, ${P}, ${A}) - ${B}(p - vec3f(eps, 0.0, 0.0), ${R}, ${P}, ${A});
+    let gy = ${B}(p + vec3f(0.0, eps, 0.0), ${R}, ${P}, ${A}) - ${B}(p - vec3f(0.0, eps, 0.0), ${R}, ${P}, ${A});
+    let gz = ${B}(p + vec3f(0.0, 0.0, eps), ${R}, ${P}, ${A}) - ${B}(p - vec3f(0.0, 0.0, eps), ${R}, ${P}, ${A});
     let nSide = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
@@ -138,10 +157,11 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         const R = formatWgslFloat(this.r)
         const P = formatWgslFloat(this.turnPitch)
         const A = formatWgslFloat(this.threadAmp)
+        const B = this.#wgslBarrelFn
         const id = this.id
         return `
 fn fThreadedRod_${id}_field(p: vec3f) -> f32 {
-    let dSide = fThreadedRodBarrelDist(p, ${R}, ${P}, ${A});
+    let dSide = ${B}(p, ${R}, ${P}, ${A});
     let h = nodeParams[${id}].x;
     let capY = p.y - nodeParams[${id}].y;
     let dCap = abs(capY) - h;
@@ -158,19 +178,20 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> vec2f {
         const R = formatWgslFloat(this.r)
         const P = formatWgslFloat(this.turnPitch)
         const A = formatWgslFloat(this.threadAmp)
+        const B = this.#wgslBarrelFn
         const id = this.id
         return `
 fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
-    let dSide = fThreadedRodBarrelDist(p, ${R}, ${P}, ${A});
+    let dSide = ${B}(p, ${R}, ${P}, ${A});
     let capH = nodeParams[${id}].x;
     let capY = p.y - nodeParams[${id}].y;
     let dCap = abs(capY) - capH;
     let d = max(dSide, dCap);
     let onSide = dSide > dCap;
     let eps = 0.001;
-    let gx = fThreadedRodBarrelDist(p + vec3f(eps, 0.0, 0.0), ${R}, ${P}, ${A}) - fThreadedRodBarrelDist(p - vec3f(eps, 0.0, 0.0), ${R}, ${P}, ${A});
-    let gy = fThreadedRodBarrelDist(p + vec3f(0.0, eps, 0.0), ${R}, ${P}, ${A}) - fThreadedRodBarrelDist(p - vec3f(0.0, eps, 0.0), ${R}, ${P}, ${A});
-    let gz = fThreadedRodBarrelDist(p + vec3f(0.0, 0.0, eps), ${R}, ${P}, ${A}) - fThreadedRodBarrelDist(p - vec3f(0.0, 0.0, eps), ${R}, ${P}, ${A});
+    let gx = ${B}(p + vec3f(eps, 0.0, 0.0), ${R}, ${P}, ${A}) - ${B}(p - vec3f(eps, 0.0, 0.0), ${R}, ${P}, ${A});
+    let gy = ${B}(p + vec3f(0.0, eps, 0.0), ${R}, ${P}, ${A}) - ${B}(p - vec3f(0.0, eps, 0.0), ${R}, ${P}, ${A});
+    let gz = ${B}(p + vec3f(0.0, 0.0, eps), ${R}, ${P}, ${A}) - ${B}(p - vec3f(0.0, 0.0, eps), ${R}, ${P}, ${A});
     let nSide = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
@@ -247,7 +268,25 @@ function formatWgslFloat(n: number): string {
 }
 
 function threadedRodRadius(r: number): ThreadedRod {
-    return new ThreadedRod(DEFAULT_POS, { r, h: 1, pitch: 0.5 })
+    return new ThreadedRod(DEFAULT_POS, { r, h: 1, pitch: 0.5, threadProfile: "fdm" })
 }
 
-export const threadedRod = { radius: threadedRodRadius }
+function threadedRodProfileEntry(profile: ThreadedRodProfile): { radius(r: number): ThreadedRod } {
+    return {
+        radius(r: number): ThreadedRod {
+            return new ThreadedRod(DEFAULT_POS, { r, h: 1, pitch: 0.5, threadProfile: profile })
+        },
+    }
+}
+
+export const threadedRod = {
+    radius: threadedRodRadius,
+    profile: {
+        fdm(): { radius(r: number): ThreadedRod } {
+            return threadedRodProfileEntry("fdm")
+        },
+        iso(): { radius(r: number): ThreadedRod } {
+            return threadedRodProfileEntry("iso")
+        },
+    },
+}

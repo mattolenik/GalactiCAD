@@ -24,4 +24,12 @@ let stub = threadedRod
   .depth(1.2)
   .shift([-100, 18, 0])
 
-return union(coarse, fine, stub)
+// Default threadedRod.radius(...) is FDM (smooth sine). profile.iso() is a triangular V-groove / ISO-ish silhouette.
+let isoRod = threadedRod.profile
+  .iso()
+  .radius(10)
+  .height(40)
+  .pitch(4)
+  .shift([0, 40, -120])
+
+return union(coarse, fine, stub, isoRod)

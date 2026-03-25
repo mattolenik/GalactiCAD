@@ -268,12 +268,23 @@ fn fCylinderEx(p: vec3<f32>, r: f32, height: f32, id: u32) -> SDFResult {
     return sdfTrue(d, id, n);
 }
 
-// Barrel-only SDF for threaded rod (sceneAux emits capped variants with nodeParams + virtual cap IDs).
+// FDM threaded rod: sinusoidal helical radius (smooth, prints reliably).
+// Barrel-only SDF (sceneAux emits capped variants with nodeParams + virtual cap IDs).
 fn fThreadedRodBarrelDist(p: vec3f, r: f32, pitch: f32, amp: f32) -> f32 {
     let rho = length(p.xz);
     let k = TAU / max(pitch, 1e-6);
     let phase = k * p.y - atan2(p.z, p.x);
     return rho - (r + amp * sin(phase));
+}
+
+// ISO-ish threaded rod: triangular helical profile (V-groove silhouette), same phase as FDM.
+fn fThreadedRodBarrelDistIso(p: vec3f, r: f32, pitch: f32, amp: f32) -> f32 {
+    let rho = length(p.xz);
+    let k = TAU / max(pitch, 1e-6);
+    let phase = k * p.y - atan2(p.z, p.x);
+    let u = fract(phase / TAU);
+    let tri = select(3.0 - 4.0 * u, -1.0 + 4.0 * u, u < 0.5);
+    return rho - (r + amp * tri);
 }
 
 fn fConeEx(p: vec3<f32>, radius: f32, height: f32, id: u32) -> SDFResult {

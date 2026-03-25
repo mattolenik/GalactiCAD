@@ -39,10 +39,12 @@ export interface SerializedNode {
     planeOffset?: number
     vertices?: [number, number][]
     twistDegrees?: number
-    /** ThreadedRod: axial pitch, amplitude, and meridional flank angle (deg). */
+    /** ThreadedRod: axial pitch, amplitude, meridional flank angle (deg), barrel profile. */
     turnPitch?: number
     threadAmp?: number
     threadFlankAngleDeg?: number
+    /** `fdm` = sinusoidal; `iso` = triangular V-groove helical. */
+    threadProfile?: "fdm" | "iso"
     /** Polygon2D buffer offset in the shared vertex buffer (bytes / 8). */
     bufferOffset?: number
     /** True if this is a virtual cap node (Extrude top/bottom). */

@@ -32,4 +32,12 @@ let isoRod = threadedRod.profile
   .pitch(4)
   .shift([0, 40, -120])
 
-return union(coarse, fine, stub, isoRod)
+// Left-hand ISO: helix advances the opposite way along +Y vs threadedRod / .right (default right-hand).
+let leftIso = threadedRod.left.profile
+  .iso()
+  .radius(9)
+  .height(38)
+  .pitch(3.5)
+  .shift([110, 38, -120])
+
+return union(coarse, fine, stub, isoRod, leftIso)

@@ -69,6 +69,7 @@ interface NodeLikeMatch {
     threadAmp?: number
     threadFlankAngleDeg?: number
     threadProfile?: "fdm" | "iso"
+    threadHandedness?: "left" | "right"
     c?: number
     normal?: { x: number; y: number; z: number }
     dist?: number
@@ -156,6 +157,9 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         const callProfile = call.threadProfile ?? "fdm"
         const nodeProfile = node.threadProfile ?? "fdm"
         if (callProfile !== nodeProfile) return false
+        const callHand = call.threadHandedness ?? "right"
+        const nodeHand = node.threadHandedness ?? "right"
+        if (callHand !== nodeHand) return false
         return true
     }
 

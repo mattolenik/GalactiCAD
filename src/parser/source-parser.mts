@@ -43,6 +43,7 @@ export interface ParsedShapeCall {
     depth?: number    // Radial amplitude override for threadedRod (disables pitch+angle amp)
     threadAngle?: number // Meridional flank angle (deg) for threadedRod; with pitch sets amp unless depth()
     threadProfile?: "fdm" | "iso" // From .profile.fdm() / .profile.iso() chain
+    threadHandedness?: "left" | "right" // From .left / .right property chain (default right)
     c?: number        // Center half-height for capsule
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
@@ -766,8 +767,30 @@ export class SourceParser {
         }
     }
 
+    /** Detect threadedRod.left / .right in the property chain (.profile etc. are not calls). */
+    #threadedRodHandFromExpression(expr: ts.Node): "left" | "right" | undefined {
+        let hand: "left" | "right" | undefined
+        const visit = (n: ts.Node): void => {
+            if (ts.isPropertyAccessExpression(n)) {
+                visit(n.expression)
+                const t = n.name.getText()
+                if (t === "left" || t === "right") {
+                    hand = t
+                }
+            } else if (ts.isCallExpression(n)) {
+                visit(n.expression)
+            }
+        }
+        visit(expr)
+        return hand
+    }
+
     private parseThreadedRodFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
+            const hand = this.#threadedRodHandFromExpression(callNode.expression)
+            if (hand !== undefined) {
+                parsedCall.threadHandedness = hand
+            }
             const chain = this.#collectFluentChain(callNode)
             for (const { method, args } of chain) {
                 if (method === "iso" && args.length === 0) {

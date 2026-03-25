@@ -87,6 +87,7 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
         s.threadAmp = node.threadAmp
         s.threadFlankAngleDeg = node.threadFlankAngleDeg
         s.threadProfile = node.threadProfile
+        s.threadHandedness = node.threadHandedness
     }
 
     if (node instanceof VirtualCapNode) {

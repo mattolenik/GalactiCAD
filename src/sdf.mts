@@ -67,6 +67,7 @@ export interface NodeStub {
     threadAmp?: number
     threadFlankAngleDeg?: number
     threadProfile?: "fdm" | "iso"
+    threadHandedness?: "left" | "right"
 }
 
 export class SDFRenderer {
@@ -873,6 +874,7 @@ export class SDFRenderer {
                 threadAmp: s.threadAmp,
                 threadFlankAngleDeg: s.threadFlankAngleDeg,
                 threadProfile: s.threadProfile,
+                threadHandedness: s.threadHandedness,
             }
             stub.getAllDescendantIds = () => [
                 s.id,

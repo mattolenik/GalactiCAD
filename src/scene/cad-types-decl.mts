@@ -116,6 +116,8 @@ declare class ThreadedRod extends Node {
     threadAmp: number;
     /** fdm = sinusoidal barrel; iso = triangular helical. */
     threadProfile: "fdm" | "iso";
+    /** Default right-hand; use threadedRod.left... for left-hand. */
+    threadHandedness: "left" | "right";
     height(h: number): ThreadedRod;
     pitch(p: number): ThreadedRod;
     /** Flank angle in degrees (default 60). */
@@ -379,12 +381,25 @@ declare const cone: { radius(r: number): Cone };
  */
 declare const torus: { smallRadius(sr: number): Torus; largeRadius(lr: number): Torus };
 
+/** Entry after threadedRod.left / .right (same shape as root profile + radius). */
+type ThreadedRodHandSide = {
+    radius(r: number): ThreadedRod;
+    readonly profile: {
+        fdm(): { radius(r: number): ThreadedRod };
+        iso(): { radius(r: number): ThreadedRod };
+    };
+};
+
 /**
- * Threaded rod. threadedRod.radius(...) = FDM (sinusoidal). threadedRod.profile.iso().radius(...) = triangular / ISO-ish.
+ * Threaded rod. Default is right-hand FDM: threadedRod.radius(...).
+ * threadedRod.left.radius(...) / threadedRod.left.profile.iso().radius(...) = left-hand.
+ * threadedRod.right matches explicit right-hand; threadedRod.profile.* is right-hand.
  * After .radius: .height(h).pitch(axialPeriod).threadAngle(deg).depth(override).shift(v)
  */
 declare const threadedRod: {
     radius(r: number): ThreadedRod;
+    readonly left: ThreadedRodHandSide;
+    readonly right: ThreadedRodHandSide;
     readonly profile: {
         fdm(): { radius(r: number): ThreadedRod };
         iso(): { radius(r: number): ThreadedRod };

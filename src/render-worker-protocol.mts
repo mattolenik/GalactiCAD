@@ -45,6 +45,8 @@ export interface SerializedNode {
     threadFlankAngleDeg?: number
     /** `fdm` = sinusoidal; `iso` = triangular V-groove helical. */
     threadProfile?: "fdm" | "iso"
+    /** Default right-hand; left-hand flips helix. */
+    threadHandedness?: "left" | "right"
     /** Polygon2D buffer offset in the shared vertex buffer (bytes / 8). */
     bufferOffset?: number
     /** True if this is a virtual cap node (Extrude top/bottom). */

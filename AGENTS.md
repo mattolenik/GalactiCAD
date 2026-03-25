@@ -98,6 +98,7 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Do not browse to the app or attempt in-agent visual validation; the user runs manual visual QA. For WGSL and preview rendering work, use `make build` for compile validation instead of relying on automated visual checks.
 - When only the SDF preview should change, skip mesh viewer shader parity unless the user asks to update the mesh viewer too.
 - Add artist-facing preview/rendering tunables to the dev tools panel when the user wants on-screen knobs.
+- Welcome-screen release label: show the build-injected `VERSION` string exactly as provided (concatenate with the fixed prefix text); do not add a `v` prefix or other conditional formatting around `VERSION`.
 
 ## Learned Workspace Facts
 
@@ -106,7 +107,7 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Async pick (Cmd/Ctrl+drag): use drag session ID so stale pick results do not apply to a new drag session.
 - In `render-worker-core.mts`, defer `nodeParams`/`polygonVertices` buffer writes until after the new pipeline is assigned (`this.#pipeline = pipeline`), or the old shader can briefly render with reset params. Only call `destroy()` on buffers, textures, and other actually destroyable GPU resources; do not declare fake `destroy()` on WebGPU interface types in `global.d.ts`.
 - Welcome-screen thumbnails and opening a sample from the welcome screen share the render-worker preview `build` path and can race; the viewport may show the wrong sample until the next rebuild (mitigations: abort sample fetches when the welcome screen is removed; restore the prior built scene body after each thumbnail render in the worker).
-- Push/pull activation: shift-hold on a selected surface (not double-click). `dropToHighlight()` must NOT call `onDeselect` — it overwrites the GPU face-highlight buffers. After cap drag completion, update `node.h`/`node.pos.y` on the stored reference before `dropToHighlight` so subsequent drags don't snap back.
+- Push/pull activation: shift-hold on a selected surface (not double-click). `dropToHighlight()` must NOT call `onDeselect` — it overwrites the GPU face-highlight buffers. After cap drag completion, update `node.h`/`node.pos.y` on the stored reference before `dropToHighlight` so subsequent drags don't snap back. For extrude, loft, and threadedRod, cap length source rewrites expect a `.height()` call in the fluent chain (mirrors extrude).
 - Click events on the canvas must be suppressed (`stopImmediatePropagation` in capture phase) while push/pull has any face state, to prevent CameraController's click handler from toggling selection via shift-click.
 - All scene SDF evaluation for rendering and export pipelines must stay on the GPU; do not reimplement the scene SDF on the CPU.
 - On startup/refresh, restore only previously open documents; closed documents stay available from the document explorer / closed-document list.

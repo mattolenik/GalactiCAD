@@ -966,7 +966,7 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     for (var i: i32 = 0; i < MAX_BEAM_STEPS; i = i + 1) {
         let p = transformedOrigin + t * transformedDir;
         let sr = sceneSDF_fast(p);
-        let d = sr.x * min(sr.y, 1.0);
+        let d = sr.d * sr.safeStepMul;
         let safeStep = d - tileRadius;
 
         if (safeStep < tileRadius || t >= MAX_DIST) {

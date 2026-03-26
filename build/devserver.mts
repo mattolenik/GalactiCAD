@@ -10,39 +10,17 @@ export interface RunFileData {
     port: number
 }
 
+/** Ring buffer + MCP WebSocket; `__galacticadDevLogPush` is consumed by `connectMainThreadDevLogToBridge()` in app (see debug-log.mts). */
 const INJECTED_BRIDGE_SCRIPT = `
         <script type="module">
         (function () {
             const MAX = 5000;
             const buf = [];
-            function push(level, parts) {
-                const ts = new Date().toISOString();
-                const text = parts.map(function (p) {
-                    if (typeof p === "string") return p;
-                    try { return JSON.stringify(p); } catch (_e) { return String(p); }
-                }).join(" ");
-                const line = "[" + ts + "] [" + level + "] " + text;
+            function push(line) {
                 buf.push(line);
                 if (buf.length > MAX) buf.splice(0, buf.length - MAX);
             }
-            var methods = ["log", "info", "warn", "error", "debug"];
-            for (var i = 0; i < methods.length; i++) {
-                (function (m) {
-                    var orig = console[m].bind(console);
-                    console[m] = function () {
-                        push(m, Array.prototype.slice.call(arguments));
-                        return orig.apply(console, arguments);
-                    };
-                })(methods[i]);
-            }
-            window.addEventListener("error", function (ev) {
-                push("error", ["[window.error] " + ev.message + " at " + ev.filename + ":" + ev.lineno + ":" + ev.colno]);
-            });
-            window.addEventListener("unhandledrejection", function (ev) {
-                var r = ev.reason;
-                var msg = r && r.stack ? r.stack : r && r.message ? r.message : String(r);
-                push("error", ["[unhandledrejection] " + msg]);
-            });
+            globalThis.__galacticadDevLogPush = push;
             var ws = new WebSocket("ws://" + location.host);
             ws.addEventListener("message", function (event) {
                 var data = event.data;
@@ -199,7 +177,12 @@ function createHttpServer(
                 "Cross-Origin-Embedder-Policy": "credentialless",
             })
             if (path.extname(file) === ".html") {
-                const doc = data.toString().replace("</body>", clientScript + "</body>")
+                let doc = data.toString()
+                if (/<body[^>]*>/i.test(doc)) {
+                    doc = doc.replace(/<body[^>]*>/i, m => m + clientScript)
+                } else {
+                    doc = doc.replace("</body>", clientScript + "</body>")
+                }
                 data = Buffer.from(doc)
             }
             res.write(data)

@@ -131,7 +131,7 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 When the watch devserver is running (`make serve` / `make start`), the same HTTP port also serves **Streamable HTTP MCP** at **`POST /mcp`** (e.g. `http://localhost:<port>/mcp`). The active port is written to **`.devserver.run`** as JSON (`port` field) when the server starts; it may differ from the default if the port was in use.
 
 - **Tool**: `get_console_log_lines` — optional argument **`n`** (integer, default **100**). The tool response is **one text block** whose payload is JSON: either a **`string[]`** of recent lines or the literal **`null`** if logs could not be retrieved (no browser tab connected, bridge error, or timeout).
-- **What is captured**: messages from the **page** `console` methods (`log`, `info`, `warn`, `error`, `debug`), plus **`window` error** and **unhandled rejection** handlers. This is **best-effort** runtime signal; it does **not** replace `make build`. Messages logged only inside **workers** (e.g. some `[WGSL …]` / `[RenderWorker]` lines) may not appear unless the browser surfaces them on the main page console.
+- **What is captured**: the same pipeline as `src/logging/debug-log.mts` (`log("Module").*` when that module is enabled in Dev Tools) plus mirrored **`console.*`** on the main thread and on **render** / **transpile** workers (forwarded to the main ring buffer), plus **`window` error** and **unhandledrejection** on the main thread. This is **best-effort** runtime signal; it does **not** replace `make build`.
 
 **Agent workflow**
 
@@ -141,3 +141,5 @@ When the watch devserver is running (`make serve` / `make start`), the same HTTP
 4. The user may ask you to check for errors or to fix issues found in those lines at any time.
 
 **User setup**: Point the MCP client at the devserver URL (same host/port as the app, path `/mcp`). Only the local devserver process exposes this endpoint; it is not part of production builds.
+
+**Cursor**: The project includes [`.cursor/mcp.json`](.cursor/mcp.json). When the watch devserver starts, [build/build.mts](build/build.mts) writes **`url`** under `galacticad-devserver` to `http://localhost:<port>/mcp` using the same bound port as `.devserver.run`. Restart Cursor or reload MCP if the port changes while Cursor is already running.

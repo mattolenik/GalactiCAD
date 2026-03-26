@@ -4,8 +4,10 @@
  */
 
 import type { MainToWorkerMessage } from "./render-worker-protocol.mjs"
-import { applyDebugLogModules, log } from "./logging/debug-log.mjs"
+import { applyDebugLogModules, installWorkerDevLogBridge, log } from "./logging/debug-log.mjs"
 import { RenderWorkerCore } from "./render-worker-core.mjs"
+
+installWorkerDevLogBridge("render-worker")
 
 let core: RenderWorkerCore | null = null
 let sharedBuffer: SharedArrayBuffer | null = null

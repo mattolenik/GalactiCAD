@@ -35,7 +35,7 @@ import {
     SHARED_RENDER_BUFFER_SIZE,
 } from "./shared-render-buffer.mjs"
 import type { TranspileKind, TranspileToMainMessage } from "./transpile-worker-protocol.mjs"
-import { log, snapshotDebugLogModules } from "./logging/debug-log.mjs"
+import { appendDevLogLine, log, snapshotDebugLogModules } from "./logging/debug-log.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -318,6 +318,9 @@ export class SDFRenderer {
 
     #handleWorkerMessage(msg: WorkerToMainMessage): void {
         switch (msg.type) {
+            case "devLogLine":
+                appendDevLogLine(msg.line)
+                break
             case "ready":
                 this.#worker.postMessage({ type: "setBvhEnabled", enabled: this.#bvhEnabled })
                 this.syncDebugLogModulesToWorker()
@@ -440,6 +443,10 @@ export class SDFRenderer {
     }
 
     #handleTranspileMessage(msg: TranspileToMainMessage): void {
+        if (msg.type === "devLogLine") {
+            appendDevLogLine(msg.line)
+            return
+        }
         if (msg.type !== "transpileComplete") return
         const { body, error, requestId } = msg
         const pending = this.#pendingTranspile.get(requestId)

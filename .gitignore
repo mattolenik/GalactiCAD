@@ -6,3 +6,7 @@ node_modules/
 .cursor/hooks/state/
 .devserver.*
 .pnpm-store/
+
+# This would usually be checked in, but it is generated dynamically
+.cursor/mcp.json
+

@@ -5,7 +5,10 @@
  */
 
 import type { MainToTranspileMessage } from "./transpile-worker-protocol.mjs"
+import { installWorkerDevLogBridge } from "./logging/debug-log.mjs"
 import { transpileCadSource } from "./cad-transpile.mjs"
+
+installWorkerDevLogBridge("transpile-worker")
 
 self.onmessage = (e: MessageEvent<MainToTranspileMessage>) => {
     const msg = e.data

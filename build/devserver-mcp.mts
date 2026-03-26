@@ -21,8 +21,8 @@ export function createMcpPostHandler(requestConsoleLogs: (n: number) => Promise<
             },
             {
                 instructions:
-                    "Devserver MCP bridge: fetch recent JavaScript console lines from the browser tab connected via WebSocket. " +
-                    "Returns JSON text: either an array of strings or the literal null if logs could not be retrieved.",
+                    "Devserver MCP bridge: fetch recent unified dev log lines (debug-log.mts + mirrored console) from the main thread buffer, " +
+                    "including lines forwarded from workers (render, transpile). Returns JSON text: string[] or null if logs could not be retrieved.",
             }
         )
 
@@ -30,8 +30,8 @@ export function createMcpPostHandler(requestConsoleLogs: (n: number) => Promise<
             "get_console_log_lines",
             {
                 description:
-                    "Fetch the last n lines captured from the page JavaScript console (log/info/warn/error/debug), " +
-                    "plus uncaught errors and unhandled promise rejections. Default n is 100. Returns JSON text: string[] or null.",
+                    "Fetch the last n unified dev log lines (debug-log.mts when modules are enabled, mirrored console on main/render/transpile workers). " +
+                    "Default n is 100. Returns JSON text: string[] or null.",
                 inputSchema: {
                     n: z.number().int().min(1).max(10_000).optional().describe("Number of recent log lines to return (default 100)"),
                 },

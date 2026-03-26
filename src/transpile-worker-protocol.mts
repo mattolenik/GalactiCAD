@@ -15,4 +15,5 @@ export type MainToTranspileMessage = {
 }
 
 export type TranspileToMainMessage =
+    | { type: "devLogLine"; line: string }
     | { type: "transpileComplete"; body?: string; error?: string; requestId: number }

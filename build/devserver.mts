@@ -10,7 +10,7 @@ export interface RunFileData {
     port: number
 }
 
-/** Ring buffer + MCP WebSocket; `__galacticadDevLogPush` is consumed by `connectMainThreadDevLogToBridge()` in app (see debug-log.mts). */
+/** Ring buffer + MCP WebSocket; `__galacticadDevLogPush` is consumed by `connectMainThreadDevLogToBridge()` in app (see debug-log.mts). Reconnects after devserver restart. */
 const INJECTED_BRIDGE_SCRIPT = `
         <script type="module">
         (function () {
@@ -21,29 +21,66 @@ const INJECTED_BRIDGE_SCRIPT = `
                 if (buf.length > MAX) buf.splice(0, buf.length - MAX);
             }
             globalThis.__galacticadDevLogPush = push;
-            var ws = new WebSocket("ws://" + location.host);
-            ws.addEventListener("message", function (event) {
+            var intentionalClose = false;
+            var reconnectDelayMs = 300;
+            var reconnectTimer = null;
+            function trySend(socket, payload) {
+                try {
+                    if (socket && socket.readyState === 1) {
+                        socket.send(payload);
+                        return true;
+                    }
+                } catch (_e) {}
+                return false;
+            }
+            function onMessage(event) {
                 var data = event.data;
                 if (typeof data !== "string") return;
                 var msg;
                 try { msg = JSON.parse(data); } catch (_e) { return; }
+                var socket = event.target;
                 if (msg.type === "reload") {
-                    ws.close();
+                    intentionalClose = true;
+                    if (reconnectTimer) {
+                        clearTimeout(reconnectTimer);
+                        reconnectTimer = null;
+                    }
+                    try { socket.close(); } catch (_c) {}
                     window.location.reload();
                     return;
                 }
                 if (msg.type === "getConsoleLogs" && msg.id && typeof msg.n === "number") {
                     var n = Math.min(10000, Math.max(1, Math.floor(msg.n)));
                     var lines = buf.slice(-n);
-                    try {
-                        ws.send(JSON.stringify({ type: "consoleLogsResult", id: msg.id, lines: lines }));
-                    } catch (_e1) {
-                        try {
-                            ws.send(JSON.stringify({ type: "consoleLogsError", id: msg.id, message: "send failed" }));
-                        } catch (_e2) {}
+                    var ok = JSON.stringify({ type: "consoleLogsResult", id: msg.id, lines: lines });
+                    if (!trySend(socket, ok)) {
+                        trySend(socket, JSON.stringify({ type: "consoleLogsError", id: msg.id, message: "send failed" }));
                     }
                 }
-            });
+            }
+            function scheduleReconnect() {
+                if (intentionalClose) return;
+                if (reconnectTimer) clearTimeout(reconnectTimer);
+                reconnectTimer = setTimeout(function () {
+                    reconnectTimer = null;
+                    connect();
+                }, reconnectDelayMs);
+                reconnectDelayMs = Math.min(Math.floor(reconnectDelayMs * 1.5), 8000);
+            }
+            function connect() {
+                var socket = new WebSocket("ws://" + location.host);
+                socket.addEventListener("message", onMessage);
+                socket.addEventListener("open", function () {
+                    reconnectDelayMs = 300;
+                });
+                socket.addEventListener("close", function () {
+                    if (!intentionalClose) scheduleReconnect();
+                });
+                socket.addEventListener("error", function () {
+                    try { socket.close(); } catch (_e) {}
+                });
+            }
+            connect();
         })();
         </script>`
 

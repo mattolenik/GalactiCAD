@@ -5,7 +5,7 @@ import * as esbuild from "esbuild"
 import fs from "fs/promises"
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
-import { DevServer, ephemeralPort } from "./devserver.mjs"
+import { DevServer } from "./devserver.mjs"
 import { fileListerPlugin } from "./file-lister.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
 import staticBundler from "./static-bundler.mjs"
@@ -47,7 +47,6 @@ const RUN_FILE = process.env.RUN_FILE ?? ".devserver.run"
 interface RunFileData {
     pid: number
     port: number
-    lr_port: number
 }
 
 async function checkRunFile(): Promise<boolean> {
@@ -149,10 +148,8 @@ async function main() {
         if (await checkRunFile()) {
             process.exit(0)
         }
-        const lrPort = parseInt(process.env.LRPORT ?? "0", 10) || ephemeralPort()
-        process.env.LRPORT = lrPort.toString()
-        let server = await DevServer.create(Options.outDir, ServerOptions.port, lrPort, "index.html", log, err)
-        await writeRunFile({ pid: process.pid, port: server.port, lr_port: lrPort })
+        let server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err)
+        await writeRunFile({ pid: process.pid, port: server.port })
         const change$ = new Subject<{ event: EventName; path: string }>()
         change$
             .pipe(debounceTime(300))

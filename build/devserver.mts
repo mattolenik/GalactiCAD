@@ -6,7 +6,6 @@ import WebSocket, { WebSocketServer } from "ws"
 export interface RunFileData {
     pid: number
     port: number
-    lr_port: number
 }
 
 export class DevServer {
@@ -22,17 +21,14 @@ export class DevServer {
     static async create(
         serveRoot: string,
         port: number,
-        liveReloadPort: number,
         indexFileName = "index.html",
         log = console.log,
         err = console.error,
         options?: { runFile: string; pid: number }
     ): Promise<DevServer> {
-        const wsURL = `ws://localhost:${liveReloadPort}`
-
         const clientScript = `
         <script type="module">
-            const ws = new WebSocket("${wsURL}");
+            const ws = new WebSocket("ws://" + location.host);
             ws.addEventListener("message", (event) => {
                 if (event.data === "reload") {
                     ws.close();
@@ -45,17 +41,15 @@ export class DevServer {
         const instance = new DevServer(serveRoot, actualPort, indexFileName)
         instance.httpServer = server
         if (options) {
-            await fs.writeFile(options.runFile, JSON.stringify({ pid: options.pid, port: actualPort, lr_port: liveReloadPort } satisfies RunFileData, null, 2))
+            await fs.writeFile(options.runFile, JSON.stringify({ pid: options.pid, port: actualPort } satisfies RunFileData, null, 2))
         }
-        instance.wsServer = new WebSocketServer({ port: liveReloadPort })
+        instance.wsServer = new WebSocketServer({ server })
             .on("connection", (ws: WebSocket) => {
                 ws.on("error", (error: Error) => {
                     err("WebSocket error: ", error)
                 })
             })
-            .on("listening", () => {
-                log("Live reload at " + wsURL)
-            })
+        log(`Live reload WebSocket on http://localhost:${actualPort} (same port as HTTP)`)
         return instance
     }
 
@@ -71,10 +65,6 @@ export class DevServer {
         this.httpServer.closeAllConnections()
         this.wsServer.close()
     }
-}
-
-export function ephemeralPort() {
-    return 49152 + Math.floor(Math.random() * (65535 - 49152))
 }
 
 function createHttpServer(dir: string, clientScript = "", indexFileName = "index.html", log = console.log, err = console.error) {

@@ -184,6 +184,23 @@ export class SceneInfo {
         for (const node of this.#allNodesSnapshot) {
             node.writePreviewParams(out)
         }
+        for (const node of this.#allNodesSnapshot) {
+            if (node.previewBvhVec3Slot >= 0) {
+                const b = node.computeBounds()
+                if (b) {
+                    const v = out.vec3
+                    const base = node.previewBvhVec3Slot * 4
+                    v[base] = b.cx
+                    v[base + 1] = b.cy
+                    v[base + 2] = b.cz
+                    v[base + 3] = 0
+                    v[base + 4] = b.hx
+                    v[base + 5] = b.hy
+                    v[base + 6] = b.hz
+                    v[base + 7] = 0
+                }
+            }
+        }
         return out
     }
 
@@ -196,14 +213,17 @@ export class SceneInfo {
         if (!this.bvhEnabled) {
             for (const node of this.#allNodesSnapshot) {
                 node.bvhBoundsOffset = -1
+                node.previewBvhVec3Slot = -1
             }
             return
         }
         for (const node of this.#allNodesSnapshot) {
             if (node.codegenCost() >= BVH_MIN_COST && node.computeBounds() !== null) {
                 node.bvhBoundsOffset = this.allocSceneParamFloats(SCENE_PARAM_BOUNDS_F32_COUNT)
+                node.previewBvhVec3Slot = this.allocPreviewVec3(2)
             } else {
                 node.bvhBoundsOffset = -1
+                node.previewBvhVec3Slot = -1
             }
         }
     }

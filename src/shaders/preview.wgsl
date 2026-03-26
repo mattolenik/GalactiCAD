@@ -96,9 +96,7 @@ struct FaceSelection {
 @group(0) @binding(23) var<uniform> previewParamsMat3: array<mat3x3f, 1024>;
 // Live cap push/pull (h, posYDelta): vec4-packed like `previewParamsF32` (uniform — storage buffer budget is capped at 10 in the fragment stage).
 @group(0) @binding(24) var<uniform> previewCapParamDrag: array<vec4f, 4096>;
-// BVH union guards read AABBs from the same `packSceneParams()` storage layout as bounds/MDC (not preview uniforms).
-@group(0) @binding(22) var<storage, read> boundsSceneParams: array<f32>;
-//:) include "bounds_scene_params_read.wgsl"
+// BVH union guards read AABB center/half from `previewParamsVec3` (packed on CPU with other preview vec3 data).
 
 // Edge selection: hit at click/hover pixel
 const EDGE_KIND_NONE: u32 = 0u;
@@ -756,7 +754,6 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     _ = previewParamsVec3[0];
     _ = previewParamsMat3[0];
     _ = previewCapParamDrag[0];
-    _ = boundsSceneParams[0];
     _ = edgeHits[0].kind;
     _ = selectedEdges.count;
     _ = hoverEdgeHits[0].kind;
@@ -940,7 +937,6 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     _ = previewParamsVec3[0];
     _ = previewParamsMat3[0];
     _ = previewCapParamDrag[0];
-    _ = boundsSceneParams[0];
 
     let outDims = textureDimensions(tStartOut);
     if (gid.x >= outDims.x || gid.y >= outDims.y) {

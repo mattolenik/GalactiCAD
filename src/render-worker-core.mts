@@ -653,7 +653,6 @@ export class RenderWorkerCore {
                         { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                         { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
                         { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
-                        { binding: 22, resource: { buffer: this.#uniformBuffers.boundsSceneParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -832,7 +831,6 @@ export class RenderWorkerCore {
                         { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                         { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
                         { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
-                        { binding: 22, resource: { buffer: this.#uniformBuffers.boundsSceneParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -1293,7 +1291,6 @@ export class RenderWorkerCore {
                         { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                         { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
                         { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
-                        { binding: 22, resource: { buffer: this.#uniformBuffers.boundsSceneParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -1330,7 +1327,6 @@ export class RenderWorkerCore {
                     { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                     { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
                     { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
-                    { binding: 22, resource: { buffer: this.#uniformBuffers.boundsSceneParams } },
                 ],
             })
             this.#sceneBindGroupInvalid = false

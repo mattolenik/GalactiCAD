@@ -71,7 +71,7 @@ export class Disc extends Node {
         return { funcName, varName, text: `fDiscMid(p - ${pos}, ${r})` }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, 0.001, this.r)
     }
 

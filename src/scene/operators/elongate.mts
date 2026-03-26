@@ -77,7 +77,7 @@ export class Elongate extends UnaryOperator {
         return { funcName, varName, text: elongatedChild }
     }
 
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         const b = this.arg.computeBounds()
         if (!b) return null
         return aabbExpandVec(b, this.hx, this.hy, this.hz)

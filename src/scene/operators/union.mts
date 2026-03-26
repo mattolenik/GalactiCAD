@@ -184,8 +184,8 @@ export class Union extends Node {
         if (off < 0) {
             return block
         }
-        const center = bvhCenterWgsl(off, child.previewBvhBoundsF32Slot)
-        const half = bvhHalfWgsl(off + 3, child.previewBvhBoundsF32Slot + 3)
+        const center = bvhCenterWgsl(off)
+        const half = bvhHalfWgsl(off)
         const innerCode = this._indent(block, 4)
         return `if (sdBound(p, ${center}, ${half}) < ${threshold}) {\n${innerCode}}\n`
     }
@@ -260,7 +260,7 @@ export class Union extends Node {
         return this._compileVariant("fast", indentLevel)
     }
 
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         let b: AABB | null = null
         for (const child of this.children) {
             const childBounds = child.computeBounds()

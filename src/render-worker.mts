@@ -208,7 +208,14 @@ async function runNextBuild(): Promise<void> {
             self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: req.requestId, documentName: req.documentName ?? undefined, superseded: true })
             return
         }
-        self.postMessage({ type: "buildComplete", sceneNodes: result.sceneNodes, compiledPosY: result.compiledPosY, requestId: req.requestId, documentName: req.documentName ?? undefined })
+        self.postMessage({
+            type: "buildComplete",
+            sceneNodes: result.sceneNodes,
+            compiledPosY: result.compiledPosY,
+            requestId: req.requestId,
+            documentName: req.documentName ?? undefined,
+            timingMs: result.timingMs,
+        })
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error("[RenderWorker] build failed:", err)

@@ -90,7 +90,7 @@ export class Sphere extends Node {
         }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, this.r, this.r)
     }
 

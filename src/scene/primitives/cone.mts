@@ -79,7 +79,7 @@ export class Cone extends Node {
         return { funcName, varName, text: `fConeMid(p - ${pos}, ${r}, ${h})` }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         return aabb(this.pos.x, this.pos.y + this.h * 0.5, this.pos.z, this.r, this.h * 0.5, this.r)
     }
 

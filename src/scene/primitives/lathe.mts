@@ -152,7 +152,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         // Profile vertices are (r, y) in lathe space; revolve around Y
         let maxR = 0, minY = 0, maxY = 0
         for (const [r, y] of this.child.vertices) {

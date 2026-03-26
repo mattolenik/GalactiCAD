@@ -79,7 +79,7 @@ export class Cylinder extends Node {
         return { funcName, varName, text: `fCylinderMid(p - ${pos}, ${r}, ${h})` }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, this.h, this.r)
     }
 

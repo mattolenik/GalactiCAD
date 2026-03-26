@@ -1,7 +1,7 @@
 import { vec3 } from "../vecmat/vector.mjs"
 import type { CameraSettings, PreviewSettings } from "../storage/settings.mjs"
 import type { CameraState } from "../controls/camera-controller.mjs"
-import { SDFRenderer } from "../sdf.mjs"
+import { SDFRenderer, type BuildTimingBreakdownMs } from "../sdf.mjs"
 import { db } from "../storage/db.mjs"
 
 // ---------------------------------------------------------------------------
@@ -37,10 +37,20 @@ export interface BenchmarkCaseResult {
 
 export type BenchmarkSuite = BenchmarkCase[]
 
+/** Result of `runBuildBenchmark`: worker `#doBuild` breakdown for a structural vs param-only pair. */
+export interface BuildBenchmarkResult {
+    structural: BuildTimingBreakdownMs | null
+    paramOnly: BuildTimingBreakdownMs | null
+}
+
+/** Default scene for build micro-benchmark: single sphere; param-only variant changes radius only. */
+export const DEFAULT_BUILD_BENCHMARK_STRUCTURAL = "return sphere.radius(1.0)"
+export const DEFAULT_BUILD_BENCHMARK_PARAM_ONLY = "return sphere.radius(1.05)"
+
 const BENCHMARK_WIDTH = 800
 const BENCHMARK_HEIGHT = 600
 /** Number of frames to render each benchmark case. */
-const BENCHMARK_FRAME_COUNT = 3 * 60
+const BENCHMARK_FRAME_COUNT = 1 * 60
 
 // ---------------------------------------------------------------------------
 // Storage
@@ -105,9 +115,9 @@ function createOffscreenHost(width: number, height: number): import("../componen
     canvas.height = height
     host.appendChild(canvas)
     host.canvas = canvas
-    host.updateSelectionInfo = () => {}
-    host.setSelectionInfoLeft = () => {}
-    host.updateFPS = () => {}
+    host.updateSelectionInfo = () => { }
+    host.setSelectionInfoLeft = () => { }
+    host.updateFPS = () => { }
     document.body.appendChild(host)
     return host as unknown as import("../components/preview-window.mjs").PreviewWindow
 }
@@ -123,6 +133,18 @@ function cameraStateFromSettings(cam: CameraSettings): CameraState {
 // ---------------------------------------------------------------------------
 // Benchmark runner
 // ---------------------------------------------------------------------------
+
+/**
+ * Micro-benchmark for worker `#doBuild`: first compile is structural (WGSL + pipelines), second
+ * uses the same scene graph with a scalar tweak (param-only path when fingerprints match).
+ */
+export async function runBuildBenchmark(
+    renderer: SDFRenderer,
+    structuralSrc = DEFAULT_BUILD_BENCHMARK_STRUCTURAL,
+    paramOnlySrc = DEFAULT_BUILD_BENCHMARK_PARAM_ONLY,
+): Promise<BuildBenchmarkResult> {
+    return renderer.benchmarkBuild(structuralSrc, paramOnlySrc)
+}
 
 /**
  * Run the benchmark suite using an offscreen renderer.

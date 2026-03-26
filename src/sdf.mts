@@ -16,6 +16,7 @@ import { PushPullController } from "./interaction/push-pull.mjs"
 import type { MeshData } from "./export/export.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
+    type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
     type PreviewShadingParams,
     type WorkerToMainMessage,
@@ -41,7 +42,7 @@ export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
 export { EdgeKind } from "./edge-kind.mjs"
 
-export type { SerializedNode } from "./render-worker-protocol.mjs"
+export type { SerializedNode, BuildTimingBreakdownMs } from "./render-worker-protocol.mjs"
 
 /** Default max frames per second for the preview. Main thread throttles render messages to the worker. */
 const DEFAULT_TARGET_FPS = 120
@@ -139,6 +140,8 @@ export class SDFRenderer {
     #latestThumbnailRequestId = 0
     #pendingTranspile = new Map<number, { kind: TranspileKind; documentName?: string; width?: number; height?: number; simplifyOnExport?: boolean }>()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
+    /** Last successful worker `#doBuild` breakdown (when `buildComplete` included `timingMs`). */
+    #lastBuildTimingMs: BuildTimingBreakdownMs | null = null
     #pendingRenderMesh = new Map<number, { resolve: (v: MeshData) => void; reject: (err: unknown) => void }>()
     #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
     #pendingThumbnail = new Map<number, { resolve: (v: ImageData) => void; reject: (err: unknown) => void }>()
@@ -343,6 +346,7 @@ export class SDFRenderer {
                             this.#compiledPosY = new Map(msg.compiledPosY ?? [])
                             this.#controls.loadCameraFromSettings()
                             this.#needsRender = true
+                            this.#lastBuildTimingMs = msg.timingMs ?? null
                         }
                     }
                     pending.resolve(!msg.superseded)
@@ -1426,6 +1430,26 @@ export class SDFRenderer {
             this.#pendingBenchmark.set(requestId, { resolve })
             this.#worker.postMessage({ type: "benchmark", frameCount, waitForGPU, requestId })
         })
+    }
+
+    /** Last worker `#doBuild` timing buckets from the most recent successful build for the active document. */
+    getLastBuildTimingMs(): BuildTimingBreakdownMs | null {
+        return this.#lastBuildTimingMs
+    }
+
+    /**
+     * Run a structural build then a param-only build (same scene graph) and return worker-reported
+     * `#doBuild` breakdowns. Use with `runBenchmarkSuite` steady-state FPS to separate CPU build from GPU render cost.
+     */
+    async benchmarkBuild(structuralSrc: string, paramOnlySrc: string): Promise<{
+        structural: BuildTimingBreakdownMs | null
+        paramOnly: BuildTimingBreakdownMs | null
+    }> {
+        await this.build(structuralSrc.trim())
+        const structural = this.#lastBuildTimingMs
+        await this.build(paramOnlySrc.trim())
+        const paramOnly = this.#lastBuildTimingMs
+        return { structural, paramOnly }
     }
 
     async thumbnail(src: string, width?: number, height?: number, documentName?: string): Promise<ImageData> {

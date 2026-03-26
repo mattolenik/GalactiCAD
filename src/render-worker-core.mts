@@ -18,11 +18,14 @@ import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
     SCENE_PARAMS_BYTE_SIZE,
     PREVIEW_PARAMS_F32_BYTE_SIZE,
+    PREVIEW_PARAMS_MAT3_BYTE_SIZE,
     PREVIEW_PARAMS_VEC2_BYTE_SIZE,
     PREVIEW_PARAMS_VEC3_BYTE_SIZE,
     PREVIEW_UNIFORM_F32_COUNT,
+    PREVIEW_UNIFORM_MAT3_COUNT,
     PREVIEW_UNIFORM_VEC2_COUNT,
     PREVIEW_UNIFORM_VEC3_COUNT,
+    PREVIEW_MAT3_PACK_FLOATS,
     type PreviewParamsOut,
 } from "./scene/scene-params.mjs"
 import { serializeSceneNodes } from "./scene-serializer.mjs"
@@ -30,6 +33,7 @@ import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
+    type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
     type PreviewShadingParams,
     type RenderSelectionState,
@@ -47,6 +51,24 @@ const SELECTED_EDGES_HEADER = 16
 const SELECTED_EDGE_SIZE = 80
 const SELECTED_EDGES_COUNT = 16
 const SELECTED_EDGES_TOTAL = SELECTED_EDGES_HEADER + SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE
+
+function float32ArraysEqual(a: Float32Array, b: Float32Array): boolean {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false
+    }
+    return true
+}
+
+function arrayBuffersEqual(a: ArrayBuffer, b: ArrayBuffer): boolean {
+    if (a.byteLength !== b.byteLength) return false
+    const va = new Uint8Array(a)
+    const vb = new Uint8Array(b)
+    for (let i = 0; i < va.length; i++) {
+        if (va[i] !== vb[i]) return false
+    }
+    return true
+}
 
 class UniformBuffers {
     camera!: GPUBuffer
@@ -69,6 +91,9 @@ class UniformBuffers {
     previewParamsF32!: GPUBuffer
     previewParamsVec2!: GPUBuffer
     previewParamsVec3!: GPUBuffer
+    previewParamsMat3!: GPUBuffer
+    /** Dense f32 mirror for cap drag (same logical indices as preview f32 uniforms). */
+    previewCapParamDrag!: GPUBuffer
     edgeHit!: GPUBuffer
     selectedEdges!: GPUBuffer
     hoverEdgeHit!: GPUBuffer
@@ -150,15 +175,24 @@ export class RenderWorkerCore {
     #sabStagingBuf = new ArrayBuffer(4096)
     #lastRenderMsg: Extract<MainToWorkerMessage, { type: "render" }> | null = null
     #lastSharedBuffer: SharedArrayBuffer | null = null
-    /** CPU mirrors for preview param banks: full reupload from `packPreviewParams()` on build; cap push/pull patches `f32` shadow then full `previewParamsF32` upload (uniform writes are 256-byte-offset aligned). */
+    /** CPU mirrors for preview param banks: `#uploadBuildBuffers` syncs packed arrays into shadows and uploads used prefixes. */
     #previewF32Shadow!: Float32Array
     #previewVec2Shadow!: Float32Array
     #previewVec3Shadow!: Float32Array
+    #previewMat3Shadow!: Float32Array
     #lastSelectionMode = 0
     #builtBody: string | null = null
     /** Set after a successful full shader rebuild; used to skip compilation when `structuralFingerprint()` is unchanged. */
     #builtStructuralFingerprint: string | null = null
     #fpsVersion = 0
+    /** Last packed scene params uploaded to bounds/mdc buffers (param-only dedup). */
+    #lastSceneParamUpload: Float32Array | null = null
+    /** Last polygon vertex bytes uploaded (param-only dedup). */
+    #lastPolygonVertexUpload: ArrayBuffer | null = null
+    #lastPreviewF32Upload: Float32Array | null = null
+    #lastPreviewVec2Upload: Float32Array | null = null
+    #lastPreviewVec3Upload: Float32Array | null = null
+    #lastPreviewMat3Upload: Float32Array | null = null
 
     async init(canvas: OffscreenCanvas): Promise<void> {
         this.#canvas = canvas
@@ -221,7 +255,10 @@ export class RenderWorkerCore {
         this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, [], 6.0, 0.02)
     }
 
-    async build(body: string, _documentName?: string | null): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
+    async build(body: string, _documentName?: string | null): Promise<
+        | { sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][]; timingMs: BuildTimingBreakdownMs }
+        | { superseded: true }
+    > {
         const prev = this.#buildLock
         let release!: () => void
         this.#buildLock = new Promise<void>(r => (release = r))
@@ -241,14 +278,20 @@ export class RenderWorkerCore {
         this.#buildGeneration++
     }
 
-    async #doBuild(body: string): Promise<{ sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][] } | { superseded: true }> {
+    async #doBuild(body: string): Promise<
+        | { sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][]; timingMs: BuildTimingBreakdownMs }
+        | { superseded: true }
+    > {
+        const roundMs = (x: number) => Math.round(x * 100) / 100
         this.#builtBody = body
         const t0 = performance.now()
         this.#scene = new SceneInfo(body, { bvhEnabled: this.#bvhEnabled })
+        const tSceneConstruct = performance.now()
         const scene = this.#scene
         const allNodes = scene.getAllNodes()
+        const tFp0 = performance.now()
         const fingerprint = scene.structuralFingerprint()
-        const tEvaluate = performance.now()
+        const tFingerprint = performance.now()
 
         const paramOnly =
             this.#builtStructuralFingerprint !== null &&
@@ -266,32 +309,44 @@ export class RenderWorkerCore {
                 newCompiledPosY.set(node.id, node.pos.y)
             }
         }
+        const tPackScene0 = performance.now()
         const sceneParamData = scene.packSceneParams()
+        const tPackScene1 = performance.now()
         const sceneParamUpload = sceneParamData.byteLength > 0 ? sceneParamData : new Float32Array([0])
+        const tPackPrev0 = performance.now()
         const previewPacked = scene.packPreviewParams()
-        const tPacked = performance.now()
+        const tPackPreview = performance.now()
 
         if (paramOnly) {
             const tBuf0 = performance.now()
             this.#compiledPosY = newCompiledPosY
-            if (scene.totalPolygonVertices > 0) {
-                this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
+            this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
+            const tBuf1 = performance.now()
+            const tSer0 = performance.now()
+            const sceneNodes = serializeSceneNodes(scene, allNodes)
+            const tSer1 = performance.now()
+            const total = performance.now() - t0
+            const timingMs: BuildTimingBreakdownMs = {
+                sceneConstructMs: roundMs(tSceneConstruct - t0),
+                fingerprintMs: roundMs(tFingerprint - tFp0),
+                packSceneMs: roundMs(tPackScene1 - tPackScene0),
+                packPreviewMs: roundMs(tPackPreview - tPackPrev0),
+                serializeNodesMs: roundMs(tSer1 - tSer0),
+                gpuBuffersMs: roundMs(tBuf1 - tBuf0),
+                totalMs: roundMs(total),
+                paramOnly: true,
             }
-            this.#device.queue.writeBuffer(this.#uniformBuffers.boundsSceneParams, 0, sceneParamUpload as BufferSource)
-            this.#device.queue.writeBuffer(this.#uniformBuffers.mdcSceneParams, 0, sceneParamUpload as BufferSource)
-            this.#uploadPreviewUniforms(previewPacked)
-            this.#beamBindGroupInvalid = true
-            this.#sceneBindGroupInvalid = true
-            const t1 = performance.now()
-            const roundMs = (x: number) => Math.round(x * 100) / 100
             log("RenderWorker").debug("scene build param-only (ms)", {
-                evaluate: roundMs(tEvaluate - t0),
-                pack: roundMs(tPacked - tEvaluate),
-                gpuBuffers: roundMs(t1 - tBuf0),
-                total: roundMs(t1 - t0),
-                under10msTarget: t1 - t0 < 10,
+                sceneConstruct: timingMs.sceneConstructMs,
+                fingerprint: timingMs.fingerprintMs,
+                packScene: timingMs.packSceneMs,
+                packPreview: timingMs.packPreviewMs,
+                serializeNodes: timingMs.serializeNodesMs,
+                gpuBuffers: timingMs.gpuBuffersMs,
+                total: timingMs.totalMs,
+                under10msTarget: total < 10,
             })
-            return { sceneNodes: serializeSceneNodes(scene, allNodes), compiledPosY: Array.from(this.#compiledPosY) }
+            return { sceneNodes, compiledPosY: Array.from(this.#compiledPosY), timingMs }
         }
 
         const tWgsl0 = performance.now()
@@ -341,16 +396,17 @@ export class RenderWorkerCore {
         ])
         const tPipeline1 = performance.now()
         if (generation !== this.#buildGeneration) {
-            return { superseded: true } as { sceneNodes: never; compiledPosY: never; superseded: true }
+            return { superseded: true } as { superseded: true }
         }
 
-        const roundMs = (x: number) => Math.round(x * 100) / 100
         log("RenderWorker").debug("scene build full (ms)", {
-            evaluate: roundMs(tEvaluate - t0),
+            sceneConstruct: roundMs(tSceneConstruct - t0),
+            fingerprint: roundMs(tFingerprint - tFp0),
+            packScene: roundMs(tPackScene1 - tPackScene0),
+            packPreview: roundMs(tPackPreview - tPackPrev0),
             wgslScene: roundMs(tWgsl1 - tWgsl0),
             shaderModules: roundMs(tShaderMod1 - tShaderMod0),
             pipelines: roundMs(tPipeline1 - tPipeline0),
-            pack: roundMs(tPacked - tEvaluate),
             total: roundMs(tPipeline1 - t0),
         })
 
@@ -367,30 +423,111 @@ export class RenderWorkerCore {
         // snaps back to its pre-drag position during pipeline compilation.
         const tBuf0 = performance.now()
         this.#compiledPosY = newCompiledPosY
-        if (scene.totalPolygonVertices > 0) {
-            this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
-        }
-        this.#device.queue.writeBuffer(this.#uniformBuffers.boundsSceneParams, 0, sceneParamUpload as BufferSource)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.mdcSceneParams, 0, sceneParamUpload as BufferSource)
-        this.#uploadPreviewUniforms(previewPacked)
+        this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
         this.#beamBindGroupInvalid = true
         this.#sceneBindGroupInvalid = true
         const tBuf1 = performance.now()
         log("RenderWorker").debug("scene build full buffer upload (ms)", { gpuBuffers: roundMs(tBuf1 - tBuf0) })
 
-        return { sceneNodes: serializeSceneNodes(scene, allNodes), compiledPosY: Array.from(this.#compiledPosY) }
+        const tSer0 = performance.now()
+        const sceneNodes = serializeSceneNodes(scene, allNodes)
+        const tSer1 = performance.now()
+        const total = performance.now() - t0
+        const timingMs: BuildTimingBreakdownMs = {
+            sceneConstructMs: roundMs(tSceneConstruct - t0),
+            fingerprintMs: roundMs(tFingerprint - tFp0),
+            packSceneMs: roundMs(tPackScene1 - tPackScene0),
+            packPreviewMs: roundMs(tPackPreview - tPackPrev0),
+            serializeNodesMs: roundMs(tSer1 - tSer0),
+            wgslSceneMs: roundMs(tWgsl1 - tWgsl0),
+            shaderModulesMs: roundMs(tShaderMod1 - tShaderMod0),
+            pipelinesMs: roundMs(tPipeline1 - tPipeline0),
+            gpuBuffersMs: roundMs(tBuf1 - tBuf0),
+            totalMs: roundMs(total),
+            paramOnly: false,
+        }
+        return { sceneNodes, compiledPosY: Array.from(this.#compiledPosY), timingMs }
     }
 
-    #uploadPreviewUniforms(p: PreviewParamsOut): void {
-        this.#previewF32Shadow.fill(0)
-        this.#previewF32Shadow.set(p.f32)
-        this.#previewVec2Shadow.fill(0)
-        this.#previewVec2Shadow.set(p.vec2)
-        this.#previewVec3Shadow.fill(0)
-        this.#previewVec3Shadow.set(p.vec3)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsF32, 0, this.#previewF32Shadow as BufferSource)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsVec2, 0, this.#previewVec2Shadow as BufferSource)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsVec3, 0, this.#previewVec3Shadow as BufferSource)
+    /**
+     * Upload polygon, bounds/MDC scene params, and preview uniform banks; optionally skips
+     * `writeBuffer` when packed payload matches the last upload (param-only and full builds).
+     */
+    #uploadBuildBuffers(
+        scene: SceneInfo,
+        polygonVertexData: ArrayBuffer,
+        sceneParamUpload: Float32Array,
+        p: PreviewParamsOut,
+        dedup: boolean,
+    ): void {
+        const q = this.#device.queue
+        if (scene.totalPolygonVertices > 0) {
+            if (!dedup || !this.#lastPolygonVertexUpload || !arrayBuffersEqual(this.#lastPolygonVertexUpload, polygonVertexData)) {
+                q.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
+                if (dedup) {
+                    this.#lastPolygonVertexUpload = polygonVertexData.slice(0)
+                }
+            }
+        } else if (dedup) {
+            this.#lastPolygonVertexUpload = null
+        }
+
+        if (!dedup || !this.#lastSceneParamUpload || !float32ArraysEqual(this.#lastSceneParamUpload, sceneParamUpload)) {
+            q.writeBuffer(this.#uniformBuffers.boundsSceneParams, 0, sceneParamUpload as BufferSource)
+            q.writeBuffer(this.#uniformBuffers.mdcSceneParams, 0, sceneParamUpload as BufferSource)
+            if (dedup) {
+                this.#lastSceneParamUpload = new Float32Array(sceneParamUpload)
+            }
+        }
+
+        if (p.f32.byteLength > 0) {
+            if (!dedup || !this.#lastPreviewF32Upload || !float32ArraysEqual(this.#lastPreviewF32Upload, p.f32)) {
+                this.#previewF32Shadow.set(p.f32)
+                q.writeBuffer(this.#uniformBuffers.previewParamsF32, 0, p.f32 as BufferSource)
+                q.writeBuffer(this.#uniformBuffers.previewCapParamDrag, 0, p.f32 as BufferSource)
+                if (dedup) {
+                    this.#lastPreviewF32Upload = new Float32Array(p.f32)
+                }
+            }
+        } else if (dedup) {
+            this.#lastPreviewF32Upload = null
+        }
+
+        if (p.vec2.byteLength > 0) {
+            if (!dedup || !this.#lastPreviewVec2Upload || !float32ArraysEqual(this.#lastPreviewVec2Upload, p.vec2)) {
+                this.#previewVec2Shadow.set(p.vec2)
+                q.writeBuffer(this.#uniformBuffers.previewParamsVec2, 0, p.vec2 as BufferSource)
+                if (dedup) {
+                    this.#lastPreviewVec2Upload = new Float32Array(p.vec2)
+                }
+            }
+        } else if (dedup) {
+            this.#lastPreviewVec2Upload = null
+        }
+
+        if (p.vec3.byteLength > 0) {
+            if (!dedup || !this.#lastPreviewVec3Upload || !float32ArraysEqual(this.#lastPreviewVec3Upload, p.vec3)) {
+                this.#previewVec3Shadow.set(p.vec3)
+                q.writeBuffer(this.#uniformBuffers.previewParamsVec3, 0, p.vec3 as BufferSource)
+                if (dedup) {
+                    this.#lastPreviewVec3Upload = new Float32Array(p.vec3)
+                }
+            }
+        } else if (dedup) {
+            this.#lastPreviewVec3Upload = null
+        }
+
+        if (p.mat3.byteLength > 0) {
+            if (!dedup || !this.#lastPreviewMat3Upload || !float32ArraysEqual(this.#lastPreviewMat3Upload, p.mat3)) {
+                this.#previewMat3Shadow.set(p.mat3)
+                q.writeBuffer(this.#uniformBuffers.previewParamsMat3, 0, p.mat3 as BufferSource)
+                if (dedup) {
+                    this.#lastPreviewMat3Upload = new Float32Array(p.mat3)
+                }
+            }
+        } else if (dedup) {
+            this.#lastPreviewMat3Upload = null
+        }
     }
 
     resize(fullWidth: number, fullHeight: number): void {
@@ -514,6 +651,9 @@ export class RenderWorkerCore {
                         { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
                         { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
                         { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
+                        { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
+                        { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
+                        { binding: 22, resource: { buffer: this.#uniformBuffers.boundsSceneParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -690,6 +830,9 @@ export class RenderWorkerCore {
                         { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
                         { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
                         { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
+                        { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
+                        { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
+                        { binding: 22, resource: { buffer: this.#uniformBuffers.boundsSceneParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -781,7 +924,6 @@ export class RenderWorkerCore {
             const sceneSDF = scene.compile()
             const sceneSDF_fast = scene.compileFast()
             const sceneSDF_mid = scene.compileMid()
-            const sceneEdgeHelpers = scene.compileEdgeHelpers()
             const shaderCompiler = new ShaderCompiler(this.#device)
                 .replace("insert", "sceneAuxFast", sceneAuxFast)
                 .replace("insert", "sceneAux", sceneAux)
@@ -789,7 +931,6 @@ export class RenderWorkerCore {
                 .replace("insert", "sceneSDF_fast", sceneSDF_fast)
                 .replace("insert", "sceneSDF", sceneSDF)
                 .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-                .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
             const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
             const mdc = new MDCExport(
                 this.#helper,
@@ -837,12 +978,10 @@ export class RenderWorkerCore {
         const sceneAux = scene.compileAux()
         const sceneAuxFast = scene.compileAuxFast()
         const sceneSDF_fast = scene.compileFast()
-        const sceneEdgeHelpers = scene.compileEdgeHelpers()
         const shaderCompiler = new ShaderCompiler(this.#device)
             .replace("insert", "sceneAuxFast", sceneAuxFast)
             .replace("insert", "sceneAux", sceneAux)
             .replace("insert", "sceneSDF_fast", sceneSDF_fast)
-            .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
         let boundsShaderModule: GPUShaderModule | undefined
         let boundsPipeline: GPUComputePipeline | undefined
         let bindGroup: GPUBindGroup | undefined
@@ -1152,6 +1291,9 @@ export class RenderWorkerCore {
                         { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
                         { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
                         { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
+                        { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
+                        { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
+                        { binding: 22, resource: { buffer: this.#uniformBuffers.boundsSceneParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -1186,6 +1328,9 @@ export class RenderWorkerCore {
                     { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
                     { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
                     { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
+                    { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
+                    { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
+                    { binding: 22, resource: { buffer: this.#uniformBuffers.boundsSceneParams } },
                 ],
             })
             this.#sceneBindGroupInvalid = false
@@ -1313,10 +1458,21 @@ export class RenderWorkerCore {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "previewParamsVec3",
         })
+        ub.previewParamsMat3 = this.#device.createBuffer({
+            size: PREVIEW_PARAMS_MAT3_BYTE_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "previewParamsMat3",
+        })
+        ub.previewCapParamDrag = this.#device.createBuffer({
+            size: PREVIEW_PARAMS_F32_BYTE_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "previewCapParamDrag",
+        })
 
         this.#previewF32Shadow = new Float32Array(PREVIEW_UNIFORM_F32_COUNT)
         this.#previewVec2Shadow = new Float32Array(PREVIEW_UNIFORM_VEC2_COUNT * 2)
         this.#previewVec3Shadow = new Float32Array(PREVIEW_UNIFORM_VEC3_COUNT * 4)
+        this.#previewMat3Shadow = new Float32Array(PREVIEW_UNIFORM_MAT3_COUNT * PREVIEW_MAT3_PACK_FLOATS)
 
         ub.edgeHit = this.#device.createBuffer({
             size: EDGE_HITS_SIZE,
@@ -1587,8 +1743,8 @@ export class RenderWorkerCore {
             const f32Off = byteOffset >> 2
             this.#previewF32Shadow[f32Off] = patch[0]!
             this.#previewF32Shadow[f32Off + 1] = patch[1]!
-            // Uniform buffer writes must be 256-byte aligned; cap drag updates shadow then re-upload whole bank.
-            this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsF32, 0, this.#previewF32Shadow as BufferSource)
+            // Uniform sub-range writes are 256-byte aligned; mirror shadow then full-bank upload (same as legacy preview f32 patch path).
+            this.#device.queue.writeBuffer(this.#uniformBuffers.previewCapParamDrag, 0, this.#previewF32Shadow as BufferSource)
         }
         if (msg.selectedObjectIds) {
             if (msg.selectedObjectIds instanceof ArrayBuffer) {

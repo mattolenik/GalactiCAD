@@ -62,7 +62,7 @@ export class Shell extends UnaryOperator {
         return { funcName, varName, text: `sdfShellMid(${childResult.text}, ${t})` }
     }
 
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         const b = this.arg.computeBounds()
         if (!b) return null
         return aabbExpand(b, this.thickness * 0.5)

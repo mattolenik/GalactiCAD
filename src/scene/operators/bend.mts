@@ -74,7 +74,7 @@ export class Bend extends UnaryOperator {
         return { funcName, varName, text: `sdfBendNormalMid(${bentChild}, p, ${amt})` }
     }
 
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         const b = this.arg.computeBounds()
         if (!b) return null
         const r = Math.sqrt(b.hx * b.hx + b.hy * b.hy)

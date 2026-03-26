@@ -62,7 +62,7 @@ export class Offset extends UnaryOperator {
         return { funcName, varName, text: `sdfOffsetMid(${childResult.text}, ${amt})` }
     }
 
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         const b = this.arg.computeBounds()
         if (!b) return null
         return aabbExpand(b, this.amount)

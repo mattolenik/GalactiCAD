@@ -222,7 +222,7 @@ export function findReturnStatementLine(src: string): number | null {
  */
 const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
 const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe"])
-const MODIFIER_NAMES = new Set(["rotate", "shell", "offset", "elongate", "twist", "bend", "taper"])
+const MODIFIER_NAMES = new Set(["rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
 
 /**
@@ -420,7 +420,7 @@ export class SourceParser {
      * For variable code: `const s=sphere(...); union(s, box(...))` → [sphere_call, box_call]
      *
      * Recurses through CSG_PASSTHROUGH_FUNCTIONS; stops at primitives and rendering composites
-     * (extrude, loft, lathe, rotate) which are treated as leaves.
+     * (extrude, loft, lathe, rotate, scale) which are treated as leaves.
      */
     resolveLogicalLeafCalls(compositeCall: ParsedShapeCall): ParsedShapeCall[] {
         const results: ParsedShapeCall[] = []
@@ -431,7 +431,7 @@ export class SourceParser {
             visited.add(call.callStart)
 
             if (!CSG_PASSTHROUGH_FUNCTIONS.has(call.functionName)) {
-                // Leaf: primitive or rendering composite (extrude, rotate, etc.)
+                // Leaf: primitive or rendering composite (extrude, rotate, scale, etc.)
                 results.push(call)
                 return
             }
@@ -562,6 +562,8 @@ export class SourceParser {
             this.parseLatheFluentArgs(callNode, parsedCall)
         } else if (funcName === "rotate") {
             this.parseRotateArgs(callNode, parsedCall)
+        } else if (funcName === "scale") {
+            this.parseScaleArgs(callNode, parsedCall)
         } else if (funcName === "shell" || funcName === "offset") {
             this.parseShellOffsetArgs(callNode, parsedCall)
         } else if (funcName === "elongate") {
@@ -889,6 +891,10 @@ export class SourceParser {
 
     private parseRotateArgs(callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {
         // Rotate matches by type only; no args needed for node matching
+    }
+
+    private parseScaleArgs(_callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {
+        // Scale matches by type only; no args needed for node matching
     }
 
     private parseShellOffsetArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {

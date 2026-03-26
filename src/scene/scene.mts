@@ -9,6 +9,7 @@ import { Morph, morph } from "./operators/morph.mjs"
 import { Offset, offset } from "./operators/offset.mjs"
 import { Pipe, pipe } from "./operators/pipe.mjs"
 import { Rotate, rotate } from "./operators/rotate.mjs"
+import { Scale, scale } from "./operators/scale.mjs"
 import { Seam, seam } from "./operators/seam.mjs"
 import { Shell, shell } from "./operators/shell.mjs"
 import { Subtract, subtract } from "./operators/subtract.mjs"
@@ -33,7 +34,7 @@ import { VirtualCapNode } from "./primitives/virtual-cap.mjs"
 import { ThreadedRod, threaded_rod } from "./primitives/threaded-rod.mjs"
 import { Torus, torus } from "./primitives/torus.mjs"
 
-export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, Rotate, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, rotate, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, twist, union }
+export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, twist, union }
 export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
 
 /** IDs 1022–1023 reserved for face highlight (cap selection). Scene nodes use 0–1021. */
@@ -93,10 +94,10 @@ export class SceneInfo {
         if (options?.bvhEnabled !== undefined) {
             this.bvhEnabled = options.bvhEnabled
         }
-        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "shell", "offset", "elongate", "twist", "bend", "taper", transpiledBody)(
+        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", transpiledBody)(
             box, sphere, subtract, union, cylinder, cone, torus, threaded_rod, capsule, plane, hexprism, disc, blob,
             intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam,
-            rotate, shell, offset, elongate, twist, bend, taper)
+            rotate, scale, shell, offset, elongate, twist, bend, taper)
         this.root.scene = this
         this.root.build()
     }

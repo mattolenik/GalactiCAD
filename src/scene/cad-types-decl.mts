@@ -36,6 +36,8 @@ declare class Node {
 
 /** Rotate a node. rotate(rot, node) */
 declare function rotate(rot: Vec3, node: Node): Rotate;
+/** Uniform or non-uniform scale about the origin. scale([sx,sy,sz], node) */
+declare function scale(factors: Vec3, node: Node): Scale;
 /** Hollow shell of a shape. shell(t, node) */
 declare function shell(t: number, node: Node): Shell;
 /** Uniform offset. offset(amount, node) */
@@ -274,6 +276,9 @@ declare class Taper extends Node {}
 
 /** Rotate a child node. */
 declare class Rotate extends Node {}
+
+/** Scale a child node about the origin. */
+declare class Scale extends Node {}
 
 // ---------------------------------------------------------------------------
 // 2-D → 3-D operations

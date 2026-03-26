@@ -1508,6 +1508,34 @@ fn sdfRotateNormalMid(r: SDFResultMid, m: mat3x3f) -> SDFResultMid {
     return out;
 }
 
+// Scale: evaluate child at p/s; distance scaled by min(|s|) (conservative for non-uniform scale).
+fn sdfScaleFast(r: FastSDFResult, s: vec3f) -> FastSDFResult {
+    let m = min(abs(s.x), min(abs(s.y), abs(s.z)));
+    return sdfFast(r.d * m, r.g, r.safeStepMul);
+}
+
+fn sdfScaleNormal(r: SDFResult, s: vec3f) -> SDFResult {
+    var out = r;
+    let m = min(abs(s.x), min(abs(s.y), abs(s.z)));
+    out.d = r.d * m;
+    let invs = vec3f(1.0 / s.x, 1.0 / s.y, 1.0 / s.z);
+    let scaledN = r.n * invs;
+    out.n = safeNormalize(scaledN, r.n);
+    out.g = r.g * m * length(scaledN);
+    return out;
+}
+
+fn sdfScaleNormalMid(r: SDFResultMid, s: vec3f) -> SDFResultMid {
+    var out = r;
+    let m = min(abs(s.x), min(abs(s.y), abs(s.z)));
+    out.d = r.d * m;
+    let invs = vec3f(1.0 / s.x, 1.0 / s.y, 1.0 / s.z);
+    let scaledN = r.n * invs;
+    out.n = safeNormalize(scaledN, r.n);
+    out.g = r.g * m * length(scaledN);
+    return out;
+}
+
 ////////////////////////////////////////////////////
 //  UNARY SDF MODIFIERS (Shell, Offset)
 ////////////////////////////////////////////////////

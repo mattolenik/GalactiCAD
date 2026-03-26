@@ -58,6 +58,18 @@ export function aabbIntersect(a: AABB, b: AABB): AABB | null {
  * Transform an AABB by a 3x3 rotation matrix (column-major, 9 values).
  * Uses the standard method of transforming all 8 corners and re-bounding.
  */
+/** Scale an AABB about the origin: center and half-extents scale per axis (absolute extent uses |factor|). */
+export function aabbScale(b: AABB, sx: number, sy: number, sz: number): AABB {
+    return {
+        cx: b.cx * sx,
+        cy: b.cy * sy,
+        cz: b.cz * sz,
+        hx: b.hx * Math.abs(sx),
+        hy: b.hy * Math.abs(sy),
+        hz: b.hz * Math.abs(sz),
+    }
+}
+
 export function aabbRotate(b: AABB, m: number[]): AABB {
     // m is column-major 3x3: m[col*3+row]
     // Optimized: new half-extents = |M| * half-extents (absolute value of matrix times half-extents)

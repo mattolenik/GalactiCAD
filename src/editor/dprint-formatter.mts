@@ -12,13 +12,17 @@ const GLOBAL_CONFIG = {
     indentWidth: 2,
     lineWidth: 100,
     useTabs: false,
-    quoteStyle: "preferSingle",
-    quoteProps: "asNeeded",
-} as const
+}
 
 const PLUGIN_CONFIG = {
-    semiColons: "asi" as const,
-} as const
+    semiColons: "asi",
+    quoteStyle: "preferSingle",
+    quoteProps: "asNeeded",
+    useBraces: "preferNone",
+    preferHanging: true,
+    "arrowFunction.useParentheses": "preferNone",
+    "ignoreNodeCommentText": "no-format"
+}
 
 let formatter: { formatText: (req: { filePath: string; fileText: string }) => string } | null = null
 

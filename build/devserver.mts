@@ -1,22 +1,87 @@
 import fs from "fs/promises"
-import http from "http"
+import http, { type IncomingMessage, type ServerResponse } from "http"
 import path from "path"
 import WebSocket, { WebSocketServer } from "ws"
+import { BrowserBridge } from "./devserver-bridge.mjs"
+import { createMcpPostHandler, handleMcpOptions, mcpMethodNotAllowed } from "./devserver-mcp.mjs"
 
 export interface RunFileData {
     pid: number
     port: number
 }
 
+const INJECTED_BRIDGE_SCRIPT = `
+        <script type="module">
+        (function () {
+            const MAX = 5000;
+            const buf = [];
+            function push(level, parts) {
+                const ts = new Date().toISOString();
+                const text = parts.map(function (p) {
+                    if (typeof p === "string") return p;
+                    try { return JSON.stringify(p); } catch (_e) { return String(p); }
+                }).join(" ");
+                const line = "[" + ts + "] [" + level + "] " + text;
+                buf.push(line);
+                if (buf.length > MAX) buf.splice(0, buf.length - MAX);
+            }
+            var methods = ["log", "info", "warn", "error", "debug"];
+            for (var i = 0; i < methods.length; i++) {
+                (function (m) {
+                    var orig = console[m].bind(console);
+                    console[m] = function () {
+                        push(m, Array.prototype.slice.call(arguments));
+                        return orig.apply(console, arguments);
+                    };
+                })(methods[i]);
+            }
+            window.addEventListener("error", function (ev) {
+                push("error", ["[window.error] " + ev.message + " at " + ev.filename + ":" + ev.lineno + ":" + ev.colno]);
+            });
+            window.addEventListener("unhandledrejection", function (ev) {
+                var r = ev.reason;
+                var msg = r && r.stack ? r.stack : r && r.message ? r.message : String(r);
+                push("error", ["[unhandledrejection] " + msg]);
+            });
+            var ws = new WebSocket("ws://" + location.host);
+            ws.addEventListener("message", function (event) {
+                var data = event.data;
+                if (typeof data !== "string") return;
+                var msg;
+                try { msg = JSON.parse(data); } catch (_e) { return; }
+                if (msg.type === "reload") {
+                    ws.close();
+                    window.location.reload();
+                    return;
+                }
+                if (msg.type === "getConsoleLogs" && msg.id && typeof msg.n === "number") {
+                    var n = Math.min(10000, Math.max(1, Math.floor(msg.n)));
+                    var lines = buf.slice(-n);
+                    try {
+                        ws.send(JSON.stringify({ type: "consoleLogsResult", id: msg.id, lines: lines }));
+                    } catch (_e1) {
+                        try {
+                            ws.send(JSON.stringify({ type: "consoleLogsError", id: msg.id, message: "send failed" }));
+                        } catch (_e2) {}
+                    }
+                }
+            });
+        })();
+        </script>`
+
 export class DevServer {
     httpServer!: http.Server
     wsServer!: WebSocketServer
+    private readonly bridge: BrowserBridge
 
     private constructor(
         public serveRoot: string,
         public port: number,
-        public indexFileName = "index.html",
-    ) { }
+        public indexFileName: string,
+        bridge: BrowserBridge,
+    ) {
+        this.bridge = bridge
+    }
 
     static async create(
         serveRoot: string,
@@ -26,39 +91,31 @@ export class DevServer {
         err = console.error,
         options?: { runFile: string; pid: number }
     ): Promise<DevServer> {
-        const clientScript = `
-        <script type="module">
-            const ws = new WebSocket("ws://" + location.host);
-            ws.addEventListener("message", (event) => {
-                if (event.data === "reload") {
-                    ws.close();
-                    window.location.reload();
-                }
-            });
-        </script>`
+        const bridge = new BrowserBridge()
+        const mcpPost = createMcpPostHandler(n => bridge.requestConsoleLogs(n))
 
-        const { server, port: actualPort } = await listenWithPortRetry(serveRoot, port, clientScript, indexFileName, log, err)
-        const instance = new DevServer(serveRoot, actualPort, indexFileName)
+        const { server, port: actualPort, wss } = await listenWithPortRetry(
+            serveRoot,
+            port,
+            INJECTED_BRIDGE_SCRIPT,
+            indexFileName,
+            bridge,
+            mcpPost,
+            log,
+            err,
+        )
+        const instance = new DevServer(serveRoot, actualPort, indexFileName, bridge)
         instance.httpServer = server
+        instance.wsServer = wss
         if (options) {
             await fs.writeFile(options.runFile, JSON.stringify({ pid: options.pid, port: actualPort } satisfies RunFileData, null, 2))
         }
-        instance.wsServer = new WebSocketServer({ server })
-            .on("connection", (ws: WebSocket) => {
-                ws.on("error", (error: Error) => {
-                    err("WebSocket error: ", error)
-                })
-            })
-        log(`Live reload WebSocket on http://localhost:${actualPort} (same port as HTTP)`)
+        log(`Live reload + MCP WebSocket on http://localhost:${actualPort} (same port as HTTP); MCP POST http://localhost:${actualPort}/mcp`)
         return instance
     }
 
-    public command(cmd: string) {
-        this.wsServer.clients.forEach(client => client.send(cmd))
-    }
-
     public reload() {
-        this.command("reload")
+        this.bridge.broadcastReload()
     }
 
     public close() {
@@ -67,7 +124,24 @@ export class DevServer {
     }
 }
 
-function createHttpServer(dir: string, clientScript = "", indexFileName = "index.html", log = console.log, err = console.error) {
+/** Read raw body (for JSON MCP POST). */
+async function readRequestBody(req: IncomingMessage): Promise<Buffer> {
+    const chunks: Buffer[] = []
+    for await (const chunk of req) {
+        chunks.push(chunk as Buffer)
+    }
+    return Buffer.concat(chunks)
+}
+
+function createHttpServer(
+    dir: string,
+    clientScript: string,
+    indexFileName: string,
+    bridge: BrowserBridge,
+    mcpPostHandler: (req: IncomingMessage, res: ServerResponse, parsedBody: unknown) => Promise<void>,
+    log = console.log,
+    err = console.error,
+) {
     const contentType: Record<string, string> = {
         ".css": "text/css",
         ".gif": "image/gif",
@@ -82,64 +156,121 @@ function createHttpServer(dir: string, clientScript = "", indexFileName = "index
 
     const defaultContentType = "application/octet-stream"
 
-    return http
-        .createServer(async (req, res) => {
-            log(`${req.method} ${req.url}`)
-            let file = path.normalize(path.join(dir, "." + req.url))
-            try {
-                const stats = await fs.stat(file)
-                if (stats.isDirectory()) {
-                    file = path.join(dir, indexFileName)
+    async function handleRequest(req: IncomingMessage, res: ServerResponse) {
+        const pathname = new URL(req.url ?? "/", "http://localhost").pathname
+
+        if (pathname === "/mcp") {
+            if (req.method === "OPTIONS") {
+                handleMcpOptions(res)
+                return
+            }
+            if (req.method === "GET" || req.method === "DELETE") {
+                mcpMethodNotAllowed(res, req.method)
+                return
+            }
+            if (req.method === "POST") {
+                let body: unknown
+                try {
+                    const raw = await readRequestBody(req)
+                    body = raw.length > 0 ? JSON.parse(raw.toString("utf8")) : undefined
+                } catch {
+                    res.writeHead(400, { "content-type": "application/json", "Access-Control-Allow-Origin": "*" })
+                    res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32_700, message: "Parse error" }, id: null }))
+                    return
                 }
-                let data = await fs.readFile(file)
-                res.writeHead(200, {
-                    "content-type": contentType[path.extname(file)] || defaultContentType,
+                await mcpPostHandler(req, res, body)
+                return
+            }
+            mcpMethodNotAllowed(res, req.method ?? "UNKNOWN")
+            return
+        }
+
+        log(`${req.method} ${req.url}`)
+        let file = path.normalize(path.join(dir, "." + req.url))
+        try {
+            const stats = await fs.stat(file)
+            if (stats.isDirectory()) {
+                file = path.join(dir, indexFileName)
+            }
+            let data = await fs.readFile(file)
+            res.writeHead(200, {
+                "content-type": contentType[path.extname(file)] || defaultContentType,
+                "Cross-Origin-Opener-Policy": "same-origin",
+                "Cross-Origin-Embedder-Policy": "credentialless",
+            })
+            if (path.extname(file) === ".html") {
+                const doc = data.toString().replace("</body>", clientScript + "</body>")
+                data = Buffer.from(doc)
+            }
+            res.write(data)
+            res.end()
+        } catch (e: unknown) {
+            const code = e && typeof e === "object" && "code" in e ? (e as NodeJS.ErrnoException).code : undefined
+            if (code === "ENOENT") {
+                res.writeHead(404, {
+                    "content-type": "text/plain",
                     "Cross-Origin-Opener-Policy": "same-origin",
                     "Cross-Origin-Embedder-Policy": "credentialless",
                 })
-                if (path.extname(file) === ".html") {
-                    const doc = data.toString().replace("</body>", clientScript + "</body>")
-                    data = Buffer.from(doc)
-                }
-                res.write(data)
-                res.end()
-            } catch (err: any) {
-                if (err.code === "ENOENT") {
-                    res.writeHead(404, {
-                        "content-type": "text/plain",
-                        "Cross-Origin-Opener-Policy": "same-origin",
-                        "Cross-Origin-Embedder-Policy": "credentialless",
-                    })
-                    res.end("404 not found")
-                } else {
-                    console.error(`Internal error: ${err}`)
-                    res.writeHead(500, {
-                        "content-type": "text/plain",
-                        "Cross-Origin-Opener-Policy": "same-origin",
-                        "Cross-Origin-Embedder-Policy": "credentialless",
-                    })
-                    res.end("500 unknown server error")
-                }
+                res.end("404 not found")
+            } else {
+                console.error(`Internal error: ${e}`)
+                res.writeHead(500, {
+                    "content-type": "text/plain",
+                    "Cross-Origin-Opener-Policy": "same-origin",
+                    "Cross-Origin-Embedder-Policy": "credentialless",
+                })
+                res.end("500 unknown server error")
+            }
+        }
+    }
+
+    return http.createServer((req, res) => {
+        void handleRequest(req, res).catch(e => {
+            err(e)
+            if (!res.headersSent) {
+                res.writeHead(500, { "content-type": "text/plain" })
+                res.end("500 unknown server error")
             }
         })
+    })
 }
 
-function listenWithPortRetry(dir: string, port: number, clientScript: string, indexFileName: string, log = console.log, err = console.error): Promise<{ server: http.Server; port: number }> {
+function listenWithPortRetry(
+    dir: string,
+    port: number,
+    clientScript: string,
+    indexFileName: string,
+    bridge: BrowserBridge,
+    mcpPostHandler: (req: IncomingMessage, res: ServerResponse, parsedBody: unknown) => Promise<void>,
+    log = console.log,
+    err = console.error,
+): Promise<{ server: http.Server; port: number; wss: WebSocketServer }> {
     return new Promise((resolve, reject) => {
         function tryPort(p: number) {
-            const server = createHttpServer(dir, clientScript, indexFileName, log, err)
+            const server = createHttpServer(dir, clientScript, indexFileName, bridge, mcpPostHandler, log, err)
             const onError = (e: NodeJS.ErrnoException) => {
                 if (e.code === "EADDRINUSE") {
                     log(`Port ${p} in use, trying ${p + 1}...`)
-                    tryPort(p + 1)
+                    server.close(() => tryPort(p + 1))
                 } else {
                     reject(e)
                 }
             }
             server.once("error", onError)
             server.listen(p, () => {
+                server.removeListener("error", onError)
                 log(`Serving at http://localhost:${p}`)
-                resolve({ server, port: p })
+                const wss = new WebSocketServer({ server }).on("connection", (ws: WebSocket) => {
+                    ws.on("error", (error: Error) => {
+                        err("WebSocket error: ", error)
+                    })
+                    ws.on("message", (data: Buffer | ArrayBuffer | Buffer[]) => {
+                        bridge.handleClientMessage(data)
+                    })
+                })
+                bridge.setWsServer(wss)
+                resolve({ server, port: p, wss })
             })
         }
         tryPort(port)

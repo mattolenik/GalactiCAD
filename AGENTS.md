@@ -125,3 +125,19 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 - **Test**: `make test`
 
 **Do not run build or lint commands on WGSL files directly.** WGSL files will be compiled with `make build` by the custom build logic. This means when making changes to WGSL files, you should run `make build` to validate them. If they don't compile, you will see the compiler error in `make build`. This custom build logic is what handles the `//:) include` directive, meaning this shader compiler output is indicative of what happens at runtime.
+
+### Devserver MCP (optional browser console)
+
+When the watch devserver is running (`make serve` / `make start`), the same HTTP port also serves **Streamable HTTP MCP** at **`POST /mcp`** (e.g. `http://localhost:<port>/mcp`). The active port is written to **`.devserver.run`** as JSON (`port` field) when the server starts; it may differ from the default if the port was in use.
+
+- **Tool**: `get_console_log_lines` — optional argument **`n`** (integer, default **100**). The tool response is **one text block** whose payload is JSON: either a **`string[]`** of recent lines or the literal **`null`** if logs could not be retrieved (no browser tab connected, bridge error, or timeout).
+- **What is captured**: messages from the **page** `console` methods (`log`, `info`, `warn`, `error`, `debug`), plus **`window` error** and **unhandled rejection** handlers. This is **best-effort** runtime signal; it does **not** replace `make build`. Messages logged only inside **workers** (e.g. some `[WGSL …]` / `[RenderWorker]` lines) may not appear unless the browser surfaces them on the main page console.
+
+**Agent workflow**
+
+1. Prefer **`make build`** for compile-time WGSL and bundling errors after shader edits.
+2. If an MCP client is configured to reach this devserver and the server is running, you may call **`get_console_log_lines`** to scan for runtime issues (e.g. WebGPU or scene errors echoed on the main console). At the **end of a task**, attempt this **once** for final verification when the MCP server is available.
+3. If the devserver is **not** running or the MCP tool is **unavailable**, **do nothing**; do not fail the task for missing logs.
+4. The user may ask you to check for errors or to fix issues found in those lines at any time.
+
+**User setup**: Point the MCP client at the devserver URL (same host/port as the app, path `/mcp`). Only the local devserver process exposes this endpoint; it is not part of production builds.

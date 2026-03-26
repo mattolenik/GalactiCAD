@@ -184,8 +184,8 @@ export class Union extends Node {
         if (off < 0) {
             return block
         }
-        const center = bvhCenterWgsl(off)
-        const half = bvhHalfWgsl(off)
+        const center = bvhCenterWgsl(off, child.previewBvhVec3Slot)
+        const half = bvhHalfWgsl(off, child.previewBvhVec3Slot)
         const innerCode = this._indent(block, 4)
         return `if (sdBound(p, ${center}, ${half}) < ${threshold}) {\n${innerCode}}\n`
     }

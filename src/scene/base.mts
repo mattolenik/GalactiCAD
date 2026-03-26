@@ -90,6 +90,11 @@ export class Node {
      * Assigned after `build()` for nodes that qualify when `bvhEnabled` is on (see `SceneInfo`).
      */
     bvhBoundsOffset = -1
+    /**
+     * First logical vec3 slot in `previewParamsVec3` for this node's BVH AABB (center, then half extents), or `-1`.
+     * Mirrors `bvhBoundsOffset` when BVH guards are active; used by preview/beam WGSL only.
+     */
+    previewBvhVec3Slot = -1
     /** First slot in preview `f32` uniform bank for this node's scalars; `-1` if none. */
     previewF32Slot = -1
     previewVec2Slot = -1

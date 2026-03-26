@@ -5,7 +5,8 @@
  *   CPU packs typed `Float32Array`s; WGSL uses `array<vec4f>` for f32/vec2 banks (direct `.x/.y/.z/.w` and `.xy/.zw` access), `array<vec4f>` for vec3 (`.xyz`),
  *   and `array<mat3x3f>` for preview rotation matrices.
  * - **Bounds + MDC**: separate storage buffers (`boundsSceneParams`, `mdcSceneParams`) with identical flat `f32` layout
- *   (`SceneInfo.packSceneParams()`), same indices as legacy `sp_*` codegen.
+ *   (`SceneInfo.packSceneParams()`), same indices as legacy `sp_*` codegen (including BVH AABBs).
+ *   Preview/beam read BVH bounds from `previewParamsVec3` instead of storage.
  *
  * **Updates:** Param-only worker builds re-upload preview banks from `packPreviewParams()` plus bounds/MDC from `packSceneParams()`.
  * Cap push/pull patches **`previewCapParamDrag`** (full uniform upload from CPU shadow after patching two `f32`; `previewParamsF32` is not re-uploaded mid-drag).
@@ -127,15 +128,15 @@ export function mat3x3Wgsl(flatOffset: number, previewMat3Slot: number): string 
 }
 
 /**
- * BVH AABB for union guards: always reads the 6 packed floats (center xyz, half xyz) from the flat
- * `packSceneParams()` layout via `sp_*` (`boundsSceneParams` in preview/beam/bounds, `mdcSceneParams` in MDC).
+ * BVH AABB for union guards: preview/beam read center + half from `previewParamsVec3` (`pp_*`);
+ * bounds/MDC use flat `packSceneParams()` via `sp_*`.
  */
-export function bvhCenterWgsl(flatOff: number): string {
-    return spVec3Wgsl(flatOff)
+export function bvhCenterWgsl(flatOff: number, previewBvhVec3Slot: number): string {
+    return compileParamMode === "preview" ? ppVec3Wgsl(previewBvhVec3Slot) : spVec3Wgsl(flatOff)
 }
 
-export function bvhHalfWgsl(flatOff: number): string {
-    return spVec3Wgsl(flatOff + 3)
+export function bvhHalfWgsl(flatOff: number, previewBvhVec3Slot: number): string {
+    return compileParamMode === "preview" ? ppVec3Wgsl(previewBvhVec3Slot + 1) : spVec3Wgsl(flatOff + 3)
 }
 
 /** Pack 9 column-major floats (3×3) into one mat3 uniform slot (12 floats with column padding). */

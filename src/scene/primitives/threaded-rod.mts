@@ -1,7 +1,7 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
-import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { capDragOrF32Wgsl, f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
 
@@ -185,8 +185,8 @@ export class ThreadedRod extends Node {
         const R = f32Wgsl(ro + 3, this.previewF32Slot + 0)
         const P = f32Wgsl(ro + 4, this.previewF32Slot + 1)
         const A = f32Wgsl(ro + 5, this.previewF32Slot + 2)
-        const capH = f32Wgsl(ro + 6, this.previewF32Slot + 3)
-        const capYOff = f32Wgsl(ro + 7, this.previewF32Slot + 4)
+        const capH = capDragOrF32Wgsl(ro + 6, this.previewF32Slot + 3)
+        const capYOff = capDragOrF32Wgsl(ro + 7, this.previewF32Slot + 4)
         const S = this.#wgslHelixSign
         const B = this.#wgslBarrelFn
         return `
@@ -224,8 +224,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         const R = f32Wgsl(ro + 3, this.previewF32Slot + 0)
         const P = f32Wgsl(ro + 4, this.previewF32Slot + 1)
         const A = f32Wgsl(ro + 5, this.previewF32Slot + 2)
-        const capH = f32Wgsl(ro + 6, this.previewF32Slot + 3)
-        const capYOff = f32Wgsl(ro + 7, this.previewF32Slot + 4)
+        const capH = capDragOrF32Wgsl(ro + 6, this.previewF32Slot + 3)
+        const capYOff = capDragOrF32Wgsl(ro + 7, this.previewF32Slot + 4)
         const S = this.#wgslHelixSign
         const B = this.#wgslBarrelFn
         const id = this.id
@@ -249,8 +249,8 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         const R = f32Wgsl(ro + 3, this.previewF32Slot + 0)
         const P = f32Wgsl(ro + 4, this.previewF32Slot + 1)
         const A = f32Wgsl(ro + 5, this.previewF32Slot + 2)
-        const capH = f32Wgsl(ro + 6, this.previewF32Slot + 3)
-        const capYOff = f32Wgsl(ro + 7, this.previewF32Slot + 4)
+        const capH = capDragOrF32Wgsl(ro + 6, this.previewF32Slot + 3)
+        const capYOff = capDragOrF32Wgsl(ro + 7, this.previewF32Slot + 4)
         const S = this.#wgslHelixSign
         const B = this.#wgslBarrelFn
         const id = this.id
@@ -305,7 +305,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         const outerR = this.r + Math.abs(this.threadAmp)
         return aabb(this.pos.x, this.pos.y, this.pos.z, outerR, this.h, outerR)
     }

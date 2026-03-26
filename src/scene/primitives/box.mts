@@ -93,7 +93,7 @@ export class Box extends Node {
         }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         return aabb(this.pos.x, this.pos.y, this.pos.z, this.size.x, this.size.y, this.size.z)
     }
 

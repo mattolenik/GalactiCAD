@@ -1,7 +1,10 @@
 import { BijectiveMap } from "../collections/bijectiveMap.mjs"
+import type { AABB } from "./aabb.mjs"
 import { BinaryOperator, BVH_MIN_COST, CompileResult, Node, UnaryOperator, fluent, styleInfo, type BlendMode, type IntersectionType, type StyleInfo, type UnionType } from "./base.mjs"
 import {
+    PREVIEW_MAT3_PACK_FLOATS,
     PREVIEW_UNIFORM_F32_COUNT,
+    PREVIEW_UNIFORM_MAT3_COUNT,
     PREVIEW_UNIFORM_VEC2_COUNT,
     PREVIEW_UNIFORM_VEC3_COUNT,
     SCENE_PARAM_BOUNDS_F32_COUNT,
@@ -51,10 +54,15 @@ const MAX_SCENE_NODE_ID = 1021
 export class SceneInfo {
     readonly root: Node
     #nodes = new BijectiveMap<number, Node>()
+    /** Stable registration order; same as repeated `getAllNodes()` before caching. */
+    #allNodesSnapshot: Node[] = []
+    /** One `computeBounds()` result per node id for this scene build. */
+    #boundsCache = new Map<number, AABB | null>()
     #sceneParamFloatUsed = 0
     #previewF32Used = 0
     #previewVec2Used = 0
     #previewVec3Used = 0
+    #previewMat3Used = 0
     totalPolygonVertices = 0
     /** Whether to emit BVH bounding checks during code generation. Default: true. */
     bvhEnabled = true
@@ -111,18 +119,41 @@ export class SceneInfo {
         return start
     }
 
+    allocPreviewMat3(count: number): number {
+        if (count <= 0) return 0
+        const start = this.#previewMat3Used
+        const next = start + count
+        if (next > PREVIEW_UNIFORM_MAT3_COUNT) {
+            throw new Error(
+                `Preview mat3 uniform bank overflow (need ${next} slots, max ${PREVIEW_UNIFORM_MAT3_COUNT})`,
+            )
+        }
+        this.#previewMat3Used = next
+        return start
+    }
+
     get sceneParamFloatCount(): number {
         return this.#sceneParamFloatUsed
     }
 
     get previewParamFingerprint(): string {
-        return `${this.#previewF32Used}:${this.#previewVec2Used}:${this.#previewVec3Used}`
+        return `${this.#previewF32Used}:${this.#previewVec2Used}:${this.#previewVec3Used}:${this.#previewMat3Used}`
+    }
+
+    /** Memoize `computeBounds()` once per node for this scene (see `Node.computeBounds`). */
+    getOrComputeBoundsForNode(node: Node, compute: () => AABB | null): AABB | null {
+        if (this.#boundsCache.has(node.id)) {
+            return this.#boundsCache.get(node.id)!
+        }
+        const b = compute()
+        this.#boundsCache.set(node.id, b)
+        return b
     }
 
     /** Pack all node-owned floats into a dense array for GPU upload (registration / build order). */
     packSceneParams(): Float32Array {
         const out = new Float32Array(this.#sceneParamFloatUsed)
-        for (const node of this.getAllNodes()) {
+        for (const node of this.#allNodesSnapshot) {
             if (node.paramCount > 0) {
                 node.writeSceneParams(out.subarray(node.paramOffset, node.paramOffset + node.paramCount))
             }
@@ -147,23 +178,10 @@ export class SceneInfo {
         const f32 = new Float32Array(this.#previewF32Used)
         const vec2 = new Float32Array(this.#previewVec2Used * 2)
         const vec3 = new Float32Array(this.#previewVec3Used * 4)
-        const out = { f32, vec2, vec3 }
-        for (const node of this.getAllNodes()) {
+        const mat3 = new Float32Array(this.#previewMat3Used * PREVIEW_MAT3_PACK_FLOATS)
+        const out = { f32, vec2, vec3, mat3 }
+        for (const node of this.#allNodesSnapshot) {
             node.writePreviewParams(out)
-        }
-        for (const node of this.getAllNodes()) {
-            if (node.previewBvhBoundsF32Slot >= 0) {
-                const b = node.computeBounds()
-                if (b) {
-                    const s = node.previewBvhBoundsF32Slot
-                    f32[s] = b.cx
-                    f32[s + 1] = b.cy
-                    f32[s + 2] = b.cz
-                    f32[s + 3] = b.hx
-                    f32[s + 4] = b.hy
-                    f32[s + 5] = b.hz
-                }
-            }
         }
         return out
     }
@@ -175,19 +193,16 @@ export class SceneInfo {
      */
     #assignBvhBoundsSlots(): void {
         if (!this.bvhEnabled) {
-            for (const node of this.getAllNodes()) {
+            for (const node of this.#allNodesSnapshot) {
                 node.bvhBoundsOffset = -1
-                node.previewBvhBoundsF32Slot = -1
             }
             return
         }
-        for (const node of this.getAllNodes()) {
+        for (const node of this.#allNodesSnapshot) {
             if (node.codegenCost() >= BVH_MIN_COST && node.computeBounds() !== null) {
                 node.bvhBoundsOffset = this.allocSceneParamFloats(SCENE_PARAM_BOUNDS_F32_COUNT)
-                node.previewBvhBoundsF32Slot = this.allocPreviewF32(SCENE_PARAM_BOUNDS_F32_COUNT)
             } else {
                 node.bvhBoundsOffset = -1
-                node.previewBvhBoundsF32Slot = -1
             }
         }
     }
@@ -213,7 +228,7 @@ export class SceneInfo {
     }
 
     getAllNodes(): Node[] {
-        return Array.from(this.#nodes.values())
+        return this.#allNodesSnapshot
     }
 
     getPolygonVertexData(): Float32Array {
@@ -254,6 +269,7 @@ export class SceneInfo {
             rotate, shell, offset, elongate, twist, bend, taper)
         this.root.scene = this
         this.root.build()
+        this.#allNodesSnapshot = Array.from(this.#nodes.values())
         this.#assignBvhBoundsSlots()
     }
 

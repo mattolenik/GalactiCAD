@@ -82,7 +82,7 @@ export class Taper extends UnaryOperator {
         return { funcName, varName, text: `sdfTaperNormalMid(${taperedChild}, p, ${ratio}, ${height})` }
     }
 
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         const b = this.arg.computeBounds()
         if (!b) return null
         const maxScale = Math.max(1.0, Math.abs(this.ratio))

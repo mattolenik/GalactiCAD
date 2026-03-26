@@ -1,6 +1,6 @@
 /**
  * Axis-Aligned Bounding Box utilities for BVH-accelerated SDF evaluation.
- * Bounds are computed on the CPU (`computeBounds`) and uploaded into the bounds/MDC packed buffer and the preview f32 bank (`previewBvhBoundsF32Slot`);
+ * Bounds are computed on the CPU (`computeBounds`) and uploaded into the bounds/MDC packed buffer (`bvhBoundsOffset`);
  * union BVH guards read center/half via `sp_*` / `pp_*` (see `Union._emitChildBlock`).
  */
 

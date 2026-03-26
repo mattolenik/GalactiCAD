@@ -79,7 +79,7 @@ export class Capsule extends Node {
         return { funcName, varName, text: `fCapsuleMid(p - ${pos}, ${r}, ${c})` }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, this.c + this.r, this.r)
     }
 

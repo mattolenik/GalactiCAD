@@ -54,6 +54,7 @@ export interface ISceneInfo {
     allocPreviewVec2(count: number): number
     /** vec3 stored as vec4; returns first slot index. */
     allocPreviewVec3(count: number): number
+    allocPreviewMat3(count: number): number
     /** Total f32 slots reserved after `build()` (size of the packed CPU/GPU upload). */
     readonly sceneParamFloatCount: number
     /** Fingerprint fragment for preview bank sizes (param-only vs full rebuild). */
@@ -61,6 +62,11 @@ export interface ISceneInfo {
     allocPolygonVertices(count: number): number
     /** Whether to emit BVH bounding checks during code generation. */
     bvhEnabled: boolean
+    /**
+     * Per-SceneInfo memoization for `computeBounds()` (one result per node per scene build).
+     * Implemented by `SceneInfo`; absent for standalone node tests.
+     */
+    getOrComputeBoundsForNode?(node: Node, compute: () => AABB | null): AABB | null
 }
 
 /** Cost of one cheap primitive (e.g. sphere, box) for BVH heuristics. */
@@ -88,8 +94,8 @@ export class Node {
     previewF32Slot = -1
     previewVec2Slot = -1
     previewVec3Slot = -1
-    /** First of six consecutive `f32` slots for BVH AABB in preview uniforms; `-1` if unused. */
-    previewBvhBoundsF32Slot = -1
+    /** First index in `previewParamsMat3` for this node's matrices; `-1` if none. */
+    previewMat3Slot = -1
 
     get scene() {
         return this.root.#scene
@@ -160,8 +166,18 @@ export class Node {
     /**
      * Compute a conservative axis-aligned bounding box for this node.
      * Returns null for unbounded primitives (e.g. Plane).
+     * When the node is part of a `SceneInfo` graph, results are memoized once per build.
      */
     computeBounds(): AABB | null {
+        const g = this.scene.getOrComputeBoundsForNode
+        if (g) {
+            return g.call(this.scene, this, () => this.computeBoundsCore())
+        }
+        return this.computeBoundsCore()
+    }
+
+    /** Uncached bounds body; use `computeBounds()` from outside the class. */
+    protected computeBoundsCore(): AABB | null {
         return null
     }
 
@@ -220,7 +236,7 @@ export abstract class UnaryOperator extends Node {
     protected override _computeCodegenCost(): number {
         return this.arg.codegenCost()
     }
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         return this.arg.computeBounds()
     }
     /** Reserve `paramOffset` / `paramCount` after this node is registered; runs before the child subtree `build()`. */
@@ -247,7 +263,7 @@ export abstract class BinaryOperator extends Node {
     protected override _computeCodegenCost(): number {
         return this.lh.codegenCost() + this.rh.codegenCost()
     }
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         const lb = this.lh.computeBounds()
         const rb = this.rh.computeBounds()
         if (!lb && !rb) return null

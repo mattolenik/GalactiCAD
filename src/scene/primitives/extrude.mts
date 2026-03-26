@@ -1,7 +1,7 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
-import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { capDragOrF32Wgsl, f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
@@ -116,8 +116,8 @@ export class Extrude extends Node {
             return area < 0 ? -1.0 : 1.0
         })()
         const windSignStr = windSign.toFixed(1)
-        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
-        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
+        const capH = capDragOrF32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         const twistRad = f32Wgsl(this.paramOffset + 5, this.previewF32Slot + 2)
 
         if (!hasTwist) {
@@ -266,8 +266,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     override compileAuxFast(): string {
         const childFunc = this.child.wgslFuncName
         const hasTwist = this.twistDegrees !== 0
-        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
-        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
+        const capH = capDragOrF32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         const twistRad = f32Wgsl(this.paramOffset + 5, this.previewF32Slot + 2)
 
         if (!hasTwist) {
@@ -304,8 +304,8 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     override compileAuxMid(): string {
         const combinedFunc = this.child.wgslCombinedFuncName
         const hasTwist = this.twistDegrees !== 0
-        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
-        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
+        const capH = capDragOrF32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         const twistRad = f32Wgsl(this.paramOffset + 5, this.previewF32Slot + 2)
 
         if (!hasTwist) {
@@ -385,7 +385,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         // Compute 2D extents of polygon profile, then add extrusion height
         let maxX = 0, maxZ = 0
         for (const [x, z] of this.child.vertices) {

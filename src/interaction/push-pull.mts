@@ -1,7 +1,7 @@
 import { Vec2f, Vec3f, vec2, vec3 } from "../vecmat/vector.mjs"
 import { Box, Cone, Cylinder, Extrude, Loft, ThreadedRod } from "../scene/scene.mjs"
 
-/** Extrude / loft / threaded rod stub from the worker graph; includes byte offset for cap `h` + posYDelta in the preview f32 bank (worker re-uploads full uniform buffer). */
+/** Extrude / loft / threaded rod stub from the worker graph; includes byte offset for cap `h` + posYDelta in the `previewCapParamDrag` uniform layout (vec4-packed like `previewParamsF32`). */
 export type PushPullCapNode = (Extrude | Loft | ThreadedRod) & { sceneCapParamsByteOffset: number }
 
 /** Reserved object IDs for face-level highlighting via the existing outline system. */

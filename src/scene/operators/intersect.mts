@@ -89,7 +89,7 @@ export class Intersect extends BinaryOperator {
         return { text: this._interFast(lText, rText), varName, prelude }
     }
 
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         const lb = this.lh.computeBounds()
         const rb = this.rh.computeBounds()
         if (!lb) return rb

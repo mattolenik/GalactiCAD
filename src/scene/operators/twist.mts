@@ -74,7 +74,7 @@ export class Twist extends UnaryOperator {
         return { funcName, varName, text: `sdfTwistNormalMid(${twistedChild}, p, ${rate})` }
     }
 
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         const b = this.arg.computeBounds()
         if (!b) return null
         const r = Math.sqrt(b.hx * b.hx + b.hz * b.hz)

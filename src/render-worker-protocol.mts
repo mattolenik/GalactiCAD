@@ -7,6 +7,22 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import type { MeshData } from "./export/export.mjs"
 
+/** Worker-reported `#doBuild` breakdown (ms); used for devtools / regression triage. */
+export interface BuildTimingBreakdownMs {
+    sceneConstructMs: number
+    fingerprintMs: number
+    packSceneMs: number
+    packPreviewMs: number
+    serializeNodesMs: number
+    /** WGSL scene codegen (full build only). */
+    wgslSceneMs?: number
+    shaderModulesMs?: number
+    pipelinesMs?: number
+    gpuBuffersMs?: number
+    totalMs: number
+    paramOnly: boolean
+}
+
 /** Benchmark result (inlined to avoid circular deps with benchmark.mts) */
 export interface BenchmarkResultPayload {
     totalTime: number
@@ -56,9 +72,9 @@ export interface SerializedNode {
      */
     paramOffset?: number
     /**
-     * Byte offset into the worker's dense `previewParamsF32` CPU shadow (same layout as the `previewParamsF32` uniform).
+     * Byte offset into the worker's `previewF32` CPU shadow / `previewCapParamDrag` uniform layout (vec4-packed, same as `previewParamsF32`).
      * Cap push/pull sends `writeBuffers.previewParamsF32Patch.byteOffset` equal to this value (two f32: `h`, `posYDelta`).
-     * The worker applies the patch to the shadow, then re-uploads the full `previewParamsF32` uniform (uniform sub-range writes require 256-byte alignment).
+     * The worker patches the shadow then re-uploads the full `previewCapParamDrag` uniform (not `previewParamsF32`).
      * Set for extrude, loft, and threaded_rod that support cap push/pull (`previewF32Slot * 4`, or threaded_rod `(previewF32Slot + 3) * 4` for cap scalars).
      */
     sceneCapParamsByteOffset?: number
@@ -95,7 +111,7 @@ export type MainToWorkerMessage =
     | { type: "doubleClick"; clickUV: [number, number]; documentName?: string }
     | { type: "hover"; clickUV: [number, number]; altKey: boolean; documentName?: string; hoverRequestId?: number }
     | { type: "resize"; fullWidth: number; fullHeight: number; devicePixelRatio: number }
-    // previewParamsF32Patch: cap-drag only — patches worker #previewF32Shadow at byteOffset, then full upload of previewParamsF32.
+    // previewParamsF32Patch: cap-drag only — patches #previewF32Shadow then full upload of previewCapParamDrag uniform.
     // Does not touch boundsSceneParams or mdcSceneParams (those refresh on build / param-only build).
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; previewParamsF32Patch?: { byteOffset: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
     | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
@@ -189,7 +205,7 @@ export interface RenderViewSettings {
 export type WorkerToMainMessage =
     | { type: "ready" }
     | { type: "initError"; error: string }
-    | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: [number, number][]; error?: string; requestId?: number; documentName?: string; superseded?: boolean }
+    | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: [number, number][]; error?: string; requestId?: number; documentName?: string; superseded?: boolean; timingMs?: BuildTimingBreakdownMs }
     | { type: "clickResult"; clickedId: number; edgeHits: EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number]; shiftKey: boolean; altKey: boolean; documentName?: string }
     | { type: "selectionInfo"; info: SelectionInfo; documentName?: string; hoverRequestId?: number }
     | { type: "objectDoubleClick"; nodeId: number; hitPos?: [number, number, number]; documentName?: string }

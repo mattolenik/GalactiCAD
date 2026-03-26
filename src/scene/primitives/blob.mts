@@ -61,7 +61,7 @@ export class Blob extends Node {
         return { funcName, varName, text: `fBlobMid(p - ${pos})` }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         return aabb(this.pos.x, this.pos.y, this.pos.z, 1.7, 1.7, 1.7)
     }
 

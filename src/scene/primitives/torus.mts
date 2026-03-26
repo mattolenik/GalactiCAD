@@ -79,7 +79,7 @@ export class Torus extends Node {
         return { funcName, varName, text: `fTorusMid(p - ${pos}, ${sr}, ${lr})` }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         const r = this.lr + this.sr
         return aabb(this.pos.x, this.pos.y, this.pos.z, r, this.sr, r)
     }

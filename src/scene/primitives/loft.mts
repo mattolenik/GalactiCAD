@@ -1,7 +1,7 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
 import { aabb, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
-import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { capDragOrF32Wgsl, f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D } from "./polygon2d.mjs"
 
@@ -120,8 +120,8 @@ export class Loft extends Node {
     }
 
     override compileAux(): string {
-        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
-        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
+        const capH = capDragOrF32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d = ${this.wgslFieldFuncName}(p);
@@ -154,8 +154,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     override compileAuxMid(): string {
         const h = this.h.toFixed(6)
         const fieldBody = this.generateFieldBody(h)
-        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
-        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
+        const capH = capDragOrF32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         return `
 fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let d = ${this.wgslFieldFuncName}(p);
@@ -177,8 +177,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     override compileAuxFast(): string {
         const h = this.h.toFixed(6)
         const fieldBody = this.generateFieldBody(h)
-        const capH = f32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
-        const capYOff = f32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
+        const capH = capDragOrF32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
+        const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
 
         return `
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
@@ -228,7 +228,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         }
     }
 
-    override computeBounds(): AABB {
+    protected override computeBoundsCore(): AABB {
         // Union of extents across all profile vertices in XZ, plus half-height
         let maxX = 0, maxZ = 0
         for (const profile of this.profiles) {

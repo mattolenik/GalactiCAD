@@ -89,7 +89,7 @@ export class Subtract extends BinaryOperator {
         return { text: this._diffFast(lText, rText), varName, prelude }
     }
 
-    override computeBounds(): AABB | null {
+    protected override computeBoundsCore(): AABB | null {
         return this.lh.computeBounds()
     }
     override compileMid(indentLevel = 0): CompileResult {

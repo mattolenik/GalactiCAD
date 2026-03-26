@@ -55,7 +55,10 @@ struct Camera {
 @group(0) @binding(19) var<uniform> previewParamsF32: array<vec4f, 4096>;
 @group(0) @binding(20) var<uniform> previewParamsVec2: array<vec4f, 4096>;
 @group(0) @binding(21) var<uniform> previewParamsVec3: array<vec4f, 4096>;
-//:) include "preview_scene_params_read.wgsl"
+@group(0) @binding(23) var<uniform> previewParamsMat3: array<mat3x3f, 1024>;
+@group(0) @binding(24) var<uniform> previewCapParamDrag: array<vec4f, 4096>;
+@group(0) @binding(22) var<storage, read> boundsSceneParams: array<f32>;
+//:) include "bounds_scene_params_read.wgsl"
 
 // Fast-path-only auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 // Uses sceneAuxFast to exclude full SDFResult functions not needed by the beam shader.
@@ -74,6 +77,9 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     _ = previewParamsF32[0];
     _ = previewParamsVec2[0];
     _ = previewParamsVec3[0];
+    _ = previewParamsMat3[0];
+    _ = previewCapParamDrag[0];
+    _ = boundsSceneParams[0];
 
     // Output texture is at tile resolution: ceil(W/TILE_SIZE) x ceil(H/TILE_SIZE)
     let outDims = textureDimensions(tStartOut);

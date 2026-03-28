@@ -136,6 +136,7 @@ class App {
 
     async build() {
         let src = ""
+        const wallStart = performance.now()
         try {
             const model = this.editor.getModel()
             if (!model) {
@@ -146,9 +147,11 @@ class App {
             const documentName = this.#tabs.active ?? undefined
 
             // Parse first (error-tolerant); used for fluent method decorations and node matching.
+            const tParse0 = performance.now()
             const parsedCalls = this.#sourceParser.parseShapeCalls(src)
             const fluentLocations = this.#sourceParser.findFluentMethods(styleInfo.FluentMethods)
             this.#monacoHighlighter.setFluentMethodDecorations(fluentLocations)
+            const parseAndDecorateMs = Math.round((performance.now() - tParse0) * 100) / 100
 
             // Build the scene (uses cache when switching back to a tab with unchanged content).
             // Await so camera loads only after scene is ready, avoiding flicker.
@@ -160,6 +163,7 @@ class App {
             if (documentName !== (this.#tabs.active ?? undefined)) return
             if (this.editor.getModel() !== model) return
 
+            const tPost0 = performance.now()
             // Get all scene nodes and build a map for quick lookup
             const sceneNodes = this.renderer.getSceneNodes()
             this.#sceneNodeMap.clear()
@@ -182,6 +186,14 @@ class App {
 
             // Update highlighting for current selection after build
             this.#updateEditorHighlighting()
+            const postProcessMs = Math.round((performance.now() - tPost0) * 100) / 100
+            const totalWallMs = Math.round((performance.now() - wallStart) * 100) / 100
+            const pipeline = this.renderer.getLastSceneBuildPipelineMs()
+            console.info("[Scene build perf]", {
+                totalWallMs,
+                mainThread: { parseAndDecorateMs, postProcessMs },
+                pipeline,
+            })
         } catch (err) {
             const message = formatSceneError(err, src)
             this.log.innerText = `💢 ${message}`
@@ -550,6 +562,7 @@ class App {
     }
 
     async #createRendererAndWire(preview: PreviewWindow, menu: HTMLElement, isInitial = false): Promise<void> {
+        const sceneLoadT0 = isInitial ? performance.now() : 0
         await this.#restoreOrShowWelcome()
         this.renderer?.dispose()
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect, () => this.#tabs.active)
@@ -581,7 +594,16 @@ class App {
             }
             this.#wireExportButton(exportBtn, devTools)
             this.#wireDevToolsFromSettings(devTools)
-            this.build()
+            if (isInitial) {
+                await this.build()
+                const totalWallMs = Math.round((performance.now() - sceneLoadT0) * 100) / 100
+                console.info("[Scene initial load]", {
+                    totalWallMs,
+                    note: "Includes settings/restore, WebGPU init (ready), wiring, and first build; see [Scene build perf] for build breakdown.",
+                })
+            } else {
+                void this.build()
+            }
         } catch (err) {
             console.error(`UNEXPECTED ERROR: ${err}`)
             const msg = document.createElement("p")

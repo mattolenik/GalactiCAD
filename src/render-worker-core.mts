@@ -289,6 +289,7 @@ export class RenderWorkerCore {
         const tSceneConstruct = performance.now()
         const scene = this.#scene
         const allNodes = scene.getAllNodes()
+        const tGetNodes1 = performance.now()
         const tFp0 = performance.now()
         const fingerprint = scene.structuralFingerprint()
         const tFingerprint = performance.now()
@@ -300,9 +301,11 @@ export class RenderWorkerCore {
             this.#beamPipeline !== null &&
             this.#sceneShader !== null
 
+        const tPoly0 = performance.now()
         const polygonVertexData = scene.totalPolygonVertices > 0
             ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer)
             : new ArrayBuffer(0)
+        const tPoly1 = performance.now()
         const newCompiledPosY = new Map<number, number>()
         for (const node of allNodes) {
             if (node instanceof Extrude || node instanceof Loft || node instanceof ThreadedRod) {
@@ -328,7 +331,9 @@ export class RenderWorkerCore {
             const total = performance.now() - t0
             const timingMs: BuildTimingBreakdownMs = {
                 sceneConstructMs: roundMs(tSceneConstruct - t0),
+                getAllNodesMs: roundMs(tGetNodes1 - tSceneConstruct),
                 fingerprintMs: roundMs(tFingerprint - tFp0),
+                polygonVertexMs: roundMs(tPoly1 - tPoly0),
                 packSceneMs: roundMs(tPackScene1 - tPackScene0),
                 packPreviewMs: roundMs(tPackPreview - tPackPrev0),
                 serializeNodesMs: roundMs(tSer1 - tSer0),
@@ -351,11 +356,17 @@ export class RenderWorkerCore {
 
         const tWgsl0 = performance.now()
         const sceneAux = scene.compileAuxPreview()
+        const tAux = performance.now()
         const sceneAuxFast = scene.compileAuxFastPreview()
+        const tAuxFast = performance.now()
         const sceneAuxMid = scene.compileAuxMidPreview()
+        const tAuxMid = performance.now()
         const sceneSDF = scene.compileForPreview()
+        const tSdf = performance.now()
         const sceneSDF_fast = scene.compileFastForPreview()
+        const tSdfFast = performance.now()
         const sceneSDF_mid = scene.compileMidForPreview()
+        const tSdfMid = performance.now()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
         const tWgsl1 = performance.now()
 
@@ -435,11 +446,20 @@ export class RenderWorkerCore {
         const total = performance.now() - t0
         const timingMs: BuildTimingBreakdownMs = {
             sceneConstructMs: roundMs(tSceneConstruct - t0),
+            getAllNodesMs: roundMs(tGetNodes1 - tSceneConstruct),
             fingerprintMs: roundMs(tFingerprint - tFp0),
+            polygonVertexMs: roundMs(tPoly1 - tPoly0),
             packSceneMs: roundMs(tPackScene1 - tPackScene0),
             packPreviewMs: roundMs(tPackPreview - tPackPrev0),
             serializeNodesMs: roundMs(tSer1 - tSer0),
             wgslSceneMs: roundMs(tWgsl1 - tWgsl0),
+            compileAuxPreviewMs: roundMs(tAux - tWgsl0),
+            compileAuxFastPreviewMs: roundMs(tAuxFast - tAux),
+            compileAuxMidPreviewMs: roundMs(tAuxMid - tAuxFast),
+            compileForPreviewMs: roundMs(tSdf - tAuxMid),
+            compileFastForPreviewMs: roundMs(tSdfFast - tSdf),
+            compileMidForPreviewMs: roundMs(tSdfMid - tSdfFast),
+            compileEdgeHelpersMs: roundMs(tWgsl1 - tSdfMid),
             shaderModulesMs: roundMs(tShaderMod1 - tShaderMod0),
             pipelinesMs: roundMs(tPipeline1 - tPipeline0),
             gpuBuffersMs: roundMs(tBuf1 - tBuf0),

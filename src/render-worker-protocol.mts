@@ -10,17 +10,41 @@ import type { MeshData } from "./export/export.mjs"
 /** Worker-reported `#doBuild` breakdown (ms); used for devtools / regression triage. */
 export interface BuildTimingBreakdownMs {
     sceneConstructMs: number
+    /** `getAllNodes()` after scene construction. */
+    getAllNodesMs?: number
     fingerprintMs: number
+    /** Polygon vertex buffer copy (`slice`). */
+    polygonVertexMs?: number
     packSceneMs: number
     packPreviewMs: number
     serializeNodesMs: number
     /** WGSL scene codegen (full build only). */
     wgslSceneMs?: number
+    /** Per-stage WGSL codegen (full build only); sums to ~`wgslSceneMs`. */
+    compileAuxPreviewMs?: number
+    compileAuxFastPreviewMs?: number
+    compileAuxMidPreviewMs?: number
+    compileForPreviewMs?: number
+    compileFastForPreviewMs?: number
+    compileMidForPreviewMs?: number
+    compileEdgeHelpersMs?: number
     shaderModulesMs?: number
     pipelinesMs?: number
     gpuBuffersMs?: number
     totalMs: number
     paramOnly: boolean
+}
+
+/** Main-thread + worker timings for one end-to-end scene build (transpile → GPU). */
+export interface SceneBuildPipelineMs {
+    /** Wall time from posting transpile to transpile worker until `transpileComplete` (queue + CPU). */
+    transpileWallMs: number
+    /** CPU time inside transpile worker for `transpileCadSource`. */
+    transpileCpuMs: number
+    /** Wall time from posting `build` to render worker until `buildComplete`. */
+    workerRoundTripMs: number
+    /** Worker `#doBuild` breakdown (same as `getLastBuildTimingMs()`). */
+    worker: BuildTimingBreakdownMs
 }
 
 /** Benchmark result (inlined to avoid circular deps with benchmark.mts) */

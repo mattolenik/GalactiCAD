@@ -15,8 +15,10 @@ self.onmessage = (e: MessageEvent<MainToTranspileMessage>) => {
     if (msg.type !== "transpile") return
     const { src, requestId } = msg
     try {
+        const t0 = performance.now()
         const body = transpileCadSource(src)
-        self.postMessage({ type: "transpileComplete", body, requestId })
+        const transpileMs = Math.round((performance.now() - t0) * 100) / 100
+        self.postMessage({ type: "transpileComplete", body, requestId, transpileMs })
     } catch (err) {
         const error = err instanceof Error ? err.message : String(err)
         self.postMessage({ type: "transpileComplete", error, requestId })

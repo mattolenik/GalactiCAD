@@ -1,0 +1,17 @@
+{
+    "name": "GalactiCAD",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "workspaceMount": "source=galacticad-workspace,target=/workspace,type=volume",
+    "workspaceFolder": "/workspace",
+    "forwardPorts": [6900],
+    "portsAttributes": {
+        "6900": {
+            "label": "dev server",
+            "onAutoForward": "notify"
+        }
+    },
+    "postCreateCommand": "bash -c 'if [ -f package.json ]; then make setup; fi'"
+}

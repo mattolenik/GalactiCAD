@@ -19,6 +19,7 @@ import {
     type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
     type PreviewShadingParams,
+    type SceneBuildPipelineMs,
     type WorkerToMainMessage,
 } from "./render-worker-protocol.mjs"
 import type { EdgeHitData, SelectedEdgePayload } from "./render-worker-protocol.mjs"
@@ -42,7 +43,11 @@ export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
 export { EdgeKind } from "./edge-kind.mjs"
 
-export type { SerializedNode, BuildTimingBreakdownMs } from "./render-worker-protocol.mjs"
+export type { SerializedNode, BuildTimingBreakdownMs, SceneBuildPipelineMs } from "./render-worker-protocol.mjs"
+
+function roundScenePerfMs(x: number): number {
+    return Math.round(x * 100) / 100
+}
 
 /** Default max frames per second for the preview. Main thread throttles render messages to the worker. */
 const DEFAULT_TARGET_FPS = 120
@@ -140,8 +145,15 @@ export class SDFRenderer {
     #latestThumbnailRequestId = 0
     #pendingTranspile = new Map<number, { kind: TranspileKind; documentName?: string; width?: number; height?: number; simplifyOnExport?: boolean }>()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
+    /** Wall-time anchors for `build()` request ids (transpile → worker round-trip). */
+    #buildChronicleByRequestId = new Map<
+        number,
+        { startWall: number; transpileCpuMs?: number; transpileEndWall?: number; workerPostWall?: number }
+    >()
     /** Last successful worker `#doBuild` breakdown (when `buildComplete` included `timingMs`). */
     #lastBuildTimingMs: BuildTimingBreakdownMs | null = null
+    /** Last successful end-to-end pipeline (transpile wall + worker round-trip + worker breakdown). */
+    #lastSceneBuildPipelineMs: SceneBuildPipelineMs | null = null
     #pendingRenderMesh = new Map<number, { resolve: (v: MeshData) => void; reject: (err: unknown) => void }>()
     #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
     #pendingThumbnail = new Map<number, { resolve: (v: ImageData) => void; reject: (err: unknown) => void }>()
@@ -334,6 +346,30 @@ export class SDFRenderer {
                 break
             case "buildComplete": {
                 const pending = msg.requestId != null ? this.#pendingBuild.get(msg.requestId) : null
+                const rid = msg.requestId
+                if (rid != null) {
+                    if (msg.error) {
+                        this.#buildChronicleByRequestId.delete(rid)
+                    } else if (msg.timingMs) {
+                        const ch = this.#buildChronicleByRequestId.get(rid)
+                        this.#buildChronicleByRequestId.delete(rid)
+                        const active = this.#getActiveDocument?.()
+                        const stillActive = msg.documentName === undefined || msg.documentName === active
+                        if (stillActive && ch?.workerPostWall != null) {
+                            const transpileWallMs = roundScenePerfMs((ch.transpileEndWall ?? ch.workerPostWall) - ch.startWall)
+                            const transpileCpuMs = roundScenePerfMs(ch.transpileCpuMs ?? 0)
+                            const workerRoundTripMs = roundScenePerfMs(performance.now() - ch.workerPostWall)
+                            this.#lastSceneBuildPipelineMs = {
+                                transpileWallMs,
+                                transpileCpuMs,
+                                workerRoundTripMs,
+                                worker: msg.timingMs,
+                            }
+                        }
+                    } else {
+                        this.#buildChronicleByRequestId.delete(rid)
+                    }
+                }
                 if (msg.error) {
                     pending?.reject(new Error(msg.error))
                 } else if (pending) {
@@ -452,13 +488,14 @@ export class SDFRenderer {
             return
         }
         if (msg.type !== "transpileComplete") return
-        const { body, error, requestId } = msg
+        const { body, error, requestId, transpileMs } = msg
         const pending = this.#pendingTranspile.get(requestId)
         this.#pendingTranspile.delete(requestId)
         if (!pending) return
 
         if (error) {
             if (pending.kind === "build") {
+                this.#buildChronicleByRequestId.delete(requestId)
                 this.#pendingBuild.get(requestId)?.reject(new Error(error))
                 this.#pendingBuild.delete(requestId)
             } else if (pending.kind === "renderMesh") {
@@ -471,15 +508,26 @@ export class SDFRenderer {
             return
         }
 
-        if (!body) return
+        if (!body) {
+            if (pending.kind === "build") this.#buildChronicleByRequestId.delete(requestId)
+            return
+        }
 
         if (pending.kind === "build") {
             if (requestId !== this.#latestBuildRequestId) {
+                this.#buildChronicleByRequestId.delete(requestId)
                 this.#pendingBuild.get(requestId)?.resolve(false)
                 this.#pendingBuild.delete(requestId)
                 return
             }
+            const ch = this.#buildChronicleByRequestId.get(requestId)
+            if (ch) {
+                ch.transpileCpuMs = transpileMs ?? 0
+                ch.transpileEndWall = performance.now()
+            }
             this.#worker.postMessage({ type: "build", body, documentName: pending.documentName ?? undefined, requestId })
+            const chPost = this.#buildChronicleByRequestId.get(requestId)
+            if (chPost) chPost.workerPostWall = performance.now()
         } else if (pending.kind === "renderMesh") {
             if (requestId !== this.#latestRenderMeshRequestId) {
                 this.#pendingRenderMesh.get(requestId)?.reject(new Error("Superseded"))
@@ -1396,6 +1444,7 @@ export class SDFRenderer {
     build(src: string, documentName?: string | null): Promise<boolean> {
         const requestId = ++this.#requestIdCounter
         this.#latestBuildRequestId = requestId
+        this.#buildChronicleByRequestId.set(requestId, { startWall: performance.now() })
         this.#pendingTranspile.set(requestId, { kind: "build", documentName: documentName ?? undefined })
         return new Promise<boolean>((resolve, reject) => {
             this.#pendingBuild.set(requestId, { resolve, reject })
@@ -1435,6 +1484,11 @@ export class SDFRenderer {
     /** Last worker `#doBuild` timing buckets from the most recent successful build for the active document. */
     getLastBuildTimingMs(): BuildTimingBreakdownMs | null {
         return this.#lastBuildTimingMs
+    }
+
+    /** Last transpile + worker round-trip + `#doBuild` breakdown for the active document's last applied build. */
+    getLastSceneBuildPipelineMs(): SceneBuildPipelineMs | null {
+        return this.#lastSceneBuildPipelineMs
     }
 
     /**

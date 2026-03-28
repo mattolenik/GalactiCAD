@@ -15,14 +15,28 @@ import wgslLoader from "./wgsl-loader.mjs"
 const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 
+const IS_PROD = !!process.env.PRODUCTION
+
+const VS_DIR = `node_modules/monaco-editor/${IS_PROD ? "min" : "dev"}/vs`
+
 const Static = {
     "src/index.html": "/",
     "src/index.css": "/",
     "src/site.webmanifest": "/",
     "src/_headers": "/",
     "src/assets/*": "/assets",
-    "src/scene/samples/*.gcad": "/assets/samples",
-    "node_modules/monaco-editor/min/vs/**/*": "/vs",
+    "src/scene/samples/*.gcad": "/assets/samples/",
+    [`${VS_DIR}/assets/ts.worker*.js`]: "/vs/assets/",
+    [`${VS_DIR}/assets/editor`]: "/vs/assets/",
+    [`${VS_DIR}/typescript*.js`]: "/vs/",
+    [`${VS_DIR}/tsMode*.js`]: "/vs/",
+    [`${VS_DIR}/nls*.js`]: "/vs/",
+    [`${VS_DIR}/wgsl*.js`]: "/vs/",
+    [`${VS_DIR}/monaco*.js`]: "/vs/",
+    [`${VS_DIR}/worker*.js`]: "/vs/",
+    [`${VS_DIR}/loader*.js`]: "/vs/",
+    [`${VS_DIR}/editor*.js`]: "/vs/",
+    [`${VS_DIR}/language/typescript`]: "/vs/language/",
     "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
 }
 
@@ -30,7 +44,7 @@ const Options = {
     entryPoints: ["./src/app.mts", "./src/components/preview-window.mts", "./src/components/mesh-viewer.mts", "./src/render-worker.mts", "./src/transpile-worker.mts"],
     plugins: [await wgslLoader(), await versionPlugin(), await fileListerPlugin(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
     outDir: "./dist",
-    isProd: !!process.env.PRODUCTION || !!process.env.CI,
+    isProd: IS_PROD,
 }
 
 const WatchOptions = {

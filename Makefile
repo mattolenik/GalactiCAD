@@ -1,8 +1,8 @@
-export TSX      ?= ./node_modules/.bin/tsx
-export TSC      ?= ./node_modules/.bin/tsc
+SHELL           := bash
+export TSX      ?= node_modules/.bin/tsx
+export TSC      ?= node_modules/.bin/tsc
 export RUN_FILE := .devserver.run
 export LOG_FILE := .devserver.log
-SHELL           := bash
 BROWSER         ?= chromium
 DIST            ?= dist
 PORT            ?= $(shell $(BUILD) port)
@@ -32,7 +32,7 @@ check: setup
 	$(TSC) --noEmit
 
 .PHONY: serve
-serve:
+serve: clean setup
 	$(BUILD) -w $(BUILD_FLAGS)
 
 .PHONY: start

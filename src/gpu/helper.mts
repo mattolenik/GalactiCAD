@@ -108,4 +108,16 @@ export class GPUHelper {
         readbackBuffer.destroy()
         return data
     }
+
+    /** Read back a prefix of `source` into caller-owned `readback` (COPY_DST | MAP_READ); avoids per-call buffer alloc. */
+    async readBufferDataReuse(source: GPUBuffer, readback: GPUBuffer, size: number): Promise<ArrayBuffer> {
+        const copySize = Math.min(size, source.size, readback.size)
+        const ce = this.device.createCommandEncoder()
+        ce.copyBufferToBuffer(source, 0, readback, 0, copySize)
+        this.device.queue.submit([ce.finish()])
+        await readback.mapAsync(GPUMapMode.READ)
+        const data = readback.getMappedRange().slice(0)
+        readback.unmap()
+        return data
+    }
 }

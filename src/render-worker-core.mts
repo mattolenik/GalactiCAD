@@ -17,6 +17,7 @@ import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
     SCENE_PARAMS_BYTE_SIZE,
+    SCENE_PARAMS_F32_CAPACITY,
     PREVIEW_PARAMS_F32_BYTE_SIZE,
     PREVIEW_PARAMS_MAT3_BYTE_SIZE,
     PREVIEW_PARAMS_VEC2_BYTE_SIZE,
@@ -52,20 +53,18 @@ const SELECTED_EDGE_SIZE = 80
 const SELECTED_EDGES_COUNT = 16
 const SELECTED_EDGES_TOTAL = SELECTED_EDGES_HEADER + SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE
 
-function float32ArraysEqual(a: Float32Array, b: Float32Array): boolean {
-    if (a.length !== b.length) return false
-    for (let i = 0; i < a.length; i++) {
+function float32SubarrayEqual(a: Float32Array, b: Float32Array, len: number): boolean {
+    for (let i = 0; i < len; i++) {
         if (a[i] !== b[i]) return false
     }
     return true
 }
 
-function arrayBuffersEqual(a: ArrayBuffer, b: ArrayBuffer): boolean {
-    if (a.byteLength !== b.byteLength) return false
-    const va = new Uint8Array(a)
-    const vb = new Uint8Array(b)
-    for (let i = 0; i < va.length; i++) {
-        if (va[i] !== vb[i]) return false
+function arrayBufferPrefixEqual(cache: ArrayBuffer, src: ArrayBuffer, byteLen: number): boolean {
+    const ca = new Uint8Array(cache, 0, byteLen)
+    const sb = new Uint8Array(src, 0, byteLen)
+    for (let i = 0; i < byteLen; i++) {
+        if (ca[i] !== sb[i]) return false
     }
     return true
 }
@@ -185,14 +184,28 @@ export class RenderWorkerCore {
     /** Set after a successful full shader rebuild; used to skip compilation when `structuralFingerprint()` is unchanged. */
     #builtStructuralFingerprint: string | null = null
     #fpsVersion = 0
-    /** Last packed scene params uploaded to bounds/mdc buffers (param-only dedup). */
-    #lastSceneParamUpload: Float32Array | null = null
-    /** Last polygon vertex bytes uploaded (param-only dedup). */
-    #lastPolygonVertexUpload: ArrayBuffer | null = null
-    #lastPreviewF32Upload: Float32Array | null = null
-    #lastPreviewVec2Upload: Float32Array | null = null
-    #lastPreviewVec3Upload: Float32Array | null = null
-    #lastPreviewMat3Upload: Float32Array | null = null
+    /** Pre-allocated dedup caches (param-only); `-1` length = never uploaded. */
+    #lastSceneParamUpload = new Float32Array(SCENE_PARAMS_F32_CAPACITY)
+    #lastSceneParamLen = -1
+    #lastPolygonVertexUpload = new ArrayBuffer(POLYGON_VERTEX_BUFFER_SIZE)
+    #lastPolygonVertexLen = -1
+    #lastPreviewF32Upload = new Float32Array(PREVIEW_UNIFORM_F32_COUNT)
+    #lastPreviewF32Len = -1
+    #lastPreviewVec2Upload = new Float32Array(PREVIEW_UNIFORM_VEC2_COUNT * 2)
+    #lastPreviewVec2Len = -1
+    #lastPreviewVec3Upload = new Float32Array(PREVIEW_UNIFORM_VEC3_COUNT * 4)
+    #lastPreviewVec3Len = -1
+    #lastPreviewMat3Upload = new Float32Array(PREVIEW_UNIFORM_MAT3_COUNT * PREVIEW_MAT3_PACK_FLOATS)
+    #lastPreviewMat3Len = -1
+    /** Persistent MAP_READ staging for click/hover (no per-interaction alloc). */
+    #clickIdReadback!: GPUBuffer
+    #edgeHitReadback!: GPUBuffer
+    #hitPosReadback!: GPUBuffer
+    #clickNormalReadback!: GPUBuffer
+    #hoverEdgeHitReadback!: GPUBuffer
+    /** Guards against concurrent mapAsync on persistent readback buffers (async onmessage can interleave). */
+    #clickReadbackBusy = false
+    #hoverReadbackBusy = false
 
     async init(canvas: OffscreenCanvas): Promise<void> {
         this.#canvas = canvas
@@ -482,71 +495,87 @@ export class RenderWorkerCore {
     ): void {
         const q = this.#device.queue
         if (scene.totalPolygonVertices > 0) {
-            if (!dedup || !this.#lastPolygonVertexUpload || !arrayBuffersEqual(this.#lastPolygonVertexUpload, polygonVertexData)) {
+            const polyLen = polygonVertexData.byteLength
+            if (
+                !dedup ||
+                this.#lastPolygonVertexLen !== polyLen ||
+                !arrayBufferPrefixEqual(this.#lastPolygonVertexUpload, polygonVertexData, polyLen)
+            ) {
                 q.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
                 if (dedup) {
-                    this.#lastPolygonVertexUpload = polygonVertexData.slice(0)
+                    new Uint8Array(this.#lastPolygonVertexUpload, 0, polyLen).set(new Uint8Array(polygonVertexData))
+                    this.#lastPolygonVertexLen = polyLen
                 }
             }
         } else if (dedup) {
-            this.#lastPolygonVertexUpload = null
+            this.#lastPolygonVertexLen = -1
         }
 
-        if (!dedup || !this.#lastSceneParamUpload || !float32ArraysEqual(this.#lastSceneParamUpload, sceneParamUpload)) {
+        const spLen = sceneParamUpload.length
+        if (!dedup || this.#lastSceneParamLen !== spLen || !float32SubarrayEqual(this.#lastSceneParamUpload, sceneParamUpload, spLen)) {
             q.writeBuffer(this.#uniformBuffers.boundsSceneParams, 0, sceneParamUpload as BufferSource)
             q.writeBuffer(this.#uniformBuffers.mdcSceneParams, 0, sceneParamUpload as BufferSource)
             if (dedup) {
-                this.#lastSceneParamUpload = new Float32Array(sceneParamUpload)
+                this.#lastSceneParamUpload.set(sceneParamUpload)
+                this.#lastSceneParamLen = spLen
             }
         }
 
         if (p.f32.byteLength > 0) {
-            if (!dedup || !this.#lastPreviewF32Upload || !float32ArraysEqual(this.#lastPreviewF32Upload, p.f32)) {
+            const f32Len = p.f32.length
+            if (!dedup || this.#lastPreviewF32Len !== f32Len || !float32SubarrayEqual(this.#lastPreviewF32Upload, p.f32, f32Len)) {
                 this.#previewF32Shadow.set(p.f32)
                 q.writeBuffer(this.#uniformBuffers.previewParamsF32, 0, p.f32 as BufferSource)
                 q.writeBuffer(this.#uniformBuffers.previewCapParamDrag, 0, p.f32 as BufferSource)
                 if (dedup) {
-                    this.#lastPreviewF32Upload = new Float32Array(p.f32)
+                    this.#lastPreviewF32Upload.set(p.f32)
+                    this.#lastPreviewF32Len = f32Len
                 }
             }
         } else if (dedup) {
-            this.#lastPreviewF32Upload = null
+            this.#lastPreviewF32Len = -1
         }
 
         if (p.vec2.byteLength > 0) {
-            if (!dedup || !this.#lastPreviewVec2Upload || !float32ArraysEqual(this.#lastPreviewVec2Upload, p.vec2)) {
+            const v2Len = p.vec2.length
+            if (!dedup || this.#lastPreviewVec2Len !== v2Len || !float32SubarrayEqual(this.#lastPreviewVec2Upload, p.vec2, v2Len)) {
                 this.#previewVec2Shadow.set(p.vec2)
                 q.writeBuffer(this.#uniformBuffers.previewParamsVec2, 0, p.vec2 as BufferSource)
                 if (dedup) {
-                    this.#lastPreviewVec2Upload = new Float32Array(p.vec2)
+                    this.#lastPreviewVec2Upload.set(p.vec2)
+                    this.#lastPreviewVec2Len = v2Len
                 }
             }
         } else if (dedup) {
-            this.#lastPreviewVec2Upload = null
+            this.#lastPreviewVec2Len = -1
         }
 
         if (p.vec3.byteLength > 0) {
-            if (!dedup || !this.#lastPreviewVec3Upload || !float32ArraysEqual(this.#lastPreviewVec3Upload, p.vec3)) {
+            const v3Len = p.vec3.length
+            if (!dedup || this.#lastPreviewVec3Len !== v3Len || !float32SubarrayEqual(this.#lastPreviewVec3Upload, p.vec3, v3Len)) {
                 this.#previewVec3Shadow.set(p.vec3)
                 q.writeBuffer(this.#uniformBuffers.previewParamsVec3, 0, p.vec3 as BufferSource)
                 if (dedup) {
-                    this.#lastPreviewVec3Upload = new Float32Array(p.vec3)
+                    this.#lastPreviewVec3Upload.set(p.vec3)
+                    this.#lastPreviewVec3Len = v3Len
                 }
             }
         } else if (dedup) {
-            this.#lastPreviewVec3Upload = null
+            this.#lastPreviewVec3Len = -1
         }
 
         if (p.mat3.byteLength > 0) {
-            if (!dedup || !this.#lastPreviewMat3Upload || !float32ArraysEqual(this.#lastPreviewMat3Upload, p.mat3)) {
+            const m3Len = p.mat3.length
+            if (!dedup || this.#lastPreviewMat3Len !== m3Len || !float32SubarrayEqual(this.#lastPreviewMat3Upload, p.mat3, m3Len)) {
                 this.#previewMat3Shadow.set(p.mat3)
                 q.writeBuffer(this.#uniformBuffers.previewParamsMat3, 0, p.mat3 as BufferSource)
                 if (dedup) {
-                    this.#lastPreviewMat3Upload = new Float32Array(p.mat3)
+                    this.#lastPreviewMat3Upload.set(p.mat3)
+                    this.#lastPreviewMat3Len = m3Len
                 }
             }
         } else if (dedup) {
-            this.#lastPreviewMat3Upload = null
+            this.#lastPreviewMat3Len = -1
         }
     }
 
@@ -1510,6 +1539,32 @@ export class RenderWorkerCore {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             label: "hoveredEdge",
         })
+
+        this.#clickIdReadback = this.#device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            label: "clickIdReadback",
+        })
+        this.#edgeHitReadback = this.#device.createBuffer({
+            size: EDGE_HITS_SIZE,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            label: "edgeHitReadback",
+        })
+        this.#hitPosReadback = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            label: "hitPosReadback",
+        })
+        this.#clickNormalReadback = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            label: "clickNormalReadback",
+        })
+        this.#hoverEdgeHitReadback = this.#device.createBuffer({
+            size: EDGE_HITS_SIZE,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            label: "hoverEdgeHitReadback",
+        })
     }
 
     #writeClickState(clickUV: [number, number], enableClick: boolean, enableHover: boolean, hoverUV?: [number, number]): void {
@@ -1525,13 +1580,23 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
     }
 
+    /** Read from a GPU buffer using the persistent readback buffer when available, else fresh allocation. */
+    #readGPU(source: GPUBuffer, readback: GPUBuffer, size: number, reuse: boolean): Promise<ArrayBuffer> {
+        return reuse
+            ? this.#helper.readBufferDataReuse(source, readback, size)
+            : this.#helper.readBufferData(source, size)
+    }
+
     async #readClickResult(): Promise<{ clickedId: number; edgeHits: import("./render-worker-protocol.mjs").EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number] }> {
+        const reuse = !this.#clickReadbackBusy
+        if (reuse) this.#clickReadbackBusy = true
         const [idBuf, edgeBuf, hitBuf, normalBuf] = await Promise.all([
-            this.#helper.readBufferData(this.#uniformBuffers.clickedObjectId, 4),
-            this.#helper.readBufferData(this.#uniformBuffers.edgeHit, 320),
-            this.#helper.readBufferData(this.#uniformBuffers.clickedHitPos, 16),
-            this.#helper.readBufferData(this.#uniformBuffers.clickedNormal, 16),
+            this.#readGPU(this.#uniformBuffers.clickedObjectId, this.#clickIdReadback, 4, reuse),
+            this.#readGPU(this.#uniformBuffers.edgeHit, this.#edgeHitReadback, EDGE_HITS_SIZE, reuse),
+            this.#readGPU(this.#uniformBuffers.clickedHitPos, this.#hitPosReadback, 16, reuse),
+            this.#readGPU(this.#uniformBuffers.clickedNormal, this.#clickNormalReadback, 16, reuse),
         ])
+        if (reuse) this.#clickReadbackBusy = false
         const clickedId = new Uint32Array(idBuf)[0] ?? 0
         const u32 = new Uint32Array(edgeBuf)
         const f32 = new Float32Array(edgeBuf)
@@ -1561,7 +1626,15 @@ export class RenderWorkerCore {
     }
 
     async #readHoverResult(): Promise<{ hoveredObjectId: number; hoveredEdges: SelectedEdgePayload[] }> {
-        const readback = await this.#helper.readBufferData(this.#uniformBuffers.hoverEdgeHit, 320)
+        const reuse = !this.#hoverReadbackBusy
+        if (reuse) this.#hoverReadbackBusy = true
+        const readback = await this.#readGPU(
+            this.#uniformBuffers.hoverEdgeHit,
+            this.#hoverEdgeHitReadback,
+            EDGE_HITS_SIZE,
+            reuse,
+        )
+        if (reuse) this.#hoverReadbackBusy = false
         const u32 = new Uint32Array(readback)
         const f32 = new Float32Array(readback)
         const edges: SelectedEdgePayload[] = []
@@ -1759,8 +1832,15 @@ export class RenderWorkerCore {
             const f32Off = byteOffset >> 2
             this.#previewF32Shadow[f32Off] = patch[0]!
             this.#previewF32Shadow[f32Off + 1] = patch[1]!
-            // Uniform sub-range writes are 256-byte aligned; mirror shadow then full-bank upload (same as legacy preview f32 patch path).
-            this.#device.queue.writeBuffer(this.#uniformBuffers.previewCapParamDrag, 0, this.#previewF32Shadow as BufferSource)
+            // Only upload the two patched floats; `queue.writeBuffer` offset is 4-byte aligned (f32 slot indices).
+            const dataByteOffset = this.#previewF32Shadow.byteOffset + byteOffset
+            this.#device.queue.writeBuffer(
+                this.#uniformBuffers.previewCapParamDrag,
+                byteOffset,
+                this.#previewF32Shadow.buffer,
+                dataByteOffset,
+                8,
+            )
         }
         if (msg.selectedObjectIds) {
             if (msg.selectedObjectIds instanceof ArrayBuffer) {

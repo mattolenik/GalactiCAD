@@ -9,7 +9,7 @@
  *   Preview/beam read BVH bounds from `previewParamsVec3` instead of storage.
  *
  * **Updates:** Param-only worker builds re-upload preview banks from `packPreviewParams()` plus bounds/MDC from `packSceneParams()`.
- * Cap push/pull patches **`previewCapParamDrag`** (full uniform upload from CPU shadow after patching two `f32`; `previewParamsF32` is not re-uploaded mid-drag).
+ * Cap push/pull patches **`previewCapParamDrag`** (8-byte `writeBuffer` at the cap slot from CPU shadow after patching two `f32`; `previewParamsF32` is not re-uploaded mid-drag).
  *
  * `compileParamMode` selects whether TS codegen emits direct preview reads or `sp_*` (bounds/mdc) reads.
  */

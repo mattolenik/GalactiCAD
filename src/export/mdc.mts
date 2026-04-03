@@ -248,10 +248,10 @@ export class MDCExport {
             vertexProjTolScale = 1e-3, // Relaxed from 1e-5
             vertexProjIters = 12,      // Increased from 8
             vertexProjMarginScale = 0.01,
-            vertexProjMaxStepScale = 0.5,
+            vertexProjMaxStepScale = 5,
 
             qefRegScale = 6.4e-2,
-            qefRegMin = 1e-7,
+            qefRegMin = 1e-9,
             qefCondCutoff = 1e8,
 
             orientationProbeScale = 0.5,
@@ -293,7 +293,7 @@ export class MDCExport {
         //   mdcF1: vec4f,           // offset 48, size 16
         //   mdcF2: vec4f,           // offset 64, size 16
         //   mdcF3: vec4f,           // offset 80, size 16
-        //   mdcU0: vec4u,           // offset 96, size 16
+        //   mdcU0: vec4u,           // offset 96, size 16 (z = activeCellCount after compaction, byte offset 104)
         // } // total size = 112
         const uniformBufferData = new ArrayBuffer(112)
         new Uint32Array(uniformBufferData, 0, 3).set([gridDimX, gridDimY, gridDimZ])
@@ -436,14 +436,11 @@ export class MDCExport {
             }
             logDiag("after CPU neighbor hash build", { hashEntries: tableEntries })
 
-            // --- Stage 2: allocate buffers sized to active cells, then run MDC passes ---
-            const activeCellCountBuffer = createBuffer(
-                "ActiveCellCount",
-                Uint32Array.BYTES_PER_ELEMENT,
-                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-            )
-            this.#device.queue.writeBuffer(activeCellCountBuffer, 0, new Uint32Array([activeCellCount]))
+            // Pack activeCellCount into uniforms.mdcU0.z so Pass 3–5 stay within the
+            // per-stage storage-buffer limit (Pass 5 otherwise needs 11 SSBOs).
+            this.#device.queue.writeBuffer(uniformBuffer, 104, new Uint32Array([activeCellCount >>> 0]))
 
+            // --- Stage 2: allocate buffers sized to active cells, then run MDC passes ---
             const activeCellIndicesBuffer = createBuffer(
                 "ActiveCellIndices",
                 activeCellCount * Uint32Array.BYTES_PER_ELEMENT,
@@ -511,7 +508,6 @@ export class MDCExport {
                 [24, debugSkipCountersBuffer],
                 [22, cellEdgeComponentsBuffer],
                 [9, cellQEFDataBuffer],
-                [10, activeCellCountBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [30, this.#mdcSceneParamsBuffer],
@@ -527,7 +523,6 @@ export class MDCExport {
                 [11, activeCellIndicesBuffer], // activeCellIndicesIn_vertex
                 [12, cellQEFDataBuffer],
                 [13, verticesBuffer],
-                [14, activeCellCountBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [30, this.#mdcSceneParamsBuffer],
@@ -545,7 +540,6 @@ export class MDCExport {
                 [16, activeCellFlagsBuffer], // activeCellFlagsInput_face (used for isCellActive)
                 [17, indicesBuffer],
                 [18, indexCountFaceBuffer],
-                [20, activeCellCountBuffer],
                 [22, cellEdgeComponentsBuffer],
                 [23, cellToActiveHashBuffer],
                 [24, debugSkipCountersBuffer],

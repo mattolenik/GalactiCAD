@@ -14,7 +14,7 @@ struct SharedUniforms {
     // mdcF1: x=gradEpsScale,   y=gradEpsMin,   z=edgeProjTolScale, w=vertexProjTolScale
     // mdcF2: x=vertexProjMarginScale, y=vertexProjMaxStepScale, z=qefRegScale, w=qefRegMin
     // mdcF3: x=qefCondCutoff, y=orientationProbeScale, z=orientationProbeMin, w=reserved
-    // mdcU0: x=edgeProjIters, y=vertexProjIters, z=reserved, w=reserved
+    // mdcU0: x=edgeProjIters, y=vertexProjIters, z=activeCellCount (set after compaction), w=reserved
     mdcF0: vec4f,
     mdcF1: vec4f,
     mdcF2: vec4f,
@@ -71,21 +71,16 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // Pass 3: Edge Detection
 @group(0) @binding(5) var<storage, read> activeCellIndicesIn_edge: array<u32>; // Compacted list of active cell indices (output of Pass 2d)
 @group(0) @binding(9) var<storage, read_write> cellQEFData_edge: array<QEFData>; // QEF data per (active cell * component)
-@group(0) @binding(10) var<storage, read> activeCellCount_edgeInput: u32; // Total active cells (output of Pass 2d)
 
 // Pass 4: Vertex Generation
 @group(0) @binding(11) var<storage, read> activeCellIndicesIn_vertex: array<u32>; // Compacted list (not strictly needed if vertices map 1:1 to active cells)
 @group(0) @binding(12) var<storage, read> cellQEFDataIn_vertex: array<QEFData>;    // QEF data per (active cell * component) (output of Pass 3)
 @group(0) @binding(13) var<storage, read_write> vertices: array<Vertex>;          // Output vertices
-@group(0) @binding(14) var<storage, read> activeCellCount_vertexInput: u32;   // Total active cells (output of Pass 2d)
-
 // Pass 5: Face Generation (atomic triangle generation)
 @group(0) @binding(15) var<storage, read> activeCellIndicesIn_face: array<u32>;     // Compacted list of active cell indices
 @group(0) @binding(16) var<storage, read> activeCellFlagsInput_face: array<u32>; // Original cell flags (output of Pass 1)
 @group(0) @binding(17) var<storage, read_write> indices: array<u32>;              // Output triangle indices
 @group(0) @binding(18) var<storage, read_write> indexCount_face: atomic<u32>;       // Total number of indices
-@group(0) @binding(20) var<storage, read> activeCellCount_faceInput: u32;       // Total active cells
-
 // Manifold DC connectivity:
 // For each active cell we store which surface component each of the 12 cube edges belongs to.
 // Layout: cellEdgeComponents[(activeCellIdx * 12) + edgeIdx] = componentIdx (0..MAX_COMPONENTS_PER_CELL-1),
@@ -618,7 +613,7 @@ fn edgeDetection_Pass3(
     // Check cancellation but don't return early (to maintain uniform control flow)
     let cancelled = isCancelled();
 
-    let totalActiveCells = activeCellCount_edgeInput; 
+    let totalActiveCells = uniforms.mdcU0.z; 
     if (cancelled || active_cell_array_idx >= totalActiveCells) { return; }
     if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_edge)) { return; }
 
@@ -908,7 +903,7 @@ fn vertexGeneration_Pass4(
     // Check cancellation but don't return early (to maintain uniform control flow)
     let cancelled = isCancelled();
     let vertexRecordIdx = wgLinear * 64u + localId.x;
-    let totalActiveCells = activeCellCount_vertexInput;
+    let totalActiveCells = uniforms.mdcU0.z;
     let totalVertexRecords = totalActiveCells * MAX_COMPONENTS_PER_CELL;
     if (cancelled || vertexRecordIdx >= totalVertexRecords) { return; }
     if (vertexRecordIdx >= arrayLength(&cellQEFDataIn_vertex) || vertexRecordIdx >= arrayLength(&vertices)) { return; }
@@ -1133,7 +1128,7 @@ fn generateTrianglesAtomic_Pass5(
     // Note: Cancellation buffer not included in Pass 5 to stay within storage buffer limit (10 max)
     // Cancellation is still checked between passes in TypeScript code.
     
-    let totalActiveCells = activeCellCount_faceInput;
+    let totalActiveCells = uniforms.mdcU0.z;
     if (active_cell_array_idx >= totalActiveCells) { return; }
     if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_face)) { return; }
 

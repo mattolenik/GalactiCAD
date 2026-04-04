@@ -85,30 +85,6 @@ async function writeRunFile(data: RunFileData): Promise<void> {
     await fs.writeFile(RUN_FILE, JSON.stringify(data, null, 2))
 }
 
-const CURSOR_MCP_JSON = ".cursor/mcp.json"
-
-/** Point Cursor MCP config at this devserver's bound port (same moment as `.devserver.run`). */
-async function syncCursorMcpJson(port: number): Promise<void> {
-    const url = `http://localhost:${port}/mcp`
-    let doc: Record<string, unknown>
-    try {
-        doc = JSON.parse(await fs.readFile(CURSOR_MCP_JSON, "utf8")) as Record<string, unknown>
-    } catch {
-        doc = { mcpServers: {} }
-    }
-    const servers = (doc.mcpServers as Record<string, unknown> | undefined) ?? {}
-    const key = "galacticad-devserver"
-    const prev = servers[key]
-    const prevEntry =
-        typeof prev === "object" && prev !== null && !Array.isArray(prev)
-            ? (prev as Record<string, unknown>)
-            : {}
-    servers[key] = { ...prevEntry, url }
-    doc.mcpServers = servers
-    await fs.mkdir(".cursor", { recursive: true })
-    await fs.writeFile(CURSOR_MCP_JSON, `${JSON.stringify(doc, null, 4)}\n`)
-}
-
 async function build() {
     const startTime = performance.now()
     try {
@@ -188,11 +164,6 @@ async function main() {
         }
         let server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err)
         await writeRunFile({ pid: process.pid, port: server.port })
-        try {
-            await syncCursorMcpJson(server.port)
-        } catch (e) {
-            err(`Could not update ${CURSOR_MCP_JSON}: ${e}`)
-        }
         const change$ = new Subject<{ event: EventName; path: string }>()
         change$
             .pipe(debounceTime(300))

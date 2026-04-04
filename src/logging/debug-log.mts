@@ -4,9 +4,20 @@
  *
  * When the devserver injects `__galacticadDevLogPush`, main thread calls
  * `connectMainThreadDevLogToBridge()` so `log()` output and mirrored `console.*`
- * lines go to the MCP ring buffer. Workers call `installWorkerDevLogBridge()` to
+ * lines go to the dev log ring buffer. Workers call `installWorkerDevLogBridge()` to
  * forward the same pipeline to the main thread.
+ *
+ * Dev log entries carry `module` separately from `line` so the devserver can filter
+ * by module without parsing bracket tags inside the message.
  */
+
+/** One line pushed to the in-browser dev log buffer (see devserver injected script). */
+export type DevLogEntry = {
+    /** Formatted text: `[iso] [level]` and optional `[thread]` prefix, not including a `[Module]` tag. */
+    line: string
+    /** Set for `log("ModuleName")` output; omitted for mirrored console and untagged errors. */
+    module?: string
+}
 
 export const DEBUG_LOG_MODULES = [
     "NodeMatcher",
@@ -34,8 +45,8 @@ const origConsole: Pick<typeof console, "debug" | "info" | "warn" | "error" | "l
     log: console.log.bind(console),
 }
 
-/** Optional sink for devserver MCP / unified log buffer (main or worker). */
-let devLogPush: ((line: string) => void) | undefined
+/** Optional sink for devserver / unified log buffer (main or worker). */
+let devLogPush: ((entry: DevLogEntry) => void) | undefined
 let devLogThreadLabel: string | undefined
 let devConsoleMirrorInstalled = false
 
@@ -76,7 +87,8 @@ function emitToDevLog(module: LogModule, level: string, args: unknown[]): void {
     const ts = new Date().toISOString()
     const text = formatArgs(args)
     const tp = devLogThreadLabel ? `[${devLogThreadLabel}]` : ""
-    devLogPush(`[${ts}] [${level}] ${tp}[${module}] ${text}`)
+    const line = `[${ts}] [${level}]${tp ? ` ${tp}` : ""} ${text}`
+    devLogPush({ module, line })
 }
 
 export function log(module: LogModule): {
@@ -125,13 +137,17 @@ export function setDevLogThreadLabel(label: string | undefined): void {
     devLogThreadLabel = label
 }
 
-export function setDevLogPush(fn: ((line: string) => void) | undefined): void {
+export function setDevLogPush(fn: ((entry: DevLogEntry) => void) | undefined): void {
     devLogPush = fn
 }
 
-/** Append a line already formatted (e.g. forwarded from a worker). Main thread only. */
-export function appendDevLogLine(line: string): void {
-    devLogPush?.(line)
+/** Append a dev log entry (e.g. forwarded from a worker). Main thread only. */
+export function appendDevLogLine(line: string, module?: string): void {
+    if (module != null && module !== "") {
+        devLogPush?.({ line, module })
+    } else {
+        devLogPush?.({ line })
+    }
 }
 
 /**
@@ -149,7 +165,7 @@ export function installDevConsoleMirror(): void {
                 const ts = new Date().toISOString()
                 const text = formatArgs(args)
                 const tp = devLogThreadLabel ? `[${devLogThreadLabel}]` : ""
-                devLogPush(`[${ts}] [${m}] ${tp}${text}`)
+                devLogPush({ line: `[${ts}] [${m}] ${tp}${text}` })
             }
             return orig.apply(console, args as never[])
         }
@@ -159,11 +175,11 @@ export function installDevConsoleMirror(): void {
 /** Main thread: connect to devserver-injected `__galacticadDevLogPush` and capture globals. No-op when not using devserver. */
 export function connectMainThreadDevLogToBridge(): void {
     if (typeof window === "undefined") return
-    const g = globalThis as { __galacticadDevLogPush?: (line: string) => void }
+    const g = globalThis as { __galacticadDevLogPush?: (entry: DevLogEntry) => void }
     if (typeof g.__galacticadDevLogPush !== "function") return
     setDevLogThreadLabel("main")
-    setDevLogPush(line => {
-        g.__galacticadDevLogPush?.(line)
+    setDevLogPush(entry => {
+        g.__galacticadDevLogPush?.(entry)
     })
     installDevConsoleMirror()
     window.addEventListener("error", ev => {
@@ -178,13 +194,17 @@ export function connectMainThreadDevLogToBridge(): void {
 }
 
 /**
- * Dedicated worker: send each line to main via `postMessage({ type: 'devLogLine', line })`.
+ * Dedicated worker: send each entry to main via `postMessage({ type: 'devLogLine', line, module? })`.
  * Call once at worker entry before other code runs.
  */
 export function installWorkerDevLogBridge(workerLabel: string): void {
     setDevLogThreadLabel(workerLabel)
-    setDevLogPush(line => {
-        self.postMessage({ type: "devLogLine", line })
+    setDevLogPush(entry => {
+        self.postMessage({
+            type: "devLogLine",
+            line: entry.line,
+            ...(entry.module !== undefined ? { module: entry.module } : {}),
+        })
     })
     installDevConsoleMirror()
 }

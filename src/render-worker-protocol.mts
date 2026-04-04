@@ -227,7 +227,7 @@ export interface RenderViewSettings {
 // ---------------------------------------------------------------------------
 
 export type WorkerToMainMessage =
-    | { type: "devLogLine"; line: string }
+    | { type: "devLogLine"; line: string; module?: string }
     | { type: "ready" }
     | { type: "initError"; error: string }
     | { type: "buildComplete"; sceneNodes: SerializedNode[]; compiledPosY: [number, number][]; error?: string; requestId?: number; documentName?: string; superseded?: boolean; timingMs?: BuildTimingBreakdownMs }

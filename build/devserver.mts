@@ -1,23 +1,97 @@
 import fs from "fs/promises"
-import http, { type IncomingMessage, type ServerResponse } from "http"
+import http from "http"
 import path from "path"
 import WebSocket, { WebSocketServer } from "ws"
-import { BrowserBridge } from "./devserver-bridge.mjs"
-import { createMcpPostHandler, handleMcpOptions, mcpMethodNotAllowed } from "./devserver-mcp.mjs"
+import { BrowserBridge, type DevServerConsoleLogLevel } from "./devserver-bridge.mjs"
 
 export interface RunFileData {
     pid: number
     port: number
 }
 
-/** Ring buffer + MCP WebSocket; `__galacticadDevLogPush` is consumed by `connectMainThreadDevLogToBridge()` in app (see debug-log.mts). Reconnects after devserver restart. */
+type DevLogQuery = {
+    n: number
+    levels: DevServerConsoleLogLevel[]
+    modules?: string[]
+}
+
+const ALL_LOG_LEVELS: DevServerConsoleLogLevel[] = ["error", "warn", "info", "debug"]
+const LEVEL_RESPONSE_PREFIX: Record<DevServerConsoleLogLevel, string> = {
+    error: "ERR ",
+    warn: "WARN ",
+    info: "INFO ",
+    debug: "DEBUG ",
+}
+
+function clampLogCount(n: number): number {
+    if (!Number.isFinite(n)) return 20
+    return Math.min(10_000, Math.max(1, Math.floor(n)))
+}
+
+function parseModuleFilters(searchParams: URLSearchParams): string[] | undefined {
+    if (!searchParams.has("module")) return undefined
+    const modules: string[] = []
+    for (const raw of searchParams.getAll("module")) {
+        for (const piece of raw.split(",")) {
+            const value = piece.trim()
+            if (!value) continue
+            modules.push(value)
+        }
+    }
+    if (modules.length === 0) return undefined
+    return [...new Set(modules)]
+}
+
+function parseLogQuery(url: URL): DevLogQuery {
+    const selectedLevels: DevServerConsoleLogLevel[] = []
+    if (url.searchParams.has("err")) selectedLevels.push("error")
+    if (url.searchParams.has("warn")) selectedLevels.push("warn")
+    if (url.searchParams.has("info")) selectedLevels.push("info")
+    if (url.searchParams.has("debug")) selectedLevels.push("debug")
+    const levels = selectedLevels.length > 0 ? selectedLevels : ALL_LOG_LEVELS
+    const n = clampLogCount(Number(url.searchParams.get("n") ?? "20"))
+    const modules = parseModuleFilters(url.searchParams)
+    return { n, levels, ...(modules ? { modules } : {}) }
+}
+
+function parseLevelFromLine(line: string): DevServerConsoleLogLevel | null {
+    const m = line.match(/^\[[^\]]+\] \[([^\]]+)\]/)
+    const token = m?.[1]
+    if (token === "error") return "error"
+    if (token === "warn") return "warn"
+    if (token === "info" || token === "log") return "info"
+    if (token === "debug") return "debug"
+    return null
+}
+
+function toPrefixedText(lines: string[]): string {
+    const out: string[] = []
+    for (const line of lines) {
+        const level = parseLevelFromLine(line)
+        if (!level) continue
+        out.push(`${LEVEL_RESPONSE_PREFIX[level]}${line}`)
+    }
+    return out.join("\n")
+}
+
+/** Ring buffer + bridge WebSocket; `__galacticadDevLogPush` is consumed by `connectMainThreadDevLogToBridge()` in app. */
 const INJECTED_BRIDGE_SCRIPT = `
         <script type="module">
         (function () {
             const MAX = 5000;
             const buf = [];
-            function push(line) {
-                buf.push(line);
+            function normalizeEntry(raw) {
+                if (raw != null && typeof raw === "object" && typeof raw.line === "string") {
+                    var mod = raw.module;
+                    return { line: raw.line, module: typeof mod === "string" && mod !== "" ? mod : undefined };
+                }
+                if (typeof raw === "string") return { line: raw };
+                return null;
+            }
+            function push(raw) {
+                var e = normalizeEntry(raw);
+                if (!e) return;
+                buf.push(e);
                 if (buf.length > MAX) buf.splice(0, buf.length - MAX);
             }
             globalThis.__galacticadDevLogPush = push;
@@ -37,23 +111,101 @@ const INJECTED_BRIDGE_SCRIPT = `
                 var m = typeof line === "string" ? line.match(/^\\[[^\\]]+\\] \\[([^\\]]+)\\]/) : null;
                 return m ? m[1] : null;
             }
-            function lineMatchesLevels(token, levelsMode) {
-                if (!token) return false;
-                if (levelsMode === "all") return true;
-                return token === "warn" || token === "error";
+            function tokenToLevel(token) {
+                if (token === "error") return "error";
+                if (token === "warn") return "warn";
+                if (token === "info" || token === "log") return "info";
+                if (token === "debug") return "debug";
+                return null;
             }
-            function collectConsoleLogs(n, levelsMode) {
-                var seen = Object.create(null);
+            function lineHasModuleTag(line, moduleName) {
+                return typeof line === "string" && line.indexOf("[" + moduleName + "]") >= 0;
+            }
+            function lineMatchesModules(entry, modules) {
+                if (!modules || modules.length === 0) return true;
+                if (typeof entry.module === "string" && modules.indexOf(entry.module) >= 0) return true;
+                for (var i = 0; i < modules.length; i++) {
+                    if (lineHasModuleTag(entry.line, modules[i])) return true;
+                }
+                return false;
+            }
+            function normalizeLevelList(levels) {
+                if (!Array.isArray(levels)) return [];
                 var out = [];
-                for (var i = buf.length - 1; i >= 0 && out.length < n; i--) {
-                    var line = buf[i];
-                    var tok = logLevelToken(line);
-                    if (!lineMatchesLevels(tok, levelsMode)) continue;
-                    if (seen[line]) continue;
-                    seen[line] = true;
-                    out.push(line);
+                var seen = new Set();
+                for (var i = 0; i < levels.length; i++) {
+                    var level = String(levels[i]);
+                    if (level !== "error" && level !== "warn" && level !== "info" && level !== "debug") continue;
+                    if (seen.has(level)) continue;
+                    seen.add(level);
+                    out.push(level);
                 }
                 return out;
+            }
+            function normalizeModuleList(modules) {
+                if (!Array.isArray(modules)) return undefined;
+                var out = [];
+                for (var i = 0; i < modules.length; i++) {
+                    var name = String(modules[i]).trim();
+                    if (name !== "") out.push(name);
+                }
+                if (out.length === 0) return undefined;
+                return out;
+            }
+            function allBucketsFull(buckets, levels, n) {
+                for (var i = 0; i < levels.length; i++) {
+                    if (buckets[levels[i]].length < n) return false;
+                }
+                return true;
+            }
+            function collectConsoleLogs(n, levels, modules) {
+                if (levels.length === 0) return [];
+                var levelSet = new Set(levels);
+                var bucketOrder = ["error", "warn", "info", "debug"];
+                var buckets = { error: [], warn: [], info: [], debug: [] };
+                var seenByBucket = {
+                    error: new Set(),
+                    warn: new Set(),
+                    info: new Set(),
+                    debug: new Set(),
+                };
+                for (var i = buf.length - 1; i >= 0; i--) {
+                    var entry = buf[i];
+                    if (!lineMatchesModules(entry, modules)) continue;
+                    var level = tokenToLevel(logLevelToken(entry.line));
+                    if (!level || !levelSet.has(level)) continue;
+                    if (buckets[level].length >= n) continue;
+                    var seen = seenByBucket[level];
+                    if (seen.has(entry.line)) continue;
+                    seen.add(entry.line);
+                    buckets[level].push(entry.line);
+                    if (allBucketsFull(buckets, levels, n)) break;
+                }
+                var out = [];
+                for (var j = 0; j < bucketOrder.length; j++) {
+                    var lvl = bucketOrder[j];
+                    if (!levelSet.has(lvl)) continue;
+                    if (buckets[lvl].length === 0) continue;
+                    out = out.concat(buckets[lvl]);
+                }
+                return out;
+            }
+            function sendConsoleLogs(socket, id, lines) {
+                var ok = JSON.stringify({ type: "consoleLogsResult", id: id, lines: lines });
+                if (!trySend(socket, ok)) {
+                    trySend(socket, JSON.stringify({ type: "consoleLogsError", id: id, message: "send failed" }));
+                }
+            }
+            function onGetConsoleLogs(msg, socket) {
+                if (msg.type !== "getConsoleLogs") return false;
+                if (typeof msg.id !== "string" || typeof msg.n !== "number") return false;
+                var levels = normalizeLevelList(msg.levels);
+                if (levels.length === 0) return false;
+                var modules = normalizeModuleList(msg.modules);
+                var n = Math.min(10000, Math.max(1, Math.floor(msg.n)));
+                var lines = collectConsoleLogs(n, levels, modules);
+                sendConsoleLogs(socket, msg.id, lines);
+                return true;
             }
             function onMessage(event) {
                 var data = event.data;
@@ -71,14 +223,7 @@ const INJECTED_BRIDGE_SCRIPT = `
                     window.location.reload();
                     return;
                 }
-                if (msg.type === "getConsoleLogs" && msg.id && typeof msg.n === "number" && (msg.levels === "all" || msg.levels === "warn-error")) {
-                    var n = Math.min(10000, Math.max(1, Math.floor(msg.n)));
-                    var lines = collectConsoleLogs(n, msg.levels);
-                    var ok = JSON.stringify({ type: "consoleLogsResult", id: msg.id, lines: lines });
-                    if (!trySend(socket, ok)) {
-                        trySend(socket, JSON.stringify({ type: "consoleLogsError", id: msg.id, message: "send failed" }));
-                    }
-                }
+                void onGetConsoleLogs(msg, socket);
             }
             function scheduleReconnect() {
                 if (intentionalClose) return;
@@ -129,7 +274,6 @@ export class DevServer {
         options?: { runFile: string; pid: number }
     ): Promise<DevServer> {
         const bridge = new BrowserBridge()
-        const mcpPost = createMcpPostHandler(q => bridge.requestConsoleLogs(q))
 
         const { server, port: actualPort, wss } = await listenWithPortRetry(
             serveRoot,
@@ -137,7 +281,6 @@ export class DevServer {
             INJECTED_BRIDGE_SCRIPT,
             indexFileName,
             bridge,
-            mcpPost,
             log,
             err,
         )
@@ -147,7 +290,7 @@ export class DevServer {
         if (options) {
             await fs.writeFile(options.runFile, JSON.stringify({ pid: options.pid, port: actualPort } satisfies RunFileData, null, 2))
         }
-        log(`Live reload + MCP WebSocket on http://localhost:${actualPort} (same port as HTTP); MCP POST http://localhost:${actualPort}/mcp`)
+        log(`Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); logs endpoint GET http://localhost:${actualPort}/_logs`)
         return instance
     }
 
@@ -161,21 +304,11 @@ export class DevServer {
     }
 }
 
-/** Read raw body (for JSON MCP POST). */
-async function readRequestBody(req: IncomingMessage): Promise<Buffer> {
-    const chunks: Buffer[] = []
-    for await (const chunk of req) {
-        chunks.push(chunk as Buffer)
-    }
-    return Buffer.concat(chunks)
-}
-
 function createHttpServer(
     dir: string,
     clientScript: string,
     indexFileName: string,
     bridge: BrowserBridge,
-    mcpPostHandler: (req: IncomingMessage, res: ServerResponse, parsedBody: unknown) => Promise<void>,
     log = console.log,
     err = console.error,
 ) {
@@ -193,37 +326,26 @@ function createHttpServer(
 
     const defaultContentType = "application/octet-stream"
 
-    async function handleRequest(req: IncomingMessage, res: ServerResponse) {
-        const pathname = new URL(req.url ?? "/", "http://localhost").pathname
+    async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+        const url = new URL(req.url ?? "/", "http://localhost")
+        const pathname = url.pathname
 
-        if (pathname === "/mcp") {
-            if (req.method === "OPTIONS") {
-                handleMcpOptions(res)
+        if (pathname === "/_logs") {
+            if (req.method !== "GET") {
+                res.writeHead(405, { "content-type": "text/plain; charset=utf-8", Allow: "GET", "Access-Control-Allow-Origin": "*" })
+                res.end("method not allowed")
                 return
             }
-            if (req.method === "GET" || req.method === "DELETE") {
-                mcpMethodNotAllowed(res, req.method)
-                return
-            }
-            if (req.method === "POST") {
-                let body: unknown
-                try {
-                    const raw = await readRequestBody(req)
-                    body = raw.length > 0 ? JSON.parse(raw.toString("utf8")) : undefined
-                } catch {
-                    res.writeHead(400, { "content-type": "application/json", "Access-Control-Allow-Origin": "*" })
-                    res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32_700, message: "Parse error" }, id: null }))
-                    return
-                }
-                await mcpPostHandler(req, res, body)
-                return
-            }
-            mcpMethodNotAllowed(res, req.method ?? "UNKNOWN")
+            const query = parseLogQuery(url)
+            const lines = await bridge.requestConsoleLogs(query)
+            const text = lines ? toPrefixedText(lines) : ""
+            res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+            res.end(text)
             return
         }
 
         log(`${req.method} ${req.url}`)
-        let file = path.normalize(path.join(dir, "." + req.url))
+        let file = path.normalize(path.join(dir, "." + pathname))
         try {
             const stats = await fs.stat(file)
             if (stats.isDirectory()) {
@@ -284,13 +406,12 @@ function listenWithPortRetry(
     clientScript: string,
     indexFileName: string,
     bridge: BrowserBridge,
-    mcpPostHandler: (req: IncomingMessage, res: ServerResponse, parsedBody: unknown) => Promise<void>,
     log = console.log,
     err = console.error,
 ): Promise<{ server: http.Server; port: number; wss: WebSocketServer }> {
     return new Promise((resolve, reject) => {
         function tryPort(p: number) {
-            const server = createHttpServer(dir, clientScript, indexFileName, bridge, mcpPostHandler, log, err)
+            const server = createHttpServer(dir, clientScript, indexFileName, bridge, log, err)
             const onError = (e: NodeJS.ErrnoException) => {
                 if (e.code === "EADDRINUSE") {
                     log(`Port ${p} in use, trying ${p + 1}...`)

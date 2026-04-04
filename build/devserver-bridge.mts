@@ -3,15 +3,16 @@ import type { WebSocketServer } from "ws"
 /** Server → browser: reload the page. */
 export type DevServerReloadMessage = { type: "reload" }
 
-/** Filter for MCP / bridge log queries: default warn+error only, or every line with a parseable `[ts] [level]` prefix. */
-export type DevServerConsoleLogLevels = "warn-error" | "all"
+export type DevServerConsoleLogLevel = "error" | "warn" | "info" | "debug"
 
 /** Server → browser: return up to `n` log lines (newest first, filtered + deduped in the injected script). */
 export type DevServerGetConsoleLogsMessage = {
     type: "getConsoleLogs"
     id: string
     n: number
-    levels: DevServerConsoleLogLevels
+    levels: DevServerConsoleLogLevel[]
+    /** Empty or omitted: all modules. Otherwise keep only entries whose `module` field matches one of these names. */
+    modules?: string[]
 }
 
 /** Browser → server: log lines for a pending request. */
@@ -47,11 +48,11 @@ export class BrowserBridge {
     }
 
     /**
-     * Ask connected browser tab(s) for up to `n` unified dev log lines (newest first, deduped; filtered by `levels`).
+     * Ask connected browser tab(s) for up to `n` lines per requested level (newest first, deduped by level).
      * First response wins. Returns `null` if no client is connected, times out, or the bridge reports failure.
      */
     requestConsoleLogs(
-        query: { n: number; levels: DevServerConsoleLogLevels },
+        query: { n: number; levels: DevServerConsoleLogLevel[]; modules?: string[] },
         timeoutMs = DEFAULT_TIMEOUT_MS,
     ): Promise<string[] | null> {
         const wss = this.wsServer
@@ -75,6 +76,7 @@ export class BrowserBridge {
                 id,
                 n: query.n,
                 levels: query.levels,
+                ...(query.modules != null && query.modules.length > 0 ? { modules: query.modules } : {}),
             }
             const payload = JSON.stringify(msg)
             let sent = false

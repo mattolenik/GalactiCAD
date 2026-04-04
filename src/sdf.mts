@@ -334,7 +334,7 @@ export class SDFRenderer {
     #handleWorkerMessage(msg: WorkerToMainMessage): void {
         switch (msg.type) {
             case "devLogLine":
-                appendDevLogLine(msg.line)
+                appendDevLogLine(msg.line, msg.module)
                 break
             case "ready":
                 this.#worker.postMessage({ type: "setBvhEnabled", enabled: this.#bvhEnabled })
@@ -484,7 +484,7 @@ export class SDFRenderer {
 
     #handleTranspileMessage(msg: TranspileToMainMessage): void {
         if (msg.type === "devLogLine") {
-            appendDevLogLine(msg.line)
+            appendDevLogLine(msg.line, msg.module)
             return
         }
         if (msg.type !== "transpileComplete") return

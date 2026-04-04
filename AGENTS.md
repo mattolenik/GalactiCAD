@@ -128,7 +128,7 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Polygon editing UX: double-clicking polygon2d, loft, union, or other cross-selectable symbols selects in the preview; Monaco should keep `occurrencesHighlight: "off"` and `selectionHighlight: false`; polygon editing opens from a hover-only "Edit Polygon" menu, not right-click; right-click over `polygon2d` in Monaco should use Monaco's built-in context menu; keep a safe-zone AABB between trigger and menu so it stays open while the cursor moves toward it.
 - CAD scene source is transpiled with the TypeScript compiler (`transpileModule` in `cad-transpile.mts`, transpile worker), not esbuild-wasm. Multi-operand smooth unions (`round`, `soft`, `chamfer`, `columns`, `stairs`, etc.) are not associative when folded left; for three or more operands the evaluator blends the two nearest children at each sample—see `docs/smooth_union_ordering.md`.
 - Preview (`preview.wgsl`): orthographic rays use `RAY_ORIGIN_DEPTH` off `camera.position`—keep that offset consistent in `computeRayOrigin`, the fragment ray setup, and `beamMarch`; if you change near depth, adjust `MAX_DIST` so the forward march still covers the scene. Primitives’ `compileAuxFast` must return `FastSDFResult` via `sdfFast(...)`, not `vec2f`, so fast CSG (`opUnionFast`, etc.) type-checks.
-- Toggleable diagnostic logging: `src/logging/debug-log.mts` (`log("ModuleName").debug` / `.info` / `.warn` / `.error`), persisted as `app.debugLogModules`, toggles under Dev Tools **Logs**, flags pushed to the render worker with `setDebugLogModules` on ready and when toggles change. Buffered lines use `[timestamp] [level] …`; the second bracketed token is the level (`debug`/`info`/`warn`/`error` from `log()`, or mirrored `console` method names), which devserver MCP warn/error filtering keys off of.
+- Toggleable diagnostic logging: `src/logging/debug-log.mts` (`log("ModuleName").debug` / `.info` / `.warn` / `.error`), persisted as `app.debugLogModules`, toggles under Dev Tools **Logs**, flags pushed to the render worker with `setDebugLogModules` on ready and when toggles change. Dev log **buffer** entries are `{ line, module? }`: `line` is `[timestamp] [level]` plus optional `[thread]` and message text **without** a `[Module]` tag; `module` is set only for `log("ModuleName")` output so the devserver can filter by module. The second bracketed token in `line` is still the level (`debug`/`info`/`warn`/`error` from `log()`, or mirrored `console` method names), which devserver MCP warn/error filtering keys off of. Mirrored `console.*`, window errors, and similar lines omit `module`.
 - ThreadedRod: `threadedRod.left`/`right` (default right) and `profile.fdm()`/`iso()`/`acme()` after profile; bare `radius(...)` is FDM. ACME profile defaults meridional `threadAngle` to 61° (90° − 29°) because nominal ACME 29° uses a different angular reference than meridional `threadAngle`. In `cad-types-decl.mts`, avoid backticks around `fdm`/`iso` in ThreadedRod JSDoc comment bodies—TypeScript can misparse that line.
 
 ## Building and Linting
@@ -141,23 +141,24 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 **Do not run build or lint commands on WGSL files directly.** WGSL files will be compiled with `make build` by the custom build logic. This means when making changes to WGSL files, you should run `make build` to validate them. If they don't compile, you will see the compiler error in `make build`. This custom build logic is what handles the `//:) include` directive, meaning this shader compiler output is indicative of what happens at runtime.
 
 
-### Devserver MCP (optional browser console)
+### Devserver logs endpoint (optional browser console)
 
-When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with port **6900** forwarded), the same HTTP port also serves **Streamable HTTP MCP** at **`POST /mcp`** (e.g. `http://localhost:<port>/mcp`). The active port is written to **`.devserver.run`** as JSON (`port` field) when the server starts; it may differ from the default if the port was in use.
+When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with port **6900** forwarded), the same HTTP port serves **`GET /_logs`** (e.g. `http://localhost:<port>/_logs`). The active port is written to **`.devserver.run`** as JSON (`port` field) when the server starts; it may differ from the default if the port was in use.
 
-- **Tool**: `get_console_log_lines` — optional **`n`** (integer, default **20**, max 10000) and optional **`levels`**: **`warn-error`** (default) or **`all`**. Returns **one text block** of JSON: a **`string[]`** (newest entry first) or the literal **`null`** if logs could not be retrieved (no browser tab connected, bridge error, or timeout). By default only lines whose second bracketed token is **`warn`** or **`error`** are included (matches `src/logging/debug-log.mts` and mirrored `console` lines). **`levels=all`** keeps every line with a parseable `[timestamp] [level]` prefix. **Duplicate lines** (identical full string) are always dropped while scanning backward until `n` unique lines are collected or the ring buffer is exhausted.
+- **Response format**: `text/plain; charset=utf-8`, one log line per line, prefixed by severity (`ERR ` / `WARN ` / `INFO ` / `DEBUG `). If no browser tab is connected, bridge times out, or nothing matches filters, response is **200 with empty body**.
+- **Level flags** (query presence enables each bucket): `err`, `warn`, `info`, `debug`. Default when none are provided: all four buckets.
+- **`n`**: optional integer cap per level bucket (default `20`, clamp `1..10000`), newest-first within each bucket, duplicate raw lines removed per bucket.
+- **`module`**: optional comma-separated names (e.g. `module=MdcExport,WelcomeScreen`). Missing/empty means all modules. Non-empty module filter restricts to module-tagged/module-attributed lines and excludes generic mirrored console noise.
 - **What is captured**: the same pipeline as `src/logging/debug-log.mts` (`log("Module").*` when that module is enabled in Dev Tools) plus mirrored **`console.*`** on the main thread and on **render** / **transpile** workers (forwarded to the main ring buffer), plus **`window` error** and **unhandledrejection** on the main thread. This is **best-effort** runtime signal; it does **not** replace `make build`.
 
 **Agent workflow**
 
 1. Prefer **`make build`** for compile-time WGSL and bundling errors after shader edits.
-2. If an MCP client is configured to reach this devserver and the server is running, you may call **`get_console_log_lines`** to scan for runtime issues (e.g. WebGPU or scene errors echoed on the main console). At the **end of a task**, attempt this **once** for final verification when the MCP server is available.
-3. If the devserver is **not** running or the MCP tool is **unavailable**, **do nothing**; do not fail the task for missing logs.
-4. The user may ask you to check for errors or to fix issues found in those lines at any time.
+2. If devserver is running, use shell `curl` against `/_logs` (default check: `?warn&err`; omit `n` unless asked).
+3. If devserver is **not** running, **do nothing**; do not fail the task for missing runtime logs.
+4. See [`.cursor/skills/devserver-logs/SKILL.md`](.cursor/skills/devserver-logs/SKILL.md) for the standard runtime-log check flow.
 
-**User setup**: Point the MCP client at the devserver URL (same host/port as the app, path `/mcp`). Only the local devserver process exposes this endpoint; it is not part of production builds.
-
-**Cursor**: The project includes [`.cursor/mcp.json`](.cursor/mcp.json). When the watch devserver starts, [build/build.mts](build/build.mts) writes **`url`** under `galacticad-devserver` to `http://localhost:<port>/mcp` using the same bound port as `.devserver.run`. Restart Cursor or reload MCP if the port changes while Cursor is already running.
+**Optional cleanup**: if a local `.cursor/mcp.json` still contains stale `galacticad-devserver` MCP settings from older workflows, users can remove that entry manually (file is gitignored).
 
 ## Performance regression triage
 

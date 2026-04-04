@@ -4,15 +4,21 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import * as z from "zod"
 
 function clampLogCount(n: number): number {
-    if (!Number.isFinite(n)) return 100
+    if (!Number.isFinite(n)) return 20
     return Math.min(10_000, Math.max(1, Math.floor(n)))
 }
+
+const logLevelsSchema = z.enum(["warn-error", "all"])
+
+export type DevServerConsoleLogQuery = { n: number; levels: z.infer<typeof logLevelsSchema> }
 
 /**
  * Stateless Streamable HTTP MCP: one `McpServer` + transport per POST (see SDK
  * `simpleStatelessStreamableHttp` example).
  */
-export function createMcpPostHandler(requestConsoleLogs: (n: number) => Promise<string[] | null>) {
+export function createMcpPostHandler(
+    requestConsoleLogs: (query: DevServerConsoleLogQuery) => Promise<string[] | null>,
+) {
     return async (req: IncomingMessage, res: ServerResponse, parsedBody: unknown) => {
         const server = new McpServer(
             {
@@ -21,8 +27,10 @@ export function createMcpPostHandler(requestConsoleLogs: (n: number) => Promise<
             },
             {
                 instructions:
-                    "Devserver MCP bridge: fetch recent unified dev log lines (debug-log.mts + mirrored console) from the main thread buffer, " +
-                    "including lines forwarded from workers (render, transpile). Returns JSON text: string[] or null if logs could not be retrieved.",
+                    "Devserver MCP: fetch unified dev log lines from the browser ring buffer (debug-log.mts + mirrored console on main/render/transpile workers). " +
+                    "Default: up to 20 lines, warn and error only, newest first, duplicate full lines collapsed. " +
+                    "Optional levels=all includes every line with a parseable [timestamp] [level] prefix. " +
+                    "Returns JSON text: string[] or null if no tab connected / timeout / bridge error.",
             }
         )
 
@@ -30,15 +38,19 @@ export function createMcpPostHandler(requestConsoleLogs: (n: number) => Promise<
             "get_console_log_lines",
             {
                 description:
-                    "Fetch the last n unified dev log lines (debug-log.mts when modules are enabled, mirrored console on main/render/transpile workers). " +
-                    "Default n is 100. Returns JSON text: string[] or null.",
+                    "Fetch up to n unified dev log lines (newest first). Default n=20, levels=warn-error (only warn/error by the second [bracket] token). " +
+                    "Duplicate lines (exact string) are always omitted. Use levels=all for all severities. JSON text: string[] or null.",
                 inputSchema: {
-                    n: z.number().int().min(1).max(10_000).optional().describe("Number of recent log lines to return (default 100)"),
+                    n: z.number().int().min(1).max(10_000).optional().describe("Max lines after filter and dedupe (default 20)"),
+                    levels: logLevelsSchema
+                        .optional()
+                        .describe('warn-error (default) or all lines with a [ts] [level] prefix'),
                 },
             },
-            async (args: { n?: number }) => {
-                const n = clampLogCount(args?.n ?? 100)
-                const lines = await requestConsoleLogs(n)
+            async (args: { n?: number; levels?: z.infer<typeof logLevelsSchema> }) => {
+                const n = clampLogCount(args?.n ?? 20)
+                const levels = args?.levels ?? "warn-error"
+                const lines = await requestConsoleLogs({ n, levels })
                 const text = lines === null ? "null" : JSON.stringify(lines)
                 return {
                     content: [{ type: "text" as const, text }],

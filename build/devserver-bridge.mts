@@ -3,8 +3,16 @@ import type { WebSocketServer } from "ws"
 /** Server → browser: reload the page. */
 export type DevServerReloadMessage = { type: "reload" }
 
-/** Server → browser: return the last `n` console log lines. */
-export type DevServerGetConsoleLogsMessage = { type: "getConsoleLogs"; id: string; n: number }
+/** Filter for MCP / bridge log queries: default warn+error only, or every line with a parseable `[ts] [level]` prefix. */
+export type DevServerConsoleLogLevels = "warn-error" | "all"
+
+/** Server → browser: return up to `n` log lines (newest first, filtered + deduped in the injected script). */
+export type DevServerGetConsoleLogsMessage = {
+    type: "getConsoleLogs"
+    id: string
+    n: number
+    levels: DevServerConsoleLogLevels
+}
 
 /** Browser → server: log lines for a pending request. */
 export type DevServerConsoleLogsResultMessage = { type: "consoleLogsResult"; id: string; lines: string[] }
@@ -39,10 +47,13 @@ export class BrowserBridge {
     }
 
     /**
-     * Ask connected browser tab(s) for the last `n` console lines. First response wins.
-     * Returns `null` if no client is connected, times out, or the bridge reports failure.
+     * Ask connected browser tab(s) for up to `n` unified dev log lines (newest first, deduped; filtered by `levels`).
+     * First response wins. Returns `null` if no client is connected, times out, or the bridge reports failure.
      */
-    requestConsoleLogs(n: number, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string[] | null> {
+    requestConsoleLogs(
+        query: { n: number; levels: DevServerConsoleLogLevels },
+        timeoutMs = DEFAULT_TIMEOUT_MS,
+    ): Promise<string[] | null> {
         const wss = this.wsServer
         if (!wss || wss.clients.size === 0) {
             return Promise.resolve(null)
@@ -59,7 +70,12 @@ export class BrowserBridge {
                 resolve(v)
             }
             this.pending.set(id, { resolve: finish })
-            const msg: DevServerGetConsoleLogsMessage = { type: "getConsoleLogs", id, n }
+            const msg: DevServerGetConsoleLogsMessage = {
+                type: "getConsoleLogs",
+                id,
+                n: query.n,
+                levels: query.levels,
+            }
             const payload = JSON.stringify(msg)
             let sent = false
             wss.clients.forEach(client => {

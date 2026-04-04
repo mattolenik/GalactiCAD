@@ -33,6 +33,28 @@ const INJECTED_BRIDGE_SCRIPT = `
                 } catch (_e) {}
                 return false;
             }
+            function logLevelToken(line) {
+                var m = typeof line === "string" ? line.match(/^\\[[^\\]]+\\] \\[([^\\]]+)\\]/) : null;
+                return m ? m[1] : null;
+            }
+            function lineMatchesLevels(token, levelsMode) {
+                if (!token) return false;
+                if (levelsMode === "all") return true;
+                return token === "warn" || token === "error";
+            }
+            function collectConsoleLogs(n, levelsMode) {
+                var seen = Object.create(null);
+                var out = [];
+                for (var i = buf.length - 1; i >= 0 && out.length < n; i--) {
+                    var line = buf[i];
+                    var tok = logLevelToken(line);
+                    if (!lineMatchesLevels(tok, levelsMode)) continue;
+                    if (seen[line]) continue;
+                    seen[line] = true;
+                    out.push(line);
+                }
+                return out;
+            }
             function onMessage(event) {
                 var data = event.data;
                 if (typeof data !== "string") return;
@@ -49,9 +71,9 @@ const INJECTED_BRIDGE_SCRIPT = `
                     window.location.reload();
                     return;
                 }
-                if (msg.type === "getConsoleLogs" && msg.id && typeof msg.n === "number") {
+                if (msg.type === "getConsoleLogs" && msg.id && typeof msg.n === "number" && (msg.levels === "all" || msg.levels === "warn-error")) {
                     var n = Math.min(10000, Math.max(1, Math.floor(msg.n)));
-                    var lines = buf.slice(-n);
+                    var lines = collectConsoleLogs(n, msg.levels);
                     var ok = JSON.stringify({ type: "consoleLogsResult", id: msg.id, lines: lines });
                     if (!trySend(socket, ok)) {
                         trySend(socket, JSON.stringify({ type: "consoleLogsError", id: msg.id, message: "send failed" }));
@@ -107,7 +129,7 @@ export class DevServer {
         options?: { runFile: string; pid: number }
     ): Promise<DevServer> {
         const bridge = new BrowserBridge()
-        const mcpPost = createMcpPostHandler(n => bridge.requestConsoleLogs(n))
+        const mcpPost = createMcpPostHandler(q => bridge.requestConsoleLogs(q))
 
         const { server, port: actualPort, wss } = await listenWithPortRetry(
             serveRoot,

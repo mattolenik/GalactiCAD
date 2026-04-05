@@ -143,10 +143,11 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 ### Devserver logs endpoint (optional browser console)
 
-When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with port **6900** forwarded), the same HTTP port serves **`GET /_logs`** (e.g. `http://localhost:<port>/_logs`). The active port is written to **`.devserver.run`** as JSON (`port` field) when the server starts; it may differ from the default if the port was in use.
+When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`** at `http://localhost:<port>/_logs`. **Read `<port>` from `.devserver.run`** (JSON `port` field) when the server starts; if that file is absent, the devserver is not running and there is **no** default port to use for `/_logs`. The recorded port may differ from the configured default if the listen port was already in use.
 
 - **Response format**: `text/plain; charset=utf-8`, one log line per line, prefixed by severity (`ERR ` / `WARN ` / `INFO ` / `DEBUG `). If no browser tab is connected, bridge times out, or nothing matches filters, response is **200 with empty body**.
-- **Level flags** (query presence enables each bucket): `err`, `warn`, `info`, `debug`. Default when none are provided: all four buckets.
+- **`level`**: optional single threshold among `error`, `warning`, `info`, `debug` (case-insensitive). Cumulative: `error` → errors only; `warning` → errors and warnings; `info` → errors, warnings, and info; `debug` → all four. Default when `level` is missing, empty, or not recognized: **`info`** (errors, warnings, and info—no debug). URL token `warning` maps to the internal warn bucket; response lines still use the `WARN ` prefix.
+- **`only`**: optional comma-separated **exact** buckets using the same tokens (`error`, `warning`, `info`, `debug`). If `only` is present and parses to at least one valid bucket, **only** those buckets are returned and `level` is ignored. If `only` is present but every token is invalid (or the value is empty), behavior falls back to the same default as missing `level` (**info** threshold). Legacy presence flags (`err`, `warn`, …) are not read; omit them.
 - **`n`**: optional integer cap per level bucket (default `20`, clamp `1..10000`), newest-first within each bucket, duplicate raw lines removed per bucket.
 - **`module`**: optional comma-separated names (e.g. `module=MdcExport,WelcomeScreen`). Missing/empty means all modules. Non-empty module filter restricts to module-tagged/module-attributed lines and excludes generic mirrored console noise.
 - **What is captured**: the same pipeline as `src/logging/debug-log.mts` (`log("Module").*` when that module is enabled in Dev Tools) plus mirrored **`console.*`** on the main thread and on **render** / **transpile** workers (forwarded to the main ring buffer), plus **`window` error** and **unhandledrejection** on the main thread. This is **best-effort** runtime signal; it does **not** replace `make build`.
@@ -154,8 +155,8 @@ When the watch devserver is running (`make serve` / `make start`, or `make serve
 **Agent workflow**
 
 1. Prefer **`make build`** for compile-time WGSL and bundling errors after shader edits.
-2. If devserver is running, use shell `curl` against `/_logs` (default check: `?warn&err`; omit `n` unless asked).
-3. If devserver is **not** running, **do nothing**; do not fail the task for missing runtime logs.
+2. If **`.devserver.run`** exists with a `port`, use shell `curl` against `http://localhost:<port>/_logs` (default response uses **`level=info`** semantics; add `level=debug` or `only=…` only when you need a different mix; omit `n` unless asked).
+3. If `.devserver.run` is **missing** (devserver not running), **do nothing**; do not guess a port or fail the task for missing runtime logs.
 4. See [`.cursor/skills/devserver-logs/SKILL.md`](.cursor/skills/devserver-logs/SKILL.md) for the standard runtime-log check flow.
 
 **Optional cleanup**: if a local `.cursor/mcp.json` still contains stale `galacticad-devserver` MCP settings from older workflows, users can remove that entry manually (file is gitignored).

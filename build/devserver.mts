@@ -42,13 +42,49 @@ function parseModuleFilters(searchParams: URLSearchParams): string[] | undefined
     return [...new Set(modules)]
 }
 
+/** Map public query tokens (`warning`, etc.) to bridge levels (`warn`, …). */
+function publicLevelTokenToInternal(raw: string): DevServerConsoleLogLevel | null {
+    const t = raw.trim().toLowerCase()
+    if (t === "error") return "error"
+    if (t === "warning" || t === "warn") return "warn"
+    if (t === "info") return "info"
+    if (t === "debug") return "debug"
+    return null
+}
+
+const INFO_THRESHOLD_LEVELS: DevServerConsoleLogLevel[] = ["error", "warn", "info"]
+
+function levelsFromLevelThreshold(raw: string | null): DevServerConsoleLogLevel[] {
+    const t = (raw ?? "").trim().toLowerCase()
+    if (t === "" || t === "info") return INFO_THRESHOLD_LEVELS
+    if (t === "error") return ["error"]
+    if (t === "warning" || t === "warn") return ["error", "warn"]
+    if (t === "debug") return [...ALL_LOG_LEVELS]
+    return INFO_THRESHOLD_LEVELS
+}
+
+/** When `only` is present on the URL, parse comma-separated exact buckets (order-preserving, deduped). */
+function parseOnlyLevelList(searchParams: URLSearchParams): DevServerConsoleLogLevel[] {
+    const raw = searchParams.get("only") ?? ""
+    const out: DevServerConsoleLogLevel[] = []
+    const seen = new Set<DevServerConsoleLogLevel>()
+    for (const piece of raw.split(",")) {
+        const lvl = publicLevelTokenToInternal(piece)
+        if (!lvl || seen.has(lvl)) continue
+        seen.add(lvl)
+        out.push(lvl)
+    }
+    return out
+}
+
 function parseLogQuery(url: URL): DevLogQuery {
-    const selectedLevels: DevServerConsoleLogLevel[] = []
-    if (url.searchParams.has("err")) selectedLevels.push("error")
-    if (url.searchParams.has("warn")) selectedLevels.push("warn")
-    if (url.searchParams.has("info")) selectedLevels.push("info")
-    if (url.searchParams.has("debug")) selectedLevels.push("debug")
-    const levels = selectedLevels.length > 0 ? selectedLevels : ALL_LOG_LEVELS
+    let levels: DevServerConsoleLogLevel[]
+    if (url.searchParams.has("only")) {
+        const only = parseOnlyLevelList(url.searchParams)
+        levels = only.length > 0 ? only : INFO_THRESHOLD_LEVELS
+    } else {
+        levels = levelsFromLevelThreshold(url.searchParams.get("level"))
+    }
     const n = clampLogCount(Number(url.searchParams.get("n") ?? "20"))
     const modules = parseModuleFilters(url.searchParams)
     return { n, levels, ...(modules ? { modules } : {}) }

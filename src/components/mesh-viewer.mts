@@ -1,6 +1,7 @@
 import { MeshData } from "../export/export.mjs"
 import { CameraController } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
+import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import { __fg_color, __tone_2, __tone_accent } from "../style/style.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
@@ -245,18 +246,22 @@ export class MeshViewer extends HTMLElement {
             label: "meshViewer.shader.opaque",
             code: MESH_SHADER_OPAQUE,
         })
+        scheduleShaderModuleCompilationLogging(this.#shaderModuleOpaque, "meshViewer.shader.opaque", MESH_SHADER_OPAQUE)
         this.#shaderModuleTranslucent = this.#device.createShaderModule({
             label: "meshViewer.shader.translucent",
             code: MESH_SHADER_TRANSLUCENT,
         })
+        scheduleShaderModuleCompilationLogging(this.#shaderModuleTranslucent, "meshViewer.shader.translucent", MESH_SHADER_TRANSLUCENT)
         this.#shaderModuleComposite = this.#device.createShaderModule({
             label: "meshViewer.shader.composite",
             code: COMPOSITE_SHADER,
         })
+        scheduleShaderModuleCompilationLogging(this.#shaderModuleComposite, "meshViewer.shader.composite", COMPOSITE_SHADER)
         this.#shaderModuleWireframe = this.#device.createShaderModule({
             label: "meshViewer.shader.wireframe",
             code: MESH_SHADER_WIREFRAME,
         })
+        scheduleShaderModuleCompilationLogging(this.#shaderModuleWireframe, "meshViewer.shader.wireframe", MESH_SHADER_WIREFRAME)
 
         this.#pipelineOpaque = this.#device.createRenderPipeline({
             label: "MeshViewer Pipeline (opaque)",

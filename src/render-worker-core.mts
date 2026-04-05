@@ -11,7 +11,7 @@ import outlineShader from "./shaders/outline.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import mdcShader from "./shaders/mdc.wgsl"
-import { ShaderCompiler } from "./shaders/shader.mjs"
+import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
@@ -42,7 +42,7 @@ import {
 } from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
-import { log } from "./logging/debug-log.mjs"
+import { log, logWgsl } from "./logging/debug-log.mjs"
 import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset } from "./shared-render-buffer.mjs"
 
 const MAX_POLYGON_VERTICES = 1024
@@ -238,23 +238,30 @@ export class RenderWorkerCore {
             label: "Outline Post-Process",
             code: outlineShader,
         })
-        this.#outlinePipeline = this.#device.createRenderPipeline({
-            label: "Outline Pipeline",
-            layout: "auto",
-            vertex: {
-                module: this.#outlineShaderModule,
-                entryPoint: "vertexMain",
-            },
-            fragment: {
-                module: this.#outlineShaderModule,
-                entryPoint: "fragmentMain",
-                targets: [{ format: this.#format }],
-            },
-            primitive: {
-                topology: "triangle-strip",
-                stripIndexFormat: "uint32",
-            },
-        })
+        scheduleShaderModuleCompilationLogging(this.#outlineShaderModule, "Outline Post-Process", outlineShader)
+        try {
+            this.#outlinePipeline = this.#device.createRenderPipeline({
+                label: "Outline Pipeline",
+                layout: "auto",
+                vertex: {
+                    module: this.#outlineShaderModule,
+                    entryPoint: "vertexMain",
+                },
+                fragment: {
+                    module: this.#outlineShaderModule,
+                    entryPoint: "fragmentMain",
+                    targets: [{ format: this.#format }],
+                },
+                primitive: {
+                    topology: "triangle-strip",
+                    stripIndexFormat: "uint32",
+                },
+            })
+        } catch (err) {
+            const text = err instanceof Error ? err.stack ?? err.message : String(err)
+            logWgsl("error", `Outline post-process pipeline creation failed: ${text}`)
+            throw err
+        }
 
         // Outline bind group created in ensureRenderTextures when we have color/id textures
 
@@ -400,24 +407,32 @@ export class RenderWorkerCore {
         const generation = this.#buildGeneration
 
         const tPipeline0 = performance.now()
-        const [pipeline, beamPipeline] = await Promise.all([
-            this.#device.createRenderPipelineAsync({
-                label: "Preview Pipeline",
-                layout: "auto",
-                vertex: { module: nextShader, entryPoint: "vertexMain" },
-                fragment: {
-                    module: nextShader,
-                    entryPoint: "fragmentMain",
-                    targets: [{ format: this.#format }, { format: "r32uint" as GPUTextureFormat }],
-                },
-                primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
-            }),
-            this.#device.createComputePipelineAsync({
-                label: "Beam Pre-Pass Pipeline",
-                layout: "auto",
-                compute: { module: nextShader, entryPoint: "beamMarch" },
-            }),
-        ])
+        let pipeline: GPURenderPipeline
+        let beamPipeline: GPUComputePipeline
+        try {
+            ;[pipeline, beamPipeline] = await Promise.all([
+                this.#device.createRenderPipelineAsync({
+                    label: "Preview Pipeline",
+                    layout: "auto",
+                    vertex: { module: nextShader, entryPoint: "vertexMain" },
+                    fragment: {
+                        module: nextShader,
+                        entryPoint: "fragmentMain",
+                        targets: [{ format: this.#format }, { format: "r32uint" as GPUTextureFormat }],
+                    },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+                this.#device.createComputePipelineAsync({
+                    label: "Beam Pre-Pass Pipeline",
+                    layout: "auto",
+                    compute: { module: nextShader, entryPoint: "beamMarch" },
+                }),
+            ])
+        } catch (err) {
+            const text = err instanceof Error ? err.stack ?? err.message : String(err)
+            logWgsl("error", `Pipeline creation failed for Preview + Beam shader: ${text}`)
+            throw err
+        }
         const tPipeline1 = performance.now()
         if (generation !== this.#buildGeneration) {
             return { superseded: true } as { superseded: true }

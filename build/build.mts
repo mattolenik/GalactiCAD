@@ -3,7 +3,6 @@ import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
 import fs from "fs/promises"
-import fsSync from "fs"
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import { DevServer } from "./devserver.mjs"
@@ -161,7 +160,7 @@ async function main() {
     if (process.argv.includes("-w")) {
         log("Watching for changes")
         if (await checkRunFile()) {
-            return
+            process.exit(0)
         }
         let server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err)
         await writeRunFile({ pid: process.pid, port: server.port })
@@ -195,14 +194,9 @@ async function main() {
             }
         )
 
-        let exitHandler = (signal: string) => {
-            log(`${signal}, shutting down.`)
-            watcher?.close()
-            server?.close()
-            fsSync.rmSync(RUN_FILE, { force: true })
-            process.exit(0)
-        }
-        process.on("SIGINT", exitHandler)
-        process.on("SIGTERM", exitHandler)
+        process.on("SIGINT", () => { log("SIGINT, shutting down."); process.exit(0) })
+        process.on("SIGTERM", () => { log("SIGTERM, shutting down."); process.exit(0) })
     }
 }
+
+main()

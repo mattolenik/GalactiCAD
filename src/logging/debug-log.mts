@@ -28,6 +28,8 @@ export const DEBUG_LOG_MODULES = [
     "MdcExport",
     "GalactiCAD",
     "Sdf",
+    /** Reserved for optional verbose WGSL debug; `logWgsl()` is always-on for compile/pipeline errors. */
+    "Wgsl",
 ] as const
 
 export type LogModule = (typeof DEBUG_LOG_MODULES)[number]
@@ -89,6 +91,26 @@ function emitToDevLog(module: LogModule, level: string, args: unknown[]): void {
     const tp = devLogThreadLabel ? `[${devLogThreadLabel}]` : ""
     const line = `[${ts}] [${level}]${tp ? ` ${tp}` : ""} ${text}`
     devLogPush({ module, line })
+}
+
+const WGSL_DEV_MODULE = "Wgsl"
+
+/**
+ * Always-on WebGPU/WGSL diagnostics: real console + dev log bridge with `module: "Wgsl"` for `/_logs?module=Wgsl`.
+ * Does not depend on Dev Tools log toggles (unlike `log("RenderWorker")`, etc.).
+ */
+export function logWgsl(level: "error" | "warn" | "info", ...args: unknown[]): void {
+    const ts = new Date().toISOString()
+    const text = formatArgs(args)
+    const tp = devLogThreadLabel ? ` [${devLogThreadLabel}]` : ""
+    const line = `[${ts}] [${level}]${tp} ${text}`
+    if (devLogPush) {
+        devLogPush({ module: WGSL_DEV_MODULE, line })
+    }
+    const prefix = `[${WGSL_DEV_MODULE}]`
+    if (level === "error") origConsole.error(prefix, ...args)
+    else if (level === "warn") origConsole.warn(prefix, ...args)
+    else origConsole.info(prefix, ...args)
 }
 
 export function log(module: LogModule): {

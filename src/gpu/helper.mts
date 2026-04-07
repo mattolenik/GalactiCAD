@@ -1,3 +1,5 @@
+import { installWebGpuDeviceLogging } from "../logging/debug-log.mjs"
+
 export class GPUHelper {
     readonly device: GPUDevice
 
@@ -24,6 +26,7 @@ export class GPUHelper {
                 maxBufferSize: adapter.limits.maxBufferSize,
             },
         })
+        installWebGpuDeviceLogging(device)
         return new GPUHelper(device)
     }
 

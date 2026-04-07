@@ -113,6 +113,28 @@ export function logWgsl(level: "error" | "warn" | "info", ...args: unknown[]): v
     else origConsole.info(prefix, ...args)
 }
 
+function formatGpuError(err: GPUError): string {
+    const o = err as GPUError & { name?: string }
+    const name = typeof o.name === "string" && o.name.length > 0 ? o.name : "GPUError"
+    const msg = typeof err.message === "string" ? err.message : String(err)
+    return `${name}: ${msg}`
+}
+
+/**
+ * Route WebGPU runtime validation / OOM errors (and device loss) through `logWgsl` so they hit the dev log
+ * bridge and `/_logs?module=Wgsl` like shader compilation output. Call once per `GPUDevice` after creation.
+ */
+export function installWebGpuDeviceLogging(device: GPUDevice): void {
+    device.addEventListener("uncapturederror", (ev: Event) => {
+        const u = ev as GPUUncapturedErrorEvent
+        const err = u.error
+        logWgsl("error", "WebGPU uncaptured", formatGpuError(err))
+    })
+    void device.lost.then(info => {
+        logWgsl("error", `WebGPU device lost (${info.reason}): ${info.message}`)
+    })
+}
+
 export function log(module: LogModule): {
     debug: (...args: unknown[]) => void
     info: (...args: unknown[]) => void

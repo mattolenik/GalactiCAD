@@ -16,7 +16,7 @@ Use this skill when the user wants runtime log signal from a running local devse
 ## Endpoint
 
 - Route: `GET /_logs`
-- Host/port: **`http://localhost:<port>/_logs`**, where **`<port>` is the `port` field in `.devserver.run`** (JSON written when the devserver starts). If that file is missing or unreadable, the devserver is not running—**do not guess a port**; skip `/_logs` or ask the user to start the server.
+- Host/port: **`http://localhost:<port>/_logs`**, where **`<port>` comes from `.devserver.run`** (JSON written when the devserver starts). **Read it with `jq`:** run `jq -r .port .devserver.run` from the directory that contains the file (usually the repo root). `-r` emits the raw ASCII value—digits only for a number, no JSON string quotes. If that file is missing, `jq` fails, or the value is unusable, the devserver is not running—**do not guess a port**; skip `/_logs` or ask the user to start the server.
 - Response: plain text (`text/plain; charset=utf-8`)
 - Empty result behavior: `200` with empty body when no matches, no connected browser, or bridge timeout
 
@@ -50,8 +50,8 @@ Legacy presence flags (`err`, `warn`, `info`, `debug` as separate boolean query 
 
 ## Agent Workflow
 
-1. Read `.devserver.run` and parse `port`. If the file does not exist or has no usable `port`, **stop**—the devserver is not running; do not assume any default port.
-2. **Default** runtime check: `curl` **`http://localhost:<port>/_logs`** with no `level` or `only` so the server applies default **info** threshold (errors, warnings, and info—no debug spam).
+1. Assign `port=$(jq -r .port .devserver.run)` from the repo root (or pass the full path to `.devserver.run` as `jq`'s file argument). If the file does not exist, `jq` errors, or `port` is empty, **stop**—the devserver is not running; do not assume any default port. See **Endpoint** for why `-r` is used.
+2. **Default** runtime check: `curl` **`http://localhost:${port}/_logs`** with no `level` or `only` so the server applies default **info** threshold (errors, warnings, and info—no debug spam).
 3. Add query parameters only when you have a reason:
    - Use `module=…` when the question is scoped to specific modules.
    - Use `level=debug` when you need debug-tier lines; use `only=…` when you need a non-contiguous mix (e.g. errors + debug only).
@@ -61,33 +61,35 @@ Legacy presence flags (`err`, `warn`, `info`, `debug` as separate boolean query 
 
 ## Examples
 
-(Substitute `<port>` from `.devserver.run`.)
+Use a subshell so `curl` always gets a clean port string:
+
+`port=$(jq -r .port .devserver.run)` (run from the repo root, or pass the full path to `.devserver.run` as the second argument to `jq`).
 
 - Default (info threshold, last 20 per included bucket):
 
-  `curl -sS "http://localhost:<port>/_logs"`
+  `curl -sS "http://localhost:${port}/_logs"`
 
 - Include debug lines:
 
-  `curl -sS "http://localhost:<port>/_logs?level=debug"`
+  `curl -sS "http://localhost:${port}/_logs?level=debug"`
 
 - Errors only:
 
-  `curl -sS "http://localhost:<port>/_logs?only=error"`
+  `curl -sS "http://localhost:${port}/_logs?only=error"`
 
 - Errors and warnings only (no info/debug):
 
-  `curl -sS "http://localhost:<port>/_logs?only=error,warning"`
+  `curl -sS "http://localhost:${port}/_logs?only=error,warning"`
 
 - Scoped modules:
 
-  `curl -sS "http://localhost:<port>/_logs?module=MdcExport,WelcomeScreen"`
+  `curl -sS "http://localhost:${port}/_logs?module=MdcExport,WelcomeScreen"`
 
 - Five errors per bucket:
 
-  `curl -sS "http://localhost:<port>/_logs?only=error&n=5"`
+  `curl -sS "http://localhost:${port}/_logs?only=error&n=5"`
 
 ## Notes
 
-- Use shell `curl` for this workflow.
+- Use shell **`jq -r .port .devserver.run`** for the port (raw ASCII number, no quotes) and `curl` for `/_logs`.
 - Keep build/test commands compliant with project rules (`make build`, `make test`).

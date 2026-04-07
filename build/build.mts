@@ -35,7 +35,7 @@ const Static = {
     [`${VS_DIR}/monaco*.js`]: "/vs/",
     [`${VS_DIR}/worker*.js`]: "/vs/",
     [`${VS_DIR}/loader*.js`]: "/vs/",
-    [`${VS_DIR}/editor*.js`]: "/vs/",
+    [`${VS_DIR}/editor*`]: "/vs/",
     [`${VS_DIR}/language/typescript`]: "/vs/language/",
     "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
 }

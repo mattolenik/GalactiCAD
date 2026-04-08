@@ -1,4 +1,4 @@
-import { installWebGpuDeviceLogging } from "../logging/debug-log.mjs"
+import { installWebGpuDeviceLogging, log } from "../logging/debug-log.mjs"
 
 export class GPUHelper {
     readonly device: GPUDevice
@@ -13,7 +13,7 @@ export class GPUHelper {
             adapter = await navigator.gpu.requestAdapter()
             if (!adapter) return undefined
         } catch (e) {
-            console.log(e)
+            log("App").warn("requestAdapter failed:", e)
             return undefined
         }
 

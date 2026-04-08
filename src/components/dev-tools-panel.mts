@@ -15,7 +15,7 @@ import {
     DEFAULT_PREVIEW_SHADING,
     type PreviewShadingParams,
 } from "../render-worker-protocol.mjs"
-import { DEBUG_LOG_MODULES, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
+import { DEBUG_LOG_MODULES, log, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
 
 const PREVIEW_SHADING_KNOBS: {
     key: keyof PreviewShadingParams
@@ -551,8 +551,7 @@ export class DevToolsPanel extends HTMLElement {
             const viewport = this.onGetViewportSize?.() ?? undefined
             const results = await runBenchmarkSuite(suite, undefined, viewport)
 
-            // Log to console
-            console.log("Benchmark Results:")
+            log("App").info("Benchmark Results:")
             console.table(
                 results.map(r =>
                     r.result.error
@@ -596,7 +595,7 @@ export class DevToolsPanel extends HTMLElement {
             const viewport = this.onGetViewportSize?.() ?? undefined
             const results = await runBenchmarkSuite([benchCase], undefined, viewport)
 
-            console.log("Benchmark this Results:")
+            log("App").info("Benchmark this Results:")
             console.table(
                 results.map(r =>
                     r.result.error

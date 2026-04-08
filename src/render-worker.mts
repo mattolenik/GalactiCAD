@@ -175,7 +175,7 @@ async function handleInit(canvas: OffscreenCanvas, buf?: SharedArrayBuffer): Pro
         self.postMessage({ type: "ready" })
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        console.error("[RenderWorker] init failed:", err)
+        log("RenderWorker").error("init failed:", err)
         sharedBuffer = null
         self.postMessage({ type: "initError", error: msg })
     }
@@ -218,7 +218,7 @@ async function runNextBuild(): Promise<void> {
         })
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        console.error("[RenderWorker] build failed:", err)
+        log("RenderWorker").error("build failed:", err)
         self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], error: msg, requestId: req.requestId, documentName: req.documentName ?? undefined })
     } finally {
         buildInProgress = false

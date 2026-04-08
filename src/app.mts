@@ -59,11 +59,11 @@ import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
 import { clearRecentDocuments, db, getDoc, getRecentDocuments } from "./storage/db.mjs"
 import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
-import { applyDebugLogModules, connectMainThreadDevLogToBridge, log } from "./logging/debug-log.mjs"
+import { applyDebugLogModules, connectMainThreadDevLogToBridge, log as debugLog } from "./logging/debug-log.mjs"
 import { VERSION } from "./version.mjs"
 
 connectMainThreadDevLogToBridge()
-console.log(`GalactiCAD ${VERSION}`)
+debugLog("App").info(`GalactiCAD ${VERSION}`)
 
 // Start loading dprint formatter (non-blocking); registers providers when ready
 initDprintFormatting()
@@ -189,7 +189,7 @@ class App {
             const postProcessMs = Math.round((performance.now() - tPost0) * 100) / 100
             const totalWallMs = Math.round((performance.now() - wallStart) * 100) / 100
             const pipeline = this.renderer.getLastSceneBuildPipelineMs()
-            console.info("[Scene build perf]", {
+            debugLog("App").info("[Scene build perf]", {
                 totalWallMs,
                 mainThread: { parseAndDecorateMs, postProcessMs },
                 pipeline,
@@ -198,7 +198,7 @@ class App {
             const message = formatSceneError(err, src)
             this.log.innerText = `💢 ${message}`
             this.log.classList.add("has-error")
-            console.error("[Scene compilation]", err)
+            debugLog("App").error("[Scene compilation]", err)
             // Do NOT clear decorations on build error. Parsing and fluent method
             // decorations run before build (error-tolerant). Color indicators and
             // selection highlighting from the last successful build remain; Monaco
@@ -553,7 +553,7 @@ class App {
 
         void this.#createRendererAndWire(preview, menu, true)
             .catch(err => {
-                console.error(`UNEXPECTED ERROR: ${err}`)
+                debugLog("App").error("UNEXPECTED ERROR:", err)
                 const msg = document.createElement("p")
                 msg.textContent =
                     "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
@@ -597,7 +597,7 @@ class App {
             if (isInitial) {
                 await this.build()
                 const totalWallMs = Math.round((performance.now() - sceneLoadT0) * 100) / 100
-                console.info("[Scene initial load]", {
+                debugLog("App").info("[Scene initial load]", {
                     totalWallMs,
                     note: "Includes settings/restore, WebGPU init (ready), wiring, and first build; see [Scene build perf] for build breakdown.",
                 })
@@ -605,7 +605,7 @@ class App {
                 void this.build()
             }
         } catch (err) {
-            console.error(`UNEXPECTED ERROR: ${err}`)
+            debugLog("App").error("UNEXPECTED ERROR:", err)
             const msg = document.createElement("p")
             msg.textContent =
                 "WebGPU is not supported in this browser. Try Chromium browsers like Chrome, Edge, and Opera. Or Firefox Nightly."
@@ -731,9 +731,9 @@ class App {
                 await this.#tabs.restore()
                 const opened = await this.#tabs.openDocument(anchor)
                 if (opened) return
-                log("GalactiCAD").warn(`Anchor document "${anchor}" could not be opened (e.g. stale file handle) — ignoring`)
+                debugLog("App").warn(`Anchor document "${anchor}" could not be opened (e.g. stale file handle) — ignoring`)
             } else {
-                log("GalactiCAD").warn(`Anchor document "${anchor}" not found — ignoring`)
+                debugLog("App").warn(`Anchor document "${anchor}" not found — ignoring`)
             }
             history.replaceState(null, "", location.pathname + location.search)
         }
@@ -1220,7 +1220,7 @@ class App {
                 this.#isHandlingPopstate = true
                 void this.#tabs.openDocument(anchor).then(opened => {
                     if (!opened) {
-                        log("GalactiCAD").warn(`Anchor document "${anchor}" not found — ignoring`)
+                        debugLog("App").warn(`Anchor document "${anchor}" not found — ignoring`)
                         history.replaceState(null, "", location.pathname + location.search)
                     }
                 }).finally(() => {
@@ -1498,7 +1498,7 @@ class App {
                 }
             } catch (err) {
                 // Mesh generation failing shouldn't break the live SDF preview.
-                console.error(`Mesh update failed: ${err}`)
+                debugLog("App").error("Mesh update failed:", err)
             }
         }, MESH_UPDATE_DEBOUNCE_MS)
     }

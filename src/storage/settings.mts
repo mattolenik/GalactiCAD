@@ -1,7 +1,7 @@
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import type { DebugLogModulesState } from "../logging/debug-log.mjs"
-import { mergeDebugLogModulesFromStorage } from "../logging/debug-log.mjs"
+import { log, mergeDebugLogModulesFromStorage } from "../logging/debug-log.mjs"
 import { db } from "./db.mjs"
 
 // ---------------------------------------------------------------------------
@@ -394,7 +394,7 @@ export class SettingsManager {
                 }
                 return
             } catch {
-                console.error("Failed to load global settings from storage, using defaults")
+                log("Settings").error("Failed to load global settings from storage, using defaults")
             }
         }
         this.#globalSettings = defaultGlobalSettings()

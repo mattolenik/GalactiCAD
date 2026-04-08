@@ -1,3 +1,4 @@
+import { log } from "../logging/debug-log.mjs"
 import { MeshoptSimplifier } from "meshoptimizer"
 import type { Flags } from "meshoptimizer/simplifier"
 import type { MeshData } from "./export.mjs"
@@ -113,7 +114,7 @@ export async function simplifyMesh(
     }
 
     const outputTriCount = simplifiedTris.length / 3
-    console.log(
+    log("MdcExport").info(
         `Mesh simplification: ${inputTriCount} → ${outputTriCount} triangles `
         + `(${((outputTriCount / inputTriCount) * 100).toFixed(1)}%, error=${error.toExponential(3)}`
         + `${normalWeight > 0 ? `, normalWeight=${normalWeight}` : ""})`,

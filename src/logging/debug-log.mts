@@ -1,5 +1,6 @@
 /**
- * Toggleable debug logging per module. Enable modules from Dev Tools checkboxes.
+ * Diagnostic logging per module. Dev Tools **Logs** toggles gate `debug` / `info` / `warn`;
+ * `log("Module").error` always goes to the console and dev log bridge.
  * Usage: log("NodeMatcher").debug("msg", extra)
  *
  * When the devserver injects `__galacticadDevLogPush`, main thread calls
@@ -20,13 +21,14 @@ export type DevLogEntry = {
 }
 
 export const DEBUG_LOG_MODULES = [
+    "App",
     "NodeMatcher",
     "SourceParser",
     "RenderWorker",
     "MonacoHighlighter",
     "WelcomeScreen",
     "MdcExport",
-    "GalactiCAD",
+    "Settings",
     "Sdf",
     /** Reserved for optional verbose WGSL debug; `logWgsl()` is always-on for compile/pipeline errors. */
     "Wgsl",
@@ -97,7 +99,7 @@ const WGSL_DEV_MODULE = "Wgsl"
 
 /**
  * Always-on WebGPU/WGSL diagnostics: real console + dev log bridge with `module: "Wgsl"` for `/_logs?module=Wgsl`.
- * Does not depend on Dev Tools log toggles (unlike `log("RenderWorker")`, etc.).
+ * Does not depend on Dev Tools log toggles (unlike `log("Module").debug` / `.info` / `.warn`; `log("Module").error` is always emitted).
  */
 export function logWgsl(level: "error" | "warn" | "info", ...args: unknown[]): void {
     const ts = new Date().toISOString()
@@ -159,7 +161,6 @@ export function log(module: LogModule): {
             emitToDevLog(module, "warn", args)
         },
         error: (...args: unknown[]) => {
-            if (!enabled[module]) return
             origConsole.error(prefix, ...args)
             emitToDevLog(module, "error", args)
         },

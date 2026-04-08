@@ -16,12 +16,6 @@ type DevLogQuery = {
 }
 
 const ALL_LOG_LEVELS: DevServerConsoleLogLevel[] = ["error", "warn", "info", "debug"]
-const LEVEL_RESPONSE_PREFIX: Record<DevServerConsoleLogLevel, string> = {
-    error: "ERR ",
-    warn: "WARN ",
-    info: "INFO ",
-    debug: "DEBUG ",
-}
 
 function clampLogCount(n: number): number {
     if (!Number.isFinite(n)) return 20
@@ -90,9 +84,10 @@ function parseLogQuery(url: URL): DevLogQuery {
     return { n, levels, ...(modules ? { modules } : {}) }
 }
 
-function parseLevelFromLine(line: string): DevServerConsoleLogLevel | null {
-    const m = line.match(/^\[[^\]]+\] \[([^\]]+)\]/)
-    const token = m?.[1]
+/** In-buffer lines from `debug-log.mts`: `[iso] [level]` then optional `[thread]` and message. */
+const DEV_LOG_LINE_PREFIX = /^\[[^\]]+\] \[([^\]]+)\]\s*/
+
+function levelFromDevLogBracketToken(token: string): DevServerConsoleLogLevel | null {
     if (token === "error") return "error"
     if (token === "warn") return "warn"
     if (token === "info" || token === "log") return "info"
@@ -100,12 +95,14 @@ function parseLevelFromLine(line: string): DevServerConsoleLogLevel | null {
     return null
 }
 
-function toPrefixedText(lines: string[]): string {
+/** Strip timestamp + level for `/_logs` body; skip lines that do not match the dev log format. */
+function formatLogsPlainText(lines: string[]): string {
     const out: string[] = []
     for (const line of lines) {
-        const level = parseLevelFromLine(line)
-        if (!level) continue
-        out.push(`${LEVEL_RESPONSE_PREFIX[level]}${line}`)
+        const m = line.match(DEV_LOG_LINE_PREFIX)
+        const token = m?.[1]
+        if (!token || !levelFromDevLogBracketToken(token)) continue
+        out.push(line.slice(m[0].length).trimStart())
     }
     return out.join("\n")
 }
@@ -374,7 +371,7 @@ function createHttpServer(
             }
             const query = parseLogQuery(url)
             const lines = await bridge.requestConsoleLogs(query)
-            const text = lines ? toPrefixedText(lines) : ""
+            const text = lines ? formatLogsPlainText(lines) : ""
             res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
             res.end(text)
             return

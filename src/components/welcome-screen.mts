@@ -750,7 +750,7 @@ export class WelcomeScreen extends HTMLElement {
             const suggestedName = name.replace(/\.gcad$/, "")
             await this.#callbacks.onSamplePick(content, suggestedName)
         } catch (err) {
-            console.error(`[WelcomeScreen] Failed to load sample ${name}:`, err)
+            log("WelcomeScreen").error(`Failed to load sample ${name}:`, err)
             alert(`Could not load sample: ${name}`)
         }
     }

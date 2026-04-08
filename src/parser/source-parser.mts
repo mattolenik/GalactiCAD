@@ -831,7 +831,7 @@ export class SourceParser {
                 }
             }
         } catch (err) {
-            console.debug(`[SourceParser] Could not parse threaded_rod fluent args:`, err)
+            log("SourceParser").debug("Could not parse threaded_rod fluent args:", err)
         }
     }
 

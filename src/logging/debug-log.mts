@@ -73,17 +73,37 @@ export function mergeDebugLogModulesFromStorage(raw: unknown): DebugLogModulesSt
     return out
 }
 
+/** One argument as a single line for the dev log buffer (console.* formats Errors natively; JSON.stringify(Error) is `{}`). */
+function formatArgForDevLog(p: unknown): string {
+    if (typeof p === "string") return p
+    if (p instanceof Error) {
+        if (typeof p.stack === "string" && p.stack.trim() !== "") return p.stack
+        const name = typeof p.name === "string" && p.name !== "" ? p.name : "Error"
+        const msg = typeof p.message === "string" ? p.message : String(p)
+        return `${name}: ${msg}`
+    }
+    if (p === undefined) return "undefined"
+    if (typeof p === "bigint") return `${p}n`
+    if (typeof p === "function") {
+        const fn = p as { name?: string }
+        return typeof fn.name === "string" && fn.name !== "" ? `[Function: ${fn.name}]` : "[Function]"
+    }
+    if (typeof p === "symbol") return String(p)
+    try {
+        const json = JSON.stringify(p)
+        if (json !== undefined) return json
+    } catch {
+        /* fall through */
+    }
+    try {
+        return String(p)
+    } catch {
+        return "[object]"
+    }
+}
+
 function formatArgs(args: unknown[]): string {
-    return args
-        .map(p => {
-            if (typeof p === "string") return p
-            try {
-                return JSON.stringify(p)
-            } catch {
-                return String(p)
-            }
-        })
-        .join(" ")
+    return args.map(formatArgForDevLog).join(" ")
 }
 
 function emitToDevLog(module: LogModule, level: string, args: unknown[]): void {

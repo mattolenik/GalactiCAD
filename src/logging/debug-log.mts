@@ -8,13 +8,13 @@
  * lines go to the dev log ring buffer. Workers call `installWorkerDevLogBridge()` to
  * forward the same pipeline to the main thread.
  *
- * Dev log entries carry `module` separately from `line` so the devserver can filter
- * by module without parsing bracket tags inside the message.
+ * Dev log entries carry `module` separately from `line` for filtering; `line` also includes
+ * a `[Module]` bracket after `[level]` so buffered text matches the console prefix order.
  */
 
 /** One line pushed to the in-browser dev log buffer (see devserver injected script). */
 export type DevLogEntry = {
-    /** Formatted text: `[iso] [level]` and optional `[thread]` prefix, not including a `[Module]` tag. */
+    /** Formatted text: `[iso] [level] [Module]` and optional `[thread]`, then message (see `emitToDevLog`). */
     line: string
     /** Set for `log("ModuleName")` output; omitted for mirrored console and untagged errors. */
     module?: string
@@ -110,9 +110,10 @@ function emitToDevLog(module: LogModule, level: string, args: unknown[]): void {
     if (!devLogPush) return
     const ts = new Date().toISOString()
     const text = formatArgs(args)
-    const tp = devLogThreadLabel ? `[${devLogThreadLabel}]` : ""
-    const line = `[${ts}] [${level}]${tp ? ` ${tp}` : ""} ${text}`
-    devLogPush({ module, line })
+    const parts: string[] = [`[${ts}]`, `[${level}]`, `[${module}]`]
+    if (devLogThreadLabel) parts.push(`[${devLogThreadLabel}]`)
+    parts.push(text)
+    devLogPush({ module, line: parts.join(" ") })
 }
 
 const WGSL_DEV_MODULE = "Wgsl"
@@ -124,8 +125,10 @@ const WGSL_DEV_MODULE = "Wgsl"
 export function logWgsl(level: "error" | "warn" | "info", ...args: unknown[]): void {
     const ts = new Date().toISOString()
     const text = formatArgs(args)
-    const tp = devLogThreadLabel ? ` [${devLogThreadLabel}]` : ""
-    const line = `[${ts}] [${level}]${tp} ${text}`
+    const parts: string[] = [`[${ts}]`, `[${level}]`, `[${WGSL_DEV_MODULE}]`]
+    if (devLogThreadLabel) parts.push(`[${devLogThreadLabel}]`)
+    parts.push(text)
+    const line = parts.join(" ")
     if (devLogPush) {
         devLogPush({ module: WGSL_DEV_MODULE, line })
     }

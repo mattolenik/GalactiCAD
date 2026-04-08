@@ -17,7 +17,7 @@ Use this skill when the user wants runtime log signal from a running local devse
 
 - Route: `GET /_logs`
 - Host/port: **`http://localhost:<port>/_logs`**, where **`<port>` comes from `.devserver.run`** (JSON written when the devserver starts). **Read it with `jq`:** run `jq -r .port .devserver.run` from the directory that contains the file (usually the repo root). `-r` emits the raw ASCII value—digits only for a number, no JSON string quotes. If that file is missing, `jq` fails, or the value is unusable, the devserver is not running—**do not guess a port**; skip `/_logs` or ask the user to start the server.
-- Response: plain text (`text/plain; charset=utf-8`), one message per line. Each line omits the in-buffer `[timestamp] [level]` prefix; optional `[thread]` and the message text are unchanged (no `ERR`/`WARN`-style line prefixes).
+- Response: plain text (`text/plain; charset=utf-8`), one buffer line per line: **full** lines as stored (including `[timestamp] [level]`, `[Module]`, optional `[thread]`, message)—the devserver does not strip or rewrite them.
 - **Module toggles vs errors:** In-app `log("Module").error` is **always** written to the browser console and the dev log ring buffer (Dev Tools **Logs** checkboxes do not suppress it). **`debug` / `info` / `warn`** from `log("Module")` only appear when that module is enabled in Dev Tools. `GET /_logs?module=…` still filters by the entry’s `module` field—errors from other modules are omitted when a non-empty `module` list is used.
 - Empty result behavior: `200` with empty body when no matches, no connected browser, or bridge timeout
 

@@ -84,29 +84,6 @@ function parseLogQuery(url: URL): DevLogQuery {
     return { n, levels, ...(modules ? { modules } : {}) }
 }
 
-/** In-buffer lines from `debug-log.mts`: `[iso] [level]` then optional `[thread]` and message. */
-const DEV_LOG_LINE_PREFIX = /^\[[^\]]+\] \[([^\]]+)\]\s*/
-
-function levelFromDevLogBracketToken(token: string): DevServerConsoleLogLevel | null {
-    if (token === "error") return "error"
-    if (token === "warn") return "warn"
-    if (token === "info" || token === "log") return "info"
-    if (token === "debug") return "debug"
-    return null
-}
-
-/** Strip timestamp + level for `/_logs` body; skip lines that do not match the dev log format. */
-function formatLogsPlainText(lines: string[]): string {
-    const out: string[] = []
-    for (const line of lines) {
-        const m = line.match(DEV_LOG_LINE_PREFIX)
-        const token = m?.[1]
-        if (!token || !levelFromDevLogBracketToken(token)) continue
-        out.push(line.slice(m[0].length).trimStart())
-    }
-    return out.join("\n")
-}
-
 /** Ring buffer + bridge WebSocket; `__galacticadDevLogPush` is consumed by `connectMainThreadDevLogToBridge()` in app. */
 const INJECTED_BRIDGE_SCRIPT = `
         <script type="module">
@@ -371,7 +348,7 @@ function createHttpServer(
             }
             const query = parseLogQuery(url)
             const lines = await bridge.requestConsoleLogs(query)
-            const text = lines ? formatLogsPlainText(lines) : ""
+            const text = lines ? lines.join("\n") : ""
             res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
             res.end(text)
             return

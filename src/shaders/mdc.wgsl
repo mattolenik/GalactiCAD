@@ -944,12 +944,10 @@ fn vertexGeneration_Pass4(
     // where |∇f| < 1 and naive projection overshoots.
     // Uses analytic normals from SDFResultMid for stability at CSG seams.
     // Note: n is already correctly oriented by CSG operators (they negate n when needed)
-    var finalSdfResult = sceneSDF_mid(vertexPos);
     for (var iter = 0u; iter < uniforms.mdcU0.y; iter = iter + 1u) {
         let sdfResult = sceneSDF_mid(vertexPos);
         let d = sdfResult.d - uniforms.isoValue;
         if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { 
-            finalSdfResult = sdfResult;
             break; 
         }
         // Use analytic normal from SDF result (already correctly oriented)
@@ -978,10 +976,10 @@ fn vertexGeneration_Pass4(
         }
         // Final clamp to strict cell bounds
         vertexPos = clamp(vertexPos, cellMin, cellMax);
-        finalSdfResult = sdfResult;
     }
     
-    // Use analytic normal from final SDF evaluation for vertex normal
+    // Normal must match final projected/clamped vertexPos (not the pre-step sample).
+    let finalSdfResult = sceneSDF_mid(vertexPos);
     var vertexNormal = finalSdfResult.n;
     if (qef.numPoints == 0u || length(vertexNormal) < 0.001) { 
         vertexNormal = vec3f(0.0, 1.0, 0.0); 

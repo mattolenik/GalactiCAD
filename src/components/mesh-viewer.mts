@@ -835,31 +835,12 @@ fn vertexMain(v: VertexIn) -> VertexOut {
     return out;
 }
 
-fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
-    return clamp((dot(n, l) + wrap) / (1.0 + wrap), 0.0, 1.0);
-}
-
-fn lighting(normalScene: vec3f) -> f32 {
-    // Same light rig as PreviewWindow, defined in camera-space so it moves with the camera.
-    let lCam1 = normalize(vec3f(0.6, 0.7, -1.0));
-    let lCam2 = normalize(vec3f(-0.8, 0.2, -1.0));
-    let lCam3 = normalize(vec3f(0.2, -0.9, -1.0));
-    let lCamBack = normalize(vec3f(-0.2, 0.2, 1.0));
-
-    // Convert to scene-space using camToScene (camera-space -> scene-space).
-    let l1 = normalize((camera.camToScene * vec4f(lCam1, 0.0)).xyz);
-    let l2 = normalize((camera.camToScene * vec4f(lCam2, 0.0)).xyz);
-    let l3 = normalize((camera.camToScene * vec4f(lCam3, 0.0)).xyz);
-    let lb = normalize((camera.camToScene * vec4f(lCamBack, 0.0)).xyz);
-
-    let wrap = 0.25;
-    let key = 0.55 * diffuseWrap(normalScene, l1, wrap);
-    let fill = 0.30 * diffuseWrap(normalScene, l2, wrap);
-    let rim = 0.20 * diffuseWrap(normalScene, l3, wrap);
-    let back = 0.15 * diffuseWrap(normalScene, lb, 0.40);
-
-    let ambient = 0.18;
-    return clamp(ambient + key + fill + rim + back, 0.0, 1.3);
+// RGB from scene-space normal (diagnostic: interpolated vertex normals show seams when
+// adjacent triangles disagree; non-flat shading inside a triangle shows per-corner mismatch).
+fn normalToRgb(nScene: vec3f) -> vec3f {
+    let len2 = dot(nScene, nScene);
+    let n = select(vec3f(0.0, 0.0, 1.0), nScene * inverseSqrt(len2), len2 > 1e-20);
+    return n * 0.5 + 0.5;
 }
 `
 
@@ -868,20 +849,11 @@ ${MESH_SHADER_COMMON}
 
 @fragment
 fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4f {
-    // Flat shading: compute face normal from screen-space derivatives of world position.
-    // This yields a constant normal across the triangle.
-    let dx = dpdx(v.worldPos);
-    let dy = dpdy(v.worldPos);
-    var n = normalize(cross(dx, dy));
-    // Two-sided shading: keep normal consistent for back faces.
+    var n = v.normal;
     if (!frontFacing) {
         n = -n;
     }
-
-    let diffuse = lighting(n);
-    let baseColor = vec3f(0.9, 0.9, 0.95);
-    let shaded = baseColor * diffuse;
-    return vec4f(shaded, 1.0);
+    return vec4f(normalToRgb(n), 1.0);
 }
 `
 
@@ -898,19 +870,15 @@ struct OitOut {
 
 @fragment
 fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> OitOut {
-    let dx = dpdx(v.worldPos);
-    let dy = dpdy(v.worldPos);
-    var n = normalize(cross(dx, dy));
+    var n = v.normal;
     if (!frontFacing) {
         n = -n;
     }
-    let diffuse = lighting(n);
-    let baseColor = vec3f(0.9, 0.9, 0.95);
-    let shaded = baseColor * diffuse;
+    let c = normalToRgb(n);
 
     let a = 0.35;
     var out: OitOut;
-    out.accum = vec4f(shaded * a, a);
+    out.accum = vec4f(c * a, a);
     // Only alpha is used for revealage blending; keep it in .a.
     out.reveal = vec4f(0.0, 0.0, 0.0, a);
     return out;

@@ -497,9 +497,10 @@ fn qefCost(qef: QEFData, x: vec3f) -> f32 {
 }
 
 const MDC_FEATURE_PROX_SCALE: f32 = 0.75;
-const MDC_FEATURE_PLANE_WEIGHT: f32 = 0.35;
+const MDC_FEATURE_PLANE_WEIGHT: f32 = 0.12;
 const COMPONENT_FEATURE_REJECTED: u32 = 4u;
 const COMPONENT_NORMAL_COS_THRESH: f32 = 0.95;
+const MDC_CORNER_FEATURE_PROX_SCALE: f32 = 1.35;
 
 fn mdcQefAddPlane(qef: ptr<function, QEFData>, normal: vec3f, point: vec3f, weight: f32) {
     let n = safeNormalize(normal, vec3f(0.0, 1.0, 0.0));
@@ -942,6 +943,15 @@ fn edgeDetection_Pass3(
     var compOwnerPair1: array<vec2u, 4>;
     var compOwnerPairCount: array<u32, 4>;
     var compNormalBucketCount: array<u32, 4>;
+    var compPlanePoint0: array<vec3f, 4>;
+    var compPlanePoint1: array<vec3f, 4>;
+    var compPlanePoint2: array<vec3f, 4>;
+    var explicitLineFeature: array<ComponentFeature, 4>;
+    var explicitCornerFeature: array<ComponentFeature, 4>;
+    var explicitSeamFeature: array<ComponentFeature, 4>;
+    var explicitLineDist: array<f32, 4>;
+    var explicitCornerDist: array<f32, 4>;
+    var explicitSeamDist: array<f32, 4>;
     var compNormalSums: array<array<vec3f, 3>, 4>;
     var compPointSums: array<array<vec3f, 3>, 4>;
     var compPointCounts: array<array<u32, 3>, 4>;
@@ -954,6 +964,15 @@ fn edgeDetection_Pass3(
         compOwnerPair1[c] = vec2u(0u);
         compOwnerPairCount[c] = 0u;
         compNormalBucketCount[c] = 0u;
+        compPlanePoint0[c] = vec3f(0.0);
+        compPlanePoint1[c] = vec3f(0.0);
+        compPlanePoint2[c] = vec3f(0.0);
+        explicitLineFeature[c] = zeroComponentFeature();
+        explicitCornerFeature[c] = zeroComponentFeature();
+        explicitSeamFeature[c] = zeroComponentFeature();
+        explicitLineDist[c] = 1e9;
+        explicitCornerDist[c] = 1e9;
+        explicitSeamDist[c] = 1e9;
         for (var j = 0u; j < 3u; j = j + 1u) {
             compNormalSums[c][j] = vec3f(0.0);
             compPointSums[c][j] = vec3f(0.0);
@@ -992,6 +1011,68 @@ fn edgeDetection_Pass3(
             } else if (compOwnerPairCount[c] == 1u && !ownerPairEqual(compOwnerPair0[c], ownerPair)) {
                 compOwnerPair1[c] = ownerPair;
                 compOwnerPairCount[c] = 2u;
+            }
+        }
+
+        let explicitIdsValid =
+            select(
+                sample.featureIdA != 0u,
+                sample.featureIdA != 0u && sample.featureIdB != 0u && sample.featureIdA != sample.featureIdB,
+                sample.featureKind == MID_FEATURE_BOOLEAN_SEAM
+            );
+        let explicitNormalsValid =
+            select(
+                sample.featureNormalCount == 2u,
+                sample.featureNormalCount == 3u,
+                sample.featureKind == MID_FEATURE_CORNER
+            );
+        let explicitProxScale = select(MDC_FEATURE_PROX_SCALE, MDC_CORNER_FEATURE_PROX_SCALE, sample.featureKind == MID_FEATURE_CORNER);
+        let explicitOk =
+            sample.featureKind != MID_FEATURE_NONE &&
+            sample.featureDist <= uniforms.voxelSize * explicitProxScale &&
+            explicitIdsValid &&
+            explicitNormalsValid &&
+            (sample.featureKind != MID_FEATURE_BOOLEAN_SEAM || dot(sample.featureN1, sample.featureN2) < MID_FEATURE_SEAM_COS_THRESH);
+        if (explicitOk) {
+            if (sample.featureKind == MID_FEATURE_LINE && sample.featureDist < explicitLineDist[c]) {
+                explicitLineDist[c] = sample.featureDist;
+                explicitLineFeature[c] = ComponentFeature(
+                    MID_FEATURE_LINE,
+                    sample.featureIdA,
+                    sample.featureIdB,
+                    sample.featureNormalCount,
+                    sample.featurePoint,
+                    sample.featureTangent,
+                    sample.n,
+                    sample.featureN1,
+                    vec3f(0.0),
+                );
+            } else if (sample.featureKind == MID_FEATURE_CORNER && sample.featureDist < explicitCornerDist[c]) {
+                explicitCornerDist[c] = sample.featureDist;
+                explicitCornerFeature[c] = ComponentFeature(
+                    MID_FEATURE_CORNER,
+                    sample.featureIdA,
+                    sample.featureIdB,
+                    sample.featureNormalCount,
+                    sample.featurePoint,
+                    vec3f(0.0),
+                    sample.n,
+                    sample.featureN1,
+                    sample.featureN2,
+                );
+            } else if (sample.featureKind == MID_FEATURE_BOOLEAN_SEAM && sample.featureDist < explicitSeamDist[c]) {
+                explicitSeamDist[c] = sample.featureDist;
+                explicitSeamFeature[c] = ComponentFeature(
+                    MID_FEATURE_BOOLEAN_SEAM,
+                    sample.featureIdA,
+                    sample.featureIdB,
+                    sample.featureNormalCount,
+                    intersectionPos,
+                    vec3f(0.0),
+                    sample.featureN1,
+                    sample.featureN2,
+                    vec3f(0.0),
+                );
             }
         }
 
@@ -1049,6 +1130,9 @@ fn edgeDetection_Pass3(
             n2 = safeUnit3(compNormalSums[c][2]);
             p2 = compPointSums[c][2] / f32(compPointCounts[c][2]);
         }
+        compPlanePoint0[c] = p0;
+        compPlanePoint1[c] = p1;
+        compPlanePoint2[c] = p2;
 
         let seamEligible =
             pairCount >= 2u &&
@@ -1057,7 +1141,13 @@ fn edgeDetection_Pass3(
             compOwnerPair0[c].x != compOwnerPair1[c].x;
 
         var inferred = zeroComponentFeature();
-        if (seamEligible && bucketCount >= 2u) {
+        if (explicitCornerDist[c] < 1e8) {
+            inferred = explicitCornerFeature[c];
+        } else if (explicitLineDist[c] < 1e8) {
+            inferred = explicitLineFeature[c];
+        } else if (explicitSeamDist[c] < 1e8) {
+            inferred = explicitSeamFeature[c];
+        } else if (seamEligible && bucketCount >= 2u) {
             let tangent = safeUnit3(cross(n0, n1));
             if (lengthSqr(tangent) > 1e-8) {
                 let owners = orderedOwnerPair(compOwnerPair0[c].x, compOwnerPair1[c].x);
@@ -1085,19 +1175,7 @@ fn edgeDetection_Pass3(
                     vec3f(0.0),
                 );
             }
-        } else if (bucketCount >= 3u) {
-            inferred = ComponentFeature(
-                MID_FEATURE_CORNER,
-                compOwnerPair0[c].x,
-                compOwnerPair0[c].y,
-                3u,
-                solveFeaturePoint(n0, p0, n1, p1, n2, p2, 3u),
-                vec3f(0.0),
-                n0,
-                n1,
-                n2,
-            );
-        } else if (bucketCount >= 2u) {
+        } else if (bucketCount == 2u && dot(n0, n1) < 0.9) {
             let tangent = safeUnit3(cross(n0, n1));
             if (lengthSqr(tangent) > 1e-8) {
                 inferred = ComponentFeature(
@@ -1128,6 +1206,32 @@ fn edgeDetection_Pass3(
         inferredFeatures[c] = inferred;
     }
 
+    for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
+        if (compCrossCount[c] == 0u) { continue; }
+        let feature = inferredFeatures[c];
+        if (feature.kind == MID_FEATURE_LINE) {
+            let p0 = select(compPlanePoint0[c], feature.point, explicitLineDist[c] < 1e8);
+            let p1 = select(compPlanePoint1[c], feature.point, explicitLineDist[c] < 1e8);
+            mdcQefAddPlane(&qefs[c], feature.n0, p0, MDC_FEATURE_PLANE_WEIGHT);
+            mdcQefAddPlane(&qefs[c], feature.n1, p1, MDC_FEATURE_PLANE_WEIGHT);
+            atomicAdd(&debugSkipCounters[13], 2u);
+        } else if (feature.kind == MID_FEATURE_CORNER) {
+            let p0 = select(compPlanePoint0[c], feature.point, explicitCornerDist[c] < 1e8);
+            let p1 = select(compPlanePoint1[c], feature.point, explicitCornerDist[c] < 1e8);
+            let p2 = select(compPlanePoint2[c], feature.point, explicitCornerDist[c] < 1e8);
+            mdcQefAddPlane(&qefs[c], feature.n0, p0, MDC_FEATURE_PLANE_WEIGHT);
+            mdcQefAddPlane(&qefs[c], feature.n1, p1, MDC_FEATURE_PLANE_WEIGHT);
+            mdcQefAddPlane(&qefs[c], feature.n2, p2, MDC_FEATURE_PLANE_WEIGHT);
+            atomicAdd(&debugSkipCounters[13], 3u);
+        } else if (feature.kind == MID_FEATURE_BOOLEAN_SEAM) {
+            let p0 = select(compPlanePoint0[c], feature.point, explicitSeamDist[c] < 1e8);
+            let p1 = select(compPlanePoint1[c], feature.point, explicitSeamDist[c] < 1e8);
+            mdcQefAddPlane(&qefs[c], feature.n0, p0, MDC_FEATURE_PLANE_WEIGHT);
+            mdcQefAddPlane(&qefs[c], feature.n1, p1, MDC_FEATURE_PLANE_WEIGHT);
+            atomicAdd(&debugSkipCounters[13], 2u);
+        }
+    }
+
     for (var e = 0u; e < 12u; e = e + 1u) {
         if (edgeCrossMask[e] == 0u) { continue; }
         let compIdx = edgeComponent[e];
@@ -1141,34 +1245,10 @@ fn edgeDetection_Pass3(
 
         if (feature.kind == MID_FEATURE_LINE) {
             atomicAdd(&debugSkipCounters[9], 1u);
-            let match0 = dot(normal, feature.n0);
-            let match1 = dot(normal, feature.n1);
-            let extraNormal = select(feature.n0, feature.n1, match0 > match1);
-            mdcQefAddPlane(&qefs[c], extraNormal, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-            atomicAdd(&debugSkipCounters[13], 1u);
         } else if (feature.kind == MID_FEATURE_CORNER) {
             atomicAdd(&debugSkipCounters[10], 1u);
-            let d0 = dot(normal, feature.n0);
-            let d1 = dot(normal, feature.n1);
-            let d2 = dot(normal, feature.n2);
-            if (d0 >= d1 && d0 >= d2) {
-                mdcQefAddPlane(&qefs[c], feature.n1, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-                mdcQefAddPlane(&qefs[c], feature.n2, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-            } else if (d1 >= d2) {
-                mdcQefAddPlane(&qefs[c], feature.n0, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-                mdcQefAddPlane(&qefs[c], feature.n2, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-            } else {
-                mdcQefAddPlane(&qefs[c], feature.n0, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-                mdcQefAddPlane(&qefs[c], feature.n1, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-            }
-            atomicAdd(&debugSkipCounters[13], 2u);
         } else if (feature.kind == MID_FEATURE_BOOLEAN_SEAM) {
             atomicAdd(&debugSkipCounters[11], 1u);
-            let match0 = dot(normal, feature.n0);
-            let match1 = dot(normal, feature.n1);
-            let extraNormal = select(feature.n0, feature.n1, match0 > match1);
-            mdcQefAddPlane(&qefs[c], extraNormal, intersectionPos, 1.0);
-            atomicAdd(&debugSkipCounters[13], 1u);
         } else if (feature.kind == COMPONENT_FEATURE_REJECTED) {
             atomicAdd(&debugSkipCounters[12], 1u);
         } else {
@@ -1262,7 +1342,7 @@ fn vertexGeneration_Pass4(
         }
         let delta = featureTarget - vertexPos;
         let deltaLen = length(delta);
-        let maxNudge = uniforms.voxelSize * 0.15;
+        let maxNudge = uniforms.voxelSize * 0.02;
         if (deltaLen > 1e-6) {
             vertexPos = vertexPos + delta * min(1.0, maxNudge / deltaLen);
             vertexPos = clamp(vertexPos, cellMin, cellMax);

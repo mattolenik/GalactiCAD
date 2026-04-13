@@ -220,6 +220,94 @@ fn sdfScaleFeatureMid(r: SDFResultMid, s: vec3f) -> SDFResultMid {
     return out;
 }
 
+fn midFeatureHasPoint(r: SDFResultMid) -> bool {
+    return r.featureKind == MID_FEATURE_LINE || r.featureKind == MID_FEATURE_CORNER;
+}
+
+fn rotateY(v: vec3f, angle: f32) -> vec3f {
+    let c = cos(angle);
+    let s = sin(angle);
+    return vec3f(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
+}
+
+fn detRows3(r0: vec3f, r1: vec3f, r2: vec3f) -> f32 {
+    return dot(r0, cross(r1, r2));
+}
+
+fn solveFeatureAnchor(n0: vec3f, p0: vec3f, n1: vec3f, p1: vec3f, n2: vec3f, p2: vec3f, fallback: vec3f) -> vec3f {
+    let b = vec3f(dot(n0, p0), dot(n1, p1), dot(n2, p2));
+    let det = detRows3(n0, n1, n2);
+    if (abs(det) <= 1e-6) { return fallback; }
+    return (
+        cross(n1, n2) * b.x +
+        cross(n2, n0) * b.y +
+        cross(n0, n1) * b.z
+    ) / det;
+}
+
+fn sdfOffsetFeatureMid(r: SDFResultMid, p: vec3f, amount: f32) -> SDFResultMid {
+    if (!midFeatureHasPoint(r)) { return r; }
+    var out = r;
+    if (r.featureKind == MID_FEATURE_LINE) {
+        let tangent = safeNormalize(r.featureTangent, vec3f(0.0, 1.0, 0.0));
+        let fallback = r.featurePoint + safeNormalize(r.n + r.featureN1, r.n) * amount;
+        out.featurePoint = solveFeatureAnchor(
+            r.n, r.featurePoint + r.n * amount,
+            r.featureN1, r.featurePoint + r.featureN1 * amount,
+            tangent, r.featurePoint,
+            fallback,
+        );
+    } else if (r.featureKind == MID_FEATURE_CORNER) {
+        let fallback = r.featurePoint + safeNormalize(r.n + r.featureN1 + r.featureN2, r.n) * amount;
+        out.featurePoint = solveFeatureAnchor(
+            r.n, r.featurePoint + r.n * amount,
+            r.featureN1, r.featurePoint + r.featureN1 * amount,
+            r.featureN2, r.featurePoint + r.featureN2 * amount,
+            fallback,
+        );
+    }
+    out.featureDist = length(p - out.featurePoint);
+    return out;
+}
+
+fn sdfTwistFeatureMid(r: SDFResultMid, p: vec3f, rate: f32) -> SDFResultMid {
+    if (r.featureKind == MID_FEATURE_NONE) { return r; }
+    var out = r;
+    let hasPoint = midFeatureHasPoint(r);
+    let angleY = select(p.y, r.featurePoint.y, hasPoint);
+    let angle = -(angleY * rate);
+    out.featureTangent = safeNormalize(rotateY(r.featureTangent, angle), r.featureTangent);
+    out.featureN1 = safeNormalize(rotateY(r.featureN1, angle), r.featureN1);
+    out.featureN2 = safeNormalize(rotateY(r.featureN2, angle), r.featureN2);
+    if (hasPoint) {
+        out.featurePoint = rotateY(r.featurePoint, -(r.featurePoint.y * rate));
+        out.featureDist = length(p - out.featurePoint);
+    }
+    return out;
+}
+
+fn taperScaleAtY(y: f32, ratio: f32, height: f32) -> f32 {
+    let t = clamp(y / height, 0.0, 1.0);
+    return 1.0 + (ratio - 1.0) * t;
+}
+
+fn sdfTaperFeatureMid(r: SDFResultMid, p: vec3f, ratio: f32, height: f32) -> SDFResultMid {
+    if (r.featureKind == MID_FEATURE_NONE) { return r; }
+    var out = r;
+    let hasPoint = midFeatureHasPoint(r);
+    let y = select(p.y, r.featurePoint.y, hasPoint);
+    let s = taperScaleAtY(y, ratio, height);
+    out.featureTangent = safeNormalize(vec3f(r.featureTangent.x * s, r.featureTangent.y, r.featureTangent.z * s), r.featureTangent);
+    out.featureN1 = safeNormalize(vec3f(r.featureN1.x / s, r.featureN1.y, r.featureN1.z / s), r.featureN1);
+    out.featureN2 = safeNormalize(vec3f(r.featureN2.x / s, r.featureN2.y, r.featureN2.z / s), r.featureN2);
+    if (hasPoint) {
+        let sp = taperScaleAtY(r.featurePoint.y, ratio, height);
+        out.featurePoint = vec3f(r.featurePoint.x * sp, r.featurePoint.y, r.featurePoint.z * sp);
+        out.featureDist = length(p - out.featurePoint);
+    }
+    return out;
+}
+
 fn sdfMidStripFeatures(r: SDFResultMid) -> SDFResultMid {
     return clearMidFeature(r);
 }
@@ -1761,20 +1849,24 @@ fn sdfOffsetEx(a: SDFResult, amount: f32) -> SDFResult {
 }
 
 // Shell Mid: hollow out a shape, flip normal when interior
-fn sdfShellMid(a: SDFResultMid, thickness: f32) -> SDFResultMid {
+fn sdfShellMid(a: SDFResultMid, p: vec3f, thickness: f32) -> SDFResultMid {
     var out = a;
     out.d = abs(a.d) - thickness;
-    if (a.d < 0.0) {
+    let inner = a.d < 0.0;
+    if (inner) {
         out.n = -out.n;
+        out.featureN1 = -out.featureN1;
+        out.featureN2 = -out.featureN2;
     }
-    return clearMidFeature(out);
+    let featureOffset = select(thickness, -thickness, inner);
+    return sdfOffsetFeatureMid(out, p, featureOffset);
 }
 
 // Offset Mid: shift distance, normals unchanged
-fn sdfOffsetMid(a: SDFResultMid, amount: f32) -> SDFResultMid {
+fn sdfOffsetMid(a: SDFResultMid, p: vec3f, amount: f32) -> SDFResultMid {
     var out = a;
     out.d = a.d - amount;
-    return clearMidFeature(out);
+    return sdfOffsetFeatureMid(out, p, amount);
 }
 
 ////////////////////////////////////////////////////
@@ -1827,7 +1919,7 @@ fn sdfTwistNormalMid(r: SDFResultMid, p: vec3f, rate: f32) -> SDFResultMid {
     let stretch = sqrt(1.0 + rate * rate * rho * rho);
     out.n = safeNormalize(vec3f(c * out.n.x + s * out.n.z, out.n.y, -s * out.n.x + c * out.n.z), out.n);
     out.g = out.g * stretch;
-    return clearMidFeature(out);
+    return sdfTwistFeatureMid(out, p, rate);
 }
 
 // Bend: rotate XY plane by p.x * amount (cheap bend, iq)
@@ -1910,7 +2002,7 @@ fn sdfTaperNormalMid(r: SDFResultMid, p: vec3f, ratio: f32, height: f32) -> SDFR
     let correction = min(s, 1.0);
     out.n = safeNormalize(vec3f(out.n.x / s, out.n.y, out.n.z / s), out.n);
     out.g = out.g / correction;
-    return clearMidFeature(out);
+    return sdfTaperFeatureMid(out, p, ratio, height);
 }
 
 ////////////////////////////////////////////////////

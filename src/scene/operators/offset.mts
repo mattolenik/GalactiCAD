@@ -59,7 +59,12 @@ export class Offset extends UnaryOperator {
         const funcName = `Offset${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { funcName, varName, text: `sdfOffsetMid(${childResult.text}, ${amt})` }
+        if (childResult.prelude) {
+            const accVar = childResult.varName!
+            const prelude = childResult.prelude + `${accVar} = sdfOffsetMid(${accVar}, p, ${amt});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
+        return { funcName, varName, text: `sdfOffsetMid(${childResult.text}, p, ${amt})` }
     }
 
     protected override computeBoundsCore(): AABB | null {

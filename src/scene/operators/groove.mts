@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
+import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 
@@ -44,7 +44,7 @@ export class Groove extends BinaryOperator {
         const o = this.paramOffset
         const ra = f32Wgsl(o, this.previewF32Slot)
         const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        return { text: `fOpGrooveEx(${lText}, ${rText}, ${ra}, ${rb})`, varName, prelude }
+        return binaryOpCompileResult(varName, `fOpGrooveEx(${lText}, ${rText}, ${ra}, ${rb})`, prelude)
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
@@ -54,16 +54,17 @@ export class Groove extends BinaryOperator {
         const o = this.paramOffset
         const ra = f32Wgsl(o, this.previewF32Slot)
         const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        return { text: `fOpGrooveFast(${lText}, ${rText}, ${ra}, ${rb})`, varName, prelude }
+        return binaryOpCompileResult(varName, `fOpGrooveFast(${lText}, ${rText}, ${ra}, ${rb})`, prelude)
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `groove_${lhResult.varName}__${rhResult.varName}`
         const o = this.paramOffset
         const ra = f32Wgsl(o, this.previewF32Slot)
         const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        return { text: `fOpGrooveMid(${lhResult.text}, ${rhResult.text}, ${ra}, ${rb})`, varName }
+        return binaryOpCompileResult(varName, `fOpGrooveMid(${lText}, ${rText}, ${ra}, ${rb})`, prelude)
     }
 }
 

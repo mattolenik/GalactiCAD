@@ -1421,6 +1421,7 @@ class App {
                 })
                 const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName, {
                     simplifyOnExport: devTools.meshSimplifyOnExport,
+                    mdcExportLevers: this.#settings.getMdcExportLevers(),
                 })
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
@@ -1496,6 +1497,7 @@ class App {
             try {
                 const mesh = await this.renderer.renderMesh(src, this.#tabs.active, {
                     simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
+                    mdcExportLevers: this.#settings.getMdcExportLevers(),
                 })
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {

@@ -2,6 +2,7 @@ import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import type { DebugLogModulesState } from "../logging/debug-log.mjs"
 import { log, mergeDebugLogModulesFromStorage } from "../logging/debug-log.mjs"
+import { DEFAULT_MDC_EXPORT_LEVERS, type MdcExportLevers } from "../render-worker-protocol.mjs"
 import { db } from "./db.mjs"
 
 // ---------------------------------------------------------------------------
@@ -68,8 +69,12 @@ export interface GlobalSettings {
         devToolsEnabled: boolean
         /** When true, dev tools shows the preview lighting sliders. */
         devToolsLightingExpanded: boolean
+        /** When true, dev tools shows MDC mesh export levers. */
+        devToolsMdcExportExpanded: boolean
         showFps: boolean
         meshSimplifyOnExport: boolean
+        /** Mesh export (MDC) tuning; merged with defaults and clamped on load. */
+        mdcExportLevers: MdcExportLevers
         diskSyncIntervalSeconds: number
         theme: ThemeMode
         editor: EditorSettings
@@ -77,6 +82,18 @@ export interface GlobalSettings {
         debugLogModules: DebugLogModulesState
     }
     layout: LayoutSettings
+}
+
+/** Partial global update; `app.mdcExportLevers` may be a partial merge. */
+export type AppSettingsPatch = Omit<Partial<GlobalSettings["app"]>, "mdcExportLevers"> & {
+    mdcExportLevers?: Partial<MdcExportLevers>
+}
+
+export type GlobalSettingsPatch = {
+    preview?: Partial<GlobalSettings["preview"]>
+    meshViewer?: Partial<GlobalSettings["meshViewer"]>
+    app?: AppSettingsPatch
+    layout?: Partial<GlobalSettings["layout"]>
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +136,26 @@ function defaultDocSettings(): DocumentSettings {
     return { camera: defaultCamera(), preview: defaultPreview(), cursorPosition: defaultCursorPosition(), selection: defaultSelection() }
 }
 
+function clampMdcNumber(v: unknown, lo: number, hi: number, fallback: number): number {
+    if (typeof v !== "number" || !Number.isFinite(v)) return fallback
+    return Math.min(hi, Math.max(lo, v))
+}
+
+/** Normalize persisted MDC export levers (Dev Tools / mesh pipeline). */
+export function normalizeMdcExportLevers(raw: unknown): MdcExportLevers {
+    const d = DEFAULT_MDC_EXPORT_LEVERS
+    const o = raw && typeof raw === "object" ? (raw as Partial<MdcExportLevers>) : {}
+    return {
+        voxelSizeMm: clampMdcNumber(o.voxelSizeMm, 0.02, 1.0, d.voxelSizeMm),
+        isoValue: clampMdcNumber(o.isoValue, -0.5, 0.5, d.isoValue),
+        creaseAngleDeg: clampMdcNumber(o.creaseAngleDeg, 0, 180, d.creaseAngleDeg),
+        simplifyTargetRatio: clampMdcNumber(o.simplifyTargetRatio, 0.01, 1, d.simplifyTargetRatio),
+        simplifyTargetError: clampMdcNumber(o.simplifyTargetError, 0, 0.1, d.simplifyTargetError),
+        simplifyNormalWeight: clampMdcNumber(o.simplifyNormalWeight, 0, 8, d.simplifyNormalWeight),
+        simplifyRegularize: typeof o.simplifyRegularize === "boolean" ? o.simplifyRegularize : d.simplifyRegularize,
+    }
+}
+
 function defaultGlobalSettings(): GlobalSettings {
     return {
         preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
@@ -127,8 +164,10 @@ function defaultGlobalSettings(): GlobalSettings {
             meshViewerEnabled: false,
             devToolsEnabled: false,
             devToolsLightingExpanded: false,
+            devToolsMdcExportExpanded: false,
             showFps: true,
             meshSimplifyOnExport: true,
+            mdcExportLevers: { ...DEFAULT_MDC_EXPORT_LEVERS },
             diskSyncIntervalSeconds: 30,
             theme: "dark",
             editor: defaultEditorSettings(),
@@ -294,12 +333,28 @@ export class SettingsManager {
         return this.#globalSettings
     }
 
-    /** Update global settings with a partial patch (deep-merged one level). */
-    updateGlobal(patch: Partial<{ [K in keyof GlobalSettings]: Partial<GlobalSettings[K]> }>): void {
-        for (const section of Object.keys(patch) as (keyof GlobalSettings)[]) {
-            Object.assign(this.#globalSettings[section], patch[section])
+    /** Update global settings with a partial patch (MDC levers deep-merged). */
+    updateGlobal(patch: GlobalSettingsPatch): void {
+        if (patch.preview) Object.assign(this.#globalSettings.preview, patch.preview)
+        if (patch.meshViewer) Object.assign(this.#globalSettings.meshViewer, patch.meshViewer)
+        if (patch.app) {
+            const appPatch = patch.app
+            const mergedApp: AppSettingsPatch = { ...appPatch }
+            if (appPatch.mdcExportLevers !== undefined) {
+                mergedApp.mdcExportLevers = normalizeMdcExportLevers({
+                    ...this.#globalSettings.app.mdcExportLevers,
+                    ...appPatch.mdcExportLevers,
+                })
+            }
+            Object.assign(this.#globalSettings.app, mergedApp)
         }
+        if (patch.layout) Object.assign(this.#globalSettings.layout, patch.layout)
         this.#globalSave$.next()
+    }
+
+    /** Clamped MDC export levers for mesh pipeline (Dev Tools). */
+    getMdcExportLevers(): MdcExportLevers {
+        return normalizeMdcExportLevers(this.#globalSettings.app.mdcExportLevers)
     }
 
     // -----------------------------------------------------------------------
@@ -365,6 +420,8 @@ export class SettingsManager {
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false
+                if (typeof app.devToolsMdcExportExpanded !== "boolean") app.devToolsMdcExportExpanded = false
+                app.mdcExportLevers = normalizeMdcExportLevers(app.mdcExportLevers)
                 if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"
                 const editorDef = defaultEditorSettings()
                 const editor = { ...editorDef, ...(parsed.app as { editor?: Partial<EditorSettings> })?.editor }

@@ -1,4 +1,13 @@
-import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
+import {
+    BinaryOperator,
+    CompileResult,
+    binaryOpCompileResult,
+    fluent,
+    mergeChildPreludes,
+    Node,
+    type BlendMode,
+    type IntersectionType,
+} from "../base.mjs"
 import type { AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
@@ -78,7 +87,7 @@ export class Subtract extends BinaryOperator {
         const rhResult = this.rh.compile(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._diffEx(lText, rText), varName, prelude }
+        return binaryOpCompileResult(varName, this._diffEx(lText, rText), prelude)
     }
 
     override compileFast(indentLevel = 0): CompileResult {
@@ -86,7 +95,7 @@ export class Subtract extends BinaryOperator {
         const rhResult = this.rh.compileFast(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._diffFast(lText, rText), varName, prelude }
+        return binaryOpCompileResult(varName, this._diffFast(lText, rText), prelude)
     }
 
     protected override computeBoundsCore(): AABB | null {
@@ -95,8 +104,9 @@ export class Subtract extends BinaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._diffMid(lhResult.text!, rhResult.text!), varName }
+        return binaryOpCompileResult(varName, this._diffMid(lText, rText), prelude)
     }
 
     override appendStructuralFingerprint(parts: string[]): void {

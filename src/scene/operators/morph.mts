@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
+import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 
@@ -37,7 +37,7 @@ export class Morph extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `morph_${lhResult.varName}__${rhResult.varName}`
         const mt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `sdfMorphEx(${lText}, ${rText}, ${mt})`, varName, prelude }
+        return binaryOpCompileResult(varName, `sdfMorphEx(${lText}, ${rText}, ${mt})`, prelude)
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
@@ -45,14 +45,15 @@ export class Morph extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `morph_${lhResult.varName}__${rhResult.varName}`
         const mt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `sdfMorphFast(${lText}, ${rText}, ${mt})`, varName, prelude }
+        return binaryOpCompileResult(varName, `sdfMorphFast(${lText}, ${rText}, ${mt})`, prelude)
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `morph_${lhResult.varName}__${rhResult.varName}`
         const mt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `sdfMorphMid(${lhResult.text}, ${rhResult.text}, ${mt})`, varName }
+        return binaryOpCompileResult(varName, `sdfMorphMid(${lText}, ${rText}, ${mt})`, prelude)
     }
 }
 

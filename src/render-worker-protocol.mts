@@ -125,6 +125,37 @@ export interface EdgeHitData {
 // Main -> Worker messages
 // ---------------------------------------------------------------------------
 
+/**
+ * High-impact mesh export (MDC) knobs exposed in Dev Tools and persisted in global settings.
+ * Passed to the render worker on each `renderMesh` request.
+ */
+export interface MdcExportLevers {
+    /** Voxel edge length in world units (mm in current export path). Smaller = finer mesh. */
+    voxelSizeMm: number
+    /** Isosurface level of the SDF; 0 is the nominal surface. */
+    isoValue: number
+    /** Crease angle (degrees) for vertex splitting; 180 disables. */
+    creaseAngleDeg: number
+    /** Fraction of triangles to keep after simplification (must be < 1 to simplify). */
+    simplifyTargetRatio: number
+    /** Max geometric error for simplifier (relative unless `simplifyErrorAbsolute` is set in worker). */
+    simplifyTargetError: number
+    /** Normal-aware simplification weight; 0 = position only. */
+    simplifyNormalWeight: number
+    /** Meshoptimizer regularize flag. */
+    simplifyRegularize: boolean
+}
+
+export const DEFAULT_MDC_EXPORT_LEVERS: MdcExportLevers = {
+    voxelSizeMm: 0.1,
+    isoValue: 0,
+    creaseAngleDeg: 30,
+    simplifyTargetRatio: 0.1,
+    simplifyTargetError: 0.001,
+    simplifyNormalWeight: 0,
+    simplifyRegularize: false,
+}
+
 export type MainToWorkerMessage =
     | { type: "init"; canvas: OffscreenCanvas; sharedBuffer?: SharedArrayBuffer }
     | { type: "renderKick"; version: number }
@@ -138,7 +169,15 @@ export type MainToWorkerMessage =
     // previewParamsF32Patch: cap-drag only — patches #previewF32Shadow then 8-byte write to previewCapParamDrag at byteOffset.
     // Does not touch boundsSceneParams or mdcSceneParams (those refresh on build / param-only build).
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; previewParamsF32Patch?: { byteOffset: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
-    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
+    | {
+          type: "renderMesh"
+          body: string
+          requestId?: number
+          documentName?: string
+          simplifyOnExport?: boolean
+          /** When set, overrides worker defaults for MDC export (Dev Tools). */
+          mdcExportLevers?: MdcExportLevers
+      }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }

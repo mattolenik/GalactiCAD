@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
+import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 
@@ -37,7 +37,7 @@ export class Engrave extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
         const er = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `fOpEngraveEx(${lText}, ${rText}, ${er})`, varName, prelude }
+        return binaryOpCompileResult(varName, `fOpEngraveEx(${lText}, ${rText}, ${er})`, prelude)
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
@@ -45,14 +45,15 @@ export class Engrave extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
         const er = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `fOpEngraveFast(${lText}, ${rText}, ${er})`, varName, prelude }
+        return binaryOpCompileResult(varName, `fOpEngraveFast(${lText}, ${rText}, ${er})`, prelude)
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
         const er = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `fOpEngraveMid(${lhResult.text}, ${rhResult.text}, ${er})`, varName }
+        return binaryOpCompileResult(varName, `fOpEngraveMid(${lText}, ${rText}, ${er})`, prelude)
     }
 }
 

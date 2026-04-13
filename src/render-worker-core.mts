@@ -12,6 +12,7 @@ import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import mdcShader from "./shaders/mdc.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
+import { DEFAULT_MDC_EXPORT_LEVERS, type MdcExportLevers } from "./render-worker-protocol.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
@@ -939,7 +940,13 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(body: string, requestId?: number, documentName?: string, simplifyOnExport = true): Promise<void> {
+    async handleRenderMesh(
+        body: string,
+        requestId?: number,
+        documentName?: string,
+        simplifyOnExport = true,
+        mdcExportLevers?: MdcExportLevers,
+    ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
                 await this.build(body, undefined)
@@ -949,7 +956,8 @@ export class RenderWorkerCore {
                 self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId, documentName })
                 return
             }
-            const voxelSizeMm = 0.1
+            const levers: MdcExportLevers = { ...DEFAULT_MDC_EXPORT_LEVERS, ...mdcExportLevers }
+            const voxelSizeMm = levers.voxelSizeMm
             const pad = 3.2
             const minX = bounds.min[0] - pad
             const minY = bounds.min[1] - pad
@@ -967,18 +975,20 @@ export class RenderWorkerCore {
                 gridDimX,
                 gridDimY,
                 gridDimZ,
-                isoValue: 0.0,
+                isoValue: levers.isoValue,
                 gridOffsetX: minX,
                 gridOffsetY: minY,
                 gridOffsetZ: minZ,
                 voxelSize: voxelSizeMm,
+                creaseAngleDeg: levers.creaseAngleDeg,
                 ...(simplifyOnExport && {
-                    simplifyTargetRatio: 0.1,
-                    simplifyRegularize: false,
+                    simplifyTargetRatio: levers.simplifyTargetRatio,
+                    simplifyRegularize: levers.simplifyRegularize,
                     simplifyLockBorder: true,
                     simplifyPrune: false,
                     simplifySparse: false,
-                    simplifyTargetError: 0.001,
+                    simplifyTargetError: levers.simplifyTargetError,
+                    simplifyNormalWeight: levers.simplifyNormalWeight,
                 }),
             }
             const scene = this.#scene!
@@ -1030,9 +1040,18 @@ export class RenderWorkerCore {
         const TILE_STRIDE_BYTES = 48
         const totalSamples = dimsX * dimsY * dimsZ
         const totalWorkgroups = Math.ceil(totalSamples / 256)
-        const dispatchX = Math.min(totalWorkgroups, 65535)
-        const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
-        const dispatchedWorkgroups = dispatchX * dispatchY
+        const MAX_WG = 65535
+        let dispatchX = Math.min(totalWorkgroups, MAX_WG)
+        let dispatchY = Math.max(1, Math.ceil(totalWorkgroups / dispatchX))
+        let dispatchZ = 1
+        if (dispatchY > MAX_WG) {
+            dispatchY = MAX_WG
+            dispatchZ = Math.max(1, Math.ceil(totalWorkgroups / (dispatchX * dispatchY)))
+        }
+        if (dispatchZ > MAX_WG) {
+            throw new Error(`Bounds grid too large for one GPU dispatch (${totalWorkgroups} workgroups)`)
+        }
+        const dispatchedWorkgroups = dispatchX * dispatchY * dispatchZ
         const outBuffer = this.#device.createBuffer({
             size: dispatchedWorkgroups * TILE_STRIDE_BYTES,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -1071,7 +1090,7 @@ export class RenderWorkerCore {
             const pass = encoder.beginComputePass()
             pass.setPipeline(boundsPipeline)
             pass.setBindGroup(0, bindGroup)
-            pass.dispatchWorkgroups(dispatchedWorkgroups)
+            pass.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ)
             pass.end()
             this.#device.queue.submit([encoder.finish()])
             await this.#device.queue.onSubmittedWorkDone()

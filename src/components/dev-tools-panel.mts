@@ -12,10 +12,35 @@ import {
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
 import {
+    DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_PREVIEW_SHADING,
+    type MdcExportLevers,
     type PreviewShadingParams,
 } from "../render-worker-protocol.mjs"
 import { DEBUG_LOG_MODULES, log, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
+
+const MDC_RANGE_KNOBS: {
+    key: keyof Pick<
+        MdcExportLevers,
+        | "voxelSizeMm"
+        | "isoValue"
+        | "creaseAngleDeg"
+        | "simplifyTargetRatio"
+        | "simplifyTargetError"
+        | "simplifyNormalWeight"
+    >
+    label: string
+    min: number
+    max: number
+    step: number
+}[] = [
+    { key: "voxelSizeMm", label: "Voxel mm", min: 0.02, max: 0.5, step: 0.01 },
+    { key: "isoValue", label: "Iso value", min: -0.2, max: 0.2, step: 0.002 },
+    { key: "creaseAngleDeg", label: "Crease °", min: 0, max: 180, step: 1 },
+    { key: "simplifyTargetRatio", label: "Simplify %", min: 0.01, max: 1, step: 0.01 },
+    { key: "simplifyTargetError", label: "Simp. error", min: 0, max: 0.05, step: 0.0005 },
+    { key: "simplifyNormalWeight", label: "Simp. normals", min: 0, max: 4, step: 0.05 },
+]
 
 const PREVIEW_SHADING_KNOBS: {
     key: keyof PreviewShadingParams
@@ -56,6 +81,14 @@ export class DevToolsPanel extends HTMLElement {
     #meshViewer$: BehaviorSubject<boolean>
     #meshSimplifyCheckbox: HTMLInputElement
     #meshSimplify$: BehaviorSubject<boolean>
+    #mdcExpandedCheckbox: HTMLInputElement
+    #mdcExpanded$: BehaviorSubject<boolean>
+    #mdcSection: HTMLDivElement
+    #mdcRows = new Map<
+        (typeof MDC_RANGE_KNOBS)[number]["key"],
+        { range: HTMLInputElement; valueEl: HTMLSpanElement }
+    >()
+    #mdcRegularizeCheckbox: HTMLInputElement
     #lightingExpandedCheckbox: HTMLInputElement
     #lightingExpanded$: BehaviorSubject<boolean>
     #lightingSection: HTMLDivElement
@@ -306,6 +339,76 @@ export class DevToolsPanel extends HTMLElement {
             this.onMeshSimplifyChange?.(v)
         })
 
+        this.#mdcExpanded$ = new BehaviorSubject(g.devToolsMdcExportExpanded)
+        this.#mdcSection = document.createElement("div")
+        this.#mdcSection.className = "lighting-section"
+        this.#mdcSection.hidden = !this.#mdcExpanded$.value
+
+        this.#mdcExpandedCheckbox = this.#addCheckbox(shadow, "Show MDC export", this.#mdcExpanded$.value)
+        this.#subscriptions.push(connectCheckbox(this.#mdcExpandedCheckbox, this.#mdcExpanded$))
+        this.#mdcExpanded$.pipe(skip(1)).subscribe(v => {
+            this.#settings.updateGlobal({ app: { devToolsMdcExportExpanded: v } })
+            this.#mdcSection.hidden = !v
+        })
+        shadow.appendChild(this.#mdcSection)
+
+        const mdcHead = document.createElement("div")
+        mdcHead.className = "shade-head"
+        mdcHead.textContent = "Mesh export (MDC)"
+        this.#mdcSection.appendChild(mdcHead)
+
+        const mdcLevers = this.#settings.getMdcExportLevers()
+        for (const k of MDC_RANGE_KNOBS) {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = k.label
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = String(k.min)
+            range.max = String(k.max)
+            range.step = String(k.step)
+            range.value = String(mdcLevers[k.key])
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatMdcValue(k.key, mdcLevers[k.key])
+            range.addEventListener("input", () => {
+                let v = parseFloat(range.value)
+                if (!Number.isFinite(v)) v = k.min
+                v = Math.max(k.min, Math.min(k.max, v))
+                this.#settings.updateGlobal({
+                    app: { mdcExportLevers: { [k.key]: v } },
+                })
+                valueEl.textContent = DevToolsPanel.#formatMdcValue(k.key, v)
+            })
+            row.append(lab, range, valueEl)
+            this.#mdcSection.appendChild(row)
+            this.#mdcRows.set(k.key, { range, valueEl })
+        }
+
+        this.#mdcRegularizeCheckbox = this.#addCheckbox(this.#mdcSection, "Simplify regularize", mdcLevers.simplifyRegularize)
+        this.#mdcRegularizeCheckbox.addEventListener("change", () => {
+            this.#settings.updateGlobal({
+                app: { mdcExportLevers: { simplifyRegularize: this.#mdcRegularizeCheckbox.checked } },
+            })
+        })
+
+        const mdcDefaults = document.createElement("button")
+        mdcDefaults.textContent = "MDC defaults"
+        mdcDefaults.addEventListener("click", () => {
+            this.#settings.updateGlobal({ app: { mdcExportLevers: { ...DEFAULT_MDC_EXPORT_LEVERS } } })
+            const next = this.#settings.getMdcExportLevers()
+            for (const knob of MDC_RANGE_KNOBS) {
+                const row = this.#mdcRows.get(knob.key)
+                if (!row) continue
+                row.range.value = String(next[knob.key])
+                row.valueEl.textContent = DevToolsPanel.#formatMdcValue(knob.key, next[knob.key])
+            }
+            this.#mdcRegularizeCheckbox.checked = next.simplifyRegularize
+        })
+        this.#mdcSection.appendChild(mdcDefaults)
+
         this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)
         this.#subscriptions.push(connectCheckbox(this.#cameraOptCheckbox, this.#cameraOptimization$))
         this.#cameraOptimization$.pipe(skip(1)).subscribe(v => {
@@ -501,6 +604,17 @@ export class DevToolsPanel extends HTMLElement {
 
     static #formatShadeValue(key: keyof PreviewShadingParams, v: number): string {
         if (key === "specShininess" || key === "aoSteps") return String(Math.round(v))
+        return v.toFixed(2)
+    }
+
+    static #formatMdcValue(
+        key: (typeof MDC_RANGE_KNOBS)[number]["key"],
+        v: number,
+    ): string {
+        if (key === "simplifyTargetRatio") return `${Math.round(v * 100)}%`
+        if (key === "voxelSizeMm" || key === "isoValue") return v.toFixed(3)
+        if (key === "creaseAngleDeg") return String(Math.round(v))
+        if (key === "simplifyTargetError") return v.toFixed(4)
         return v.toFixed(2)
     }
 

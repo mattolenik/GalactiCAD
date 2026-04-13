@@ -395,6 +395,9 @@ fn step(edge: f32, x: f32) -> f32 {
 fn mix(a: f32, b: f32, t: f32) -> f32 {
     return a * (1.0 - t) + b * t;
 }
+fn mix2f(a: vec2f, b: vec2f, t: f32) -> vec2f {
+    return a * (1.0 - t) + b * t;
+}
 
 // Sign that always returns ±1
 fn sgn(x: f32) -> f32 {

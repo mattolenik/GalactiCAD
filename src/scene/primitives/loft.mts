@@ -214,8 +214,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         let v1A = polygonVertices[baseA + (edgeIdx + 1u) % count];
         let v0B = polygonVertices[baseB + edgeIdx];
         let v1B = polygonVertices[baseB + (edgeIdx + 1u) % count];
-        let v0 = mix(v0A, v0B, localT);
-        let v1 = mix(v1A, v1B, localT);
+        let v0 = mix2f(v0A, v0B, localT);
+        let v1 = mix2f(v1A, v1B, localT);
 
         if (length(p.xz - v0) < vtxEps) {
             let vPrevA = polygonVertices[baseA + (edgeIdx + count - 1u) % count];
@@ -228,8 +228,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             let nextOutA = vec2f(nextDirA.y, -nextDirA.x) * windA;
             let prevOutB = vec2f(prevDirB.y, -prevDirB.x) * windB;
             let nextOutB = vec2f(nextDirB.y, -nextDirB.x) * windB;
-            let prevOut = normalize(mix(prevOutA, prevOutB, localT));
-            let nextOut = normalize(mix(nextOutA, nextOutB, localT));
+            let prevOut = normalize(mix2f(prevOutA, prevOutB, localT));
+            let nextOut = normalize(mix2f(nextOutA, nextOutB, localT));
             let n0 = safeNormalize(vec3f(prevOut.x, 0.0, prevOut.y), vec3f(1.0, 0.0, 0.0));
             let n1 = safeNormalize(vec3f(nextOut.x, 0.0, nextOut.y), vec3f(1.0, 0.0, 0.0));
             if (dot(n0, n1) < 0.995) {
@@ -261,8 +261,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             let nextOutA = vec2f(nextDirA.y, -nextDirA.x) * windA;
             let prevOutB = vec2f(prevDirB.y, -prevDirB.x) * windB;
             let nextOutB = vec2f(nextDirB.y, -nextDirB.x) * windB;
-            let prevOut = normalize(mix(prevOutA, prevOutB, localT));
-            let nextOut = normalize(mix(nextOutA, nextOutB, localT));
+            let prevOut = normalize(mix2f(prevOutA, prevOutB, localT));
+            let nextOut = normalize(mix2f(nextOutA, nextOutB, localT));
             let n0 = safeNormalize(vec3f(prevOut.x, 0.0, prevOut.y), vec3f(1.0, 0.0, 0.0));
             let n1 = safeNormalize(vec3f(nextOut.x, 0.0, nextOut.y), vec3f(1.0, 0.0, 0.0));
             if (dot(n0, n1) < 0.995) {

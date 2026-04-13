@@ -11,6 +11,24 @@ export function polygon2dWindingSign(vertices: [number, number][]): 1 | -1 {
     return area < 0 ? -1 : 1
 }
 
+function sameVertex(a: [number, number], b: [number, number]): boolean {
+    return Math.abs(a[0] - b[0]) <= 1e-9 && Math.abs(a[1] - b[1]) <= 1e-9
+}
+
+function normalizePolygonVertices(vertices: [number, number][]): [number, number][] {
+    const out: [number, number][] = []
+    for (const [x, y] of vertices) {
+        const next: [number, number] = [x, y]
+        if (out.length === 0 || !sameVertex(out[out.length - 1]!, next)) {
+            out.push(next)
+        }
+    }
+    if (out.length >= 2 && sameVertex(out[0]!, out[out.length - 1]!)) {
+        out.pop()
+    }
+    return out
+}
+
 /**
  * A 2D SDF primitive defined by a closed polygon of vertices.
  * Cannot be used directly in a 3D scene — must be wrapped in Extrude or Loft.
@@ -22,10 +40,11 @@ export class Polygon2D extends Node {
 
     constructor(vertices: [number, number][]) {
         super()
-        if (vertices.length < 3) {
+        const normalized = normalizePolygonVertices(vertices)
+        if (normalized.length < 3) {
             throw new Error("polygon2d requires at least 3 vertices")
         }
-        this.vertices = vertices
+        this.vertices = normalized
     }
 
     override getShapeType(): string { return "polygon2d" }
@@ -84,7 +103,8 @@ fn ${this.wgslFuncName}(p: vec2f) -> f32 {
     for (var i = 0u; i < N; i++) {
         let e = v[j] - v[i];
         let w = p - v[i];
-        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+        let eLen2 = max(dot(e, e), 1e-12);
+        let b = w - e * clamp(dot(w, e) / eLen2, 0.0, 1.0);
         d = min(d, dot(b, b));
         let c0 = p.y >= v[i].y;
         let c1 = p.y < v[j].y;
@@ -108,7 +128,8 @@ fn ${this.wgslClosestEdgeFuncName}(p: vec2f) -> u32 {
     for (var i = 0u; i < N; i++) {
         let e = v[j] - v[i];
         let w = p - v[i];
-        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+        let eLen2 = max(dot(e, e), 1e-12);
+        let b = w - e * clamp(dot(w, e) / eLen2, 0.0, 1.0);
         let dd = dot(b, b);
         if (dd < minDist) { minDist = dd; closest = j; }
         j = i;
@@ -132,7 +153,8 @@ fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec4f {
     for (var i = 0u; i < N; i++) {
         let e = v[j] - v[i];
         let w = p - v[i];
-        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+        let eLen2 = max(dot(e, e), 1e-12);
+        let b = w - e * clamp(dot(w, e) / eLen2, 0.0, 1.0);
         let dd = dot(b, b);
         d = min(d, dd);
         if (dd < minDist) { minDist = dd; closest = j; closestB = b; }

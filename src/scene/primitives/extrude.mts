@@ -307,6 +307,19 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         const capH = capDragOrF32Wgsl(this.paramOffset + 3, this.previewF32Slot + 0)
         const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         const twistRad = f32Wgsl(this.paramOffset + 5, this.previewF32Slot + 2)
+        const N = this.child.vertices.length
+        const BASE = this.child.bufferOffset
+        const windSign = (() => {
+            let area = 0
+            const verts = this.child.vertices
+            for (let i = 0; i < verts.length; i++) {
+                const [ax, ay] = verts[i]!
+                const [bx, by] = verts[(i + 1) % verts.length]!
+                area += (ax + bx) * (ay - by)
+            }
+            return area < 0 ? -1.0 : 1.0
+        })()
+        const windSignStr = windSign.toFixed(1)
 
         if (!hasTwist) {
             return `
@@ -323,6 +336,61 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
+    let edgeIdx = u32(combined.y);
+    let v0 = polygonVertices[${BASE}u + edgeIdx];
+    let v1 = polygonVertices[${BASE}u + (edgeIdx + 1u) % ${N}u];
+    let edge = v1 - v0;
+    let edgeLen2 = max(dot(edge, edge), 1e-12);
+    let edgeLen = sqrt(edgeLen2);
+    let edgeTan2 = edge / edgeLen;
+    let edgeOut2 = vec2f(edgeTan2.y, -edgeTan2.x) * ${windSignStr};
+    let capPlaneY = ${capYOff} + sgn(capY) * capH;
+    let sideEps = max(SURF_DIST * 8.0, capH * 0.015);
+    let rimEps = max(SURF_DIST * 8.0, capH * 0.02);
+    let vtxEps = max(SURF_DIST * 8.0, capH * 0.03);
+
+    if (!onSide && abs(d2d) < rimEps && abs(dCap) < rimEps) {
+        let t = clamp(dot(p.xz - v0, edge) / edgeLen2, 0.0, 1.0);
+        let rim = v0 + edge * t;
+        let featurePoint = vec3f(rim.x, capPlaneY, rim.y);
+        return sdfRMidLine(
+            d, 1.0, nCap,
+            featurePoint,
+            safeNormalize(vec3f(edgeTan2.x, 0.0, edgeTan2.y), vec3f(1.0, 0.0, 0.0)),
+            safeNormalize(vec3f(edgeOut2.x, 0.0, edgeOut2.y), vec3f(1.0, 0.0, 0.0)),
+            length(p - featurePoint),
+        );
+    }
+
+    if (onSide && abs(d2d) < sideEps) {
+        if (length(p.xz - v0) < vtxEps) {
+            let vPrev = polygonVertices[${BASE}u + (edgeIdx + ${N}u - 1u) % ${N}u];
+            let prevDir = normalize(v0 - vPrev);
+            let nextDir = normalize(v1 - v0);
+            let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
+            let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
+            let n0 = safeNormalize(vec3f(prevOut2.x, 0.0, prevOut2.y), vec3f(1.0, 0.0, 0.0));
+            let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
+            if (dot(n0, n1) < 0.995) {
+                let featurePoint = vec3f(v0.x, p.y, v0.y);
+                return sdfRMidLine(d, 1.0, n0, featurePoint, vec3f(0.0, 1.0, 0.0), n1, length(p - featurePoint));
+            }
+        }
+        if (length(p.xz - v1) < vtxEps) {
+            let vNext = polygonVertices[${BASE}u + (edgeIdx + 2u) % ${N}u];
+            let prevDir = normalize(v1 - v0);
+            let nextDir = normalize(vNext - v1);
+            let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
+            let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
+            let n0 = safeNormalize(vec3f(prevOut2.x, 0.0, prevOut2.y), vec3f(1.0, 0.0, 0.0));
+            let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
+            if (dot(n0, n1) < 0.995) {
+                let featurePoint = vec3f(v1.x, p.y, v1.y);
+                return sdfRMidLine(d, 1.0, n0, featurePoint, vec3f(0.0, 1.0, 0.0), n1, length(p - featurePoint));
+            }
+        }
+    }
+
     return sdfRMid(d, 1.0, n);
 }
 `
@@ -381,7 +449,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         return {
             funcName,
             varName,
-            text: `${this.wgslMidFuncName}(p - ${pos})`,
+            text: `sdfMidSetOwner(${this.wgslMidFuncName}(p - ${pos}), ${this.id}u)`,
         }
     }
 

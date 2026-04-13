@@ -86,7 +86,7 @@ export class Sphere extends Node {
         return {
             funcName,
             varName,
-            text: `fSphereMid(p - ${pos}, ${r})`,
+            text: `sdfMidSetOwner(fSphereMid(p - ${pos}, ${r}), ${this.id}u)`,
         }
     }
 

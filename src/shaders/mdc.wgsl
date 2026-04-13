@@ -34,6 +34,14 @@ struct QEFData {
     numPoints: u32,
 }
 
+struct EdgeDebugSample {
+    crossingPos: vec4f,
+    normal: vec4f,
+    featurePoint: vec4f,
+    featureN1: vec4f,
+    featureN2: vec4f,
+}
+
 // ============================== MDC CONSTANTS ==============================
 // "Proper" Manifold Dual Contouring requires multiple vertices per cell
 // (one per connected surface component within the cell).
@@ -97,10 +105,20 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // Debug counters (optional):
 // [0] = quads skipped because a neighbor cell was missing
 // [1] = quads skipped because component mapping was missing (0xffffffff)
-@group(0) @binding(24) var<storage, read_write> debugSkipCounters: array<atomic<u32>, 8>;
+// [8] = crossings with no feature payload
+// [9] = crossings classified as line feature
+// [10] = crossings classified as corner feature
+// [11] = crossings classified as boolean seam feature
+// [12] = feature hints rejected (too far / too weak)
+// [13] = extra QEF planes injected from features
+@group(0) @binding(24) var<storage, read_write> debugSkipCounters: array<atomic<u32>, 16>;
 
 // Cancellation flag: 0 = continue, 1 = cancelled
 @group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
+
+// Optional pass-3 debug overlay samples for the mesh viewer.
+@group(0) @binding(26) var<storage, read_write> debugEdgeSampleCount: atomic<u32>;
+@group(0) @binding(29) var<storage, read_write> debugEdgeSamples: array<EdgeDebugSample>;
 
 
 // ============================== UTILITY FUNCTIONS ==============================
@@ -126,7 +144,7 @@ fn sceneSDF(p: vec3f) -> SDFResult {
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
-// Mid-tier SDF: d, g, n only — used by MDC for edge/vertex projection and sign resolution.
+// Mid-tier SDF: d, g, n plus optional feature payload for feature-aware MDC.
 fn sceneSDF_mid(p: vec3f) -> SDFResultMid {
     _ = polygonVertices[0];
     _ = faceSelection.nodeId;
@@ -463,6 +481,18 @@ fn solveQEF(qef: QEFData) -> vec3f {
 fn qefCost(qef: QEFData, x: vec3f) -> f32 {
     let Ax = qef.ATA * x;
     return dot(x, Ax) - 2.0 * dot(x, qef.ATb);
+}
+
+const MDC_FEATURE_PROX_SCALE: f32 = 0.75;
+const MDC_FEATURE_PLANE_WEIGHT: f32 = 0.35;
+
+fn mdcQefAddPlane(qef: ptr<function, QEFData>, normal: vec3f, point: vec3f, weight: f32) {
+    let n = safeNormalize(normal, vec3f(0.0, 1.0, 0.0));
+    (*qef).ATA[0] = (*qef).ATA[0] + n * (n.x * weight);
+    (*qef).ATA[1] = (*qef).ATA[1] + n * (n.y * weight);
+    (*qef).ATA[2] = (*qef).ATA[2] + n * (n.z * weight);
+    let d = dot(n, point);
+    (*qef).ATb = (*qef).ATb + n * (d * weight);
 }
 
 
@@ -870,11 +900,87 @@ fn edgeDetection_Pass3(
         let normal = crossingNormal[e];
 
         let c = u32(compIdx);
-        qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
-        qefs[c].ATA[1] = qefs[c].ATA[1] + normal * normal.y;
-        qefs[c].ATA[2] = qefs[c].ATA[2] + normal * normal.z;
-        let d_val = dot(normal, intersectionPos);
-        qefs[c].ATb = qefs[c].ATb + normal * d_val;
+        let feature = sceneSDF_mid(intersectionPos);
+        let featureProx = uniforms.voxelSize * MDC_FEATURE_PROX_SCALE;
+        let featurePoint = select(intersectionPos, feature.featurePoint, length(feature.featurePoint) > 1e-6);
+        let seamSharpEnough = dot(feature.featureN1, feature.featureN2) < MID_FEATURE_SEAM_COS_THRESH;
+        let featureIdsValid =
+            select(
+                feature.featureIdA != 0u,
+                feature.featureIdA != 0u && feature.featureIdB != 0u && feature.featureIdA != feature.featureIdB,
+                feature.featureKind == MID_FEATURE_BOOLEAN_SEAM
+            );
+        let featureNormalsValid =
+            select(
+                feature.featureNormalCount == 2u,
+                feature.featureNormalCount == 3u,
+                feature.featureKind == MID_FEATURE_CORNER
+            );
+        let featureOk =
+            feature.featureKind != MID_FEATURE_NONE &&
+            feature.featureDist <= featureProx &&
+            featureIdsValid &&
+            featureNormalsValid &&
+            (feature.featureKind != MID_FEATURE_BOOLEAN_SEAM || seamSharpEnough);
+
+        if (!featureOk || feature.featureKind == MID_FEATURE_NONE) {
+            atomicAdd(&debugSkipCounters[8], 1u);
+            qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
+            qefs[c].ATA[1] = qefs[c].ATA[1] + normal * normal.y;
+            qefs[c].ATA[2] = qefs[c].ATA[2] + normal * normal.z;
+            let d_val = dot(normal, intersectionPos);
+            qefs[c].ATb = qefs[c].ATb + normal * d_val;
+        } else if (feature.featureKind == MID_FEATURE_LINE) {
+            atomicAdd(&debugSkipCounters[9], 1u);
+            mdcQefAddPlane(&qefs[c], feature.n, featurePoint, 1.0);
+            if (feature.featureNormalCount >= 2u) {
+                mdcQefAddPlane(&qefs[c], feature.featureN1, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
+                atomicAdd(&debugSkipCounters[13], 1u);
+            }
+        } else if (feature.featureKind == MID_FEATURE_CORNER) {
+            atomicAdd(&debugSkipCounters[10], 1u);
+            mdcQefAddPlane(&qefs[c], feature.n, featurePoint, 1.0);
+            if (feature.featureNormalCount >= 2u) {
+                mdcQefAddPlane(&qefs[c], feature.featureN1, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
+                atomicAdd(&debugSkipCounters[13], 1u);
+            }
+            if (feature.featureNormalCount >= 3u) {
+                mdcQefAddPlane(&qefs[c], feature.featureN2, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
+                atomicAdd(&debugSkipCounters[13], 1u);
+            }
+        } else if (feature.featureKind == MID_FEATURE_BOOLEAN_SEAM) {
+            atomicAdd(&debugSkipCounters[11], 1u);
+            if (feature.featureNormalCount >= 2u) {
+                mdcQefAddPlane(&qefs[c], feature.featureN1, intersectionPos, 1.0);
+                mdcQefAddPlane(&qefs[c], feature.featureN2, intersectionPos, 1.0);
+                atomicAdd(&debugSkipCounters[13], 2u);
+            }
+        } else {
+            atomicAdd(&debugSkipCounters[12], 1u);
+            qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
+            qefs[c].ATA[1] = qefs[c].ATA[1] + normal * normal.y;
+            qefs[c].ATA[2] = qefs[c].ATA[2] + normal * normal.z;
+            let d_val = dot(normal, intersectionPos);
+            qefs[c].ATb = qefs[c].ATb + normal * d_val;
+        }
+        if (feature.featureKind != MID_FEATURE_NONE && !featureOk) {
+            atomicAdd(&debugSkipCounters[12], 1u);
+        }
+        let debugClass = select(
+            select(4.0, 0.0, feature.featureKind == MID_FEATURE_NONE),
+            f32(feature.featureKind),
+            featureOk
+        );
+        let debugIdx = atomicAdd(&debugEdgeSampleCount, 1u);
+        if (debugIdx < arrayLength(&debugEdgeSamples)) {
+            debugEdgeSamples[debugIdx] = EdgeDebugSample(
+                vec4f(intersectionPos, debugClass),
+                vec4f(normal, f32(feature.featureNormalCount)),
+                vec4f(featurePoint, feature.featureDist),
+                vec4f(feature.featureN1, f32(feature.featureIdA)),
+                vec4f(feature.featureN2, f32(feature.featureIdB)),
+            );
+        }
         qefs[c].massPoint = qefs[c].massPoint + intersectionPos;
         qefs[c].numPoints = qefs[c].numPoints + 1u;
     }
@@ -938,6 +1044,26 @@ fn vertexGeneration_Pass4(
     if (cC < bestCost) { bestCost = cC; best = vCenter; }
 
     var vertexPos = best;
+    let featureStart = sceneSDF_mid(vertexPos);
+    let featureProx = uniforms.voxelSize * MDC_FEATURE_PROX_SCALE;
+    if ((featureStart.featureKind == MID_FEATURE_LINE || featureStart.featureKind == MID_FEATURE_CORNER) &&
+        featureStart.featureDist <= featureProx &&
+        featureStart.featureIdA != 0u &&
+        featureStart.featureNormalCount >= 2u &&
+        length(featureStart.featurePoint) > 1e-6) {
+        var featureTarget = featureStart.featurePoint;
+        if (featureStart.featureKind == MID_FEATURE_LINE && length(featureStart.featureTangent) > 1e-6) {
+            let tangent = safeUnit3(featureStart.featureTangent);
+            featureTarget = featureStart.featurePoint + tangent * dot(vertexPos - featureStart.featurePoint, tangent);
+        }
+        let delta = featureTarget - vertexPos;
+        let deltaLen = length(delta);
+        let maxNudge = uniforms.voxelSize * 0.15;
+        if (deltaLen > 1e-6) {
+            vertexPos = vertexPos + delta * min(1.0, maxNudge / deltaLen);
+            vertexPos = clamp(vertexPos, cellMin, cellMax);
+        }
+    }
 
     // Iterative projection to ensure vertex is on the true iso-surface.
     // Uses gradient-magnitude-aware stepping to handle smooth CSG regions

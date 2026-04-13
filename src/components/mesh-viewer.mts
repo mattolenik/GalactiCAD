@@ -1,11 +1,11 @@
-import { MeshData } from "../export/export.mjs"
+import { MESH_MDC_DEBUG_SAMPLE_STRIDE, MeshData, type MeshMdcDebugStats } from "../export/export.mjs"
 import { CameraController } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
 import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import { __fg_color, __tone_2, __tone_accent } from "../style/style.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
-import { vec2, Vec2f, vec3 } from "../vecmat/vector.mjs"
+import { vec2, Vec2f, vec3, vec4 } from "../vecmat/vector.mjs"
 
 export class MeshViewer extends HTMLElement {
     static get observedAttributes() {
@@ -54,6 +54,13 @@ export class MeshViewer extends HTMLElement {
     #viewCenter: Vec2f = vec2(0.5, 0.5)
     #wireframe = false
     #wireframeCheckbox!: HTMLInputElement
+    #debugOverlayCanvas: HTMLCanvasElement
+    #debugOverlayCtx: CanvasRenderingContext2D | null
+    #hoverCanvasPos: { x: number; y: number } | null = null
+    #mdcDebug = false
+    #mdcDebugCheckbox!: HTMLInputElement
+    #mdcDebugSamples: Float32Array<ArrayBuffer> = new Float32Array(0)
+    #mdcDebugStats: MeshMdcDebugStats | null = null
 
     get controls(): CameraController {
         return this.#controls
@@ -94,7 +101,18 @@ export class MeshViewer extends HTMLElement {
             width: 100%;
         }
         :host { display: inline-block; position: relative; }
+        .debug-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
         .overlay {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
             position: absolute;
             bottom: 10px;
             right: 10px;
@@ -123,7 +141,12 @@ export class MeshViewer extends HTMLElement {
         this.canvas.style.width = "100%"
         this.canvas.style.height = "100%"
         this.canvas.style.display = "inline-block"
-        shadow.append(style, this.canvas)
+        this.#debugOverlayCanvas = document.createElement("canvas")
+        this.#debugOverlayCanvas.className = "debug-canvas"
+        this.#debugOverlayCanvas.style.width = "100%"
+        this.#debugOverlayCanvas.style.height = "100%"
+        this.#debugOverlayCtx = this.#debugOverlayCanvas.getContext("2d")
+        shadow.append(style, this.canvas, this.#debugOverlayCanvas)
 
         const overlay = document.createElement("div")
         overlay.classList.add("overlay")
@@ -145,6 +168,15 @@ export class MeshViewer extends HTMLElement {
         wireText.textContent = "Wireframe"
         wireLabel.append(this.#wireframeCheckbox, wireText)
         overlay.append(wireLabel)
+
+        const debugLabel = document.createElement("label")
+        this.#mdcDebugCheckbox = document.createElement("input")
+        this.#mdcDebugCheckbox.type = "checkbox"
+        this.#mdcDebugCheckbox.checked = this.#mdcDebug
+        const debugText = document.createElement("span")
+        debugText.textContent = "MDC debug"
+        debugLabel.append(this.#mdcDebugCheckbox, debugText)
+        overlay.append(debugLabel)
         shadow.appendChild(overlay)
 
         this.#translucentCheckbox.addEventListener("change", () => {
@@ -152,6 +184,21 @@ export class MeshViewer extends HTMLElement {
         })
         this.#wireframeCheckbox.addEventListener("change", () => {
             this.wireframe = this.#wireframeCheckbox.checked
+        })
+        this.#mdcDebugCheckbox.addEventListener("change", () => {
+            this.#mdcDebug = this.#mdcDebugCheckbox.checked
+        })
+        this.canvas.addEventListener("pointermove", event => {
+            const rect = this.canvas.getBoundingClientRect()
+            const sx = rect.width > 0 ? this.canvas.width / rect.width : 1
+            const sy = rect.height > 0 ? this.canvas.height / rect.height : 1
+            this.#hoverCanvasPos = {
+                x: (event.clientX - rect.left) * sx,
+                y: (event.clientY - rect.top) * sy,
+            }
+        })
+        this.canvas.addEventListener("pointerleave", () => {
+            this.#hoverCanvasPos = null
         })
 
         this.#cameraRes = vec2(this.canvas.clientWidth, this.canvas.clientHeight)
@@ -171,6 +218,8 @@ export class MeshViewer extends HTMLElement {
                     )
                     this.canvas.width = w
                     this.canvas.height = h
+                    this.#debugOverlayCanvas.width = w
+                    this.#debugOverlayCanvas.height = h
                     this.#cameraRes = vec2(w, h)
                 }
                 if (this.#device) {
@@ -497,6 +546,8 @@ export class MeshViewer extends HTMLElement {
 
         const meshToUpload = this.#pendingMesh
         this.#pendingMesh = null
+        this.#mdcDebugSamples = meshToUpload.debug?.mdc?.samples ?? new Float32Array(0)
+        this.#mdcDebugStats = meshToUpload.debug?.mdc?.stats ?? null
         this.#uploadMesh(meshToUpload)
     }
 
@@ -514,6 +565,7 @@ export class MeshViewer extends HTMLElement {
             this.#edgeIndexBuffer = null
             this.#indexCount = 0
             this.#edgeIndexCount = 0
+            this.#clearDebugOverlay()
             return
         }
 
@@ -576,12 +628,14 @@ export class MeshViewer extends HTMLElement {
         if (this.#disposed) return
 
         if (!this.#device || !this.#uniformBuffer) {
+            this.#clearDebugOverlay()
             if (!this.#disposed) requestAnimationFrame(() => this.update())
             return
         }
 
         // Skip rendering if canvas is collapsed (0x0 size)
         if (this.canvas.width === 0 || this.canvas.height === 0) {
+            this.#clearDebugOverlay()
             if (!this.#disposed) requestAnimationFrame(() => this.update())
             return
         }
@@ -709,8 +763,191 @@ export class MeshViewer extends HTMLElement {
             renderPass.end()
         }
         this.#device.queue.submit([commandEncoder.finish()])
+        this.#drawMdcDebugOverlay(rotated)
 
         if (!this.#disposed) requestAnimationFrame(() => this.update())
+    }
+
+    #clearDebugOverlay(): void {
+        this.#debugOverlayCtx?.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
+    }
+
+    #projectDebugPoint(cameraTransform: Mat4x4f, x: number, y: number, z: number): { x: number; y: number } | null {
+        const pCam = cameraTransform.transform(vec4(x, y, z, 1))
+        const p = {
+            x: pCam.x - this.#controls.cameraPosition.x,
+            y: pCam.y - this.#controls.cameraPosition.y,
+            z: pCam.z - (this.#controls.cameraPosition.z + 100.0),
+        }
+        const aspect = this.#cameraRes.y !== 0 ? this.#cameraRes.x / this.#cameraRes.y : 1
+        const ndcX = -p.x / (this.#controls.zoom * aspect)
+        const ndcY = p.y / this.#controls.zoom
+        const near = -10000.0
+        const far = 10000.0
+        const ndcZ = (p.z - near) / (far - near)
+        if (!Number.isFinite(ndcX) || !Number.isFinite(ndcY) || !Number.isFinite(ndcZ) || ndcZ < 0 || ndcZ > 1) {
+            return null
+        }
+        const vcOffsetX = 2 * (this.#viewCenter.x - 0.5)
+        const vcOffsetY = -2 * (this.#viewCenter.y - 0.5)
+        const clipX = ndcX + vcOffsetX
+        const clipY = ndcY + vcOffsetY
+        if (clipX < -1.1 || clipX > 1.1 || clipY < -1.1 || clipY > 1.1) {
+            return null
+        }
+        return {
+            x: (clipX * 0.5 + 0.5) * this.#debugOverlayCanvas.width,
+            y: (1 - (clipY * 0.5 + 0.5)) * this.#debugOverlayCanvas.height,
+        }
+    }
+
+    #drawMdcDebugOverlay(cameraTransform: Mat4x4f): void {
+        const ctx = this.#debugOverlayCtx
+        if (!ctx) return
+        ctx.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
+        if (!this.#mdcDebug || this.#mdcDebugSamples.length === 0) return
+
+        const samples = this.#mdcDebugSamples
+        const hoverPos = this.#hoverCanvasPos
+        const stride = MESH_MDC_DEBUG_SAMPLE_STRIDE
+        const pointSize = samples.length / stride > 2000 ? 3 : 4
+        let hoveredIndex = -1
+        let bestHoverDistSq = 9 * 9
+
+        const colorForClass = (klass: number): string => {
+            switch (klass) {
+                case 1: return "rgba(86, 214, 191, 0.90)"
+                case 2: return "rgba(255, 199, 92, 0.92)"
+                case 3: return "rgba(214, 138, 255, 0.92)"
+                case 4: return "rgba(255, 102, 102, 0.95)"
+                default: return "rgba(190, 195, 205, 0.45)"
+            }
+        }
+        const labelForClass = (klass: number): string => {
+            switch (klass) {
+                case 1: return "line"
+                case 2: return "corner"
+                case 3: return "seam"
+                case 4: return "rejected"
+                default: return "none"
+            }
+        }
+        const project = (ox: number, oy: number, oz: number) => this.#projectDebugPoint(cameraTransform, ox, oy, oz)
+        const drawLine = (
+            ax: number,
+            ay: number,
+            az: number,
+            bx: number,
+            by: number,
+            bz: number,
+            color: string,
+            width: number,
+            dashed = false,
+        ) => {
+            const p0 = project(ax, ay, az)
+            const p1 = project(bx, by, bz)
+            if (!p0 || !p1) return
+            ctx.save()
+            ctx.strokeStyle = color
+            ctx.lineWidth = width
+            if (dashed) ctx.setLineDash([5, 4])
+            ctx.beginPath()
+            ctx.moveTo(p0.x, p0.y)
+            ctx.lineTo(p1.x, p1.y)
+            ctx.stroke()
+            ctx.restore()
+        }
+
+        for (let sampleIdx = 0; sampleIdx < samples.length / stride; sampleIdx++) {
+            const base = sampleIdx * stride
+            const projected = project(samples[base]!, samples[base + 1]!, samples[base + 2]!)
+            if (!projected) continue
+            const klass = Math.round(samples[base + 3]!)
+            ctx.fillStyle = colorForClass(klass)
+            ctx.fillRect(projected.x - pointSize * 0.5, projected.y - pointSize * 0.5, pointSize, pointSize)
+            if (!hoverPos) continue
+            const dx = projected.x - hoverPos.x
+            const dy = projected.y - hoverPos.y
+            const distSq = dx * dx + dy * dy
+            if (distSq < bestHoverDistSq) {
+                bestHoverDistSq = distSq
+                hoveredIndex = sampleIdx
+            }
+        }
+
+        const stats = this.#mdcDebugStats
+        if (stats) {
+            const text1 = `MDC debug ${stats.totalSamples} samples`
+            const text2 = `L ${stats.acceptedLine}  C ${stats.acceptedCorner}  S ${stats.acceptedSeam}  R ${stats.rejected}`
+            ctx.save()
+            ctx.font = "12px system-ui, sans-serif"
+            ctx.textBaseline = "top"
+            const width = Math.max(ctx.measureText(text1).width, ctx.measureText(text2).width) + 16
+            ctx.fillStyle = "rgba(12, 14, 18, 0.66)"
+            ctx.fillRect(10, 10, width, 36)
+            ctx.fillStyle = "rgba(245, 247, 250, 0.92)"
+            ctx.fillText(text1, 18, 16)
+            ctx.fillText(text2, 18, 30)
+            ctx.restore()
+        }
+
+        if (hoveredIndex < 0) return
+        const base = hoveredIndex * stride
+        const px = samples[base]!
+        const py = samples[base + 1]!
+        const pz = samples[base + 2]!
+        const klass = Math.round(samples[base + 3]!)
+        const nx = samples[base + 4]!
+        const ny = samples[base + 5]!
+        const nz = samples[base + 6]!
+        const normalCount = Math.round(samples[base + 7]!)
+        const fx = samples[base + 8]!
+        const fy = samples[base + 9]!
+        const fz = samples[base + 10]!
+        const featureDist = samples[base + 11]!
+        const n1x = samples[base + 12]!
+        const n1y = samples[base + 13]!
+        const n1z = samples[base + 14]!
+        const ownerA = Math.round(samples[base + 15]!)
+        const n2x = samples[base + 16]!
+        const n2y = samples[base + 17]!
+        const n2z = samples[base + 18]!
+        const ownerB = Math.round(samples[base + 19]!)
+        const point = project(px, py, pz)
+        if (!point) return
+
+        const vectorLen = Math.min(Math.max(this.#controls.zoom * 0.045, 0.08), 2.0)
+        drawLine(px, py, pz, px + nx * vectorLen, py + ny * vectorLen, pz + nz * vectorLen, "rgba(120, 220, 255, 0.95)", 2)
+        if (Math.abs(fx) + Math.abs(fy) + Math.abs(fz) > 1e-6) {
+            drawLine(px, py, pz, fx, fy, fz, "rgba(255, 255, 255, 0.55)", 1.5, true)
+            drawLine(fx, fy, fz, fx + n1x * vectorLen, fy + n1y * vectorLen, fz + n1z * vectorLen, "rgba(255, 199, 92, 0.95)", 2)
+            if (normalCount >= 3 || klass === 3) {
+                drawLine(fx, fy, fz, fx + n2x * vectorLen, fy + n2y * vectorLen, fz + n2z * vectorLen, "rgba(214, 138, 255, 0.95)", 2)
+            }
+        }
+
+        ctx.save()
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)"
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, 7, 0, Math.PI * 2)
+        ctx.stroke()
+        const featurePoint = project(fx, fy, fz)
+        if (featurePoint) {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.95)"
+            ctx.fillRect(featurePoint.x - 3, featurePoint.y - 3, 6, 6)
+        }
+        ctx.font = "12px system-ui, sans-serif"
+        ctx.textBaseline = "top"
+        const info = `${labelForClass(klass)}  n=${normalCount}  d=${featureDist.toFixed(3)}  ids=${ownerA}/${ownerB}`
+        const infoWidth = ctx.measureText(info).width + 16
+        const boxX = Math.min(point.x + 12, this.#debugOverlayCanvas.width - infoWidth - 8)
+        const boxY = Math.max(8, point.y - 28)
+        ctx.fillStyle = "rgba(12, 14, 18, 0.78)"
+        ctx.fillRect(boxX, boxY, infoWidth, 22)
+        ctx.fillStyle = "rgba(245, 247, 250, 0.96)"
+        ctx.fillText(info, boxX + 8, boxY + 5)
+        ctx.restore()
     }
 
     get translucentFaces(): boolean {

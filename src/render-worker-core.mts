@@ -1014,7 +1014,11 @@ export class RenderWorkerCore {
                 this.#uniformBuffers.mdcSceneParams,
             )
             const mesh = await mdc.export(mdcShaderModule)
-            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
+            const transfer: Transferable[] = [mesh.verts.buffer, mesh.tris.buffer]
+            if (mesh.debug?.mdc) {
+                transfer.push(mesh.debug.mdc.samples.buffer)
+            }
+            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId, documentName })

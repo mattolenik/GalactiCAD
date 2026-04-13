@@ -74,7 +74,7 @@ export class Elongate extends UnaryOperator {
         const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
         const funcName = `Elongate${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        return { funcName, varName, text: elongatedChild }
+        return { funcName, varName, text: `sdfMidStripFeatures(${elongatedChild})` }
     }
 
     protected override computeBoundsCore(): AABB | null {

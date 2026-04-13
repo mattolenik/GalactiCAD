@@ -89,7 +89,7 @@ export class Box extends Node {
         return {
             funcName,
             varName,
-            text: `fBoxMid(p - ${pos}, ${half})`,
+            text: `sdfMidSetOwner(fBoxMid(p - ${pos}, ${half}), ${this.id}u)`,
         }
     }
 

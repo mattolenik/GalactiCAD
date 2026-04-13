@@ -76,7 +76,7 @@ export class Torus extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const sr = f32Wgsl(o + 3, this.previewF32Slot + 0)
         const lr = f32Wgsl(o + 4, this.previewF32Slot + 1)
-        return { funcName, varName, text: `fTorusMid(p - ${pos}, ${sr}, ${lr})` }
+        return { funcName, varName, text: `sdfMidSetOwner(fTorusMid(p - ${pos}, ${sr}, ${lr}), ${this.id}u)` }
     }
 
     protected override computeBoundsCore(): AABB {

@@ -68,7 +68,7 @@ export class Disc extends Node {
         const o = this.paramOffset
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const r = f32Wgsl(o + 3, this.previewF32Slot)
-        return { funcName, varName, text: `fDiscMid(p - ${pos}, ${r})` }
+        return { funcName, varName, text: `sdfMidSetOwner(fDiscMid(p - ${pos}, ${r}), ${this.id}u)` }
     }
 
     protected override computeBoundsCore(): AABB {

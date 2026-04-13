@@ -76,7 +76,7 @@ export class Capsule extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const r = f32Wgsl(o + 3, this.previewF32Slot + 0)
         const c = f32Wgsl(o + 4, this.previewF32Slot + 1)
-        return { funcName, varName, text: `fCapsuleMid(p - ${pos}, ${r}, ${c})` }
+        return { funcName, varName, text: `sdfMidSetOwner(fCapsuleMid(p - ${pos}, ${r}, ${c}), ${this.id}u)` }
     }
 
     protected override computeBoundsCore(): AABB {

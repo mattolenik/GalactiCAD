@@ -76,7 +76,7 @@ export class Cone extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const r = f32Wgsl(o + 3, this.previewF32Slot + 0)
         const h = f32Wgsl(o + 4, this.previewF32Slot + 1)
-        return { funcName, varName, text: `fConeMid(p - ${pos}, ${r}, ${h})` }
+        return { funcName, varName, text: `sdfMidSetOwner(fConeMid(p - ${pos}, ${r}, ${h}), ${this.id}u)` }
     }
 
     protected override computeBoundsCore(): AABB {

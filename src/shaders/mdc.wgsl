@@ -42,6 +42,18 @@ struct EdgeDebugSample {
     featureN2: vec4f,
 }
 
+struct ComponentFeature {
+    kind: u32,
+    ownerA: u32,
+    ownerB: u32,
+    normalCount: u32,
+    point: vec3f,
+    tangent: vec3f,
+    n0: vec3f,
+    n1: vec3f,
+    n2: vec3f,
+}
+
 // ============================== MDC CONSTANTS ==============================
 // "Proper" Manifold Dual Contouring requires multiple vertices per cell
 // (one per connected surface component within the cell).
@@ -84,6 +96,7 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 @group(0) @binding(11) var<storage, read> activeCellIndicesIn_vertex: array<u32>; // Compacted list (not strictly needed if vertices map 1:1 to active cells)
 @group(0) @binding(12) var<storage, read> cellQEFDataIn_vertex: array<QEFData>;    // QEF data per (active cell * component) (output of Pass 3)
 @group(0) @binding(13) var<storage, read_write> vertices: array<Vertex>;          // Output vertices
+@group(0) @binding(14) var<storage, read_write> componentFeatures: array<ComponentFeature>;
 // Pass 5: Face Generation (atomic triangle generation)
 @group(0) @binding(15) var<storage, read> activeCellIndicesIn_face: array<u32>;     // Compacted list of active cell indices
 @group(0) @binding(16) var<storage, read> activeCellFlagsInput_face: array<u32>; // Original cell flags (output of Pass 1)
@@ -485,6 +498,8 @@ fn qefCost(qef: QEFData, x: vec3f) -> f32 {
 
 const MDC_FEATURE_PROX_SCALE: f32 = 0.75;
 const MDC_FEATURE_PLANE_WEIGHT: f32 = 0.35;
+const COMPONENT_FEATURE_REJECTED: u32 = 4u;
+const COMPONENT_NORMAL_COS_THRESH: f32 = 0.95;
 
 fn mdcQefAddPlane(qef: ptr<function, QEFData>, normal: vec3f, point: vec3f, weight: f32) {
     let n = safeNormalize(normal, vec3f(0.0, 1.0, 0.0));
@@ -493,6 +508,37 @@ fn mdcQefAddPlane(qef: ptr<function, QEFData>, normal: vec3f, point: vec3f, weig
     (*qef).ATA[2] = (*qef).ATA[2] + n * (n.z * weight);
     let d = dot(n, point);
     (*qef).ATb = (*qef).ATb + n * (d * weight);
+}
+
+fn zeroComponentFeature() -> ComponentFeature {
+    return ComponentFeature(
+        MID_FEATURE_NONE, 0u, 0u, 0u,
+        vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0),
+    );
+}
+
+fn ownerPairEqual(a: vec2u, b: vec2u) -> bool {
+    return a.x == b.x && a.y == b.y;
+}
+
+fn solveFeaturePoint(n0: vec3f, p0: vec3f, n1: vec3f, p1: vec3f, n2: vec3f, p2: vec3f, planeCount: u32) -> vec3f {
+    var qef = QEFData(mat3x3f(), vec3f(0.0), vec3f(0.0), 0u);
+    if (planeCount >= 1u) {
+        mdcQefAddPlane(&qef, n0, p0, 1.0);
+        qef.massPoint = qef.massPoint + p0;
+        qef.numPoints = qef.numPoints + 1u;
+    }
+    if (planeCount >= 2u) {
+        mdcQefAddPlane(&qef, n1, p1, 1.0);
+        qef.massPoint = qef.massPoint + p1;
+        qef.numPoints = qef.numPoints + 1u;
+    }
+    if (planeCount >= 3u) {
+        mdcQefAddPlane(&qef, n2, p2, 1.0);
+        qef.massPoint = qef.massPoint + p2;
+        qef.numPoints = qef.numPoints + 1u;
+    }
+    return solveQEF(qef);
 }
 
 
@@ -770,6 +816,7 @@ fn edgeDetection_Pass3(
     let edgeCompBase = active_cell_array_idx * EDGES_PER_CELL;
     var crossingPos: array<vec3f, 12>;
     var crossingNormal: array<vec3f, 12>;
+    var crossingMid: array<SDFResultMid, 12>;
     
     for (var e = 0u; e < 12u; e = e + 1u) {
         if (edgeCrossMask[e] == 1u) {
@@ -844,9 +891,11 @@ fn edgeDetection_Pass3(
             
             crossingPos[e] = intersectionPos;
             crossingNormal[e] = normal;
+            crossingMid[e] = finalSdf;
         } else {
             crossingPos[e] = vec3f(0.0);
             crossingNormal[e] = vec3f(0.0);
+            crossingMid[e] = sdfRMidNoFeature(0.0, 1.0, vec3f(0.0, 1.0, 0.0));
         }
     }
 
@@ -886,8 +935,30 @@ fn edgeDetection_Pass3(
 
     // Accumulate QEFs per component.
     var qefs: array<QEFData, 4>;
+    var inferredFeatures: array<ComponentFeature, 4>;
+    var compPointSum: array<vec3f, 4>;
+    var compCrossCount: array<u32, 4>;
+    var compOwnerPair0: array<vec2u, 4>;
+    var compOwnerPair1: array<vec2u, 4>;
+    var compOwnerPairCount: array<u32, 4>;
+    var compNormalBucketCount: array<u32, 4>;
+    var compNormalSums: array<array<vec3f, 3>, 4>;
+    var compPointSums: array<array<vec3f, 3>, 4>;
+    var compPointCounts: array<array<u32, 3>, 4>;
     for (var c = 0u; c < 4u; c = c + 1u) {
         qefs[c] = QEFData(mat3x3f(), vec3f(0.0), vec3f(0.0), 0u);
+        inferredFeatures[c] = zeroComponentFeature();
+        compPointSum[c] = vec3f(0.0);
+        compCrossCount[c] = 0u;
+        compOwnerPair0[c] = vec2u(0u);
+        compOwnerPair1[c] = vec2u(0u);
+        compOwnerPairCount[c] = 0u;
+        compNormalBucketCount[c] = 0u;
+        for (var j = 0u; j < 3u; j = j + 1u) {
+            compNormalSums[c][j] = vec3f(0.0);
+            compPointSums[c][j] = vec3f(0.0);
+            compPointCounts[c][j] = 0u;
+        }
     }
 
     for (var e = 0u; e < 12u; e = e + 1u) {
@@ -900,89 +971,221 @@ fn edgeDetection_Pass3(
         let normal = crossingNormal[e];
 
         let c = u32(compIdx);
-        let feature = sceneSDF_mid(intersectionPos);
-        let featureProx = uniforms.voxelSize * MDC_FEATURE_PROX_SCALE;
-        let featurePoint = select(intersectionPos, feature.featurePoint, length(feature.featurePoint) > 1e-6);
-        let seamSharpEnough = dot(feature.featureN1, feature.featureN2) < MID_FEATURE_SEAM_COS_THRESH;
-        let featureIdsValid =
-            select(
-                feature.featureIdA != 0u,
-                feature.featureIdA != 0u && feature.featureIdB != 0u && feature.featureIdA != feature.featureIdB,
-                feature.featureKind == MID_FEATURE_BOOLEAN_SEAM
-            );
-        let featureNormalsValid =
-            select(
-                feature.featureNormalCount == 2u,
-                feature.featureNormalCount == 3u,
-                feature.featureKind == MID_FEATURE_CORNER
-            );
-        let featureOk =
-            feature.featureKind != MID_FEATURE_NONE &&
-            feature.featureDist <= featureProx &&
-            featureIdsValid &&
-            featureNormalsValid &&
-            (feature.featureKind != MID_FEATURE_BOOLEAN_SEAM || seamSharpEnough);
+        let sample = crossingMid[e];
 
-        if (!featureOk || feature.featureKind == MID_FEATURE_NONE) {
-            atomicAdd(&debugSkipCounters[8], 1u);
-            qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
-            qefs[c].ATA[1] = qefs[c].ATA[1] + normal * normal.y;
-            qefs[c].ATA[2] = qefs[c].ATA[2] + normal * normal.z;
-            let d_val = dot(normal, intersectionPos);
-            qefs[c].ATb = qefs[c].ATb + normal * d_val;
-        } else if (feature.featureKind == MID_FEATURE_LINE) {
+        qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
+        qefs[c].ATA[1] = qefs[c].ATA[1] + normal * normal.y;
+        qefs[c].ATA[2] = qefs[c].ATA[2] + normal * normal.z;
+        let d_val = dot(normal, intersectionPos);
+        qefs[c].ATb = qefs[c].ATb + normal * d_val;
+        qefs[c].massPoint = qefs[c].massPoint + intersectionPos;
+        qefs[c].numPoints = qefs[c].numPoints + 1u;
+
+        compPointSum[c] = compPointSum[c] + intersectionPos;
+        compCrossCount[c] = compCrossCount[c] + 1u;
+
+        let ownerPair = vec2u(sample.featureIdA, sample.featureIdB);
+        if (ownerPair.x != 0u || ownerPair.y != 0u) {
+            if (compOwnerPairCount[c] == 0u) {
+                compOwnerPair0[c] = ownerPair;
+                compOwnerPairCount[c] = 1u;
+            } else if (compOwnerPairCount[c] == 1u && !ownerPairEqual(compOwnerPair0[c], ownerPair)) {
+                compOwnerPair1[c] = ownerPair;
+                compOwnerPairCount[c] = 2u;
+            }
+        }
+
+        var bucket: i32 = -1;
+        var bestBucket: i32 = 0;
+        var bestDot = -2.0;
+        for (var j = 0u; j < compNormalBucketCount[c]; j = j + 1u) {
+            let rep = safeUnit3(compNormalSums[c][j]);
+            let repDot = dot(rep, normal);
+            if (repDot > COMPONENT_NORMAL_COS_THRESH) {
+                bucket = i32(j);
+                break;
+            }
+            if (repDot > bestDot) {
+                bestDot = repDot;
+                bestBucket = i32(j);
+            }
+        }
+        if (bucket < 0) {
+            if (compNormalBucketCount[c] < 3u) {
+                bucket = i32(compNormalBucketCount[c]);
+                compNormalBucketCount[c] = compNormalBucketCount[c] + 1u;
+            } else {
+                bucket = bestBucket;
+            }
+        }
+        let bucketIdx = u32(bucket);
+        compNormalSums[c][bucketIdx] = compNormalSums[c][bucketIdx] + normal;
+        compPointSums[c][bucketIdx] = compPointSums[c][bucketIdx] + intersectionPos;
+        compPointCounts[c][bucketIdx] = compPointCounts[c][bucketIdx] + 1u;
+    }
+
+    for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
+        if (compCrossCount[c] == 0u) { continue; }
+
+        let massPoint = compPointSum[c] / f32(compCrossCount[c]);
+        let bucketCount = compNormalBucketCount[c];
+        let pairCount = compOwnerPairCount[c];
+
+        var n0 = vec3f(0.0);
+        var n1 = vec3f(0.0);
+        var n2 = vec3f(0.0);
+        var p0 = massPoint;
+        var p1 = massPoint;
+        var p2 = massPoint;
+        if (bucketCount >= 1u && compPointCounts[c][0] > 0u) {
+            n0 = safeUnit3(compNormalSums[c][0]);
+            p0 = compPointSums[c][0] / f32(compPointCounts[c][0]);
+        }
+        if (bucketCount >= 2u && compPointCounts[c][1] > 0u) {
+            n1 = safeUnit3(compNormalSums[c][1]);
+            p1 = compPointSums[c][1] / f32(compPointCounts[c][1]);
+        }
+        if (bucketCount >= 3u && compPointCounts[c][2] > 0u) {
+            n2 = safeUnit3(compNormalSums[c][2]);
+            p2 = compPointSums[c][2] / f32(compPointCounts[c][2]);
+        }
+
+        let seamEligible =
+            pairCount >= 2u &&
+            compOwnerPair0[c].x == compOwnerPair0[c].y &&
+            compOwnerPair1[c].x == compOwnerPair1[c].y &&
+            compOwnerPair0[c].x != compOwnerPair1[c].x;
+
+        var inferred = zeroComponentFeature();
+        if (seamEligible && bucketCount >= 2u) {
+            let tangent = safeUnit3(cross(n0, n1));
+            if (lengthSqr(tangent) > 1e-8) {
+                let owners = orderedOwnerPair(compOwnerPair0[c].x, compOwnerPair1[c].x);
+                inferred = ComponentFeature(
+                    MID_FEATURE_BOOLEAN_SEAM,
+                    owners.x,
+                    owners.y,
+                    2u,
+                    solveFeaturePoint(n0, p0, n1, p1, tangent, massPoint, 3u),
+                    tangent,
+                    n0,
+                    n1,
+                    vec3f(0.0),
+                );
+            } else {
+                inferred = ComponentFeature(
+                    COMPONENT_FEATURE_REJECTED,
+                    compOwnerPair0[c].x,
+                    compOwnerPair1[c].x,
+                    2u,
+                    massPoint,
+                    vec3f(0.0),
+                    n0,
+                    n1,
+                    vec3f(0.0),
+                );
+            }
+        } else if (bucketCount >= 3u) {
+            inferred = ComponentFeature(
+                MID_FEATURE_CORNER,
+                compOwnerPair0[c].x,
+                compOwnerPair0[c].y,
+                3u,
+                solveFeaturePoint(n0, p0, n1, p1, n2, p2, 3u),
+                vec3f(0.0),
+                n0,
+                n1,
+                n2,
+            );
+        } else if (bucketCount >= 2u) {
+            let tangent = safeUnit3(cross(n0, n1));
+            if (lengthSqr(tangent) > 1e-8) {
+                inferred = ComponentFeature(
+                    MID_FEATURE_LINE,
+                    compOwnerPair0[c].x,
+                    compOwnerPair0[c].y,
+                    2u,
+                    solveFeaturePoint(n0, p0, n1, p1, tangent, massPoint, 3u),
+                    tangent,
+                    n0,
+                    n1,
+                    vec3f(0.0),
+                );
+            } else {
+                inferred = ComponentFeature(
+                    COMPONENT_FEATURE_REJECTED,
+                    compOwnerPair0[c].x,
+                    compOwnerPair0[c].y,
+                    2u,
+                    massPoint,
+                    vec3f(0.0),
+                    n0,
+                    n1,
+                    vec3f(0.0),
+                );
+            }
+        }
+        inferredFeatures[c] = inferred;
+    }
+
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        if (edgeCrossMask[e] == 0u) { continue; }
+        let compIdx = edgeComponent[e];
+        if (compIdx < 0) { continue; }
+        let c = u32(compIdx);
+        let intersectionPos = crossingPos[e];
+        let normal = crossingNormal[e];
+        let feature = inferredFeatures[c];
+        let featurePoint = select(intersectionPos, feature.point, length(feature.point) > 1e-6);
+        var debugClass = f32(feature.kind);
+
+        if (feature.kind == MID_FEATURE_LINE) {
             atomicAdd(&debugSkipCounters[9], 1u);
-            mdcQefAddPlane(&qefs[c], feature.n, featurePoint, 1.0);
-            if (feature.featureNormalCount >= 2u) {
-                mdcQefAddPlane(&qefs[c], feature.featureN1, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-                atomicAdd(&debugSkipCounters[13], 1u);
-            }
-        } else if (feature.featureKind == MID_FEATURE_CORNER) {
+            let match0 = dot(normal, feature.n0);
+            let match1 = dot(normal, feature.n1);
+            let extraNormal = select(feature.n0, feature.n1, match0 > match1);
+            mdcQefAddPlane(&qefs[c], extraNormal, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
+            atomicAdd(&debugSkipCounters[13], 1u);
+        } else if (feature.kind == MID_FEATURE_CORNER) {
             atomicAdd(&debugSkipCounters[10], 1u);
-            mdcQefAddPlane(&qefs[c], feature.n, featurePoint, 1.0);
-            if (feature.featureNormalCount >= 2u) {
-                mdcQefAddPlane(&qefs[c], feature.featureN1, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-                atomicAdd(&debugSkipCounters[13], 1u);
+            let d0 = dot(normal, feature.n0);
+            let d1 = dot(normal, feature.n1);
+            let d2 = dot(normal, feature.n2);
+            if (d0 >= d1 && d0 >= d2) {
+                mdcQefAddPlane(&qefs[c], feature.n1, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
+                mdcQefAddPlane(&qefs[c], feature.n2, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
+            } else if (d1 >= d2) {
+                mdcQefAddPlane(&qefs[c], feature.n0, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
+                mdcQefAddPlane(&qefs[c], feature.n2, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
+            } else {
+                mdcQefAddPlane(&qefs[c], feature.n0, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
+                mdcQefAddPlane(&qefs[c], feature.n1, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
             }
-            if (feature.featureNormalCount >= 3u) {
-                mdcQefAddPlane(&qefs[c], feature.featureN2, featurePoint, MDC_FEATURE_PLANE_WEIGHT);
-                atomicAdd(&debugSkipCounters[13], 1u);
-            }
-        } else if (feature.featureKind == MID_FEATURE_BOOLEAN_SEAM) {
+            atomicAdd(&debugSkipCounters[13], 2u);
+        } else if (feature.kind == MID_FEATURE_BOOLEAN_SEAM) {
             atomicAdd(&debugSkipCounters[11], 1u);
-            if (feature.featureNormalCount >= 2u) {
-                mdcQefAddPlane(&qefs[c], feature.featureN1, intersectionPos, 1.0);
-                mdcQefAddPlane(&qefs[c], feature.featureN2, intersectionPos, 1.0);
-                atomicAdd(&debugSkipCounters[13], 2u);
-            }
+            let match0 = dot(normal, feature.n0);
+            let match1 = dot(normal, feature.n1);
+            let extraNormal = select(feature.n0, feature.n1, match0 > match1);
+            mdcQefAddPlane(&qefs[c], extraNormal, intersectionPos, 1.0);
+            atomicAdd(&debugSkipCounters[13], 1u);
+        } else if (feature.kind == COMPONENT_FEATURE_REJECTED) {
+            atomicAdd(&debugSkipCounters[12], 1u);
         } else {
-            atomicAdd(&debugSkipCounters[12], 1u);
-            qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
-            qefs[c].ATA[1] = qefs[c].ATA[1] + normal * normal.y;
-            qefs[c].ATA[2] = qefs[c].ATA[2] + normal * normal.z;
-            let d_val = dot(normal, intersectionPos);
-            qefs[c].ATb = qefs[c].ATb + normal * d_val;
+            atomicAdd(&debugSkipCounters[8], 1u);
+            debugClass = 0.0;
         }
-        if (feature.featureKind != MID_FEATURE_NONE && !featureOk) {
-            atomicAdd(&debugSkipCounters[12], 1u);
-        }
-        let debugClass = select(
-            select(4.0, 0.0, feature.featureKind == MID_FEATURE_NONE),
-            f32(feature.featureKind),
-            featureOk
-        );
+
         let debugIdx = atomicAdd(&debugEdgeSampleCount, 1u);
         if (debugIdx < arrayLength(&debugEdgeSamples)) {
             debugEdgeSamples[debugIdx] = EdgeDebugSample(
                 vec4f(intersectionPos, debugClass),
-                vec4f(normal, f32(feature.featureNormalCount)),
-                vec4f(featurePoint, feature.featureDist),
-                vec4f(feature.featureN1, f32(feature.featureIdA)),
-                vec4f(feature.featureN2, f32(feature.featureIdB)),
+                vec4f(normal, f32(feature.normalCount)),
+                vec4f(featurePoint, length(intersectionPos - featurePoint)),
+                vec4f(feature.n0, f32(feature.ownerA)),
+                vec4f(select(vec3f(0.0), feature.n1, feature.normalCount >= 2u), f32(feature.ownerB)),
             );
         }
-        qefs[c].massPoint = qefs[c].massPoint + intersectionPos;
-        qefs[c].numPoints = qefs[c].numPoints + 1u;
     }
 
     // Write per-component QEFs for this active cell.
@@ -991,6 +1194,9 @@ fn edgeDetection_Pass3(
         let outIdx = qefBase + c;
         if (outIdx < arrayLength(&cellQEFData_edge)) {
             cellQEFData_edge[outIdx] = qefs[c];
+        }
+        if (outIdx < arrayLength(&componentFeatures)) {
+            componentFeatures[outIdx] = inferredFeatures[c];
         }
     }
 }
@@ -1044,17 +1250,15 @@ fn vertexGeneration_Pass4(
     if (cC < bestCost) { bestCost = cC; best = vCenter; }
 
     var vertexPos = best;
-    let featureStart = sceneSDF_mid(vertexPos);
-    let featureProx = uniforms.voxelSize * MDC_FEATURE_PROX_SCALE;
-    if ((featureStart.featureKind == MID_FEATURE_LINE || featureStart.featureKind == MID_FEATURE_CORNER) &&
-        featureStart.featureDist <= featureProx &&
-        featureStart.featureIdA != 0u &&
-        featureStart.featureNormalCount >= 2u &&
-        length(featureStart.featurePoint) > 1e-6) {
-        var featureTarget = featureStart.featurePoint;
-        if (featureStart.featureKind == MID_FEATURE_LINE && length(featureStart.featureTangent) > 1e-6) {
-            let tangent = safeUnit3(featureStart.featureTangent);
-            featureTarget = featureStart.featurePoint + tangent * dot(vertexPos - featureStart.featurePoint, tangent);
+    let featureStart = componentFeatures[vertexRecordIdx];
+    if ((featureStart.kind == MID_FEATURE_LINE || featureStart.kind == MID_FEATURE_CORNER) &&
+        featureStart.ownerA != 0u &&
+        featureStart.normalCount >= 2u &&
+        length(featureStart.point) > 1e-6) {
+        var featureTarget = featureStart.point;
+        if (featureStart.kind == MID_FEATURE_LINE && length(featureStart.tangent) > 1e-6) {
+            let tangent = safeUnit3(featureStart.tangent);
+            featureTarget = featureStart.point + tangent * dot(vertexPos - featureStart.point, tangent);
         }
         let delta = featureTarget - vertexPos;
         let deltaLen = length(delta);

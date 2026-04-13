@@ -810,6 +810,12 @@ export class MeshViewer extends HTMLElement {
         const samples = this.#mdcDebugSamples
         const hoverPos = this.#hoverCanvasPos
         const stride = MESH_MDC_DEBUG_SAMPLE_STRIDE
+        const interestingSampleCount =
+            (this.#mdcDebugStats?.acceptedLine ?? 0)
+            + (this.#mdcDebugStats?.acceptedCorner ?? 0)
+            + (this.#mdcDebugStats?.acceptedSeam ?? 0)
+            + (this.#mdcDebugStats?.rejected ?? 0)
+        const hideNoneSamples = interestingSampleCount > 0
         const pointSize = samples.length / stride > 2000 ? 3 : 4
         let hoveredIndex = -1
         let bestHoverDistSq = 9 * 9
@@ -860,11 +866,13 @@ export class MeshViewer extends HTMLElement {
 
         for (let sampleIdx = 0; sampleIdx < samples.length / stride; sampleIdx++) {
             const base = sampleIdx * stride
+            const klass = Math.round(samples[base + 3]!)
+            if (hideNoneSamples && klass === 0) continue
             const projected = project(samples[base]!, samples[base + 1]!, samples[base + 2]!)
             if (!projected) continue
-            const klass = Math.round(samples[base + 3]!)
             ctx.fillStyle = colorForClass(klass)
-            ctx.fillRect(projected.x - pointSize * 0.5, projected.y - pointSize * 0.5, pointSize, pointSize)
+            const size = klass === 0 ? pointSize : pointSize + 2
+            ctx.fillRect(projected.x - size * 0.5, projected.y - size * 0.5, size, size)
             if (!hoverPos) continue
             const dx = projected.x - hoverPos.x
             const dy = projected.y - hoverPos.y
@@ -879,15 +887,22 @@ export class MeshViewer extends HTMLElement {
         if (stats) {
             const text1 = `MDC debug ${stats.totalSamples} samples`
             const text2 = `L ${stats.acceptedLine}  C ${stats.acceptedCorner}  S ${stats.acceptedSeam}  R ${stats.rejected}`
+            const text3 = hideNoneSamples ? `gray hidden  N ${stats.acceptedNone}` : `N ${stats.acceptedNone}`
             ctx.save()
             ctx.font = "12px system-ui, sans-serif"
             ctx.textBaseline = "top"
-            const width = Math.max(ctx.measureText(text1).width, ctx.measureText(text2).width) + 16
+            const width = Math.max(ctx.measureText(text1).width, ctx.measureText(text2).width, ctx.measureText(text3).width) + 16
+            const height = 50
+            const margin = 12
+            // Keep the HUD close to the bottom-right mesh-viewer controls without sitting directly under them.
+            const hudX = this.#debugOverlayCanvas.width - width - margin
+            const hudY = this.#debugOverlayCanvas.height - height - 118
             ctx.fillStyle = "rgba(12, 14, 18, 0.66)"
-            ctx.fillRect(10, 10, width, 36)
+            ctx.fillRect(hudX, hudY, width, height)
             ctx.fillStyle = "rgba(245, 247, 250, 0.92)"
-            ctx.fillText(text1, 18, 16)
-            ctx.fillText(text2, 18, 30)
+            ctx.fillText(text1, hudX + 8, hudY + 6)
+            ctx.fillText(text2, hudX + 8, hudY + 20)
+            ctx.fillText(text3, hudX + 8, hudY + 34)
             ctx.restore()
         }
 

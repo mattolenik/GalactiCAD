@@ -23,6 +23,7 @@ interface Vertex {
 // => position @0..11 (pad to 16), normal @16..27 (pad to 32) => 32-byte stride.
 export const SIZEOF_VERTEX = 8 * Float32Array.BYTES_PER_ELEMENT // 32 bytes
 const SIZEOF_EDGE_DEBUG_SAMPLE = 5 * 4 * Float32Array.BYTES_PER_ELEMENT // 5 vec4f
+const SIZEOF_COMPONENT_FEATURE = 96
 
 /**
  * Represents QEF data.
@@ -501,6 +502,11 @@ export class MDCExport {
                 activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
             )
+            const componentFeaturesBuffer = createBuffer(
+                "ComponentFeatures",
+                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_COMPONENT_FEATURE,
+                GPUBufferUsage.STORAGE
+            )
             const verticesBuffer = createBuffer(
                 "Vertices",
                 activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
@@ -537,6 +543,7 @@ export class MDCExport {
                 [26, debugEdgeSampleCountBuffer],
                 [22, cellEdgeComponentsBuffer],
                 [9, cellQEFDataBuffer],
+                [14, componentFeaturesBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [29, debugEdgeSamplesBuffer],
@@ -553,6 +560,7 @@ export class MDCExport {
                 [11, activeCellIndicesBuffer], // activeCellIndicesIn_vertex
                 [12, cellQEFDataBuffer],
                 [13, verticesBuffer],
+                [14, componentFeaturesBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [30, this.#mdcSceneParamsBuffer],

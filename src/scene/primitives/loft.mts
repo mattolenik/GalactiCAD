@@ -457,7 +457,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         return {
             funcName,
             varName,
-            text: `sdfMidSetOwner(${this.wgslMidFuncName}(p - ${pos}), ${this.id}u)`,
+            text: `sdfMidSetOwner(sdfTranslateFeatureMid(${this.wgslMidFuncName}(p - ${pos}), p, ${pos}), ${this.id}u)`,
         }
     }
 

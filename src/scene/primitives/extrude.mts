@@ -576,7 +576,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         return {
             funcName,
             varName,
-            text: `sdfMidSetOwner(${this.wgslMidFuncName}(p - ${pos}), ${this.id}u)`,
+            text: `sdfMidSetOwner(sdfTranslateFeatureMid(${this.wgslMidFuncName}(p - ${pos}), p, ${pos}), ${this.id}u)`,
         }
     }
 

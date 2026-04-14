@@ -224,6 +224,14 @@ fn midFeatureHasPoint(r: SDFResultMid) -> bool {
     return r.featureKind == MID_FEATURE_LINE || r.featureKind == MID_FEATURE_CORNER;
 }
 
+fn sdfTranslateFeatureMid(r: SDFResultMid, p: vec3f, delta: vec3f) -> SDFResultMid {
+    if (!midFeatureHasPoint(r)) { return r; }
+    var out = r;
+    out.featurePoint = r.featurePoint + delta;
+    out.featureDist = length(p - out.featurePoint);
+    return out;
+}
+
 fn rotateY(v: vec3f, angle: f32) -> vec3f {
     let c = cos(angle);
     let s = sin(angle);

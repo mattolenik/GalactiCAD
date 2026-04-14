@@ -864,22 +864,46 @@ export class MeshViewer extends HTMLElement {
             ctx.restore()
         }
 
+        const drawPriorityForClass = (klass: number): number => {
+            switch (klass) {
+                case 0: return 0
+                case 1: return 1
+                case 3: return 2
+                case 4: return 3
+                case 2: return 4
+                default: return 1
+            }
+        }
+        const drawRecords: { sampleIdx: number, klass: number, x: number, y: number, priority: number }[] = []
         for (let sampleIdx = 0; sampleIdx < samples.length / stride; sampleIdx++) {
             const base = sampleIdx * stride
             const klass = Math.round(samples[base + 3]!)
             if (hideNoneSamples && klass === 0) continue
             const projected = project(samples[base]!, samples[base + 1]!, samples[base + 2]!)
             if (!projected) continue
-            ctx.fillStyle = colorForClass(klass)
-            const size = klass === 0 ? pointSize : pointSize + 2
-            ctx.fillRect(projected.x - size * 0.5, projected.y - size * 0.5, size, size)
+            drawRecords.push({
+                sampleIdx,
+                klass,
+                x: projected.x,
+                y: projected.y,
+                priority: drawPriorityForClass(klass),
+            })
+        }
+        drawRecords.sort((a, b) => a.priority - b.priority || a.sampleIdx - b.sampleIdx)
+        for (const record of drawRecords) {
+            ctx.fillStyle = colorForClass(record.klass)
+            const size = record.klass === 0 ? pointSize : pointSize + 2
+            ctx.fillRect(record.x - size * 0.5, record.y - size * 0.5, size, size)
             if (!hoverPos) continue
-            const dx = projected.x - hoverPos.x
-            const dy = projected.y - hoverPos.y
+            const dx = record.x - hoverPos.x
+            const dy = record.y - hoverPos.y
             const distSq = dx * dx + dy * dy
-            if (distSq < bestHoverDistSq) {
+            if (
+                distSq < bestHoverDistSq ||
+                (distSq === bestHoverDistSq && hoveredIndex >= 0 && record.priority >= drawPriorityForClass(Math.round(samples[hoveredIndex * stride + 3]!)))
+            ) {
                 bestHoverDistSq = distSq
-                hoveredIndex = sampleIdx
+                hoveredIndex = record.sampleIdx
             }
         }
 

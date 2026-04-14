@@ -501,6 +501,7 @@ const MDC_FEATURE_PLANE_WEIGHT: f32 = 0.12;
 const COMPONENT_FEATURE_REJECTED: u32 = 4u;
 const COMPONENT_NORMAL_COS_THRESH: f32 = 0.95;
 const MDC_CORNER_FEATURE_PROX_SCALE: f32 = 1.35;
+const MDC_CORNER_PROBE_PROX_SCALE: f32 = 1.9;
 
 fn mdcQefAddPlane(qef: ptr<function, QEFData>, normal: vec3f, point: vec3f, weight: f32) {
     let n = safeNormalize(normal, vec3f(0.0, 1.0, 0.0));
@@ -697,6 +698,8 @@ fn edgeDetection_Pass3(
     // activeCellIndicesIn_edge is a direct compact list of active cell flat indices.
     let cellFlatIndex = activeCellIndicesIn_edge[active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
+    let cellMin = gridPosToWorldPos(cellPos);
+    let cellMax = cellMin + vec3f(uniforms.voxelSize);
 
     var cornerSDFValues: array<f32, 8>;
     var cornerWorldPositions: array<vec3f, 8>;
@@ -1133,6 +1136,38 @@ fn edgeDetection_Pass3(
         compPlanePoint0[c] = p0;
         compPlanePoint1[c] = p1;
         compPlanePoint2[c] = p2;
+
+        if (explicitCornerDist[c] >= 1e8 && bucketCount >= 3u) {
+            var probePos = clamp(solveFeaturePoint(n0, p0, n1, p1, n2, p2, 3u), cellMin, cellMax);
+            var probeSdf = sceneSDF_mid(probePos);
+            for (var probeIter = 0u; probeIter < 4u; probeIter = probeIter + 1u) {
+                let d = probeSdf.d - uniforms.isoValue;
+                if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.z) { break; }
+                let maxStep = uniforms.voxelSize * 0.4;
+                let clampedStep = clamp(d, -maxStep, maxStep);
+                probePos = clamp(probePos - probeSdf.n * clampedStep, cellMin, cellMax);
+                probeSdf = sceneSDF_mid(probePos);
+            }
+            let probeCornerOk =
+                probeSdf.featureKind == MID_FEATURE_CORNER &&
+                probeSdf.featureIdA != 0u &&
+                probeSdf.featureNormalCount == 3u &&
+                probeSdf.featureDist <= uniforms.voxelSize * MDC_CORNER_PROBE_PROX_SCALE;
+            if (probeCornerOk) {
+                explicitCornerDist[c] = probeSdf.featureDist;
+                explicitCornerFeature[c] = ComponentFeature(
+                    MID_FEATURE_CORNER,
+                    probeSdf.featureIdA,
+                    probeSdf.featureIdB,
+                    probeSdf.featureNormalCount,
+                    probeSdf.featurePoint,
+                    vec3f(0.0),
+                    probeSdf.n,
+                    probeSdf.featureN1,
+                    probeSdf.featureN2,
+                );
+            }
+        }
 
         let seamEligible =
             pairCount >= 2u &&

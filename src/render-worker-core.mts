@@ -642,6 +642,7 @@ export class RenderWorkerCore {
             msg.cameraState.zoom,
             viewCenter,
             msg.viewSettings.previewShading ?? DEFAULT_PREVIEW_SHADING,
+            msg.viewSettings.previewNormalShading,
         )
 
         this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
@@ -835,6 +836,7 @@ export class RenderWorkerCore {
             f32[b4 + L.O_ZOOM / 4],
             viewCenter,
             previewShading,
+            (packed & 128) !== 0,
         )
 
         this.#viewSettingsBuf[0] = (packed & 1) ? 1 : 0
@@ -1201,6 +1203,7 @@ export class RenderWorkerCore {
                         edge: { color: [...DEFAULT_SELECTION_STYLES.edge.color] },
                     },
                     previewShading: DEFAULT_PREVIEW_SHADING,
+                    previewNormalShading: false,
                 },
                 viewCenter: [0.5, 0.5],
                 resolutionScale: 1.0,
@@ -1886,6 +1889,7 @@ export class RenderWorkerCore {
         zoom: number,
         viewCenter: [number, number],
         previewShading: PreviewShadingParams,
+        previewNormalShading: boolean,
     ): void {
         this.#camTransform.data.set(viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform))
         const v1 = this.#camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
@@ -1927,8 +1931,8 @@ export class RenderWorkerCore {
         f32[51] = ps.specShininess
         f32[52] = ps.fresnelPower
         f32[53] = ps.fresnelIntensity
-        f32[54] = 0
-        f32[55] = 0
+        f32[54] = previewNormalShading ? 1.0 : 0.0
+        f32[55] = 0.0
         f32[56] = ps.aoStrength
         f32[57] = ps.aoRadius
         f32[58] = ps.aoSteps

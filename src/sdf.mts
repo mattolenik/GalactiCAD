@@ -112,6 +112,7 @@ export class SDFRenderer {
     #xrayMode = false
     #beamEnabled = false
     #previewShading: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
+    #previewNormalShading = false
     #bvhEnabled = true
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
@@ -189,6 +190,7 @@ export class SDFRenderer {
                     edge: { color: [1, 1, 0] },
                 },
                 previewShading: { ...DEFAULT_PREVIEW_SHADING },
+                previewNormalShading: false,
             },
             viewCenter: [0.5, 0.5],
             resolutionScale: 1.0,
@@ -1257,6 +1259,16 @@ export class SDFRenderer {
         this.#needsRender = true
     }
 
+    get previewNormalShading(): boolean {
+        return this.#previewNormalShading
+    }
+
+    set previewNormalShading(enabled: boolean) {
+        if (this.#previewNormalShading === enabled) return
+        this.#previewNormalShading = enabled
+        this.#needsRender = true
+    }
+
     set bvhEnabled(enabled: boolean) {
         if (this.#bvhEnabled === enabled) return
         this.#bvhEnabled = enabled
@@ -1391,6 +1403,7 @@ export class SDFRenderer {
         p.viewSettings.outlineColor = this.#outlineColor
         p.viewSettings.selectionStyles = this.#selectionStyles
         p.viewSettings.previewShading = { ...this.#previewShading }
+        p.viewSettings.previewNormalShading = this.#previewNormalShading
         p.viewCenter[0] = this.#viewCenter.x
         p.viewCenter[1] = this.#viewCenter.y
         p.resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0

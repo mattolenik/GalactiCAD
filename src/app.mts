@@ -1125,7 +1125,11 @@ class App {
         devTools.onPreviewShadingChange = (params) => {
             this.renderer.setPreviewShading(params)
         }
+        devTools.onPreviewNormalShadingChange = (enabled) => {
+            this.renderer.previewNormalShading = enabled
+        }
         devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
+        devTools.syncPreviewNormalShadingFromRenderer(this.renderer.previewNormalShading)
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
             selectionModeRadio.value = this.renderer.selectionMode
@@ -1133,6 +1137,7 @@ class App {
             devTools.beamOptimization = this.renderer.beamEnabled
             devTools.bvhOptimization = this.renderer.bvhEnabled
             devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
+            devTools.syncPreviewNormalShadingFromRenderer(this.renderer.previewNormalShading)
         })
 
         const showFps = this.#settings.getGlobal().app.showFps

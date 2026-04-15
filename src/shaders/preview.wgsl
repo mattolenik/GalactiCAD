@@ -25,7 +25,7 @@ struct Camera {
     previewShade0: vec4f,
     // x=rimWeight, y=backWeight, z=specIntensity, w=specShininess
     previewShade1: vec4f,
-    // x=fresnelPower, y=fresnelIntensity
+    // x=fresnelPower, y=fresnelIntensity, z=preview normal RGB mode (0/1), w=unused
     previewShade2: vec4f,
     // x=aoStrength, y=aoRadius, z=aoSteps (rounded 1–8), w=aoBias
     previewShade3: vec4f,
@@ -676,12 +676,44 @@ struct ShadeResult {
     faceSelected: f32,
 }
 
+// Match mesh-viewer opaque: RGB from scene-space shading normal (± for front/back).
+fn hitNormalToRgb(nScene: vec3f) -> vec3f {
+    let len2 = dot(nScene, nScene);
+    let n = select(vec3f(0.0, 0.0, 1.0), nScene * inverseSqrt(len2), len2 > 1e-20);
+    return n * 0.5 + 0.5;
+}
+
 // Shade a hit point and return the color.
 // flipNormal: true if hitting surface from inside (back surface).
 // viewDir: direction from hit toward camera (unit), for specular / fresnel.
 // worldPos: hit position in scene space (for ambient occlusion samples).
 fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f) -> ShadeResult {
     let normal = select(hit.n, -hit.n, flipNormal);
+    if (camera.previewShade2.z > 0.5) {
+        let nrm = hitNormalToRgb(normal);
+        var sel1 = f32(selectedObjectIds[hit.id] != 0u);
+        let bw = hit.blend;
+        if (faceSelection.mode >= 4u && faceSelection.nodeId == hit.id && bw < 0.01) {
+            let faceIdx = primitiveFaceIndexFromNormal(hit.n, faceSelection.mode);
+            if (faceIdx == faceSelection.faceIndex) {
+                sel1 = 1.0;
+            }
+        }
+        var selBlend = sel1;
+        if (bw > 0.0) {
+            var sel2 = f32(selectedObjectIds[hit.id2] != 0u);
+            if (faceSelection.mode >= 4u && faceSelection.nodeId == hit.id2 && bw > 0.99) {
+                let faceIdx = primitiveFaceIndexFromNormal(hit.n, faceSelection.mode);
+                if (faceIdx == faceSelection.faceIndex) {
+                    sel2 = 1.0;
+                }
+            }
+            selBlend = mix(sel1, sel2, bw);
+        }
+        let selectedColor = nrm * selectionStyles.faceDarken + selectionStyles.faceTint;
+        let color = nrm * (1.0 - selBlend) + selectedColor * selBlend;
+        return ShadeResult(color, selBlend);
+    }
     // AO should sample away from the actual surface, not the x-ray lighting normal.
     // For back/exit surfaces, the flipped shading normal points into the solid and
     // creates contour-like bands inside the volume.

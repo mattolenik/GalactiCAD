@@ -220,6 +220,8 @@ export interface RenderViewSettings {
     outlineColor: [number, number, number]
     selectionStyles: RenderSelectionStyles
     previewShading: PreviewShadingParams
+    /** When true, SDF preview shades hits with scene-space normal RGB (matches mesh viewer opaque). */
+    previewNormalShading: boolean
 }
 
 // ---------------------------------------------------------------------------

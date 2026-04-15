@@ -24,21 +24,21 @@ const PREVIEW_SHADING_KNOBS: {
     max: number
     step: number
 }[] = [
-    { key: "ambient", label: "Ambient", min: 0, max: 0.45, step: 0.01 },
-    { key: "diffuseWrap", label: "Diffuse wrap", min: 0, max: 1, step: 0.02 },
-    { key: "keyWeight", label: "Key light", min: 0, max: 1, step: 0.02 },
-    { key: "fillWeight", label: "Fill light", min: 0, max: 1, step: 0.02 },
-    { key: "rimWeight", label: "Rim light", min: 0, max: 1, step: 0.02 },
-    { key: "backWeight", label: "Back light", min: 0, max: 1, step: 0.02 },
-    { key: "specIntensity", label: "Specular", min: 0, max: 0.45, step: 0.01 },
-    { key: "specShininess", label: "Spec power", min: 1, max: 256, step: 1 },
-    { key: "fresnelPower", label: "Fresnel pow", min: 0.5, max: 8, step: 0.1 },
-    { key: "fresnelIntensity", label: "Fresnel", min: 0, max: 0.45, step: 0.01 },
-    { key: "aoStrength", label: "AO strength", min: 0, max: 1, step: 0.02 },
-    { key: "aoRadius", label: "AO radius", min: 0.01, max: 0.5, step: 0.01 },
-    { key: "aoSteps", label: "AO steps", min: 1, max: 8, step: 1 },
-    { key: "aoBias", label: "AO bias", min: 0, max: 0.1, step: 0.005 },
-]
+        { key: "ambient", label: "Ambient", min: 0, max: 0.45, step: 0.01 },
+        { key: "diffuseWrap", label: "Diffuse wrap", min: 0, max: 1, step: 0.02 },
+        { key: "keyWeight", label: "Key light", min: 0, max: 1, step: 0.02 },
+        { key: "fillWeight", label: "Fill light", min: 0, max: 1, step: 0.02 },
+        { key: "rimWeight", label: "Rim light", min: 0, max: 1, step: 0.02 },
+        { key: "backWeight", label: "Back light", min: 0, max: 1, step: 0.02 },
+        { key: "specIntensity", label: "Specular", min: 0, max: 0.45, step: 0.01 },
+        { key: "specShininess", label: "Spec power", min: 1, max: 256, step: 1 },
+        { key: "fresnelPower", label: "Fresnel pow", min: 0.5, max: 8, step: 0.1 },
+        { key: "fresnelIntensity", label: "Fresnel", min: 0, max: 0.45, step: 0.01 },
+        { key: "aoStrength", label: "AO strength", min: 0, max: 1, step: 0.02 },
+        { key: "aoRadius", label: "AO radius", min: 0.01, max: 0.5, step: 0.01 },
+        { key: "aoSteps", label: "AO steps", min: 1, max: 8, step: 1 },
+        { key: "aoBias", label: "AO bias", min: 0, max: 0.1, step: 0.005 },
+    ]
 
 export class DevToolsPanel extends HTMLElement {
     #cameraOptCheckbox: HTMLInputElement
@@ -47,6 +47,7 @@ export class DevToolsPanel extends HTMLElement {
     #beamOptimization$: BehaviorSubject<boolean>
     #bvhOptCheckbox: HTMLInputElement
     #bvhOptimization$: BehaviorSubject<boolean>
+    #normalPreviewCheckbox: HTMLInputElement
     #shadingState: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
     #shadingRows = new Map<keyof PreviewShadingParams, { range: HTMLInputElement; valueEl: HTMLSpanElement }>()
     #showFpsCheckbox: HTMLInputElement
@@ -83,6 +84,9 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Preview shading uniforms; knob values are not persisted (section visibility is). */
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
+
+    /** SDF preview: scene-space normal RGB like mesh viewer (not persisted). */
+    onPreviewNormalShadingChange?: (enabled: boolean) => void
 
     /** Callback to get current view as a benchmark case. Returns null if no active document. */
     onBenchmarkThisRequest?: () => BenchmarkCase | null
@@ -320,6 +324,11 @@ export class DevToolsPanel extends HTMLElement {
             this.onBvhOptimizationChange?.(v)
         })
 
+        this.#normalPreviewCheckbox = this.#addCheckbox(shadow, "Normal mode", false)
+        this.#normalPreviewCheckbox.addEventListener("change", () => {
+            this.onPreviewNormalShadingChange?.(this.#normalPreviewCheckbox.checked)
+        })
+
         const debugHead = document.createElement("div")
         debugHead.className = "shade-head"
         debugHead.textContent = "Logs"
@@ -484,6 +493,10 @@ export class DevToolsPanel extends HTMLElement {
             row.range.value = String(v)
             row.valueEl.textContent = DevToolsPanel.#formatShadeValue(knob.key, v)
         }
+    }
+
+    syncPreviewNormalShadingFromRenderer(enabled: boolean): void {
+        this.#normalPreviewCheckbox.checked = enabled
     }
 
     static #formatShadeValue(key: keyof PreviewShadingParams, v: number): string {

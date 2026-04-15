@@ -89,7 +89,7 @@ export class Trackball {
             scene,
             getInteractionRect,
             rotationMethod,
-            onDraw = () => {},
+            onDraw = () => { },
             clampElevation = false,
             border = 0,
             ballsize = 0.75,
@@ -119,7 +119,7 @@ export class Trackball {
         this.#q0 = this.#q = q
 
         if (this.#opts.rotationMethod === "rounded_arcball") {
-            ;(this.#opts as { border: number }).border = 0.5
+            ; (this.#opts as { border: number }).border = 0.5
         }
 
         this.#initEventListeners()
@@ -148,9 +148,9 @@ export class Trackball {
 
     /** Set the rotation method at runtime. */
     set rotationMethod(m: TrackballRotationMethod) {
-        ;(this.#opts as { rotationMethod: TrackballRotationMethod }).rotationMethod = m
+        ; (this.#opts as { rotationMethod: TrackballRotationMethod }).rotationMethod = m
         if (m === "rounded_arcball") {
-            ;(this.#opts as { border: number }).border = 0.5
+            ; (this.#opts as { border: number }).border = 0.5
         }
     }
 
@@ -405,7 +405,7 @@ export class Trackball {
                 Math.min(
                     Math.PI / 2 - 0.01,
                     this.#elevation_start +
-                        invertedDeltaY * scaleY * this.#opts.speed
+                    invertedDeltaY * scaleY * this.#opts.speed
                 )
             )
         } else {

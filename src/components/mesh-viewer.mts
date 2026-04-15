@@ -64,7 +64,11 @@ export class MeshViewer extends HTMLElement {
         this.#viewCenter = vec2(x, y)
     }
 
-    constructor(tabsElement?: EventTarget | null) {
+    /**
+     * @param tabsElement Optional tabs for camera persistence wiring.
+     * @param getInteractionRect When set, camera/trackball input is limited to this screen rect (same as SDF preview).
+     */
+    constructor(tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect) {
         super()
         const shadow = this.attachShadow({ mode: "open" })
 
@@ -151,7 +155,7 @@ export class MeshViewer extends HTMLElement {
         })
 
         this.#cameraRes = vec2(this.canvas.clientWidth, this.canvas.clientHeight)
-        this.#controls = new CameraController(this, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement)
+        this.#controls = new CameraController(this, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement ?? null, getInteractionRect)
         this.#initializing = this.#initialize()
 
         const observer = new ResizeObserver(entries => {

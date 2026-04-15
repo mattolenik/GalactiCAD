@@ -1523,7 +1523,7 @@ class App {
             }
 
             // Create mesh viewer element dynamically using the class constructor
-            const meshViewer = new MeshViewer(this.#tabs)
+            const meshViewer = new MeshViewer(this.#tabs, this.#getVisiblePreviewRect)
             meshViewer.id = "mesh"
 
             // Add element to viewports (flexbox will distribute space automatically)

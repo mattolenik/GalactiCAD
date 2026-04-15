@@ -68,6 +68,8 @@ export class CameraController {
     #isSyncing = false
     #tabsElement: EventTarget | null = null
     #tabChangeSub: Subscription | null = null
+    /** When set, camera/trackball input is limited to this screen rect (visible preview minus editor overlay). */
+    #getInteractionRect?: () => DOMRect
     /** 3D world-space point to orbit around (Cmd/Ctrl+drag). Null → standard pivot at origin. */
     #customPivot: Vec3f | null = null
 
@@ -90,6 +92,7 @@ export class CameraController {
     constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect) {
         this.#settings = SettingsManager.instance
         this.#host = host
+        this.#getInteractionRect = getInteractionRect
         this.#pivot = pivot
         this.zoom = radius
         this.#zoomController = new PinchZoomController(host, this.zoom)
@@ -255,18 +258,27 @@ export class CameraController {
 
     #onClick(e: MouseEvent) {
         // Only handle left clicks, and only if we didn't drag
-        if (e.button === 0 && !this.#hasDragged) {
+        if (e.button === 0 && !this.#hasDragged && this.#isClientInInteractionRect(e.clientX, e.clientY)) {
             this.select$.next({ screenPos: vec2(e.clientX, e.clientY), shiftKey: e.shiftKey, altKey: e.altKey })
         }
     }
 
     #onDblClick(e: MouseEvent) {
-        if (e.button === 0 && !this.#hasDragged) {
+        if (e.button === 0 && !this.#hasDragged && this.#isClientInInteractionRect(e.clientX, e.clientY)) {
             this.doubleClick$.next({ screenPos: vec2(e.clientX, e.clientY), metaKey: e.metaKey, ctrlKey: e.ctrlKey })
         }
     }
 
+    /** Screen point must lie in the visible preview rect when one is configured (canvas can extend under the editor). */
+    #isClientInInteractionRect(clientX: number, clientY: number): boolean {
+        const q = this.#getInteractionRect
+        if (!q) return true
+        const r = q()
+        return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom
+    }
+
     #onPointerDown(e: PointerEvent) {
+        if (!this.#isClientInInteractionRect(e.clientX, e.clientY)) return
         if (e.button === 0) {
             // Left click: start rotation drag
             // When already dragging (e.g. second finger touches for pinch), don't overwrite #last
@@ -308,7 +320,9 @@ export class CameraController {
     #onPointerMove(e: PointerEvent) {
         // Check for hover events when not dragging
         if (!this.isDragging) {
-            this.hover$.next({ screenPos: vec2(e.clientX, e.clientY), altKey: e.altKey })
+            if (this.#isClientInInteractionRect(e.clientX, e.clientY)) {
+                this.hover$.next({ screenPos: vec2(e.clientX, e.clientY), altKey: e.altKey })
+            }
             return
         }
         if (this.#zoomController.isZooming) return

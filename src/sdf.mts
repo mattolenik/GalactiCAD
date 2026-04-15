@@ -303,6 +303,10 @@ export class SDFRenderer {
     #screenToClickUV(clientX: number, clientY: number): [number, number] | null {
         const rect = this.#preview.canvas.getBoundingClientRect()
         if (rect.width <= 0 || rect.height <= 0) return null
+        if (this.#getInteractionRect) {
+            const ir = this.#getInteractionRect()
+            if (clientX < ir.left || clientX > ir.right || clientY < ir.top || clientY > ir.bottom) return null
+        }
         const u = (clientX - rect.left) / rect.width
         const v = 1 - (clientY - rect.top) / rect.height
         return [u, v]

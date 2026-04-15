@@ -210,6 +210,7 @@ export class Trackball {
         if (event instanceof MouseEvent && event.button !== 0) return
 
         const box = this.#opts.getInteractionRect?.() ?? this.#opts.scene.getBoundingClientRect()
+        if (!this.#isInBounds(event.clientX, event.clientY, box)) return
 
         const startVector =
             this.#project(event.clientX, event.clientY, box) ?? [0, 0, 1]

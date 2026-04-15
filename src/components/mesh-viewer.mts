@@ -913,7 +913,12 @@ export class MeshViewer extends HTMLElement {
             ownerB: number
             featureDist: number
         }[] = []
-        const featureDedupPxSq = 8 * 8
+        const worldUnitsPerPixel =
+            this.#debugOverlayCanvas.height > 0
+                ? (2 * this.#controls.zoom) / this.#debugOverlayCanvas.height
+                : this.#controls.zoom * 0.01
+        const featureDedupWorld = Math.max(worldUnitsPerPixel * 8, 1e-4)
+        const featureDedupWorldSq = featureDedupWorld * featureDedupWorld
         const featurePriorityForClass = (klass: number): number => {
             switch (klass) {
                 case 1: return 1
@@ -975,13 +980,11 @@ export class MeshViewer extends HTMLElement {
                             existing.ownerA === ownerA &&
                             existing.ownerB === ownerB
                         ) {
-                            const dx = existing.x - projectedFeature.x
-                            const dy = existing.y - projectedFeature.y
-                            if (dx * dx + dy * dy <= featureDedupPxSq) {
-                                if (
-                                    projectedFeature.depth < existing.depth - 1e-4 ||
-                                    (Math.abs(projectedFeature.depth - existing.depth) <= 1e-4 && featureDist < existing.featureDist)
-                                ) {
+                            const dfx = existing.fx - fx
+                            const dfy = existing.fy - fy
+                            const dfz = existing.fz - fz
+                            if (dfx * dfx + dfy * dfy + dfz * dfz <= featureDedupWorldSq) {
+                                if (featureDist < existing.featureDist || (featureDist === existing.featureDist && sampleIdx < existing.sampleIdx)) {
                                     existing.sampleIdx = sampleIdx
                                     existing.x = projectedFeature.x
                                     existing.y = projectedFeature.y

@@ -348,6 +348,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let sideEps = max(max(SURF_DIST * 8.0, capH * 0.015), uniforms.voxelSize * 0.35);
     let rimEps = max(max(SURF_DIST * 8.0, capH * 0.02), uniforms.voxelSize * 0.6);
     let vtxEps = max(max(SURF_DIST * 8.0, capH * 0.03), uniforms.voxelSize * 1.1);
+    let sideLineVtxEps = max(max(SURF_DIST * 8.0, capH * 0.018), uniforms.voxelSize * 0.6);
     let capCornerEps = max(rimEps, uniforms.voxelSize * 0.75);
 
     if (!onSide && abs(d2d) < rimEps && abs(dCap) < rimEps) {
@@ -390,7 +391,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     }
 
     if (onSide && abs(d2d) < sideEps) {
-        if (length(p.xz - v0) < vtxEps) {
+        let nearCap = abs(abs(capY) - capH) < capCornerEps;
+        if (length(p.xz - v0) < select(sideLineVtxEps, vtxEps, nearCap)) {
             let vPrev = polygonVertices[${BASE}u + (edgeIdx + ${N}u - 1u) % ${N}u];
             let prevDir = normalize(v0 - vPrev);
             let nextDir = normalize(v1 - v0);
@@ -399,7 +401,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             let n0 = safeNormalize(vec3f(prevOut2.x, 0.0, prevOut2.y), vec3f(1.0, 0.0, 0.0));
             let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
             if (dot(n0, n1) < 0.995) {
-                if (abs(abs(capY) - capH) < capCornerEps) {
+                if (nearCap) {
                     let capSign = sgn(capY);
                     let featurePoint = vec3f(v0.x, ${capYOff} + capSign * capH, v0.y);
                     return sdfRMidCorner(d, 1.0, vec3f(0.0, capSign, 0.0), featurePoint, n0, n1, length(p - featurePoint));
@@ -408,7 +410,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
                 return sdfRMidLine(d, 1.0, n0, featurePoint, vec3f(0.0, 1.0, 0.0), n1, length(p - featurePoint));
             }
         }
-        if (length(p.xz - v1) < vtxEps) {
+        if (length(p.xz - v1) < select(sideLineVtxEps, vtxEps, nearCap)) {
             let vNext = polygonVertices[${BASE}u + (edgeIdx + 2u) % ${N}u];
             let prevDir = normalize(v1 - v0);
             let nextDir = normalize(vNext - v1);
@@ -417,7 +419,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             let n0 = safeNormalize(vec3f(prevOut2.x, 0.0, prevOut2.y), vec3f(1.0, 0.0, 0.0));
             let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
             if (dot(n0, n1) < 0.995) {
-                if (abs(abs(capY) - capH) < capCornerEps) {
+                if (nearCap) {
                     let capSign = sgn(capY);
                     let featurePoint = vec3f(v1.x, ${capYOff} + capSign * capH, v1.y);
                     return sdfRMidCorner(d, 1.0, vec3f(0.0, capSign, 0.0), featurePoint, n0, n1, length(p - featurePoint));
@@ -465,6 +467,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let sideEps = max(max(SURF_DIST * 8.0, h * 0.015), uniforms.voxelSize * 0.35);
     let rimEps = max(max(SURF_DIST * 8.0, h * 0.02), uniforms.voxelSize * 0.6);
     let vtxEps = max(max(SURF_DIST * 8.0, h * 0.03), uniforms.voxelSize * 1.1);
+    let sideLineVtxEps = max(max(SURF_DIST * 8.0, h * 0.018), uniforms.voxelSize * 0.6);
     let capCornerEps = max(rimEps, uniforms.voxelSize * 0.75);
     let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
 
@@ -504,7 +507,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     }
 
     if (onSide && abs(d2d) < sideEps) {
-        if (length(twisted - v0) < vtxEps) {
+        let nearCap = abs(abs(capY) - h) < capCornerEps;
+        if (length(twisted - v0) < select(sideLineVtxEps, vtxEps, nearCap)) {
             let vPrev = polygonVertices[${BASE}u + (edgeIdx + ${N}u - 1u) % ${N}u];
             let prevDir = normalize(v0 - vPrev);
             let nextDir = normalize(v1 - v0);
@@ -513,7 +517,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             let n0 = safeNormalize(vec3f(ca * prevOut2.x - sa * prevOut2.y, 0.0, sa * prevOut2.x + ca * prevOut2.y), vec3f(1.0, 0.0, 0.0));
             let n1 = safeNormalize(vec3f(ca * nextOut2.x - sa * nextOut2.y, 0.0, sa * nextOut2.x + ca * nextOut2.y), vec3f(1.0, 0.0, 0.0));
             if (dot(n0, n1) < 0.995) {
-                if (abs(abs(capY) - h) < capCornerEps) {
+                if (nearCap) {
                     let capSign = sgn(capY);
                     let featurePoint = vec3f(ca * v0.x - sa * v0.y, ${capYOff} + capSign * h, sa * v0.x + ca * v0.y);
                     return sdfRMidCorner(d, 1.0, vec3f(0.0, capSign, 0.0), featurePoint, n0, n1, length(p - featurePoint));
@@ -523,7 +527,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
                 return sdfRMidLine(d, 1.0, n0, featurePoint, tangent, n1, length(p - featurePoint));
             }
         }
-        if (length(twisted - v1) < vtxEps) {
+        if (length(twisted - v1) < select(sideLineVtxEps, vtxEps, nearCap)) {
             let vNext = polygonVertices[${BASE}u + (edgeIdx + 2u) % ${N}u];
             let prevDir = normalize(v1 - v0);
             let nextDir = normalize(vNext - v1);
@@ -532,7 +536,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             let n0 = safeNormalize(vec3f(ca * prevOut2.x - sa * prevOut2.y, 0.0, sa * prevOut2.x + ca * prevOut2.y), vec3f(1.0, 0.0, 0.0));
             let n1 = safeNormalize(vec3f(ca * nextOut2.x - sa * nextOut2.y, 0.0, sa * nextOut2.x + ca * nextOut2.y), vec3f(1.0, 0.0, 0.0));
             if (dot(n0, n1) < 0.995) {
-                if (abs(abs(capY) - h) < capCornerEps) {
+                if (nearCap) {
                     let capSign = sgn(capY);
                     let featurePoint = vec3f(ca * v1.x - sa * v1.y, ${capYOff} + capSign * h, sa * v1.x + ca * v1.y);
                     return sdfRMidCorner(d, 1.0, vec3f(0.0, capSign, 0.0), featurePoint, n0, n1, length(p - featurePoint));

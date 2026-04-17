@@ -389,6 +389,8 @@ export class RenderWorkerCore {
         const sceneSDF_mid = scene.compileMidForPreview()
         const tSdfMid = performance.now()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
+        const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
+        const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
         const tWgsl1 = performance.now()
 
         const shaderCompiler = new ShaderCompiler(this.#device)
@@ -399,6 +401,8 @@ export class RenderWorkerCore {
             .replace("insert", "sceneSDF", sceneSDF)
             .replace("insert", "sceneSDF_mid", sceneSDF_mid)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
+            .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
+            .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
 
         const tShaderMod0 = performance.now()
         const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")

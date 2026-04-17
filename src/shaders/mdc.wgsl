@@ -64,6 +64,23 @@ struct ComponentFeature {
 const MAX_COMPONENTS_PER_CELL: u32 = 4u;
 const EDGES_PER_CELL: u32 = 12u;
 
+// Stage C: per-subcomponent vertex splitting.
+// A cell-component with a crease emits up to MAX_SUBCOMPONENTS_PER_COMPONENT
+// sub-vertices (one per face-normal bucket), each carrying that face's normal.
+// Smooth (single-bucket) components only populate subcomp 0; the other slots
+// remain sentinel and are never referenced by the index buffer.
+const MAX_SUBCOMPONENTS_PER_COMPONENT: u32 = 3u;
+const VERTICES_PER_CELL: u32 = MAX_COMPONENTS_PER_CELL * MAX_SUBCOMPONENTS_PER_COMPONENT; // 12
+
+// Packs (componentIdx in low 16 bits, subcomponentIdx in next 8 bits) into a
+// single u32 for cellEdgeComponents. Sentinel 0xffffffffu keeps "no crossing".
+fn packCompSub(c: u32, s: u32) -> u32 { return c | (s << 16u); }
+fn unpackComp(v: u32) -> u32 { return v & 0xffffu; }
+fn unpackSub(v: u32) -> u32 { return (v >> 16u) & 0xffu; }
+fn vertexIndexFor(activeCellIdx: u32, c: u32, s: u32) -> u32 {
+    return activeCellIdx * VERTICES_PER_CELL + c * MAX_SUBCOMPONENTS_PER_COMPONENT + s;
+}
+
 // ============================== BIND GROUPS ==============================
 
 // Group 0: Shared parameters across all passes
@@ -500,6 +517,12 @@ const MDC_FEATURE_PROX_SCALE: f32 = 0.75;
 const MDC_FEATURE_PLANE_WEIGHT: f32 = 0.12;
 const COMPONENT_FEATURE_REJECTED: u32 = 4u;
 const COMPONENT_NORMAL_COS_THRESH: f32 = 0.95;
+/** Inferred-line acceptance: the two bucket normals must form at least a ~45° crease (cosine ≤ 0.7).
+ * Prevents smooth high-curvature regions (e.g., lathed spheroids) from registering as line creases. */
+const MDC_INFER_LINE_DOT_MAX: f32 = 0.7;
+/** Inferred-line acceptance: each of the two normal buckets must contain this many edge-crossing samples.
+ * Single-sample buckets are usually curvature noise on a smooth surface. */
+const MDC_INFER_LINE_MIN_BUCKET_SAMPLES: u32 = 2u;
 const MDC_CORNER_FEATURE_PROX_SCALE: f32 = 1.35;
 const MDC_CORNER_PROBE_PROX_SCALE: f32 = 1.9;
 
@@ -928,17 +951,16 @@ fn edgeDetection_Pass3(
             }
         }
         edgeComponent[e] = compIdx;
-
-        // Write edge->component mapping for this cell.
-        if (edgeCompBase + e < arrayLength(&cellEdgeComponents)) {
-            var outComp = 0xffffffffu;
-            if (compIdx >= 0) { outComp = u32(compIdx); }
-            cellEdgeComponents[edgeCompBase + e] = outComp;
-        }
+        // cellEdgeComponents write deferred to after Phase 1 (collect) so we can
+        // pack the per-edge subcomponent (face bucket) index alongside the
+        // component index.
     }
 
-    // Accumulate QEFs per component.
-    var qefs: array<QEFData, 4>;
+    // Accumulate per-subcomponent QEFs ([component][subcomponent]). Each
+    // sub-vertex is solved separately in Pass 4 so that creases produce real
+    // sharp mesh edges with face-specific normals. Smooth components only fill
+    // subcomponent 0.
+    var subQefs: array<array<QEFData, 3>, 4>;
     var inferredFeatures: array<ComponentFeature, 4>;
     var compPointSum: array<vec3f, 4>;
     var compCrossCount: array<u32, 4>;
@@ -959,7 +981,6 @@ fn edgeDetection_Pass3(
     var compPointSums: array<array<vec3f, 3>, 4>;
     var compPointCounts: array<array<u32, 3>, 4>;
     for (var c = 0u; c < 4u; c = c + 1u) {
-        qefs[c] = QEFData(mat3x3f(), vec3f(0.0), vec3f(0.0), 0u);
         inferredFeatures[c] = zeroComponentFeature();
         compPointSum[c] = vec3f(0.0);
         compCrossCount[c] = 0u;
@@ -980,9 +1001,20 @@ fn edgeDetection_Pass3(
             compNormalSums[c][j] = vec3f(0.0);
             compPointSums[c][j] = vec3f(0.0);
             compPointCounts[c][j] = 0u;
+            subQefs[c][j] = QEFData(mat3x3f(), vec3f(0.0), vec3f(0.0), 0u);
         }
     }
 
+    // Per-edge bucket index assigned during collect; used by Stage B projection
+    // and (later) Stage C subcomponent vertex splitting. Sentinel 0xffffffffu means
+    // "no crossing on this edge".
+    var crossingSubcomp: array<u32, 12>;
+    for (var e = 0u; e < 12u; e = e + 1u) { crossingSubcomp[e] = 0xffffffffu; }
+
+    // Phase 1 (collect): tally per-component normal buckets, owner pairs, and explicit
+    // feature data without yet adding any plane to the QEF. This lets Phase 2 infer the
+    // explicit feature locus, after which Phase 3 projects each crossing onto that locus
+    // before accumulation in Phase 4.
     for (var e = 0u; e < 12u; e = e + 1u) {
         if (edgeCrossMask[e] == 0u) { continue; }
         let compIdx = edgeComponent[e];
@@ -994,14 +1026,6 @@ fn edgeDetection_Pass3(
 
         let c = u32(compIdx);
         let sample = crossingMid[e];
-
-        qefs[c].ATA[0] = qefs[c].ATA[0] + normal * normal.x;
-        qefs[c].ATA[1] = qefs[c].ATA[1] + normal * normal.y;
-        qefs[c].ATA[2] = qefs[c].ATA[2] + normal * normal.z;
-        let d_val = dot(normal, intersectionPos);
-        qefs[c].ATb = qefs[c].ATb + normal * d_val;
-        qefs[c].massPoint = qefs[c].massPoint + intersectionPos;
-        qefs[c].numPoints = qefs[c].numPoints + 1u;
 
         compPointSum[c] = compPointSum[c] + intersectionPos;
         compCrossCount[c] = compCrossCount[c] + 1u;
@@ -1103,11 +1127,28 @@ fn edgeDetection_Pass3(
             }
         }
         let bucketIdx = u32(bucket);
+        crossingSubcomp[e] = bucketIdx;
         compNormalSums[c][bucketIdx] = compNormalSums[c][bucketIdx] + normal;
         compPointSums[c][bucketIdx] = compPointSums[c][bucketIdx] + intersectionPos;
         compPointCounts[c][bucketIdx] = compPointCounts[c][bucketIdx] + 1u;
     }
 
+    // Now that subcomponent assignment is known, write the packed
+    // (componentIdx, subcomponentIdx) per cube edge so Pass 5 can resolve the
+    // correct sub-vertex per neighbor cell.
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        if (edgeCompBase + e >= arrayLength(&cellEdgeComponents)) { continue; }
+        var packed = 0xffffffffu;
+        let cIdx = edgeComponent[e];
+        let s = crossingSubcomp[e];
+        if (cIdx >= 0 && s != 0xffffffffu) {
+            packed = packCompSub(u32(cIdx), s);
+        }
+        cellEdgeComponents[edgeCompBase + e] = packed;
+    }
+
+    // Phase 2 (infer): existing component-level explicit-feature resolution and
+    // inferred-feature classification. Reads from Phase 1 collect outputs only.
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         if (compCrossCount[c] == 0u) { continue; }
 
@@ -1210,7 +1251,12 @@ fn edgeDetection_Pass3(
                     vec3f(0.0),
                 );
             }
-        } else if (bucketCount == 2u && dot(n0, n1) < 0.9) {
+        } else if (
+            bucketCount == 2u &&
+            dot(n0, n1) < MDC_INFER_LINE_DOT_MAX &&
+            compPointCounts[c][0] >= MDC_INFER_LINE_MIN_BUCKET_SAMPLES &&
+            compPointCounts[c][1] >= MDC_INFER_LINE_MIN_BUCKET_SAMPLES
+        ) {
             let tangent = safeUnit3(cross(n0, n1));
             if (lengthSqr(tangent) > 1e-8) {
                 inferred = ComponentFeature(
@@ -1241,29 +1287,72 @@ fn edgeDetection_Pass3(
         inferredFeatures[c] = inferred;
     }
 
+    // Phase 3 (project) + Phase 4 (accumulate): project each crossing onto the
+    // explicit feature locus when present, then add the (possibly projected)
+    // crossing plane to the per-component QEF. Projecting all in-cell crossings
+    // onto the locus drives the QEF mass point and ATA/ATb onto the feature, so
+    // the eventual solve naturally lands on it without needing soft feature-plane
+    // bias terms.
+    var projectedPos: array<vec3f, 12>;
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        if (edgeCrossMask[e] == 0u) { continue; }
+        let compIdx = edgeComponent[e];
+        if (compIdx < 0) { continue; }
+        let c = u32(compIdx);
+        let intersectionPos = crossingPos[e];
+        let normal = crossingNormal[e];
+        let feature = inferredFeatures[c];
+
+        var projPos = intersectionPos;
+        if (feature.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) {
+            let tangent = safeUnit3(feature.tangent);
+            projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
+        } else if (feature.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) {
+            projPos = feature.point;
+        } else if (feature.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8) {
+            let tangent = safeUnit3(feature.tangent);
+            if (lengthSqr(tangent) > 1e-8) {
+                projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
+            }
+        }
+        projectedPos[e] = projPos;
+
+        let s = crossingSubcomp[e];
+        subQefs[c][s].ATA[0] = subQefs[c][s].ATA[0] + normal * normal.x;
+        subQefs[c][s].ATA[1] = subQefs[c][s].ATA[1] + normal * normal.y;
+        subQefs[c][s].ATA[2] = subQefs[c][s].ATA[2] + normal * normal.z;
+        let d_val = dot(normal, projPos);
+        subQefs[c][s].ATb = subQefs[c][s].ATb + normal * d_val;
+        subQefs[c][s].massPoint = subQefs[c][s].massPoint + projPos;
+        subQefs[c][s].numPoints = subQefs[c][s].numPoints + 1u;
+    }
+
+    // For inferred (non-explicit) features only, keep the soft feature-plane bias.
+    // Explicit features no longer need it since Phase 3 already projected the
+    // crossings onto the locus. Bias is applied to every populated subcomponent
+    // so the eventual sub-vertex solve is nudged toward the inferred locus.
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         if (compCrossCount[c] == 0u) { continue; }
         let feature = inferredFeatures[c];
-        if (feature.kind == MID_FEATURE_LINE) {
-            let p0 = select(compPlanePoint0[c], feature.point, explicitLineDist[c] < 1e8);
-            let p1 = select(compPlanePoint1[c], feature.point, explicitLineDist[c] < 1e8);
-            mdcQefAddPlane(&qefs[c], feature.n0, p0, MDC_FEATURE_PLANE_WEIGHT);
-            mdcQefAddPlane(&qefs[c], feature.n1, p1, MDC_FEATURE_PLANE_WEIGHT);
-            atomicAdd(&debugSkipCounters[13], 2u);
-        } else if (feature.kind == MID_FEATURE_CORNER) {
-            let p0 = select(compPlanePoint0[c], feature.point, explicitCornerDist[c] < 1e8);
-            let p1 = select(compPlanePoint1[c], feature.point, explicitCornerDist[c] < 1e8);
-            let p2 = select(compPlanePoint2[c], feature.point, explicitCornerDist[c] < 1e8);
-            mdcQefAddPlane(&qefs[c], feature.n0, p0, MDC_FEATURE_PLANE_WEIGHT);
-            mdcQefAddPlane(&qefs[c], feature.n1, p1, MDC_FEATURE_PLANE_WEIGHT);
-            mdcQefAddPlane(&qefs[c], feature.n2, p2, MDC_FEATURE_PLANE_WEIGHT);
-            atomicAdd(&debugSkipCounters[13], 3u);
-        } else if (feature.kind == MID_FEATURE_BOOLEAN_SEAM) {
-            let p0 = select(compPlanePoint0[c], feature.point, explicitSeamDist[c] < 1e8);
-            let p1 = select(compPlanePoint1[c], feature.point, explicitSeamDist[c] < 1e8);
-            mdcQefAddPlane(&qefs[c], feature.n0, p0, MDC_FEATURE_PLANE_WEIGHT);
-            mdcQefAddPlane(&qefs[c], feature.n1, p1, MDC_FEATURE_PLANE_WEIGHT);
-            atomicAdd(&debugSkipCounters[13], 2u);
+        let isExplicitLine = (feature.kind == MID_FEATURE_LINE) && (explicitLineDist[c] < 1e8);
+        let isExplicitCorner = (feature.kind == MID_FEATURE_CORNER) && (explicitCornerDist[c] < 1e8);
+        let isExplicitSeam = (feature.kind == MID_FEATURE_BOOLEAN_SEAM) && (explicitSeamDist[c] < 1e8);
+        for (var s = 0u; s < MAX_SUBCOMPONENTS_PER_COMPONENT; s = s + 1u) {
+            if (subQefs[c][s].numPoints == 0u) { continue; }
+            if (feature.kind == MID_FEATURE_LINE && !isExplicitLine) {
+                mdcQefAddPlane(&subQefs[c][s], feature.n0, compPlanePoint0[c], MDC_FEATURE_PLANE_WEIGHT);
+                mdcQefAddPlane(&subQefs[c][s], feature.n1, compPlanePoint1[c], MDC_FEATURE_PLANE_WEIGHT);
+                atomicAdd(&debugSkipCounters[13], 2u);
+            } else if (feature.kind == MID_FEATURE_CORNER && !isExplicitCorner) {
+                mdcQefAddPlane(&subQefs[c][s], feature.n0, compPlanePoint0[c], MDC_FEATURE_PLANE_WEIGHT);
+                mdcQefAddPlane(&subQefs[c][s], feature.n1, compPlanePoint1[c], MDC_FEATURE_PLANE_WEIGHT);
+                mdcQefAddPlane(&subQefs[c][s], feature.n2, compPlanePoint2[c], MDC_FEATURE_PLANE_WEIGHT);
+                atomicAdd(&debugSkipCounters[13], 3u);
+            } else if (feature.kind == MID_FEATURE_BOOLEAN_SEAM && !isExplicitSeam) {
+                mdcQefAddPlane(&subQefs[c][s], feature.n0, compPlanePoint0[c], MDC_FEATURE_PLANE_WEIGHT);
+                mdcQefAddPlane(&subQefs[c][s], feature.n1, compPlanePoint1[c], MDC_FEATURE_PLANE_WEIGHT);
+                atomicAdd(&debugSkipCounters[13], 2u);
+            }
         }
     }
 
@@ -1303,50 +1392,86 @@ fn edgeDetection_Pass3(
         }
     }
 
-    // Write per-component QEFs for this active cell.
-    let qefBase = active_cell_array_idx * MAX_COMPONENTS_PER_CELL;
+    // Write per-subcomponent QEFs (one slot per face bucket) and per-component
+    // inferred features for this active cell. componentFeatures stays per
+    // component (one entry per cell-component, not per sub-vertex).
+    //
+    // We repurpose feature.n0/n1/n2 as the bucket-aligned face normals
+    // (`safeUnit3(compNormalSums[c][s])`) before writing. This makes Pass 4's
+    // sub-vertex shading normal directly addressable as `feature.n[s]`. The
+    // earlier Phase-3/Phase-4 logic already consumed the original (explicit /
+    // inferred) face normals, so overwriting them now is safe.
+    let compBase = active_cell_array_idx * MAX_COMPONENTS_PER_CELL;
+    let vertBase = active_cell_array_idx * VERTICES_PER_CELL;
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
-        let outIdx = qefBase + c;
-        if (outIdx < arrayLength(&cellQEFData_edge)) {
-            cellQEFData_edge[outIdx] = qefs[c];
+        var cf = inferredFeatures[c];
+        if (compNormalBucketCount[c] >= 1u && compPointCounts[c][0] > 0u) {
+            cf.n0 = safeUnit3(compNormalSums[c][0]);
         }
-        if (outIdx < arrayLength(&componentFeatures)) {
-            componentFeatures[outIdx] = inferredFeatures[c];
+        if (compNormalBucketCount[c] >= 2u && compPointCounts[c][1] > 0u) {
+            cf.n1 = safeUnit3(compNormalSums[c][1]);
+        }
+        if (compNormalBucketCount[c] >= 3u && compPointCounts[c][2] > 0u) {
+            cf.n2 = safeUnit3(compNormalSums[c][2]);
+        }
+        let cFeatIdx = compBase + c;
+        if (cFeatIdx < arrayLength(&componentFeatures)) {
+            componentFeatures[cFeatIdx] = cf;
+        }
+        for (var s = 0u; s < MAX_SUBCOMPONENTS_PER_COMPONENT; s = s + 1u) {
+            let outIdx = vertBase + c * MAX_SUBCOMPONENTS_PER_COMPONENT + s;
+            if (outIdx < arrayLength(&cellQEFData_edge)) {
+                cellQEFData_edge[outIdx] = subQefs[c][s];
+            }
         }
     }
 }
 
 
 // Pass 4: Vertex Generation
+//
+// Stage C: each active cell now produces up to VERTICES_PER_CELL = 12 sub-vertices
+// (MAX_COMPONENTS_PER_CELL * MAX_SUBCOMPONENTS_PER_COMPONENT). Smooth components
+// fill only subcomp 0; crease components fill 2-3 subcomps, one per face bucket,
+// each with that bucket's average normal. Empty subcomp slots are written as
+// sentinel vertices that no quad ever references (since cellEdgeComponents only
+// points at populated buckets).
 @compute @workgroup_size(64, 1, 1)
 fn vertexGeneration_Pass4(
     @builtin(local_invocation_id) localId: vec3u,
     @builtin(workgroup_id) workgroupId: vec3u,
     @builtin(num_workgroups) numWg: vec3u
 ) {
-    // We generate up to MAX_COMPONENTS_PER_CELL vertices per active cell.
     let wgLinear = workgroupId.x + workgroupId.y * numWg.x + workgroupId.z * numWg.x * numWg.y;
-    
+
     // Check cancellation but don't return early (to maintain uniform control flow)
     let cancelled = isCancelled();
     let vertexRecordIdx = wgLinear * 64u + localId.x;
     let totalActiveCells = uniforms.mdcU0.z;
-    let totalVertexRecords = totalActiveCells * MAX_COMPONENTS_PER_CELL;
+    let totalVertexRecords = totalActiveCells * VERTICES_PER_CELL;
     if (cancelled || vertexRecordIdx >= totalVertexRecords) { return; }
     if (vertexRecordIdx >= arrayLength(&cellQEFDataIn_vertex) || vertexRecordIdx >= arrayLength(&vertices)) { return; }
 
-    let active_cell_array_idx = vertexRecordIdx / MAX_COMPONENTS_PER_CELL;
+    let active_cell_array_idx = vertexRecordIdx / VERTICES_PER_CELL;
+    let withinCell = vertexRecordIdx % VERTICES_PER_CELL;
+    let componentIdx = withinCell / MAX_SUBCOMPONENTS_PER_COMPONENT;
+    let subcomponentIdx = withinCell % MAX_SUBCOMPONENTS_PER_COMPONENT;
+
     let qef = cellQEFDataIn_vertex[vertexRecordIdx];
-    // Constrain the QEF solution to this cell's bounds to avoid vertices drifting
-    // outside the cell (which causes overhanging/jutting polygons, especially on
-    // anisotropic shapes like rectangular prisms).
+
+    // Empty subcomp slot: write sentinel vertex (never referenced from indices).
+    if (qef.numPoints == 0u) {
+        vertices[vertexRecordIdx] = Vertex(vec3f(0.0), vec3f(0.0, 1.0, 0.0));
+        return;
+    }
+
     if (active_cell_array_idx >= arrayLength(&activeCellIndicesIn_vertex)) { return; }
     let cellFlatIndex = activeCellIndicesIn_vertex[active_cell_array_idx];
     let cellPos = gridIndexTo3D(cellFlatIndex);
     let cellMin = gridPosToWorldPos(cellPos);
     let cellMax = cellMin + vec3f(uniforms.voxelSize);
 
-    // Robust in-cell candidate selection:
+    // Robust in-cell candidate selection (per-subcomp QEF):
     // Hard-clamping a drifting QEF solution can create spikes/pinholes near sharp features
     // and CSG seams. Choose among stable candidates using the full QEF cost.
     let mp = qef.massPoint / max(1.0, f32(qef.numPoints));
@@ -1365,71 +1490,80 @@ fn vertexGeneration_Pass4(
     if (cC < bestCost) { bestCost = cC; best = vCenter; }
 
     var vertexPos = best;
-    let featureStart = componentFeatures[vertexRecordIdx];
-    if ((featureStart.kind == MID_FEATURE_LINE || featureStart.kind == MID_FEATURE_CORNER) &&
+
+    let cFeatIdx = active_cell_array_idx * MAX_COMPONENTS_PER_CELL + componentIdx;
+    let featureStart = componentFeatures[cFeatIdx];
+    let isExplicit =
+        (featureStart.kind == MID_FEATURE_LINE || featureStart.kind == MID_FEATURE_CORNER || featureStart.kind == MID_FEATURE_BOOLEAN_SEAM) &&
         featureStart.ownerA != 0u &&
         featureStart.normalCount >= 2u &&
-        length(featureStart.point) > 1e-6) {
+        length(featureStart.point) > 1e-6;
+    var snappedToFeature = false;
+
+    if (isExplicit) {
+        // Hard snap: project the per-subcomp QEF solution onto the feature locus,
+        // then clamp into the cell bounds. This forces every crease cell to land
+        // its sub-vertex exactly on the feature curve / corner point.
         var featureTarget = featureStart.point;
         if (featureStart.kind == MID_FEATURE_LINE && length(featureStart.tangent) > 1e-6) {
             let tangent = safeUnit3(featureStart.tangent);
             featureTarget = featureStart.point + tangent * dot(vertexPos - featureStart.point, tangent);
+        } else if (featureStart.kind == MID_FEATURE_BOOLEAN_SEAM && length(featureStart.tangent) > 1e-6) {
+            let tangent = safeUnit3(featureStart.tangent);
+            featureTarget = featureStart.point + tangent * dot(vertexPos - featureStart.point, tangent);
         }
-        let delta = featureTarget - vertexPos;
-        let deltaLen = length(delta);
-        let maxNudge = uniforms.voxelSize * 0.02;
-        if (deltaLen > 1e-6) {
-            vertexPos = vertexPos + delta * min(1.0, maxNudge / deltaLen);
+        vertexPos = clamp(featureTarget, cellMin, cellMax);
+        snappedToFeature = true;
+    }
+
+    // Iso-projection: skipped for sub-vertices snapped to an explicit feature
+    // (the feature locus is authoritative — gradient descent here would unstick
+    // the vertex from the crease).
+    if (!snappedToFeature) {
+        for (var iter = 0u; iter < uniforms.mdcU0.y; iter = iter + 1u) {
+            let sdfResult = sceneSDF_mid(vertexPos);
+            let d = sdfResult.d - uniforms.isoValue;
+            if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) {
+                break;
+            }
+            let n = sdfResult.n;
+            let gradScale = max(1.0, sdfResult.g);
+            let correctedD = d / gradScale;
+
+            var projected = vertexPos - n * correctedD;
+            let margin = uniforms.voxelSize * uniforms.mdcF2.x;
+            let relaxedMin = cellMin - vec3f(margin);
+            let relaxedMax = cellMax + vec3f(margin);
+            projected = clamp(projected, relaxedMin, relaxedMax);
+            let step = projected - vertexPos;
+            let stepLen = length(step);
+            let baseMaxStep = uniforms.voxelSize * uniforms.mdcF2.y;
+            let maxStep = baseMaxStep * select(1.0, 0.5, sdfResult.g < 0.8);
+            if (stepLen > maxStep) {
+                vertexPos = vertexPos + step * (maxStep / stepLen);
+            } else {
+                vertexPos = projected;
+            }
             vertexPos = clamp(vertexPos, cellMin, cellMax);
         }
     }
 
-    // Iterative projection to ensure vertex is on the true iso-surface.
-    // Uses gradient-magnitude-aware stepping to handle smooth CSG regions
-    // where |∇f| < 1 and naive projection overshoots.
-    // Uses analytic normals from SDFResultMid for stability at CSG seams.
-    // Note: n is already correctly oriented by CSG operators (they negate n when needed)
-    for (var iter = 0u; iter < uniforms.mdcU0.y; iter = iter + 1u) {
-        let sdfResult = sceneSDF_mid(vertexPos);
-        let d = sdfResult.d - uniforms.isoValue;
-        if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { 
-            break; 
-        }
-        // Use analytic normal from SDF result (already correctly oriented)
-        let n = sdfResult.n;
-        
-        // Only use gradient magnitude to reduce step size.
-        let gradScale = max(1.0, sdfResult.g);
-        let correctedD = d / gradScale;
-        
-        var projected = vertexPos - n * correctedD;
-        // Clamp to cell bounds, but allow slight relaxation for high-curvature surfaces
-        let margin = uniforms.voxelSize * uniforms.mdcF2.x;
-        let relaxedMin = cellMin - vec3f(margin);
-        let relaxedMax = cellMax + vec3f(margin);
-        projected = clamp(projected, relaxedMin, relaxedMax);
-        // If projection would move vertex too far, use a damped step
-        // Use smaller steps in blend regions to avoid oscillation
-        let step = projected - vertexPos;
-        let stepLen = length(step);
-        let baseMaxStep = uniforms.voxelSize * uniforms.mdcF2.y;
-        let maxStep = baseMaxStep * select(1.0, 0.5, sdfResult.g < 0.8);
-        if (stepLen > maxStep) {
-            vertexPos = vertexPos + step * (maxStep / stepLen);
-        } else {
-            vertexPos = projected;
-        }
-        // Final clamp to strict cell bounds
-        vertexPos = clamp(vertexPos, cellMin, cellMax);
+    // Sub-vertex normal: prefer the bucket-aligned face normal stored in
+    // componentFeatures.n[subcomp]. This is what makes creases shade with sharp
+    // edges — neighboring sub-vertices on the other side of the crease carry the
+    // other face's normal. Fall back to the analytic SDF normal when the bucket
+    // slot is empty (single-bucket smooth surface should already be subcomp 0).
+    var vertexNormal = vec3f(0.0);
+    if (subcomponentIdx == 0u) { vertexNormal = featureStart.n0; }
+    else if (subcomponentIdx == 1u) { vertexNormal = featureStart.n1; }
+    else { vertexNormal = featureStart.n2; }
+    if (length(vertexNormal) < 0.001) {
+        vertexNormal = sceneSDF_mid(vertexPos).n;
     }
-    
-    // Normal must match final projected/clamped vertexPos (not the pre-step sample).
-    let finalSdfResult = sceneSDF_mid(vertexPos);
-    var vertexNormal = finalSdfResult.n;
-    if (qef.numPoints == 0u || length(vertexNormal) < 0.001) { 
-        vertexNormal = vec3f(0.0, 1.0, 0.0); 
+    if (length(vertexNormal) < 0.001) {
+        vertexNormal = vec3f(0.0, 1.0, 0.0);
     }
-    
+
     vertices[vertexRecordIdx] = Vertex(vertexPos, vertexNormal);
 }
 
@@ -1596,17 +1730,17 @@ fn generateTrianglesAtomic_Pass5(
         if (v0_vert_idx < 0 || v1_vert_idx < 0 || v2_vert_idx < 0 || v3_vert_idx < 0) {
             atomicAdd(&debugSkipCounters[0], 1u);
         } else {
-            let c0 = getEdgeComponent(u32(v0_vert_idx), 0u);
-            let c1 = getEdgeComponent(u32(v1_vert_idx), 1u);
-            let c2 = getEdgeComponent(u32(v2_vert_idx), 2u);
-            let c3 = getEdgeComponent(u32(v3_vert_idx), 3u);
-            if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
+            let p0 = getEdgeComponent(u32(v0_vert_idx), 0u);
+            let p1 = getEdgeComponent(u32(v1_vert_idx), 1u);
+            let p2 = getEdgeComponent(u32(v2_vert_idx), 2u);
+            let p3 = getEdgeComponent(u32(v3_vert_idx), 3u);
+            if (p0 == 0xffffffffu || p1 == 0xffffffffu || p2 == 0xffffffffu || p3 == 0xffffffffu) {
                 atomicAdd(&debugSkipCounters[1], 1u);
             } else {
-                let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
-                let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
-                let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
-                let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
+                let vv0 = vertexIndexFor(u32(v0_vert_idx), unpackComp(p0), unpackSub(p0));
+                let vv1 = vertexIndexFor(u32(v1_vert_idx), unpackComp(p1), unpackSub(p1));
+                let vv2 = vertexIndexFor(u32(v2_vert_idx), unpackComp(p2), unpackSub(p2));
+                let vv3 = vertexIndexFor(u32(v3_vert_idx), unpackComp(p3), unpackSub(p3));
                 let tp = chooseQuadTris(vv0, vv1, vv2, vv3);
                 if (tp.valid != 0u) {
                     let base = atomicAdd(&indexCount_face, 6u);
@@ -1633,17 +1767,17 @@ fn generateTrianglesAtomic_Pass5(
         if (v0_vert_idx < 0 || v1_vert_idx < 0 || v2_vert_idx < 0 || v3_vert_idx < 0) {
             atomicAdd(&debugSkipCounters[0], 1u);
         } else {
-            let c0 = getEdgeComponent(u32(v0_vert_idx), 4u);
-            let c1 = getEdgeComponent(u32(v1_vert_idx), 5u);
-            let c2 = getEdgeComponent(u32(v2_vert_idx), 6u);
-            let c3 = getEdgeComponent(u32(v3_vert_idx), 7u);
-            if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
+            let p0 = getEdgeComponent(u32(v0_vert_idx), 4u);
+            let p1 = getEdgeComponent(u32(v1_vert_idx), 5u);
+            let p2 = getEdgeComponent(u32(v2_vert_idx), 6u);
+            let p3 = getEdgeComponent(u32(v3_vert_idx), 7u);
+            if (p0 == 0xffffffffu || p1 == 0xffffffffu || p2 == 0xffffffffu || p3 == 0xffffffffu) {
                 atomicAdd(&debugSkipCounters[1], 1u);
             } else {
-                let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
-                let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
-                let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
-                let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
+                let vv0 = vertexIndexFor(u32(v0_vert_idx), unpackComp(p0), unpackSub(p0));
+                let vv1 = vertexIndexFor(u32(v1_vert_idx), unpackComp(p1), unpackSub(p1));
+                let vv2 = vertexIndexFor(u32(v2_vert_idx), unpackComp(p2), unpackSub(p2));
+                let vv3 = vertexIndexFor(u32(v3_vert_idx), unpackComp(p3), unpackSub(p3));
                 let tp = chooseQuadTris(vv0, vv1, vv2, vv3);
                 if (tp.valid != 0u) {
                     let base = atomicAdd(&indexCount_face, 6u);
@@ -1670,17 +1804,17 @@ fn generateTrianglesAtomic_Pass5(
         if (v0_vert_idx < 0 || v1_vert_idx < 0 || v2_vert_idx < 0 || v3_vert_idx < 0) {
             atomicAdd(&debugSkipCounters[0], 1u);
         } else {
-            let c0 = getEdgeComponent(u32(v0_vert_idx), 8u);
-            let c1 = getEdgeComponent(u32(v1_vert_idx), 9u);
-            let c2 = getEdgeComponent(u32(v2_vert_idx), 10u);
-            let c3 = getEdgeComponent(u32(v3_vert_idx), 11u);
-            if (c0 == 0xffffffffu || c1 == 0xffffffffu || c2 == 0xffffffffu || c3 == 0xffffffffu) {
+            let p0 = getEdgeComponent(u32(v0_vert_idx), 8u);
+            let p1 = getEdgeComponent(u32(v1_vert_idx), 9u);
+            let p2 = getEdgeComponent(u32(v2_vert_idx), 10u);
+            let p3 = getEdgeComponent(u32(v3_vert_idx), 11u);
+            if (p0 == 0xffffffffu || p1 == 0xffffffffu || p2 == 0xffffffffu || p3 == 0xffffffffu) {
                 atomicAdd(&debugSkipCounters[1], 1u);
             } else {
-                let vv0 = u32(v0_vert_idx) * MAX_COMPONENTS_PER_CELL + c0;
-                let vv1 = u32(v1_vert_idx) * MAX_COMPONENTS_PER_CELL + c1;
-                let vv2 = u32(v2_vert_idx) * MAX_COMPONENTS_PER_CELL + c2;
-                let vv3 = u32(v3_vert_idx) * MAX_COMPONENTS_PER_CELL + c3;
+                let vv0 = vertexIndexFor(u32(v0_vert_idx), unpackComp(p0), unpackSub(p0));
+                let vv1 = vertexIndexFor(u32(v1_vert_idx), unpackComp(p1), unpackSub(p1));
+                let vv2 = vertexIndexFor(u32(v2_vert_idx), unpackComp(p2), unpackSub(p2));
+                let vv3 = vertexIndexFor(u32(v3_vert_idx), unpackComp(p3), unpackSub(p3));
                 let tp = chooseQuadTris(vv0, vv1, vv2, vv3);
                 if (tp.valid != 0u) {
                     let base = atomicAdd(&indexCount_face, 6u);

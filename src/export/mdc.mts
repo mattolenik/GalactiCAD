@@ -57,6 +57,14 @@ const SIZEOF_QEFDATA_STRUCT = 96
 const MAX_COMPONENTS_PER_CELL = 4
 const EDGES_PER_CELL = 12
 
+// Stage C: each component may emit up to MAX_SUBCOMPONENTS_PER_COMPONENT
+// sub-vertices (one per face-normal bucket) so creases produce real sharp mesh
+// edges. Smooth components only populate subcomp 0; the other slots stay
+// sentinel and are never referenced from the index buffer (Pass 5 only reads
+// the populated bucket via cellEdgeComponents).
+const MAX_SUBCOMPONENTS_PER_COMPONENT = 3
+const VERTICES_PER_CELL = MAX_COMPONENTS_PER_CELL * MAX_SUBCOMPONENTS_PER_COMPONENT
+
 export interface MDCParams {
     gridDimX: number
     gridDimY: number
@@ -499,7 +507,7 @@ export class MDCExport {
 
             const cellQEFDataBuffer = createBuffer(
                 "CellQEFData",
-                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
+                activeCellCount * VERTICES_PER_CELL * SIZEOF_QEFDATA_STRUCT,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
             )
             const componentFeaturesBuffer = createBuffer(
@@ -509,7 +517,7 @@ export class MDCExport {
             )
             const verticesBuffer = createBuffer(
                 "Vertices",
-                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
+                activeCellCount * VERTICES_PER_CELL * SIZEOF_VERTEX,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
             )
 
@@ -609,7 +617,7 @@ export class MDCExport {
             // MDC requires vertices per *local* connected component within each cell.
             {
                 progressCallback?.updateProgress("Pass 4: Vertex Generation", 80)
-                const totalVertexRecords = activeCellCount * MAX_COMPONENTS_PER_CELL
+                const totalVertexRecords = activeCellCount * VERTICES_PER_CELL
                 const ce = this.#device.createCommandEncoder({ label: "mdc_pass4" })
                 const pass = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
                 const totalWorkgroups = Math.ceil(totalVertexRecords / 64)
@@ -673,7 +681,7 @@ export class MDCExport {
                 `Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`
             )
 
-            const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
+            const actualVertexCount = activeCellCount * VERTICES_PER_CELL
             const verticesData = await readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
             let verts = new Float32Array(verticesData)
 

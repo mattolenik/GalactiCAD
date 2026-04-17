@@ -109,6 +109,10 @@ That results in previewShader being a string with the processed content of the c
 
 When making changes to binding groups, make sure all the bindings and mappings are the same in TypeScript and WGSL, make sure you always keep them in sync and don't forget to update things like byte offsets or indexes, etc.
 
+## Line endings
+
+**Never use Windows line endings (CRLF, `\r\n`).** All text files in this repo must use Unix line endings only: a single newline character (`\n`) to end each line. Do not introduce `\r` before newlines when editing or generating files.
+
 ## Learned User Preferences
 
 - Do not browse to the app or attempt in-agent visual validation; the user runs manual visual QA. For WGSL and preview rendering work, use `make build` for compile validation instead of relying on automated visual checks.

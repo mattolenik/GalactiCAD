@@ -348,7 +348,13 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let sideEps = max(max(SURF_DIST * 8.0, capH * 0.015), uniforms.voxelSize * 0.35);
     let rimEps = max(max(SURF_DIST * 8.0, capH * 0.02), uniforms.voxelSize * 0.6);
     let vtxEps = max(max(SURF_DIST * 8.0, capH * 0.03), uniforms.voxelSize * 1.1);
-    let sideLineVtxEps = max(max(SURF_DIST * 8.0, capH * 0.018), uniforms.voxelSize * 0.6);
+    // Side-line vertex window must be strictly tight: a sample on the side surface
+    // only sits *on* the vertical polygon-vertex column when its projected 2D
+    // distance to that column is sub-voxel. A wider window catches samples on the
+    // adjacent flat polygon edge near v0, which then incorrectly snap MDC vertices
+    // onto the column and produce spurious vertical creases co-planar with the
+    // actual side face.
+    let sideLineVtxEps = max(SURF_DIST * 4.0, uniforms.voxelSize * 0.18);
     let capCornerEps = max(rimEps, uniforms.voxelSize * 0.75);
 
     if (!onSide && abs(d2d) < rimEps && abs(dCap) < rimEps) {
@@ -467,7 +473,10 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let sideEps = max(max(SURF_DIST * 8.0, h * 0.015), uniforms.voxelSize * 0.35);
     let rimEps = max(max(SURF_DIST * 8.0, h * 0.02), uniforms.voxelSize * 0.6);
     let vtxEps = max(max(SURF_DIST * 8.0, h * 0.03), uniforms.voxelSize * 1.1);
-    let sideLineVtxEps = max(max(SURF_DIST * 8.0, h * 0.018), uniforms.voxelSize * 0.6);
+    // Side-line vertex window must be strictly tight so only samples genuinely
+    // on the helical polygon-vertex column emit a vertical-line feature.
+    // See the untwisted branch for rationale.
+    let sideLineVtxEps = max(SURF_DIST * 4.0, uniforms.voxelSize * 0.18);
     let capCornerEps = max(rimEps, uniforms.voxelSize * 0.75);
     let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
 

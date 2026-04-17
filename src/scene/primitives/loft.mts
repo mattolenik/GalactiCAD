@@ -216,8 +216,12 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         let v1B = polygonVertices[baseB + (edgeIdx + 1u) % count];
         let v0 = mix2f(v0A, v0B, localT);
         let v1 = mix2f(v1A, v1B, localT);
+        let nearCapBottom = abs(capY + h) < capCornerEps;
+        let nearCapTop = abs(capY - h) < capCornerEps;
+        let nearCap = nearCapBottom || nearCapTop;
+        let activeSideVtxEps = select(sideLineVtxEps, vtxEps, nearCap);
 
-        if (length(p.xz - v0) < vtxEps) {
+        if (length(p.xz - v0) < activeSideVtxEps) {
             let vPrevA = polygonVertices[baseA + (edgeIdx + count - 1u) % count];
             let vPrevB = polygonVertices[baseB + (edgeIdx + count - 1u) % count];
             let prevDirA = normalize(v0A - vPrevA);
@@ -250,7 +254,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
                 return sdfRMidLine(d, 1.0, n0, featurePoint, tangent, n1, length(p - featurePoint));
             }
         }
-        if (length(p.xz - v1) < vtxEps) {
+        if (length(p.xz - v1) < activeSideVtxEps) {
             let vNextA = polygonVertices[baseA + (edgeIdx + 2u) % count];
             let vNextB = polygonVertices[baseB + (edgeIdx + 2u) % count];
             let prevDirA = normalize(v1A - v0A);
@@ -301,6 +305,12 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let rimEps = max(max(SURF_DIST * 8.0, h * 0.02), uniforms.voxelSize * 0.6);
     let sideEps = max(max(SURF_DIST * 8.0, h * 0.015), uniforms.voxelSize * 0.35);
     let vtxEps = max(max(SURF_DIST * 8.0, h * 0.03), uniforms.voxelSize * 1.1);
+    // Side-line vertex window must be strictly tight: a sample on the side
+    // surface only sits *on* the (possibly tilted) profile-vertex column when its
+    // 2D distance to that column is sub-voxel. A wider window catches samples on
+    // the adjacent flat profile edge near v0, which then snap MDC vertices onto
+    // the column and produce spurious creases / degenerate quads.
+    let sideLineVtxEps = max(SURF_DIST * 4.0, uniforms.voxelSize * 0.18);
     let capCornerEps = max(rimEps, uniforms.voxelSize * 0.75);
     let capPlaneY = ${capYOff} + sgn(capY) * h;
     let bottomCombined = ${bottomProfile.wgslCombinedFuncName}(p.xz);

@@ -1133,20 +1133,6 @@ fn edgeDetection_Pass3(
         compPointCounts[c][bucketIdx] = compPointCounts[c][bucketIdx] + 1u;
     }
 
-    // Now that subcomponent assignment is known, write the packed
-    // (componentIdx, subcomponentIdx) per cube edge so Pass 5 can resolve the
-    // correct sub-vertex per neighbor cell.
-    for (var e = 0u; e < 12u; e = e + 1u) {
-        if (edgeCompBase + e >= arrayLength(&cellEdgeComponents)) { continue; }
-        var packed = 0xffffffffu;
-        let cIdx = edgeComponent[e];
-        let s = crossingSubcomp[e];
-        if (cIdx >= 0 && s != 0xffffffffu) {
-            packed = packCompSub(u32(cIdx), s);
-        }
-        cellEdgeComponents[edgeCompBase + e] = packed;
-    }
-
     // Phase 2 (infer): existing component-level explicit-feature resolution and
     // inferred-feature classification. Reads from Phase 1 collect outputs only.
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
@@ -1287,6 +1273,87 @@ fn edgeDetection_Pass3(
         inferredFeatures[c] = inferred;
     }
 
+    // Canonical rebucket: when the component has an explicit feature with valid
+    // face normals, reassign every crossing's subcomponent index by matching its
+    // crossing-normal to the explicit feature's face normals (feature.n0/n1/n2).
+    // This makes subcomp index consistent across neighboring cells (bucket s
+    // always means "the face matching feature.n_s"), so Pass 5 stitches each
+    // quad to the right side of the crease and we don't get twisted/inverted
+    // dual faces along ring/edge creases (the cause of "missing" triangles in
+    // loft and similar swept solids).
+    for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
+        if (compCrossCount[c] == 0u) { continue; }
+        let f = inferredFeatures[c];
+        let hasExplicit =
+            (f.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
+            (f.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
+            (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8);
+        if (!hasExplicit) { continue; }
+        let nFaces = f.normalCount;
+        if (nFaces < 2u) { continue; }
+        let n0len = length(f.n0);
+        let n1len = length(f.n1);
+        let n2len = length(f.n2);
+        if (n0len < 0.5 || n1len < 0.5) { continue; }
+        if (nFaces >= 3u && n2len < 0.5) { continue; }
+        for (var e = 0u; e < 12u; e = e + 1u) {
+            if (edgeCrossMask[e] == 0u) { continue; }
+            if (edgeComponent[e] != i32(c)) { continue; }
+            let normal = crossingNormal[e];
+            var bestS: u32 = 0u;
+            var bestDot = dot(normal, f.n0);
+            let d1 = dot(normal, f.n1);
+            if (d1 > bestDot) { bestDot = d1; bestS = 1u; }
+            if (nFaces >= 3u) {
+                let d2 = dot(normal, f.n2);
+                if (d2 > bestDot) { bestDot = d2; bestS = 2u; }
+            }
+            crossingSubcomp[e] = bestS;
+        }
+    }
+
+    // Collapse non-explicit components to a single sub-vertex.
+    //
+    // Inferred / rejected / unfeatured components still have crossings split
+    // across 2-3 physical normal buckets (from Phase 1's first-seen bucketing),
+    // but for those there is no canonical face-normal source to align bucket
+    // index across neighboring cells. Adjacent cells would disagree on which
+    // subcomp index represents "face A", and Pass 5 would stitch dual quads
+    // with twisted topology — visible as missing/inverted polygons on smooth
+    // high-curvature surfaces and at inferred creases. Forcing all crossings
+    // for these components into subcomp 0 reduces them to single-vertex-per-
+    // component (same as pre-Stage-C behavior) and keeps the mesh consistent.
+    // Crisp creases still come from explicit features, which keep their
+    // canonical multi-bucket layout.
+    for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
+        if (compCrossCount[c] == 0u) { continue; }
+        let f = inferredFeatures[c];
+        let hasExplicit =
+            (f.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
+            (f.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
+            (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8);
+        if (hasExplicit) { continue; }
+        for (var e = 0u; e < 12u; e = e + 1u) {
+            if (edgeCrossMask[e] == 0u) { continue; }
+            if (edgeComponent[e] != i32(c)) { continue; }
+            crossingSubcomp[e] = 0u;
+        }
+    }
+
+    // Now that subcomponent assignment is canonical, write the packed
+    // (componentIdx, subcomponentIdx) per cube edge so Pass 5 can resolve the
+    // correct sub-vertex per neighbor cell.
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        if (edgeCompBase + e >= arrayLength(&cellEdgeComponents)) { continue; }
+        var packed = 0xffffffffu;
+        let cIdx = edgeComponent[e];
+        let s = crossingSubcomp[e];
+        if (cIdx >= 0 && s != 0xffffffffu) {
+            packed = packCompSub(u32(cIdx), s);
+        }
+        cellEdgeComponents[edgeCompBase + e] = packed;
+    }
+
     // Phase 3 (project) + Phase 4 (accumulate): project each crossing onto the
     // explicit feature locus when present, then add the (possibly projected)
     // crossing plane to the per-component QEF. Projecting all in-cell crossings
@@ -1396,23 +1463,41 @@ fn edgeDetection_Pass3(
     // inferred features for this active cell. componentFeatures stays per
     // component (one entry per cell-component, not per sub-vertex).
     //
-    // We repurpose feature.n0/n1/n2 as the bucket-aligned face normals
-    // (`safeUnit3(compNormalSums[c][s])`) before writing. This makes Pass 4's
-    // sub-vertex shading normal directly addressable as `feature.n[s]`. The
-    // earlier Phase-3/Phase-4 logic already consumed the original (explicit /
-    // inferred) face normals, so overwriting them now is safe.
+    // We repurpose feature.n0/n1/n2 as the per-subcomp shading normal so Pass 4
+    // can address the sub-vertex face normal as `feature.n[s]`.
+    //
+    // - Explicit features (LINE/CORNER/SEAM with valid face normals): we
+    //   rebucketed crossings to match feature.n_s above, so the canonical
+    //   shading normal for sub-vertex s IS feature.n_s. We keep those values
+    //   intact (they're already aligned).
+    //
+    // - Non-explicit / inferred / smooth components: feature.n0/n1/n2 came
+    //   from the inference path (which used physical bucket normals) or are
+    //   zero. Overwrite with the actual bucket-averaged normals so each
+    //   sub-vertex still gets the right shading direction.
     let compBase = active_cell_array_idx * MAX_COMPONENTS_PER_CELL;
     let vertBase = active_cell_array_idx * VERTICES_PER_CELL;
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         var cf = inferredFeatures[c];
-        if (compNormalBucketCount[c] >= 1u && compPointCounts[c][0] > 0u) {
-            cf.n0 = safeUnit3(compNormalSums[c][0]);
-        }
-        if (compNormalBucketCount[c] >= 2u && compPointCounts[c][1] > 0u) {
-            cf.n1 = safeUnit3(compNormalSums[c][1]);
-        }
-        if (compNormalBucketCount[c] >= 3u && compPointCounts[c][2] > 0u) {
-            cf.n2 = safeUnit3(compNormalSums[c][2]);
+        let hasExplicitFaces =
+            (cf.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
+            (cf.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
+            (cf.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8);
+        if (!hasExplicitFaces) {
+            // Non-explicit components were just collapsed to subcomp 0 above,
+            // so the per-subcomp shading normal for this component is the
+            // averaged direction across ALL physical buckets, not just bucket 0.
+            // (Bucket 0 alone could be a single side of a soft chamfer, giving
+            // a shading discontinuity even though the geometry is smooth.)
+            var nSum = vec3f(0.0);
+            for (var b = 0u; b < 3u; b = b + 1u) {
+                if (b < compNormalBucketCount[c] && compPointCounts[c][b] > 0u) {
+                    nSum = nSum + compNormalSums[c][b];
+                }
+            }
+            cf.n0 = safeUnit3(nSum);
+            cf.n1 = vec3f(0.0);
+            cf.n2 = vec3f(0.0);
         }
         let cFeatIdx = compBase + c;
         if (cFeatIdx < arrayLength(&componentFeatures)) {
@@ -1500,25 +1585,39 @@ fn vertexGeneration_Pass4(
         length(featureStart.point) > 1e-6;
     var snappedToFeature = false;
 
+    var snappedToLine = false;
+    var lineTangent = vec3f(0.0);
     if (isExplicit) {
         // Hard snap: project the per-subcomp QEF solution onto the feature locus,
         // then clamp into the cell bounds. This forces every crease cell to land
         // its sub-vertex exactly on the feature curve / corner point.
         var featureTarget = featureStart.point;
-        if (featureStart.kind == MID_FEATURE_LINE && length(featureStart.tangent) > 1e-6) {
-            let tangent = safeUnit3(featureStart.tangent);
-            featureTarget = featureStart.point + tangent * dot(vertexPos - featureStart.point, tangent);
-        } else if (featureStart.kind == MID_FEATURE_BOOLEAN_SEAM && length(featureStart.tangent) > 1e-6) {
-            let tangent = safeUnit3(featureStart.tangent);
-            featureTarget = featureStart.point + tangent * dot(vertexPos - featureStart.point, tangent);
+        if ((featureStart.kind == MID_FEATURE_LINE || featureStart.kind == MID_FEATURE_BOOLEAN_SEAM) &&
+            length(featureStart.tangent) > 1e-6) {
+            lineTangent = safeUnit3(featureStart.tangent);
+            featureTarget = featureStart.point + lineTangent * dot(vertexPos - featureStart.point, lineTangent);
+            snappedToLine = true;
         }
         vertexPos = clamp(featureTarget, cellMin, cellMax);
         snappedToFeature = true;
     }
 
-    // Iso-projection: skipped for sub-vertices snapped to an explicit feature
-    // (the feature locus is authoritative — gradient descent here would unstick
-    // the vertex from the crease).
+    // Iso-projection.
+    //
+    // - Corner snap (single point feature): skip entirely — the corner IS on the
+    //   iso-surface by construction, and the analytic normal at a corner is
+    //   multi-valued so a gradient step would chatter.
+    //
+    // - Line/seam snap: the snap above projected onto a *straight* tangent line
+    //   through featureStart.point. For straight crease features that line is the
+    //   actual surface intersection so iso-projection is a no-op. For curved
+    //   crease features (twisted-extrude helical side, lathe rings) the local
+    //   tangent linearizes the curve, leaving the vertex slightly off-surface
+    //   and producing visible jaggies. Run a short iso-projection alternated
+    //   with re-snapping to the tangent line to converge onto the actual
+    //   curve-vs-surface intersection (Newton on the constrained surface).
+    //
+    // - No snap: full iso-projection as before.
     if (!snappedToFeature) {
         for (var iter = 0u; iter < uniforms.mdcU0.y; iter = iter + 1u) {
             let sdfResult = sceneSDF_mid(vertexPos);
@@ -1544,6 +1643,18 @@ fn vertexGeneration_Pass4(
             } else {
                 vertexPos = projected;
             }
+            vertexPos = clamp(vertexPos, cellMin, cellMax);
+        }
+    } else if (snappedToLine) {
+        for (var iter = 0u; iter < 4u; iter = iter + 1u) {
+            let sdfResult = sceneSDF_mid(vertexPos);
+            let d = sdfResult.d - uniforms.isoValue;
+            if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { break; }
+            let n = sdfResult.n;
+            let gradScale = max(1.0, sdfResult.g);
+            let stepSize = clamp(d / gradScale, -uniforms.voxelSize * 0.4, uniforms.voxelSize * 0.4);
+            vertexPos = vertexPos - n * stepSize;
+            vertexPos = featureStart.point + lineTangent * dot(vertexPos - featureStart.point, lineTangent);
             vertexPos = clamp(vertexPos, cellMin, cellMax);
         }
     }

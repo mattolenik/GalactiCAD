@@ -1,6 +1,12 @@
 import { GPUHelper } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
 import { MeshData } from "./export.mjs"
+import {
+    logExportMeshSanityStats,
+    optionalSimplifyExportedMesh,
+    reorientMeshTriangleWinding,
+    splitCreaseVertices,
+} from "./mesh-postprocess.mjs"
 import { exportStlAscii } from "./stl.mjs"
 
 /**
@@ -645,157 +651,7 @@ export class MDCExport {
                 triCount: Math.floor(tris.length / 3),
             })
 
-            // Re-orient triangles to a consistent winding.
-            //
-            // A watertight manifold can still *look* like it has holes if triangle winding is inconsistent
-            // and the viewer uses backface culling. Dual contouring quad emission can produce locally
-            // inconsistent winding on sharp features / near-degenerate quads.
-            //
-            // This post-pass:
-            // - makes adjacent triangles traverse shared edges in opposite directions (consistent orientation)
-            // - then flips entire connected components to produce positive signed volume (outward by convention)
-            {
-                const stride = SIZEOF_VERTEX / 4 // floats per vertex
-                const triCount = Math.floor(tris.length / 3)
-                if (triCount > 0) {
-                    type EdgeEntry = { t0: number; d0: number; t1: number; d1: number; count: number }
-                    const edgeMap = new Map<bigint, EdgeEntry>()
-
-                    const edgeKey = (a: number, b: number) => {
-                        const lo = a < b ? a : b
-                        const hi = a < b ? b : a
-                        return (BigInt(lo) << 32n) | BigInt(hi >>> 0)
-                    }
-                    const edgeDir = (a: number, b: number) => {
-                        // Direction of this edge in the triangle, relative to (min,max).
-                        // 0 => min->max, 1 => max->min
-                        return a < b ? 0 : 1
-                    }
-
-                    for (let t = 0; t < triCount; t++) {
-                        const i0 = tris[t * 3]!
-                        const i1 = tris[t * 3 + 1]!
-                        const i2 = tris[t * 3 + 2]!
-                        const edges: [number, number][] = [
-                            [i0, i1],
-                            [i1, i2],
-                            [i2, i0],
-                        ]
-                        for (const [a, b] of edges) {
-                            if (a === b) continue
-                            const k = edgeKey(a, b)
-                            const d = edgeDir(a, b)
-                            const e = edgeMap.get(k)
-                            if (!e) {
-                                edgeMap.set(k, { t0: t, d0: d, t1: -1, d1: 0, count: 1 })
-                            } else {
-                                e.count++
-                                if (e.t1 === -1) {
-                                    e.t1 = t
-                                    e.d1 = d
-                                }
-                            }
-                        }
-                    }
-
-                    const visited = new Uint8Array(triCount)
-                    const flip = new Uint8Array(triCount)
-                    const comps: number[][] = []
-
-                    for (let seed = 0; seed < triCount; seed++) {
-                        if (visited[seed]) continue
-                        visited[seed] = 1
-                        flip[seed] = 0
-                        const stack = [seed]
-                        const comp: number[] = []
-
-                        while (stack.length) {
-                            const t = stack.pop()!
-                            comp.push(t)
-
-                            const i0 = tris[t * 3]!
-                            const i1 = tris[t * 3 + 1]!
-                            const i2 = tris[t * 3 + 2]!
-                            const edges: [number, number][] = [
-                                [i0, i1],
-                                [i1, i2],
-                                [i2, i0],
-                            ]
-
-                            for (const [a, b] of edges) {
-                                if (a === b) continue
-                                const k = edgeKey(a, b)
-                                const e = edgeMap.get(k)
-                                if (!e || e.count !== 2 || e.t1 === -1) continue
-                                const curIs0 = e.t0 === t
-                                const nt = curIs0 ? e.t1 : e.t0
-                                if (nt < 0) continue
-
-                                const dCur = curIs0 ? e.d0 : e.d1
-                                const dNei = curIs0 ? e.d1 : e.d0
-
-                                // Effective edge direction after flipping:
-                                // effDir = dOrig XOR flipTri
-                                // We need neighbor to traverse edge in opposite direction:
-                                // effNei = effCur XOR 1
-                                const desiredFlipNei = (dNei ^ dCur ^ flip[t] ^ 1) & 1
-
-                                if (!visited[nt]) {
-                                    visited[nt] = 1
-                                    flip[nt] = desiredFlipNei
-                                    stack.push(nt)
-                                }
-                            }
-                        }
-                        comps.push(comp)
-                    }
-
-                    // Apply BFS-derived flips.
-                    for (let t = 0; t < triCount; t++) {
-                        if (!flip[t]) continue
-                        const off = t * 3
-                        const tmp = tris[off + 1]!
-                        tris[off + 1] = tris[off + 2]!
-                        tris[off + 2] = tmp
-                    }
-
-                    // Flip whole components to get positive signed volume (outward by convention).
-                    const vpos = (vidx: number) => {
-                        const base = vidx * stride
-                        return [verts[base]!, verts[base + 1]!, verts[base + 2]!] as const
-                    }
-                    const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                        [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
-                    const dot = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                        a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-                    const sub = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                        [a[0] - b[0], a[1] - b[1], a[2] - b[2]] as const
-
-                    for (const comp of comps) {
-                        let vol6 = 0 // 6x signed volume
-                        for (const t of comp) {
-                            const off = t * 3
-                            const i0 = tris[off + 0]!
-                            const i1 = tris[off + 1]!
-                            const i2 = tris[off + 2]!
-                            const p0 = vpos(i0)
-                            const p1 = vpos(i1)
-                            const p2 = vpos(i2)
-                            // signed volume contribution: dot(p0, cross(p1, p2))
-                            vol6 += dot(p0, cross(p1, p2))
-                        }
-                        if (vol6 < 0) {
-                            // Flip all triangles in the component.
-                            for (const t of comp) {
-                                const off = t * 3
-                                const tmp = tris[off + 1]!
-                                tris[off + 1] = tris[off + 2]!
-                                tris[off + 2] = tmp
-                            }
-                        }
-                    }
-                }
-            }
+            reorientMeshTriangleWinding(verts, tris, SIZEOF_VERTEX)
 
             // Vertex splitting at sharp edges (crease detection).
             // The GPU produces one normal per vertex via SDF gradient, which is
@@ -806,7 +662,7 @@ export class MDCExport {
                 const creaseAngle = this.params.creaseAngleDeg ?? 30
                 if (creaseAngle < 180) {
                     const beforeCount = (verts.length / (SIZEOF_VERTEX / 4)) | 0
-                    const split = splitCreaseVertices(verts, tris, creaseAngle)
+                    const split = splitCreaseVertices(verts, tris, creaseAngle, SIZEOF_VERTEX)
                     verts = split.verts
                     tris = split.tris
                     const afterCount = (verts.length / (SIZEOF_VERTEX / 4)) | 0
@@ -817,82 +673,13 @@ export class MDCExport {
             }
             logDiag("after crease split")
 
-            // Mesh simplification (QEM edge collapse via meshoptimizer)
-            if (this.params.simplifyTargetRatio !== undefined && this.params.simplifyTargetRatio < 1) {
-                const { simplifyMesh } = await import("./simplify.mjs")
-                const simplified = await simplifyMesh(
-                    { verts, tris },
-                    this.params.simplifyTargetRatio,
-                    this.params.simplifyTargetError,
-                    {
-                        lockBorder: this.params.simplifyLockBorder,
-                        sparse: this.params.simplifySparse,
-                        errorAbsolute: this.params.simplifyErrorAbsolute,
-                        prune: this.params.simplifyPrune,
-                        regularize: this.params.simplifyRegularize,
-                        normalWeight: this.params.simplifyNormalWeight,
-                    },
-                )
+            {
+                const simplified = await optionalSimplifyExportedMesh(verts, tris, this.params)
                 verts = simplified.verts
                 tris = simplified.tris
             }
 
-            // Basic mesh sanity stats to help diagnose “holes”:
-            // - boundary edges (count==1) indicate actual holes / open surface
-            // - degenerate triangles can look like missing faces
-            {
-                const stride = SIZEOF_VERTEX / 4 // floats per vertex
-                const triCount = Math.floor(tris.length / 3)
-                const areaEpsSq = Math.pow(this.params.voxelSize * this.params.voxelSize * 1e-6, 2)
-                let degenerate = 0
-
-                const edgeCounts = new Map<bigint, number>()
-                const addEdge = (a: number, b: number) => {
-                    if (a === b) return
-                    const lo = a < b ? a : b
-                    const hi = a < b ? b : a
-                    const key = (BigInt(lo) << 32n) | BigInt(hi >>> 0)
-                    edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1)
-                }
-
-                const vpos = (vidx: number) => {
-                    const base = vidx * stride
-                    return [verts[base]!, verts[base + 1]!, verts[base + 2]!] as const
-                }
-                const sub = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                    [a[0] - b[0], a[1] - b[1], a[2] - b[2]] as const
-                const cross = (a: readonly [number, number, number], b: readonly [number, number, number]) =>
-                    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] as const
-
-                for (let t = 0; t < triCount; t++) {
-                    const i0 = tris[t * 3]!
-                    const i1 = tris[t * 3 + 1]!
-                    const i2 = tris[t * 3 + 2]!
-
-                    addEdge(i0, i1)
-                    addEdge(i1, i2)
-                    addEdge(i2, i0)
-
-                    const p0 = vpos(i0)
-                    const p1 = vpos(i1)
-                    const p2 = vpos(i2)
-                    const e0 = sub(p1, p0)
-                    const e1 = sub(p2, p0)
-                    const n = cross(e0, e1)
-                    const a2 = n[0] * n[0] + n[1] * n[1] + n[2] * n[2]
-                    if (!isFinite(a2) || a2 <= areaEpsSq) degenerate++
-                }
-
-                let boundaryEdges = 0
-                let nonManifoldEdges = 0
-                for (const c of edgeCounts.values()) {
-                    if (c === 1) boundaryEdges++
-                    else if (c !== 2) nonManifoldEdges++
-                }
-                dbgLog("MdcExport").debug(
-                    `MDC mesh stats: tris=${triCount} degenerateTris=${degenerate} boundaryEdges=${boundaryEdges} nonManifoldEdges=${nonManifoldEdges}`
-                )
-            }
+            logExportMeshSanityStats(verts, tris, this.params.voxelSize, SIZEOF_VERTEX, "MdcExport", "MDC")
 
             progressCallback?.updateProgress("Complete", 100)
             logDiag("done")
@@ -905,169 +692,3 @@ export class MDCExport {
         }
     }
 }
-
-/** Vertex stride in f32 units (matches SIZEOF_VERTEX / 4). */
-const VERTEX_STRIDE_F32 = SIZEOF_VERTEX / Float32Array.BYTES_PER_ELEMENT
-
-/**
- * Two triangles share an edge through `sharedVert` iff they share a second
- * vertex (in addition to `sharedVert` itself).
- */
-function triSharesEdge(tris: Uint32Array, t0: number, t1: number, sharedVert: number): boolean {
-    const base0 = t0 * 3, base1 = t1 * 3
-    for (let c0 = 0; c0 < 3; c0++) {
-        const v0 = tris[base0 + c0]!
-        if (v0 === sharedVert) continue
-        for (let c1 = 0; c1 < 3; c1++) {
-            const v1 = tris[base1 + c1]!
-            if (v1 === sharedVert) continue
-            if (v0 === v1) return true
-        }
-    }
-    return false
-}
-
-/**
- * Split mesh vertices at crease edges and assign averaged face normals per
- * smooth group.  This replaces the single-point SDF gradient normal (which is
- * discontinuous at sharp features) with proper per-face-group normals.
- *
- * Algorithm:
- *  1. Compute unit face normals from triangle geometry.
- *  2. Build CSR vertex → triangle adjacency.
- *  3. For each vertex, flood-fill its adjacent triangles into smooth groups
- *     (connected via shared edges, face normals within the cosine threshold).
- *  4. Emit one output vertex per group with the group-averaged face normal.
- *
- * Unreferenced input vertices are dropped (implicit compaction).
- */
-function splitCreaseVertices(
-    verts: Float32Array<ArrayBuffer>,
-    tris: Uint32Array<ArrayBuffer>,
-    creaseAngleDeg: number,
-): { verts: Float32Array<ArrayBuffer>; tris: Uint32Array<ArrayBuffer> } {
-    const S = VERTEX_STRIDE_F32
-    const cosThresh = Math.cos(creaseAngleDeg * Math.PI / 180)
-    const triCount = (tris.length / 3) | 0
-    const vertCount = (verts.length / S) | 0
-    if (triCount === 0 || vertCount === 0) return { verts, tris }
-
-    // 1. Unit face normals
-    const fnx = new Float32Array(triCount)
-    const fny = new Float32Array(triCount)
-    const fnz = new Float32Array(triCount)
-    for (let t = 0; t < triCount; t++) {
-        const b0 = tris[t * 3]! * S, b1 = tris[t * 3 + 1]! * S, b2 = tris[t * 3 + 2]! * S
-        const ax = verts[b1]! - verts[b0]!, ay = verts[b1 + 1]! - verts[b0 + 1]!, az = verts[b1 + 2]! - verts[b0 + 2]!
-        const bx = verts[b2]! - verts[b0]!, by = verts[b2 + 1]! - verts[b0 + 1]!, bz = verts[b2 + 2]! - verts[b0 + 2]!
-        let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx
-        const l = Math.hypot(nx, ny, nz)
-        if (l > 1e-20) { nx /= l; ny /= l; nz /= l }
-        fnx[t] = nx; fny[t] = ny; fnz[t] = nz
-    }
-
-    // 2. CSR adjacency: vertex → (triangle, corner) pairs
-    const deg = new Uint32Array(vertCount)
-    for (let k = 0; k < tris.length; k++) {
-        const vi = tris[k]!
-        if (vi < vertCount) deg[vi]++
-    }
-    const adjOff = new Uint32Array(vertCount + 1)
-    for (let i = 0; i < vertCount; i++) adjOff[i + 1] = adjOff[i]! + deg[i]!
-    const totalAdj = adjOff[vertCount]!
-    const adjT = new Uint32Array(totalAdj)
-    const adjC = new Uint8Array(totalAdj)
-    const cursor = new Uint32Array(vertCount)
-    for (let t = 0; t < triCount; t++)
-        for (let c = 0; c < 3; c++) {
-            const vi = tris[t * 3 + c]!
-            if (vi < vertCount) {
-                const off = adjOff[vi]! + cursor[vi]!
-                adjT[off] = t
-                adjC[off] = c
-                cursor[vi]++
-            }
-        }
-
-    // 3. Cluster and emit
-    const outTris = new Uint32Array(tris)
-    let cap = Math.max(vertCount * 2, 1024)
-    let outV = new Float32Array(cap * S)
-    let nOut = 0
-
-    const ensureCap = () => {
-        if (nOut < cap) return
-        cap *= 2
-        const nv = new Float32Array(cap * S)
-        nv.set(outV.subarray(0, nOut * S))
-        outV = nv
-    }
-
-    // Reusable per-vertex scratch (avoids per-vertex allocations for most vertices)
-    let visBuf = new Uint8Array(64)
-
-    for (let vi = 0; vi < vertCount; vi++) {
-        const s0 = adjOff[vi]!, s1 = adjOff[vi + 1]!
-        const n = s1 - s0
-        if (n === 0) continue
-
-        if (visBuf.length < n) visBuf = new Uint8Array(Math.max(n, visBuf.length * 2))
-        const vis = visBuf
-        vis.fill(0, 0, n)
-
-        for (let seed = 0; seed < n; seed++) {
-            if (vis[seed]) continue
-            vis[seed] = 1
-
-            // Flood-fill one smooth group
-            const grp: number[] = [seed]
-            const stk: number[] = [seed]
-            while (stk.length > 0) {
-                const ci = stk.pop()!
-                const ct = adjT[s0 + ci]!
-                for (let j = 0; j < n; j++) {
-                    if (vis[j]) continue
-                    const jt = adjT[s0 + j]!
-                    const dot = fnx[ct]! * fnx[jt]! + fny[ct]! * fny[jt]! + fnz[ct]! * fnz[jt]!
-                    if (dot < cosThresh) continue
-                    if (!triSharesEdge(tris, ct, jt, vi)) continue
-                    vis[j] = 1
-                    grp.push(j)
-                    stk.push(j)
-                }
-            }
-
-            // Averaged face normal for this group
-            let nx = 0, ny = 0, nz = 0
-            for (const idx of grp) {
-                const t = adjT[s0 + idx]!
-                nx += fnx[t]!; ny += fny[t]!; nz += fnz[t]!
-            }
-            const l = Math.hypot(nx, ny, nz)
-            if (l > 1e-12) { nx /= l; ny /= l; nz /= l }
-
-            ensureCap()
-            const sb = vi * S, db = nOut * S
-            outV[db] = verts[sb]!
-            outV[db + 1] = verts[sb + 1]!
-            outV[db + 2] = verts[sb + 2]!
-            outV[db + 3] = 0
-            outV[db + 4] = nx
-            outV[db + 5] = ny
-            outV[db + 6] = nz
-            outV[db + 7] = 0
-
-            for (const idx of grp) {
-                outTris[adjT[s0 + idx]! * 3 + adjC[s0 + idx]!] = nOut
-            }
-            nOut++
-        }
-    }
-
-    const resultVerts = new Float32Array(nOut * S)
-    resultVerts.set(outV.subarray(0, nOut * S))
-    const resultTris = new Uint32Array(outTris.length)
-    resultTris.set(outTris)
-    return { verts: resultVerts, tris: resultTris }
-}
-

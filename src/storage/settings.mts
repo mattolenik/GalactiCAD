@@ -2,6 +2,7 @@ import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import type { DebugLogModulesState } from "../logging/debug-log.mjs"
 import { log, mergeDebugLogModulesFromStorage } from "../logging/debug-log.mjs"
+import type { MeshExporter } from "../render-worker-protocol.mjs"
 import { db } from "./db.mjs"
 
 // ---------------------------------------------------------------------------
@@ -70,6 +71,10 @@ export interface GlobalSettings {
         devToolsLightingExpanded: boolean
         showFps: boolean
         meshSimplifyOnExport: boolean
+        /** GPU mesh pipeline for STL export and live mesh viewer. */
+        meshExporter: MeshExporter
+        /** Per-exporter tuning; ISO Phase 1 uses dense uniform grids (see `chooseIsoVoxelForGpuLimits`). */
+        isoExport: IsoExportSettings
         diskSyncIntervalSeconds: number
         theme: ThemeMode
         editor: EditorSettings
@@ -119,6 +124,23 @@ function defaultDocSettings(): DocumentSettings {
     return { camera: defaultCamera(), preview: defaultPreview(), cursorPosition: defaultCursorPosition(), selection: defaultSelection() }
 }
 
+/**
+ * ISO Phase-1 export tuning knobs (see `chooseIsoVoxelForGpuLimits` in `src/export/iso.mts`).
+ * Persisted under `app.isoExport`; the worker may coarsen `voxelSizeMm` to fit GPU buffer limits.
+ */
+export interface IsoExportSettings {
+    /** Base voxel size in mm (worker may coarsen if dense buffers exceed `maxBufferSize`). */
+    voxelSizeMm: number
+    /** Bounding-box padding in mm added on every side of the SDF bounds. */
+    padMm: number
+    /** Face-normal angle threshold for crease vertex splitting (degrees, 180 = disable splitting). */
+    creaseAngleDeg: number
+}
+
+export function defaultIsoExportSettings(): IsoExportSettings {
+    return { voxelSizeMm: 0.1, padMm: 3.2, creaseAngleDeg: 30 }
+}
+
 function defaultGlobalSettings(): GlobalSettings {
     return {
         preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
@@ -129,6 +151,8 @@ function defaultGlobalSettings(): GlobalSettings {
             devToolsLightingExpanded: false,
             showFps: true,
             meshSimplifyOnExport: true,
+            meshExporter: "mdc",
+            isoExport: defaultIsoExportSettings(),
             diskSyncIntervalSeconds: 30,
             theme: "dark",
             editor: defaultEditorSettings(),
@@ -363,6 +387,16 @@ export class SettingsManager {
                 const app = { ...def.app, ...parsed.app }
                 if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
+                if (app.meshExporter !== "mdc" && app.meshExporter !== "iso") app.meshExporter = "mdc"
+                const isoDef = defaultIsoExportSettings()
+                const iso = { ...isoDef, ...(app as { isoExport?: Partial<IsoExportSettings> }).isoExport }
+                if (typeof iso.voxelSizeMm !== "number" || !(iso.voxelSizeMm > 0) || iso.voxelSizeMm > 1024)
+                    iso.voxelSizeMm = isoDef.voxelSizeMm
+                if (typeof iso.padMm !== "number" || iso.padMm < 0 || iso.padMm > 1024)
+                    iso.padMm = isoDef.padMm
+                if (typeof iso.creaseAngleDeg !== "number" || iso.creaseAngleDeg < 0 || iso.creaseAngleDeg > 180)
+                    iso.creaseAngleDeg = isoDef.creaseAngleDeg
+                app.isoExport = iso
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false
                 if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"

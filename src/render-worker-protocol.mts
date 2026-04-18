@@ -125,6 +125,16 @@ export interface EdgeHitData {
 // Main -> Worker messages
 // ---------------------------------------------------------------------------
 
+/** Which GPU mesh pipeline runs for `renderMesh` (dev tools / export). */
+export type MeshExporter = "mdc" | "iso"
+
+/** ISO Phase-1 export tuning passed from main thread to render worker. */
+export interface IsoExportTuning {
+    voxelSizeMm: number
+    padMm: number
+    creaseAngleDeg: number
+}
+
 export type MainToWorkerMessage =
     | { type: "init"; canvas: OffscreenCanvas; sharedBuffer?: SharedArrayBuffer }
     | { type: "renderKick"; version: number }
@@ -138,7 +148,7 @@ export type MainToWorkerMessage =
     // previewParamsF32Patch: cap-drag only — patches #previewF32Shadow then 8-byte write to previewCapParamDrag at byteOffset.
     // Does not touch boundsSceneParams or mdcSceneParams (those refresh on build / param-only build).
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; previewParamsF32Patch?: { byteOffset: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
-    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
+    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean; exporter?: MeshExporter; isoTuning?: IsoExportTuning }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }

@@ -1155,6 +1155,15 @@ class App {
         }
 
         devTools.meshSimplifyOnExport = this.#settings.getGlobal().app.meshSimplifyOnExport
+        devTools.onMeshSimplifyChange = () => {
+            this.#scheduleMeshUpdate(this.editor.getValue())
+        }
+        devTools.onMeshExporterChange = () => {
+            this.#scheduleMeshUpdate(this.editor.getValue())
+        }
+        devTools.onIsoExportTuningChange = () => {
+            this.#scheduleMeshUpdate(this.editor.getValue())
+        }
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)
         devTools.onDebugLogModulesChange = () => {
@@ -1421,6 +1430,8 @@ class App {
                 })
                 const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName, {
                     simplifyOnExport: devTools.meshSimplifyOnExport,
+                    exporter: devTools.meshExporter,
+                    isoTuning: devTools.isoExportTuning,
                 })
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
@@ -1496,6 +1507,8 @@ class App {
             try {
                 const mesh = await this.renderer.renderMesh(src, this.#tabs.active, {
                     simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
+                    exporter: this.#toolbarRefs.devTools.meshExporter,
+                    isoTuning: this.#toolbarRefs.devTools.isoExportTuning,
                 })
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {

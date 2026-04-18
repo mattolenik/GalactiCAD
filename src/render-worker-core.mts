@@ -11,8 +11,10 @@ import outlineShader from "./shaders/outline.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import mdcShader from "./shaders/mdc.wgsl"
+import isoShader from "./shaders/iso.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
+import { chooseIsoVoxelForGpuLimits, ISOExport } from "./export/iso.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
@@ -36,6 +38,8 @@ import {
     DEFAULT_PREVIEW_SHADING,
     type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
+    type MeshExporter,
+    type IsoExportTuning,
     type PreviewShadingParams,
     type RenderSelectionState,
     type SelectedEdgePayload,
@@ -303,11 +307,11 @@ export class RenderWorkerCore {
         | { superseded: true }
     > {
         const roundMs = (x: number) => Math.round(x * 100) / 100
-        this.#builtBody = body
         const t0 = performance.now()
-        this.#scene = new SceneInfo(body, { bvhEnabled: this.#bvhEnabled })
+        const scene = new SceneInfo(body, { bvhEnabled: this.#bvhEnabled })
+        this.#scene = scene
+        this.#builtBody = body
         const tSceneConstruct = performance.now()
-        const scene = this.#scene
         const allNodes = scene.getAllNodes()
         const tGetNodes1 = performance.now()
         const tFp0 = performance.now()
@@ -939,7 +943,14 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(body: string, requestId?: number, documentName?: string, simplifyOnExport = true): Promise<void> {
+    async handleRenderMesh(
+        body: string,
+        requestId?: number,
+        documentName?: string,
+        simplifyOnExport = true,
+        exporter: MeshExporter = "mdc",
+        isoTuning?: IsoExportTuning,
+    ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
                 await this.build(body, undefined)
@@ -949,20 +960,40 @@ export class RenderWorkerCore {
                 self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId, documentName })
                 return
             }
-            const voxelSizeMm = 0.1
-            const pad = 3.2
+            // Dev-tools knobs (see DevToolsPanel ISO section). Defaults match prior fixed values.
+            const baseVoxelMm = isoTuning?.voxelSizeMm ?? 0.1
+            const pad = isoTuning?.padMm ?? 3.2
+            const creaseAngleDeg = isoTuning?.creaseAngleDeg ?? 30
             const minX = bounds.min[0] - pad
             const minY = bounds.min[1] - pad
             const minZ = bounds.min[2] - pad
             const maxX = bounds.max[0] + pad
             const maxY = bounds.max[1] + pad
             const maxZ = bounds.max[2] + pad
-            const sizeX = Math.max(voxelSizeMm, maxX - minX)
-            const sizeY = Math.max(voxelSizeMm, maxY - minY)
-            const sizeZ = Math.max(voxelSizeMm, maxZ - minZ)
-            const gridDimX = Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1)
-            const gridDimY = Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1)
-            const gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelSizeMm) + 1)
+            const sizeX = Math.max(baseVoxelMm, maxX - minX)
+            const sizeY = Math.max(baseVoxelMm, maxY - minY)
+            const sizeZ = Math.max(baseVoxelMm, maxZ - minZ)
+            let voxelSizeMm = baseVoxelMm
+            let gridDimX: number
+            let gridDimY: number
+            let gridDimZ: number
+            if (exporter === "iso") {
+                const chosen = chooseIsoVoxelForGpuLimits(sizeX, sizeY, sizeZ, baseVoxelMm, this.#device.limits)
+                voxelSizeMm = chosen.voxelSizeMm
+                gridDimX = chosen.gridDimX
+                gridDimY = chosen.gridDimY
+                gridDimZ = chosen.gridDimZ
+                if (voxelSizeMm > baseVoxelMm + 1e-9) {
+                    log("RenderWorker").info(
+                        `ISO export: voxel coarsened from ${baseVoxelMm} mm to ${voxelSizeMm.toFixed(4)} mm `
+                            + `(grid ${gridDimX}×${gridDimY}×${gridDimZ}) to fit GPU buffer limits`,
+                    )
+                }
+            } else {
+                gridDimX = Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1)
+                gridDimY = Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1)
+                gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelSizeMm) + 1)
+            }
             const params: MDCParams = {
                 gridDimX,
                 gridDimY,
@@ -972,6 +1003,7 @@ export class RenderWorkerCore {
                 gridOffsetY: minY,
                 gridOffsetZ: minZ,
                 voxelSize: voxelSizeMm,
+                creaseAngleDeg,
                 ...(simplifyOnExport && {
                     simplifyTargetRatio: 0.1,
                     simplifyRegularize: false,
@@ -995,15 +1027,25 @@ export class RenderWorkerCore {
                 .replace("insert", "sceneSDF_fast", sceneSDF_fast)
                 .replace("insert", "sceneSDF", sceneSDF)
                 .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-            const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
-            const mdc = new MDCExport(
-                this.#helper,
-                params,
-                this.#uniformBuffers.polygonVertices,
-                this.#uniformBuffers.faceSelection,
-                this.#uniformBuffers.mdcSceneParams,
-            )
-            const mesh = await mdc.export(mdcShaderModule)
+            const exportShader = exporter === "iso" ? isoShader : mdcShader
+            const exportLabel = exporter === "iso" ? "ISO Export" : "MDC Export"
+            const exportShaderModule = shaderCompiler.compile(exportShader, exportLabel)
+            const mesh =
+                exporter === "iso"
+                    ? await new ISOExport(
+                          this.#helper,
+                          params,
+                          this.#uniformBuffers.polygonVertices,
+                          this.#uniformBuffers.faceSelection,
+                          this.#uniformBuffers.mdcSceneParams,
+                      ).export(exportShaderModule)
+                    : await new MDCExport(
+                          this.#helper,
+                          params,
+                          this.#uniformBuffers.polygonVertices,
+                          this.#uniformBuffers.faceSelection,
+                          this.#uniformBuffers.mdcSceneParams,
+                      ).export(exportShaderModule)
             self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)

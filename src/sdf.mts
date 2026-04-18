@@ -18,6 +18,8 @@ import {
     DEFAULT_PREVIEW_SHADING,
     type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
+    type MeshExporter,
+    type IsoExportTuning,
     type PreviewShadingParams,
     type SceneBuildPipelineMs,
     type WorkerToMainMessage,
@@ -144,7 +146,10 @@ export class SDFRenderer {
     #latestBuildRequestId = 0
     #latestRenderMeshRequestId = 0
     #latestThumbnailRequestId = 0
-    #pendingTranspile = new Map<number, { kind: TranspileKind; documentName?: string; width?: number; height?: number; simplifyOnExport?: boolean }>()
+    #pendingTranspile = new Map<
+        number,
+        { kind: TranspileKind; documentName?: string; width?: number; height?: number; simplifyOnExport?: boolean; exporter?: MeshExporter; isoTuning?: IsoExportTuning }
+    >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
     /** Wall-time anchors for `build()` request ids (transpile → worker round-trip). */
     #buildChronicleByRequestId = new Map<
@@ -540,7 +545,15 @@ export class SDFRenderer {
                 this.#pendingRenderMesh.delete(requestId)
                 return
             }
-            this.#worker.postMessage({ type: "renderMesh", body, requestId, documentName: pending.documentName, simplifyOnExport: pending.simplifyOnExport })
+            this.#worker.postMessage({
+                type: "renderMesh",
+                body,
+                requestId,
+                documentName: pending.documentName,
+                simplifyOnExport: pending.simplifyOnExport,
+                exporter: pending.exporter,
+                isoTuning: pending.isoTuning,
+            })
         } else if (pending.kind === "thumbnail") {
             if (requestId !== this.#latestThumbnailRequestId) {
                 this.#pendingThumbnail.get(requestId)?.reject(new Error("Superseded"))
@@ -1477,11 +1490,13 @@ export class SDFRenderer {
         await this.build(SDFRenderer.EMPTY_SCENE_SRC)
     }
 
-    async renderMesh(_src: string, documentName?: string, options?: { simplifyOnExport?: boolean }): Promise<MeshData> {
+    async renderMesh(_src: string, documentName?: string, options?: { simplifyOnExport?: boolean; exporter?: MeshExporter; isoTuning?: IsoExportTuning }): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
         this.#latestRenderMeshRequestId = requestId
         const simplifyOnExport = options?.simplifyOnExport ?? true
-        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport })
+        const exporter = options?.exporter ?? "mdc"
+        const isoTuning = options?.isoTuning
+        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport, exporter, isoTuning })
         return new Promise<MeshData>((resolve, reject) => {
             this.#pendingRenderMesh.set(requestId, { resolve, reject })
             this.#transpileWorker.postMessage({ type: "transpile", src: _src.trim(), requestId, kind: "renderMesh", documentName })

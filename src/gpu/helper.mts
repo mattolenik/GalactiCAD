@@ -94,6 +94,10 @@ export class GPUHelper {
         // Callers often want just a prefix of a large SSBO (e.g. actualVertexCount * stride),
         // so we must copy exactly `size`, not `buffer.size`.
         const copySize = Math.min(size, buffer.size)
+        // Zero-sized buffers and zero-sized copies are invalid; empty prefix readback is fine.
+        if (copySize === 0) {
+            return new ArrayBuffer(0)
+        }
         const readbackBuffer = this.device.createBuffer({
             label: `${buffer.label}_readback`,
             mappedAtCreation: false,
@@ -115,6 +119,9 @@ export class GPUHelper {
     /** Read back a prefix of `source` into caller-owned `readback` (COPY_DST | MAP_READ); avoids per-call buffer alloc. */
     async readBufferDataReuse(source: GPUBuffer, readback: GPUBuffer, size: number): Promise<ArrayBuffer> {
         const copySize = Math.min(size, source.size, readback.size)
+        if (copySize === 0) {
+            return new ArrayBuffer(0)
+        }
         const ce = this.device.createCommandEncoder()
         ce.copyBufferToBuffer(source, 0, readback, 0, copySize)
         this.device.queue.submit([ce.finish()])

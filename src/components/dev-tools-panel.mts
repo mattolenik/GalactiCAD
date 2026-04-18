@@ -2,7 +2,7 @@ import { BehaviorSubject, skip } from "rxjs"
 import type { Subscription } from "rxjs"
 import { __fg_color, __tone_1, __tone_2 } from "../style/style.mjs"
 import { connectCheckbox } from "../binding/bind.mjs"
-import { SettingsManager } from "../storage/settings.mjs"
+import { defaultIsoExportSettings, type IsoExportSettings, SettingsManager } from "../storage/settings.mjs"
 import type { DocumentTabs } from "./document-tabs.mjs"
 import {
     loadBenchmarkSuite,
@@ -13,6 +13,7 @@ import {
 } from "../benchmark/benchmark.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
+    type MeshExporter,
     type PreviewShadingParams,
 } from "../render-worker-protocol.mjs"
 import { DEBUG_LOG_MODULES, log, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
@@ -56,6 +57,13 @@ export class DevToolsPanel extends HTMLElement {
     #meshViewer$: BehaviorSubject<boolean>
     #meshSimplifyCheckbox: HTMLInputElement
     #meshSimplify$: BehaviorSubject<boolean>
+    #meshExporterSelect: HTMLSelectElement
+    #meshExporter$: BehaviorSubject<MeshExporter>
+    #isoExport$: BehaviorSubject<IsoExportSettings>
+    #isoVoxelInput!: HTMLInputElement
+    #isoPadInput!: HTMLInputElement
+    #isoCreaseInput!: HTMLInputElement
+    #isoSection!: HTMLDivElement
     #lightingExpandedCheckbox: HTMLInputElement
     #lightingExpanded$: BehaviorSubject<boolean>
     #lightingSection: HTMLDivElement
@@ -81,6 +89,12 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback when mesh simplify on export toggle changes */
     onMeshSimplifyChange?: (enabled: boolean) => void
+
+    /** Callback when mesh exporter (MDC vs ISO) changes */
+    onMeshExporterChange?: (exporter: MeshExporter) => void
+
+    /** Callback when any ISO export tuning knob changes (re-mesh on live preview). */
+    onIsoExportTuningChange?: (tuning: IsoExportSettings) => void
 
     /** Preview shading uniforms; knob values are not persisted (section visibility is). */
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
@@ -145,6 +159,20 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshSimplify$.next(enabled)
     }
 
+    get meshExporter(): MeshExporter {
+        return this.#meshExporter$.value
+    }
+
+    set meshExporter(exporter: MeshExporter) {
+        this.#meshExporter$.next(exporter)
+        this.#meshExporterSelect.value = exporter
+    }
+
+    /** Snapshot of the ISO export tuning knobs (used to seed `renderMesh` calls). */
+    get isoExportTuning(): IsoExportSettings {
+        return { ...this.#isoExport$.value }
+    }
+
     /** Show or hide the panel */
     get visible(): boolean {
         return this.style.display !== "none"
@@ -192,6 +220,16 @@ export class DevToolsPanel extends HTMLElement {
             cursor: pointer;
             margin: 0;
             font-size: 16px;
+        }
+        select {
+            cursor: pointer;
+            max-width: 168px;
+            padding: 2px 4px;
+            border: 1px solid var(${__tone_1});
+            border-radius: 3px;
+            background: rgb(from var(${__fg_color}) r g b / 0.08);
+            color: inherit;
+            font: inherit;
         }
         button {
             cursor: pointer;
@@ -276,6 +314,8 @@ export class DevToolsPanel extends HTMLElement {
         this.#showFps$ = new BehaviorSubject(g.showFps)
         this.#meshViewer$ = new BehaviorSubject(g.meshViewerEnabled)
         this.#meshSimplify$ = new BehaviorSubject(g.meshSimplifyOnExport)
+        this.#meshExporter$ = new BehaviorSubject(g.meshExporter)
+        this.#isoExport$ = new BehaviorSubject<IsoExportSettings>({ ...defaultIsoExportSettings(), ...g.isoExport })
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
@@ -305,6 +345,91 @@ export class DevToolsPanel extends HTMLElement {
             this.#settings.updateGlobal({ app: { meshSimplifyOnExport: v } })
             this.onMeshSimplifyChange?.(v)
         })
+
+        const meshExporterLabel = document.createElement("label")
+        meshExporterLabel.style.display = "flex"
+        meshExporterLabel.style.alignItems = "center"
+        meshExporterLabel.style.gap = "4px"
+        meshExporterLabel.appendChild(document.createTextNode("Mesher"))
+        this.#meshExporterSelect = document.createElement("select")
+        for (const { value, text } of [
+            { value: "mdc" as const, text: "MDC (dual contour)" },
+            { value: "iso" as const, text: "ISO (Phase 1, smooth)" },
+        ]) {
+            const opt = document.createElement("option")
+            opt.value = value
+            opt.textContent = text
+            this.#meshExporterSelect.appendChild(opt)
+        }
+        this.#meshExporterSelect.value = this.#meshExporter$.value
+        this.#meshExporterSelect.addEventListener("change", () => {
+            const v = this.#meshExporterSelect.value
+            if (v === "mdc" || v === "iso") this.#meshExporter$.next(v)
+        })
+        meshExporterLabel.appendChild(this.#meshExporterSelect)
+        shadow.appendChild(meshExporterLabel)
+        this.#subscriptions.push(
+            this.#meshExporter$.pipe(skip(1)).subscribe(v => {
+                this.#meshExporterSelect.value = v
+                this.#settings.updateGlobal({ app: { meshExporter: v } })
+                this.onMeshExporterChange?.(v)
+            }),
+        )
+
+        // ISO export tuning: voxel size (mm), bbox padding (mm), crease angle (deg).
+        // Worker may coarsen voxel further to fit GPU buffer limits — see chooseIsoVoxelForGpuLimits.
+        this.#isoSection = document.createElement("div")
+        this.#isoSection.className = "lighting-section"
+        const isoHead = document.createElement("div")
+        isoHead.className = "shade-head"
+        isoHead.textContent = "ISO export"
+        this.#isoSection.appendChild(isoHead)
+        const initialIso = this.#isoExport$.value
+        this.#isoVoxelInput = this.#addIsoNumberRow(this.#isoSection, "Voxel (mm)", initialIso.voxelSizeMm, {
+            min: 0.001, max: 16, step: 0.01,
+        })
+        this.#isoPadInput = this.#addIsoNumberRow(this.#isoSection, "BBox pad (mm)", initialIso.padMm, {
+            min: 0, max: 64, step: 0.1,
+        })
+        this.#isoCreaseInput = this.#addIsoNumberRow(this.#isoSection, "Crease (°)", initialIso.creaseAngleDeg, {
+            min: 0, max: 180, step: 1,
+        })
+        const isoCommit = (next: Partial<IsoExportSettings>) => {
+            const merged: IsoExportSettings = { ...this.#isoExport$.value, ...next }
+            this.#isoExport$.next(merged)
+        }
+        this.#isoVoxelInput.addEventListener("change", () => {
+            const v = parseFloat(this.#isoVoxelInput.value)
+            if (Number.isFinite(v) && v > 0) isoCommit({ voxelSizeMm: v })
+            else this.#isoVoxelInput.value = String(this.#isoExport$.value.voxelSizeMm)
+        })
+        this.#isoPadInput.addEventListener("change", () => {
+            const v = parseFloat(this.#isoPadInput.value)
+            if (Number.isFinite(v) && v >= 0) isoCommit({ padMm: v })
+            else this.#isoPadInput.value = String(this.#isoExport$.value.padMm)
+        })
+        this.#isoCreaseInput.addEventListener("change", () => {
+            const v = parseFloat(this.#isoCreaseInput.value)
+            if (Number.isFinite(v) && v >= 0 && v <= 180) isoCommit({ creaseAngleDeg: v })
+            else this.#isoCreaseInput.value = String(this.#isoExport$.value.creaseAngleDeg)
+        })
+        const isoDefaultsBtn = document.createElement("button")
+        isoDefaultsBtn.textContent = "ISO defaults"
+        isoDefaultsBtn.addEventListener("click", () => {
+            const def = defaultIsoExportSettings()
+            this.#isoExport$.next(def)
+            this.#isoVoxelInput.value = String(def.voxelSizeMm)
+            this.#isoPadInput.value = String(def.padMm)
+            this.#isoCreaseInput.value = String(def.creaseAngleDeg)
+        })
+        this.#isoSection.appendChild(isoDefaultsBtn)
+        shadow.appendChild(this.#isoSection)
+        this.#subscriptions.push(
+            this.#isoExport$.pipe(skip(1)).subscribe(v => {
+                this.#settings.updateGlobal({ app: { isoExport: v } })
+                this.onIsoExportTuningChange?.(v)
+            }),
+        )
 
         this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)
         this.#subscriptions.push(connectCheckbox(this.#cameraOptCheckbox, this.#cameraOptimization$))
@@ -512,6 +637,37 @@ export class DevToolsPanel extends HTMLElement {
         el.append(cb, label)
         parent.appendChild(el)
         return cb
+    }
+
+    /** Reuses `.shade-row` styling for a `<label> <number-input>` pair (commits on change/blur). */
+    #addIsoNumberRow(
+        parent: ParentNode,
+        label: string,
+        initial: number,
+        attrs: { min: number; max: number; step: number },
+    ): HTMLInputElement {
+        const row = document.createElement("div")
+        row.className = "shade-row"
+        const lab = document.createElement("label")
+        lab.className = "knob-label"
+        lab.textContent = label
+        const input = document.createElement("input")
+        input.type = "number"
+        input.min = String(attrs.min)
+        input.max = String(attrs.max)
+        input.step = String(attrs.step)
+        input.value = String(initial)
+        input.style.flex = "1"
+        input.style.minWidth = "0"
+        input.style.padding = "1px 4px"
+        input.style.font = "inherit"
+        input.style.color = "inherit"
+        input.style.background = "rgb(from var(--__fg_color) r g b / 0.08)".replace("--__fg_color", __fg_color)
+        input.style.border = `1px solid var(${__tone_1})`
+        input.style.borderRadius = "3px"
+        row.append(lab, input)
+        parent.appendChild(row)
+        return input
     }
 
     disconnectedCallback() {

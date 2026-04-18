@@ -245,7 +245,15 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let onSide = (d - dCap) > 0.01;
     let gx_tw = combined.z;
     let gz_tw = combined.w;
-    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, 0.0, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
+    // Chain rule on f(p) = combined(R(angle(p.y)) · p.xz): twist contributes a real
+    // ∂f/∂y because R depends on p.y. With twisted = (tx, tz) and dangle/dy = twist/(2h)
+    // (zero outside the unclamped span), ∂tx/∂y = tz·dangle/dy and ∂tz/∂y = -tx·dangle/dy
+    // ⇒ gy_world = (dangle/dy)·(gx_tw·tz − gz_tw·tx). Without this the y-component is
+    // zero, splaying side normals horizontally and producing visible facet bands.
+    let withinSpan = capY > -h && capY < h && h > 1e-12;
+    let dangle_dy = select(0.0, twist / (2.0 * h), withinSpan);
+    let gy_world = dangle_dy * (gx_tw * twisted.y - gz_tw * twisted.x);
+    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, gy_world, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
     let capId = select(${capBottomId}u, ${capTopId}u, capY > 0.0);
@@ -345,7 +353,13 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let onSide = (d - dCap) > 0.01;
     let gx_tw = combined.z;
     let gz_tw = combined.w;
-    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, 0.0, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
+    // See compileAux: twist contributes ∂f/∂y via R(angle(p.y)). Without gy_world the
+    // analytic normal is missing its vertical component, which produces faceted shading
+    // bands on twisted surfaces (visible especially in ISO export Pass 7 normals).
+    let withinSpan = capY > -h && capY < h && h > 1e-12;
+    let dangle_dy = select(0.0, twist / (2.0 * h), withinSpan);
+    let gy_world = dangle_dy * (gx_tw * twisted.y - gz_tw * twisted.x);
+    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, gy_world, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
     return sdfRMid(d, 0.8, n);

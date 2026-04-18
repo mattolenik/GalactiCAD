@@ -28,6 +28,7 @@ export const DEBUG_LOG_MODULES = [
     "MonacoHighlighter",
     "WelcomeScreen",
     "MdcExport",
+    "IsoExport",
     "Settings",
     "Sdf",
     /** Reserved for optional verbose WGSL debug; `logWgsl()` is always-on for compile/pipeline errors. */

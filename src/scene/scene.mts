@@ -284,10 +284,18 @@ export class SceneInfo {
         if (options?.bvhEnabled !== undefined) {
             this.bvhEnabled = options.bvhEnabled
         }
-        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", transpiledBody)(
+        const root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", transpiledBody)(
             box, sphere, subtract, union, cylinder, cone, torus, threaded_rod, capsule, plane, hexprism, disc, blob,
             intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam,
             rotate, scale, shell, offset, elongate, twist, bend, taper)
+        if (!(root instanceof Node)) {
+            throw new Error(
+                root == null
+                    ? "Scene expression returned nothing (undefined). Use `return` with a shape, e.g. `return sphere.radius(1)`."
+                    : `Scene expression must return a Node; got ${typeof root}.`,
+            )
+        }
+        this.root = root
         this.root.scene = this
         this.root.build()
         this.#allNodesSnapshot = Array.from(this.#nodes.values())

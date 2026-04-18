@@ -155,6 +155,7 @@ export class SDFRenderer {
             exporter?: ExporterKind
             shrecTuning?: ShrecTuning
             simplifyTuning?: SimplifyTuning
+            voxelSizeMm?: number
         }
     >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
@@ -560,6 +561,7 @@ export class SDFRenderer {
                 simplifyOnExport: pending.simplifyOnExport,
                 exporter: pending.exporter,
                 shrecTuning: pending.shrecTuning,
+                voxelSizeMm: pending.voxelSizeMm,
                 simplifyTuning: pending.simplifyTuning,
             })
         } else if (pending.kind === "thumbnail") {
@@ -1501,7 +1503,7 @@ export class SDFRenderer {
     async renderMesh(
         _src: string,
         documentName?: string,
-        options?: { simplifyOnExport?: boolean; exporter?: ExporterKind; shrecTuning?: ShrecTuning; simplifyTuning?: SimplifyTuning },
+        options?: { simplifyOnExport?: boolean; exporter?: ExporterKind; shrecTuning?: ShrecTuning; simplifyTuning?: SimplifyTuning; voxelSizeMm?: number },
     ): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
         this.#latestRenderMeshRequestId = requestId
@@ -1509,7 +1511,8 @@ export class SDFRenderer {
         const exporter = options?.exporter
         const shrecTuning = options?.shrecTuning
         const simplifyTuning = options?.simplifyTuning
-        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport, exporter, shrecTuning, simplifyTuning })
+        const voxelSizeMm = options?.voxelSizeMm
+        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport, exporter, shrecTuning, simplifyTuning, voxelSizeMm })
         return new Promise<MeshData>((resolve, reject) => {
             this.#pendingRenderMesh.set(requestId, { resolve, reject })
             this.#transpileWorker.postMessage({ type: "transpile", src: _src.trim(), requestId, kind: "renderMesh", documentName })

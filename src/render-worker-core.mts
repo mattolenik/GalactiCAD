@@ -35,6 +35,7 @@ import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import {
+    DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
     DEFAULT_PREVIEW_SHADING,
     DEFAULT_SIMPLIFY_TUNING,
     type BuildTimingBreakdownMs,
@@ -953,6 +954,7 @@ export class RenderWorkerCore {
         exporter: ExporterKind = "mdc",
         shrecTuning?: ShrecTuning,
         simplifyTuning?: SimplifyTuning,
+        voxelSizeMmFromCaller?: number,
     ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
@@ -963,7 +965,13 @@ export class RenderWorkerCore {
                 self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId, documentName })
                 return
             }
-            const voxelSizeMm = 0.1
+            // Voxel size: caller-supplied value (from the Dev Tools slider) wins;
+            // otherwise fall back to the protocol default. The caller value is
+            // already validated upstream (settings.mts), so just guard against
+            // pathological zero/NaN here as a final safety net.
+            const voxelSizeMm = (voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0)
+                ? voxelSizeMmFromCaller
+                : DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
             const pad = 3.2
             const minX = bounds.min[0] - pad
             const minY = bounds.min[1] - pad
@@ -1013,6 +1021,9 @@ export class RenderWorkerCore {
                         mergeRelCutoff: shrecTuning.mergeRelCutoff,
                         mergeMaxDisplacement: shrecTuning.mergeMaxDisplacement > 0 ? shrecTuning.mergeMaxDisplacement : undefined,
                         creaseAngleDeg: shrecTuning.creaseAngleDeg,
+                        mergeGradientWeightPower: shrecTuning.mergeGradientWeightPower,
+                        // Tuning knob is in voxels; ShrecParams expects mm.
+                        dedupRadius: shrecTuning.dedupRadiusVoxels > 0 ? shrecTuning.dedupRadiusVoxels * voxelSizeMm : undefined,
                     }),
                 }
                 const shrec = new ShrecExport(

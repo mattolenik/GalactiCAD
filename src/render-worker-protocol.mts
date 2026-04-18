@@ -8,6 +8,14 @@ import type { SelectionInfo } from "./components/preview-window.mjs"
 import type { MeshData } from "./export/export.mjs"
 
 /**
+ * Default world-space voxel edge length (mm) used by both MDC and SHREC mesh
+ * extractors when the user has not set one explicitly. Half this value → 8×
+ * more voxels → ~8× more time and memory; double this value → 8× cheaper but
+ * blockier corners.
+ */
+export const DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM = 0.1
+
+/**
  * Selects the algorithm used by `handleRenderMesh` to extract a triangle mesh
  * from the scene SDF.
  *
@@ -45,6 +53,41 @@ export interface ShrecTuning {
      * surfaces). Set to 0 to make every triangle its own face. Default 30.
      */
     creaseAngleDeg: number
+    /**
+     * Vertex deduplication radius, expressed as a fraction of `voxelSize`,
+     * applied after MergeSharp relocation. Multiple cells whose vertices
+     * snapped to the same sharp feature (typically a CSG corner) end up
+     * geometrically co-located and are collapsed into a single shared
+     * vertex; degenerate triangles around the merged corner are dropped.
+     *
+     * - `0` → skip the dedup pass (each cell keeps its own vertex; current default).
+     * - `0.5` → typical setting for corner cleanup; merges anything within
+     *   half a voxel.
+     * - `1.0` → aggressive; can merge across cells that share an edge as
+     *   well as a face.
+     *
+     * The pass is the **"merge" half of MergeSharp's name** — it is what
+     * gives the algorithm a watertight shared vertex at every corner where
+     * three or more surfaces meet. Default `0` is conservative; raise it to
+     * actually engage the merge step.
+     */
+    dedupRadiusVoxels: number
+    /**
+     * Exponent applied to the SDF gradient magnitude `g = |∇SDF|` when
+     * weighting each cube-edge crossing in the QEF.
+     *
+     * - `0` → uniform weight (every crossing counts the same; current default).
+     * - `1` → linear weighting (`w = g`); standard weighted least squares.
+     * - `2` → squared weighting (`w = g²`); the IJK reference value, more
+     *   aggressive at de-weighting smooth-blend regions.
+     *
+     * For true SDFs `g = 1` everywhere and any value is equivalent. The knob
+     * matters only when the scene contains smooth CSG operators (`opUnionRound`,
+     * smooth blends, etc.) where `g < 1` near the blend region; raising the
+     * power keeps blend-region samples from dragging the QEF away from
+     * adjacent sharp features.
+     */
+    mergeGradientWeightPower: number
 }
 
 export const DEFAULT_SHREC_TUNING: ShrecTuning = {
@@ -52,6 +95,8 @@ export const DEFAULT_SHREC_TUNING: ShrecTuning = {
     mergeRelCutoff: 0.05,
     mergeMaxDisplacement: 0,
     creaseAngleDeg: 30,
+    mergeGradientWeightPower: 0,
+    dedupRadiusVoxels: 0,
 }
 
 /**
@@ -214,7 +259,7 @@ export type MainToWorkerMessage =
     // previewParamsF32Patch: cap-drag only — patches #previewF32Shadow then 8-byte write to previewCapParamDrag at byteOffset.
     // Does not touch boundsSceneParams or mdcSceneParams (those refresh on build / param-only build).
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; previewParamsF32Patch?: { byteOffset: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
-    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean; exporter?: ExporterKind; shrecTuning?: ShrecTuning; simplifyTuning?: SimplifyTuning }
+    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean; exporter?: ExporterKind; shrecTuning?: ShrecTuning; simplifyTuning?: SimplifyTuning; voxelSizeMm?: number }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }

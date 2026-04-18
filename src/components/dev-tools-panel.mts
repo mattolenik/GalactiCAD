@@ -12,6 +12,7 @@ import {
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
 import {
+    DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
     DEFAULT_PREVIEW_SHADING,
     DEFAULT_SHREC_TUNING,
     DEFAULT_SIMPLIFY_TUNING,
@@ -63,6 +64,9 @@ export class DevToolsPanel extends HTMLElement {
     #meshViewer$: BehaviorSubject<boolean>
     #meshSimplifyCheckbox: HTMLInputElement
     #meshSimplify$: BehaviorSubject<boolean>
+    #voxelSizeMm$: BehaviorSubject<number>
+    #voxelSizeRange: HTMLInputElement
+    #voxelSizeValueEl: HTMLSpanElement
     #useShrecCheckbox: HTMLInputElement
     #useShrec$: BehaviorSubject<boolean>
     #shrecTuningState: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
@@ -73,6 +77,10 @@ export class DevToolsPanel extends HTMLElement {
     #shrecMaxDispValueEl: HTMLSpanElement
     #shrecCreaseRange: HTMLInputElement
     #shrecCreaseValueEl: HTMLSpanElement
+    #shrecGradWeightRange: HTMLInputElement
+    #shrecGradWeightValueEl: HTMLSpanElement
+    #shrecDedupRange: HTMLInputElement
+    #shrecDedupValueEl: HTMLSpanElement
     #shrecSection: HTMLDivElement
     #simplifyTuningState: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
     #simplifySection: HTMLDivElement
@@ -108,6 +116,9 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback when mesh simplify on export toggle changes */
     onMeshSimplifyChange?: (enabled: boolean) => void
+
+    /** Callback when the mesh-export voxel-size slider changes (mm). */
+    onVoxelSizeMmChange?: (mm: number) => void
 
     /** Callback when the SHREC/MergeSharp exporter toggle changes (off = MDC). */
     onUseShrecExporterChange?: (enabled: boolean) => void
@@ -181,6 +192,22 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshSimplify$.next(enabled)
     }
 
+    /** Mesh-export grid voxel size in mm. Master quality knob; affects MDC and SHREC equally. */
+    get voxelSizeMm(): number {
+        return this.#voxelSizeMm$.value
+    }
+
+    set voxelSizeMm(mm: number) {
+        this.#voxelSizeMm$.next(mm)
+    }
+
+    /** Sync the voxel-size slider from persisted settings. */
+    syncVoxelSizeMmFromSettings(mm: number): void {
+        this.#voxelSizeMm$.next(mm)
+        this.#voxelSizeRange.value = String(mm)
+        this.#voxelSizeValueEl.textContent = DevToolsPanel.#formatVoxelSize(mm)
+    }
+
     get useShrecExporter(): boolean {
         return this.#useShrec$.value
     }
@@ -223,6 +250,10 @@ export class DevToolsPanel extends HTMLElement {
         this.#shrecMaxDispValueEl.textContent = DevToolsPanel.#formatShrecValue("mergeMaxDisplacement", tuning.mergeMaxDisplacement)
         this.#shrecCreaseRange.value = String(tuning.creaseAngleDeg)
         this.#shrecCreaseValueEl.textContent = DevToolsPanel.#formatShrecValue("creaseAngleDeg", tuning.creaseAngleDeg)
+        this.#shrecGradWeightRange.value = String(tuning.mergeGradientWeightPower)
+        this.#shrecGradWeightValueEl.textContent = DevToolsPanel.#formatShrecValue("mergeGradientWeightPower", tuning.mergeGradientWeightPower)
+        this.#shrecDedupRange.value = String(tuning.dedupRadiusVoxels)
+        this.#shrecDedupValueEl.textContent = DevToolsPanel.#formatShrecValue("dedupRadiusVoxels", tuning.dedupRadiusVoxels)
     }
 
     /** Show or hide the panel */
@@ -356,6 +387,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#showFps$ = new BehaviorSubject(g.showFps)
         this.#meshViewer$ = new BehaviorSubject(g.meshViewerEnabled)
         this.#meshSimplify$ = new BehaviorSubject(g.meshSimplifyOnExport)
+        this.#voxelSizeMm$ = new BehaviorSubject(g.meshExportVoxelSizeMm)
         this.#useShrec$ = new BehaviorSubject(g.useShrecExporter)
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
@@ -385,6 +417,40 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshSimplify$.pipe(skip(1)).subscribe(v => {
             this.#settings.updateGlobal({ app: { meshSimplifyOnExport: v } })
             this.onMeshSimplifyChange?.(v)
+        })
+
+        // Voxel-size slider — the master quality / cost knob for mesh export.
+        // Halving voxel size → ~8× the voxel count → ~8× the time and memory.
+        // Applies to both MDC and SHREC; lives at the top level rather than in
+        // the SHREC subsection because it's exporter-agnostic.
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Voxel (mm)"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0.02"
+            range.max = "0.5"
+            range.step = "0.01"
+            range.value = String(this.#voxelSizeMm$.value)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatVoxelSize(this.#voxelSizeMm$.value)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#voxelSizeMm$.next(v)
+                valueEl.textContent = DevToolsPanel.#formatVoxelSize(v)
+            })
+            row.append(lab, range, valueEl)
+            shadow.appendChild(row)
+            this.#voxelSizeRange = range
+            this.#voxelSizeValueEl = valueEl
+        }
+        this.#voxelSizeMm$.pipe(skip(1)).subscribe(v => {
+            this.#settings.updateGlobal({ app: { meshExportVoxelSizeMm: v } })
+            this.onVoxelSizeMmChange?.(v)
         })
 
         this.#simplifyTuningState = { ...DEFAULT_SIMPLIFY_TUNING, ...g.simplifyTuning }
@@ -617,6 +683,69 @@ export class DevToolsPanel extends HTMLElement {
             this.#shrecCreaseValueEl = valueEl
         }
 
+        // Gradient-weight power slider. 0 = uniform weights (every crossing
+        // counts the same; current default). 1 = linear weighting w = g.
+        // 2 = squared weighting w = g² (the IJK reference). Higher = even
+        // more aggressive de-weighting of smooth-blend regions where g < 1.
+        // Has no visible effect on scenes built from true SDFs only.
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Grad weight"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0"
+            range.max = "4"
+            range.step = "0.1"
+            range.value = String(this.#shrecTuningState.mergeGradientWeightPower)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeGradientWeightPower", this.#shrecTuningState.mergeGradientWeightPower)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#shrecTuningState = { ...this.#shrecTuningState, mergeGradientWeightPower: v }
+                valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeGradientWeightPower", v)
+                this.#persistShrecTuning()
+            })
+            row.append(lab, range, valueEl)
+            this.#shrecSection.appendChild(row)
+            this.#shrecGradWeightRange = range
+            this.#shrecGradWeightValueEl = valueEl
+        }
+
+        // Dedup radius slider (in voxels). 0 = off (no merging). 0.5 = typical
+        // for collapsing CSG-corner clusters into a single shared vertex.
+        // 1.0 = aggressive (can also collapse across edge-shared cells).
+        // This is the "Merge" half of MergeSharp's name.
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Dedup (vx)"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0"
+            range.max = "1"
+            range.step = "0.05"
+            range.value = String(this.#shrecTuningState.dedupRadiusVoxels)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatShrecValue("dedupRadiusVoxels", this.#shrecTuningState.dedupRadiusVoxels)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#shrecTuningState = { ...this.#shrecTuningState, dedupRadiusVoxels: v }
+                valueEl.textContent = DevToolsPanel.#formatShrecValue("dedupRadiusVoxels", v)
+                this.#persistShrecTuning()
+            })
+            row.append(lab, range, valueEl)
+            this.#shrecSection.appendChild(row)
+            this.#shrecDedupRange = range
+            this.#shrecDedupValueEl = valueEl
+        }
+
         const shrecDefaults = document.createElement("button")
         shrecDefaults.textContent = "SHREC defaults"
         shrecDefaults.addEventListener("click", () => {
@@ -823,11 +952,20 @@ export class DevToolsPanel extends HTMLElement {
         return v.toFixed(2)
     }
 
+    /** Format a voxel-size value in mm for the slider readout. */
+    static #formatVoxelSize(mm: number): string {
+        // Sub-mm values render with extra precision; ≥1 mm rounds nicely.
+        if (mm < 0.1) return mm.toFixed(3)
+        return mm.toFixed(2)
+    }
+
     static #formatShrecValue(key: keyof ShrecTuning, v: number | boolean): string {
         if (typeof v === "boolean") return v ? "on" : "off"
         if (key === "mergeRelCutoff") return v.toFixed(3)
         if (key === "mergeMaxDisplacement") return v === 0 ? "off" : v.toFixed(2)
         if (key === "creaseAngleDeg") return `${Math.round(v)}°`
+        if (key === "mergeGradientWeightPower") return v === 0 ? "off" : `g^${v.toFixed(1)}`
+        if (key === "dedupRadiusVoxels") return v === 0 ? "off" : v.toFixed(2)
         return v.toFixed(2)
     }
 

@@ -1155,6 +1155,7 @@ class App {
         }
 
         devTools.meshSimplifyOnExport = this.#settings.getGlobal().app.meshSimplifyOnExport
+        devTools.syncVoxelSizeMmFromSettings(this.#settings.getGlobal().app.meshExportVoxelSizeMm)
         devTools.useShrecExporter = this.#settings.getGlobal().app.useShrecExporter
         devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
@@ -1170,6 +1171,7 @@ class App {
         devTools.onUseShrecExporterChange = remeshIfMeshViewerOn
         devTools.onShrecTuningChange = remeshIfMeshViewerOn
         devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
+        devTools.onVoxelSizeMmChange = remeshIfMeshViewerOn
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)
         devTools.onDebugLogModulesChange = () => {
@@ -1436,6 +1438,7 @@ class App {
                 })
                 const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName, {
                     simplifyOnExport: devTools.meshSimplifyOnExport,
+                    voxelSizeMm: devTools.voxelSizeMm,
                     exporter: devTools.useShrecExporter ? "shrec" : "mdc",
                     shrecTuning: devTools.shrecTuning,
                     simplifyTuning: devTools.simplifyTuning,
@@ -1514,6 +1517,7 @@ class App {
             try {
                 const mesh = await this.renderer.renderMesh(src, this.#tabs.active, {
                     simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
+                    voxelSizeMm: this.#toolbarRefs.devTools.voxelSizeMm,
                     exporter: this.#toolbarRefs.devTools.useShrecExporter ? "shrec" : "mdc",
                     shrecTuning: this.#toolbarRefs.devTools.shrecTuning,
                     simplifyTuning: this.#toolbarRefs.devTools.simplifyTuning,

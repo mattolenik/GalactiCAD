@@ -2,7 +2,7 @@ import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import type { DebugLogModulesState } from "../logging/debug-log.mjs"
 import { log, mergeDebugLogModulesFromStorage } from "../logging/debug-log.mjs"
-import { DEFAULT_SHREC_TUNING, DEFAULT_SIMPLIFY_TUNING, type ShrecTuning, type SimplifyTuning } from "../render-worker-protocol.mjs"
+import { DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM, DEFAULT_SHREC_TUNING, DEFAULT_SIMPLIFY_TUNING, type ShrecTuning, type SimplifyTuning } from "../render-worker-protocol.mjs"
 import { db } from "./db.mjs"
 
 // ---------------------------------------------------------------------------
@@ -71,6 +71,8 @@ export interface GlobalSettings {
         devToolsLightingExpanded: boolean
         showFps: boolean
         meshSimplifyOnExport: boolean
+        /** Voxel edge length (mm) for the mesh-export grid; applies to both MDC and SHREC. */
+        meshExportVoxelSizeMm: number
         /** When true, mesh export uses the SHREC/MergeSharp pipeline; otherwise MDC. */
         useShrecExporter: boolean
         /** Tuning knobs for the SHREC/MergeSharp pipeline. */
@@ -136,6 +138,7 @@ function defaultGlobalSettings(): GlobalSettings {
             devToolsLightingExpanded: false,
             showFps: true,
             meshSimplifyOnExport: true,
+            meshExportVoxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
             useShrecExporter: false,
             shrecTuning: { ...DEFAULT_SHREC_TUNING },
             simplifyTuning: { ...DEFAULT_SIMPLIFY_TUNING },
@@ -373,6 +376,7 @@ export class SettingsManager {
                 const app = { ...def.app, ...parsed.app }
                 if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
+                if (typeof app.meshExportVoxelSizeMm !== "number" || !isFinite(app.meshExportVoxelSizeMm) || app.meshExportVoxelSizeMm <= 0) app.meshExportVoxelSizeMm = DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
                 if (typeof app.useShrecExporter !== "boolean") app.useShrecExporter = false
                 {
                     const t = (app as { shrecTuning?: Partial<ShrecTuning> }).shrecTuning
@@ -381,6 +385,8 @@ export class SettingsManager {
                     if (typeof cur.mergeRelCutoff !== "number" || !isFinite(cur.mergeRelCutoff)) cur.mergeRelCutoff = DEFAULT_SHREC_TUNING.mergeRelCutoff
                     if (typeof cur.mergeMaxDisplacement !== "number" || !isFinite(cur.mergeMaxDisplacement) || cur.mergeMaxDisplacement < 0) cur.mergeMaxDisplacement = DEFAULT_SHREC_TUNING.mergeMaxDisplacement
                     if (typeof cur.creaseAngleDeg !== "number" || !isFinite(cur.creaseAngleDeg) || cur.creaseAngleDeg < 0 || cur.creaseAngleDeg > 180) cur.creaseAngleDeg = DEFAULT_SHREC_TUNING.creaseAngleDeg
+                    if (typeof cur.mergeGradientWeightPower !== "number" || !isFinite(cur.mergeGradientWeightPower) || cur.mergeGradientWeightPower < 0) cur.mergeGradientWeightPower = DEFAULT_SHREC_TUNING.mergeGradientWeightPower
+                    if (typeof cur.dedupRadiusVoxels !== "number" || !isFinite(cur.dedupRadiusVoxels) || cur.dedupRadiusVoxels < 0) cur.dedupRadiusVoxels = DEFAULT_SHREC_TUNING.dedupRadiusVoxels
                     app.shrecTuning = cur
                 }
                 {

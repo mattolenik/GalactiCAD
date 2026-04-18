@@ -104,6 +104,15 @@ export interface MergeSharpParams {
 
     /** Inset (in fraction of voxelSize) applied to the cell-bounds clamp; keeps vertices off cell faces to avoid duplicate positions. Default 0.001. */
     cellBoundsInset?: number
+
+    /**
+     * Exponent applied to the gradient magnitude `g = |∇SDF|` when weighting
+     * each cube-edge crossing in the QEF. `0` → uniform weight (current
+     * default; every crossing counts equally). `1` → linear weight. `2` →
+     * IJK-reference value, more aggressive at de-weighting smooth-blend
+     * regions where `g < 1`. Has no effect for true SDFs (where `g ≡ 1`).
+     */
+    gradientWeightPower?: number
 }
 
 interface RelocationStats {
@@ -135,6 +144,10 @@ export function mergeSharpRelocate(
     const relCutoff = params.relCutoff ?? 0.05
     const maxDisp = params.maxDisplacement
     const inset = params.cellBoundsInset ?? 0.001
+    const gradWeightPower = Math.max(0, params.gradientWeightPower ?? 0)
+    // Pre-compute the weighting kernel: `0` → constant 1 (no math), otherwise
+    // raise the interpolated `g` to the power. Hot-path branch elision below.
+    const useGradWeight = gradWeightPower > 0
 
     const [nx, ny, nz] = grid.dims
     const ox = grid.gridOffset[0]
@@ -193,6 +206,7 @@ export function mergeSharpRelocate(
         massVec[0] = massVec[1] = massVec[2] = 0
         let sumNx = 0, sumNy = 0, sumNz = 0
         let nCrossings = 0
+        let weightSum = 0
 
         // Enumerate the 12 cube edges; for each crossing accumulate its
         // tangent plane (n · X = n · p) into the QEF.
@@ -248,19 +262,41 @@ export function mergeSharpRelocate(
             ny_ *= ninv
             nz_ *= ninv
 
+            // Per-crossing weight from the SDF gradient magnitude. Stored at
+            // `gradient[idx*4 + 3]` by `sample_grid.wgsl` as `r.g = |∇SDF|`;
+            // ≈ 1 for true SDFs, < 1 in CSG smooth-blend regions where the
+            // linearised iso-surface model is less reliable.
+            let w = 1
+            if (useGradWeight) {
+                const gAv = gradient[gA + 3]!
+                const gBv = gradient[gB + 3]!
+                const gInterp = gAv + t * (gBv - gAv)
+                // Clamp to a sensible range; gradient magnitudes can briefly
+                // exceed 1 in some smooth-CSG corners due to the analytical
+                // normal computation. The clamp keeps the QEF condition
+                // bounded and the weight monotone in `g`.
+                const gClamped = gInterp < 0 ? 0 : (gInterp > 2 ? 2 : gInterp)
+                w = gradWeightPower === 1 ? gClamped : Math.pow(gClamped, gradWeightPower)
+                // Below ~1e-6 the weight contributes nothing useful and may
+                // pollute Σw with floating-point noise; skip outright.
+                if (w < 1e-6) continue
+            }
+
             // Plane: n · X = n · p   (since p is on the iso-surface, d=0).
+            // Weighted least squares: each plane contributes `w · (n·x − c)²`.
             const c = nx_ * px + ny_ * py + nz_ * pz
-            sym3AddOuter(M, nx_, ny_, nz_, 1)
-            bvec[0] += c * nx_
-            bvec[1] += c * ny_
-            bvec[2] += c * nz_
-            massVec[0] += px
-            massVec[1] += py
-            massVec[2] += pz
+            sym3AddOuter(M, nx_, ny_, nz_, w)
+            bvec[0] += w * c * nx_
+            bvec[1] += w * c * ny_
+            bvec[2] += w * c * nz_
+            massVec[0] += w * px
+            massVec[1] += w * py
+            massVec[2] += w * pz
             sumNx += nx_
             sumNy += ny_
             sumNz += nz_
             nCrossings++
+            weightSum += w
         }
 
         if (nCrossings === 0) {
@@ -270,7 +306,9 @@ export function mergeSharpRelocate(
             continue
         }
 
-        const inv = 1 / nCrossings
+        // Weighted mass-point: Σ(w·p) / Σw. Equivalent to plain mean when all
+        // weights are 1 (`useGradWeight === false`).
+        const inv = 1 / weightSum
         massVec[0] *= inv
         massVec[1] *= inv
         massVec[2] *= inv

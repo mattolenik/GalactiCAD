@@ -2,6 +2,7 @@ import { GPUHelper } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
 import { dualContourCPU } from "./shrec/dc-cpu.mjs"
 import { mergeSharpRelocate } from "./shrec/merge-sharp.mjs"
+import { deduplicateMergedVertices } from "./shrec/dedup.mjs"
 import { splitCreaseVertices } from "./crease-split.mjs"
 import type { MeshData } from "./export.mjs"
 import type { ProgressCallback } from "./mdc.mjs"
@@ -50,6 +51,20 @@ export interface ShrecParams {
      * entirely and keeps the MergeSharp / DC normals.
      */
     creaseAngleDeg?: number
+    /**
+     * Exponent applied to the SDF gradient magnitude when weighting each
+     * cube-edge crossing in the QEF. See `MergeSharpParams.gradientWeightPower`
+     * for the full description. Default 0 (uniform weight).
+     */
+    mergeGradientWeightPower?: number
+    /**
+     * Vertex deduplication radius (mm). After MergeSharp relocation,
+     * vertices within this distance of each other are collapsed into a
+     * single shared vertex; degenerate triangles around the merged corner
+     * are dropped. Default `0` skips the dedup pass. Typical setting is
+     * `0.5 × voxelSize`.
+     */
+    dedupRadius?: number
 }
 
 /**
@@ -111,6 +126,8 @@ export class ShrecExport {
             `mergeSharpEnabled=${p.mergeSharpEnabled ?? true} ` +
             `mergeRelCutoff=${p.mergeRelCutoff ?? 0.05} ` +
             `mergeMaxDisplacement=${p.mergeMaxDisplacement ?? "(off)"} ` +
+            `mergeGradientWeightPower=${p.mergeGradientWeightPower ?? 0} ` +
+            `dedupRadius=${p.dedupRadius ?? "(off)"} ` +
             `creaseAngleDeg=${p.creaseAngleDeg ?? 30}`,
         )
 
@@ -142,15 +159,28 @@ export class ShrecExport {
         const mergeEnabled = this.params.mergeSharpEnabled ?? true
         let mesh: MeshData
         if (mergeEnabled && dcMesh.verts.length > 0) {
-            progressCallback?.updateProgress("SHREC: MergeSharp vertex relocation", 70)
+            progressCallback?.updateProgress("SHREC: MergeSharp vertex relocation", 60)
             checkCancelled()
             const result = mergeSharpRelocate(dcMesh, grid, {
                 relCutoff: this.params.mergeRelCutoff,
                 maxDisplacement: this.params.mergeMaxDisplacement,
+                gradientWeightPower: this.params.mergeGradientWeightPower,
             })
             mesh = result.mesh
         } else {
             mesh = { verts: dcMesh.verts, tris: dcMesh.tris }
+        }
+
+        // Vertex deduplication — the "merge" half of MergeSharp. Collapses
+        // adjacent cells' vertices that snapped to the same sharp feature
+        // into one shared vertex; runs **before** the crease split so the
+        // crease detector sees the cleaned-up topology and computes correct
+        // face groups around the merged corners.
+        const dedupRadius = this.params.dedupRadius ?? 0
+        if (dedupRadius > 0 && mesh.verts.length > 0) {
+            progressCallback?.updateProgress("SHREC: vertex deduplication", 80)
+            checkCancelled()
+            mesh = deduplicateMergedVertices(mesh, dedupRadius).mesh
         }
 
         // Crease split + face-normal re-derivation. Eliminates flat-surface

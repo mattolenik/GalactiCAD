@@ -70,6 +70,8 @@ export interface GlobalSettings {
         devToolsLightingExpanded: boolean
         showFps: boolean
         meshSimplifyOnExport: boolean
+        /** When true, mesh export uses the SHREC/MergeSharp pipeline; otherwise MDC. */
+        useShrecExporter: boolean
         diskSyncIntervalSeconds: number
         theme: ThemeMode
         editor: EditorSettings
@@ -129,6 +131,7 @@ function defaultGlobalSettings(): GlobalSettings {
             devToolsLightingExpanded: false,
             showFps: true,
             meshSimplifyOnExport: true,
+            useShrecExporter: false,
             diskSyncIntervalSeconds: 30,
             theme: "dark",
             editor: defaultEditorSettings(),
@@ -363,6 +366,7 @@ export class SettingsManager {
                 const app = { ...def.app, ...parsed.app }
                 if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
+                if (typeof app.useShrecExporter !== "boolean") app.useShrecExporter = false
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false
                 if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"

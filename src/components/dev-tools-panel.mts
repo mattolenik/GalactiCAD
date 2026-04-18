@@ -56,6 +56,8 @@ export class DevToolsPanel extends HTMLElement {
     #meshViewer$: BehaviorSubject<boolean>
     #meshSimplifyCheckbox: HTMLInputElement
     #meshSimplify$: BehaviorSubject<boolean>
+    #useShrecCheckbox: HTMLInputElement
+    #useShrec$: BehaviorSubject<boolean>
     #lightingExpandedCheckbox: HTMLInputElement
     #lightingExpanded$: BehaviorSubject<boolean>
     #lightingSection: HTMLDivElement
@@ -81,6 +83,9 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback when mesh simplify on export toggle changes */
     onMeshSimplifyChange?: (enabled: boolean) => void
+
+    /** Callback when the SHREC/MergeSharp exporter toggle changes (off = MDC). */
+    onUseShrecExporterChange?: (enabled: boolean) => void
 
     /** Preview shading uniforms; knob values are not persisted (section visibility is). */
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
@@ -143,6 +148,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set meshSimplifyOnExport(enabled: boolean) {
         this.#meshSimplify$.next(enabled)
+    }
+
+    get useShrecExporter(): boolean {
+        return this.#useShrec$.value
+    }
+
+    set useShrecExporter(enabled: boolean) {
+        this.#useShrec$.next(enabled)
     }
 
     /** Show or hide the panel */
@@ -276,6 +289,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#showFps$ = new BehaviorSubject(g.showFps)
         this.#meshViewer$ = new BehaviorSubject(g.meshViewerEnabled)
         this.#meshSimplify$ = new BehaviorSubject(g.meshSimplifyOnExport)
+        this.#useShrec$ = new BehaviorSubject(g.useShrecExporter)
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
@@ -304,6 +318,13 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshSimplify$.pipe(skip(1)).subscribe(v => {
             this.#settings.updateGlobal({ app: { meshSimplifyOnExport: v } })
             this.onMeshSimplifyChange?.(v)
+        })
+
+        this.#useShrecCheckbox = this.#addCheckbox(shadow, "SHREC exporter", this.#useShrec$.value)
+        this.#subscriptions.push(connectCheckbox(this.#useShrecCheckbox, this.#useShrec$))
+        this.#useShrec$.pipe(skip(1)).subscribe(v => {
+            this.#settings.updateGlobal({ app: { useShrecExporter: v } })
+            this.onUseShrecExporterChange?.(v)
         })
 
         this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)

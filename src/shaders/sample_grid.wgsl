@@ -1,0 +1,90 @@
+//:) include "hg_sdf.wgsl"
+
+// ============================================================================
+// sample_grid.wgsl
+//
+// Compute shader that samples the scene SDF on a uniform 3D grid and writes
+// (scalar distance, gradient direction, gradient magnitude) per voxel into
+// CPU-readable storage buffers. This is the GPU half of the SHREC / MergeSharp
+// exporter pipeline.
+//
+// The scene SDF must stay on the GPU (see AGENTS.md), so we evaluate it here
+// and read back a precomputed volume. Downstream CPU code (dual contouring,
+// MergeSharp vertex relocation) consumes the readback.
+//
+// Bind point numbers for shared scene data deliberately match mdc.wgsl
+// (polygonVertices=27, faceSelection=28, mdcSceneParams=30) so the same
+// uniform buffers in render-worker-core.mts can be reused as-is.
+// ============================================================================
+
+struct SampleGridUniforms {
+    // xyz = grid dimensions in voxels, w = total voxel count (for bounds-checking).
+    gridDims: vec4u,
+    // xyz = world-space origin of voxel (0,0,0), w = unused.
+    gridOffset: vec4f,
+    // x = voxel size (mm). y,z,w reserved for future tuning knobs.
+    voxelSize: vec4f,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: SampleGridUniforms;
+
+// Output: scalar distance per voxel. Layout: idx = (z*ny + y)*nx + x.
+@group(0) @binding(1) var<storage, read_write> scalarOut: array<f32>;
+
+// Output: gradient (analytical normal) per voxel. xyz = unit normal, w = |∇f|.
+@group(0) @binding(2) var<storage, read_write> gradientOut: array<vec4f>;
+
+// Cancellation flag (matches mdc.wgsl convention).
+@group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
+
+// Polygon vertex buffer (shared storage for all Polygon2D vertex data).
+@group(0) @binding(27) var<storage, read> polygonVertices: array<vec2f>;
+
+// Face selection (must exist for compilation; not used here).
+struct FaceSelection { nodeId: u32, faceIndex: u32, mode: u32, extrudeOffset: f32, pushPullActive: u32, }
+@group(0) @binding(28) var<uniform> faceSelection: FaceSelection;
+const FACE_HIGHLIGHT_ID: u32 = 1023u;
+const FACE_HIGHLIGHT_TOP: u32 = 1023u;
+const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
+
+// Scene parameter storage (flat f32 layout, same as MDC).
+@group(0) @binding(30) var<storage, read> mdcSceneParams: array<f32>;
+//:) include "mdc_scene_params_read.wgsl"
+
+fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32, halfH: f32) -> f32 {
+    let rel = p - center;
+    let localX = dot(rel, tangent);
+    let localY = dot(rel, normal);
+    let dd = vec2f(abs(localX) - halfW, abs(localY) - halfH);
+    return length(max(dd, vec2f(0.0))) + min(max(dd.x, dd.y), 0.0);
+}
+
+// Auxiliary SDF functions (e.g., per-polygon evaluators) injected at runtime.
+//:) insert sceneAuxFast
+//:) insert sceneAux
+
+// Full SDF — provides analytical normal in r.n and gradient magnitude r.g.
+fn sceneSDF(p: vec3f) -> SDFResult {
+    _ = polygonVertices[0];
+    _ = faceSelection.nodeId;
+    _ = mdcSceneParams[0];
+    return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
+}
+
+// 3D dispatch: each invocation handles one voxel.
+@compute @workgroup_size(4, 4, 4)
+fn sampleGrid(@builtin(global_invocation_id) gid: vec3u) {
+    if (atomicLoad(&cancelled) != 0u) { return; }
+
+    let dims = uniforms.gridDims.xyz;
+    if (gid.x >= dims.x || gid.y >= dims.y || gid.z >= dims.z) { return; }
+
+    let voxelSize = uniforms.voxelSize.x;
+    let pos = uniforms.gridOffset.xyz + vec3f(gid) * voxelSize;
+
+    let r = sceneSDF(pos);
+
+    let idx = (gid.z * dims.y + gid.y) * dims.x + gid.x;
+    scalarOut[idx] = r.d;
+    gradientOut[idx] = vec4f(r.n, r.g);
+}

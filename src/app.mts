@@ -1155,6 +1155,7 @@ class App {
         }
 
         devTools.meshSimplifyOnExport = this.#settings.getGlobal().app.meshSimplifyOnExport
+        devTools.useShrecExporter = this.#settings.getGlobal().app.useShrecExporter
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)
         devTools.onDebugLogModulesChange = () => {
@@ -1421,6 +1422,7 @@ class App {
                 })
                 const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName, {
                     simplifyOnExport: devTools.meshSimplifyOnExport,
+                    exporter: devTools.useShrecExporter ? "shrec" : "mdc",
                 })
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
@@ -1496,6 +1498,7 @@ class App {
             try {
                 const mesh = await this.renderer.renderMesh(src, this.#tabs.active, {
                     simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
+                    exporter: this.#toolbarRefs.devTools.useShrecExporter ? "shrec" : "mdc",
                 })
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {

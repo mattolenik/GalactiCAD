@@ -7,6 +7,18 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import type { MeshData } from "./export/export.mjs"
 
+/**
+ * Selects the algorithm used by `handleRenderMesh` to extract a triangle mesh
+ * from the scene SDF.
+ *
+ * - `"mdc"`: Manifold Dual Contouring entirely on the GPU (default; see
+ *   `src/export/mdc.mts` and `src/shaders/mdc.wgsl`).
+ * - `"shrec"`: GPU samples (scalar, gradient) on a uniform grid, then a CPU
+ *   stage runs dual contouring + MergeSharp vertex relocation (see
+ *   `src/export/shrec.mts` and `src/shaders/sample_grid.wgsl`).
+ */
+export type ExporterKind = "mdc" | "shrec"
+
 /** Worker-reported `#doBuild` breakdown (ms); used for devtools / regression triage. */
 export interface BuildTimingBreakdownMs {
     sceneConstructMs: number
@@ -138,7 +150,7 @@ export type MainToWorkerMessage =
     // previewParamsF32Patch: cap-drag only — patches #previewF32Shadow then 8-byte write to previewCapParamDrag at byteOffset.
     // Does not touch boundsSceneParams or mdcSceneParams (those refresh on build / param-only build).
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; previewParamsF32Patch?: { byteOffset: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
-    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
+    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean; exporter?: ExporterKind }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }

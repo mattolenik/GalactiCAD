@@ -11,8 +11,10 @@ import outlineShader from "./shaders/outline.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import mdcShader from "./shaders/mdc.wgsl"
+import sampleGridShader from "./shaders/sample_grid.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
+import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
@@ -35,6 +37,7 @@ import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
     type BuildTimingBreakdownMs,
+    type ExporterKind,
     type MainToWorkerMessage,
     type PreviewShadingParams,
     type RenderSelectionState,
@@ -939,7 +942,7 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(body: string, requestId?: number, documentName?: string, simplifyOnExport = true): Promise<void> {
+    async handleRenderMesh(body: string, requestId?: number, documentName?: string, simplifyOnExport = true, exporter: ExporterKind = "mdc"): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
                 await this.build(body, undefined)
@@ -963,24 +966,7 @@ export class RenderWorkerCore {
             const gridDimX = Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1)
             const gridDimY = Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1)
             const gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelSizeMm) + 1)
-            const params: MDCParams = {
-                gridDimX,
-                gridDimY,
-                gridDimZ,
-                isoValue: 0.0,
-                gridOffsetX: minX,
-                gridOffsetY: minY,
-                gridOffsetZ: minZ,
-                voxelSize: voxelSizeMm,
-                ...(simplifyOnExport && {
-                    simplifyTargetRatio: 0.1,
-                    simplifyRegularize: false,
-                    simplifyLockBorder: true,
-                    simplifyPrune: false,
-                    simplifySparse: false,
-                    simplifyTargetError: 0.001,
-                }),
-            }
+
             const scene = this.#scene!
             const sceneAux = scene.compileAux()
             const sceneAuxFast = scene.compileAuxFast()
@@ -988,22 +974,70 @@ export class RenderWorkerCore {
             const sceneSDF = scene.compile()
             const sceneSDF_fast = scene.compileFast()
             const sceneSDF_mid = scene.compileMid()
-            const shaderCompiler = new ShaderCompiler(this.#device)
-                .replace("insert", "sceneAuxFast", sceneAuxFast)
-                .replace("insert", "sceneAux", sceneAux)
-                .replace("insert", "sceneAuxMid", sceneAuxMid)
-                .replace("insert", "sceneSDF_fast", sceneSDF_fast)
-                .replace("insert", "sceneSDF", sceneSDF)
-                .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-            const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
-            const mdc = new MDCExport(
-                this.#helper,
-                params,
-                this.#uniformBuffers.polygonVertices,
-                this.#uniformBuffers.faceSelection,
-                this.#uniformBuffers.mdcSceneParams,
-            )
-            const mesh = await mdc.export(mdcShaderModule)
+
+            let mesh
+            if (exporter === "shrec") {
+                // SHREC pipeline only needs sceneAux + sceneSDF + sceneAuxFast (sample_grid.wgsl
+                // declares both Aux variants because hg_sdf includes share helpers between paths).
+                const shrecCompiler = new ShaderCompiler(this.#device)
+                    .replace("insert", "sceneAuxFast", sceneAuxFast)
+                    .replace("insert", "sceneAux", sceneAux)
+                    .replace("insert", "sceneSDF", sceneSDF)
+                const sampleGridShaderModule = shrecCompiler.compile(sampleGridShader, "SHREC Sample Grid")
+                const params: ShrecParams = {
+                    gridDimX,
+                    gridDimY,
+                    gridDimZ,
+                    isoValue: 0.0,
+                    gridOffsetX: minX,
+                    gridOffsetY: minY,
+                    gridOffsetZ: minZ,
+                    voxelSize: voxelSizeMm,
+                }
+                const shrec = new ShrecExport(
+                    this.#helper,
+                    params,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.mdcSceneParams,
+                )
+                mesh = await shrec.export(sampleGridShaderModule)
+            } else {
+                const params: MDCParams = {
+                    gridDimX,
+                    gridDimY,
+                    gridDimZ,
+                    isoValue: 0.0,
+                    gridOffsetX: minX,
+                    gridOffsetY: minY,
+                    gridOffsetZ: minZ,
+                    voxelSize: voxelSizeMm,
+                    ...(simplifyOnExport && {
+                        simplifyTargetRatio: 0.1,
+                        simplifyRegularize: false,
+                        simplifyLockBorder: true,
+                        simplifyPrune: false,
+                        simplifySparse: false,
+                        simplifyTargetError: 0.001,
+                    }),
+                }
+                const mdcCompiler = new ShaderCompiler(this.#device)
+                    .replace("insert", "sceneAuxFast", sceneAuxFast)
+                    .replace("insert", "sceneAux", sceneAux)
+                    .replace("insert", "sceneAuxMid", sceneAuxMid)
+                    .replace("insert", "sceneSDF_fast", sceneSDF_fast)
+                    .replace("insert", "sceneSDF", sceneSDF)
+                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
+                const mdcShaderModule = mdcCompiler.compile(mdcShader, "MDC Export")
+                const mdc = new MDCExport(
+                    this.#helper,
+                    params,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.mdcSceneParams,
+                )
+                mesh = await mdc.export(mdcShaderModule)
+            }
             self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)

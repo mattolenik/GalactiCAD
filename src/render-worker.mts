@@ -113,7 +113,19 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
             if (core) core.writeBuffers(msg)
             break
         case "renderMesh":
-            if (core) core.handleRenderMesh(msg.body, msg.requestId, msg.documentName, msg.simplifyOnExport, msg.exporter, msg.shrecTuning, msg.simplifyTuning, msg.voxelSizeMm)
+            if (core) {
+                core.handleRenderMesh(
+                    msg.body,
+                    msg.requestId,
+                    msg.documentName,
+                    msg.simplifyOnExport,
+                    msg.exporter,
+                    msg.shrecTuning,
+                    msg.simplifyTuning,
+                    msg.voxelSizeMm,
+                    msg.mdcExportLevers,
+                )
+            }
             break
         case "benchmark":
             if (core) {

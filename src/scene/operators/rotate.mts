@@ -125,6 +125,12 @@ export class Rotate extends UnaryOperator {
 
         const funcName = `Rotate${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        if (childResult.prelude) {
+            const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
+            const accVar = childResult.varName!
+            const prelude = rotatedPrelude + `${accVar} = sdfRotateNormalMid(${accVar}, ${fwdMat});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
         return {
             funcName,
             varName,

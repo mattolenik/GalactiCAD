@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
+import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 
@@ -37,7 +37,7 @@ export class Pipe extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
         const pr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `fOpPipeEx(${lText}, ${rText}, ${pr})`, varName, prelude }
+        return binaryOpCompileResult(varName, `fOpPipeEx(${lText}, ${rText}, ${pr})`, prelude)
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
@@ -45,14 +45,15 @@ export class Pipe extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
         const pr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `fOpPipeFast(${lText}, ${rText}, ${pr})`, varName, prelude }
+        return binaryOpCompileResult(varName, `fOpPipeFast(${lText}, ${rText}, ${pr})`, prelude)
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
         const pr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `fOpPipeMid(${lhResult.text}, ${rhResult.text}, ${pr})`, varName }
+        return binaryOpCompileResult(varName, `fOpPipeMid(${lText}, ${rText}, ${pr})`, prelude)
     }
 }
 

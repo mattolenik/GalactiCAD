@@ -121,7 +121,7 @@ export async function simplifyMesh(
     )
 
     // --- Compact: strip unreferenced vertices ---
-    return compactMesh(mesh.verts, simplifiedTris)
+    return compactMesh(mesh, simplifiedTris)
 }
 
 /**
@@ -129,7 +129,8 @@ export async function simplifyMesh(
  * Builds a dense remap, copies only referenced vertex records, and rewrites
  * the index buffer in-place.
  */
-function compactMesh(verts: Float32Array, tris: Uint32Array): MeshData {
+function compactMesh(mesh: MeshData, tris: Uint32Array): MeshData {
+    const { verts } = mesh
     const vertexCount = verts.length / VERTEX_STRIDE
 
     // Determine which vertices are referenced
@@ -165,5 +166,9 @@ function compactMesh(verts: Float32Array, tris: Uint32Array): MeshData {
         newTris[i] = remap[tris[i]!]!
     }
 
-    return { verts: newVerts, tris: newTris }
+    return {
+        verts: newVerts,
+        tris: newTris,
+        debug: mesh.debug,
+    }
 }

@@ -302,8 +302,7 @@ export abstract class BinaryOperator extends Node {
 /**
  * Merge the preludes of two child CompileResults and return the combined
  * prelude string along with each child's expression text. When a child has a
- * prelude, its `varName` (the accumulator) is the correct expression to use
- * rather than `text`, which is just an alias for `varName`.
+ * prelude, prefer `varName` (the accumulator or assigned result) over `text`.
  *
  * Usage in a binary operator that cannot emit its own prelude logic:
  *   const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
@@ -313,10 +312,30 @@ export function mergeChildPreludes(
     lh: CompileResult,
     rh: CompileResult,
 ): { prelude: string | undefined; lText: string; rText: string } {
-    const lText = lh.text!
-    const rText = rh.text!
+    const lText = (lh.prelude ? lh.varName ?? lh.text : lh.text)!
+    const rText = (rh.prelude ? rh.varName ?? rh.text : rh.text)!
     const combined = [lh.prelude, rh.prelude].filter(Boolean).join("")
     return { prelude: combined || undefined, lText, rText }
+}
+
+/**
+ * Binary ops evaluate to `expr`. When either child emitted a prelude, append
+ * `var varName = expr` so `SceneInfo.compile*` can `return varName` and parents
+ * (e.g. BVH unions) can reference a single identifier after the prelude runs.
+ */
+export function binaryOpCompileResult(
+    varName: string,
+    expr: string,
+    mergedPrelude: string | undefined,
+): CompileResult {
+    if (mergedPrelude) {
+        return {
+            varName,
+            text: varName,
+            prelude: mergedPrelude + `var ${varName} = ${expr};\n`,
+        }
+    }
+    return { varName, text: expr, prelude: undefined }
 }
 
 /** Default position when pos is omitted from primitive/operator options. */

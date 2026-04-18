@@ -23,6 +23,12 @@ interface Vertex {
 // struct Vertex { position: vec3f; normal: vec3f; }
 // => position @0..11 (pad to 16), normal @16..27 (pad to 32) => 32-byte stride.
 export const SIZEOF_VERTEX = 8 * Float32Array.BYTES_PER_ELEMENT // 32 bytes
+// 6 vec4f: crossingPos, normal, featurePoint, featureN1, featureN2, axisCenter
+// (axisCenter only populated for MID_FEATURE_RING; zero otherwise).
+const SIZEOF_EDGE_DEBUG_SAMPLE = 6 * 4 * Float32Array.BYTES_PER_ELEMENT
+// std430: 4 u32s pack into 16 bytes, then 6 vec3f at align 16 = 6*16 = 96 bytes,
+// total = 16 + 96 = 112 bytes. (Was 96 before MID_FEATURE_RING added the axisCenter slot.)
+const SIZEOF_COMPONENT_FEATURE = 112
 
 /**
  * Represents QEF data.
@@ -54,6 +60,15 @@ const SIZEOF_QEFDATA_STRUCT = 96
 // Proper Manifold Dual Contouring may require multiple vertices per active cell.
 // We use a fixed maximum for predictable GPU memory layout.
 const MAX_COMPONENTS_PER_CELL = 4
+const EDGES_PER_CELL = 12
+
+// Stage C: each component may emit up to MAX_SUBCOMPONENTS_PER_COMPONENT
+// sub-vertices (one per face-normal bucket) so creases produce real sharp mesh
+// edges. Smooth components only populate subcomp 0; the other slots stay
+// sentinel and are never referenced from the index buffer (Pass 5 only reads
+// the populated bucket via cellEdgeComponents).
+const MAX_SUBCOMPONENTS_PER_COMPONENT = 3
+const VERTICES_PER_CELL = MAX_COMPONENTS_PER_CELL * MAX_SUBCOMPONENTS_PER_COMPONENT
 
 export interface MDCParams {
     gridDimX: number
@@ -453,10 +468,28 @@ export class MDCExport {
 
             const debugSkipCountersBuffer = createBuffer(
                 "DebugSkipCounters",
-                8 * Uint32Array.BYTES_PER_ELEMENT,
+                16 * Uint32Array.BYTES_PER_ELEMENT,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
             )
-            this.#device.queue.writeBuffer(debugSkipCountersBuffer, 0, new Uint32Array([0, 0, 0, 0, 0, 0, 0, 0]))
+            this.#device.queue.writeBuffer(
+                debugSkipCountersBuffer,
+                0,
+                new Uint32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            )
+
+            const debugEdgeSampleCountBuffer = createBuffer(
+                "DebugEdgeSampleCount",
+                Uint32Array.BYTES_PER_ELEMENT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            )
+            this.#device.queue.writeBuffer(debugEdgeSampleCountBuffer, 0, new Uint32Array([0]))
+
+            const maxDebugSamples = activeCellCount * EDGES_PER_CELL
+            const debugEdgeSamplesBuffer = createBuffer(
+                "DebugEdgeSamples",
+                Math.max(1, maxDebugSamples) * SIZEOF_EDGE_DEBUG_SAMPLE,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            )
 
             const cellEdgeComponentsBuffer = createBuffer(
                 "CellEdgeComponents",
@@ -466,12 +499,17 @@ export class MDCExport {
 
             const cellQEFDataBuffer = createBuffer(
                 "CellQEFData",
-                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
+                activeCellCount * VERTICES_PER_CELL * SIZEOF_QEFDATA_STRUCT,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            )
+            const componentFeaturesBuffer = createBuffer(
+                "ComponentFeatures",
+                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_COMPONENT_FEATURE,
+                GPUBufferUsage.STORAGE
             )
             const verticesBuffer = createBuffer(
                 "Vertices",
-                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
+                activeCellCount * VERTICES_PER_CELL * SIZEOF_VERTEX,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
             )
 
@@ -502,10 +540,13 @@ export class MDCExport {
                 [0, uniformBuffer],
                 [5, activeCellIndicesBuffer], // activeCellIndicesIn_edge
                 [24, debugSkipCountersBuffer],
+                [26, debugEdgeSampleCountBuffer],
                 [22, cellEdgeComponentsBuffer],
                 [9, cellQEFDataBuffer],
+                [14, componentFeaturesBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
+                [29, debugEdgeSamplesBuffer],
                 [30, this.#mdcSceneParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
@@ -519,6 +560,7 @@ export class MDCExport {
                 [11, activeCellIndicesBuffer], // activeCellIndicesIn_vertex
                 [12, cellQEFDataBuffer],
                 [13, verticesBuffer],
+                [14, componentFeaturesBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [30, this.#mdcSceneParamsBuffer],
@@ -567,7 +609,7 @@ export class MDCExport {
             // MDC requires vertices per *local* connected component within each cell.
             {
                 progressCallback?.updateProgress("Pass 4: Vertex Generation", 80)
-                const totalVertexRecords = activeCellCount * MAX_COMPONENTS_PER_CELL
+                const totalVertexRecords = activeCellCount * VERTICES_PER_CELL
                 const ce = this.#device.createCommandEncoder({ label: "mdc_pass4" })
                 const pass = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
                 const totalWorkgroups = Math.ceil(totalVertexRecords / 64)
@@ -599,7 +641,7 @@ export class MDCExport {
             logDiag("after pass5 (triangle generation)")
 
             dbgLog("MdcExport").debug("Reading back data from GPU...")
-            const debugCountsData = await readBufferData(debugSkipCountersBuffer, 8 * Uint32Array.BYTES_PER_ELEMENT)
+            const debugCountsData = await readBufferData(debugSkipCountersBuffer, 16 * Uint32Array.BYTES_PER_ELEMENT)
             const debugCounts = new Uint32Array(debugCountsData)
             dbgLog("MdcExport").debug("MDC debug:", {
                 skippedQuadsNeighborMissing: debugCounts[0],
@@ -610,7 +652,21 @@ export class MDCExport {
                 edgesCrossing: debugCounts[5],
                 faceCenterNearIso: debugCounts[6],
                 faceCaseAmbiguous: debugCounts[7],
+                midFeatureNone: debugCounts[8],
+                midFeatureLine: debugCounts[9],
+                midFeatureCorner: debugCounts[10],
+                midFeatureBooleanSeam: debugCounts[11],
+                midFeatureRejected: debugCounts[12],
+                midFeatureExtraQefPlanes: debugCounts[13],
+                midFeatureRing: debugCounts[14],
             })
+            const debugSampleCountData = await readBufferData(debugEdgeSampleCountBuffer)
+            const rawDebugSampleCount = new Uint32Array(debugSampleCountData)[0] ?? 0
+            const actualDebugSampleCount = Math.min(rawDebugSampleCount, maxDebugSamples)
+            const debugSamplesData = actualDebugSampleCount > 0
+                ? await readBufferData(debugEdgeSamplesBuffer, actualDebugSampleCount * SIZEOF_EDGE_DEBUG_SAMPLE)
+                : new ArrayBuffer(0)
+            const debugSamples = new Float32Array(debugSamplesData)
             const indexCountData = await readBufferData(indexCountFaceBuffer)
             const rawIndexCount = new Uint32Array(indexCountData)[0]!
             const actualIndexCount = Math.min(rawIndexCount, maxIndices)
@@ -618,7 +674,7 @@ export class MDCExport {
                 `Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`
             )
 
-            const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
+            const actualVertexCount = activeCellCount * VERTICES_PER_CELL
             const verticesData = await readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
             let verts = new Float32Array(verticesData)
 
@@ -629,6 +685,7 @@ export class MDCExport {
             let tris = new Uint32Array(indicesData)
             logDiag("after GPU readback", {
                 actualIndexCount,
+                actualDebugSampleCount,
                 actualVertexCount,
                 triCount: Math.floor(tris.length / 3),
             })
@@ -869,7 +926,24 @@ export class MDCExport {
 
             progressCallback?.updateProgress("Complete", 100)
             logDiag("done")
-            return { verts, tris }
+            return {
+                verts,
+                tris,
+                debug: {
+                    mdc: {
+                        samples: debugSamples,
+                        stats: {
+                            totalSamples: actualDebugSampleCount,
+                            acceptedNone: debugCounts[8] ?? 0,
+                            acceptedLine: debugCounts[9] ?? 0,
+                            acceptedCorner: debugCounts[10] ?? 0,
+                            acceptedSeam: debugCounts[11] ?? 0,
+                            acceptedRing: debugCounts[14] ?? 0,
+                            rejected: debugCounts[12] ?? 0,
+                        },
+                    },
+                },
+            }
 
         } finally {
             this.#clearPassResourceLists()

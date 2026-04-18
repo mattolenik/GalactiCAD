@@ -1159,6 +1159,7 @@ class App {
         devTools.useShrecExporter = this.#settings.getGlobal().app.useShrecExporter
         devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
+        devTools.syncMdcLeversFromSettings(this.#settings.getGlobal().app.mdcExportLevers)
         // Re-mesh live when the SHREC exporter toggle or its tuning knobs
         // change, so the mesh viewer reflects edits immediately. The
         // `#scheduleMeshUpdate` debounce avoids re-meshing per slider tick.
@@ -1172,6 +1173,7 @@ class App {
         devTools.onShrecTuningChange = remeshIfMeshViewerOn
         devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
         devTools.onVoxelSizeMmChange = remeshIfMeshViewerOn
+        devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)
         devTools.onDebugLogModulesChange = () => {
@@ -1442,6 +1444,7 @@ class App {
                     exporter: devTools.useShrecExporter ? "shrec" : "mdc",
                     shrecTuning: devTools.shrecTuning,
                     simplifyTuning: devTools.simplifyTuning,
+                    mdcExportLevers: this.#settings.getMdcExportLevers(),
                 })
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
@@ -1521,6 +1524,7 @@ class App {
                     exporter: this.#toolbarRefs.devTools.useShrecExporter ? "shrec" : "mdc",
                     shrecTuning: this.#toolbarRefs.devTools.shrecTuning,
                     simplifyTuning: this.#toolbarRefs.devTools.simplifyTuning,
+                    mdcExportLevers: this.#settings.getMdcExportLevers(),
                 })
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {

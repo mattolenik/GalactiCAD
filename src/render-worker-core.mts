@@ -13,6 +13,7 @@ import boundsShader from "./shaders/bounds.wgsl"
 import mdcShader from "./shaders/mdc.wgsl"
 import sampleGridShader from "./shaders/sample_grid.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
+import { DEFAULT_MDC_EXPORT_LEVERS, type MdcExportLevers } from "./render-worker-protocol.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
@@ -395,6 +396,8 @@ export class RenderWorkerCore {
         const sceneSDF_mid = scene.compileMidForPreview()
         const tSdfMid = performance.now()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
+        const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
+        const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
         const tWgsl1 = performance.now()
 
         const shaderCompiler = new ShaderCompiler(this.#device)
@@ -405,6 +408,8 @@ export class RenderWorkerCore {
             .replace("insert", "sceneSDF", sceneSDF)
             .replace("insert", "sceneSDF_mid", sceneSDF_mid)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
+            .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
+            .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
 
         const tShaderMod0 = performance.now()
         const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
@@ -955,6 +960,7 @@ export class RenderWorkerCore {
         shrecTuning?: ShrecTuning,
         simplifyTuning?: SimplifyTuning,
         voxelSizeMmFromCaller?: number,
+        mdcExportLevers?: MdcExportLevers,
     ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
@@ -965,13 +971,15 @@ export class RenderWorkerCore {
                 self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId, documentName })
                 return
             }
+            const levers: MdcExportLevers = { ...DEFAULT_MDC_EXPORT_LEVERS, ...mdcExportLevers }
             // Voxel size: caller-supplied value (from the Dev Tools slider) wins;
-            // otherwise fall back to the protocol default. The caller value is
-            // already validated upstream (settings.mts), so just guard against
-            // pathological zero/NaN here as a final safety net.
-            const voxelSizeMm = (voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0)
-                ? voxelSizeMmFromCaller
-                : DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
+            // otherwise fall back to MDC levers / protocol default.
+            const voxelSizeMm =
+                voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0
+                    ? voxelSizeMmFromCaller
+                    : levers.voxelSizeMm > 0
+                      ? levers.voxelSizeMm
+                      : DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
             const pad = 3.2
             const minX = bounds.min[0] - pad
             const minY = bounds.min[1] - pad
@@ -1039,11 +1047,12 @@ export class RenderWorkerCore {
                     gridDimX,
                     gridDimY,
                     gridDimZ,
-                    isoValue: 0.0,
+                    isoValue: levers.isoValue,
                     gridOffsetX: minX,
                     gridOffsetY: minY,
                     gridOffsetZ: minZ,
                     voxelSize: voxelSizeMm,
+                    creaseAngleDeg: levers.creaseAngleDeg,
                 }
                 const mdcCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)
@@ -1093,7 +1102,11 @@ export class RenderWorkerCore {
                 }
             }
 
-            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
+            const transfer: Transferable[] = [mesh.verts.buffer, mesh.tris.buffer]
+            if (mesh.debug?.mdc) {
+                transfer.push(mesh.debug.mdc.samples.buffer)
+            }
+            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId, documentName })
@@ -1119,9 +1132,18 @@ export class RenderWorkerCore {
         const TILE_STRIDE_BYTES = 48
         const totalSamples = dimsX * dimsY * dimsZ
         const totalWorkgroups = Math.ceil(totalSamples / 256)
-        const dispatchX = Math.min(totalWorkgroups, 65535)
-        const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
-        const dispatchedWorkgroups = dispatchX * dispatchY
+        const MAX_WG = 65535
+        let dispatchX = Math.min(totalWorkgroups, MAX_WG)
+        let dispatchY = Math.max(1, Math.ceil(totalWorkgroups / dispatchX))
+        let dispatchZ = 1
+        if (dispatchY > MAX_WG) {
+            dispatchY = MAX_WG
+            dispatchZ = Math.max(1, Math.ceil(totalWorkgroups / (dispatchX * dispatchY)))
+        }
+        if (dispatchZ > MAX_WG) {
+            throw new Error(`Bounds grid too large for one GPU dispatch (${totalWorkgroups} workgroups)`)
+        }
+        const dispatchedWorkgroups = dispatchX * dispatchY * dispatchZ
         const outBuffer = this.#device.createBuffer({
             size: dispatchedWorkgroups * TILE_STRIDE_BYTES,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -1160,7 +1182,7 @@ export class RenderWorkerCore {
             const pass = encoder.beginComputePass()
             pass.setPipeline(boundsPipeline)
             pass.setBindGroup(0, bindGroup)
-            pass.dispatchWorkgroups(dispatchedWorkgroups)
+            pass.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ)
             pass.end()
             this.#device.queue.submit([encoder.finish()])
             await this.#device.queue.onSubmittedWorkDone()

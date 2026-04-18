@@ -37,7 +37,7 @@ import { Cylinder, cylinder } from "./primitives/cylinder.mjs"
 import { Disc, disc } from "./primitives/disc.mjs"
 import { Extrude, extrude } from "./primitives/extrude.mjs"
 import { HexPrism, hexprism } from "./primitives/hexprism.mjs"
-import { Lathe, lathe } from "./primitives/lathe.mjs"
+import { Lathe, compileLathePrimitiveEdgeHitCase, compileLathePrimitiveRingDistanceCase, lathe } from "./primitives/lathe.mjs"
 import { Loft, loft } from "./primitives/loft.mjs"
 import { PlaneNode, plane } from "./primitives/plane.mjs"
 import { Polygon2D, polygon2d } from "./primitives/polygon2d.mjs"
@@ -356,6 +356,28 @@ export class SceneInfo {
                 const o = node.paramOffset
                 const pv = node.previewVec3Slot
                 code += `case ${node.id}u: { (*posOut) = ${vec3Wgsl(o, pv)}; (*halfOut) = ${vec3Wgsl(o + 3, pv + 1)}; return true; }\n`
+            }
+        }
+        return code
+    }
+
+    /** Preview WGSL `switch` cases for lathe primitive ring/pole edge hits (see `tryLathePrimitiveEdgeHit`). */
+    compileLathePrimitiveEdgeHitCases(): string {
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            if (node instanceof Lathe) {
+                code += compileLathePrimitiveEdgeHitCase(node)
+            }
+        }
+        return code
+    }
+
+    /** Preview WGSL `switch` cases for distance from `hitWorld` to a lathe ring/pole at `profileVtx`. */
+    compileLathePrimitiveRingDistanceCases(): string {
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            if (node instanceof Lathe) {
+                code += compileLathePrimitiveRingDistanceCase(node)
             }
         }
         return code

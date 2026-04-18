@@ -18,6 +18,7 @@ import {
     DEFAULT_PREVIEW_SHADING,
     type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
+    type MdcExportLevers,
     type PreviewShadingParams,
     type SceneBuildPipelineMs,
     type WorkerToMainMessage,
@@ -156,6 +157,7 @@ export class SDFRenderer {
             shrecTuning?: ShrecTuning
             simplifyTuning?: SimplifyTuning
             voxelSizeMm?: number
+            mdcExportLevers?: MdcExportLevers
         }
     >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
@@ -563,6 +565,7 @@ export class SDFRenderer {
                 shrecTuning: pending.shrecTuning,
                 voxelSizeMm: pending.voxelSizeMm,
                 simplifyTuning: pending.simplifyTuning,
+                mdcExportLevers: pending.mdcExportLevers,
             })
         } else if (pending.kind === "thumbnail") {
             if (requestId !== this.#latestThumbnailRequestId) {
@@ -1503,7 +1506,14 @@ export class SDFRenderer {
     async renderMesh(
         _src: string,
         documentName?: string,
-        options?: { simplifyOnExport?: boolean; exporter?: ExporterKind; shrecTuning?: ShrecTuning; simplifyTuning?: SimplifyTuning; voxelSizeMm?: number },
+        options?: {
+            simplifyOnExport?: boolean
+            exporter?: ExporterKind
+            shrecTuning?: ShrecTuning
+            simplifyTuning?: SimplifyTuning
+            voxelSizeMm?: number
+            mdcExportLevers?: MdcExportLevers
+        },
     ): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
         this.#latestRenderMeshRequestId = requestId
@@ -1512,7 +1522,17 @@ export class SDFRenderer {
         const shrecTuning = options?.shrecTuning
         const simplifyTuning = options?.simplifyTuning
         const voxelSizeMm = options?.voxelSizeMm
-        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport, exporter, shrecTuning, simplifyTuning, voxelSizeMm })
+        const mdcExportLevers = options?.mdcExportLevers
+        this.#pendingTranspile.set(requestId, {
+            kind: "renderMesh",
+            documentName,
+            simplifyOnExport,
+            exporter,
+            shrecTuning,
+            simplifyTuning,
+            voxelSizeMm,
+            mdcExportLevers,
+        })
         return new Promise<MeshData>((resolve, reject) => {
             this.#pendingRenderMesh.set(requestId, { resolve, reject })
             this.#transpileWorker.postMessage({ type: "transpile", src: _src.trim(), requestId, kind: "renderMesh", documentName })

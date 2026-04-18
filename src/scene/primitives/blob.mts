@@ -58,7 +58,7 @@ export class Blob extends Node {
         const varName = `${decapitalize(funcName)}_m`
         const o = this.paramOffset
         const pos = vec3Wgsl(o, this.previewVec3Slot)
-        return { funcName, varName, text: `fBlobMid(p - ${pos})` }
+        return { funcName, varName, text: `sdfMidSetOwner(fBlobMid(p - ${pos}), ${this.id}u)` }
     }
 
     protected override computeBoundsCore(): AABB {

@@ -79,7 +79,7 @@ export class PlaneNode extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const nrm = vec3Wgsl(o + 3, this.previewVec3Slot + 1)
         const d = f32Wgsl(o + 6, this.previewF32Slot)
-        return { funcName, varName, text: `fPlaneMid(p - ${pos}, ${nrm}, ${d})` }
+        return { funcName, varName, text: `sdfMidSetOwner(fPlaneMid(p - ${pos}, ${nrm}, ${d}), ${this.id}u)` }
     }
 
     @fluent withNormal(n: Vec3): this {

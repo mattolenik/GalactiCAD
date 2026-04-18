@@ -144,7 +144,6 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 **Do not run build or lint commands on WGSL files directly.** WGSL files will be compiled with `make build` by the custom build logic. This means when making changes to WGSL files, you should run `make build` to validate them. If they don't compile, you will see the compiler error in `make build`. This custom build logic is what handles the `//:) include` directive, meaning this shader compiler output is indicative of what happens at runtime.
 
-
 ### Devserver logs endpoint (optional browser console)
 
 When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`** at `http://localhost:<port>/_logs`. **Read `<port>` from `.devserver.run`** (JSON `port` field) when the server starts; if that file is absent, the devserver is not running and there is **no** default port to use for `/_logs`. The recorded port may differ from the configured default if the listen port was already in use.
@@ -163,8 +162,6 @@ When the watch devserver is running (`make serve` / `make start`, or `make serve
 3. If `.devserver.run` is **missing** (devserver not running), **do nothing**; do not guess a port or fail the task for missing runtime logs.
 4. See [`.cursor/skills/devserver-logs/SKILL.md`](.cursor/skills/devserver-logs/SKILL.md) for the standard runtime-log check flow.
 
-**Optional cleanup**: if a local `.cursor/mcp.json` still contains stale `galacticad-devserver` MCP settings from older workflows, users can remove that entry manually (file is gitignored).
-
 ## Performance regression triage
 
 - **Worker `#doBuild` timing:** `RenderWorker` debug logs fine-grained buckets (`sceneConstructMs`, `fingerprintMs`, `packSceneMs`, `packPreviewMs`, `serializeNodesMs`, plus full-build `wgslSceneMs`, `shaderModulesMs`, `pipelinesMs`, `gpuBuffersMs`). The same breakdown is sent on `buildComplete` as `timingMs` and is readable from `SDFRenderer.getLastBuildTimingMs()` after each successful build for the active document.
@@ -174,4 +171,3 @@ When the watch devserver is running (`make serve` / `make start`, or `make serve
 - **Param-only uploads:** `#uploadBuildBuffers` skips `writeBuffer` for polygon, bounds/MDC scene params, and preview banks when packed bytes match the last upload.
 
 - **Benchmarks:** `runBenchmarkSuite` measures steady-state GPU frame time. `runBuildBenchmark` (`benchmark/benchmark.mts`) runs a structural build then a param-only pair (`SDFRenderer.benchmarkBuild`) to compare paths. Re-check preview WGSL hot paths only after CPU buckets no longer dominate; optimize shaders only when measured.
-

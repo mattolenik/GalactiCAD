@@ -71,6 +71,12 @@ export class Bend extends UnaryOperator {
         const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
         const funcName = `Bend${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        if (childResult.prelude) {
+            const bentPrelude = childResult.prelude.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
+            const accVar = childResult.varName!
+            const prelude = bentPrelude + `${accVar} = sdfBendNormalMid(${accVar}, p, ${amt});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
         return { funcName, varName, text: `sdfBendNormalMid(${bentChild}, p, ${amt})` }
     }
 

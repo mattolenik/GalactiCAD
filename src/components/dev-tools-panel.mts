@@ -12,10 +12,11 @@ import {
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
 import {
-    DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
+    DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_PREVIEW_SHADING,
     DEFAULT_SHREC_TUNING,
     DEFAULT_SIMPLIFY_TUNING,
+    type MdcExportLevers,
     type PreviewShadingParams,
     type ShrecTuning,
     type SimplifyTuning,
@@ -24,6 +25,18 @@ import { DEBUG_LOG_MODULES, log, type DebugLogModulesState, type LogModule } fro
 
 /** Boolean fields on `SimplifyTuning` (meshoptimizer flags). */
 type SimplifyBoolKey = "lockBorder" | "sparse" | "errorAbsolute" | "prune" | "regularize"
+
+/** MDC-only knobs (voxel + mesh simplify use the shared sliders above). */
+const MDC_RANGE_KNOBS: {
+    key: keyof Pick<MdcExportLevers, "isoValue" | "creaseAngleDeg">
+    label: string
+    min: number
+    max: number
+    step: number
+}[] = [
+    { key: "isoValue", label: "Iso value", min: -0.2, max: 0.2, step: 0.002 },
+    { key: "creaseAngleDeg", label: "Crease °", min: 0, max: 180, step: 1 },
+]
 
 const PREVIEW_SHADING_KNOBS: {
     key: keyof PreviewShadingParams
@@ -67,6 +80,13 @@ export class DevToolsPanel extends HTMLElement {
     #voxelSizeMm$: BehaviorSubject<number>
     #voxelSizeRange: HTMLInputElement
     #voxelSizeValueEl: HTMLSpanElement
+    #mdcExpandedCheckbox: HTMLInputElement
+    #mdcExpanded$: BehaviorSubject<boolean>
+    #mdcSection: HTMLDivElement
+    #mdcRows = new Map<
+        (typeof MDC_RANGE_KNOBS)[number]["key"],
+        { range: HTMLInputElement; valueEl: HTMLSpanElement }
+    >()
     #useShrecCheckbox: HTMLInputElement
     #useShrec$: BehaviorSubject<boolean>
     #shrecTuningState: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
@@ -128,6 +148,9 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback when MDC mesh simplification tuning changes. */
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
+
+    /** Callback when MDC iso/crease levers change (mesh export preview). */
+    onMdcExportLeversChange?: () => void
 
     /** Preview shading uniforms; knob values are not persisted (section visibility is). */
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
@@ -241,6 +264,16 @@ export class DevToolsPanel extends HTMLElement {
     }
 
     /** Sync SHREC knobs from persisted settings (e.g. after storage load). */
+    /** Sync MDC iso/crease sliders from persisted settings (e.g. after storage load). */
+    syncMdcLeversFromSettings(levers: MdcExportLevers): void {
+        for (const k of MDC_RANGE_KNOBS) {
+            const row = this.#mdcRows.get(k.key)
+            if (!row) continue
+            row.range.value = String(levers[k.key])
+            row.valueEl.textContent = DevToolsPanel.#formatMdcValue(k.key, levers[k.key])
+        }
+    }
+
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
         this.#shrecTuningState = { ...tuning }
         this.#shrecMergeSharpCheckbox.checked = tuning.mergeSharpEnabled
@@ -452,6 +485,77 @@ export class DevToolsPanel extends HTMLElement {
             this.#settings.updateGlobal({ app: { meshExportVoxelSizeMm: v } })
             this.onVoxelSizeMmChange?.(v)
         })
+
+        this.#mdcExpanded$ = new BehaviorSubject(g.devToolsMdcExportExpanded)
+        this.#mdcSection = document.createElement("div")
+        this.#mdcSection.className = "lighting-section"
+        this.#mdcSection.hidden = !this.#mdcExpanded$.value
+
+        this.#mdcExpandedCheckbox = this.#addCheckbox(shadow, "Show MDC export", this.#mdcExpanded$.value)
+        this.#subscriptions.push(connectCheckbox(this.#mdcExpandedCheckbox, this.#mdcExpanded$))
+        this.#mdcExpanded$.pipe(skip(1)).subscribe(v => {
+            this.#settings.updateGlobal({ app: { devToolsMdcExportExpanded: v } })
+            this.#mdcSection.hidden = !v
+        })
+        shadow.appendChild(this.#mdcSection)
+
+        const mdcHead = document.createElement("div")
+        mdcHead.className = "shade-head"
+        mdcHead.textContent = "Mesh export (MDC)"
+        this.#mdcSection.appendChild(mdcHead)
+
+        const mdcLevers = this.#settings.getMdcExportLevers()
+        for (const k of MDC_RANGE_KNOBS) {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = k.label
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = String(k.min)
+            range.max = String(k.max)
+            range.step = String(k.step)
+            range.value = String(mdcLevers[k.key])
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatMdcValue(k.key, mdcLevers[k.key])
+            range.addEventListener("input", () => {
+                let v = parseFloat(range.value)
+                if (!Number.isFinite(v)) v = k.min
+                v = Math.max(k.min, Math.min(k.max, v))
+                this.#settings.updateGlobal({
+                    app: { mdcExportLevers: { [k.key]: v } },
+                })
+                valueEl.textContent = DevToolsPanel.#formatMdcValue(k.key, v)
+                this.onMdcExportLeversChange?.()
+            })
+            row.append(lab, range, valueEl)
+            this.#mdcSection.appendChild(row)
+            this.#mdcRows.set(k.key, { range, valueEl })
+        }
+
+        const mdcDefaults = document.createElement("button")
+        mdcDefaults.textContent = "MDC iso/crease defaults"
+        mdcDefaults.addEventListener("click", () => {
+            this.#settings.updateGlobal({
+                app: {
+                    mdcExportLevers: {
+                        isoValue: DEFAULT_MDC_EXPORT_LEVERS.isoValue,
+                        creaseAngleDeg: DEFAULT_MDC_EXPORT_LEVERS.creaseAngleDeg,
+                    },
+                },
+            })
+            const next = this.#settings.getGlobal().app.mdcExportLevers
+            for (const knob of MDC_RANGE_KNOBS) {
+                const row = this.#mdcRows.get(knob.key)
+                if (!row) continue
+                row.range.value = String(next[knob.key])
+                row.valueEl.textContent = DevToolsPanel.#formatMdcValue(knob.key, next[knob.key])
+            }
+            this.onMdcExportLeversChange?.()
+        })
+        this.#mdcSection.appendChild(mdcDefaults)
 
         this.#simplifyTuningState = { ...DEFAULT_SIMPLIFY_TUNING, ...g.simplifyTuning }
         this.#simplifySection = document.createElement("div")
@@ -988,6 +1092,11 @@ export class DevToolsPanel extends HTMLElement {
         return v === 0 ? "0" : v.toFixed(2)
     }
 
+    static #formatMdcValue(key: (typeof MDC_RANGE_KNOBS)[number]["key"], v: number): string {
+        if (key === "isoValue") return v.toFixed(3)
+        if (key === "creaseAngleDeg") return String(Math.round(v))
+        return v.toFixed(2)
+    }
     #addCheckbox(parent: ParentNode, label: string, checked: boolean): HTMLInputElement {
         const el = document.createElement("label")
         const cb = document.createElement("input")

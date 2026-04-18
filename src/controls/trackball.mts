@@ -23,8 +23,6 @@ export interface TrackballOptions {
     getInteractionRect?: () => DOMRect
     /** The rotation method to use */
     rotationMethod?: TrackballRotationMethod
-    /** When false, drag rotation is skipped (e.g. waiting for orbit pivot ray hit). */
-    rotationAllowed?: () => boolean
     /** Callback function called when trackball is rotated */
     onDraw?: (this: Trackball, q: Quaternion) => void
     /** Whether to clamp elevation rotation */
@@ -66,12 +64,11 @@ export class Trackball {
     #isUpdatePending = false
     #lastMousePosition: { clientX: number; clientY: number } | null = null
     #opts: Required<
-        Omit<TrackballOptions, "scene" | "rotationMethod" | "q" | "getInteractionRect" | "rotationAllowed">
+        Omit<TrackballOptions, "scene" | "rotationMethod" | "q" | "getInteractionRect">
     > & {
         scene: HTMLElement
         getInteractionRect?: () => DOMRect
         rotationMethod?: TrackballRotationMethod
-        rotationAllowed?: () => boolean
     }
 
     /**
@@ -92,7 +89,6 @@ export class Trackball {
             scene,
             getInteractionRect,
             rotationMethod,
-            rotationAllowed,
             onDraw = () => { },
             clampElevation = false,
             border = 0,
@@ -110,7 +106,6 @@ export class Trackball {
             scene,
             getInteractionRect,
             rotationMethod,
-            rotationAllowed,
             onDraw,
             clampElevation,
             border,
@@ -257,8 +252,6 @@ export class Trackball {
     }
 
     #updateRotation(clientX: number, clientY: number): void {
-        if (this.#opts.rotationAllowed && !this.#opts.rotationAllowed()) return
-
         const deltaX = clientX - this.#drag!.startPosition[0]
         const deltaY = clientY - this.#drag!.startPosition[1]
         if (deltaX === 0 && deltaY === 0) return

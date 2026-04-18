@@ -211,7 +211,6 @@ export class SDFRenderer {
     constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect, getActiveDocument?: () => string | undefined) {
         this.#preview = preview
         this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement ?? null, getInteractionRect ?? undefined)
-        this.#controls.pickPosAtScreen = (clientX, clientY) => this.pickPosAtScreen(clientX, clientY)
         this.#tabsElement = tabsElement ?? null
         this.#getInteractionRect = getInteractionRect ?? null
         this.#getActiveDocument = getActiveDocument ?? null

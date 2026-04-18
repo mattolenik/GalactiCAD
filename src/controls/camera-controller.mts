@@ -62,7 +62,6 @@ export class CameraController {
 
     #dragMode: "rotate" | "pan" | null = null
     #hasDragged: boolean = false
-    #dragSessionId: number = 0
     #rotateSensitivity: number = 0.005
     #panSensitivity: number = 0.1
     #cameraTranslation: Vec3f = new Vec3f()
@@ -73,19 +72,8 @@ export class CameraController {
     #tabChangeSub: Subscription | null = null
     /** When set, camera/trackball input is limited to this screen rect (visible preview minus editor overlay). */
     #getInteractionRect?: () => DOMRect
-    /** 3D world-space point to orbit around (Cmd/Ctrl+drag). Null → standard pivot at origin. */
-    #customPivot: Vec3f | null = null
-    /** True while waiting for async surface pick before applying Cmd/Ctrl orbit rotation. */
-    #awaitingOrbitPivot = false
     /** Last Cmd/Ctrl+double-click focus hit (world space); used to preserve viewing distance when refocusing. */
     #lastFocusWorld: Vec3f | null = null
-
-    /**
-     * Optional callback to query the 3D world-space position under a screen coordinate.
-     * Used for Cmd/Ctrl+drag to orbit around the picked surface point.
-     * Returns null if no surface is under the cursor.
-     */
-    pickPosAtScreen: ((clientX: number, clientY: number) => Promise<[number, number, number] | null>) | null = null
 
     /** Emitted when camera state changes (rotate, pan, zoom). */
     readonly change$ = new Subject<CameraState>()
@@ -130,16 +118,10 @@ export class CameraController {
             scene: this.#host.canvas,
             getInteractionRect,
             rotationMethod,
-            rotationAllowed: () =>
-                !(this.#awaitingOrbitPivot && !this.#customPivot),
             q: this.#rotation,
             onDraw: (q) => {
                 if (this.#isSyncing) return
-                const prevRotation = this.#rotation
                 this.#rotation = q
-                if (this.#customPivot) {
-                    this.#applyCustomPivotCompensation(prevRotation, q, this.#customPivot)
-                }
                 this.#updateTransforms()
             },
         })
@@ -299,24 +281,6 @@ export class CameraController {
                 this.isDragging = true
                 this.#hasDragged = false
                 this.#last = vec2(e.clientX, e.clientY)
-                this.#customPivot = null
-                // Cmd (macOS) or Ctrl (other) — orbit around the surface point under the cursor
-                if ((e.metaKey || e.ctrlKey) && this.pickPosAtScreen) {
-                    const cx = e.clientX
-                    const cy = e.clientY
-                    const sessionId = ++this.#dragSessionId
-                    this.#awaitingOrbitPivot = true
-                    this.pickPosAtScreen(cx, cy).then(pos => {
-                        if (this.#dragSessionId !== sessionId || !this.isDragging || this.#dragMode !== "rotate") {
-                            this.#awaitingOrbitPivot = false
-                            return
-                        }
-                        this.#awaitingOrbitPivot = false
-                        if (pos) {
-                            this.#customPivot = vec3(pos[0], pos[1], pos[2])
-                        }
-                    })
-                }
             }
             this.#host.canvas.setPointerCapture(e.pointerId)
         } else if (e.button === 2) {
@@ -380,8 +344,6 @@ export class CameraController {
             this.#primaryPointerId = null
             this.isDragging = false
             this.#dragMode = null
-            this.#awaitingOrbitPivot = false
-            this.#customPivot = null
             // Camera state is saved via rxjs debounce in SettingsManager;
             // the debounce fires once the camera stops moving.
             this.#saveCameraState()
@@ -489,34 +451,6 @@ export class CameraController {
             }
         }
         requestAnimationFrame(step)
-    }
-
-    /**
-     * Adjust camera translation to keep `pivot` (world-space) at the same screen position
-     * after the rotation changes from `prevRotation` to `newRotation`.
-     *
-     * Screen XY of a world point P satisfies: P = R * (offsetX, offsetY, 100) + camTrans
-     * → camTrans_new = P - R_new * R_old^{-1} * (P - camTrans_old)
-     *
-     * Note: #quaternionToMatrix returns R^T (= R^{-1} for rotations), so:
-     *   R_old^{-1} * v  = prevMat.transformVector(v)
-     *   R_new * v       = newMat.transpose().transformVector(v)
-     */
-    #applyCustomPivotCompensation(prevRotation: Quaternion, newRotation: Quaternion, pivot: Vec3f): void {
-        const prevMat = this.#quaternionToMatrix(prevRotation)
-        const newMat = this.#quaternionToMatrix(newRotation)
-        const diff = vec3(
-            pivot.x - this.#cameraTranslation.x,
-            pivot.y - this.#cameraTranslation.y,
-            pivot.z - this.#cameraTranslation.z,
-        )
-        // R_old^{-1} * diff
-        const oldInvDiff = prevMat.transformVector(diff)
-        // R_new * (R_old^{-1} * diff)
-        const rotated = newMat.transpose().transformVector(oldInvDiff)
-        this.#cameraTranslation.x = pivot.x - rotated.x
-        this.#cameraTranslation.y = pivot.y - rotated.y
-        this.#cameraTranslation.z = pivot.z - rotated.z
     }
 
     #quaternionToMatrix(q: Quaternion): Mat4x4f {

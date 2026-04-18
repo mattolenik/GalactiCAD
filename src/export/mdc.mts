@@ -22,8 +22,12 @@ interface Vertex {
 // struct Vertex { position: vec3f; normal: vec3f; }
 // => position @0..11 (pad to 16), normal @16..27 (pad to 32) => 32-byte stride.
 export const SIZEOF_VERTEX = 8 * Float32Array.BYTES_PER_ELEMENT // 32 bytes
-const SIZEOF_EDGE_DEBUG_SAMPLE = 5 * 4 * Float32Array.BYTES_PER_ELEMENT // 5 vec4f
-const SIZEOF_COMPONENT_FEATURE = 96
+// 6 vec4f: crossingPos, normal, featurePoint, featureN1, featureN2, axisCenter
+// (axisCenter only populated for MID_FEATURE_RING; zero otherwise).
+const SIZEOF_EDGE_DEBUG_SAMPLE = 6 * 4 * Float32Array.BYTES_PER_ELEMENT
+// std430: 4 u32s pack into 16 bytes, then 6 vec3f at align 16 = 6*16 = 96 bytes,
+// total = 16 + 96 = 112 bytes. (Was 96 before MID_FEATURE_RING added the axisCenter slot.)
+const SIZEOF_COMPONENT_FEATURE = 112
 
 /**
  * Represents QEF data.
@@ -666,6 +670,7 @@ export class MDCExport {
                 midFeatureBooleanSeam: debugCounts[11],
                 midFeatureRejected: debugCounts[12],
                 midFeatureExtraQefPlanes: debugCounts[13],
+                midFeatureRing: debugCounts[14],
             })
             const debugSampleCountData = await readBufferData(debugEdgeSampleCountBuffer)
             const rawDebugSampleCount = new Uint32Array(debugSampleCountData)[0] ?? 0
@@ -960,6 +965,7 @@ export class MDCExport {
                             acceptedLine: debugCounts[9] ?? 0,
                             acceptedCorner: debugCounts[10] ?? 0,
                             acceptedSeam: debugCounts[11] ?? 0,
+                            acceptedRing: debugCounts[14] ?? 0,
                             rejected: debugCounts[12] ?? 0,
                         },
                     },

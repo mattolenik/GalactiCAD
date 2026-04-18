@@ -40,6 +40,11 @@ struct EdgeDebugSample {
     featurePoint: vec4f,
     featureN1: vec4f,
     featureN2: vec4f,
+    // For RING (and only RING): xyz = ring axisCenter (a point on the axis of
+    // revolution closest to featurePoint); .w reserved. The viewer derives
+    // axis = cross(tangent, normalize(featurePoint - axisCenter)) and
+    // radius = length(featurePoint - axisCenter).
+    axisCenter: vec4f,
 }
 
 struct ComponentFeature {
@@ -52,6 +57,11 @@ struct ComponentFeature {
     n0: vec3f,
     n1: vec3f,
     n2: vec3f,
+    // For MID_FEATURE_RING: a point on the ring's axis of revolution closest
+    // to `point`. Together with `point` and `tangent` it fully reconstructs the
+    // circle, letting Pass 4 snap the sub-vertex to the true ring instead of
+    // its local tangent linearization. Zero for other feature kinds.
+    axisCenter: vec3f,
 }
 
 // ============================== MDC CONSTANTS ==============================
@@ -141,6 +151,7 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // [11] = crossings classified as boolean seam feature
 // [12] = feature hints rejected (too far / too weak)
 // [13] = extra QEF planes injected from features
+// [14] = crossings classified as ring feature (closed circular crease)
 @group(0) @binding(24) var<storage, read_write> debugSkipCounters: array<atomic<u32>, 16>;
 
 // Cancellation flag: 0 = continue, 1 = cancelled
@@ -515,7 +526,10 @@ fn qefCost(qef: QEFData, x: vec3f) -> f32 {
 
 const MDC_FEATURE_PROX_SCALE: f32 = 0.75;
 const MDC_FEATURE_PLANE_WEIGHT: f32 = 0.12;
-const COMPONENT_FEATURE_REJECTED: u32 = 4u;
+// Sentinel `kind` for inferred-component features whose tangent solve failed
+// (e.g. parallel bucket normals). Distinct from any MID_FEATURE_* value so the
+// debug pipeline can count it separately.
+const COMPONENT_FEATURE_REJECTED: u32 = 5u;
 const COMPONENT_NORMAL_COS_THRESH: f32 = 0.95;
 /** Inferred-line acceptance: the two bucket normals must form at least a ~45° crease (cosine ≤ 0.7).
  * Prevents smooth high-curvature regions (e.g., lathed spheroids) from registering as line creases. */
@@ -523,8 +537,21 @@ const MDC_INFER_LINE_DOT_MAX: f32 = 0.7;
 /** Inferred-line acceptance: each of the two normal buckets must contain this many edge-crossing samples.
  * Single-sample buckets are usually curvature noise on a smooth surface. */
 const MDC_INFER_LINE_MIN_BUCKET_SAMPLES: u32 = 2u;
+/** Inferred-line acceptance: each bucket's normals must be tightly aligned (sum length per sample
+ * close to 1). On a real crease both faces are flat and coherence is ~1.0. On a small-radius
+ * lathe / cone section, azimuthal sweep across a single cell spreads a bucket's normals over an
+ * arc, dropping coherence well below 1. Filtering at 0.95 (~18° max effective bucket spread)
+ * eliminates the sporadic ghost LINE glyphs that scattered along smooth lathe surfaces, while
+ * still allowing real flat-face creases (cylinder caps, cone bases, hexprism faces) through. */
+const MDC_INFER_LINE_BUCKET_COHERENCE: f32 = 0.95;
 const MDC_CORNER_FEATURE_PROX_SCALE: f32 = 1.35;
 const MDC_CORNER_PROBE_PROX_SCALE: f32 = 1.9;
+// Rings (closed circular creases) deserve a more permissive proximity threshold
+// than straight LINE creases: every cell that touches the ring should pick it
+// up, otherwise neighbors that miss it fall back to the inferred-LINE path and
+// emit ghost edge glyphs along the same circle. 1.35 voxels matches CORNER and
+// covers the corner-to-cell-center distance for grids aligned to the ring.
+const MDC_RING_FEATURE_PROX_SCALE: f32 = 1.35;
 
 fn mdcQefAddPlane(qef: ptr<function, QEFData>, normal: vec3f, point: vec3f, weight: f32) {
     let n = safeNormalize(normal, vec3f(0.0, 1.0, 0.0));
@@ -538,7 +565,7 @@ fn mdcQefAddPlane(qef: ptr<function, QEFData>, normal: vec3f, point: vec3f, weig
 fn zeroComponentFeature() -> ComponentFeature {
     return ComponentFeature(
         MID_FEATURE_NONE, 0u, 0u, 0u,
-        vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0),
+        vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0),
     );
 }
 
@@ -974,9 +1001,18 @@ fn edgeDetection_Pass3(
     var explicitLineFeature: array<ComponentFeature, 4>;
     var explicitCornerFeature: array<ComponentFeature, 4>;
     var explicitSeamFeature: array<ComponentFeature, 4>;
+    var explicitRingFeature: array<ComponentFeature, 4>;
     var explicitLineDist: array<f32, 4>;
     var explicitCornerDist: array<f32, 4>;
     var explicitSeamDist: array<f32, 4>;
+    var explicitRingDist: array<f32, 4>;
+    // Sticky per-component flag: any sample in this component had featureKind ==
+    // MID_FEATURE_RING (regardless of acceptance distance). Used in Phase 2 to
+    // suppress inferred-LINE fallback for cells that sit on a ring crease but
+    // are slightly outside the explicit RING acceptance threshold — without
+    // this they emit ghost LINE features that show up as scattered edge glyphs
+    // along the same circle as the real RING glyph.
+    var compHasRingSample: array<u32, 4>;
     var compNormalSums: array<array<vec3f, 3>, 4>;
     var compPointSums: array<array<vec3f, 3>, 4>;
     var compPointCounts: array<array<u32, 3>, 4>;
@@ -994,9 +1030,12 @@ fn edgeDetection_Pass3(
         explicitLineFeature[c] = zeroComponentFeature();
         explicitCornerFeature[c] = zeroComponentFeature();
         explicitSeamFeature[c] = zeroComponentFeature();
+        explicitRingFeature[c] = zeroComponentFeature();
         explicitLineDist[c] = 1e9;
         explicitCornerDist[c] = 1e9;
         explicitSeamDist[c] = 1e9;
+        explicitRingDist[c] = 1e9;
+        compHasRingSample[c] = 0u;
         for (var j = 0u; j < 3u; j = j + 1u) {
             compNormalSums[c][j] = vec3f(0.0);
             compPointSums[c][j] = vec3f(0.0);
@@ -1030,6 +1069,8 @@ fn edgeDetection_Pass3(
         compPointSum[c] = compPointSum[c] + intersectionPos;
         compCrossCount[c] = compCrossCount[c] + 1u;
 
+        if (sample.featureKind == MID_FEATURE_RING) { compHasRingSample[c] = 1u; }
+
         let ownerPair = vec2u(sample.featureIdA, sample.featureIdB);
         if (ownerPair.x != 0u || ownerPair.y != 0u) {
             if (compOwnerPairCount[c] == 0u) {
@@ -1053,7 +1094,9 @@ fn edgeDetection_Pass3(
                 sample.featureNormalCount == 3u,
                 sample.featureKind == MID_FEATURE_CORNER
             );
-        let explicitProxScale = select(MDC_FEATURE_PROX_SCALE, MDC_CORNER_FEATURE_PROX_SCALE, sample.featureKind == MID_FEATURE_CORNER);
+        var explicitProxScale = MDC_FEATURE_PROX_SCALE;
+        if (sample.featureKind == MID_FEATURE_CORNER) { explicitProxScale = MDC_CORNER_FEATURE_PROX_SCALE; }
+        else if (sample.featureKind == MID_FEATURE_RING) { explicitProxScale = MDC_RING_FEATURE_PROX_SCALE; }
         let explicitOk =
             sample.featureKind != MID_FEATURE_NONE &&
             sample.featureDist <= uniforms.voxelSize * explicitProxScale &&
@@ -1073,6 +1116,21 @@ fn edgeDetection_Pass3(
                     sample.n,
                     sample.featureN1,
                     vec3f(0.0),
+                    vec3f(0.0),
+                );
+            } else if (sample.featureKind == MID_FEATURE_RING && sample.featureDist < explicitRingDist[c]) {
+                explicitRingDist[c] = sample.featureDist;
+                explicitRingFeature[c] = ComponentFeature(
+                    MID_FEATURE_RING,
+                    sample.featureIdA,
+                    sample.featureIdB,
+                    sample.featureNormalCount,
+                    sample.featurePoint,
+                    sample.featureTangent,
+                    sample.n,
+                    sample.featureN1,
+                    vec3f(0.0),
+                    sample.featureAxisCenter,
                 );
             } else if (sample.featureKind == MID_FEATURE_CORNER && sample.featureDist < explicitCornerDist[c]) {
                 explicitCornerDist[c] = sample.featureDist;
@@ -1086,6 +1144,7 @@ fn edgeDetection_Pass3(
                     sample.n,
                     sample.featureN1,
                     sample.featureN2,
+                    vec3f(0.0),
                 );
             } else if (sample.featureKind == MID_FEATURE_BOOLEAN_SEAM && sample.featureDist < explicitSeamDist[c]) {
                 explicitSeamDist[c] = sample.featureDist;
@@ -1098,6 +1157,7 @@ fn edgeDetection_Pass3(
                     vec3f(0.0),
                     sample.featureN1,
                     sample.featureN2,
+                    vec3f(0.0),
                     vec3f(0.0),
                 );
             }
@@ -1192,6 +1252,7 @@ fn edgeDetection_Pass3(
                     probeSdf.n,
                     probeSdf.featureN1,
                     probeSdf.featureN2,
+                    vec3f(0.0),
                 );
             }
         }
@@ -1205,6 +1266,11 @@ fn edgeDetection_Pass3(
         var inferred = zeroComponentFeature();
         if (explicitCornerDist[c] < 1e8) {
             inferred = explicitCornerFeature[c];
+        } else if (explicitRingDist[c] < 1e8) {
+            // RING is a closed circular crease (e.g. lathe ring); it carries
+            // strictly more information than a generic LINE so it wins when
+            // both are present at the same cell-component.
+            inferred = explicitRingFeature[c];
         } else if (explicitLineDist[c] < 1e8) {
             inferred = explicitLineFeature[c];
         } else if (explicitSeamDist[c] < 1e8) {
@@ -1223,6 +1289,7 @@ fn edgeDetection_Pass3(
                     n0,
                     n1,
                     vec3f(0.0),
+                    vec3f(0.0),
                 );
             } else {
                 inferred = ComponentFeature(
@@ -1235,13 +1302,21 @@ fn edgeDetection_Pass3(
                     n0,
                     n1,
                     vec3f(0.0),
+                    vec3f(0.0),
                 );
             }
         } else if (
+            compHasRingSample[c] == 0u &&
             bucketCount == 2u &&
             dot(n0, n1) < MDC_INFER_LINE_DOT_MAX &&
             compPointCounts[c][0] >= MDC_INFER_LINE_MIN_BUCKET_SAMPLES &&
-            compPointCounts[c][1] >= MDC_INFER_LINE_MIN_BUCKET_SAMPLES
+            compPointCounts[c][1] >= MDC_INFER_LINE_MIN_BUCKET_SAMPLES &&
+            // Bucket coherence: sum length / sample count.  ~1.0 = a flat face,
+            // < 0.95 = the bucket spans an arc (smooth swept surface, not a real
+            // crease).  This is what ultimately suppresses the sporadic ghost
+            // LINE glyphs scattered around lathe smooth sections at small radii.
+            length(compNormalSums[c][0]) >= MDC_INFER_LINE_BUCKET_COHERENCE * f32(compPointCounts[c][0]) &&
+            length(compNormalSums[c][1]) >= MDC_INFER_LINE_BUCKET_COHERENCE * f32(compPointCounts[c][1])
         ) {
             let tangent = safeUnit3(cross(n0, n1));
             if (lengthSqr(tangent) > 1e-8) {
@@ -1255,6 +1330,7 @@ fn edgeDetection_Pass3(
                     n0,
                     n1,
                     vec3f(0.0),
+                    vec3f(0.0),
                 );
             } else {
                 inferred = ComponentFeature(
@@ -1266,6 +1342,7 @@ fn edgeDetection_Pass3(
                     vec3f(0.0),
                     n0,
                     n1,
+                    vec3f(0.0),
                     vec3f(0.0),
                 );
             }
@@ -1286,6 +1363,7 @@ fn edgeDetection_Pass3(
         let f = inferredFeatures[c];
         let hasExplicit =
             (f.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
+            (f.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) ||
             (f.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
             (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8);
         if (!hasExplicit) { continue; }
@@ -1330,6 +1408,7 @@ fn edgeDetection_Pass3(
         let f = inferredFeatures[c];
         let hasExplicit =
             (f.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
+            (f.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) ||
             (f.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
             (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8);
         if (hasExplicit) { continue; }
@@ -1372,6 +1451,13 @@ fn edgeDetection_Pass3(
 
         var projPos = intersectionPos;
         if (feature.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) {
+            let tangent = safeUnit3(feature.tangent);
+            projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
+        } else if (feature.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) {
+            // Treat the ring like a LINE locally — the stored anchor is the
+            // closest point on the circle to this cell's sample, and the stored
+            // tangent is the circle's tangent there, so a tangent-line projection
+            // is the correct linearization at cell scale.
             let tangent = safeUnit3(feature.tangent);
             projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
         } else if (feature.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) {
@@ -1440,6 +1526,8 @@ fn edgeDetection_Pass3(
             atomicAdd(&debugSkipCounters[10], 1u);
         } else if (feature.kind == MID_FEATURE_BOOLEAN_SEAM) {
             atomicAdd(&debugSkipCounters[11], 1u);
+        } else if (feature.kind == MID_FEATURE_RING) {
+            atomicAdd(&debugSkipCounters[14], 1u);
         } else if (feature.kind == COMPONENT_FEATURE_REJECTED) {
             atomicAdd(&debugSkipCounters[12], 1u);
         } else {
@@ -1449,12 +1537,21 @@ fn edgeDetection_Pass3(
 
         let debugIdx = atomicAdd(&debugEdgeSampleCount, 1u);
         if (debugIdx < arrayLength(&debugEdgeSamples)) {
+            // For RING the per-component axisCenter recorded in the
+            // ComponentFeature lets the viewer reconstruct the full circle;
+            // other kinds leave it zero.
+            let axisCenter = select(
+                vec3f(0.0),
+                feature.axisCenter,
+                feature.kind == MID_FEATURE_RING,
+            );
             debugEdgeSamples[debugIdx] = EdgeDebugSample(
                 vec4f(intersectionPos, debugClass),
                 vec4f(normal, f32(feature.normalCount)),
                 vec4f(featurePoint, length(intersectionPos - featurePoint)),
                 vec4f(feature.n0, f32(feature.ownerA)),
                 vec4f(select(vec3f(0.0), feature.n1, feature.normalCount >= 2u), f32(feature.ownerB)),
+                vec4f(axisCenter, 0.0),
             );
         }
     }
@@ -1579,20 +1676,62 @@ fn vertexGeneration_Pass4(
     let cFeatIdx = active_cell_array_idx * MAX_COMPONENTS_PER_CELL + componentIdx;
     let featureStart = componentFeatures[cFeatIdx];
     let isExplicit =
-        (featureStart.kind == MID_FEATURE_LINE || featureStart.kind == MID_FEATURE_CORNER || featureStart.kind == MID_FEATURE_BOOLEAN_SEAM) &&
+        (featureStart.kind == MID_FEATURE_LINE
+            || featureStart.kind == MID_FEATURE_RING
+            || featureStart.kind == MID_FEATURE_CORNER
+            || featureStart.kind == MID_FEATURE_BOOLEAN_SEAM) &&
         featureStart.ownerA != 0u &&
         featureStart.normalCount >= 2u &&
         length(featureStart.point) > 1e-6;
     var snappedToFeature = false;
 
+    // Snap modes:
+    //  - line:   project onto a straight tangent line through featureStart.point
+    //            (LINE / SEAM, and degenerate RING).
+    //  - ring:   project onto the actual circle (axisCenter + axis + radius).
+    //  - corner: snap to the single feature point.
     var snappedToLine = false;
+    var snappedToRing = false;
     var lineTangent = vec3f(0.0);
+    var ringRadius = 0.0;
+    var ringAxis = vec3f(0.0, 1.0, 0.0);
     if (isExplicit) {
-        // Hard snap: project the per-subcomp QEF solution onto the feature locus,
-        // then clamp into the cell bounds. This forces every crease cell to land
-        // its sub-vertex exactly on the feature curve / corner point.
         var featureTarget = featureStart.point;
-        if ((featureStart.kind == MID_FEATURE_LINE || featureStart.kind == MID_FEATURE_BOOLEAN_SEAM) &&
+        if (featureStart.kind == MID_FEATURE_RING) {
+            // Build the ring frame from the stored anchor + axisCenter + tangent.
+            // axis = unit(cross(tangent, radial)) — the axis of revolution.
+            // Project the QEF best onto the ring (plane perpendicular to axis through
+            // axisCenter, scaled to radius) instead of onto the local tangent line:
+            // the latter degrades for cells that don't sit exactly under the anchor
+            // and can pull the sub-vertex off the surface.
+            let radial = featureStart.point - featureStart.axisCenter;
+            ringRadius = length(radial);
+            if (ringRadius > 1e-8 && length(featureStart.tangent) > 1e-6) {
+                let tang = safeUnit3(featureStart.tangent);
+                let axisRaw = cross(tang, radial);
+                ringAxis = safeUnit3(axisRaw);
+                if (length(ringAxis) > 0.5) {
+                    // toV = vertexPos - axisCenter.
+                    // inPlane = component of toV in the ring plane.
+                    let toV = vertexPos - featureStart.axisCenter;
+                    let inPlane = toV - ringAxis * dot(toV, ringAxis);
+                    let inPlaneLen = length(inPlane);
+                    if (inPlaneLen > 1e-8) {
+                        featureTarget = featureStart.axisCenter + inPlane * (ringRadius / inPlaneLen);
+                    } else {
+                        featureTarget = featureStart.point;
+                    }
+                    snappedToRing = true;
+                }
+            }
+            if (!snappedToRing && length(featureStart.tangent) > 1e-6) {
+                // Fallback: tangent-line snap if we couldn't build a ring frame.
+                lineTangent = safeUnit3(featureStart.tangent);
+                featureTarget = featureStart.point + lineTangent * dot(vertexPos - featureStart.point, lineTangent);
+                snappedToLine = true;
+            }
+        } else if ((featureStart.kind == MID_FEATURE_LINE
+                || featureStart.kind == MID_FEATURE_BOOLEAN_SEAM) &&
             length(featureStart.tangent) > 1e-6) {
             lineTangent = safeUnit3(featureStart.tangent);
             featureTarget = featureStart.point + lineTangent * dot(vertexPos - featureStart.point, lineTangent);
@@ -1608,14 +1747,15 @@ fn vertexGeneration_Pass4(
     //   iso-surface by construction, and the analytic normal at a corner is
     //   multi-valued so a gradient step would chatter.
     //
+    // - Ring snap: alternate iso-projection with circle re-projection so the
+    //   vertex converges to the curve-vs-iso intersection (the actual ring-
+    //   crease point) rather than chattering off the circle.
+    //
     // - Line/seam snap: the snap above projected onto a *straight* tangent line
     //   through featureStart.point. For straight crease features that line is the
     //   actual surface intersection so iso-projection is a no-op. For curved
-    //   crease features (twisted-extrude helical side, lathe rings) the local
-    //   tangent linearizes the curve, leaving the vertex slightly off-surface
-    //   and producing visible jaggies. Run a short iso-projection alternated
-    //   with re-snapping to the tangent line to converge onto the actual
-    //   curve-vs-surface intersection (Newton on the constrained surface).
+    //   crease features (twisted-extrude helical side) the local tangent
+    //   linearizes the curve; alternate iso-step + tangent-re-snap converges.
     //
     // - No snap: full iso-projection as before.
     if (!snappedToFeature) {
@@ -1642,6 +1782,24 @@ fn vertexGeneration_Pass4(
                 vertexPos = vertexPos + step * (maxStep / stepLen);
             } else {
                 vertexPos = projected;
+            }
+            vertexPos = clamp(vertexPos, cellMin, cellMax);
+        }
+    } else if (snappedToRing) {
+        for (var iter = 0u; iter < 4u; iter = iter + 1u) {
+            let sdfResult = sceneSDF_mid(vertexPos);
+            let d = sdfResult.d - uniforms.isoValue;
+            if (abs(d) < uniforms.voxelSize * uniforms.mdcF1.w) { break; }
+            let n = sdfResult.n;
+            let gradScale = max(1.0, sdfResult.g);
+            let stepSize = clamp(d / gradScale, -uniforms.voxelSize * 0.4, uniforms.voxelSize * 0.4);
+            vertexPos = vertexPos - n * stepSize;
+            // Re-project onto the circle.
+            let toV = vertexPos - featureStart.axisCenter;
+            let inPlane = toV - ringAxis * dot(toV, ringAxis);
+            let inPlaneLen = length(inPlane);
+            if (inPlaneLen > 1e-8) {
+                vertexPos = featureStart.axisCenter + inPlane * (ringRadius / inPlaneLen);
             }
             vertexPos = clamp(vertexPos, cellMin, cellMax);
         }

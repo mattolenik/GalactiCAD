@@ -13,6 +13,12 @@ const MID_FEATURE_NONE: u32 = 0u;
 const MID_FEATURE_LINE: u32 = 1u;
 const MID_FEATURE_CORNER: u32 = 2u;
 const MID_FEATURE_BOOLEAN_SEAM: u32 = 3u;
+// MID_FEATURE_RING: a closed circular crease (e.g. a polygon vertex revolved
+// around the lathe's axis of symmetry). Geometrically the locus is a circle —
+// MDC treats it like a LINE for QEF/snap purposes (point + local tangent), but
+// `featureAxisCenter` carries the ring center so the viewer can render it as a
+// full circle and dedup all cells along the same ring into one record.
+const MID_FEATURE_RING: u32 = 4u;
 const MID_FEATURE_SEAM_COS_THRESH: f32 = 0.9659258;
 
 //////////////////////////////
@@ -87,6 +93,12 @@ fn applySeam(out: ptr<function, SDFResult>, seam: SDFResult) {
 }
 
 // SDFResultMid: d, g, n + optional feature payload for feature-aware MDC.
+//
+// `featureAxisCenter` is meaningful only when `featureKind == MID_FEATURE_RING`:
+// it stores a point on the ring's axis of revolution (the closest point on the
+// axis to `featurePoint`), which together with `featurePoint` and `tangent`
+// fully determines the circle (axis = cross(tangent, featurePoint - axisCenter),
+// radius = length(featurePoint - axisCenter)).
 struct SDFResultMid {
     d: f32,
     g: f32,
@@ -100,13 +112,14 @@ struct SDFResultMid {
     featureTangent: vec3f,
     featureN1: vec3f,
     featureN2: vec3f,
+    featureAxisCenter: vec3f,
 }
 
 fn sdfRMidNoFeature(d: f32, g: f32, n: vec3f) -> SDFResultMid {
     return SDFResultMid(
         d, g, n,
         MID_FEATURE_NONE, 1e9, 0u, 0u, 0u,
-        vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0),
+        vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0),
     );
 }
 
@@ -114,7 +127,7 @@ fn sdfRMidLine(d: f32, g: f32, n: vec3f, featurePoint: vec3f, tangent: vec3f, n1
     return SDFResultMid(
         d, g, n,
         MID_FEATURE_LINE, featureDist, 0u, 0u, 2u,
-        featurePoint, tangent, n1, vec3f(0.0),
+        featurePoint, tangent, n1, vec3f(0.0), vec3f(0.0),
     );
 }
 
@@ -122,7 +135,19 @@ fn sdfRMidCorner(d: f32, g: f32, n: vec3f, featurePoint: vec3f, n1: vec3f, n2: v
     return SDFResultMid(
         d, g, n,
         MID_FEATURE_CORNER, featureDist, 0u, 0u, 3u,
-        featurePoint, vec3f(0.0), n1, n2,
+        featurePoint, vec3f(0.0), n1, n2, vec3f(0.0),
+    );
+}
+
+fn sdfRMidRing(
+    d: f32, g: f32, n: vec3f,
+    featurePoint: vec3f, tangent: vec3f, n1: vec3f,
+    axisCenter: vec3f, featureDist: f32,
+) -> SDFResultMid {
+    return SDFResultMid(
+        d, g, n,
+        MID_FEATURE_RING, featureDist, 0u, 0u, 2u,
+        featurePoint, tangent, n1, vec3f(0.0), axisCenter,
     );
 }
 
@@ -139,7 +164,7 @@ fn sdfRMidSeam(d: f32, g: f32, n: vec3f, seamIdA: u32, seamIdB: u32, seamN0: vec
     return SDFResultMid(
         d, g, n,
         MID_FEATURE_BOOLEAN_SEAM, featureDist, owners.x, owners.y, 2u,
-        vec3f(0.0), vec3f(0.0), seamN0, seamN1,
+        vec3f(0.0), vec3f(0.0), seamN0, seamN1, vec3f(0.0),
     );
 }
 
@@ -152,6 +177,7 @@ fn clearMidFeature(r: SDFResultMid) -> SDFResultMid {
     out.featureTangent = vec3f(0.0);
     out.featureN1 = vec3f(0.0);
     out.featureN2 = vec3f(0.0);
+    out.featureAxisCenter = vec3f(0.0);
     return out;
 }
 
@@ -181,14 +207,16 @@ fn selectMid(falseVal: SDFResultMid, trueVal: SDFResultMid, cond: bool) -> SDFRe
     return falseVal;
 }
 
+// Apply the wrapping primitive's owner id to the feature payload, preserving
+// any pre-populated id. Primitives that emit features with a per-feature tag
+// (e.g. lathe encodes a per-profile-vertex tag in featureIdB so the viewer can
+// dedup ring glyphs) rely on this preservation so their tag survives the
+// outer-primitive ownership stamp. Untagged primitives leave both ids at 0,
+// so both slots receive the wrapping primitive's id — same as before.
 fn sdfMidSetOwner(r: SDFResultMid, ownerId: u32) -> SDFResultMid {
     var out = r;
-    out.featureIdA = ownerId;
-    if (out.featureKind == MID_FEATURE_BOOLEAN_SEAM) {
-        if (out.featureIdB == 0u) { out.featureIdB = ownerId; }
-    } else {
-        out.featureIdB = ownerId;
-    }
+    if (out.featureIdA == 0u) { out.featureIdA = ownerId; }
+    if (out.featureIdB == 0u) { out.featureIdB = ownerId; }
     return out;
 }
 
@@ -204,6 +232,9 @@ fn sdfRotateFeatureMid(r: SDFResultMid, m: mat3x3f) -> SDFResultMid {
     out.featureTangent = safeNormalize(m * r.featureTangent, r.featureTangent);
     out.featureN1 = safeNormalize(m * r.featureN1, r.featureN1);
     out.featureN2 = safeNormalize(m * r.featureN2, r.featureN2);
+    if (r.featureKind == MID_FEATURE_RING) {
+        out.featureAxisCenter = m * r.featureAxisCenter;
+    }
     return out;
 }
 
@@ -217,17 +248,25 @@ fn sdfScaleFeatureMid(r: SDFResultMid, s: vec3f) -> SDFResultMid {
     out.featureTangent = safeNormalize(r.featureTangent * s, r.featureTangent);
     out.featureN1 = safeNormalize(r.featureN1 * invs, r.featureN1);
     out.featureN2 = safeNormalize(r.featureN2 * invs, r.featureN2);
+    if (r.featureKind == MID_FEATURE_RING) {
+        out.featureAxisCenter = r.featureAxisCenter * s;
+    }
     return out;
 }
 
 fn midFeatureHasPoint(r: SDFResultMid) -> bool {
-    return r.featureKind == MID_FEATURE_LINE || r.featureKind == MID_FEATURE_CORNER;
+    return r.featureKind == MID_FEATURE_LINE
+        || r.featureKind == MID_FEATURE_CORNER
+        || r.featureKind == MID_FEATURE_RING;
 }
 
 fn sdfTranslateFeatureMid(r: SDFResultMid, p: vec3f, delta: vec3f) -> SDFResultMid {
     if (!midFeatureHasPoint(r)) { return r; }
     var out = r;
     out.featurePoint = r.featurePoint + delta;
+    if (r.featureKind == MID_FEATURE_RING) {
+        out.featureAxisCenter = r.featureAxisCenter + delta;
+    }
     out.featureDist = length(p - out.featurePoint);
     return out;
 }
@@ -254,7 +293,10 @@ fn solveFeatureAnchor(n0: vec3f, p0: vec3f, n1: vec3f, p1: vec3f, n2: vec3f, p2:
 }
 
 fn sdfOffsetFeatureMid(r: SDFResultMid, p: vec3f, amount: f32) -> SDFResultMid {
-    if (!midFeatureHasPoint(r)) { return r; }
+    // RING is a closed curve — proper anchor offset would change its radius.
+    // We don't currently support that; pass the feature through unchanged.
+    if (r.featureKind == MID_FEATURE_NONE || r.featureKind == MID_FEATURE_RING) { return r; }
+    if (r.featureKind != MID_FEATURE_LINE && r.featureKind != MID_FEATURE_CORNER) { return r; }
     var out = r;
     if (r.featureKind == MID_FEATURE_LINE) {
         let tangent = safeNormalize(r.featureTangent, vec3f(0.0, 1.0, 0.0));
@@ -291,6 +333,14 @@ fn sdfTwistFeatureMid(r: SDFResultMid, p: vec3f, rate: f32) -> SDFResultMid {
         out.featurePoint = rotateY(r.featurePoint, -(r.featurePoint.y * rate));
         out.featureDist = length(p - out.featurePoint);
     }
+    if (r.featureKind == MID_FEATURE_RING) {
+        // axisCenter is on the ring's axis; for a Y-axis ring it lies at
+        // (cx, vy, cz) and rotation about Y about the same point is a no-op
+        // when (cx, cz) coincides with the twist axis. In the general case
+        // we rotate by the same angle as featurePoint to keep the relationship
+        // (axisCenter is the closest point on the ring axis to featurePoint).
+        out.featureAxisCenter = rotateY(r.featureAxisCenter, -(r.featurePoint.y * rate));
+    }
     return out;
 }
 
@@ -312,6 +362,10 @@ fn sdfTaperFeatureMid(r: SDFResultMid, p: vec3f, ratio: f32, height: f32) -> SDF
         let sp = taperScaleAtY(r.featurePoint.y, ratio, height);
         out.featurePoint = vec3f(r.featurePoint.x * sp, r.featurePoint.y, r.featurePoint.z * sp);
         out.featureDist = length(p - out.featurePoint);
+    }
+    if (r.featureKind == MID_FEATURE_RING) {
+        let sc = taperScaleAtY(r.featureAxisCenter.y, ratio, height);
+        out.featureAxisCenter = vec3f(r.featureAxisCenter.x * sc, r.featureAxisCenter.y, r.featureAxisCenter.z * sc);
     }
     return out;
 }

@@ -247,8 +247,12 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         const BASE = this.child.bufferOffset
         const eps = latheProfileEpsPack(this.child)
 
-        // Shared corner-check body for a vertex vV (prevLeg = vV - vPrev, nextLeg = vNext - vV).
-        const cornerBody = (vVName: string) => `
+        // Shared corner-check body for a vertex vV (prevLeg = vV - vPrev,
+        // nextLeg = vNext - vV). `vertexTagExpr` is a per-profile-vertex tag
+        // (1-based) that we stamp into `featureIdB` so the mesh-viewer can
+        // dedup all cells along the same circular ring into a single glyph
+        // (paired with the lathe's own node id in `featureIdA`).
+        const cornerBody = (vVName: string, vertexTagExpr: string) => `
                 let prevLeg2 = dot(prevLeg, prevLeg);
                 let nextLeg2 = dot(nextLeg, nextLeg);
                 if (prevLeg2 >= ${LATHE_MIN_EDGE_LEN2.toExponential()} && nextLeg2 >= ${LATHE_MIN_EDGE_LEN2.toExponential()}) {
@@ -260,14 +264,20 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
                         let n0m = safeNormalize(vec3f(prevOut2.x * radDir.x, prevOut2.y, prevOut2.x * radDir.y), vec3f(0.0, 1.0, 0.0));
                         let n1m = safeNormalize(vec3f(nextOut2.x * radDir.x, nextOut2.y, nextOut2.x * radDir.y), vec3f(0.0, 1.0, 0.0));
                         let rAbs = abs(${vVName}.x);
+                        let vertexTag: u32 = ${vertexTagExpr};
                         if (rAbs > ${eps.axisRingR}) {
                             let rUse = max(rAbs, ${eps.axisRingR});
                             let feat = vec3f(radDir.x * rUse, ${vVName}.y, radDir.y * rUse);
+                            let axisCenter = vec3f(0.0, ${vVName}.y, 0.0);
                             let ringTangent = safeNormalize(vec3f(-radDir.y, 0.0, radDir.x), vec3f(0.0, 0.0, 1.0));
-                            return sdfRMidLine(d, 1.0, n0m, feat, ringTangent, n1m, length(p - feat));
+                            var ring = sdfRMidRing(d, 1.0, n0m, feat, ringTangent, n1m, axisCenter, length(p - feat));
+                            ring.featureIdB = vertexTag;
+                            return ring;
                         }
                         let feat = vec3f(0.0, ${vVName}.y, 0.0);
-                        return sdfRMidCorner(d, 1.0, n, feat, n0m, n1m, length(p - feat));
+                        var corner = sdfRMidCorner(d, 1.0, n, feat, n0m, n1m, length(p - feat));
+                        corner.featureIdB = vertexTag;
+                        return corner;
                     }
                 }`
 
@@ -296,7 +306,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             let vPrev = polygonVertices[${BASE}u + (edgeIdx + ${N}u - 1u) % ${N}u];
             let prevLeg = v0 - vPrev;
             let nextLeg = v1 - v0;
-            ${cornerBody("v0")}
+            ${cornerBody("v0", "edgeIdx + 1u")}
         }
 
         // Check v1 (end of closest edge).
@@ -304,7 +314,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             let vNext = polygonVertices[${BASE}u + (edgeIdx + 2u) % ${N}u];
             let prevLeg = v1 - v0;
             let nextLeg = vNext - v1;
-            ${cornerBody("v1")}
+            ${cornerBody("v1", `((edgeIdx + 1u) % ${N}u) + 1u`)}
         }
     }
     return sdfRMid(d, 1.0, n);

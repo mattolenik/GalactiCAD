@@ -1,5 +1,5 @@
 
-export const MESH_MDC_DEBUG_SAMPLE_STRIDE = 20
+export const MESH_MDC_DEBUG_SAMPLE_STRIDE = 24
 
 export interface MeshMdcDebugStats {
     totalSamples: number
@@ -7,6 +7,7 @@ export interface MeshMdcDebugStats {
     acceptedLine: number
     acceptedCorner: number
     acceptedSeam: number
+    acceptedRing: number
     rejected: number
 }
 
@@ -16,7 +17,7 @@ export interface MeshMdcDebugData {
      *
      * Layout per record (stride `MESH_MDC_DEBUG_SAMPLE_STRIDE`):
      * - `0..2`: crossing position xyz
-     * - `3`: classification (`0` none, `1` line, `2` corner, `3` seam, `4` rejected)
+     * - `3`: classification (`0` none, `1` line, `2` corner, `3` seam, `4` ring, `5` rejected)
      * - `4..6`: Hermite normal xyz
      * - `7`: feature normal count
      * - `8..10`: feature point xyz
@@ -25,6 +26,8 @@ export interface MeshMdcDebugData {
      * - `15`: feature owner id A
      * - `16..18`: feature plane normal N2 xyz
      * - `19`: feature owner id B
+     * - `20..22`: ring axisCenter xyz (only meaningful when classification == 4)
+     * - `23`: reserved (currently 0)
      */
     samples: Float32Array<ArrayBuffer>
     stats: MeshMdcDebugStats

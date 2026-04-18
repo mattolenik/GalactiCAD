@@ -841,10 +841,11 @@ export class MeshViewer extends HTMLElement {
 
         const colorForClass = (klass: number): string => {
             switch (klass) {
-                case 1: return "rgba(86, 214, 191, 0.90)"
-                case 2: return "rgba(255, 199, 92, 0.92)"
-                case 3: return "rgba(214, 138, 255, 0.92)"
-                case 4: return "rgba(255, 102, 102, 0.95)"
+                case 1: return "rgba(86, 214, 191, 0.90)"  // line — teal
+                case 2: return "rgba(255, 199, 92, 0.92)"  // corner — amber
+                case 3: return "rgba(214, 138, 255, 0.92)" // seam — violet
+                case 4: return "rgba(120, 220, 255, 0.95)" // ring — cyan
+                case 5: return "rgba(255, 102, 102, 0.95)" // rejected — red
                 default: return "rgba(190, 195, 205, 0.45)"
             }
         }
@@ -853,7 +854,8 @@ export class MeshViewer extends HTMLElement {
                 case 1: return "line"
                 case 2: return "corner"
                 case 3: return "seam"
-                case 4: return "rejected"
+                case 4: return "ring"
+                case 5: return "rejected"
                 default: return "none"
             }
         }
@@ -886,10 +888,11 @@ export class MeshViewer extends HTMLElement {
         const drawPriorityForClass = (klass: number): number => {
             switch (klass) {
                 case 0: return 0
-                case 1: return 1
-                case 3: return 2
-                case 4: return 3
-                case 2: return 4
+                case 1: return 1 // line
+                case 3: return 2 // seam
+                case 5: return 3 // rejected
+                case 4: return 4 // ring
+                case 2: return 5 // corner
                 default: return 1
             }
         }
@@ -909,6 +912,9 @@ export class MeshViewer extends HTMLElement {
             n2x: number
             n2y: number
             n2z: number
+            ax: number
+            ay: number
+            az: number
             ownerA: number
             ownerB: number
             featureDist: number
@@ -921,9 +927,10 @@ export class MeshViewer extends HTMLElement {
         const featureDedupWorldSq = featureDedupWorld * featureDedupWorld
         const featurePriorityForClass = (klass: number): number => {
             switch (klass) {
-                case 1: return 1
-                case 3: return 2
-                case 2: return 3
+                case 1: return 1 // line
+                case 3: return 2 // seam
+                case 4: return 3 // ring
+                case 2: return 4 // corner
                 default: return 0
             }
         }
@@ -967,12 +974,23 @@ export class MeshViewer extends HTMLElement {
             const fx = samples[base + 8]!
             const fy = samples[base + 9]!
             const fz = samples[base + 10]!
-            if (klass !== 0 && klass !== 4 && Math.abs(fx) + Math.abs(fy) + Math.abs(fz) > 1e-6) {
+            // Skip the "none" (0) and "rejected" (5) classes; everything else is
+            // a real feature payload worth a glyph (line/corner/seam/ring).
+            if (klass !== 0 && klass !== 5 && Math.abs(fx) + Math.abs(fy) + Math.abs(fz) > 1e-6) {
                 const projectedFeature = project(fx, fy, fz)
                 if (projectedFeature) {
                     const ownerA = Math.round(samples[base + 15]!)
                     const ownerB = Math.round(samples[base + 19]!)
                     const featureDist = samples[base + 11]!
+                    const ax = samples[base + 20]!
+                    const ay = samples[base + 21]!
+                    const az = samples[base + 22]!
+                    // Rings have a globally-unique identity (latheId in ownerA,
+                    // per-profile-vertex tag in ownerB) so cells anywhere on the
+                    // same circle dedup down to a single record purely by id —
+                    // their per-cell `feat` points scatter around the ring and
+                    // would never satisfy the spatial filter.
+                    const isRing = klass === 4
                     let merged = false
                     for (const existing of featureRecords) {
                         if (
@@ -983,7 +1001,8 @@ export class MeshViewer extends HTMLElement {
                             const dfx = existing.fx - fx
                             const dfy = existing.fy - fy
                             const dfz = existing.fz - fz
-                            if (dfx * dfx + dfy * dfy + dfz * dfz <= featureDedupWorldSq) {
+                            const spatialOk = isRing || (dfx * dfx + dfy * dfy + dfz * dfz <= featureDedupWorldSq)
+                            if (spatialOk) {
                                 if (featureDist < existing.featureDist || (featureDist === existing.featureDist && sampleIdx < existing.sampleIdx)) {
                                     existing.sampleIdx = sampleIdx
                                     existing.x = projectedFeature.x
@@ -998,6 +1017,9 @@ export class MeshViewer extends HTMLElement {
                                     existing.n2x = samples[base + 16]!
                                     existing.n2y = samples[base + 17]!
                                     existing.n2z = samples[base + 18]!
+                                    existing.ax = ax
+                                    existing.ay = ay
+                                    existing.az = az
                                     existing.featureDist = featureDist
                                 }
                                 merged = true
@@ -1021,6 +1043,9 @@ export class MeshViewer extends HTMLElement {
                             n2x: samples[base + 16]!,
                             n2y: samples[base + 17]!,
                             n2z: samples[base + 18]!,
+                            ax,
+                            ay,
+                            az,
                             ownerA,
                             ownerB,
                             featureDist,
@@ -1080,6 +1105,57 @@ export class MeshViewer extends HTMLElement {
                     ctx.moveTo(record.x + r * 0.65, record.y - r * 0.65)
                     ctx.lineTo(record.x - r * 0.65, record.y + r * 0.65)
                     ctx.stroke()
+                } else if (record.klass === 4) {
+                    // Ring: reconstruct the full circle from the dedup'd record.
+                    //   radial = featurePoint - axisCenter   (in the ring plane, magnitude = radius)
+                    //   tangent = unit(cross(n0, n1))        (perpendicular to both face normals,
+                    //                                         which lie in the radial-axis plane)
+                    //   axis    = unit(cross(tangent, radial))
+                    //   ring plane basis: u = radial/radius, v = cross(axis, u)
+                    const radialX = record.fx - record.ax
+                    const radialY = record.fy - record.ay
+                    const radialZ = record.fz - record.az
+                    const radius = Math.hypot(radialX, radialY, radialZ)
+                    const tangent = tangentFromNormals(record.n1x, record.n1y, record.n1z, record.n2x, record.n2y, record.n2z)
+                    if (radius > 1e-8 && tangent) {
+                        // axis = cross(tangent, radial)
+                        const axisX = tangent.y * radialZ - tangent.z * radialY
+                        const axisY = tangent.z * radialX - tangent.x * radialZ
+                        const axisZ = tangent.x * radialY - tangent.y * radialX
+                        const axisLen = Math.hypot(axisX, axisY, axisZ)
+                        if (axisLen > 1e-8) {
+                            const aX = axisX / axisLen, aY = axisY / axisLen, aZ = axisZ / axisLen
+                            const uX = radialX / radius, uY = radialY / radius, uZ = radialZ / radius
+                            // v = cross(axis, u)
+                            const vX = aY * uZ - aZ * uY
+                            const vY = aZ * uX - aX * uZ
+                            const vZ = aX * uY - aY * uX
+                            // 64 segments is plenty for typical lathe scales without flooding the canvas.
+                            const SEG = 64
+                            ctx.beginPath()
+                            let started = false
+                            for (let i = 0; i <= SEG; i++) {
+                                const t = (i / SEG) * Math.PI * 2
+                                const cosT = Math.cos(t), sinT = Math.sin(t)
+                                const wx = record.ax + radius * (uX * cosT + vX * sinT)
+                                const wy = record.ay + radius * (uY * cosT + vY * sinT)
+                                const wz = record.az + radius * (uZ * cosT + vZ * sinT)
+                                const sp = project(wx, wy, wz)
+                                if (!sp) { started = false; continue }
+                                if (!started) {
+                                    ctx.moveTo(sp.x, sp.y)
+                                    started = true
+                                } else {
+                                    ctx.lineTo(sp.x, sp.y)
+                                }
+                            }
+                            ctx.stroke()
+                        }
+                    }
+                    // Mark the dedup anchor with a small ring so hover targeting works.
+                    ctx.beginPath()
+                    ctx.arc(record.x, record.y, pointSize, 0, Math.PI * 2)
+                    ctx.stroke()
                 }
                 ctx.restore()
                 updateHover(record.sampleIdx, record.x, record.y, 10 + featurePriorityForClass(record.klass))
@@ -1089,7 +1165,7 @@ export class MeshViewer extends HTMLElement {
         const stats = this.#mdcDebugStats
         if (stats) {
             const text1 = `MDC debug ${stats.totalSamples} raw samples`
-            const text2 = `L ${stats.acceptedLine}  C ${stats.acceptedCorner}  S ${stats.acceptedSeam}  R ${stats.rejected}`
+            const text2 = `L ${stats.acceptedLine}  C ${stats.acceptedCorner}  S ${stats.acceptedSeam}  Ring ${stats.acceptedRing}  Rej ${stats.rejected}`
             const overlayMode =
                 showRawSamples && showFeatureGlyphs ? "raw squares + feature glyphs"
                     : showRawSamples ? "raw squares only"

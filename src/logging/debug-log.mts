@@ -29,6 +29,7 @@ export const DEBUG_LOG_MODULES = [
     "WelcomeScreen",
     "MdcExport",
     "ShrecExport",
+    "Simplify",
     "Settings",
     "Sdf",
     /** Reserved for optional verbose WGSL debug; `logWgsl()` is always-on for compile/pipeline errors. */

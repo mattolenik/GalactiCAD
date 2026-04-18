@@ -1033,19 +1033,6 @@ export class RenderWorkerCore {
                     gridOffsetY: minY,
                     gridOffsetZ: minZ,
                     voxelSize: voxelSizeMm,
-                    ...(simplifyOnExport && (() => {
-                        const s = { ...DEFAULT_SIMPLIFY_TUNING, ...simplifyTuning }
-                        return {
-                            simplifyTargetRatio: s.targetRatio,
-                            simplifyTargetError: s.targetError,
-                            simplifyLockBorder: s.lockBorder,
-                            simplifySparse: s.sparse,
-                            simplifyErrorAbsolute: s.errorAbsolute,
-                            simplifyPrune: s.prune,
-                            simplifyRegularize: s.regularize,
-                            simplifyNormalWeight: s.normalWeight > 0 ? s.normalWeight : undefined,
-                        }
-                    })()),
                 }
                 const mdcCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)
@@ -1064,6 +1051,37 @@ export class RenderWorkerCore {
                 )
                 mesh = await mdc.export(mdcShaderModule)
             }
+
+            // Unified mesh-simplification post-pass. Runs for **both** MDC and
+            // SHREC outputs through the same code path so the simplify knobs
+            // in Dev Tools have identical effect regardless of which exporter
+            // produced the mesh.
+            if (simplifyOnExport && mesh.tris.length > 0) {
+                const s = { ...DEFAULT_SIMPLIFY_TUNING, ...simplifyTuning }
+                if (s.targetRatio < 1) {
+                    log("Simplify").info(
+                        `Mesh simplification dispatched: exporter=${exporter} ` +
+                        `targetRatio=${s.targetRatio} targetError=${s.targetError} ` +
+                        `lockBorder=${s.lockBorder} sparse=${s.sparse} errorAbsolute=${s.errorAbsolute} ` +
+                        `prune=${s.prune} regularize=${s.regularize} normalWeight=${s.normalWeight}`,
+                    )
+                    const { simplifyMesh } = await import("./export/simplify.mjs")
+                    mesh = await simplifyMesh(
+                        mesh,
+                        s.targetRatio,
+                        s.targetError,
+                        {
+                            lockBorder: s.lockBorder,
+                            sparse: s.sparse,
+                            errorAbsolute: s.errorAbsolute,
+                            prune: s.prune,
+                            regularize: s.regularize,
+                            normalWeight: s.normalWeight > 0 ? s.normalWeight : undefined,
+                        },
+                    )
+                }
+            }
+
             self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)

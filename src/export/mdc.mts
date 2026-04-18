@@ -89,23 +89,10 @@ export interface MDCParams {
     orientationProbeScale?: number
     orientationProbeMin?: number
 
-    // --- Mesh simplification (post-MDC) ---
-    /** Fraction of triangles to keep, 0–1 (e.g. 0.5 = 50%). undefined or 1 = skip. */
-    simplifyTargetRatio?: number
-    /** Max geometric error the simplifier may introduce (default 0.01). */
-    simplifyTargetError?: number
-    /** Lock boundary (open) edges so they are never collapsed. */
-    simplifyLockBorder?: boolean
-    /** Optimize for meshes with many shared vertex positions. */
-    simplifySparse?: boolean
-    /** Treat targetError as absolute world-space distance instead of relative to mesh scale. */
-    simplifyErrorAbsolute?: boolean
-    /** Remove degenerate (zero-area) triangles from output. */
-    simplifyPrune?: boolean
-    /** Bias toward more uniform triangle shapes (less slivery). */
-    simplifyRegularize?: boolean
-    /** Weight for normal-aware simplification (0 = ignore normals, >0 = protect sharp edges). */
-    simplifyNormalWeight?: number
+    // Mesh simplification (meshoptimizer QEM) is no longer driven by MDCParams;
+    // it is applied as a unified post-pass in `handleRenderMesh` so it runs
+    // for both MDC and SHREC outputs through the same code path. See
+    // `SimplifyTuning` in `render-worker-protocol.mts`.
 
     /**
      * Crease angle threshold in degrees for vertex splitting (default 30).
@@ -818,25 +805,10 @@ export class MDCExport {
             }
             logDiag("after crease split")
 
-            // Mesh simplification (QEM edge collapse via meshoptimizer)
-            if (this.params.simplifyTargetRatio !== undefined && this.params.simplifyTargetRatio < 1) {
-                const { simplifyMesh } = await import("./simplify.mjs")
-                const simplified = await simplifyMesh(
-                    { verts, tris },
-                    this.params.simplifyTargetRatio,
-                    this.params.simplifyTargetError,
-                    {
-                        lockBorder: this.params.simplifyLockBorder,
-                        sparse: this.params.simplifySparse,
-                        errorAbsolute: this.params.simplifyErrorAbsolute,
-                        prune: this.params.simplifyPrune,
-                        regularize: this.params.simplifyRegularize,
-                        normalWeight: this.params.simplifyNormalWeight,
-                    },
-                )
-                verts = simplified.verts
-                tris = simplified.tris
-            }
+            // Mesh simplification has moved to a unified post-pass in
+            // `handleRenderMesh`; see `simplifyMeshPostPass` in
+            // `render-worker-core.mts`. Keeping it out of MDCExport ensures
+            // the SHREC and MDC outputs go through the exact same simplifier.
 
             // Basic mesh sanity stats to help diagnose “holes”:
             // - boundary edges (count==1) indicate actual holes / open surface

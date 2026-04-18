@@ -114,7 +114,7 @@ export async function simplifyMesh(
     }
 
     const outputTriCount = simplifiedTris.length / 3
-    log("MdcExport").info(
+    log("Simplify").info(
         `Mesh simplification: ${inputTriCount} → ${outputTriCount} triangles `
         + `(${((outputTriCount / inputTriCount) * 100).toFixed(1)}%, error=${error.toExponential(3)}`
         + `${normalWeight > 0 ? `, normalWeight=${normalWeight}` : ""})`,

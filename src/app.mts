@@ -52,7 +52,12 @@ import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
 import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
-import { getEditorLayout } from "./layout/editor-layout.mjs"
+import {
+    editorSelectionInfoOffset,
+    getEditorLayout,
+    viewCenterUv,
+    visiblePreviewRegion,
+} from "./layout/editor-layout.mjs"
 import { initCadDocumentHighlights } from "./editor/cad-document-highlights.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
@@ -903,17 +908,23 @@ class App {
 
         const getVisiblePreviewRect = (): DOMRect => {
             const mainRect = mainPanels.getBoundingClientRect()
-            if (mainRect.width === 0 || mainRect.height === 0) return mainRect
-            return getEditorLayout(mainPanels).visiblePreviewRect(mainRect)
+            const canvasRect = this.#preview.canvas.getBoundingClientRect()
+            if (mainRect.width === 0 || canvasRect.width === 0) return canvasRect
+            const layout = getEditorLayout(mainPanels)
+            return visiblePreviewRegion(canvasRect, mainRect, layout.editorOnLeft, layout.frac)
         }
 
         const updateViewCenter = () => {
             if (!this.renderer) return
             const mainRect = mainPanels.getBoundingClientRect()
-            if (mainRect.width === 0 || mainRect.height === 0) return
-            const { vcx, vcy, editorOffsetPx } = getEditorLayout(mainPanels).viewCenter(mainRect)
-            this.renderer.setViewCenter(vcx, vcy, editorOffsetPx)
-            this.#mesh?.setViewCenter(vcx, vcy)
+            const canvasRect = this.#preview.canvas.getBoundingClientRect()
+            if (mainRect.width === 0 || canvasRect.width === 0) return
+            const layout = getEditorLayout(mainPanels)
+            const region = visiblePreviewRegion(canvasRect, mainRect, layout.editorOnLeft, layout.frac)
+            const { u, v } = viewCenterUv(canvasRect, region)
+            const editorOffsetPx = editorSelectionInfoOffset(mainRect, layout.editorOnLeft, layout.frac)
+            this.renderer.setViewCenter(u, v, editorOffsetPx)
+            this.#mesh?.setViewCenter(u, v)
         }
         this.#updateViewCenter = updateViewCenter
 

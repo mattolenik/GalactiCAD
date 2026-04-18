@@ -10,6 +10,9 @@ import type { Subscription } from "rxjs"
 // @ts-ignore - quaternion library type definitions have issues
 import Quaternion from "quaternion"
 
+/** Must match `RAY_ORIGIN_DEPTH` in preview.wgsl / `computeRayOrigin` at optical center */
+const PREVIEW_RAY_ORIGIN_DEPTH = 300
+
 export interface CameraHost extends HTMLElement {
     canvas: HTMLCanvasElement
 }
@@ -72,6 +75,10 @@ export class CameraController {
     #getInteractionRect?: () => DOMRect
     /** 3D world-space point to orbit around (Cmd/Ctrl+drag). Null → standard pivot at origin. */
     #customPivot: Vec3f | null = null
+    /** True while waiting for async surface pick before applying Cmd/Ctrl orbit rotation. */
+    #awaitingOrbitPivot = false
+    /** Last Cmd/Ctrl+double-click focus hit (world space); used to preserve viewing distance when refocusing. */
+    #lastFocusWorld: Vec3f | null = null
 
     /**
      * Optional callback to query the 3D world-space position under a screen coordinate.
@@ -123,6 +130,8 @@ export class CameraController {
             scene: this.#host.canvas,
             getInteractionRect,
             rotationMethod,
+            rotationAllowed: () =>
+                !(this.#awaitingOrbitPivot && !this.#customPivot),
             q: this.#rotation,
             onDraw: (q) => {
                 if (this.#isSyncing) return
@@ -169,6 +178,7 @@ export class CameraController {
         this.zoom = state.zoom
         this.#zoomController.setZoom(this.zoom, false)
         this.#cameraTranslation = state.translation.clone()
+        this.#lastFocusWorld = null
         this.#syncTrackball()
         this.#updateTransforms(emit)
     }
@@ -295,8 +305,14 @@ export class CameraController {
                     const cx = e.clientX
                     const cy = e.clientY
                     const sessionId = ++this.#dragSessionId
+                    this.#awaitingOrbitPivot = true
                     this.pickPosAtScreen(cx, cy).then(pos => {
-                        if (pos && this.#dragMode === "rotate" && this.#dragSessionId === sessionId) {
+                        if (this.#dragSessionId !== sessionId || !this.isDragging || this.#dragMode !== "rotate") {
+                            this.#awaitingOrbitPivot = false
+                            return
+                        }
+                        this.#awaitingOrbitPivot = false
+                        if (pos) {
                             this.#customPivot = vec3(pos[0], pos[1], pos[2])
                         }
                     })
@@ -364,6 +380,7 @@ export class CameraController {
             this.#primaryPointerId = null
             this.isDragging = false
             this.#dragMode = null
+            this.#awaitingOrbitPivot = false
             this.#customPivot = null
             // Camera state is saved via rxjs debounce in SettingsManager;
             // the debounce fires once the camera stops moving.
@@ -375,18 +392,9 @@ export class CameraController {
         return this.#pivot.add(vec3(0, 0, 1))
     }
 
-    /**
-     * Smoothly recenter the camera so the given world-space point appears at screen center.
-     *
-     * In camera space: screen center = (offsetX=0, offsetY=0, depth).
-     * We find P's current depth in camera space and compute the camTrans that puts P at
-     * screen center at that same depth (no zoom change).
-     *
-     * Note: #quaternionToMatrix returns R^T (= R^{-1} for rotations) due to row-major
-     * reinterpretation. R * v = rotMat.transpose().transformVector(v).
-     */
     /** Reset the camera to the default view angle and centered position, with animation. */
     resetView(): void {
+        this.#lastFocusWorld = null
         const targetRotation = Quaternion.fromEuler(Math.PI / 4, 0, 0, "YXZ")
         const targetTrans = new Vec3f()
         const startRotation = this.#rotation.clone()
@@ -410,28 +418,58 @@ export class CameraController {
         requestAnimationFrame(step)
     }
 
+    /**
+     * Pan so `worldPoint` (raymarch hit) lies on the central view ray, matching preview.wgsl.
+     * If we already have a focus point, preserve Euclidean distance from ray origin O to the hit
+     * so it equals the previous |O − lastFocus|; otherwise only snap the hit onto the ray.
+     */
     recenterOnPoint(worldPoint: Vec3f): void {
-        const rotMat = this.#quaternionToMatrix(this.#rotation)
-        // Transform P into camera space to get its current depth (z component)
-        const diff = vec3(
-            worldPoint.x - this.#cameraTranslation.x,
-            worldPoint.y - this.#cameraTranslation.y,
-            worldPoint.z - this.#cameraTranslation.z,
+        const ro = vec3(
+            this.cameraPosition.x,
+            this.cameraPosition.y,
+            this.cameraPosition.z + PREVIEW_RAY_ORIGIN_DEPTH,
         )
-        // rotMat = R^{-1}, so rotMat * diff gives camera-space coordinates of (P - camTrans)
-        const camSpaceP = rotMat.transformVector(diff)
-        // Keep P at the same depth; zero out x,y to center it on screen
-        // camTrans_new = P - R * (0, 0, camSpaceP.z)
-        const rForward = rotMat.transpose().transformVector(vec3(0, 0, camSpaceP.z))
+        const O = this.viewTransform.transformPoint(ro)
+        const m = this.viewTransform.data
+        const dirRaw = vec3(-m[8], -m[9], -m[10])
+        if (dirRaw.length() < 1e-20) return
+        const dir = dirRaw.normalize()
+
+        let delta: Vec3f
+        const prevFocus = this.#lastFocusWorld
+        if (prevFocus) {
+            const dKeep = O.subtract(prevFocus).length()
+            if (dKeep < 1e-8) {
+                const toP = worldPoint.subtract(O)
+                const tLine = toP.dot(dir)
+                const Q = O.add(dir.scale(tLine))
+                delta = worldPoint.subtract(Q)
+            } else {
+                const along = worldPoint.subtract(O).dot(dir)
+                const sign = along >= 0 ? 1 : -1
+                const tAlong = sign * dKeep
+                const O_target = worldPoint.subtract(dir.scale(tAlong))
+                delta = O_target.subtract(O)
+            }
+        } else {
+            const toP = worldPoint.subtract(O)
+            const tLine = toP.dot(dir)
+            const Q = O.add(dir.scale(tLine))
+            delta = worldPoint.subtract(Q)
+        }
+
         const targetTrans = vec3(
-            worldPoint.x - rForward.x,
-            worldPoint.y - rForward.y,
-            worldPoint.z - rForward.z,
+            this.#cameraTranslation.x + delta.x,
+            this.#cameraTranslation.y + delta.y,
+            this.#cameraTranslation.z + delta.z,
         )
-        this.#animateCameraTranslation(targetTrans)
+        const hit = worldPoint.clone()
+        this.#animateCameraTranslation(targetTrans, () => {
+            this.#lastFocusWorld = hit
+        })
     }
 
-    #animateCameraTranslation(target: Vec3f): void {
+    #animateCameraTranslation(target: Vec3f, onComplete?: () => void): void {
         const startTrans = this.#cameraTranslation.clone()
         const startTime = performance.now()
         const DURATION_MS = 300
@@ -445,7 +483,10 @@ export class CameraController {
             this.#cameraTranslation.z = startTrans.z + (target.z - startTrans.z) * ease
             this.#updateTransforms()
             if (t < 1) requestAnimationFrame(step)
-            else this.#saveCameraState()
+            else {
+                this.#saveCameraState()
+                onComplete?.()
+            }
         }
         requestAnimationFrame(step)
     }
@@ -517,6 +558,7 @@ export class CameraController {
 
     #loadCameraState(): void {
         const cam = this.#settings.getCamera()
+        this.#lastFocusWorld = null
         this.cameraPosition = vec3(cam.position[0], cam.position[1], cam.position[2])
         this.#cameraTranslation = vec3(cam.translation[0], cam.translation[1], cam.translation[2])
         this.zoom = cam.zoom

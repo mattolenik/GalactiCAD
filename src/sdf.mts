@@ -316,6 +316,7 @@ export class SDFRenderer {
 
     /** Query the 3D world-space position under the given screen coordinate. Returns null if no surface is hit. */
     pickPosAtScreen(clientX: number, clientY: number): Promise<[number, number, number] | null> {
+        this.#syncCameraToWorkerForPick()
         const uv = this.#screenToClickUV(clientX, clientY)
         if (!uv) return Promise.resolve(null)
         const requestId = ++this.#requestIdCounter
@@ -1365,7 +1366,10 @@ export class SDFRenderer {
         this.#started = false
     }
 
-    #buildRenderPayload(resOverride?: [number, number]): Extract<MainToWorkerMessage, { type: "render" }> {
+    #buildRenderPayload(
+        resOverride?: [number, number],
+        opts?: { forceFullResolution?: boolean }
+    ): Extract<MainToWorkerMessage, { type: "render" }> {
         const cam = this.#controls
         const p = this.#renderPayload
         p.cameraState = cam.state
@@ -1406,8 +1410,26 @@ export class SDFRenderer {
         p.viewSettings.previewNormalShading = this.#previewNormalShading
         p.viewCenter[0] = this.#viewCenter.x
         p.viewCenter[1] = this.#viewCenter.y
-        p.resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0
+        const halfRes =
+            !opts?.forceFullResolution &&
+            this.#cameraOptimization &&
+            this.#controls.isActivelyMoving
+        p.resolutionScale = halfRes ? 0.5 : 1.0
         return p
+    }
+
+    /** Publish current camera so worker ray picks match what the user sees (avoids stale last-frame camera). */
+    #syncCameraToWorkerForPick(): void {
+        if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
+        const payload = this.#buildRenderPayload(undefined, { forceFullResolution: true })
+        if (this.#useSharedMemory && this.#sharedBuffer) {
+            this.#renderVersion++
+            const nextSlot = (1 - getPublishedRenderSlot(this.#sharedBuffer)) as 0 | 1
+            writeRenderPayloadSlot(this.#sharedBuffer, nextSlot, payload, this.#fullWidth, this.#fullHeight)
+            publishRenderSlot(this.#sharedBuffer, nextSlot, this.#renderVersion)
+        } else {
+            this.#worker.postMessage(payload, [payload.viewTransform.buffer])
+        }
     }
 
     #update(time: number): void {

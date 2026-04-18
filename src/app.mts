@@ -726,7 +726,7 @@ class App {
 
     async #restoreOrShowWelcome(): Promise<void> {
         await this.#settings.ready()
-        applyDebugLogModules(this.#settings.getGlobal().app.debugLogModules)
+        applyDebugLogModules(this.#settings.getDebugLogModules())
         const anchor = this.#resolveAnchor()
         if (anchor) {
             const docRow = await db.documents.get(anchor)
@@ -1151,25 +1151,21 @@ class App {
             devTools.syncPreviewNormalShadingFromRenderer(this.renderer.previewNormalShading)
         })
 
-        const showFps = this.#settings.getGlobal().app.showFps
-        devTools.showFps = showFps
+        const showFps = devTools.showFps
         preview.showFps = showFps
         devTools.onShowFpsChange = (enabled) => {
             preview.showFps = enabled
         }
 
-        const meshViewerEnabled = this.#settings.getGlobal().app.meshViewerEnabled
-        devTools.meshViewer = meshViewerEnabled
+        const meshViewerEnabled = devTools.meshViewer
         this.#setMeshViewerEnabled(meshViewerEnabled)
         devTools.onMeshViewerChange = (enabled) => {
             this.#setMeshViewerEnabled(enabled)
         }
 
-        devTools.meshSimplifyOnExport = this.#settings.getGlobal().app.meshSimplifyOnExport
-
-        devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)
+        devTools.syncDebugLogModulesFromSettings(this.#settings.getDebugLogModules())
         devTools.onDebugLogModulesChange = () => {
-            applyDebugLogModules(this.#settings.getGlobal().app.debugLogModules)
+            applyDebugLogModules(this.#settings.getDebugLogModules())
             this.renderer.syncDebugLogModulesToWorker()
         }
 

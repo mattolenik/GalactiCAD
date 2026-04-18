@@ -989,7 +989,7 @@ export class SDFRenderer {
 
     /** Push current debug-log flags to the render worker (call after settings change). */
     syncDebugLogModulesToWorker(): void {
-        const mods = this.#settings.getGlobal().app.debugLogModules
+        const mods = this.#settings.getDebugLogModules()
         this.#worker.postMessage({ type: "setDebugLogModules", modules: snapshotDebugLogModules(mods) })
     }
 

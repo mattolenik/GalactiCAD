@@ -2,7 +2,11 @@ import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import type { DebugLogModulesState } from "../logging/debug-log.mjs"
 import { log, mergeDebugLogModulesFromStorage } from "../logging/debug-log.mjs"
+import { DEVTOOLS_SECTION_LOGS } from "../components/dev-tools-protocol.mjs"
 import { db } from "./db.mjs"
+
+/** Per-section JSON snapshots under `GlobalSettings.app.devToolsSections`. */
+export type DevToolsSectionsMap = Record<string, Record<string, unknown>>
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,17 +68,12 @@ export interface GlobalSettings {
     preview: { movementScale: number; selectionMode: SelectionMode; cameraRotationMethod: CameraRotationMethod }
     meshViewer: { translucentFaces: boolean; wireframe: boolean }
     app: {
-        meshViewerEnabled: boolean
         devToolsEnabled: boolean
-        /** When true, dev tools shows the preview lighting sliders. */
-        devToolsLightingExpanded: boolean
-        showFps: boolean
-        meshSimplifyOnExport: boolean
         diskSyncIntervalSeconds: number
         theme: ThemeMode
         editor: EditorSettings
-        /** Per-module debug logging; Dev Tools checkboxes. */
-        debugLogModules: DebugLogModulesState
+        /** Dev tools panel sections: keyed by `devToolsSectionId`. */
+        devToolsSections: DevToolsSectionsMap
     }
     layout: LayoutSettings
 }
@@ -124,15 +123,11 @@ function defaultGlobalSettings(): GlobalSettings {
         preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
         meshViewer: { translucentFaces: false, wireframe: false },
         app: {
-            meshViewerEnabled: false,
             devToolsEnabled: false,
-            devToolsLightingExpanded: false,
-            showFps: true,
-            meshSimplifyOnExport: true,
             diskSyncIntervalSeconds: 30,
             theme: "dark",
             editor: defaultEditorSettings(),
-            debugLogModules: {},
+            devToolsSections: {},
         },
         layout: defaultLayout(),
     }
@@ -302,6 +297,21 @@ export class SettingsManager {
         this.#globalSave$.next()
     }
 
+    /** Replace one dev tools section snapshot and debounce-persist global settings. */
+    mergeGlobalDevToolsSection(sectionId: string, snapshot: Record<string, unknown>): void {
+        this.#globalSettings.app.devToolsSections = {
+            ...this.#globalSettings.app.devToolsSections,
+            [sectionId]: { ...snapshot },
+        }
+        this.#globalSave$.next()
+    }
+
+    /** Per-module debug flags from persisted dev tools logs section. */
+    getDebugLogModules(): DebugLogModulesState {
+        const blob = this.#globalSettings.app.devToolsSections[DEVTOOLS_SECTION_LOGS]
+        return mergeDebugLogModulesFromStorage(blob)
+    }
+
     // -----------------------------------------------------------------------
     // Flush
     // -----------------------------------------------------------------------
@@ -360,12 +370,16 @@ export class SettingsManager {
             try {
                 const parsed = row.value as Partial<GlobalSettings>
                 const preview = { ...def.preview, ...parsed.preview }
-                const app = { ...def.app, ...parsed.app }
-                if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
-                if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
-                if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
-                if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false
-                if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"
+                const rawApp = (parsed.app ?? {}) as Record<string, unknown>
+                const devToolsSectionsRaw = rawApp.devToolsSections
+                const devToolsSections: DevToolsSectionsMap = {}
+                if (devToolsSectionsRaw && typeof devToolsSectionsRaw === "object" && !Array.isArray(devToolsSectionsRaw)) {
+                    for (const [k, v] of Object.entries(devToolsSectionsRaw as Record<string, unknown>)) {
+                        if (v && typeof v === "object" && !Array.isArray(v)) devToolsSections[k] = { ...(v as Record<string, unknown>) }
+                    }
+                }
+                const diskRaw = rawApp.diskSyncIntervalSeconds
+                const themeRaw = rawApp.theme
                 const editorDef = defaultEditorSettings()
                 const editor = { ...editorDef, ...(parsed.app as { editor?: Partial<EditorSettings> })?.editor }
                 if (editor.lineNumbers !== "on" && editor.lineNumbers !== "off" && editor.lineNumbers !== "relative")
@@ -384,8 +398,18 @@ export class SettingsManager {
                 if (typeof editor.folding !== "boolean") editor.folding = editorDef.folding
                 if (typeof editor.tabSize !== "number" || editor.tabSize < 2 || editor.tabSize > 8)
                     editor.tabSize = editorDef.tabSize
-                app.editor = editor
-                app.debugLogModules = mergeDebugLogModulesFromStorage(app.debugLogModules)
+                let diskSyncIntervalSeconds = typeof diskRaw === "number" ? diskRaw : def.app.diskSyncIntervalSeconds
+                if (typeof diskSyncIntervalSeconds !== "number") diskSyncIntervalSeconds = 30
+                const app: GlobalSettings["app"] = {
+                    devToolsEnabled: typeof rawApp.devToolsEnabled === "boolean" ? rawApp.devToolsEnabled : def.app.devToolsEnabled,
+                    diskSyncIntervalSeconds,
+                    theme:
+                        themeRaw === "light" || themeRaw === "dark" || themeRaw === "auto"
+                            ? themeRaw
+                            : def.app.theme,
+                    editor,
+                    devToolsSections,
+                }
                 this.#globalSettings = {
                     preview,
                     meshViewer: { ...def.meshViewer, ...parsed.meshViewer },

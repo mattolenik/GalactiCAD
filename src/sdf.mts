@@ -22,7 +22,7 @@ import {
     type SceneBuildPipelineMs,
     type WorkerToMainMessage,
 } from "./render-worker-protocol.mjs"
-import type { EdgeHitData, ExporterKind, SelectedEdgePayload } from "./render-worker-protocol.mjs"
+import type { EdgeHitData, ExporterKind, SelectedEdgePayload, ShrecTuning, SimplifyTuning } from "./render-worker-protocol.mjs"
 import { PALETTE_SIZE, paletteToFloat32Array } from "./colorPalette.mjs"
 import { sha1Hash } from "./math.mjs"
 import { DEFAULT_SELECTION_STYLES, type SelectionStyles } from "./selectionStyles.mjs"
@@ -43,7 +43,7 @@ export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
 export { EdgeKind } from "./edge-kind.mjs"
 
-export type { SerializedNode, BuildTimingBreakdownMs, SceneBuildPipelineMs, ExporterKind } from "./render-worker-protocol.mjs"
+export type { SerializedNode, BuildTimingBreakdownMs, SceneBuildPipelineMs, ExporterKind, ShrecTuning, SimplifyTuning } from "./render-worker-protocol.mjs"
 
 function roundScenePerfMs(x: number): number {
     return Math.round(x * 100) / 100
@@ -144,7 +144,19 @@ export class SDFRenderer {
     #latestBuildRequestId = 0
     #latestRenderMeshRequestId = 0
     #latestThumbnailRequestId = 0
-    #pendingTranspile = new Map<number, { kind: TranspileKind; documentName?: string; width?: number; height?: number; simplifyOnExport?: boolean; exporter?: ExporterKind }>()
+    #pendingTranspile = new Map<
+        number,
+        {
+            kind: TranspileKind
+            documentName?: string
+            width?: number
+            height?: number
+            simplifyOnExport?: boolean
+            exporter?: ExporterKind
+            shrecTuning?: ShrecTuning
+            simplifyTuning?: SimplifyTuning
+        }
+    >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
     /** Wall-time anchors for `build()` request ids (transpile → worker round-trip). */
     #buildChronicleByRequestId = new Map<
@@ -540,7 +552,16 @@ export class SDFRenderer {
                 this.#pendingRenderMesh.delete(requestId)
                 return
             }
-            this.#worker.postMessage({ type: "renderMesh", body, requestId, documentName: pending.documentName, simplifyOnExport: pending.simplifyOnExport, exporter: pending.exporter })
+            this.#worker.postMessage({
+                type: "renderMesh",
+                body,
+                requestId,
+                documentName: pending.documentName,
+                simplifyOnExport: pending.simplifyOnExport,
+                exporter: pending.exporter,
+                shrecTuning: pending.shrecTuning,
+                simplifyTuning: pending.simplifyTuning,
+            })
         } else if (pending.kind === "thumbnail") {
             if (requestId !== this.#latestThumbnailRequestId) {
                 this.#pendingThumbnail.get(requestId)?.reject(new Error("Superseded"))
@@ -1477,12 +1498,18 @@ export class SDFRenderer {
         await this.build(SDFRenderer.EMPTY_SCENE_SRC)
     }
 
-    async renderMesh(_src: string, documentName?: string, options?: { simplifyOnExport?: boolean; exporter?: ExporterKind }): Promise<MeshData> {
+    async renderMesh(
+        _src: string,
+        documentName?: string,
+        options?: { simplifyOnExport?: boolean; exporter?: ExporterKind; shrecTuning?: ShrecTuning; simplifyTuning?: SimplifyTuning },
+    ): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
         this.#latestRenderMeshRequestId = requestId
         const simplifyOnExport = options?.simplifyOnExport ?? true
         const exporter = options?.exporter
-        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport, exporter })
+        const shrecTuning = options?.shrecTuning
+        const simplifyTuning = options?.simplifyTuning
+        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport, exporter, shrecTuning, simplifyTuning })
         return new Promise<MeshData>((resolve, reject) => {
             this.#pendingRenderMesh.set(requestId, { resolve, reject })
             this.#transpileWorker.postMessage({ type: "transpile", src: _src.trim(), requestId, kind: "renderMesh", documentName })

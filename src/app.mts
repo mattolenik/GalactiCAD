@@ -1156,6 +1156,20 @@ class App {
 
         devTools.meshSimplifyOnExport = this.#settings.getGlobal().app.meshSimplifyOnExport
         devTools.useShrecExporter = this.#settings.getGlobal().app.useShrecExporter
+        devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
+        devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
+        // Re-mesh live when the SHREC exporter toggle or its tuning knobs
+        // change, so the mesh viewer reflects edits immediately. The
+        // `#scheduleMeshUpdate` debounce avoids re-meshing per slider tick.
+        const remeshIfMeshViewerOn = () => {
+            if (!this.#meshViewerEnabled || !this.#mesh) return
+            const m = this.#tabs.active ? this.#tabs.getByName(this.#tabs.active) : null
+            if (!m) return
+            this.#scheduleMeshUpdate(m.getValue())
+        }
+        devTools.onUseShrecExporterChange = remeshIfMeshViewerOn
+        devTools.onShrecTuningChange = remeshIfMeshViewerOn
+        devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)
         devTools.onDebugLogModulesChange = () => {
@@ -1423,6 +1437,8 @@ class App {
                 const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName, {
                     simplifyOnExport: devTools.meshSimplifyOnExport,
                     exporter: devTools.useShrecExporter ? "shrec" : "mdc",
+                    shrecTuning: devTools.shrecTuning,
+                    simplifyTuning: devTools.simplifyTuning,
                 })
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
@@ -1499,6 +1515,8 @@ class App {
                 const mesh = await this.renderer.renderMesh(src, this.#tabs.active, {
                     simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
                     exporter: this.#toolbarRefs.devTools.useShrecExporter ? "shrec" : "mdc",
+                    shrecTuning: this.#toolbarRefs.devTools.shrecTuning,
+                    simplifyTuning: this.#toolbarRefs.devTools.simplifyTuning,
                 })
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {

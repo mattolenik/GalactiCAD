@@ -2,6 +2,7 @@ import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import type { DebugLogModulesState } from "../logging/debug-log.mjs"
 import { log, mergeDebugLogModulesFromStorage } from "../logging/debug-log.mjs"
+import { DEFAULT_SHREC_TUNING, DEFAULT_SIMPLIFY_TUNING, type ShrecTuning, type SimplifyTuning } from "../render-worker-protocol.mjs"
 import { db } from "./db.mjs"
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,10 @@ export interface GlobalSettings {
         meshSimplifyOnExport: boolean
         /** When true, mesh export uses the SHREC/MergeSharp pipeline; otherwise MDC. */
         useShrecExporter: boolean
+        /** Tuning knobs for the SHREC/MergeSharp pipeline. */
+        shrecTuning: ShrecTuning
+        /** Post-MDC mesh simplification (meshoptimizer); used when mesh simplify on export is enabled. */
+        simplifyTuning: SimplifyTuning
         diskSyncIntervalSeconds: number
         theme: ThemeMode
         editor: EditorSettings
@@ -132,6 +137,8 @@ function defaultGlobalSettings(): GlobalSettings {
             showFps: true,
             meshSimplifyOnExport: true,
             useShrecExporter: false,
+            shrecTuning: { ...DEFAULT_SHREC_TUNING },
+            simplifyTuning: { ...DEFAULT_SIMPLIFY_TUNING },
             diskSyncIntervalSeconds: 30,
             theme: "dark",
             editor: defaultEditorSettings(),
@@ -367,6 +374,34 @@ export class SettingsManager {
                 if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
                 if (typeof app.useShrecExporter !== "boolean") app.useShrecExporter = false
+                {
+                    const t = (app as { shrecTuning?: Partial<ShrecTuning> }).shrecTuning
+                    const cur = { ...DEFAULT_SHREC_TUNING, ...(t ?? {}) }
+                    if (typeof cur.mergeSharpEnabled !== "boolean") cur.mergeSharpEnabled = DEFAULT_SHREC_TUNING.mergeSharpEnabled
+                    if (typeof cur.mergeRelCutoff !== "number" || !isFinite(cur.mergeRelCutoff)) cur.mergeRelCutoff = DEFAULT_SHREC_TUNING.mergeRelCutoff
+                    if (typeof cur.mergeMaxDisplacement !== "number" || !isFinite(cur.mergeMaxDisplacement) || cur.mergeMaxDisplacement < 0) cur.mergeMaxDisplacement = DEFAULT_SHREC_TUNING.mergeMaxDisplacement
+                    if (typeof cur.creaseAngleDeg !== "number" || !isFinite(cur.creaseAngleDeg) || cur.creaseAngleDeg < 0 || cur.creaseAngleDeg > 180) cur.creaseAngleDeg = DEFAULT_SHREC_TUNING.creaseAngleDeg
+                    app.shrecTuning = cur
+                }
+                {
+                    const st = (app as { simplifyTuning?: Partial<SimplifyTuning> }).simplifyTuning
+                    const s = { ...DEFAULT_SIMPLIFY_TUNING, ...(st ?? {}) }
+                    const clamp01 = (x: number, d: number) =>
+                        typeof x === "number" && isFinite(x) ? Math.min(1, Math.max(0.01, x)) : d
+                    const clampErr = (x: number, d: number) =>
+                        typeof x === "number" && isFinite(x) && x >= 0 ? x : d
+                    const clampNw = (x: number, d: number) =>
+                        typeof x === "number" && isFinite(x) && x >= 0 ? Math.min(8, x) : d
+                    s.targetRatio = clamp01(s.targetRatio, DEFAULT_SIMPLIFY_TUNING.targetRatio)
+                    s.targetError = clampErr(s.targetError, DEFAULT_SIMPLIFY_TUNING.targetError)
+                    if (typeof s.lockBorder !== "boolean") s.lockBorder = DEFAULT_SIMPLIFY_TUNING.lockBorder
+                    if (typeof s.sparse !== "boolean") s.sparse = DEFAULT_SIMPLIFY_TUNING.sparse
+                    if (typeof s.errorAbsolute !== "boolean") s.errorAbsolute = DEFAULT_SIMPLIFY_TUNING.errorAbsolute
+                    if (typeof s.prune !== "boolean") s.prune = DEFAULT_SIMPLIFY_TUNING.prune
+                    if (typeof s.regularize !== "boolean") s.regularize = DEFAULT_SIMPLIFY_TUNING.regularize
+                    s.normalWeight = clampNw(s.normalWeight, DEFAULT_SIMPLIFY_TUNING.normalWeight)
+                    app.simplifyTuning = s
+                }
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false
                 if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"

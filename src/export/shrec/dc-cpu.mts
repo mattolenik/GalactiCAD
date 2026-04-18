@@ -20,7 +20,6 @@
  */
 
 import { log as dbgLog } from "../../logging/debug-log.mjs"
-import type { MeshData } from "../export.mjs"
 import type { GridSampleResult } from "../grid-sample.mjs"
 
 /** Floats per vertex (matches `SIZEOF_VERTEX / 4` in `mdc.mts`). */
@@ -29,6 +28,20 @@ const VERTEX_STRIDE = 8
 export interface DualContourParams {
     /** Iso-surface value (SDFs typically use 0). */
     isoValue: number
+}
+
+/**
+ * Output of `dualContourCPU`. Extends `MeshData` with per-vertex cell coords
+ * so downstream stages (MergeSharp) can recover the cube each vertex came
+ * from and re-enumerate its 12 edge crossings without an inverse lookup.
+ *
+ * `cellCoords[3*vi + 0..2]` = `(cx, cy, cz)` in cell-grid coordinates
+ * (i.e. cell `(0,0,0)` spans voxels `(0,0,0)..(1,1,1)`).
+ */
+export interface DualContourMesh {
+    verts: Float32Array<ArrayBuffer>
+    tris: Uint32Array<ArrayBuffer>
+    cellCoords: Uint32Array<ArrayBuffer>
 }
 
 /**
@@ -98,7 +111,7 @@ const EDGE_AXIS_INFO: ReadonlyArray<{
 export function dualContourCPU(
     grid: GridSampleResult,
     params: DualContourParams,
-): MeshData {
+): DualContourMesh {
     const t0 = perfNow()
     const [nx, ny, nz] = grid.dims
     const { scalar, gradient, voxelSize, gridOffset } = grid
@@ -217,6 +230,7 @@ export function dualContourCPU(
     }
 
     const verts = new Float32Array(activeCells * VERTEX_STRIDE)
+    const cellCoords = new Uint32Array(activeCells * 3)
     let vCursor = 0
     for (let i = 0; i < ncells; i++) {
         const n = edgeCount[i]
@@ -226,6 +240,16 @@ export function dualContourCPU(
         const px = sumPos[i3]! * inv
         const py = sumPos[i3 + 1]! * inv
         const pz = sumPos[i3 + 2]! * inv
+
+        // Recover (cx, cy, cz) from flat cell index.
+        const cz = (i / (ncx * ncy)) | 0
+        const remainder = i - cz * ncx * ncy
+        const cy = (remainder / ncx) | 0
+        const cx = remainder - cy * ncx
+        const cco = vCursor * 3
+        cellCoords[cco] = cx
+        cellCoords[cco + 1] = cy
+        cellCoords[cco + 2] = cz
         let nxv = sumNrm[i3]!
         let nyv = sumNrm[i3 + 1]!
         let nzv = sumNrm[i3 + 2]!
@@ -339,13 +363,14 @@ export function dualContourCPU(
         `skippedQuads=${skippedQuads} elapsed=${elapsedMs.toFixed(1)}ms`,
     )
 
-    return { verts, tris }
+    return { verts, tris, cellCoords }
 }
 
-function emptyMesh(): MeshData {
+function emptyMesh(): DualContourMesh {
     return {
         verts: new Float32Array(new ArrayBuffer(0)),
         tris: new Uint32Array(new ArrayBuffer(0)),
+        cellCoords: new Uint32Array(new ArrayBuffer(0)),
     }
 }
 

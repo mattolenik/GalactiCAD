@@ -13,9 +13,16 @@ import {
 } from "../benchmark/benchmark.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
+    DEFAULT_SHREC_TUNING,
+    DEFAULT_SIMPLIFY_TUNING,
     type PreviewShadingParams,
+    type ShrecTuning,
+    type SimplifyTuning,
 } from "../render-worker-protocol.mjs"
 import { DEBUG_LOG_MODULES, log, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
+
+/** Boolean fields on `SimplifyTuning` (meshoptimizer flags). */
+type SimplifyBoolKey = "lockBorder" | "sparse" | "errorAbsolute" | "prune" | "regularize"
 
 const PREVIEW_SHADING_KNOBS: {
     key: keyof PreviewShadingParams
@@ -58,6 +65,24 @@ export class DevToolsPanel extends HTMLElement {
     #meshSimplify$: BehaviorSubject<boolean>
     #useShrecCheckbox: HTMLInputElement
     #useShrec$: BehaviorSubject<boolean>
+    #shrecTuningState: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
+    #shrecMergeSharpCheckbox: HTMLInputElement
+    #shrecRelCutoffRange: HTMLInputElement
+    #shrecRelCutoffValueEl: HTMLSpanElement
+    #shrecMaxDispRange: HTMLInputElement
+    #shrecMaxDispValueEl: HTMLSpanElement
+    #shrecCreaseRange: HTMLInputElement
+    #shrecCreaseValueEl: HTMLSpanElement
+    #shrecSection: HTMLDivElement
+    #simplifyTuningState: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
+    #simplifySection: HTMLDivElement
+    #simplifyTargetRatioRange: HTMLInputElement
+    #simplifyTargetRatioValueEl: HTMLSpanElement
+    #simplifyTargetErrorRange: HTMLInputElement
+    #simplifyTargetErrorValueEl: HTMLSpanElement
+    #simplifyNormalWeightRange: HTMLInputElement
+    #simplifyNormalWeightValueEl: HTMLSpanElement
+    #simplifyBoolCheckboxes: Map<SimplifyBoolKey, HTMLInputElement> = new Map()
     #lightingExpandedCheckbox: HTMLInputElement
     #lightingExpanded$: BehaviorSubject<boolean>
     #lightingSection: HTMLDivElement
@@ -86,6 +111,12 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Callback when the SHREC/MergeSharp exporter toggle changes (off = MDC). */
     onUseShrecExporterChange?: (enabled: boolean) => void
+
+    /** Callback when any SHREC tuning knob changes; receives the full tuning object. */
+    onShrecTuningChange?: (tuning: ShrecTuning) => void
+
+    /** Callback when MDC mesh simplification tuning changes. */
+    onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
 
     /** Preview shading uniforms; knob values are not persisted (section visibility is). */
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
@@ -156,6 +187,42 @@ export class DevToolsPanel extends HTMLElement {
 
     set useShrecExporter(enabled: boolean) {
         this.#useShrec$.next(enabled)
+    }
+
+    /** Read-only view of current SHREC tuning state (mutate via setter or sync method). */
+    get shrecTuning(): ShrecTuning {
+        return { ...this.#shrecTuningState }
+    }
+
+    get simplifyTuning(): SimplifyTuning {
+        return { ...this.#simplifyTuningState }
+    }
+
+    /** Sync MDC simplification knobs from persisted settings. */
+    syncSimplifyTuningFromSettings(tuning: SimplifyTuning): void {
+        this.#simplifyTuningState = { ...tuning }
+        this.#simplifyTargetRatioRange.value = String(tuning.targetRatio)
+        this.#simplifyTargetRatioValueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetRatio", tuning.targetRatio)
+        this.#simplifyTargetErrorRange.value = String(tuning.targetError)
+        this.#simplifyTargetErrorValueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetError", tuning.targetError)
+        this.#simplifyNormalWeightRange.value = String(tuning.normalWeight)
+        this.#simplifyNormalWeightValueEl.textContent = DevToolsPanel.#formatSimplifyValue("normalWeight", tuning.normalWeight)
+        for (const key of this.#simplifyBoolCheckboxes.keys()) {
+            const cb = this.#simplifyBoolCheckboxes.get(key)!
+            cb.checked = tuning[key]
+        }
+    }
+
+    /** Sync SHREC knobs from persisted settings (e.g. after storage load). */
+    syncShrecTuningFromSettings(tuning: ShrecTuning): void {
+        this.#shrecTuningState = { ...tuning }
+        this.#shrecMergeSharpCheckbox.checked = tuning.mergeSharpEnabled
+        this.#shrecRelCutoffRange.value = String(tuning.mergeRelCutoff)
+        this.#shrecRelCutoffValueEl.textContent = DevToolsPanel.#formatShrecValue("mergeRelCutoff", tuning.mergeRelCutoff)
+        this.#shrecMaxDispRange.value = String(tuning.mergeMaxDisplacement)
+        this.#shrecMaxDispValueEl.textContent = DevToolsPanel.#formatShrecValue("mergeMaxDisplacement", tuning.mergeMaxDisplacement)
+        this.#shrecCreaseRange.value = String(tuning.creaseAngleDeg)
+        this.#shrecCreaseValueEl.textContent = DevToolsPanel.#formatShrecValue("creaseAngleDeg", tuning.creaseAngleDeg)
     }
 
     /** Show or hide the panel */
@@ -320,12 +387,243 @@ export class DevToolsPanel extends HTMLElement {
             this.onMeshSimplifyChange?.(v)
         })
 
+        this.#simplifyTuningState = { ...DEFAULT_SIMPLIFY_TUNING, ...g.simplifyTuning }
+        this.#simplifySection = document.createElement("div")
+        this.#simplifySection.className = "lighting-section"
+        shadow.appendChild(this.#simplifySection)
+
+        const simpHead = document.createElement("div")
+        simpHead.className = "shade-head"
+        simpHead.textContent = "MDC simplification"
+        this.#simplifySection.appendChild(simpHead)
+
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Tri ratio"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0.01"
+            range.max = "1"
+            range.step = "0.01"
+            range.value = String(this.#simplifyTuningState.targetRatio)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetRatio", this.#simplifyTuningState.targetRatio)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#simplifyTuningState = { ...this.#simplifyTuningState, targetRatio: v }
+                valueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetRatio", v)
+                this.#persistSimplifyTuning()
+            })
+            row.append(lab, range, valueEl)
+            this.#simplifySection.appendChild(row)
+            this.#simplifyTargetRatioRange = range
+            this.#simplifyTargetRatioValueEl = valueEl
+        }
+
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Max error"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0.00005"
+            range.max = "0.05"
+            range.step = "0.00005"
+            range.value = String(this.#simplifyTuningState.targetError)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetError", this.#simplifyTuningState.targetError)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#simplifyTuningState = { ...this.#simplifyTuningState, targetError: v }
+                valueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetError", v)
+                this.#persistSimplifyTuning()
+            })
+            row.append(lab, range, valueEl)
+            this.#simplifySection.appendChild(row)
+            this.#simplifyTargetErrorRange = range
+            this.#simplifyTargetErrorValueEl = valueEl
+        }
+
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Normal wt"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0"
+            range.max = "4"
+            range.step = "0.05"
+            range.value = String(this.#simplifyTuningState.normalWeight)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatSimplifyValue("normalWeight", this.#simplifyTuningState.normalWeight)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#simplifyTuningState = { ...this.#simplifyTuningState, normalWeight: v }
+                valueEl.textContent = DevToolsPanel.#formatSimplifyValue("normalWeight", v)
+                this.#persistSimplifyTuning()
+            })
+            row.append(lab, range, valueEl)
+            this.#simplifySection.appendChild(row)
+            this.#simplifyNormalWeightRange = range
+            this.#simplifyNormalWeightValueEl = valueEl
+        }
+
+        const simplifyBoolRows: { key: SimplifyBoolKey; label: string }[] = [
+            { key: "lockBorder", label: "Lock border" },
+            { key: "sparse", label: "Sparse" },
+            { key: "errorAbsolute", label: "Absolute error" },
+            { key: "prune", label: "Prune" },
+            { key: "regularize", label: "Regularize" },
+        ]
+        for (const { key, label } of simplifyBoolRows) {
+            const cb = this.#addCheckbox(this.#simplifySection, label, this.#simplifyTuningState[key])
+            this.#simplifyBoolCheckboxes.set(key, cb)
+            cb.addEventListener("change", () => {
+                const next: SimplifyTuning = { ...this.#simplifyTuningState }
+                next[key] = cb.checked
+                this.#simplifyTuningState = next
+                this.#persistSimplifyTuning()
+            })
+        }
+
+        const simplifyDefaults = document.createElement("button")
+        simplifyDefaults.textContent = "Simplify defaults"
+        simplifyDefaults.addEventListener("click", () => {
+            this.syncSimplifyTuningFromSettings({ ...DEFAULT_SIMPLIFY_TUNING })
+            this.#persistSimplifyTuning()
+        })
+        this.#simplifySection.appendChild(simplifyDefaults)
+
         this.#useShrecCheckbox = this.#addCheckbox(shadow, "SHREC exporter", this.#useShrec$.value)
         this.#subscriptions.push(connectCheckbox(this.#useShrecCheckbox, this.#useShrec$))
         this.#useShrec$.pipe(skip(1)).subscribe(v => {
             this.#settings.updateGlobal({ app: { useShrecExporter: v } })
             this.onUseShrecExporterChange?.(v)
         })
+
+        // SHREC tuning subsection (visible regardless of toggle so it can be
+        // dialled in pre-flight; values only take effect when the SHREC
+        // exporter is selected and `mergeSharpEnabled` is true).
+        this.#shrecTuningState = { ...DEFAULT_SHREC_TUNING, ...g.shrecTuning }
+        this.#shrecSection = document.createElement("div")
+        this.#shrecSection.className = "lighting-section"
+        shadow.appendChild(this.#shrecSection)
+
+        const shrecHead = document.createElement("div")
+        shrecHead.className = "shade-head"
+        shrecHead.textContent = "SHREC tuning"
+        this.#shrecSection.appendChild(shrecHead)
+
+        // MergeSharp on/off (within SHREC). When false, plain DC mass-point
+        // output is returned — useful for A/B testing the relocation pass.
+        this.#shrecMergeSharpCheckbox = this.#addCheckbox(this.#shrecSection, "MergeSharp", this.#shrecTuningState.mergeSharpEnabled)
+        this.#shrecMergeSharpCheckbox.addEventListener("change", () => {
+            this.#shrecTuningState = { ...this.#shrecTuningState, mergeSharpEnabled: this.#shrecMergeSharpCheckbox.checked }
+            this.#persistShrecTuning()
+        })
+
+        // Rel cutoff slider: smaller → more vertices snap to detected features.
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Rel cutoff"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0.005"
+            range.max = "0.5"
+            range.step = "0.005"
+            range.value = String(this.#shrecTuningState.mergeRelCutoff)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeRelCutoff", this.#shrecTuningState.mergeRelCutoff)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#shrecTuningState = { ...this.#shrecTuningState, mergeRelCutoff: v }
+                valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeRelCutoff", v)
+                this.#persistShrecTuning()
+            })
+            row.append(lab, range, valueEl)
+            this.#shrecSection.appendChild(row)
+            this.#shrecRelCutoffRange = range
+            this.#shrecRelCutoffValueEl = valueEl
+        }
+
+        // Max displacement slider (mm). 0 = disabled (only cell-bounds clamp applies).
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Max disp (mm)"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0"
+            range.max = "2"
+            range.step = "0.05"
+            range.value = String(this.#shrecTuningState.mergeMaxDisplacement)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeMaxDisplacement", this.#shrecTuningState.mergeMaxDisplacement)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#shrecTuningState = { ...this.#shrecTuningState, mergeMaxDisplacement: v }
+                valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeMaxDisplacement", v)
+                this.#persistShrecTuning()
+            })
+            row.append(lab, range, valueEl)
+            this.#shrecSection.appendChild(row)
+            this.#shrecMaxDispRange = range
+            this.#shrecMaxDispValueEl = valueEl
+        }
+
+        // Crease angle slider (deg). 180 = no splitting (single smooth group),
+        // 0 = every triangle its own face. Default 30.
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Crease (°)"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0"
+            range.max = "180"
+            range.step = "1"
+            range.value = String(this.#shrecTuningState.creaseAngleDeg)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatShrecValue("creaseAngleDeg", this.#shrecTuningState.creaseAngleDeg)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#shrecTuningState = { ...this.#shrecTuningState, creaseAngleDeg: v }
+                valueEl.textContent = DevToolsPanel.#formatShrecValue("creaseAngleDeg", v)
+                this.#persistShrecTuning()
+            })
+            row.append(lab, range, valueEl)
+            this.#shrecSection.appendChild(row)
+            this.#shrecCreaseRange = range
+            this.#shrecCreaseValueEl = valueEl
+        }
+
+        const shrecDefaults = document.createElement("button")
+        shrecDefaults.textContent = "SHREC defaults"
+        shrecDefaults.addEventListener("click", () => {
+            this.syncShrecTuningFromSettings({ ...DEFAULT_SHREC_TUNING })
+            this.#persistShrecTuning()
+        })
+        this.#shrecSection.appendChild(shrecDefaults)
 
         this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)
         this.#subscriptions.push(connectCheckbox(this.#cameraOptCheckbox, this.#cameraOptimization$))
@@ -523,6 +821,33 @@ export class DevToolsPanel extends HTMLElement {
     static #formatShadeValue(key: keyof PreviewShadingParams, v: number): string {
         if (key === "specShininess" || key === "aoSteps") return String(Math.round(v))
         return v.toFixed(2)
+    }
+
+    static #formatShrecValue(key: keyof ShrecTuning, v: number | boolean): string {
+        if (typeof v === "boolean") return v ? "on" : "off"
+        if (key === "mergeRelCutoff") return v.toFixed(3)
+        if (key === "mergeMaxDisplacement") return v === 0 ? "off" : v.toFixed(2)
+        if (key === "creaseAngleDeg") return `${Math.round(v)}°`
+        return v.toFixed(2)
+    }
+
+    /** Persist the current SHREC tuning state and notify listeners. */
+    #persistShrecTuning(): void {
+        const next = { ...this.#shrecTuningState }
+        this.#settings.updateGlobal({ app: { shrecTuning: next } })
+        this.onShrecTuningChange?.(next)
+    }
+
+    #persistSimplifyTuning(): void {
+        const next = { ...this.#simplifyTuningState }
+        this.#settings.updateGlobal({ app: { simplifyTuning: next } })
+        this.onSimplifyTuningChange?.(next)
+    }
+
+    static #formatSimplifyValue(key: "targetRatio" | "targetError" | "normalWeight", v: number): string {
+        if (key === "targetRatio") return `${(v * 100).toFixed(0)}%`
+        if (key === "targetError") return v < 0.001 ? v.toExponential(2) : v.toFixed(4)
+        return v === 0 ? "0" : v.toFixed(2)
     }
 
     #addCheckbox(parent: ParentNode, label: string, checked: boolean): HTMLInputElement {

@@ -36,12 +36,15 @@ import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
+    DEFAULT_SIMPLIFY_TUNING,
     type BuildTimingBreakdownMs,
     type ExporterKind,
     type MainToWorkerMessage,
     type PreviewShadingParams,
     type RenderSelectionState,
     type SelectedEdgePayload,
+    type ShrecTuning,
+    type SimplifyTuning,
 } from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
@@ -942,7 +945,15 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(body: string, requestId?: number, documentName?: string, simplifyOnExport = true, exporter: ExporterKind = "mdc"): Promise<void> {
+    async handleRenderMesh(
+        body: string,
+        requestId?: number,
+        documentName?: string,
+        simplifyOnExport = true,
+        exporter: ExporterKind = "mdc",
+        shrecTuning?: ShrecTuning,
+        simplifyTuning?: SimplifyTuning,
+    ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
                 await this.build(body, undefined)
@@ -993,6 +1004,12 @@ export class RenderWorkerCore {
                     gridOffsetY: minY,
                     gridOffsetZ: minZ,
                     voxelSize: voxelSizeMm,
+                    ...(shrecTuning && {
+                        mergeSharpEnabled: shrecTuning.mergeSharpEnabled,
+                        mergeRelCutoff: shrecTuning.mergeRelCutoff,
+                        mergeMaxDisplacement: shrecTuning.mergeMaxDisplacement > 0 ? shrecTuning.mergeMaxDisplacement : undefined,
+                        creaseAngleDeg: shrecTuning.creaseAngleDeg,
+                    }),
                 }
                 const shrec = new ShrecExport(
                     this.#helper,
@@ -1012,14 +1029,19 @@ export class RenderWorkerCore {
                     gridOffsetY: minY,
                     gridOffsetZ: minZ,
                     voxelSize: voxelSizeMm,
-                    ...(simplifyOnExport && {
-                        simplifyTargetRatio: 0.1,
-                        simplifyRegularize: false,
-                        simplifyLockBorder: true,
-                        simplifyPrune: false,
-                        simplifySparse: false,
-                        simplifyTargetError: 0.001,
-                    }),
+                    ...(simplifyOnExport && (() => {
+                        const s = { ...DEFAULT_SIMPLIFY_TUNING, ...simplifyTuning }
+                        return {
+                            simplifyTargetRatio: s.targetRatio,
+                            simplifyTargetError: s.targetError,
+                            simplifyLockBorder: s.lockBorder,
+                            simplifySparse: s.sparse,
+                            simplifyErrorAbsolute: s.errorAbsolute,
+                            simplifyPrune: s.prune,
+                            simplifyRegularize: s.regularize,
+                            simplifyNormalWeight: s.normalWeight > 0 ? s.normalWeight : undefined,
+                        }
+                    })()),
                 }
                 const mdcCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)

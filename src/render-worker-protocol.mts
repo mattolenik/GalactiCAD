@@ -19,6 +19,70 @@ import type { MeshData } from "./export/export.mjs"
  */
 export type ExporterKind = "mdc" | "shrec"
 
+/**
+ * Tuning knobs for the SHREC / MergeSharp exporter that the user may adjust
+ * from Dev Tools at runtime. Mirrors the merge-related subset of
+ * `ShrecParams` in `src/export/shrec.mts`; grid-sizing fields stay computed
+ * in the worker.
+ */
+export interface ShrecTuning {
+    /** Whether to run the MergeSharp relocation pass. When false, plain DC mass-point output is returned. */
+    mergeSharpEnabled: boolean
+    /** Singular-value cutoff for the rank-aware QEF pseudo-inverse (fraction of largest eigenvalue). Smaller → more vertices snap to features. */
+    mergeRelCutoff: number
+    /**
+     * Optional extra clamp on per-vertex displacement (mm), in addition to
+     * the always-on cell-bounds clamp. `0` disables this extra clamp.
+     */
+    mergeMaxDisplacement: number
+    /**
+     * Crease angle threshold in degrees for the post-relocation vertex split.
+     * Re-derives per-vertex normals from triangle face normals; vertices whose
+     * adjacent triangles span an angle greater than this threshold are split
+     * into separate output vertices, each with its own per-side normal. Set
+     * to 180 to disable splitting (one smooth group per vertex; normals are
+     * still re-derived from face geometry, which kills banding on flat
+     * surfaces). Set to 0 to make every triangle its own face. Default 30.
+     */
+    creaseAngleDeg: number
+}
+
+export const DEFAULT_SHREC_TUNING: ShrecTuning = {
+    mergeSharpEnabled: true,
+    mergeRelCutoff: 0.05,
+    mergeMaxDisplacement: 0,
+    creaseAngleDeg: 30,
+}
+
+/**
+ * Post-MDC meshoptimizer simplification (QEM). Used when mesh export runs the MDC
+ * pipeline with simplification enabled; ignored for SHREC.
+ */
+export interface SimplifyTuning {
+    /** Fraction of input triangles to keep (0–1). `1` skips simplification. */
+    targetRatio: number
+    /** Max geometric error (relative unless `errorAbsolute`). */
+    targetError: number
+    lockBorder: boolean
+    sparse: boolean
+    errorAbsolute: boolean
+    prune: boolean
+    regularize: boolean
+    /** When positive, uses normal-aware simplification (protects sharp features). */
+    normalWeight: number
+}
+
+export const DEFAULT_SIMPLIFY_TUNING: SimplifyTuning = {
+    targetRatio: 0.1,
+    targetError: 0.001,
+    lockBorder: true,
+    sparse: false,
+    errorAbsolute: false,
+    prune: false,
+    regularize: false,
+    normalWeight: 0,
+}
+
 /** Worker-reported `#doBuild` breakdown (ms); used for devtools / regression triage. */
 export interface BuildTimingBreakdownMs {
     sceneConstructMs: number
@@ -150,7 +214,7 @@ export type MainToWorkerMessage =
     // previewParamsF32Patch: cap-drag only — patches #previewF32Shadow then 8-byte write to previewCapParamDrag at byteOffset.
     // Does not touch boundsSceneParams or mdcSceneParams (those refresh on build / param-only build).
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; previewParamsF32Patch?: { byteOffset: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
-    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean; exporter?: ExporterKind }
+    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean; exporter?: ExporterKind; shrecTuning?: ShrecTuning; simplifyTuning?: SimplifyTuning }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }

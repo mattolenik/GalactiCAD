@@ -1,6 +1,8 @@
 import { GPUHelper } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
 import { dualContourCPU } from "./shrec/dc-cpu.mjs"
+import { mergeSharpRelocate } from "./shrec/merge-sharp.mjs"
+import { splitCreaseVertices } from "./crease-split.mjs"
 import type { MeshData } from "./export.mjs"
 import type { ProgressCallback } from "./mdc.mjs"
 import { GridSampler, type GridSampleResult } from "./grid-sample.mjs"
@@ -9,8 +11,9 @@ import { GridSampler, type GridSampleResult } from "./grid-sample.mjs"
  * Parameters for SHREC / MergeSharp export.
  *
  * Mirrors the grid-defining subset of MDCParams so a single set of UI controls
- * can drive either exporter. SHREC-specific tuning lives in the optional
- * `merge*` / `feature*` fields and is consumed by the CPU stage.
+ * can drive either exporter. The `merge*` knobs tune the MergeSharp vertex
+ * relocation stage; defaults are chosen to behave well on typical CAD scenes
+ * with `voxelSize ≈ 0.1mm`.
  */
 export interface ShrecParams {
     gridDimX: number
@@ -23,16 +26,30 @@ export interface ShrecParams {
     gridOffsetZ: number
     voxelSize: number
 
-    // --- MergeSharp tuning knobs (consumed by upcoming CPU stage). ---
+    /** Set false to skip the MergeSharp relocation pass (output = plain DC mass-point mesh). Default true. */
+    mergeSharpEnabled?: boolean
     /**
-     * Cosine of the angle threshold below which two gradient directions are
-     * considered to belong to different smooth regions. Default ≈ cos(30°).
+     * Singular-value cutoff for the rank-aware QEF pseudo-inverse, expressed
+     * as a fraction of the QEF's largest eigenvalue. Smaller → more vertices
+     * snap to detected features. Default 0.05.
      */
-    featureAngleCosThreshold?: number
-    /** Maximum world-space radius for sharp-feature vertex clustering. */
-    mergeRadius?: number
-    /** Cap on MergeSharp relocation iterations. */
-    mergeIterations?: number
+    mergeRelCutoff?: number
+    /**
+     * Optional extra clamp on how far a vertex may move from its original DC
+     * position (in mm), on top of the always-on cell-bounds clamp. When
+     * undefined, only the cell-bounds clamp applies (this is the recommended
+     * default — the cell clamp is what preserves DC topology).
+     */
+    mergeMaxDisplacement?: number
+    /**
+     * Crease angle threshold (degrees) for the post-pass that re-derives
+     * per-vertex normals from triangle face normals and splits vertices at
+     * sharp features. Default 30. Set to 180 to keep one smooth group per
+     * vertex (still face-derived; eliminates flat-surface banding without
+     * splitting any creases). Setting to a value `< 0` skips the pass
+     * entirely and keeps the MergeSharp / DC normals.
+     */
+    creaseAngleDeg?: number
 }
 
 /**
@@ -40,20 +57,18 @@ export interface ShrecParams {
  * the integrated GPU MDC pipeline.
  *
  * Pipeline:
- *   1. GPU: sample the scene SDF on a uniform 3D grid (scalar + gradient).
- *      → `GridSampler` (see `grid-sample.mts`).
- *   2. CPU: extract a base mesh via plain dual contouring on the sampled grid.
- *   3. CPU: relocate vertices onto sharp features using MergeSharp's gradient
- *      clustering + 3x3 SVD.
- *   4. (Reuses `simplifyMesh` from `simplify.mjs` if requested.)
+ *   1. **GPU** — sample the scene SDF on a uniform 3D grid (scalar + gradient).
+ *      See `GridSampler` in `grid-sample.mts`.
+ *   2. **CPU** — plain dual contouring (`dc-cpu.mts`) emits one vertex per
+ *      active cell at its mass point and one quad per crossing edge.
+ *   3. **CPU** — MergeSharp (`merge-sharp.mts`) relocates each vertex onto
+ *      the underlying sharp feature using a per-vertex QEF over surrounding
+ *      gradient samples, with a rank-aware pseudo-inverse for feature
+ *      classification.
  *
  * The constructor signature deliberately matches `MDCExport` so the dispatcher
  * in `render-worker-core.mts` can swap exporters without touching scene-param
  * plumbing.
- *
- * Stages 2 and 3 are stubs in this scaffold; they currently emit an empty mesh
- * and log a message indicating the CPU mesher is pending. Stage 1 is fully
- * functional and is what the rest of the pipeline will be built on top of.
  */
 export class ShrecExport {
     #helper: GPUHelper
@@ -104,22 +119,49 @@ export class ShrecExport {
         })
 
         this.#logGridStats(grid)
-        progressCallback?.updateProgress("SHREC: dual contouring on CPU", 50)
+        progressCallback?.updateProgress("SHREC: dual contouring on CPU", 40)
         checkCancelled()
 
-        const mesh = dualContourCPU(grid, { isoValue: this.params.isoValue })
+        const dcMesh = dualContourCPU(grid, { isoValue: this.params.isoValue })
 
-        // TODO: Stage 3 — MergeSharp vertex relocation using `grid.gradient`
-        // and the params.feature* / merge* knobs. Implement in
-        // `shrec/merge-sharp.mts` with a small inline 3x3 SVD. For now the
-        // mass-point dual contouring output is returned as-is.
+        const mergeEnabled = this.params.mergeSharpEnabled ?? true
+        let mesh: MeshData
+        if (mergeEnabled && dcMesh.verts.length > 0) {
+            progressCallback?.updateProgress("SHREC: MergeSharp vertex relocation", 70)
+            checkCancelled()
+            const result = mergeSharpRelocate(dcMesh, grid, {
+                relCutoff: this.params.mergeRelCutoff,
+                maxDisplacement: this.params.mergeMaxDisplacement,
+            })
+            mesh = result.mesh
+        } else {
+            mesh = { verts: dcMesh.verts, tris: dcMesh.tris }
+        }
+
+        // Crease split + face-normal re-derivation. Eliminates flat-surface
+        // banding (face normals across a flat surface are identical, so
+        // per-vertex averages match across cell boundaries with no
+        // interpolation drift) and gives clean per-side normals at sharp
+        // features. The same routine MDC uses post-export.
+        const creaseAngleDeg = this.params.creaseAngleDeg ?? 30
+        if (creaseAngleDeg >= 0 && mesh.verts.length > 0) {
+            progressCallback?.updateProgress("SHREC: face-normal re-derivation", 90)
+            checkCancelled()
+            const beforeVerts = (mesh.verts.length / 8) | 0
+            mesh = splitCreaseVertices(mesh.verts, mesh.tris, creaseAngleDeg)
+            const afterVerts = (mesh.verts.length / 8) | 0
+            dbgLog("ShrecExport").debug(
+                `crease-split: ${beforeVerts} → ${afterVerts} verts (+${afterVerts - beforeVerts}, ${creaseAngleDeg}° threshold)`,
+            )
+        }
 
         progressCallback?.updateProgress("SHREC: complete", 100)
         const triCount = (mesh.tris.length / 3) | 0
         const vertCount = (mesh.verts.length / 8) | 0
         dbgLog("ShrecExport").info(
             `ShrecExport.export(): emitted ${vertCount} vertices, ${triCount} triangles ` +
-            `(MergeSharp vertex relocation pending).`,
+            `(MergeSharp ${mergeEnabled ? "applied" : "skipped"}, ` +
+            `creaseAngleDeg=${creaseAngleDeg}).`,
         )
 
         return mesh

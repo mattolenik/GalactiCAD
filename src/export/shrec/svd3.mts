@@ -236,6 +236,10 @@ export function sym3SolvePInv(
  * - 1 → flat surface (snapping in the strongest gradient direction; tangent plane).
  * - 2 → sharp edge (line feature; one direction is unconstrained).
  * - 3 → sharp corner (point feature; fully constrained).
+ *
+ * Used **for diagnostic / logging purposes only**. The actual vertex
+ * placement uses `sym3SolveTikhonov`, which has a soft transition between
+ * ranks and does not depend on this hard classification.
  */
 export function sym3Rank(eig: Sym3Eigen, relCutoff: number): 0 | 1 | 2 | 3 {
     const lmax = Math.abs(eig.values[0])
@@ -246,4 +250,54 @@ export function sym3Rank(eig: Sym3Eigen, relCutoff: number): 0 | 1 | 2 | 3 {
         if (Math.abs(eig.values[i]!) > cut) rank++
     }
     return rank as 0 | 1 | 2 | 3
+}
+
+/**
+ * Tikhonov-regularized solve of the symmetric 3x3 system `(A + λI) x = v`,
+ * where `eig` is the eigendecomposition of `A`.
+ *
+ * This is the **smooth alternative** to the rank-aware pseudo-inverse:
+ * instead of binarily dropping eigenvalues below a cutoff (which causes
+ * adjacent cells along a sharp feature to classify into different ranks
+ * and snap to slightly different positions, producing wavy / spiky
+ * contours), every eigenvalue contribution is scaled by `1 / (λ_i + λ)`.
+ *
+ * - For `|λ_i| ≫ λ`  (strong feature direction):  contribution ≈ `1/λ_i`
+ *   — same as the QEF solution, full sharpness preserved.
+ * - For `|λ_i| ≪ λ`  (unconstrained direction):  contribution ≈ `1/λ`
+ *   — bounded, small, smoothly damped.
+ * - For `|λ_i| ~ λ`  (marginal feature):  contribution smoothly between
+ *   the two regimes — no rank-classification discontinuity.
+ *
+ * The caller normally pairs this with a mass-point shift so the residual
+ * `v = b - A·mass` is small and the solution lives near the mass point
+ * for poorly-constrained directions:
+ *
+ *     correction = (A + λI)⁻¹ (b - A·mass)
+ *     x          = mass + correction
+ *
+ * `lambdaReg` should be chosen as a small fraction of `|λmax|` (e.g.
+ * `0.05 * eig.values[0]`), so the regularization scales with the QEF's
+ * strength and stays meaningful at any geometric scale.
+ */
+export function sym3SolveTikhonov(
+    eig: Sym3Eigen,
+    vx: number, vy: number, vz: number,
+    lambdaReg: number,
+    dst: [number, number, number],
+): void {
+    let rx = 0, ry = 0, rz = 0
+    for (let i = 0; i < 3; i++) {
+        const denom = eig.values[i]! + lambdaReg
+        if (Math.abs(denom) < 1e-30) continue
+        const e = eig.vectors[i]!
+        const dot = e[0] * vx + e[1] * vy + e[2] * vz
+        const k = dot / denom
+        rx += k * e[0]
+        ry += k * e[1]
+        rz += k * e[2]
+    }
+    dst[0] = rx
+    dst[1] = ry
+    dst[2] = rz
 }

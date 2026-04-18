@@ -50,7 +50,7 @@ import {
     sym3AddOuter,
     sym3Eigen,
     sym3Mul,
-    sym3SolvePInv,
+    sym3SolveTikhonov,
     sym3Rank,
     sym3Zero,
     type Sym3,
@@ -82,10 +82,15 @@ const CUBE_EDGES: ReadonlyArray<{
 
 export interface MergeSharpParams {
     /**
-     * Singular-value cutoff for the rank-aware QEF pseudo-inverse, expressed
-     * as a fraction of the QEF's largest eigenvalue. Smaller values let
-     * weaker features survive the pseudo-inverse rank test (more vertices
-     * snap to detected features). Default 0.05.
+     * Tikhonov regularization strength for the QEF solve, expressed as a
+     * fraction of the QEF matrix's largest eigenvalue. Smaller → less
+     * regularization → sharper feature snapping but noisier near-marginal
+     * cells. Larger → more regularization → smoother contours, blunter
+     * features. Default 0.05.
+     *
+     * (Named `relCutoff` for backwards compatibility with the earlier
+     * rank-aware pseudo-inverse formulation; the math is now Tikhonov, but
+     * the UI semantic is similar — smaller = sharper.)
      */
     relCutoff?: number
 
@@ -271,31 +276,37 @@ export function mergeSharpRelocate(
         massVec[2] *= inv
 
         const eig = sym3Eigen(M)
+
+        // Diagnostic only — actual placement uses the smooth Tikhonov solve
+        // below, which has no rank-classification discontinuity. The rank
+        // breakdown remains useful for "how many sharp features did we
+        // detect?" telemetry in the dev log.
         const rank = sym3Rank(eig, relCutoff)
         if (rank === 3) pointFeatures++
         else if (rank === 2) edgeFeatures++
         else if (rank === 1) flatFeatures++
         else emptyCells++
 
-        // Solve in mass-point-shifted coordinates for numerical stability:
-        //   x = mass + A⁺ (b - A · mass)
-        let nxv = massVec[0]
-        let nyv = massVec[1]
-        let nzv = massVec[2]
-        if (rank > 0) {
-            sym3Mul(M, massVec[0], massVec[1], massVec[2], Mmass)
-            sym3SolvePInv(
-                eig,
-                bvec[0] - Mmass[0],
-                bvec[1] - Mmass[1],
-                bvec[2] - Mmass[2],
-                relCutoff,
-                correction,
-            )
-            nxv = massVec[0] + correction[0]
-            nyv = massVec[1] + correction[1]
-            nzv = massVec[2] + correction[2]
-        }
+        // Tikhonov-regularized QEF solve in mass-point-shifted coordinates:
+        //   x = mass + (A + λI)⁻¹ (b - A·mass),  λ = relCutoff · |λmax|
+        // The regularization is what keeps adjacent cells along a single
+        // sharp feature from solving to slightly different points (which
+        // shows up as wavy/spiky contours along the feature). It also
+        // bounds the unconstrained-direction contribution at 1/λ rather
+        // than 1/0 → ∞, eliminating cell-bounds-clamp wall-hugging.
+        const lambdaReg = relCutoff * Math.abs(eig.values[0])
+        sym3Mul(M, massVec[0], massVec[1], massVec[2], Mmass)
+        sym3SolveTikhonov(
+            eig,
+            bvec[0] - Mmass[0],
+            bvec[1] - Mmass[1],
+            bvec[2] - Mmass[2],
+            lambdaReg,
+            correction,
+        )
+        let nxv = massVec[0] + correction[0]
+        let nyv = massVec[1] + correction[1]
+        let nzv = massVec[2] + correction[2]
 
         // Cell-bounds clamp (always on). This is the topological invariant.
         let cxNew = nxv, cyNew = nyv, czNew = nzv

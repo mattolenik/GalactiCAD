@@ -988,6 +988,10 @@ export class RenderWorkerCore {
 
             let mesh
             if (exporter === "shrec") {
+                log("ShrecExport").info(
+                    `handleRenderMesh: dispatching SHREC, incoming tuning=` +
+                    `${shrecTuning ? JSON.stringify(shrecTuning) : "(undefined → defaults)"}`,
+                )
                 // SHREC pipeline only needs sceneAux + sceneSDF + sceneAuxFast (sample_grid.wgsl
                 // declares both Aux variants because hg_sdf includes share helpers between paths).
                 const shrecCompiler = new ShaderCompiler(this.#device)

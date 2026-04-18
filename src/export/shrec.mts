@@ -99,6 +99,21 @@ export class ShrecExport {
             }
         }
 
+        // Print the active tuning at the top of every export so a user moving
+        // sliders in Dev Tools can confirm the values are propagating through
+        // the renderMesh → worker → ShrecExport chain. If you change a knob
+        // and re-export but this line shows the same number, the issue is
+        // upstream of ShrecExport (e.g. mesh viewer is off, so no auto-remesh).
+        const p = this.params
+        dbgLog("ShrecExport").info(
+            `ShrecExport.export() params: ` +
+            `grid=${p.gridDimX}x${p.gridDimY}x${p.gridDimZ} voxel=${p.voxelSize} ` +
+            `mergeSharpEnabled=${p.mergeSharpEnabled ?? true} ` +
+            `mergeRelCutoff=${p.mergeRelCutoff ?? 0.05} ` +
+            `mergeMaxDisplacement=${p.mergeMaxDisplacement ?? "(off)"} ` +
+            `creaseAngleDeg=${p.creaseAngleDeg ?? 30}`,
+        )
+
         progressCallback?.updateProgress("SHREC: sampling SDF on GPU grid", 10)
         checkCancelled()
 

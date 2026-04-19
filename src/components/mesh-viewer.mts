@@ -176,7 +176,7 @@ export class MeshViewer extends HTMLElement {
         this.#mdcDebugCheckbox.type = "checkbox"
         this.#mdcDebugCheckbox.checked = this.#mdcDebug
         const debugText = document.createElement("span")
-        debugText.textContent = "MDC debug"
+        debugText.textContent = "Debug points"
         debugLabel.append(this.#mdcDebugCheckbox, debugText)
         overlay.append(debugLabel)
 
@@ -185,7 +185,7 @@ export class MeshViewer extends HTMLElement {
         this.#mdcFeatureDebugCheckbox.type = "checkbox"
         this.#mdcFeatureDebugCheckbox.checked = this.#mdcFeatureDebug
         const featureDebugText = document.createElement("span")
-        featureDebugText.textContent = "MDC feature glyphs"
+        featureDebugText.textContent = "Feature glyphs"
         featureDebugLabel.append(this.#mdcFeatureDebugCheckbox, featureDebugText)
         overlay.append(featureDebugLabel)
         shadow.appendChild(overlay)
@@ -1164,7 +1164,7 @@ export class MeshViewer extends HTMLElement {
 
         const stats = this.#mdcDebugStats
         if (stats) {
-            const text1 = `MDC debug ${stats.totalSamples} raw samples`
+            const text1 = `Mesh debug ${stats.totalSamples} samples`
             const text2 = `L ${stats.acceptedLine}  C ${stats.acceptedCorner}  S ${stats.acceptedSeam}  Ring ${stats.acceptedRing}  Rej ${stats.rejected}`
             const overlayMode =
                 showRawSamples && showFeatureGlyphs ? "raw squares + feature glyphs"

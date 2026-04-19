@@ -34,6 +34,14 @@ struct SampleGridUniforms {
 // Output: gradient (analytical normal) per voxel. xyz = unit normal, w = |∇f|.
 @group(0) @binding(2) var<storage, read_write> gradientOut: array<vec4f>;
 
+// Output: per-voxel CSG seam metadata used by MergeSharp's seam-aware QEF.
+//   xyz = unit seam-tangent direction (from `r.seamTangent`).
+//   w   = validity flag (1.0 if voxel sits on a usable CSG seam, else 0.0).
+// MergeSharp uses this to constrain its per-cell QEF to a 1D solve along the
+// known seam line, eliminating the residual sub-voxel jitter that the pure
+// gradient-based QEF leaves on long sharp edges.
+@group(0) @binding(3) var<storage, read_write> seamTangentOut: array<vec4f>;
+
 // Cancellation flag (matches mdc.wgsl convention).
 @group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
 
@@ -87,4 +95,15 @@ fn sampleGrid(@builtin(global_invocation_id) gid: vec3u) {
     let idx = (gid.z * dims.y + gid.y) * dims.x + gid.x;
     scalarOut[idx] = r.d;
     gradientOut[idx] = vec4f(r.n, r.g);
+
+    // Seam tangent is meaningful only when the voxel actually sits on a CSG
+    // seam, **and** is geometrically close to it. Two gates:
+    //   1. r.seamOp != 0 — there IS a hard seam (union/intersection/diff).
+    //   2. |r.seamGap| < voxelSize · k — within the seam-aware envelope.
+    // The factor k decides how far from the seam line we still trust the
+    // tangent direction. ~1.5 voxels is a safe envelope: catches every cell
+    // that contains the seam while excluding cells that merely look toward it.
+    let onSeam = (r.seamOp != 0u) && (r.seamGap < voxelSize * 1.5);
+    let validity = select(0.0, 1.0, onSeam);
+    seamTangentOut[idx] = vec4f(r.seamTangent, validity);
 }

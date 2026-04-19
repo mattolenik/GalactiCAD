@@ -54,6 +54,27 @@ export interface ShrecTuning {
      */
     creaseAngleDeg: number
     /**
+     * Enable the seam-aware QEF path. When true, cells whose corner voxels
+     * report a coherent CSG seam tangent (from `sample_grid.wgsl`) are
+     * solved with a 1D constrained least-squares **along the seam line**
+     * instead of the full 3D Tikhonov QEF. This eliminates residual
+     * sub-voxel jitter on long sharp CSG edges (the artifact that normally
+     * shows up as a wavy contour even after Tikhonov regularisation).
+     *
+     * Cells without a usable seam tangent — smooth blends, sharp corners
+     * where 3+ surfaces meet, single-primitive surfaces — fall through to
+     * the existing Tikhonov path.
+     */
+    seamAwareEnabled: boolean
+    /**
+     * Cosine of the per-cell tangent-agreement threshold the seam-aware
+     * path uses to decide that a cell sits on a single coherent seam line.
+     * Default `0.97` ≈ `cos(15°)` — strict, only admits cells whose corner
+     * tangents are near-coincident. Lower values (e.g. `0.85` ≈ `cos(32°)`)
+     * admit more cells; higher values approach `1.0` (only exact agreement).
+     */
+    seamAgreementCosThreshold: number
+    /**
      * Vertex deduplication radius, expressed as a fraction of `voxelSize`,
      * applied after MergeSharp relocation. Multiple cells whose vertices
      * snapped to the same sharp feature (typically a CSG corner) end up
@@ -97,6 +118,8 @@ export const DEFAULT_SHREC_TUNING: ShrecTuning = {
     creaseAngleDeg: 30,
     mergeGradientWeightPower: 0,
     dedupRadiusVoxels: 0,
+    seamAwareEnabled: true,
+    seamAgreementCosThreshold: 0.97,
 }
 
 /**

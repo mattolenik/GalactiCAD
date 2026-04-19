@@ -101,6 +101,9 @@ export class DevToolsPanel extends HTMLElement {
     #shrecGradWeightValueEl: HTMLSpanElement
     #shrecDedupRange: HTMLInputElement
     #shrecDedupValueEl: HTMLSpanElement
+    #shrecSeamAwareCheckbox: HTMLInputElement
+    #shrecSeamAgreementRange: HTMLInputElement
+    #shrecSeamAgreementValueEl: HTMLSpanElement
     #shrecSection: HTMLDivElement
     #simplifyTuningState: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
     #simplifySection: HTMLDivElement
@@ -287,6 +290,9 @@ export class DevToolsPanel extends HTMLElement {
         this.#shrecGradWeightValueEl.textContent = DevToolsPanel.#formatShrecValue("mergeGradientWeightPower", tuning.mergeGradientWeightPower)
         this.#shrecDedupRange.value = String(tuning.dedupRadiusVoxels)
         this.#shrecDedupValueEl.textContent = DevToolsPanel.#formatShrecValue("dedupRadiusVoxels", tuning.dedupRadiusVoxels)
+        this.#shrecSeamAwareCheckbox.checked = tuning.seamAwareEnabled
+        this.#shrecSeamAgreementRange.value = String(tuning.seamAgreementCosThreshold)
+        this.#shrecSeamAgreementValueEl.textContent = DevToolsPanel.#formatShrecValue("seamAgreementCosThreshold", tuning.seamAgreementCosThreshold)
     }
 
     /** Show or hide the panel */
@@ -850,6 +856,48 @@ export class DevToolsPanel extends HTMLElement {
             this.#shrecDedupValueEl = valueEl
         }
 
+        // Seam-aware QEF toggle. When on, cells whose corner voxels report
+        // a coherent CSG seam tangent are solved with a 1D constrained
+        // QEF along the known seam line — eliminates residual sub-voxel
+        // jitter that the unconstrained Tikhonov path leaves on long
+        // sharp edges.
+        this.#shrecSeamAwareCheckbox = this.#addCheckbox(this.#shrecSection, "Seam-aware QEF", this.#shrecTuningState.seamAwareEnabled)
+        this.#shrecSeamAwareCheckbox.addEventListener("change", () => {
+            this.#shrecTuningState = { ...this.#shrecTuningState, seamAwareEnabled: this.#shrecSeamAwareCheckbox.checked }
+            this.#persistShrecTuning()
+        })
+
+        // Seam tangent-agreement threshold (cos-of-angle). Higher values
+        // are stricter (fewer cells admitted to the seam path); lower
+        // values admit more cells but risk over-constraining cells that
+        // are near a seam but not on a single line.
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Seam agree"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0.5"
+            range.max = "1"
+            range.step = "0.01"
+            range.value = String(this.#shrecTuningState.seamAgreementCosThreshold)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = DevToolsPanel.#formatShrecValue("seamAgreementCosThreshold", this.#shrecTuningState.seamAgreementCosThreshold)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                this.#shrecTuningState = { ...this.#shrecTuningState, seamAgreementCosThreshold: v }
+                valueEl.textContent = DevToolsPanel.#formatShrecValue("seamAgreementCosThreshold", v)
+                this.#persistShrecTuning()
+            })
+            row.append(lab, range, valueEl)
+            this.#shrecSection.appendChild(row)
+            this.#shrecSeamAgreementRange = range
+            this.#shrecSeamAgreementValueEl = valueEl
+        }
+
         const shrecDefaults = document.createElement("button")
         shrecDefaults.textContent = "SHREC defaults"
         shrecDefaults.addEventListener("click", () => {
@@ -1070,6 +1118,12 @@ export class DevToolsPanel extends HTMLElement {
         if (key === "creaseAngleDeg") return `${Math.round(v)}°`
         if (key === "mergeGradientWeightPower") return v === 0 ? "off" : `g^${v.toFixed(1)}`
         if (key === "dedupRadiusVoxels") return v === 0 ? "off" : v.toFixed(2)
+        if (key === "seamAgreementCosThreshold") {
+            // Show as the equivalent angle (in degrees) for readability —
+            // the slider's underlying value is the cosine.
+            const deg = Math.acos(Math.max(-1, Math.min(1, v))) * 180 / Math.PI
+            return `${deg.toFixed(0)}°`
+        }
         return v.toFixed(2)
     }
 

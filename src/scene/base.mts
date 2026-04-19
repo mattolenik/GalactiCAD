@@ -2,6 +2,7 @@ import { Vec3 } from "../vecmat/vector.mjs"
 import type { PreviewParamsOut } from "./scene-params.mjs"
 import type { AABB } from "./aabb.mjs"
 import { aabbUnion } from "./aabb.mjs"
+import type { ContourBuffer } from "./contour-buffer.mjs"
 
 export type CompileResult = {
     funcName?: string
@@ -229,6 +230,38 @@ export class Node {
     appendStructuralFingerprint(parts: string[]): void {
         parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}`)
     }
+
+    /**
+     * Contribute this node's **explicit contour features** (corners, edges,
+     * cap rings, etc.) into `builder`, in **world-space** coordinates.
+     *
+     * SHREC's MergeSharp pass uses these as snap targets to produce
+     * crisp edges/corners that gradient-only QEF reconstruction cannot
+     * achieve. The base implementation is a no-op:
+     *
+     *   - **Smooth primitives** (sphere, capsule, torus, smooth blends):
+     *     no contours by definition; default no-op is correct.
+     *   - **Operators that destroy sharp features** (`round`, `soft`,
+     *     `chamfer`, smooth mixes): override to no-op (drops child
+     *     contours intentionally).
+     *   - **Hard CSG operators** (`union`, `intersection`, `difference`):
+     *     recurse into children; **do not** synthesise CSG-seam contours
+     *     here — those are handled by the SDF-driven path in MergeSharp.
+     *   - **Transformations** (`translate`, `rotate`, `scale`): compose
+     *     the transform into the recursion (TODO once Box ships and the
+     *     wiring is exercised).
+     *   - **Primitives with explicit features** (box, cylinder, extrude,
+     *     etc.): `builder.beginNode(this.id)`, emit segments / points /
+     *     rings, `builder.endNode()`.
+     *
+     * Per the indices-not-data design: nodes write into the shared
+     * `builder` rather than constructing their own contour objects. The
+     * shared buffer's per-node ranges keep each node's contributions
+     * addressable by id.
+     */
+    accumulateContours(_builder: ContourBuffer): void {
+        // Default: no contours. Overridden per-primitive and per-operator.
+    }
 }
 
 export abstract class UnaryOperator extends Node {
@@ -255,6 +288,14 @@ export abstract class UnaryOperator extends Node {
     override appendStructuralFingerprint(parts: string[]): void {
         parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}`)
         this.arg.appendStructuralFingerprint(parts)
+    }
+    /**
+     * Default: pass-through — child contours propagate unchanged. Operators
+     * that destroy sharp features (`round`, `soft`, etc.) override this to
+     * a no-op; transform operators override to apply their transform first.
+     */
+    override accumulateContours(builder: ContourBuffer): void {
+        this.arg.accumulateContours(builder)
     }
     constructor(public arg: Node) {
         super()
@@ -293,6 +334,17 @@ export abstract class BinaryOperator extends Node {
         parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}`)
         this.lh.appendStructuralFingerprint(parts)
         this.rh.appendStructuralFingerprint(parts)
+    }
+    /**
+     * Default: hard-CSG passthrough — propagate both children's contours.
+     * Per the design instruction, we do not synthesise CSG-seam contours
+     * here; that path is handled SDF-side by MergeSharp's seam-tangent
+     * solve. Smooth/blend operators (`smoothUnion`, `mix`, etc.) override
+     * this to a no-op, dropping child contours.
+     */
+    override accumulateContours(builder: ContourBuffer): void {
+        this.lh.accumulateContours(builder)
+        this.rh.accumulateContours(builder)
     }
     constructor(public lh: Node, public rh: Node) {
         super()

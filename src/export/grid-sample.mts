@@ -30,6 +30,15 @@ export interface GridSampleResult {
     scalar: Float32Array<ArrayBuffer>
     /** Interleaved vec4 per voxel: [nx, ny, nz, |∇f|]. */
     gradient: Float32Array<ArrayBuffer>
+    /**
+     * Interleaved vec4 per voxel: [tx, ty, tz, validity]. `(tx, ty, tz)` is
+     * the unit seam-tangent direction at the voxel; `validity` is 1.0 when
+     * the voxel sits on a usable CSG seam (`r.seamOp != 0` and within a
+     * voxel-size envelope of the seam line) and 0.0 otherwise. MergeSharp's
+     * seam-aware QEF uses this to constrain the per-cell solve to a 1D
+     * search along the seam line.
+     */
+    seamTangent: Float32Array<ArrayBuffer>
     dims: readonly [number, number, number]
     voxelSize: number
     gridOffset: readonly [number, number, number]
@@ -144,6 +153,16 @@ export class GridSampler {
             })
             this.#localBuffers.push(gradientBuffer)
 
+            // Seam-tangent buffer (vec4 per voxel: xyz = tangent, w = validity).
+            // Same byte layout as `gradientBuffer`, so no separate size cap is
+            // needed — if `gradientBytes` fit, this fits too.
+            const seamTangentBuffer = this.#device.createBuffer({
+                label: "GridSampler.SeamTangentOut",
+                size: gradientBytes,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+            })
+            this.#localBuffers.push(seamTangentBuffer)
+
             const pipeline = this.#helper.createComputePipeline(sampleGridShaderModule, "sampleGrid")
 
             const bindGroup = this.#helper.createBindGroup(
@@ -153,6 +172,7 @@ export class GridSampler {
                 [0, uniformBuffer],
                 [1, scalarBuffer],
                 [2, gradientBuffer],
+                [3, seamTangentBuffer],
                 [25, cancellationBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
@@ -178,6 +198,7 @@ export class GridSampler {
 
             const scalarData = new Float32Array(await this.#helper.readBufferData(scalarBuffer))
             const gradientData = new Float32Array(await this.#helper.readBufferData(gradientBuffer))
+            const seamTangentData = new Float32Array(await this.#helper.readBufferData(seamTangentBuffer))
 
             const elapsedMs = (globalThis.performance?.now ? globalThis.performance.now() : Date.now()) - t0
             dbgLog("ShrecExport").debug(
@@ -188,6 +209,7 @@ export class GridSampler {
             return {
                 scalar: scalarData,
                 gradient: gradientData,
+                seamTangent: seamTangentData,
                 dims: [gridDimX, gridDimY, gridDimZ] as const,
                 voxelSize,
                 gridOffset: [gridOffsetX, gridOffsetY, gridOffsetZ] as const,

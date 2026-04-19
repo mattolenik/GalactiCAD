@@ -16,6 +16,7 @@ import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shader
 import { DEFAULT_MDC_EXPORT_LEVERS, type MdcExportLevers } from "./render-worker-protocol.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
+import { ContourBuffer } from "./scene/contour-buffer.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
@@ -1032,14 +1033,29 @@ export class RenderWorkerCore {
                         mergeGradientWeightPower: shrecTuning.mergeGradientWeightPower,
                         // Tuning knob is in voxels; ShrecParams expects mm.
                         dedupRadius: shrecTuning.dedupRadiusVoxels > 0 ? shrecTuning.dedupRadiusVoxels * voxelSizeMm : undefined,
+                        seamAwareEnabled: shrecTuning.seamAwareEnabled,
+                        seamAgreementCosThreshold: shrecTuning.seamAgreementCosThreshold,
                     }),
                 }
+                // Walk the scene tree and collect each primitive's explicit
+                // contour features (box edges + corners, etc.). This is the
+                // CPU-side companion to the GPU-side SDF: SHREC's MergeSharp
+                // pass uses these as snap targets for crisp edges/corners
+                // that gradient-only QEF reconstruction can't produce.
+                // Empty / no-op when the scene contains only smooth
+                // primitives or when no primitive has implemented
+                // `accumulateContours` yet.
+                const contourBuilder = new ContourBuffer()
+                this.#scene!.root.accumulateContours(contourBuilder)
+                const contours = contourBuilder.finish()
+
                 const shrec = new ShrecExport(
                     this.#helper,
                     params,
                     this.#uniformBuffers.polygonVertices,
                     this.#uniformBuffers.faceSelection,
                     this.#uniformBuffers.mdcSceneParams,
+                    contours,
                 )
                 mesh = await shrec.export(sampleGridShaderModule)
             } else {

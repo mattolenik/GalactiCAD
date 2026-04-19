@@ -43,9 +43,16 @@
  */
 
 import { log as dbgLog } from "../../logging/debug-log.mjs"
-import type { MeshData } from "../export.mjs"
+import { MESH_MDC_DEBUG_SAMPLE_STRIDE, type MeshData } from "../export.mjs"
 import type { GridSampleResult } from "../grid-sample.mjs"
 import type { DualContourMesh } from "./dc-cpu.mjs"
+import {
+    type ContourSpatialIndex,
+    type ContourSnapResult,
+    type SnapScratch,
+    makeSnapScratch,
+    trySnapToContours,
+} from "./contour-snap.mjs"
 import {
     sym3AddOuter,
     sym3Eigen,
@@ -80,6 +87,82 @@ const CUBE_EDGES: ReadonlyArray<{
     { axis: 2, lo: [0, 0, 0] }, { axis: 2, lo: [1, 0, 0] }, { axis: 2, lo: [0, 1, 0] }, { axis: 2, lo: [1, 1, 0] },
 ]
 
+/** The 8 cube-corner offsets in cell-local voxel coordinates. */
+const CELL_CORNERS: ReadonlyArray<readonly [number, number, number]> = [
+    [0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0],
+    [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1],
+]
+
+/**
+ * Decide whether the cell at `(cx, cy, cz)` sits on a coherent CSG seam
+ * line. Reads the seam tangent at each of the cell's 8 corner voxels from
+ * `seamTangent` (vec4 per voxel: xyz = unit tangent, w = validity). If at
+ * least 2 corners report a usable tangent and all of them agree within
+ * `cosThreshold` (after sign-disambiguation), writes the unit average
+ * direction into `outT` and returns `true`.
+ *
+ * Rationale: each voxel reports a seam tangent independently, so along a
+ * straight CSG edge every corner sees the same direction (up to sign).
+ * Disagreement signals either a corner where multiple seams meet (better
+ * solved by the unconstrained QEF, which can pin a 3D point) or that the
+ * cell is on a smooth blend / single primitive surface where seam metadata
+ * is meaningless and the standard QEF should run.
+ */
+function classifyCellSeam(
+    seamTangent: Float32Array,
+    nx: number,
+    ny: number,
+    cx: number,
+    cy: number,
+    cz: number,
+    cosThreshold: number,
+    outT: [number, number, number],
+): boolean {
+    let sumX = 0, sumY = 0, sumZ = 0
+    let firstX = 0, firstY = 0, firstZ = 0
+    let count = 0
+
+    // First pass: collect valid tangents and accumulate them with consistent
+    // sign relative to the first one we find. (Tangents define a line, not a
+    // direction — `+T` and `−T` describe the same edge.)
+    for (let i = 0; i < 8; i++) {
+        const off = CELL_CORNERS[i]!
+        const vidx = ((cz + off[2]) * ny + (cy + off[1])) * nx + (cx + off[0])
+        const k = vidx * 4
+        if (seamTangent[k + 3]! < 0.5) continue
+        let tx = seamTangent[k]!, ty = seamTangent[k + 1]!, tz = seamTangent[k + 2]!
+        if (count === 0) {
+            firstX = tx; firstY = ty; firstZ = tz
+        } else if (tx * firstX + ty * firstY + tz * firstZ < 0) {
+            tx = -tx; ty = -ty; tz = -tz
+        }
+        sumX += tx; sumY += ty; sumZ += tz
+        count++
+    }
+    if (count < 2) return false
+
+    const len = Math.hypot(sumX, sumY, sumZ)
+    if (len < 1e-12) return false
+    const Tx = sumX / len, Ty = sumY / len, Tz = sumZ / len
+
+    // Second pass: every contributing tangent must agree with the average
+    // within `cosThreshold` (sign-corrected via |dot|). Any single corner
+    // disagreement means the cell straddles two seams and should fall
+    // through to the unconstrained Tikhonov path.
+    for (let i = 0; i < 8; i++) {
+        const off = CELL_CORNERS[i]!
+        const vidx = ((cz + off[2]) * ny + (cy + off[1])) * nx + (cx + off[0])
+        const k = vidx * 4
+        if (seamTangent[k + 3]! < 0.5) continue
+        const tx = seamTangent[k]!, ty = seamTangent[k + 1]!, tz = seamTangent[k + 2]!
+        const agreement = Math.abs(tx * Tx + ty * Ty + tz * Tz)
+        if (agreement < cosThreshold) return false
+    }
+
+    outT[0] = Tx; outT[1] = Ty; outT[2] = Tz
+    return true
+}
+
 export interface MergeSharpParams {
     /**
      * Tikhonov regularization strength for the QEF solve, expressed as a
@@ -113,6 +196,37 @@ export interface MergeSharpParams {
      * regions where `g < 1`. Has no effect for true SDFs (where `g ≡ 1`).
      */
     gradientWeightPower?: number
+
+    /**
+     * Enable the seam-aware QEF path. When true and the cell's corner voxels
+     * report consistent CSG seam tangents (from `grid.seamTangent`), the
+     * per-cell QEF collapses to a 1D least-squares along the seam line —
+     * eliminating residual sub-voxel jitter that the unconstrained Tikhonov
+     * solve leaves on long sharp edges. Cells without a usable seam tangent
+     * fall through to the existing Tikhonov path. Default `true`.
+     */
+    seamAwareEnabled?: boolean
+
+    /**
+     * Cosine of the angle threshold the seam-aware path uses to decide that
+     * a cell's corner tangents agree closely enough to constrain the QEF
+     * along a single line. Default `cos(15°) ≈ 0.97`. Lower values (e.g.
+     * `0.85` ≈ cos(32°)) admit more cells into the seam path; higher values
+     * are stricter.
+     */
+    seamAgreementCosThreshold?: number
+
+    /**
+     * Optional spatial index over the scene's explicit contour features
+     * (corners, edges, cap rings — produced by `accumulateContours` per
+     * primitive). When supplied, MergeSharp tries to snap each cell's
+     * vertex to the nearest valid contour feature **before** running the
+     * gradient-based QEF. Snaps are SDF-validated, so contours that have
+     * been cut away by CSG operations correctly fall through. When
+     * undefined or empty, the contour-snap path is skipped and behaviour
+     * is identical to the previous SHREC pipeline.
+     */
+    contourIndex?: ContourSpatialIndex
 }
 
 interface RelocationStats {
@@ -124,7 +238,25 @@ interface RelocationStats {
     emptyCells: number
     clampedByCell: number
     clampedByMaxDisplacement: number
+    /** Cells solved with the seam-aware 1D constrained QEF (along seam tangent). */
+    seamConstrained: number
+    /** Cells solved with the unconstrained Tikhonov 3D QEF (the fallback path). */
+    tikhonovSolved: number
+    /** Cells where the seam tangent was in the QEF's null space; mass-point fallback. */
+    seamDegenerate: number
+    /** Cells whose vertex was snapped to a contour line (klass=1). */
+    contourLineSnaps: number
+    /** Cells whose vertex was snapped to a contour corner / point (klass=2). */
+    contourCornerSnaps: number
     elapsedMs: number
+    /**
+     * Per-cell debug samples in `MeshMdcDebugData` format
+     * (`MESH_MDC_DEBUG_SAMPLE_STRIDE = 24` floats per record). Always
+     * populated; the mesh viewer toggles control whether it's drawn, not
+     * whether it's emitted. Same shape MDC uses, so it flows through
+     * `mesh.debug.mdc.samples` to the existing mesh-viewer checkboxes.
+     */
+    debugSamples: Float32Array<ArrayBuffer>
 }
 
 /**
@@ -148,6 +280,11 @@ export function mergeSharpRelocate(
     // Pre-compute the weighting kernel: `0` → constant 1 (no math), otherwise
     // raise the interpolated `g` to the power. Hot-path branch elision below.
     const useGradWeight = gradWeightPower > 0
+    const seamAwareEnabled = params.seamAwareEnabled ?? true
+    const seamAgreementCos = params.seamAgreementCosThreshold ?? 0.97
+    const contourIndex = params.contourIndex
+    const contourSnapEnabled = !!contourIndex && !contourIndex.isEmpty
+    const snapScratch: SnapScratch | null = contourSnapEnabled ? makeSnapScratch() : null
 
     const [nx, ny, nz] = grid.dims
     const ox = grid.gridOffset[0]
@@ -156,6 +293,7 @@ export function mergeSharpRelocate(
     const vs = grid.voxelSize
     const scalar = grid.scalar
     const gradient = grid.gradient
+    const seamTangent = grid.seamTangent
 
     const inVerts = dcMesh.verts
     const cellCoords = dcMesh.cellCoords
@@ -169,6 +307,10 @@ export function mergeSharpRelocate(
     const massVec: [number, number, number] = [0, 0, 0]
     const Mmass: [number, number, number] = [0, 0, 0]
     const correction: [number, number, number] = [0, 0, 0]
+    // Scratch for the seam-aware path: classified tangent + the
+    // M·T product needed for the 1D constrained solve.
+    const seamT: [number, number, number] = [0, 0, 0]
+    const MseamT: [number, number, number] = [0, 0, 0]
 
     let pointFeatures = 0
     let edgeFeatures = 0
@@ -177,6 +319,29 @@ export function mergeSharpRelocate(
     let relocated = 0
     let clampedByCell = 0
     let clampedByMaxDisplacement = 0
+    let seamConstrained = 0
+    let tikhonovSolved = 0
+    let seamDegenerate = 0
+    let contourLineSnaps = 0
+    let contourCornerSnaps = 0
+    // Per-feature-index snap counts — one bucket per contour element. Lets
+    // us see at a glance which specific corners/edges are getting snapped
+    // (e.g., for an axis-aligned box: 8 distinct corner indices, 12 distinct
+    // segment indices). If counts are missing for some indices, the bug is
+    // on the snap side; if all indices have counts but only some glyphs
+    // appear, the bug is in the mesh-viewer dedup.
+    const cornerSnapHits = new Map<number, number>()
+    const lineSnapHits = new Map<number, number>()
+
+    // Per-cell debug samples in the same packed format MDC uses. Mesh viewer
+    // reads this from `mesh.debug.mdc.samples` and renders glyphs based on
+    // each record's `klass` field. We use:
+    //   klass = 1 (line)     → seam-aware path took it; tangent packed below
+    //   klass = 5 (rejected) → seam-aware solve was degenerate
+    //   klass = 0 (none)     → Tikhonov fallback path took it
+    // Always allocated; the cost is `vertCount × 24 × 4` bytes (~1 MB per
+    // 10k cells), and the postMessage transfers the buffer rather than copies.
+    const debugSamples = new Float32Array(vertCount * MESH_MDC_DEBUG_SAMPLE_STRIDE)
 
     const insetAbs = inset * vs
 
@@ -325,26 +490,117 @@ export function mergeSharpRelocate(
         else if (rank === 1) flatFeatures++
         else emptyCells++
 
-        // Tikhonov-regularized QEF solve in mass-point-shifted coordinates:
-        //   x = mass + (A + λI)⁻¹ (b - A·mass),  λ = relCutoff · |λmax|
-        // The regularization is what keeps adjacent cells along a single
-        // sharp feature from solving to slightly different points (which
-        // shows up as wavy/spiky contours along the feature). It also
-        // bounds the unconstrained-direction contribution at 1/λ rather
-        // than 1/0 → ∞, eliminating cell-bounds-clamp wall-hugging.
-        const lambdaReg = relCutoff * Math.abs(eig.values[0])
+        // ---- Cell solve: seam-aware constrained path (preferred) or
+        //      unconstrained Tikhonov fallback. -------------------------------
+        //
+        // The seam-aware path uses the per-voxel CSG seam tangent that
+        // sample_grid.wgsl writes when a voxel sits on a hard CSG seam. If
+        // the cell's 8 corner voxels report mutually-consistent tangents,
+        // we know the cell sits on a single sharp edge whose direction T is
+        // exactly known from the SDF — and the QEF collapses to a 1D
+        // least-squares along that line:
+        //
+        //   x = mass + t·T,    t = (T · (b − A·mass)) / (T · A · T)
+        //
+        // Adjacent cells along the same edge use the **same T** (sourced
+        // from the same SDF seam), so their vertices automatically lie on
+        // one straight line — no Tikhonov regularization needed, no rank
+        // classification, no residual sub-voxel zigzag.
+        //
+        // Cells without consistent corner tangents (smooth blends, sharp
+        // corners where 3+ surfaces meet, single-primitive surfaces) fall
+        // through to the existing Tikhonov path.
+
         sym3Mul(M, massVec[0], massVec[1], massVec[2], Mmass)
-        sym3SolveTikhonov(
-            eig,
-            bvec[0] - Mmass[0],
-            bvec[1] - Mmass[1],
-            bvec[2] - Mmass[2],
-            lambdaReg,
-            correction,
-        )
-        let nxv = massVec[0] + correction[0]
-        let nyv = massVec[1] + correction[1]
-        let nzv = massVec[2] + correction[2]
+        const rhsX = bvec[0] - Mmass[0]
+        const rhsY = bvec[1] - Mmass[1]
+        const rhsZ = bvec[2] - Mmass[2]
+
+        let nxv: number, nyv: number, nzv: number
+        // Track which solve path this cell took so the debug emission below
+        // can flag it. Klass map:
+        //   0 = Tikhonov fallback (no seam, no contour) — record skipped
+        //   1 = seam-line OR contour-line snap        (debug viz: line glyph)
+        //   2 = contour-corner snap (point or intersection)  (debug viz: corner glyph)
+        //   5 = seam-degenerate                         (debug viz: red square)
+        let cellKlass = 0
+        // Track the snap result so the debug emission downstream can pack
+        // its tangent into N1/N2 the same way the seam-tangent path does.
+        let snapResult: ContourSnapResult | null = null
+
+        // ---- Pass 0: explicit-contour snap -------------------------------
+        // Try snapping the cell's vertex onto a known scene-tree contour
+        // (box edge, box corner, cylinder cap ring, etc.) before falling
+        // back to gradient-only QEF. The snap function validates each
+        // candidate against the iso-surface so contours that have been
+        // cut away by CSG (`difference`, etc.) correctly reject and the
+        // cell falls through to the QEF path.
+        if (contourSnapEnabled && snapScratch) {
+            const cellLoX = ox + cx * vs
+            const cellLoY = oy + cy * vs
+            const cellLoZ = oz + cz * vs
+            const cellHiX = cellLoX + vs
+            const cellHiY = cellLoY + vs
+            const cellHiZ = cellLoZ + vs
+            snapResult = trySnapToContours(
+                contourIndex!,
+                grid,
+                cx, cy, cz,
+                cellLoX, cellLoY, cellLoZ,
+                cellHiX, cellHiY, cellHiZ,
+                px0, py0, pz0,                // query: original DC vertex pos
+                snapScratch,
+            )
+        }
+
+        if (snapResult) {
+            nxv = snapResult.x
+            nyv = snapResult.y
+            nzv = snapResult.z
+            cellKlass = snapResult.klass
+            if (cellKlass === 1) {
+                contourLineSnaps++
+                lineSnapHits.set(snapResult.featureIdx, (lineSnapHits.get(snapResult.featureIdx) ?? 0) + 1)
+            } else {
+                contourCornerSnaps++
+                cornerSnapHits.set(snapResult.featureIdx, (cornerSnapHits.get(snapResult.featureIdx) ?? 0) + 1)
+            }
+        } else {
+        const seamPath = seamAwareEnabled
+            ? classifyCellSeam(seamTangent, nx, ny, cx, cy, cz, seamAgreementCos, seamT)
+            : false
+        if (seamPath) {
+            // Constrained 1D solve along T.
+            sym3Mul(M, seamT[0], seamT[1], seamT[2], MseamT)
+            const denom = seamT[0] * MseamT[0] + seamT[1] * MseamT[1] + seamT[2] * MseamT[2]
+            // Reject when T lies in (or very near) the QEF's null space —
+            // happens only when every contributing edge-crossing normal is
+            // perpendicular to T (no positional info along the line). In
+            // that case fall back to the mass point in the T direction.
+            if (denom > 1e-9 * Math.abs(eig.values[0])) {
+                const t = (seamT[0] * rhsX + seamT[1] * rhsY + seamT[2] * rhsZ) / denom
+                nxv = massVec[0] + t * seamT[0]
+                nyv = massVec[1] + t * seamT[1]
+                nzv = massVec[2] + t * seamT[2]
+                seamConstrained++
+                cellKlass = 1
+            } else {
+                nxv = massVec[0]; nyv = massVec[1]; nzv = massVec[2]
+                seamDegenerate++
+                cellKlass = 5
+            }
+        } else {
+            // Tikhonov-regularized 3D solve in mass-point-shifted coordinates:
+            //   x = mass + (A + λI)⁻¹ (b - A·mass),  λ = relCutoff · |λmax|
+            const lambdaReg = relCutoff * Math.abs(eig.values[0])
+            sym3SolveTikhonov(eig, rhsX, rhsY, rhsZ, lambdaReg, correction)
+            nxv = massVec[0] + correction[0]
+            nyv = massVec[1] + correction[1]
+            nzv = massVec[2] + correction[2]
+            tikhonovSolved++
+            cellKlass = 0
+        }
+        }   // end of `if (snapResult) … else { … }`
 
         // Cell-bounds clamp (always on). This is the topological invariant.
         let cxNew = nxv, cyNew = nyv, czNew = nzv
@@ -383,17 +639,115 @@ export function mergeSharpRelocate(
 
         // Re-derive vertex normal from the mean of edge-crossing normals.
         const nl = Math.hypot(sumNx, sumNy, sumNz)
+        let outNx: number, outNy: number, outNz: number
         if (nl > 1e-20) {
             const k = 1 / nl
-            outVerts[base + 4] = sumNx * k
-            outVerts[base + 5] = sumNy * k
-            outVerts[base + 6] = sumNz * k
+            outNx = sumNx * k
+            outNy = sumNy * k
+            outNz = sumNz * k
+            outVerts[base + 4] = outNx
+            outVerts[base + 5] = outNy
+            outVerts[base + 6] = outNz
         } else {
-            outVerts[base + 4] = inVerts[base + 4]!
-            outVerts[base + 5] = inVerts[base + 5]!
-            outVerts[base + 6] = inVerts[base + 6]!
+            outNx = inVerts[base + 4]!
+            outNy = inVerts[base + 5]!
+            outNz = inVerts[base + 6]!
+            outVerts[base + 4] = outNx
+            outVerts[base + 5] = outNy
+            outVerts[base + 6] = outNz
         }
         outVerts[base + 7] = 0
+
+        // ---- Debug-sample emission ---------------------------------------
+        // Only emit a record for cells that produced something interesting:
+        // the seam-aware constrained solve (klass=1) or the seam-degenerate
+        // fallback (klass=5). Cells that took the plain Tikhonov path
+        // (klass=0) are skipped entirely — emitting them would carpet a
+        // single-primitive box (which has no CSG seams and therefore no
+        // klass=1 cells) in gray dots. Once contour-awareness lands, the
+        // box's intrinsic edges will produce klass=1 (or klass=2) records
+        // and the overlay will populate with line/corner glyphs.
+        if (cellKlass === 0) continue
+        // Layout matches `MeshMdcDebugData.samples` so the existing mesh
+        // viewer renders SHREC's records with the same point + glyph code.
+        // Layout reminder (24 floats):
+        //   0..2: position    3:    klass    4..6: normal    7: 0
+        //   8..10: feature point (here = vertex pos)         11: 0
+        //   12..14: N1 plane normal  15: ownerA (0)
+        //   16..18: N2 plane normal  19: ownerB (0)
+        //   20..22: ring axisCenter (unused)  23: reserved
+        const dbg = vi * MESH_MDC_DEBUG_SAMPLE_STRIDE
+        debugSamples[dbg + 0] = cxNew
+        debugSamples[dbg + 1] = cyNew
+        debugSamples[dbg + 2] = czNew
+        debugSamples[dbg + 3] = cellKlass
+        debugSamples[dbg + 4] = outNx
+        debugSamples[dbg + 5] = outNy
+        debugSamples[dbg + 6] = outNz
+        // Feature point = vertex position (SHREC has no separate "feature
+        // point" — the vertex IS the feature). Same value at 8..10 and 0..2
+        // is what the viewer expects when there's no MDC-style snap target.
+        debugSamples[dbg + 8] = cxNew
+        debugSamples[dbg + 9] = cyNew
+        debugSamples[dbg + 10] = czNew
+
+        // For "line" cells (klass=1) — both seam-tangent and contour-segment
+        // snaps — pack the line direction `T` into N1/N2 such that the
+        // viewer's `tangentFromNormals(N1, N2)` recovers T:
+        //   pick world axis least aligned with T
+        //   N1 = unit(T × axis)         (perpendicular to T)
+        //   N2 = T × N1                  (perpendicular to T and N1)
+        //   N1 × N2 = T                  ← what the viewer extracts
+        // For "corner" cells (klass=2) the viewer draws a diamond glyph at
+        // the position; no tangent direction needed.
+        if (cellKlass === 1) {
+            // Source the line direction: contour snap took priority and
+            // already carries the segment tangent; the seam-aware path
+            // populated `seamT` instead.
+            const Tx = snapResult ? snapResult.tx : seamT[0]
+            const Ty = snapResult ? snapResult.ty : seamT[1]
+            const Tz = snapResult ? snapResult.tz : seamT[2]
+            const ax = Math.abs(Tx), ay = Math.abs(Ty), az = Math.abs(Tz)
+            // World axis least aligned with T (smallest component magnitude).
+            let axisX = 0, axisY = 0, axisZ = 0
+            if (ax <= ay && ax <= az) axisX = 1
+            else if (ay <= az) axisY = 1
+            else axisZ = 1
+            // N1 = T × worldAxis, normalised.
+            let n1x = Ty * axisZ - Tz * axisY
+            let n1y = Tz * axisX - Tx * axisZ
+            let n1z = Tx * axisY - Ty * axisX
+            const n1len = Math.hypot(n1x, n1y, n1z)
+            if (n1len > 1e-12) {
+                const k = 1 / n1len
+                n1x *= k; n1y *= k; n1z *= k
+                // N2 = T × N1 (already unit-length: T and N1 are unit and orthogonal).
+                const n2x = Ty * n1z - Tz * n1y
+                const n2y = Tz * n1x - Tx * n1z
+                const n2z = Tx * n1y - Ty * n1x
+                debugSamples[dbg + 12] = n1x
+                debugSamples[dbg + 13] = n1y
+                debugSamples[dbg + 14] = n1z
+                debugSamples[dbg + 16] = n2x
+                debugSamples[dbg + 17] = n2y
+                debugSamples[dbg + 18] = n2z
+            }
+            if (snapResult) {
+                // ownerA = scene-node id; ownerB = stable per-feature index.
+                // The mesh viewer's feature-glyph dedup keys on
+                // `(klass, ownerA, ownerB)` plus a spatial filter, so
+                // distinct edges of the same primitive (same ownerA, same
+                // klass) need distinct ownerB to avoid being merged into a
+                // single glyph by camera-zoom-dependent dedup radius.
+                debugSamples[dbg + 15] = snapResult.ownerId
+                debugSamples[dbg + 19] = snapResult.featureIdx
+            }
+        } else if (cellKlass === 2 && snapResult) {
+            debugSamples[dbg + 15] = snapResult.ownerId
+            debugSamples[dbg + 19] = snapResult.featureIdx
+        }
+        // (Other slots — featureDist, ownerA/B, ringAxis, reserved — left at 0
+        // by the Float32Array initialisation. Mesh viewer treats them as defaults.)
     }
 
     const stats: RelocationStats = {
@@ -405,14 +759,36 @@ export function mergeSharpRelocate(
         emptyCells,
         clampedByCell,
         clampedByMaxDisplacement,
+        seamConstrained,
+        tikhonovSolved,
+        seamDegenerate,
+        contourLineSnaps,
+        contourCornerSnaps,
         elapsedMs: perfNow() - t0,
+        debugSamples,
     }
     dbgLog("ShrecExport").debug(
         `mergeSharpRelocate: vertices=${stats.vertexCount} relocated=${stats.relocated} ` +
         `point=${stats.pointFeatures} edge=${stats.edgeFeatures} flat=${stats.flatFeatures} ` +
         `empty=${stats.emptyCells} cellClamped=${stats.clampedByCell} ` +
-        `maxDispClamped=${stats.clampedByMaxDisplacement} elapsed=${stats.elapsedMs.toFixed(1)}ms`,
+        `maxDispClamped=${stats.clampedByMaxDisplacement} ` +
+        `contourLine=${stats.contourLineSnaps} contourCorner=${stats.contourCornerSnaps} ` +
+        `seamConstrained=${stats.seamConstrained} tikhonov=${stats.tikhonovSolved} seamDegenerate=${stats.seamDegenerate} ` +
+        `elapsed=${stats.elapsedMs.toFixed(1)}ms`,
     )
+    // Per-feature-index hit table: shows which contour elements actually got
+    // snaps. For an axis-aligned box at the origin we expect 8 corner
+    // indices (0..7) each with several cell-snaps, and 12 line indices
+    // (0..11) each with `~edgeLength/voxelSize` snaps. Missing indices ⇒
+    // the snap-side bug; uniform indices ⇒ a viewer-side dedup bug.
+    if (cornerSnapHits.size > 0 || lineSnapHits.size > 0) {
+        const fmt = (m: Map<number, number>) =>
+            Array.from(m.entries()).sort((a, b) => a[0] - b[0]).map(([k, v]) => `${k}:${v}`).join(", ")
+        dbgLog("ShrecExport").debug(
+            `contour-snap by featureIdx: corners {${fmt(cornerSnapHits)}} (${cornerSnapHits.size} distinct), ` +
+            `lines {${fmt(lineSnapHits)}} (${lineSnapHits.size} distinct)`,
+        )
+    }
 
     return {
         mesh: { verts: outVerts, tris: dcMesh.tris },

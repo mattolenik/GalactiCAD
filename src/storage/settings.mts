@@ -453,6 +453,8 @@ export class SettingsManager {
                     if (typeof cur.creaseAngleDeg !== "number" || !isFinite(cur.creaseAngleDeg) || cur.creaseAngleDeg < 0 || cur.creaseAngleDeg > 180) cur.creaseAngleDeg = DEFAULT_SHREC_TUNING.creaseAngleDeg
                     if (typeof cur.mergeGradientWeightPower !== "number" || !isFinite(cur.mergeGradientWeightPower) || cur.mergeGradientWeightPower < 0) cur.mergeGradientWeightPower = DEFAULT_SHREC_TUNING.mergeGradientWeightPower
                     if (typeof cur.dedupRadiusVoxels !== "number" || !isFinite(cur.dedupRadiusVoxels) || cur.dedupRadiusVoxels < 0) cur.dedupRadiusVoxels = DEFAULT_SHREC_TUNING.dedupRadiusVoxels
+                    if (typeof cur.seamAwareEnabled !== "boolean") cur.seamAwareEnabled = DEFAULT_SHREC_TUNING.seamAwareEnabled
+                    if (typeof cur.seamAgreementCosThreshold !== "number" || !isFinite(cur.seamAgreementCosThreshold) || cur.seamAgreementCosThreshold < 0 || cur.seamAgreementCosThreshold > 1) cur.seamAgreementCosThreshold = DEFAULT_SHREC_TUNING.seamAgreementCosThreshold
                     app.shrecTuning = cur
                 }
                 {

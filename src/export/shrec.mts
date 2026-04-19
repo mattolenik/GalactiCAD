@@ -3,10 +3,12 @@ import { log as dbgLog } from "../logging/debug-log.mjs"
 import { dualContourCPU } from "./shrec/dc-cpu.mjs"
 import { mergeSharpRelocate } from "./shrec/merge-sharp.mjs"
 import { deduplicateMergedVertices } from "./shrec/dedup.mjs"
+import { ContourSpatialIndex } from "./shrec/contour-snap.mjs"
 import { splitCreaseVertices } from "./crease-split.mjs"
 import type { MeshData } from "./export.mjs"
 import type { ProgressCallback } from "./mdc.mjs"
 import { GridSampler, type GridSampleResult } from "./grid-sample.mjs"
+import type { ContourBufferView } from "../scene/contour-buffer.mjs"
 
 /**
  * Parameters for SHREC / MergeSharp export.
@@ -65,6 +67,20 @@ export interface ShrecParams {
      * `0.5 × voxelSize`.
      */
     dedupRadius?: number
+    /**
+     * Enable the seam-aware QEF path: cells whose corner voxels report a
+     * coherent CSG seam tangent are solved with a 1D constrained least-
+     * squares along that seam line, rather than the full 3D Tikhonov QEF.
+     * Eliminates residual edge-jitter on long sharp CSG edges. See
+     * `MergeSharpParams.seamAwareEnabled`. Default `true`.
+     */
+    seamAwareEnabled?: boolean
+    /**
+     * Cosine of the per-cell tangent-agreement threshold for the seam-aware
+     * path. See `MergeSharpParams.seamAgreementCosThreshold`. Default
+     * `cos(15°) ≈ 0.97`.
+     */
+    seamAgreementCosThreshold?: number
 }
 
 /**
@@ -90,6 +106,7 @@ export class ShrecExport {
     #polygonVerticesBuffer: GPUBuffer
     #faceSelectionBuffer: GPUBuffer
     #mdcSceneParamsBuffer: GPUBuffer
+    #contours: ContourBufferView | null
 
     constructor(
         helper: GPUHelper,
@@ -97,11 +114,17 @@ export class ShrecExport {
         polygonVerticesBuffer: GPUBuffer,
         faceSelectionBuffer: GPUBuffer,
         mdcSceneParamsBuffer: GPUBuffer,
+        contours?: ContourBufferView,
     ) {
         this.#helper = helper
         this.#polygonVerticesBuffer = polygonVerticesBuffer
         this.#faceSelectionBuffer = faceSelectionBuffer
         this.#mdcSceneParamsBuffer = mdcSceneParamsBuffer
+        // null short-circuits the spatial-index build and the per-cell snap
+        // path when no primitive in the scene contributed any contours.
+        this.#contours = contours && (contours.segmentCount + contours.pointCount + contours.ringCount) > 0
+            ? contours
+            : null
     }
 
     async export(
@@ -128,6 +151,8 @@ export class ShrecExport {
             `mergeMaxDisplacement=${p.mergeMaxDisplacement ?? "(off)"} ` +
             `mergeGradientWeightPower=${p.mergeGradientWeightPower ?? 0} ` +
             `dedupRadius=${p.dedupRadius ?? "(off)"} ` +
+            `seamAware=${p.seamAwareEnabled ?? true} ` +
+            `seamAgreementCos=${p.seamAgreementCosThreshold ?? 0.97} ` +
             `creaseAngleDeg=${p.creaseAngleDeg ?? 30}`,
         )
 
@@ -158,15 +183,55 @@ export class ShrecExport {
 
         const mergeEnabled = this.params.mergeSharpEnabled ?? true
         let mesh: MeshData
+        // Captured here so the per-cell debug samples emitted by MergeSharp
+        // can be re-attached to the mesh after the dedup/crease passes
+        // (those passes don't touch debug data; the records' world-space
+        // positions remain meaningful overlays regardless).
+        let mergeDebugSamples: Float32Array<ArrayBuffer> | null = null
+        let mergeDebugStats: {
+            seamConstrained: number
+            seamDegenerate: number
+            tikhonovSolved: number
+            contourLineSnaps: number
+            contourCornerSnaps: number
+            vertexCount: number
+        } | null = null
         if (mergeEnabled && dcMesh.verts.length > 0) {
             progressCallback?.updateProgress("SHREC: MergeSharp vertex relocation", 60)
             checkCancelled()
+            // Build the contour spatial index over the SHREC voxel grid only
+            // when the scene actually carries contours. Cheap when present
+            // (one Map insertion per cell touched by a contour AABB), free
+            // when absent (the constructor stored null).
+            const contourIndex = this.#contours
+                ? ContourSpatialIndex.build(this.#contours, grid.voxelSize, grid.gridOffset)
+                : undefined
+            if (contourIndex) {
+                dbgLog("ShrecExport").debug(
+                    `contour index: segments=${this.#contours!.segmentCount} ` +
+                    `points=${this.#contours!.pointCount} ` +
+                    `rings=${this.#contours!.ringCount} ` +
+                    `nodes=${this.#contours!.nodeRanges.size}`,
+                )
+            }
             const result = mergeSharpRelocate(dcMesh, grid, {
                 relCutoff: this.params.mergeRelCutoff,
                 maxDisplacement: this.params.mergeMaxDisplacement,
                 gradientWeightPower: this.params.mergeGradientWeightPower,
+                seamAwareEnabled: this.params.seamAwareEnabled,
+                seamAgreementCosThreshold: this.params.seamAgreementCosThreshold,
+                contourIndex,
             })
             mesh = result.mesh
+            mergeDebugSamples = result.stats.debugSamples
+            mergeDebugStats = {
+                seamConstrained: result.stats.seamConstrained,
+                seamDegenerate: result.stats.seamDegenerate,
+                tikhonovSolved: result.stats.tikhonovSolved,
+                contourLineSnaps: result.stats.contourLineSnaps,
+                contourCornerSnaps: result.stats.contourCornerSnaps,
+                vertexCount: result.stats.vertexCount,
+            }
         } else {
             mesh = { verts: dcMesh.verts, tris: dcMesh.tris }
         }
@@ -209,6 +274,37 @@ export class ShrecExport {
             `creaseAngleDeg=${creaseAngleDeg}).`,
         )
 
+        // Attach the per-cell debug samples emitted by MergeSharp into the
+        // shared `mesh.debug.mdc` slot — same shape the mesh viewer's
+        // existing "Debug" / "Feature glyphs" toggles consume for MDC
+        // output. Each record's `klass` field encodes which solve path
+        // the cell took (1 = seam-line, 5 = seam-degenerate, 0 = Tikhonov).
+        if (mergeDebugSamples && mergeDebugStats) {
+            return {
+                ...mesh,
+                debug: {
+                    mdc: {
+                        samples: mergeDebugSamples,
+                        stats: {
+                            totalSamples: mergeDebugStats.vertexCount,
+                            // Map SHREC's classification onto the existing
+                            // MDC stats fields the HUD already understands:
+                            //   acceptedLine   ← contour-line snap   + seam-aware solve
+                            //   acceptedCorner ← contour-corner snap (point/intersection)
+                            //   rejected       ← seam-degenerate fallback
+                            //   acceptedNone   ← Tikhonov fallback (no seam, no contour)
+                            // Corner / Seam / Ring stay 0 except corner.
+                            acceptedNone: mergeDebugStats.tikhonovSolved,
+                            acceptedLine: mergeDebugStats.contourLineSnaps + mergeDebugStats.seamConstrained,
+                            acceptedCorner: mergeDebugStats.contourCornerSnaps,
+                            acceptedSeam: 0,
+                            acceptedRing: 0,
+                            rejected: mergeDebugStats.seamDegenerate,
+                        },
+                    },
+                },
+            }
+        }
         return mesh
     }
 

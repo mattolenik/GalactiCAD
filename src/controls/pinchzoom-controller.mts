@@ -1,3 +1,14 @@
+/** Orbit radius at/above this → full wheel/pinch `zoomSensitivity` (align with camera-controller pan ref). */
+const ZOOM_WHEEL_REF = 50
+/** Ease zoom deltas when zoomed in: scale = max(floor, min(1, (zoom/ref)^exp)). */
+const ZOOM_WHEEL_IN_EXP = 0.58
+const ZOOM_WHEEL_SCALE_FLOOR = 0.14
+
+function zoomDeltaScale(zoom: number): number {
+    const u = zoom / ZOOM_WHEEL_REF
+    return Math.max(ZOOM_WHEEL_SCALE_FLOOR, Math.min(1, Math.pow(u, ZOOM_WHEEL_IN_EXP)))
+}
+
 export class PinchZoomController {
     #initialPinchDistance = 0
     #initialPinchAngle = 0
@@ -28,7 +39,8 @@ export class PinchZoomController {
             this.#wheelZoomTimer = null
             this.isZooming = false
         }, 150)
-        this.#zoom += e.deltaY * this.#zoomSensitivity
+        const s = zoomDeltaScale(this.#zoom)
+        this.#zoom += e.deltaY * this.#zoomSensitivity * s
         this.#emitZoom()
     }
 
@@ -50,7 +62,8 @@ export class PinchZoomController {
             e.preventDefault()
             const currentDistance = this.#getDistance(e.touches)
             const delta = currentDistance - this.#initialPinchDistance
-            this.#zoom = this.#initialZoom - delta * this.#zoomSensitivity
+            const s = zoomDeltaScale(this.#zoom)
+            this.#zoom = this.#initialZoom - delta * this.#zoomSensitivity * s
             this.#emitZoom()
 
             const currentAngle = this.#getAngle(e.touches)

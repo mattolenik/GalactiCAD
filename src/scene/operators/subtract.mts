@@ -11,6 +11,7 @@ import {
 import type { AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { ContourBuffer } from "../contour-buffer.mjs"
 
 export class Subtract extends BinaryOperator {
     override getShapeType(): string {
@@ -41,6 +42,26 @@ export class Subtract extends BinaryOperator {
             out.f32[this.previewF32Slot] = this.radius
             out.f32[this.previewF32Slot + 1] = this.n ?? 4
         }
+    }
+
+    /**
+     * Sharp `subtract` (lh − rh) is a hard CSG cut. Both children's contour
+     * features can survive in the result:
+     *
+     *   - lh (the body): its contours stay on the result's outer surface
+     *     except where the cutter has carved them away (SDF rejects).
+     *   - rh (the cutter): its contours become the **walls of the cut**
+     *     — exposed inside the body. The portion of rh outside lh has no
+     *     surface in the result and is SDF-rejected.
+     *
+     * The default `BinaryOperator` propagation already does this; we only
+     * override here to **drop** child contours when the operator is a
+     * smooth blend (`radius > 0`), since the rounding destroys the sharp
+     * features at the rim of the cut.
+     */
+    override accumulateContours(builder: ContourBuffer): void {
+        if (this.radius > 0) return
+        super.accumulateContours(builder)
     }
 
     private _diffEx(L: string, R: string): string {

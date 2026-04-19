@@ -573,10 +573,25 @@ export function mergeSharpRelocate(
             // Constrained 1D solve along T.
             sym3Mul(M, seamT[0], seamT[1], seamT[2], MseamT)
             const denom = seamT[0] * MseamT[0] + seamT[1] * MseamT[1] + seamT[2] * MseamT[2]
-            // Reject when T lies in (or very near) the QEF's null space —
-            // happens only when every contributing edge-crossing normal is
-            // perpendicular to T (no positional info along the line). In
-            // that case fall back to the mass point in the T direction.
+            // `T·A·T == 0` happens whenever the QEF's plane normals are all
+            // perpendicular to `T` — i.e., for **any** sharp edge between
+            // two planes (the edge tangent is `n1 × n2`, automatically
+            // perpendicular to both normals). The constrained solve
+            // formula `t = T·rhs / T·A·T` is undefined here.
+            //
+            // Old behavior: fall back to the **mass point**, which sits
+            // *inside* the corner angle between the two planes — visibly
+            // beveled. That's what produced the red "rejected" glyphs and
+            // beveled meshes on hard CSG seams (box-hole rims, union seams).
+            //
+            // New behavior: fall through to the Tikhonov 3D solve. Tikhonov
+            // handles the rank-2 case correctly via its regularised
+            // pseudo-inverse — it snaps the vertex to the line of
+            // intersection of the two planes, exactly the sharp edge we
+            // want. We keep `klass = 3` ("seam") for the debug record so
+            // the user still gets visual confirmation that the cell was
+            // detected as a CSG seam (now violet glyphs along the rim
+            // instead of red rejection markers).
             if (denom > 1e-9 * Math.abs(eig.values[0])) {
                 const t = (seamT[0] * rhsX + seamT[1] * rhsY + seamT[2] * rhsZ) / denom
                 nxv = massVec[0] + t * seamT[0]
@@ -585,9 +600,15 @@ export function mergeSharpRelocate(
                 seamConstrained++
                 cellKlass = 1
             } else {
-                nxv = massVec[0]; nyv = massVec[1]; nzv = massVec[2]
+                const lambdaReg = relCutoff * Math.abs(eig.values[0])
+                sym3SolveTikhonov(eig, rhsX, rhsY, rhsZ, lambdaReg, correction)
+                nxv = massVec[0] + correction[0]
+                nyv = massVec[1] + correction[1]
+                nzv = massVec[2] + correction[2]
                 seamDegenerate++
-                cellKlass = 5
+                // klass=3 (seam): debug glyph is a violet dashed line along
+                // the seam tangent, distinct from contour-line teal.
+                cellKlass = 3
             }
         } else {
             // Tikhonov-regularized 3D solve in mass-point-shifted coordinates:
@@ -691,19 +712,20 @@ export function mergeSharpRelocate(
         debugSamples[dbg + 9] = cyNew
         debugSamples[dbg + 10] = czNew
 
-        // For "line" cells (klass=1) — both seam-tangent and contour-segment
-        // snaps — pack the line direction `T` into N1/N2 such that the
-        // viewer's `tangentFromNormals(N1, N2)` recovers T:
+        // For "line" cells (klass=1) and "seam" cells (klass=3) — both
+        // contour-segment, seam-aware, and seam-degenerate-fallback paths —
+        // pack the line direction `T` into N1/N2 such that the viewer's
+        // `tangentFromNormals(N1, N2)` recovers T:
         //   pick world axis least aligned with T
         //   N1 = unit(T × axis)         (perpendicular to T)
         //   N2 = T × N1                  (perpendicular to T and N1)
         //   N1 × N2 = T                  ← what the viewer extracts
         // For "corner" cells (klass=2) the viewer draws a diamond glyph at
         // the position; no tangent direction needed.
-        if (cellKlass === 1) {
+        if (cellKlass === 1 || cellKlass === 3) {
             // Source the line direction: contour snap took priority and
             // already carries the segment tangent; the seam-aware path
-            // populated `seamT` instead.
+            // (both successful and degenerate-fallback) populated `seamT`.
             const Tx = snapResult ? snapResult.tx : seamT[0]
             const Ty = snapResult ? snapResult.ty : seamT[1]
             const Tz = snapResult ? snapResult.tz : seamT[2]

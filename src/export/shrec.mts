@@ -289,17 +289,21 @@ export class ShrecExport {
                             totalSamples: mergeDebugStats.vertexCount,
                             // Map SHREC's classification onto the existing
                             // MDC stats fields the HUD already understands:
-                            //   acceptedLine   ← contour-line snap   + seam-aware solve
-                            //   acceptedCorner ← contour-corner snap (point/intersection)
-                            //   rejected       ← seam-degenerate fallback
+                            //   acceptedLine   ← contour-line snap   + seam-aware constrained solve
+                            //   acceptedCorner ← contour-corner snap (point / intersection)
+                            //   acceptedSeam   ← seam-aware solve fell back to Tikhonov on a
+                            //                    sharp 90° edge (klass=3 violet glyph;
+                            //                    Tikhonov correctly snaps the rank-2 case)
                             //   acceptedNone   ← Tikhonov fallback (no seam, no contour)
-                            // Corner / Seam / Ring stay 0 except corner.
+                            //   rejected       ← currently 0 (used to be the seam-degenerate
+                            //                    mass-point fallback; now those cells take
+                            //                    the seam path above)
                             acceptedNone: mergeDebugStats.tikhonovSolved,
                             acceptedLine: mergeDebugStats.contourLineSnaps + mergeDebugStats.seamConstrained,
                             acceptedCorner: mergeDebugStats.contourCornerSnaps,
-                            acceptedSeam: 0,
+                            acceptedSeam: mergeDebugStats.seamDegenerate,
                             acceptedRing: 0,
-                            rejected: mergeDebugStats.seamDegenerate,
+                            rejected: 0,
                         },
                     },
                 },

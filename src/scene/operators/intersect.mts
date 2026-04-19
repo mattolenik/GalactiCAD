@@ -11,6 +11,7 @@ import {
 import { aabbIntersect, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { ContourBuffer } from "../contour-buffer.mjs"
 
 export class Intersect extends BinaryOperator {
     override getShapeType(): string {
@@ -41,6 +42,21 @@ export class Intersect extends BinaryOperator {
             out.f32[this.previewF32Slot] = this.radius
             out.f32[this.previewF32Slot + 1] = this.n ?? 4
         }
+    }
+
+    /**
+     * Sharp `intersect` is a hard CSG join. Each child's contour features
+     * survive only **inside** the other child (where both surfaces overlap
+     * to form the result's surface). Contours outside the other child are
+     * cut away and SDF-rejected by SHREC's per-cell validation. The
+     * default `BinaryOperator` propagation handles this correctly.
+     *
+     * For smooth blends (`radius > 0`) the rounding destroys the sharp
+     * features at the join — drop child contours.
+     */
+    override accumulateContours(builder: ContourBuffer): void {
+        if (this.radius > 0) return
+        super.accumulateContours(builder)
     }
 
     private _interEx(L: string, R: string): string {

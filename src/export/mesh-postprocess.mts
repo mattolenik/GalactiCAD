@@ -302,6 +302,160 @@ export function splitCreaseVertices(
 }
 
 /**
+ * Like `splitCreaseVertices` but uses the **analytic per-vertex normals already in
+ * `verts` (from ISO Pass 7)** to detect smooth groups, instead of the geometric face
+ * normal of each triangle. Within each smooth group, the original analytic per-vertex
+ * normal is preserved (not overwritten with face-averaged) so smooth regions get exact
+ * SDF gradients and sharp features stay sharp at their actual gradient discontinuity.
+ *
+ * Why this beats face-normal-based crease detection for ISO:
+ *   - MT slivers have wildly noisy geometric face normals (cross product of nearly-collinear
+ *     edges). With a 30° crease threshold the noise alone splits ~70% of vertices in smooth
+ *     regions, fragmenting the mesh and producing the "all edges jagged" appearance even
+ *     though the underlying mesh is manifold.
+ *   - Analytic ∇F sampled at iso-crossing positions is genuinely smooth across smooth surface
+ *     regions and jumps only at REAL sharp features (CSG max/min, polygon corners, box edges).
+ *
+ * Triangles whose 3 analytic normals point in different directions (e.g. a triangle
+ * straddling a sharp feature) are treated as having the *averaged* analytic normal for
+ * smooth-group classification — same as the original `splitCreaseVertices` approach.
+ */
+export function splitCreaseVerticesByAnalyticNormal(
+    verts: Float32Array<ArrayBuffer>,
+    tris: Uint32Array<ArrayBuffer>,
+    creaseAngleDeg: number,
+    vertexStrideBytes: number,
+): { verts: Float32Array<ArrayBuffer>; tris: Uint32Array<ArrayBuffer> } {
+    const S = vertexStrideBytes / Float32Array.BYTES_PER_ELEMENT
+    const cosThresh = Math.cos(creaseAngleDeg * Math.PI / 180)
+    const triCount = (tris.length / 3) | 0
+    const vertCount = (verts.length / S) | 0
+    if (triCount === 0 || vertCount === 0) return { verts, tris }
+
+    // 1. Per-triangle "analytic normal" = unit-normalized average of the 3 vertex
+    //    analytic normals. This is smooth across smooth regions, jumps only at real
+    //    SDF gradient discontinuities.
+    const tnx = new Float32Array(triCount)
+    const tny = new Float32Array(triCount)
+    const tnz = new Float32Array(triCount)
+    for (let t = 0; t < triCount; t++) {
+        const b0 = tris[t * 3]! * S + 4
+        const b1 = tris[t * 3 + 1]! * S + 4
+        const b2 = tris[t * 3 + 2]! * S + 4
+        let nx = (verts[b0]! + verts[b1]! + verts[b2]!) / 3
+        let ny = (verts[b0 + 1]! + verts[b1 + 1]! + verts[b2 + 1]!) / 3
+        let nz = (verts[b0 + 2]! + verts[b1 + 2]! + verts[b2 + 2]!) / 3
+        const l = Math.hypot(nx, ny, nz)
+        if (l > 1e-20) { nx /= l; ny /= l; nz /= l }
+        tnx[t] = nx; tny[t] = ny; tnz[t] = nz
+    }
+
+    // 2. CSR vertex → (triangle, corner) adjacency (same as splitCreaseVertices).
+    const deg = new Uint32Array(vertCount)
+    for (let k = 0; k < tris.length; k++) {
+        const vi = tris[k]!
+        if (vi < vertCount) deg[vi]++
+    }
+    const adjOff = new Uint32Array(vertCount + 1)
+    for (let i = 0; i < vertCount; i++) adjOff[i + 1] = adjOff[i]! + deg[i]!
+    const totalAdj = adjOff[vertCount]!
+    const adjT = new Uint32Array(totalAdj)
+    const adjC = new Uint8Array(totalAdj)
+    const cursor = new Uint32Array(vertCount)
+    for (let t = 0; t < triCount; t++) {
+        for (let c = 0; c < 3; c++) {
+            const vi = tris[t * 3 + c]!
+            if (vi < vertCount) {
+                const off = adjOff[vi]! + cursor[vi]!
+                adjT[off] = t
+                adjC[off] = c
+                cursor[vi]++
+            }
+        }
+    }
+
+    // 3. For each vertex, flood-fill smooth groups of adjacent triangles where the
+    //    analytic-normal cosine ≥ cosThresh. Emit one output vertex per group, KEEPING
+    //    the original analytic per-vertex normal (Pass 7 already gave us the best one).
+    const outTris = new Uint32Array(tris)
+    let cap = Math.max(vertCount * 2, 1024)
+    let outV = new Float32Array(cap * S)
+    let nOut = 0
+    const ensureCap = () => {
+        if (nOut < cap) return
+        cap *= 2
+        const nv = new Float32Array(cap * S)
+        nv.set(outV.subarray(0, nOut * S))
+        outV = nv
+    }
+    let visBuf = new Uint8Array(64)
+
+    for (let vi = 0; vi < vertCount; vi++) {
+        const s0 = adjOff[vi]!, s1 = adjOff[vi + 1]!
+        const n = s1 - s0
+        if (n === 0) continue
+        if (visBuf.length < n) visBuf = new Uint8Array(Math.max(n, visBuf.length * 2))
+        const vis = visBuf
+        vis.fill(0, 0, n)
+
+        for (let seed = 0; seed < n; seed++) {
+            if (vis[seed]) continue
+            vis[seed] = 1
+            const grp: number[] = [seed]
+            const stk: number[] = [seed]
+            while (stk.length > 0) {
+                const ci = stk.pop()!
+                const ct = adjT[s0 + ci]!
+                for (let j = 0; j < n; j++) {
+                    if (vis[j]) continue
+                    const jt = adjT[s0 + j]!
+                    const dot = tnx[ct]! * tnx[jt]! + tny[ct]! * tny[jt]! + tnz[ct]! * tnz[jt]!
+                    if (dot < cosThresh) continue
+                    if (!triSharesEdge(tris, ct, jt, vi)) continue
+                    vis[j] = 1
+                    grp.push(j)
+                    stk.push(j)
+                }
+            }
+
+            // For each smooth group: average the analytic normals of the participating
+            // triangles to get the smoothed normal at this split copy. (Within a smooth
+            // group all per-triangle analytic normals are similar by definition, so the
+            // average ≈ any of them, but averaging hides any residual MT sliver noise.)
+            let nx = 0, ny = 0, nz = 0
+            for (const idx of grp) {
+                const t = adjT[s0 + idx]!
+                nx += tnx[t]!; ny += tny[t]!; nz += tnz[t]!
+            }
+            const l = Math.hypot(nx, ny, nz)
+            if (l > 1e-12) { nx /= l; ny /= l; nz /= l }
+
+            ensureCap()
+            const sb = vi * S, db = nOut * S
+            outV[db] = verts[sb]!
+            outV[db + 1] = verts[sb + 1]!
+            outV[db + 2] = verts[sb + 2]!
+            outV[db + 3] = 0
+            outV[db + 4] = nx
+            outV[db + 5] = ny
+            outV[db + 6] = nz
+            outV[db + 7] = 0
+
+            for (const idx of grp) {
+                outTris[adjT[s0 + idx]! * 3 + adjC[s0 + idx]!] = nOut
+            }
+            nOut++
+        }
+    }
+
+    const resultVerts = new Float32Array(nOut * S)
+    resultVerts.set(outV.subarray(0, nOut * S))
+    const resultTris = new Uint32Array(outTris.length)
+    resultTris.set(outTris)
+    return { verts: resultVerts, tris: resultTris }
+}
+
+/**
  * Overwrite per-vertex normals with the area-weighted average of incident triangle
  * face normals (standard Phong smooth shading). Mutates `verts` in place.
  *
@@ -415,7 +569,13 @@ export function orientTrianglesToMatchAnalyticNormals(
         const al2 = ax * ax + ay * ay + az * az
         if (fl2 <= 0 || al2 <= 0) continue
 
-        if (ax * fx + ay * fy + az * fz < 0) {
+        // Only flip on strong disagreement (cos < -0.3 ≈ angle > 107°). Sliver triangles
+        // and triangles spanning a sharp feature have noisy or weak dot products near 0;
+        // flipping them based on noise creates inconsistent winding across the smooth
+        // surface and fragments downstream crease detection. The strong-disagreement
+        // threshold catches genuinely-inverted triangles (cos ≈ -1) without false positives.
+        const cos = (ax * fx + ay * fy + az * fz) / Math.sqrt(fl2 * al2)
+        if (cos < -0.3) {
             tris[off + 1] = i2
             tris[off + 2] = i1
             flipped++

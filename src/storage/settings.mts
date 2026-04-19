@@ -138,7 +138,10 @@ export interface IsoExportSettings {
 }
 
 export function defaultIsoExportSettings(): IsoExportSettings {
-    return { voxelSizeMm: 0.1, padMm: 3.2, creaseAngleDeg: 30 }
+    // creaseAngleDeg=60° pairs with Phase 4's 4D-QEF sharp-feature placement: smooths
+    // piecewise-polygon SDF noise (~10° normal jumps for typical 32-segment circles) while
+    // preserving real CSG/box edges (~90° jumps). 180° = uniform Phong smoothing.
+    return { voxelSizeMm: 0.1, padMm: 3.2, creaseAngleDeg: 60 }
 }
 
 function defaultGlobalSettings(): GlobalSettings {

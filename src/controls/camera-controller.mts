@@ -23,6 +23,11 @@ export interface CameraState {
     translation: Vec3f
 }
 
+/** Orbit radius at/above this → pan stays at the linear world-per-CSS-pixel scale. */
+const PAN_ZOOM_REF = 50
+/** When zoomed in (`zoom` < ref), pan speed scales up by up to this fraction (sqrt easing). */
+const PAN_ZOOM_IN_BOOST = 0.34
+
 export class CameraController {
     #settings: SettingsManager
     #pivot: Vec3f
@@ -33,7 +38,7 @@ export class CameraController {
 
     #rotation: Quaternion = new Quaternion(1, 0, 0, 0) // identity quaternion
 
-    @clamped(2, 250)
+    @clamped(0.2, 250)
     accessor zoom: number = 40
 
     #isDragging = false
@@ -63,7 +68,6 @@ export class CameraController {
     #dragMode: "rotate" | "pan" | null = null
     #hasDragged: boolean = false
     #rotateSensitivity: number = 0.005
-    #panSensitivity: number = 0.1
     #cameraTranslation: Vec3f = new Vec3f()
     #zoomController: PinchZoomController
     #trackball: Trackball
@@ -322,15 +326,22 @@ export class CameraController {
         if (this.#dragMode === "rotate") {
             // Rotation is handled by Trackball (rounded arcball) via its onDraw callback
         } else if (this.#dragMode === "pan") {
-            // Compute camera-relative pan directions based on current rotation
+            // Orthographic-style preview: visible height = 2 * zoom (see preview.wgsl pixelSizeY).
+            // Base scale matches on-screen geometry (push-pull.mts worldPerPixel); below PAN_ZOOM_REF
+            // apply a gentle boost so close-in panning does not feel sluggish vs. linear world lock.
+            const cssH = Math.max(1, this.#host.canvas.getBoundingClientRect().height)
+            const linearWorldPerCssPixel = (2 * this.zoom) / cssH
+            const zNorm = Math.min(1, this.zoom / PAN_ZOOM_REF)
+            const panCurve = 1 + PAN_ZOOM_IN_BOOST * (1 - Math.sqrt(zNorm))
+            const worldPerCssPixel = linearWorldPerCssPixel * panCurve
+
             const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
             const cameraRight = rotationMatrix.transformVector(vec3(1, 0, 0))
             const cameraUp = rotationMatrix.transformVector(vec3(0, 1, 0))
 
-            // Apply pan in camera-relative directions
-            this.#cameraTranslation.x -= (this.#cursorDelta.x * cameraRight.x - this.#cursorDelta.y * cameraUp.x) * this.#panSensitivity
-            this.#cameraTranslation.y -= (this.#cursorDelta.x * cameraRight.y - this.#cursorDelta.y * cameraUp.y) * this.#panSensitivity
-            this.#cameraTranslation.z -= (this.#cursorDelta.x * cameraRight.z - this.#cursorDelta.y * cameraUp.z) * this.#panSensitivity
+            this.#cameraTranslation.x -= (this.#cursorDelta.x * cameraRight.x - this.#cursorDelta.y * cameraUp.x) * worldPerCssPixel
+            this.#cameraTranslation.y -= (this.#cursorDelta.x * cameraRight.y - this.#cursorDelta.y * cameraUp.y) * worldPerCssPixel
+            this.#cameraTranslation.z -= (this.#cursorDelta.x * cameraRight.z - this.#cursorDelta.y * cameraUp.z) * worldPerCssPixel
         }
 
         if (this.#dragMode !== "rotate") {

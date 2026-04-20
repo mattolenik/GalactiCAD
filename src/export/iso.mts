@@ -4,9 +4,9 @@ import { MeshData } from "./export.mjs"
 import {
     logExportMeshSanityStats,
     optionalSimplifyExportedMesh,
-    orientTrianglesToMatchAnalyticNormals,
+    reorientMeshTriangleWinding,
     smoothNormalsByAreaWeightedFaceAverage,
-    splitCreaseVerticesByAnalyticNormal,
+    splitCreaseVertices,
 } from "./mesh-postprocess.mjs"
 import { computeSparseDualSets } from "./iso-sparse.mjs"
 import { SIZEOF_VERTEX, type MDCParams, type ProgressCallback } from "./mdc.mjs"
@@ -555,13 +555,12 @@ export class ISOExport {
             const p4 = this.#helper.createComputePipeline(isoShaderModule, "placeFaceDuals_Pass4")
             const p5 = this.#helper.createComputePipeline(isoShaderModule, "placeCubeDuals_Pass5")
             const p6 = this.#helper.createComputePipeline(isoShaderModule, "emitTetMeshTriangles_Pass6")
-            const p7 = this.#helper.createComputePipeline(isoShaderModule, "projectAndNormalVertices_Pass7")
             // Phase 3 (paper §4.1) — triangulation improvement: relax edge / face duals onto
             // the iso surface when the per-cell topology safety test passes. Cube
             // improvement deferred (Union-Find on 26 boundary duals).
             const p8 = this.#helper.createComputePipeline(isoShaderModule, "improveEdgeDuals_Pass8")
             const p9 = this.#helper.createComputePipeline(isoShaderModule, "improveFaceDuals_Pass9")
-            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p7, p8, p9)
+            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p8, p9)
 
             const cancelBuf = this.#cancellationBuffer!
 
@@ -949,81 +948,20 @@ export class ISOExport {
             }
             logDiag("after degenerate drop")
 
-            // Pass 7: overwrite welded vertex normals with the analytic SDF gradient
-            // (`sceneSDF_mid(p).n`). Deliberately does NOT move positions — a previous Newton
-            // projection variant could split near-coincident welded vertices apart, undoing the
-            // welding and reintroducing per-triangle facets in the mesh-viewer's normal-RGB
-            // shading. Per AGENTS.md every scene SDF eval stays on the GPU.
-            {
-                const projVertCount = (verts.length / VERTEX_STRIDE_F32) | 0
-                if (projVertCount > 0) {
-                    const projBytes = projVertCount * SIZEOF_VERTEX
-                    const projBuffer = createBuffer(
-                        "ISO projectVertices",
-                        projBytes,
-                        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-                    )
-                    this.#device.queue.writeBuffer(projBuffer, 0, verts.buffer, verts.byteOffset, projBytes)
+            // Re-orient triangle winding to consistent outward direction (BFS over
+            // shared-edge adjacency, then flip components for positive signed volume).
+            // Same pipeline MDC uses; works well now that Phase-3 + GPU degenerate-skip
+            // remove the worst slivers that previously fragmented BFS.
+            reorientMeshTriangleWinding(verts, tris, SIZEOF_VERTEX)
+            logDiag("after BFS reorient")
 
-                    // Pass 7 (normal-only) does NOT reference `uniforms`, so WGSL strips binding 0
-                    // from the layout. Including it in the bind group fails validation.
-                    const bg7 = this.#helper.createBindGroup(
-                        0,
-                        "ISO projectAndNormalVertices_Pass7",
-                        p7,
-                        [7, projBuffer],
-                        [25, cancelBuf],
-                        [27, this.#polygonVerticesBuffer],
-                        [28, this.#faceSelectionBuffer],
-                        [30, this.#mdcSceneParamsBuffer],
-                    )
-                    this.#localBindGroups.push(bg7[1])
-
-                    progressCallback?.updateProgress("ISO Pass 7: project & normal", 92)
-                    {
-                        const wg = Math.ceil(projVertCount / 64)
-                        const dispatchX = Math.min(wg, 65535)
-                        const dispatchY = Math.ceil(wg / dispatchX)
-                        const ce = this.#device.createCommandEncoder({ label: "iso_pass7" })
-                        const pass = this.#helper.beginComputePass(ce, p7, bg7)
-                        pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
-                        pass.end()
-                        this.#device.queue.submit([ce.finish()])
-                        await this.#device.queue.onSubmittedWorkDone()
-                        checkCancelled()
-                    }
-
-                    const projData = await readBufferData(projBuffer, projBytes)
-                    verts = new Float32Array(projData)
-                    dbgLog("IsoExport").debug(`Pass 7 projected & normaled ${projVertCount} verts`)
-                }
-            }
-            logDiag("after pass7 (project + analytic normals)")
-
-            // Per-triangle winding alignment to the analytic SDF gradient (∇F is canonically
-            // outward in SDF convention). This replaces BFS-based reorientation, which fragments
-            // wherever a non-manifold edge appears (degenerate "hub" triangles produce many of
-            // those for ISO's dense MT contour). Per-triangle alignment is robust and stateless.
-            {
-                const flipped = orientTrianglesToMatchAnalyticNormals(verts, tris, SIZEOF_VERTEX)
-                const triCount = (tris.length / 3) | 0
-                dbgLog("IsoExport").debug(
-                    `Per-triangle analytic-normal orient: flipped ${flipped}/${triCount} `
-                    + `(${triCount > 0 ? ((flipped / triCount) * 100).toFixed(1) : "0.0"}%)`,
-                )
-            }
-            logDiag("after analytic-normal triangle orient")
-
-            // Crease-aware vertex splitting using the **analytic SDF gradient** at each
-            // vertex (Pass 7 wrote those) instead of geometric face normals.
-            //
-            // Why analytic, not geometric: the dense MT triangulation produces sliver
-            // triangles whose face normals are very noisy (cross product of nearly-collinear
-            // edges). With a 30° threshold, that noise alone classifies ~70% of edges as
-            // "creases" in smooth regions, fragmenting the mesh into per-triangle pieces and
-            // producing the "all edges jagged" look. Analytic ∇F is genuinely smooth across
-            // smooth regions and jumps only at REAL sharp features (CSG seams, polygon
-            // corners, box edges from Phase-4 dual placement).
+            // Crease-aware vertex splitting using **geometric face normals** (cross product
+            // of edge vectors). For smooth surfaces produced by lathe / twisted extrude,
+            // the analytic SDF gradient is piecewise (one direction per polygon segment) and
+            // gives "garbled" per-vertex normals across the surface. Geometric face normals
+            // are inherently smooth across the iso surface regardless of the underlying
+            // SDF's gradient discontinuities — so smooth-group averaging produces uniform
+            // Phong shading across a polygon-profile lathe instead of per-segment noise.
             //
             // creaseAngleDeg ≥ 180 falls back to uniform Phong smoothing (no splits).
             const creaseAngle = this.params.creaseAngleDeg ?? 60
@@ -1032,15 +970,15 @@ export class ISOExport {
                 logDiag("after uniform Phong smoothing")
             } else {
                 const before = (verts.length / VERTEX_STRIDE_F32) | 0
-                const split = splitCreaseVerticesByAnalyticNormal(verts, tris, creaseAngle, SIZEOF_VERTEX)
+                const split = splitCreaseVertices(verts, tris, creaseAngle, SIZEOF_VERTEX)
                 verts = split.verts
                 tris = split.tris
                 const after = (verts.length / VERTEX_STRIDE_F32) | 0
                 dbgLog("IsoExport").debug(
-                    `Analytic-gradient crease split @ ${creaseAngle}°: verts ${before} → ${after} `
+                    `Geometric crease split @ ${creaseAngle}°: verts ${before} → ${after} `
                     + `(${before > 0 ? ((after / before - 1) * 100).toFixed(1) : "0"}% growth)`,
                 )
-                logDiag("after analytic-gradient crease split")
+                logDiag("after geometric crease split")
             }
 
             {

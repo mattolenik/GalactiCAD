@@ -50,9 +50,10 @@ export class Engrave extends BinaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `engrave_${lhResult.varName}__${rhResult.varName}`
         const er = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `fOpEngraveMid(${lhResult.text}, ${rhResult.text}, ${er})`, varName }
+        return { text: `fOpEngraveMid(${lText}, ${rText}, ${er})`, varName, prelude }
     }
 }
 

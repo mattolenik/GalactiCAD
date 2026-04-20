@@ -76,9 +76,15 @@ export class Taper extends UnaryOperator {
         const o = this.paramOffset
         const ratio = f32Wgsl(o, this.previewF32Slot)
         const height = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
         const funcName = `Taper${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        if (childResult.prelude) {
+            const taperedPrelude = childResult.prelude.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
+            const accVar = childResult.varName!
+            const prelude = taperedPrelude + `${accVar} = sdfTaperNormalMid(${accVar}, p, ${ratio}, ${height});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
+        const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
         return { funcName, varName, text: `sdfTaperNormalMid(${taperedChild}, p, ${ratio}, ${height})` }
     }
 

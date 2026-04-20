@@ -50,9 +50,12 @@ export class Morph extends BinaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        // See subtract.compileMid: child preludes must be merged or downstream WGSL
+        // references (`_uNN_mid`) come up unresolved.
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `morph_${lhResult.varName}__${rhResult.varName}`
         const mt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `sdfMorphMid(${lhResult.text}, ${rhResult.text}, ${mt})`, varName }
+        return { text: `sdfMorphMid(${lText}, ${rText}, ${mt})`, varName, prelude }
     }
 }
 

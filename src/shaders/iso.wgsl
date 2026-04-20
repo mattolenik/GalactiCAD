@@ -1326,6 +1326,18 @@ fn improveEdgeDuals_Pass8(
         return;  // topology test fails; leave dual where Pass 3 placed it.
     }
 
+    // Sharp-feature gate: Phase 4 places the edge dual at the QEF-optimal point along the
+    // edge. For edges that pass through a sharp feature (CSG seam, box edge, polygon corner)
+    // the QEF position has F* ≠ 0 — that's the algorithm's signal that this is a sharp
+    // intersection that should be preserved, NOT relaxed onto the smooth iso surface.
+    // Empirically `|fval| > 0.05 × voxel` is a reliable sharp-feature detector that's still
+    // generous enough to relax all smooth-surface duals.
+    let edge_dual = allDuals[absolute_slot];
+    let sharp_eps = uniforms.voxelSize * 5e-2;
+    if (abs(edge_dual.fval) > sharp_eps) {
+        return;
+    }
+
     let w0 = gridPosToWorldPos(p0);
     let w1 = gridPosToWorldPos(p1);
     var lo = w0;
@@ -1337,7 +1349,13 @@ fn improveEdgeDuals_Pass8(
         fl = d1; fh = d0;
     }
     let pos = bisect_to_iso(lo, hi, fl, fh);
-    write_dual_slot(absolute_slot, DualVertex(pos, 0.0));
+    // Store the ACTUAL F value at the bisected position (small but non-zero) rather than
+    // forcing fval=0. Setting fval=0 makes MT crossings on adjacent tet edges all land at
+    // the dual position — coincident vertices that GPU degen-skip then drops, leaving
+    // visible holes around the relaxed dual. Preserving the small actual fval keeps MT
+    // crossings near (but not at) the dual, so triangles survive.
+    let f_at_pos = sceneSDF_fast(pos).d - uniforms.isoValue;
+    write_dual_slot(absolute_slot, DualVertex(pos, f_at_pos));
 }
 
 /// Pass 9: face dual improvement. The 4-corner ring around an axis-aligned face must
@@ -1429,6 +1447,12 @@ fn improveFaceDuals_Pass9(
     let face_f = face_dual.fval;
     let face_sign_pos = sdf_sign_bit_positive(face_f);
 
+    // See improveEdgeDuals_Pass8 sharp-feature gate.
+    let sharp_eps = uniforms.voxelSize * 5e-2;
+    if (abs(face_f) > sharp_eps) {
+        return;
+    }
+
     // Pick the corner with opposite sign to face_dual and smallest |fval| (closest to iso).
     let w00 = gridPosToWorldPos(c00);
     let w10 = gridPosToWorldPos(c10);
@@ -1460,7 +1484,8 @@ fn improveFaceDuals_Pass9(
         let tf = fl; fl = fh; fh = tf;
     }
     let pos = bisect_to_iso(lo, hi, fl, fh);
-    write_dual_slot(absolute_slot, DualVertex(pos, 0.0));
+    let f_at_pos = sceneSDF_fast(pos).d - uniforms.isoValue;
+    write_dual_slot(absolute_slot, DualVertex(pos, f_at_pos));
 }
 
 fn emit_pass6_x_edge(

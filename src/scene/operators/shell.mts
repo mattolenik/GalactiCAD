@@ -59,6 +59,13 @@ export class Shell extends UnaryOperator {
         const funcName = `Shell${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         const t = f32Wgsl(this.paramOffset, this.previewF32Slot)
+        // Propagate child prelude (no `p` rewrite — shell doesn't transform coords) so
+        // intermediate `var _u<id>_mid` declarations remain visible to the inline text.
+        if (childResult.prelude) {
+            const accVar = childResult.varName!
+            const prelude = childResult.prelude + `${accVar} = sdfShellMid(${accVar}, ${t});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
         return { funcName, varName, text: `sdfShellMid(${childResult.text}, ${t})` }
     }
 

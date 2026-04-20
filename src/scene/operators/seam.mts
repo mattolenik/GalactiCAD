@@ -50,9 +50,10 @@ export class Seam extends BinaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
         const sr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `sdfSeamMid(${lhResult.text}, ${rhResult.text}, ${sr})`, varName }
+        return { text: `sdfSeamMid(${lText}, ${rText}, ${sr})`, varName, prelude }
     }
 }
 

@@ -100,8 +100,9 @@ export class Intersect extends BinaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._interMid(lhResult.text!, rhResult.text!), varName }
+        return { text: this._interMid(lText, rText), varName, prelude }
     }
 
     override appendStructuralFingerprint(parts: string[]): void {

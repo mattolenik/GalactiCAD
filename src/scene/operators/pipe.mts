@@ -50,9 +50,10 @@ export class Pipe extends BinaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `pipe_${lhResult.varName}__${rhResult.varName}`
         const pr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `fOpPipeMid(${lhResult.text}, ${rhResult.text}, ${pr})`, varName }
+        return { text: `fOpPipeMid(${lText}, ${rText}, ${pr})`, varName, prelude }
     }
 }
 

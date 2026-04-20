@@ -59,6 +59,13 @@ export class Offset extends UnaryOperator {
         const funcName = `Offset${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
+        // Mirror compileFast: keep child prelude so its `var _u<id>_mid` declarations
+        // stay in scope; offset doesn't transform `p`, so no rewrite needed.
+        if (childResult.prelude) {
+            const accVar = childResult.varName!
+            const prelude = childResult.prelude + `${accVar} = sdfOffsetMid(${accVar}, ${amt});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
         return { funcName, varName, text: `sdfOffsetMid(${childResult.text}, ${amt})` }
     }
 

@@ -68,9 +68,17 @@ export class Bend extends UnaryOperator {
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
         const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
         const funcName = `Bend${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        // See rotate.compileMid: rewrite `p` in child prelude, then reference child varName
+        // in the wrapping call so the prelude's `var _u<id>_mid` declarations stay in scope.
+        if (childResult.prelude) {
+            const bentPrelude = childResult.prelude.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
+            const accVar = childResult.varName!
+            const prelude = bentPrelude + `${accVar} = sdfBendNormalMid(${accVar}, p, ${amt});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
+        const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
         return { funcName, varName, text: `sdfBendNormalMid(${bentChild}, p, ${amt})` }
     }
 

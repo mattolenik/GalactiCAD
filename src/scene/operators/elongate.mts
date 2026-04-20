@@ -71,10 +71,16 @@ export class Elongate extends UnaryOperator {
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
         const h = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
-        const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
         const funcName = `Elongate${this.id}`
         const varName = `${decapitalize(funcName)}_m`
-        return { funcName, varName, text: elongatedChild }
+        // Mirror compileFast: rewrite `p` everywhere (text + prelude) so `var _u<id>_mid`
+        // declarations evaluated at the elongated coords remain consistent with the inline
+        // expression. Without the prelude propagation we get "unresolved value" errors.
+        if (childResult.prelude) {
+            const elongatedPrelude = childResult.prelude.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
+            return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: elongatedPrelude }
+        }
+        return { funcName, varName, text: childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`) }
     }
 
     protected override computeBoundsCore(): AABB | null {

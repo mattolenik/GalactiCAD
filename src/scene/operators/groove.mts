@@ -59,11 +59,12 @@ export class Groove extends BinaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `groove_${lhResult.varName}__${rhResult.varName}`
         const o = this.paramOffset
         const ra = f32Wgsl(o, this.previewF32Slot)
         const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        return { text: `fOpGrooveMid(${lhResult.text}, ${rhResult.text}, ${ra}, ${rb})`, varName }
+        return { text: `fOpGrooveMid(${lText}, ${rText}, ${ra}, ${rb})`, varName, prelude }
     }
 }
 

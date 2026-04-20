@@ -121,10 +121,25 @@ export class Rotate extends UnaryOperator {
         const o = this.paramOffset
         const invMat = mat3x3Wgsl(o, this.previewMat3Slot)
         const fwdMat = mat3x3Wgsl(o + 9, this.previewMat3Slot + 1)
-        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
 
         const funcName = `Rotate${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+
+        // Mirror compileFast: when the child has a prelude we must keep it (with `p`
+        // rewritten to the rotated coords) and reference its `varName` instead of
+        // re-inlining the (likely undefined) text. Without this, child-emitted
+        // `var _u<id>_mid` references in the prelude get dropped → "unresolved value".
+        if (childResult.prelude) {
+            const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
+            return {
+                funcName,
+                varName: childResult.varName!,
+                text: `sdfRotateNormalMid(${childResult.varName!}, ${fwdMat})`,
+                prelude: rotatedPrelude,
+            }
+        }
+
+        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
         return {
             funcName,
             varName,

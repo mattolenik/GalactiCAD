@@ -68,9 +68,15 @@ export class Twist extends UnaryOperator {
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
         const rate = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
         const funcName = `Twist${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        if (childResult.prelude) {
+            const twistedPrelude = childResult.prelude.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
+            const accVar = childResult.varName!
+            const prelude = twistedPrelude + `${accVar} = sdfTwistNormalMid(${accVar}, p, ${rate});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
+        const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
         return { funcName, varName, text: `sdfTwistNormalMid(${twistedChild}, p, ${rate})` }
     }
 

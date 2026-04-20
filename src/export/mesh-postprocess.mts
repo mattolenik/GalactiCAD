@@ -188,17 +188,30 @@ export function splitCreaseVertices(
     const vertCount = (verts.length / S) | 0
     if (triCount === 0 || vertCount === 0) return { verts, tris }
 
+    // Per-triangle store the UNIT face normal (used by the cosThresh crease test, which
+    // measures angle between adjacent faces and must be scale-invariant) AND the RAW cross
+    // product (length = 2 × triangle area). The raw vector is used for area-weighted
+    // smooth-group normal averaging — sliver triangles in dense MT contours have noisy
+    // direction but tiny area, so weighting by area suppresses their contribution to the
+    // final per-vertex normal. Without weighting, slivers add the same noise as large
+    // triangles and produce visible per-vertex normal jitter on smooth surfaces.
     const fnx = new Float32Array(triCount)
     const fny = new Float32Array(triCount)
     const fnz = new Float32Array(triCount)
+    const wnx = new Float32Array(triCount)
+    const wny = new Float32Array(triCount)
+    const wnz = new Float32Array(triCount)
     for (let t = 0; t < triCount; t++) {
         const b0 = tris[t * 3]! * S, b1 = tris[t * 3 + 1]! * S, b2 = tris[t * 3 + 2]! * S
         const ax = verts[b1]! - verts[b0]!, ay = verts[b1 + 1]! - verts[b0 + 1]!, az = verts[b1 + 2]! - verts[b0 + 2]!
         const bx = verts[b2]! - verts[b0]!, by = verts[b2 + 1]! - verts[b0 + 1]!, bz = verts[b2 + 2]! - verts[b0 + 2]!
-        let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx
-        const l = Math.hypot(nx, ny, nz)
-        if (l > 1e-20) { nx /= l; ny /= l; nz /= l }
-        fnx[t] = nx; fny[t] = ny; fnz[t] = nz
+        const cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx
+        wnx[t] = cx; wny[t] = cy; wnz[t] = cz
+        const l = Math.hypot(cx, cy, cz)
+        if (l > 1e-20) {
+            const inv = 1 / l
+            fnx[t] = cx * inv; fny[t] = cy * inv; fnz[t] = cz * inv
+        }
     }
 
     const deg = new Uint32Array(vertCount)
@@ -268,10 +281,13 @@ export function splitCreaseVertices(
                 }
             }
 
+            // Area-weighted sum of face normals (raw cross products) within the smooth
+            // group. Sliver triangles contribute proportionally to their (tiny) area, so
+            // their noisy direction barely perturbs the result.
             let nx = 0, ny = 0, nz = 0
             for (const idx of grp) {
                 const t = adjT[s0 + idx]!
-                nx += fnx[t]!; ny += fny[t]!; nz += fnz[t]!
+                nx += wnx[t]!; ny += wny[t]!; nz += wnz[t]!
             }
             const l = Math.hypot(nx, ny, nz)
             if (l > 1e-12) { nx /= l; ny /= l; nz /= l }

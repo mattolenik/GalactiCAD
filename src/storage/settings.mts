@@ -164,7 +164,7 @@ export function normalizeMdcExportLevers(raw: unknown): MdcExportLevers {
     return {
         voxelSizeMm: clampMdcNumber(o.voxelSizeMm, 0.02, 1.0, d.voxelSizeMm),
         isoValue: clampMdcNumber(o.isoValue, -0.5, 0.5, d.isoValue),
-        creaseAngleDeg: clampMdcNumber(o.creaseAngleDeg, 0, 180, d.creaseAngleDeg),
+        creaseAngleDeg: clampMdcNumber(o.creaseAngleDeg, -1, 180, d.creaseAngleDeg),
         simplifyTargetRatio: clampMdcNumber(o.simplifyTargetRatio, 0.01, 1, d.simplifyTargetRatio),
         simplifyTargetError: clampMdcNumber(o.simplifyTargetError, 0, 0.1, d.simplifyTargetError),
         simplifyNormalWeight: clampMdcNumber(o.simplifyNormalWeight, 0, 8, d.simplifyNormalWeight),
@@ -450,11 +450,12 @@ export class SettingsManager {
                     if (typeof cur.mergeSharpEnabled !== "boolean") cur.mergeSharpEnabled = DEFAULT_SHREC_TUNING.mergeSharpEnabled
                     if (typeof cur.mergeRelCutoff !== "number" || !isFinite(cur.mergeRelCutoff)) cur.mergeRelCutoff = DEFAULT_SHREC_TUNING.mergeRelCutoff
                     if (typeof cur.mergeMaxDisplacement !== "number" || !isFinite(cur.mergeMaxDisplacement) || cur.mergeMaxDisplacement < 0) cur.mergeMaxDisplacement = DEFAULT_SHREC_TUNING.mergeMaxDisplacement
-                    if (typeof cur.creaseAngleDeg !== "number" || !isFinite(cur.creaseAngleDeg) || cur.creaseAngleDeg < 0 || cur.creaseAngleDeg > 180) cur.creaseAngleDeg = DEFAULT_SHREC_TUNING.creaseAngleDeg
+                    if (typeof cur.creaseAngleDeg !== "number" || !isFinite(cur.creaseAngleDeg) || cur.creaseAngleDeg < -1 || cur.creaseAngleDeg > 180) cur.creaseAngleDeg = DEFAULT_SHREC_TUNING.creaseAngleDeg
                     if (typeof cur.mergeGradientWeightPower !== "number" || !isFinite(cur.mergeGradientWeightPower) || cur.mergeGradientWeightPower < 0) cur.mergeGradientWeightPower = DEFAULT_SHREC_TUNING.mergeGradientWeightPower
                     if (typeof cur.dedupRadiusVoxels !== "number" || !isFinite(cur.dedupRadiusVoxels) || cur.dedupRadiusVoxels < 0) cur.dedupRadiusVoxels = DEFAULT_SHREC_TUNING.dedupRadiusVoxels
                     if (typeof cur.seamAwareEnabled !== "boolean") cur.seamAwareEnabled = DEFAULT_SHREC_TUNING.seamAwareEnabled
                     if (typeof cur.seamAgreementCosThreshold !== "number" || !isFinite(cur.seamAgreementCosThreshold) || cur.seamAgreementCosThreshold < 0 || cur.seamAgreementCosThreshold > 1) cur.seamAgreementCosThreshold = DEFAULT_SHREC_TUNING.seamAgreementCosThreshold
+                    if (typeof cur.edgeFitEnabled !== "boolean") cur.edgeFitEnabled = DEFAULT_SHREC_TUNING.edgeFitEnabled
                     app.shrecTuning = cur
                 }
                 {

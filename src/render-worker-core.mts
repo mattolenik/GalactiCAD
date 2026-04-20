@@ -1035,6 +1035,7 @@ export class RenderWorkerCore {
                         dedupRadius: shrecTuning.dedupRadiusVoxels > 0 ? shrecTuning.dedupRadiusVoxels * voxelSizeMm : undefined,
                         seamAwareEnabled: shrecTuning.seamAwareEnabled,
                         seamAgreementCosThreshold: shrecTuning.seamAgreementCosThreshold,
+                        edgeFitEnabled: shrecTuning.edgeFitEnabled,
                     }),
                 }
                 // Walk the scene tree and collect each primitive's explicit

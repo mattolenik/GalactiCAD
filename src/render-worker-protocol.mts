@@ -50,7 +50,8 @@ export interface ShrecTuning {
      * into separate output vertices, each with its own per-side normal. Set
      * to 180 to disable splitting (one smooth group per vertex; normals are
      * still re-derived from face geometry, which kills banding on flat
-     * surfaces). Set to 0 to make every triangle its own face. Default 30.
+     * surfaces). Set to 0 to make every triangle its own face. Values `< 0`
+     * skip the crease-split pass entirely. Default 30.
      */
     creaseAngleDeg: number
     /**
@@ -74,6 +75,15 @@ export interface ShrecTuning {
      * admit more cells; higher values approach `1.0` (only exact agreement).
      */
     seamAgreementCosThreshold: number
+    /**
+     * Run the post-MergeSharp **chain Laplacian smoothing** for cells
+     * placed by the rank-2 pseudo-inverse path. Groups topologically-
+     * connected cells with consistent seam tangents into chains, sorts
+     * each chain by its dominant tangent axis, and applies several
+     * iterations of 1D Laplacian smoothing along the chain. Sub-voxel
+     * effect — only useful as a final polish on long sharp edges.
+     */
+    edgeFitEnabled: boolean
     /**
      * Vertex deduplication radius, expressed as a fraction of `voxelSize`,
      * applied after MergeSharp relocation. Multiple cells whose vertices
@@ -120,6 +130,7 @@ export const DEFAULT_SHREC_TUNING: ShrecTuning = {
     dedupRadiusVoxels: 0,
     seamAwareEnabled: true,
     seamAgreementCosThreshold: 0.97,
+    edgeFitEnabled: false,
 }
 
 /**
@@ -278,7 +289,7 @@ export interface MdcExportLevers {
     voxelSizeMm: number
     /** Isosurface level of the SDF; 0 is the nominal surface. */
     isoValue: number
-    /** Crease angle (degrees) for vertex splitting; 180 disables. */
+    /** Crease angle (degrees) for vertex splitting; 180 disables; negative values skip the pass. */
     creaseAngleDeg: number
     /** Fraction of triangles to keep after simplification (must be < 1 to simplify). */
     simplifyTargetRatio: number

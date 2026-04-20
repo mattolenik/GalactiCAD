@@ -4,6 +4,7 @@ import { dualContourCPU } from "./shrec/dc-cpu.mjs"
 import { mergeSharpRelocate } from "./shrec/merge-sharp.mjs"
 import { deduplicateMergedVertices } from "./shrec/dedup.mjs"
 import { ContourSpatialIndex } from "./shrec/contour-snap.mjs"
+import { fitSeamEdges } from "./shrec/edge-fit.mjs"
 import { splitCreaseVertices } from "./crease-split.mjs"
 import type { MeshData } from "./export.mjs"
 import type { ProgressCallback } from "./mdc.mjs"
@@ -81,6 +82,11 @@ export interface ShrecParams {
      * `cos(15°) ≈ 0.97`.
      */
     seamAgreementCosThreshold?: number
+    /**
+     * Run the post-MergeSharp line-fit refinement on seam-classified
+     * cells. See `fitSeamEdges` in `edge-fit.mts`. Default `true`.
+     */
+    edgeFitEnabled?: boolean
 }
 
 /**
@@ -153,6 +159,7 @@ export class ShrecExport {
             `dedupRadius=${p.dedupRadius ?? "(off)"} ` +
             `seamAware=${p.seamAwareEnabled ?? true} ` +
             `seamAgreementCos=${p.seamAgreementCosThreshold ?? 0.97} ` +
+            `edgeFit=${p.edgeFitEnabled ?? true} ` +
             `creaseAngleDeg=${p.creaseAngleDeg ?? 30}`,
         )
 
@@ -189,8 +196,7 @@ export class ShrecExport {
         // positions remain meaningful overlays regardless).
         let mergeDebugSamples: Float32Array<ArrayBuffer> | null = null
         let mergeDebugStats: {
-            seamConstrained: number
-            seamDegenerate: number
+            seamSnapped: number
             tikhonovSolved: number
             contourLineSnaps: number
             contourCornerSnaps: number
@@ -225,12 +231,34 @@ export class ShrecExport {
             mesh = result.mesh
             mergeDebugSamples = result.stats.debugSamples
             mergeDebugStats = {
-                seamConstrained: result.stats.seamConstrained,
-                seamDegenerate: result.stats.seamDegenerate,
+                seamSnapped: result.stats.seamSnapped,
                 tikhonovSolved: result.stats.tikhonovSolved,
                 contourLineSnaps: result.stats.contourLineSnaps,
                 contourCornerSnaps: result.stats.contourCornerSnaps,
                 vertexCount: result.stats.vertexCount,
+            }
+
+            // Post-MergeSharp line-fit refinement. Groups topologically-
+            // connected seam cells with consistent tangents into chains and
+            // projects each chain's vertices onto a single SVD-fitted line.
+            // Eliminates per-cell QEF noise that would otherwise leave a
+            // long CSG seam very faintly wavy (each cell's pseudo-inverse
+            // solve is mathematically right in isolation but small position
+            // differences between adjacent cells add up across the seam).
+            // The pass also updates the corresponding debug-overlay glyph
+            // positions so the visual matches the actual mesh.
+            const edgeFitEnabled = this.params.edgeFitEnabled ?? true
+            if (edgeFitEnabled && result.stats.seamCellRecords.length > 0) {
+                progressCallback?.updateProgress("SHREC: line-fit refinement", 75)
+                checkCancelled()
+                fitSeamEdges(
+                    mesh.verts,
+                    mergeDebugSamples,
+                    result.stats.seamCellRecords,
+                    {
+                        chainCosThreshold: this.params.seamAgreementCosThreshold,
+                    },
+                )
             }
         } else {
             mesh = { verts: dcMesh.verts, tris: dcMesh.tris }
@@ -289,19 +317,15 @@ export class ShrecExport {
                             totalSamples: mergeDebugStats.vertexCount,
                             // Map SHREC's classification onto the existing
                             // MDC stats fields the HUD already understands:
-                            //   acceptedLine   ← contour-line snap   + seam-aware constrained solve
-                            //   acceptedCorner ← contour-corner snap (point / intersection)
-                            //   acceptedSeam   ← seam-aware solve fell back to Tikhonov on a
-                            //                    sharp 90° edge (klass=3 violet glyph;
-                            //                    Tikhonov correctly snaps the rank-2 case)
+                            //   acceptedLine   ← contour-line snap (explicit edge feature)
+                            //   acceptedCorner ← contour-corner snap (explicit point / intersection)
+                            //   acceptedSeam   ← CSG seam (rank-aware pseudo-inverse, sharp 90° edge,
+                            //                    klass=3 violet glyph)
                             //   acceptedNone   ← Tikhonov fallback (no seam, no contour)
-                            //   rejected       ← currently 0 (used to be the seam-degenerate
-                            //                    mass-point fallback; now those cells take
-                            //                    the seam path above)
                             acceptedNone: mergeDebugStats.tikhonovSolved,
-                            acceptedLine: mergeDebugStats.contourLineSnaps + mergeDebugStats.seamConstrained,
+                            acceptedLine: mergeDebugStats.contourLineSnaps,
                             acceptedCorner: mergeDebugStats.contourCornerSnaps,
-                            acceptedSeam: mergeDebugStats.seamDegenerate,
+                            acceptedSeam: mergeDebugStats.seamSnapped,
                             acceptedRing: 0,
                             rejected: 0,
                         },

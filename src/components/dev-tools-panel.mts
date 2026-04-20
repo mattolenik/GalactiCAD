@@ -35,7 +35,7 @@ const MDC_RANGE_KNOBS: {
     step: number
 }[] = [
     { key: "isoValue", label: "Iso value", min: -0.2, max: 0.2, step: 0.002 },
-    { key: "creaseAngleDeg", label: "Crease °", min: 0, max: 180, step: 1 },
+    { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1 },
 ]
 
 const PREVIEW_SHADING_KNOBS: {
@@ -104,6 +104,7 @@ export class DevToolsPanel extends HTMLElement {
     #shrecSeamAwareCheckbox: HTMLInputElement
     #shrecSeamAgreementRange: HTMLInputElement
     #shrecSeamAgreementValueEl: HTMLSpanElement
+    #shrecEdgeFitCheckbox: HTMLInputElement
     #shrecSection: HTMLDivElement
     #simplifyTuningState: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
     #simplifySection: HTMLDivElement
@@ -293,6 +294,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#shrecSeamAwareCheckbox.checked = tuning.seamAwareEnabled
         this.#shrecSeamAgreementRange.value = String(tuning.seamAgreementCosThreshold)
         this.#shrecSeamAgreementValueEl.textContent = DevToolsPanel.#formatShrecValue("seamAgreementCosThreshold", tuning.seamAgreementCosThreshold)
+        this.#shrecEdgeFitCheckbox.checked = tuning.edgeFitEnabled
     }
 
     /** Show or hide the panel */
@@ -765,7 +767,7 @@ export class DevToolsPanel extends HTMLElement {
         }
 
         // Crease angle slider (deg). 180 = no splitting (single smooth group),
-        // 0 = every triangle its own face. Default 30.
+        // 0 = every triangle its own face. -1 skips the crease-split pass. Default 30.
         {
             const row = document.createElement("div")
             row.className = "shade-row"
@@ -774,7 +776,7 @@ export class DevToolsPanel extends HTMLElement {
             lab.textContent = "Crease (°)"
             const range = document.createElement("input")
             range.type = "range"
-            range.min = "0"
+            range.min = "-1"
             range.max = "180"
             range.step = "1"
             range.value = String(this.#shrecTuningState.creaseAngleDeg)
@@ -897,6 +899,16 @@ export class DevToolsPanel extends HTMLElement {
             this.#shrecSeamAgreementRange = range
             this.#shrecSeamAgreementValueEl = valueEl
         }
+
+        // Edge-fit refinement toggle. When on, post-MergeSharp groups
+        // seam-classified cells into chains and projects each chain's
+        // vertices onto an SVD-fitted line — eliminates per-cell QEF
+        // jitter on long CSG seams. Off-by-toggle for A/B comparison.
+        this.#shrecEdgeFitCheckbox = this.#addCheckbox(this.#shrecSection, "Edge fit (line)", this.#shrecTuningState.edgeFitEnabled)
+        this.#shrecEdgeFitCheckbox.addEventListener("change", () => {
+            this.#shrecTuningState = { ...this.#shrecTuningState, edgeFitEnabled: this.#shrecEdgeFitCheckbox.checked }
+            this.#persistShrecTuning()
+        })
 
         const shrecDefaults = document.createElement("button")
         shrecDefaults.textContent = "SHREC defaults"

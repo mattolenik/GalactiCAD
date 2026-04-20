@@ -422,18 +422,21 @@ export class CameraController {
     }
 
     recenterOnPoint(worldPoint: Vec3f): void {
-        const rotMat = this.#quaternionToMatrix(this.#rotation)
-        // Transform P into camera space to get its current depth (z component)
+        // Use the same camera basis as the GPU (`viewTransform` = trackball × lookAt × …),
+        // not the trackball quaternion alone. Quaternion-only rotation missed the lookAt
+        // frame and disagreed with push-pull / preview ray math, so the solved translation
+        // targeted the wrong screen depth / in-plane direction.
+        const m = this.viewTransform.data
+        const right = vec3(m[0], m[1], m[2])
+        const up = vec3(m[4], m[5], m[6])
+        const axisZ = vec3(m[8], m[9], m[10])
         const diff = vec3(
             worldPoint.x - this.#cameraTranslation.x,
             worldPoint.y - this.#cameraTranslation.y,
             worldPoint.z - this.#cameraTranslation.z,
         )
-        // rotMat = R^{-1}, so rotMat * diff gives camera-space coordinates of (P - camTrans)
-        const camSpaceP = rotMat.transformVector(diff)
-        // Keep P at the same depth; zero out x,y to center it on screen
-        // camTrans_new = P - R * (0, 0, camSpaceP.z)
-        const rForward = rotMat.transpose().transformVector(vec3(0, 0, camSpaceP.z))
+        const camSpaceP = vec3(diff.dot(right), diff.dot(up), diff.dot(axisZ))
+        const rForward = axisZ.multiply(camSpaceP.z)
         const targetTrans = vec3(
             worldPoint.x - rForward.x,
             worldPoint.y - rForward.y,

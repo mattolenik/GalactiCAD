@@ -849,7 +849,7 @@ export class MDCExport {
             // share a single (wrong) normal through interpolation.
             {
                 const creaseAngle = this.params.creaseAngleDeg ?? 30
-                if (creaseAngle < 180) {
+                if (creaseAngle >= 0 && creaseAngle < 180) {
                     const beforeCount = (verts.length / (SIZEOF_VERTEX / 4)) | 0
                     const split = splitCreaseVertices(verts, tris, creaseAngle)
                     verts = split.verts

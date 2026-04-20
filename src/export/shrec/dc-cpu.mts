@@ -64,40 +64,40 @@ const EDGE_AXIS_INFO: ReadonlyArray<{
     /** 4 cell offsets, in CCW order around +axis. */
     cellOffsets: ReadonlyArray<readonly [number, number, number]>
 }> = [
-    {
-        // x-axis edge (vx,vy,vz) → (vx+1,vy,vz). CCW around +x.
-        axis: 0,
-        edgeStep: [1, 0, 0],
-        cellOffsets: [
-            [0, -1, -1],
-            [0, 0, -1],
-            [0, 0, 0],
-            [0, -1, 0],
-        ],
-    },
-    {
-        // y-axis edge (vx,vy,vz) → (vx,vy+1,vz). CCW around +y.
-        axis: 1,
-        edgeStep: [0, 1, 0],
-        cellOffsets: [
-            [-1, 0, -1],
-            [-1, 0, 0],
-            [0, 0, 0],
-            [0, 0, -1],
-        ],
-    },
-    {
-        // z-axis edge (vx,vy,vz) → (vx,vy,vz+1). CCW around +z.
-        axis: 2,
-        edgeStep: [0, 0, 1],
-        cellOffsets: [
-            [-1, -1, 0],
-            [0, -1, 0],
-            [0, 0, 0],
-            [-1, 0, 0],
-        ],
-    },
-]
+        {
+            // x-axis edge (vx,vy,vz) → (vx+1,vy,vz). CCW around +x.
+            axis: 0,
+            edgeStep: [1, 0, 0],
+            cellOffsets: [
+                [0, -1, -1],
+                [0, 0, -1],
+                [0, 0, 0],
+                [0, -1, 0],
+            ],
+        },
+        {
+            // y-axis edge (vx,vy,vz) → (vx,vy+1,vz). CCW around +y.
+            axis: 1,
+            edgeStep: [0, 1, 0],
+            cellOffsets: [
+                [-1, 0, -1],
+                [-1, 0, 0],
+                [0, 0, 0],
+                [0, 0, -1],
+            ],
+        },
+        {
+            // z-axis edge (vx,vy,vz) → (vx,vy,vz+1). CCW around +z.
+            axis: 2,
+            edgeStep: [0, 0, 1],
+            cellOffsets: [
+                [-1, -1, 0],
+                [0, -1, 0],
+                [0, 0, 0],
+                [-1, 0, 0],
+            ],
+        },
+    ]
 
 /**
  * Build an iso-surface mesh from a sampled (scalar, gradient) volume using
@@ -185,8 +185,8 @@ export function dualContourCPU(
 
                     const gA = idxA * 4
                     const gB = idxB * 4
-                    const nax = gradient[gA]!,     nay = gradient[gA + 1]!, naz = gradient[gA + 2]!
-                    const nbx = gradient[gB]!,     nby = gradient[gB + 1]!, nbz = gradient[gB + 2]!
+                    const nax = gradient[gA]!, nay = gradient[gA + 1]!, naz = gradient[gA + 2]!
+                    const nbx = gradient[gB]!, nby = gradient[gB + 1]!, nbz = gradient[gB + 2]!
                     const nx_ = nax + (nbx - nax) * t
                     const ny_ = nay + (nby - nay) * t
                     const nz_ = naz + (nbz - naz) * t

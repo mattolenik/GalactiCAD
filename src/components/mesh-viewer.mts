@@ -59,8 +59,15 @@ export class MeshViewer extends HTMLElement {
     #hoverCanvasPos: { x: number; y: number } | null = null
     #mdcDebug = false
     #mdcDebugCheckbox!: HTMLInputElement
-    #mdcFeatureDebug = false
-    #mdcFeatureDebugCheckbox!: HTMLInputElement
+    /** Per-class feature glyph overlay toggles (MDC debug). */
+    #mdcFeatureGlyphLine = false
+    #mdcFeatureGlyphCorner = false
+    #mdcFeatureGlyphSeam = false
+    #mdcFeatureGlyphRing = false
+    #mdcFeatureGlyphLineCheckbox!: HTMLInputElement
+    #mdcFeatureGlyphCornerCheckbox!: HTMLInputElement
+    #mdcFeatureGlyphSeamCheckbox!: HTMLInputElement
+    #mdcFeatureGlyphRingCheckbox!: HTMLInputElement
     #mdcDebugSamples: Float32Array<ArrayBuffer> = new Float32Array(0)
     #mdcDebugStats: MeshMdcDebugStats | null = null
 
@@ -121,7 +128,7 @@ export class MeshViewer extends HTMLElement {
             pointer-events: auto;
             z-index: 1;
         }
-        .overlay label {
+        .overlay > label {
             display: inline-flex;
             align-items: center;
             gap: 8px;
@@ -133,6 +140,35 @@ export class MeshViewer extends HTMLElement {
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
             user-select: none;
+        }
+        .overlay-feature-glyphs {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            padding: 5px 8px 6px;
+            border-radius: 6px;
+            font-size: 12px;
+            background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
+            color: rgb(from var(${__fg_color}) r g b / 0.85);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            user-select: none;
+        }
+        .overlay-feature-glyphs-title {
+            font-size: 11px;
+            opacity: 0.88;
+            padding: 0 2px 3px;
+        }
+        .overlay-feature-glyphs label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 1px 2px;
+            margin: 0;
+            border-radius: 0;
+            background: transparent;
+            color: inherit;
+            font-size: 12px;
         }
         .overlay input[type="checkbox"] {
             accent-color: var(${__tone_accent});
@@ -180,14 +216,28 @@ export class MeshViewer extends HTMLElement {
         debugLabel.append(this.#mdcDebugCheckbox, debugText)
         overlay.append(debugLabel)
 
-        const featureDebugLabel = document.createElement("label")
-        this.#mdcFeatureDebugCheckbox = document.createElement("input")
-        this.#mdcFeatureDebugCheckbox.type = "checkbox"
-        this.#mdcFeatureDebugCheckbox.checked = this.#mdcFeatureDebug
-        const featureDebugText = document.createElement("span")
-        featureDebugText.textContent = "Feature glyphs"
-        featureDebugLabel.append(this.#mdcFeatureDebugCheckbox, featureDebugText)
-        overlay.append(featureDebugLabel)
+        const featureGlyphBox = document.createElement("div")
+        featureGlyphBox.className = "overlay-feature-glyphs"
+        const featureGlyphTitle = document.createElement("div")
+        featureGlyphTitle.className = "overlay-feature-glyphs-title"
+        featureGlyphTitle.textContent = "Feature glyphs"
+        featureGlyphBox.append(featureGlyphTitle)
+        const addFeatureGlyphRow = (text: string, checked: boolean, assign: (el: HTMLInputElement) => void) => {
+            const row = document.createElement("label")
+            const cb = document.createElement("input")
+            cb.type = "checkbox"
+            cb.checked = checked
+            assign(cb)
+            const span = document.createElement("span")
+            span.textContent = text
+            row.append(cb, span)
+            featureGlyphBox.append(row)
+        }
+        addFeatureGlyphRow("Line", this.#mdcFeatureGlyphLine, el => { this.#mdcFeatureGlyphLineCheckbox = el })
+        addFeatureGlyphRow("Corner", this.#mdcFeatureGlyphCorner, el => { this.#mdcFeatureGlyphCornerCheckbox = el })
+        addFeatureGlyphRow("Seam", this.#mdcFeatureGlyphSeam, el => { this.#mdcFeatureGlyphSeamCheckbox = el })
+        addFeatureGlyphRow("Ring", this.#mdcFeatureGlyphRing, el => { this.#mdcFeatureGlyphRingCheckbox = el })
+        overlay.append(featureGlyphBox)
         shadow.appendChild(overlay)
 
         this.#translucentCheckbox.addEventListener("change", () => {
@@ -199,8 +249,17 @@ export class MeshViewer extends HTMLElement {
         this.#mdcDebugCheckbox.addEventListener("change", () => {
             this.#mdcDebug = this.#mdcDebugCheckbox.checked
         })
-        this.#mdcFeatureDebugCheckbox.addEventListener("change", () => {
-            this.#mdcFeatureDebug = this.#mdcFeatureDebugCheckbox.checked
+        this.#mdcFeatureGlyphLineCheckbox.addEventListener("change", () => {
+            this.#mdcFeatureGlyphLine = this.#mdcFeatureGlyphLineCheckbox.checked
+        })
+        this.#mdcFeatureGlyphCornerCheckbox.addEventListener("change", () => {
+            this.#mdcFeatureGlyphCorner = this.#mdcFeatureGlyphCornerCheckbox.checked
+        })
+        this.#mdcFeatureGlyphSeamCheckbox.addEventListener("change", () => {
+            this.#mdcFeatureGlyphSeam = this.#mdcFeatureGlyphSeamCheckbox.checked
+        })
+        this.#mdcFeatureGlyphRingCheckbox.addEventListener("change", () => {
+            this.#mdcFeatureGlyphRing = this.#mdcFeatureGlyphRingCheckbox.checked
         })
         this.canvas.addEventListener("pointermove", event => {
             const rect = this.canvas.getBoundingClientRect()
@@ -821,7 +880,11 @@ export class MeshViewer extends HTMLElement {
         if (!ctx) return
         ctx.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
         const showRawSamples = this.#mdcDebug
-        const showFeatureGlyphs = this.#mdcFeatureDebug
+        const showFeatureGlyphs =
+            this.#mdcFeatureGlyphLine
+            || this.#mdcFeatureGlyphCorner
+            || this.#mdcFeatureGlyphSeam
+            || this.#mdcFeatureGlyphRing
         if ((!showRawSamples && !showFeatureGlyphs) || this.#mdcDebugSamples.length === 0) return
 
         const samples = this.#mdcDebugSamples
@@ -1063,9 +1126,19 @@ export class MeshViewer extends HTMLElement {
                 updateHover(record.sampleIdx, record.x, record.y, record.priority)
             }
         }
+        const featureGlyphEnabled = (klass: number): boolean => {
+            switch (klass) {
+                case 1: return this.#mdcFeatureGlyphLine
+                case 2: return this.#mdcFeatureGlyphCorner
+                case 3: return this.#mdcFeatureGlyphSeam
+                case 4: return this.#mdcFeatureGlyphRing
+                default: return false
+            }
+        }
         if (showFeatureGlyphs) {
             featureRecords.sort((a, b) => b.depth - a.depth || featurePriorityForClass(a.klass) - featurePriorityForClass(b.klass) || a.sampleIdx - b.sampleIdx)
             for (const record of featureRecords) {
+                if (!featureGlyphEnabled(record.klass)) continue
                 const featureColor = colorForClass(record.klass).replace(/0\.\d+\)/, "1.0)")
                 ctx.save()
                 ctx.strokeStyle = featureColor
@@ -1166,10 +1239,17 @@ export class MeshViewer extends HTMLElement {
         if (stats) {
             const text1 = `Mesh debug ${stats.totalSamples} samples`
             const text2 = `L ${stats.acceptedLine}  C ${stats.acceptedCorner}  S ${stats.acceptedSeam}  Ring ${stats.acceptedRing}  Rej ${stats.rejected}`
+            const glyphModeParts = [
+                this.#mdcFeatureGlyphLine && "line",
+                this.#mdcFeatureGlyphCorner && "corner",
+                this.#mdcFeatureGlyphSeam && "seam",
+                this.#mdcFeatureGlyphRing && "ring",
+            ].filter(Boolean) as string[]
+            const glyphModeLabel = glyphModeParts.length > 0 ? glyphModeParts.join("+") : "glyphs off"
             const overlayMode =
-                showRawSamples && showFeatureGlyphs ? "raw squares + feature glyphs"
+                showRawSamples && showFeatureGlyphs ? `raw squares + ${glyphModeLabel}`
                     : showRawSamples ? "raw squares only"
-                        : "feature glyphs only"
+                        : glyphModeLabel
             const text3 = hideNoneSamples ? `${overlayMode}  gray hidden  N ${stats.acceptedNone}` : `${overlayMode}  N ${stats.acceptedNone}`
             ctx.save()
             ctx.font = "12px system-ui, sans-serif"

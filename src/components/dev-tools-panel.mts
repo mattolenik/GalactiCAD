@@ -34,9 +34,9 @@ const MDC_RANGE_KNOBS: {
     max: number
     step: number
 }[] = [
-    { key: "isoValue", label: "Iso value", min: -0.2, max: 0.2, step: 0.002 },
-    { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1 },
-]
+        { key: "isoValue", label: "Iso value", min: -0.2, max: 0.2, step: 0.002 },
+        { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1 },
+    ]
 
 const PREVIEW_SHADING_KNOBS: {
     key: keyof PreviewShadingParams

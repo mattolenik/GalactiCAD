@@ -96,14 +96,30 @@ fn sampleGrid(@builtin(global_invocation_id) gid: vec3u) {
     scalarOut[idx] = r.d;
     gradientOut[idx] = vec4f(r.n, r.g);
 
-    // Seam tangent is meaningful only when the voxel actually sits on a CSG
-    // seam, **and** is geometrically close to it. Two gates:
-    //   1. r.seamOp != 0 — there IS a hard seam (union/intersection/diff).
-    //   2. |r.seamGap| < voxelSize · k — within the seam-aware envelope.
-    // The factor k decides how far from the seam line we still trust the
-    // tangent direction. ~1.5 voxels is a safe envelope: catches every cell
-    // that contains the seam while excluding cells that merely look toward it.
+    // Seam tangent + bevel flag, packed into the w-component:
+    //   w = 0.0  →  voxel is OFF any CSG seam (gradient is the unique
+    //              per-primitive normal — clean for QEF use).
+    //   w = 1.0  →  voxel is ON a CSG seam (within ~1.5 voxels) AND
+    //              its analytical SDF gradient `r.n` is the unique
+    //              per-plane normal (gap > SURF_DIST in `opUnionEx`/
+    //              `opIntersectionEx`, so the operator picked the
+    //              dominant operand's normal).
+    //   w = 2.0  →  voxel is ON a CSG seam AND in the **bevel band**
+    //              (gap < SURF_DIST = 0.001 mm). Inside this band the
+    //              CSG operators return `normalize(a.n + b.n)` —
+    //              the bevel-direction average — instead of a per-plane
+    //              normal. Linear interpolation of bevel and clean
+    //              gradients across a cube edge biases the per-cell
+    //              QEF and shifts rank-3 corner vertices inward away
+    //              from the true 3-plane intersection. CPU MergeSharp
+    //              uses this flag to skip bevel-endpoint contributions
+    //              when interpolating crossing normals.
+    //
+    // The 1.5-voxel envelope catches every cell that contains a seam
+    // while excluding cells that merely look toward it; the bevel band
+    // is much narrower (1 µm) and is a strict subset.
     let onSeam = (r.seamOp != 0u) && (r.seamGap < voxelSize * 1.5);
-    let validity = select(0.0, 1.0, onSeam);
-    seamTangentOut[idx] = vec4f(r.seamTangent, validity);
+    let inBevelBand = (r.seamOp != 0u) && (r.seamGap < 0.001);
+    let w = select(0.0, select(1.0, 2.0, inBevelBand), onSeam);
+    seamTangentOut[idx] = vec4f(r.seamTangent, w);
 }

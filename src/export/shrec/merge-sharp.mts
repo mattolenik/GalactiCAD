@@ -255,6 +255,12 @@ interface RelocationStats {
      * normal" artefact that pollutes rank-2 QEFs at CSG seams.
      */
     seamGradFallbacks: number
+    /** Cube-edge crossings where one endpoint was bevel-flagged → substituted by the other endpoint's clean gradient. */
+    bevelOneSubstituted: number
+    /** Cube-edge crossings where both endpoints were bevel-flagged → crossing skipped entirely. */
+    bevelBothSkipped: number
+    /** Rank-3 cells flagged as CSG corners (klass=2 glyph in debug overlay). */
+    csgCornerSnaps: number
     /** Cells solved with the unconstrained Tikhonov 3D QEF (the default path for cells without seam metadata). */
     tikhonovSolved: number
     /**
@@ -360,6 +366,27 @@ export function mergeSharpRelocate(
      * the cell's QEF.
      */
     let seamGradFallbacks = 0
+    /**
+     * Cube-edge crossings where one endpoint was flagged as a bevel
+     * voxel (`seamTangent.w == 2`) and the other endpoint's clean
+     * per-plane gradient was substituted in its place.
+     */
+    let bevelOneSubstituted = 0
+    /**
+     * Cube-edge crossings where BOTH endpoints were flagged bevel and
+     * the crossing was skipped entirely (no usable per-plane gradient).
+     */
+    let bevelBothSkipped = 0
+    /**
+     * Rank-3 cells (3-plane intersections) that sit on the CSG seam
+     * network and were given a klass=2 corner glyph for the debug
+     * overlay. The mesh vertex is placed via the cell-clamped
+     * pseudo-inverse (DC topology invariant); the glyph anchor is the
+     * UNCLAMPED pseudo-inverse vertex (the geometric 3-plane
+     * intersection), so all cells around the same corner share one
+     * glyph after the viewer's spatial dedup.
+     */
+    let csgCornerSnaps = 0
     let tikhonovSolved = 0
     let contourLineSnaps = 0
     let contourCornerSnaps = 0
@@ -462,54 +489,72 @@ export function mergeSharpRelocate(
 
             const gA = idxA * 4
             const gB = idxB * 4
-            // Linear interpolation of voxel-corner gradients — works fine
-            // for smooth iso-surfaces, but FAILS at sharp CSG seams where
-            // the SDF gradient is discontinuous between the two endpoints.
-            // Example at a 90° box-subtract-box edge: endpoint A's grad is
-            // `n1` (one face's outward normal), endpoint B's grad is `n2`
-            // (perpendicular face's normal). The interpolated grad
-            // `(n1+n2)/2` has magnitude `cos(45°) ≈ 0.707` and points in
-            // the bevel direction — feeding that into the QEF biases the
-            // rank-2 eigenstructure toward the bevel, producing the
-            // multi-voxel chamfer artefact along the seam.
+            // Per-crossing normal selection — three cases:
             //
-            // Detect the discontinuity (interpolated `|g|` significantly
-            // below 1) and fall back to the endpoint gradient nearer to
-            // the crossing. That endpoint's per-voxel gradient was
-            // sampled cleanly off-seam, so it reflects the actual plane
-            // the crossing belongs to (the crossing is on plane 1 if
-            // closer to endpoint A, plane 2 if closer to B). This is
-            // SHREC's CPU-side analogue of MDC's "evaluate analytic
-            // normal at crossing position" trick — we don't have a CPU
-            // SDF to call, but the per-voxel gradients we sampled on the
-            // GPU are accurate and we just need to pick the right one.
-            let nx_ = gradient[gA]! + t * (gradient[gB]! - gradient[gA]!)
-            let ny_ = gradient[gA + 1]! + t * (gradient[gB + 1]! - gradient[gA + 1]!)
-            let nz_ = gradient[gA + 2]! + t * (gradient[gB + 2]! - gradient[gA + 2]!)
-            let nLen = Math.hypot(nx_, ny_, nz_)
-            // Discontinuity threshold: a true SDF has |g| ≡ 1 at every
-            // voxel, so the interpolated grad of any *smoothly* sampled
-            // edge will also be ~1. Magnitudes below 0.95 indicate the
-            // two endpoint grads disagree by more than ~36° — a clear
-            // signal of a CSG-seam-spanning edge. (Gradients in smooth
-            // CSG blend regions also have |g| < 1, but the per-voxel
-            // gradients there are reliable; only the *vector*
-            // interpolation is wrong, and only for cross-seam edges.)
-            if (nLen < 0.95) {
-                // Pick the endpoint nearer the crossing (smaller `|t-0.5|`
-                // to that endpoint). Equivalently: A if t < 0.5, else B.
-                if (t < 0.5) {
-                    nx_ = gradient[gA]!
-                    ny_ = gradient[gA + 1]!
-                    nz_ = gradient[gA + 2]!
-                } else {
-                    nx_ = gradient[gB]!
-                    ny_ = gradient[gB + 1]!
-                    nz_ = gradient[gB + 2]!
+            // 1) NEITHER endpoint is in the bevel band → the per-voxel
+            //    gradients are unique per-plane normals. Linear
+            //    interpolation works fine when both endpoints are on the
+            //    same plane (smooth case). When the cube edge spans a
+            //    sharp CSG seam (one endpoint per plane), the interpolated
+            //    grad has magnitude ≈ cos(angle/2) < 1; we detect this
+            //    and substitute the nearer endpoint's clean per-plane
+            //    gradient (the crossing is on plane A if closer to A, on
+            //    plane B if closer to B).
+            //
+            // 2) ONE endpoint is in the bevel band (gap < SURF_DIST in
+            //    `opUnionEx`/`opIntersectionEx` → operator returned an
+            //    averaged bevel normal). Always use the OTHER endpoint's
+            //    clean per-plane gradient — bevel-direction normals
+            //    pollute the QEF eigenstructure and bias rank-3 corner
+            //    vertices inward (worked example: a corner cell at a
+            //    rim with `(1+vs, 1+vs, 3-vs)` voxels carries a
+            //    `(0.707, 0, 0.707)` bevel normal — feeding it into the
+            //    QEF shifts the corner inward by a noticeable
+            //    fraction of a voxel).
+            //
+            // 3) BOTH endpoints in the bevel band → no clean gradient
+            //    available for this crossing. Skip it. The cell's other
+            //    crossings provide enough constraints to recover the
+            //    correct rank-3 vertex (worked example earlier: dropping
+            //    the polluted Y-axis crossing of a corner cell leaves 4
+            //    clean crossings whose pseudo-inverse still yields the
+            //    exact corner).
+            const aBevel = seamTangent[gA + 3]! > 1.5
+            const bBevel = seamTangent[gB + 3]! > 1.5
+            let nx_: number, ny_: number, nz_: number
+            if (aBevel && bBevel) {
+                bevelBothSkipped++
+                continue
+            } else if (aBevel) {
+                nx_ = gradient[gB]!
+                ny_ = gradient[gB + 1]!
+                nz_ = gradient[gB + 2]!
+                bevelOneSubstituted++
+            } else if (bBevel) {
+                nx_ = gradient[gA]!
+                ny_ = gradient[gA + 1]!
+                nz_ = gradient[gA + 2]!
+                bevelOneSubstituted++
+            } else {
+                nx_ = gradient[gA]! + t * (gradient[gB]! - gradient[gA]!)
+                ny_ = gradient[gA + 1]! + t * (gradient[gB + 1]! - gradient[gA + 1]!)
+                nz_ = gradient[gA + 2]! + t * (gradient[gB + 2]! - gradient[gA + 2]!)
+                if (Math.hypot(nx_, ny_, nz_) < 0.95) {
+                    // Cross-seam edge: both endpoints clean per-plane but
+                    // on different planes. Substitute nearer endpoint.
+                    if (t < 0.5) {
+                        nx_ = gradient[gA]!
+                        ny_ = gradient[gA + 1]!
+                        nz_ = gradient[gA + 2]!
+                    } else {
+                        nx_ = gradient[gB]!
+                        ny_ = gradient[gB + 1]!
+                        nz_ = gradient[gB + 2]!
+                    }
+                    seamGradFallbacks++
                 }
-                nLen = Math.hypot(nx_, ny_, nz_)
-                seamGradFallbacks++
             }
+            const nLen = Math.hypot(nx_, ny_, nz_)
             if (nLen < 1e-12) continue
             const ninv = 1 / nLen
             nx_ *= ninv
@@ -569,11 +614,22 @@ export function mergeSharpRelocate(
 
         const eig = sym3Eigen(M)
 
-        // Diagnostic only — actual placement uses the smooth Tikhonov solve
-        // below, which has no rank-classification discontinuity. The rank
-        // breakdown remains useful for "how many sharp features did we
-        // detect?" telemetry in the dev log.
+        // Two rank classifications:
+        //
+        //   `rank` — permissive (cutoff = `relCutoff`, default 0.05).
+        //     Used as a telemetry / "how many sharp features detected"
+        //     count. Includes borderline cells whose smallest
+        //     eigenvalue is just above the threshold.
+        //
+        //   `rankSolve` — strict (cutoff 0.15). Drives both the
+        //     pseudo-inverse SOLVE and the CSG seam/corner
+        //     classification. The stricter cutoff drops borderline
+        //     directions that would otherwise blow up the
+        //     `(eᵢ·b / λᵢ)` term in the pseudo-inverse, which
+        //     manifested as "1-voxel offset on 1 axis" corner glyphs
+        //     at certain voxel sizes.
         const rank = sym3Rank(eig, relCutoff)
+        const rankSolve = sym3Rank(eig, 0.15)
         if (rank === 3) pointFeatures++
         else if (rank === 2) edgeFeatures++
         else if (rank === 1) flatFeatures++
@@ -613,6 +669,12 @@ export function mergeSharpRelocate(
         //   2 = contour-corner snap (point or intersection)  (debug viz: corner glyph)
         //   5 = seam-degenerate                         (debug viz: red square)
         let cellKlass = 0
+        // Provisional CSG-corner flag — committed to `cellKlass = 2` only
+        // after the cell-bounds clamp confirms the pseudo-inverse vertex
+        // stayed inside this cell. Otherwise the rank-3 solve was
+        // targeting a corner in a neighbour cell and the clamp put us on
+        // the wrong face — no glyph in that case.
+        let pendingCsgCornerGlyph = false
         // Track the snap result so the debug emission downstream can pack
         // its tangent into N1/N2 the same way the seam-tangent path does.
         let snapResult: ContourSnapResult | null = null
@@ -655,29 +717,63 @@ export function mergeSharpRelocate(
                 cornerSnapHits.set(snapResult.featureIdx, (cornerSnapHits.get(snapResult.featureIdx) ?? 0) + 1)
             }
         } else {
-            // Seam-path eligibility:
+            // Seam-path eligibility — placement vs. classification split:
             //
-            //   The cell's *own* iso-surface data must have the two-plane
-            //   structure of a CSG-edge cell (`rank === 2`). That's a
-            //   stronger geometric signal than corner-voxel tangent
-            //   agreement — the rank comes directly from the cell's edge
-            //   crossings, so it stays valid even when the SDF's per-voxel
-            //   seam tangent metadata is missing or noisy. Rank-1 (flat)
-            //   and rank-3 (corner) cells fall through to the Tikhonov /
-            //   point-feature paths where they place correctly inside
-            //   their own bounds.
+            //   PLACEMENT (`seamPath` → pseudo-inverse): we use the
+            //   rank-aware pseudo-inverse for any cell whose own QEF
+            //   data has a confident sharp-feature structure
+            //   (`rank >= 2`, i.e. either an edge or a corner). This
+            //   places the vertex exactly at the planes' intersection
+            //   instead of Tikhonov's 5%-biased solve. Crucially,
+            //   rank=3 inclusion also fixes the "pinched corner"
+            //   artefact at CSG-seam corners: the corner cell's vertex
+            //   now lands exactly on the geometric corner (3-plane
+            //   intersection), matching the rank-2 pseudo-inverse
+            //   placement of the adjacent cells along the seam line.
             //
-            //   When `seamAwareEnabled` is on we ALSO try to compute a
-            //   coherent seam tangent for the line-fit / debug-glyph
-            //   path. If the corners disagree (smooth blends, multi-seam
-            //   meeting points), the seam tangent isn't recoverable but
-            //   the rank-2 pseudo-inverse still places the vertex
-            //   correctly without it — the eigendecomposition itself
-            //   yields the null-space direction.
+            //   CLASSIFICATION (`isCsgSeam` → klass=3 glyph + line-fit
+            //   metadata): we only mark a cell as a "CSG seam line" for
+            //   debug visualisation and for the line-fit pass when the
+            //   SDF actually reports a coherent CSG seam tangent at all
+            //   the cell's corner voxels (`seamCornersAgree`). This
+            //   excludes box-primitive edges — which are rank=2 too,
+            //   but they carry no CSG-seam metadata (their sharpness
+            //   comes from the box primitive itself, not from a CSG
+            //   operation). Those cells still get the precise
+            //   pseudo-inverse placement, just no klass=3 glyph
+            //   cluttering the viewer.
             const seamCornersAgree = seamAwareEnabled
                 ? classifyCellSeam(seamTangent, nx, ny, cx, cy, cz, seamAgreementCos, seamT)
                 : false
-            const seamPath = seamAwareEnabled && rank === 2
+            // Coarser CSG-presence check: at least one corner voxel reports a
+            // valid CSG seam tangent (validity > 0.5). Corner cells (rank=3,
+            // 3-plane intersections) can never satisfy `seamCornersAgree`
+            // because their corners report multiple distinct seam tangents
+            // — but we still want to flag them as CSG features for the debug
+            // overlay. This check captures "this cell is somewhere on the
+            // network of CSG seams" without requiring a single coherent
+            // tangent direction.
+            let cellOnAnyCsgSeam = false
+            if (seamAwareEnabled) {
+                for (let i = 0; i < 8; i++) {
+                    const off = CELL_CORNERS[i]!
+                    const vidx = ((cz + off[2]) * ny + (cy + off[1])) * nx + (cx + off[0])
+                    if (seamTangent[vidx * 4 + 3]! >= 0.5) {
+                        cellOnAnyCsgSeam = true
+                        break
+                    }
+                }
+            }
+            const seamPath = seamAwareEnabled && rankSolve >= 2
+            const isCsgSeam = seamPath && seamCornersAgree && rankSolve === 2
+            // Rank-3 cell sitting on the CSG seam network = CSG-derived corner
+            // (e.g. rim corner where 3 surfaces meet). Pseudo-inverse already
+            // places it exactly at the 3-plane intersection; we add a klass=2
+            // glyph for the debug overlay so these corners are visible.
+            // Uses `rankSolve` (strict) so borderline cells classified as
+            // rank-2 by the solve don't get a misleading corner glyph at
+            // their (offset, noise-amplified) vertex.
+            const isCsgCorner = seamPath && rankSolve === 3 && cellOnAnyCsgSeam
             if (seamCornersAgree && !seamPath) seamRejectedByRank++
         if (seamPath) {
             // Cells classified as on a CSG seam get the **rank-aware
@@ -707,38 +803,69 @@ export function mergeSharpRelocate(
             // agree on the seam tangent (so the rank-classification
             // jitter that motivated Tikhonov elsewhere doesn't apply
             // along a coherent CSG seam).
-            sym3SolvePInv(eig, rhsX, rhsY, rhsZ, relCutoff, correction)
+            // Stricter cutoff for the seam-path solve (`max(relCutoff,
+            // 0.15)`). Why two different cutoffs:
+            //
+            //   - `relCutoff` (default 0.05) is permissive — good for the
+            //     rank classification used to decide WHICH cells are
+            //     sharp features at all.
+            //   - For the actual pseudo-inverse SOLVE on those cells we
+            //     need a stricter cutoff. Pseudo-inverse forms
+            //     `Σᵢ (eᵢ·b / λᵢ) eᵢ`; a *borderline* rank-3 cell with
+            //     eigenvalues like `(1, 1, 0.06)` keeps all three terms
+            //     (0.06 > 0.05 · 1) and the `e₃·b / 0.06` factor blows
+            //     up — small noise along the smallest eigenvector axis
+            //     becomes a large displacement (visible as a ~1-voxel
+            //     glyph offset along a single axis at certain voxel
+            //     sizes; "perfectly shaped at the right voxel size"
+            //     means the noise term happened to land near zero).
+            //
+            //   Raising the SOLVE cutoff to 0.15 drops borderline
+            //   directions (anything below 15% of the largest
+            //   eigenvalue) so a marginally-rank-3 cell falls back to a
+            //   stable 2D placement instead of an amplified 3D one. A
+            //   confidently rank-3 corner (eigenvalues like `(1, 1, 3)`
+            //   or `(1, 1, 1)` from a true 3-plane intersection) still
+            //   keeps all three terms and lands exactly on the corner.
+            const solveCutoff = Math.max(relCutoff, 0.15)
+            sym3SolvePInv(eig, rhsX, rhsY, rhsZ, solveCutoff, correction)
             nxv = massVec[0] + correction[0]
             nyv = massVec[1] + correction[1]
             nzv = massVec[2] + correction[2]
             seamSnapped++
-            // klass=3 (seam): debug glyph is a violet dashed line along
-            // the seam tangent, distinct from contour-line teal.
-            cellKlass = 3
-            // Seam tangent for the line-fit pass + debug glyph. Prefer
-            // the SDF's analytical tangent when the corners agreed; fall
-            // back to the QEF eigenvector of the smallest eigenvalue
-            // (mathematically the rank-2 null direction = seam line
-            // direction) when they didn't. Sort order in `sym3Eigen` is
-            // descending |λ|, so index 2 is the smallest.
-            let stx = seamT[0], sty = seamT[1], stz = seamT[2]
-            if (!seamCornersAgree) {
-                const v2 = eig.vectors[2]
-                stx = v2[0]; sty = v2[1]; stz = v2[2]
+            // Debug glyph + line-fit metadata are only emitted for cells
+            // the SDF identified as on a true CSG feature:
+            //
+            //   isCsgSeam   (rank=2, corner tangents agree) → klass=3
+            //                  violet line glyph + line-fit chain member
+            //   isCsgCorner (rank=3, on the CSG seam network) → klass=2
+            //                  diamond glyph (no line-fit; corners aren't
+            //                  smoothed — they're chain endpoints)
+            //
+            // Other rank≥2 cells (box primitive edges, generic corners
+            // away from any CSG seam, etc.) get the same precise
+            // pseudo-inverse placement but no glyph, keeping the overlay
+            // focused on features created by CSG ops.
+            if (isCsgSeam) {
+                cellKlass = 3
+                const cellLoX_ = ox + cx * vs
+                const cellLoY_ = oy + cy * vs
+                const cellLoZ_ = oz + cz * vs
+                seamCellRecords.push({
+                    vi,
+                    cx, cy, cz,
+                    tx: seamT[0], ty: seamT[1], tz: seamT[2],
+                    cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
+                    cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
+                })
+            } else if (isCsgCorner) {
+                // Defer the klass=2 commit until after the cell-bounds
+                // clamp — see the post-clamp block. The clamp's outcome
+                // determines whether this cell's glyph anchor uses the
+                // (mesh-vertex, clamped) position or the (unclamped,
+                // shared-with-neighbours) corner position.
+                pendingCsgCornerGlyph = true
             }
-            // Capture per-cell metadata for the post-MergeSharp line-fit
-            // pass. We pass the **bare** cell bounds (no inset) — the
-            // line fit uses them as a defensive clamp.
-            const cellLoX_ = ox + cx * vs
-            const cellLoY_ = oy + cy * vs
-            const cellLoZ_ = oz + cz * vs
-            seamCellRecords.push({
-                vi,
-                cx, cy, cz,
-                tx: stx, ty: sty, tz: stz,
-                cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
-                cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
-            })
         } else {
             // Tikhonov-regularized 3D solve in mass-point-shifted coordinates:
             //   x = mass + (A + λI)⁻¹ (b - A·mass),  λ = relCutoff · |λmax|
@@ -762,6 +889,17 @@ export function mergeSharpRelocate(
         if (czNew < bzLo) { czNew = bzLo; cellClamped = true }
         else if (czNew > bzHi) { czNew = bzHi; cellClamped = true }
         if (cellClamped) clampedByCell++
+
+        // Commit the deferred CSG-corner glyph. The glyph anchor uses
+        // the unclamped pseudo-inverse vertex `(nxv, nyv, nzv)` — set
+        // in the debug-fill block below — which is identical across
+        // all cells around the same 3-plane intersection. The
+        // viewer's spatial dedup collapses them into a single diamond
+        // glyph at the actual geometric corner.
+        if (pendingCsgCornerGlyph) {
+            cellKlass = 2
+            csgCornerSnaps++
+        }
 
         // Optional extra clamp against displacement from the original DC
         // position (e.g. when the user asks for very conservative motion).
@@ -834,12 +972,36 @@ export function mergeSharpRelocate(
         debugSamples[dbg + 4] = outNx
         debugSamples[dbg + 5] = outNy
         debugSamples[dbg + 6] = outNz
-        // Feature point = vertex position (SHREC has no separate "feature
-        // point" — the vertex IS the feature). Same value at 8..10 and 0..2
-        // is what the viewer expects when there's no MDC-style snap target.
-        debugSamples[dbg + 8] = cxNew
-        debugSamples[dbg + 9] = cyNew
-        debugSamples[dbg + 10] = czNew
+        // Feature point — the world position the viewer's glyph anchors
+        // to. For cells whose mesh vertex sits *exactly* where the QEF
+        // wanted to put it (no cell-bounds clamp), this is identical to
+        // the mesh vertex `(cxNew, cyNew, czNew)`. But for "phantom"
+        // seam-path cells whose pseudo-inverse vertex landed outside
+        // the cell (the geometric CSG feature is actually in a neighbour
+        // cell), the clamp drags the mesh vertex to a face — and using
+        // the clamped position as the glyph anchor scatters the seam /
+        // corner glyphs across cell faces instead of putting them on
+        // the actual feature line.
+        //
+        // Solution: for any seam-path cell (klass=2 CSG corner or
+        // klass=3 CSG seam), use the **unclamped** pseudo-inverse
+        // vertex `(nxv, nyv, nzv)` as the glyph anchor. All cells
+        // adjacent to the same geometric feature share the same
+        // unclamped target, so the viewer's spatial dedup collapses
+        // neighbouring cells' glyphs into one feature glyph at the
+        // actual seam / corner. For klass=1 contour snaps the snap
+        // result was already constrained to the cell, so unclamped =
+        // clamped and behaviour is unchanged.
+        const isSeamPathGlyph = pendingCsgCornerGlyph || cellKlass === 3
+        if (isSeamPathGlyph) {
+            debugSamples[dbg + 8] = nxv
+            debugSamples[dbg + 9] = nyv
+            debugSamples[dbg + 10] = nzv
+        } else {
+            debugSamples[dbg + 8] = cxNew
+            debugSamples[dbg + 9] = cyNew
+            debugSamples[dbg + 10] = czNew
+        }
 
         // For "line" cells (klass=1) and "seam" cells (klass=3) — both
         // contour-segment, seam-aware, and seam-degenerate-fallback paths —
@@ -893,9 +1055,25 @@ export function mergeSharpRelocate(
                 debugSamples[dbg + 15] = snapResult.ownerId
                 debugSamples[dbg + 19] = snapResult.featureIdx
             }
-        } else if (cellKlass === 2 && snapResult) {
-            debugSamples[dbg + 15] = snapResult.ownerId
-            debugSamples[dbg + 19] = snapResult.featureIdx
+        } else if (cellKlass === 2) {
+            if (snapResult) {
+                // Contour-snapped corner: real ownerId + featureIdx for
+                // per-corner dedup (each box corner is its own glyph).
+                debugSamples[dbg + 15] = snapResult.ownerId
+                debugSamples[dbg + 19] = snapResult.featureIdx
+            } else {
+                // CSG corner detected via QEF rank=3 + seam metadata
+                // (`isCsgCorner` above). No primitive ID is meaningful
+                // here — the corner is *implied* by the CSG operation,
+                // not declared by any single primitive. Use sentinel
+                // owners (-1, -1) so all CSG corners share a key and
+                // the viewer's spatial filter merges multiple cells
+                // around the same geometric corner into a single
+                // glyph. The sentinel won't collide with contour-snap
+                // ownerIds, which are always non-negative.
+                debugSamples[dbg + 15] = -1
+                debugSamples[dbg + 19] = -1
+            }
         }
         // (Other slots — featureDist, ownerA/B, ringAxis, reserved — left at 0
         // by the Float32Array initialisation. Mesh viewer treats them as defaults.)
@@ -913,6 +1091,9 @@ export function mergeSharpRelocate(
         seamSnapped,
         seamRejectedByRank,
         seamGradFallbacks,
+        bevelOneSubstituted,
+        bevelBothSkipped,
+        csgCornerSnaps,
         tikhonovSolved,
         contourLineSnaps,
         contourCornerSnaps,
@@ -928,6 +1109,8 @@ export function mergeSharpRelocate(
         `contourLine=${stats.contourLineSnaps} contourCorner=${stats.contourCornerSnaps} ` +
         `seamSnapped=${stats.seamSnapped} seamRejectedByRank=${stats.seamRejectedByRank} ` +
         `seamGradFallbacks=${stats.seamGradFallbacks} ` +
+        `bevelOneSubstituted=${stats.bevelOneSubstituted} bevelBothSkipped=${stats.bevelBothSkipped} ` +
+        `csgCornerSnaps=${stats.csgCornerSnaps} ` +
         `tikhonov=${stats.tikhonovSolved} ` +
         `elapsed=${stats.elapsedMs.toFixed(1)}ms`,
     )

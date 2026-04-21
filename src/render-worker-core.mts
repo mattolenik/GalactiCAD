@@ -1154,8 +1154,24 @@ export class RenderWorkerCore {
             this.#uniformBuffers.mdcSceneParams,
         )
         const fineMesh = await secondaryIso.export(shaderModule)
-        const { mergeIsoMeshes } = await import("./export/iso-mesh-merge.mjs")
-        return mergeIsoMeshes(coarseMesh, fineMesh, { min: fineMin, max: fineMax })
+        const { mergeIsoMeshes, snapAndCompactMergedMesh } = await import("./export/iso-mesh-merge.mjs")
+        const fineAABB = { min: fineMin, max: fineMax }
+        const merged = mergeIsoMeshes(coarseMesh, fineMesh, fineAABB)
+
+        // Stage 4 Session 4: snap fine boundary vertices to nearest coarse boundary
+        // vertex on the same AABB face plane, closing the cracks Session 3's merge
+        // alone leaves at the refinement boundary. snapTol = primary voxel × 0.6 is
+        // a balance: large enough to span the resolution gap (each fine iso-crossing
+        // is within ½ coarse voxel of a coarse iso-crossing on a smooth surface),
+        // small enough to avoid accidental merges across distinct surface branches.
+        const snapTol = adaptive.primaryVoxelSize * 0.6
+        const snapped = snapAndCompactMergedMesh(merged, fineAABB, { snapTolMm: snapTol })
+        log("RenderWorker").info(
+            `Stage 4 S4 snap: ${snapped.snappedCount} fine→coarse vertex remaps `
+            + `(snapTol=${snapTol.toFixed(4)} mm), ${snapped.unsnappedFineBoundaryCount} fine boundary `
+            + `vertices left unsnapped (residual cracks at these positions).`,
+        )
+        return snapped.mesh
     }
 
     async #computeSceneBounds(searchMin: [number, number, number], searchMax: [number, number, number], stepMm: number): Promise<{ min: readonly [number, number, number]; max: readonly [number, number, number] } | null> {

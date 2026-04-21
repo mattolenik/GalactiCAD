@@ -5,6 +5,7 @@ import { mergeSharpRelocate } from "./shrec/merge-sharp.mjs"
 import { deduplicateMergedVertices } from "./shrec/dedup.mjs"
 import { ContourSpatialIndex } from "./shrec/contour-snap.mjs"
 import { fitSeamEdges } from "./shrec/edge-fit.mjs"
+import { verifySeams } from "./shrec/verify-seam.mjs"
 import { splitCreaseVertices } from "./crease-split.mjs"
 import type { MeshData } from "./export.mjs"
 import type { ProgressCallback } from "./mdc.mjs"
@@ -87,6 +88,21 @@ export interface ShrecParams {
      * cells. See `fitSeamEdges` in `edge-fit.mts`. Default `true`.
      */
     edgeFitEnabled?: boolean
+    /**
+     * Run per-operand seam/corner verification (see `verifySeams` in
+     * `verify-seam.mts`) after MergeSharp. For each candidate seam or
+     * corner cell, trilinear-interpolates the per-operand SDFs from the
+     * grid, checks `|sdfA − ±sdfB| < tol` AND `|sdfA| < tol`, and either
+     * accepts (optionally refining via Newton) or rejects (fallback to
+     * Tikhonov; no glyph). Default `true`.
+     */
+    verifySeamsEnabled?: boolean
+    /**
+     * Enable the Newton refinement step inside `verifySeams`. When off,
+     * candidates are only accepted if they pass verification on the
+     * very first sample. Default `true`.
+     */
+    verifyRefineEnabled?: boolean
 }
 
 /**
@@ -238,6 +254,96 @@ export class ShrecExport {
                 vertexCount: result.stats.vertexCount,
             }
 
+            // ---- Post-MergeSharp seam/corner VERIFICATION ----------------
+            //
+            // For every cell that took the seam path (klass=2 corner OR
+            // klass=3 seam), verify the cell's vertex actually sits on
+            // the geometric seam line. The check uses the per-operand
+            // SDF distances (`seamSdfA`, `seamSdfB`) trilinearly
+            // interpolated from the grid: a true seam point has
+            // `|sdfA − ±sdfB| < tol` AND `|sdfA| < tol`.
+            //
+            // Candidates that PASS keep their seam classification
+            // (and may move to a Newton-refined position closer to the
+            // true seam line). Candidates that FAIL are rejected:
+            //   - mesh vertex reverts to the Tikhonov fallback solve
+            //     (smooth, in-cell, no surprise placement);
+            //   - debug-overlay klass is reset to 0 (no glyph);
+            //   - the cell is dropped from the line-fit chain so it
+            //     doesn't pollute downstream Laplacian smoothing.
+            const verifyEnabled = this.params.verifySeamsEnabled ?? true
+            const verifyRefine = this.params.verifyRefineEnabled ?? true
+            const candidates = result.stats.verifyCandidates
+            const acceptedSet = new Set<number>()  // vi indices that passed verification
+            if (verifyEnabled && candidates.length > 0) {
+                progressCallback?.updateProgress("SHREC: per-operand verification", 70)
+                checkCancelled()
+                const verifyResult = verifySeams(grid, candidates, {
+                    refineEnabled: verifyRefine,
+                })
+                const verts = mesh.verts
+                const dbgSamples = mergeDebugSamples
+                const VERTEX_STRIDE = 8
+                const DEBUG_STRIDE = 24
+                for (let i = 0; i < candidates.length; i++) {
+                    const c = candidates[i]!
+                    const vBase = c.vi * VERTEX_STRIDE
+                    const dBase = c.vi * DEBUG_STRIDE
+                    if (verifyResult.accepted[i]) {
+                        acceptedSet.add(c.vi)
+                        // For accepted+refined candidates, move both the
+                        // mesh vertex and the debug glyph anchor to the
+                        // refined position. (Direct accepts have refined
+                        // ≡ unclamped pseudo-inverse, so this is a no-op
+                        // for the glyph and an in-cell update for the
+                        // mesh vertex.)
+                        const rx = verifyResult.refinedX[i]!
+                        const ry = verifyResult.refinedY[i]!
+                        const rz = verifyResult.refinedZ[i]!
+                        // Re-clamp defensively; the verifier already
+                        // gates accepts on cell containment, but a
+                        // zero-mass-displacement direct accept may have
+                        // sat just outside an inset boundary.
+                        verts[vBase] = rx
+                        verts[vBase + 1] = ry
+                        verts[vBase + 2] = rz
+                        if (dbgSamples) {
+                            // Glyph anchor is the (possibly refined) seam
+                            // position itself, so neighbouring cells dedup
+                            // into a single feature glyph.
+                            dbgSamples[dBase + 8] = rx
+                            dbgSamples[dBase + 9] = ry
+                            dbgSamples[dBase + 10] = rz
+                        }
+                    } else {
+                        // Rejected: revert to Tikhonov fallback for the
+                        // mesh vertex and suppress the debug glyph.
+                        verts[vBase] = c.tikhonovX
+                        verts[vBase + 1] = c.tikhonovY
+                        verts[vBase + 2] = c.tikhonovZ
+                        if (dbgSamples) {
+                            dbgSamples[dBase + 0] = c.tikhonovX
+                            dbgSamples[dBase + 1] = c.tikhonovY
+                            dbgSamples[dBase + 2] = c.tikhonovZ
+                            dbgSamples[dBase + 3] = 0  // klass = 0 (no glyph)
+                            dbgSamples[dBase + 8] = c.tikhonovX
+                            dbgSamples[dBase + 9] = c.tikhonovY
+                            dbgSamples[dBase + 10] = c.tikhonovZ
+                        }
+                    }
+                }
+            } else {
+                // Verification disabled — every candidate keeps its seam
+                // classification and current vertex placement.
+                for (const c of candidates) acceptedSet.add(c.vi)
+            }
+
+            // Drop rejected cells from the line-fit chain input so the
+            // Laplacian smoothing only operates on cells we trust.
+            const filteredSeamRecords = verifyEnabled
+                ? result.stats.seamCellRecords.filter(r => acceptedSet.has(r.vi))
+                : result.stats.seamCellRecords
+
             // Post-MergeSharp line-fit refinement. Groups topologically-
             // connected seam cells with consistent tangents into chains and
             // projects each chain's vertices onto a single SVD-fitted line.
@@ -248,13 +354,13 @@ export class ShrecExport {
             // The pass also updates the corresponding debug-overlay glyph
             // positions so the visual matches the actual mesh.
             const edgeFitEnabled = this.params.edgeFitEnabled ?? true
-            if (edgeFitEnabled && result.stats.seamCellRecords.length > 0) {
+            if (edgeFitEnabled && filteredSeamRecords.length > 0) {
                 progressCallback?.updateProgress("SHREC: line-fit refinement", 75)
                 checkCancelled()
                 fitSeamEdges(
                     mesh.verts,
                     mergeDebugSamples,
-                    result.stats.seamCellRecords,
+                    filteredSeamRecords,
                     {
                         chainCosThreshold: this.params.seamAgreementCosThreshold,
                     },

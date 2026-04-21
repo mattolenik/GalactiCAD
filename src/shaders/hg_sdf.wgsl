@@ -45,18 +45,31 @@ struct SDFResult {
     seamOp: u32,  // 0=none, 1=union, 2=intersection, 3=difference
     seamGap: f32, // |dA - dB| near seam
     seamTangent: vec3f,
+    // Per-operand SDF distances at the current sample point — populated
+    // by `bestSeam` whenever a CSG operator detects a seam. CPU-side
+    // SHREC verification uses these to confirm a candidate vertex is
+    // genuinely on the seam (`|sdfA| ≈ |sdfB| ≈ 0`) rather than a
+    // phantom-cell extrapolation. For non-seam points the values are
+    // ignored (no seam metadata is meaningful there).
+    seamSdfA: f32,
+    seamSdfB: f32,
 }
 
 fn sdfR(d: f32, g: f32, id: u32, n: vec3f) -> SDFResult {
-    return SDFResult(d, g, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0));
+    return SDFResult(d, g, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0, 0.0);
 }
 
 fn sdfTrue(d: f32, id: u32, n: vec3<f32>) -> SDFResult {
-    return SDFResult(d, 1.0, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0));
+    return SDFResult(d, 1.0, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0, 0.0);
 }
 
 fn sdfNeg(r: SDFResult) -> SDFResult {
-    return SDFResult(-r.d, r.g, r.id, -r.n, r.id2, r.blend, r.seamA, r.seamB, r.seamOp, r.seamGap, r.seamTangent);
+    // Note: when negating a result, the operand-A distance also flips sign
+    // (`-r` represents the inverted geometry), but operand-B's interpretation
+    // depends on the surrounding op (e.g. opDifference computes
+    // `intersection(a, neg(b))`, so the inner `b` is what gets negated).
+    // We negate `seamSdfA` to keep semantics consistent for the caller.
+    return SDFResult(-r.d, r.g, r.id, -r.n, r.id2, r.blend, r.seamA, r.seamB, r.seamOp, r.seamGap, r.seamTangent, -r.seamSdfA, -r.seamSdfB);
 }
 
 fn bestSeam(a: SDFResult, b: SDFResult, outerGap: f32, outerOp: u32, outerTangent: vec3f) -> SDFResult {
@@ -66,15 +79,19 @@ fn bestSeam(a: SDFResult, b: SDFResult, outerGap: f32, outerOp: u32, outerTangen
     s.seamOp = outerOp;
     s.seamGap = outerGap;
     s.seamTangent = outerTangent;
+    s.seamSdfA = a.d;  // operand-A's distance at the current point
+    s.seamSdfB = b.d;
     if (a.seamOp != 0u && a.seamGap < s.seamGap) {
         s.seamA = a.seamA; s.seamB = a.seamB;
         s.seamOp = a.seamOp; s.seamGap = a.seamGap;
         s.seamTangent = a.seamTangent;
+        s.seamSdfA = a.seamSdfA; s.seamSdfB = a.seamSdfB;
     }
     if (b.seamOp != 0u && b.seamGap < s.seamGap) {
         s.seamA = b.seamA; s.seamB = b.seamB;
         s.seamOp = b.seamOp; s.seamGap = b.seamGap;
         s.seamTangent = b.seamTangent;
+        s.seamSdfA = b.seamSdfA; s.seamSdfB = b.seamSdfB;
     }
     return s;
 }
@@ -90,6 +107,8 @@ fn applySeam(out: ptr<function, SDFResult>, seam: SDFResult) {
     (*out).seamOp = seam.seamOp;
     (*out).seamGap = seam.seamGap;
     (*out).seamTangent = seam.seamTangent;
+    (*out).seamSdfA = seam.seamSdfA;
+    (*out).seamSdfB = seam.seamSdfB;
 }
 
 // SDFResultMid: d, g, n + optional feature payload for feature-aware MDC.
@@ -2090,9 +2109,9 @@ fn sdfMorphEx(a: SDFResult, b: SDFResult, t: f32) -> SDFResult {
     let n = safeNormalize(a.n * (1.0 - t) + b.n * t, a.n);
     let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
     if (t < 0.5) {
-        return SDFResult(d, g, a.id, n, b.id, t, a.id, b.id, 0u, 1e9, seamT);
+        return SDFResult(d, g, a.id, n, b.id, t, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
     }
-    return SDFResult(d, g, b.id, n, a.id, 1.0 - t, a.id, b.id, 0u, 1e9, seamT);
+    return SDFResult(d, g, b.id, n, a.id, 1.0 - t, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
 }
 
 // Seam Fast: union of both shapes plus a pipe tube at their intersection (weld bead).
@@ -2258,7 +2277,7 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     if (a.d < r && b.d < r) {
         let n = normalize(a.n * u.x + b.n * u.y);
         let w = u.y / (u.x + u.y);
-        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT);
+        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
     }
     var out: SDFResult;
     if (coplanar) {
@@ -2283,7 +2302,7 @@ fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
         let wa = max(r - a.d, 0.0);
         let wb = max(r - b.d, 0.0);
         let w = wb / (wa + wb);
-        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT);
+        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
     }
     var out: SDFResult;
     if (coplanar) {
@@ -2306,7 +2325,7 @@ fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     if (a.d > -r && b.d > -r) {
         let n = normalize(a.n * u.x + b.n * u.y);
         let w = u.y / (u.x + u.y);
-        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT);
+        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
     }
     var out: SDFResult;
     if (coplanar) {
@@ -2344,7 +2363,7 @@ fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
         let wb = r - b.d;
         let w = wb / (wa + wb);
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return SDFResult(d, 1.0, a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT);
+        return SDFResult(d, 1.0, a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
     }
     var out: SDFResult;
     let coplanar = abs(a.d - b.d) < SURF_DIST;
@@ -2386,7 +2405,7 @@ fn fOpDifferenceColumnsEx(aIn: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRe
         let wb = r - b.d;
         let blendN = safeNormalize(aIn.n * wa - b.n * wb, aIn.n);
         let w = wb / (wa + wb);
-        var out = SDFResult(d, 1.0, aIn.id, blendN, b.id, w, aIn.id, b.id, 0u, 1e9, seamT);
+        var out = SDFResult(d, 1.0, aIn.id, blendN, b.id, w, aIn.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
         applySeam(&out, seam);
         return out;
     }
@@ -2424,7 +2443,7 @@ fn fOpUnionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
         let wb = r - b.d;
         let w = wb / (wa + wb);
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return SDFResult(d, 1.0, a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT);
+        return SDFResult(d, 1.0, a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
     }
     var out: SDFResult;
     let coplanar = abs(a.d - b.d) < SURF_DIST;

@@ -36,11 +36,24 @@ struct SampleGridUniforms {
 
 // Output: per-voxel CSG seam metadata used by MergeSharp's seam-aware QEF.
 //   xyz = unit seam-tangent direction (from `r.seamTangent`).
-//   w   = validity flag (1.0 if voxel sits on a usable CSG seam, else 0.0).
+//   w   = validity flag (0/1/2 — see `sample_grid.wgsl` packing below).
 // MergeSharp uses this to constrain its per-cell QEF to a 1D solve along the
 // known seam line, eliminating the residual sub-voxel jitter that the pure
 // gradient-based QEF leaves on long sharp edges.
 @group(0) @binding(3) var<storage, read_write> seamTangentOut: array<vec4f>;
+
+// Output: per-voxel seam verification data.
+//   x = seamSdfA  — operand-A's distance at this voxel (signed; from `bestSeam`).
+//   y = seamSdfB  — operand-B's distance at this voxel.
+//   z = seamGap   — `|sdfA - sdfB|` at the voxel (the smaller, the closer to the seam line).
+//   w = seamOp as f32 (0 = no seam at this voxel, 1 = union, 2 = intersection, 3 = difference).
+// Used by the CPU SHREC verifier to confirm a candidate vertex genuinely
+// sits on the seam line: trilinear-interpolate `sdfA(p)` and `sdfB(p)`
+// from the 8 corner voxels of the cell, then check (per operator):
+//   union/intersection (w=1 or 2): |sdfA(p) - sdfB(p)| < tol
+//   difference        (w=3):       |sdfA(p) + sdfB(p)| < tol
+// AND |sdfA(p)| < tol (vertex is on the operand surfaces themselves).
+@group(0) @binding(4) var<storage, read_write> seamVerifyOut: array<vec4f>;
 
 // Cancellation flag (matches mdc.wgsl convention).
 @group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
@@ -122,4 +135,10 @@ fn sampleGrid(@builtin(global_invocation_id) gid: vec3u) {
     let inBevelBand = (r.seamOp != 0u) && (r.seamGap < 0.001);
     let w = select(0.0, select(1.0, 2.0, inBevelBand), onSeam);
     seamTangentOut[idx] = vec4f(r.seamTangent, w);
+
+    // Per-voxel seam verification data — see binding(4) header. The CPU
+    // SHREC verifier interpolates these to check whether a candidate
+    // vertex is genuinely on the seam (`|sdfA - ±sdfB|` and `|sdfA|`
+    // both small) before accepting the seam classification.
+    seamVerifyOut[idx] = vec4f(r.seamSdfA, r.seamSdfB, r.seamGap, f32(r.seamOp));
 }

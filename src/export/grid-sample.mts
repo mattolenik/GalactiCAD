@@ -32,13 +32,31 @@ export interface GridSampleResult {
     gradient: Float32Array<ArrayBuffer>
     /**
      * Interleaved vec4 per voxel: [tx, ty, tz, validity]. `(tx, ty, tz)` is
-     * the unit seam-tangent direction at the voxel; `validity` is 1.0 when
-     * the voxel sits on a usable CSG seam (`r.seamOp != 0` and within a
-     * voxel-size envelope of the seam line) and 0.0 otherwise. MergeSharp's
-     * seam-aware QEF uses this to constrain the per-cell solve to a 1D
-     * search along the seam line.
+     * the unit seam-tangent direction at the voxel; `validity` is 0/1/2:
+     *   0 = off seam, 1 = on seam (clean per-plane normal), 2 = on seam
+     *   AND in the bevel band (averaged-bevel normal — see `bestSeam`).
+     * MergeSharp's seam-aware QEF uses this to constrain the per-cell
+     * solve to a 1D search along the seam line.
      */
     seamTangent: Float32Array<ArrayBuffer>
+    /**
+     * Interleaved vec4 per voxel: [seamSdfA, seamSdfB, seamGap, seamOp].
+     * - `seamSdfA`, `seamSdfB` — operand-A's and operand-B's distances at
+     *   this voxel (signed). Exposed by `bestSeam`; non-meaningful when
+     *   `seamOp == 0`.
+     * - `seamGap` — `|seamSdfA − seamSdfB|`; the smaller, the closer the
+     *   voxel sits to the seam line.
+     * - `seamOp` (as f32) — 0 = no seam at this voxel, 1 = union,
+     *   2 = intersection, 3 = difference. Determines the verification
+     *   relation: union/intersection use `|sdfA − sdfB|`, difference uses
+     *   `|sdfA + sdfB|`.
+     *
+     * The CPU SHREC verifier trilinear-interpolates these four values at
+     * each candidate vertex position to confirm the vertex is genuinely
+     * on the seam line (`|sdfA(p) ± sdfB(p)| < tol` AND `|sdfA(p)| < tol`)
+     * and to drive Newton iteration when refinement is enabled.
+     */
+    seamVerify: Float32Array<ArrayBuffer>
     dims: readonly [number, number, number]
     voxelSize: number
     gridOffset: readonly [number, number, number]
@@ -163,6 +181,15 @@ export class GridSampler {
             })
             this.#localBuffers.push(seamTangentBuffer)
 
+            // Seam-verify buffer (vec4 per voxel: sdfA, sdfB, seamGap, seamOp).
+            // Same byte layout / size cap as `gradientBuffer`.
+            const seamVerifyBuffer = this.#device.createBuffer({
+                label: "GridSampler.SeamVerifyOut",
+                size: gradientBytes,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+            })
+            this.#localBuffers.push(seamVerifyBuffer)
+
             const pipeline = this.#helper.createComputePipeline(sampleGridShaderModule, "sampleGrid")
 
             const bindGroup = this.#helper.createBindGroup(
@@ -173,6 +200,7 @@ export class GridSampler {
                 [1, scalarBuffer],
                 [2, gradientBuffer],
                 [3, seamTangentBuffer],
+                [4, seamVerifyBuffer],
                 [25, cancellationBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
@@ -199,6 +227,7 @@ export class GridSampler {
             const scalarData = new Float32Array(await this.#helper.readBufferData(scalarBuffer))
             const gradientData = new Float32Array(await this.#helper.readBufferData(gradientBuffer))
             const seamTangentData = new Float32Array(await this.#helper.readBufferData(seamTangentBuffer))
+            const seamVerifyData = new Float32Array(await this.#helper.readBufferData(seamVerifyBuffer))
 
             const elapsedMs = (globalThis.performance?.now ? globalThis.performance.now() : Date.now()) - t0
             dbgLog("ShrecExport").debug(
@@ -210,6 +239,7 @@ export class GridSampler {
                 scalar: scalarData,
                 gradient: gradientData,
                 seamTangent: seamTangentData,
+                seamVerify: seamVerifyData,
                 dims: [gridDimX, gridDimY, gridDimZ] as const,
                 voxelSize,
                 gridOffset: [gridOffsetX, gridOffsetY, gridOffsetZ] as const,

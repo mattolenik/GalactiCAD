@@ -47,6 +47,7 @@ import { MESH_MDC_DEBUG_SAMPLE_STRIDE, type MeshData } from "../export.mjs"
 import type { GridSampleResult } from "../grid-sample.mjs"
 import type { DualContourMesh } from "./dc-cpu.mjs"
 import type { SeamCellRecord } from "./edge-fit.mjs"
+import type { SeamVerifyCandidate } from "./verify-seam.mjs"
 import {
     type ContourSpatialIndex,
     type ContourSnapResult,
@@ -269,6 +270,14 @@ interface RelocationStats {
      * residual sub-voxel jitter along long CSG seams.
      */
     seamCellRecords: SeamCellRecord[]
+    /**
+     * Per-cell verification candidates for every seam-path cell (klass=2
+     * CSG corner OR klass=3 CSG seam). Each carries the unclamped
+     * pseudo-inverse vertex (current placement) AND a Tikhonov fallback
+     * vertex (used if verification rejects the cell). Consumed by
+     * `verifySeams` in `verify-seam.mts`.
+     */
+    verifyCandidates: SeamVerifyCandidate[]
     /** Cells whose vertex was snapped to a contour line (klass=1). */
     contourLineSnaps: number
     /** Cells whose vertex was snapped to a contour corner / point (klass=2). */
@@ -396,6 +405,16 @@ export function mergeSharpRelocate(
      * chains and project onto a fitted line.
      */
     const seamCellRecords: SeamCellRecord[] = []
+    /**
+     * Per-cell verification candidates — one entry per seam-path cell
+     * (klass=2 corner OR klass=3 seam line). Each captures the unclamped
+     * pseudo-inverse vertex (the seam-path solver's true target) AND a
+     * Tikhonov fallback solve, so the post-MergeSharp `verifySeams` pass
+     * can either confirm the cell genuinely sits on the seam (keep the
+     * pseudo-inverse vertex), refine it via Newton iteration, or REJECT
+     * the seam classification (revert to the Tikhonov fallback).
+     */
+    const verifyCandidates: SeamVerifyCandidate[] = []
     // Per-feature-index snap counts — one bucket per contour element. Lets
     // us see at a glance which specific corners/edges are getting snapped
     // (e.g., for an axis-aligned box: 8 distinct corner indices, 12 distinct
@@ -833,6 +852,16 @@ export function mergeSharpRelocate(
             nyv = massVec[1] + correction[1]
             nzv = massVec[2] + correction[2]
             seamSnapped++
+
+            // Compute the Tikhonov fallback in parallel — `verifySeams`
+            // applies this if the seam classification is rejected, so
+            // a phantom-cell vertex doesn't get stranded on a cell face.
+            const tikhonovCorrection: [number, number, number] = [0, 0, 0]
+            const lambdaReg = relCutoff * Math.abs(eig.values[0])
+            sym3SolveTikhonov(eig, rhsX, rhsY, rhsZ, lambdaReg, tikhonovCorrection)
+            const fallbackX = massVec[0] + tikhonovCorrection[0]
+            const fallbackY = massVec[1] + tikhonovCorrection[1]
+            const fallbackZ = massVec[2] + tikhonovCorrection[2]
             // Debug glyph + line-fit metadata are only emitted for cells
             // the SDF identified as on a true CSG feature:
             //
@@ -858,6 +887,15 @@ export function mergeSharpRelocate(
                     cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
                     cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
                 })
+                verifyCandidates.push({
+                    vi,
+                    cx, cy, cz,
+                    px: nxv, py: nyv, pz: nzv,
+                    cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
+                    cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
+                    tikhonovX: fallbackX, tikhonovY: fallbackY, tikhonovZ: fallbackZ,
+                    klass: 3,
+                })
             } else if (isCsgCorner) {
                 // Defer the klass=2 commit until after the cell-bounds
                 // clamp — see the post-clamp block. The clamp's outcome
@@ -865,6 +903,18 @@ export function mergeSharpRelocate(
                 // (mesh-vertex, clamped) position or the (unclamped,
                 // shared-with-neighbours) corner position.
                 pendingCsgCornerGlyph = true
+                const cellLoX_ = ox + cx * vs
+                const cellLoY_ = oy + cy * vs
+                const cellLoZ_ = oz + cz * vs
+                verifyCandidates.push({
+                    vi,
+                    cx, cy, cz,
+                    px: nxv, py: nyv, pz: nzv,
+                    cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
+                    cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
+                    tikhonovX: fallbackX, tikhonovY: fallbackY, tikhonovZ: fallbackZ,
+                    klass: 2,
+                })
             }
         } else {
             // Tikhonov-regularized 3D solve in mass-point-shifted coordinates:
@@ -1098,6 +1148,7 @@ export function mergeSharpRelocate(
         contourLineSnaps,
         contourCornerSnaps,
         seamCellRecords,
+        verifyCandidates,
         elapsedMs: perfNow() - t0,
         debugSamples,
     }

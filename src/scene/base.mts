@@ -319,6 +319,28 @@ export function mergeChildPreludes(
     return { prelude: combined || undefined, lText, rText }
 }
 
+/**
+ * Binary ops synthesize a `varName` for stable cross-node references, but `Scene.compile`
+ * returns `varName` whenever any child `prelude` is present. Without a binding, that
+ * identifier is never declared. When `prelude` is truthy, append `var <varName> = <expr>`
+ * and set `text` to `varName` so parents that `mergeChildPreludes` see the correct
+ * reference; when there is no prelude, keep the expression inline as `text`.
+ */
+export function bindBinaryCompileResult(
+    prelude: string | undefined,
+    varName: string,
+    expr: string,
+): CompileResult {
+    if (!prelude) {
+        return { text: expr, varName, prelude: undefined }
+    }
+    return {
+        prelude: prelude + `var ${varName} = ${expr};\n`,
+        varName,
+        text: varName,
+    }
+}
+
 /** Default position when pos is omitted from primitive/operator options. */
 export const DEFAULT_POS: Vec3 = [0, 0, 0]
 

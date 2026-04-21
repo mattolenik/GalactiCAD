@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
+import { BinaryOperator, bindBinaryCompileResult, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
 import { aabbIntersect, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
@@ -78,7 +78,7 @@ export class Intersect extends BinaryOperator {
         const rhResult = this.rh.compile(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._interEx(lText, rText), varName, prelude }
+        return bindBinaryCompileResult(prelude, varName, this._interEx(lText, rText))
     }
 
     override compileFast(indentLevel = 0): CompileResult {
@@ -86,7 +86,7 @@ export class Intersect extends BinaryOperator {
         const rhResult = this.rh.compileFast(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._interFast(lText, rText), varName, prelude }
+        return bindBinaryCompileResult(prelude, varName, this._interFast(lText, rText))
     }
 
     protected override computeBoundsCore(): AABB | null {
@@ -102,7 +102,7 @@ export class Intersect extends BinaryOperator {
         const rhResult = this.rh.compileMid(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `i_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._interMid(lText, rText), varName, prelude }
+        return bindBinaryCompileResult(prelude, varName, this._interMid(lText, rText))
     }
 
     override appendStructuralFingerprint(parts: string[]): void {

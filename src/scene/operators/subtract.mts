@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
+import { BinaryOperator, bindBinaryCompileResult, CompileResult, fluent, mergeChildPreludes, Node, type BlendMode, type IntersectionType } from "../base.mjs"
 import type { AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
@@ -78,7 +78,7 @@ export class Subtract extends BinaryOperator {
         const rhResult = this.rh.compile(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._diffEx(lText, rText), varName, prelude }
+        return bindBinaryCompileResult(prelude, varName, this._diffEx(lText, rText))
     }
 
     override compileFast(indentLevel = 0): CompileResult {
@@ -86,7 +86,7 @@ export class Subtract extends BinaryOperator {
         const rhResult = this.rh.compileFast(indentLevel)
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._diffFast(lText, rText), varName, prelude }
+        return bindBinaryCompileResult(prelude, varName, this._diffFast(lText, rText))
     }
 
     protected override computeBoundsCore(): AABB | null {
@@ -100,7 +100,7 @@ export class Subtract extends BinaryOperator {
         // value '_uNN_mid'`. Same as `compile` / `compileFast` above.
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return { text: this._diffMid(lText, rText), varName, prelude }
+        return bindBinaryCompileResult(prelude, varName, this._diffMid(lText, rText))
     }
 
     override appendStructuralFingerprint(parts: string[]): void {

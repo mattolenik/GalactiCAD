@@ -133,6 +133,7 @@ export interface IsoExportTuning {
     voxelSizeMm: number
     padMm: number
     creaseAngleDeg: number
+    adaptiveOctree?: boolean
 }
 
 export type MainToWorkerMessage =

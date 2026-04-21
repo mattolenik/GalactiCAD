@@ -1004,6 +1004,7 @@ export class RenderWorkerCore {
                 gridOffsetZ: minZ,
                 voxelSize: voxelSizeMm,
                 creaseAngleDeg,
+                ...(exporter === "iso" ? { adaptiveOctree: isoTuning?.adaptiveOctree ?? false } : {}),
                 ...(simplifyOnExport && {
                     simplifyTargetRatio: 0.1,
                     simplifyRegularize: false,

@@ -1163,6 +1163,7 @@ class App {
         }
         devTools.onIsoExportTuningChange = () => {
             this.#scheduleMeshUpdate(this.editor.getValue())
+            this.renderer.requestRender()
         }
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)

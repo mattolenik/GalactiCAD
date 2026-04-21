@@ -119,6 +119,32 @@ export interface MDCParams {
      * Set to 180 to disable splitting.
      */
     creaseAngleDeg?: number
+
+    /**
+     * ISO export only — Stage 4 octree adaptivity (Manson & Schaefer §5.1) foundation.
+     *
+     * Session 1 (current): when `true`, after Pass 5 the orchestrator reads back the per-cube
+     * QEF residual buffer and builds a CPU-side octree representation that identifies which
+     * cubes the paper would subdivide. Statistics are logged via `dbgLog("IsoExport").debug`
+     * but the mesh output is unchanged — the octree is parallel infrastructure that future
+     * sessions will wire into multi-resolution Marching Tetrahedra.
+     *
+     * Session 2+ (future): GPU-side child sub-cube placement, multi-resolution MT in Pass 6,
+     * depth-aware sparse hash, depth-aware improvement passes (§4.1 cube/face/edge variants).
+     *
+     * Default `false` — adaptive infrastructure off, mesh export uses the uniform-grid path.
+     */
+    adaptiveOctree?: boolean
+
+    /** ISO Stage 4 only: residual threshold above which a cube is marked for subdivision.
+     * Defaults to a relative cutoff calibrated against `voxelSize`. Override to widen / tighten
+     * the refinement set without rebuilding the whole pipeline. */
+    octreeResidualThreshold?: number
+
+    /** ISO Stage 4 only: maximum subdivision depth past the base uniform grid. Default 2 (each
+     * marked cube can refine up to 4×4×4 sub-cubes). The paper notes diminishing returns past
+     * 3-4 levels for most CAD parts. */
+    octreeMaxDepth?: number
 }
 
 export interface ProgressCallback {

@@ -561,7 +561,11 @@ export class ISOExport {
             const p8 = this.#helper.createComputePipeline(isoShaderModule, "improveEdgeDuals_Pass8")
             const p9 = this.#helper.createComputePipeline(isoShaderModule, "improveFaceDuals_Pass9")
             const p10 = this.#helper.createComputePipeline(isoShaderModule, "improveCubeDuals_Pass10")
-            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p8, p9, p10)
+            // Stage 4 Session 2: GPU sub-cube dual placement. Compiled unconditionally because
+            // pipelines are cheap; only dispatched when `adaptiveOctree` is enabled and the
+            // CPU-side octree builder finds depth-1 leaves to refine.
+            const p11 = this.#helper.createComputePipeline(isoShaderModule, "placeChildCubeDuals_Pass11")
+            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p8, p9, p10, p11)
 
             const cancelBuf = this.#cancellationBuffer!
 
@@ -694,6 +698,19 @@ export class ISOExport {
             )
             this.#device.queue.writeBuffer(meshIndexCountBuffer, 0, new Uint32Array([0]))
 
+            // Stage 4 (octree foundation): per-cube QEF residual buffer. One f32 per active
+            // cube in the sparse list, indexed by `local_slot` in Pass 5. The Pass 5 WGSL
+            // unconditionally writes here; in non-adaptive mode we still allocate the buffer
+            // (sized to active cube count) but never read it back. CPU readback happens only
+            // when `adaptiveOctree` is enabled in MDCParams. The buffer is small (4 bytes ×
+            // ~10K-1M cubes) so the unconditional alloc cost is negligible.
+            const cubeResidualByteSize = Math.max(4, sparse.cubeCompactList.length * Float32Array.BYTES_PER_ELEMENT)
+            const cubeResidualBuffer = createBuffer(
+                "ISO cubeQefResidual",
+                cubeResidualByteSize,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+            )
+
             // Bind groups for passes 2..6 — created here because they depend on the sparse
             // buffers we just allocated. Pass 2/3/4 only write to sparseAllDualsBuffer (no
             // hash lookups). Pass 5 also reads activeCellFlags for its is_active fallback.
@@ -742,6 +759,7 @@ export class ISOExport {
                 [2, sparseAllDualsBuffer],
                 [6, sparseHashBuffer],
                 [8, sparseCompactBuffer],
+                [9, cubeResidualBuffer],
                 [25, cancelBuf],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
@@ -855,6 +873,174 @@ export class ISOExport {
                 checkCancelled()
             }
             logDiag("after pass3-5")
+
+            // Stage 4 (Manson & Schaefer §5.1) octree foundation — Session 1: read back the
+            // per-cube QEF residuals Pass 5 wrote, build the CPU-side octree, and log
+            // statistics. The octree itself is not yet consumed by Pass 6 (multi-resolution
+            // MT is Session 2+) — this session just verifies the residual signal is correct
+            // and demonstrates how much adaptivity it would unlock. Skip entirely when
+            // `adaptiveOctree` is false (default), so the only cost in the common path is
+            // Pass 5's two extra writes per cube.
+            if (this.params.adaptiveOctree) {
+                const cubeCount = sparse.cubeCompactList.length
+                const residualBytes = cubeCount * Float32Array.BYTES_PER_ELEMENT
+                if (cubeCount > 0 && residualBytes > 0) {
+                    const residualData = await readBufferData(cubeResidualBuffer, residualBytes)
+                    const residuals = new Float32Array(residualData)
+
+                    // Translate sparse-cube linear indices into (x, y, z) cell positions
+                    // packed as [x0, y0, z0, x1, y1, z1, ...] for the octree builder.
+                    const packedCellPos = new Uint32Array(cubeCount * 3)
+                    for (let i = 0; i < cubeCount; i++) {
+                        const linear = sparse.cubeCompactList[i]!
+                        const cx = linear % nx
+                        const cy = Math.floor(linear / nx) % ny
+                        const cz = Math.floor(linear / (nx * ny))
+                        packedCellPos[i * 3] = cx
+                        packedCellPos[i * 3 + 1] = cy
+                        packedCellPos[i * 3 + 2] = cz
+                    }
+
+                    const {
+                        buildOctreeFromCubeResiduals,
+                        logOctreeStats,
+                        pickResidualThresholdFromPercentile,
+                        buildChildCubeListFromOctree,
+                        packChildCubeInfo,
+                        summarizeResidualDistribution,
+                        CHILD_CUBE_INFO_STRIDE_U32,
+                    } = await import("./iso-octree.mjs")
+
+                    // Threshold: explicit param wins; otherwise auto-pick at the 90th percentile
+                    // (top 10% of cubes by curvature get refined). This matches the paper's
+                    // intent: refine where the function is least linearly approximable.
+                    const explicitThreshold = this.params.octreeResidualThreshold
+                    const threshold = (explicitThreshold !== undefined && Number.isFinite(explicitThreshold))
+                        ? explicitThreshold
+                        : pickResidualThresholdFromPercentile(residuals, 0.10)
+                    const maxDepth = Math.max(0, Math.floor(this.params.octreeMaxDepth ?? 2))
+
+                    const octree = buildOctreeFromCubeResiduals(
+                        packedCellPos, residuals, nx, ny, nz, threshold, maxDepth,
+                    )
+                    dbgLog("IsoExport").info(
+                        `Stage 4 octree (Session 1, threshold=${threshold.toExponential(3)}, maxDepth=${maxDepth}): `
+                        + `${cubeCount} active cubes → see octree stats below`,
+                    )
+                    logOctreeStats(octree)
+                    logDiag("after Stage 4 octree build")
+
+                    // Stage 4 Session 2: GPU sub-cube dual placement (Pass 11). Walk the
+                    // octree's depth-1 leaves and place a 4D-QEF dual for each child sub-cube.
+                    // Mesh output is unchanged in this session — multi-resolution Pass 6 is
+                    // Session 3+ work. The point of Session 2 is to verify the per-child
+                    // residual distribution shows refinement is mathematically meaningful
+                    // (children should have lower max residual than the corresponding parents).
+                    const { children, skippedDeeperLeaves } = buildChildCubeListFromOctree(octree)
+                    if (skippedDeeperLeaves > 0) {
+                        dbgLog("IsoExport").info(
+                            `Stage 4 Session 2: skipped ${skippedDeeperLeaves} depth≥2 octree leaves `
+                            + `(deeper-than-1 refinement requires Session 3's richer descriptor + multi-res MT).`,
+                        )
+                    }
+                    if (children.length === 0) {
+                        dbgLog("IsoExport").info(
+                            `Stage 4 Session 2: no depth-1 leaves to place — refinement budget unused for this scene.`,
+                        )
+                    } else {
+                        const packedChildren = packChildCubeInfo(children)
+                        // Sub-cube descriptor buffer (vec4u per child).
+                        const childInfoBytes = packedChildren.byteLength
+                        const childInfoBuffer = createBuffer(
+                            "ISO childCubeInfo",
+                            childInfoBytes,
+                            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                        )
+                        this.#device.queue.writeBuffer(
+                            childInfoBuffer, 0,
+                            packedChildren.buffer, packedChildren.byteOffset, childInfoBytes,
+                        )
+                        // DualVertex output (16 bytes per child to match WGSL `DualVertex` layout
+                        // in `allDuals`: vec3 padded to vec4 + f32 fval).
+                        const childDualsBuffer = createBuffer(
+                            "ISO childDuals",
+                            children.length * 16,
+                            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+                        )
+                        const childResidualsBytes = children.length * Float32Array.BYTES_PER_ELEMENT
+                        const childResidualsBuffer = createBuffer(
+                            "ISO childResiduals",
+                            childResidualsBytes,
+                            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+                        )
+
+                        const bgPass11 = this.#helper.createBindGroup(
+                            0, "ISO Pass11 child dual placement", p11,
+                            [0, uniformBuffer],
+                            [11, childInfoBuffer],
+                            [12, childDualsBuffer],
+                            [13, childResidualsBuffer],
+                            [25, cancelBuf],
+                            [27, this.#polygonVerticesBuffer],
+                            [28, this.#faceSelectionBuffer],
+                            [30, this.#mdcSceneParamsBuffer],
+                        )
+                        this.#localBindGroups.push(bgPass11[1])
+
+                        progressCallback?.updateProgress("ISO Pass 11: child sub-cube duals", 65)
+                        {
+                            const wg = Math.ceil(children.length / 64)
+                            const dispatchX = Math.min(wg, 65535)
+                            const dispatchY = Math.ceil(wg / dispatchX)
+                            const ce = this.#device.createCommandEncoder({ label: "iso_pass11_child_duals" })
+                            const pass = this.#helper.beginComputePass(ce, p11, bgPass11)
+                            pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                            pass.end()
+                            this.#device.queue.submit([ce.finish()])
+                            await this.#device.queue.onSubmittedWorkDone()
+                            checkCancelled()
+                        }
+                        logDiag("after Stage 4 Pass 11 (child duals)")
+
+                        // Read back child residuals and compare to parent (base-cube) residuals
+                        // for the SAME parent set. If refinement is doing its job, the child
+                        // distribution should have a lower max + p95 (each sub-cube fits the
+                        // local SDF planes better than the coarse parent did).
+                        const childResData = await readBufferData(childResidualsBuffer, childResidualsBytes)
+                        const childResiduals = new Float32Array(childResData)
+
+                        // Build the parent residual subset: which base cubes were refined.
+                        // (octree.leaves at depth ≥ 1 implies parent was refined.)
+                        const refinedBaseKeys = new Set<number>()
+                        for (const c of children) {
+                            refinedBaseKeys.add(c.parentX + c.parentY * nx + c.parentZ * nx * ny)
+                        }
+                        const parentResidualSubset: number[] = []
+                        for (let i = 0; i < cubeCount; i++) {
+                            const linear = sparse.cubeCompactList[i]!
+                            if (refinedBaseKeys.has(linear)) {
+                                parentResidualSubset.push(residuals[i]!)
+                            }
+                        }
+                        const parentStats = summarizeResidualDistribution(parentResidualSubset)
+                        const childStats = summarizeResidualDistribution(childResiduals)
+                        const _ = CHILD_CUBE_INFO_STRIDE_U32  // re-export consumed via packing
+                        dbgLog("IsoExport").info(
+                            `Stage 4 Session 2 (children=${children.length} of ${parentStats.count} refined parents):\n`
+                            + `  parent residuals: max=${parentStats.max.toExponential(3)} `
+                            + `mean=${parentStats.mean.toExponential(3)} `
+                            + `median=${parentStats.median.toExponential(3)} `
+                            + `p95=${parentStats.p95.toExponential(3)}\n`
+                            + `  child  residuals: max=${childStats.max.toExponential(3)} `
+                            + `mean=${childStats.mean.toExponential(3)} `
+                            + `median=${childStats.median.toExponential(3)} `
+                            + `p95=${childStats.p95.toExponential(3)}\n`
+                            + `  refinement effective if child mean/p95 ≪ parent mean/p95.`,
+                        )
+                        logDiag("after Stage 4 Session 2 child stats")
+                    }
+                }
+            }
 
             // Phase 3 (paper §4.1): cube → face → edge dual improvement. Each pass moves
             // duals ONTO the iso surface (fval ≈ 0) when the per-cell topology safety test

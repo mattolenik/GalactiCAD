@@ -88,6 +88,17 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 @group(0) @binding(4) var<storage, read_write> meshIndices: array<u32>;
 @group(0) @binding(5) var<storage, read_write> meshIndexCount: atomic<u32>;
 
+// Stage 4 (octree adaptivity foundation): Pass 5 writes per-cube QEF residual here.
+// One f32 per active cube, indexed by `local_slot` in `cubeCompactList`. Used by the
+// CPU-side adaptive driver to decide which cubes to subdivide. Allocated by the
+// orchestrator only when `adaptiveOctree` mode is enabled; bound to Pass 5 unconditionally
+// (WGSL strips unused bindings per entry point — when adaptive mode is off, the WGSL
+// reference still requires the binding to exist, so the orchestrator allocates a tiny
+// 1-element placeholder in the non-adaptive path). Residual = 4D QEF cost at the
+// solved spatial position; near-zero on flat regions, large at sharp features and
+// CSG seams (precisely the cells the paper §5.1 wants to refine).
+@group(0) @binding(9) var<storage, read_write> cubeQefResidual: array<f32>;
+
 // Pass 7 — Newton-project welded vertex positions onto the iso surface
 // and write analytical surface normals from sceneSDF_mid. The welded vertex
 // array is uploaded by the orchestrator after CPU welding and read back in
@@ -95,6 +106,13 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // Tetrahedra emitting many tiny slivers whose face-averaged normals would
 // otherwise dominate the displayed shading.
 @group(0) @binding(7) var<storage, read_write> projectVertices: array<Vertex>;
+
+// Stage 4 Session 2: per-child sub-cube descriptors + outputs.
+// `childCubeInfo[i]` = vec4u(parentX, parentY, parentZ, octant). Bound only when
+// the orchestrator launches `placeChildCubeDuals_Pass11` (`adaptiveOctree=true`).
+@group(0) @binding(11) var<storage, read> childCubeInfo: array<vec4u>;
+@group(0) @binding(12) var<storage, read_write> childDuals: array<DualVertex>;
+@group(0) @binding(13) var<storage, read_write> childResiduals: array<f32>;
 
 // Cancellation flag: 0 = continue, 1 = cancelled
 @group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
@@ -472,17 +490,22 @@ struct QEF4Data {
     ATb4: f32,            // bottom of ATb = Σ (F − g·p)
     massPoint: vec3f,     // average of sample positions (fallback target for ill-conditioned QEF)
     numPoints: u32,
+    /// Σᵢ (n̄ᵢ · p̄ᵢ)² — the constant offset in ‖Ax̄ − b‖². Needed by `qefCost4` to
+    /// return the true non-negative squared residual (Stage 4 octree subdivision driver
+    /// thresholds against this). Without it the cost is x̄ᵀATAx̄ − 2x̄ᵀATb, which evaluates
+    /// to −x*ᵀATb at the minimum — generally negative and uninformative for refinement.
+    bsq: f32,
 }
 
 fn qef4_zero() -> QEF4Data {
-    return QEF4Data(mat3x3f(), vec3f(0.0), 0.0, vec3f(0.0), 0.0, vec3f(0.0), 0u);
+    return QEF4Data(mat3x3f(), vec3f(0.0), 0.0, vec3f(0.0), 0.0, vec3f(0.0), 0u, 0.0);
 }
 
 /// Accumulate one tangent-hyperplane sample (p, ∇F(p), F(p)) into the 4D QEF.
 /// Caller is responsible for projecting the gradient onto the cell's subspace
 /// (e.g. zero out off-axis components for face/edge cells) before calling this.
 fn qef4_add(qef: ptr<function, QEF4Data>, p: vec3f, g: vec3f, fval: f32) {
-    let dp = dot(g, p) - fval;       // = g · p − F  (the scalar appearing in ATb rows)
+    let dp = dot(g, p) - fval;       // = n̄ · p̄  (the scalar appearing in ATb rows)
     (*qef).ATA3[0] = (*qef).ATA3[0] + g * g.x;
     (*qef).ATA3[1] = (*qef).ATA3[1] + g * g.y;
     (*qef).ATA3[2] = (*qef).ATA3[2] + g * g.z;
@@ -492,6 +515,7 @@ fn qef4_add(qef: ptr<function, QEF4Data>, p: vec3f, g: vec3f, fval: f32) {
     (*qef).ATb4 = (*qef).ATb4 - dp;      // = Σ (F − g·p)
     (*qef).massPoint = (*qef).massPoint + p;
     (*qef).numPoints = (*qef).numPoints + 1u;
+    (*qef).bsq = (*qef).bsq + dp * dp;   // Σᵢ (n̄ᵢ·p̄ᵢ)² — see struct doc above
 }
 
 /// Symmetric 4×4 Cholesky solver. Same recipe as `solveCholesky` (3×3) extended one
@@ -528,6 +552,22 @@ fn solveCholesky4(a0: vec4f, a1: vec4f, a2: vec4f, a3: vec4f, b: vec4f) -> vec4f
     var x1 = (y1 - L21 * x2 - L31 * x3) / L11;
     var x0 = (y0 - L10 * x1 - L20 * x2 - L30 * x3) / L00;
     return vec4f(x0, x1, x2, x3);
+}
+
+/// 4D QEF residual at point `x4 = ⟨x, F⟩`: the sum-of-squared-perpendicular-distances
+/// from x̄ to each tangent hyperplane the QEF was built from. Equals
+///     residual = ‖A·x̄ − b‖² = x̄ᵀ·ATA·x̄ − 2·x̄ᵀ·ATb + Σᵢ (n̄ᵢ·p̄ᵢ)²
+/// where the trailing constant `Σ (n̄ᵢ·p̄ᵢ)²` is accumulated as `qef.bsq` during
+/// `qef4_add`. The result is non-negative for any input x̄ — a meaningful curvature
+/// measure for Stage 4 octree refinement (small for flat / linearly-fitable regions,
+/// large where multiple tangent planes disagree i.e. high curvature or sharp features).
+fn qefCost4(qef: QEF4Data, x4: vec4f) -> f32 {
+    // Reconstruct the full 4×4 ATA matrix-vector product Ax₄ from the block decomposition.
+    let Ax_top = qef.ATA3 * x4.xyz + qef.g_col * x4.w;
+    let Ax_w = dot(qef.g_col, x4.xyz) + qef.n_count * x4.w;
+    let Ax = vec4f(Ax_top, Ax_w);
+    let b = vec4f(qef.ATb3, qef.ATb4);
+    return dot(x4, Ax) - 2.0 * dot(x4, b) + qef.bsq;
 }
 
 /// Solve the 4D QEF and return ⟨x, F*⟩. The spatial part should be box-clamped to the
@@ -1173,6 +1213,10 @@ fn placeCubeDuals_Pass5(
         let c = (cell_min + cell_max) * 0.5;
         let f_shifted = sceneSDF_fast(c).d - uniforms.isoValue;
         write_dual_slot(absolute_slot, DualVertex(c, f_shifted));
+        // Stage 4: inactive cubes (no iso intersection) never refine. Residual 0
+        // distinguishes them from active-but-flat cubes (which write a small but
+        // possibly-positive residual below).
+        cubeQefResidual[local_slot] = 0.0;
         return;
     }
 
@@ -1220,6 +1264,16 @@ fn placeCubeDuals_Pass5(
     let pos = clamp(solution.xyz, clamp_min, clamp_max);
     let f_shifted = sceneSDF_fast(pos).d - uniforms.isoValue;
     write_dual_slot(absolute_slot, DualVertex(pos, f_shifted));
+
+    // Stage 4: per-cube QEF residual at the (clamped) solution. Used CPU-side by the
+    // adaptive octree driver to drive subdivision (paper §5.1: refine cubes whose dual
+    // residual exceeds threshold). Residual is computed at the post-clamp `pos` paired
+    // with the QEF-predicted F* (`solution.w`), so the metric reflects how well the
+    // clamped position fits the local SDF tangent planes — i.e. how curved/sharp this
+    // cube actually is. Flat regions: residual ≈ 0. Sharp features clamped to the cell
+    // boundary: residual ≫ 0 (signalling "feature wants to live outside this cell").
+    let x4_solved = vec4f(pos, solution.w);
+    cubeQefResidual[local_slot] = qefCost4(qef4, x4_solved);
 }
 
 // ============================== Phase 3: Triangulation improvement (paper §4.1) ==============================
@@ -1807,6 +1861,112 @@ fn improveCubeDuals_Pass10(
     let pos = bisect_to_iso(lo, hi, fl, fh);
     let f_at_pos = sceneSDF_fast(pos).d - uniforms.isoValue;
     write_dual_slot(absolute_slot, DualVertex(pos, f_at_pos));
+}
+
+// ============================== Pass 11 (Stage 4 Session 2): GPU sub-cube dual placement ==============================
+//
+// Manson & Schaefer §5.1 adaptive octree, GPU side: for each child sub-cube the CPU
+// driver flagged for refinement (depth ≥ 1 leaves of the octree built after Pass 5),
+// place a child cube dual via the same 4D-QEF-on-iso-crossings recipe `placeCubeDuals`
+// uses at base resolution, but at sub-voxel scale within the parent cube.
+//
+// Session 2 limitation: descriptor encodes one level of refinement only — `octant`
+// 0..7 selects an immediate child of the parent base cube. Sub-voxel = base voxel × ½.
+// Deeper refinement (grand-children at depth 2+) needs a richer descriptor and arrives
+// in Session 3 along with the multi-resolution Marching Tetrahedra rewrite of Pass 6.
+//
+// The output `childDuals[i]` and `childResiduals[i]` live in a buffer parallel to the
+// CPU child list — i.e. `childDuals[i]` is the dual for `childCubeInfo[i]`. Mesh output
+// is unchanged in Session 2: Pass 6 still walks the base-grid edges and uses base-cube
+// duals only. The child duals exist so the user (and Session 3+) can verify refinement
+// is producing meaningful per-cube placements via the residual histogram.
+@compute @workgroup_size(64, 1, 1)
+fn placeChildCubeDuals_Pass11(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let i = globalId.x + globalId.y * (numWg.x * 64u);
+    let n = arrayLength(&childCubeInfo);
+    if (i >= n) {
+        return;
+    }
+
+    let info = childCubeInfo[i];
+    let parent_pos = vec3u(info.x, info.y, info.z);
+    let octant = info.w;
+
+    // Sub-cube min/max in world coords. At depth 1 the sub-voxel is half the base voxel.
+    // Octant bits: x in bit 0, y in bit 1, z in bit 2 — same convention as
+    // `getCellCornerPos`, so octant 0 = (-x,-y,-z) corner, octant 7 = (+x,+y,+z).
+    let parent_world_min = gridPosToWorldPos(parent_pos);
+    let sub_voxel = uniforms.voxelSize * 0.5;
+    let octant_offset = vec3f(
+        f32(octant & 1u),
+        f32((octant >> 1u) & 1u),
+        f32((octant >> 2u) & 1u),
+    );
+    let sub_min = parent_world_min + octant_offset * sub_voxel;
+    let sub_max = sub_min + vec3f(sub_voxel);
+
+    let eps = max(uniforms.mdcF0.x, 1e-6);
+    let t_max = 1.0 - eps;
+    let shrink = sub_voxel * eps;
+    let clamp_min = sub_min + vec3f(shrink);
+    let clamp_max = sub_max - vec3f(shrink);
+
+    // Sample the 8 sub-cube corners' shifted SDF values (no gradient yet — gradient is
+    // only sampled at iso-crossings below, where the QEF tangent plane is actually
+    // built). `_fast` is enough for the sign + interpolation `t`.
+    var sub_corners: array<vec3f, 8>;
+    var sub_fvals: array<f32, 8>;
+    for (var c = 0u; c < 8u; c = c + 1u) {
+        let off = vec3f(
+            f32(c & 1u),
+            f32((c >> 1u) & 1u),
+            f32((c >> 2u) & 1u),
+        );
+        let p = sub_min + off * sub_voxel;
+        sub_corners[c] = p;
+        sub_fvals[c] = sceneSDF_fast(p).d - uniforms.isoValue;
+    }
+
+    // Edge index pairs match `placeCubeDuals_Pass5`'s `edges_v` so the QEF-residual
+    // metric is comparable across depths.
+    let edges_v = array<vec2u, 12>(
+        vec2u(0u, 1u), vec2u(2u, 3u), vec2u(4u, 5u), vec2u(6u, 7u),
+        vec2u(0u, 2u), vec2u(1u, 3u), vec2u(4u, 6u), vec2u(5u, 7u),
+        vec2u(0u, 4u), vec2u(1u, 5u), vec2u(2u, 6u), vec2u(3u, 7u),
+    );
+
+    var qef4 = qef4_zero();
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        let a = edges_v[e].x;
+        let b = edges_v[e].y;
+        let f0 = sub_fvals[a];
+        let f1 = sub_fvals[b];
+        if (sdf_sign_bit_positive(f0) == sdf_sign_bit_positive(f1)) {
+            continue;
+        }
+        let denom = f1 - f0;
+        var t = 0.5;
+        if (abs(denom) > 1e-20) {
+            t = clamp(-f0 / denom, eps, t_max);
+        }
+        let pw = mix3f(sub_corners[a], sub_corners[b], t);
+        let sdf_m = sceneSDF_mid(pw);
+        qef4_add(&qef4, pw, sdf_m.n, sdf_m.d - uniforms.isoValue);
+    }
+
+    let solution = solveQEF4(qef4);
+    let pos = clamp(solution.xyz, clamp_min, clamp_max);
+    let f_shifted = sceneSDF_fast(pos).d - uniforms.isoValue;
+    childDuals[i] = DualVertex(pos, f_shifted);
+
+    let x4_solved = vec4f(pos, solution.w);
+    childResiduals[i] = qefCost4(qef4, x4_solved);
 }
 
 fn emit_pass6_x_edge(

@@ -63,6 +63,7 @@ export class DevToolsPanel extends HTMLElement {
     #isoVoxelInput!: HTMLInputElement
     #isoPadInput!: HTMLInputElement
     #isoCreaseInput!: HTMLInputElement
+    #isoAdaptiveOctreeCheckbox!: HTMLInputElement
     #isoSection!: HTMLDivElement
     #lightingExpandedCheckbox: HTMLInputElement
     #lightingExpanded$: BehaviorSubject<boolean>
@@ -398,6 +399,10 @@ export class DevToolsPanel extends HTMLElement {
             const merged: IsoExportSettings = { ...this.#isoExport$.value, ...next }
             this.#isoExport$.next(merged)
         }
+        this.#isoAdaptiveOctreeCheckbox = this.#addCheckbox(this.#isoSection, "Adaptive octree", initialIso.adaptiveOctree)
+        this.#isoAdaptiveOctreeCheckbox.addEventListener("change", () => {
+            isoCommit({ adaptiveOctree: this.#isoAdaptiveOctreeCheckbox.checked })
+        })
         this.#isoVoxelInput.addEventListener("change", () => {
             const v = parseFloat(this.#isoVoxelInput.value)
             if (Number.isFinite(v) && v > 0) isoCommit({ voxelSizeMm: v })
@@ -421,9 +426,17 @@ export class DevToolsPanel extends HTMLElement {
             this.#isoVoxelInput.value = String(def.voxelSizeMm)
             this.#isoPadInput.value = String(def.padMm)
             this.#isoCreaseInput.value = String(def.creaseAngleDeg)
+            this.#isoAdaptiveOctreeCheckbox.checked = def.adaptiveOctree
         })
         this.#isoSection.appendChild(isoDefaultsBtn)
         shadow.appendChild(this.#isoSection)
+        this.#subscriptions.push(
+            this.#isoExport$.subscribe(v => {
+                if (this.#isoAdaptiveOctreeCheckbox.checked !== v.adaptiveOctree) {
+                    this.#isoAdaptiveOctreeCheckbox.checked = v.adaptiveOctree
+                }
+            }),
+        )
         this.#subscriptions.push(
             this.#isoExport$.pipe(skip(1)).subscribe(v => {
                 this.#settings.updateGlobal({ app: { isoExport: v } })

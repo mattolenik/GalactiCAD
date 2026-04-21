@@ -135,13 +135,18 @@ export interface IsoExportSettings {
     padMm: number
     /** Face-normal angle threshold for crease vertex splitting (degrees, 180 = disable splitting). */
     creaseAngleDeg: number
+    /**
+     * ISO Stage 4: enable adaptive octree infrastructure (`MDCParams.adaptiveOctree` on the worker).
+     * Default off; when on, extra QEF/orchestrator work runs (mesh output may still be uniform-grid until later stages).
+     */
+    adaptiveOctree: boolean
 }
 
 export function defaultIsoExportSettings(): IsoExportSettings {
     // creaseAngleDeg=60° pairs with Phase 4's 4D-QEF sharp-feature placement: smooths
     // piecewise-polygon SDF noise (~10° normal jumps for typical 32-segment circles) while
     // preserving real CSG/box edges (~90° jumps). 180° = uniform Phong smoothing.
-    return { voxelSizeMm: 0.1, padMm: 3.2, creaseAngleDeg: 60 }
+    return { voxelSizeMm: 0.1, padMm: 3.2, creaseAngleDeg: 60, adaptiveOctree: false }
 }
 
 function defaultGlobalSettings(): GlobalSettings {
@@ -399,6 +404,7 @@ export class SettingsManager {
                     iso.padMm = isoDef.padMm
                 if (typeof iso.creaseAngleDeg !== "number" || iso.creaseAngleDeg < 0 || iso.creaseAngleDeg > 180)
                     iso.creaseAngleDeg = isoDef.creaseAngleDeg
+                if (typeof iso.adaptiveOctree !== "boolean") iso.adaptiveOctree = isoDef.adaptiveOctree
                 app.isoExport = iso
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false

@@ -307,6 +307,19 @@ export function chooseIsoVoxelForGpuLimits(
     )
 }
 
+/** Stage 4 Session 3: world-space AABB enclosing all refined-parent base cubes from
+ *  the most recent `export()` run with `adaptiveOctree=true`. Used by render-worker-core
+ *  to schedule a secondary fine-voxel ISO pass within this region for visible adaptive
+ *  refinement. `null` when no parents were refined (or adaptive mode was off). */
+export interface AdaptiveRefinementResult {
+    refinedAABB: { min: [number, number, number]; max: [number, number, number] } | null
+    /** Number of base-grid cubes that the octree marked for subdivision (depth ≥ 1 leaves). */
+    refinedBaseCubeCount: number
+    /** Voxel size that was used for the primary export, in mm. The secondary pass picks
+     *  a finer voxel (typically half of this) within `refinedAABB`. */
+    primaryVoxelSize: number
+}
+
 export class ISOExport {
     #helper: GPUHelper
     #device: GPUDevice
@@ -318,6 +331,12 @@ export class ISOExport {
     #mdcSceneParamsBuffer: GPUBuffer
     #cancelled = false
     #cancellationBuffer: GPUBuffer | null = null
+
+    /** Stage 4 Session 3: populated by `export()` when `adaptiveOctree=true`.
+     *  `null` until the first export() call completes; `null` afterwards if no
+     *  parents were marked for refinement (e.g. all cubes had residuals below
+     *  the auto-threshold, or `octreeMaxDepth = 0`). */
+    public lastAdaptiveResult: AdaptiveRefinementResult | null = null
 
     constructor(
         helper: GPUHelper,
@@ -348,6 +367,9 @@ export class ISOExport {
     async export(isoShaderModule: GPUShaderModule, progressCallback?: ProgressCallback): Promise<MeshData> {
         const perfNow = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now())
         const t0 = perfNow()
+        // Stage 4 Session 3: clear the adaptive result so a non-adaptive run can't be
+        // mistaken for "no refinement needed". Populated below only when adaptiveOctree=true.
+        this.lastAdaptiveResult = null
 
         this.#cancellationBuffer = this.#device.createBuffer({
             label: "ISO Cancellation",
@@ -929,6 +951,61 @@ export class ISOExport {
                     )
                     logOctreeStats(octree)
                     logDiag("after Stage 4 octree build")
+
+                    // Stage 4 Session 3: compute the world-space AABB of refined parent
+                    // base cubes so render-worker-core can schedule a secondary fine-voxel
+                    // ISO pass within just this region. Walk the depth-1 leaves; their
+                    // (cellPos >> 1) gives the parent's base-grid position, which we
+                    // convert to world coords using gridOffset + voxelSize. The resulting
+                    // AABB is the union of all refined parents' world cubes (one per
+                    // refined parent base cube; multiple sub-leaves of the same parent
+                    // collapse into the same parent box).
+                    let refinedMinX = Infinity, refinedMinY = Infinity, refinedMinZ = Infinity
+                    let refinedMaxX = -Infinity, refinedMaxY = -Infinity, refinedMaxZ = -Infinity
+                    const refinedParentSet = new Set<number>()
+                    for (const leaf of octree.leaves) {
+                        if (leaf.depth === 0) continue
+                        const px = leaf.cellPos[0] >> leaf.depth
+                        const py = leaf.cellPos[1] >> leaf.depth
+                        const pz = leaf.cellPos[2] >> leaf.depth
+                        const parentKey = px + py * nx + pz * nx * ny
+                        if (refinedParentSet.has(parentKey)) continue
+                        refinedParentSet.add(parentKey)
+                        const wx0 = gridOffsetX + px * voxelSize
+                        const wy0 = gridOffsetY + py * voxelSize
+                        const wz0 = gridOffsetZ + pz * voxelSize
+                        if (wx0 < refinedMinX) refinedMinX = wx0
+                        if (wy0 < refinedMinY) refinedMinY = wy0
+                        if (wz0 < refinedMinZ) refinedMinZ = wz0
+                        const wx1 = wx0 + voxelSize
+                        const wy1 = wy0 + voxelSize
+                        const wz1 = wz0 + voxelSize
+                        if (wx1 > refinedMaxX) refinedMaxX = wx1
+                        if (wy1 > refinedMaxY) refinedMaxY = wy1
+                        if (wz1 > refinedMaxZ) refinedMaxZ = wz1
+                    }
+                    if (refinedParentSet.size > 0) {
+                        this.lastAdaptiveResult = {
+                            refinedAABB: {
+                                min: [refinedMinX, refinedMinY, refinedMinZ],
+                                max: [refinedMaxX, refinedMaxY, refinedMaxZ],
+                            },
+                            refinedBaseCubeCount: refinedParentSet.size,
+                            primaryVoxelSize: voxelSize,
+                        }
+                        dbgLog("IsoExport").info(
+                            `Stage 4 Session 3 refinement region: ${refinedParentSet.size} parent cubes, `
+                            + `AABB=(${refinedMinX.toFixed(3)},${refinedMinY.toFixed(3)},${refinedMinZ.toFixed(3)})..`
+                            + `(${refinedMaxX.toFixed(3)},${refinedMaxY.toFixed(3)},${refinedMaxZ.toFixed(3)}) mm. `
+                            + `render-worker-core may schedule a secondary fine-voxel pass here.`,
+                        )
+                    } else {
+                        this.lastAdaptiveResult = {
+                            refinedAABB: null,
+                            refinedBaseCubeCount: 0,
+                            primaryVoxelSize: voxelSize,
+                        }
+                    }
 
                     // Stage 4 Session 2: GPU sub-cube dual placement (Pass 11). Walk the
                     // octree's depth-1 leaves and place a 4D-QEF dual for each child sub-cube.

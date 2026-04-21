@@ -539,12 +539,25 @@ fn solveQEF4(qef: QEF4Data) -> vec4f {
         return vec4f(0.0);
     }
     let mass = qef.massPoint / f32(qef.numPoints);
-    if (qef.numPoints < 4u) {
-        // Under-determined: not enough hyperplane samples to pin all 4 dimensions.
-        // Returning the mass point is the standard fallback (matches paper's behavior
-        // for cells with too few sign-change edges to constrain a sharp feature).
+    if (qef.numPoints < 2u) {
+        // Truly empty system; nothing to fit. Cells with this few samples should
+        // never reach this entry point in practice.
         return vec4f(mass, 0.0);
     }
+    // For 2 ≤ numPoints < 4, ATA is rank-deficient in some dimensions — but
+    // for sub-3D cells (1-cells/2-cells) that's the EXPECTED case after the
+    // gradient projection, and Tikhonov regularization (added below) plus the
+    // mass-point bias term handle the unconstrained dimensions correctly:
+    //   - Edge cells (Pass 3): 3 samples × edge-projected gradient → rank-2
+    //     ATA (along-edge + F). Solver returns iso-crossing along edge for
+    //     the 1 constrained spatial dim and mass-point values for the other 2.
+    //   - Face cells (Pass 4): 2–4 samples × face-projected gradient → rank-3
+    //     ATA (face-u + face-v + F). Off-face dim falls back to mass-point.
+    //   - Cube cells (Pass 5): 4–12 samples × full gradient → rank-3 to 4.
+    // The earlier `< 4u` cutoff caused edges and most faces to fall back
+    // wholesale to the cell centroid, losing iso-crossing alignment that
+    // Phase 1 already had — that was a regression visible as a "smoothed"
+    // contour following grid centers rather than the iso surface.
 
     // Build the 4×4 ATA columns from the stored block decomposition.
     let reg = max(uniforms.mdcF2.w, uniforms.voxelSize * uniforms.mdcF2.z);
@@ -1218,14 +1231,16 @@ fn placeCubeDuals_Pass5(
 // producing degenerate triangles that we drop in CPU post-process.
 //
 // Order matters: cubes (depend on faces+edges+corners) → faces (depend on edges+corners)
-// → edges (depend on corners). 0-cells (corners) never move. We currently implement
-// edges + faces; cubes are deferred because the Union-Find topology test on 26 boundary
-// duals is significantly more complex.
+// → edges (depend on corners). 0-cells (corners) never move. Cube improvement (Pass 10)
+// must dispatch BEFORE face/edge improvement (Pass 9 / Pass 8) — otherwise its
+// topology test would partition by relaxed near-zero fvals on its boundary and lose
+// the inside/outside sign distinction.
 //
 // Topology safety tests:
-//   - Edge: endpoint corners have opposite sign           (always 1 sign-change pair)
-//   - Face: 4-corner boundary ring has exactly 2 sign changes (single contour segment)
-//   - Cube: Union-Find shows 1 connected sign-change component on boundary (deferred)
+//   - Edge (Pass 8):  endpoint corners have opposite sign       (1 sign-change pair)
+//   - Face (Pass 9):  4-corner ring has exactly 2 sign changes  (single contour segment)
+//   - Cube (Pass 10): Union-Find on 26 boundary duals shows ≤1 component per side
+//                     (iso surface in cube is a single topological disk)
 //
 // When the test fails, the dual stays where Pass 3/4/5 left it.
 
@@ -1479,6 +1494,312 @@ fn improveFaceDuals_Pass9(
     var hi = positions[best_idx];
     var fl = face_f;
     var fh = fvals[best_idx];
+    if (fl > 0.0) {
+        let tp = lo; lo = hi; hi = tp;
+        let tf = fl; fl = fh; fh = tf;
+    }
+    let pos = bisect_to_iso(lo, hi, fl, fh);
+    let f_at_pos = sceneSDF_fast(pos).d - uniforms.isoValue;
+    write_dual_slot(absolute_slot, DualVertex(pos, f_at_pos));
+}
+
+// ============================== Pass 10: Cube dual improvement (paper §4.1, cube case) ==============================
+//
+// Move the cube dual onto the iso surface only when the boundary topology test passes.
+// The boundary of a cube has 26 dual vertices of dimension i<3:
+//   8 corners + 12 edge duals + 6 face duals
+// connected by simplicial-subdivision graph edges from each cube face's barycentric
+// triangulation: per face, 4 (corner-edge_dual) + 4 (edge_dual-face_dual) + 4
+// (corner-face_dual) = 12 graph edges; 6 faces × 12 = 72 with shared duplicates that
+// Union-Find harmlessly no-ops.
+//
+// Topology test: partition the 26 boundary vertices by sign(fval) and run Union-Find on
+// graph edges where both endpoints share a sign. The test passes iff each side has at
+// most one connected component — i.e., the iso surface inside the cube forms a single
+// topological disk and pinching the cube dual onto it cannot create a non-manifold vertex
+// (paper Figure 7 / 8).
+//
+// MUST run before Pass 9 / Pass 8 — those modify face / edge dual fvals (relax onto iso),
+// after which the topology test would see ambiguous near-zero signs.
+//
+// Boundary vertex indexing into parent[26]:
+//   0..7   = 8 corners (matching getCellCornerPos)
+//   8..19  = 12 edge duals (4 X-edges, 4 Y-edges, 4 Z-edges; matching cube_edges_v)
+//   20..25 = 6 face duals (-X, +X, -Y, +Y, -Z, +Z)
+
+const CUBE_FACE_CORNERS: array<vec4u, 6> = array<vec4u, 6>(
+    vec4u(0u, 2u, 6u, 4u),  // -X face (x=cx),     CCW from outside
+    vec4u(1u, 5u, 7u, 3u),  // +X face (x=cx+1)
+    vec4u(0u, 4u, 5u, 1u),  // -Y face (y=cy)
+    vec4u(2u, 3u, 7u, 6u),  // +Y face (y=cy+1)
+    vec4u(0u, 1u, 3u, 2u),  // -Z face (z=cz)
+    vec4u(4u, 6u, 7u, 5u),  // +Z face (z=cz+1)
+);
+
+// CUBE_FACE_EDGE_LOCALS[f][i] = the cube edge index (0..11) for the face edge between
+// CUBE_FACE_CORNERS[f][i] and CUBE_FACE_CORNERS[f][(i+1)%4]. Cube edge numbering matches
+// edges_v in placeCubeDuals_Pass5 (0..3=X, 4..7=Y, 8..11=Z).
+const CUBE_FACE_EDGE_LOCALS: array<vec4u, 6> = array<vec4u, 6>(
+    vec4u(4u, 10u, 6u,  8u),  // -X
+    vec4u(9u, 7u,  11u, 5u),  // +X
+    vec4u(8u, 2u,  9u,  0u),  // -Y
+    vec4u(1u, 11u, 3u,  10u), // +Y
+    vec4u(0u, 5u,  1u,  4u),  // -Z
+    vec4u(6u, 3u,  7u,  2u),  // +Z
+);
+
+// Base offsets for the cube's 12 edges (low-coordinate endpoint relative to cell_pos).
+// edges 0..3 are X-edges (vary in x), 4..7 are Y-edges, 8..11 are Z-edges.
+const CUBE_EDGE_BASE: array<vec3u, 12> = array<vec3u, 12>(
+    vec3u(0u, 0u, 0u), vec3u(0u, 1u, 0u), vec3u(0u, 0u, 1u), vec3u(0u, 1u, 1u),  // X-edges
+    vec3u(0u, 0u, 0u), vec3u(1u, 0u, 0u), vec3u(0u, 0u, 1u), vec3u(1u, 0u, 1u),  // Y-edges
+    vec3u(0u, 0u, 0u), vec3u(1u, 0u, 0u), vec3u(0u, 1u, 0u), vec3u(1u, 1u, 0u),  // Z-edges
+);
+
+/// Linear (per-category) grid index for the cube's `edge_i`-th edge. Caller passes
+/// `cube_edge_cell_type(edge_i)` separately to read the dual.
+fn cube_edge_grid_index(cell_pos: vec3u, edge_i: u32, dx: u32, dy: u32) -> u32 {
+    let p = cell_pos + CUBE_EDGE_BASE[edge_i];
+    if (edge_i < 4u) {
+        // X-edge: count = (dx-1) * dy * dz, indexed x + y*(dx-1) + z*(dx-1)*dy
+        return p.x + p.y * (dx - 1u) + p.z * (dx - 1u) * dy;
+    } else if (edge_i < 8u) {
+        // Y-edge: count = dx * (dy-1) * dz, indexed x + y*dx + z*dx*(dy-1)
+        return p.x + p.y * dx + p.z * dx * (dy - 1u);
+    } else {
+        // Z-edge: count = dx * dy * (dz-1), indexed x + y*dx + z*dx*dy
+        return p.x + p.y * dx + p.z * dx * dy;
+    }
+}
+
+fn cube_edge_cell_type(edge_i: u32) -> u32 {
+    if (edge_i < 4u) { return CELL_TYPE_EDGE_X; }
+    if (edge_i < 8u) { return CELL_TYPE_EDGE_Y; }
+    return CELL_TYPE_EDGE_Z;
+}
+
+/// Linear (per-category) grid index for the cube's `face_i`-th face.
+/// face_i 0=-X, 1=+X (YZ planes); 2=-Y, 3=+Y (XZ planes); 4=-Z, 5=+Z (XY planes).
+fn cube_face_grid_index(cell_pos: vec3u, face_i: u32, dx: u32, dy: u32) -> u32 {
+    if (face_i < 2u) {
+        let p = vec3u(cell_pos.x + face_i, cell_pos.y, cell_pos.z);
+        return p.x + p.y * dx + p.z * dx * (dy - 1u);
+    } else if (face_i < 4u) {
+        let p = vec3u(cell_pos.x, cell_pos.y + (face_i - 2u), cell_pos.z);
+        return p.x + p.y * (dx - 1u) + p.z * (dx - 1u) * dy;
+    } else {
+        let p = vec3u(cell_pos.x, cell_pos.y, cell_pos.z + (face_i - 4u));
+        return p.x + p.y * (dx - 1u) + p.z * (dx - 1u) * (dy - 1u);
+    }
+}
+
+fn cube_face_cell_type(face_i: u32) -> u32 {
+    if (face_i < 2u) { return CELL_TYPE_FACE_YZ; }
+    if (face_i < 4u) { return CELL_TYPE_FACE_XZ; }
+    return CELL_TYPE_FACE_XY;
+}
+
+/// 26-element Union-Find with one-step path compression. Iterating to fixpoint is fine
+/// in WGSL because the tree depth is bounded by `log₂(26) ≈ 5` after path compression.
+fn ufFindCube(parent: ptr<function, array<u32, 26>>, x: u32) -> u32 {
+    var i = x;
+    var p = (*parent)[i];
+    while (p != i) {
+        let pp = (*parent)[p];
+        (*parent)[i] = pp;
+        i = p;
+        p = pp;
+    }
+    return i;
+}
+
+fn ufUnionCube(parent: ptr<function, array<u32, 26>>, a: u32, b: u32) {
+    let ra = ufFindCube(parent, a);
+    let rb = ufFindCube(parent, b);
+    if (ra != rb) {
+        (*parent)[ra] = rb;
+    }
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn improveCubeDuals_Pass10(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let dx = uniforms.gridDimensions.x;
+    let dy = uniforms.gridDimensions.y;
+    let dz = uniforms.gridDimensions.z;
+    if (dx < 2u || dy < 2u || dz < 2u) {
+        return;
+    }
+
+    let nx = dx - 1u;
+    let ny = dy - 1u;
+    let nz = dz - 1u;
+    let cube_count = uniforms.sparseCounts1.w;
+    let local_slot = globalId.x + globalId.y * (numWg.x * 64u);
+    if (local_slot >= cube_count) {
+        return;
+    }
+    let absolute_slot = uniforms.sparseBases1.w + local_slot;
+    let cell_idx = dualCompactList[absolute_slot];
+
+    let x = cell_idx % nx;
+    let y = (cell_idx / nx) % ny;
+    let z = cell_idx / (nx * ny);
+    let cell_pos = vec3u(x, y, z);
+
+    // Sharp-feature gate (matches Pass 8/9). Pass 5 places the cube dual at the
+    // QEF-optimal point; if F* there is significantly non-zero, this cube contains a
+    // sharp feature (CSG seam, box edge interior). Don't relax it onto the smooth iso.
+    let cube_dual = allDuals[absolute_slot];
+    let sharp_eps = uniforms.voxelSize * 5e-2;
+    if (abs(cube_dual.fval) > sharp_eps) {
+        return;
+    }
+
+    // Read all 26 boundary duals' fvals (and positions, for later bisection target choice).
+    // 0..7 = corners, 8..19 = edge duals, 20..25 = face duals.
+    var fvals: array<f32, 26>;
+    var positions: array<vec3f, 26>;
+
+    // Corners
+    for (var i = 0u; i < 8u; i = i + 1u) {
+        let g = getCellCornerPos(cell_pos, i);
+        let world_p = gridPosToWorldPos(g);
+        let dv = dual_corner(gridPosToIndex(g));
+        fvals[i] = dv.fval;
+        positions[i] = world_p;
+    }
+
+    // Edge duals
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        let cell_type = cube_edge_cell_type(e);
+        let grid_i = cube_edge_grid_index(cell_pos, e, dx, dy);
+        let dv = read_dual(cell_type, grid_i);
+        fvals[8u + e] = dv.fval;
+        positions[8u + e] = dv.pos;
+    }
+
+    // Face duals
+    for (var f = 0u; f < 6u; f = f + 1u) {
+        let cell_type = cube_face_cell_type(f);
+        let grid_i = cube_face_grid_index(cell_pos, f, dx, dy);
+        let dv = read_dual(cell_type, grid_i);
+        fvals[20u + f] = dv.fval;
+        positions[20u + f] = dv.pos;
+    }
+
+    // Per-vertex sign: 1u = outside (fval > 0), 0u = inside. (We're on Pass 5/3/4 fvals
+    // here, before any relax-to-iso, so signs are unambiguous well away from zero. Even
+    // for vertices at exactly zero we make a deterministic choice — the Union-Find
+    // outcome only matters for the topology check, where degenerate singletons won't
+    // form additional components beyond the two well-defined sides.)
+    var signs: array<u32, 26>;
+    for (var v = 0u; v < 26u; v = v + 1u) {
+        signs[v] = select(0u, 1u, fvals[v] > 0.0);
+    }
+
+    // Initialize Union-Find with each vertex as its own component.
+    var parent: array<u32, 26>;
+    for (var v = 0u; v < 26u; v = v + 1u) {
+        parent[v] = v;
+    }
+
+    // Process the 6 face triangulations, unioning same-side endpoints of each graph edge.
+    for (var f = 0u; f < 6u; f = f + 1u) {
+        let face_dual_v = 20u + f;
+        let s_face = signs[face_dual_v];
+        for (var k = 0u; k < 4u; k = k + 1u) {
+            let corner_a_v = CUBE_FACE_CORNERS[f][k];
+            let corner_b_v = CUBE_FACE_CORNERS[f][(k + 1u) % 4u];
+            let edge_v = 8u + CUBE_FACE_EDGE_LOCALS[f][k];
+
+            // corner_a — edge_dual
+            if (signs[corner_a_v] == signs[edge_v]) {
+                ufUnionCube(&parent, corner_a_v, edge_v);
+            }
+            // corner_b — edge_dual
+            if (signs[corner_b_v] == signs[edge_v]) {
+                ufUnionCube(&parent, corner_b_v, edge_v);
+            }
+            // edge_dual — face_dual
+            if (signs[edge_v] == s_face) {
+                ufUnionCube(&parent, edge_v, face_dual_v);
+            }
+            // corner_a — face_dual
+            if (signs[corner_a_v] == s_face) {
+                ufUnionCube(&parent, corner_a_v, face_dual_v);
+            }
+        }
+    }
+
+    // Count distinct roots per side. We expect ≤2 roots total in a well-formed cube;
+    // a small fixed bound is safer than dynamic allocation in WGSL.
+    var inside_root_count = 0u;
+    var outside_root_count = 0u;
+    var inside_roots: array<u32, 8>;
+    var outside_roots: array<u32, 8>;
+
+    for (var v = 0u; v < 26u; v = v + 1u) {
+        let r = ufFindCube(&parent, v);
+        if (signs[v] == 0u) {
+            var found = false;
+            for (var k = 0u; k < inside_root_count; k = k + 1u) {
+                if (inside_roots[k] == r) { found = true; break; }
+            }
+            if (!found && inside_root_count < 8u) {
+                inside_roots[inside_root_count] = r;
+                inside_root_count = inside_root_count + 1u;
+            }
+        } else {
+            var found = false;
+            for (var k = 0u; k < outside_root_count; k = k + 1u) {
+                if (outside_roots[k] == r) { found = true; break; }
+            }
+            if (!found && outside_root_count < 8u) {
+                outside_roots[outside_root_count] = r;
+                outside_root_count = outside_root_count + 1u;
+            }
+        }
+    }
+
+    // Topology test: each side ≤ 1 connected component. (0 components is fine — that
+    // side is empty, e.g. all corners outside, surface a single sheet entering only via
+    // edge / face duals; relaxing the cube dual onto iso just collapses an isolated
+    // disk to a point, which is still manifold per paper Figure 8.)
+    if (inside_root_count > 1u || outside_root_count > 1u) {
+        return;
+    }
+
+    // Pick the bisection target: boundary vertex with opposite sign to the cube dual,
+    // smallest |fval| (closest to iso → bisection converges fastest and lands near the
+    // existing surface region rather than yanking across the cell).
+    let cube_sign = select(0u, 1u, cube_dual.fval > 0.0);
+    var best_v = 26u;
+    var best_abs_f = 1e30f;
+    for (var v = 0u; v < 26u; v = v + 1u) {
+        if (signs[v] == cube_sign) { continue; }
+        let af = abs(fvals[v]);
+        if (af < best_abs_f) {
+            best_abs_f = af;
+            best_v = v;
+        }
+    }
+    if (best_v >= 26u) {
+        // No opposite-sign neighbor (would imply both topology counts are 0/1 with all
+        // same sign — a closed disconnected pocket). Leave dual where Pass 5 placed it.
+        return;
+    }
+
+    // Bisect from cube dual (current side) toward best_v (opposite side).
+    var lo = cube_dual.pos;
+    var hi = positions[best_v];
+    var fl = cube_dual.fval;
+    var fh = fvals[best_v];
     if (fl > 0.0) {
         let tp = lo; lo = hi; hi = tp;
         let tf = fl; fl = fh; fh = tf;

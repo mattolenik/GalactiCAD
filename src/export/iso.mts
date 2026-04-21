@@ -560,7 +560,8 @@ export class ISOExport {
             // improvement deferred (Union-Find on 26 boundary duals).
             const p8 = this.#helper.createComputePipeline(isoShaderModule, "improveEdgeDuals_Pass8")
             const p9 = this.#helper.createComputePipeline(isoShaderModule, "improveFaceDuals_Pass9")
-            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p8, p9)
+            const p10 = this.#helper.createComputePipeline(isoShaderModule, "improveCubeDuals_Pass10")
+            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p8, p9, p10)
 
             const cancelBuf = this.#cancellationBuffer!
 
@@ -784,7 +785,22 @@ export class ISOExport {
                 [28, this.#faceSelectionBuffer],
                 [30, this.#mdcSceneParamsBuffer],
             )
-            this.#localBindGroups.push(bgPass2[1], bgPass3[1], bgPass4[1], bgPass5[1], bgPass6[1], bgPass8[1], bgPass9[1])
+            // Pass 10 (improveCubeDuals): same buffer set as Pass 8/9 — reads 26 boundary
+            // duals through the hash, writes its cube dual through absolute slot. Must
+            // dispatch BEFORE Pass 8/9 because its topology test reads pre-relax fvals
+            // of the boundary edge/face duals.
+            const bgPass10 = this.#helper.createBindGroup(
+                0, "ISO Pass10 improveCube", p10,
+                [0, uniformBuffer],
+                [2, sparseAllDualsBuffer],
+                [6, sparseHashBuffer],
+                [8, sparseCompactBuffer],
+                [25, cancelBuf],
+                [27, this.#polygonVerticesBuffer],
+                [28, this.#faceSelectionBuffer],
+                [30, this.#mdcSceneParamsBuffer],
+            )
+            this.#localBindGroups.push(bgPass2[1], bgPass3[1], bgPass4[1], bgPass5[1], bgPass6[1], bgPass8[1], bgPass9[1], bgPass10[1])
 
             // Pass 2 (corners)
             progressCallback?.updateProgress("ISO Pass 2: corner duals", 25)
@@ -840,11 +856,31 @@ export class ISOExport {
             }
             logDiag("after pass3-5")
 
-            // Phase 3 (paper §4.1): edge + face dual improvement. Each pass moves duals
-            // ONTO the iso surface (fval = 0) when the per-cell topology safety test
+            // Phase 3 (paper §4.1): cube → face → edge dual improvement. Each pass moves
+            // duals ONTO the iso surface (fval ≈ 0) when the per-cell topology safety test
             // passes. This collapses MT crossings on tet edges incident to those duals
             // onto the dual position — producing degenerate triangles that we drop after
             // the weld. Per the paper this gives ~3× triangle reduction.
+            //
+            // Order is important: cube dual improvement (Pass 10) must run BEFORE face
+            // (Pass 9) and edge (Pass 8) improvement, because its topology test reads
+            // the boundary face/edge dual fvals to partition them by sign — Pass 9/8
+            // would relax those fvals to ~0 and break the partition.
+            progressCallback?.updateProgress("ISO Pass 10: improve cube duals", 70)
+            {
+                const wg = Math.ceil(sparse.cubeCompactList.length / 64)
+                const dispatchX = Math.min(wg, 65535)
+                const dispatchY = Math.ceil(wg / dispatchX)
+                const ce = this.#device.createCommandEncoder({ label: "iso_pass10_improve_cube" })
+                const pass = this.#helper.beginComputePass(ce, p10, bgPass10)
+                pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                pass.end()
+                this.#device.queue.submit([ce.finish()])
+                await this.#device.queue.onSubmittedWorkDone()
+                checkCancelled()
+            }
+            logDiag("after pass10 cube improvement")
+
             progressCallback?.updateProgress("ISO Pass 8/9: improve duals", 75)
             {
                 const enc = this.#device.createCommandEncoder({ label: "iso_pass89_improve" })

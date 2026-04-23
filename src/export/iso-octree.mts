@@ -258,35 +258,110 @@ export function logOctreeStats(result: OctreeBuildResult): void {
     dbgLog("IsoExport").debug(formatOctreeStats(result))
 }
 
-// ============================== Stage 4 Session 2 ==============================
-// GPU sub-cube dual placement support.
+// ============================== Stage 4 Sessions 2, 5, 6 ==============================
+// GPU sub-cube / sub-edge / sub-face dual placement support — all keyed by GLOBAL
+// sub-grid coordinates rather than parent-relative encoding.
 //
-// The CPU octree builder above produces leaves at multiple depths. Session 2 takes
-// the depth-1 leaves and dispatches a GPU pass (`placeChildCubeDuals_Pass11`) that
-// computes a 4D-QEF cube dual for each child sub-cube. Session 2 ONLY supports
-// 1-level subdivision (depth = 1, octant 0..7); deeper levels are Session 3+ and
-// require a different descriptor format + multi-level Marching Tetrahedra in Pass 6.
+// Why global coords: at refined-parent boundaries, a single sub-edge or sub-face can
+// touch up to 4 (sub-edge) or 2 (sub-face) refined parents. Per-parent emission would
+// produce up to 4× duplicates that the depth-aware sparse hash (Session 6) can't
+// disambiguate. Encoding each sub-cell by its global sub-grid linear index makes
+// canonical-owner dedup trivial — a single `Set<linearIdx>` collapses all duplicates,
+// and the resulting descriptor list maps 1:1 onto unique hash entries.
+//
+// Session 2 (current) only supports depth-1 leaves. Depth-2+ leaves get counted as
+// `skippedDeeperLeaves` for diagnostics; future work will widen the descriptor + add a
+// recursive Pass for deeper sub-cells.
+//
+// Sub-grid dimensions: with depth-1 refinement, sub-voxel = base voxel × ½. The sub-grid
+// has 2× as many cells per axis as the base grid:
+//   sub-cell counts:    sub_nx = 2*nx, sub_ny = 2*ny, sub_nz = 2*nz
+//   sub-corner counts:  sub_nx + 1 = 2*nx + 1, etc.
+// Linear index formulas mirror the base-grid `face_idx_xy` / `cube_edge_grid_index`
+// helpers in `iso.wgsl` but at sub-resolution.
 
-/** A single child sub-cube descriptor matching the WGSL `childCubeInfo[i]` vec4u layout. */
+/** A child sub-cube descriptor matching WGSL `childCubeInfo[i]` (vec4u) layout.
+ *  Coordinates are GLOBAL sub-grid positions (range [0, 2*nx) × [0, 2*ny) × [0, 2*nz)).
+ *  The depth-1 octree leaves directly encode sub-cube positions at this resolution. */
 export interface ChildCubeInfo {
-    /** Parent's base-grid position (depth-0 cube coords, in [0, nx) × ...). */
-    parentX: number
-    parentY: number
-    parentZ: number
-    /** Octant within parent: bit 0 = x, bit 1 = y, bit 2 = z. Range 0..7. */
-    octant: number
+    gsx: number
+    gsy: number
+    gsz: number
+}
+
+/** A child sub-edge descriptor matching WGSL `childEdgeInfo[i]` (vec4u) layout.
+ *  Coordinates are GLOBAL sub-grid lo-corner positions; range depends on axis:
+ *    X-edge: gsx ∈ [0, 2*nx),     gsy ∈ [0, 2*ny+1), gsz ∈ [0, 2*nz+1)
+ *    Y-edge: gsx ∈ [0, 2*nx+1), gsy ∈ [0, 2*ny),     gsz ∈ [0, 2*nz+1)
+ *    Z-edge: gsx ∈ [0, 2*nx+1), gsy ∈ [0, 2*ny+1), gsz ∈ [0, 2*nz)
+ *  axis: 0 = X-edge, 1 = Y-edge, 2 = Z-edge. */
+export interface ChildEdgeInfo {
+    gsx: number
+    gsy: number
+    gsz: number
+    axis: 0 | 1 | 2
+}
+
+/** A child sub-face descriptor matching WGSL `childFaceInfo[i]` (vec4u) layout.
+ *  Coordinates are GLOBAL sub-grid min-corner positions; range depends on axis (the
+ *  axis perpendicular to the face):
+ *    YZ-face (axis=0): gsx ∈ [0, 2*nx+1), gsy ∈ [0, 2*ny),   gsz ∈ [0, 2*nz)
+ *    XZ-face (axis=1): gsx ∈ [0, 2*nx),   gsy ∈ [0, 2*ny+1), gsz ∈ [0, 2*nz)
+ *    XY-face (axis=2): gsx ∈ [0, 2*nx),   gsy ∈ [0, 2*ny),   gsz ∈ [0, 2*nz+1)
+ *  axis: 0 = YZ-face (perp X), 1 = XZ-face (perp Y), 2 = XY-face (perp Z). */
+export interface ChildFaceInfo {
+    gsx: number
+    gsy: number
+    gsz: number
+    axis: 0 | 1 | 2
+}
+
+// ---------- Linear-index formulas (CPU) for the sparse hash extension ----------
+// Each sub-cell category maps a global sub-grid coord to a unique linear index. Must
+// match `subCellLinearIdx*` helpers in `iso.wgsl` exactly (Session 6 work).
+
+/** Linear index for a sub-cube at global sub-grid coords. Range: [0, 2*nx × 2*ny × 2*nz). */
+export function subCubeLinearIdx(gsx: number, gsy: number, gsz: number, nxBase: number, nyBase: number): number {
+    return gsx + gsy * (2 * nxBase) + gsz * (2 * nxBase) * (2 * nyBase)
+}
+
+/** Linear index for an X-sub-edge. Range: [0, 2*nx × (2*ny+1) × (2*nz+1)). */
+export function subEdgeXLinearIdx(gsx: number, gsy: number, gsz: number, nxBase: number, nyBase: number): number {
+    return gsx + gsy * (2 * nxBase) + gsz * (2 * nxBase) * (2 * nyBase + 1)
+}
+
+/** Linear index for a Y-sub-edge. Range: [0, (2*nx+1) × 2*ny × (2*nz+1)). */
+export function subEdgeYLinearIdx(gsx: number, gsy: number, gsz: number, nxBase: number, nyBase: number): number {
+    return gsx + gsy * (2 * nxBase + 1) + gsz * (2 * nxBase + 1) * (2 * nyBase)
+}
+
+/** Linear index for a Z-sub-edge. Range: [0, (2*nx+1) × (2*ny+1) × 2*nz). */
+export function subEdgeZLinearIdx(gsx: number, gsy: number, gsz: number, nxBase: number, nyBase: number): number {
+    return gsx + gsy * (2 * nxBase + 1) + gsz * (2 * nxBase + 1) * (2 * nyBase + 1)
+}
+
+/** Linear index for a YZ-sub-face (perpendicular to X). Range: [0, (2*nx+1) × 2*ny × 2*nz). */
+export function subFaceYZLinearIdx(gsx: number, gsy: number, gsz: number, nxBase: number, nyBase: number): number {
+    return gsx + gsy * (2 * nxBase + 1) + gsz * (2 * nxBase + 1) * (2 * nyBase)
+}
+
+/** Linear index for an XZ-sub-face (perpendicular to Y). Range: [0, 2*nx × (2*ny+1) × 2*nz). */
+export function subFaceXZLinearIdx(gsx: number, gsy: number, gsz: number, nxBase: number, nyBase: number): number {
+    return gsx + gsy * (2 * nxBase) + gsz * (2 * nxBase) * (2 * nyBase + 1)
+}
+
+/** Linear index for an XY-sub-face (perpendicular to Z). Range: [0, 2*nx × 2*ny × (2*nz+1)). */
+export function subFaceXYLinearIdx(gsx: number, gsy: number, gsz: number, nxBase: number, nyBase: number): number {
+    return gsx + gsy * (2 * nxBase) + gsz * (2 * nxBase) * (2 * nyBase)
 }
 
 /**
- * Walk the octree leaves and emit one `ChildCubeInfo` per depth-1 leaf.
- *
- * Session 2 limitation: drops leaves at depth ≥ 2 (logged for diagnostics). A leaf at
- * depth 2 has cellPos at quarter-voxel resolution; encoding its octant chain requires
- * either a packed Morton path or per-leaf depth field, which the current vec4u
- * descriptor doesn't support. Session 3 will widen the descriptor.
+ * Walk the octree leaves and emit one `ChildCubeInfo` per UNIQUE depth-1 leaf
+ * (already deduplicated — sub-cubes are interior to a parent and never shared
+ * between refined parents, so each depth-1 leaf is naturally unique).
  *
  * Returns the child list AND the count of skipped deeper-than-1 leaves so the
- * orchestrator can log "X depth-2+ leaves not yet supported by Pass 11".
+ * orchestrator can log "N depth-2+ leaves not yet supported by Pass 11".
  */
 export function buildChildCubeListFromOctree(octree: OctreeBuildResult): {
     children: ChildCubeInfo[]
@@ -301,17 +376,8 @@ export function buildChildCubeListFromOctree(octree: OctreeBuildResult): {
             skippedDeeperLeaves++
             continue
         }
-        // Depth = 1 → cellPos is at half-voxel coords. Parent at (cellPos >> 1) and
-        // octant at (cellPos & 1) packed across axes.
-        const cx = leaf.cellPos[0]
-        const cy = leaf.cellPos[1]
-        const cz = leaf.cellPos[2]
-        children.push({
-            parentX: cx >> 1,
-            parentY: cy >> 1,
-            parentZ: cz >> 1,
-            octant: (cx & 1) | ((cy & 1) << 1) | ((cz & 1) << 2),
-        })
+        // Depth-1 leaf: leaf.cellPos is already at sub-grid (half-voxel) coords.
+        children.push({ gsx: leaf.cellPos[0], gsy: leaf.cellPos[1], gsz: leaf.cellPos[2] })
     }
 
     return { children, skippedDeeperLeaves }
@@ -320,17 +386,357 @@ export function buildChildCubeListFromOctree(octree: OctreeBuildResult): {
 /** Stride in u32 of one packed `ChildCubeInfo` entry — must match `vec4u` layout. */
 export const CHILD_CUBE_INFO_STRIDE_U32 = 4
 
-/** Pack the child-cube list into a Uint32Array for GPU upload (vec4u per entry). */
+/** Pack the child-cube list into a Uint32Array for GPU upload.
+ *  Layout: vec4u(gsx, gsy, gsz, _padding). */
 export function packChildCubeInfo(children: ChildCubeInfo[]): Uint32Array {
     const packed = new Uint32Array(children.length * CHILD_CUBE_INFO_STRIDE_U32)
     for (let i = 0; i < children.length; i++) {
         const c = children[i]!
-        packed[i * CHILD_CUBE_INFO_STRIDE_U32] = c.parentX >>> 0
-        packed[i * CHILD_CUBE_INFO_STRIDE_U32 + 1] = c.parentY >>> 0
-        packed[i * CHILD_CUBE_INFO_STRIDE_U32 + 2] = c.parentZ >>> 0
-        packed[i * CHILD_CUBE_INFO_STRIDE_U32 + 3] = c.octant >>> 0
+        packed[i * CHILD_CUBE_INFO_STRIDE_U32] = c.gsx >>> 0
+        packed[i * CHILD_CUBE_INFO_STRIDE_U32 + 1] = c.gsy >>> 0
+        packed[i * CHILD_CUBE_INFO_STRIDE_U32 + 2] = c.gsz >>> 0
+        packed[i * CHILD_CUBE_INFO_STRIDE_U32 + 3] = 0
     }
     return packed
+}
+
+/**
+ * Walk the octree's depth-1 leaves → unique refined parents → enumerate the parent's
+ * 54 sub-edges (18 per axis) at GLOBAL sub-grid coordinates. Deduplicate sub-edges
+ * shared between adjacent refined parents via a `Set<linearIdx>` per axis (a sub-edge
+ * on a parent's boundary edge is touched by up to 4 refined parents; each emits the
+ * same global linear index, the Set keeps one).
+ *
+ * Returns the dedupe'd ChildEdgeInfo[] AND skipped-deeper-leaf count.
+ */
+export function buildChildEdgeListFromOctree(
+    octree: OctreeBuildResult,
+    nxBase: number,
+    nyBase: number,
+): {
+    edges: ChildEdgeInfo[]
+    skippedDeeperLeaves: number
+} {
+    const edges: ChildEdgeInfo[] = []
+    let skippedDeeperLeaves = 0
+    const seenParents = new Set<number>()
+    const seenX = new Set<number>()
+    const seenY = new Set<number>()
+    const seenZ = new Set<number>()
+    const refinedParents: Array<[number, number, number]> = []
+    for (const leaf of octree.leaves) {
+        if (leaf.depth === 0) continue
+        if (leaf.depth > 1) {
+            skippedDeeperLeaves++
+            continue
+        }
+        const px = leaf.cellPos[0] >> 1
+        const py = leaf.cellPos[1] >> 1
+        const pz = leaf.cellPos[2] >> 1
+        // Pack to a single 32-bit dedup key. Components fit in 10 bits (assumes
+        // base-grid coords ≤ 1024 per axis — well within typical CAD scales).
+        const key = (px & 0x3ff) | ((py & 0x3ff) << 10) | ((pz & 0x3ff) << 20)
+        if (seenParents.has(key)) continue
+        seenParents.add(key)
+        refinedParents.push([px, py, pz])
+    }
+    for (const [px, py, pz] of refinedParents) {
+        const baseGsx = px * 2
+        const baseGsy = py * 2
+        const baseGsz = pz * 2
+        // X-edges: lo-corner sx ∈ [0..1], sy ∈ [0..2], sz ∈ [0..2]
+        for (let sx = 0; sx < 2; sx++) {
+            for (let sy = 0; sy < 3; sy++) {
+                for (let sz = 0; sz < 3; sz++) {
+                    const gsx = baseGsx + sx
+                    const gsy = baseGsy + sy
+                    const gsz = baseGsz + sz
+                    const lin = subEdgeXLinearIdx(gsx, gsy, gsz, nxBase, nyBase)
+                    if (seenX.has(lin)) continue
+                    seenX.add(lin)
+                    edges.push({ gsx, gsy, gsz, axis: 0 })
+                }
+            }
+        }
+        // Y-edges: sx ∈ [0..2], sy ∈ [0..1], sz ∈ [0..2]
+        for (let sx = 0; sx < 3; sx++) {
+            for (let sy = 0; sy < 2; sy++) {
+                for (let sz = 0; sz < 3; sz++) {
+                    const gsx = baseGsx + sx
+                    const gsy = baseGsy + sy
+                    const gsz = baseGsz + sz
+                    const lin = subEdgeYLinearIdx(gsx, gsy, gsz, nxBase, nyBase)
+                    if (seenY.has(lin)) continue
+                    seenY.add(lin)
+                    edges.push({ gsx, gsy, gsz, axis: 1 })
+                }
+            }
+        }
+        // Z-edges: sx ∈ [0..2], sy ∈ [0..2], sz ∈ [0..1]
+        for (let sx = 0; sx < 3; sx++) {
+            for (let sy = 0; sy < 3; sy++) {
+                for (let sz = 0; sz < 2; sz++) {
+                    const gsx = baseGsx + sx
+                    const gsy = baseGsy + sy
+                    const gsz = baseGsz + sz
+                    const lin = subEdgeZLinearIdx(gsx, gsy, gsz, nxBase, nyBase)
+                    if (seenZ.has(lin)) continue
+                    seenZ.add(lin)
+                    edges.push({ gsx, gsy, gsz, axis: 2 })
+                }
+            }
+        }
+    }
+    return { edges, skippedDeeperLeaves }
+}
+
+/**
+ * Walk the octree's depth-1 leaves → unique refined parents → enumerate the parent's
+ * 36 sub-faces at GLOBAL sub-grid coordinates. Deduplicate sub-faces shared between
+ * the (up to 2) refined parents that share the corresponding parent face.
+ */
+export function buildChildFaceListFromOctree(
+    octree: OctreeBuildResult,
+    nxBase: number,
+    nyBase: number,
+): {
+    faces: ChildFaceInfo[]
+    skippedDeeperLeaves: number
+} {
+    const faces: ChildFaceInfo[] = []
+    let skippedDeeperLeaves = 0
+    const seenParents = new Set<number>()
+    const seenYZ = new Set<number>()
+    const seenXZ = new Set<number>()
+    const seenXY = new Set<number>()
+    const refinedParents: Array<[number, number, number]> = []
+    for (const leaf of octree.leaves) {
+        if (leaf.depth === 0) continue
+        if (leaf.depth > 1) {
+            skippedDeeperLeaves++
+            continue
+        }
+        const px = leaf.cellPos[0] >> 1
+        const py = leaf.cellPos[1] >> 1
+        const pz = leaf.cellPos[2] >> 1
+        const key = (px & 0x3ff) | ((py & 0x3ff) << 10) | ((pz & 0x3ff) << 20)
+        if (seenParents.has(key)) continue
+        seenParents.add(key)
+        refinedParents.push([px, py, pz])
+    }
+    for (const [px, py, pz] of refinedParents) {
+        const baseGsx = px * 2
+        const baseGsy = py * 2
+        const baseGsz = pz * 2
+        // YZ-faces (perp X): sx ∈ [0..2], sy ∈ [0..1], sz ∈ [0..1]
+        for (let sx = 0; sx < 3; sx++) {
+            for (let sy = 0; sy < 2; sy++) {
+                for (let sz = 0; sz < 2; sz++) {
+                    const gsx = baseGsx + sx
+                    const gsy = baseGsy + sy
+                    const gsz = baseGsz + sz
+                    const lin = subFaceYZLinearIdx(gsx, gsy, gsz, nxBase, nyBase)
+                    if (seenYZ.has(lin)) continue
+                    seenYZ.add(lin)
+                    faces.push({ gsx, gsy, gsz, axis: 0 })
+                }
+            }
+        }
+        // XZ-faces (perp Y): sx ∈ [0..1], sy ∈ [0..2], sz ∈ [0..1]
+        for (let sx = 0; sx < 2; sx++) {
+            for (let sy = 0; sy < 3; sy++) {
+                for (let sz = 0; sz < 2; sz++) {
+                    const gsx = baseGsx + sx
+                    const gsy = baseGsy + sy
+                    const gsz = baseGsz + sz
+                    const lin = subFaceXZLinearIdx(gsx, gsy, gsz, nxBase, nyBase)
+                    if (seenXZ.has(lin)) continue
+                    seenXZ.add(lin)
+                    faces.push({ gsx, gsy, gsz, axis: 1 })
+                }
+            }
+        }
+        // XY-faces (perp Z): sx ∈ [0..1], sy ∈ [0..1], sz ∈ [0..2]
+        for (let sx = 0; sx < 2; sx++) {
+            for (let sy = 0; sy < 2; sy++) {
+                for (let sz = 0; sz < 3; sz++) {
+                    const gsx = baseGsx + sx
+                    const gsy = baseGsy + sy
+                    const gsz = baseGsz + sz
+                    const lin = subFaceXYLinearIdx(gsx, gsy, gsz, nxBase, nyBase)
+                    if (seenXY.has(lin)) continue
+                    seenXY.add(lin)
+                    faces.push({ gsx, gsy, gsz, axis: 2 })
+                }
+            }
+        }
+    }
+    return { faces, skippedDeeperLeaves }
+}
+
+/** Pack a `ChildEdgeInfo[]` for GPU upload. Layout: vec4u(gsx, gsy, gsz, axis). */
+export function packChildEdgeInfo(edges: ChildEdgeInfo[]): Uint32Array {
+    const packed = new Uint32Array(edges.length * 4)
+    for (let i = 0; i < edges.length; i++) {
+        const e = edges[i]!
+        packed[i * 4] = e.gsx >>> 0
+        packed[i * 4 + 1] = e.gsy >>> 0
+        packed[i * 4 + 2] = e.gsz >>> 0
+        packed[i * 4 + 3] = e.axis & 3
+    }
+    return packed
+}
+
+/** Pack a `ChildFaceInfo[]` for GPU upload. Layout: vec4u(gsx, gsy, gsz, axis). */
+export function packChildFaceInfo(faces: ChildFaceInfo[]): Uint32Array {
+    const packed = new Uint32Array(faces.length * 4)
+    for (let i = 0; i < faces.length; i++) {
+        const f = faces[i]!
+        packed[i * 4] = f.gsx >>> 0
+        packed[i * 4 + 1] = f.gsy >>> 0
+        packed[i * 4 + 2] = f.gsz >>> 0
+        packed[i * 4 + 3] = f.axis & 3
+    }
+    return packed
+}
+
+// ============================== Stage 4 Session 6: sub-cell sparse hash builder ==============================
+
+/** Cell-type IDs for sub-cells in the depth-aware sparse hash key. Must match the
+ *  WGSL `CELL_TYPE_SUB_*` constants in `iso.wgsl`. Base cell types (0..7) are
+ *  re-exported from `iso-sparse.mts`. */
+export const CELL_TYPE_SUB_CUBE = 8
+export const CELL_TYPE_SUB_EDGE_X = 9
+export const CELL_TYPE_SUB_EDGE_Y = 10
+export const CELL_TYPE_SUB_EDGE_Z = 11
+export const CELL_TYPE_SUB_FACE_YZ = 12
+export const CELL_TYPE_SUB_FACE_XZ = 13
+export const CELL_TYPE_SUB_FACE_XY = 14
+
+/** Sub-cell sparse hash table built from the deduped sub-cell descriptor lists.
+ *  Each entry maps `(subCellType, sub_grid_linearIdx)` → ABSOLUTE slot index in the
+ *  unified `subCellAllDuals` buffer (Stage 4 Session 7). The `subCubeBase`,
+ *  `subEdgeBase`, `subFaceBase` fields tell the orchestrator the per-pass write
+ *  offsets to upload to `uniforms.subCellBases`. */
+export interface SubCellSparseHash {
+    /** Open-addressed (key, slot) pairs; matches WGSL `subDualHashTable` layout. */
+    hashTable: Uint32Array
+    /** Power-of-two entry count = `hashTable.length / 2`. */
+    hashEntries: number
+    /** `hashEntries - 1`; passed to WGSL as `uniforms.subSparseHash.x`. */
+    hashMask: number
+    /** Total slots inserted = subCubeCount + subEdgeCount + subFaceCount. */
+    totalSlots: number
+    /** Absolute write base for sub-cubes in `subCellAllDuals` (always 0). */
+    subCubeBase: number
+    /** Absolute write base for sub-edges = subCubeCount. */
+    subEdgeBase: number
+    /** Absolute write base for sub-faces = subCubeCount + subEdgeCount. */
+    subFaceBase: number
+}
+
+const SUB_HASH_KNUTH = 0x9e3779b1 | 0  // matches SPARSE_HASH_KNUTH in iso-sparse.mts
+const SUB_HASH_KEY_EMPTY = 0xffffffff
+
+function makeSubKey(cellType: number, linearIdx: number): number {
+    // Mirror WGSL `make_sparse_key`: cellType in upper 4 bits, linearIdx in lower 28.
+    return ((cellType & 0xf) << 28) | (linearIdx & 0x0fffffff)
+}
+
+/**
+ * Build the sub-cell sparse hash table from the deduplicated descriptor lists.
+ *
+ * Stage 4 Session 7: slot is now an ABSOLUTE index into the unified
+ * `subCellAllDuals` GPU buffer. Layout:
+ *   slots [0,                          numSubCubes)  — sub-cubes
+ *   slots [numSubCubes,                numSubCubes + numSubEdges)  — sub-edges
+ *   slots [numSubCubes + numSubEdges,  total)  — sub-faces
+ *
+ * Pass 11/12/13 write to `subCellAllDuals[base + dispatch_index]` where bases are
+ * supplied via `uniforms.subCellBases`. The hash builder mirrors that base addressing.
+ *
+ * Hash capacity: `next_power_of_two(2 × totalSlots)` — 50% load factor.
+ */
+export function buildSubCellSparseHash(
+    subCubes: ChildCubeInfo[],
+    subEdges: ChildEdgeInfo[],
+    subFaces: ChildFaceInfo[],
+    nxBase: number,
+    nyBase: number,
+): SubCellSparseHash {
+    const totalSlots = subCubes.length + subEdges.length + subFaces.length
+    const subCubeBase = 0
+    const subEdgeBase = subCubes.length
+    const subFaceBase = subCubes.length + subEdges.length
+
+    // Empty case: return a 1-entry-marked-empty hash so the WGSL `mask == 0u` early-out
+    // path takes effect cleanly.
+    if (totalSlots === 0) {
+        const hashTable = new Uint32Array(2)
+        hashTable[0] = SUB_HASH_KEY_EMPTY
+        hashTable[1] = SUB_HASH_KEY_EMPTY
+        return {
+            hashTable, hashEntries: 1, hashMask: 0, totalSlots: 0,
+            subCubeBase, subEdgeBase, subFaceBase,
+        }
+    }
+
+    let hashEntries = 1
+    const target = Math.max(64, totalSlots * 2)
+    while (hashEntries < target) hashEntries <<= 1
+    const hashMask = hashEntries - 1
+    const hashTable = new Uint32Array(hashEntries * 2)
+    hashTable.fill(SUB_HASH_KEY_EMPTY)
+
+    const insertHash = (key: number, slot: number) => {
+        let probe = (Math.imul(key >>> 0, SUB_HASH_KNUTH) >>> 0) & hashMask
+        for (let i = 0; i < 256; i++) {
+            const base2 = probe * 2
+            if (hashTable[base2] === SUB_HASH_KEY_EMPTY) {
+                hashTable[base2] = key >>> 0
+                hashTable[base2 + 1] = slot >>> 0
+                return
+            }
+            probe = (probe + 1) & hashMask
+        }
+        throw new Error(
+            `Sub-cell sparse hash insert overflowed 256 probes at key=${key}, slot=${slot}; `
+            + `entries=${hashEntries}, totalSlots=${totalSlots}`,
+        )
+    }
+
+    // Sub-cubes: slot = subCubeBase + index in subCubes[].
+    for (let i = 0; i < subCubes.length; i++) {
+        const c = subCubes[i]!
+        const linear = subCubeLinearIdx(c.gsx, c.gsy, c.gsz, nxBase, nyBase)
+        insertHash(makeSubKey(CELL_TYPE_SUB_CUBE, linear), subCubeBase + i)
+    }
+    for (let i = 0; i < subEdges.length; i++) {
+        const e = subEdges[i]!
+        let key: number
+        if (e.axis === 0) {
+            key = makeSubKey(CELL_TYPE_SUB_EDGE_X, subEdgeXLinearIdx(e.gsx, e.gsy, e.gsz, nxBase, nyBase))
+        } else if (e.axis === 1) {
+            key = makeSubKey(CELL_TYPE_SUB_EDGE_Y, subEdgeYLinearIdx(e.gsx, e.gsy, e.gsz, nxBase, nyBase))
+        } else {
+            key = makeSubKey(CELL_TYPE_SUB_EDGE_Z, subEdgeZLinearIdx(e.gsx, e.gsy, e.gsz, nxBase, nyBase))
+        }
+        insertHash(key, subEdgeBase + i)
+    }
+    for (let i = 0; i < subFaces.length; i++) {
+        const f = subFaces[i]!
+        let key: number
+        if (f.axis === 0) {
+            key = makeSubKey(CELL_TYPE_SUB_FACE_YZ, subFaceYZLinearIdx(f.gsx, f.gsy, f.gsz, nxBase, nyBase))
+        } else if (f.axis === 1) {
+            key = makeSubKey(CELL_TYPE_SUB_FACE_XZ, subFaceXZLinearIdx(f.gsx, f.gsy, f.gsz, nxBase, nyBase))
+        } else {
+            key = makeSubKey(CELL_TYPE_SUB_FACE_XY, subFaceXYLinearIdx(f.gsx, f.gsy, f.gsz, nxBase, nyBase))
+        }
+        insertHash(key, subFaceBase + i)
+    }
+
+    return { hashTable, hashEntries, hashMask, totalSlots, subCubeBase, subEdgeBase, subFaceBase }
 }
 
 /**
@@ -367,4 +773,173 @@ export function summarizeResidualDistribution(residuals: Float32Array | number[]
     const p95 = count > 0 ? (sorted[Math.floor(count * 0.95)] ?? 0) : 0
     const mean = count > 0 ? sum / count : 0
     return { count, sum, max, mean, median, p95 }
+}
+
+// ============================== Phase 5 (Session 9): minimal-cube enumeration ==============================
+//
+// `buildMinimalCubeList` enumerates the cubes that Pass 15 (multi-resolution MT) must walk:
+//
+//   1. Every depth-1 sub-cube of every refined parent (8 per parent). These are the
+//      sub-cubes themselves; they're "minimal" because their parent is no longer minimal.
+//   2. Every active depth-0 base cube that has a refined cube as a face- or edge-neighbour
+//      (= within Manhattan distance √2). These cubes themselves are still depth-0 minimal,
+//      but at least one of their 12 base edges has a refined cube around it, so Pass 6
+//      skips that edge in adaptive mode and Pass 15 must emit those tets.
+//
+// Pass 6 and Pass 15 form a partition of mesh emission: an active base cube C is processed
+// either by Pass 6 (when no neighbour is refined within edge-share distance) or by Pass 15
+// (when at least one is). The two never both emit for the same minimal cube.
+//
+// Coordinate convention: every minimal cube descriptor stores SUB-grid coords:
+//   - Depth-0 (unrefined): gsx = 2*cx, gsy = 2*cy, gsz = 2*cz. The cube spans sub-grid
+//     positions [2*cx, 2*cx+2). This matches the depth-1 convention so the WGSL walk
+//     code is uniform.
+//   - Depth-1 (sub-cube): gsx = sub-cube's actual sub-grid x. Cube spans [gsx, gsx+1).
+//
+// Per-descriptor packed layout (16 bytes = 1 vec4u, suitable for packing into the tail of
+// `subCellAllDuals` alongside other Stage-4 sub-cell data):
+//   word 0: gsx
+//   word 1: gsy
+//   word 2: gsz
+//   word 3: bit 0       = depth (0 or 1)
+//           bits 1..6   = neighbourRefinedMask (only meaningful for depth=0)
+//                         bit  0 = -X, 1 = +X, 2 = -Y, 3 = +Y, 4 = -Z, 5 = +Z
+//                         (after the depth bit, so positions 1..6 in the u32)
+//           bits 7..    = reserved
+//
+// The neighbourRefinedMask only covers FACE neighbours (6 directions). Edge-neighbour
+// refinement (12 directions) is queried per-base-edge by the WGSL shader using its own
+// `is_base_cube_refined` helper; tracking it CPU-side would 4x the descriptor size for
+// no gain.
+
+export interface MinimalCubeListResult {
+    /** Packed `vec4u` per minimal cube. Length = numMinimalCubes × 4. */
+    descriptors: Uint32Array
+    /** Number of minimal-cube descriptors (= descriptors.length / 4). */
+    numMinimalCubes: number
+    /** How many depth-0 unrefined-but-pass15-territory cubes are in `descriptors`. */
+    numDepth0: number
+    /** How many depth-1 sub-cubes are in `descriptors`. */
+    numDepth1: number
+}
+
+/**
+ * Build the minimal-cube list for Pass 15 dispatch.
+ *
+ * `octreeChildren` is the depth-1 sub-cube list produced by `buildChildCubeListFromOctree`
+ * (each entry has gsx/gsy/gsz at sub-grid resolution). We deliberately accept this rather
+ * than the raw octree so the adaptive orchestrator can reuse the existing build.
+ *
+ * `activeCubeCompactList` is `sparse.cubeCompactList` (linear base-cube indices that have
+ * a sign change among their 8 corners — the cubes Pass 6 would normally process).
+ */
+export function buildMinimalCubeList(
+    octreeChildren: ChildCubeInfo[],
+    activeCubeCompactList: Uint32Array,
+    nxBase: number,
+    nyBase: number,
+    nzBase: number,
+): MinimalCubeListResult {
+    // Step 1: build a refined-base-cube bitset from the children list (each child sub-cube
+    // implies its parent is refined). Dedup via Set since 8 children per parent map to 1
+    // bit in the bitset.
+    const refinedParentBits = new Uint32Array(Math.max(1, Math.ceil(nxBase * nyBase * nzBase / 32)))
+    const refinedParentSet = new Set<number>()
+    for (const c of octreeChildren) {
+        const px = c.gsx >> 1
+        const py = c.gsy >> 1
+        const pz = c.gsz >> 1
+        const linear = px + py * nxBase + pz * nxBase * nyBase
+        if (refinedParentSet.has(linear)) continue
+        refinedParentSet.add(linear)
+        refinedParentBits[Math.floor(linear / 32)]! |= 1 << (linear % 32)
+    }
+
+    const isRefined = (cx: number, cy: number, cz: number): boolean => {
+        if (cx < 0 || cx >= nxBase || cy < 0 || cy >= nyBase || cz < 0 || cz >= nzBase) return false
+        const linear = cx + cy * nxBase + cz * nxBase * nyBase
+        return (refinedParentBits[Math.floor(linear / 32)]! & (1 << (linear % 32))) !== 0
+    }
+
+    // Step 2: build a bitset of "Pass 15 territory" depth-0 cubes — the unrefined base
+    // cubes that have at least one of their 12 base edges with a refined neighbour. We
+    // dilate the refined set by the 18 face/edge-neighbour offsets (NOT the 8 corner-only
+    // offsets — corner-neighbours don't share any base edge with C, so their refinement
+    // doesn't force C into Pass 15 territory).
+    const pass15TerritoryBits = new Uint32Array(refinedParentBits.length)
+    const dilateOffsets: Array<[number, number, number]> = []
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dz = -1; dz <= 1; dz++) {
+                if (dx === 0 && dy === 0 && dz === 0) continue
+                const absSum = Math.abs(dx) + Math.abs(dy) + Math.abs(dz)
+                // Skip pure-corner offsets (|dx|+|dy|+|dz| == 3) — those neighbours share
+                // only a corner with the centre cube and don't constrain Pass 15 territory.
+                if (absSum >= 3) continue
+                dilateOffsets.push([dx, dy, dz])
+            }
+        }
+    }
+    // dilateOffsets has 6 face + 12 edge = 18 entries.
+    for (const linear of refinedParentSet) {
+        const cz = Math.floor(linear / (nxBase * nyBase))
+        const cy = Math.floor((linear - cz * nxBase * nyBase) / nxBase)
+        const cx = linear - cy * nxBase - cz * nxBase * nyBase
+        for (const [dx, dy, dz] of dilateOffsets) {
+            const nx = cx + dx, ny = cy + dy, nz = cz + dz
+            if (nx < 0 || nx >= nxBase || ny < 0 || ny >= nyBase || nz < 0 || nz >= nzBase) continue
+            const nLinear = nx + ny * nxBase + nz * nxBase * nyBase
+            // Skip if neighbour itself is refined — those are handled as depth-1 sub-cubes.
+            if (refinedParentSet.has(nLinear)) continue
+            pass15TerritoryBits[Math.floor(nLinear / 32)]! |= 1 << (nLinear % 32)
+        }
+    }
+
+    // Step 3: walk active base cubes (sparse.cubeCompactList) and emit minimal-cube
+    // descriptors for the ones that need Pass 15:
+    //   - Refined → 8 sub-cube descriptors at depth 1
+    //   - Unrefined AND in pass15Territory → 1 descriptor at depth 0 with face mask
+    //   - Otherwise → not emitted (Pass 6 handles fine)
+    const out: number[] = []
+    let numDepth0 = 0, numDepth1 = 0
+    for (let i = 0; i < activeCubeCompactList.length; i++) {
+        const linear = activeCubeCompactList[i]!
+        const cx = linear % nxBase
+        const cy = Math.floor(linear / nxBase) % nyBase
+        const cz = Math.floor(linear / (nxBase * nyBase))
+        if (refinedParentSet.has(linear)) {
+            // Emit 8 sub-cubes at depth 1.
+            for (let oct = 0; oct < 8; oct++) {
+                const sx = cx * 2 + (oct & 1)
+                const sy = cy * 2 + ((oct >> 1) & 1)
+                const sz = cz * 2 + ((oct >> 2) & 1)
+                out.push(sx, sy, sz, 1) // word 3: depth=1, mask irrelevant
+                numDepth1++
+            }
+            continue
+        }
+        const wordIdx = Math.floor(linear / 32)
+        const bitIdx = linear % 32
+        if ((pass15TerritoryBits[wordIdx]! & (1 << bitIdx)) === 0) continue
+
+        // Unrefined depth-0 cube in Pass 15 territory. Compute face-neighbour mask.
+        let mask = 0
+        if (isRefined(cx - 1, cy, cz)) mask |= 1 << 0  // -X
+        if (isRefined(cx + 1, cy, cz)) mask |= 1 << 1  // +X
+        if (isRefined(cx, cy - 1, cz)) mask |= 1 << 2  // -Y
+        if (isRefined(cx, cy + 1, cz)) mask |= 1 << 3  // +Y
+        if (isRefined(cx, cy, cz - 1)) mask |= 1 << 4  // -Z
+        if (isRefined(cx, cy, cz + 1)) mask |= 1 << 5  // +Z
+        // Pack: depth at bit 0, mask at bits 1..6.
+        const word3 = 0 | (mask << 1)
+        out.push(cx * 2, cy * 2, cz * 2, word3)
+        numDepth0++
+    }
+
+    return {
+        descriptors: new Uint32Array(out),
+        numMinimalCubes: numDepth0 + numDepth1,
+        numDepth0,
+        numDepth1,
+    }
 }

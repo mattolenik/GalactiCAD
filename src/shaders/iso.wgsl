@@ -23,6 +23,16 @@ struct SharedUniforms {
     sparseCounts0: vec4u,  // x=cornerCount y=edgeXCount z=edgeYCount w=edgeZCount
     sparseCounts1: vec4u,  // x=faceXYCount y=faceYZCount z=faceXZCount w=cubeCount
     sparseHash: vec4u,     // x=hashMask    y=hashEntries z=reserved   w=reserved
+    // Stage 4 Session 6: separate sparse hash for sub-cell duals. Keys use the
+    // CELL_TYPE_SUB_* constants; slot is the absolute index into `subCellAllDuals`
+    // (post-base offset by Session 7's unification).
+    subSparseHash: vec4u,  // x=subHashMask y=subHashEntries z=0 w=0
+    // Stage 4 Session 7: write-side base offsets for `subCellAllDuals`. Pass 11
+    // writes to `subCellAllDuals[subCellBases.x + dispatch_idx]`, Pass 12 uses .y,
+    // Pass 13 uses .z. (Implied: cube_base = 0, edge_base = numSubCubes,
+    // face_base = numSubCubes + numSubEdges; .w = total = numSubCubes + numSubEdges
+    // + numSubFaces, useful as a sanity check.)
+    subCellBases: vec4u,
 }
 
 struct Vertex {
@@ -78,6 +88,16 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // 0xffffffffu marking empty. Knuth multiplicative hash + linear probe.
 @group(0) @binding(6) var<storage, read> dualHashTable: array<vec2u>;
 
+// Stage 4 Session 6: separate sparse hash for sub-cell duals. Same vec2u (key, slot)
+// layout as the base hash; key = (subCellType<<28)|sub_grid_linear_idx with subCellType
+// in {CELL_TYPE_SUB_CUBE..CELL_TYPE_SUB_FACE_XY} and slot indexing into childDuals
+// (sub-cubes), childEdgeDuals (sub-edges), or childFaceDuals (sub-faces) — the cellType
+// embedded in the key tells the WGSL helper which buffer to read from. Sized to the
+// post-octree sub-cell count and uploaded after Pass 11/12/13 dispatch (the dispatch
+// indices are the slot values, so the hash builder runs CPU-side after the deduplicated
+// sub-cell list is finalized).
+@group(0) @binding(20) var<storage, read> subDualHashTable: array<vec2u>;
+
 // Sparse compact list (Phase 5B): slot → linear grid index for each element of the
 // dilated set, concatenated by category in the same order as the bases. Drives the
 // per-slot dispatch in passes 2/3/4/5/6.
@@ -107,12 +127,41 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // otherwise dominate the displayed shading.
 @group(0) @binding(7) var<storage, read_write> projectVertices: array<Vertex>;
 
-// Stage 4 Session 2: per-child sub-cube descriptors + outputs.
-// `childCubeInfo[i]` = vec4u(parentX, parentY, parentZ, octant). Bound only when
-// the orchestrator launches `placeChildCubeDuals_Pass11` (`adaptiveOctree=true`).
+// Stage 4 Sessions 2 / 5 / 6 / 7: per-child sub-cell descriptors + outputs.
+// All descriptors use GLOBAL sub-grid coordinates (parent-independent), enabling
+// canonical-owner dedup via Set on the CPU side (`iso-octree.mts`).
+// Sub-grid resolution at depth-1 refinement: sub_voxel = base voxel × ½, with
+// (2*nx, 2*ny, 2*nz) sub-cells and (2*nx+1, 2*ny+1, 2*nz+1) sub-corners along each axis.
+//
+// Layouts:
+//   childCubeInfo[i]  = vec4u(gsx, gsy, gsz, _padding)
+//   childEdgeInfo[i]  = vec4u(gsx, gsy, gsz, axis)   — axis: 0=X, 1=Y, 2=Z (edge direction)
+//   childFaceInfo[i]  = vec4u(gsx, gsy, gsz, axis)   — axis: 0=YZ, 1=XZ, 2=XY (perp axis)
+//
+// Session 7: ALL sub-cell duals live in a single `subCellAllDuals` buffer with bases
+// (cube=0, edge=numSubCubes, face=numSubCubes+numSubEdges) supplied via
+// `uniforms.subCellBases`. This unification saves 2 bindings vs the original
+// per-cell-type buffers, fitting Pass 14 (multi-resolution MT) within the WebGPU
+// 10-storage-per-stage default.
 @group(0) @binding(11) var<storage, read> childCubeInfo: array<vec4u>;
-@group(0) @binding(12) var<storage, read_write> childDuals: array<DualVertex>;
 @group(0) @binding(13) var<storage, read_write> childResiduals: array<f32>;
+
+@group(0) @binding(14) var<storage, read> childEdgeInfo: array<vec4u>;
+@group(0) @binding(16) var<storage, read_write> childEdgeResiduals: array<f32>;
+
+@group(0) @binding(17) var<storage, read> childFaceInfo: array<vec4u>;
+@group(0) @binding(19) var<storage, read_write> childFaceResiduals: array<f32>;
+
+// Unified sub-cell dual buffer: layout = [N_subCubes sub-cubes | N_subEdges sub-edges
+// | N_subFaces sub-faces]. Bases in `uniforms.subCellBases.xyz`. Pass 11/12/13 write
+// at base + dispatch_index; `dual_sub_*` helpers read at the absolute slot returned
+// by the sub-cell sparse hash.
+@group(0) @binding(22) var<storage, read_write> subCellAllDuals: array<DualVertex>;
+
+// Stage 4 Session 8 (storage-budget fix): refinement is now derived from the sub-cell
+// hash itself (see `is_base_cube_refined`). The dedicated `cubeRefinedFlags` buffer was
+// dropped to free a storage binding so Pass 14 fits under the WebGPU 10-storage-per-stage
+// limit. (Binding 21 is intentionally left unused — could be reclaimed for something else.)
 
 // Cancellation flag: 0 = continue, 1 = cancelled
 @group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
@@ -221,6 +270,16 @@ const CELL_TYPE_FACE_XY: u32 = 4u;
 const CELL_TYPE_FACE_YZ: u32 = 5u;
 const CELL_TYPE_FACE_XZ: u32 = 6u;
 const CELL_TYPE_CUBE:    u32 = 7u;
+// Stage 4 Session 6: sub-cell types for the depth-aware sparse hash. Keys are
+// `(cellType << 28) | sub_grid_linear_idx`; slots index into the per-axis sub-cell
+// output buffers (childDuals, childEdgeDuals, childFaceDuals).
+const CELL_TYPE_SUB_CUBE:    u32 = 8u;
+const CELL_TYPE_SUB_EDGE_X:  u32 = 9u;
+const CELL_TYPE_SUB_EDGE_Y:  u32 = 10u;
+const CELL_TYPE_SUB_EDGE_Z:  u32 = 11u;
+const CELL_TYPE_SUB_FACE_YZ: u32 = 12u;
+const CELL_TYPE_SUB_FACE_XZ: u32 = 13u;
+const CELL_TYPE_SUB_FACE_XY: u32 = 14u;
 const SPARSE_HASH_EMPTY: u32 = 0xffffffffu;
 const SPARSE_HASH_KNUTH: u32 = 2654435761u;
 
@@ -269,6 +328,124 @@ fn write_dual_slot(absolute_slot: u32, dv: DualVertex) {
     allDuals[absolute_slot] = dv;
 }
 
+// ============================== Stage 4 Session 6: sub-cell hash lookup ==============================
+// Sub-cell linear-index helpers. Mirror `iso-octree.mts`'s `subCubeLinearIdx` / family
+// exactly so CPU-side hash insertion and GPU-side lookup agree.
+//
+// The sub-grid at depth-1 refinement has dimensions:
+//   sub-cell counts:    sub_nx = 2*nx, sub_ny = 2*ny, sub_nz = 2*nz
+//   sub-corner counts:  2*nx + 1, 2*ny + 1, 2*nz + 1
+// (where nx/ny/nz are the BASE-grid cell counts from `uniforms.gridDimensions - 1`).
+
+fn sub_cube_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    return gsx + gsy * (2u * nx) + gsz * (2u * nx) * (2u * ny);
+}
+
+fn sub_edge_x_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    return gsx + gsy * (2u * nx) + gsz * (2u * nx) * (2u * ny + 1u);
+}
+
+fn sub_edge_y_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    return gsx + gsy * (2u * nx + 1u) + gsz * (2u * nx + 1u) * (2u * ny);
+}
+
+fn sub_edge_z_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    return gsx + gsy * (2u * nx + 1u) + gsz * (2u * nx + 1u) * (2u * ny + 1u);
+}
+
+fn sub_face_yz_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    return gsx + gsy * (2u * nx + 1u) + gsz * (2u * nx + 1u) * (2u * ny);
+}
+
+fn sub_face_xz_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    return gsx + gsy * (2u * nx) + gsz * (2u * nx) * (2u * ny + 1u);
+}
+
+fn sub_face_xy_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    return gsx + gsy * (2u * nx) + gsz * (2u * nx) * (2u * ny);
+}
+
+/// Hash-table lookup for a (subCellType, subLinearIdx) pair. Returns the slot index
+/// in the appropriate sub-cell output buffer (childDuals / childEdgeDuals /
+/// childFaceDuals — caller's responsibility to read from the right one based on
+/// cellType), or `SPARSE_HASH_EMPTY` if the sub-cell isn't in the dedup'd set.
+fn lookup_sub_dual_slot(key: u32) -> u32 {
+    let mask = uniforms.subSparseHash.x;
+    if (mask == 0u) {
+        // No sub-cells exist (non-adaptive run, or all cubes below threshold).
+        return SPARSE_HASH_EMPTY;
+    }
+    var slot = (key * SPARSE_HASH_KNUTH) & mask;
+    for (var probe = 0u; probe < 256u; probe = probe + 1u) {
+        let entry = subDualHashTable[slot];
+        if (entry.x == key) { return entry.y; }
+        if (entry.x == SPARSE_HASH_EMPTY) { return SPARSE_HASH_EMPTY; }
+        slot = (slot + 1u) & mask;
+    }
+    return SPARSE_HASH_EMPTY;
+}
+
+/// Read a sub-cube DualVertex at global sub-grid coords (gsx, gsy, gsz). Returns
+/// a synthetic zero-valued vertex if not in the sub-cell set (most cubes won't be
+/// refined, so most lookups return EMPTY — caller handles that case). All sub-cell
+/// duals live in the unified `subCellAllDuals` buffer; the slot returned by the hash
+/// is an absolute index into that buffer.
+fn dual_sub_cube(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_CUBE, sub_cube_linear_idx(gsx, gsy, gsz)));
+    if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
+    return subCellAllDuals[slot];
+}
+
+fn dual_sub_edge_x(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_EDGE_X, sub_edge_x_linear_idx(gsx, gsy, gsz)));
+    if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
+    return subCellAllDuals[slot];
+}
+
+fn dual_sub_edge_y(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_EDGE_Y, sub_edge_y_linear_idx(gsx, gsy, gsz)));
+    if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
+    return subCellAllDuals[slot];
+}
+
+fn dual_sub_edge_z(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_EDGE_Z, sub_edge_z_linear_idx(gsx, gsy, gsz)));
+    if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
+    return subCellAllDuals[slot];
+}
+
+fn dual_sub_face_yz(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_FACE_YZ, sub_face_yz_linear_idx(gsx, gsy, gsz)));
+    if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
+    return subCellAllDuals[slot];
+}
+
+fn dual_sub_face_xz(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_FACE_XZ, sub_face_xz_linear_idx(gsx, gsy, gsz)));
+    if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
+    return subCellAllDuals[slot];
+}
+
+fn dual_sub_face_xy(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_FACE_XY, sub_face_xy_linear_idx(gsx, gsy, gsz)));
+    if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
+    return subCellAllDuals[slot];
+}
+
 fn face_idx_xy(fx: u32, fy: u32, fz: u32, dx: u32, dy: u32) -> u32 {
     return fx + fy * (dx - 1u) + fz * (dx - 1u) * (dy - 1u);
 }
@@ -294,6 +471,95 @@ fn is_active_cell_at_min_corner(cellMinCorner: vec3u) -> bool {
         return false;
     }
     return (activeCellFlags[word] & (1u << bit)) != 0u;
+}
+
+/// Stage 4 Session 7: returns true iff this base cube has been subdivided (octree
+/// produced sub-cubes inside it). Pass 6 skips edges where any of the 4 surrounding
+/// base cubes is refined; Pass 14 uses this to decide between sub-cube and base-cube
+/// dual lookups. Bit-packed: 1 bit per base cube, indexed by base cube linear idx
+/// (cx + cy*nx + cz*nx*ny). Returns false out-of-range or when the buffer is the
+/// 1-element placeholder (non-adaptive mode → no cubes refined → all return false).
+/// Session 8 (storage-budget fix): refinement is derived from the sub-cell sparse hash
+/// rather than a dedicated `cubeRefinedFlags` buffer. A refined parent always has all 8
+/// of its sub-cubes in the hash (Pass 11 wrote them), so testing whether the LL-corner
+/// sub-cube `(2*bcx, 2*bcy, 2*bcz)` is in the hash is equivalent to "is this base cube
+/// refined". Drops one storage binding so Pass 14 fits under the 10-per-stage limit.
+/// When the hash is empty (mask=0, e.g. non-adaptive runs), `lookup_sub_dual_slot`
+/// short-circuits to EMPTY → returns false → Pass 6 emits as standard non-adaptive MT.
+fn is_base_cube_refined(base_cx: u32, base_cy: u32, base_cz: u32) -> bool {
+    let key = make_sparse_key(CELL_TYPE_SUB_CUBE, sub_cube_linear_idx(base_cx * 2u, base_cy * 2u, base_cz * 2u));
+    return lookup_sub_dual_slot(key) != SPARSE_HASH_EMPTY;
+}
+
+/// Phase 5: returns true iff ANY of the 4 base cubes around a given X/Y/Z base edge is
+/// refined. Pass 6 uses this to skip base edges adjacent to refined cubes — those edges'
+/// tets are non-minimal and Pass 15 emits the equivalent sub-resolution tets via its
+/// per-minimal-cube walk (which includes the unrefined neighbours of refined cubes).
+///
+/// Pass 6 + Pass 15 form a partition of mesh emission: every minimal cube's tets are
+/// emitted by exactly one of them, never both, never neither. Pass 6 handles unrefined
+/// cubes whose neighbours are also all unrefined (the all-base-cells common case). Pass 15
+/// handles refined cubes' sub-cubes plus any unrefined cubes that border a refined region.
+///
+/// If a referenced cube is out of bounds (the edge sits on the global grid boundary), it
+/// counts as unrefined → returns false → Pass 6 emits as usual.
+fn any_cube_around_x_edge_refined(ex: u32, ey: u32, ez: u32, dx: u32, dy: u32, dz: u32) -> bool {
+    // 4 cubes around X-edge at (ex, ey, ez)→(ex+1, ey, ez):
+    //   A=(ex, ey-1, ez-1), B=(ex, ey, ez-1), C=(ex, ey-1, ez), D=(ex, ey, ez)
+    let nx = dx - 1u;
+    let ny = dy - 1u;
+    let nz = dz - 1u;
+    if (ex < nx && ey < ny && ez < nz) {
+        if (is_base_cube_refined(ex, ey, ez)) { return true; }
+    }
+    if (ex < nx && ey >= 1u && ey - 1u < ny && ez < nz) {
+        if (is_base_cube_refined(ex, ey - 1u, ez)) { return true; }
+    }
+    if (ex < nx && ey < ny && ez >= 1u && ez - 1u < nz) {
+        if (is_base_cube_refined(ex, ey, ez - 1u)) { return true; }
+    }
+    if (ex < nx && ey >= 1u && ey - 1u < ny && ez >= 1u && ez - 1u < nz) {
+        if (is_base_cube_refined(ex, ey - 1u, ez - 1u)) { return true; }
+    }
+    return false;
+}
+
+fn any_cube_around_y_edge_refined(ex: u32, ey: u32, ez: u32, dx: u32, dy: u32, dz: u32) -> bool {
+    let nx = dx - 1u;
+    let ny = dy - 1u;
+    let nz = dz - 1u;
+    if (ex < nx && ey < ny && ez < nz) {
+        if (is_base_cube_refined(ex, ey, ez)) { return true; }
+    }
+    if (ex >= 1u && ex - 1u < nx && ey < ny && ez < nz) {
+        if (is_base_cube_refined(ex - 1u, ey, ez)) { return true; }
+    }
+    if (ex < nx && ey < ny && ez >= 1u && ez - 1u < nz) {
+        if (is_base_cube_refined(ex, ey, ez - 1u)) { return true; }
+    }
+    if (ex >= 1u && ex - 1u < nx && ey < ny && ez >= 1u && ez - 1u < nz) {
+        if (is_base_cube_refined(ex - 1u, ey, ez - 1u)) { return true; }
+    }
+    return false;
+}
+
+fn any_cube_around_z_edge_refined(ex: u32, ey: u32, ez: u32, dx: u32, dy: u32, dz: u32) -> bool {
+    let nx = dx - 1u;
+    let ny = dy - 1u;
+    let nz = dz - 1u;
+    if (ex < nx && ey < ny && ez < nz) {
+        if (is_base_cube_refined(ex, ey, ez)) { return true; }
+    }
+    if (ex >= 1u && ex - 1u < nx && ey < ny && ez < nz) {
+        if (is_base_cube_refined(ex - 1u, ey, ez)) { return true; }
+    }
+    if (ex < nx && ey >= 1u && ey - 1u < ny && ez < nz) {
+        if (is_base_cube_refined(ex, ey - 1u, ez)) { return true; }
+    }
+    if (ex >= 1u && ex - 1u < nx && ey >= 1u && ey - 1u < ny && ez < nz) {
+        if (is_base_cube_refined(ex - 1u, ey - 1u, ez)) { return true; }
+    }
+    return false;
 }
 
 fn sdf_sign_bit_positive(f: f32) -> bool {
@@ -1895,20 +2161,14 @@ fn placeChildCubeDuals_Pass11(
     }
 
     let info = childCubeInfo[i];
-    let parent_pos = vec3u(info.x, info.y, info.z);
-    let octant = info.w;
+    let gsx = info.x;
+    let gsy = info.y;
+    let gsz = info.z;
 
-    // Sub-cube min/max in world coords. At depth 1 the sub-voxel is half the base voxel.
-    // Octant bits: x in bit 0, y in bit 1, z in bit 2 — same convention as
-    // `getCellCornerPos`, so octant 0 = (-x,-y,-z) corner, octant 7 = (+x,+y,+z).
-    let parent_world_min = gridPosToWorldPos(parent_pos);
+    // Global sub-grid coords → world position. Sub-voxel = base voxel × ½ at depth-1.
+    // Sub-grid origin matches base grid origin: world(gsx) = gridOffset + gsx × sub_voxel.
     let sub_voxel = uniforms.voxelSize * 0.5;
-    let octant_offset = vec3f(
-        f32(octant & 1u),
-        f32((octant >> 1u) & 1u),
-        f32((octant >> 2u) & 1u),
-    );
-    let sub_min = parent_world_min + octant_offset * sub_voxel;
+    let sub_min = uniforms.gridOffset + vec3f(f32(gsx), f32(gsy), f32(gsz)) * sub_voxel;
     let sub_max = sub_min + vec3f(sub_voxel);
 
     let eps = max(uniforms.mdcF0.x, 1e-6);
@@ -1963,10 +2223,974 @@ fn placeChildCubeDuals_Pass11(
     let solution = solveQEF4(qef4);
     let pos = clamp(solution.xyz, clamp_min, clamp_max);
     let f_shifted = sceneSDF_fast(pos).d - uniforms.isoValue;
-    childDuals[i] = DualVertex(pos, f_shifted);
+    // Stage 4 Session 7: write to unified `subCellAllDuals` at the cube base + index.
+    subCellAllDuals[uniforms.subCellBases.x + i] = DualVertex(pos, f_shifted);
 
     let x4_solved = vec4f(pos, solution.w);
     childResiduals[i] = qefCost4(qef4, x4_solved);
+}
+
+// ============================== Pass 12 (Stage 4 Session 5): GPU sub-edge dual placement ==============================
+//
+// Mirrors `placeEdgeDuals_Pass3`'s 4D-QEF-with-edge-projected-gradient approach but at
+// sub-voxel resolution within a refined parent cube. One thread per sub-edge descriptor
+// in `childEdgeInfo`. Sub-edge has 2 endpoints; we sample at each endpoint plus the
+// midpoint (or iso-crossing if there's a sign change), build a 4D QEF on the
+// edge-direction-projected gradients, solve, and project back onto the edge axis.
+//
+// Session 5 limitation (matches Session 2): depth-1 only. Sub-voxel = base voxel × ½.
+// Per-parent emission means a sub-edge shared between two refined parents gets placed
+// twice; Session 6 will add a canonical-owner rule (parent with smallest base linear
+// index wins) so the depth-aware sparse hash sees one entry per unique sub-edge.
+@compute @workgroup_size(64, 1, 1)
+fn placeChildEdgeDuals_Pass12(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let i = globalId.x + globalId.y * (numWg.x * 64u);
+    let n = arrayLength(&childEdgeInfo);
+    if (i >= n) {
+        return;
+    }
+
+    let info = childEdgeInfo[i];
+    let gsx = info.x;
+    let gsy = info.y;
+    let gsz = info.z;
+    let axis = info.w & 3u;
+
+    // Global sub-grid coords → world endpoints. The sub-edge spans from its lo-corner
+    // (gsx, gsy, gsz) to its hi-corner (one axis incremented).
+    let sub_voxel = uniforms.voxelSize * 0.5;
+    let lo_world = uniforms.gridOffset + vec3f(f32(gsx), f32(gsy), f32(gsz)) * sub_voxel;
+    var w0: vec3f;
+    var w1: vec3f;
+    if (axis == 0u) {
+        w0 = lo_world;
+        w1 = lo_world + vec3f(sub_voxel, 0.0, 0.0);
+    } else if (axis == 1u) {
+        w0 = lo_world;
+        w1 = lo_world + vec3f(0.0, sub_voxel, 0.0);
+    } else {
+        w0 = lo_world;
+        w1 = lo_world + vec3f(0.0, 0.0, sub_voxel);
+    }
+    let edge_dir = normalize(w1 - w0);
+
+    let eps = max(uniforms.mdcF0.x, 1e-6);
+    let t_max = 1.0 - eps;
+
+    // 4D QEF: 2 endpoint samples + 1 mid/iso-crossing sample. With 3 samples and
+    // edge-projected gradients (rank-2 ATA after projection), `solveQEF4`'s lowered
+    // numPoints<2 cutoff (the fix from earlier in this stage) lets the regularization
+    // place the spatial part along the edge axis at the iso-crossing while the off-axis
+    // dimensions fall back to the mass point (corrected by the edge projection below).
+    var qef4 = qef4_zero();
+    let sdf0 = sceneSDF_mid(w0);
+    let sdf1 = sceneSDF_mid(w1);
+    let g0 = edge_dir * dot(sdf0.n, edge_dir);
+    let g1 = edge_dir * dot(sdf1.n, edge_dir);
+    let f0 = sdf0.d - uniforms.isoValue;
+    let f1 = sdf1.d - uniforms.isoValue;
+    qef4_add(&qef4, w0, g0, f0);
+    qef4_add(&qef4, w1, g1, f1);
+
+    let s0 = sdf_sign_bit_positive(f0);
+    let s1 = sdf_sign_bit_positive(f1);
+    var pmid: vec3f;
+    if (s0 != s1) {
+        let denom = f1 - f0;
+        var t = 0.5;
+        if (abs(denom) > 1e-20) {
+            t = clamp(-f0 / denom, eps, t_max);
+        }
+        pmid = mix3f(w0, w1, t);
+    } else {
+        pmid = mix3f(w0, w1, 0.5);
+    }
+    let sdfm = sceneSDF_mid(pmid);
+    let gm = edge_dir * dot(sdfm.n, edge_dir);
+    qef4_add(&qef4, pmid, gm, sdfm.d - uniforms.isoValue);
+
+    // Solve, then project the spatial part onto the edge axis (numerical drift can
+    // pull it slightly off the line; the 1-cell subspace is the line through w0).
+    let solution = solveQEF4(qef4);
+    let edge_len = length(w1 - w0);
+    let along = clamp(dot(solution.xyz - w0, edge_dir), eps * edge_len, t_max * edge_len);
+    let pos = w0 + edge_dir * along;
+    let f_shifted = sceneSDF_fast(pos).d - uniforms.isoValue;
+    // Stage 4 Session 7: unified subCellAllDuals at edge base + index.
+    subCellAllDuals[uniforms.subCellBases.y + i] = DualVertex(pos, f_shifted);
+    childEdgeResiduals[i] = qefCost4(qef4, vec4f(pos, solution.w));
+}
+
+// ============================== Pass 13 (Stage 4 Session 5): GPU sub-face dual placement ==============================
+//
+// Mirrors `placeFaceDuals_Pass4`'s 4D-QEF-with-face-plane-projected-gradient approach but
+// at sub-voxel resolution within a refined parent. One thread per sub-face descriptor.
+// 4 corners → up to 4 iso-crossing samples on the face's 4 edges → 4D QEF.
+//
+// Session 5 same depth-1 / per-parent-duplicates limitations as Pass 12.
+@compute @workgroup_size(64, 1, 1)
+fn placeChildFaceDuals_Pass13(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let i = globalId.x + globalId.y * (numWg.x * 64u);
+    let n = arrayLength(&childFaceInfo);
+    if (i >= n) {
+        return;
+    }
+
+    let info = childFaceInfo[i];
+    let gsx = info.x;
+    let gsy = info.y;
+    let gsz = info.z;
+    let axis = info.w & 3u;  // 0 = YZ-face (perp X), 1 = XZ (perp Y), 2 = XY (perp Z)
+
+    // Global sub-grid coords → world corners. The sub-face's min-corner is at
+    // (gsx, gsy, gsz); the other 3 corners are reached by stepping +1 along each of the
+    // 2 axes the face spans (i.e., NOT the perpendicular axis).
+    let sub_voxel = uniforms.voxelSize * 0.5;
+    let min_world = uniforms.gridOffset + vec3f(f32(gsx), f32(gsy), f32(gsz)) * sub_voxel;
+    var w00: vec3f; var w10: vec3f; var w01: vec3f; var w11: vec3f;
+    var face_normal: vec3f;
+    if (axis == 0u) {
+        // YZ-face: spans in y, z — fixed x.
+        w00 = min_world;
+        w10 = min_world + vec3f(0.0, sub_voxel, 0.0);
+        w01 = min_world + vec3f(0.0, 0.0, sub_voxel);
+        w11 = min_world + vec3f(0.0, sub_voxel, sub_voxel);
+        face_normal = vec3f(1.0, 0.0, 0.0);
+    } else if (axis == 1u) {
+        // XZ-face: spans in x, z — fixed y.
+        w00 = min_world;
+        w10 = min_world + vec3f(sub_voxel, 0.0, 0.0);
+        w01 = min_world + vec3f(0.0, 0.0, sub_voxel);
+        w11 = min_world + vec3f(sub_voxel, 0.0, sub_voxel);
+        face_normal = vec3f(0.0, 1.0, 0.0);
+    } else {
+        // XY-face: spans in x, y — fixed z.
+        w00 = min_world;
+        w10 = min_world + vec3f(sub_voxel, 0.0, 0.0);
+        w01 = min_world + vec3f(0.0, sub_voxel, 0.0);
+        w11 = min_world + vec3f(sub_voxel, sub_voxel, 0.0);
+        face_normal = vec3f(0.0, 0.0, 1.0);
+    }
+
+    let f00 = sceneSDF_fast(w00).d - uniforms.isoValue;
+    let f10 = sceneSDF_fast(w10).d - uniforms.isoValue;
+    let f01 = sceneSDF_fast(w01).d - uniforms.isoValue;
+    let f11 = sceneSDF_fast(w11).d - uniforms.isoValue;
+
+    let p_center = (w00 + w10 + w01 + w11) * 0.25;
+    let s00 = sdf_sign_bit_positive(f00);
+    let s10 = sdf_sign_bit_positive(f10);
+    let s01 = sdf_sign_bit_positive(f01);
+    let s11 = sdf_sign_bit_positive(f11);
+    let face_has_sign_change = (s00 != s10) || (s01 != s11) || (s00 != s01) || (s10 != s11);
+
+    var pos = p_center;
+    var qef4 = qef4_zero();
+    var solution_w = 0.0;
+
+    if (face_has_sign_change) {
+        // 4-corner CCW ring (00 → 10 → 11 → 01) — matches `placeFaceDuals_Pass4`'s
+        // edge enumeration so per-cell QEF residuals are directly comparable across
+        // depth levels.
+        let edges = array<vec4u, 4>(
+            vec4u(0u, 1u, 0u, 0u),
+            vec4u(1u, 2u, 0u, 0u),
+            vec4u(2u, 3u, 0u, 0u),
+            vec4u(3u, 0u, 0u, 0u),
+        );
+        let corner_pos = array<vec3f, 4>(w00, w10, w11, w01);
+        let corner_f   = array<f32, 4>(f00, f10, f11, f01);
+
+        let eps_uv = max(uniforms.mdcF0.x, 1e-6);
+        let uv_max = 1.0 - eps_uv;
+        for (var e = 0u; e < 4u; e = e + 1u) {
+            let ia = edges[e].x;
+            let ib = edges[e].y;
+            let fa = corner_f[ia];
+            let fb = corner_f[ib];
+            if (sdf_sign_bit_positive(fa) == sdf_sign_bit_positive(fb)) {
+                continue;
+            }
+            let denom = fb - fa;
+            var t = 0.5;
+            if (abs(denom) > 1e-20) {
+                t = clamp(-fa / denom, eps_uv, uv_max);
+            }
+            let p = mix3f(corner_pos[ia], corner_pos[ib], t);
+            let sdf_m = sceneSDF_mid(p);
+            // Drop the off-face gradient component — F-derivative perpendicular to
+            // the face is undefined for a 2-cell (paper §3 subspace projection).
+            let g_proj = sdf_m.n - face_normal * dot(sdf_m.n, face_normal);
+            qef4_add(&qef4, p, g_proj, sdf_m.d - uniforms.isoValue);
+        }
+
+        let solution = solveQEF4(qef4);
+        solution_w = solution.w;
+
+        // Pin the off-face axis exactly to the face plane (regularization-driven
+        // mass-point bias can wander a few ULPs off otherwise).
+        var pos_solved = solution.xyz;
+        if (axis == 0u) {
+            pos_solved.x = w00.x;
+        } else if (axis == 1u) {
+            pos_solved.y = w00.y;
+        } else {
+            pos_solved.z = w00.z;
+        }
+
+        // (1−ε)·sub-face box clamp in the 2D face coords.
+        let vs = sub_voxel;
+        let rel = pos_solved - w00;
+        var u = 0.5;
+        var v = 0.5;
+        if (axis == 0u) {
+            u = clamp(rel.y / vs, eps_uv, uv_max);
+            v = clamp(rel.z / vs, eps_uv, uv_max);
+        } else if (axis == 1u) {
+            u = clamp(rel.x / vs, eps_uv, uv_max);
+            v = clamp(rel.z / vs, eps_uv, uv_max);
+        } else {
+            u = clamp(rel.x / vs, eps_uv, uv_max);
+            v = clamp(rel.y / vs, eps_uv, uv_max);
+        }
+        pos = w00 * (1.0 - u) * (1.0 - v) + w10 * u * (1.0 - v) + w01 * (1.0 - u) * v + w11 * u * v;
+    }
+
+    let f_out = sceneSDF_fast(pos).d - uniforms.isoValue;
+    // Stage 4 Session 7: unified subCellAllDuals at face base + index.
+    subCellAllDuals[uniforms.subCellBases.z + i] = DualVertex(pos, f_out);
+
+    if (face_has_sign_change) {
+        childFaceResiduals[i] = qefCost4(qef4, vec4f(pos, solution_w));
+    } else {
+        // No sign change → empty QEF, residual is meaningless. Zero is the same
+        // sentinel `placeCubeDuals_Pass5` writes for inactive cubes.
+        childFaceResiduals[i] = 0.0;
+    }
+}
+
+// ============================== Pass 14 (Stage 4 Session 7): GPU multi-resolution sub-edge MT ==============================
+//
+// For each sub-edge in `childEdgeInfo`, walk the 4 surrounding sub-grid cube cells.
+// If ALL 4 cells are in refined parents (interior + refined-refined boundary cases),
+// emit MT triangles using sub-cube/sub-face/sub-edge duals — same `emit_four_tets_face_pair`
+// pattern as Pass 6, just at sub-resolution.
+//
+// Skipped (Session 8 work): sub-edges with any cell in an unrefined neighbor parent
+// (refined↔unrefined T-junction). Those leave cracks in the mesh at the refined-region
+// boundary; Session 8 will fan-triangulate the unrefined cube's contribution to close them.
+//
+// The combination of:
+//   - Pass 6 modified to skip base edges adjacent to refined parents (`any_cube_around_*_refined`)
+//   - Pass 14 emitting MT for sub-edges where all 4 cells are refined
+// produces a mesh that's correct + watertight INSIDE refined regions and INSIDE unrefined
+// regions, with a (visible) crack only at the refined-unrefined transition.
+
+/// Build a DualVertex for a sub-grid corner at global sub-grid coords (gsx, gsy, gsz).
+/// Always samples sceneSDF inline (does NOT call `dual_corner` even when the sub-corner
+/// aligns with a base corner) — this trade-off lets Pass 14 omit `allDuals` (binding 2)
+/// and `dualHashTable` (binding 6) from its call graph, freeing 2 storage bindings to
+/// stay within the WebGPU 10-storage-per-stage default. Cost: 1 extra sceneSDF_fast eval
+/// per sub-edge endpoint (4× per refined sub-edge); negligible compared to Pass 11/12/13's
+/// inline sceneSDF cost.
+fn make_subcorner_dual(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    let sub_voxel = uniforms.voxelSize * 0.5;
+    let pos = uniforms.gridOffset + vec3f(f32(gsx), f32(gsy), f32(gsz)) * sub_voxel;
+    let fval = sceneSDF_fast(pos).d - uniforms.isoValue;
+    return DualVertex(pos, fval);
+}
+
+/// ============================== Stage 4 Session 8: multi-resolution duals ==============================
+/// Per the paper's "minimal m-cell" rule, for any (cube|face|edge) position the dual we
+/// emit MT against is the deepest available one. For our 2-level (depth 0..1) implementation:
+///   - cube: sub-cube dual if the parent base cube is refined; otherwise the parent's BASE
+///           cube dual.
+///   - face: sub-face dual if EITHER adjacent base cube is refined (the sub-face exists in
+///           `subCellAllDuals` because at least one refined parent emitted it). Otherwise
+///           the BASE face dual at the boundary face that the sub-face position lies on
+///           (only valid when the sub-face position is on a base-grid line — i.e. its
+///           "thin" coordinate is even). For sub-face positions on an INTERIOR base-cube
+///           plane (thin coord odd), the only valid form is the sub-face — and that only
+///           exists if the containing base cube is refined.
+///
+/// `cube_dual_at_subpos` and `face_*_dual_at_subpos` encapsulate this; callers (Pass 14)
+/// just ask for "the cube dual at this sub-position" and get the right one back.
+
+fn cube_dual_at_subpos(gscx: u32, gscy: u32, gscz: u32) -> DualVertex {
+    let bcx = gscx >> 1u;
+    let bcy = gscy >> 1u;
+    let bcz = gscz >> 1u;
+    if (is_base_cube_refined(bcx, bcy, bcz)) {
+        return dual_sub_cube(gscx, gscy, gscz);
+    }
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    return dual_cube(bcx + bcy * nx + bcz * nx * ny);
+}
+
+/// Returns true iff a sub-edge X at (gsx, gsy, gsz) has at least one of its 4 surrounding
+/// sub-cubes in a refined parent. Only such sub-edges are minimal; the rest are covered by
+/// some base-grid edge that Pass 6 emits.
+fn sub_edge_x_is_minimal(gsx: u32, gsy: u32, gsz: u32) -> bool {
+    // Same 4-cube indexing as pass14_emit_x_sub_edge.
+    if (gsy < 1u || gsz < 1u) { return false; }
+    let bcx = gsx >> 1u;
+    return is_base_cube_refined(bcx, (gsy - 1u) >> 1u, (gsz - 1u) >> 1u)
+        || is_base_cube_refined(bcx, gsy        >> 1u, (gsz - 1u) >> 1u)
+        || is_base_cube_refined(bcx, (gsy - 1u) >> 1u, gsz        >> 1u)
+        || is_base_cube_refined(bcx, gsy        >> 1u, gsz        >> 1u);
+}
+
+fn sub_edge_y_is_minimal(gsx: u32, gsy: u32, gsz: u32) -> bool {
+    if (gsx < 1u || gsz < 1u) { return false; }
+    let bcy = gsy >> 1u;
+    return is_base_cube_refined((gsx - 1u) >> 1u, bcy, (gsz - 1u) >> 1u)
+        || is_base_cube_refined(gsx        >> 1u, bcy, (gsz - 1u) >> 1u)
+        || is_base_cube_refined((gsx - 1u) >> 1u, bcy, gsz        >> 1u)
+        || is_base_cube_refined(gsx        >> 1u, bcy, gsz        >> 1u);
+}
+
+fn sub_edge_z_is_minimal(gsx: u32, gsy: u32, gsz: u32) -> bool {
+    if (gsx < 1u || gsy < 1u) { return false; }
+    let bcz = gsz >> 1u;
+    return is_base_cube_refined((gsx - 1u) >> 1u, (gsy - 1u) >> 1u, bcz)
+        || is_base_cube_refined(gsx        >> 1u, (gsy - 1u) >> 1u, bcz)
+        || is_base_cube_refined((gsx - 1u) >> 1u, gsy        >> 1u, bcz)
+        || is_base_cube_refined(gsx        >> 1u, gsy        >> 1u, bcz);
+}
+
+/// XY-face at sub-position (gsfx, gsfy, gsfz). Adjacent sub-cubes (in z): low z=gsfz-1, high z=gsfz.
+/// `lo_ref`/`hi_ref` are the refinement of the low/high adjacent cubes' parents, pre-computed
+/// by the caller (we reuse the cube refinement checks already done for the sub-edge's 4 cubes).
+/// Returns (face_dual, should_emit). `should_emit=false` means the face-pair is INSIDE a single
+/// unrefined base cube (no real face there) — caller should skip emit_four_tets_face_pair.
+struct FaceDualResult { dual: DualVertex, should_emit: bool };
+
+fn face_xy_dual_at_subpos(gsfx: u32, gsfy: u32, gsfz: u32, lo_ref: bool, hi_ref: bool) -> FaceDualResult {
+    var r: FaceDualResult;
+    if (lo_ref || hi_ref) {
+        r.dual = dual_sub_face_xy(gsfx, gsfy, gsfz);
+        r.should_emit = true;
+        return r;
+    }
+    // Both adjacent cubes unrefined. Sub-face is "real" only if it sits on a base z-line:
+    // the sub-face z-coord must be EVEN (so it's the boundary between two distinct base cubes
+    // in z). Otherwise it's interior to a single unrefined cube — skip.
+    if ((gsfz & 1u) != 0u) {
+        r.dual = DualVertex(vec3f(0.0), 0.0);
+        r.should_emit = false;
+        return r;
+    }
+    let dx = uniforms.gridDimensions.x;
+    let dy = uniforms.gridDimensions.y;
+    r.dual = face_xy_dual_at(gsfx >> 1u, gsfy >> 1u, gsfz >> 1u, dx, dy);
+    r.should_emit = true;
+    return r;
+}
+
+fn face_yz_dual_at_subpos(gsfx: u32, gsfy: u32, gsfz: u32, lo_ref: bool, hi_ref: bool) -> FaceDualResult {
+    var r: FaceDualResult;
+    if (lo_ref || hi_ref) {
+        r.dual = dual_sub_face_yz(gsfx, gsfy, gsfz);
+        r.should_emit = true;
+        return r;
+    }
+    if ((gsfx & 1u) != 0u) {
+        r.dual = DualVertex(vec3f(0.0), 0.0);
+        r.should_emit = false;
+        return r;
+    }
+    let dx = uniforms.gridDimensions.x;
+    let dy = uniforms.gridDimensions.y;
+    r.dual = face_yz_dual_at(gsfx >> 1u, gsfy >> 1u, gsfz >> 1u, dx, dy);
+    r.should_emit = true;
+    return r;
+}
+
+fn face_xz_dual_at_subpos(gsfx: u32, gsfy: u32, gsfz: u32, lo_ref: bool, hi_ref: bool) -> FaceDualResult {
+    var r: FaceDualResult;
+    if (lo_ref || hi_ref) {
+        r.dual = dual_sub_face_xz(gsfx, gsfy, gsfz);
+        r.should_emit = true;
+        return r;
+    }
+    if ((gsfy & 1u) != 0u) {
+        r.dual = DualVertex(vec3f(0.0), 0.0);
+        r.should_emit = false;
+        return r;
+    }
+    let dx = uniforms.gridDimensions.x;
+    let dy = uniforms.gridDimensions.y;
+    r.dual = face_xz_dual_at(gsfx >> 1u, gsfy >> 1u, gsfz >> 1u, dx, dy);
+    r.should_emit = true;
+    return r;
+}
+
+// ============================== Phase 5 (Session 9): mixed-depth corner + edge duals ==============================
+//
+// Pass 15 (`emitMinimalCubeMT_Pass15`) walks per-minimal-cube and needs to look up the
+// "minimal dual" at any corner (0-cell) or edge (1-cell) sub-position. Mirrors the existing
+// `cube_dual_at_subpos` / `face_*_dual_at_subpos` helpers from Session 8.
+//
+// Corner: if (gsx, gsy, gsz) are all even → base corner (lookup via base sparse hash).
+//         Otherwise → sub-corner (only exists inside refined regions; inline-sample SDF).
+//
+// Edge: if `sub_edge_*_is_minimal` returns true → sub-edge dual (subDualHashTable).
+//       Otherwise → base edge dual (sparseHash). When the sub-edge is NOT minimal, both
+//       gsy and gsz must be even (for X-axis), so the parent base edge is unambiguous.
+
+fn corner_dual_at_subpos(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    if ((gsx & 1u) == 0u && (gsy & 1u) == 0u && (gsz & 1u) == 0u) {
+        let dx = uniforms.gridDimensions.x;
+        let dy = uniforms.gridDimensions.y;
+        return dual_corner((gsx >> 1u) + (gsy >> 1u) * dx + (gsz >> 1u) * dx * dy);
+    }
+    return make_subcorner_dual(gsx, gsy, gsz);
+}
+
+fn edge_x_dual_at_subpos(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    if (sub_edge_x_is_minimal(gsx, gsy, gsz)) {
+        return dual_sub_edge_x(gsx, gsy, gsz);
+    }
+    // Base edge fallback: when not minimal, (gsy, gsz) are both on base-grid lines (even),
+    // and (gsx, gsy/2, gsz/2) is the unique base-edge linear index. The sub-edge spans
+    // sub_x ∈ [gsx, gsx+1] which is one half of the base edge spanning base_x ∈ [gsx>>1,
+    // (gsx>>1)+1] — both halves of the same base edge resolve to the same dual.
+    let dx = uniforms.gridDimensions.x;
+    let dy = uniforms.gridDimensions.y;
+    return dual_edge_x((gsx >> 1u) + (gsy >> 1u) * (dx - 1u) + (gsz >> 1u) * (dx - 1u) * dy);
+}
+
+fn edge_y_dual_at_subpos(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    if (sub_edge_y_is_minimal(gsx, gsy, gsz)) {
+        return dual_sub_edge_y(gsx, gsy, gsz);
+    }
+    let dx = uniforms.gridDimensions.x;
+    let dy = uniforms.gridDimensions.y;
+    return dual_edge_y((gsx >> 1u) + (gsy >> 1u) * dx + (gsz >> 1u) * dx * (dy - 1u));
+}
+
+fn edge_z_dual_at_subpos(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
+    if (sub_edge_z_is_minimal(gsx, gsy, gsz)) {
+        return dual_sub_edge_z(gsx, gsy, gsz);
+    }
+    let dx = uniforms.gridDimensions.x;
+    let dy = uniforms.gridDimensions.y;
+    return dual_edge_z((gsx >> 1u) + (gsy >> 1u) * dx + (gsz >> 1u) * dx * dy);
+}
+
+// Convenience wrappers around the Session 8 face_*_dual_at_subpos helpers that compute
+// (lo_ref, hi_ref) from the sub-face position itself, so Pass 15 doesn't have to track
+// neighbour refinement explicitly per face. Adjacent base cubes for a sub-face F are the
+// 2 cubes on either side of F's "thin" axis (the axis perpendicular to the face plane).
+
+fn face_xy_dual_auto(gsfx: u32, gsfy: u32, gsfz: u32) -> FaceDualResult {
+    // XY-face's thin axis is Z. Adjacent sub-cubes at z = gsfz-1 and z = gsfz; their
+    // parent cubes are at z>>1.
+    let bfx = gsfx >> 1u;
+    let bfy = gsfy >> 1u;
+    let lo_ref = select(false, is_base_cube_refined(bfx, bfy, (gsfz - 1u) >> 1u), gsfz >= 1u);
+    let hi_ref = is_base_cube_refined(bfx, bfy, gsfz >> 1u);
+    return face_xy_dual_at_subpos(gsfx, gsfy, gsfz, lo_ref, hi_ref);
+}
+
+fn face_yz_dual_auto(gsfx: u32, gsfy: u32, gsfz: u32) -> FaceDualResult {
+    // YZ-face's thin axis is X.
+    let bfy = gsfy >> 1u;
+    let bfz = gsfz >> 1u;
+    let lo_ref = select(false, is_base_cube_refined((gsfx - 1u) >> 1u, bfy, bfz), gsfx >= 1u);
+    let hi_ref = is_base_cube_refined(gsfx >> 1u, bfy, bfz);
+    return face_yz_dual_at_subpos(gsfx, gsfy, gsfz, lo_ref, hi_ref);
+}
+
+fn face_xz_dual_auto(gsfx: u32, gsfy: u32, gsfz: u32) -> FaceDualResult {
+    // XZ-face's thin axis is Y.
+    let bfx = gsfx >> 1u;
+    let bfz = gsfz >> 1u;
+    let lo_ref = select(false, is_base_cube_refined(bfx, (gsfy - 1u) >> 1u, bfz), gsfy >= 1u);
+    let hi_ref = is_base_cube_refined(bfx, gsfy >> 1u, bfz);
+    return face_xz_dual_at_subpos(gsfx, gsfy, gsfz, lo_ref, hi_ref);
+}
+
+/// Per-axis sub-edge MT. `axis` is the edge direction: 0=X, 1=Y, 2=Z.
+/// Cell-array indexing convention (matches Pass 6's emit_pass6_*_edge logic):
+///   X-edge cells: A=(gsx, gsy-1, gsz-1), B=(gsx, gsy, gsz-1), C=(gsx, gsy-1, gsz), D=(gsx, gsy, gsz)
+///   Y-edge cells: A=(gsx-1, gsy, gsz-1), B=(gsx, gsy, gsz-1), C=(gsx-1, gsy, gsz), D=(gsx, gsy, gsz)
+///   Z-edge cells: A=(gsx-1, gsy-1, gsz), B=(gsx, gsy-1, gsz), C=(gsx-1, gsy, gsz), D=(gsx, gsy, gsz)
+/// Face pairs around the edge: AB, CD share a face perpendicular to one axis; AC, BD share
+/// a face perpendicular to another. See per-axis comments below for the exact face types.
+
+fn pass14_emit_x_sub_edge(gsx: u32, gsy: u32, gsz: u32) {
+    let nx_sub = 2u * (uniforms.gridDimensions.x - 1u);
+    let ny_sub = 2u * (uniforms.gridDimensions.y - 1u);
+    let nz_sub = 2u * (uniforms.gridDimensions.z - 1u);
+
+    // Bounds check 4 cells. If any cell is outside the sub-grid, this sub-edge is on
+    // the global grid boundary — skip (no surface activity beyond the bounds).
+    if (gsy < 1u || gsz < 1u || gsy > ny_sub || gsz > nz_sub) {
+        return;
+    }
+    if (gsx >= nx_sub) {
+        return;
+    }
+    let a_cy = gsy - 1u;
+    let a_cz = gsz - 1u;
+    let b_cy = gsy;
+    let b_cz = gsz - 1u;
+    let c_cy = gsy - 1u;
+    let c_cz = gsz;
+    let d_cy = gsy;
+    let d_cz = gsz;
+    if (b_cy >= ny_sub || d_cy >= ny_sub || c_cz >= nz_sub || d_cz >= nz_sub) {
+        return;
+    }
+
+    // Refinement check on all 4 base parents. The sub-edge is "minimal" iff at least one
+    // surrounding sub-cube's parent is refined. (If none refined, the covering base edge is
+    // the minimal one and Pass 6 emits MT at base resolution there — Pass 14 must NOT.)
+    let a_ref = is_base_cube_refined(gsx >> 1u, a_cy >> 1u, a_cz >> 1u);
+    let b_ref = is_base_cube_refined(gsx >> 1u, b_cy >> 1u, b_cz >> 1u);
+    let c_ref = is_base_cube_refined(gsx >> 1u, c_cy >> 1u, c_cz >> 1u);
+    let d_ref = is_base_cube_refined(gsx >> 1u, d_cy >> 1u, d_cz >> 1u);
+    if (!(a_ref || b_ref || c_ref || d_ref)) {
+        return;
+    }
+
+    // Cube duals: sub-cube dual on the refined side, BASE cube dual on the unrefined side.
+    // This is the "minimal cube" rule from the paper — the deepest available dual at each
+    // surrounding cube position. Mixing depths is correct and produces a single connected
+    // surface (refined-side neighbours share their base-dual with all other unrefined cells
+    // touching them, so the manifold is preserved).
+    let a_dual = cube_dual_at_subpos(gsx, a_cy, a_cz);
+    let b_dual = cube_dual_at_subpos(gsx, b_cy, b_cz);
+    let c_dual = cube_dual_at_subpos(gsx, c_cy, c_cz);
+    let d_dual = cube_dual_at_subpos(gsx, d_cy, d_cz);
+
+    let edge = dual_sub_edge_x(gsx, gsy, gsz);
+    let p0d = make_subcorner_dual(gsx,       gsy, gsz);
+    let p1d = make_subcorner_dual(gsx + 1u,  gsy, gsz);
+
+    // Face-adjacent cube pairs around X-edge:
+    //   PD: B↔D differ in z.   Face XY at sub_pos=(gsx, gsy, gsz)         (z = gsz)
+    //   PC: A↔C differ in z.   Face XY at sub_pos=(gsx, gsy - 1, gsz)     (z = gsz)
+    //   PB: C↔D differ in y.   Face XZ at sub_pos=(gsx, gsy, gsz)         (y = gsy)
+    //   PA: A↔B differ in y.   Face XZ at sub_pos=(gsx, gsy, gsz - 1)     (y = gsy)
+    let bd = face_xy_dual_at_subpos(gsx, gsy,      gsz,        b_ref, d_ref);
+    if (bd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, bd.dual, b_dual, d_dual); }
+    let ac = face_xy_dual_at_subpos(gsx, gsy - 1u, gsz,        a_ref, c_ref);
+    if (ac.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ac.dual, a_dual, c_dual); }
+    let cd = face_xz_dual_at_subpos(gsx, gsy,      gsz,        c_ref, d_ref);
+    if (cd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, cd.dual, c_dual, d_dual); }
+    let ab = face_xz_dual_at_subpos(gsx, gsy,      gsz - 1u,   a_ref, b_ref);
+    if (ab.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ab.dual, a_dual, b_dual); }
+}
+
+fn pass14_emit_y_sub_edge(gsx: u32, gsy: u32, gsz: u32) {
+    let nx_sub = 2u * (uniforms.gridDimensions.x - 1u);
+    let ny_sub = 2u * (uniforms.gridDimensions.y - 1u);
+    let nz_sub = 2u * (uniforms.gridDimensions.z - 1u);
+
+    if (gsx < 1u || gsz < 1u || gsx > nx_sub || gsz > nz_sub) {
+        return;
+    }
+    if (gsy >= ny_sub) {
+        return;
+    }
+    let a_cx = gsx - 1u;
+    let a_cz = gsz - 1u;
+    let b_cx = gsx;
+    let b_cz = gsz - 1u;
+    let c_cx = gsx - 1u;
+    let c_cz = gsz;
+    let d_cx = gsx;
+    let d_cz = gsz;
+    if (b_cx >= nx_sub || d_cx >= nx_sub || c_cz >= nz_sub || d_cz >= nz_sub) {
+        return;
+    }
+
+    let a_ref = is_base_cube_refined(a_cx >> 1u, gsy >> 1u, a_cz >> 1u);
+    let b_ref = is_base_cube_refined(b_cx >> 1u, gsy >> 1u, b_cz >> 1u);
+    let c_ref = is_base_cube_refined(c_cx >> 1u, gsy >> 1u, c_cz >> 1u);
+    let d_ref = is_base_cube_refined(d_cx >> 1u, gsy >> 1u, d_cz >> 1u);
+    if (!(a_ref || b_ref || c_ref || d_ref)) {
+        return;
+    }
+
+    let a_dual = cube_dual_at_subpos(a_cx, gsy, a_cz);
+    let b_dual = cube_dual_at_subpos(b_cx, gsy, b_cz);
+    let c_dual = cube_dual_at_subpos(c_cx, gsy, c_cz);
+    let d_dual = cube_dual_at_subpos(d_cx, gsy, d_cz);
+
+    let edge = dual_sub_edge_y(gsx, gsy, gsz);
+    let p0d = make_subcorner_dual(gsx, gsy,       gsz);
+    let p1d = make_subcorner_dual(gsx, gsy + 1u,  gsz);
+
+    // Face-adjacent pairs around Y-edge:
+    //   PD: C↔D differ in x.   Face YZ at sub_pos=(gsx, gsy, gsz)         (x = gsx)
+    //   PA: A↔B differ in x.   Face YZ at sub_pos=(gsx, gsy, gsz - 1)     (x = gsx)
+    //   PB: B↔D differ in z.   Face XY at sub_pos=(gsx, gsy, gsz)         (z = gsz)
+    //   PC: A↔C differ in z.   Face XY at sub_pos=(gsx - 1, gsy, gsz)     (z = gsz)
+    let cd = face_yz_dual_at_subpos(gsx,      gsy, gsz,        c_ref, d_ref);
+    if (cd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, cd.dual, c_dual, d_dual); }
+    let ab = face_yz_dual_at_subpos(gsx,      gsy, gsz - 1u,   a_ref, b_ref);
+    if (ab.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ab.dual, a_dual, b_dual); }
+    let bd = face_xy_dual_at_subpos(gsx,      gsy, gsz,        b_ref, d_ref);
+    if (bd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, bd.dual, b_dual, d_dual); }
+    let ac = face_xy_dual_at_subpos(gsx - 1u, gsy, gsz,        a_ref, c_ref);
+    if (ac.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ac.dual, a_dual, c_dual); }
+}
+
+fn pass14_emit_z_sub_edge(gsx: u32, gsy: u32, gsz: u32) {
+    let nx_sub = 2u * (uniforms.gridDimensions.x - 1u);
+    let ny_sub = 2u * (uniforms.gridDimensions.y - 1u);
+    let nz_sub = 2u * (uniforms.gridDimensions.z - 1u);
+
+    if (gsx < 1u || gsy < 1u || gsx > nx_sub || gsy > ny_sub) {
+        return;
+    }
+    if (gsz >= nz_sub) {
+        return;
+    }
+    let a_cx = gsx - 1u;
+    let a_cy = gsy - 1u;
+    let b_cx = gsx;
+    let b_cy = gsy - 1u;
+    let c_cx = gsx - 1u;
+    let c_cy = gsy;
+    let d_cx = gsx;
+    let d_cy = gsy;
+    if (b_cx >= nx_sub || d_cx >= nx_sub || c_cy >= ny_sub || d_cy >= ny_sub) {
+        return;
+    }
+
+    let a_ref = is_base_cube_refined(a_cx >> 1u, a_cy >> 1u, gsz >> 1u);
+    let b_ref = is_base_cube_refined(b_cx >> 1u, b_cy >> 1u, gsz >> 1u);
+    let c_ref = is_base_cube_refined(c_cx >> 1u, c_cy >> 1u, gsz >> 1u);
+    let d_ref = is_base_cube_refined(d_cx >> 1u, d_cy >> 1u, gsz >> 1u);
+    if (!(a_ref || b_ref || c_ref || d_ref)) {
+        return;
+    }
+
+    let a_dual = cube_dual_at_subpos(a_cx, a_cy, gsz);
+    let b_dual = cube_dual_at_subpos(b_cx, b_cy, gsz);
+    let c_dual = cube_dual_at_subpos(c_cx, c_cy, gsz);
+    let d_dual = cube_dual_at_subpos(d_cx, d_cy, gsz);
+
+    let edge = dual_sub_edge_z(gsx, gsy, gsz);
+    let p0d = make_subcorner_dual(gsx, gsy, gsz);
+    let p1d = make_subcorner_dual(gsx, gsy, gsz + 1u);
+
+    // Face-adjacent pairs around Z-edge:
+    //   PD: B↔D differ in y.   Face XZ at sub_pos=(gsx, gsy, gsz)         (y = gsy)
+    //   PA: A↔C differ in y.   Face XZ at sub_pos=(gsx - 1, gsy, gsz)     (y = gsy)
+    //   PB: C↔D differ in x.   Face YZ at sub_pos=(gsx, gsy, gsz)         (x = gsx)
+    //   PC: A↔B differ in x.   Face YZ at sub_pos=(gsx, gsy - 1, gsz)     (x = gsx)
+    let bd = face_xz_dual_at_subpos(gsx,      gsy,      gsz, b_ref, d_ref);
+    if (bd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, bd.dual, b_dual, d_dual); }
+    let ac = face_xz_dual_at_subpos(gsx - 1u, gsy,      gsz, a_ref, c_ref);
+    if (ac.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ac.dual, a_dual, c_dual); }
+    let cd = face_yz_dual_at_subpos(gsx,      gsy,      gsz, c_ref, d_ref);
+    if (cd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, cd.dual, c_dual, d_dual); }
+    let ab = face_yz_dual_at_subpos(gsx,      gsy - 1u, gsz, a_ref, b_ref);
+    if (ab.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ab.dual, a_dual, b_dual); }
+}
+
+// ============================== Phase 5 (Session 9): paper-correct multi-resolution MT ==============================
+//
+// `walk_minimal_cube_tets` implements Manson & Schaefer's recursive simplicial
+// decomposition (paper §4) for one MINIMAL CUBE. For each of the cube's 6 sides it:
+//
+//   1. Determines the minimal face(s) on that side: 1 base face if both M and the neighbour
+//      are unrefined-base (so M is depth-0 with neighbour mask bit cleared), or 4 sub-faces
+//      if M is depth-0 and the face neighbour is refined, or 1 sub-face if M is depth-1.
+//   2. For each minimal face F, walks F's 4 boundary edges. Each boundary edge is either
+//      a base edge (1 minimal edge of length 2 sub-grid units) or a sub-edge (1 minimal
+//      edge of length 1) — the latter when the underlying base edge is "split" because at
+//      least one of its 4 surrounding cubes is refined. For base faces with split edges,
+//      that boundary side contributes 2 sub-edges instead of 1 base edge.
+//   3. For each minimal edge E, looks up its 2 endpoint corners (base corner if all coords
+//      are even, sub-corner via inline SDF sample otherwise) and emits one tet
+//      `(Dp, De, Df, Dc)` per endpoint via `emit_mt_tetra`.
+//
+// Adjacent minimal cubes share their boundary minimal cells by construction, so the tets
+// on either side of a shared face share full 3-vertex faces and their MT contour edges
+// weld during the CPU position-quantize weld. This is the correctness property that
+// Sessions 7/8 violated by walking edges directly.
+
+// ----- per-axis-pair edge walks (one per face's boundary edge orientation) -----
+//
+// `walk_face_y_edge` (etc.) emits the tets contributed by ONE boundary edge of one
+// minimal face. The edge's axis (Y here) is fixed; (sx, sy, sz) is the edge's min corner
+// in sub-grid coordinates; `S` is the edge length in sub-grid units (1 for sub-edge,
+// 2 for base edge — although when S=2 we may further split into 2 sub-edges).
+
+// Pass 15 / Pass 6 partition rule: for each base edge slot in a minimal cube's face
+// boundary, Pass 15 only emits tets if the underlying base edge is "split" (has at least
+// one refined surrounding cube → Pass 6's `any_cube_around_*_edge_refined` skips it).
+// If the base edge has NO refined surrounding cube, Pass 6 emits it at base resolution
+// and Pass 15 must skip — otherwise we'd emit the same tet twice and the welded mesh
+// would have phantom non-manifold edges + duplicated triangles.
+//
+// For S==1 (sub-edge from a depth-1 sub-cube): always emit (Pass 6 doesn't see sub-edges).
+// For S==2 + split: emit 2 sub-edges' tets.
+// For S==2 + not split: SKIP (Pass 6 handles).
+
+fn walk_face_y_edge(sx: u32, sy: u32, sz: u32, S: u32, Df: DualVertex, Dc: DualVertex) {
+    if (S == 1u) {
+        let De = edge_y_dual_at_subpos(sx, sy, sz);
+        let Dp0 = corner_dual_at_subpos(sx, sy,        sz);
+        let Dp1 = corner_dual_at_subpos(sx, sy + 1u,   sz);
+        emit_mt_tetra(array<DualVertex, 4>(Dp0, De, Df, Dc));
+        emit_mt_tetra(array<DualVertex, 4>(Dp1, De, Df, Dc));
+        return;
+    }
+    // S == 2: base edge. Emit only if Pass 6 would skip it, i.e. it's split.
+    if (!sub_edge_y_is_minimal(sx, sy, sz)) {
+        return;
+    }
+    for (var k = 0u; k < 2u; k = k + 1u) {
+        let ey = sy + k;
+        let De = edge_y_dual_at_subpos(sx, ey, sz);
+        let Dp0 = corner_dual_at_subpos(sx, ey,        sz);
+        let Dp1 = corner_dual_at_subpos(sx, ey + 1u,   sz);
+        emit_mt_tetra(array<DualVertex, 4>(Dp0, De, Df, Dc));
+        emit_mt_tetra(array<DualVertex, 4>(Dp1, De, Df, Dc));
+    }
+}
+
+fn walk_face_x_edge(sx: u32, sy: u32, sz: u32, S: u32, Df: DualVertex, Dc: DualVertex) {
+    if (S == 1u) {
+        let De = edge_x_dual_at_subpos(sx, sy, sz);
+        let Dp0 = corner_dual_at_subpos(sx,        sy, sz);
+        let Dp1 = corner_dual_at_subpos(sx + 1u,   sy, sz);
+        emit_mt_tetra(array<DualVertex, 4>(Dp0, De, Df, Dc));
+        emit_mt_tetra(array<DualVertex, 4>(Dp1, De, Df, Dc));
+        return;
+    }
+    if (!sub_edge_x_is_minimal(sx, sy, sz)) {
+        return;
+    }
+    for (var k = 0u; k < 2u; k = k + 1u) {
+        let ex = sx + k;
+        let De = edge_x_dual_at_subpos(ex, sy, sz);
+        let Dp0 = corner_dual_at_subpos(ex,        sy, sz);
+        let Dp1 = corner_dual_at_subpos(ex + 1u,   sy, sz);
+        emit_mt_tetra(array<DualVertex, 4>(Dp0, De, Df, Dc));
+        emit_mt_tetra(array<DualVertex, 4>(Dp1, De, Df, Dc));
+    }
+}
+
+fn walk_face_z_edge(sx: u32, sy: u32, sz: u32, S: u32, Df: DualVertex, Dc: DualVertex) {
+    if (S == 1u) {
+        let De = edge_z_dual_at_subpos(sx, sy, sz);
+        let Dp0 = corner_dual_at_subpos(sx, sy, sz);
+        let Dp1 = corner_dual_at_subpos(sx, sy, sz + 1u);
+        emit_mt_tetra(array<DualVertex, 4>(Dp0, De, Df, Dc));
+        emit_mt_tetra(array<DualVertex, 4>(Dp1, De, Df, Dc));
+        return;
+    }
+    if (!sub_edge_z_is_minimal(sx, sy, sz)) {
+        return;
+    }
+    for (var k = 0u; k < 2u; k = k + 1u) {
+        let ez = sz + k;
+        let De = edge_z_dual_at_subpos(sx, sy, ez);
+        let Dp0 = corner_dual_at_subpos(sx, sy, ez);
+        let Dp1 = corner_dual_at_subpos(sx, sy, ez + 1u);
+        emit_mt_tetra(array<DualVertex, 4>(Dp0, De, Df, Dc));
+        emit_mt_tetra(array<DualVertex, 4>(Dp1, De, Df, Dc));
+    }
+}
+
+// ----- per-side walk: enumerates minimal face(s) on one side of M and walks each face's
+// 4 boundary edges. `nbr_refined` indicates whether the face neighbour on this side is
+// a refined base cube (only meaningful for depth-0 M; for depth-1 M the face is always
+// a sub-face regardless of neighbour state).
+
+fn walk_side_x(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bool, Dc: DualVertex) {
+    // Side X means face perpendicular to X axis. Caller passes msx = either the cube's
+    // -X coord (left face) or the cube's +X coord (right face). Face is YZ-axis.
+    let one_face = (depth == 1u) || !nbr_refined;
+    if (one_face) {
+        // 1 minimal face of width S (S=2 base, S=1 sub).
+        let f = face_yz_dual_auto(msx, msy, msz);
+        if (f.should_emit) {
+            let Df = f.dual;
+            walk_face_y_edge(msx, msy, msz,         S, Df, Dc);
+            walk_face_y_edge(msx, msy, msz + S,     S, Df, Dc);
+            walk_face_z_edge(msx, msy, msz,         S, Df, Dc);
+            walk_face_z_edge(msx, msy + S, msz,     S, Df, Dc);
+        }
+    } else {
+        // 4 minimal sub-faces, each width 1, at offsets (a, b) in (y, z).
+        for (var a = 0u; a < 2u; a = a + 1u) {
+            for (var b = 0u; b < 2u; b = b + 1u) {
+                let sfy = msy + a;
+                let sfz = msz + b;
+                let f = face_yz_dual_auto(msx, sfy, sfz);
+                if (!f.should_emit) { continue; }
+                let Df = f.dual;
+                walk_face_y_edge(msx, sfy, sfz,         1u, Df, Dc);
+                walk_face_y_edge(msx, sfy, sfz + 1u,    1u, Df, Dc);
+                walk_face_z_edge(msx, sfy, sfz,         1u, Df, Dc);
+                walk_face_z_edge(msx, sfy + 1u, sfz,    1u, Df, Dc);
+            }
+        }
+    }
+}
+
+fn walk_side_y(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bool, Dc: DualVertex) {
+    // Face perpendicular to Y. Face axis is XZ.
+    let one_face = (depth == 1u) || !nbr_refined;
+    if (one_face) {
+        let f = face_xz_dual_auto(msx, msy, msz);
+        if (f.should_emit) {
+            let Df = f.dual;
+            walk_face_x_edge(msx, msy, msz,         S, Df, Dc);
+            walk_face_x_edge(msx, msy, msz + S,     S, Df, Dc);
+            walk_face_z_edge(msx, msy, msz,         S, Df, Dc);
+            walk_face_z_edge(msx + S, msy, msz,     S, Df, Dc);
+        }
+    } else {
+        for (var a = 0u; a < 2u; a = a + 1u) {
+            for (var b = 0u; b < 2u; b = b + 1u) {
+                let sfx = msx + a;
+                let sfz = msz + b;
+                let f = face_xz_dual_auto(sfx, msy, sfz);
+                if (!f.should_emit) { continue; }
+                let Df = f.dual;
+                walk_face_x_edge(sfx, msy, sfz,         1u, Df, Dc);
+                walk_face_x_edge(sfx, msy, sfz + 1u,    1u, Df, Dc);
+                walk_face_z_edge(sfx, msy, sfz,         1u, Df, Dc);
+                walk_face_z_edge(sfx + 1u, msy, sfz,    1u, Df, Dc);
+            }
+        }
+    }
+}
+
+fn walk_side_z(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bool, Dc: DualVertex) {
+    // Face perpendicular to Z. Face axis is XY.
+    let one_face = (depth == 1u) || !nbr_refined;
+    if (one_face) {
+        let f = face_xy_dual_auto(msx, msy, msz);
+        if (f.should_emit) {
+            let Df = f.dual;
+            walk_face_x_edge(msx, msy, msz,         S, Df, Dc);
+            walk_face_x_edge(msx, msy + S, msz,     S, Df, Dc);
+            walk_face_y_edge(msx, msy, msz,         S, Df, Dc);
+            walk_face_y_edge(msx + S, msy, msz,     S, Df, Dc);
+        }
+    } else {
+        for (var a = 0u; a < 2u; a = a + 1u) {
+            for (var b = 0u; b < 2u; b = b + 1u) {
+                let sfx = msx + a;
+                let sfy = msy + b;
+                let f = face_xy_dual_auto(sfx, sfy, msz);
+                if (!f.should_emit) { continue; }
+                let Df = f.dual;
+                walk_face_x_edge(sfx, sfy, msz,         1u, Df, Dc);
+                walk_face_x_edge(sfx, sfy + 1u, msz,    1u, Df, Dc);
+                walk_face_y_edge(sfx, sfy, msz,         1u, Df, Dc);
+                walk_face_y_edge(sfx + 1u, sfy, msz,    1u, Df, Dc);
+            }
+        }
+    }
+}
+
+fn walk_minimal_cube_tets(M_idx: u32) {
+    // Minimal-cube descriptor packed into the tail of subCellAllDuals (after the
+    // totalSlots dual entries), one vec4u per descriptor, format:
+    //   pos.x = gsx (sub-grid coord of cube's min corner)
+    //   pos.y = gsy
+    //   pos.z = gsz
+    //   fval (bitcast u32):
+    //     bit  0     = depth (0 = unrefined base cube of size 2 sub-grid units;
+    //                          1 = sub-cube of a refined parent of size 1 sub-grid unit)
+    //     bits 1..6  = neighbourRefinedMask (bit 0=-X, 1=+X, 2=-Y, 3=+Y, 4=-Z, 5=+Z)
+    //                  Only meaningful for depth=0; for depth=1 it's ignored (sub-cubes
+    //                  always have sub-faces regardless of neighbour state).
+    let dv = subCellAllDuals[uniforms.subCellBases.w + M_idx];
+    let msx = bitcast<u32>(dv.pos.x);
+    let msy = bitcast<u32>(dv.pos.y);
+    let msz = bitcast<u32>(dv.pos.z);
+    let word3 = bitcast<u32>(dv.fval);
+    let depth = word3 & 1u;
+    let mask = (word3 >> 1u) & 0x3fu;
+    let S = select(1u, 2u, depth == 0u);
+
+    let Dc = cube_dual_at_subpos(msx, msy, msz);
+
+    // 6 sides — bit positions in mask: 0=-X, 1=+X, 2=-Y, 3=+Y, 4=-Z, 5=+Z.
+    walk_side_x(msx,     msy, msz, S, depth, (mask & (1u << 0u)) != 0u, Dc); // -X
+    walk_side_x(msx + S, msy, msz, S, depth, (mask & (1u << 1u)) != 0u, Dc); // +X
+    walk_side_y(msx, msy,     msz, S, depth, (mask & (1u << 2u)) != 0u, Dc); // -Y
+    walk_side_y(msx, msy + S, msz, S, depth, (mask & (1u << 3u)) != 0u, Dc); // +Y
+    walk_side_z(msx, msy, msz,     S, depth, (mask & (1u << 4u)) != 0u, Dc); // -Z
+    walk_side_z(msx, msy, msz + S, S, depth, (mask & (1u << 5u)) != 0u, Dc); // +Z
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn emitMinimalCubeMT_Pass15(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let i = globalId.x + globalId.y * (numWg.x * 64u);
+    // Phase 5: minimal-cube descriptors are packed at the END of `subCellAllDuals` (after
+    // the totalSlots dual entries). `subSparseHash.z` carries the descriptor count;
+    // `subCellBases.w` is the base offset in slots (= totalSlots).
+    let n = uniforms.subSparseHash.z;
+    if (i >= n) {
+        return;
+    }
+    walk_minimal_cube_tets(i);
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn emitSubedgeMT_Pass14(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let i = globalId.x + globalId.y * (numWg.x * 64u);
+    // Stage 4 Session 8 (storage-budget fix): childEdgeInfo is packed at the END of
+    // `subCellAllDuals` (after the totalSlots dual entries), so Pass 14 doesn't need to
+    // bind a separate `childEdgeInfo` buffer. The CPU writes 4 packed u32s per sub-edge
+    // into 16-byte slots that we read back here via `bitcast`. `subSparseHash.z` carries
+    // the sub-edge count; `subCellBases.w` is the base offset (= totalSlots).
+    let n = uniforms.subSparseHash.z;
+    if (i >= n) {
+        return;
+    }
+    let info_dv = subCellAllDuals[uniforms.subCellBases.w + i];
+    let gsx  = bitcast<u32>(info_dv.pos.x);
+    let gsy  = bitcast<u32>(info_dv.pos.y);
+    let gsz  = bitcast<u32>(info_dv.pos.z);
+    let axis = bitcast<u32>(info_dv.fval) & 3u;
+
+    if (axis == 0u) {
+        pass14_emit_x_sub_edge(gsx, gsy, gsz);
+    } else if (axis == 1u) {
+        pass14_emit_y_sub_edge(gsx, gsy, gsz);
+    } else {
+        pass14_emit_z_sub_edge(gsx, gsy, gsz);
+    }
 }
 
 fn emit_pass6_x_edge(
@@ -2251,6 +3475,12 @@ fn emitTetMeshTriangles_Pass6(
         let ex = grid_idx % (dx - 1u);
         let ey = (grid_idx / (dx - 1u)) % dy;
         let ez = grid_idx / ((dx - 1u) * dy);
+        // Session 8: skip base edges where ANY surrounding cube is refined. Pass 14 emits
+        // sub-edge MT for those at sub-resolution, using mixed-depth duals so the surface
+        // remains a single connected manifold across the refined↔unrefined boundary.
+        if (any_cube_around_x_edge_refined(ex, ey, ez, dx, dy, dz)) {
+            return;
+        }
         emit_pass6_x_edge(ex, ey, ez, dx, dy, dz, nx, ny, nz);
     } else if (slot < nx_count + ny_count) {
         let j = slot - nx_count;
@@ -2258,6 +3488,9 @@ fn emitTetMeshTriangles_Pass6(
         let ex = grid_idx % dx;
         let ey = (grid_idx / dx) % (dy - 1u);
         let ez = grid_idx / (dx * (dy - 1u));
+        if (any_cube_around_y_edge_refined(ex, ey, ez, dx, dy, dz)) {
+            return;
+        }
         emit_pass6_y_edge(ex, ey, ez, dx, dy, dz, nx, ny, nz);
     } else {
         let j = slot - nx_count - ny_count;
@@ -2265,6 +3498,9 @@ fn emitTetMeshTriangles_Pass6(
         let ex = grid_idx % dx;
         let ey = (grid_idx / dx) % dy;
         let ez = grid_idx / (dx * dy);
+        if (any_cube_around_z_edge_refined(ex, ey, ez, dx, dy, dz)) {
+            return;
+        }
         emit_pass6_z_edge(ex, ey, ez, dx, dy, dz, nx, ny, nz);
     }
 }

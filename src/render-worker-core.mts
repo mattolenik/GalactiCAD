@@ -1032,146 +1032,27 @@ export class RenderWorkerCore {
             const exportShader = exporter === "iso" ? isoShader : mdcShader
             const exportLabel = exporter === "iso" ? "ISO Export" : "MDC Export"
             const exportShaderModule = shaderCompiler.compile(exportShader, exportLabel)
-            let mesh: MeshData
-            if (exporter === "iso") {
-                const primaryIso = new ISOExport(
-                    this.#helper,
-                    params,
-                    this.#uniformBuffers.polygonVertices,
-                    this.#uniformBuffers.faceSelection,
-                    this.#uniformBuffers.mdcSceneParams,
-                )
-                const coarseMesh = await primaryIso.export(exportShaderModule)
-
-                // Stage 4 Session 3: if adaptive refinement was enabled and the octree
-                // identified a region of high-curvature parents, run a SECOND ISO pass
-                // at finer voxel within just that region and merge it into the coarse
-                // mesh. Visible adaptive refinement (with cracks at the AABB boundary
-                // — Session 4 will replace this with watertight multi-resolution MT).
-                const adaptive = primaryIso.lastAdaptiveResult
-                if (params.adaptiveOctree && adaptive?.refinedAABB) {
-                    const minRefinedForFinePass = 4 // skip if barely any refinement candidates
-                    if (adaptive.refinedBaseCubeCount >= minRefinedForFinePass) {
-                        try {
-                            mesh = await this.#runAdaptiveSecondaryIsoPass(
-                                coarseMesh,
-                                adaptive,
-                                params,
-                                exportShaderModule,
-                            )
-                        } catch (secondaryErr) {
-                            const m = secondaryErr instanceof Error ? secondaryErr.message : String(secondaryErr)
-                            log("RenderWorker").warn(
-                                `Stage 4 S3 secondary ISO pass failed; returning coarse mesh only: ${m}`,
-                            )
-                            mesh = coarseMesh
-                        }
-                    } else {
-                        log("RenderWorker").info(
-                            `Stage 4 S3: refinedBaseCubeCount=${adaptive.refinedBaseCubeCount} below threshold ${minRefinedForFinePass}, skipping secondary fine pass.`,
-                        )
-                        mesh = coarseMesh
-                    }
-                } else {
-                    mesh = coarseMesh
-                }
-            } else {
-                mesh = await new MDCExport(
-                    this.#helper,
-                    params,
-                    this.#uniformBuffers.polygonVertices,
-                    this.#uniformBuffers.faceSelection,
-                    this.#uniformBuffers.mdcSceneParams,
-                ).export(exportShaderModule)
-            }
+            const mesh: MeshData =
+                exporter === "iso"
+                    ? await new ISOExport(
+                          this.#helper,
+                          params,
+                          this.#uniformBuffers.polygonVertices,
+                          this.#uniformBuffers.faceSelection,
+                          this.#uniformBuffers.mdcSceneParams,
+                      ).export(exportShaderModule)
+                    : await new MDCExport(
+                          this.#helper,
+                          params,
+                          this.#uniformBuffers.polygonVertices,
+                          this.#uniformBuffers.faceSelection,
+                          this.#uniformBuffers.mdcSceneParams,
+                      ).export(exportShaderModule)
             self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId, documentName })
         }
-    }
-
-    /**
-     * Stage 4 Session 3: secondary fine-voxel ISO pass for adaptive refinement.
-     *
-     * Inputs:
-     *   - `coarseMesh`: result of the primary ISO pass at the user's voxel.
-     *   - `adaptive`: octree-derived AABB + cube count from `primaryIso.lastAdaptiveResult`.
-     *   - `coarseParams`: the primary export's MDCParams (we copy then override bounds + voxel).
-     *   - `shaderModule`: shared between primary and secondary; no recompile.
-     *
-     * Output: merged mesh — coarse triangles outside the refined AABB + fine triangles
-     * inside it. Cracks at the AABB boundary are an acknowledged Session 3 v1 limitation.
-     */
-    async #runAdaptiveSecondaryIsoPass(
-        coarseMesh: MeshData,
-        adaptive: NonNullable<ISOExport["lastAdaptiveResult"]>,
-        coarseParams: MDCParams,
-        shaderModule: GPUShaderModule,
-    ): Promise<MeshData> {
-        const aabb = adaptive.refinedAABB!
-        // Pad the AABB by a small fraction of the primary voxel so the fine mesh
-        // extends slightly past the strict feature region; gives the merge step a
-        // safety margin against off-by-one drop decisions for triangles whose
-        // centroids land right on the AABB face. The pad does NOT close cracks —
-        // that's Session 4's T-junction MT job.
-        const pad = adaptive.primaryVoxelSize * 0.5
-        const fineMin: [number, number, number] = [aabb.min[0] - pad, aabb.min[1] - pad, aabb.min[2] - pad]
-        const fineMax: [number, number, number] = [aabb.max[0] + pad, aabb.max[1] + pad, aabb.max[2] + pad]
-        const fineSizeX = fineMax[0] - fineMin[0]
-        const fineSizeY = fineMax[1] - fineMin[1]
-        const fineSizeZ = fineMax[2] - fineMin[2]
-        // Target fine voxel: half the primary. chooseIsoVoxelForGpuLimits coarsens it
-        // back if the fine bounds at that voxel would exceed the per-buffer GPU limit.
-        const targetFineVoxel = adaptive.primaryVoxelSize * 0.5
-        const chosen = chooseIsoVoxelForGpuLimits(
-            fineSizeX, fineSizeY, fineSizeZ, targetFineVoxel, this.#device.limits,
-        )
-        log("RenderWorker").info(
-            `Stage 4 S3 secondary fine pass: AABB ${fineSizeX.toFixed(2)}×${fineSizeY.toFixed(2)}×${fineSizeZ.toFixed(2)} mm, `
-            + `target voxel ${targetFineVoxel.toFixed(4)} mm → chosen ${chosen.voxelSizeMm.toFixed(4)} mm `
-            + `(grid ${chosen.gridDimX}×${chosen.gridDimY}×${chosen.gridDimZ})`,
-        )
-
-        // Build secondary params: same scene, smaller bounds + finer voxel, NO recursive
-        // adaptive (the secondary pass IS the refinement; let it run uniform-grid).
-        const secondaryParams: MDCParams = {
-            ...coarseParams,
-            gridOffsetX: fineMin[0],
-            gridOffsetY: fineMin[1],
-            gridOffsetZ: fineMin[2],
-            gridDimX: chosen.gridDimX,
-            gridDimY: chosen.gridDimY,
-            gridDimZ: chosen.gridDimZ,
-            voxelSize: chosen.voxelSizeMm,
-            adaptiveOctree: false,
-        }
-        const secondaryIso = new ISOExport(
-            this.#helper,
-            secondaryParams,
-            this.#uniformBuffers.polygonVertices,
-            this.#uniformBuffers.faceSelection,
-            this.#uniformBuffers.mdcSceneParams,
-        )
-        const fineMesh = await secondaryIso.export(shaderModule)
-        const { mergeIsoMeshes, snapAndCompactMergedMesh } = await import("./export/iso-mesh-merge.mjs")
-        const fineAABB = { min: fineMin, max: fineMax }
-        const merged = mergeIsoMeshes(coarseMesh, fineMesh, fineAABB)
-
-        // Stage 4 Session 4: snap fine boundary vertices to nearest coarse boundary
-        // vertex on the same AABB face plane, closing the cracks Session 3's merge
-        // alone leaves at the refinement boundary. snapTol = primary voxel × 0.6 is
-        // a balance: large enough to span the resolution gap (each fine iso-crossing
-        // is within ½ coarse voxel of a coarse iso-crossing on a smooth surface),
-        // small enough to avoid accidental merges across distinct surface branches.
-        const snapTol = adaptive.primaryVoxelSize * 0.6
-        const snapped = snapAndCompactMergedMesh(merged, fineAABB, { snapTolMm: snapTol })
-        log("RenderWorker").info(
-            `Stage 4 S4 snap: ${snapped.snappedCount} fine→coarse vertex remaps `
-            + `(snapTol=${snapTol.toFixed(4)} mm), ${snapped.unsnappedFineBoundaryCount} fine boundary `
-            + `vertices left unsnapped (residual cracks at these positions).`,
-        )
-        return snapped.mesh
     }
 
     async #computeSceneBounds(searchMin: [number, number, number], searchMax: [number, number, number], stepMm: number): Promise<{ min: readonly [number, number, number]; max: readonly [number, number, number] } | null> {
@@ -1234,7 +1115,11 @@ export class RenderWorkerCore {
             const pass = encoder.beginComputePass()
             pass.setPipeline(boundsPipeline)
             pass.setBindGroup(0, bindGroup)
-            pass.dispatchWorkgroups(dispatchedWorkgroups)
+            // Use the 2D split (computed above as dispatchX × dispatchY) so we don't
+            // exceed the per-dimension workgroup limit (65535 on most adapters). The
+            // shader linearizes via `workgroupId.x + workgroupId.y * numWg.x` so 2D
+            // dispatch is equivalent to a (capped) 1D dispatch.
+            pass.dispatchWorkgroups(dispatchX, dispatchY)
             pass.end()
             this.#device.queue.submit([encoder.finish()])
             await this.#device.queue.onSubmittedWorkDone()

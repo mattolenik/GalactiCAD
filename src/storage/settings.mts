@@ -17,6 +17,8 @@ export interface CameraSettings {
     translation: [number, number, number]
     zoom: number
     rotation: [number, number, number, number] // quaternion [w, x, y, z]
+    /** Orbit / look-at pivot in scene space; omitted in older saves → origin. */
+    pivot?: [number, number, number]
 }
 
 export interface PreviewSettings {
@@ -83,7 +85,7 @@ export interface GlobalSettings {
 // ---------------------------------------------------------------------------
 
 function defaultCamera(): CameraSettings {
-    return { position: [0, 0, 0], translation: [0, 0, 0], zoom: 20, rotation: [1, 0, 0, 0] }
+    return { position: [0, 0, 0], translation: [0, 0, 0], zoom: 20, rotation: [1, 0, 0, 0], pivot: [0, 0, 0] }
 }
 
 function defaultPreview(): PreviewSettings {

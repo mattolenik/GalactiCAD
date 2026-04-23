@@ -75,6 +75,12 @@ export interface NodeContourRanges {
     ringCount: number
 }
 
+/** Optional metadata when opening a contour-recording block for a node. */
+export interface BeginNodeOptions {
+    /** When true, this node's contours are from a `Box` — used for pre-DC snap scoping. */
+    box?: boolean
+}
+
 /**
  * Mutable builder: nodes call `addSegment` / `addPoint` / `addRing` between
  * `beginNode(id)` / `endNode()` calls. After all nodes have contributed,
@@ -99,14 +105,20 @@ export class ContourBuffer {
     private _currentNodeId: number | null = null
     private _currentRanges: NodeContourRanges | null = null
 
+    /** Node ids whose contours were emitted from a `Box` primitive (see `BeginNodeOptions.box`). */
+    private _boxContourOwnerIds = new Set<number>()
+
     // Builder API ---------------------------------------------------------
 
     /** Begin recording contours for a node. Must be paired with `endNode()`. */
-    beginNode(id: number): void {
+    beginNode(id: number, opts?: BeginNodeOptions): void {
         if (this._currentNodeId !== null) {
             throw new Error(`ContourBuffer.beginNode(${id}): previous node ${this._currentNodeId} not yet ended`)
         }
         this._currentNodeId = id
+        if (opts?.box) {
+            this._boxContourOwnerIds.add(id)
+        }
         this._currentRanges = {
             segmentStart: this._segOwners.length,
             segmentCount: 0,
@@ -176,6 +188,7 @@ export class ContourBuffer {
         if (this._currentNodeId !== null) {
             throw new Error(`ContourBuffer.finish(): node ${this._currentNodeId} still open`)
         }
+        const boxIds = [...this._boxContourOwnerIds].sort((a, b) => a - b)
         return {
             segments: Float32Array.from(this._segments),
             segmentBBox: Float32Array.from(this._segBBox),
@@ -193,6 +206,8 @@ export class ContourBuffer {
             ringCount: this._ringOwners.length,
 
             nodeRanges: this._nodeRanges,
+
+            boxContourOwnerIds: Uint32Array.from(boxIds),
         }
     }
 }
@@ -230,6 +245,12 @@ export interface ContourBufferView {
 
     /** Per-node-id index ranges. Nodes that contributed nothing are absent. */
     nodeRanges: ReadonlyMap<number, NodeContourRanges>
+
+    /**
+     * Sorted unique scene-node ids that registered as box contour sources
+     * (`beginNode(id, { box: true })`). Empty when no boxes contributed contours.
+     */
+    boxContourOwnerIds: Uint32Array
 }
 
 /** Empty buffer — short-circuit when the scene has no contour-aware primitives. */
@@ -247,4 +268,5 @@ export const EMPTY_CONTOUR_BUFFER: ContourBufferView = {
     ringOwners: new Uint32Array(0),
     ringCount: 0,
     nodeRanges: new Map(),
+    boxContourOwnerIds: new Uint32Array(0),
 }

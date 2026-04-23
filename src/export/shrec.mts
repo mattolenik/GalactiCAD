@@ -1,9 +1,9 @@
 import { GPUHelper } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
-import { dualContourCPU } from "./shrec/dc-cpu.mjs"
+import { dualContourCPU, type DualContourPreSnap, type DualContourPreSeamSnap } from "./shrec/dc-cpu.mjs"
 import { mergeSharpRelocate } from "./shrec/merge-sharp.mjs"
 import { deduplicateMergedVertices } from "./shrec/dedup.mjs"
-import { ContourSpatialIndex } from "./shrec/contour-snap.mjs"
+import { ContourSpatialIndex, makeSnapScratch } from "./shrec/contour-snap.mjs"
 import { fitSeamEdges } from "./shrec/edge-fit.mjs"
 import { verifySeams } from "./shrec/verify-seam.mjs"
 import { splitCreaseVertices } from "./crease-split.mjs"
@@ -103,6 +103,12 @@ export interface ShrecParams {
      * very first sample. Default `true`.
      */
     verifyRefineEnabled?: boolean
+    /**
+     * When true (default), run pre-DC CSG seam snap (`classifyCellSeam` +
+     * operand Newton) before box contour snap. Set false to A/B without
+     * changing shader sampling.
+     */
+    preDcCsgSeamSnap?: boolean
 }
 
 /**
@@ -202,7 +208,47 @@ export class ShrecExport {
         progressCallback?.updateProgress("SHREC: dual contouring on CPU", 40)
         checkCancelled()
 
-        const dcMesh = dualContourCPU(grid, { isoValue: this.params.isoValue })
+        let contourIndex: ContourSpatialIndex | undefined
+        if (this.#contours) {
+            contourIndex = ContourSpatialIndex.build(this.#contours, grid.voxelSize, grid.gridOffset)
+            if (contourIndex) {
+                dbgLog("ShrecExport").debug(
+                    `contour index: segments=${this.#contours.segmentCount} ` +
+                    `points=${this.#contours.pointCount} ` +
+                    `rings=${this.#contours.ringCount} ` +
+                    `nodes=${this.#contours.nodeRanges.size} ` +
+                    `boxOwners=${this.#contours.boxContourOwnerIds.length}`,
+                )
+            }
+        }
+
+        let preSnap: DualContourPreSnap | undefined
+        if (contourIndex && this.#contours && this.#contours.boxContourOwnerIds.length > 0) {
+            const boxSet = new Set(this.#contours.boxContourOwnerIds)
+            preSnap = {
+                contourIndex,
+                ownerIdFilter: (id: number) => boxSet.has(id),
+                scratch: makeSnapScratch(),
+            }
+        }
+
+        let preSeamSnap: DualContourPreSeamSnap | undefined
+        if (
+            (this.params.preDcCsgSeamSnap !== false) &&
+            (this.params.seamAwareEnabled !== false)
+        ) {
+            preSeamSnap = {
+                seamAgreementCosThreshold: this.params.seamAgreementCosThreshold ?? 0.97,
+                refineEnabled: this.params.verifyRefineEnabled !== false,
+            }
+        }
+
+        const dcMesh = dualContourCPU(
+            grid,
+            { isoValue: this.params.isoValue },
+            preSnap,
+            preSeamSnap,
+        )
 
         const mergeEnabled = this.params.mergeSharpEnabled ?? true
         let mesh: MeshData
@@ -221,21 +267,6 @@ export class ShrecExport {
         if (mergeEnabled && dcMesh.verts.length > 0) {
             progressCallback?.updateProgress("SHREC: MergeSharp vertex relocation", 60)
             checkCancelled()
-            // Build the contour spatial index over the SHREC voxel grid only
-            // when the scene actually carries contours. Cheap when present
-            // (one Map insertion per cell touched by a contour AABB), free
-            // when absent (the constructor stored null).
-            const contourIndex = this.#contours
-                ? ContourSpatialIndex.build(this.#contours, grid.voxelSize, grid.gridOffset)
-                : undefined
-            if (contourIndex) {
-                dbgLog("ShrecExport").debug(
-                    `contour index: segments=${this.#contours!.segmentCount} ` +
-                    `points=${this.#contours!.pointCount} ` +
-                    `rings=${this.#contours!.ringCount} ` +
-                    `nodes=${this.#contours!.nodeRanges.size}`,
-                )
-            }
             const result = mergeSharpRelocate(dcMesh, grid, {
                 relCutoff: this.params.mergeRelCutoff,
                 maxDisplacement: this.params.mergeMaxDisplacement,
@@ -274,12 +305,19 @@ export class ShrecExport {
             const verifyEnabled = this.params.verifySeamsEnabled ?? true
             const verifyRefine = this.params.verifyRefineEnabled ?? true
             const candidates = result.stats.verifyCandidates
-            const acceptedSet = new Set<number>()  // vi indices that passed verification
+            // `lineFitVis` = vi indices safe for Laplacian smoothing — i.e.
+            // accepted AND the refined position is in the cell, so the mesh
+            // vertex actually sits on the seam. Boundary-coincident accepts
+            // (refined out of cell, mesh vertex at Tikhonov fallback) are
+            // EXCLUDED from line-fit so smoothing isn't pulled toward
+            // off-seam Tikhonov positions.
+            const lineFitVis = new Set<number>()
             if (verifyEnabled && candidates.length > 0) {
                 progressCallback?.updateProgress("SHREC: per-operand verification", 70)
                 checkCancelled()
                 const verifyResult = verifySeams(grid, candidates, {
                     refineEnabled: verifyRefine,
+                    contours: this.#contours ?? undefined,
                 })
                 const verts = mesh.verts
                 const dbgSamples = mergeDebugSamples
@@ -290,34 +328,47 @@ export class ShrecExport {
                     const vBase = c.vi * VERTEX_STRIDE
                     const dBase = c.vi * DEBUG_STRIDE
                     if (verifyResult.accepted[i]) {
-                        acceptedSet.add(c.vi)
-                        // For accepted+refined candidates, move both the
-                        // mesh vertex and the debug glyph anchor to the
-                        // refined position. (Direct accepts have refined
-                        // ≡ unclamped pseudo-inverse, so this is a no-op
-                        // for the glyph and an in-cell update for the
-                        // mesh vertex.)
                         const rx = verifyResult.refinedX[i]!
                         const ry = verifyResult.refinedY[i]!
                         const rz = verifyResult.refinedZ[i]!
-                        // Re-clamp defensively; the verifier already
-                        // gates accepts on cell containment, but a
-                        // zero-mass-displacement direct accept may have
-                        // sat just outside an inset boundary.
-                        verts[vBase] = rx
-                        verts[vBase + 1] = ry
-                        verts[vBase + 2] = rz
+                        // Glyph anchor → refined position. Always — the
+                        // refined position is on the actual geometric
+                        // seam line. Multiple cells (in-cell + boundary)
+                        // contributing glyphs at the same world point
+                        // get merged by the viewer's spatial dedup, so
+                        // each seam point gets exactly one glyph.
                         if (dbgSamples) {
-                            // Glyph anchor is the (possibly refined) seam
-                            // position itself, so neighbouring cells dedup
-                            // into a single feature glyph.
                             dbgSamples[dBase + 8] = rx
                             dbgSamples[dBase + 9] = ry
                             dbgSamples[dBase + 10] = rz
                         }
+                        if (verifyResult.inCellAfterRefine[i]) {
+                            // In-cell accept — move the mesh vertex onto
+                            // the refined position too. This cell becomes
+                            // a "trusted" seam cell for line-fit.
+                            verts[vBase] = rx
+                            verts[vBase + 1] = ry
+                            verts[vBase + 2] = rz
+                            lineFitVis.add(c.vi)
+                        } else {
+                            // Boundary-coincident accept — the seam is
+                            // at a cell face (commonly when grid lines
+                            // are aligned with the geometry). Keep the
+                            // mesh vertex at the Tikhonov fallback so DC
+                            // topology is preserved (the in-cell-side
+                            // adjacent cells already mark the seam with
+                            // their own mesh vertices). Glyph still
+                            // visible above.
+                            verts[vBase] = c.tikhonovX
+                            verts[vBase + 1] = c.tikhonovY
+                            verts[vBase + 2] = c.tikhonovZ
+                            // Don't add to lineFitVis — Laplacian
+                            // shouldn't smooth the off-seam Tikhonov
+                            // vertex toward its in-seam neighbours.
+                        }
                     } else {
-                        // Rejected: revert to Tikhonov fallback for the
-                        // mesh vertex and suppress the debug glyph.
+                        // Rejected: revert mesh vertex to Tikhonov and
+                        // suppress the debug glyph entirely.
                         verts[vBase] = c.tikhonovX
                         verts[vBase + 1] = c.tikhonovY
                         verts[vBase + 2] = c.tikhonovZ
@@ -335,13 +386,13 @@ export class ShrecExport {
             } else {
                 // Verification disabled — every candidate keeps its seam
                 // classification and current vertex placement.
-                for (const c of candidates) acceptedSet.add(c.vi)
+                for (const c of candidates) lineFitVis.add(c.vi)
             }
 
-            // Drop rejected cells from the line-fit chain input so the
-            // Laplacian smoothing only operates on cells we trust.
+            // Drop cells without a trusted in-cell mesh vertex from the
+            // line-fit chain input.
             const filteredSeamRecords = verifyEnabled
-                ? result.stats.seamCellRecords.filter(r => acceptedSet.has(r.vi))
+                ? result.stats.seamCellRecords.filter(r => lineFitVis.has(r.vi))
                 : result.stats.seamCellRecords
 
             // Post-MergeSharp line-fit refinement. Groups topologically-

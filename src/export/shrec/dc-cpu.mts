@@ -21,6 +21,14 @@
 
 import { log as dbgLog } from "../../logging/debug-log.mjs"
 import type { GridSampleResult } from "../grid-sample.mjs"
+import {
+    type ContourSpatialIndex,
+    sampleGradientTrilinear,
+    trySnapToContours,
+    type SnapScratch,
+} from "./contour-snap.mjs"
+import { classifyCellSeam } from "./seam-cell.mjs"
+import { refineSeamVertexFromSeed } from "./verify-seam.mjs"
 
 /** Floats per vertex (matches `SIZEOF_VERTEX / 4` in `mdc.mts`). */
 const VERTEX_STRIDE = 8
@@ -28,6 +36,26 @@ const VERTEX_STRIDE = 8
 export interface DualContourParams {
     /** Iso-surface value (SDFs typically use 0). */
     isoValue: number
+}
+
+/**
+ * Optional pre-pass: snap each active cell's mass point onto explicit contours
+ * (e.g. box edges/corners) before emitting the DC vertex. Scoped by
+ * `ownerIdFilter` so only box-owned contour elements participate.
+ */
+export interface DualContourPreSnap {
+    contourIndex: ContourSpatialIndex
+    ownerIdFilter: (ownerId: number) => boolean
+    /** Reusable scratch from `makeSnapScratch()`; caller owns lifetime. */
+    scratch: SnapScratch
+}
+
+/** Pre-DC projection onto the CSG seam line using grid `seamTangent` + `seamVerify`. */
+export interface DualContourPreSeamSnap {
+    seamAgreementCosThreshold: number
+    refineEnabled: boolean
+    seamTol?: number
+    maxIterations?: number
 }
 
 /**
@@ -111,6 +139,8 @@ const EDGE_AXIS_INFO: ReadonlyArray<{
 export function dualContourCPU(
     grid: GridSampleResult,
     params: DualContourParams,
+    preSnap?: DualContourPreSnap,
+    preSeamSnap?: DualContourPreSeamSnap,
 ): DualContourMesh {
     const t0 = perfNow()
     const [nx, ny, nz] = grid.dims
@@ -229,6 +259,8 @@ export function dualContourCPU(
         if (edgeCount[i] > 0) activeCells++
     }
 
+    let preDcBoxSnaps = 0
+    let preDcSeamSnaps = 0
     const verts = new Float32Array(activeCells * VERTEX_STRIDE)
     const cellCoords = new Uint32Array(activeCells * 3)
     let vCursor = 0
@@ -237,15 +269,71 @@ export function dualContourCPU(
         if (n === 0) continue
         const inv = 1 / n
         const i3 = i * 3
-        const px = sumPos[i3]! * inv
-        const py = sumPos[i3 + 1]! * inv
-        const pz = sumPos[i3 + 2]! * inv
+        let px = sumPos[i3]! * inv
+        let py = sumPos[i3 + 1]! * inv
+        let pz = sumPos[i3 + 2]! * inv
 
         // Recover (cx, cy, cz) from flat cell index.
         const cz = (i / (ncx * ncy)) | 0
         const remainder = i - cz * ncx * ncy
         const cy = (remainder / ncx) | 0
         const cx = remainder - cy * ncx
+
+        const cellLoX = ox + cx * vs
+        const cellLoY = oy + cy * vs
+        const cellLoZ = oz + cz * vs
+        const cellHiX = cellLoX + vs
+        const cellHiY = cellLoY + vs
+        const cellHiZ = cellLoZ + vs
+
+        let usedGeometrySnap = false
+        if (preSeamSnap) {
+            const seamT: [number, number, number] = [0, 0, 0]
+            if (classifyCellSeam(
+                grid.seamTangent,
+                nx, ny,
+                cx, cy, cz,
+                preSeamSnap.seamAgreementCosThreshold,
+                seamT,
+            )) {
+                const r = refineSeamVertexFromSeed(grid, px, py, pz, {
+                    seamTol: preSeamSnap.seamTol,
+                    maxIterations: preSeamSnap.maxIterations,
+                    refineEnabled: preSeamSnap.refineEnabled,
+                    cellLoX, cellLoY, cellLoZ,
+                    cellHiX, cellHiY, cellHiZ,
+                    requireInCell: true,
+                })
+                if (r.accepted) {
+                    px = r.x
+                    py = r.y
+                    pz = r.z
+                    usedGeometrySnap = true
+                    preDcSeamSnaps++
+                }
+            }
+        }
+
+        if (!usedGeometrySnap && preSnap) {
+            const snap = trySnapToContours(
+                preSnap.contourIndex,
+                grid,
+                cx, cy, cz,
+                cellLoX, cellLoY, cellLoZ,
+                cellHiX, cellHiY, cellHiZ,
+                px, py, pz,
+                preSnap.scratch,
+                preSnap.ownerIdFilter,
+            )
+            if (snap) {
+                px = snap.x
+                py = snap.y
+                pz = snap.z
+                usedGeometrySnap = true
+                preDcBoxSnaps++
+            }
+        }
+
         const cco = vCursor * 3
         cellCoords[cco] = cx
         cellCoords[cco + 1] = cy
@@ -253,18 +341,39 @@ export function dualContourCPU(
         let nxv = sumNrm[i3]!
         let nyv = sumNrm[i3 + 1]!
         let nzv = sumNrm[i3 + 2]!
-        const nl = Math.hypot(nxv, nyv, nzv)
-        if (nl > 1e-20) {
-            const ninv = 1 / nl
-            nxv *= ninv
-            nyv *= ninv
-            nzv *= ninv
+        if (usedGeometrySnap) {
+            const g = sampleGradientTrilinear(grid, px, py, pz)
+            if (g) {
+                nxv = g.nx
+                nyv = g.ny
+                nzv = g.nz
+            } else {
+                const nl = Math.hypot(nxv, nyv, nzv)
+                if (nl > 1e-20) {
+                    const ninv = 1 / nl
+                    nxv *= ninv
+                    nyv *= ninv
+                    nzv *= ninv
+                } else {
+                    nxv = 0
+                    nyv = 0
+                    nzv = 1
+                }
+            }
         } else {
-            // Degenerate normal — fall back to +Z. This shouldn't normally
-            // happen because the GPU sampler returns analytical SDF normals.
-            nxv = 0
-            nyv = 0
-            nzv = 1
+            const nl = Math.hypot(nxv, nyv, nzv)
+            if (nl > 1e-20) {
+                const ninv = 1 / nl
+                nxv *= ninv
+                nyv *= ninv
+                nzv *= ninv
+            } else {
+                // Degenerate normal — fall back to +Z. This shouldn't normally
+                // happen because the GPU sampler returns analytical SDF normals.
+                nxv = 0
+                nyv = 0
+                nzv = 1
+            }
         }
         const base = vCursor * VERTEX_STRIDE
         verts[base] = px
@@ -360,7 +469,9 @@ export function dualContourCPU(
     dbgLog("ShrecExport").debug(
         `dualContourCPU: grid=${nx}x${ny}x${nz} crossingEdges=${crossingEdges} ` +
         `activeCells=${activeCells} verts=${vCursor} tris=${tCursor / 3} ` +
-        `skippedQuads=${skippedQuads} elapsed=${elapsedMs.toFixed(1)}ms`,
+        `skippedQuads=${skippedQuads} preDcSeamSnaps=${preDcSeamSnaps} ` +
+        `preDcBoxSnaps=${preDcBoxSnaps} ` +
+        `elapsed=${elapsedMs.toFixed(1)}ms`,
     )
 
     return { verts, tris, cellCoords }

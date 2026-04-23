@@ -55,6 +55,7 @@ import {
     makeSnapScratch,
     trySnapToContours,
 } from "./contour-snap.mjs"
+import { CELL_CORNERS, classifyCellSeam } from "./seam-cell.mjs"
 import {
     sym3AddOuter,
     sym3Eigen,
@@ -89,82 +90,6 @@ const CUBE_EDGES: ReadonlyArray<{
         // 4 z-axis edges
         { axis: 2, lo: [0, 0, 0] }, { axis: 2, lo: [1, 0, 0] }, { axis: 2, lo: [0, 1, 0] }, { axis: 2, lo: [1, 1, 0] },
     ]
-
-/** The 8 cube-corner offsets in cell-local voxel coordinates. */
-const CELL_CORNERS: ReadonlyArray<readonly [number, number, number]> = [
-    [0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0],
-    [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1],
-]
-
-/**
- * Decide whether the cell at `(cx, cy, cz)` sits on a coherent CSG seam
- * line. Reads the seam tangent at each of the cell's 8 corner voxels from
- * `seamTangent` (vec4 per voxel: xyz = unit tangent, w = validity). If at
- * least 2 corners report a usable tangent and all of them agree within
- * `cosThreshold` (after sign-disambiguation), writes the unit average
- * direction into `outT` and returns `true`.
- *
- * Rationale: each voxel reports a seam tangent independently, so along a
- * straight CSG edge every corner sees the same direction (up to sign).
- * Disagreement signals either a corner where multiple seams meet (better
- * solved by the unconstrained QEF, which can pin a 3D point) or that the
- * cell is on a smooth blend / single primitive surface where seam metadata
- * is meaningless and the standard QEF should run.
- */
-function classifyCellSeam(
-    seamTangent: Float32Array,
-    nx: number,
-    ny: number,
-    cx: number,
-    cy: number,
-    cz: number,
-    cosThreshold: number,
-    outT: [number, number, number],
-): boolean {
-    let sumX = 0, sumY = 0, sumZ = 0
-    let firstX = 0, firstY = 0, firstZ = 0
-    let count = 0
-
-    // First pass: collect valid tangents and accumulate them with consistent
-    // sign relative to the first one we find. (Tangents define a line, not a
-    // direction — `+T` and `−T` describe the same edge.)
-    for (let i = 0; i < 8; i++) {
-        const off = CELL_CORNERS[i]!
-        const vidx = ((cz + off[2]) * ny + (cy + off[1])) * nx + (cx + off[0])
-        const k = vidx * 4
-        if (seamTangent[k + 3]! < 0.5) continue
-        let tx = seamTangent[k]!, ty = seamTangent[k + 1]!, tz = seamTangent[k + 2]!
-        if (count === 0) {
-            firstX = tx; firstY = ty; firstZ = tz
-        } else if (tx * firstX + ty * firstY + tz * firstZ < 0) {
-            tx = -tx; ty = -ty; tz = -tz
-        }
-        sumX += tx; sumY += ty; sumZ += tz
-        count++
-    }
-    if (count < 2) return false
-
-    const len = Math.hypot(sumX, sumY, sumZ)
-    if (len < 1e-12) return false
-    const Tx = sumX / len, Ty = sumY / len, Tz = sumZ / len
-
-    // Second pass: every contributing tangent must agree with the average
-    // within `cosThreshold` (sign-corrected via |dot|). Any single corner
-    // disagreement means the cell straddles two seams and should fall
-    // through to the unconstrained Tikhonov path.
-    for (let i = 0; i < 8; i++) {
-        const off = CELL_CORNERS[i]!
-        const vidx = ((cz + off[2]) * ny + (cy + off[1])) * nx + (cx + off[0])
-        const k = vidx * 4
-        if (seamTangent[k + 3]! < 0.5) continue
-        const tx = seamTangent[k]!, ty = seamTangent[k + 1]!, tz = seamTangent[k + 2]!
-        const agreement = Math.abs(tx * Tx + ty * Ty + tz * Tz)
-        if (agreement < cosThreshold) return false
-    }
-
-    outT[0] = Tx; outT[1] = Ty; outT[2] = Tz
-    return true
-}
 
 export interface MergeSharpParams {
     /**
@@ -794,139 +719,139 @@ export function mergeSharpRelocate(
             // their (offset, noise-amplified) vertex.
             const isCsgCorner = seamPath && rankSolve === 3 && cellOnAnyCsgSeam
             if (seamCornersAgree && !seamPath) seamRejectedByRank++
-        if (seamPath) {
-            // Cells classified as on a CSG seam get the **rank-aware
-            // pseudo-inverse**, not the Tikhonov solve used elsewhere.
-            //
-            // Why pseudo-inverse for seam cells specifically:
-            //
-            // For a sharp 90° CSG edge between two perpendicular planes,
-            // the QEF matrix `A = Σ nᵢnᵢᵀ` has eigenvalues `(K, K, 0)`
-            // with the null direction along the seam tangent (since `T =
-            // n1 × n2` is perpendicular to both face normals). Tikhonov
-            // damps the strong directions by `K/(K+λ) ≈ 0.95` at the
-            // default `relCutoff = 0.05`, leaving a 5% bias toward the
-            // mass point — which sits inside the corner angle. Visible
-            // result: the seam reads as ~95° instead of a sharp 90°.
-            //
-            // Pseudo-inverse with the same `relCutoff` drops the null
-            // direction exactly (eigenvalue 0 is below threshold) while
-            // keeping the strong directions at full strength `1/K`. The
-            // solve places `x` exactly at the intersection of the two
-            // planes in the perpendicular subspace, with the along-T
-            // position taken from the mass point — i.e. exactly on the
-            // edge line at the cell's natural along-edge position.
-            //
-            // Safe to drop the null direction here because
-            // `classifyCellSeam` already confirmed all corner voxels
-            // agree on the seam tangent (so the rank-classification
-            // jitter that motivated Tikhonov elsewhere doesn't apply
-            // along a coherent CSG seam).
-            // Stricter cutoff for the seam-path solve (`max(relCutoff,
-            // 0.15)`). Why two different cutoffs:
-            //
-            //   - `relCutoff` (default 0.05) is permissive — good for the
-            //     rank classification used to decide WHICH cells are
-            //     sharp features at all.
-            //   - For the actual pseudo-inverse SOLVE on those cells we
-            //     need a stricter cutoff. Pseudo-inverse forms
-            //     `Σᵢ (eᵢ·b / λᵢ) eᵢ`; a *borderline* rank-3 cell with
-            //     eigenvalues like `(1, 1, 0.06)` keeps all three terms
-            //     (0.06 > 0.05 · 1) and the `e₃·b / 0.06` factor blows
-            //     up — small noise along the smallest eigenvector axis
-            //     becomes a large displacement (visible as a ~1-voxel
-            //     glyph offset along a single axis at certain voxel
-            //     sizes; "perfectly shaped at the right voxel size"
-            //     means the noise term happened to land near zero).
-            //
-            //   Raising the SOLVE cutoff to 0.15 drops borderline
-            //   directions (anything below 15% of the largest
-            //   eigenvalue) so a marginally-rank-3 cell falls back to a
-            //   stable 2D placement instead of an amplified 3D one. A
-            //   confidently rank-3 corner (eigenvalues like `(1, 1, 3)`
-            //   or `(1, 1, 1)` from a true 3-plane intersection) still
-            //   keeps all three terms and lands exactly on the corner.
-            const solveCutoff = Math.max(relCutoff, 0.15)
-            sym3SolvePInv(eig, rhsX, rhsY, rhsZ, solveCutoff, correction)
-            nxv = massVec[0] + correction[0]
-            nyv = massVec[1] + correction[1]
-            nzv = massVec[2] + correction[2]
-            seamSnapped++
+            if (seamPath) {
+                // Cells classified as on a CSG seam get the **rank-aware
+                // pseudo-inverse**, not the Tikhonov solve used elsewhere.
+                //
+                // Why pseudo-inverse for seam cells specifically:
+                //
+                // For a sharp 90° CSG edge between two perpendicular planes,
+                // the QEF matrix `A = Σ nᵢnᵢᵀ` has eigenvalues `(K, K, 0)`
+                // with the null direction along the seam tangent (since `T =
+                // n1 × n2` is perpendicular to both face normals). Tikhonov
+                // damps the strong directions by `K/(K+λ) ≈ 0.95` at the
+                // default `relCutoff = 0.05`, leaving a 5% bias toward the
+                // mass point — which sits inside the corner angle. Visible
+                // result: the seam reads as ~95° instead of a sharp 90°.
+                //
+                // Pseudo-inverse with the same `relCutoff` drops the null
+                // direction exactly (eigenvalue 0 is below threshold) while
+                // keeping the strong directions at full strength `1/K`. The
+                // solve places `x` exactly at the intersection of the two
+                // planes in the perpendicular subspace, with the along-T
+                // position taken from the mass point — i.e. exactly on the
+                // edge line at the cell's natural along-edge position.
+                //
+                // Safe to drop the null direction here because
+                // `classifyCellSeam` already confirmed all corner voxels
+                // agree on the seam tangent (so the rank-classification
+                // jitter that motivated Tikhonov elsewhere doesn't apply
+                // along a coherent CSG seam).
+                // Stricter cutoff for the seam-path solve (`max(relCutoff,
+                // 0.15)`). Why two different cutoffs:
+                //
+                //   - `relCutoff` (default 0.05) is permissive — good for the
+                //     rank classification used to decide WHICH cells are
+                //     sharp features at all.
+                //   - For the actual pseudo-inverse SOLVE on those cells we
+                //     need a stricter cutoff. Pseudo-inverse forms
+                //     `Σᵢ (eᵢ·b / λᵢ) eᵢ`; a *borderline* rank-3 cell with
+                //     eigenvalues like `(1, 1, 0.06)` keeps all three terms
+                //     (0.06 > 0.05 · 1) and the `e₃·b / 0.06` factor blows
+                //     up — small noise along the smallest eigenvector axis
+                //     becomes a large displacement (visible as a ~1-voxel
+                //     glyph offset along a single axis at certain voxel
+                //     sizes; "perfectly shaped at the right voxel size"
+                //     means the noise term happened to land near zero).
+                //
+                //   Raising the SOLVE cutoff to 0.15 drops borderline
+                //   directions (anything below 15% of the largest
+                //   eigenvalue) so a marginally-rank-3 cell falls back to a
+                //   stable 2D placement instead of an amplified 3D one. A
+                //   confidently rank-3 corner (eigenvalues like `(1, 1, 3)`
+                //   or `(1, 1, 1)` from a true 3-plane intersection) still
+                //   keeps all three terms and lands exactly on the corner.
+                const solveCutoff = Math.max(relCutoff, 0.15)
+                sym3SolvePInv(eig, rhsX, rhsY, rhsZ, solveCutoff, correction)
+                nxv = massVec[0] + correction[0]
+                nyv = massVec[1] + correction[1]
+                nzv = massVec[2] + correction[2]
+                seamSnapped++
 
-            // Compute the Tikhonov fallback in parallel — `verifySeams`
-            // applies this if the seam classification is rejected, so
-            // a phantom-cell vertex doesn't get stranded on a cell face.
-            const tikhonovCorrection: [number, number, number] = [0, 0, 0]
-            const lambdaReg = relCutoff * Math.abs(eig.values[0])
-            sym3SolveTikhonov(eig, rhsX, rhsY, rhsZ, lambdaReg, tikhonovCorrection)
-            const fallbackX = massVec[0] + tikhonovCorrection[0]
-            const fallbackY = massVec[1] + tikhonovCorrection[1]
-            const fallbackZ = massVec[2] + tikhonovCorrection[2]
-            // Debug glyph + line-fit metadata are only emitted for cells
-            // the SDF identified as on a true CSG feature:
-            //
-            //   isCsgSeam   (rank=2, corner tangents agree) → klass=3
-            //                  violet line glyph + line-fit chain member
-            //   isCsgCorner (rank=3, on the CSG seam network) → klass=2
-            //                  diamond glyph (no line-fit; corners aren't
-            //                  smoothed — they're chain endpoints)
-            //
-            // Other rank≥2 cells (box primitive edges, generic corners
-            // away from any CSG seam, etc.) get the same precise
-            // pseudo-inverse placement but no glyph, keeping the overlay
-            // focused on features created by CSG ops.
-            if (isCsgSeam) {
-                cellKlass = 3
-                const cellLoX_ = ox + cx * vs
-                const cellLoY_ = oy + cy * vs
-                const cellLoZ_ = oz + cz * vs
-                seamCellRecords.push({
-                    vi,
-                    cx, cy, cz,
-                    tx: seamT[0], ty: seamT[1], tz: seamT[2],
-                    cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
-                    cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
-                })
-                verifyCandidates.push({
-                    vi,
-                    cx, cy, cz,
-                    px: nxv, py: nyv, pz: nzv,
-                    cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
-                    cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
-                    tikhonovX: fallbackX, tikhonovY: fallbackY, tikhonovZ: fallbackZ,
-                    klass: 3,
-                })
-            } else if (isCsgCorner) {
-                // Defer the klass=2 commit until after the cell-bounds
-                // clamp — see the post-clamp block. The clamp's outcome
-                // determines whether this cell's glyph anchor uses the
-                // (mesh-vertex, clamped) position or the (unclamped,
-                // shared-with-neighbours) corner position.
-                pendingCsgCornerGlyph = true
-                const cellLoX_ = ox + cx * vs
-                const cellLoY_ = oy + cy * vs
-                const cellLoZ_ = oz + cz * vs
-                verifyCandidates.push({
-                    vi,
-                    cx, cy, cz,
-                    px: nxv, py: nyv, pz: nzv,
-                    cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
-                    cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
-                    tikhonovX: fallbackX, tikhonovY: fallbackY, tikhonovZ: fallbackZ,
-                    klass: 2,
-                })
+                // Compute the Tikhonov fallback in parallel — `verifySeams`
+                // applies this if the seam classification is rejected, so
+                // a phantom-cell vertex doesn't get stranded on a cell face.
+                const tikhonovCorrection: [number, number, number] = [0, 0, 0]
+                const lambdaReg = relCutoff * Math.abs(eig.values[0])
+                sym3SolveTikhonov(eig, rhsX, rhsY, rhsZ, lambdaReg, tikhonovCorrection)
+                const fallbackX = massVec[0] + tikhonovCorrection[0]
+                const fallbackY = massVec[1] + tikhonovCorrection[1]
+                const fallbackZ = massVec[2] + tikhonovCorrection[2]
+                // Debug glyph + line-fit metadata are only emitted for cells
+                // the SDF identified as on a true CSG feature:
+                //
+                //   isCsgSeam   (rank=2, corner tangents agree) → klass=3
+                //                  violet line glyph + line-fit chain member
+                //   isCsgCorner (rank=3, on the CSG seam network) → klass=2
+                //                  diamond glyph (no line-fit; corners aren't
+                //                  smoothed — they're chain endpoints)
+                //
+                // Other rank≥2 cells (box primitive edges, generic corners
+                // away from any CSG seam, etc.) get the same precise
+                // pseudo-inverse placement but no glyph, keeping the overlay
+                // focused on features created by CSG ops.
+                if (isCsgSeam) {
+                    cellKlass = 3
+                    const cellLoX_ = ox + cx * vs
+                    const cellLoY_ = oy + cy * vs
+                    const cellLoZ_ = oz + cz * vs
+                    seamCellRecords.push({
+                        vi,
+                        cx, cy, cz,
+                        tx: seamT[0], ty: seamT[1], tz: seamT[2],
+                        cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
+                        cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
+                    })
+                    verifyCandidates.push({
+                        vi,
+                        cx, cy, cz,
+                        px: nxv, py: nyv, pz: nzv,
+                        cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
+                        cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
+                        tikhonovX: fallbackX, tikhonovY: fallbackY, tikhonovZ: fallbackZ,
+                        klass: 3,
+                    })
+                } else if (isCsgCorner) {
+                    // Defer the klass=2 commit until after the cell-bounds
+                    // clamp — see the post-clamp block. The clamp's outcome
+                    // determines whether this cell's glyph anchor uses the
+                    // (mesh-vertex, clamped) position or the (unclamped,
+                    // shared-with-neighbours) corner position.
+                    pendingCsgCornerGlyph = true
+                    const cellLoX_ = ox + cx * vs
+                    const cellLoY_ = oy + cy * vs
+                    const cellLoZ_ = oz + cz * vs
+                    verifyCandidates.push({
+                        vi,
+                        cx, cy, cz,
+                        px: nxv, py: nyv, pz: nzv,
+                        cellLoX: cellLoX_, cellLoY: cellLoY_, cellLoZ: cellLoZ_,
+                        cellHiX: cellLoX_ + vs, cellHiY: cellLoY_ + vs, cellHiZ: cellLoZ_ + vs,
+                        tikhonovX: fallbackX, tikhonovY: fallbackY, tikhonovZ: fallbackZ,
+                        klass: 2,
+                    })
+                }
+            } else {
+                // Tikhonov-regularized 3D solve in mass-point-shifted coordinates:
+                //   x = mass + (A + λI)⁻¹ (b - A·mass),  λ = relCutoff · |λmax|
+                const lambdaReg = relCutoff * Math.abs(eig.values[0])
+                sym3SolveTikhonov(eig, rhsX, rhsY, rhsZ, lambdaReg, correction)
+                nxv = massVec[0] + correction[0]
+                nyv = massVec[1] + correction[1]
+                nzv = massVec[2] + correction[2]
+                tikhonovSolved++
+                cellKlass = 0
             }
-        } else {
-            // Tikhonov-regularized 3D solve in mass-point-shifted coordinates:
-            //   x = mass + (A + λI)⁻¹ (b - A·mass),  λ = relCutoff · |λmax|
-            const lambdaReg = relCutoff * Math.abs(eig.values[0])
-            sym3SolveTikhonov(eig, rhsX, rhsY, rhsZ, lambdaReg, correction)
-            nxv = massVec[0] + correction[0]
-            nyv = massVec[1] + correction[1]
-            nzv = massVec[2] + correction[2]
-            tikhonovSolved++
-            cellKlass = 0
-        }
         }   // end of `if (snapResult) … else { … }`
 
         // Cell-bounds clamp (always on). This is the topological invariant.

@@ -247,6 +247,65 @@ function sampleScalarTrilinear(grid: GridSampleResult, x: number, y: number, z: 
     return c0 + (c1 - c0) * tz
 }
 
+/**
+ * Trilinearly sample the grid normal `(nx,ny,nz)` at world-space `(x,y,z)` and
+ * return a **unit** vector, or `null` if out of bounds or degenerate.
+ */
+export function sampleGradientTrilinear(
+    grid: GridSampleResult,
+    x: number, y: number, z: number,
+): { nx: number; ny: number; nz: number } | null {
+    const [nxDim, nyDim, nzDim] = grid.dims
+    const ox = grid.gridOffset[0], oy = grid.gridOffset[1], oz = grid.gridOffset[2]
+    const inv = 1 / grid.voxelSize
+    const fx = (x - ox) * inv, fy = (y - oy) * inv, fz = (z - oz) * inv
+    const ix = Math.floor(fx), iy = Math.floor(fy), iz = Math.floor(fz)
+    if (ix < 0 || iy < 0 || iz < 0 || ix + 1 >= nxDim || iy + 1 >= nyDim || iz + 1 >= nzDim) {
+        return null
+    }
+    const tx = fx - ix, ty = fy - iy, tz = fz - iz
+    const g = grid.gradient
+    const stride = nxDim * nyDim
+    const voxelStride = 4
+
+    const readN = (ix_: number, iy_: number, iz_: number) => {
+        const i000 = (iz_ * nyDim + iy_) * nxDim + ix_
+        const o = i000 * voxelStride
+        return [g[o]!, g[o + 1]!, g[o + 2]!] as const
+    }
+
+    const [n000x, n000y, n000z] = readN(ix, iy, iz)
+    const [n100x, n100y, n100z] = readN(ix + 1, iy, iz)
+    const [n010x, n010y, n010z] = readN(ix, iy + 1, iz)
+    const [n110x, n110y, n110z] = readN(ix + 1, iy + 1, iz)
+    const [n001x, n001y, n001z] = readN(ix, iy, iz + 1)
+    const [n101x, n101y, n101z] = readN(ix + 1, iy, iz + 1)
+    const [n011x, n011y, n011z] = readN(ix, iy + 1, iz + 1)
+    const [n111x, n111y, n111z] = readN(ix + 1, iy + 1, iz + 1)
+
+    const lerp3 = (
+        ax: number, ay: number, az: number,
+        bx: number, by: number, bz: number,
+        t: number,
+    ) => [
+        ax + (bx - ax) * t,
+        ay + (by - ay) * t,
+        az + (bz - az) * t,
+    ] as const
+
+    const [n00x, n00y, n00z] = lerp3(n000x, n000y, n000z, n100x, n100y, n100z, tx)
+    const [n01x, n01y, n01z] = lerp3(n001x, n001y, n001z, n101x, n101y, n101z, tx)
+    const [n10x, n10y, n10z] = lerp3(n010x, n010y, n010z, n110x, n110y, n110z, tx)
+    const [n11x, n11y, n11z] = lerp3(n011x, n011y, n011z, n111x, n111y, n111z, tx)
+    const [n0x, n0y, n0z] = lerp3(n00x, n00y, n00z, n10x, n10y, n10z, ty)
+    const [n1x, n1y, n1z] = lerp3(n01x, n01y, n01z, n11x, n11y, n11z, ty)
+    const [vx, vy, vz] = lerp3(n0x, n0y, n0z, n1x, n1y, n1z, tz)
+    const nl = Math.hypot(vx, vy, vz)
+    if (nl < 1e-20) return null
+    const invL = 1 / nl
+    return { nx: vx * invL, ny: vy * invL, nz: vz * invL }
+}
+
 /** Project `(qx,qy,qz)` onto segment `[a, b]`, clamping `t` to `[0, 1]`. */
 function projectOntoSegment(
     ax: number, ay: number, az: number,
@@ -286,6 +345,7 @@ export function trySnapToContours(
     cellMaxX: number, cellMaxY: number, cellMaxZ: number,
     queryX: number, queryY: number, queryZ: number,
     scratch: SnapScratch,
+    ownerIdFilter?: (ownerId: number) => boolean,
 ): ContourSnapResult | null {
     const refs = index.queryCell(cx, cy, cz)
     if (!refs || refs.length === 0) return null
@@ -322,9 +382,11 @@ export function trySnapToContours(
         const kind = refKind(ref)
         const idx = refIndex(ref)
         if (kind === ContourKind.Point) {
+            if (ownerIdFilter && !ownerIdFilter(pointOwners[idx]!)) continue
             const o = idx * 3
             addCandidate(kind, ref, points[o]!, points[o + 1]!, points[o + 2]!)
         } else if (kind === ContourKind.Segment) {
+            if (ownerIdFilter && !ownerIdFilter(segmentOwners[idx]!)) continue
             const o = idx * 6
             projectOntoSegment(
                 segments[o]!,     segments[o + 1]!, segments[o + 2]!,

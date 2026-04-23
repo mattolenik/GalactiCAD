@@ -133,8 +133,8 @@ export interface EdgeFitStats {
 /** Pack `(cx, cy, cz)` into a 64-bit BigInt key for the seam-cell adjacency map. */
 function packCellKey(cx: number, cy: number, cz: number): bigint {
     return ((BigInt(cx + 0x100000) & 0x1fffffn) << 42n) |
-           ((BigInt(cy + 0x100000) & 0x1fffffn) << 21n) |
-           (BigInt(cz + 0x100000) & 0x1fffffn)
+        ((BigInt(cy + 0x100000) & 0x1fffffn) << 21n) |
+        (BigInt(cz + 0x100000) & 0x1fffffn)
 }
 
 /** Six face-neighbour offsets used to walk the seam-cell adjacency graph. */

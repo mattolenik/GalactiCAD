@@ -134,7 +134,7 @@ export class Box extends Node {
             // 4 z-edges (along +z):
             [0, 4], [1, 5], [2, 6], [3, 7],
         ]
-        builder.beginNode(this.id)
+        builder.beginNode(this.id, { box: true })
         for (const [i, j] of EDGES) {
             builder.addSegment(corners[i]!, corners[j]!)
         }

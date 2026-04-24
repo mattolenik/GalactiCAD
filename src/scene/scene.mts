@@ -16,7 +16,7 @@ import { Bend, bend } from "./operators/bend.mjs"
 import { Elongate, elongate } from "./operators/elongate.mjs"
 import { Engrave, engrave } from "./operators/engrave.mjs"
 import { Groove, groove } from "./operators/groove.mjs"
-import { defaultKnurlGrooveRa, defaultKnurlGrooveRb, knurl, KnurlBuilder } from "./operators/knurl.mjs"
+import { knurl, KnurlBuilder, KnurlSubtract } from "./operators/knurl.mjs"
 import { Intersect, intersect } from "./operators/intersect.mjs"
 import { Morph, morph } from "./operators/morph.mjs"
 import { Offset, offset } from "./operators/offset.mjs"
@@ -27,6 +27,7 @@ import { Seam, seam } from "./operators/seam.mjs"
 import { Shell, shell } from "./operators/shell.mjs"
 import { Subtract, subtract } from "./operators/subtract.mjs"
 import { Taper, taper } from "./operators/taper.mjs"
+import { Translate, translate } from "./operators/translate.mjs"
 import { Tongue, tongue } from "./operators/tongue.mjs"
 import { RepeatPolar, repeatPolar } from "./operators/repeat_polar.mjs"
 import { Twist, twist } from "./operators/twist.mjs"
@@ -48,7 +49,7 @@ import { VirtualCapNode } from "./primitives/virtual-cap.mjs"
 import { ThreadedRod, threaded_rod } from "./primitives/threaded-rod.mjs"
 import { Torus, torus } from "./primitives/torus.mjs"
 
-export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, defaultKnurlGrooveRa, defaultKnurlGrooveRb, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, KnurlBuilder, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, RepeatPolar, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, knurl, lathe, loft, morph, offset, pipe, plane, polygon2d, repeatPolar, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, twist, union }
+export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, knurl, KnurlBuilder, KnurlSubtract, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, RepeatPolar, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Translate, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, repeatPolar, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, translate, twist, union }
 export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
 export type { SideIndicator } from "./side-indicator.mjs"
 
@@ -287,10 +288,10 @@ export class SceneInfo {
         if (options?.bvhEnabled !== undefined) {
             this.bvhEnabled = options.bvhEnabled
         }
-        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar", "knurl", transpiledBody)(
+        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "translate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar", "knurl", transpiledBody)(
             box, sphere, subtract, union, cylinder, cone, torus, threaded_rod, capsule, plane, hexprism, disc, blob,
             intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam,
-            rotate, scale, shell, offset, elongate, twist, bend, taper, repeatPolar, knurl)
+            rotate, translate, scale, shell, offset, elongate, twist, bend, taper, repeatPolar, knurl)
         this.root.scene = this
         this.root.build()
         this.#allNodesSnapshot = Array.from(this.#nodes.values())

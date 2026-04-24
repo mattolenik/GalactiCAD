@@ -15,13 +15,13 @@ import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
 
 /** Composite shape types that are matched by name only */
-const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "repeat_polar", "morph", "seam", "rotate", "scale", "extrude", "loft", "lathe"])
+const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "knurl", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar", "morph", "seam", "rotate", "translate", "scale", "extrude", "loft", "lathe"])
 
 /**
  * CSG operators that don't render as visible objects — when selected from editor, select only their child shapes.
  * Excludes rotate, extrude, loft, lathe which render as visible composites.
  */
-export const PURE_CSG_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "repeat_polar", "morph", "seam"])
+export const PURE_CSG_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "knurl", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar", "morph", "seam"])
 
 /**
  * Tolerance for floating-point comparisons

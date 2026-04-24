@@ -6,10 +6,14 @@ import { f32Wgsl } from "../scene-params.mjs"
 /** Polar domain repeat in the XZ plane around +Y (same convention as `pModPolar` in hg_sdf.wgsl). */
 export class RepeatPolar extends UnaryOperator {
     override getShapeType(): string {
-        return "repeat_polar"
+        return "repeatPolar"
     }
+    override getIndicatorSymbol(): string {
+        return "↻"
+    }
+    /** Polar tiling around +Y: ring + radial spokes (editor pill icon). */
     override getIndicatorSvg(): string {
-        return `<circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6,2 L6,6 L9,6" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+        return `<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 1.5 L6 10.5 M1.5 6 L10.5 6 M2.9 2.9 L9.1 9.1 M9.1 2.9 L2.9 9.1" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>`
     }
     override getAllDescendantIds(): number[] {
         return [this.id, ...this.arg.getAllDescendantIds()]

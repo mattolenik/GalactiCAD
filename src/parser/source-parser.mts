@@ -232,7 +232,7 @@ export function findReturnStatementLine(src: string): number | null {
  */
 const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
 const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe", "knurl"])
-const MODIFIER_NAMES = new Set(["rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar"])
+const MODIFIER_NAMES = new Set(["rotate", "translate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
 
 /**
@@ -240,7 +240,7 @@ const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTI
  * and should be "looked through" when resolving logical leaf calls.
  * Modifiers (rotate, shell, etc.) and rendering composites (extrude, loft, lathe) are NOT in this set.
  */
-const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam"])
+const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "knurl", "tongue", "morph", "seam"])
 
 /**
  * Parser for extracting source locations from CAD code
@@ -574,6 +574,8 @@ export class SourceParser {
             this.parseLatheFluentArgs(callNode, parsedCall)
         } else if (funcName === "rotate") {
             this.parseRotateArgs(callNode, parsedCall)
+        } else if (funcName === "translate") {
+            this.parseTranslateArgs(callNode, parsedCall)
         } else if (funcName === "scale") {
             this.parseScaleArgs(callNode, parsedCall)
         } else if (funcName === "shell" || funcName === "offset") {
@@ -1003,6 +1005,10 @@ export class SourceParser {
 
     private parseRotateArgs(callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {
         // Rotate matches by type only; no args needed for node matching
+    }
+
+    private parseTranslateArgs(_callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {
+        // Translate matches by type only
     }
 
     private parseScaleArgs(_callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {

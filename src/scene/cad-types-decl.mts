@@ -39,6 +39,8 @@ declare class Node {
 
 /** Rotate a node. rotate(rot, node) */
 declare function rotate(rot: Vec3, node: Node): Rotate;
+/** Translate a node (rigid shift). translate([dx,dy,dz], node) */
+declare function translate(offset: Vec3, node: Node): Translate;
 /** Uniform or non-uniform scale about the origin. scale([sx,sy,sz], node) */
 declare function scale(factors: Vec3, node: Node): Scale;
 /** Hollow shell of a shape. shell(t, node) */
@@ -257,11 +259,12 @@ declare class Groove extends Node {
 /** Straight knurl on a Y-up cylinder; see KnurlBuilder. */
 declare function knurl(base: Cylinder): KnurlBuilder;
 
-/** Builder: .pattern(patternCylinder, teeth) returns Groove; optional .radii(ra, rb) before .pattern(). */
+/** Builder: optional .offset(radialExtra) then .pattern(pattern, teeth) returns Subtract. */
 declare class KnurlBuilder {
-    /** Optional; defaults scale from the base cylinder and pattern bite. */
-    radii(ra: number, rb: number): this;
-    pattern(patternCylinder: Cylinder, teeth: number): Groove;
+    /** Extra +X shift for the pattern origin beyond base.r (default 0). */
+    offset(radialExtra: number): this;
+    /** Cutter node, translated to the OD then repeatPolar(teeth, child). */
+    pattern(pattern: Node, teeth: number): Subtract;
 }
 
 /** Tongue operation. tongue(base).pattern(pattern).radii(ra, rb) */
@@ -306,6 +309,9 @@ declare class Taper extends Node {}
 
 /** Rotate a child node. */
 declare class Rotate extends Node {}
+
+/** Translate a child node. */
+declare class Translate extends Node {}
 
 /** Scale a child node about the origin. */
 declare class Scale extends Node {}

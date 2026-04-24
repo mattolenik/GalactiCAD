@@ -37,6 +37,7 @@ const CAD_SYMBOLS = new Set([
     "lathe",
     // Modifiers
     "rotate",
+    "translate",
     "scale",
     "shell",
     "offset",

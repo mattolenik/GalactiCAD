@@ -1,24 +1,13 @@
-// Straight knurl (axial ridges): Y-up cylinder + groove with one thin box in polar domain repeat
-// around Y (`repeatPolar`) instead of a union of rotated copies. Tune `teeth`, half-extents, and radii.
+// Straight knurl (axial ridges): `knurl` wraps groove + repeatPolar + tooth box sizing.
+// Base and pattern cylinders use the same layout as the manual recipe (Y-up, centered on Y in XZ).
 
 const cylR = 2.2
-const cylHHalf = 3 // 6 units tall
-const cylCy = cylHHalf // cylinder y ∈ [0, 2*cylHHalf]
+const cylHHalf = 3 // 6 units tall — `Cylinder.h` is half-height along Y
+const cylCy = cylHHalf
 
 const cyl = cylinder.radius(cylR).height(cylHHalf).shift([0, cylCy, 0])
 
-// Box half-extents: x = radial bite depth, y = axial span (slightly inside caps), z = tooth width on OD
-const biteX = 0.14
-const biteY = cylHHalf * 0.92
-const biteZ = 0.11
-// Shift box center so the inner x-face sits just under the cylinder surface (groove needs base∩pattern)
-const radialShift = cylR + biteX - 0.11
+// Pattern cylinder: r → radial bite (box half-extent x), h → caps axial band (min with base h, ×0.92)
+const knurlTool = cylinder.radius(0.14).height(cylHHalf)
 
-const teeth = 32
-const tooth = box([biteX, biteY, biteZ]).shift([radialShift, cylCy, 0])
-const knurlPattern = repeatPolar(teeth, tooth)
-
-// ra / rb widen and deepen the carved channel along the intersection (see newops.gcad / arcane.gcad)
-const knurled = groove(cyl).pattern(knurlPattern).radii(0.38, 0.14)
-
-return knurled
+return knurl(cyl).pattern(knurlTool, 32)

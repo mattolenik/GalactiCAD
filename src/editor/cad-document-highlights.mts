@@ -27,6 +27,7 @@ const CAD_SYMBOLS = new Set([
     "pipe",
     "engrave",
     "groove",
+    "knurl",
     "tongue",
     "seam",
     "morph",

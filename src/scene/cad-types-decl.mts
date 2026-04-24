@@ -254,6 +254,16 @@ declare class Groove extends Node {
     radii(ra: number, rb: number): Groove;
 }
 
+/** Straight knurl on a Y-up cylinder; see KnurlBuilder. */
+declare function knurl(base: Cylinder): KnurlBuilder;
+
+/** Builder: .pattern(patternCylinder, teeth) returns Groove; optional .radii(ra, rb) before .pattern(). */
+declare class KnurlBuilder {
+    /** Optional; defaults scale from the base cylinder and pattern bite. */
+    radii(ra: number, rb: number): this;
+    pattern(patternCylinder: Cylinder, teeth: number): Groove;
+}
+
 /** Tongue operation. tongue(base).pattern(pattern).radii(ra, rb) */
 declare class Tongue extends Node {
     radii(ra: number, rb: number): Tongue;

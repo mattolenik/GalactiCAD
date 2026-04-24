@@ -200,10 +200,10 @@ export class Node {
     }
 
     /** Write this node's `paramCount` floats into `view` (a subarray at `paramOffset` of the full pack). */
-    writeSceneParams(_view: Float32Array): void {}
+    writeSceneParams(_view: Float32Array): void { }
 
     /** Pack preview uniform banks (orthogonal to `writeSceneParams`, which feeds bounds/MDC storage). */
-    writePreviewParams(_out: PreviewParamsOut): void {}
+    writePreviewParams(_out: PreviewParamsOut): void { }
 
     build() {
         this.scene.add(this)
@@ -278,7 +278,7 @@ export abstract class UnaryOperator extends Node {
         return this.arg.computeBounds()
     }
     /** Reserve `paramOffset` / `paramCount` after this node is registered; runs before the child subtree `build()`. */
-    protected reserveUnarySceneParams(): void {}
+    protected reserveUnarySceneParams(): void { }
     override build() {
         super.build()
         this.reserveUnarySceneParams()
@@ -318,7 +318,7 @@ export abstract class BinaryOperator extends Node {
         return aabbUnion(lb, rb)
     }
     /** Reserve `paramOffset` / `paramCount` after this node is registered; runs before left/right subtree `build()`. */
-    protected reserveBinarySceneParams(): void {}
+    protected reserveBinarySceneParams(): void { }
     override build() {
         super.build()
         this.reserveBinarySceneParams()

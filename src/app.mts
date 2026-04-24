@@ -43,6 +43,7 @@ import cameraViewTopIcon from "./assets/camera-view-top.svg"
 import cameraViewBottomIcon from "./assets/camera-view-bottom.svg"
 import toolbarCameraViewsIcon from "./assets/toolbar-camera-views.svg"
 import toolbarXrayIcon from "./assets/toolbar-xray.svg"
+import toolbarPreviewNormalIcon from "./assets/toolbar-preview-normal.svg"
 import toolbarFullscreenEnterIcon from "./assets/toolbar-fullscreen-enter.svg"
 import toolbarFullscreenExitIcon from "./assets/toolbar-fullscreen-exit.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
@@ -129,6 +130,7 @@ class App {
     #getVisiblePreviewRect!: () => DOMRect
     #toolbarRefs!: {
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton
+        previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
         exportBtn: import("./components/toolbar.mjs").ToolbarButton
         devTools: DevToolsPanel
@@ -569,13 +571,13 @@ class App {
         await this.#restoreOrShowWelcome()
         this.renderer?.dispose()
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect, () => this.#tabs.active)
-        const { xrayCheckbox, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
+        const { xrayCheckbox, previewNormalShadingToggle, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
         try {
             await this.renderer
                 .ready()
             this.renderer.setSelectionStyles(getSelectionStylesForTheme(this.#effectiveTheme))
             this.renderer.setShapePalette(getShapePalette(this.#effectiveTheme))
-            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
+            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, previewNormalShadingToggle, selectionModeRadio)
             this.#updateViewCenter?.()
             if (isInitial) {
                 this.#wireEditorAndTabs()
@@ -863,6 +865,11 @@ class App {
         toolbar.addSpacer()
 
         const xrayCheckbox = toolbar.addToggleButton(toolbarXrayIcon, "Toggle X-ray")
+        const previewNormalShadingToggle = toolbar.addToggleButton(
+            toolbarPreviewNormalIcon,
+            "Toggle normal shading",
+            false
+        )
         toolbar.addSeparator()
         const selectionModeRadio = toolbar.addRadioGroup(
             [
@@ -895,7 +902,7 @@ class App {
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)
         this.#viewports.appendChild(devTools)
 
-        return { xrayCheckbox, selectionModeRadio, exportBtn, devTools }
+        return { xrayCheckbox, previewNormalShadingToggle, selectionModeRadio, exportBtn, devTools }
     }
 
     #setupLayoutObservers(editorContainer: HTMLDivElement) {
@@ -944,6 +951,7 @@ class App {
         preview: PreviewWindow,
         devTools: DevToolsPanel,
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton,
+        previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
     ) {
         preview.setThemeMode(this.#settings.getGlobal().app.theme)
@@ -1107,6 +1115,11 @@ class App {
             this.renderer.xrayMode = enabled
         }
 
+        previewNormalShadingToggle.checked = this.renderer.previewNormalShading
+        previewNormalShadingToggle.onChange = (enabled) => {
+            this.renderer.previewNormalShading = enabled
+        }
+
         selectionModeRadio.value = this.renderer.selectionMode
         selectionModeRadio.onChange = (value) => {
             this.renderer.setSelectionMode(value)
@@ -1128,19 +1141,15 @@ class App {
         devTools.onPreviewShadingChange = (params) => {
             this.renderer.setPreviewShading(params)
         }
-        devTools.onPreviewNormalShadingChange = (enabled) => {
-            this.renderer.previewNormalShading = enabled
-        }
         devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
-        devTools.syncPreviewNormalShadingFromRenderer(this.renderer.previewNormalShading)
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
+            previewNormalShadingToggle.checked = this.renderer.previewNormalShading
             selectionModeRadio.value = this.renderer.selectionMode
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
             devTools.bvhOptimization = this.renderer.bvhEnabled
             devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
-            devTools.syncPreviewNormalShadingFromRenderer(this.renderer.previewNormalShading)
         })
 
         const showFps = this.#settings.getGlobal().app.showFps

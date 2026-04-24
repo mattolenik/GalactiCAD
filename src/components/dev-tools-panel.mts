@@ -74,7 +74,6 @@ export class DevToolsPanel extends HTMLElement {
     #beamOptimization$: BehaviorSubject<boolean>
     #bvhOptCheckbox: HTMLInputElement
     #bvhOptimization$: BehaviorSubject<boolean>
-    #normalPreviewCheckbox: HTMLInputElement
     #shadingState: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
     #shadingRows = new Map<keyof PreviewShadingParams, { range: HTMLInputElement; valueEl: HTMLSpanElement }>()
     #showFpsCheckbox: HTMLInputElement
@@ -164,9 +163,6 @@ export class DevToolsPanel extends HTMLElement {
 
     /** Preview shading uniforms; knob values are not persisted (section visibility is). */
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
-
-    /** SDF preview: scene-space normal RGB like mesh viewer (not persisted). */
-    onPreviewNormalShadingChange?: (enabled: boolean) => void
 
     /** Callback to get current view as a benchmark case. Returns null if no active document. */
     onBenchmarkThisRequest?: () => BenchmarkCase | null
@@ -943,11 +939,6 @@ export class DevToolsPanel extends HTMLElement {
             this.onBvhOptimizationChange?.(v)
         })
 
-        this.#normalPreviewCheckbox = this.#addCheckbox(shadow, "Normal mode", false)
-        this.#normalPreviewCheckbox.addEventListener("change", () => {
-            this.onPreviewNormalShadingChange?.(this.#normalPreviewCheckbox.checked)
-        })
-
         const debugHead = document.createElement("div")
         debugHead.className = "shade-head"
         debugHead.textContent = "Logs"
@@ -1112,10 +1103,6 @@ export class DevToolsPanel extends HTMLElement {
             row.range.value = String(v)
             row.valueEl.textContent = DevToolsPanel.#formatShadeValue(knob.key, v)
         }
-    }
-
-    syncPreviewNormalShadingFromRenderer(enabled: boolean): void {
-        this.#normalPreviewCheckbox.checked = enabled
     }
 
     static #formatShadeValue(key: keyof PreviewShadingParams, v: number): string {

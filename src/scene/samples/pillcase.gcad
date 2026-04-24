@@ -2,19 +2,21 @@
 // caseBase: 20 mm tall, r=8. maleTop: r=6, 8 mm tall, on top of base. maleBottom: same thread, shifted down
 // by (half caseBase height + 1 mm wall), subtracted from caseBase only. Pill: r=4, 10 mm, subtracted from union.
 
-const rBase = 7
-const hBaseHalf = 10 // 20 mm total height, center at y = hBaseHalf → base y ∈ [0, 20]
+const rBase = 11.5
+const hBaseHalf = 12 // 20 mm total height, center at y = hBaseHalf → base y ∈ [0, 20]
 
-const rThread = 6
+const rThread = 10
 const hThreadHalf = 2 // 8 mm total thread length
 const pitch = 1.5
 
 // caseBase: bottom y=0, top y=20
-const caseBase = cylinder.radius(rBase).height(hBaseHalf / 2).shift([0, hBaseHalf * 1.5, 0]).chamfer("BOTH", 0.3)
+const caseBaseB = cylinder.radius(rBase).height(hBaseHalf / 2).shift([0, hBaseHalf * 1.5, 0]).chamfer("BOTH", 0.3)
 
+const knurlPattern = cylinder.radius(0.3).height(caseBaseB.h-1).fillet("BOTH", 0.15)
+const caseBase = knurl(caseBaseB).offset(0.1).pattern(knurlPattern, 72)
 // Top threaded rod: bottom flush with caseBase top (y=20) → center y = 20 + hThreadHalf
 const yMaleTop = hBaseHalf + hBaseHalf + hThreadHalf
-const maleTop = threaded_rod.radius(rThread).height(hThreadHalf + 0.5).pitch(pitch).shift([0, yMaleTop - 0.5, 0]).fillet("TOP", 0.4)
+const maleTop = threaded_rod.radius(rThread).height(hThreadHalf + 0.5).pitch(pitch).shift([0, yMaleTop - 0.5, 0]).fillet("TOP", 0.8)
 
 // Same thread, shifted down by (half base height + 1 mm) vs maleTop center — cut female into caseBase only
 const wallShift = hBaseHalf - 1
@@ -25,7 +27,7 @@ const caseBaseThreaded = subtract(caseBase, maleBottom)
 const withMaleTop = union(caseBaseThreaded, maleTop)
 
 // Cylinder r=4, 10 mm tall — centered on maleTop (subtract from full union)
-const hPillHalf = 7
-const pillVoid = cylinder.radius(5).height(hPillHalf).shift([0, yMaleTop + 0.1, 0]).fillet("BOTTOM", 1.5)
+const hPillHalf = 9
+const pillVoid = cylinder.radius(rBase-3).height(hPillHalf).shift([0, yMaleTop + 0.1, 0]).fillet("BOTTOM", 1.5)
 
 return subtract(withMaleTop, pillVoid).round(0.1)

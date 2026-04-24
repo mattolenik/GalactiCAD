@@ -1,13 +1,16 @@
-// Straight knurl (axial ridges): `knurl` wraps groove + repeatPolar + tooth box sizing.
-// Base and pattern cylinders use the same layout as the manual recipe (Y-up, centered on Y in XZ).
+// Straight knurl: subtract polar-repeated cutter from a Y-up cylinder.
+// Pattern origin is moved to (base.r + offset) on +X from the axis; tune offset so teeth bite the OD.
 
 const cylR = 2.2
-const cylHHalf = 3 // 6 units tall — `Cylinder.h` is half-height along Y
+const cylHHalf = 3
 const cylCy = cylHHalf
 
 const cyl = cylinder.radius(cylR).height(cylHHalf).shift([0, cylCy, 0])
 
-// Pattern cylinder: r → radial bite (box half-extent x), h → caps axial band (min with base h, ×0.92)
-const knurlTool = cylinder.radius(0.14).height(cylHHalf)
+const biteX = 0.14
+const biteY = cylHHalf * 0.92
+const biteZ = 0.11
+const tooth = box([biteX, biteY, biteZ])
 
-return knurl(cyl).pattern(knurlTool, 32)
+// ~ biteX − 0.11 from the old groove recipe (radial clearance)
+return knurl(cyl).pattern(tooth, 32).offset(0.03)

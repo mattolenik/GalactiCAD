@@ -35,6 +35,8 @@ declare class Vec3f {
 declare class Node {
     /** Shift the base primitive's position. Works through modifier chains (twist, taper, etc.). */
     shift(v: Vec3): Node;
+    /** Euler rotation in degrees [rx, ry, rz] — same as the standalone rotate(rot, node). */
+    rotate(rot: Vec3): Rotate;
 }
 
 /** Rotate a node. rotate(rot, node) */
@@ -82,7 +84,7 @@ declare class Box extends Node {
 declare function box(size: Vec3): Box;
 declare function box(l: number, w: number, h: number): Box;
 
-/** A cylinder. cylinder.radius(r).height(h).chamfer(side, amount).fillet(side, radius).shift(v) */
+/** A cylinder. cylinder.radius(r).height(h).chamfer(side, amount).fillet(radius, side?).shift(v) */
 declare class Cylinder extends Node {
     pos: Vec3f;
     r: number;
@@ -90,8 +92,8 @@ declare class Cylinder extends Node {
     height(h: number): Cylinder;
     /** 45° chamfer on the outer rim where the side meets the cap(s). */
     chamfer(side: SideIndicator, amount: number): Cylinder;
-    /** Round fillet on the outer rim where the side meets the cap(s). */
-    fillet(side: SideIndicator, radius: number): Cylinder;
+    /** Round fillet on the outer rim where the side meets the cap(s). Default side BOTH. */
+    fillet(radius: number, side?: SideIndicator): Cylinder;
     shift(v: Vec3): Cylinder;
 }
 
@@ -139,8 +141,8 @@ declare class ThreadedRod extends Node {
     depth(d: number): ThreadedRod;
     /** Chamfer barrel–cap junction(s). */
     chamfer(side: SideIndicator, amount: number): ThreadedRod;
-    /** Round fillet at barrel–cap junction(s). */
-    fillet(side: SideIndicator, radius: number): ThreadedRod;
+    /** Round fillet at barrel–cap junction(s). Default side BOTH. */
+    fillet(radius: number, side?: SideIndicator): ThreadedRod;
     /**
      * Female / fit: sample the barrel in xz with scale 1/(1+play). female() uses play 0.01 (factor 1.01). Pass 0 to clear.
      */

@@ -21,6 +21,12 @@ export interface SourceLocation {
     endColumn: number
     /** The name of the function (e.g., "sphere", "box") */
     functionName: string
+    /**
+     * When set, the editor omits the colored function-name pill, `cad-fluent-method` (teal) styling,
+     * and selection outline (yellow) for this source span. Set for `.rotate(…)` on a chain; the global
+     * `rotate(rot, node)` does not set this.
+     */
+    skipColorIndicator?: boolean
 }
 
 /**
@@ -390,7 +396,8 @@ export class SourceParser {
                 if (ts.isPropertyAccessExpression(node.expression)) {
                     const prop = node.expression
                     const name = prop.name.text
-                    if (methodNames.has(name)) {
+                    // Only `rotate(rot, node)` is a first-class highlighted call; `.rotate(rot)` is not.
+                    if (methodNames.has(name) && name !== "rotate") {
                         const nameNode = prop.name
                         const startLoc = tsPosToUser(sourceFile, nameNode.getStart())
                         const endLoc = tsPosToUser(sourceFile, nameNode.getEnd())
@@ -495,6 +502,7 @@ export class SourceParser {
         let callStart: number
         let callEnd: number
         let isFluent = false
+        let skipColorIndicator: boolean = false
 
         if (ts.isIdentifier(callNode.expression)) {
             funcName = callNode.expression.text
@@ -505,7 +513,14 @@ export class SourceParser {
             const propName = callNode.expression.name.getText()
             if (MODIFIER_NAMES.has(propName)) {
                 funcName = propName
-                rootExpr = callNode.expression
+                if (propName === "rotate") {
+                    skipColorIndicator = true
+                }
+                // Source location for indicators / selection: the method name only (e.g. `rotate` in
+                // `.rotate`), not the full PropertyAccess — otherwise a chain like
+                // `cylinder...height(2).rotate(...)` would span the entire expression and cover the line
+                // with a single (wrong) pill, or overlap every inner call in the same range.
+                rootExpr = callNode.expression.name
                 callStart = callNode.getStart() - WRAP_PREFIX_CHARS
                 callEnd = callNode.getEnd() - WRAP_PREFIX_CHARS
                 // Ensure we create calls for all modifiers in the chain (visit order may miss some)
@@ -544,7 +559,8 @@ export class SourceParser {
                 startColumn: startLoc.column,
                 endLine: endLoc.line,
                 endColumn: endLoc.column,
-                functionName: funcName
+                functionName: funcName,
+                ...(skipColorIndicator ? { skipColorIndicator: true } : {}),
             }
         }
 
@@ -774,23 +790,30 @@ export class SourceParser {
                 } else if (method === "height" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.h = v
-                } else if ((method === "chamfer" || method === "fillet") && args.length >= 2) {
+                } else if (method === "chamfer" && args.length >= 2) {
                     const side = this.evaluateExpression(args[0])
                     const rad = this.evaluateExpression(args[1])
                     if (typeof side !== "string" || typeof rad !== "number") continue
                     const s = side.toUpperCase()
                     if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
-                    if (method === "chamfer") {
-                        if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = rad
-                        if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = rad
-                        if (s === "TOP" || s === "BOTH") parsedCall.filletTop = 0
-                        if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = 0
-                    } else {
-                        if (s === "TOP" || s === "BOTH") parsedCall.filletTop = rad
-                        if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = rad
-                        if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = 0
-                        if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = 0
+                    if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = rad
+                    if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = rad
+                    if (s === "TOP" || s === "BOTH") parsedCall.filletTop = 0
+                    if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = 0
+                } else if (method === "fillet" && args.length >= 1) {
+                    const rad = this.evaluateExpression(args[0])
+                    if (typeof rad !== "number") continue
+                    let s = "BOTH"
+                    if (args.length >= 2) {
+                        const side = this.evaluateExpression(args[1])
+                        if (typeof side !== "string") continue
+                        s = side.toUpperCase()
+                        if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
                     }
+                    if (s === "TOP" || s === "BOTH") parsedCall.filletTop = rad
+                    if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = rad
+                    if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = 0
+                    if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = 0
                 } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
                     const v = this.evaluateExpression(args[0])
                     if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
@@ -895,23 +918,30 @@ export class SourceParser {
                         const v = this.evaluateExpression(args[0])
                         if (typeof v === "number") parsedCall.femalePlay = v
                     }
-                } else if ((method === "chamfer" || method === "fillet") && args.length >= 2) {
+                } else if (method === "chamfer" && args.length >= 2) {
                     const side = this.evaluateExpression(args[0])
                     const rad = this.evaluateExpression(args[1])
                     if (typeof side !== "string" || typeof rad !== "number") continue
                     const s = side.toUpperCase()
                     if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
-                    if (method === "chamfer") {
-                        if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = rad
-                        if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = rad
-                        if (s === "TOP" || s === "BOTH") parsedCall.filletTop = 0
-                        if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = 0
-                    } else {
-                        if (s === "TOP" || s === "BOTH") parsedCall.filletTop = rad
-                        if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = rad
-                        if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = 0
-                        if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = 0
+                    if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = rad
+                    if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = rad
+                    if (s === "TOP" || s === "BOTH") parsedCall.filletTop = 0
+                    if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = 0
+                } else if (method === "fillet" && args.length >= 1) {
+                    const rad = this.evaluateExpression(args[0])
+                    if (typeof rad !== "number") continue
+                    let s = "BOTH"
+                    if (args.length >= 2) {
+                        const side = this.evaluateExpression(args[1])
+                        if (typeof side !== "string") continue
+                        s = side.toUpperCase()
+                        if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
                     }
+                    if (s === "TOP" || s === "BOTH") parsedCall.filletTop = rad
+                    if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = rad
+                    if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = 0
+                    if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = 0
                 } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
                     const v = this.evaluateExpression(args[0])
                     if (v !== undefined) parsedCall.pos = vec3(v as Vec3)

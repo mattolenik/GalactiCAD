@@ -400,3 +400,6 @@ export type UnionType = IntersectionType | 'soft'
 export function decapitalize(s: string) {
     return s[0].toLowerCase() + s.slice(1)
 }
+
+// Type-only merge: `Node.prototype.rotate` is set in `operators/rotate.mjs` when that module loads.
+import "./node-rotate-augmentation.mjs"

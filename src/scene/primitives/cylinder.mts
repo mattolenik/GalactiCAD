@@ -138,8 +138,8 @@ export class Cylinder extends Node {
         return this
     }
 
-    /** Fillet (round) the outer rim where the side meets a cap. Clears chamfer on the same side(s). */
-    @fluent fillet(side: SideIndicator, radius: number): this {
+    /** Fillet (round) the outer rim where the side meets a cap. Clears chamfer on the same side(s). Default side is BOTH. */
+    @fluent fillet(radius: number, side: SideIndicator = "BOTH"): this {
         const rad = this.#clampEdgeAmount(radius)
         if (side === "TOP" || side === "BOTH") {
             this.filletTop = rad

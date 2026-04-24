@@ -12,11 +12,11 @@ const pitch = 1.5
 // caseBase: bottom y=0, top y=20
 const caseBaseB = cylinder.radius(rBase).height(hBaseHalf / 2).shift([0, hBaseHalf * 1.5, 0]).chamfer("BOTH", 0.3)
 
-const knurlPattern = cylinder.radius(0.3).height(caseBaseB.h-1).fillet("BOTH", 0.15)
+const knurlPattern = cylinder.radius(0.3).height(caseBaseB.h-1).fillet(0.15)
 const caseBase = knurl(caseBaseB).offset(0.1).pattern(knurlPattern, 72)
 // Top threaded rod: bottom flush with caseBase top (y=20) → center y = 20 + hThreadHalf
 const yMaleTop = hBaseHalf + hBaseHalf + hThreadHalf
-const maleTop = threaded_rod.radius(rThread).height(hThreadHalf + 0.5).pitch(pitch).shift([0, yMaleTop - 0.5, 0]).fillet("TOP", 0.8)
+const maleTop = threaded_rod.radius(rThread).height(hThreadHalf + 0.5).pitch(pitch).shift([0, yMaleTop - 0.5, 0]).fillet(0.8, "TOP")
 
 // Same thread, shifted down by (half base height + 1 mm) vs maleTop center — cut female into caseBase only
 const wallShift = hBaseHalf - 1
@@ -28,6 +28,6 @@ const withMaleTop = union(caseBaseThreaded, maleTop)
 
 // Cylinder r=4, 10 mm tall — centered on maleTop (subtract from full union)
 const hPillHalf = 9
-const pillVoid = cylinder.radius(rBase-3).height(hPillHalf).shift([0, yMaleTop + 0.1, 0]).fillet("BOTTOM", 1.5)
+const pillVoid = cylinder.radius(rBase-3).height(hPillHalf).shift([0, yMaleTop + 0.1, 0]).fillet(1.5, "BOTTOM")
 
 return subtract(withMaleTop, pillVoid).round(0.1)

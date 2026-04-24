@@ -218,6 +218,8 @@ class App {
         const defaultSvg = `<rect x="1" y="1" width="10" height="10" rx="3" fill="currentColor"/>`
 
         for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
+            if (location.skipColorIndicator) continue
+
             const node = this.#sceneNodeMap.get(nodeId)
             const svg = node?.getIndicatorSvg?.() ?? defaultSvg
 
@@ -250,6 +252,7 @@ class App {
         const toRange = (id: number): HighlightRange | null => {
             const location = this.#sourceLocationMap.get(id)
             if (!location) return null
+            if (location.skipColorIndicator) return null
             return {
                 startLine: location.startLine,
                 startColumn: location.startColumn,

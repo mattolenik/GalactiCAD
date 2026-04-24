@@ -149,3 +149,8 @@ export class Rotate extends UnaryOperator {
 export const rotate = fluent(function rotate(rot: Vec3, node: Node): Rotate {
     return new Rotate(rot, node)
 })
+
+/** Fluent chain: `node.rotate(rot)` — same as `rotate(rot, node)` (including primitives’ `.shift`). */
+Node.prototype.rotate = function (this: Node, rot: Vec3): Rotate {
+    return new Rotate(rot, this)
+}

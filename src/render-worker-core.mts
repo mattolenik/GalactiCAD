@@ -1100,7 +1100,8 @@ export class RenderWorkerCore {
                         `Mesh simplification dispatched: exporter=${exporter} ` +
                         `targetRatio=${s.targetRatio} targetError=${s.targetError} ` +
                         `lockBorder=${s.lockBorder} sparse=${s.sparse} errorAbsolute=${s.errorAbsolute} ` +
-                        `prune=${s.prune} regularize=${s.regularize} normalWeight=${s.normalWeight}`,
+                        `prune=${s.prune} regularize=${s.regularize} normalWeight=${s.normalWeight} ` +
+                        `renormalizeTriangles=${s.renormalizeTriangles}`,
                     )
                     const { simplifyMesh } = await import("./export/simplify.mjs")
                     mesh = await simplifyMesh(
@@ -1114,6 +1115,7 @@ export class RenderWorkerCore {
                             prune: s.prune,
                             regularize: s.regularize,
                             normalWeight: s.normalWeight > 0 ? s.normalWeight : undefined,
+                            renormalizeTriangles: s.renormalizeTriangles,
                         },
                     )
                 }

@@ -43,6 +43,7 @@ const CAD_SYMBOLS = new Set([
     "twist",
     "bend",
     "taper",
+    "repeatPolar",
 ])
 
 function getWordAtPosition(model: monaco.editor.ITextModel, position: monaco.Position): string | null {

@@ -27,6 +27,7 @@ import { Shell, shell } from "./operators/shell.mjs"
 import { Subtract, subtract } from "./operators/subtract.mjs"
 import { Taper, taper } from "./operators/taper.mjs"
 import { Tongue, tongue } from "./operators/tongue.mjs"
+import { RepeatPolar, repeatPolar } from "./operators/repeat_polar.mjs"
 import { Twist, twist } from "./operators/twist.mjs"
 import { Union, union } from "./operators/union.mjs"
 import { Blob, blob } from "./primitives/blob.mjs"
@@ -46,7 +47,7 @@ import { VirtualCapNode } from "./primitives/virtual-cap.mjs"
 import { ThreadedRod, threaded_rod } from "./primitives/threaded-rod.mjs"
 import { Torus, torus } from "./primitives/torus.mjs"
 
-export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, twist, union }
+export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, RepeatPolar, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, repeatPolar, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, twist, union }
 export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
 export type { SideIndicator } from "./side-indicator.mjs"
 
@@ -285,10 +286,10 @@ export class SceneInfo {
         if (options?.bvhEnabled !== undefined) {
             this.bvhEnabled = options.bvhEnabled
         }
-        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", transpiledBody)(
+        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar", transpiledBody)(
             box, sphere, subtract, union, cylinder, cone, torus, threaded_rod, capsule, plane, hexprism, disc, blob,
             intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam,
-            rotate, scale, shell, offset, elongate, twist, bend, taper)
+            rotate, scale, shell, offset, elongate, twist, bend, taper, repeatPolar)
         this.root.scene = this
         this.root.build()
         this.#allNodesSnapshot = Array.from(this.#nodes.values())

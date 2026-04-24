@@ -23,8 +23,14 @@ import {
 } from "../render-worker-protocol.mjs"
 import { DEBUG_LOG_MODULES, log, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
 
-/** Boolean fields on `SimplifyTuning` (meshoptimizer flags). */
-type SimplifyBoolKey = "lockBorder" | "sparse" | "errorAbsolute" | "prune" | "regularize"
+/** Boolean fields on `SimplifyTuning` (meshoptimizer flags + post-pass toggles). */
+type SimplifyBoolKey =
+    | "lockBorder"
+    | "sparse"
+    | "errorAbsolute"
+    | "prune"
+    | "regularize"
+    | "renormalizeTriangles"
 
 /** MDC-only knobs (voxel + mesh simplify use the shared sliders above). */
 const MDC_RANGE_KNOBS: {
@@ -662,6 +668,7 @@ export class DevToolsPanel extends HTMLElement {
             { key: "errorAbsolute", label: "Absolute error" },
             { key: "prune", label: "Prune" },
             { key: "regularize", label: "Regularize" },
+            { key: "renormalizeTriangles", label: "Renormalize triangles" },
         ]
         for (const { key, label } of simplifyBoolRows) {
             const cb = this.#addCheckbox(this.#simplifySection, label, this.#simplifyTuningState[key])

@@ -1,6 +1,7 @@
 import { log } from "../logging/debug-log.mjs"
 import { MeshoptSimplifier } from "meshoptimizer"
 import type { Flags } from "meshoptimizer/simplifier"
+import { renormalizeTriangleNormals } from "./crease-split.mjs"
 import type { MeshData } from "./export.mjs"
 
 /** Floats per vertex in MeshData.verts: [px, py, pz, pad, nx, ny, nz, pad] */
@@ -31,6 +32,10 @@ export interface SimplifyFlags {
      * 0 or undefined = position-only simplification.
      */
     normalWeight?: number
+    /**
+     * When true (default), recompute vertex normals from simplified triangle geometry.
+     */
+    renormalizeTriangles?: boolean
 }
 
 /**
@@ -43,6 +48,10 @@ export interface SimplifyFlags {
  * When normalWeight > 0, uses simplifyWithAttributes so that normals influence
  * the error metric — edges between faces with very different normals (sharp
  * features) become expensive to collapse.
+ *
+ * When `renormalizeTriangles` is true (default), vertex normals are recomputed from
+ * the output triangles so shading matches the new geometry (QEM does not update
+ * stored normals).
  *
  * @param mesh          Input mesh (interleaved verts, triangle indices).
  * @param targetRatio   Fraction of triangles to keep, 0–1 (e.g. 0.5 = 50%).
@@ -71,6 +80,7 @@ export async function simplifyMesh(
     const flagsArg = flagsArray.length > 0 ? flagsArray : undefined
 
     const normalWeight = flags?.normalWeight ?? 0
+    const renormalizeTriangles = flags?.renormalizeTriangles !== false
 
     let simplifiedTris: Uint32Array
     let error: number
@@ -121,7 +131,12 @@ export async function simplifyMesh(
     )
 
     // --- Compact: strip unreferenced vertices ---
-    return compactMesh(mesh, simplifiedTris)
+    const compacted = compactMesh(mesh, simplifiedTris)
+    if (!renormalizeTriangles) {
+        return { verts: compacted.verts, tris: compacted.tris, debug: mesh.debug }
+    }
+    const renorm = renormalizeTriangleNormals(compacted.verts, compacted.tris)
+    return { verts: renorm.verts, tris: renorm.tris, debug: mesh.debug }
 }
 
 /**

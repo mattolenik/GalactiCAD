@@ -51,6 +51,13 @@ function triSharesEdge(tris: Uint32Array, t0: number, t1: number, sharedVert: nu
  * `creaseAngleDeg` to 180 to disable splitting (one smooth group per vertex,
  * normals still re-derived from face geometry).
  */
+export function renormalizeTriangleNormals(
+    verts: Float32Array<ArrayBuffer>,
+    tris: Uint32Array<ArrayBuffer>,
+): MeshData {
+    return splitCreaseVertices(verts, tris, 180)
+}
+
 export function splitCreaseVertices(
     verts: Float32Array<ArrayBuffer>,
     tris: Uint32Array<ArrayBuffer>,

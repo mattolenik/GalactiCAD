@@ -2031,6 +2031,40 @@ fn twistPoint(p: vec3f, rate: f32) -> vec3f {
     return vec3f(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
 }
 
+// Repeat in azimuth around +Y: fold (x,z) into one polar wedge, evaluate child there.
+// `repetitions` is wedge count (e.g. knurl teeth). Uses `pModPolar` on the XZ pair as vec2(x,z).
+fn repeatPolarXZPoint(p: vec3f, repetitions: f32) -> vec3f {
+    var xz = vec2f(p.x, p.z);
+    let _cell = pModPolar(&xz, repetitions);
+    return vec3f(xz.x, p.y, xz.y);
+}
+
+// Rotate analytical normal (and Mid features) from wedge space back to world using cell index from `p`.
+fn sdfRepeatPolarXZNormal(r: SDFResult, p: vec3f, repetitions: f32) -> SDFResult {
+    var xz = vec2f(p.x, p.z);
+    let c = pModPolar(&xz, repetitions);
+    let ang = (2.0 * PI / repetitions) * c;
+    let ca = cos(ang);
+    let sa = sin(ang);
+    let m = mat3x3f(vec3f(ca, 0.0, -sa), vec3f(0.0, 1.0, 0.0), vec3f(sa, 0.0, ca));
+    return sdfRotateNormal(r, m);
+}
+
+fn sdfRepeatPolarXZNormalMid(r: SDFResultMid, p: vec3f, repetitions: f32) -> SDFResultMid {
+    var xz = vec2f(p.x, p.z);
+    let c = pModPolar(&xz, repetitions);
+    let ang = (2.0 * PI / repetitions) * c;
+    let ca = cos(ang);
+    let sa = sin(ang);
+    let m = mat3x3f(vec3f(ca, 0.0, -sa), vec3f(0.0, 1.0, 0.0), vec3f(sa, 0.0, ca));
+    return sdfRotateNormalMid(r, m);
+}
+
+// Fast path: local fold is a rigid motion per cell; scalar gradient magnitude unchanged.
+fn sdfRepeatPolarXZFast(r: FastSDFResult, p: vec3f, repetitions: f32) -> FastSDFResult {
+    return r;
+}
+
 // Twist Fast: correct gradient overestimation from non-uniform domain distortion.
 // The twist stretches space by sqrt(1 + (rate * rho)^2) where rho = length(p.xz).
 // Divide distance by this factor to keep ray marching conservative.

@@ -232,7 +232,7 @@ export function findReturnStatementLine(src: string): number | null {
  */
 const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
 const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe"])
-const MODIFIER_NAMES = new Set(["rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper"])
+const MODIFIER_NAMES = new Set(["rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
 
 /**
@@ -580,7 +580,7 @@ export class SourceParser {
             this.parseShellOffsetArgs(callNode, parsedCall)
         } else if (funcName === "elongate") {
             this.parseElongateArgs(callNode, parsedCall)
-        } else if (funcName === "twist" || funcName === "bend") {
+        } else if (funcName === "twist" || funcName === "bend" || funcName === "repeatPolar") {
             this.parseTwistBendArgs(callNode, parsedCall)
         } else if (funcName === "taper") {
             this.parseTaperArgs(callNode, parsedCall)

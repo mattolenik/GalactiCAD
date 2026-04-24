@@ -53,6 +53,8 @@ declare function twist(rate: number, node: Node): Twist;
 declare function bend(amount: number, node: Node): Bend;
 /** Taper a shape. taper(ratio, height, node) */
 declare function taper(ratio: number, height: number, node: Node): Taper;
+/** Repeat a shape in azimuth around +Y (XZ polar tiling). repeatPolar(count, node) */
+declare function repeatPolar(count: number, node: Node): RepeatPolar;
 
 // ---------------------------------------------------------------------------
 // Primitive shapes
@@ -285,6 +287,9 @@ declare class Twist extends Node {}
 
 /** Bend a shape. */
 declare class Bend extends Node {}
+
+/** Polar repeat around +Y (domain repetition in XZ). */
+declare class RepeatPolar extends Node {}
 
 /** Taper a shape. */
 declare class Taper extends Node {}

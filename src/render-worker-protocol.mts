@@ -149,6 +149,11 @@ export interface SimplifyTuning {
     regularize: boolean
     /** When positive, uses normal-aware simplification (protects sharp features). */
     normalWeight: number
+    /**
+     * After QEM simplification, recompute vertex normals from the output triangles
+     * (stale normals otherwise). Off keeps pre-simplify normals through compacting.
+     */
+    renormalizeTriangles: boolean
 }
 
 export const DEFAULT_SIMPLIFY_TUNING: SimplifyTuning = {
@@ -160,6 +165,7 @@ export const DEFAULT_SIMPLIFY_TUNING: SimplifyTuning = {
     prune: false,
     regularize: false,
     normalWeight: 0,
+    renormalizeTriangles: true,
 }
 
 /** Worker-reported `#doBuild` breakdown (ms); used for devtools / regression triage. */

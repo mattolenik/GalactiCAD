@@ -474,6 +474,9 @@ export class SettingsManager {
                     if (typeof s.errorAbsolute !== "boolean") s.errorAbsolute = DEFAULT_SIMPLIFY_TUNING.errorAbsolute
                     if (typeof s.prune !== "boolean") s.prune = DEFAULT_SIMPLIFY_TUNING.prune
                     if (typeof s.regularize !== "boolean") s.regularize = DEFAULT_SIMPLIFY_TUNING.regularize
+                    if (typeof s.renormalizeTriangles !== "boolean") {
+                        s.renormalizeTriangles = DEFAULT_SIMPLIFY_TUNING.renormalizeTriangles
+                    }
                     s.normalWeight = clampNw(s.normalWeight, DEFAULT_SIMPLIFY_TUNING.normalWeight)
                     app.simplifyTuning = s
                 }

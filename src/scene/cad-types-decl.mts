@@ -133,6 +133,14 @@ declare class ThreadedRod extends Node {
     threadAngle(deg: number): ThreadedRod;
     /** Explicit radial amplitude (disables automatic depth from pitch + threadAngle). */
     depth(d: number): ThreadedRod;
+    /** Chamfer barrel–cap junction(s). */
+    chamfer(side: SideIndicator, amount: number): ThreadedRod;
+    /** Round fillet at barrel–cap junction(s). */
+    fillet(side: SideIndicator, radius: number): ThreadedRod;
+    /**
+     * Female / fit: sample the barrel in xz with scale 1/(1+play). female() uses play 0.01 (factor 1.01). Pass 0 to clear.
+     */
+    female(play?: number): ThreadedRod;
     shift(v: Vec3): ThreadedRod;
 }
 

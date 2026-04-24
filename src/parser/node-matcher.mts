@@ -81,6 +81,7 @@ interface NodeLikeMatch {
     filletBottom?: number
     chamferTop?: number
     chamferBottom?: number
+    femalePlay?: number
 }
 
 /**
@@ -175,6 +176,17 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         const callHand = call.threadHandedness ?? "right"
         const nodeHand = node.threadHandedness ?? "right"
         if (callHand !== nodeHand) return false
+        const nt = node.filletTop ?? 0
+        const nb = node.filletBottom ?? 0
+        const ct = node.chamferTop ?? 0
+        const cb = node.chamferBottom ?? 0
+        const ftCall = call.filletTop ?? 0
+        const fbCall = call.filletBottom ?? 0
+        const ctCall = call.chamferTop ?? 0
+        const cbCall = call.chamferBottom ?? 0
+        if (!approxEqual(nt, ftCall) || !approxEqual(nb, fbCall)) return false
+        if (!approxEqual(ct, ctCall) || !approxEqual(cb, cbCall)) return false
+        if (!approxEqual(node.femalePlay ?? 0, call.femalePlay ?? 0)) return false
         return true
     }
 

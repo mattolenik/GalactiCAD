@@ -58,6 +58,8 @@ export interface ParsedShapeCall {
     chamferTop?: number
     /** Cylinder rim chamfer amount (-y cap). */
     chamferBottom?: number
+    /** ThreadedRod: female radial clearance play (0 = nominal). */
+    femalePlay?: number
 }
 
 /**
@@ -884,10 +886,61 @@ export class SourceParser {
                 } else if (method === "threadAngle" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.threadAngle = v
+                } else if (method === "female") {
+                    if (args.length === 0) {
+                        parsedCall.femalePlay = 0.01
+                    } else {
+                        const v = this.evaluateExpression(args[0])
+                        if (typeof v === "number") parsedCall.femalePlay = v
+                    }
+                } else if ((method === "chamfer" || method === "fillet") && args.length >= 2) {
+                    const side = this.evaluateExpression(args[0])
+                    const rad = this.evaluateExpression(args[1])
+                    if (typeof side !== "string" || typeof rad !== "number") continue
+                    const s = side.toUpperCase()
+                    if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
+                    if (method === "chamfer") {
+                        if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = rad
+                        if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = rad
+                        if (s === "TOP" || s === "BOTH") parsedCall.filletTop = 0
+                        if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = 0
+                    } else {
+                        if (s === "TOP" || s === "BOTH") parsedCall.filletTop = rad
+                        if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = rad
+                        if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = 0
+                        if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = 0
+                    }
                 } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
                     const v = this.evaluateExpression(args[0])
                     if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
                 }
+            }
+            if (typeof parsedCall.r === "number" && typeof parsedCall.h === "number") {
+                const ampEst =
+                    typeof parsedCall.depth === "number"
+                        ? Math.abs(parsedCall.depth)
+                        : (() => {
+                              const pitch = parsedCall.pitch ?? 0.5
+                              const angDeg = parsedCall.threadAngle ?? 60
+                              const rad = (angDeg * Math.PI) / 180
+                              return (Math.tan(rad) * pitch) / (2 * Math.PI)
+                          })()
+                const env = parsedCall.r + ampEst
+                const cap = Math.min(env * 0.49, parsedCall.h * 0.49)
+                const clampE = (v: number | undefined) => {
+                    if (v === undefined) return undefined
+                    if (!(v > 0) || !Number.isFinite(v)) return 0
+                    return Math.min(v, cap)
+                }
+                parsedCall.chamferTop = clampE(parsedCall.chamferTop)
+                parsedCall.chamferBottom = clampE(parsedCall.chamferBottom)
+                parsedCall.filletTop = clampE(parsedCall.filletTop)
+                parsedCall.filletBottom = clampE(parsedCall.filletBottom)
+            }
+            if (parsedCall.femalePlay !== undefined) {
+                const v = parsedCall.femalePlay
+                if (!Number.isFinite(v)) parsedCall.femalePlay = 0
+                else parsedCall.femalePlay = Math.max(-0.99, Math.min(v, 3))
             }
         } catch (err) {
             log("SourceParser").debug("Could not parse threaded_rod fluent args:", err)

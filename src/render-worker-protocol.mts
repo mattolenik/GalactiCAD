@@ -242,6 +242,8 @@ export interface SerializedNode {
     threadProfile?: "fdm" | "iso" | "acme"
     /** Default right-hand; left-hand flips helix. */
     threadHandedness?: "left" | "right"
+    /** ThreadedRod: barrel xz scale uses 1+femalePlay in denominator (0 = nominal). */
+    femalePlay?: number
     /** Cylinder: rim fillet / chamfer on +y cap (0 if none). */
     filletTop?: number
     filletBottom?: number

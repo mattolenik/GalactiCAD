@@ -80,6 +80,7 @@ export interface NodeStub {
     filletBottom?: number
     chamferTop?: number
     chamferBottom?: number
+    femalePlay?: number
 }
 
 export class SDFRenderer {
@@ -982,6 +983,7 @@ export class SDFRenderer {
                 filletBottom: s.filletBottom,
                 chamferTop: s.chamferTop,
                 chamferBottom: s.chamferBottom,
+                femalePlay: s.femalePlay,
             }
             stub.getAllDescendantIds = () => [
                 s.id,

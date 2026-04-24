@@ -50,6 +50,14 @@ export interface ParsedShapeCall {
     planeOffset?: number  // Distance from origin for plane
     vertices?: [number, number][]  // Vertex array for polygon2d
     t?: number                     // Twist (degrees) for extrude
+    /** Cylinder rim fillet radius (+y cap). */
+    filletTop?: number
+    /** Cylinder rim fillet radius (-y cap). */
+    filletBottom?: number
+    /** Cylinder rim chamfer amount (+y cap). */
+    chamferTop?: number
+    /** Cylinder rim chamfer amount (-y cap). */
+    chamferBottom?: number
 }
 
 /**
@@ -542,7 +550,9 @@ export class SourceParser {
             this.parseSphereFluentArgs(callNode, parsedCall)
         } else if (funcName === "box") {
             this.parseBoxFluentArgs(callNode, parsedCall)
-        } else if (funcName === "cylinder" || funcName === "cone" || funcName === "hexprism") {
+        } else if (funcName === "cylinder") {
+            this.parseCylinderFluentArgs(callNode, parsedCall)
+        } else if (funcName === "cone" || funcName === "hexprism") {
             this.parsePosRadiusHeightFluentArgs(callNode, parsedCall)
         } else if (funcName === "torus") {
             this.parseTorusFluentArgs(callNode, parsedCall)
@@ -747,6 +757,55 @@ export class SourceParser {
             }
         } catch (err) {
             log("SourceParser").debug(`Could not parse ${parsedCall.functionName} fluent args:`, err)
+        }
+    }
+
+    private parseCylinderFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "radius" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.r = v
+                } else if (method === "height" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.h = v
+                } else if ((method === "chamfer" || method === "fillet") && args.length >= 2) {
+                    const side = this.evaluateExpression(args[0])
+                    const rad = this.evaluateExpression(args[1])
+                    if (typeof side !== "string" || typeof rad !== "number") continue
+                    const s = side.toUpperCase()
+                    if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
+                    if (method === "chamfer") {
+                        if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = rad
+                        if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = rad
+                        if (s === "TOP" || s === "BOTH") parsedCall.filletTop = 0
+                        if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = 0
+                    } else {
+                        if (s === "TOP" || s === "BOTH") parsedCall.filletTop = rad
+                        if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = rad
+                        if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = 0
+                        if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = 0
+                    }
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
+            }
+            if (typeof parsedCall.r === "number" && typeof parsedCall.h === "number") {
+                const cap = Math.min(parsedCall.r * 0.49, parsedCall.h * 0.49)
+                const clampE = (v: number | undefined) => {
+                    if (v === undefined) return undefined
+                    if (!(v > 0) || !Number.isFinite(v)) return 0
+                    return Math.min(v, cap)
+                }
+                parsedCall.chamferTop = clampE(parsedCall.chamferTop)
+                parsedCall.chamferBottom = clampE(parsedCall.chamferBottom)
+                parsedCall.filletTop = clampE(parsedCall.filletTop)
+                parsedCall.filletBottom = clampE(parsedCall.filletBottom)
+            }
+        } catch (err) {
+            log("SourceParser").debug(`Could not parse cylinder fluent args:`, err)
         }
     }
 

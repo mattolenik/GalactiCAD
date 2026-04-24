@@ -77,6 +77,10 @@ interface NodeLikeMatch {
     planeOffset?: number
     vertices?: [number, number][]
     twistDegrees?: number
+    filletTop?: number
+    filletBottom?: number
+    chamferTop?: number
+    chamferBottom?: number
 }
 
 /**
@@ -128,6 +132,16 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.r === undefined || !approxEqualOrUndefined(node.r, call.r)) return false
         if (call.h !== undefined && !approxEqualOrUndefined(node.h, call.h)) return false
+        const nt = node.filletTop ?? 0
+        const nb = node.filletBottom ?? 0
+        const ct = node.chamferTop ?? 0
+        const cb = node.chamferBottom ?? 0
+        const ftCall = call.filletTop ?? 0
+        const fbCall = call.filletBottom ?? 0
+        const ctCall = call.chamferTop ?? 0
+        const cbCall = call.chamferBottom ?? 0
+        if (!approxEqual(nt, ftCall) || !approxEqual(nb, fbCall)) return false
+        if (!approxEqual(ct, ctCall) || !approxEqual(cb, cbCall)) return false
         return true
     }
 

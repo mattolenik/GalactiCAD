@@ -1,0 +1,31 @@
+// Stackable pill-case segment (mm). Y-up: half-heights on cylinder / threaded_rod — center = bottom + halfHeight.
+// caseBase: 20 mm tall, r=8. maleTop: r=6, 8 mm tall, on top of base. maleBottom: same thread, shifted down
+// by (half caseBase height + 1 mm wall), subtracted from caseBase only. Pill: r=4, 10 mm, subtracted from union.
+
+const rBase = 7
+const hBaseHalf = 10 // 20 mm total height, center at y = hBaseHalf → base y ∈ [0, 20]
+
+const rThread = 6
+const hThreadHalf = 4 // 8 mm total thread length
+const pitch = 1.5
+
+// caseBase: bottom y=0, top y=20
+const caseBase = cylinder.radius(rBase).height(hBaseHalf/2).shift([0, hBaseHalf*1.5, 0]).chamfer("BOTH", 0.5)
+
+// Top threaded rod: bottom flush with caseBase top (y=20) → center y = 20 + hThreadHalf
+const yMaleTop = hBaseHalf + hBaseHalf + hThreadHalf
+const maleTop = threaded_rod.radius(rThread).height(hThreadHalf+0.5).pitch(pitch).shift([0, yMaleTop-0.5, 0])
+
+// Same thread, shifted down by (half base height + 1 mm) vs maleTop center — cut female into caseBase only
+const wallShift = hBaseHalf - 1
+const yMaleBottom = yMaleTop - wallShift
+const maleBottom = threaded_rod.radius(rThread).height(hThreadHalf+3).pitch(pitch).shift([0, yMaleBottom-3, 0])
+
+const caseBaseThreaded = subtract(caseBase, maleBottom)
+const withMaleTop = union(caseBaseThreaded, maleTop).round(0)
+
+// Cylinder r=4, 10 mm tall — centered on maleTop (subtract from full union)
+const hPillHalf = 5
+const pillVoid = cylinder.radius(5).height(hPillHalf-1).shift([0, yMaleTop+0, 0])
+
+return subtract(withMaleTop, pillVoid).round(1/2)

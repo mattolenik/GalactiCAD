@@ -577,14 +577,79 @@ fn fBoxEx(p: vec3<f32>, b: vec3<f32>, id: u32) -> SDFResult {
     return sdfTrue(length(outside) + vmax3(min(d, vec3<f32>(0.0))), id, n);
 }
 
-fn fCylinderEx(p: vec3<f32>, r: f32, height: f32, id: u32) -> SDFResult {
-    let dRadial = length(p.xz) - r;
-    let dCap = abs(p.y) - height;
-    let d = max(dRadial, dCap);
-    let onBarrel = dRadial > dCap;
-    let nBarrel = safeNormalize(vec3f(p.x, 0.0, p.z), vec3f(1.0, 0.0, 0.0));
-    let nCap = vec3f(0.0, sgn(p.y), 0.0);
-    let n = select(nCap, nBarrel, onBarrel);
+// Cylinder meridian (ρ, y): distance to revolution profile [0,r]×[-h,h] with optional
+// fillets (right corners) and/or chamfers on the outer rim, per Inigo sdRoundedBox / half-planes.
+fn sdRoundedBox2DIqMeridian(p: vec2f, b: vec2f, r4: vec4f) -> f32 {
+    var rxy = select(r4.zw, r4.xy, p.x > 0.0);
+    let rx = select(rxy.y, rxy.x, p.y > 0.0);
+    let q = abs(p) - b + rx;
+    return min(max(q.x, q.y), 0.0) + length(max(q, vec2f(0.0))) - rx;
+}
+
+fn fCylinderMeridianEdge(
+    rho: f32,
+    y: f32,
+    r: f32,
+    h: f32,
+    filletTop: f32,
+    filletBot: f32,
+    chamferTop: f32,
+    chamferBot: f32,
+) -> f32 {
+    let cr = max(r, 1e-6);
+    let ch = max(h, 1e-6);
+    let lim = min(cr * 0.49, ch * 0.49);
+    let ft = clamp(filletTop, 0.0, lim);
+    let fb = clamp(filletBot, 0.0, lim);
+    let ct = clamp(chamferTop, 0.0, lim);
+    let cb = clamp(chamferBot, 0.0, lim);
+    let p = vec2f(rho - cr * 0.5, y);
+    let b = vec2f(cr * 0.5, ch);
+    let rad4 = vec4f(ft, fb, 0.0, 0.0);
+    var d = sdRoundedBox2DIqMeridian(p, b, rad4);
+    if ct > 0.0 {
+        let dc = -((cr - rho) + (ch - y) - ct) * 0.7071067811865476;
+        d = max(d, dc);
+    }
+    if cb > 0.0 {
+        let dc = -((cr - rho) + (y + ch) - cb) * 0.7071067811865476;
+        d = max(d, dc);
+    }
+    return d;
+}
+
+fn fCylinderMeridianNormal3(
+    p: vec3f,
+    rho: f32,
+    r: f32,
+    h: f32,
+    filletTop: f32,
+    filletBot: f32,
+    chamferTop: f32,
+    chamferBot: f32,
+) -> vec3f {
+    let e = 0.0015;
+    let pr = max(rho, 0.0);
+    let dr = (
+        fCylinderMeridianEdge(pr + e, p.y, r, h, filletTop, filletBot, chamferTop, chamferBot)
+        - fCylinderMeridianEdge(max(pr - e, 0.0), p.y, r, h, filletTop, filletBot, chamferTop, chamferBot)
+    ) / (2.0 * e);
+    let dy = (
+        fCylinderMeridianEdge(pr, p.y + e, r, h, filletTop, filletBot, chamferTop, chamferBot)
+        - fCylinderMeridianEdge(pr, p.y - e, r, h, filletTop, filletBot, chamferTop, chamferBot)
+    ) / (2.0 * e);
+    let inv = select(0.0, 1.0 / max(rho, 1e-5), rho > 1e-5);
+    let nx = dr * p.x * inv;
+    let nz = dr * p.z * inv;
+    let nn = vec3f(nx, dy, nz);
+    let l = length(nn);
+    return select(safeNormalize(vec3f(0.0, sign(dy), 0.0), vec3f(0.0, 1.0, 0.0)), nn / l, l > 1e-6);
+}
+
+fn fCylinderEx(p: vec3<f32>, r: f32, height: f32, filletTop: f32, filletBot: f32, chamferTop: f32, chamferBot: f32, id: u32) -> SDFResult {
+    let rho = length(p.xz);
+    let d = fCylinderMeridianEdge(rho, p.y, r, height, filletTop, filletBot, chamferTop, chamferBot);
+    let n = fCylinderMeridianNormal3(p, rho, r, height, filletTop, filletBot, chamferTop, chamferBot);
     return sdfTrue(d, id, n);
 }
 
@@ -833,14 +898,10 @@ fn fBoxMid(p: vec3<f32>, b: vec3<f32>) -> SDFResultMid {
     return sdfRMid(dist, 1.0, n);
 }
 
-fn fCylinderMid(p: vec3<f32>, r: f32, height: f32) -> SDFResultMid {
-    let dRadial = length(p.xz) - r;
-    let dCap = abs(p.y) - height;
-    let d = max(dRadial, dCap);
-    let onBarrel = dRadial > dCap;
-    let nBarrel = safeNormalize(vec3f(p.x, 0.0, p.z), vec3f(1.0, 0.0, 0.0));
-    let nCap = vec3f(0.0, sgn(p.y), 0.0);
-    let n = select(nCap, nBarrel, onBarrel);
+fn fCylinderMid(p: vec3<f32>, r: f32, height: f32, filletTop: f32, filletBot: f32, chamferTop: f32, chamferBot: f32) -> SDFResultMid {
+    let rho = length(p.xz);
+    let d = fCylinderMeridianEdge(rho, p.y, r, height, filletTop, filletBot, chamferTop, chamferBot);
+    let n = fCylinderMeridianNormal3(p, rho, r, height, filletTop, filletBot, chamferTop, chamferBot);
     return sdfRMid(d, 1.0, n);
 }
 
@@ -988,9 +1049,9 @@ fn fBlob(pIn: vec3<f32>) -> f32 {
     return l - 1.5 - 0.2 * (1.5 / 2.0) * cos(min(sqrt(1.01 - b / l) * (PI / 0.25), PI));
 }
 
-fn fCylinder(p: vec3<f32>, r: f32, height: f32) -> f32 {
-    let d = max(length(p.xz) - r, abs(p.y) - height);
-    return d;
+fn fCylinder(p: vec3<f32>, r: f32, height: f32, filletTop: f32, filletBot: f32, chamferTop: f32, chamferBot: f32) -> f32 {
+    let rho = length(p.xz);
+    return fCylinderMeridianEdge(rho, p.y, r, height, filletTop, filletBot, chamferTop, chamferBot);
 }
 
 // Capsule with vertical round caps
@@ -1392,8 +1453,8 @@ fn fBoxFast(p: vec3<f32>, b: vec3<f32>) -> FastSDFResult {
     return sdfFast(length(max(d, vec3<f32>(0.0))) + vmax3(min(d, vec3<f32>(0.0))), 1.0, 1.0);
 }
 
-fn fCylinderFast(p: vec3<f32>, r: f32, height: f32) -> FastSDFResult {
-    return sdfFast(fCylinder(p, r, height), 1.0, 1.0);
+fn fCylinderFast(p: vec3<f32>, r: f32, height: f32, filletTop: f32, filletBot: f32, chamferTop: f32, chamferBot: f32) -> FastSDFResult {
+    return sdfFast(fCylinder(p, r, height, filletTop, filletBot, chamferTop, chamferBot), 1.0, 1.0);
 }
 
 fn fConeFast(p: vec3<f32>, radius: f32, height: f32) -> FastSDFResult {

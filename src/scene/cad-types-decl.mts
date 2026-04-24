@@ -8,6 +8,9 @@ export const CAD_TYPES_DECL = `
 /** A 3D position or vector, given as a tuple [x, y, z]. */
 declare type Vec3 = [number, number, number];
 
+/** Which end(s) of a vertical cylinder a rim chamfer or fillet applies to. */
+declare type SideIndicator = 'TOP' | 'BOTTOM' | 'BOTH';
+
 /** Blend mode for smooth CSG operations. */
 declare type BlendMode = 'round' | 'chamfer' | 'soft' | 'columns' | 'stairs';
 
@@ -75,12 +78,16 @@ declare class Box extends Node {
 declare function box(size: Vec3): Box;
 declare function box(l: number, w: number, h: number): Box;
 
-/** A cylinder. cylinder.radius(r).height(h).shift(v) */
+/** A cylinder. cylinder.radius(r).height(h).chamfer(side, amount).fillet(side, radius).shift(v) */
 declare class Cylinder extends Node {
     pos: Vec3f;
     r: number;
     h: number;
     height(h: number): Cylinder;
+    /** 45° chamfer on the outer rim where the side meets the cap(s). */
+    chamfer(side: SideIndicator, amount: number): Cylinder;
+    /** Round fillet on the outer rim where the side meets the cap(s). */
+    fillet(side: SideIndicator, radius: number): Cylinder;
     shift(v: Vec3): Cylinder;
 }
 

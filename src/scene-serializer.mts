@@ -101,6 +101,13 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
         s.capSide = node.isTop ? "top" : "bottom"
     }
 
+    if (node instanceof Cylinder) {
+        s.filletTop = node.filletTop
+        s.filletBottom = node.filletBottom
+        s.chamferTop = node.chamferTop
+        s.chamferBottom = node.chamferBottom
+    }
+
     if (node.paramCount > 0) {
         s.paramOffset = node.paramOffset
     }

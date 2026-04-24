@@ -242,6 +242,11 @@ export interface SerializedNode {
     threadProfile?: "fdm" | "iso" | "acme"
     /** Default right-hand; left-hand flips helix. */
     threadHandedness?: "left" | "right"
+    /** Cylinder: rim fillet / chamfer on +y cap (0 if none). */
+    filletTop?: number
+    filletBottom?: number
+    chamferTop?: number
+    chamferBottom?: number
     /** Polygon2D buffer offset in the shared vertex buffer (bytes / 8). */
     bufferOffset?: number
     /**

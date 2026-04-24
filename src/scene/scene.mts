@@ -48,6 +48,7 @@ import { Torus, torus } from "./primitives/torus.mjs"
 
 export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, twist, union }
 export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
+export type { SideIndicator } from "./side-indicator.mjs"
 
 /** IDs 1022–1023 reserved for face highlight (cap selection). Scene nodes use 0–1021. */
 const MAX_SCENE_NODE_ID = 1021

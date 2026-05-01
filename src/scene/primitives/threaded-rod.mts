@@ -364,7 +364,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     } else {
         cur = opIntersectionMid(cur, botM);
     }
-    return sdfRMid(cur.d, 1.0, cur.n);
+    return cur;
 }
 `
     }

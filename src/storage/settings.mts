@@ -165,6 +165,11 @@ export function normalizeMdcExportLevers(raw: unknown): MdcExportLevers {
         voxelSizeMm: clampMdcNumber(o.voxelSizeMm, 0.02, 1.0, d.voxelSizeMm),
         isoValue: clampMdcNumber(o.isoValue, -0.5, 0.5, d.isoValue),
         creaseAngleDeg: clampMdcNumber(o.creaseAngleDeg, -1, 180, d.creaseAngleDeg),
+        featureConstrainedPlacement: typeof o.featureConstrainedPlacement === "boolean"
+            ? o.featureConstrainedPlacement
+            : typeof (o as { hermiteEdgeRefine?: unknown }).hermiteEdgeRefine === "boolean"
+            ? (o as { hermiteEdgeRefine: boolean }).hermiteEdgeRefine
+            : d.featureConstrainedPlacement,
         simplifyTargetRatio: clampMdcNumber(o.simplifyTargetRatio, 0.01, 1, d.simplifyTargetRatio),
         simplifyTargetError: clampMdcNumber(o.simplifyTargetError, 0, 0.1, d.simplifyTargetError),
         simplifyNormalWeight: clampMdcNumber(o.simplifyNormalWeight, 0, 8, d.simplifyNormalWeight),

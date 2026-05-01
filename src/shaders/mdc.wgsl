@@ -14,7 +14,7 @@ struct SharedUniforms {
     // mdcF1: x=gradEpsScale,   y=gradEpsMin,   z=edgeProjTolScale, w=vertexProjTolScale
     // mdcF2: x=vertexProjMarginScale, y=vertexProjMaxStepScale, z=qefRegScale, w=qefRegMin
     // mdcF3: x=qefCondCutoff, y=orientationProbeScale, z=orientationProbeMin, w=reserved
-    // mdcU0: x=edgeProjIters, y=vertexProjIters, z=activeCellCount (set after compaction), w=reserved
+    // mdcU0: x=edgeProjIters, y=vertexProjIters, z=activeCellCount (set after compaction), w=featureConstrainedPlacement
     mdcF0: vec4f,
     mdcF1: vec4f,
     mdcF2: vec4f,
@@ -524,6 +524,14 @@ fn qefCost(qef: QEFData, x: vec3f) -> f32 {
     return dot(x, Ax) - 2.0 * dot(x, qef.ATb);
 }
 
+fn clampFeatureVertex(p: vec3f, cellMin: vec3f, cellMax: vec3f) -> vec3f {
+    // Feature constraints intentionally pull neighboring cell vertices onto a
+    // shared line/ring/corner. Hard-clamping back to the owning voxel cell turns
+    // those exact loci into cell-boundary stair steps, especially on lathe rings.
+    let margin = uniforms.voxelSize * 0.75;
+    return clamp(p, cellMin - vec3f(margin), cellMax + vec3f(margin));
+}
+
 const MDC_FEATURE_PROX_SCALE: f32 = 0.75;
 const MDC_FEATURE_PLANE_WEIGHT: f32 = 0.12;
 // Sentinel `kind` for inferred-component features whose tangent solve failed
@@ -571,6 +579,15 @@ fn zeroComponentFeature() -> ComponentFeature {
 
 fn ownerPairEqual(a: vec2u, b: vec2u) -> bool {
     return a.x == b.x && a.y == b.y;
+}
+
+fn featureLineTangent(f: ComponentFeature) -> vec3f {
+    if (lengthSqr(f.tangent) > 1e-8) { return safeUnit3(f.tangent); }
+    if (f.normalCount >= 2u) {
+        let t = cross(f.n0, f.n1);
+        if (lengthSqr(t) > 1e-8) { return safeUnit3(t); }
+    }
+    return vec3f(0.0);
 }
 
 fn solveFeaturePoint(n0: vec3f, p0: vec3f, n1: vec3f, p1: vec3f, n2: vec3f, p2: vec3f, planeCount: u32) -> vec3f {
@@ -1350,6 +1367,8 @@ fn edgeDetection_Pass3(
         inferredFeatures[c] = inferred;
     }
 
+    let featureConstraintsEnabled = uniforms.mdcU0.w != 0u;
+
     // Canonical rebucket: when the component has an explicit feature with valid
     // face normals, reassign every crossing's subcomponent index by matching its
     // crossing-normal to the explicit feature's face normals (feature.n0/n1/n2).
@@ -1361,11 +1380,12 @@ fn edgeDetection_Pass3(
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         if (compCrossCount[c] == 0u) { continue; }
         let f = inferredFeatures[c];
-        let hasExplicit =
+        let hasExplicit = featureConstraintsEnabled && (
             (f.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
             (f.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) ||
             (f.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
-            (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8);
+            (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8)
+        );
         if (!hasExplicit) { continue; }
         let nFaces = f.normalCount;
         if (nFaces < 2u) { continue; }
@@ -1406,11 +1426,12 @@ fn edgeDetection_Pass3(
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         if (compCrossCount[c] == 0u) { continue; }
         let f = inferredFeatures[c];
-        let hasExplicit =
+        let hasExplicit = featureConstraintsEnabled && (
             (f.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
             (f.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) ||
             (f.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
-            (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8);
+            (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8)
+        );
         if (hasExplicit) { continue; }
         for (var e = 0u; e < 12u; e = e + 1u) {
             if (edgeCrossMask[e] == 0u) { continue; }
@@ -1450,20 +1471,22 @@ fn edgeDetection_Pass3(
         let feature = inferredFeatures[c];
 
         var projPos = intersectionPos;
-        if (feature.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) {
-            let tangent = safeUnit3(feature.tangent);
-            projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
-        } else if (feature.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) {
+        if (featureConstraintsEnabled && feature.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) {
+            let tangent = featureLineTangent(feature);
+            if (lengthSqr(tangent) > 1e-8) {
+                projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
+            }
+        } else if (featureConstraintsEnabled && feature.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) {
             // Treat the ring like a LINE locally — the stored anchor is the
             // closest point on the circle to this cell's sample, and the stored
             // tangent is the circle's tangent there, so a tangent-line projection
             // is the correct linearization at cell scale.
             let tangent = safeUnit3(feature.tangent);
             projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
-        } else if (feature.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) {
+        } else if (featureConstraintsEnabled && feature.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) {
             projPos = feature.point;
-        } else if (feature.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8) {
-            let tangent = safeUnit3(feature.tangent);
+        } else if (featureConstraintsEnabled && feature.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8) {
+            let tangent = featureLineTangent(feature);
             if (lengthSqr(tangent) > 1e-8) {
                 projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
             }
@@ -1487,9 +1510,9 @@ fn edgeDetection_Pass3(
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         if (compCrossCount[c] == 0u) { continue; }
         let feature = inferredFeatures[c];
-        let isExplicitLine = (feature.kind == MID_FEATURE_LINE) && (explicitLineDist[c] < 1e8);
-        let isExplicitCorner = (feature.kind == MID_FEATURE_CORNER) && (explicitCornerDist[c] < 1e8);
-        let isExplicitSeam = (feature.kind == MID_FEATURE_BOOLEAN_SEAM) && (explicitSeamDist[c] < 1e8);
+        let isExplicitLine = featureConstraintsEnabled && (feature.kind == MID_FEATURE_LINE) && (explicitLineDist[c] < 1e8);
+        let isExplicitCorner = featureConstraintsEnabled && (feature.kind == MID_FEATURE_CORNER) && (explicitCornerDist[c] < 1e8);
+        let isExplicitSeam = featureConstraintsEnabled && (feature.kind == MID_FEATURE_BOOLEAN_SEAM) && (explicitSeamDist[c] < 1e8);
         for (var s = 0u; s < MAX_SUBCOMPONENTS_PER_COMPONENT; s = s + 1u) {
             if (subQefs[c][s].numPoints == 0u) { continue; }
             if (feature.kind == MID_FEATURE_LINE && !isExplicitLine) {
@@ -1576,10 +1599,11 @@ fn edgeDetection_Pass3(
     let vertBase = active_cell_array_idx * VERTICES_PER_CELL;
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         var cf = inferredFeatures[c];
-        let hasExplicitFaces =
+        let hasExplicitFaces = featureConstraintsEnabled && (
             (cf.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
             (cf.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
-            (cf.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8);
+            (cf.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8)
+        );
         if (!hasExplicitFaces) {
             // Non-explicit components were just collapsed to subcomp 0 above,
             // so the per-subcomp shading normal for this component is the
@@ -1675,14 +1699,14 @@ fn vertexGeneration_Pass4(
 
     let cFeatIdx = active_cell_array_idx * MAX_COMPONENTS_PER_CELL + componentIdx;
     let featureStart = componentFeatures[cFeatIdx];
-    let isExplicit =
+    let featureConstraintsEnabled = uniforms.mdcU0.w != 0u;
+    let isExplicit = featureConstraintsEnabled &&
         (featureStart.kind == MID_FEATURE_LINE
             || featureStart.kind == MID_FEATURE_RING
             || featureStart.kind == MID_FEATURE_CORNER
             || featureStart.kind == MID_FEATURE_BOOLEAN_SEAM) &&
         featureStart.ownerA != 0u &&
-        featureStart.normalCount >= 2u &&
-        length(featureStart.point) > 1e-6;
+        featureStart.normalCount >= 2u;
     var snappedToFeature = false;
 
     // Snap modes:
@@ -1730,15 +1754,20 @@ fn vertexGeneration_Pass4(
                 featureTarget = featureStart.point + lineTangent * dot(vertexPos - featureStart.point, lineTangent);
                 snappedToLine = true;
             }
-        } else if ((featureStart.kind == MID_FEATURE_LINE
-                || featureStart.kind == MID_FEATURE_BOOLEAN_SEAM) &&
-            length(featureStart.tangent) > 1e-6) {
-            lineTangent = safeUnit3(featureStart.tangent);
-            featureTarget = featureStart.point + lineTangent * dot(vertexPos - featureStart.point, lineTangent);
-            snappedToLine = true;
+        } else if (featureStart.kind == MID_FEATURE_LINE
+                || featureStart.kind == MID_FEATURE_BOOLEAN_SEAM) {
+            lineTangent = featureLineTangent(featureStart);
+            if (lengthSqr(lineTangent) > 1e-8) {
+                featureTarget = featureStart.point + lineTangent * dot(vertexPos - featureStart.point, lineTangent);
+                snappedToLine = true;
+            }
+        } else if (featureStart.kind == MID_FEATURE_CORNER) {
+            snappedToFeature = true;
         }
-        vertexPos = clamp(featureTarget, cellMin, cellMax);
-        snappedToFeature = true;
+        if (snappedToLine || snappedToRing || snappedToFeature) {
+            vertexPos = clampFeatureVertex(featureTarget, cellMin, cellMax);
+            snappedToFeature = true;
+        }
     }
 
     // Iso-projection.
@@ -1801,7 +1830,7 @@ fn vertexGeneration_Pass4(
             if (inPlaneLen > 1e-8) {
                 vertexPos = featureStart.axisCenter + inPlane * (ringRadius / inPlaneLen);
             }
-            vertexPos = clamp(vertexPos, cellMin, cellMax);
+            vertexPos = clampFeatureVertex(vertexPos, cellMin, cellMax);
         }
     } else if (snappedToLine) {
         for (var iter = 0u; iter < 4u; iter = iter + 1u) {
@@ -1813,7 +1842,7 @@ fn vertexGeneration_Pass4(
             let stepSize = clamp(d / gradScale, -uniforms.voxelSize * 0.4, uniforms.voxelSize * 0.4);
             vertexPos = vertexPos - n * stepSize;
             vertexPos = featureStart.point + lineTangent * dot(vertexPos - featureStart.point, lineTangent);
-            vertexPos = clamp(vertexPos, cellMin, cellMax);
+            vertexPos = clampFeatureVertex(vertexPos, cellMin, cellMax);
         }
     }
 

@@ -116,6 +116,9 @@ export interface MDCParams {
      * Set to 180 to disable splitting.
      */
     creaseAngleDeg?: number
+
+    /** Constrain vertices onto explicit mid-tier line/corner/seam/ring feature loci. */
+    featureConstrainedPlacement?: boolean
 }
 
 export interface ProgressCallback {
@@ -267,9 +270,10 @@ export class MDCExport {
 
             orientationProbeScale = 0.5,
             orientationProbeMin = 1e-4,
+            featureConstrainedPlacement = true,
         } = this.params
         dbgLog("MdcExport").info(
-            `MDCExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
+            `MDCExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} featureConstrainedPlacement=${featureConstrainedPlacement} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
         )
         logDiag("start", {
             maxBufferSize: this.#device.limits.maxBufferSize,
@@ -304,7 +308,7 @@ export class MDCExport {
         //   mdcF1: vec4f,           // offset 48, size 16
         //   mdcF2: vec4f,           // offset 64, size 16
         //   mdcF3: vec4f,           // offset 80, size 16
-        //   mdcU0: vec4u,           // offset 96, size 16 (z = activeCellCount after compaction, byte offset 104)
+        //   mdcU0: vec4u,           // offset 96, size 16 (z = activeCellCount after compaction, byte offset 104; w = featureConstrainedPlacement)
         // } // total size = 112
         const uniformBufferData = new ArrayBuffer(112)
         new Uint32Array(uniformBufferData, 0, 3).set([gridDimX, gridDimY, gridDimZ])
@@ -324,7 +328,7 @@ export class MDCExport {
             Math.max(0, edgeProjIters) >>> 0,
             Math.max(0, vertexProjIters) >>> 0,
             0,
-            0,
+            featureConstrainedPlacement ? 1 : 0,
         ])
 
         try {

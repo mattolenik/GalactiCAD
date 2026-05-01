@@ -88,6 +88,7 @@ export class DevToolsPanel extends HTMLElement {
     #mdcExpandedCheckbox: HTMLInputElement
     #mdcExpanded$: BehaviorSubject<boolean>
     #mdcSection: HTMLDivElement
+    #mdcFeatureConstrainedPlacementCheckbox: HTMLInputElement
     #mdcRows = new Map<
         (typeof MDC_RANGE_KNOBS)[number]["key"],
         { range: HTMLInputElement; valueEl: HTMLSpanElement }
@@ -272,6 +273,7 @@ export class DevToolsPanel extends HTMLElement {
     /** Sync SHREC knobs from persisted settings (e.g. after storage load). */
     /** Sync MDC iso/crease sliders from persisted settings (e.g. after storage load). */
     syncMdcLeversFromSettings(levers: MdcExportLevers): void {
+        this.#mdcFeatureConstrainedPlacementCheckbox.checked = levers.featureConstrainedPlacement
         for (const k of MDC_RANGE_KNOBS) {
             const row = this.#mdcRows.get(k.key)
             if (!row) continue
@@ -515,6 +517,21 @@ export class DevToolsPanel extends HTMLElement {
         this.#mdcSection.appendChild(mdcHead)
 
         const mdcLevers = this.#settings.getMdcExportLevers()
+        this.#mdcFeatureConstrainedPlacementCheckbox = this.#addCheckbox(
+            this.#mdcSection,
+            "Feature-constrained vertices",
+            mdcLevers.featureConstrainedPlacement,
+        )
+        this.#mdcFeatureConstrainedPlacementCheckbox.addEventListener("change", () => {
+            this.#settings.updateGlobal({
+                app: {
+                    mdcExportLevers: {
+                        featureConstrainedPlacement: this.#mdcFeatureConstrainedPlacementCheckbox.checked,
+                    },
+                },
+            })
+            this.onMdcExportLeversChange?.()
+        })
         for (const k of MDC_RANGE_KNOBS) {
             const row = document.createElement("div")
             row.className = "shade-row"
@@ -546,17 +563,19 @@ export class DevToolsPanel extends HTMLElement {
         }
 
         const mdcDefaults = document.createElement("button")
-        mdcDefaults.textContent = "MDC iso/crease defaults"
+        mdcDefaults.textContent = "MDC defaults"
         mdcDefaults.addEventListener("click", () => {
             this.#settings.updateGlobal({
                 app: {
                     mdcExportLevers: {
                         isoValue: DEFAULT_MDC_EXPORT_LEVERS.isoValue,
                         creaseAngleDeg: DEFAULT_MDC_EXPORT_LEVERS.creaseAngleDeg,
+                        featureConstrainedPlacement: DEFAULT_MDC_EXPORT_LEVERS.featureConstrainedPlacement,
                     },
                 },
             })
             const next = this.#settings.getGlobal().app.mdcExportLevers
+            this.#mdcFeatureConstrainedPlacementCheckbox.checked = next.featureConstrainedPlacement
             for (const knob of MDC_RANGE_KNOBS) {
                 const row = this.#mdcRows.get(knob.key)
                 if (!row) continue

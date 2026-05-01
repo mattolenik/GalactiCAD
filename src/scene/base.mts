@@ -216,6 +216,13 @@ export class Node {
         throw new Error("Method not implemented.")
     }
 
+    /**
+     * MDC/export SDF variant. Implementations must mirror `compile()`'s spatial
+     * warp, use the corresponding WGSL `*Mid` transform wrapper for normals and
+     * feature payloads, and stamp leaf owners with `sdfMidSetOwner`.
+     * Smooth/blended operators should only preserve feature payloads when the
+     * feature remains geometrically meaningful for the generated surface.
+     */
     compileMid(_indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }

@@ -304,6 +304,8 @@ export interface MdcExportLevers {
     isoValue: number
     /** Crease angle (degrees) for vertex splitting; 180 disables; negative values skip the pass. */
     creaseAngleDeg: number
+    /** Constrain MDC vertices onto explicit mid-tier line/corner/seam/ring feature loci. */
+    featureConstrainedPlacement: boolean
     /** Fraction of triangles to keep after simplification (must be < 1 to simplify). */
     simplifyTargetRatio: number
     /** Max geometric error for simplifier (relative unless `simplifyErrorAbsolute` is set in worker). */
@@ -318,6 +320,7 @@ export const DEFAULT_MDC_EXPORT_LEVERS: MdcExportLevers = {
     voxelSizeMm: 0.1,
     isoValue: 0,
     creaseAngleDeg: 30,
+    featureConstrainedPlacement: true,
     simplifyTargetRatio: 0.1,
     simplifyTargetError: 0.001,
     simplifyNormalWeight: 0,

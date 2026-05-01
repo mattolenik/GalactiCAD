@@ -1070,6 +1070,7 @@ export class RenderWorkerCore {
                     gridOffsetZ: minZ,
                     voxelSize: voxelSizeMm,
                     creaseAngleDeg: levers.creaseAngleDeg,
+                    featureConstrainedPlacement: levers.featureConstrainedPlacement,
                 }
                 const mdcCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)

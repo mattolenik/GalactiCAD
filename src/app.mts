@@ -1432,6 +1432,8 @@ class App {
                 })
                 const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName, {
                     simplifyOnExport: devTools.meshSimplifyOnExport,
+                    meshExporter: devTools.meshExporter,
+                    meshAscTierIndex: devTools.meshAscTierIndex,
                 })
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
@@ -1507,6 +1509,8 @@ class App {
             try {
                 const mesh = await this.renderer.renderMesh(src, this.#tabs.active, {
                     simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
+                    meshExporter: this.#toolbarRefs.devTools.meshExporter,
+                    meshAscTierIndex: this.#toolbarRefs.devTools.meshAscTierIndex,
                 })
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {
@@ -1514,7 +1518,17 @@ class App {
                 }
             } catch (err) {
                 // Mesh generation failing shouldn't break the live SDF preview.
-                debugLog("App").error("Mesh update failed:", err)
+                const msg = err instanceof Error ? err.message : String(err)
+                const expected =
+                    msg.startsWith("ASC mesh:") ||
+                    msg.startsWith("ASC grid sample:") ||
+                    msg.includes("Bounds compute found no inside samples") ||
+                    msg === "Document changed"
+                if (expected) {
+                    debugLog("App").warn("Mesh update skipped:", msg)
+                } else {
+                    debugLog("App").error("Mesh update failed:", err)
+                }
             }
         }, MESH_UPDATE_DEBOUNCE_MS)
     }

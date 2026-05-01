@@ -18,6 +18,8 @@ import {
     DEFAULT_PREVIEW_SHADING,
     type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
+    type MeshAscTierIndex,
+    type MeshExporter,
     type PreviewShadingParams,
     type SceneBuildPipelineMs,
     type WorkerToMainMessage,
@@ -43,7 +45,7 @@ export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
 export { EdgeKind } from "./edge-kind.mjs"
 
-export type { SerializedNode, BuildTimingBreakdownMs, SceneBuildPipelineMs } from "./render-worker-protocol.mjs"
+export type { SerializedNode, BuildTimingBreakdownMs, SceneBuildPipelineMs, MeshExporter, MeshAscTierIndex } from "./render-worker-protocol.mjs"
 
 function roundScenePerfMs(x: number): number {
     return Math.round(x * 100) / 100
@@ -144,7 +146,18 @@ export class SDFRenderer {
     #latestBuildRequestId = 0
     #latestRenderMeshRequestId = 0
     #latestThumbnailRequestId = 0
-    #pendingTranspile = new Map<number, { kind: TranspileKind; documentName?: string; width?: number; height?: number; simplifyOnExport?: boolean }>()
+    #pendingTranspile = new Map<
+        number,
+        {
+            kind: TranspileKind
+            documentName?: string
+            width?: number
+            height?: number
+            simplifyOnExport?: boolean
+            meshExporter?: MeshExporter
+            meshAscTierIndex?: MeshAscTierIndex
+        }
+    >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
     /** Wall-time anchors for `build()` request ids (transpile → worker round-trip). */
     #buildChronicleByRequestId = new Map<
@@ -540,7 +553,15 @@ export class SDFRenderer {
                 this.#pendingRenderMesh.delete(requestId)
                 return
             }
-            this.#worker.postMessage({ type: "renderMesh", body, requestId, documentName: pending.documentName, simplifyOnExport: pending.simplifyOnExport })
+            this.#worker.postMessage({
+                type: "renderMesh",
+                body,
+                requestId,
+                documentName: pending.documentName,
+                simplifyOnExport: pending.simplifyOnExport,
+                meshExporter: pending.meshExporter ?? "mdc",
+                meshAscTierIndex: pending.meshAscTierIndex,
+            })
         } else if (pending.kind === "thumbnail") {
             if (requestId !== this.#latestThumbnailRequestId) {
                 this.#pendingThumbnail.get(requestId)?.reject(new Error("Superseded"))
@@ -1498,11 +1519,17 @@ export class SDFRenderer {
         await this.build(SDFRenderer.EMPTY_SCENE_SRC)
     }
 
-    async renderMesh(_src: string, documentName?: string, options?: { simplifyOnExport?: boolean }): Promise<MeshData> {
+    async renderMesh(
+        _src: string,
+        documentName?: string,
+        options?: { simplifyOnExport?: boolean; meshExporter?: MeshExporter; meshAscTierIndex?: MeshAscTierIndex },
+    ): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
         this.#latestRenderMeshRequestId = requestId
         const simplifyOnExport = options?.simplifyOnExport ?? true
-        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport })
+        const meshExporter = options?.meshExporter ?? "mdc"
+        const meshAscTierIndex = options?.meshAscTierIndex
+        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport, meshExporter, meshAscTierIndex })
         return new Promise<MeshData>((resolve, reject) => {
             this.#pendingRenderMesh.set(requestId, { resolve, reject })
             this.#transpileWorker.postMessage({ type: "transpile", src: _src.trim(), requestId, kind: "renderMesh", documentName })

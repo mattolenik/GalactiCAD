@@ -13,6 +13,8 @@ import boundsShader from "./shaders/bounds.wgsl"
 import mdcShader from "./shaders/mdc.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
+import { AscExport, ascGridSampleShader, type AscParams } from "./export/asc.mjs"
+import type { MeshData } from "./export/export.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
@@ -36,6 +38,8 @@ import {
     DEFAULT_PREVIEW_SHADING,
     type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
+    type MeshAscTierIndex,
+    type MeshExporter,
     type PreviewShadingParams,
     type RenderSelectionState,
     type SelectedEdgePayload,
@@ -939,7 +943,14 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(body: string, requestId?: number, documentName?: string, simplifyOnExport = true): Promise<void> {
+    async handleRenderMesh(
+        body: string,
+        requestId?: number,
+        documentName?: string,
+        simplifyOnExport = true,
+        meshExporter?: MeshExporter,
+        meshAscTierIndex?: MeshAscTierIndex,
+    ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
                 await this.build(body, undefined)
@@ -949,7 +960,7 @@ export class RenderWorkerCore {
                 self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId, documentName })
                 return
             }
-            const voxelSizeMm = 0.1
+            let voxelMm = 0.1
             const pad = 3.2
             const minX = bounds.min[0] - pad
             const minY = bounds.min[1] - pad
@@ -957,12 +968,51 @@ export class RenderWorkerCore {
             const maxX = bounds.max[0] + pad
             const maxY = bounds.max[1] + pad
             const maxZ = bounds.max[2] + pad
-            const sizeX = Math.max(voxelSizeMm, maxX - minX)
-            const sizeY = Math.max(voxelSizeMm, maxY - minY)
-            const sizeZ = Math.max(voxelSizeMm, maxZ - minZ)
-            const gridDimX = Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1)
-            const gridDimY = Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1)
-            const gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelSizeMm) + 1)
+            const sizeX = Math.max(voxelMm, maxX - minX)
+            const sizeY = Math.max(voxelMm, maxY - minY)
+            const sizeZ = Math.max(voxelMm, maxZ - minZ)
+            let gridDimX = Math.max(2, Math.ceil(sizeX / voxelMm) + 1)
+            let gridDimY = Math.max(2, Math.ceil(sizeY / voxelMm) + 1)
+            let gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelMm) + 1)
+
+            const exporter: MeshExporter = meshExporter ?? "mdc"
+            const rawTier = meshAscTierIndex
+            let ascTier: MeshAscTierIndex = 2
+            if (typeof rawTier === "number" && Number.isInteger(rawTier) && rawTier >= 0 && rawTier <= 3) {
+                ascTier = rawTier as MeshAscTierIndex
+            }
+
+            const maxAscSamples = Math.min(
+                50_000_000,
+                Math.floor(this.#device.limits.maxStorageBufferBindingSize / Float32Array.BYTES_PER_ELEMENT),
+            )
+            if (exporter === "asc") {
+                const initialVoxelMm = voxelMm
+                let totalVertices = gridDimX * gridDimY * gridDimZ
+                for (let i = 0; i < 96 && totalVertices > maxAscSamples; i++) {
+                    const ratio = totalVertices / maxAscSamples
+                    voxelMm *= Math.cbrt(ratio) * 1.05
+                    gridDimX = Math.max(2, Math.ceil(sizeX / voxelMm) + 1)
+                    gridDimY = Math.max(2, Math.ceil(sizeY / voxelMm) + 1)
+                    gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelMm) + 1)
+                    totalVertices = gridDimX * gridDimY * gridDimZ
+                }
+                if (totalVertices > maxAscSamples) {
+                    self.postMessage({
+                        type: "renderMeshResult",
+                        error: `ASC mesh: cannot fit bounds in ${maxAscSamples.toLocaleString()} scalar samples (device buffer limit). Try MDC export or a smaller scene.`,
+                        requestId,
+                        documentName,
+                    })
+                    return
+                }
+                if (voxelMm > initialVoxelMm + 1e-12) {
+                    log("RenderWorker").info(
+                        `ASC mesh: voxel step ${initialVoxelMm.toFixed(3)}→${voxelMm.toFixed(3)} mm → grid ${gridDimX}×${gridDimY}×${gridDimZ} (${totalVertices.toLocaleString()} samples, max ${maxAscSamples.toLocaleString()}).`,
+                    )
+                }
+            }
+
             const params: MDCParams = {
                 gridDimX,
                 gridDimY,
@@ -971,7 +1021,7 @@ export class RenderWorkerCore {
                 gridOffsetX: minX,
                 gridOffsetY: minY,
                 gridOffsetZ: minZ,
-                voxelSize: voxelSizeMm,
+                voxelSize: voxelMm,
                 ...(simplifyOnExport && {
                     simplifyTargetRatio: 0.1,
                     simplifyRegularize: false,
@@ -995,15 +1045,49 @@ export class RenderWorkerCore {
                 .replace("insert", "sceneSDF_fast", sceneSDF_fast)
                 .replace("insert", "sceneSDF", sceneSDF)
                 .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-            const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
-            const mdc = new MDCExport(
-                this.#helper,
-                params,
-                this.#uniformBuffers.polygonVertices,
-                this.#uniformBuffers.faceSelection,
-                this.#uniformBuffers.mdcSceneParams,
-            )
-            const mesh = await mdc.export(mdcShaderModule)
+
+            let mesh: MeshData
+
+            if (exporter === "asc") {
+                const ascShaderModule = shaderCompiler.compile(ascGridSampleShader, "ASC Grid Sample")
+                const ascParams: AscParams = {
+                    gridDimX,
+                    gridDimY,
+                    gridDimZ,
+                    isoValue: 0.0,
+                    gridOffsetX: minX,
+                    gridOffsetY: minY,
+                    gridOffsetZ: minZ,
+                    voxelSize: voxelMm,
+                    tierIndex: ascTier,
+                    ...(simplifyOnExport && {
+                        simplifyTargetRatio: 0.1,
+                        simplifyRegularize: false,
+                        simplifyLockBorder: true,
+                        simplifyPrune: false,
+                        simplifySparse: false,
+                        simplifyTargetError: 0.001,
+                    }),
+                }
+                const asc = new AscExport(
+                    this.#helper,
+                    ascParams,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.mdcSceneParams,
+                )
+                mesh = await asc.export(ascShaderModule)
+            } else {
+                const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
+                const mdc = new MDCExport(
+                    this.#helper,
+                    params,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.mdcSceneParams,
+                )
+                mesh = await mdc.export(mdcShaderModule)
+            }
             self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)

@@ -1,0 +1,13 @@
+CVS tag		Description
+
+ASC_1_0         This revision contains the full package of ASC. It is the
+		the superset of the ASC demo version 1.0 released through my
+		website. However, version 1.0 is only compilable on UNIX
+		platform, not Windows. Since I did not test it before I 
+		use CVS to archive it. There are some minor compilation
+		errors which can be easily fixed.
+
+ASC_2_0		This revision of ASC is Cross-Platform. It can be compiled
+		on Solaris and Windows. SGI platform is no longer supported.
+		The major different is the handling of byte-order problem.
+		

@@ -13,6 +13,8 @@ import {
 } from "../benchmark/benchmark.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
+    type MeshAscTierIndex,
+    type MeshExporter,
     type PreviewShadingParams,
 } from "../render-worker-protocol.mjs"
 import { DEBUG_LOG_MODULES, log, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
@@ -56,6 +58,11 @@ export class DevToolsPanel extends HTMLElement {
     #meshViewer$: BehaviorSubject<boolean>
     #meshSimplifyCheckbox: HTMLInputElement
     #meshSimplify$: BehaviorSubject<boolean>
+    #meshExporter$: BehaviorSubject<MeshExporter>
+    #meshAscTier$: BehaviorSubject<MeshAscTierIndex>
+    #meshExporterSelect: HTMLSelectElement
+    #meshAscTierSelect: HTMLSelectElement
+    #meshAscTierRow: HTMLLabelElement
     #lightingExpandedCheckbox: HTMLInputElement
     #lightingExpanded$: BehaviorSubject<boolean>
     #lightingSection: HTMLDivElement
@@ -145,6 +152,22 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshSimplify$.next(enabled)
     }
 
+    get meshExporter(): MeshExporter {
+        return this.#meshExporter$.value
+    }
+
+    set meshExporter(v: MeshExporter) {
+        this.#meshExporter$.next(v)
+    }
+
+    get meshAscTierIndex(): MeshAscTierIndex {
+        return this.#meshAscTier$.value
+    }
+
+    set meshAscTierIndex(t: MeshAscTierIndex) {
+        this.#meshAscTier$.next(t)
+    }
+
     /** Show or hide the panel */
     get visible(): boolean {
         return this.style.display !== "none"
@@ -214,6 +237,16 @@ export class DevToolsPanel extends HTMLElement {
             opacity: 0.5;
             cursor: not-allowed;
         }
+        select {
+            font-size: 11px;
+            font-family: system-ui, sans-serif;
+            color: inherit;
+            background: rgb(from var(${__fg_color}) r g b / 0.08);
+            border: 1px solid var(${__tone_1});
+            border-radius: 3px;
+            padding: 1px 4px;
+            max-width: 200px;
+        }
         .shade-head {
             font-size: 10px;
             opacity: 0.75;
@@ -276,6 +309,8 @@ export class DevToolsPanel extends HTMLElement {
         this.#showFps$ = new BehaviorSubject(g.showFps)
         this.#meshViewer$ = new BehaviorSubject(g.meshViewerEnabled)
         this.#meshSimplify$ = new BehaviorSubject(g.meshSimplifyOnExport)
+        this.#meshExporter$ = new BehaviorSubject(g.meshExporter)
+        this.#meshAscTier$ = new BehaviorSubject(g.meshAscTierIndex)
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
@@ -305,6 +340,84 @@ export class DevToolsPanel extends HTMLElement {
             this.#settings.updateGlobal({ app: { meshSimplifyOnExport: v } })
             this.onMeshSimplifyChange?.(v)
         })
+
+        const mesherRow = document.createElement("label")
+        mesherRow.style.display = "flex"
+        mesherRow.style.alignItems = "center"
+        mesherRow.style.gap = "6px"
+        mesherRow.style.fontSize = "11px"
+        mesherRow.title =
+            "MDC: dual contouring (default). ASC: alternate mesher; very large grids may exceed GPU sample-buffer limits—switch back to MDC if export fails."
+        const mesherLbl = document.createElement("span")
+        mesherLbl.textContent = "Mesher"
+        this.#meshExporterSelect = document.createElement("select")
+        this.#meshExporterSelect.setAttribute("aria-label", "Mesh export backend")
+        const optMdc = document.createElement("option")
+        optMdc.value = "mdc"
+        optMdc.textContent = "MDC (dual contour)"
+        const optAsc = document.createElement("option")
+        optAsc.value = "asc"
+        optAsc.textContent = "ASC"
+        this.#meshExporterSelect.append(optMdc, optAsc)
+        this.#meshExporterSelect.value = this.#meshExporter$.value
+        this.#meshExporterSelect.addEventListener("change", () => {
+            const v = this.#meshExporterSelect.value
+            if (v === "mdc" || v === "asc") this.#meshExporter$.next(v)
+        })
+        this.#subscriptions.push(this.#meshExporter$.subscribe(v => {
+            this.#meshExporterSelect.value = v
+        }))
+        this.#subscriptions.push(
+            this.#meshExporter$.pipe(skip(1)).subscribe(v => {
+                this.#settings.updateGlobal({ app: { meshExporter: v } })
+            }),
+        )
+        mesherRow.append(mesherLbl, this.#meshExporterSelect)
+        shadow.appendChild(mesherRow)
+
+        this.#meshAscTierRow = document.createElement("label")
+        this.#meshAscTierRow.style.display = "flex"
+        this.#meshAscTierRow.style.alignItems = "center"
+        this.#meshAscTierRow.style.gap = "6px"
+        this.#meshAscTierRow.style.fontSize = "11px"
+        this.#meshAscTierRow.hidden = this.#meshExporter$.value !== "asc"
+        this.#meshAscTierRow.title = "ASC binary block tier (asc.h): lower tiers use smaller macro-blocks and can cost much more CPU/RAM."
+        const tierLbl = document.createElement("span")
+        tierLbl.textContent = "ASC tier"
+        this.#meshAscTierSelect = document.createElement("select")
+        this.#meshAscTierSelect.setAttribute("aria-label", "ASC subdivision tier")
+        const tierChoices: { v: MeshAscTierIndex; label: string }[] = [
+            { v: 0, label: "ASC1 (N=1)" },
+            { v: 1, label: "asc2 (N=2)" },
+            { v: 2, label: "asc4 (N=4)" },
+            { v: 3, label: "asc8 (N=8)" },
+        ]
+        for (const { v, label } of tierChoices) {
+            const o = document.createElement("option")
+            o.value = String(v)
+            o.textContent = label
+            this.#meshAscTierSelect.appendChild(o)
+        }
+        this.#meshAscTierSelect.value = String(this.#meshAscTier$.value)
+        this.#meshAscTierSelect.addEventListener("change", () => {
+            const t = Number(this.#meshAscTierSelect.value)
+            if (t >= 0 && t <= 3 && Number.isInteger(t)) this.#meshAscTier$.next(t as MeshAscTierIndex)
+        })
+        this.#subscriptions.push(this.#meshAscTier$.subscribe(t => {
+            this.#meshAscTierSelect.value = String(t)
+        }))
+        this.#subscriptions.push(
+            this.#meshAscTier$.pipe(skip(1)).subscribe(t => {
+                this.#settings.updateGlobal({ app: { meshAscTierIndex: t } })
+            }),
+        )
+        this.#subscriptions.push(
+            this.#meshExporter$.subscribe(ex => {
+                this.#meshAscTierRow.hidden = ex !== "asc"
+            }),
+        )
+        this.#meshAscTierRow.append(tierLbl, this.#meshAscTierSelect)
+        shadow.appendChild(this.#meshAscTierRow)
 
         this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)
         this.#subscriptions.push(connectCheckbox(this.#cameraOptCheckbox, this.#cameraOptimization$))

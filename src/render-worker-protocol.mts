@@ -7,6 +7,12 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import type { MeshData } from "./export/export.mjs"
 
+/** Mesh extraction backend for `renderMesh` (STL / mesh viewer). */
+export type MeshExporter = "mdc" | "asc"
+
+/** ASC binary subdivision tier (`asc.h` headers): 0 = ASC1 … 3 = asc8. */
+export type MeshAscTierIndex = 0 | 1 | 2 | 3
+
 /** Worker-reported `#doBuild` breakdown (ms); used for devtools / regression triage. */
 export interface BuildTimingBreakdownMs {
     sceneConstructMs: number
@@ -138,7 +144,17 @@ export type MainToWorkerMessage =
     // previewParamsF32Patch: cap-drag only — patches #previewF32Shadow then 8-byte write to previewCapParamDrag at byteOffset.
     // Does not touch boundsSceneParams or mdcSceneParams (those refresh on build / param-only build).
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; previewParamsF32Patch?: { byteOffset: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
-    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
+    | {
+          type: "renderMesh"
+          body: string
+          requestId?: number
+          documentName?: string
+          simplifyOnExport?: boolean
+          /** Default `"mdc"` when omitted. */
+          meshExporter?: MeshExporter
+          /** Used when `meshExporter === "asc"`; default tier in worker is `2` (asc4). */
+          meshAscTierIndex?: MeshAscTierIndex
+      }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }

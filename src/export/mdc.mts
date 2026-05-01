@@ -1,3 +1,4 @@
+import { stripSamplingGridShellTriangles } from "./grid-shell-filter.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
 import { MeshData } from "./export.mjs"
@@ -797,6 +798,27 @@ export class MDCExport {
                 }
             }
 
+            {
+                const p = this.params
+                const before = (tris.length / 3) | 0
+                const stripped = stripSamplingGridShellTriangles(
+                    { verts, tris },
+                    p.gridOffsetX,
+                    p.gridOffsetY,
+                    p.gridOffsetZ,
+                    p.gridDimX,
+                    p.gridDimY,
+                    p.gridDimZ,
+                    p.voxelSize,
+                )
+                verts = stripped.verts
+                tris = stripped.tris
+                const after = (tris.length / 3) | 0
+                if (after < before) {
+                    dbgLog("MdcExport").info(`MDC grid-shell filter: removed ${before - after} triangles on sampling-box faces (${before} → ${after})`)
+                }
+            }
+
             // Vertex splitting at sharp edges (crease detection).
             // The GPU produces one normal per vertex via SDF gradient, which is
             // discontinuous at sharp features. Split vertices at creases and assign
@@ -941,7 +963,7 @@ function triSharesEdge(tris: Uint32Array, t0: number, t1: number, sharedVert: nu
  *
  * Unreferenced input vertices are dropped (implicit compaction).
  */
-function splitCreaseVertices(
+export function splitCreaseVertices(
     verts: Float32Array<ArrayBuffer>,
     tris: Uint32Array<ArrayBuffer>,
     creaseAngleDeg: number,

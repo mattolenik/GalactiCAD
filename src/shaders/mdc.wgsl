@@ -1586,7 +1586,7 @@ fn edgeDetection_Pass3(
     // We repurpose feature.n0/n1/n2 as the per-subcomp shading normal so Pass 4
     // can address the sub-vertex face normal as `feature.n[s]`.
     //
-    // - Explicit features (LINE/CORNER/SEAM with valid face normals): we
+    // - Explicit features (LINE/RING/CORNER/SEAM with valid face normals): we
     //   rebucketed crossings to match feature.n_s above, so the canonical
     //   shading normal for sub-vertex s IS feature.n_s. We keep those values
     //   intact (they're already aligned).
@@ -1601,6 +1601,7 @@ fn edgeDetection_Pass3(
         var cf = inferredFeatures[c];
         let hasExplicitFaces = featureConstraintsEnabled && (
             (cf.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
+            (cf.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) ||
             (cf.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
             (cf.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8)
         );

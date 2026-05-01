@@ -1,5 +1,73 @@
 import { log as dbgLog, type LogModule } from "../logging/debug-log.mjs"
 
+/** Knuth mix for open-addressing edge keys (undirected lo/hi vertex indices). */
+const EDGE_HASH_K = 0x9e3779b1 | 0
+
+/** One open-addressed slot = stride consecutive `i32` values (vertex indices are ≥ 0; `lo === -1` marks empty). */
+const EDGE_REORIENT_STRIDE = 8
+const ER_LO = 0
+const ER_HI = 1
+const ER_T0 = 2
+const ER_T1 = 3
+const ER_CNT = 4
+const ER_D0 = 5
+const ER_D1 = 6
+
+const EDGE_STATS_STRIDE = 4
+const ES_LO = 0
+const ES_HI = 1
+const ES_CNT = 2
+
+function edgeHashMaskFromTriCount(triCount: number): number {
+    let n = 1
+    const target = Math.max(256, triCount * 8)
+    while (n < target) n <<= 1
+    return n - 1
+}
+
+/** Probe chain for (lo,hi); returns slot index or -1 if missing. */
+function edgeFindSlotReorient(lo: number, hi: number, buf: Int32Array, mask: number): number {
+    const S = EDGE_REORIENT_STRIDE
+    let h = Math.imul(
+        lo ^ Math.imul(hi, EDGE_HASH_K) ^ Math.imul((lo + hi) | 0, EDGE_HASH_K ^ 0x12345678),
+        EDGE_HASH_K,
+    )
+    let p = (h >>> 0) & mask
+    for (let guard = 0; guard <= mask; guard++) {
+        const b = p * S
+        if (buf[b + ER_LO]! === -1) return -1
+        if (buf[b + ER_LO] === lo && buf[b + ER_HI] === hi) return p
+        p = (p + 1) & mask
+    }
+    return -1
+}
+
+/** Insert or return existing slot for undirected edge (lo,hi), lo < hi. */
+function edgeTouchSlotReorient(lo: number, hi: number, buf: Int32Array, mask: number): number {
+    const S = EDGE_REORIENT_STRIDE
+    let h = Math.imul(
+        lo ^ Math.imul(hi, EDGE_HASH_K) ^ Math.imul((lo + hi) | 0, EDGE_HASH_K ^ 0x12345678),
+        EDGE_HASH_K,
+    )
+    let p = (h >>> 0) & mask
+    for (let guard = 0; guard <= mask; guard++) {
+        const b = p * S
+        if (buf[b + ER_LO]! === -1) {
+            buf[b + ER_LO] = lo
+            buf[b + ER_HI] = hi
+            buf[b + ER_T0] = -1
+            buf[b + ER_T1] = -1
+            buf[b + ER_CNT] = 0
+            buf[b + ER_D0] = 0
+            buf[b + ER_D1] = 0
+            return p
+        }
+        if (buf[b + ER_LO] === lo && buf[b + ER_HI] === hi) return p
+        p = (p + 1) & mask
+    }
+    throw new Error("reorientMeshTriangleWinding: edge hash table full (increase load factor)")
+}
+
 /** Optional meshoptimizer simplify knobs (subset of `MDCParams`). */
 export interface MeshSimplifyParams {
     simplifyTargetRatio?: number
@@ -26,14 +94,12 @@ export function reorientMeshTriangleWinding(
     const triCount = Math.floor(tris.length / 3)
     if (triCount <= 0) return
 
-    type EdgeEntry = { t0: number; d0: number; t1: number; d1: number; count: number }
-    const edgeMap = new Map<bigint, EdgeEntry>()
+    // V8 caps JS Map size (~2^24); dense ISO meshes exceed it — use open addressing instead.
+    const emMask = edgeHashMaskFromTriCount(triCount)
+    const emSize = emMask + 1
+    const emBuf = new Int32Array(emSize * EDGE_REORIENT_STRIDE)
+    emBuf.fill(-1)
 
-    const edgeKey = (a: number, b: number) => {
-        const lo = a < b ? a : b
-        const hi = a < b ? b : a
-        return (BigInt(lo) << 32n) | BigInt(hi >>> 0)
-    }
     const edgeDir = (a: number, b: number) => {
         return a < b ? 0 : 1
     }
@@ -49,17 +115,18 @@ export function reorientMeshTriangleWinding(
         ]
         for (const [a, b] of edges) {
             if (a === b) continue
-            const k = edgeKey(a, b)
+            const lo = a < b ? a : b
+            const hi = a < b ? b : a
             const d = edgeDir(a, b)
-            const e = edgeMap.get(k)
-            if (!e) {
-                edgeMap.set(k, { t0: t, d0: d, t1: -1, d1: 0, count: 1 })
-            } else {
-                e.count++
-                if (e.t1 === -1) {
-                    e.t1 = t
-                    e.d1 = d
-                }
+            const s = edgeTouchSlotReorient(lo, hi, emBuf, emMask)
+            const bOff = s * EDGE_REORIENT_STRIDE
+            emBuf[bOff + ER_CNT]++
+            if (emBuf[bOff + ER_T0] === -1) {
+                emBuf[bOff + ER_T0] = t
+                emBuf[bOff + ER_D0] = d
+            } else if (emBuf[bOff + ER_T1] === -1) {
+                emBuf[bOff + ER_T1] = t
+                emBuf[bOff + ER_D1] = d
             }
         }
     }
@@ -90,15 +157,18 @@ export function reorientMeshTriangleWinding(
 
             for (const [a, b] of edges) {
                 if (a === b) continue
-                const k = edgeKey(a, b)
-                const e = edgeMap.get(k)
-                if (!e || e.count !== 2 || e.t1 === -1) continue
-                const curIs0 = e.t0 === t
-                const nt = curIs0 ? e.t1 : e.t0
+                const lo = a < b ? a : b
+                const hi = a < b ? b : a
+                const s = edgeFindSlotReorient(lo, hi, emBuf, emMask)
+                if (s < 0) continue
+                const bOff = s * EDGE_REORIENT_STRIDE
+                if (emBuf[bOff + ER_CNT] !== 2 || emBuf[bOff + ER_T1] === -1) continue
+                const curIs0 = emBuf[bOff + ER_T0] === t
+                const nt = curIs0 ? emBuf[bOff + ER_T1]! : emBuf[bOff + ER_T0]!
                 if (nt < 0) continue
 
-                const dCur = curIs0 ? e.d0 : e.d1
-                const dNei = curIs0 ? e.d1 : e.d0
+                const dCur = curIs0 ? emBuf[bOff + ER_D0]! : emBuf[bOff + ER_D1]!
+                const dNei = curIs0 ? emBuf[bOff + ER_D1]! : emBuf[bOff + ER_D0]!
 
                 const desiredFlipNei = (dNei ^ dCur ^ flip[t] ^ 1) & 1
 
@@ -696,6 +766,34 @@ export async function optionalSimplifyExportedMesh(
 }
 
 /**
+ * Increment count for undirected edge (lo,hi); `buf` is `Int32Array` of length
+ * `(mask + 1) * EDGE_STATS_STRIDE` with `lo === -1` marking an empty slot.
+ */
+function edgeIncCountStats(lo: number, hi: number, buf: Int32Array, mask: number): void {
+    const S = EDGE_STATS_STRIDE
+    let h = Math.imul(
+        lo ^ Math.imul(hi, EDGE_HASH_K) ^ Math.imul((lo + hi) | 0, EDGE_HASH_K ^ 0x12345678),
+        EDGE_HASH_K,
+    )
+    let p = (h >>> 0) & mask
+    for (let guard = 0; guard <= mask; guard++) {
+        const b = p * S
+        if (buf[b + ES_LO]! === -1) {
+            buf[b + ES_LO] = lo
+            buf[b + ES_HI] = hi
+            buf[b + ES_CNT] = 1
+            return
+        }
+        if (buf[b + ES_LO] === lo && buf[b + ES_HI] === hi) {
+            buf[b + ES_CNT]++
+            return
+        }
+        p = (p + 1) & mask
+    }
+    throw new Error("logExportMeshSanityStats: edge count hash overflow")
+}
+
+/**
  * Boundary / non-manifold edge counts and degenerate triangle tally (same logic as legacy MDC export).
  */
 export function logExportMeshSanityStats(
@@ -711,13 +809,16 @@ export function logExportMeshSanityStats(
     const areaEpsSq = Math.pow(voxelSize * voxelSize * 1e-6, 2)
     let degenerate = 0
 
-    const edgeCounts = new Map<bigint, number>()
+    const ecMask = edgeHashMaskFromTriCount(triCount)
+    const ecSize = ecMask + 1
+    const ecBuf = new Int32Array(ecSize * EDGE_STATS_STRIDE)
+    ecBuf.fill(-1)
+
     const addEdge = (a: number, b: number) => {
         if (a === b) return
         const lo = a < b ? a : b
         const hi = a < b ? b : a
-        const key = (BigInt(lo) << 32n) | BigInt(hi >>> 0)
-        edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1)
+        edgeIncCountStats(lo, hi, ecBuf, ecMask)
     }
 
     const vpos = (vidx: number) => {
@@ -750,7 +851,11 @@ export function logExportMeshSanityStats(
 
     let boundaryEdges = 0
     let nonManifoldEdges = 0
-    for (const c of edgeCounts.values()) {
+    const S = EDGE_STATS_STRIDE
+    for (let p = 0; p < ecSize; p++) {
+        const b = p * S
+        if (ecBuf[b + ES_LO]! === -1) continue
+        const c = ecBuf[b + ES_CNT]!
         if (c === 1) boundaryEdges++
         else if (c !== 2) nonManifoldEdges++
     }

@@ -65,15 +65,26 @@ function dropDegenerateTriangles(
 }
 
 /**
- * Deduplicate Pass-6 mesh vertices by quantized world position. Sums the analytic-gradient
- * normals across collapsed duplicates (Pass 6 writes `safeUnit3(sceneSDF_mid(pos).n)` per
- * triangle corner) and renormalizes; positions remain bit-identical because they come from
- * deterministic `interp_iso_crossing` of the same DualVertex pair.
+ * Deduplicate Pass-6 mesh vertices by quantized **grid-local** position (world minus export
+ * grid origin). Sums the analytic-gradient normals across collapsed duplicates (Pass 6 writes
+ * `safeUnit3(sceneSDF_mid(pos).n)` per triangle corner) and renormalizes; positions stay
+ * bit-identical per bucket because duplicates share the same crossing math.
  *
- * Quant step is `voxelSize * 1e-2` — well above float32 ULP for typical CAD coordinates
- * but small enough that adjacent grid crossings never collide (closest spacing is ~voxel).
+ * Quant step is `voxelSize * 1e-3` — absorbs float ULP drift without merging distinct
+ * contour vertices on adjacent tet edges (typically separated by a noticeable fraction of a voxel).
+ *
+ * We quantize **local** coords so `round(local * invQuant)` stays in int32 range for realistic
+ * grids (world-space quantization alone overflowed int32 for large `gridOffset`, collapsing
+ * unrelated vertices into one bucket and producing thin triangles to a single spurious point).
  */
-function weldIsoMeshByQuantizedPosition(verts: Float32Array, tris: Uint32Array, voxelSize: number): MeshData {
+function weldIsoMeshByQuantizedPosition(
+    verts: Float32Array,
+    tris: Uint32Array,
+    voxelSize: number,
+    gridOriginX: number,
+    gridOriginY: number,
+    gridOriginZ: number,
+): MeshData {
     const vertexCount = (verts.length / VERTEX_STRIDE_F32) | 0
 
     // 0.1% of a voxel = 0.5 µm at voxel=0.5 mm. Large enough to absorb any ULP-level drift
@@ -82,32 +93,35 @@ function weldIsoMeshByQuantizedPosition(verts: Float32Array, tris: Uint32Array, 
     const quant = Math.max(voxelSize * 1e-3, Number.EPSILON * 2)
     const invQuant = 1 / quant
 
-    // Open-addressing hash table on quantized 3D coords (qx, qy, qz). We use a 4-Uint32-
-    // per-slot layout: (qx, qy, qz, dstSlot). Comparison on insert/lookup is 3 i32 equals
-    // — much faster than BigInt key allocation + Map<bigint, number> at ~10M+ vertices.
+    // Open-addressing hash table on quantized 3D coords (qx, qy, qz). We use a 4-int32-
+    // per-slot layout: (qx, qy, qz, dstSlot). `occupied[i]` marks whether slot `i` is in use
+    // (avoids INT32_MIN / INT32_MAX sentinel collisions with legitimate quantized keys).
     // Power-of-2 size, ≤ 50% load factor → average probe count well under 2.
     let hashEntries = 1
     const target = Math.max(64, vertexCount * 2)
     while (hashEntries < target) hashEntries <<= 1
     const hashMask = hashEntries - 1
     const hash = new Int32Array(hashEntries * 4)
-    hash.fill(-2147483648) // sentinel: no slot key can be INT32_MIN since we offset/round.
+    const occupied = new Uint8Array(hashEntries)
     const HASH_KNUTH = 0x9e3779b1 | 0
     const remap = new Uint32Array(vertexCount)
     let outVerts = 0
 
     for (let i = 0; i < vertexCount; i++) {
         const src = i * VERTEX_STRIDE_F32
-        const qx = Math.round(verts[src]! * invQuant) | 0
-        const qy = Math.round(verts[src + 1]! * invQuant) | 0
-        const qz = Math.round(verts[src + 2]! * invQuant) | 0
+        const lx = verts[src]! - gridOriginX
+        const ly = verts[src + 1]! - gridOriginY
+        const lz = verts[src + 2]! - gridOriginZ
+        const qx = Math.round(lx * invQuant) | 0
+        const qy = Math.round(ly * invQuant) | 0
+        const qz = Math.round(lz * invQuant) | 0
         // Mix the 3 quantized coords into a single 32-bit hash via two Knuth multiplies.
         let h = Math.imul(qx ^ Math.imul(qy, HASH_KNUTH) ^ Math.imul(qz, HASH_KNUTH ^ 0x12345678), HASH_KNUTH)
         let probe = (h >>> 0) & hashMask
         while (true) {
             const base = probe * 4
-            const ekx = hash[base]!
-            if (ekx === -2147483648) {
+            if (!occupied[probe]!) {
+                occupied[probe] = 1
                 hash[base] = qx
                 hash[base + 1] = qy
                 hash[base + 2] = qz
@@ -115,7 +129,7 @@ function weldIsoMeshByQuantizedPosition(verts: Float32Array, tris: Uint32Array, 
                 remap[i] = outVerts++
                 break
             }
-            if (ekx === qx && hash[base + 1]! === qy && hash[base + 2]! === qz) {
+            if (hash[base]! === qx && hash[base + 1]! === qy && hash[base + 2]! === qz) {
                 remap[i] = hash[base + 3]!
                 break
             }
@@ -349,28 +363,6 @@ export class ISOExport {
         const perfNow = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now())
         const t0 = perfNow()
 
-        this.#cancellationBuffer = this.#device.createBuffer({
-            label: "ISO Cancellation",
-            size: Uint32Array.BYTES_PER_ELEMENT,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        })
-        this.#localBuffers.push(this.#cancellationBuffer)
-        this.#device.queue.writeBuffer(this.#cancellationBuffer, 0, new Uint32Array([0]))
-
-        progressCallback?.updateProgress("Initializing...", 0)
-
-        const checkCancelled = () => {
-            if (this.#cancelled || (progressCallback && progressCallback.cancelled)) {
-                this.#cancelled = true
-                if (this.#cancellationBuffer) {
-                    this.#device.queue.writeBuffer(this.#cancellationBuffer, 0, new Uint32Array([1]))
-                }
-                throw new Error("ISO export was cancelled")
-            }
-        }
-
-        checkCancelled()
-
         const fmtBytes = (bytes: number) => {
             const abs = Math.abs(bytes)
             if (abs < 1024) return `${bytes} B`
@@ -506,6 +498,26 @@ export class ISOExport {
         assertFitsGpuLimit("activeCellFlags", est.activeCellFlags)
 
         try {
+            this.#cancellationBuffer = this.#device.createBuffer({
+                label: "ISO Cancellation",
+                size: Uint32Array.BYTES_PER_ELEMENT,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            })
+            this.#localBuffers.push(this.#cancellationBuffer)
+            this.#device.queue.writeBuffer(this.#cancellationBuffer, 0, new Uint32Array([0]))
+
+            progressCallback?.updateProgress("Initializing...", 0)
+
+            const checkCancelled = () => {
+                if (this.#cancelled || (progressCallback && progressCallback.cancelled)) {
+                    this.#cancelled = true
+                    if (this.#cancellationBuffer) {
+                        this.#device.queue.writeBuffer(this.#cancellationBuffer, 0, new Uint32Array([1]))
+                    }
+                    throw new Error("ISO export was cancelled")
+                }
+            }
+
             checkCancelled()
 
             const uniformBufferData = new ArrayBuffer(ISO_UNIFORM_BYTE_SIZE)
@@ -1525,8 +1537,25 @@ export class ISOExport {
                 rawVertexSlots,
             })
 
+            for (let i = 0; i < tris.length; i++) {
+                const idx = tris[i]!
+                if (idx >= rawVertexSlots) {
+                    throw new Error(
+                        `ISO export: mesh index ${idx} out of range for ${rawVertexSlots} vertex slots `
+                        + "(GPU index/vertex write desync or buffer overflow).",
+                    )
+                }
+            }
+
             {
-                const welded = weldIsoMeshByQuantizedPosition(verts, tris, voxelSize)
+                const welded = weldIsoMeshByQuantizedPosition(
+                    verts,
+                    tris,
+                    voxelSize,
+                    gridOffsetX,
+                    gridOffsetY,
+                    gridOffsetZ,
+                )
                 const weldedCount = (welded.verts.length / VERTEX_STRIDE_F32) | 0
                 const triCount = Math.floor(tris.length / 3)
                 // Ideal weld: each interior tet face contributes 1 contour vertex shared by 2 tets
@@ -1610,7 +1639,11 @@ export class ISOExport {
         } finally {
             this.#clearPassResourceLists()
             this.#destroyLocalBuffers()
-            logDiag("GPU cleanup (buffers destroyed, pass lists cleared)")
+            this.#cancellationBuffer = null
+            const elapsedMs = perfNow() - t0
+            dbgLog("IsoExport").debug("GPU cleanup (buffers destroyed, pass lists cleared)", {
+                elapsedMs: Math.round(elapsedMs * 1000) / 1000,
+            })
         }
     }
 }

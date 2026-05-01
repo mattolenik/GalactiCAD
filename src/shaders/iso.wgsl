@@ -1005,8 +1005,25 @@ fn emit_mt_tetra(verts: array<DualVertex, 4>) {
         let n0 = safeUnit3(sceneSDF_mid(tp0).n);
         let n1 = safeUnit3(sceneSDF_mid(tp1).n);
         let n2 = safeUnit3(sceneSDF_mid(tp2).n);
-        let base = atomicAdd(&meshIndexCount, 3u);
-        if (base + 2u >= arrayLength(&meshVertices)) {
+        // Reserve three contiguous Vertex/u32 slots before writing. A prior version used
+        // atomicAdd then bounds-checked and continued — that incremented `meshIndexCount`
+        // without writing vertices/indices, so readback saw a larger count than populated
+        // slots (stale/garbage indices → triangles fanning to one vertex).
+        let len = arrayLength(&meshVertices);
+        var base = 0xffffffffu;
+        loop {
+            let cur = atomicLoad(&meshIndexCount);
+            if (cur + 3u > len) {
+                base = 0xffffffffu;
+                break;
+            }
+            let res = atomicCompareExchangeWeak(&meshIndexCount, cur, cur + 3u);
+            if (res.exchanged) {
+                base = cur;
+                break;
+            }
+        }
+        if (base == 0xffffffffu) {
             continue;
         }
         meshVertices[base + 0u] = Vertex(tp0, n0);

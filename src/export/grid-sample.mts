@@ -1,4 +1,4 @@
-import { GPUHelper } from "../gpu/helper.mjs"
+import { GPUHelper, MAX_SAFE_ARRAY_BUFFER_BYTES } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
 
 /**
@@ -129,6 +129,14 @@ export class GridSampler {
             throw new Error(
                 `GridSampler: gradient buffer ${gradientBytes} bytes exceeds device limit ${limit}. ` +
                 `Reduce grid dims (currently ${gridDimX}x${gridDimY}x${gridDimZ} = ${totalVoxels} voxels) or split into tiles.`,
+            )
+        }
+
+        if (scalarBytes > MAX_SAFE_ARRAY_BUFFER_BYTES || gradientBytes > MAX_SAFE_ARRAY_BUFFER_BYTES) {
+            throw new Error(
+                `GridSampler: grid is too large to read back for CPU meshing (scalar=${scalarBytes} B, ` +
+                `gradient=${gradientBytes} B; per-field limit ~${MAX_SAFE_ARRAY_BUFFER_BYTES} B). ` +
+                `Reduce ${gridDimX}x${gridDimY}x${gridDimZ} voxels or increase voxel spacing.`,
             )
         }
 

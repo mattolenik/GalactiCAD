@@ -1,5 +1,15 @@
 import { installWebGpuDeviceLogging, log } from "../logging/debug-log.mjs"
 
+/** MAP_READ staging buffers this large often fail to map even when `createBuffer` succeeds. */
+const READBACK_MAP_CHUNK_BYTES = 64 * 1024 * 1024
+
+/**
+ * Contiguous `ArrayBuffer`/`TypedArray` backing allocations above this size
+ * typically fail in JS engines (~2³¹−1 bytes) even when GPU buffers succeed.
+ * Do not use `(1 << 31) - 1` — `<<` is signed 32-bit and yields a negative value.
+ */
+export const MAX_SAFE_ARRAY_BUFFER_BYTES = 2 ** 31 - 1
+
 export class GPUHelper {
     readonly device: GPUDevice
 
@@ -94,22 +104,60 @@ export class GPUHelper {
         // Callers often want just a prefix of a large SSBO (e.g. actualVertexCount * stride),
         // so we must copy exactly `size`, not `buffer.size`.
         const copySize = Math.min(size, buffer.size)
-        const readbackBuffer = this.device.createBuffer({
-            label: `${buffer.label}_readback`,
-            mappedAtCreation: false,
-            size: copySize,
-            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-        })
+        if (copySize % 4 !== 0) {
+            throw new Error(`readBufferData: copy size ${copySize} must be a multiple of 4`)
+        }
+        if (copySize > MAX_SAFE_ARRAY_BUFFER_BYTES) {
+            throw new Error(
+                `readBufferData: cannot materialize ${copySize} bytes in one ArrayBuffer ` +
+                `(max ${MAX_SAFE_ARRAY_BUFFER_BYTES}); reduce buffer size or tile the workload.`,
+            )
+        }
 
-        const ce = this.device.createCommandEncoder()
-        ce.copyBufferToBuffer(buffer, 0, readbackBuffer, 0, copySize)
-        this.device.queue.submit([ce.finish()])
+        if (copySize <= READBACK_MAP_CHUNK_BYTES) {
+            const readbackBuffer = this.device.createBuffer({
+                label: `${buffer.label}_readback`,
+                mappedAtCreation: false,
+                size: copySize,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            })
 
-        await readbackBuffer.mapAsync(GPUMapMode.READ)
-        const data = readbackBuffer.getMappedRange().slice(0) // slice(0) creates a copy
-        readbackBuffer.unmap()
-        readbackBuffer.destroy()
-        return data
+            const ce = this.device.createCommandEncoder()
+            ce.copyBufferToBuffer(buffer, 0, readbackBuffer, 0, copySize)
+            this.device.queue.submit([ce.finish()])
+
+            await readbackBuffer.mapAsync(GPUMapMode.READ)
+            const data = readbackBuffer.getMappedRange().slice(0) // slice(0) creates a copy
+            readbackBuffer.unmap()
+            readbackBuffer.destroy()
+            return data
+        }
+
+        const out = new ArrayBuffer(copySize)
+        const outU8 = new Uint8Array(out)
+        let offset = 0
+        while (offset < copySize) {
+            const rawChunk = Math.min(READBACK_MAP_CHUNK_BYTES, copySize - offset)
+            const thisChunk = rawChunk - (rawChunk % 4)
+            if (thisChunk === 0) {
+                throw new Error(`readBufferData: unaligned remainder at offset ${offset} (copySize=${copySize})`)
+            }
+            const readbackBuffer = this.device.createBuffer({
+                label: `${buffer.label}_readback`,
+                mappedAtCreation: false,
+                size: thisChunk,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            })
+            const ce = this.device.createCommandEncoder()
+            ce.copyBufferToBuffer(buffer, offset, readbackBuffer, 0, thisChunk)
+            this.device.queue.submit([ce.finish()])
+            await readbackBuffer.mapAsync(GPUMapMode.READ)
+            outU8.set(new Uint8Array(readbackBuffer.getMappedRange(), 0, thisChunk), offset)
+            readbackBuffer.unmap()
+            readbackBuffer.destroy()
+            offset += thisChunk
+        }
+        return out
     }
 
     /** Read back a prefix of `source` into caller-owned `readback` (COPY_DST | MAP_READ); avoids per-call buffer alloc. */

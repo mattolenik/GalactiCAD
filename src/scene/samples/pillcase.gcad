@@ -2,16 +2,16 @@
 // caseBase: 20 mm tall, r=8. maleTop: r=6, 8 mm tall, on top of base. maleBottom: same thread, shifted down
 // by (half caseBase height + 1 mm wall), subtracted from caseBase only. Pill: r=4, 10 mm, subtracted from union.
 
-let rBase = 15
-let hBaseHalf = 12 // 20 mm total height, center at y = hBaseHalf → base y ∈ [0, 20]
+let rBase = 16
+let hBaseHalf = 14
 
 let rThread = rBase - 1.5
-let hThreadHalf = 2 // 8 mm total thread length
+let hThreadHalf = 1.5
 let pitch = 1.5
 
 // caseBase: bottom y=0, top y=20
 let caseBaseB = cylinder.radius(rBase).height(hBaseHalf / 2).shift([0, hBaseHalf * 1.5, 0])
-  .chamfer(TOP|BOTTOM, 0.3)
+  .chamfer(TOP | BOTTOM, 0.3)
 
 let kp = cylinder.radius(0.3).height(caseBaseB.h - 1).fillet(0.15)
 let caseBase = knurl(caseBaseB).offset(0.1).pattern(kp, 72)
@@ -31,16 +31,41 @@ let withMaleTop = union(caseBaseThreaded, maleTop)
 
 // Cylinder r=4, 10 mm tall — centered on maleTop (subtract from full union)
 let hPillHalf = 8.6
-let pillVoid = cylinder.radius(rBase - 3).height(hPillHalf).shift([0, yMaleTop + 0.1, 0]).fillet(1.5, BOTTOM)
+let pillVoid = cylinder.
+                radius(rBase - 3).
+                height(hPillHalf).
+                shift([0, yMaleTop-hThreadHalf*1.5, 0]).
+                fillet(1.5, BOTTOM)
 
-let indent = cylinder.radius(0.8).height(0.4).rotate([90, 90, 0]).shift([rBase - 0.9,
-hBaseHalf - 0.2, 0])
-let indent2 = cylinder.radius(0.8).height(0.4).rotate([90, 90, 0]).shift([rBase - 0.9,
-hBaseHalf - 0.2, 0]).rotate([0,-9,0])
-let indent3 = cylinder.radius(0.8).height(0.4).rotate([90, 90, 0]).shift([rBase - 0.9,
-hBaseHalf - 0.2, 0]).rotate([0, -18, 0])
-let bump = cylinder.radius(0.7).height(0.25).rotate([90, 90, 0]).shift([rBase - 0.7, hBaseHalf * 2 - 0.2, 0]).rotate([0, -15, 0])
-return union(
-  subtract(withMaleTop, pillVoid, indent, indent2, indent3).round(0.2),
+let indent = cylinder.
+              radius(0.9).
+              height(0.6).
+              rotate([90, 90, 0]).
+              shift([rBase - 0.9, hBaseHalf - 0.2, 0]).
+              rotate([0, 120, 0])
+let indents = union(
+  indent,
+  indent.clone().rotate([0, 10, 0]),
+  indent.clone().rotate([0, 20, 0]),
+  indent.clone().rotate([0, 30, 0]),
+  indent.clone().rotate([0, 40, 0])
+)
+let bump = cylinder.
+            radius(0.9).
+            height(0.35).
+            rotate([90, 90, 0]).
+            shift([rBase - 0.65, hBaseHalf * 2 - 0.2, 0]).
+            rotate([0, -15, 0])
+let bumps = union(
   bump,
+  bump.clone().rotate([0, 10, 0]),
+  bump.clone().rotate([0, 20, 0])
+)
+return union(
+  subtract(
+    withMaleTop,
+    pillVoid,
+    indents,
+  ).round(0.2),
+  bumps,
 ).round(0.1)

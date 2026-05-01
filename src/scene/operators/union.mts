@@ -360,9 +360,6 @@ export class Union extends Node {
  * nearest contributors per sample.
  */
 function unionImpl(parts: Node[], radius?: number, mode?: UnionType, n?: number): Union {
-    if (parts.length < 2) {
-        throw new Error("union requires at least two things to union together")
-    }
     return new Union(parts, radius, mode, n)
 }
 

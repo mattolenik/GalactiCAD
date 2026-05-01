@@ -471,10 +471,13 @@ export class DocumentTabs extends HTMLElement {
                     model.setValue(diskContent)
                     this.#lastWrittenContent.set(name, diskContent)
                     await setDocFileBacked(name, diskContent, diskContent, undefined, file.lastModified)
+                    this.#renderTabs()
                     return true
                 }
                 // overwrite: fall through to write
             } else if (editorContent === diskContent) {
+                this.#lastWrittenContent.set(name, editorContent)
+                this.#renderTabs()
                 return true // nothing to save
             }
             // else: disk === lastWritten, user has edits—fall through to write
@@ -484,6 +487,7 @@ export class DocumentTabs extends HTMLElement {
         await writeToFile(handle, editorContent)
         this.#lastWrittenContent.set(name, editorContent)
         await setDocFileBacked(name, editorContent, editorContent, Date.now(), Date.now())
+        this.#renderTabs()
         return true
     }
 

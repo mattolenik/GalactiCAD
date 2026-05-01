@@ -246,8 +246,8 @@ export interface SerializedNode {
     threadFlankAngleDeg?: number
     /** `fdm` = sinusoidal; `iso` = triangular V-groove; `acme` = trapezoidal. */
     threadProfile?: "fdm" | "iso" | "acme"
-    /** Default right-hand; left-hand flips helix. */
-    threadHandedness?: "left" | "right"
+    /** ThreadedRod helix: direction-indicator RIGHT (0x8) or LEFT (0x4). */
+    handedness?: number
     /** ThreadedRod: barrel xz scale uses 1+femalePlay in denominator (0 = nominal). */
     femalePlay?: number
     /** Cylinder: rim fillet / chamfer on +y cap (0 if none). */

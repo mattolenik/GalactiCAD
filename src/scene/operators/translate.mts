@@ -130,6 +130,9 @@ export const translate = fluent(function translate(offset: Vec3, node: Node): Tr
  * Default `Node.prototype.shift` — `node.shift(v)` is `translate(v, node)` (rigid move).
  * Primitives (sphere, box, …) install their own `shift` on the subclass to update `pos` in place.
  */
-Node.prototype.shift = function (this: Node, v: Vec3): Translate {
+;(Node.prototype as { shift?: (this: Node, v: Vec3) => Translate }).shift = function (
+    this: Node,
+    v: Vec3,
+): Translate {
     return translate(v, this)
 }

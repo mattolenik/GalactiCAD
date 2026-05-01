@@ -3,10 +3,10 @@ import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 
 export class Seam extends BinaryOperator {
-    #seamRadius = 0
+    seamRadius = 0
     constructor(lh: Node, rh: Node, radius = 0) {
         super(lh, rh)
-        this.#seamRadius = radius
+        this.seamRadius = radius
     }
     override getShapeType(): string { return "seam" }
     override getIndicatorSvg(): string {
@@ -20,15 +20,15 @@ export class Seam extends BinaryOperator {
     }
 
     override writeSceneParams(view: Float32Array): void {
-        view[0] = this.#seamRadius
+        view[0] = this.seamRadius
     }
 
     override writePreviewParams(out: PreviewParamsOut): void {
-        out.f32[this.previewF32Slot] = this.#seamRadius
+        out.f32[this.previewF32Slot] = this.seamRadius
     }
 
     @fluent radius(r: number): this {
-        this.#seamRadius = r
+        this.seamRadius = r
         return this
     }
     override compile(indentLevel = 0): CompileResult {

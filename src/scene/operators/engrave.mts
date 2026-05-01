@@ -3,10 +3,10 @@ import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 
 export class Engrave extends BinaryOperator {
-    #engraveRadius = 0
+    engraveRadius = 0
     constructor(lh: Node, rh: Node, radius = 0) {
         super(lh, rh)
-        this.#engraveRadius = radius
+        this.engraveRadius = radius
     }
     override getShapeType(): string { return "engrave" }
     override getIndicatorSvg(): string {
@@ -20,15 +20,15 @@ export class Engrave extends BinaryOperator {
     }
 
     override writeSceneParams(view: Float32Array): void {
-        view[0] = this.#engraveRadius
+        view[0] = this.engraveRadius
     }
 
     override writePreviewParams(out: PreviewParamsOut): void {
-        out.f32[this.previewF32Slot] = this.#engraveRadius
+        out.f32[this.previewF32Slot] = this.engraveRadius
     }
 
     @fluent radius(r: number): this {
-        this.#engraveRadius = r
+        this.engraveRadius = r
         return this
     }
     override compile(indentLevel = 0): CompileResult {

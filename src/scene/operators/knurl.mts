@@ -17,7 +17,7 @@ export class KnurlSubtract extends Subtract {
     }
     /** Side view: cylinder wall with crossing diagonals (diamond knurl on OD). */
     override getIndicatorSvg(): string {
-        return `<path fill="none" stroke="currentColor" stroke-width="0.88" stroke-linecap="round" stroke-linejoin="round" d="M1.4 0.7 L1.4 11.3 M10.6 0.7 L10.6 11.3 M1.4 0.7 L10.6 3.5 M10.6 0.7 L1.4 3.5 M1.4 3.5 L10.6 6.2 M10.6 3.5 L1.4 6.2 M1.4 6.2 L10.6 8.9 M10.6 6.2 L1.4 8.9 M1.4 8.9 L10.6 11.3 M10.6 8.9 L1.4 11.3"/>`
+        return `<path fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" d="M2 2 L2 10 M10 2 L10 10 M2 3.5 L10 5.5 M10 3.5 L2 5.5 M2 6.5 L10 8.5 M10 6.5 L2 8.5"/>`
     }
 
     constructor(lh: Node, rh: Node) {

@@ -21,6 +21,7 @@ import { getShapePalette } from "./colorPalette.mjs"
 import { getSelectionStylesForTheme } from "./selectionStyles.mjs"
 import { GALACTICAD_DARK_THEME, GALACTICAD_LIGHT_THEME } from "./themes.mjs"
 import type { EditorSettings, ThemeMode } from "./storage/settings.mjs"
+import type { MeshData } from "./export/export.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
@@ -103,6 +104,9 @@ class App {
     #viewports: HTMLElement
     #settings: SettingsManager
     #meshViewerEnabled = false
+    /** Reused for STL when it matches the current source + export settings (set by export preview). */
+    #cachedMeshForExport: MeshData | null = null
+    #cachedMeshForExportKey: string | null = null
     #meshViewerCameraSubs: Subscription[] = []
     #updateViewCenter: (() => void) | undefined
     #sourceParser: SourceParser
@@ -1439,6 +1443,7 @@ class App {
 
             try {
                 const documentName = this.#tabs.active!
+                const src = this.editor.getValue()
                 const handle = await window.showSaveFilePicker({
                     suggestedName: documentName,
                     startIn: "desktop",
@@ -1450,14 +1455,13 @@ class App {
                     ],
                     excludeAcceptAllOption: false,
                 })
-                const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName, {
-                    simplifyOnExport: devTools.meshSimplifyOnExport,
-                    voxelSizeMm: devTools.voxelSizeMm,
-                    exporter: devTools.useShrecExporter ? "shrec" : "mdc",
-                    shrecTuning: devTools.shrecTuning,
-                    simplifyTuning: devTools.simplifyTuning,
-                    mdcExportLevers: this.#settings.getMdcExportLevers(),
-                })
+                const wantKey = this.#meshCacheKey(src, documentName, devTools)
+                const mesh =
+                    this.#meshViewerEnabled
+                    && this.#cachedMeshForExport
+                    && this.#cachedMeshForExportKey === wantKey
+                        ? this.#cachedMeshForExport
+                        : await this.renderer.renderMesh(src, documentName, this.#meshRenderOptionsForExport(devTools))
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
                 statusDialog = new StatusDialog("Export successful")
@@ -1515,6 +1519,26 @@ class App {
         this.#polygonEditor = polyEditor
     }
 
+    #meshRenderOptionsForExport(devTools: DevToolsPanel) {
+        return {
+            simplifyOnExport: devTools.meshSimplifyOnExport,
+            voxelSizeMm: devTools.voxelSizeMm,
+            exporter: devTools.useShrecExporter ? "shrec" as const : "mdc" as const,
+            shrecTuning: devTools.shrecTuning,
+            simplifyTuning: devTools.simplifyTuning,
+            mdcExportLevers: this.#settings.getMdcExportLevers(),
+        }
+    }
+
+    /** Fingerprint of `renderMesh` inputs; must match what `#scheduleMeshUpdate` and export use. */
+    #meshCacheKey(src: string, documentName: string | undefined, devTools: DevToolsPanel): string {
+        return JSON.stringify({
+            documentName: documentName ?? "",
+            options: this.#meshRenderOptionsForExport(devTools),
+            src,
+        })
+    }
+
     #scheduleMeshUpdate(src: string) {
         // Skip mesh updates if mesh viewer is not enabled
         if (!this.#meshViewerEnabled || !this.#mesh) {
@@ -1530,17 +1554,14 @@ class App {
         const token = ++this.#meshUpdateToken
         this.#meshUpdateTimer = window.setTimeout(async () => {
             try {
-                const mesh = await this.renderer.renderMesh(src, this.#tabs.active, {
-                    simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
-                    voxelSizeMm: this.#toolbarRefs.devTools.voxelSizeMm,
-                    exporter: this.#toolbarRefs.devTools.useShrecExporter ? "shrec" : "mdc",
-                    shrecTuning: this.#toolbarRefs.devTools.shrecTuning,
-                    simplifyTuning: this.#toolbarRefs.devTools.simplifyTuning,
-                    mdcExportLevers: this.#settings.getMdcExportLevers(),
-                })
+                const documentName = this.#tabs.active
+                const options = this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools)
+                const mesh = await this.renderer.renderMesh(src, documentName, options)
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {
                     await this.#mesh.setMesh(mesh)
+                    this.#cachedMeshForExport = mesh
+                    this.#cachedMeshForExportKey = this.#meshCacheKey(src, documentName, this.#toolbarRefs.devTools)
                 }
             } catch (err) {
                 // Mesh generation failing shouldn't break the live SDF preview.
@@ -1611,6 +1632,8 @@ class App {
                 this.#mesh.remove()
                 this.#mesh = null
             }
+            this.#cachedMeshForExport = null
+            this.#cachedMeshForExportKey = null
 
             // Clear any pending mesh update
             if (this.#meshUpdateTimer !== null) {

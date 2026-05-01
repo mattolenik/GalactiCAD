@@ -48,10 +48,13 @@ import { Sphere, sphere } from "./primitives/sphere.mjs"
 import { VirtualCapNode } from "./primitives/virtual-cap.mjs"
 import { ThreadedRod, threaded_rod } from "./primitives/threaded-rod.mjs"
 import { Torus, torus } from "./primitives/torus.mjs"
+import { BACK, BOTTOM, FRONT, LEFT, RIGHT, TOP } from "./direction-indicator.mjs"
+import "./node-clone.mjs"
 
 export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, knurl, KnurlBuilder, KnurlSubtract, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, RepeatPolar, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Translate, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, repeatPolar, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, translate, twist, union }
 export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
-export type { SideIndicator } from "./side-indicator.mjs"
+export { BACK, BOTTOM, FRONT, LEFT, RIGHT, TOP } from "./direction-indicator.mjs"
+export type { DirectionFlag, DirectionIndicator } from "./direction-indicator.mjs"
 
 /** IDs 1022–1023 reserved for face highlight (cap selection). Scene nodes use 0–1021. */
 const MAX_SCENE_NODE_ID = 1021
@@ -288,10 +291,92 @@ export class SceneInfo {
         if (options?.bvhEnabled !== undefined) {
             this.bvhEnabled = options.bvhEnabled
         }
-        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "translate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar", "knurl", transpiledBody)(
-            box, sphere, subtract, union, cylinder, cone, torus, threaded_rod, capsule, plane, hexprism, disc, blob,
-            intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam,
-            rotate, translate, scale, shell, offset, elongate, twist, bend, taper, repeatPolar, knurl)
+        this.root = new Function(
+            "box",
+            "sphere",
+            "subtract",
+            "union",
+            "cylinder",
+            "cone",
+            "torus",
+            "threaded_rod",
+            "capsule",
+            "plane",
+            "hexprism",
+            "disc",
+            "blob",
+            "intersect",
+            "pipe",
+            "engrave",
+            "groove",
+            "tongue",
+            "polygon2d",
+            "extrude",
+            "loft",
+            "lathe",
+            "morph",
+            "seam",
+            "rotate",
+            "translate",
+            "scale",
+            "shell",
+            "offset",
+            "elongate",
+            "twist",
+            "bend",
+            "taper",
+            "repeatPolar",
+            "knurl",
+            "TOP",
+            "BOTTOM",
+            "LEFT",
+            "RIGHT",
+            "FRONT",
+            "BACK",
+            transpiledBody,
+        )(
+            box,
+            sphere,
+            subtract,
+            union,
+            cylinder,
+            cone,
+            torus,
+            threaded_rod,
+            capsule,
+            plane,
+            hexprism,
+            disc,
+            blob,
+            intersect,
+            pipe,
+            engrave,
+            groove,
+            tongue,
+            polygon2d,
+            extrude,
+            loft,
+            lathe,
+            morph,
+            seam,
+            rotate,
+            translate,
+            scale,
+            shell,
+            offset,
+            elongate,
+            twist,
+            bend,
+            taper,
+            repeatPolar,
+            knurl,
+            TOP,
+            BOTTOM,
+            LEFT,
+            RIGHT,
+            FRONT,
+            BACK,
+        )
         this.root.scene = this
         this.root.build()
         this.#allNodesSnapshot = Array.from(this.#nodes.values())

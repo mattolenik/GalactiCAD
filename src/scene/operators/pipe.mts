@@ -3,10 +3,10 @@ import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 
 export class Pipe extends BinaryOperator {
-    #pipeRadius = 0
+    pipeRadius = 0
     constructor(lh: Node, rh: Node, radius = 0) {
         super(lh, rh)
-        this.#pipeRadius = radius
+        this.pipeRadius = radius
     }
     override getShapeType(): string { return "pipe" }
     override getIndicatorSvg(): string {
@@ -20,15 +20,15 @@ export class Pipe extends BinaryOperator {
     }
 
     override writeSceneParams(view: Float32Array): void {
-        view[0] = this.#pipeRadius
+        view[0] = this.pipeRadius
     }
 
     override writePreviewParams(out: PreviewParamsOut): void {
-        out.f32[this.previewF32Slot] = this.#pipeRadius
+        out.f32[this.previewF32Slot] = this.pipeRadius
     }
 
     @fluent radius(r: number): this {
-        this.#pipeRadius = r
+        this.pipeRadius = r
         return this
     }
     override compile(indentLevel = 0): CompileResult {

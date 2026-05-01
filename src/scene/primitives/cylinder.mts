@@ -2,10 +2,10 @@ import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.
 import { aabb, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
-import type { SideIndicator } from "../side-indicator.mjs"
+import { BOTTOM, TOP, type DirectionIndicator } from "../direction-indicator.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
-export type { SideIndicator } from "../side-indicator.mjs"
+export type { DirectionIndicator } from "../direction-indicator.mjs"
 
 export class Cylinder extends Node {
     pos = vec3([0, 0, 0])
@@ -125,27 +125,27 @@ export class Cylinder extends Node {
     }
 
     /** Chamfer the outer rim where the side meets a cap (45° cut). Clears fillet on the same side(s). */
-    @fluent chamfer(side: SideIndicator, amount: number): this {
+    @fluent chamfer(side: DirectionIndicator, amount: number): this {
         const a = this.#clampEdgeAmount(amount)
-        if (side === "TOP" || side === "BOTH") {
+        if (side & TOP) {
             this.chamferTop = a
             this.filletTop = 0
         }
-        if (side === "BOTTOM" || side === "BOTH") {
+        if (side & BOTTOM) {
             this.chamferBottom = a
             this.filletBottom = 0
         }
         return this
     }
 
-    /** Fillet (round) the outer rim where the side meets a cap. Clears chamfer on the same side(s). Default side is BOTH. */
-    @fluent fillet(radius: number, side: SideIndicator = "BOTH"): this {
+    /** Fillet (round) the outer rim where the side meets a cap. Clears chamfer on the same side(s). Default both caps: TOP | BOTTOM. */
+    @fluent fillet(radius: number, side: DirectionIndicator = TOP | BOTTOM): this {
         const rad = this.#clampEdgeAmount(radius)
-        if (side === "TOP" || side === "BOTH") {
+        if (side & TOP) {
             this.filletTop = rad
             this.chamferTop = 0
         }
-        if (side === "BOTTOM" || side === "BOTH") {
+        if (side & BOTTOM) {
             this.filletBottom = rad
             this.chamferBottom = 0
         }

@@ -75,7 +75,7 @@ export interface NodeStub {
     threadAmp?: number
     threadFlankAngleDeg?: number
     threadProfile?: "fdm" | "iso" | "acme"
-    threadHandedness?: "left" | "right"
+    handedness?: number
     filletTop?: number
     filletBottom?: number
     chamferTop?: number
@@ -978,7 +978,7 @@ export class SDFRenderer {
                 threadAmp: s.threadAmp,
                 threadFlankAngleDeg: s.threadFlankAngleDeg,
                 threadProfile: s.threadProfile,
-                threadHandedness: s.threadHandedness,
+                handedness: s.handedness,
                 filletTop: s.filletTop,
                 filletBottom: s.filletBottom,
                 chamferTop: s.chamferTop,

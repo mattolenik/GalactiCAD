@@ -76,6 +76,13 @@ export const COST_ONE_PRIMITIVE = 1
 /** Minimum codegen cost for a subtree to warrant a BVH bounding check. */
 export const BVH_MIN_COST = 8
 
+let nodeCloneImpl: ((node: Node) => Node) | undefined
+
+/** Wired by `node-clone.mjs` when the scene module loads. */
+export function setNodeCloneImpl(impl: (node: Node) => Node): void {
+    nodeCloneImpl = impl
+}
+
 export class Node {
     id!: number
     root: Node
@@ -112,6 +119,20 @@ export class Node {
 
     constructor() {
         this.root = this
+    }
+
+    /**
+     * Deep-clone this node and its entire subtree (new objects, no shared child refs).
+     * Build-time fields (`id`, param offsets, polygon `bufferOffset`, …) are cleared; call under a fresh `SceneInfo` to assign them.
+     * Requires the scene bundle to have loaded once (imports `node-clone.mjs`).
+     */
+    clone(): Node {
+        if (!nodeCloneImpl) {
+            throw new Error(
+                "Node.clone() is unavailable until the scene module loads. Import \"./scene/scene.mjs\" (or the app entry that pulls it in) before calling clone().",
+            )
+        }
+        return nodeCloneImpl(this)
     }
 
     primitiveCount(): number {

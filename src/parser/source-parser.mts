@@ -5,6 +5,7 @@
 
 import * as ts from "typescript"
 import { log } from "../logging/debug-log.mjs"
+import { BOTTOM, LEFT, RIGHT, TOP } from "../scene/direction-indicator.mjs"
 import { vec3, type Vec3, Vec3f } from "../vecmat/vector.mjs"
 
 /**
@@ -50,7 +51,8 @@ export interface ParsedShapeCall {
     depth?: number    // Radial amplitude override for threaded_rod (disables pitch+angle amp)
     threadAngle?: number // Meridional flank angle (deg) for threaded_rod; with pitch sets amp unless depth()
     threadProfile?: "fdm" | "iso" | "acme" // From .profile.fdm() / .iso() / .acme() chain
-    threadHandedness?: "left" | "right" // From .left / .right property chain (default right)
+    /** From `hand(LEFT|RIGHT)`, or threaded_rod.left / .right chain. Default RIGHT. */
+    handedness?: number
     c?: number        // Center half-height for capsule
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
@@ -793,27 +795,24 @@ export class SourceParser {
                 } else if (method === "chamfer" && args.length >= 2) {
                     const side = this.evaluateExpression(args[0])
                     const rad = this.evaluateExpression(args[1])
-                    if (typeof side !== "string" || typeof rad !== "number") continue
-                    const s = side.toUpperCase()
-                    if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
-                    if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = rad
-                    if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = rad
-                    if (s === "TOP" || s === "BOTH") parsedCall.filletTop = 0
-                    if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = 0
+                    if (typeof side !== "number" || typeof rad !== "number" || !Number.isFinite(side)) continue
+                    if (side & TOP) parsedCall.chamferTop = rad
+                    if (side & BOTTOM) parsedCall.chamferBottom = rad
+                    if (side & TOP) parsedCall.filletTop = 0
+                    if (side & BOTTOM) parsedCall.filletBottom = 0
                 } else if (method === "fillet" && args.length >= 1) {
                     const rad = this.evaluateExpression(args[0])
                     if (typeof rad !== "number") continue
-                    let s = "BOTH"
+                    let sideFlags = TOP | BOTTOM
                     if (args.length >= 2) {
                         const side = this.evaluateExpression(args[1])
-                        if (typeof side !== "string") continue
-                        s = side.toUpperCase()
-                        if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
+                        if (typeof side !== "number" || !Number.isFinite(side)) continue
+                        sideFlags = side
                     }
-                    if (s === "TOP" || s === "BOTH") parsedCall.filletTop = rad
-                    if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = rad
-                    if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = 0
-                    if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = 0
+                    if (sideFlags & TOP) parsedCall.filletTop = rad
+                    if (sideFlags & BOTTOM) parsedCall.filletBottom = rad
+                    if (sideFlags & TOP) parsedCall.chamferTop = 0
+                    if (sideFlags & BOTTOM) parsedCall.chamferBottom = 0
                 } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
                     const v = this.evaluateExpression(args[0])
                     if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
@@ -857,15 +856,14 @@ export class SourceParser {
     }
 
     /** Detect threaded_rod.left / .right in the property chain (.profile etc. are not calls). */
-    #threadedRodHandFromExpression(expr: ts.Node): "left" | "right" | undefined {
-        let hand: "left" | "right" | undefined
+    #threadedRodHandFromExpression(expr: ts.Node): typeof LEFT | typeof RIGHT | undefined {
+        let hand: typeof LEFT | typeof RIGHT | undefined
         const visit = (n: ts.Node): void => {
             if (ts.isPropertyAccessExpression(n)) {
                 visit(n.expression)
                 const t = n.name.getText()
-                if (t === "left" || t === "right") {
-                    hand = t
-                }
+                if (t === "left") hand = LEFT
+                else if (t === "right") hand = RIGHT
             } else if (ts.isCallExpression(n)) {
                 visit(n.expression)
             }
@@ -878,7 +876,7 @@ export class SourceParser {
         try {
             const hand = this.#threadedRodHandFromExpression(callNode.expression)
             if (hand !== undefined) {
-                parsedCall.threadHandedness = hand
+                parsedCall.handedness = hand
             }
             const chain = this.#collectFluentChain(callNode)
             for (const { method, args } of chain) {
@@ -911,6 +909,9 @@ export class SourceParser {
                 } else if (method === "threadAngle" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.threadAngle = v
+                } else if (method === "hand" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v === LEFT || v === RIGHT) parsedCall.handedness = v
                 } else if (method === "female") {
                     if (args.length === 0) {
                         parsedCall.femalePlay = 0.01
@@ -921,27 +922,24 @@ export class SourceParser {
                 } else if (method === "chamfer" && args.length >= 2) {
                     const side = this.evaluateExpression(args[0])
                     const rad = this.evaluateExpression(args[1])
-                    if (typeof side !== "string" || typeof rad !== "number") continue
-                    const s = side.toUpperCase()
-                    if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
-                    if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = rad
-                    if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = rad
-                    if (s === "TOP" || s === "BOTH") parsedCall.filletTop = 0
-                    if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = 0
+                    if (typeof side !== "number" || typeof rad !== "number" || !Number.isFinite(side)) continue
+                    if (side & TOP) parsedCall.chamferTop = rad
+                    if (side & BOTTOM) parsedCall.chamferBottom = rad
+                    if (side & TOP) parsedCall.filletTop = 0
+                    if (side & BOTTOM) parsedCall.filletBottom = 0
                 } else if (method === "fillet" && args.length >= 1) {
                     const rad = this.evaluateExpression(args[0])
                     if (typeof rad !== "number") continue
-                    let s = "BOTH"
+                    let sideFlags = TOP | BOTTOM
                     if (args.length >= 2) {
                         const side = this.evaluateExpression(args[1])
-                        if (typeof side !== "string") continue
-                        s = side.toUpperCase()
-                        if (s !== "TOP" && s !== "BOTTOM" && s !== "BOTH") continue
+                        if (typeof side !== "number" || !Number.isFinite(side)) continue
+                        sideFlags = side
                     }
-                    if (s === "TOP" || s === "BOTH") parsedCall.filletTop = rad
-                    if (s === "BOTTOM" || s === "BOTH") parsedCall.filletBottom = rad
-                    if (s === "TOP" || s === "BOTH") parsedCall.chamferTop = 0
-                    if (s === "BOTTOM" || s === "BOTH") parsedCall.chamferBottom = 0
+                    if (sideFlags & TOP) parsedCall.filletTop = rad
+                    if (sideFlags & BOTTOM) parsedCall.filletBottom = rad
+                    if (sideFlags & TOP) parsedCall.chamferTop = 0
+                    if (sideFlags & BOTTOM) parsedCall.chamferBottom = 0
                 } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
                     const v = this.evaluateExpression(args[0])
                     if (v !== undefined) parsedCall.pos = vec3(v as Vec3)

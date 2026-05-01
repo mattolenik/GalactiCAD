@@ -92,7 +92,7 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
         s.threadAmp = node.threadAmp
         s.threadFlankAngleDeg = node.threadFlankAngleDeg
         s.threadProfile = node.threadProfile
-        s.threadHandedness = node.threadHandedness
+        s.handedness = node.handedness
         s.sceneCapParamsByteOffset = (node.previewF32Slot + 3) * 4
         s.filletTop = node.filletTop
         s.filletBottom = node.filletBottom

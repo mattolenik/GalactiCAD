@@ -10,3 +10,4 @@ node_modules/
 # This would usually be checked in, but it is generated dynamically
 .cursor/mcp.json
 
+sharpiso/

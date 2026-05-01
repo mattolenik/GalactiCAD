@@ -8,8 +8,17 @@ export const CAD_TYPES_DECL = `
 /** A 3D position or vector, given as a tuple [x, y, z]. */
 declare type Vec3 = [number, number, number];
 
-/** Which end(s) of a vertical cylinder a rim chamfer or fillet applies to. */
-declare type SideIndicator = 'TOP' | 'BOTTOM' | 'BOTH';
+/** Combinable direction bit flags (use | to combine, & to test). */
+declare const TOP: 0x1;
+declare const BOTTOM: 0x2;
+declare const LEFT: 0x4;
+declare const RIGHT: 0x8;
+declare const FRONT: 0x10;
+declare const BACK: 0x20;
+/** One direction bit (TOP … BACK). */
+declare type DirectionFlag = typeof TOP | typeof BOTTOM | typeof LEFT | typeof RIGHT | typeof FRONT | typeof BACK;
+/** Bitfield: combine flags with | (e.g. TOP | BOTTOM). Y-up cylinder/rod caps use TOP (+Y) and BOTTOM (−Y). */
+declare type DirectionIndicator = number;
 
 /** Blend mode for smooth CSG operations. */
 declare type BlendMode = 'round' | 'chamfer' | 'soft' | 'columns' | 'stairs';
@@ -33,6 +42,8 @@ declare class Vec3f {
 
 /** Base class for all scene nodes. */
 declare class Node {
+    /** Deep copy of this node and its entire subtree (independent objects). */
+    clone(): Node;
     /** Shift the base primitive's position. Works through modifier chains (twist, taper, etc.). */
     shift(v: Vec3): Node;
     /** Euler rotation in degrees [rx, ry, rz] — same as the standalone rotate(rot, node). */
@@ -90,10 +101,10 @@ declare class Cylinder extends Node {
     r: number;
     h: number;
     height(h: number): Cylinder;
-    /** 45° chamfer on the outer rim where the side meets the cap(s). */
-    chamfer(side: SideIndicator, amount: number): Cylinder;
-    /** Round fillet on the outer rim where the side meets the cap(s). Default side BOTH. */
-    fillet(radius: number, side?: SideIndicator): Cylinder;
+    /** 45° chamfer on the outer rim where the side meets the cap(s). Y-up: TOP / BOTTOM; other flags unused on cylinder. */
+    chamfer(side: DirectionIndicator, amount: number): Cylinder;
+    /** Round fillet on the outer rim where the side meets the cap(s). Default TOP | BOTTOM. */
+    fillet(radius: number, side?: DirectionIndicator): Cylinder;
     shift(v: Vec3): Cylinder;
 }
 
@@ -131,18 +142,20 @@ declare class ThreadedRod extends Node {
     threadAmp: number;
     /** fdm = sinusoidal; iso = triangular; acme = trapezoidal. */
     threadProfile: "fdm" | "iso" | "acme";
-    /** Default right-hand; use threaded_rod.left... for left-hand. */
-    threadHandedness: "left" | "right";
+    /** Default RIGHT; use hand(LEFT) or threaded_rod.left for left-hand thread. */
+    handedness: DirectionIndicator;
     height(h: number): ThreadedRod;
     pitch(p: number): ThreadedRod;
+    /** Set helix handedness to LEFT or RIGHT. */
+    hand(side: typeof LEFT | typeof RIGHT): ThreadedRod;
     /** Flank angle in degrees (default 60). */
     threadAngle(deg: number): ThreadedRod;
     /** Explicit radial amplitude (disables automatic depth from pitch + threadAngle). */
     depth(d: number): ThreadedRod;
-    /** Chamfer barrel–cap junction(s). */
-    chamfer(side: SideIndicator, amount: number): ThreadedRod;
-    /** Round fillet at barrel–cap junction(s). Default side BOTH. */
-    fillet(radius: number, side?: SideIndicator): ThreadedRod;
+    /** Chamfer barrel–cap junction(s). Y-up: TOP / BOTTOM; other flags unused on threaded rod. */
+    chamfer(side: DirectionIndicator, amount: number): ThreadedRod;
+    /** Round fillet at barrel–cap junction(s). Default TOP | BOTTOM. */
+    fillet(radius: number, side?: DirectionIndicator): ThreadedRod;
     /**
      * Female / fit: sample the barrel in xz with scale 1/(1+play). female() uses play 0.01 (factor 1.01). Pass 0 to clear.
      */
@@ -245,11 +258,13 @@ declare class Intersect extends Node {
 
 /** Pipe blend between two shapes. pipe(lh, rh).radius(r) */
 declare class Pipe extends Node {
+    pipeRadius: number;
     radius(r: number): Pipe;
 }
 
 /** Engrave one shape into another. engrave(base).pattern(pattern).radius(r) */
 declare class Engrave extends Node {
+    engraveRadius: number;
     radius(r: number): Engrave;
 }
 
@@ -276,11 +291,13 @@ declare class Tongue extends Node {
 
 /** Hard seam between two shapes. seam(lh, rh).radius(r) */
 declare class Seam extends Node {
+    seamRadius: number;
     radius(r: number): Seam;
 }
 
 /** Smooth morph between two shapes. morph(lh, rh).t(t) */
 declare class Morph extends Node {
+    morphT: number;
     t(t: number): Morph;
 }
 
@@ -436,9 +453,8 @@ type ThreadedRodHandSide = {
 
 /**
  * Threaded rod. Default is right-hand FDM: threaded_rod.radius(...).
- * threaded_rod.left.radius(...) / threaded_rod.left.profile.iso().radius(...) = left-hand.
- * threaded_rod.right matches explicit right-hand; threaded_rod.profile.* is right-hand.
- * After .radius: .height(h).pitch(axialPeriod).threadAngle(deg).depth(override).shift(v)
+ * threaded_rod.left... or .hand(LEFT) for left-hand; threaded_rod.right / .hand(RIGHT) match explicit right-hand.
+ * After .radius: .height(h).pitch(axialPeriod).hand(LEFT|RIGHT).threadAngle(deg).depth(override).shift(v)
  */
 declare const threaded_rod: {
     radius(r: number): ThreadedRod;

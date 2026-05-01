@@ -10,6 +10,7 @@
  */
 
 import { log } from "../logging/debug-log.mjs"
+import { RIGHT } from "../scene/direction-indicator.mjs"
 import { Node, Sphere, Box, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate, Polygon2D, Extrude, Loft, Lathe } from "../scene/scene.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
@@ -70,7 +71,7 @@ interface NodeLikeMatch {
     threadAmp?: number
     threadFlankAngleDeg?: number
     threadProfile?: "fdm" | "iso" | "acme"
-    threadHandedness?: "left" | "right"
+    handedness?: number
     c?: number
     normal?: { x: number; y: number; z: number }
     dist?: number
@@ -173,8 +174,8 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         const callProfile = call.threadProfile ?? "fdm"
         const nodeProfile = node.threadProfile ?? "fdm"
         if (callProfile !== nodeProfile) return false
-        const callHand = call.threadHandedness ?? "right"
-        const nodeHand = node.threadHandedness ?? "right"
+        const callHand = call.handedness ?? RIGHT
+        const nodeHand = node.handedness ?? RIGHT
         if (callHand !== nodeHand) return false
         const nt = node.filletTop ?? 0
         const nb = node.filletBottom ?? 0

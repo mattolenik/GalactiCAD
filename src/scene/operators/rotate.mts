@@ -121,10 +121,17 @@ export class Rotate extends UnaryOperator {
         const o = this.paramOffset
         const invMat = mat3x3Wgsl(o, this.previewMat3Slot)
         const fwdMat = mat3x3Wgsl(o + 9, this.previewMat3Slot + 1)
-        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
-
         const funcName = `Rotate${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+
+        if (childResult.prelude) {
+            const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
+            const accVar = childResult.varName!
+            const prelude = rotatedPrelude + `${accVar} = sdfRotateNormalMid(${accVar}, ${fwdMat});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
+
+        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
         return {
             funcName,
             varName,

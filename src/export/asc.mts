@@ -2,9 +2,16 @@ import ascGridSampleShader from "../shaders/asc-grid-sample.wgsl"
 import { GPUHelper } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
 import { MeshData } from "./export.mjs"
+import { applyAscHermiteQef } from "./asc-hermite-qef.mjs"
 import { stripSamplingGridShellTriangles } from "./grid-shell-filter.mjs"
 import { SIZEOF_VERTEX, splitCreaseVertices, type ProgressCallback } from "./mdc.mjs"
-import { AscVoxelGrid, runAscLayerSweep, type AscLayerSweepResult, type AscTierIndex } from "./asc-core/index.mjs"
+import {
+    AscVoxelGrid,
+    ascTierShortLabel,
+    runAscLayerSweep,
+    type AscLayerSweepResult,
+    type AscTierIndex,
+} from "./asc-core/index.mjs"
 
 export * from "./asc-core/index.mjs"
 
@@ -306,9 +313,13 @@ export class AscExport {
         const requestedMacroBlocks = ascMacroBlockCount(gridDimX, gridDimY, gridDimZ, tierIndex)
 
         dbgLog("AscExport").info(
-            `AscExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} tier=${effectiveTier}` +
-            (effectiveTier !== tierIndex ? ` (raised from ${tierIndex}; ~${requestedMacroBlocks.toLocaleString()} blocks at tier ${tierIndex} exceeds safety cap)` : "") +
-            ` macro-blocks≈${macroBlocks.toLocaleString()} communicate=${communicate}`,
+            `AscExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} ` +
+                `effective=${ascTierShortLabel(effectiveTier)}` +
+                (effectiveTier !== tierIndex
+                    ? ` (raised from requested ${ascTierShortLabel(tierIndex)}: ~${requestedMacroBlocks.toLocaleString()} macro-blocks at N=${1 << tierIndex
+                      } would exceed ${ASC_MACRO_BLOCK_HARD_CAP.toLocaleString()} cap)`
+                    : "") +
+                ` macro-blocks≈${macroBlocks.toLocaleString()} communicate=${communicate}`,
         )
 
         if (macroBlocks > ASC_MACRO_BLOCK_HARD_CAP) {
@@ -367,7 +378,13 @@ export class AscExport {
 
         const grid = new AscVoxelGrid(scalars, gridDimX, gridDimY, gridDimZ, 0)
         const angleThreshRad = (angleThreshDeg * Math.PI) / 180
-        dbgLog("AscExport").info(`ASC CPU extraction starting (tier ${effectiveTier}, ~${macroBlocks.toLocaleString()} macro-blocks)`)
+        dbgLog("AscExport").info(
+            `ASC CPU extraction starting (${ascTierShortLabel(effectiveTier)}` +
+                (effectiveTier !== tierIndex
+                    ? `, not ${ascTierShortLabel(tierIndex)} — grid would need too many N=${1 << tierIndex} macro-blocks`
+                    : "") +
+                `; ~${macroBlocks.toLocaleString()} macro-blocks)`,
+        )
         const ascOut = runAscLayerSweep({
             tierIndex: effectiveTier,
             grid,
@@ -384,6 +401,26 @@ export class AscExport {
         progressCallback?.updateProgress("ASC: packing mesh", 75)
 
         let { verts, tris } = packAscLayerResultToMeshData(ascOut, gridOffsetX, gridOffsetY, gridOffsetZ)
+
+        if (tris.length > 0) {
+            const sharpened = applyAscHermiteQef(
+                { verts, tris },
+                grid,
+                {
+                    originX: gridOffsetX,
+                    originY: gridOffsetY,
+                    originZ: gridOffsetZ,
+                    scaleX: widthScale,
+                    scaleY: depthScale,
+                    scaleZ: heightScale,
+                },
+            )
+            verts = sharpened.verts
+            tris = sharpened.tris
+            if (sharpened.movedVertices > 0) {
+                dbgLog("AscExport").info(`ASC Hermite/QEF sharp-feature correction: moved ${sharpened.movedVertices.toLocaleString()} vertices`)
+            }
+        }
 
         {
             const before = (tris.length / 3) | 0

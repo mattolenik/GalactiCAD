@@ -74,6 +74,12 @@ export class Elongate extends UnaryOperator {
         const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
         const funcName = `Elongate${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+
+        if (childResult.prelude) {
+            const elongatedPrelude = childResult.prelude.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
+            return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: elongatedPrelude }
+        }
+
         return { funcName, varName, text: elongatedChild }
     }
 

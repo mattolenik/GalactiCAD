@@ -4,6 +4,14 @@
  */
 export type AscTierIndex = 0 | 1 | 2 | 3
 
+/** Dev Tools mesh exporter uses the same strings (`ASC1 (N=1)` … `ASC8 (N=8)`). */
+const ASC_TIER_SHORT_LABELS = ["ASC1 (N=1)", "ASC2 (N=2)", "ASC4 (N=4)", "ASC8 (N=8)"] as const
+
+/** Human-readable tier for logs (index 2 is ASC4, not ASC2). */
+export function ascTierShortLabel(tierIndex: AscTierIndex): string {
+    return ASC_TIER_SHORT_LABELS[tierIndex]
+}
+
 export interface AscBinTier {
     readonly tierIndex: AscTierIndex
     readonly nLevel: number

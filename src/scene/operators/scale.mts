@@ -84,9 +84,17 @@ export class Scale extends UnaryOperator {
         const svec = this.sVecWgsl()
         const childResult = this.arg.compileMid(indentLevel)
         const childText = childResult.text!
-        const scaledChildText = childText.replace(/\bp\b/g, `(p / ${svec})`)
         const funcName = `Scale${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+
+        if (childResult.prelude) {
+            const scaledPrelude = childResult.prelude.replace(/\bp\b/g, `(p / ${svec})`)
+            const accVar = childResult.varName!
+            const prelude = scaledPrelude + `${accVar} = sdfScaleNormalMid(${accVar}, ${svec});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
+
+        const scaledChildText = childText.replace(/\bp\b/g, `(p / ${svec})`)
         return {
             funcName,
             varName,

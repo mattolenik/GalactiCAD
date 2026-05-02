@@ -1114,9 +1114,16 @@ export class RenderWorkerCore {
         const TILE_STRIDE_BYTES = 48
         const totalSamples = dimsX * dimsY * dimsZ
         const totalWorkgroups = Math.ceil(totalSamples / 256)
-        const dispatchX = Math.min(totalWorkgroups, 65535)
-        const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
-        const dispatchedWorkgroups = dispatchX * dispatchY
+        const MAX_WG = 65535
+        const dispatchX = Math.min(totalWorkgroups, MAX_WG)
+        const dispatchY = Math.min(Math.ceil(totalWorkgroups / dispatchX), MAX_WG)
+        const dispatchZ = Math.ceil(totalWorkgroups / (dispatchX * dispatchY))
+        if (dispatchZ > MAX_WG) {
+            throw new Error(
+                `Scene bounds search grid is too large (${totalWorkgroups} compute workgroups); reduce the search volume or increase the step`,
+            )
+        }
+        const dispatchedWorkgroups = dispatchX * dispatchY * dispatchZ
         const outBuffer = this.#device.createBuffer({
             size: dispatchedWorkgroups * TILE_STRIDE_BYTES,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -1155,7 +1162,7 @@ export class RenderWorkerCore {
             const pass = encoder.beginComputePass()
             pass.setPipeline(boundsPipeline)
             pass.setBindGroup(0, bindGroup)
-            pass.dispatchWorkgroups(dispatchedWorkgroups)
+            pass.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ)
             pass.end()
             this.#device.queue.submit([encoder.finish()])
             await this.#device.queue.onSubmittedWorkDone()

@@ -1,4 +1,11 @@
-export { ascBinTier, buildAscDikeTables, type AscBinTier, type AscDikeTables, type AscTierIndex } from "./tier.mjs"
+export {
+    ascBinTier,
+    ascTierShortLabel,
+    buildAscDikeTables,
+    type AscBinTier,
+    type AscDikeTables,
+    type AscTierIndex,
+} from "./tier.mjs"
 export { AscRuntimeContext, AscLign, minDikeSet, breakDikeSet, createAscRuntimeContext } from "./dikelign.mjs"
 export { AscVoxelGrid, ascGridCenterSample } from "./data-grid.mjs"
 export { AscDoublyList, type AscListLink } from "./doublist.mjs"

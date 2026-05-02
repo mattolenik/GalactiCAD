@@ -105,13 +105,16 @@ export class CameraController {
             this.change$.next(this.state)
         }
         this.#zoomController.onRotate = angleDelta => {
+            if (Math.abs(angleDelta) < 1e-10) return
             // Rotate around the axis perpendicular to the screen (camera forward direction).
             // The base view looks down -Z; apply current rotation to get world-space forward.
             const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
             const forward = rotationMatrix.transformVector(vec3(0, 0, -1)).normalize()
             const twist = Quaternion.fromAxisAngle([forward.x, forward.y, forward.z], angleDelta)
             this.#rotation = this.#rotation.mul(twist).normalize()
-            this.#updateTransforms()
+            // Pinch updates the camera but not the trackball (touchmove only runs for 1 touch);
+            // applySceneRotation → #draw → onDraw keeps them aligned so touchend does not snap back.
+            this.#trackball.applySceneRotation(this.#rotation)
         }
         // Initialize rotation from Euler angles (for backward compatibility)
         this.#rotation = Quaternion.fromEuler(initialPhi, initialTheta, 0, "YXZ")

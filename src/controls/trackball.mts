@@ -146,6 +146,35 @@ export class Trackball {
         }
     }
 
+    /**
+     * Align internal rotation to an external quaternion (e.g. pinch-twist on the host).
+     * Does not clear an active drag; refreshes arcball start vectors when we have a recent
+     * 1-finger position so continuing orbit after pinch stays coherent.
+     */
+    applySceneRotation(quaternion: Quaternion): void {
+        const v = quaternion.toVector()
+        const qn = new Quaternion(v[0], v[1], v[2], v[3]).normalize()
+        this.#q = this.#q0 = qn
+        const euler = this.#q.toEuler("XYZ")
+        this.#elevation = euler[0]
+        this.#azimuth = euler[1]
+        this.#roll = euler[2]
+        this.#azimuth_start = this.#azimuth
+        this.#elevation_start = this.#elevation
+        this.#roll_start = this.#roll
+
+        if (this.#drag && this.#lastMousePosition) {
+            const box = this.#drag.box
+            const { clientX, clientY } = this.#lastMousePosition
+            const sv = this.#project(clientX, clientY, box)
+            if (sv) {
+                this.#drag.startVector = sv
+                this.#drag.startPosition = [clientX, clientY]
+            }
+        }
+        this.#draw()
+    }
+
     /** Set the rotation method at runtime. */
     set rotationMethod(m: TrackballRotationMethod) {
         ; (this.#opts as { rotationMethod: TrackballRotationMethod }).rotationMethod = m
@@ -197,9 +226,12 @@ export class Trackball {
         document.addEventListener(
             "touchend",
             (e: TouchEvent) => {
-                if (e.changedTouches.length === 1) {
-                    this.#handleMouseUp(e.changedTouches[0])
-                }
+                // With two fingers down, lifting one finger fires touchend for that finger while
+                // another touch remains — do not end the drag or #draw() stale state until all
+                // touches are released (pinch + orbit share the same trackball drag).
+                if (e.touches.length > 0) return
+                if (e.changedTouches.length < 1) return
+                this.#handleMouseUp()
             },
             { passive: true }
         )

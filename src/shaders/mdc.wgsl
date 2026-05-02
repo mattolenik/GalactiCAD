@@ -1030,6 +1030,12 @@ fn edgeDetection_Pass3(
     // this they emit ghost LINE features that show up as scattered edge glyphs
     // along the same circle as the real RING glyph.
     var compHasRingSample: array<u32, 4>;
+    // Count of crossings whose sceneSDF_mid sample is a lathe mantle tag
+    // (MID_FEATURE_NONE + MID_LATHE_MANTLE_NORMAL_COUNT). When this equals
+    // compCrossCount[c], every crossing in the component is pure lathe mantle
+    // (no CSG partner), so inferred LINE creases are disabled — lathe uses
+    // explicit RING/CORNER only, never open LINE features.
+    var compLatheMantleCrossCount: array<u32, 4>;
     var compNormalSums: array<array<vec3f, 3>, 4>;
     var compPointSums: array<array<vec3f, 3>, 4>;
     var compPointCounts: array<array<u32, 3>, 4>;
@@ -1053,6 +1059,7 @@ fn edgeDetection_Pass3(
         explicitSeamDist[c] = 1e9;
         explicitRingDist[c] = 1e9;
         compHasRingSample[c] = 0u;
+        compLatheMantleCrossCount[c] = 0u;
         for (var j = 0u; j < 3u; j = j + 1u) {
             compNormalSums[c][j] = vec3f(0.0);
             compPointSums[c][j] = vec3f(0.0);
@@ -1087,6 +1094,9 @@ fn edgeDetection_Pass3(
         compCrossCount[c] = compCrossCount[c] + 1u;
 
         if (sample.featureKind == MID_FEATURE_RING) { compHasRingSample[c] = 1u; }
+        if (sample.featureKind == MID_FEATURE_NONE && sample.featureNormalCount == MID_LATHE_MANTLE_NORMAL_COUNT) {
+            compLatheMantleCrossCount[c] = compLatheMantleCrossCount[c] + 1u;
+        }
 
         let ownerPair = vec2u(sample.featureIdA, sample.featureIdB);
         if (ownerPair.x != 0u || ownerPair.y != 0u) {
@@ -1324,6 +1334,7 @@ fn edgeDetection_Pass3(
             }
         } else if (
             compHasRingSample[c] == 0u &&
+            compLatheMantleCrossCount[c] != compCrossCount[c] &&
             bucketCount == 2u &&
             dot(n0, n1) < MDC_INFER_LINE_DOT_MAX &&
             compPointCounts[c][0] >= MDC_INFER_LINE_MIN_BUCKET_SAMPLES &&
@@ -1914,24 +1925,40 @@ fn chooseQuadTris(v0_idx: u32, v1_idx: u32, v2_idx: u32, v3_idx: u32) -> TriPair
         t1 = vec3u(v1_idx, v3_idx, v2_idx);
     }
 
-    // Orient both triangles consistently using the averaged analytic vertex
-    // normals. Field probing at the quad center is unreliable on sharp feature
-    // creases (rings, hard CSG seams) because the SDF is discontinuous there
-    // and the quad center can sit exactly on the feature, making both +/- probes
-    // land on the same side of the surface and flipping the winding wrong.
-    // Vertex normals come from `sceneSDF_mid` and are guaranteed to point
-    // outward, so checking their agreement with the face normal is robust.
+    // Orient both triangles consistently using a per-vertex vote against the
+    // analytic outward normals stored in `vertices[].normal` (from
+    // `sceneSDF_mid`). Averaging the 4 vertex normals and dotting with the
+    // face normal fails at right-angle ring/seam creases where vertex
+    // normals from opposite sides cancel out, leaving the legacy SDF probe
+    // (unreliable on crease points) to decide. Voting picks the dominant
+    // outward direction even when the average is near zero.
     let faceN0 = cross(vertices[t0.y].position - vertices[t0.x].position,
                        vertices[t0.z].position - vertices[t0.x].position);
     if (dot(faceN0, faceN0) > 0.0) {
-        let nAvg = vertices[v0_idx].normal + vertices[v1_idx].normal +
-                   vertices[v2_idx].normal + vertices[v3_idx].normal;
+        let n0v = vertices[v0_idx].normal;
+        let n1v = vertices[v1_idx].normal;
+        let n2v = vertices[v2_idx].normal;
+        let n3v = vertices[v3_idx].normal;
+        var pos: i32 = 0;
+        var neg: i32 = 0;
+        if (dot(n0v, n0v) > 1e-12) {
+            if (dot(faceN0, n0v) > 0.0) { pos = pos + 1; } else { neg = neg + 1; }
+        }
+        if (dot(n1v, n1v) > 1e-12) {
+            if (dot(faceN0, n1v) > 0.0) { pos = pos + 1; } else { neg = neg + 1; }
+        }
+        if (dot(n2v, n2v) > 1e-12) {
+            if (dot(faceN0, n2v) > 0.0) { pos = pos + 1; } else { neg = neg + 1; }
+        }
+        if (dot(n3v, n3v) > 1e-12) {
+            if (dot(faceN0, n3v) > 0.0) { pos = pos + 1; } else { neg = neg + 1; }
+        }
         var flip = false;
-        if (dot(nAvg, nAvg) > 1e-12) {
-            flip = dot(nAvg, faceN0) < 0.0;
+        if (pos + neg > 0) {
+            flip = neg > pos;
         } else {
-            // Fallback: SDF probe at quad center (legacy behavior) when the
-            // averaged vertex normal is degenerate (all-zero / cancelling).
+            // Fallback: SDF probe at quad center when no vertex normals are
+            // available (all degenerate).
             let center = (p0 + p1 + p2 + p3) * 0.25;
             let nHat = safeUnit3(faceN0);
             let probe = max(uniforms.mdcF3.z, uniforms.voxelSize * uniforms.mdcF3.y);

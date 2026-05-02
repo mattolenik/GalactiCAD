@@ -20,6 +20,10 @@ const MID_FEATURE_BOOLEAN_SEAM: u32 = 3u;
 // full circle and dedup all cells along the same ring into one record.
 const MID_FEATURE_RING: u32 = 4u;
 const MID_FEATURE_SEAM_COS_THRESH: f32 = 0.9659258;
+// Stamped only on `MID_FEATURE_NONE` lathe mantle returns (`sdfRMidLatheMantle`).
+// MDC Pass 3 reads `featureNormalCount` to suppress inferred LINE creases on
+// smooth surfaces of revolution (explicit features stay RING/CORNER only).
+const MID_LATHE_MANTLE_NORMAL_COUNT: u32 = 5u;
 
 //////////////////////////////
 //  EXTENDED SDF RESULT TYPE
@@ -210,6 +214,14 @@ fn sdfRMidOwned(d: f32, g: f32, n: vec3f, ownerA: u32, ownerB: u32) -> SDFResult
 
 fn sdfRMid(d: f32, g: f32, n: vec3f) -> SDFResultMid {
     return sdfRMidNoFeature(d, g, n);
+}
+
+fn sdfRMidLatheMantle(d: f32, g: f32, n: vec3f) -> SDFResultMid {
+    return SDFResultMid(
+        d, g, n,
+        MID_FEATURE_NONE, 1e9, 0u, 0u, MID_LATHE_MANTLE_NORMAL_COUNT,
+        vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0),
+    );
 }
 
 fn sdfNegMid(r: SDFResultMid) -> SDFResultMid {

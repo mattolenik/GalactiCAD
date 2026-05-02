@@ -317,7 +317,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             ${cornerBody("v1", `((edgeIdx + 1u) % ${N}u) + 1u`)}
         }
     }
-    return sdfRMid(d, 1.0, n);
+    return sdfRMidLatheMantle(d, 1.0, n);
 }
 `
     }

@@ -79,6 +79,12 @@ export class Taper extends UnaryOperator {
         const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
         const funcName = `Taper${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        if (childResult.prelude) {
+            const taperedPrelude = childResult.prelude.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
+            const accVar = childResult.varName!
+            const prelude = taperedPrelude + `${accVar} = sdfTaperNormalMid(${accVar}, p, ${ratio}, ${height});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
         return { funcName, varName, text: `sdfTaperNormalMid(${taperedChild}, p, ${ratio}, ${height})` }
     }
 

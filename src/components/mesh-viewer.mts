@@ -1,11 +1,11 @@
-import { MeshData } from "../export/export.mjs"
+import { MESH_MDC_DEBUG_SAMPLE_STRIDE, MeshData, type MeshMdcDebugStats } from "../export/export.mjs"
 import { CameraController } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
 import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import { __fg_color, __tone_2, __tone_accent } from "../style/style.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
-import { vec2, Vec2f, vec3 } from "../vecmat/vector.mjs"
+import { vec2, Vec2f, vec3, vec4 } from "../vecmat/vector.mjs"
 
 export class MeshViewer extends HTMLElement {
     static get observedAttributes() {
@@ -54,6 +54,22 @@ export class MeshViewer extends HTMLElement {
     #viewCenter: Vec2f = vec2(0.5, 0.5)
     #wireframe = false
     #wireframeCheckbox!: HTMLInputElement
+    #debugOverlayCanvas: HTMLCanvasElement
+    #debugOverlayCtx: CanvasRenderingContext2D | null
+    #hoverCanvasPos: { x: number; y: number } | null = null
+    #mdcDebug = false
+    #mdcDebugCheckbox!: HTMLInputElement
+    /** Per-class feature glyph overlay toggles (MDC debug). */
+    #mdcFeatureGlyphLine = false
+    #mdcFeatureGlyphCorner = false
+    #mdcFeatureGlyphSeam = false
+    #mdcFeatureGlyphRing = false
+    #mdcFeatureGlyphLineCheckbox!: HTMLInputElement
+    #mdcFeatureGlyphCornerCheckbox!: HTMLInputElement
+    #mdcFeatureGlyphSeamCheckbox!: HTMLInputElement
+    #mdcFeatureGlyphRingCheckbox!: HTMLInputElement
+    #mdcDebugSamples: Float32Array<ArrayBuffer> = new Float32Array(0)
+    #mdcDebugStats: MeshMdcDebugStats | null = null
 
     get controls(): CameraController {
         return this.#controls
@@ -94,14 +110,25 @@ export class MeshViewer extends HTMLElement {
             width: 100%;
         }
         :host { display: inline-block; position: relative; }
+        .debug-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
         .overlay {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
             position: absolute;
             bottom: 10px;
             right: 10px;
             pointer-events: auto;
             z-index: 1;
         }
-        .overlay label {
+        .overlay > label {
             display: inline-flex;
             align-items: center;
             gap: 8px;
@@ -114,6 +141,35 @@ export class MeshViewer extends HTMLElement {
             -webkit-backdrop-filter: blur(6px);
             user-select: none;
         }
+        .overlay-feature-glyphs {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            padding: 5px 8px 6px;
+            border-radius: 6px;
+            font-size: 12px;
+            background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
+            color: rgb(from var(${__fg_color}) r g b / 0.85);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            user-select: none;
+        }
+        .overlay-feature-glyphs-title {
+            font-size: 11px;
+            opacity: 0.88;
+            padding: 0 2px 3px;
+        }
+        .overlay-feature-glyphs label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 1px 2px;
+            margin: 0;
+            border-radius: 0;
+            background: transparent;
+            color: inherit;
+            font-size: 12px;
+        }
         .overlay input[type="checkbox"] {
             accent-color: var(${__tone_accent});
             font-size: 16px;
@@ -123,7 +179,12 @@ export class MeshViewer extends HTMLElement {
         this.canvas.style.width = "100%"
         this.canvas.style.height = "100%"
         this.canvas.style.display = "inline-block"
-        shadow.append(style, this.canvas)
+        this.#debugOverlayCanvas = document.createElement("canvas")
+        this.#debugOverlayCanvas.className = "debug-canvas"
+        this.#debugOverlayCanvas.style.width = "100%"
+        this.#debugOverlayCanvas.style.height = "100%"
+        this.#debugOverlayCtx = this.#debugOverlayCanvas.getContext("2d")
+        shadow.append(style, this.canvas, this.#debugOverlayCanvas)
 
         const overlay = document.createElement("div")
         overlay.classList.add("overlay")
@@ -145,6 +206,38 @@ export class MeshViewer extends HTMLElement {
         wireText.textContent = "Wireframe"
         wireLabel.append(this.#wireframeCheckbox, wireText)
         overlay.append(wireLabel)
+
+        const debugLabel = document.createElement("label")
+        this.#mdcDebugCheckbox = document.createElement("input")
+        this.#mdcDebugCheckbox.type = "checkbox"
+        this.#mdcDebugCheckbox.checked = this.#mdcDebug
+        const debugText = document.createElement("span")
+        debugText.textContent = "Debug points"
+        debugLabel.append(this.#mdcDebugCheckbox, debugText)
+        overlay.append(debugLabel)
+
+        const featureGlyphBox = document.createElement("div")
+        featureGlyphBox.className = "overlay-feature-glyphs"
+        const featureGlyphTitle = document.createElement("div")
+        featureGlyphTitle.className = "overlay-feature-glyphs-title"
+        featureGlyphTitle.textContent = "Feature glyphs"
+        featureGlyphBox.append(featureGlyphTitle)
+        const addFeatureGlyphRow = (text: string, checked: boolean, assign: (el: HTMLInputElement) => void) => {
+            const row = document.createElement("label")
+            const cb = document.createElement("input")
+            cb.type = "checkbox"
+            cb.checked = checked
+            assign(cb)
+            const span = document.createElement("span")
+            span.textContent = text
+            row.append(cb, span)
+            featureGlyphBox.append(row)
+        }
+        addFeatureGlyphRow("Line", this.#mdcFeatureGlyphLine, el => { this.#mdcFeatureGlyphLineCheckbox = el })
+        addFeatureGlyphRow("Corner", this.#mdcFeatureGlyphCorner, el => { this.#mdcFeatureGlyphCornerCheckbox = el })
+        addFeatureGlyphRow("Seam", this.#mdcFeatureGlyphSeam, el => { this.#mdcFeatureGlyphSeamCheckbox = el })
+        addFeatureGlyphRow("Ring", this.#mdcFeatureGlyphRing, el => { this.#mdcFeatureGlyphRingCheckbox = el })
+        overlay.append(featureGlyphBox)
         shadow.appendChild(overlay)
 
         this.#translucentCheckbox.addEventListener("change", () => {
@@ -152,6 +245,33 @@ export class MeshViewer extends HTMLElement {
         })
         this.#wireframeCheckbox.addEventListener("change", () => {
             this.wireframe = this.#wireframeCheckbox.checked
+        })
+        this.#mdcDebugCheckbox.addEventListener("change", () => {
+            this.#mdcDebug = this.#mdcDebugCheckbox.checked
+        })
+        this.#mdcFeatureGlyphLineCheckbox.addEventListener("change", () => {
+            this.#mdcFeatureGlyphLine = this.#mdcFeatureGlyphLineCheckbox.checked
+        })
+        this.#mdcFeatureGlyphCornerCheckbox.addEventListener("change", () => {
+            this.#mdcFeatureGlyphCorner = this.#mdcFeatureGlyphCornerCheckbox.checked
+        })
+        this.#mdcFeatureGlyphSeamCheckbox.addEventListener("change", () => {
+            this.#mdcFeatureGlyphSeam = this.#mdcFeatureGlyphSeamCheckbox.checked
+        })
+        this.#mdcFeatureGlyphRingCheckbox.addEventListener("change", () => {
+            this.#mdcFeatureGlyphRing = this.#mdcFeatureGlyphRingCheckbox.checked
+        })
+        this.canvas.addEventListener("pointermove", event => {
+            const rect = this.canvas.getBoundingClientRect()
+            const sx = rect.width > 0 ? this.canvas.width / rect.width : 1
+            const sy = rect.height > 0 ? this.canvas.height / rect.height : 1
+            this.#hoverCanvasPos = {
+                x: (event.clientX - rect.left) * sx,
+                y: (event.clientY - rect.top) * sy,
+            }
+        })
+        this.canvas.addEventListener("pointerleave", () => {
+            this.#hoverCanvasPos = null
         })
 
         this.#cameraRes = vec2(this.canvas.clientWidth, this.canvas.clientHeight)
@@ -171,6 +291,8 @@ export class MeshViewer extends HTMLElement {
                     )
                     this.canvas.width = w
                     this.canvas.height = h
+                    this.#debugOverlayCanvas.width = w
+                    this.#debugOverlayCanvas.height = h
                     this.#cameraRes = vec2(w, h)
                 }
                 if (this.#device) {
@@ -497,6 +619,8 @@ export class MeshViewer extends HTMLElement {
 
         const meshToUpload = this.#pendingMesh
         this.#pendingMesh = null
+        this.#mdcDebugSamples = meshToUpload.debug?.mdc?.samples ?? new Float32Array(0)
+        this.#mdcDebugStats = meshToUpload.debug?.mdc?.stats ?? null
         this.#uploadMesh(meshToUpload)
     }
 
@@ -514,6 +638,7 @@ export class MeshViewer extends HTMLElement {
             this.#edgeIndexBuffer = null
             this.#indexCount = 0
             this.#edgeIndexCount = 0
+            this.#clearDebugOverlay()
             return
         }
 
@@ -576,12 +701,14 @@ export class MeshViewer extends HTMLElement {
         if (this.#disposed) return
 
         if (!this.#device || !this.#uniformBuffer) {
+            this.#clearDebugOverlay()
             if (!this.#disposed) requestAnimationFrame(() => this.update())
             return
         }
 
         // Skip rendering if canvas is collapsed (0x0 size)
         if (this.canvas.width === 0 || this.canvas.height === 0) {
+            this.#clearDebugOverlay()
             if (!this.#disposed) requestAnimationFrame(() => this.update())
             return
         }
@@ -709,8 +836,495 @@ export class MeshViewer extends HTMLElement {
             renderPass.end()
         }
         this.#device.queue.submit([commandEncoder.finish()])
+        this.#drawMdcDebugOverlay(rotated)
 
         if (!this.#disposed) requestAnimationFrame(() => this.update())
+    }
+
+    #clearDebugOverlay(): void {
+        this.#debugOverlayCtx?.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
+    }
+
+    #projectDebugPoint(cameraTransform: Mat4x4f, x: number, y: number, z: number): { x: number; y: number; depth: number } | null {
+        const pCam = cameraTransform.transform(vec4(x, y, z, 1))
+        const p = {
+            x: pCam.x - this.#controls.cameraPosition.x,
+            y: pCam.y - this.#controls.cameraPosition.y,
+            z: pCam.z - (this.#controls.cameraPosition.z + 100.0),
+        }
+        const aspect = this.#cameraRes.y !== 0 ? this.#cameraRes.x / this.#cameraRes.y : 1
+        const ndcX = -p.x / (this.#controls.zoom * aspect)
+        const ndcY = p.y / this.#controls.zoom
+        const near = -10000.0
+        const far = 10000.0
+        const ndcZ = (p.z - near) / (far - near)
+        if (!Number.isFinite(ndcX) || !Number.isFinite(ndcY) || !Number.isFinite(ndcZ) || ndcZ < 0 || ndcZ > 1) {
+            return null
+        }
+        const vcOffsetX = 2 * (this.#viewCenter.x - 0.5)
+        const vcOffsetY = -2 * (this.#viewCenter.y - 0.5)
+        const clipX = ndcX + vcOffsetX
+        const clipY = ndcY + vcOffsetY
+        if (clipX < -1.1 || clipX > 1.1 || clipY < -1.1 || clipY > 1.1) {
+            return null
+        }
+        return {
+            x: (clipX * 0.5 + 0.5) * this.#debugOverlayCanvas.width,
+            y: (1 - (clipY * 0.5 + 0.5)) * this.#debugOverlayCanvas.height,
+            depth: ndcZ,
+        }
+    }
+
+    #drawMdcDebugOverlay(cameraTransform: Mat4x4f): void {
+        const ctx = this.#debugOverlayCtx
+        if (!ctx) return
+        ctx.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
+        const showRawSamples = this.#mdcDebug
+        const showFeatureGlyphs =
+            this.#mdcFeatureGlyphLine
+            || this.#mdcFeatureGlyphCorner
+            || this.#mdcFeatureGlyphSeam
+            || this.#mdcFeatureGlyphRing
+        if ((!showRawSamples && !showFeatureGlyphs) || this.#mdcDebugSamples.length === 0) return
+
+        const samples = this.#mdcDebugSamples
+        const hoverPos = this.#hoverCanvasPos
+        const stride = MESH_MDC_DEBUG_SAMPLE_STRIDE
+        const interestingSampleCount =
+            (this.#mdcDebugStats?.acceptedLine ?? 0)
+            + (this.#mdcDebugStats?.acceptedCorner ?? 0)
+            + (this.#mdcDebugStats?.acceptedSeam ?? 0)
+            + (this.#mdcDebugStats?.rejected ?? 0)
+        const hideNoneSamples = interestingSampleCount > 0
+        const pointSize = samples.length / stride > 2000 ? 3 : 4
+        let hoveredIndex = -1
+        let bestHoverDistSq = 9 * 9
+        let bestHoverPriority = -1
+        const vectorLen = Math.min(Math.max(this.#controls.zoom * 0.045, 0.08), 2.0)
+
+        const colorForClass = (klass: number): string => {
+            switch (klass) {
+                case 1: return "rgba(86, 214, 191, 0.90)"  // line — teal
+                case 2: return "rgba(255, 199, 92, 0.92)"  // corner — amber
+                case 3: return "rgba(214, 138, 255, 0.92)" // seam — violet
+                case 4: return "rgba(120, 220, 255, 0.95)" // ring — cyan
+                case 5: return "rgba(255, 102, 102, 0.95)" // rejected — red
+                default: return "rgba(190, 195, 205, 0.45)"
+            }
+        }
+        const labelForClass = (klass: number): string => {
+            switch (klass) {
+                case 1: return "line"
+                case 2: return "corner"
+                case 3: return "seam"
+                case 4: return "ring"
+                case 5: return "rejected"
+                default: return "none"
+            }
+        }
+        const project = (ox: number, oy: number, oz: number) => this.#projectDebugPoint(cameraTransform, ox, oy, oz)
+        const drawLine = (
+            ax: number,
+            ay: number,
+            az: number,
+            bx: number,
+            by: number,
+            bz: number,
+            color: string,
+            width: number,
+            dashed = false,
+        ) => {
+            const p0 = project(ax, ay, az)
+            const p1 = project(bx, by, bz)
+            if (!p0 || !p1) return
+            ctx.save()
+            ctx.strokeStyle = color
+            ctx.lineWidth = width
+            if (dashed) ctx.setLineDash([5, 4])
+            ctx.beginPath()
+            ctx.moveTo(p0.x, p0.y)
+            ctx.lineTo(p1.x, p1.y)
+            ctx.stroke()
+            ctx.restore()
+        }
+
+        const drawPriorityForClass = (klass: number): number => {
+            switch (klass) {
+                case 0: return 0
+                case 1: return 1 // line
+                case 3: return 2 // seam
+                case 5: return 3 // rejected
+                case 4: return 4 // ring
+                case 2: return 5 // corner
+                default: return 1
+            }
+        }
+        const drawRecords: { sampleIdx: number, klass: number, x: number, y: number, depth: number, priority: number }[] = []
+        const featureRecords: {
+            sampleIdx: number
+            klass: number
+            x: number
+            y: number
+            depth: number
+            fx: number
+            fy: number
+            fz: number
+            n1x: number
+            n1y: number
+            n1z: number
+            n2x: number
+            n2y: number
+            n2z: number
+            ax: number
+            ay: number
+            az: number
+            ownerA: number
+            ownerB: number
+            featureDist: number
+        }[] = []
+        const worldUnitsPerPixel =
+            this.#debugOverlayCanvas.height > 0
+                ? (2 * this.#controls.zoom) / this.#debugOverlayCanvas.height
+                : this.#controls.zoom * 0.01
+        const featureDedupWorld = Math.max(worldUnitsPerPixel * 8, 1e-4)
+        const featureDedupWorldSq = featureDedupWorld * featureDedupWorld
+        const featurePriorityForClass = (klass: number): number => {
+            switch (klass) {
+                case 1: return 1 // line
+                case 3: return 2 // seam
+                case 4: return 3 // ring
+                case 2: return 4 // corner
+                default: return 0
+            }
+        }
+        const tangentFromNormals = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => {
+            const tx = ay * bz - az * by
+            const ty = az * bx - ax * bz
+            const tz = ax * by - ay * bx
+            const len = Math.hypot(tx, ty, tz)
+            if (len < 1e-6) return null
+            return { x: tx / len, y: ty / len, z: tz / len }
+        }
+        const updateHover = (sampleIdx: number, px: number, py: number, priority: number) => {
+            if (!hoverPos) return
+            const dx = px - hoverPos.x
+            const dy = py - hoverPos.y
+            const distSq = dx * dx + dy * dy
+            if (distSq < bestHoverDistSq || (distSq === bestHoverDistSq && priority >= bestHoverPriority)) {
+                bestHoverDistSq = distSq
+                bestHoverPriority = priority
+                hoveredIndex = sampleIdx
+            }
+        }
+        for (let sampleIdx = 0; sampleIdx < samples.length / stride; sampleIdx++) {
+            const base = sampleIdx * stride
+            const klass = Math.round(samples[base + 3]!)
+            if (hideNoneSamples && klass === 0) continue
+            const px = samples[base]!
+            const py = samples[base + 1]!
+            const pz = samples[base + 2]!
+            const projected = project(px, py, pz)
+            if (!projected) continue
+            drawRecords.push({
+                sampleIdx,
+                klass,
+                x: projected.x,
+                y: projected.y,
+                depth: projected.depth,
+                priority: drawPriorityForClass(klass),
+            })
+
+            const fx = samples[base + 8]!
+            const fy = samples[base + 9]!
+            const fz = samples[base + 10]!
+            // Skip the "none" (0) and "rejected" (5) classes; everything else is
+            // a real feature payload worth a glyph (line/corner/seam/ring).
+            if (klass !== 0 && klass !== 5 && Math.abs(fx) + Math.abs(fy) + Math.abs(fz) > 1e-6) {
+                const projectedFeature = project(fx, fy, fz)
+                if (projectedFeature) {
+                    const ownerA = Math.round(samples[base + 15]!)
+                    const ownerB = Math.round(samples[base + 19]!)
+                    const featureDist = samples[base + 11]!
+                    const ax = samples[base + 20]!
+                    const ay = samples[base + 21]!
+                    const az = samples[base + 22]!
+                    // Rings have a globally-unique identity (latheId in ownerA,
+                    // per-profile-vertex tag in ownerB) so cells anywhere on the
+                    // same circle dedup down to a single record purely by id —
+                    // their per-cell `feat` points scatter around the ring and
+                    // would never satisfy the spatial filter.
+                    const isRing = klass === 4
+                    let merged = false
+                    for (const existing of featureRecords) {
+                        if (
+                            existing.klass === klass &&
+                            existing.ownerA === ownerA &&
+                            existing.ownerB === ownerB
+                        ) {
+                            const dfx = existing.fx - fx
+                            const dfy = existing.fy - fy
+                            const dfz = existing.fz - fz
+                            const spatialOk = isRing || (dfx * dfx + dfy * dfy + dfz * dfz <= featureDedupWorldSq)
+                            if (spatialOk) {
+                                if (featureDist < existing.featureDist || (featureDist === existing.featureDist && sampleIdx < existing.sampleIdx)) {
+                                    existing.sampleIdx = sampleIdx
+                                    existing.x = projectedFeature.x
+                                    existing.y = projectedFeature.y
+                                    existing.depth = projectedFeature.depth
+                                    existing.fx = fx
+                                    existing.fy = fy
+                                    existing.fz = fz
+                                    existing.n1x = samples[base + 12]!
+                                    existing.n1y = samples[base + 13]!
+                                    existing.n1z = samples[base + 14]!
+                                    existing.n2x = samples[base + 16]!
+                                    existing.n2y = samples[base + 17]!
+                                    existing.n2z = samples[base + 18]!
+                                    existing.ax = ax
+                                    existing.ay = ay
+                                    existing.az = az
+                                    existing.featureDist = featureDist
+                                }
+                                merged = true
+                                break
+                            }
+                        }
+                    }
+                    if (!merged) {
+                        featureRecords.push({
+                            sampleIdx,
+                            klass,
+                            x: projectedFeature.x,
+                            y: projectedFeature.y,
+                            depth: projectedFeature.depth,
+                            fx,
+                            fy,
+                            fz,
+                            n1x: samples[base + 12]!,
+                            n1y: samples[base + 13]!,
+                            n1z: samples[base + 14]!,
+                            n2x: samples[base + 16]!,
+                            n2y: samples[base + 17]!,
+                            n2z: samples[base + 18]!,
+                            ax,
+                            ay,
+                            az,
+                            ownerA,
+                            ownerB,
+                            featureDist,
+                        })
+                    }
+                }
+            }
+        }
+        if (showRawSamples) {
+            drawRecords.sort((a, b) => b.depth - a.depth || a.priority - b.priority || a.sampleIdx - b.sampleIdx)
+            for (const record of drawRecords) {
+                ctx.fillStyle = colorForClass(record.klass)
+                const size = record.klass === 0 ? pointSize : pointSize + 2
+                ctx.fillRect(record.x - size * 0.5, record.y - size * 0.5, size, size)
+                updateHover(record.sampleIdx, record.x, record.y, record.priority)
+            }
+        }
+        const featureGlyphEnabled = (klass: number): boolean => {
+            switch (klass) {
+                case 1: return this.#mdcFeatureGlyphLine
+                case 2: return this.#mdcFeatureGlyphCorner
+                case 3: return this.#mdcFeatureGlyphSeam
+                case 4: return this.#mdcFeatureGlyphRing
+                default: return false
+            }
+        }
+        if (showFeatureGlyphs) {
+            featureRecords.sort((a, b) => b.depth - a.depth || featurePriorityForClass(a.klass) - featurePriorityForClass(b.klass) || a.sampleIdx - b.sampleIdx)
+            for (const record of featureRecords) {
+                if (!featureGlyphEnabled(record.klass)) continue
+                const featureColor = colorForClass(record.klass).replace(/0\.\d+\)/, "1.0)")
+                ctx.save()
+                ctx.strokeStyle = featureColor
+                ctx.fillStyle = featureColor
+                ctx.lineWidth = 2.5
+                if (record.klass === 1 || record.klass === 3) {
+                    const tangent = tangentFromNormals(record.n1x, record.n1y, record.n1z, record.n2x, record.n2y, record.n2z)
+                    if (tangent) {
+                        const halfLen = vectorLen * 0.75
+                        drawLine(
+                            record.fx - tangent.x * halfLen,
+                            record.fy - tangent.y * halfLen,
+                            record.fz - tangent.z * halfLen,
+                            record.fx + tangent.x * halfLen,
+                            record.fy + tangent.y * halfLen,
+                            record.fz + tangent.z * halfLen,
+                            featureColor,
+                            2.5,
+                            record.klass === 3,
+                        )
+                    }
+                    ctx.beginPath()
+                    ctx.arc(record.x, record.y, pointSize + 1.5, 0, Math.PI * 2)
+                    ctx.stroke()
+                } else if (record.klass === 2) {
+                    const r = pointSize + 3
+                    ctx.beginPath()
+                    ctx.moveTo(record.x, record.y - r)
+                    ctx.lineTo(record.x + r, record.y)
+                    ctx.lineTo(record.x, record.y + r)
+                    ctx.lineTo(record.x - r, record.y)
+                    ctx.closePath()
+                    ctx.stroke()
+                    ctx.beginPath()
+                    ctx.moveTo(record.x - r * 0.65, record.y - r * 0.65)
+                    ctx.lineTo(record.x + r * 0.65, record.y + r * 0.65)
+                    ctx.moveTo(record.x + r * 0.65, record.y - r * 0.65)
+                    ctx.lineTo(record.x - r * 0.65, record.y + r * 0.65)
+                    ctx.stroke()
+                } else if (record.klass === 4) {
+                    // Ring: reconstruct the full circle from the dedup'd record.
+                    //   radial = featurePoint - axisCenter   (in the ring plane, magnitude = radius)
+                    //   tangent = unit(cross(n0, n1))        (perpendicular to both face normals,
+                    //                                         which lie in the radial-axis plane)
+                    //   axis    = unit(cross(tangent, radial))
+                    //   ring plane basis: u = radial/radius, v = cross(axis, u)
+                    const radialX = record.fx - record.ax
+                    const radialY = record.fy - record.ay
+                    const radialZ = record.fz - record.az
+                    const radius = Math.hypot(radialX, radialY, radialZ)
+                    const tangent = tangentFromNormals(record.n1x, record.n1y, record.n1z, record.n2x, record.n2y, record.n2z)
+                    if (radius > 1e-8 && tangent) {
+                        // axis = cross(tangent, radial)
+                        const axisX = tangent.y * radialZ - tangent.z * radialY
+                        const axisY = tangent.z * radialX - tangent.x * radialZ
+                        const axisZ = tangent.x * radialY - tangent.y * radialX
+                        const axisLen = Math.hypot(axisX, axisY, axisZ)
+                        if (axisLen > 1e-8) {
+                            const aX = axisX / axisLen, aY = axisY / axisLen, aZ = axisZ / axisLen
+                            const uX = radialX / radius, uY = radialY / radius, uZ = radialZ / radius
+                            // v = cross(axis, u)
+                            const vX = aY * uZ - aZ * uY
+                            const vY = aZ * uX - aX * uZ
+                            const vZ = aX * uY - aY * uX
+                            // 64 segments is plenty for typical lathe scales without flooding the canvas.
+                            const SEG = 64
+                            ctx.beginPath()
+                            let started = false
+                            for (let i = 0; i <= SEG; i++) {
+                                const t = (i / SEG) * Math.PI * 2
+                                const cosT = Math.cos(t), sinT = Math.sin(t)
+                                const wx = record.ax + radius * (uX * cosT + vX * sinT)
+                                const wy = record.ay + radius * (uY * cosT + vY * sinT)
+                                const wz = record.az + radius * (uZ * cosT + vZ * sinT)
+                                const sp = project(wx, wy, wz)
+                                if (!sp) { started = false; continue }
+                                if (!started) {
+                                    ctx.moveTo(sp.x, sp.y)
+                                    started = true
+                                } else {
+                                    ctx.lineTo(sp.x, sp.y)
+                                }
+                            }
+                            ctx.stroke()
+                        }
+                    }
+                    // Mark the dedup anchor with a small ring so hover targeting works.
+                    ctx.beginPath()
+                    ctx.arc(record.x, record.y, pointSize, 0, Math.PI * 2)
+                    ctx.stroke()
+                }
+                ctx.restore()
+                updateHover(record.sampleIdx, record.x, record.y, 10 + featurePriorityForClass(record.klass))
+            }
+        }
+
+        const stats = this.#mdcDebugStats
+        if (stats) {
+            const text1 = `Mesh debug ${stats.totalSamples} samples`
+            const text2 = `L ${stats.acceptedLine}  C ${stats.acceptedCorner}  S ${stats.acceptedSeam}  Ring ${stats.acceptedRing}  Rej ${stats.rejected}`
+            const glyphModeParts = [
+                this.#mdcFeatureGlyphLine && "line",
+                this.#mdcFeatureGlyphCorner && "corner",
+                this.#mdcFeatureGlyphSeam && "seam",
+                this.#mdcFeatureGlyphRing && "ring",
+            ].filter(Boolean) as string[]
+            const glyphModeLabel = glyphModeParts.length > 0 ? glyphModeParts.join("+") : "glyphs off"
+            const overlayMode =
+                showRawSamples && showFeatureGlyphs ? `raw squares + ${glyphModeLabel}`
+                    : showRawSamples ? "raw squares only"
+                        : glyphModeLabel
+            const text3 = hideNoneSamples ? `${overlayMode}  gray hidden  N ${stats.acceptedNone}` : `${overlayMode}  N ${stats.acceptedNone}`
+            ctx.save()
+            ctx.font = "12px system-ui, sans-serif"
+            ctx.textBaseline = "top"
+            const width = Math.max(ctx.measureText(text1).width, ctx.measureText(text2).width, ctx.measureText(text3).width) + 16
+            const height = 50
+            const margin = 12
+            // Keep the HUD close to the bottom-right mesh-viewer controls without sitting directly under them.
+            const hudX = this.#debugOverlayCanvas.width - width - margin
+            const hudY = this.#debugOverlayCanvas.height - height - 118
+            ctx.fillStyle = "rgba(12, 14, 18, 0.66)"
+            ctx.fillRect(hudX, hudY, width, height)
+            ctx.fillStyle = "rgba(245, 247, 250, 0.92)"
+            ctx.fillText(text1, hudX + 8, hudY + 6)
+            ctx.fillText(text2, hudX + 8, hudY + 20)
+            ctx.fillText(text3, hudX + 8, hudY + 34)
+            ctx.restore()
+        }
+
+        if (hoveredIndex < 0) return
+        const base = hoveredIndex * stride
+        const px = samples[base]!
+        const py = samples[base + 1]!
+        const pz = samples[base + 2]!
+        const klass = Math.round(samples[base + 3]!)
+        const nx = samples[base + 4]!
+        const ny = samples[base + 5]!
+        const nz = samples[base + 6]!
+        const normalCount = Math.round(samples[base + 7]!)
+        const fx = samples[base + 8]!
+        const fy = samples[base + 9]!
+        const fz = samples[base + 10]!
+        const featureDist = samples[base + 11]!
+        const n1x = samples[base + 12]!
+        const n1y = samples[base + 13]!
+        const n1z = samples[base + 14]!
+        const ownerA = Math.round(samples[base + 15]!)
+        const n2x = samples[base + 16]!
+        const n2y = samples[base + 17]!
+        const n2z = samples[base + 18]!
+        const ownerB = Math.round(samples[base + 19]!)
+        const point = project(px, py, pz)
+        if (!point) return
+
+        drawLine(px, py, pz, px + nx * vectorLen, py + ny * vectorLen, pz + nz * vectorLen, "rgba(120, 220, 255, 0.95)", 2)
+        if (Math.abs(fx) + Math.abs(fy) + Math.abs(fz) > 1e-6) {
+            drawLine(px, py, pz, fx, fy, fz, "rgba(255, 255, 255, 0.55)", 1.5, true)
+            drawLine(fx, fy, fz, fx + n1x * vectorLen, fy + n1y * vectorLen, fz + n1z * vectorLen, "rgba(255, 199, 92, 0.95)", 2)
+            if (normalCount >= 3 || klass === 3) {
+                drawLine(fx, fy, fz, fx + n2x * vectorLen, fy + n2y * vectorLen, fz + n2z * vectorLen, "rgba(214, 138, 255, 0.95)", 2)
+            }
+        }
+
+        ctx.save()
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)"
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, 7, 0, Math.PI * 2)
+        ctx.stroke()
+        const featurePoint = project(fx, fy, fz)
+        if (featurePoint) {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.95)"
+            ctx.fillRect(featurePoint.x - 3, featurePoint.y - 3, 6, 6)
+        }
+        ctx.font = "12px system-ui, sans-serif"
+        ctx.textBaseline = "top"
+        const info = `${labelForClass(klass)}  n=${normalCount}  d=${featureDist.toFixed(3)}  ids=${ownerA}/${ownerB}`
+        const infoWidth = ctx.measureText(info).width + 16
+        const boxX = Math.min(point.x + 12, this.#debugOverlayCanvas.width - infoWidth - 8)
+        const boxY = Math.max(8, point.y - 28)
+        ctx.fillStyle = "rgba(12, 14, 18, 0.78)"
+        ctx.fillRect(boxX, boxY, infoWidth, 22)
+        ctx.fillStyle = "rgba(245, 247, 250, 0.96)"
+        ctx.fillText(info, boxX + 8, boxY + 5)
+        ctx.restore()
     }
 
     get translucentFaces(): boolean {

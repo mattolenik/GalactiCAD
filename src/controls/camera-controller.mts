@@ -28,6 +28,7 @@ const PAN_ZOOM_REF = 50
 /** When zoomed in (`zoom` < ref), pan speed scales up by up to this fraction (sqrt easing). */
 const PAN_ZOOM_IN_BOOST = 0.34
 
+
 export class CameraController {
     #settings: SettingsManager
     #pivot: Vec3f

@@ -125,6 +125,12 @@ export class Rotate extends UnaryOperator {
 
         const funcName = `Rotate${this.id}`
         const varName = `${decapitalize(funcName)}_m`
+        if (childResult.prelude) {
+            const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
+            const accVar = childResult.varName!
+            const prelude = rotatedPrelude + `${accVar} = sdfRotateNormalMid(${accVar}, ${fwdMat});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
         return {
             funcName,
             varName,
@@ -143,3 +149,8 @@ export class Rotate extends UnaryOperator {
 export const rotate = fluent(function rotate(rot: Vec3, node: Node): Rotate {
     return new Rotate(rot, node)
 })
+
+/** Fluent chain: `node.rotate(rot)` — same as `rotate(rot, node)` (including primitives’ `.shift`). */
+Node.prototype.rotate = function (this: Node, rot: Vec3): Rotate {
+    return new Rotate(rot, this)
+}

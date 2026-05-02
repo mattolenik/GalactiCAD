@@ -92,13 +92,25 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
         s.threadAmp = node.threadAmp
         s.threadFlankAngleDeg = node.threadFlankAngleDeg
         s.threadProfile = node.threadProfile
-        s.threadHandedness = node.threadHandedness
+        s.handedness = node.handedness
         s.sceneCapParamsByteOffset = (node.previewF32Slot + 3) * 4
+        s.filletTop = node.filletTop
+        s.filletBottom = node.filletBottom
+        s.chamferTop = node.chamferTop
+        s.chamferBottom = node.chamferBottom
+        s.femalePlay = node.femalePlay
     }
 
     if (node instanceof VirtualCapNode) {
         s.isVirtualCap = true
         s.capSide = node.isTop ? "top" : "bottom"
+    }
+
+    if (node instanceof Cylinder) {
+        s.filletTop = node.filletTop
+        s.filletBottom = node.filletBottom
+        s.chamferTop = node.chamferTop
+        s.chamferBottom = node.chamferBottom
     }
 
     if (node.paramCount > 0) {

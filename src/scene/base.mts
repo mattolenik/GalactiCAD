@@ -2,6 +2,7 @@ import { Vec3 } from "../vecmat/vector.mjs"
 import type { PreviewParamsOut } from "./scene-params.mjs"
 import type { AABB } from "./aabb.mjs"
 import { aabbUnion } from "./aabb.mjs"
+import type { ContourBuffer } from "./contour-buffer.mjs"
 
 export type CompileResult = {
     funcName?: string
@@ -75,6 +76,13 @@ export const COST_ONE_PRIMITIVE = 1
 /** Minimum codegen cost for a subtree to warrant a BVH bounding check. */
 export const BVH_MIN_COST = 8
 
+let nodeCloneImpl: ((node: Node) => Node) | undefined
+
+/** Wired by `node-clone.mjs` when the scene module loads. */
+export function setNodeCloneImpl(impl: (node: Node) => Node): void {
+    nodeCloneImpl = impl
+}
+
 export class Node {
     id!: number
     root: Node
@@ -111,6 +119,20 @@ export class Node {
 
     constructor() {
         this.root = this
+    }
+
+    /**
+     * Deep-clone this node and its entire subtree (new objects, no shared child refs).
+     * Build-time fields (`id`, param offsets, polygon `bufferOffset`, …) are cleared; call under a fresh `SceneInfo` to assign them.
+     * Requires the scene bundle to have loaded once (imports `node-clone.mjs`).
+     */
+    clone(): Node {
+        if (!nodeCloneImpl) {
+            throw new Error(
+                "Node.clone() is unavailable until the scene module loads. Import \"./scene/scene.mjs\" (or the app entry that pulls it in) before calling clone().",
+            )
+        }
+        return nodeCloneImpl(this)
     }
 
     primitiveCount(): number {
@@ -194,15 +216,22 @@ export class Node {
         throw new Error("Method not implemented.")
     }
 
+    /**
+     * MDC/export SDF variant. Implementations must mirror `compile()`'s spatial
+     * warp, use the corresponding WGSL `*Mid` transform wrapper for normals and
+     * feature payloads, and stamp leaf owners with `sdfMidSetOwner`.
+     * Smooth/blended operators should only preserve feature payloads when the
+     * feature remains geometrically meaningful for the generated surface.
+     */
     compileMid(_indentLevel = 0): CompileResult {
         throw new Error("Method not implemented.")
     }
 
     /** Write this node's `paramCount` floats into `view` (a subarray at `paramOffset` of the full pack). */
-    writeSceneParams(_view: Float32Array): void {}
+    writeSceneParams(_view: Float32Array): void { }
 
     /** Pack preview uniform banks (orthogonal to `writeSceneParams`, which feeds bounds/MDC storage). */
-    writePreviewParams(_out: PreviewParamsOut): void {}
+    writePreviewParams(_out: PreviewParamsOut): void { }
 
     build() {
         this.scene.add(this)
@@ -229,6 +258,38 @@ export class Node {
     appendStructuralFingerprint(parts: string[]): void {
         parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}`)
     }
+
+    /**
+     * Contribute this node's **explicit contour features** (corners, edges,
+     * cap rings, etc.) into `builder`, in **world-space** coordinates.
+     *
+     * SHREC's MergeSharp pass uses these as snap targets to produce
+     * crisp edges/corners that gradient-only QEF reconstruction cannot
+     * achieve. The base implementation is a no-op:
+     *
+     *   - **Smooth primitives** (sphere, capsule, torus, smooth blends):
+     *     no contours by definition; default no-op is correct.
+     *   - **Operators that destroy sharp features** (`round`, `soft`,
+     *     `chamfer`, smooth mixes): override to no-op (drops child
+     *     contours intentionally).
+     *   - **Hard CSG operators** (`union`, `intersection`, `difference`):
+     *     recurse into children; **do not** synthesise CSG-seam contours
+     *     here — those are handled by the SDF-driven path in MergeSharp.
+     *   - **Transformations** (`translate`, `rotate`, `scale`): compose
+     *     the transform into the recursion (TODO once Box ships and the
+     *     wiring is exercised).
+     *   - **Primitives with explicit features** (box, cylinder, extrude,
+     *     etc.): `builder.beginNode(this.id)`, emit segments / points /
+     *     rings, `builder.endNode()`.
+     *
+     * Per the indices-not-data design: nodes write into the shared
+     * `builder` rather than constructing their own contour objects. The
+     * shared buffer's per-node ranges keep each node's contributions
+     * addressable by id.
+     */
+    accumulateContours(_builder: ContourBuffer): void {
+        // Default: no contours. Overridden per-primitive and per-operator.
+    }
 }
 
 export abstract class UnaryOperator extends Node {
@@ -245,7 +306,7 @@ export abstract class UnaryOperator extends Node {
         return this.arg.computeBounds()
     }
     /** Reserve `paramOffset` / `paramCount` after this node is registered; runs before the child subtree `build()`. */
-    protected reserveUnarySceneParams(): void {}
+    protected reserveUnarySceneParams(): void { }
     override build() {
         super.build()
         this.reserveUnarySceneParams()
@@ -255,6 +316,14 @@ export abstract class UnaryOperator extends Node {
     override appendStructuralFingerprint(parts: string[]): void {
         parts.push(`${this.getShapeType()}:${this.structuralBvhSlot()}`)
         this.arg.appendStructuralFingerprint(parts)
+    }
+    /**
+     * Default: pass-through — child contours propagate unchanged. Operators
+     * that destroy sharp features (`round`, `soft`, etc.) override this to
+     * a no-op; transform operators override to apply their transform first.
+     */
+    override accumulateContours(builder: ContourBuffer): void {
+        this.arg.accumulateContours(builder)
     }
     constructor(public arg: Node) {
         super()
@@ -277,7 +346,7 @@ export abstract class BinaryOperator extends Node {
         return aabbUnion(lb, rb)
     }
     /** Reserve `paramOffset` / `paramCount` after this node is registered; runs before left/right subtree `build()`. */
-    protected reserveBinarySceneParams(): void {}
+    protected reserveBinarySceneParams(): void { }
     override build() {
         super.build()
         this.reserveBinarySceneParams()
@@ -294,6 +363,17 @@ export abstract class BinaryOperator extends Node {
         this.lh.appendStructuralFingerprint(parts)
         this.rh.appendStructuralFingerprint(parts)
     }
+    /**
+     * Default: hard-CSG passthrough — propagate both children's contours.
+     * Per the design instruction, we do not synthesise CSG-seam contours
+     * here; that path is handled SDF-side by MergeSharp's seam-tangent
+     * solve. Smooth/blend operators (`smoothUnion`, `mix`, etc.) override
+     * this to a no-op, dropping child contours.
+     */
+    override accumulateContours(builder: ContourBuffer): void {
+        this.lh.accumulateContours(builder)
+        this.rh.accumulateContours(builder)
+    }
     constructor(public lh: Node, public rh: Node) {
         super()
     }
@@ -302,8 +382,7 @@ export abstract class BinaryOperator extends Node {
 /**
  * Merge the preludes of two child CompileResults and return the combined
  * prelude string along with each child's expression text. When a child has a
- * prelude, its `varName` (the accumulator) is the correct expression to use
- * rather than `text`, which is just an alias for `varName`.
+ * prelude, prefer `varName` (the accumulator or assigned result) over `text`.
  *
  * Usage in a binary operator that cannot emit its own prelude logic:
  *   const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
@@ -313,10 +392,30 @@ export function mergeChildPreludes(
     lh: CompileResult,
     rh: CompileResult,
 ): { prelude: string | undefined; lText: string; rText: string } {
-    const lText = lh.text!
-    const rText = rh.text!
+    const lText = (lh.prelude ? lh.varName ?? lh.text : lh.text)!
+    const rText = (rh.prelude ? rh.varName ?? rh.text : rh.text)!
     const combined = [lh.prelude, rh.prelude].filter(Boolean).join("")
     return { prelude: combined || undefined, lText, rText }
+}
+
+/**
+ * Binary ops evaluate to `expr`. When either child emitted a prelude, append
+ * `var varName = expr` so `SceneInfo.compile*` can `return varName` and parents
+ * (e.g. BVH unions) can reference a single identifier after the prelude runs.
+ */
+export function binaryOpCompileResult(
+    varName: string,
+    expr: string,
+    mergedPrelude: string | undefined,
+): CompileResult {
+    if (mergedPrelude) {
+        return {
+            varName,
+            text: varName,
+            prelude: mergedPrelude + `var ${varName} = ${expr};\n`,
+        }
+    }
+    return { varName, text: expr, prelude: undefined }
 }
 
 /** Default position when pos is omitted from primitive/operator options. */
@@ -329,3 +428,6 @@ export type UnionType = IntersectionType | 'soft'
 export function decapitalize(s: string) {
     return s[0].toLowerCase() + s.slice(1)
 }
+
+// Type-only merge: `Node.prototype.rotate` is set in `operators/rotate.mjs` when that module loads.
+import "./node-rotate-augmentation.mjs"

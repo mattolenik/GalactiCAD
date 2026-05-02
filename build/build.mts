@@ -3,6 +3,7 @@ import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
 import fs from "fs/promises"
+import nodePath from "node:path"
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import { DevServer } from "./devserver.mjs"
@@ -50,6 +51,21 @@ const Options = {
 const WatchOptions = {
     ignored: [".cursor", ".github", ".DS_Store", ".git", "node_modules", "assets", /.devserver.*/, Options.outDir],
     causesRebuild: [/^build\//, /\.lock$/, /tsconfig\.json$/, /package\.json$/],
+}
+
+/** Relative paths matching these globs still run `build()` but skip WebSocket live reload. */
+const NoRefresh = ["*.gcad"] as const
+
+function shouldSuppressLiveReload(relativePath: string): boolean {
+    const norm = relativePath.replace(/\\/g, "/")
+    return NoRefresh.some(pat => {
+        if (nodePath.matchesGlob(norm, pat)) return true
+        // Node `matchesGlob` does not let a lone `*` cross `/`; treat `*.ext` as suffix at any depth.
+        if (pat.startsWith("*.") && !pat.includes("/") && pat.indexOf("*", 1) === -1) {
+            return norm.endsWith(pat.slice(1))
+        }
+        return false
+    })
 }
 
 const ServerOptions = {
@@ -170,7 +186,9 @@ async function main() {
             .subscribe(async ({ event, path }) => {
                 log(`Build triggered by ${event}: ${path}`)
                 await build()
-                server.reload()
+                if (!shouldSuppressLiveReload(path)) {
+                    server.reload()
+                }
             })
         let watcher = watch(
             ".",

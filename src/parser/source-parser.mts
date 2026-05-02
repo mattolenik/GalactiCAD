@@ -5,6 +5,7 @@
 
 import * as ts from "typescript"
 import { log } from "../logging/debug-log.mjs"
+import { BOTTOM, LEFT, RIGHT, TOP } from "../scene/direction-indicator.mjs"
 import { vec3, type Vec3, Vec3f } from "../vecmat/vector.mjs"
 
 /**
@@ -21,6 +22,12 @@ export interface SourceLocation {
     endColumn: number
     /** The name of the function (e.g., "sphere", "box") */
     functionName: string
+    /**
+     * When set, the editor omits the colored function-name pill, `cad-fluent-method` (teal) styling,
+     * and selection outline (yellow) for this source span. Set for `.rotate(…)` on a chain; the global
+     * `rotate(rot, node)` does not set this.
+     */
+    skipColorIndicator?: boolean
 }
 
 /**
@@ -44,12 +51,23 @@ export interface ParsedShapeCall {
     depth?: number    // Radial amplitude override for threaded_rod (disables pitch+angle amp)
     threadAngle?: number // Meridional flank angle (deg) for threaded_rod; with pitch sets amp unless depth()
     threadProfile?: "fdm" | "iso" | "acme" // From .profile.fdm() / .iso() / .acme() chain
-    threadHandedness?: "left" | "right" // From .left / .right property chain (default right)
+    /** From `hand(LEFT|RIGHT)`, or threaded_rod.left / .right chain. Default RIGHT. */
+    handedness?: number
     c?: number        // Center half-height for capsule
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
     vertices?: [number, number][]  // Vertex array for polygon2d
     t?: number                     // Twist (degrees) for extrude
+    /** Cylinder rim fillet radius (+y cap). */
+    filletTop?: number
+    /** Cylinder rim fillet radius (-y cap). */
+    filletBottom?: number
+    /** Cylinder rim chamfer amount (+y cap). */
+    chamferTop?: number
+    /** Cylinder rim chamfer amount (-y cap). */
+    chamferBottom?: number
+    /** ThreadedRod: female radial clearance play (0 = nominal). */
+    femalePlay?: number
 }
 
 /**
@@ -221,8 +239,8 @@ export function findReturnStatementLine(src: string): number | null {
  * Shape functions we care about for source location tracking
  */
 const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
-const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe"])
-const MODIFIER_NAMES = new Set(["rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper"])
+const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe", "knurl"])
+const MODIFIER_NAMES = new Set(["rotate", "translate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
 
 /**
@@ -230,7 +248,7 @@ const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTI
  * and should be "looked through" when resolving logical leaf calls.
  * Modifiers (rotate, shell, etc.) and rendering composites (extrude, loft, lathe) are NOT in this set.
  */
-const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam"])
+const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "knurl", "tongue", "morph", "seam"])
 
 /**
  * Parser for extracting source locations from CAD code
@@ -380,7 +398,8 @@ export class SourceParser {
                 if (ts.isPropertyAccessExpression(node.expression)) {
                     const prop = node.expression
                     const name = prop.name.text
-                    if (methodNames.has(name)) {
+                    // Only `rotate(rot, node)` is a first-class highlighted call; `.rotate(rot)` is not.
+                    if (methodNames.has(name) && name !== "rotate") {
                         const nameNode = prop.name
                         const startLoc = tsPosToUser(sourceFile, nameNode.getStart())
                         const endLoc = tsPosToUser(sourceFile, nameNode.getEnd())
@@ -485,6 +504,7 @@ export class SourceParser {
         let callStart: number
         let callEnd: number
         let isFluent = false
+        let skipColorIndicator: boolean = false
 
         if (ts.isIdentifier(callNode.expression)) {
             funcName = callNode.expression.text
@@ -495,7 +515,14 @@ export class SourceParser {
             const propName = callNode.expression.name.getText()
             if (MODIFIER_NAMES.has(propName)) {
                 funcName = propName
-                rootExpr = callNode.expression
+                if (propName === "rotate") {
+                    skipColorIndicator = true
+                }
+                // Source location for indicators / selection: the method name only (e.g. `rotate` in
+                // `.rotate`), not the full PropertyAccess — otherwise a chain like
+                // `cylinder...height(2).rotate(...)` would span the entire expression and cover the line
+                // with a single (wrong) pill, or overlap every inner call in the same range.
+                rootExpr = callNode.expression.name
                 callStart = callNode.getStart() - WRAP_PREFIX_CHARS
                 callEnd = callNode.getEnd() - WRAP_PREFIX_CHARS
                 // Ensure we create calls for all modifiers in the chain (visit order may miss some)
@@ -534,7 +561,8 @@ export class SourceParser {
                 startColumn: startLoc.column,
                 endLine: endLoc.line,
                 endColumn: endLoc.column,
-                functionName: funcName
+                functionName: funcName,
+                ...(skipColorIndicator ? { skipColorIndicator: true } : {}),
             }
         }
 
@@ -542,7 +570,9 @@ export class SourceParser {
             this.parseSphereFluentArgs(callNode, parsedCall)
         } else if (funcName === "box") {
             this.parseBoxFluentArgs(callNode, parsedCall)
-        } else if (funcName === "cylinder" || funcName === "cone" || funcName === "hexprism") {
+        } else if (funcName === "cylinder") {
+            this.parseCylinderFluentArgs(callNode, parsedCall)
+        } else if (funcName === "cone" || funcName === "hexprism") {
             this.parsePosRadiusHeightFluentArgs(callNode, parsedCall)
         } else if (funcName === "torus") {
             this.parseTorusFluentArgs(callNode, parsedCall)
@@ -562,13 +592,15 @@ export class SourceParser {
             this.parseLatheFluentArgs(callNode, parsedCall)
         } else if (funcName === "rotate") {
             this.parseRotateArgs(callNode, parsedCall)
+        } else if (funcName === "translate") {
+            this.parseTranslateArgs(callNode, parsedCall)
         } else if (funcName === "scale") {
             this.parseScaleArgs(callNode, parsedCall)
         } else if (funcName === "shell" || funcName === "offset") {
             this.parseShellOffsetArgs(callNode, parsedCall)
         } else if (funcName === "elongate") {
             this.parseElongateArgs(callNode, parsedCall)
-        } else if (funcName === "twist" || funcName === "bend") {
+        } else if (funcName === "twist" || funcName === "bend" || funcName === "repeatPolar") {
             this.parseTwistBendArgs(callNode, parsedCall)
         } else if (funcName === "taper") {
             this.parseTaperArgs(callNode, parsedCall)
@@ -750,6 +782,59 @@ export class SourceParser {
         }
     }
 
+    private parseCylinderFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const chain = this.#collectFluentChain(callNode)
+            for (const { method, args } of chain) {
+                if (method === "radius" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.r = v
+                } else if (method === "height" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (typeof v === "number") parsedCall.h = v
+                } else if (method === "chamfer" && args.length >= 2) {
+                    const side = this.evaluateExpression(args[0])
+                    const rad = this.evaluateExpression(args[1])
+                    if (typeof side !== "number" || typeof rad !== "number" || !Number.isFinite(side)) continue
+                    if (side & TOP) parsedCall.chamferTop = rad
+                    if (side & BOTTOM) parsedCall.chamferBottom = rad
+                    if (side & TOP) parsedCall.filletTop = 0
+                    if (side & BOTTOM) parsedCall.filletBottom = 0
+                } else if (method === "fillet" && args.length >= 1) {
+                    const rad = this.evaluateExpression(args[0])
+                    if (typeof rad !== "number") continue
+                    let sideFlags = TOP | BOTTOM
+                    if (args.length >= 2) {
+                        const side = this.evaluateExpression(args[1])
+                        if (typeof side !== "number" || !Number.isFinite(side)) continue
+                        sideFlags = side
+                    }
+                    if (sideFlags & TOP) parsedCall.filletTop = rad
+                    if (sideFlags & BOTTOM) parsedCall.filletBottom = rad
+                    if (sideFlags & TOP) parsedCall.chamferTop = 0
+                    if (sideFlags & BOTTOM) parsedCall.chamferBottom = 0
+                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                }
+            }
+            if (typeof parsedCall.r === "number" && typeof parsedCall.h === "number") {
+                const cap = Math.min(parsedCall.r * 0.49, parsedCall.h * 0.49)
+                const clampE = (v: number | undefined) => {
+                    if (v === undefined) return undefined
+                    if (!(v > 0) || !Number.isFinite(v)) return 0
+                    return Math.min(v, cap)
+                }
+                parsedCall.chamferTop = clampE(parsedCall.chamferTop)
+                parsedCall.chamferBottom = clampE(parsedCall.chamferBottom)
+                parsedCall.filletTop = clampE(parsedCall.filletTop)
+                parsedCall.filletBottom = clampE(parsedCall.filletBottom)
+            }
+        } catch (err) {
+            log("SourceParser").debug(`Could not parse cylinder fluent args:`, err)
+        }
+    }
+
     private parseTorusFluentArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
             const chain = this.#collectFluentChain(callNode)
@@ -771,15 +856,14 @@ export class SourceParser {
     }
 
     /** Detect threaded_rod.left / .right in the property chain (.profile etc. are not calls). */
-    #threadedRodHandFromExpression(expr: ts.Node): "left" | "right" | undefined {
-        let hand: "left" | "right" | undefined
+    #threadedRodHandFromExpression(expr: ts.Node): typeof LEFT | typeof RIGHT | undefined {
+        let hand: typeof LEFT | typeof RIGHT | undefined
         const visit = (n: ts.Node): void => {
             if (ts.isPropertyAccessExpression(n)) {
                 visit(n.expression)
                 const t = n.name.getText()
-                if (t === "left" || t === "right") {
-                    hand = t
-                }
+                if (t === "left") hand = LEFT
+                else if (t === "right") hand = RIGHT
             } else if (ts.isCallExpression(n)) {
                 visit(n.expression)
             }
@@ -792,7 +876,7 @@ export class SourceParser {
         try {
             const hand = this.#threadedRodHandFromExpression(callNode.expression)
             if (hand !== undefined) {
-                parsedCall.threadHandedness = hand
+                parsedCall.handedness = hand
             }
             const chain = this.#collectFluentChain(callNode)
             for (const { method, args } of chain) {
@@ -825,10 +909,68 @@ export class SourceParser {
                 } else if (method === "threadAngle" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.threadAngle = v
+                } else if (method === "hand" && args.length >= 1) {
+                    const v = this.evaluateExpression(args[0])
+                    if (v === LEFT || v === RIGHT) parsedCall.handedness = v
+                } else if (method === "female") {
+                    if (args.length === 0) {
+                        parsedCall.femalePlay = 0.01
+                    } else {
+                        const v = this.evaluateExpression(args[0])
+                        if (typeof v === "number") parsedCall.femalePlay = v
+                    }
+                } else if (method === "chamfer" && args.length >= 2) {
+                    const side = this.evaluateExpression(args[0])
+                    const rad = this.evaluateExpression(args[1])
+                    if (typeof side !== "number" || typeof rad !== "number" || !Number.isFinite(side)) continue
+                    if (side & TOP) parsedCall.chamferTop = rad
+                    if (side & BOTTOM) parsedCall.chamferBottom = rad
+                    if (side & TOP) parsedCall.filletTop = 0
+                    if (side & BOTTOM) parsedCall.filletBottom = 0
+                } else if (method === "fillet" && args.length >= 1) {
+                    const rad = this.evaluateExpression(args[0])
+                    if (typeof rad !== "number") continue
+                    let sideFlags = TOP | BOTTOM
+                    if (args.length >= 2) {
+                        const side = this.evaluateExpression(args[1])
+                        if (typeof side !== "number" || !Number.isFinite(side)) continue
+                        sideFlags = side
+                    }
+                    if (sideFlags & TOP) parsedCall.filletTop = rad
+                    if (sideFlags & BOTTOM) parsedCall.filletBottom = rad
+                    if (sideFlags & TOP) parsedCall.chamferTop = 0
+                    if (sideFlags & BOTTOM) parsedCall.chamferBottom = 0
                 } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
                     const v = this.evaluateExpression(args[0])
                     if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
                 }
+            }
+            if (typeof parsedCall.r === "number" && typeof parsedCall.h === "number") {
+                const ampEst =
+                    typeof parsedCall.depth === "number"
+                        ? Math.abs(parsedCall.depth)
+                        : (() => {
+                              const pitch = parsedCall.pitch ?? 0.5
+                              const angDeg = parsedCall.threadAngle ?? 60
+                              const rad = (angDeg * Math.PI) / 180
+                              return (Math.tan(rad) * pitch) / (2 * Math.PI)
+                          })()
+                const env = parsedCall.r + ampEst
+                const cap = Math.min(env * 0.49, parsedCall.h * 0.49)
+                const clampE = (v: number | undefined) => {
+                    if (v === undefined) return undefined
+                    if (!(v > 0) || !Number.isFinite(v)) return 0
+                    return Math.min(v, cap)
+                }
+                parsedCall.chamferTop = clampE(parsedCall.chamferTop)
+                parsedCall.chamferBottom = clampE(parsedCall.chamferBottom)
+                parsedCall.filletTop = clampE(parsedCall.filletTop)
+                parsedCall.filletBottom = clampE(parsedCall.filletBottom)
+            }
+            if (parsedCall.femalePlay !== undefined) {
+                const v = parsedCall.femalePlay
+                if (!Number.isFinite(v)) parsedCall.femalePlay = 0
+                else parsedCall.femalePlay = Math.max(-0.99, Math.min(v, 3))
             }
         } catch (err) {
             log("SourceParser").debug("Could not parse threaded_rod fluent args:", err)
@@ -891,6 +1033,10 @@ export class SourceParser {
 
     private parseRotateArgs(callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {
         // Rotate matches by type only; no args needed for node matching
+    }
+
+    private parseTranslateArgs(_callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {
+        // Translate matches by type only
     }
 
     private parseScaleArgs(_callNode: ts.CallExpression, _parsedCall: ParsedShapeCall): void {

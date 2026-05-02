@@ -7,6 +7,174 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import type { MeshData } from "./export/export.mjs"
 
+/**
+ * Default world-space voxel edge length (mm) used by both MDC and SHREC mesh
+ * extractors when the user has not set one explicitly. Half this value → 8×
+ * more voxels → ~8× more time and memory; double this value → 8× cheaper but
+ * blockier corners.
+ */
+export const DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM = 0.1
+
+/**
+ * Selects the algorithm used by `handleRenderMesh` to extract a triangle mesh
+ * from the scene SDF.
+ *
+ * - `"mdc"`: Manifold Dual Contouring entirely on the GPU (default; see
+ *   `src/export/mdc.mts` and `src/shaders/mdc.wgsl`).
+ * - `"shrec"`: GPU samples (scalar, gradient) on a uniform grid, then a CPU
+ *   stage runs dual contouring + MergeSharp vertex relocation (see
+ *   `src/export/shrec.mts` and `src/shaders/sample_grid.wgsl`).
+ */
+export type ExporterKind = "mdc" | "shrec"
+
+/**
+ * Tuning knobs for the SHREC / MergeSharp exporter that the user may adjust
+ * from Dev Tools at runtime. Mirrors the merge-related subset of
+ * `ShrecParams` in `src/export/shrec.mts`; grid-sizing fields stay computed
+ * in the worker.
+ */
+export interface ShrecTuning {
+    /** Whether to run the MergeSharp relocation pass. When false, plain DC mass-point output is returned. */
+    mergeSharpEnabled: boolean
+    /** Singular-value cutoff for the rank-aware QEF pseudo-inverse (fraction of largest eigenvalue). Smaller → more vertices snap to features. */
+    mergeRelCutoff: number
+    /**
+     * Optional extra clamp on per-vertex displacement (mm), in addition to
+     * the always-on cell-bounds clamp. `0` disables this extra clamp.
+     */
+    mergeMaxDisplacement: number
+    /**
+     * Crease angle threshold in degrees for the post-relocation vertex split.
+     * Re-derives per-vertex normals from triangle face normals; vertices whose
+     * adjacent triangles span an angle greater than this threshold are split
+     * into separate output vertices, each with its own per-side normal. Set
+     * to 180 to disable splitting (one smooth group per vertex; normals are
+     * still re-derived from face geometry, which kills banding on flat
+     * surfaces). Set to 0 to make every triangle its own face. Values `< 0`
+     * skip the crease-split pass entirely. Default 30.
+     */
+    creaseAngleDeg: number
+    /**
+     * Enable the seam-aware QEF path. When true, cells whose corner voxels
+     * report a coherent CSG seam tangent (from `sample_grid.wgsl`) are
+     * solved with a 1D constrained least-squares **along the seam line**
+     * instead of the full 3D Tikhonov QEF. This eliminates residual
+     * sub-voxel jitter on long sharp CSG edges (the artifact that normally
+     * shows up as a wavy contour even after Tikhonov regularisation).
+     *
+     * Cells without a usable seam tangent — smooth blends, sharp corners
+     * where 3+ surfaces meet, single-primitive surfaces — fall through to
+     * the existing Tikhonov path.
+     */
+    seamAwareEnabled: boolean
+    /**
+     * Cosine of the per-cell tangent-agreement threshold the seam-aware
+     * path uses to decide that a cell sits on a single coherent seam line.
+     * Default `0.97` ≈ `cos(15°)` — strict, only admits cells whose corner
+     * tangents are near-coincident. Lower values (e.g. `0.85` ≈ `cos(32°)`)
+     * admit more cells; higher values approach `1.0` (only exact agreement).
+     */
+    seamAgreementCosThreshold: number
+    /**
+     * Run the post-MergeSharp **chain Laplacian smoothing** for cells
+     * placed by the rank-2 pseudo-inverse path. Groups topologically-
+     * connected cells with consistent seam tangents into chains, sorts
+     * each chain by its dominant tangent axis, and applies several
+     * iterations of 1D Laplacian smoothing along the chain. Sub-voxel
+     * effect — only useful as a final polish on long sharp edges.
+     */
+    edgeFitEnabled: boolean
+    /**
+     * Vertex deduplication radius, expressed as a fraction of `voxelSize`,
+     * applied after MergeSharp relocation. Multiple cells whose vertices
+     * snapped to the same sharp feature (typically a CSG corner) end up
+     * geometrically co-located and are collapsed into a single shared
+     * vertex; degenerate triangles around the merged corner are dropped.
+     *
+     * - `0` → skip the dedup pass (each cell keeps its own vertex; current default).
+     * - `0.5` → typical setting for corner cleanup; merges anything within
+     *   half a voxel.
+     * - `1.0` → aggressive; can merge across cells that share an edge as
+     *   well as a face.
+     *
+     * The pass is the **"merge" half of MergeSharp's name** — it is what
+     * gives the algorithm a watertight shared vertex at every corner where
+     * three or more surfaces meet. Default `0` is conservative; raise it to
+     * actually engage the merge step.
+     */
+    dedupRadiusVoxels: number
+    /**
+     * Exponent applied to the SDF gradient magnitude `g = |∇SDF|` when
+     * weighting each cube-edge crossing in the QEF.
+     *
+     * - `0` → uniform weight (every crossing counts the same; current default).
+     * - `1` → linear weighting (`w = g`); standard weighted least squares.
+     * - `2` → squared weighting (`w = g²`); the IJK reference value, more
+     *   aggressive at de-weighting smooth-blend regions.
+     *
+     * For true SDFs `g = 1` everywhere and any value is equivalent. The knob
+     * matters only when the scene contains smooth CSG operators (`opUnionRound`,
+     * smooth blends, etc.) where `g < 1` near the blend region; raising the
+     * power keeps blend-region samples from dragging the QEF away from
+     * adjacent sharp features.
+     */
+    mergeGradientWeightPower: number
+    /**
+     * Match MDC mesh export: project MergeSharp QEF Hermite crossings onto
+     * explicit / inferred feature loci when the cell has one iso component.
+     */
+    featureConstrainedPlacement: boolean
+}
+
+export const DEFAULT_SHREC_TUNING: ShrecTuning = {
+    mergeSharpEnabled: true,
+    mergeRelCutoff: 0.05,
+    mergeMaxDisplacement: 0,
+    creaseAngleDeg: 30,
+    mergeGradientWeightPower: 0,
+    dedupRadiusVoxels: 0,
+    seamAwareEnabled: true,
+    seamAgreementCosThreshold: 0.97,
+    edgeFitEnabled: false,
+    featureConstrainedPlacement: true,
+}
+
+/**
+ * Post-MDC meshoptimizer simplification (QEM). Used when mesh export runs the MDC
+ * pipeline with simplification enabled; ignored for SHREC.
+ */
+export interface SimplifyTuning {
+    /** Fraction of input triangles to keep (0–1). `1` skips simplification. */
+    targetRatio: number
+    /** Max geometric error (relative unless `errorAbsolute`). */
+    targetError: number
+    lockBorder: boolean
+    sparse: boolean
+    errorAbsolute: boolean
+    prune: boolean
+    regularize: boolean
+    /** When positive, uses normal-aware simplification (protects sharp features). */
+    normalWeight: number
+    /**
+     * Recompute vertex normals from triangle geometry on export (smooth shading).
+     * Applied only in the worker post-pass after export (and after QEM if it ran);
+     * not coupled to simplify enablement or `targetRatio`. Off keeps exporter normals.
+     */
+    renormalizeTriangles: boolean
+}
+
+export const DEFAULT_SIMPLIFY_TUNING: SimplifyTuning = {
+    targetRatio: 0.1,
+    targetError: 0.001,
+    lockBorder: true,
+    sparse: false,
+    errorAbsolute: false,
+    prune: false,
+    regularize: false,
+    normalWeight: 0,
+    renormalizeTriangles: true,
+}
+
 /** Worker-reported `#doBuild` breakdown (ms); used for devtools / regression triage. */
 export interface BuildTimingBreakdownMs {
     sceneConstructMs: number
@@ -85,8 +253,15 @@ export interface SerializedNode {
     threadFlankAngleDeg?: number
     /** `fdm` = sinusoidal; `iso` = triangular V-groove; `acme` = trapezoidal. */
     threadProfile?: "fdm" | "iso" | "acme"
-    /** Default right-hand; left-hand flips helix. */
-    threadHandedness?: "left" | "right"
+    /** ThreadedRod helix: direction-indicator RIGHT (0x8) or LEFT (0x4). */
+    handedness?: number
+    /** ThreadedRod: barrel xz scale uses 1+femalePlay in denominator (0 = nominal). */
+    femalePlay?: number
+    /** Cylinder: rim fillet / chamfer on +y cap (0 if none). */
+    filletTop?: number
+    filletBottom?: number
+    chamferTop?: number
+    chamferBottom?: number
     /** Polygon2D buffer offset in the shared vertex buffer (bytes / 8). */
     bufferOffset?: number
     /**
@@ -125,6 +300,40 @@ export interface EdgeHitData {
 // Main -> Worker messages
 // ---------------------------------------------------------------------------
 
+/**
+ * High-impact mesh export (MDC) knobs exposed in Dev Tools and persisted in global settings.
+ * Passed to the render worker on each `renderMesh` request.
+ */
+export interface MdcExportLevers {
+    /** Voxel edge length in world units (mm in current export path). Smaller = finer mesh. */
+    voxelSizeMm: number
+    /** Isosurface level of the SDF; 0 is the nominal surface. */
+    isoValue: number
+    /** Crease angle (degrees) for vertex splitting; 180 disables; negative values skip the pass. */
+    creaseAngleDeg: number
+    /** Constrain MDC vertices onto explicit mid-tier line/corner/seam/ring feature loci. */
+    featureConstrainedPlacement: boolean
+    /** Fraction of triangles to keep after simplification (must be < 1 to simplify). */
+    simplifyTargetRatio: number
+    /** Max geometric error for simplifier (relative unless `simplifyErrorAbsolute` is set in worker). */
+    simplifyTargetError: number
+    /** Normal-aware simplification weight; 0 = position only. */
+    simplifyNormalWeight: number
+    /** Meshoptimizer regularize flag. */
+    simplifyRegularize: boolean
+}
+
+export const DEFAULT_MDC_EXPORT_LEVERS: MdcExportLevers = {
+    voxelSizeMm: 0.1,
+    isoValue: 0,
+    creaseAngleDeg: 30,
+    featureConstrainedPlacement: true,
+    simplifyTargetRatio: 0.1,
+    simplifyTargetError: 0.001,
+    simplifyNormalWeight: 0,
+    simplifyRegularize: false,
+}
+
 export type MainToWorkerMessage =
     | { type: "init"; canvas: OffscreenCanvas; sharedBuffer?: SharedArrayBuffer }
     | { type: "renderKick"; version: number }
@@ -138,7 +347,19 @@ export type MainToWorkerMessage =
     // previewParamsF32Patch: cap-drag only — patches #previewF32Shadow then 8-byte write to previewCapParamDrag at byteOffset.
     // Does not touch boundsSceneParams or mdcSceneParams (those refresh on build / param-only build).
     | { type: "writeBuffers"; faceSelection?: ArrayBuffer; polygonVertices?: { offset: number; data: ArrayBuffer }; previewParamsF32Patch?: { byteOffset: number; data: ArrayBuffer }; selectedObjectIds?: ArrayBuffer | { offset: number; data: ArrayBuffer }; colorPalette?: ArrayBuffer }
-    | { type: "renderMesh"; body: string; requestId?: number; documentName?: string; simplifyOnExport?: boolean }
+    | {
+          type: "renderMesh"
+          body: string
+          requestId?: number
+          documentName?: string
+          simplifyOnExport?: boolean
+          exporter?: ExporterKind
+          shrecTuning?: ShrecTuning
+          simplifyTuning?: SimplifyTuning
+          voxelSizeMm?: number
+          /** When set, overrides worker defaults for MDC export (Dev Tools). */
+          mdcExportLevers?: MdcExportLevers
+      }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }

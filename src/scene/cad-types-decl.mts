@@ -8,6 +8,18 @@ export const CAD_TYPES_DECL = `
 /** A 3D position or vector, given as a tuple [x, y, z]. */
 declare type Vec3 = [number, number, number];
 
+/** Combinable direction bit flags (use | to combine, & to test). */
+declare const TOP: 0x1;
+declare const BOTTOM: 0x2;
+declare const LEFT: 0x4;
+declare const RIGHT: 0x8;
+declare const FRONT: 0x10;
+declare const BACK: 0x20;
+/** One direction bit (TOP … BACK). */
+declare type DirectionFlag = typeof TOP | typeof BOTTOM | typeof LEFT | typeof RIGHT | typeof FRONT | typeof BACK;
+/** Bitfield: combine flags with | (e.g. TOP | BOTTOM). Y-up cylinder/rod caps use TOP (+Y) and BOTTOM (−Y). */
+declare type DirectionIndicator = number;
+
 /** Blend mode for smooth CSG operations. */
 declare type BlendMode = 'round' | 'chamfer' | 'soft' | 'columns' | 'stairs';
 
@@ -30,12 +42,18 @@ declare class Vec3f {
 
 /** Base class for all scene nodes. */
 declare class Node {
+    /** Deep copy of this node and its entire subtree (independent objects). */
+    clone(): Node;
     /** Shift the base primitive's position. Works through modifier chains (twist, taper, etc.). */
     shift(v: Vec3): Node;
+    /** Euler rotation in degrees [rx, ry, rz] — same as the standalone rotate(rot, node). */
+    rotate(rot: Vec3): Rotate;
 }
 
 /** Rotate a node. rotate(rot, node) */
 declare function rotate(rot: Vec3, node: Node): Rotate;
+/** Translate a node (rigid shift). translate([dx,dy,dz], node) */
+declare function translate(offset: Vec3, node: Node): Translate;
 /** Uniform or non-uniform scale about the origin. scale([sx,sy,sz], node) */
 declare function scale(factors: Vec3, node: Node): Scale;
 /** Hollow shell of a shape. shell(t, node) */
@@ -50,6 +68,8 @@ declare function twist(rate: number, node: Node): Twist;
 declare function bend(amount: number, node: Node): Bend;
 /** Taper a shape. taper(ratio, height, node) */
 declare function taper(ratio: number, height: number, node: Node): Taper;
+/** Repeat a shape in azimuth around +Y (XZ polar tiling). repeatPolar(count, node) */
+declare function repeatPolar(count: number, node: Node): RepeatPolar;
 
 // ---------------------------------------------------------------------------
 // Primitive shapes
@@ -75,12 +95,16 @@ declare class Box extends Node {
 declare function box(size: Vec3): Box;
 declare function box(l: number, w: number, h: number): Box;
 
-/** A cylinder. cylinder.radius(r).height(h).shift(v) */
+/** A cylinder. cylinder.radius(r).height(h).chamfer(side, amount).fillet(radius, side?).shift(v) */
 declare class Cylinder extends Node {
     pos: Vec3f;
     r: number;
     h: number;
     height(h: number): Cylinder;
+    /** 45° chamfer on the outer rim where the side meets the cap(s). Y-up: TOP / BOTTOM; other flags unused on cylinder. */
+    chamfer(side: DirectionIndicator, amount: number): Cylinder;
+    /** Round fillet on the outer rim where the side meets the cap(s). Default TOP | BOTTOM. */
+    fillet(radius: number, side?: DirectionIndicator): Cylinder;
     shift(v: Vec3): Cylinder;
 }
 
@@ -118,14 +142,24 @@ declare class ThreadedRod extends Node {
     threadAmp: number;
     /** fdm = sinusoidal; iso = triangular; acme = trapezoidal. */
     threadProfile: "fdm" | "iso" | "acme";
-    /** Default right-hand; use threaded_rod.left... for left-hand. */
-    threadHandedness: "left" | "right";
+    /** Default RIGHT; use hand(LEFT) or threaded_rod.left for left-hand thread. */
+    handedness: DirectionIndicator;
     height(h: number): ThreadedRod;
     pitch(p: number): ThreadedRod;
+    /** Set helix handedness to LEFT or RIGHT. */
+    hand(side: typeof LEFT | typeof RIGHT): ThreadedRod;
     /** Flank angle in degrees (default 60). */
     threadAngle(deg: number): ThreadedRod;
     /** Explicit radial amplitude (disables automatic depth from pitch + threadAngle). */
     depth(d: number): ThreadedRod;
+    /** Chamfer barrel–cap junction(s). Y-up: TOP / BOTTOM; other flags unused on threaded rod. */
+    chamfer(side: DirectionIndicator, amount: number): ThreadedRod;
+    /** Round fillet at barrel–cap junction(s). Default TOP | BOTTOM. */
+    fillet(radius: number, side?: DirectionIndicator): ThreadedRod;
+    /**
+     * Female / fit: sample the barrel in xz with scale 1/(1+play). female() uses play 0.01 (factor 1.01). Pass 0 to clear.
+     */
+    female(play?: number): ThreadedRod;
     shift(v: Vec3): ThreadedRod;
 }
 
@@ -224,17 +258,30 @@ declare class Intersect extends Node {
 
 /** Pipe blend between two shapes. pipe(lh, rh).radius(r) */
 declare class Pipe extends Node {
+    pipeRadius: number;
     radius(r: number): Pipe;
 }
 
 /** Engrave one shape into another. engrave(base).pattern(pattern).radius(r) */
 declare class Engrave extends Node {
+    engraveRadius: number;
     radius(r: number): Engrave;
 }
 
 /** Groove operation. groove(base).pattern(pattern).radii(ra, rb) */
 declare class Groove extends Node {
     radii(ra: number, rb: number): Groove;
+}
+
+/** Straight knurl on a Y-up cylinder; see KnurlBuilder. */
+declare function knurl(base: Cylinder): KnurlBuilder;
+
+/** Builder: optional .offset(radialExtra) then .pattern(pattern, teeth) returns Subtract. */
+declare class KnurlBuilder {
+    /** Extra +X shift for the pattern origin beyond base.r (default 0). */
+    offset(radialExtra: number): this;
+    /** Cutter node, translated to the OD then repeatPolar(teeth, child). */
+    pattern(pattern: Node, teeth: number): Subtract;
 }
 
 /** Tongue operation. tongue(base).pattern(pattern).radii(ra, rb) */
@@ -244,11 +291,13 @@ declare class Tongue extends Node {
 
 /** Hard seam between two shapes. seam(lh, rh).radius(r) */
 declare class Seam extends Node {
+    seamRadius: number;
     radius(r: number): Seam;
 }
 
 /** Smooth morph between two shapes. morph(lh, rh).t(t) */
 declare class Morph extends Node {
+    morphT: number;
     t(t: number): Morph;
 }
 
@@ -271,11 +320,17 @@ declare class Twist extends Node {}
 /** Bend a shape. */
 declare class Bend extends Node {}
 
+/** Polar repeat around +Y (domain repetition in XZ). */
+declare class RepeatPolar extends Node {}
+
 /** Taper a shape. */
 declare class Taper extends Node {}
 
 /** Rotate a child node. */
 declare class Rotate extends Node {}
+
+/** Translate a child node. */
+declare class Translate extends Node {}
 
 /** Scale a child node about the origin. */
 declare class Scale extends Node {}
@@ -398,9 +453,8 @@ type ThreadedRodHandSide = {
 
 /**
  * Threaded rod. Default is right-hand FDM: threaded_rod.radius(...).
- * threaded_rod.left.radius(...) / threaded_rod.left.profile.iso().radius(...) = left-hand.
- * threaded_rod.right matches explicit right-hand; threaded_rod.profile.* is right-hand.
- * After .radius: .height(h).pitch(axialPeriod).threadAngle(deg).depth(override).shift(v)
+ * threaded_rod.left... or .hand(LEFT) for left-hand; threaded_rod.right / .hand(RIGHT) match explicit right-hand.
+ * After .radius: .height(h).pitch(axialPeriod).hand(LEFT|RIGHT).threadAngle(deg).depth(override).shift(v)
  */
 declare const threaded_rod: {
     radius(r: number): ThreadedRod;

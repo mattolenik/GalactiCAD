@@ -261,6 +261,21 @@ fn nearestBoxEdgeFeature(localP: vec3f, half: vec3f) -> u32 {
     return bestFeature;
 }
 
+// Lathe primitive edges: ring at profile vertex (featureA = vertex index) or pole when radius ~ 0.
+fn tryLathePrimitiveEdgeHit(hitId: u32, hitWorld: vec3f, out: ptr<function, EdgeHit>) -> bool {
+    switch hitId {
+        //:) insert sceneLatheEdgeHitCases
+        default: { return false; }
+    }
+}
+
+fn lathePrimitiveRingDistance(latheId: u32, profileVtx: u32, hitWorld: vec3f) -> f32 {
+    switch latheId {
+        //:) insert sceneLatheRingDistanceCases
+        default: { return 1e30; }
+    }
+}
+
 // Closest point on a box edge segment. Projects hit onto the edge geometry for camera-invariant selection.
 fn closestPointOnBoxEdge(localP: vec3f, half: vec3f, feature: u32) -> vec3f {
     if (feature < 4u) {
@@ -338,6 +353,10 @@ fn classifyEdgeAtHit(hitWorld: vec3f, hit: HitData, wppu: f32) -> EdgeHit {
             out.seedPoint = vec4f(onEdge, 0.0);
             return out;
         }
+    }
+
+    if (tryLathePrimitiveEdgeHit(hit.id, hitWorld, &out)) {
+        return out;
     }
 
     if (hit.seamOp != 0u && hit.seamGap < 0.10) {
@@ -421,6 +440,11 @@ fn applyEdgeHighlight(result: ptr<function, vec3f>, e: SelectedEdge, hitWorld: v
                 let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
                 *result = *result * (1.0 - t * strength) + highlight * (t * strength);
             }
+        } else if (e.primaryId == hit.id) {
+            let latheD = lathePrimitiveRingDistance(e.primaryId, e.featureA, hitWorld);
+            let edgeDistPx = latheD / wppu;
+            let t = 1.0 - smoothstep(lineWidth - epsilon, lineWidth + epsilon, edgeDistPx);
+            *result = *result * (1.0 - t * strength) + highlight * (t * strength);
         }
     } else if (e.kind == EDGE_KIND_SEAM && hit.seamOp != 0u && hit.blend < 0.01) {
         let objOnSeam = hit.id == e.primaryId || hit.id == e.secondaryId;

@@ -21,6 +21,7 @@ import { getShapePalette } from "./colorPalette.mjs"
 import { getSelectionStylesForTheme } from "./selectionStyles.mjs"
 import { GALACTICAD_DARK_THEME, GALACTICAD_LIGHT_THEME } from "./themes.mjs"
 import type { EditorSettings, ThemeMode } from "./storage/settings.mjs"
+import type { MeshData } from "./export/export.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
@@ -43,6 +44,7 @@ import cameraViewTopIcon from "./assets/camera-view-top.svg"
 import cameraViewBottomIcon from "./assets/camera-view-bottom.svg"
 import toolbarCameraViewsIcon from "./assets/toolbar-camera-views.svg"
 import toolbarXrayIcon from "./assets/toolbar-xray.svg"
+import toolbarPreviewNormalIcon from "./assets/toolbar-preview-normal.svg"
 import toolbarFullscreenEnterIcon from "./assets/toolbar-fullscreen-enter.svg"
 import toolbarFullscreenExitIcon from "./assets/toolbar-fullscreen-exit.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
@@ -107,6 +109,9 @@ class App {
     #viewports: HTMLElement
     #settings: SettingsManager
     #meshViewerEnabled = false
+    /** Reused for STL when it matches the current source + export settings (set by export preview). */
+    #cachedMeshForExport: MeshData | null = null
+    #cachedMeshForExportKey: string | null = null
     #meshViewerCameraSubs: Subscription[] = []
     #updateViewCenter: (() => void) | undefined
     #sourceParser: SourceParser
@@ -134,6 +139,7 @@ class App {
     #getVisiblePreviewRect!: () => DOMRect
     #toolbarRefs!: {
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton
+        previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
         exportBtn: import("./components/toolbar.mjs").ToolbarButton
         devTools: DevToolsPanel
@@ -223,6 +229,8 @@ class App {
         const defaultSvg = `<rect x="1" y="1" width="10" height="10" rx="3" fill="currentColor"/>`
 
         for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
+            if (location.skipColorIndicator) continue
+
             const node = this.#sceneNodeMap.get(nodeId)
             const svg = node?.getIndicatorSvg?.() ?? defaultSvg
 
@@ -255,6 +263,7 @@ class App {
         const toRange = (id: number): HighlightRange | null => {
             const location = this.#sourceLocationMap.get(id)
             if (!location) return null
+            if (location.skipColorIndicator) return null
             return {
                 startLine: location.startLine,
                 startColumn: location.startColumn,
@@ -571,13 +580,13 @@ class App {
         await this.#restoreOrShowWelcome()
         this.renderer?.dispose()
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect, () => this.#tabs.active)
-        const { xrayCheckbox, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
+        const { xrayCheckbox, previewNormalShadingToggle, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
         try {
             await this.renderer
                 .ready()
             this.renderer.setSelectionStyles(getSelectionStylesForTheme(this.#effectiveTheme))
             this.renderer.setShapePalette(getShapePalette(this.#effectiveTheme))
-            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, selectionModeRadio)
+            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, previewNormalShadingToggle, selectionModeRadio)
             this.#updateViewCenter?.()
             if (isInitial) {
                 this.#wireEditorAndTabs()
@@ -865,6 +874,11 @@ class App {
         toolbar.addSpacer()
 
         const xrayCheckbox = toolbar.addToggleButton(toolbarXrayIcon, "Toggle X-ray")
+        const previewNormalShadingToggle = toolbar.addToggleButton(
+            toolbarPreviewNormalIcon,
+            "Toggle normal shading",
+            false
+        )
         toolbar.addSeparator()
         const selectionModeRadio = toolbar.addRadioGroup(
             [
@@ -897,7 +911,7 @@ class App {
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)
         this.#viewports.appendChild(devTools)
 
-        return { xrayCheckbox, selectionModeRadio, exportBtn, devTools }
+        return { xrayCheckbox, previewNormalShadingToggle, selectionModeRadio, exportBtn, devTools }
     }
 
     #setupLayoutObservers(editorContainer: HTMLDivElement) {
@@ -952,6 +966,7 @@ class App {
         preview: PreviewWindow,
         devTools: DevToolsPanel,
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton,
+        previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
     ) {
         preview.setThemeMode(this.#settings.getGlobal().app.theme)
@@ -1115,6 +1130,11 @@ class App {
             this.renderer.xrayMode = enabled
         }
 
+        previewNormalShadingToggle.checked = this.renderer.previewNormalShading
+        previewNormalShadingToggle.onChange = (enabled) => {
+            this.renderer.previewNormalShading = enabled
+        }
+
         selectionModeRadio.value = this.renderer.selectionMode
         selectionModeRadio.onChange = (value) => {
             this.renderer.setSelectionMode(value)
@@ -1136,19 +1156,15 @@ class App {
         devTools.onPreviewShadingChange = (params) => {
             this.renderer.setPreviewShading(params)
         }
-        devTools.onPreviewNormalShadingChange = (enabled) => {
-            this.renderer.previewNormalShading = enabled
-        }
         devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
-        devTools.syncPreviewNormalShadingFromRenderer(this.renderer.previewNormalShading)
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
+            previewNormalShadingToggle.checked = this.renderer.previewNormalShading
             selectionModeRadio.value = this.renderer.selectionMode
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
             devTools.bvhOptimization = this.renderer.bvhEnabled
             devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
-            devTools.syncPreviewNormalShadingFromRenderer(this.renderer.previewNormalShading)
         })
 
         const showFps = this.#settings.getGlobal().app.showFps
@@ -1166,6 +1182,25 @@ class App {
         }
 
         devTools.meshSimplifyOnExport = this.#settings.getGlobal().app.meshSimplifyOnExport
+        devTools.syncVoxelSizeMmFromSettings(this.#settings.getGlobal().app.meshExportVoxelSizeMm)
+        devTools.useShrecExporter = this.#settings.getGlobal().app.useShrecExporter
+        devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
+        devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
+        devTools.syncMdcLeversFromSettings(this.#settings.getGlobal().app.mdcExportLevers)
+        // Re-mesh live when the SHREC exporter toggle or its tuning knobs
+        // change, so the mesh viewer reflects edits immediately. The
+        // `#scheduleMeshUpdate` debounce avoids re-meshing per slider tick.
+        const remeshIfMeshViewerOn = () => {
+            if (!this.#meshViewerEnabled || !this.#mesh) return
+            const m = this.#tabs.active ? this.#tabs.getByName(this.#tabs.active) : null
+            if (!m) return
+            this.#scheduleMeshUpdate(m.getValue())
+        }
+        devTools.onUseShrecExporterChange = remeshIfMeshViewerOn
+        devTools.onShrecTuningChange = remeshIfMeshViewerOn
+        devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
+        devTools.onVoxelSizeMmChange = remeshIfMeshViewerOn
+        devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)
         devTools.onDebugLogModulesChange = () => {
@@ -1419,6 +1454,7 @@ class App {
 
             try {
                 const documentName = this.#tabs.active!
+                const src = this.editor.getValue()
                 const handle = await window.showSaveFilePicker({
                     suggestedName: documentName,
                     startIn: "desktop",
@@ -1430,9 +1466,13 @@ class App {
                     ],
                     excludeAcceptAllOption: false,
                 })
-                const mesh = await this.renderer.renderMesh(this.editor.getValue(), documentName, {
-                    simplifyOnExport: devTools.meshSimplifyOnExport,
-                })
+                const wantKey = this.#meshCacheKey(src, documentName, devTools)
+                const mesh =
+                    this.#meshViewerEnabled
+                    && this.#cachedMeshForExport
+                    && this.#cachedMeshForExportKey === wantKey
+                        ? this.#cachedMeshForExport
+                        : await this.renderer.renderMesh(src, documentName, this.#meshRenderOptionsForExport(devTools))
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
                 statusDialog = new StatusDialog("Export successful")
@@ -1490,6 +1530,26 @@ class App {
         this.#polygonEditor = polyEditor
     }
 
+    #meshRenderOptionsForExport(devTools: DevToolsPanel) {
+        return {
+            simplifyOnExport: devTools.meshSimplifyOnExport,
+            voxelSizeMm: devTools.voxelSizeMm,
+            exporter: devTools.useShrecExporter ? "shrec" as const : "mdc" as const,
+            shrecTuning: devTools.shrecTuning,
+            simplifyTuning: devTools.simplifyTuning,
+            mdcExportLevers: this.#settings.getMdcExportLevers(),
+        }
+    }
+
+    /** Fingerprint of `renderMesh` inputs; must match what `#scheduleMeshUpdate` and export use. */
+    #meshCacheKey(src: string, documentName: string | undefined, devTools: DevToolsPanel): string {
+        return JSON.stringify({
+            documentName: documentName ?? "",
+            options: this.#meshRenderOptionsForExport(devTools),
+            src,
+        })
+    }
+
     #scheduleMeshUpdate(src: string) {
         // Skip mesh updates if mesh viewer is not enabled
         if (!this.#meshViewerEnabled || !this.#mesh) {
@@ -1505,12 +1565,14 @@ class App {
         const token = ++this.#meshUpdateToken
         this.#meshUpdateTimer = window.setTimeout(async () => {
             try {
-                const mesh = await this.renderer.renderMesh(src, this.#tabs.active, {
-                    simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
-                })
+                const documentName = this.#tabs.active
+                const options = this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools)
+                const mesh = await this.renderer.renderMesh(src, documentName, options)
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {
                     await this.#mesh.setMesh(mesh)
+                    this.#cachedMeshForExport = mesh
+                    this.#cachedMeshForExportKey = this.#meshCacheKey(src, documentName, this.#toolbarRefs.devTools)
                 }
             } catch (err) {
                 // Mesh generation failing shouldn't break the live SDF preview.
@@ -1581,6 +1643,8 @@ class App {
                 this.#mesh.remove()
                 this.#mesh = null
             }
+            this.#cachedMeshForExport = null
+            this.#cachedMeshForExportKey = null
 
             // Clear any pending mesh update
             if (this.#meshUpdateTimer !== null) {

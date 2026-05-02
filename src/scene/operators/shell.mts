@@ -59,7 +59,12 @@ export class Shell extends UnaryOperator {
         const funcName = `Shell${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         const t = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { funcName, varName, text: `sdfShellMid(${childResult.text}, ${t})` }
+        if (childResult.prelude) {
+            const accVar = childResult.varName!
+            const prelude = childResult.prelude + `${accVar} = sdfShellMid(${accVar}, p, ${t});\n`
+            return { funcName, varName: accVar, text: accVar, prelude }
+        }
+        return { funcName, varName, text: `sdfShellMid(${childResult.text}, p, ${t})` }
     }
 
     protected override computeBoundsCore(): AABB | null {

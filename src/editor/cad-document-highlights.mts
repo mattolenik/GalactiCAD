@@ -27,6 +27,7 @@ const CAD_SYMBOLS = new Set([
     "pipe",
     "engrave",
     "groove",
+    "knurl",
     "tongue",
     "seam",
     "morph",
@@ -36,6 +37,7 @@ const CAD_SYMBOLS = new Set([
     "lathe",
     // Modifiers
     "rotate",
+    "translate",
     "scale",
     "shell",
     "offset",
@@ -43,6 +45,7 @@ const CAD_SYMBOLS = new Set([
     "twist",
     "bend",
     "taper",
+    "repeatPolar",
 ])
 
 function getWordAtPosition(model: monaco.editor.ITextModel, position: monaco.Position): string | null {

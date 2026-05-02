@@ -16,6 +16,7 @@ import { Bend, bend } from "./operators/bend.mjs"
 import { Elongate, elongate } from "./operators/elongate.mjs"
 import { Engrave, engrave } from "./operators/engrave.mjs"
 import { Groove, groove } from "./operators/groove.mjs"
+import { knurl, KnurlBuilder, KnurlSubtract } from "./operators/knurl.mjs"
 import { Intersect, intersect } from "./operators/intersect.mjs"
 import { Morph, morph } from "./operators/morph.mjs"
 import { Offset, offset } from "./operators/offset.mjs"
@@ -26,7 +27,9 @@ import { Seam, seam } from "./operators/seam.mjs"
 import { Shell, shell } from "./operators/shell.mjs"
 import { Subtract, subtract } from "./operators/subtract.mjs"
 import { Taper, taper } from "./operators/taper.mjs"
+import { Translate, translate } from "./operators/translate.mjs"
 import { Tongue, tongue } from "./operators/tongue.mjs"
+import { RepeatPolar, repeatPolar } from "./operators/repeat_polar.mjs"
 import { Twist, twist } from "./operators/twist.mjs"
 import { Union, union } from "./operators/union.mjs"
 import { Blob, blob } from "./primitives/blob.mjs"
@@ -37,7 +40,7 @@ import { Cylinder, cylinder } from "./primitives/cylinder.mjs"
 import { Disc, disc } from "./primitives/disc.mjs"
 import { Extrude, extrude } from "./primitives/extrude.mjs"
 import { HexPrism, hexprism } from "./primitives/hexprism.mjs"
-import { Lathe, lathe } from "./primitives/lathe.mjs"
+import { Lathe, compileLathePrimitiveEdgeHitCase, compileLathePrimitiveRingDistanceCase, lathe } from "./primitives/lathe.mjs"
 import { Loft, loft } from "./primitives/loft.mjs"
 import { PlaneNode, plane } from "./primitives/plane.mjs"
 import { Polygon2D, polygon2d } from "./primitives/polygon2d.mjs"
@@ -45,9 +48,13 @@ import { Sphere, sphere } from "./primitives/sphere.mjs"
 import { VirtualCapNode } from "./primitives/virtual-cap.mjs"
 import { ThreadedRod, threaded_rod } from "./primitives/threaded-rod.mjs"
 import { Torus, torus } from "./primitives/torus.mjs"
+import { BACK, BOTTOM, FRONT, LEFT, RIGHT, TOP } from "./direction-indicator.mjs"
+import "./node-clone.mjs"
 
-export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, twist, union }
+export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, knurl, KnurlBuilder, KnurlSubtract, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, RepeatPolar, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Translate, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, repeatPolar, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, translate, twist, union }
 export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
+export { BACK, BOTTOM, FRONT, LEFT, RIGHT, TOP } from "./direction-indicator.mjs"
+export type { DirectionFlag, DirectionIndicator } from "./direction-indicator.mjs"
 
 /** IDs 1022–1023 reserved for face highlight (cap selection). Scene nodes use 0–1021. */
 const MAX_SCENE_NODE_ID = 1021
@@ -284,10 +291,92 @@ export class SceneInfo {
         if (options?.bvhEnabled !== undefined) {
             this.bvhEnabled = options.bvhEnabled
         }
-        this.root = new Function("box", "sphere", "subtract", "union", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "intersect", "pipe", "engrave", "groove", "tongue", "polygon2d", "extrude", "loft", "lathe", "morph", "seam", "rotate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", transpiledBody)(
-            box, sphere, subtract, union, cylinder, cone, torus, threaded_rod, capsule, plane, hexprism, disc, blob,
-            intersect, pipe, engrave, groove, tongue, polygon2d, extrude, loft, lathe, morph, seam,
-            rotate, scale, shell, offset, elongate, twist, bend, taper)
+        this.root = new Function(
+            "box",
+            "sphere",
+            "subtract",
+            "union",
+            "cylinder",
+            "cone",
+            "torus",
+            "threaded_rod",
+            "capsule",
+            "plane",
+            "hexprism",
+            "disc",
+            "blob",
+            "intersect",
+            "pipe",
+            "engrave",
+            "groove",
+            "tongue",
+            "polygon2d",
+            "extrude",
+            "loft",
+            "lathe",
+            "morph",
+            "seam",
+            "rotate",
+            "translate",
+            "scale",
+            "shell",
+            "offset",
+            "elongate",
+            "twist",
+            "bend",
+            "taper",
+            "repeatPolar",
+            "knurl",
+            "TOP",
+            "BOTTOM",
+            "LEFT",
+            "RIGHT",
+            "FRONT",
+            "BACK",
+            transpiledBody,
+        )(
+            box,
+            sphere,
+            subtract,
+            union,
+            cylinder,
+            cone,
+            torus,
+            threaded_rod,
+            capsule,
+            plane,
+            hexprism,
+            disc,
+            blob,
+            intersect,
+            pipe,
+            engrave,
+            groove,
+            tongue,
+            polygon2d,
+            extrude,
+            loft,
+            lathe,
+            morph,
+            seam,
+            rotate,
+            translate,
+            scale,
+            shell,
+            offset,
+            elongate,
+            twist,
+            bend,
+            taper,
+            repeatPolar,
+            knurl,
+            TOP,
+            BOTTOM,
+            LEFT,
+            RIGHT,
+            FRONT,
+            BACK,
+        )
         this.root.scene = this
         this.root.build()
         this.#allNodesSnapshot = Array.from(this.#nodes.values())
@@ -356,6 +445,28 @@ export class SceneInfo {
                 const o = node.paramOffset
                 const pv = node.previewVec3Slot
                 code += `case ${node.id}u: { (*posOut) = ${vec3Wgsl(o, pv)}; (*halfOut) = ${vec3Wgsl(o + 3, pv + 1)}; return true; }\n`
+            }
+        }
+        return code
+    }
+
+    /** Preview WGSL `switch` cases for lathe primitive ring/pole edge hits (see `tryLathePrimitiveEdgeHit`). */
+    compileLathePrimitiveEdgeHitCases(): string {
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            if (node instanceof Lathe) {
+                code += compileLathePrimitiveEdgeHitCase(node)
+            }
+        }
+        return code
+    }
+
+    /** Preview WGSL `switch` cases for distance from `hitWorld` to a lathe ring/pole at `profileVtx`. */
+    compileLathePrimitiveRingDistanceCases(): string {
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            if (node instanceof Lathe) {
+                code += compileLathePrimitiveRingDistanceCase(node)
             }
         }
         return code

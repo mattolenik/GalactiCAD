@@ -10,18 +10,19 @@
  */
 
 import { log } from "../logging/debug-log.mjs"
+import { RIGHT } from "../scene/direction-indicator.mjs"
 import { Node, Sphere, Box, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate, Polygon2D, Extrude, Loft, Lathe } from "../scene/scene.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
 
 /** Composite shape types that are matched by name only */
-const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam", "rotate", "scale", "extrude", "loft", "lathe"])
+const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "knurl", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar", "morph", "seam", "rotate", "translate", "scale", "extrude", "loft", "lathe"])
 
 /**
  * CSG operators that don't render as visible objects — when selected from editor, select only their child shapes.
  * Excludes rotate, extrude, loft, lathe which render as visible composites.
  */
-export const PURE_CSG_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "morph", "seam"])
+export const PURE_CSG_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "knurl", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar", "morph", "seam"])
 
 /**
  * Tolerance for floating-point comparisons
@@ -70,13 +71,18 @@ interface NodeLikeMatch {
     threadAmp?: number
     threadFlankAngleDeg?: number
     threadProfile?: "fdm" | "iso" | "acme"
-    threadHandedness?: "left" | "right"
+    handedness?: number
     c?: number
     normal?: { x: number; y: number; z: number }
     dist?: number
     planeOffset?: number
     vertices?: [number, number][]
     twistDegrees?: number
+    filletTop?: number
+    filletBottom?: number
+    chamferTop?: number
+    chamferBottom?: number
+    femalePlay?: number
 }
 
 /**
@@ -128,6 +134,16 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         if (!vec3ApproxEqual(node.pos, callPos)) return false
         if (call.r === undefined || !approxEqualOrUndefined(node.r, call.r)) return false
         if (call.h !== undefined && !approxEqualOrUndefined(node.h, call.h)) return false
+        const nt = node.filletTop ?? 0
+        const nb = node.filletBottom ?? 0
+        const ct = node.chamferTop ?? 0
+        const cb = node.chamferBottom ?? 0
+        const ftCall = call.filletTop ?? 0
+        const fbCall = call.filletBottom ?? 0
+        const ctCall = call.chamferTop ?? 0
+        const cbCall = call.chamferBottom ?? 0
+        if (!approxEqual(nt, ftCall) || !approxEqual(nb, fbCall)) return false
+        if (!approxEqual(ct, ctCall) || !approxEqual(cb, cbCall)) return false
         return true
     }
 
@@ -158,9 +174,20 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         const callProfile = call.threadProfile ?? "fdm"
         const nodeProfile = node.threadProfile ?? "fdm"
         if (callProfile !== nodeProfile) return false
-        const callHand = call.threadHandedness ?? "right"
-        const nodeHand = node.threadHandedness ?? "right"
+        const callHand = call.handedness ?? RIGHT
+        const nodeHand = node.handedness ?? RIGHT
         if (callHand !== nodeHand) return false
+        const nt = node.filletTop ?? 0
+        const nb = node.filletBottom ?? 0
+        const ct = node.chamferTop ?? 0
+        const cb = node.chamferBottom ?? 0
+        const ftCall = call.filletTop ?? 0
+        const fbCall = call.filletBottom ?? 0
+        const ctCall = call.chamferTop ?? 0
+        const cbCall = call.chamferBottom ?? 0
+        if (!approxEqual(nt, ftCall) || !approxEqual(nb, fbCall)) return false
+        if (!approxEqual(ct, ctCall) || !approxEqual(cb, cbCall)) return false
+        if (!approxEqual(node.femalePlay ?? 0, call.femalePlay ?? 0)) return false
         return true
     }
 

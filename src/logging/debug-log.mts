@@ -28,6 +28,8 @@ export const DEBUG_LOG_MODULES = [
     "MonacoHighlighter",
     "WelcomeScreen",
     "MdcExport",
+    "ShrecExport",
+    "Simplify",
     "Settings",
     "Sdf",
     /** Reserved for optional verbose WGSL debug; `logWgsl()` is always-on for compile/pipeline errors. */
@@ -199,8 +201,6 @@ export function snapshotDebugLogModules(state: DebugLogModulesState | undefined)
     return out
 }
 
-// --- Devserver MCP: ring buffer integration (any thread → main buffer via workers) ---
-
 export function setDevLogThreadLabel(label: string | undefined): void {
     devLogThreadLabel = label
 }
@@ -228,15 +228,15 @@ export function installDevConsoleMirror(): void {
     const methods = ["log", "info", "warn", "error", "debug"] as const
     for (const m of methods) {
         const orig = origConsole[m]
-        ;(console as unknown as Record<string, (...a: unknown[]) => void>)[m] = (...args: unknown[]) => {
-            if (devLogPush) {
-                const ts = new Date().toISOString()
-                const text = formatArgs(args)
-                const tp = devLogThreadLabel ? `[${devLogThreadLabel}]` : ""
-                devLogPush({ line: `[${ts}] [${m}] ${tp}${text}` })
+            ; (console as unknown as Record<string, (...a: unknown[]) => void>)[m] = (...args: unknown[]) => {
+                if (devLogPush) {
+                    const ts = new Date().toISOString()
+                    const text = formatArgs(args)
+                    const tp = devLogThreadLabel ? `[${devLogThreadLabel}]` : ""
+                    devLogPush({ line: `[${ts}] [${m}] ${tp}${text}` })
+                }
+                return orig.apply(console, args as never[])
             }
-            return orig.apply(console, args as never[])
-        }
     }
 }
 

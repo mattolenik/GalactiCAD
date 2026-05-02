@@ -2,6 +2,7 @@ import { BVH_MIN_COST, CompileResult, fluent, Node, type UnionType } from "../ba
 import { aabbUnion, aabbExpand, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { bvhCenterWgsl, bvhHalfWgsl, f32Wgsl } from "../scene-params.mjs"
+import type { ContourBuffer } from "../contour-buffer.mjs"
 
 type UnionVariant = "ex" | "fast" | "mid"
 
@@ -64,6 +65,26 @@ export class Union extends Node {
 
     override getAllDescendantIds(): number[] {
         return [this.id, ...this.children.flatMap(child => child.getAllDescendantIds())]
+    }
+
+    /**
+     * Sharp `union` is a hard CSG join — every child's contour features
+     * survive in the result except where they fall *inside* another child
+     * (in which case SHREC's per-cell SDF validation rejects them). For
+     * smooth blends (`radius > 0`) the rounding intentionally destroys
+     * sharp features at the join, and propagating child contours would
+     * cause MergeSharp to incorrectly snap vertices to features that no
+     * longer exist in the iso-surface — so we drop them in that case.
+     *
+     * Note: Union is variadic and extends Node directly (not BinaryOperator),
+     * so it needs its own override here — the BinaryOperator passthrough
+     * default doesn't apply.
+     */
+    override accumulateContours(builder: ContourBuffer): void {
+        if (this.radius && this.radius > 0) return
+        for (const child of this.children) {
+            child.accumulateContours(builder)
+        }
     }
 
     private _blendEx(L: string, R: string): string {
@@ -339,9 +360,6 @@ export class Union extends Node {
  * nearest contributors per sample.
  */
 function unionImpl(parts: Node[], radius?: number, mode?: UnionType, n?: number): Union {
-    if (parts.length < 2) {
-        throw new Error("union requires at least two things to union together")
-    }
     return new Union(parts, radius, mode, n)
 }
 

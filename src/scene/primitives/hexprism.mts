@@ -74,7 +74,7 @@ export class HexPrism extends Node {
         const o = this.paramOffset
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const rh = vec2Wgsl(o + 3, this.previewVec2Slot)
-        return { funcName, varName, text: `fHexagonCircumcircleMid(p - ${pos}, ${rh})` }
+        return { funcName, varName, text: `sdfMidSetOwner(fHexagonCircumcircleMid(p - ${pos}, ${rh}), ${this.id}u)` }
     }
 
     protected override computeBoundsCore(): AABB {

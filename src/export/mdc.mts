@@ -1,6 +1,7 @@
 import { GPUHelper } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
 import { MeshData } from "./export.mjs"
+import { splitCreaseVertices } from "./crease-split.mjs"
 import { exportStlAscii } from "./stl.mjs"
 
 /**
@@ -22,6 +23,12 @@ interface Vertex {
 // struct Vertex { position: vec3f; normal: vec3f; }
 // => position @0..11 (pad to 16), normal @16..27 (pad to 32) => 32-byte stride.
 export const SIZEOF_VERTEX = 8 * Float32Array.BYTES_PER_ELEMENT // 32 bytes
+// 6 vec4f: crossingPos, normal, featurePoint, featureN1, featureN2, axisCenter
+// (axisCenter only populated for MID_FEATURE_RING; zero otherwise).
+const SIZEOF_EDGE_DEBUG_SAMPLE = 6 * 4 * Float32Array.BYTES_PER_ELEMENT
+// std430: 4 u32s pack into 16 bytes, then 6 vec3f at align 16 = 6*16 = 96 bytes,
+// total = 16 + 96 = 112 bytes. (Was 96 before MID_FEATURE_RING added the axisCenter slot.)
+const SIZEOF_COMPONENT_FEATURE = 112
 
 /**
  * Represents QEF data.
@@ -53,6 +60,15 @@ const SIZEOF_QEFDATA_STRUCT = 96
 // Proper Manifold Dual Contouring may require multiple vertices per active cell.
 // We use a fixed maximum for predictable GPU memory layout.
 const MAX_COMPONENTS_PER_CELL = 4
+const EDGES_PER_CELL = 12
+
+// Stage C: each component may emit up to MAX_SUBCOMPONENTS_PER_COMPONENT
+// sub-vertices (one per face-normal bucket) so creases produce real sharp mesh
+// edges. Smooth components only populate subcomp 0; the other slots stay
+// sentinel and are never referenced from the index buffer (Pass 5 only reads
+// the populated bucket via cellEdgeComponents).
+const MAX_SUBCOMPONENTS_PER_COMPONENT = 3
+const VERTICES_PER_CELL = MAX_COMPONENTS_PER_CELL * MAX_SUBCOMPONENTS_PER_COMPONENT
 
 export interface MDCParams {
     gridDimX: number
@@ -88,23 +104,10 @@ export interface MDCParams {
     orientationProbeScale?: number
     orientationProbeMin?: number
 
-    // --- Mesh simplification (post-MDC) ---
-    /** Fraction of triangles to keep, 0–1 (e.g. 0.5 = 50%). undefined or 1 = skip. */
-    simplifyTargetRatio?: number
-    /** Max geometric error the simplifier may introduce (default 0.01). */
-    simplifyTargetError?: number
-    /** Lock boundary (open) edges so they are never collapsed. */
-    simplifyLockBorder?: boolean
-    /** Optimize for meshes with many shared vertex positions. */
-    simplifySparse?: boolean
-    /** Treat targetError as absolute world-space distance instead of relative to mesh scale. */
-    simplifyErrorAbsolute?: boolean
-    /** Remove degenerate (zero-area) triangles from output. */
-    simplifyPrune?: boolean
-    /** Bias toward more uniform triangle shapes (less slivery). */
-    simplifyRegularize?: boolean
-    /** Weight for normal-aware simplification (0 = ignore normals, >0 = protect sharp edges). */
-    simplifyNormalWeight?: number
+    // Mesh simplification (meshoptimizer QEM) is no longer driven by MDCParams;
+    // it is applied as a unified post-pass in `handleRenderMesh` so it runs
+    // for both MDC and SHREC outputs through the same code path. See
+    // `SimplifyTuning` in `render-worker-protocol.mts`.
 
     /**
      * Crease angle threshold in degrees for vertex splitting (default 30).
@@ -113,6 +116,9 @@ export interface MDCParams {
      * Set to 180 to disable splitting.
      */
     creaseAngleDeg?: number
+
+    /** Constrain vertices onto explicit mid-tier line/corner/seam/ring feature loci. */
+    featureConstrainedPlacement?: boolean
 }
 
 export interface ProgressCallback {
@@ -264,9 +270,10 @@ export class MDCExport {
 
             orientationProbeScale = 0.5,
             orientationProbeMin = 1e-4,
+            featureConstrainedPlacement = true,
         } = this.params
         dbgLog("MdcExport").info(
-            `MDCExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
+            `MDCExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} featureConstrainedPlacement=${featureConstrainedPlacement} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
         )
         logDiag("start", {
             maxBufferSize: this.#device.limits.maxBufferSize,
@@ -301,7 +308,7 @@ export class MDCExport {
         //   mdcF1: vec4f,           // offset 48, size 16
         //   mdcF2: vec4f,           // offset 64, size 16
         //   mdcF3: vec4f,           // offset 80, size 16
-        //   mdcU0: vec4u,           // offset 96, size 16 (z = activeCellCount after compaction, byte offset 104)
+        //   mdcU0: vec4u,           // offset 96, size 16 (z = activeCellCount after compaction, byte offset 104; w = featureConstrainedPlacement)
         // } // total size = 112
         const uniformBufferData = new ArrayBuffer(112)
         new Uint32Array(uniformBufferData, 0, 3).set([gridDimX, gridDimY, gridDimZ])
@@ -321,7 +328,7 @@ export class MDCExport {
             Math.max(0, edgeProjIters) >>> 0,
             Math.max(0, vertexProjIters) >>> 0,
             0,
-            0,
+            featureConstrainedPlacement ? 1 : 0,
         ])
 
         try {
@@ -465,10 +472,28 @@ export class MDCExport {
 
             const debugSkipCountersBuffer = createBuffer(
                 "DebugSkipCounters",
-                8 * Uint32Array.BYTES_PER_ELEMENT,
+                16 * Uint32Array.BYTES_PER_ELEMENT,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
             )
-            this.#device.queue.writeBuffer(debugSkipCountersBuffer, 0, new Uint32Array([0, 0, 0, 0, 0, 0, 0, 0]))
+            this.#device.queue.writeBuffer(
+                debugSkipCountersBuffer,
+                0,
+                new Uint32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            )
+
+            const debugEdgeSampleCountBuffer = createBuffer(
+                "DebugEdgeSampleCount",
+                Uint32Array.BYTES_PER_ELEMENT,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            )
+            this.#device.queue.writeBuffer(debugEdgeSampleCountBuffer, 0, new Uint32Array([0]))
+
+            const maxDebugSamples = activeCellCount * EDGES_PER_CELL
+            const debugEdgeSamplesBuffer = createBuffer(
+                "DebugEdgeSamples",
+                Math.max(1, maxDebugSamples) * SIZEOF_EDGE_DEBUG_SAMPLE,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            )
 
             const cellEdgeComponentsBuffer = createBuffer(
                 "CellEdgeComponents",
@@ -478,12 +503,17 @@ export class MDCExport {
 
             const cellQEFDataBuffer = createBuffer(
                 "CellQEFData",
-                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_QEFDATA_STRUCT,
+                activeCellCount * VERTICES_PER_CELL * SIZEOF_QEFDATA_STRUCT,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            )
+            const componentFeaturesBuffer = createBuffer(
+                "ComponentFeatures",
+                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_COMPONENT_FEATURE,
+                GPUBufferUsage.STORAGE
             )
             const verticesBuffer = createBuffer(
                 "Vertices",
-                activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_VERTEX,
+                activeCellCount * VERTICES_PER_CELL * SIZEOF_VERTEX,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
             )
 
@@ -514,10 +544,13 @@ export class MDCExport {
                 [0, uniformBuffer],
                 [5, activeCellIndicesBuffer], // activeCellIndicesIn_edge
                 [24, debugSkipCountersBuffer],
+                [26, debugEdgeSampleCountBuffer],
                 [22, cellEdgeComponentsBuffer],
                 [9, cellQEFDataBuffer],
+                [14, componentFeaturesBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
+                [29, debugEdgeSamplesBuffer],
                 [30, this.#mdcSceneParamsBuffer],
                 [25, this.#cancellationBuffer]
             )
@@ -531,6 +564,7 @@ export class MDCExport {
                 [11, activeCellIndicesBuffer], // activeCellIndicesIn_vertex
                 [12, cellQEFDataBuffer],
                 [13, verticesBuffer],
+                [14, componentFeaturesBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
                 [30, this.#mdcSceneParamsBuffer],
@@ -579,7 +613,7 @@ export class MDCExport {
             // MDC requires vertices per *local* connected component within each cell.
             {
                 progressCallback?.updateProgress("Pass 4: Vertex Generation", 80)
-                const totalVertexRecords = activeCellCount * MAX_COMPONENTS_PER_CELL
+                const totalVertexRecords = activeCellCount * VERTICES_PER_CELL
                 const ce = this.#device.createCommandEncoder({ label: "mdc_pass4" })
                 const pass = this.#helper.beginComputePass(ce, p4_vertexGeneration, bindGroupPass4)
                 const totalWorkgroups = Math.ceil(totalVertexRecords / 64)
@@ -611,7 +645,7 @@ export class MDCExport {
             logDiag("after pass5 (triangle generation)")
 
             dbgLog("MdcExport").debug("Reading back data from GPU...")
-            const debugCountsData = await readBufferData(debugSkipCountersBuffer, 8 * Uint32Array.BYTES_PER_ELEMENT)
+            const debugCountsData = await readBufferData(debugSkipCountersBuffer, 16 * Uint32Array.BYTES_PER_ELEMENT)
             const debugCounts = new Uint32Array(debugCountsData)
             dbgLog("MdcExport").debug("MDC debug:", {
                 skippedQuadsNeighborMissing: debugCounts[0],
@@ -622,7 +656,21 @@ export class MDCExport {
                 edgesCrossing: debugCounts[5],
                 faceCenterNearIso: debugCounts[6],
                 faceCaseAmbiguous: debugCounts[7],
+                midFeatureNone: debugCounts[8],
+                midFeatureLine: debugCounts[9],
+                midFeatureCorner: debugCounts[10],
+                midFeatureBooleanSeam: debugCounts[11],
+                midFeatureRejected: debugCounts[12],
+                midFeatureExtraQefPlanes: debugCounts[13],
+                midFeatureRing: debugCounts[14],
             })
+            const debugSampleCountData = await readBufferData(debugEdgeSampleCountBuffer)
+            const rawDebugSampleCount = new Uint32Array(debugSampleCountData)[0] ?? 0
+            const actualDebugSampleCount = Math.min(rawDebugSampleCount, maxDebugSamples)
+            const debugSamplesData = actualDebugSampleCount > 0
+                ? await readBufferData(debugEdgeSamplesBuffer, actualDebugSampleCount * SIZEOF_EDGE_DEBUG_SAMPLE)
+                : new ArrayBuffer(0)
+            const debugSamples = new Float32Array(debugSamplesData)
             const indexCountData = await readBufferData(indexCountFaceBuffer)
             const rawIndexCount = new Uint32Array(indexCountData)[0]!
             const actualIndexCount = Math.min(rawIndexCount, maxIndices)
@@ -630,7 +678,7 @@ export class MDCExport {
                 `Actual Index Count: ${actualIndexCount}${actualIndexCount !== rawIndexCount ? " (clamped)" : ""}`
             )
 
-            const actualVertexCount = activeCellCount * MAX_COMPONENTS_PER_CELL
+            const actualVertexCount = activeCellCount * VERTICES_PER_CELL
             const verticesData = await readBufferData(verticesBuffer, actualVertexCount * SIZEOF_VERTEX)
             let verts = new Float32Array(verticesData)
 
@@ -641,6 +689,7 @@ export class MDCExport {
             let tris = new Uint32Array(indicesData)
             logDiag("after GPU readback", {
                 actualIndexCount,
+                actualDebugSampleCount,
                 actualVertexCount,
                 triCount: Math.floor(tris.length / 3),
             })
@@ -804,7 +853,7 @@ export class MDCExport {
             // share a single (wrong) normal through interpolation.
             {
                 const creaseAngle = this.params.creaseAngleDeg ?? 30
-                if (creaseAngle < 180) {
+                if (creaseAngle >= 0 && creaseAngle < 180) {
                     const beforeCount = (verts.length / (SIZEOF_VERTEX / 4)) | 0
                     const split = splitCreaseVertices(verts, tris, creaseAngle)
                     verts = split.verts
@@ -817,25 +866,10 @@ export class MDCExport {
             }
             logDiag("after crease split")
 
-            // Mesh simplification (QEM edge collapse via meshoptimizer)
-            if (this.params.simplifyTargetRatio !== undefined && this.params.simplifyTargetRatio < 1) {
-                const { simplifyMesh } = await import("./simplify.mjs")
-                const simplified = await simplifyMesh(
-                    { verts, tris },
-                    this.params.simplifyTargetRatio,
-                    this.params.simplifyTargetError,
-                    {
-                        lockBorder: this.params.simplifyLockBorder,
-                        sparse: this.params.simplifySparse,
-                        errorAbsolute: this.params.simplifyErrorAbsolute,
-                        prune: this.params.simplifyPrune,
-                        regularize: this.params.simplifyRegularize,
-                        normalWeight: this.params.simplifyNormalWeight,
-                    },
-                )
-                verts = simplified.verts
-                tris = simplified.tris
-            }
+            // Mesh simplification has moved to a unified post-pass in
+            // `handleRenderMesh`; see `simplifyMeshPostPass` in
+            // `render-worker-core.mts`. Keeping it out of MDCExport ensures
+            // the SHREC and MDC outputs go through the exact same simplifier.
 
             // Basic mesh sanity stats to help diagnose “holes”:
             // - boundary edges (count==1) indicate actual holes / open surface
@@ -896,7 +930,24 @@ export class MDCExport {
 
             progressCallback?.updateProgress("Complete", 100)
             logDiag("done")
-            return { verts, tris }
+            return {
+                verts,
+                tris,
+                debug: {
+                    mdc: {
+                        samples: debugSamples,
+                        stats: {
+                            totalSamples: actualDebugSampleCount,
+                            acceptedNone: debugCounts[8] ?? 0,
+                            acceptedLine: debugCounts[9] ?? 0,
+                            acceptedCorner: debugCounts[10] ?? 0,
+                            acceptedSeam: debugCounts[11] ?? 0,
+                            acceptedRing: debugCounts[14] ?? 0,
+                            rejected: debugCounts[12] ?? 0,
+                        },
+                    },
+                },
+            }
 
         } finally {
             this.#clearPassResourceLists()
@@ -906,168 +957,4 @@ export class MDCExport {
     }
 }
 
-/** Vertex stride in f32 units (matches SIZEOF_VERTEX / 4). */
-const VERTEX_STRIDE_F32 = SIZEOF_VERTEX / Float32Array.BYTES_PER_ELEMENT
-
-/**
- * Two triangles share an edge through `sharedVert` iff they share a second
- * vertex (in addition to `sharedVert` itself).
- */
-function triSharesEdge(tris: Uint32Array, t0: number, t1: number, sharedVert: number): boolean {
-    const base0 = t0 * 3, base1 = t1 * 3
-    for (let c0 = 0; c0 < 3; c0++) {
-        const v0 = tris[base0 + c0]!
-        if (v0 === sharedVert) continue
-        for (let c1 = 0; c1 < 3; c1++) {
-            const v1 = tris[base1 + c1]!
-            if (v1 === sharedVert) continue
-            if (v0 === v1) return true
-        }
-    }
-    return false
-}
-
-/**
- * Split mesh vertices at crease edges and assign averaged face normals per
- * smooth group.  This replaces the single-point SDF gradient normal (which is
- * discontinuous at sharp features) with proper per-face-group normals.
- *
- * Algorithm:
- *  1. Compute unit face normals from triangle geometry.
- *  2. Build CSR vertex → triangle adjacency.
- *  3. For each vertex, flood-fill its adjacent triangles into smooth groups
- *     (connected via shared edges, face normals within the cosine threshold).
- *  4. Emit one output vertex per group with the group-averaged face normal.
- *
- * Unreferenced input vertices are dropped (implicit compaction).
- */
-function splitCreaseVertices(
-    verts: Float32Array<ArrayBuffer>,
-    tris: Uint32Array<ArrayBuffer>,
-    creaseAngleDeg: number,
-): { verts: Float32Array<ArrayBuffer>; tris: Uint32Array<ArrayBuffer> } {
-    const S = VERTEX_STRIDE_F32
-    const cosThresh = Math.cos(creaseAngleDeg * Math.PI / 180)
-    const triCount = (tris.length / 3) | 0
-    const vertCount = (verts.length / S) | 0
-    if (triCount === 0 || vertCount === 0) return { verts, tris }
-
-    // 1. Unit face normals
-    const fnx = new Float32Array(triCount)
-    const fny = new Float32Array(triCount)
-    const fnz = new Float32Array(triCount)
-    for (let t = 0; t < triCount; t++) {
-        const b0 = tris[t * 3]! * S, b1 = tris[t * 3 + 1]! * S, b2 = tris[t * 3 + 2]! * S
-        const ax = verts[b1]! - verts[b0]!, ay = verts[b1 + 1]! - verts[b0 + 1]!, az = verts[b1 + 2]! - verts[b0 + 2]!
-        const bx = verts[b2]! - verts[b0]!, by = verts[b2 + 1]! - verts[b0 + 1]!, bz = verts[b2 + 2]! - verts[b0 + 2]!
-        let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx
-        const l = Math.hypot(nx, ny, nz)
-        if (l > 1e-20) { nx /= l; ny /= l; nz /= l }
-        fnx[t] = nx; fny[t] = ny; fnz[t] = nz
-    }
-
-    // 2. CSR adjacency: vertex → (triangle, corner) pairs
-    const deg = new Uint32Array(vertCount)
-    for (let k = 0; k < tris.length; k++) {
-        const vi = tris[k]!
-        if (vi < vertCount) deg[vi]++
-    }
-    const adjOff = new Uint32Array(vertCount + 1)
-    for (let i = 0; i < vertCount; i++) adjOff[i + 1] = adjOff[i]! + deg[i]!
-    const totalAdj = adjOff[vertCount]!
-    const adjT = new Uint32Array(totalAdj)
-    const adjC = new Uint8Array(totalAdj)
-    const cursor = new Uint32Array(vertCount)
-    for (let t = 0; t < triCount; t++)
-        for (let c = 0; c < 3; c++) {
-            const vi = tris[t * 3 + c]!
-            if (vi < vertCount) {
-                const off = adjOff[vi]! + cursor[vi]!
-                adjT[off] = t
-                adjC[off] = c
-                cursor[vi]++
-            }
-        }
-
-    // 3. Cluster and emit
-    const outTris = new Uint32Array(tris)
-    let cap = Math.max(vertCount * 2, 1024)
-    let outV = new Float32Array(cap * S)
-    let nOut = 0
-
-    const ensureCap = () => {
-        if (nOut < cap) return
-        cap *= 2
-        const nv = new Float32Array(cap * S)
-        nv.set(outV.subarray(0, nOut * S))
-        outV = nv
-    }
-
-    // Reusable per-vertex scratch (avoids per-vertex allocations for most vertices)
-    let visBuf = new Uint8Array(64)
-
-    for (let vi = 0; vi < vertCount; vi++) {
-        const s0 = adjOff[vi]!, s1 = adjOff[vi + 1]!
-        const n = s1 - s0
-        if (n === 0) continue
-
-        if (visBuf.length < n) visBuf = new Uint8Array(Math.max(n, visBuf.length * 2))
-        const vis = visBuf
-        vis.fill(0, 0, n)
-
-        for (let seed = 0; seed < n; seed++) {
-            if (vis[seed]) continue
-            vis[seed] = 1
-
-            // Flood-fill one smooth group
-            const grp: number[] = [seed]
-            const stk: number[] = [seed]
-            while (stk.length > 0) {
-                const ci = stk.pop()!
-                const ct = adjT[s0 + ci]!
-                for (let j = 0; j < n; j++) {
-                    if (vis[j]) continue
-                    const jt = adjT[s0 + j]!
-                    const dot = fnx[ct]! * fnx[jt]! + fny[ct]! * fny[jt]! + fnz[ct]! * fnz[jt]!
-                    if (dot < cosThresh) continue
-                    if (!triSharesEdge(tris, ct, jt, vi)) continue
-                    vis[j] = 1
-                    grp.push(j)
-                    stk.push(j)
-                }
-            }
-
-            // Averaged face normal for this group
-            let nx = 0, ny = 0, nz = 0
-            for (const idx of grp) {
-                const t = adjT[s0 + idx]!
-                nx += fnx[t]!; ny += fny[t]!; nz += fnz[t]!
-            }
-            const l = Math.hypot(nx, ny, nz)
-            if (l > 1e-12) { nx /= l; ny /= l; nz /= l }
-
-            ensureCap()
-            const sb = vi * S, db = nOut * S
-            outV[db] = verts[sb]!
-            outV[db + 1] = verts[sb + 1]!
-            outV[db + 2] = verts[sb + 2]!
-            outV[db + 3] = 0
-            outV[db + 4] = nx
-            outV[db + 5] = ny
-            outV[db + 6] = nz
-            outV[db + 7] = 0
-
-            for (const idx of grp) {
-                outTris[adjT[s0 + idx]! * 3 + adjC[s0 + idx]!] = nOut
-            }
-            nOut++
-        }
-    }
-
-    const resultVerts = new Float32Array(nOut * S)
-    resultVerts.set(outV.subarray(0, nOut * S))
-    const resultTris = new Uint32Array(outTris.length)
-    resultTris.set(outTris)
-    return { verts: resultVerts, tris: resultTris }
-}
 

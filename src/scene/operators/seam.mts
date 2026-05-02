@@ -1,12 +1,12 @@
-import { BinaryOperator, CompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
+import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 
 export class Seam extends BinaryOperator {
-    #seamRadius = 0
+    seamRadius = 0
     constructor(lh: Node, rh: Node, radius = 0) {
         super(lh, rh)
-        this.#seamRadius = radius
+        this.seamRadius = radius
     }
     override getShapeType(): string { return "seam" }
     override getIndicatorSvg(): string {
@@ -20,15 +20,15 @@ export class Seam extends BinaryOperator {
     }
 
     override writeSceneParams(view: Float32Array): void {
-        view[0] = this.#seamRadius
+        view[0] = this.seamRadius
     }
 
     override writePreviewParams(out: PreviewParamsOut): void {
-        out.f32[this.previewF32Slot] = this.#seamRadius
+        out.f32[this.previewF32Slot] = this.seamRadius
     }
 
     @fluent radius(r: number): this {
-        this.#seamRadius = r
+        this.seamRadius = r
         return this
     }
     override compile(indentLevel = 0): CompileResult {
@@ -37,7 +37,7 @@ export class Seam extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
         const sr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `sdfSeamEx(${lText}, ${rText}, ${sr})`, varName, prelude }
+        return binaryOpCompileResult(varName, `sdfSeamEx(${lText}, ${rText}, ${sr})`, prelude)
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
@@ -45,14 +45,15 @@ export class Seam extends BinaryOperator {
         const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
         const sr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `sdfSeamFast(${lText}, ${rText}, ${sr})`, varName, prelude }
+        return binaryOpCompileResult(varName, `sdfSeamFast(${lText}, ${rText}, ${sr})`, prelude)
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
+        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
         const sr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return { text: `sdfSeamMid(${lhResult.text}, ${rhResult.text}, ${sr})`, varName }
+        return binaryOpCompileResult(varName, `sdfSeamMid(${lText}, ${rText}, ${sr})`, prelude)
     }
 }
 

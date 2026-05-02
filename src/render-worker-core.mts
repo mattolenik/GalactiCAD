@@ -11,8 +11,12 @@ import outlineShader from "./shaders/outline.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import mdcShader from "./shaders/mdc.wgsl"
+import sampleGridShader from "./shaders/sample_grid.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
+import { DEFAULT_MDC_EXPORT_LEVERS, type MdcExportLevers } from "./render-worker-protocol.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
+import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
+import { ContourBuffer } from "./scene/contour-buffer.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
@@ -33,12 +37,17 @@ import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import {
+    DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
     DEFAULT_PREVIEW_SHADING,
+    DEFAULT_SIMPLIFY_TUNING,
     type BuildTimingBreakdownMs,
+    type ExporterKind,
     type MainToWorkerMessage,
     type PreviewShadingParams,
     type RenderSelectionState,
     type SelectedEdgePayload,
+    type ShrecTuning,
+    type SimplifyTuning,
 } from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
@@ -388,6 +397,8 @@ export class RenderWorkerCore {
         const sceneSDF_mid = scene.compileMidForPreview()
         const tSdfMid = performance.now()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
+        const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
+        const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
         const tWgsl1 = performance.now()
 
         const shaderCompiler = new ShaderCompiler(this.#device)
@@ -398,6 +409,8 @@ export class RenderWorkerCore {
             .replace("insert", "sceneSDF", sceneSDF)
             .replace("insert", "sceneSDF_mid", sceneSDF_mid)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
+            .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
+            .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
 
         const tShaderMod0 = performance.now()
         const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
@@ -939,7 +952,17 @@ export class RenderWorkerCore {
         await this.#device.queue.onSubmittedWorkDone()
     }
 
-    async handleRenderMesh(body: string, requestId?: number, documentName?: string, simplifyOnExport = true): Promise<void> {
+    async handleRenderMesh(
+        body: string,
+        requestId?: number,
+        documentName?: string,
+        simplifyOnExport = true,
+        exporter: ExporterKind = "mdc",
+        shrecTuning?: ShrecTuning,
+        simplifyTuning?: SimplifyTuning,
+        voxelSizeMmFromCaller?: number,
+        mdcExportLevers?: MdcExportLevers,
+    ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
                 await this.build(body, undefined)
@@ -949,7 +972,15 @@ export class RenderWorkerCore {
                 self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId, documentName })
                 return
             }
-            const voxelSizeMm = 0.1
+            const levers: MdcExportLevers = { ...DEFAULT_MDC_EXPORT_LEVERS, ...mdcExportLevers }
+            // Voxel size: caller-supplied value (from the Dev Tools slider) wins;
+            // otherwise fall back to MDC levers / protocol default.
+            const voxelSizeMm =
+                voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0
+                    ? voxelSizeMmFromCaller
+                    : levers.voxelSizeMm > 0
+                      ? levers.voxelSizeMm
+                      : DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
             const pad = 3.2
             const minX = bounds.min[0] - pad
             const minY = bounds.min[1] - pad
@@ -963,24 +994,7 @@ export class RenderWorkerCore {
             const gridDimX = Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1)
             const gridDimY = Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1)
             const gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelSizeMm) + 1)
-            const params: MDCParams = {
-                gridDimX,
-                gridDimY,
-                gridDimZ,
-                isoValue: 0.0,
-                gridOffsetX: minX,
-                gridOffsetY: minY,
-                gridOffsetZ: minZ,
-                voxelSize: voxelSizeMm,
-                ...(simplifyOnExport && {
-                    simplifyTargetRatio: 0.1,
-                    simplifyRegularize: false,
-                    simplifyLockBorder: true,
-                    simplifyPrune: false,
-                    simplifySparse: false,
-                    simplifyTargetError: 0.001,
-                }),
-            }
+
             const scene = this.#scene!
             const sceneAux = scene.compileAux()
             const sceneAuxFast = scene.compileAuxFast()
@@ -988,23 +1002,139 @@ export class RenderWorkerCore {
             const sceneSDF = scene.compile()
             const sceneSDF_fast = scene.compileFast()
             const sceneSDF_mid = scene.compileMid()
-            const shaderCompiler = new ShaderCompiler(this.#device)
-                .replace("insert", "sceneAuxFast", sceneAuxFast)
-                .replace("insert", "sceneAux", sceneAux)
-                .replace("insert", "sceneAuxMid", sceneAuxMid)
-                .replace("insert", "sceneSDF_fast", sceneSDF_fast)
-                .replace("insert", "sceneSDF", sceneSDF)
-                .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-            const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
-            const mdc = new MDCExport(
-                this.#helper,
-                params,
-                this.#uniformBuffers.polygonVertices,
-                this.#uniformBuffers.faceSelection,
-                this.#uniformBuffers.mdcSceneParams,
-            )
-            const mesh = await mdc.export(mdcShaderModule)
-            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
+
+            let mesh
+            if (exporter === "shrec") {
+                log("ShrecExport").info(
+                    `handleRenderMesh: dispatching SHREC, incoming tuning=` +
+                    `${shrecTuning ? JSON.stringify(shrecTuning) : "(undefined → defaults)"}`,
+                )
+                const shrecCompiler = new ShaderCompiler(this.#device)
+                    .replace("insert", "sceneAuxFast", sceneAuxFast)
+                    .replace("insert", "sceneAux", sceneAux)
+                    .replace("insert", "sceneAuxMid", sceneAuxMid)
+                    .replace("insert", "sceneSDF", sceneSDF)
+                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
+                const sampleGridShaderModule = shrecCompiler.compile(sampleGridShader, "SHREC Sample Grid")
+                const params: ShrecParams = {
+                    gridDimX,
+                    gridDimY,
+                    gridDimZ,
+                    isoValue: 0.0,
+                    gridOffsetX: minX,
+                    gridOffsetY: minY,
+                    gridOffsetZ: minZ,
+                    voxelSize: voxelSizeMm,
+                    ...(shrecTuning && {
+                        mergeSharpEnabled: shrecTuning.mergeSharpEnabled,
+                        mergeRelCutoff: shrecTuning.mergeRelCutoff,
+                        mergeMaxDisplacement: shrecTuning.mergeMaxDisplacement > 0 ? shrecTuning.mergeMaxDisplacement : undefined,
+                        creaseAngleDeg: shrecTuning.creaseAngleDeg,
+                        mergeGradientWeightPower: shrecTuning.mergeGradientWeightPower,
+                        // Tuning knob is in voxels; ShrecParams expects mm.
+                        dedupRadius: shrecTuning.dedupRadiusVoxels > 0 ? shrecTuning.dedupRadiusVoxels * voxelSizeMm : undefined,
+                        seamAwareEnabled: shrecTuning.seamAwareEnabled,
+                        seamAgreementCosThreshold: shrecTuning.seamAgreementCosThreshold,
+                        edgeFitEnabled: shrecTuning.edgeFitEnabled,
+                        featureConstrainedPlacement: shrecTuning.featureConstrainedPlacement,
+                    }),
+                }
+                // Walk the scene tree and collect each primitive's explicit
+                // contour features (box edges + corners, etc.). This is the
+                // CPU-side companion to the GPU-side SDF: SHREC's MergeSharp
+                // pass uses these as snap targets for crisp edges/corners
+                // that gradient-only QEF reconstruction can't produce.
+                // Empty / no-op when the scene contains only smooth
+                // primitives or when no primitive has implemented
+                // `accumulateContours` yet.
+                const contourBuilder = new ContourBuffer()
+                this.#scene!.root.accumulateContours(contourBuilder)
+                const contours = contourBuilder.finish()
+
+                const shrec = new ShrecExport(
+                    this.#helper,
+                    params,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.mdcSceneParams,
+                    contours,
+                )
+                mesh = await shrec.export(sampleGridShaderModule)
+            } else {
+                const params: MDCParams = {
+                    gridDimX,
+                    gridDimY,
+                    gridDimZ,
+                    isoValue: levers.isoValue,
+                    gridOffsetX: minX,
+                    gridOffsetY: minY,
+                    gridOffsetZ: minZ,
+                    voxelSize: voxelSizeMm,
+                    creaseAngleDeg: levers.creaseAngleDeg,
+                    featureConstrainedPlacement: levers.featureConstrainedPlacement,
+                }
+                const mdcCompiler = new ShaderCompiler(this.#device)
+                    .replace("insert", "sceneAuxFast", sceneAuxFast)
+                    .replace("insert", "sceneAux", sceneAux)
+                    .replace("insert", "sceneAuxMid", sceneAuxMid)
+                    .replace("insert", "sceneSDF_fast", sceneSDF_fast)
+                    .replace("insert", "sceneSDF", sceneSDF)
+                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
+                const mdcShaderModule = mdcCompiler.compile(mdcShader, "MDC Export")
+                const mdc = new MDCExport(
+                    this.#helper,
+                    params,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.mdcSceneParams,
+                )
+                mesh = await mdc.export(mdcShaderModule)
+            }
+
+            // Unified mesh post-passes for **both** MDC and SHREC: optional QEM
+            // simplification (when enabled and targetRatio < 1), then optional
+            // normal recompute — gated only by `simplifyTuning.renormalizeTriangles`
+            // (Dev Tools checkbox), not by simplify enablement or target ratio.
+            if (mesh.tris.length > 0) {
+                const s = { ...DEFAULT_SIMPLIFY_TUNING, ...simplifyTuning }
+                if (simplifyOnExport && s.targetRatio < 1) {
+                    log("Simplify").info(
+                        `Mesh simplification dispatched: exporter=${exporter} ` +
+                        `targetRatio=${s.targetRatio} targetError=${s.targetError} ` +
+                        `lockBorder=${s.lockBorder} sparse=${s.sparse} errorAbsolute=${s.errorAbsolute} ` +
+                        `prune=${s.prune} regularize=${s.regularize} normalWeight=${s.normalWeight}`,
+                    )
+                    const { simplifyMesh } = await import("./export/simplify.mjs")
+                    mesh = await simplifyMesh(
+                        mesh,
+                        s.targetRatio,
+                        s.targetError,
+                        {
+                            lockBorder: s.lockBorder,
+                            sparse: s.sparse,
+                            errorAbsolute: s.errorAbsolute,
+                            prune: s.prune,
+                            regularize: s.regularize,
+                            normalWeight: s.normalWeight > 0 ? s.normalWeight : undefined,
+                            renormalizeTriangles: false,
+                        },
+                    )
+                }
+                if (s.renormalizeTriangles) {
+                    log("Simplify").info(
+                        `Mesh normal recompute: exporter=${exporter} renormalizeTriangles=true`,
+                    )
+                    const { renormalizeTriangleNormals } = await import("./export/crease-split.mjs")
+                    const renorm = renormalizeTriangleNormals(mesh.verts, mesh.tris)
+                    mesh = { verts: renorm.verts, tris: renorm.tris, debug: mesh.debug }
+                }
+            }
+
+            const transfer: Transferable[] = [mesh.verts.buffer, mesh.tris.buffer]
+            if (mesh.debug?.mdc) {
+                transfer.push(mesh.debug.mdc.samples.buffer)
+            }
+            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer })
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId, documentName })
@@ -1030,9 +1160,18 @@ export class RenderWorkerCore {
         const TILE_STRIDE_BYTES = 48
         const totalSamples = dimsX * dimsY * dimsZ
         const totalWorkgroups = Math.ceil(totalSamples / 256)
-        const dispatchX = Math.min(totalWorkgroups, 65535)
-        const dispatchY = Math.ceil(totalWorkgroups / dispatchX)
-        const dispatchedWorkgroups = dispatchX * dispatchY
+        const MAX_WG = 65535
+        let dispatchX = Math.min(totalWorkgroups, MAX_WG)
+        let dispatchY = Math.max(1, Math.ceil(totalWorkgroups / dispatchX))
+        let dispatchZ = 1
+        if (dispatchY > MAX_WG) {
+            dispatchY = MAX_WG
+            dispatchZ = Math.max(1, Math.ceil(totalWorkgroups / (dispatchX * dispatchY)))
+        }
+        if (dispatchZ > MAX_WG) {
+            throw new Error(`Bounds grid too large for one GPU dispatch (${totalWorkgroups} workgroups)`)
+        }
+        const dispatchedWorkgroups = dispatchX * dispatchY * dispatchZ
         const outBuffer = this.#device.createBuffer({
             size: dispatchedWorkgroups * TILE_STRIDE_BYTES,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -1071,7 +1210,7 @@ export class RenderWorkerCore {
             const pass = encoder.beginComputePass()
             pass.setPipeline(boundsPipeline)
             pass.setBindGroup(0, bindGroup)
-            pass.dispatchWorkgroups(dispatchedWorkgroups)
+            pass.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ)
             pass.end()
             this.#device.queue.submit([encoder.finish()])
             await this.#device.queue.onSubmittedWorkDone()

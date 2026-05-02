@@ -68,7 +68,7 @@ export interface GridSampleResult {
     gridOffset: readonly [number, number, number]
 }
 
-const SAMPLE_GRID_UNIFORM_BYTES = 48 // 3 * vec4 = 48 bytes
+const SAMPLE_GRID_UNIFORM_BYTES = 32 // vec4u + vec3f + f32
 
 /**
  * GPU helper that samples the scene SDF on a uniform 3D grid.
@@ -167,8 +167,8 @@ export class GridSampler {
             // Uniforms: see SampleGridUniforms in sample_grid.wgsl.
             const uniformsData = new ArrayBuffer(SAMPLE_GRID_UNIFORM_BYTES)
             new Uint32Array(uniformsData, 0, 4).set([gridDimX >>> 0, gridDimY >>> 0, gridDimZ >>> 0, totalVoxels >>> 0])
-            new Float32Array(uniformsData, 16, 4).set([gridOffsetX, gridOffsetY, gridOffsetZ, 0])
-            new Float32Array(uniformsData, 32, 4).set([voxelSize, 0, 0, 0])
+            new Float32Array(uniformsData, 16, 3).set([gridOffsetX, gridOffsetY, gridOffsetZ])
+            new Float32Array(uniformsData, 28, 1).set([voxelSize])
 
             const uniformBuffer = this.#device.createBuffer({
                 label: "GridSampler.Uniforms",

@@ -20,10 +20,11 @@
 struct SampleGridUniforms {
     // xyz = grid dimensions in voxels, w = total voxel count (for bounds-checking).
     gridDims: vec4u,
-    // xyz = world-space origin of voxel (0,0,0), w = unused.
-    gridOffset: vec4f,
-    // x = voxel size (mm). y,z,w reserved for future tuning knobs.
-    voxelSize: vec4f,
+    // xyz = world-space origin of voxel (0,0,0).
+    gridOffset: vec3f,
+    // Voxel size (mm). Kept as a scalar so injected mid-path helpers shared
+    // with MDC can use `uniforms.voxelSize` directly.
+    voxelSize: f32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: SampleGridUniforms;
@@ -83,6 +84,7 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
 // Auxiliary SDF functions (e.g., per-polygon evaluators) injected at runtime.
 //:) insert sceneAuxFast
 //:) insert sceneAux
+//:) insert sceneAuxMid
 
 // Full SDF — provides analytical normal in r.n and gradient magnitude r.g.
 fn sceneSDF(p: vec3f) -> SDFResult {
@@ -111,7 +113,7 @@ fn sampleGrid(@builtin(global_invocation_id) gid: vec3u) {
     let dims = uniforms.gridDims.xyz;
     if (gid.x >= dims.x || gid.y >= dims.y || gid.z >= dims.z) { return; }
 
-    let voxelSize = uniforms.voxelSize.x;
+    let voxelSize = uniforms.voxelSize;
     let pos = uniforms.gridOffset.xyz + vec3f(gid) * voxelSize;
 
     let r = sceneSDF(pos);

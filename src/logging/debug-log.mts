@@ -240,10 +240,26 @@ export function installDevConsoleMirror(): void {
     }
 }
 
+type GalacticadDevBridgeGlobals = {
+    __galacticadDevLogPush?: (entry: DevLogEntry) => void
+    __galacticadDevGetActiveSceneSource?: () => string
+}
+
+/**
+ * When the devserver injected the log bridge, register a getter for `GET /_sceneSource` (active Monaco document).
+ * No-op without devserver.
+ */
+export function installDevActiveSceneSourceGetter(getSource: () => string): void {
+    if (typeof window === "undefined") return
+    const g = globalThis as GalacticadDevBridgeGlobals
+    if (typeof g.__galacticadDevLogPush !== "function") return
+    g.__galacticadDevGetActiveSceneSource = getSource
+}
+
 /** Main thread: connect to devserver-injected `__galacticadDevLogPush` and capture globals. No-op when not using devserver. */
 export function connectMainThreadDevLogToBridge(): void {
     if (typeof window === "undefined") return
-    const g = globalThis as { __galacticadDevLogPush?: (entry: DevLogEntry) => void }
+    const g = globalThis as GalacticadDevBridgeGlobals
     if (typeof g.__galacticadDevLogPush !== "function") return
     setDevLogThreadLabel("main")
     setDevLogPush(entry => {

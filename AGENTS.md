@@ -147,7 +147,9 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 ### Devserver logs endpoint (optional browser console)
 
-When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`** at `http://localhost:<port>/_logs`. **Read `<port>` from `.devserver.run`** (JSON `port` field) when the server starts; if that file is absent, the devserver is not running and there is **no** default port to use for `/_logs`. The recorded port may differ from the configured default if the listen port was already in use.
+When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`** at `http://localhost:<port>/_logs` and **`GET /_sceneSource`** at `http://localhost:<port>/_sceneSource` (active editor tab’s scene source as `text/plain`). **Read `<port>` from `.devserver.run`** (JSON `port` field) when the server starts; if that file is absent, the devserver is not running and there is **no** default port to use for these routes. The recorded port may differ from the configured default if the listen port was already in use.
+
+For **`/_sceneSource`**: response is the current Monaco document value; **200 with empty body** if no browser is connected, the bridge times out, the getter throws, or there is no active model (e.g. welcome-only state). No query parameters.
 
 - **Response format**: `text/plain; charset=utf-8`, one log line per line: the **exact** in-browser buffer lines (including `[timestamp] [level]` and the rest), newline-joined with no server-side rewriting. If no browser tab is connected, bridge times out, or nothing matches filters, response is **200 with empty body**.
 - **`level`**: optional single threshold among `error`, `warning`, `info`, `debug` (case-insensitive). Cumulative: `error` → errors only; `warning` → errors and warnings; `info` → errors, warnings, and info; `debug` → all four. Default when `level` is missing, empty, or not recognized: **`info`** (errors, warnings, and info—no debug). URL token `warning` maps to the internal warn bucket.
@@ -159,9 +161,9 @@ When the watch devserver is running (`make serve` / `make start`, or `make serve
 **Agent workflow**
 
 1. Prefer **`make build`** for compile-time WGSL and bundling errors after shader edits.
-2. If **`.devserver.run`** exists with a `port`, use shell `curl` against `http://localhost:<port>/_logs` (default response uses **`level=info`** semantics; add `level=debug` or `only=…` only when you need a different mix; omit `n` unless asked).
+2. If **`.devserver.run`** exists with a `port`, use shell `curl` against `http://localhost:<port>/_logs` (default response uses **`level=info`** semantics; add `level=debug` or `only=…` only when you need a different mix; omit `n` unless asked). Use `http://localhost:<port>/_sceneSource` to dump the active tab’s scene source as plain text.
 3. If `.devserver.run` is **missing** (devserver not running), **do nothing**; do not guess a port or fail the task for missing runtime logs.
-4. See [`.cursor/skills/devserver-logs/SKILL.md`](.cursor/skills/devserver-logs/SKILL.md) for the standard runtime-log check flow.
+4. See [`.agents/skills/devserver-logs/SKILL.md`](.agents/skills/devserver-logs/SKILL.md) for the standard runtime-log and `/_sceneSource` check flow.
 
 **Optional cleanup**: if a local `.cursor/mcp.json` still contains stale `galacticad-devserver` MCP settings from older workflows, users can remove that entry manually (file is gitignored).
 

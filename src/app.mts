@@ -64,7 +64,12 @@ import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
 import { clearRecentDocuments, db, getDoc, getRecentDocuments } from "./storage/db.mjs"
 import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
-import { applyDebugLogModules, connectMainThreadDevLogToBridge, log as debugLog } from "./logging/debug-log.mjs"
+import {
+    applyDebugLogModules,
+    connectMainThreadDevLogToBridge,
+    installDevActiveSceneSourceGetter,
+    log as debugLog,
+} from "./logging/debug-log.mjs"
 import { VERSION } from "./version.mjs"
 
 connectMainThreadDevLogToBridge()
@@ -542,6 +547,10 @@ class App {
         this.#tabs = new DocumentTabs(this.editor)
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
+        installDevActiveSceneSourceGetter(() => {
+            const model = this.editor.getModel()
+            return model ? model.getValue() : ""
+        })
 
         this.#injectStyles()
         const initialTheme = resolveEffectiveTheme(this.#settings.getGlobal().app.theme)

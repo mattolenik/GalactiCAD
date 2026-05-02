@@ -17,12 +17,12 @@ struct SharedUniforms {
     // per element of the dilated active-cube set's union of corners/edges/faces/cubes).
     // Each pass dispatches per its category's slot count and reads the linear grid index
     // from `dualCompactList[base + threadId]`. Pass 6 looks up duals by grid index via
-    // the open-addressed `dualHashTable` (key = (cellType<<28) | linearIdx).
+    // the open-addressed `dualHashTable` (vec4 key_lo, key_hi, slot, _ — see `sparse_dual_hash_key`).
     sparseBases0: vec4u,   // x=cornerBase  y=edgeXBase  z=edgeYBase  w=edgeZBase
     sparseBases1: vec4u,   // x=faceXYBase  y=faceYZBase z=faceXZBase w=cubeBase
     sparseCounts0: vec4u,  // x=cornerCount y=edgeXCount z=edgeYCount w=edgeZCount
     sparseCounts1: vec4u,  // x=faceXYCount y=faceYZCount z=faceXZCount w=cubeCount
-    sparseHash: vec4u,     // x=hashMask    y=hashEntries z=reserved   w=reserved
+    sparseHash: vec4u,     // x=hashMask y=hashEntries z=isoQefOversample (1–4; 0=default 2) w=reserved
     // Stage 4 Session 6: separate sparse hash for sub-cell duals. Keys use the
     // CELL_TYPE_SUB_* constants; slot is the absolute index into `subCellAllDuals`
     // (post-base offset by Session 7's unification).
@@ -83,20 +83,16 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // `sparseCounts{0,1}`. Total size = sum of the 8 counts.
 @group(0) @binding(2) var<storage, read_write> allDuals: array<DualVertex>;
 
-// Sparse hash table (Phase 5B): open-addressed (key, slot) pairs for grid-indexed dual
-// lookups in Pass 6. Power-of-two entries; key = (cellType<<28)|linearIdx with
-// 0xffffffffu marking empty. Knuth multiplicative hash + linear probe.
-@group(0) @binding(6) var<storage, read> dualHashTable: array<vec2u>;
+// Sparse hash table (Phase 5B + Phase 3 wide keys): open-addressed rows
+// `(key_lo, key_hi, absoluteSlot, _)` for grid-indexed dual lookups in Pass 6.
+// Power-of-two rows; empty rows use `key_lo == key_hi == 0xffffffffu`.
+// `key_lo = linear & 0xffffffff`, `key_hi = (cellType<<28) | ((linear>>32) & 0x0fffffff)`.
+@group(0) @binding(6) var<storage, read> dualHashTable: array<vec4u>;
 
-// Stage 4 Session 6: separate sparse hash for sub-cell duals. Same vec2u (key, slot)
-// layout as the base hash; key = (subCellType<<28)|sub_grid_linear_idx with subCellType
-// in {CELL_TYPE_SUB_CUBE..CELL_TYPE_SUB_FACE_XY} and slot indexing into childDuals
-// (sub-cubes), childEdgeDuals (sub-edges), or childFaceDuals (sub-faces) — the cellType
-// embedded in the key tells the WGSL helper which buffer to read from. Sized to the
-// post-octree sub-cell count and uploaded after Pass 11/12/13 dispatch (the dispatch
-// indices are the slot values, so the hash builder runs CPU-side after the deduplicated
-// sub-cell list is finalized).
-@group(0) @binding(20) var<storage, read> subDualHashTable: array<vec2u>;
+// Stage 4 Session 6: separate sparse hash for sub-cell duals. Same vec4 row layout as
+// the base hash; subCellType in {CELL_TYPE_SUB_CUBE..CELL_TYPE_SUB_FACE_XY} and slot
+// indexing into `subCellAllDuals`.
+@group(0) @binding(20) var<storage, read> subDualHashTable: array<vec4u>;
 
 // Sparse compact list (Phase 5B): slot → linear grid index for each element of the
 // dilated set, concatenated by category in the same order as the bases. Drives the
@@ -119,14 +115,6 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // CSG seams (precisely the cells the paper §5.1 wants to refine).
 @group(0) @binding(9) var<storage, read_write> cubeQefResidual: array<f32>;
 
-// Pass 7 — Newton-project welded vertex positions onto the iso surface
-// and write analytical surface normals from sceneSDF_mid. The welded vertex
-// array is uploaded by the orchestrator after CPU welding and read back in
-// place. Pass 7 fixes the jagged appearance that arises from Marching
-// Tetrahedra emitting many tiny slivers whose face-averaged normals would
-// otherwise dominate the displayed shading.
-@group(0) @binding(7) var<storage, read_write> projectVertices: array<Vertex>;
-
 // Stage 4 Sessions 2 / 5 / 6 / 7: per-child sub-cell descriptors + outputs.
 // All descriptors use GLOBAL sub-grid coordinates (parent-independent), enabling
 // canonical-owner dedup via Set on the CPU side (`iso-octree.mts`).
@@ -141,7 +129,7 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // Session 7: ALL sub-cell duals live in a single `subCellAllDuals` buffer with bases
 // (cube=0, edge=numSubCubes, face=numSubCubes+numSubEdges) supplied via
 // `uniforms.subCellBases`. This unification saves 2 bindings vs the original
-// per-cell-type buffers, fitting Pass 14 (multi-resolution MT) within the WebGPU
+// per-cell-type buffers, keeping sub-cell passes within the WebGPU
 // 10-storage-per-stage default.
 @group(0) @binding(11) var<storage, read> childCubeInfo: array<vec4u>;
 @group(0) @binding(13) var<storage, read_write> childResiduals: array<f32>;
@@ -160,8 +148,8 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 
 // Stage 4 Session 8 (storage-budget fix): refinement is now derived from the sub-cell
 // hash itself (see `is_base_cube_refined`). The dedicated `cubeRefinedFlags` buffer was
-// dropped to free a storage binding so Pass 14 fits under the WebGPU 10-storage-per-stage
-// limit. (Binding 21 is intentionally left unused — could be reclaimed for something else.)
+// dropped to free a storage binding under the WebGPU 10-storage-per-stage limit.
+// (Binding 21 is intentionally left unused — could be reclaimed for something else.)
 
 // Cancellation flag: 0 = continue, 1 = cancelled
 @group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
@@ -376,7 +364,10 @@ fn cell_count_interior(dx: u32, dy: u32, dz: u32) -> u32 {
 }
 
 // ---------- Sparse hash lookups (Phase 5B) ----------
-// Key layout: high 4 bits = cell type tag, low 28 bits = linear grid index per category.
+// Wide key `vec2u(key_lo, key_hi)` matches `encodeSparseDualHashKeyBigInt` / CPU sparse dual:
+//   key_lo = linear & 0xffffffff
+//   key_hi = (cellType << 28) | ((linear >> 32) & 0x0fffffff)
+// Base-grid categories use `sparse_dual_hash_key` (linear < 2^32); sub-grid uses u96 linear.
 const CELL_TYPE_CORNER:  u32 = 0u;
 const CELL_TYPE_EDGE_X:  u32 = 1u;
 const CELL_TYPE_EDGE_Y:  u32 = 2u;
@@ -385,9 +376,9 @@ const CELL_TYPE_FACE_XY: u32 = 4u;
 const CELL_TYPE_FACE_YZ: u32 = 5u;
 const CELL_TYPE_FACE_XZ: u32 = 6u;
 const CELL_TYPE_CUBE:    u32 = 7u;
-// Stage 4 Session 6: sub-cell types for the depth-aware sparse hash. Keys are
-// `(cellType << 28) | sub_grid_linear_idx`; slots index into the per-axis sub-cell
-// output buffers (childDuals, childEdgeDuals, childFaceDuals).
+// Stage 4 Session 6: sub-cell types for the depth-aware sparse hash (same 60-bit linear
+// payload as base categories via `sparse_dual_hash_key_from_u96`). Slots index into the
+// unified `subCellAllDuals` buffer.
 const CELL_TYPE_SUB_CUBE:    u32 = 8u;
 const CELL_TYPE_SUB_EDGE_X:  u32 = 9u;
 const CELL_TYPE_SUB_EDGE_Y:  u32 = 10u;
@@ -397,22 +388,88 @@ const CELL_TYPE_SUB_FACE_XZ: u32 = 13u;
 const CELL_TYPE_SUB_FACE_XY: u32 = 14u;
 const SPARSE_HASH_EMPTY: u32 = 0xffffffffu;
 const SPARSE_HASH_KNUTH: u32 = 2654435761u;
+const SPARSE_HASH_KNUTH_HI: u32 = 0x85ebca6bu;
 
-fn make_sparse_key(cell_type: u32, linear_idx: u32) -> u32 {
-    return (cell_type << 28u) | (linear_idx & 0x0fffffffu);
+/// Base-grid sparse key when `linear_idx` fits in 32 bits (corners / edges / faces / cubes).
+/// Sub-grid paths use `sparse_dual_hash_key_from_u96` so linear may use the full 60-bit payload.
+fn sparse_dual_hash_key(cell_type: u32, linear_idx: u32) -> vec2u {
+    return vec2u(linear_idx, (cell_type & 15u) << 28u);
 }
 
-/// Hash-table lookup for a (cellType, linearIdx) pair. Returns the absolute slot
-/// in `allDuals`, or `SPARSE_HASH_EMPTY` if not present in the dilated set.
-fn lookup_dual_slot(key: u32) -> u32 {
+/// Pack `(cell_type, linear)` with linear up to 60 bits. `lin` is `gsx + sx*(gsy + gsz*sy)` in
+/// u96 limbs (`lin.x` = low 32 bits, `lin.y` = bits 32–63, `lin.z` overflow — zero when CPU
+/// `assertFineSubGridHashPayloadFits` passes). Matches `(li >> 32) & 0x0fffffff` in key_hi.
+fn sparse_dual_hash_key_from_u96(cell_type: u32, lin: vec3u) -> vec2u {
+    return vec2u(lin.x, ((cell_type & 15u) << 28u) | (lin.y & 0x0fffffffu));
+}
+
+fn mul_wide_u32(a: u32, b: u32) -> vec2u {
+    let mask = 0xffffu;
+    let a0 = a & mask;
+    let a1 = a >> 16u;
+    let b0 = b & mask;
+    let b1 = b >> 16u;
+    let p00 = a0 * b0;
+    let p01 = a0 * b1;
+    let p10 = a1 * b0;
+    let p11 = a1 * b1;
+    let lo16 = p00 & mask;
+    let carry16 = p00 >> 16u;
+    let mid = carry16 + (p01 & mask) + (p10 & mask);
+    let lo = lo16 | ((mid & mask) << 16u);
+    let hi = p11 + (p01 >> 16u) + (p10 >> 16u) + (mid >> 16u);
+    return vec2u(lo, hi);
+}
+
+fn u64_add(a: vec2u, b: vec2u) -> vec2u {
+    let lo = a.x + b.x;
+    let c = select(0u, 1u, lo < a.x);
+    let hi = a.y + b.y + c;
+    return vec2u(lo, hi);
+}
+
+/// `a` as u64 × `m` → u96 (`lin.y` may span bits 32–63; `lin.z` holds overflow into bit 64+).
+fn mul_u64_u32_wide(a: vec2u, m: u32) -> vec3u {
+    let w0 = mul_wide_u32(a.x, m);
+    let w1 = mul_wide_u32(a.y, m);
+    let mid = w0.y + w1.x;
+    let c_mid = select(0u, 1u, mid < w0.y);
+    let limb2 = w1.y + c_mid;
+    return vec3u(w0.x, mid, limb2);
+}
+
+fn u96_add_u32(a: vec3u, b: u32) -> vec3u {
+    let lo = a.x + b;
+    let c0 = select(0u, 1u, lo < a.x);
+    let mid = a.y + c0;
+    let c1 = select(0u, 1u, mid < a.y);
+    let hi = a.z + c1;
+    return vec3u(lo, mid, hi);
+}
+
+/// `gsx + sx * (gsy + gsz * sy)` as u96 (matches CPU `subCubeLinearIdx` family).
+fn sub_linear_u96(gsx: u32, gsy: u32, gsz: u32, sx: u32, sy: u32) -> vec3u {
+    let inner = u64_add(vec2u(gsy, 0u), mul_wide_u32(gsz, sy));
+    let prod = mul_u64_u32_wide(inner, sx);
+    return u96_add_u32(prod, gsx);
+}
+
+/// X-sub-edge uses `(sy + 1)` in the inner factor (`gsz * (sy + 1)`).
+fn sub_linear_u96_edge_x(gsx: u32, gsy: u32, gsz: u32, sx: u32, sy: u32) -> vec3u {
+    let inner = u64_add(vec2u(gsy, 0u), mul_wide_u32(gsz, sy + 1u));
+    let prod = mul_u64_u32_wide(inner, sx);
+    return u96_add_u32(prod, gsx);
+}
+
+/// Hash-table lookup for a `(key_lo, key_hi)` pair. Returns the absolute slot in `allDuals`,
+/// or `SPARSE_HASH_EMPTY` if not present in the dilated set.
+fn lookup_dual_slot(key: vec2u) -> u32 {
     let mask = uniforms.sparseHash.x;
-    var slot = (key * SPARSE_HASH_KNUTH) & mask;
-    // Large meshes + linear probing can exceed 256 slots in worst-case clusters; missing here
-    // returns DualVertex(0) and produces spikes to the origin.
+    var slot = (((key.x * SPARSE_HASH_KNUTH) ^ (key.y * SPARSE_HASH_KNUTH_HI)) & mask);
     for (var probe = 0u; probe < 4096u; probe = probe + 1u) {
         let entry = dualHashTable[slot];
-        if (entry.x == key) { return entry.y; }
-        if (entry.x == SPARSE_HASH_EMPTY) { return SPARSE_HASH_EMPTY; }
+        if (entry.x == key.x && entry.y == key.y) { return entry.z; }
+        if (entry.x == SPARSE_HASH_EMPTY && entry.y == SPARSE_HASH_EMPTY) { return SPARSE_HASH_EMPTY; }
         slot = (slot + 1u) & mask;
     }
     return SPARSE_HASH_EMPTY;
@@ -423,7 +480,7 @@ fn lookup_dual_slot(key: u32) -> u32 {
 /// path because Pass 6 only dispatches over edges whose neighbors are guaranteed in the
 /// set (active-cube dilation), but we still want a defined behavior.
 fn read_dual(cell_type: u32, linear_idx: u32) -> DualVertex {
-    let slot = lookup_dual_slot(make_sparse_key(cell_type, linear_idx));
+    let slot = lookup_dual_slot(sparse_dual_hash_key(cell_type, linear_idx));
     if (slot == SPARSE_HASH_EMPTY) {
         return DualVertex(vec3f(0.0), 0.0);
     }
@@ -454,63 +511,100 @@ fn write_dual_slot(absolute_slot: u32, dv: DualVertex) {
 //   sub-corner counts:  2*nx + 1, 2*ny + 1, 2*nz + 1
 // (where nx/ny/nz are the BASE-grid cell counts from `uniforms.gridDimensions - 1`).
 
-fn sub_cube_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
-    let nx = uniforms.gridDimensions.x - 1u;
-    let ny = uniforms.gridDimensions.y - 1u;
-    return gsx + gsy * (2u * nx) + gsz * (2u * nx) * (2u * ny);
+fn octree_sub_axis_mul() -> u32 {
+    let m = uniforms.mdcU0.z;
+    return select(1u, m, m > 0u);
 }
 
-fn sub_edge_x_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
-    let nx = uniforms.gridDimensions.x - 1u;
-    let ny = uniforms.gridDimensions.y - 1u;
-    return gsx + gsy * (2u * nx) + gsz * (2u * nx) * (2u * ny + 1u);
+fn octree_max_depth_packed() -> u32 {
+    return uniforms.mdcU0.w;
 }
 
-fn sub_edge_y_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+fn sub_cube_sparse_key(gsx: u32, gsy: u32, gsz: u32) -> vec2u {
+    let mul = octree_sub_axis_mul();
     let nx = uniforms.gridDimensions.x - 1u;
     let ny = uniforms.gridDimensions.y - 1u;
-    return gsx + gsy * (2u * nx + 1u) + gsz * (2u * nx + 1u) * (2u * ny);
+    let sx = mul * nx;
+    let sy = mul * ny;
+    let lin = sub_linear_u96(gsx, gsy, gsz, sx, sy);
+    return sparse_dual_hash_key_from_u96(CELL_TYPE_SUB_CUBE, lin);
 }
 
-fn sub_edge_z_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+fn sub_edge_x_sparse_key(gsx: u32, gsy: u32, gsz: u32) -> vec2u {
+    let mul = octree_sub_axis_mul();
     let nx = uniforms.gridDimensions.x - 1u;
     let ny = uniforms.gridDimensions.y - 1u;
-    return gsx + gsy * (2u * nx + 1u) + gsz * (2u * nx + 1u) * (2u * ny + 1u);
+    let sx = mul * nx;
+    let sy = mul * ny;
+    let lin = sub_linear_u96_edge_x(gsx, gsy, gsz, sx, sy);
+    return sparse_dual_hash_key_from_u96(CELL_TYPE_SUB_EDGE_X, lin);
 }
 
-fn sub_face_yz_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+fn sub_edge_y_sparse_key(gsx: u32, gsy: u32, gsz: u32) -> vec2u {
+    let mul = octree_sub_axis_mul();
     let nx = uniforms.gridDimensions.x - 1u;
     let ny = uniforms.gridDimensions.y - 1u;
-    return gsx + gsy * (2u * nx + 1u) + gsz * (2u * nx + 1u) * (2u * ny);
+    let sx = mul * nx + 1u;
+    let sy = mul * ny;
+    let lin = sub_linear_u96(gsx, gsy, gsz, sx, sy);
+    return sparse_dual_hash_key_from_u96(CELL_TYPE_SUB_EDGE_Y, lin);
 }
 
-fn sub_face_xz_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+fn sub_edge_z_sparse_key(gsx: u32, gsy: u32, gsz: u32) -> vec2u {
+    let mul = octree_sub_axis_mul();
     let nx = uniforms.gridDimensions.x - 1u;
     let ny = uniforms.gridDimensions.y - 1u;
-    return gsx + gsy * (2u * nx) + gsz * (2u * nx) * (2u * ny + 1u);
+    let sx = mul * nx + 1u;
+    let sy = mul * ny + 1u;
+    let lin = sub_linear_u96(gsx, gsy, gsz, sx, sy);
+    return sparse_dual_hash_key_from_u96(CELL_TYPE_SUB_EDGE_Z, lin);
 }
 
-fn sub_face_xy_linear_idx(gsx: u32, gsy: u32, gsz: u32) -> u32 {
+fn sub_face_yz_sparse_key(gsx: u32, gsy: u32, gsz: u32) -> vec2u {
+    let mul = octree_sub_axis_mul();
     let nx = uniforms.gridDimensions.x - 1u;
     let ny = uniforms.gridDimensions.y - 1u;
-    return gsx + gsy * (2u * nx) + gsz * (2u * nx) * (2u * ny);
+    let sx = mul * nx + 1u;
+    let sy = mul * ny;
+    let lin = sub_linear_u96(gsx, gsy, gsz, sx, sy);
+    return sparse_dual_hash_key_from_u96(CELL_TYPE_SUB_FACE_YZ, lin);
+}
+
+fn sub_face_xz_sparse_key(gsx: u32, gsy: u32, gsz: u32) -> vec2u {
+    let mul = octree_sub_axis_mul();
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    let sx = mul * nx;
+    let sy = mul * ny + 1u;
+    let lin = sub_linear_u96(gsx, gsy, gsz, sx, sy);
+    return sparse_dual_hash_key_from_u96(CELL_TYPE_SUB_FACE_XZ, lin);
+}
+
+fn sub_face_xy_sparse_key(gsx: u32, gsy: u32, gsz: u32) -> vec2u {
+    let mul = octree_sub_axis_mul();
+    let nx = uniforms.gridDimensions.x - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    let sx = mul * nx;
+    let sy = mul * ny;
+    let lin = sub_linear_u96(gsx, gsy, gsz, sx, sy);
+    return sparse_dual_hash_key_from_u96(CELL_TYPE_SUB_FACE_XY, lin);
 }
 
 /// Hash-table lookup for a (subCellType, subLinearIdx) pair. Returns the slot index
 /// in the appropriate sub-cell output buffer (childDuals / childEdgeDuals /
 /// childFaceDuals — caller's responsibility to read from the right one based on
 /// cellType), or `SPARSE_HASH_EMPTY` if the sub-cell isn't in the dedup'd set.
-fn lookup_sub_dual_slot(key: u32) -> u32 {
+fn lookup_sub_dual_slot(key: vec2u) -> u32 {
     let mask = uniforms.subSparseHash.x;
     if (mask == 0u) {
         // No sub-cells exist (non-adaptive run, or all cubes below threshold).
         return SPARSE_HASH_EMPTY;
     }
-    var slot = (key * SPARSE_HASH_KNUTH) & mask;
+    var slot = (((key.x * SPARSE_HASH_KNUTH) ^ (key.y * SPARSE_HASH_KNUTH_HI)) & mask);
     for (var probe = 0u; probe < 4096u; probe = probe + 1u) {
         let entry = subDualHashTable[slot];
-        if (entry.x == key) { return entry.y; }
-        if (entry.x == SPARSE_HASH_EMPTY) { return SPARSE_HASH_EMPTY; }
+        if (entry.x == key.x && entry.y == key.y) { return entry.z; }
+        if (entry.x == SPARSE_HASH_EMPTY && entry.y == SPARSE_HASH_EMPTY) { return SPARSE_HASH_EMPTY; }
         slot = (slot + 1u) & mask;
     }
     return SPARSE_HASH_EMPTY;
@@ -522,43 +616,43 @@ fn lookup_sub_dual_slot(key: u32) -> u32 {
 /// duals live in the unified `subCellAllDuals` buffer; the slot returned by the hash
 /// is an absolute index into that buffer.
 fn dual_sub_cube(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
-    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_CUBE, sub_cube_linear_idx(gsx, gsy, gsz)));
+    let slot = lookup_sub_dual_slot(sub_cube_sparse_key(gsx, gsy, gsz));
     if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
     return subCellAllDuals[slot];
 }
 
 fn dual_sub_edge_x(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
-    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_EDGE_X, sub_edge_x_linear_idx(gsx, gsy, gsz)));
+    let slot = lookup_sub_dual_slot(sub_edge_x_sparse_key(gsx, gsy, gsz));
     if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
     return subCellAllDuals[slot];
 }
 
 fn dual_sub_edge_y(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
-    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_EDGE_Y, sub_edge_y_linear_idx(gsx, gsy, gsz)));
+    let slot = lookup_sub_dual_slot(sub_edge_y_sparse_key(gsx, gsy, gsz));
     if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
     return subCellAllDuals[slot];
 }
 
 fn dual_sub_edge_z(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
-    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_EDGE_Z, sub_edge_z_linear_idx(gsx, gsy, gsz)));
+    let slot = lookup_sub_dual_slot(sub_edge_z_sparse_key(gsx, gsy, gsz));
     if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
     return subCellAllDuals[slot];
 }
 
 fn dual_sub_face_yz(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
-    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_FACE_YZ, sub_face_yz_linear_idx(gsx, gsy, gsz)));
+    let slot = lookup_sub_dual_slot(sub_face_yz_sparse_key(gsx, gsy, gsz));
     if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
     return subCellAllDuals[slot];
 }
 
 fn dual_sub_face_xz(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
-    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_FACE_XZ, sub_face_xz_linear_idx(gsx, gsy, gsz)));
+    let slot = lookup_sub_dual_slot(sub_face_xz_sparse_key(gsx, gsy, gsz));
     if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
     return subCellAllDuals[slot];
 }
 
 fn dual_sub_face_xy(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
-    let slot = lookup_sub_dual_slot(make_sparse_key(CELL_TYPE_SUB_FACE_XY, sub_face_xy_linear_idx(gsx, gsy, gsz)));
+    let slot = lookup_sub_dual_slot(sub_face_xy_sparse_key(gsx, gsy, gsz));
     if (slot == SPARSE_HASH_EMPTY) { return DualVertex(vec3f(0.0), 0.0); }
     return subCellAllDuals[slot];
 }
@@ -592,19 +686,20 @@ fn is_active_cell_at_min_corner(cellMinCorner: vec3u) -> bool {
 
 /// Stage 4 Session 7: returns true iff this base cube has been subdivided (octree
 /// produced sub-cubes inside it). Pass 6 skips edges where any of the 4 surrounding
-/// base cubes is refined; Pass 14 uses this to decide between sub-cube and base-cube
-/// dual lookups. Bit-packed: 1 bit per base cube, indexed by base cube linear idx
+/// base cubes is refined; Pass 15 / `cube_dual_at_subpos` use this for mixed-depth dual
+/// lookups. Bit-packed: 1 bit per base cube, indexed by base cube linear idx
 /// (cx + cy*nx + cz*nx*ny). Returns false out-of-range or when the buffer is the
 /// 1-element placeholder (non-adaptive mode → no cubes refined → all return false).
 /// Session 8 (storage-budget fix): refinement is derived from the sub-cell sparse hash
 /// rather than a dedicated `cubeRefinedFlags` buffer. A refined parent always has all 8
 /// of its sub-cubes in the hash (Pass 11 wrote them), so testing whether the LL-corner
 /// sub-cube `(2*bcx, 2*bcy, 2*bcz)` is in the hash is equivalent to "is this base cube
-/// refined". Drops one storage binding so Pass 14 fits under the 10-per-stage limit.
+/// refined". Drops one storage binding under the 10-per-stage limit.
 /// When the hash is empty (mask=0, e.g. non-adaptive runs), `lookup_sub_dual_slot`
 /// short-circuits to EMPTY → returns false → Pass 6 emits as standard non-adaptive MT.
 fn is_base_cube_refined(base_cx: u32, base_cy: u32, base_cz: u32) -> bool {
-    let key = make_sparse_key(CELL_TYPE_SUB_CUBE, sub_cube_linear_idx(base_cx * 2u, base_cy * 2u, base_cz * 2u));
+    let S = octree_sub_axis_mul();
+    let key = sub_cube_sparse_key(base_cx * S, base_cy * S, base_cz * S);
     return lookup_sub_dual_slot(key) != SPARSE_HASH_EMPTY;
 }
 
@@ -680,7 +775,20 @@ fn any_cube_around_z_edge_refined(ex: u32, ey: u32, ez: u32, dx: u32, dy: u32, d
 }
 
 fn sdf_sign_bit_positive(f: f32) -> bool {
-    return f > 0.0;
+    if (f > 0.0) {
+        return true;
+    }
+    if (f < 0.0) {
+        return false;
+    }
+    // Improvement passes encode the preserved symbolic side in signed zero:
+    // +0 is outside/positive, -0 is inside/negative. This lets MT classify
+    // snapped paper-correct duals without moving them off F=0.
+    return (bitcast<u32>(f) & 0x80000000u) == 0u;
+}
+
+fn signed_zero_for_side(f: f32) -> f32 {
+    return select(bitcast<f32>(0x80000000u), 0.0, sdf_sign_bit_positive(f));
 }
 
 fn totalU32sInFlags() -> u32 {
@@ -740,6 +848,17 @@ fn vertexClassAtGridVertex(p: vec3f, sdfValue: f32) -> i32 {
     let d = sdfValue - uniforms.isoValue;
     return resolveSignAtPos(p, d);
 }
+
+fn sign_bits_from_class(c: i32) -> u32 {
+    if (c > 0) {
+        return 1u;
+    }
+    if (c < 0) {
+        return 2u;
+    }
+    return 3u;
+}
+
 
 fn isNan(x: f32) -> bool {
     let high = 100000000.0;
@@ -1013,6 +1132,139 @@ fn solveQEF4(qef: QEF4Data) -> vec4f {
     return solution;
 }
 
+// Hermite QEF oversampling: sub-divisions per axis when sweeping a cell's boundary.
+// Each m-cell does (iso_qef_oversample()+1)^m boundary samples (cube path skips interior).
+// Uniform `sparseHash.z` (1–4; 0 = treat as 2) drives cost: edge (n+1), face (n+1)²,
+// cube boundary ~(n+1)³ − interior. Default 2 matches the historical compile-time stencil.
+
+fn iso_qef_oversample() -> u32 {
+    let raw = uniforms.sparseHash.z;
+    let o = select(2u, raw, raw > 0u);
+    return clamp(o, 1u, 4u);
+}
+
+fn shrink_rel_eps() -> f32 {
+    return max(uniforms.mdcF0.x, 1e-6);
+}
+
+fn finite_or_fallback3(v: vec3f, fallback: vec3f) -> vec3f {
+    let bad = isNan(v.x) || isNan(v.y) || isNan(v.z) || isInf(v.x) || isInf(v.y) || isInf(v.z);
+    return select(v, fallback, bad);
+}
+
+/// Hermite-fit dual + residual for a single m-cell. Callers reuse `residual` for
+/// adaptive refinement so the placement passes do not have to re-walk the boundary
+/// stencil for residual readback.
+struct HermiteFit {
+    dual: DualVertex,
+    residual: f32,
+}
+
+/// Paper/reference style 1-cell dual: sample Hermite tangent planes along the edge,
+/// project gradients onto the edge axis, solve in R4, then constrain back to the
+/// shrunk open edge and re-evaluate F at the spatial point.
+fn fit_edge_dual_hermite(w0: vec3f, w1: vec3f) -> HermiteFit {
+    let os = iso_qef_oversample();
+    let edge_vec = w1 - w0;
+    let edge_len = max(length(edge_vec), 1e-20);
+    let edge_dir = edge_vec / edge_len;
+    var qef4 = qef4_zero();
+    for (var i = 0u; i <= os; i = i + 1u) {
+        let t = f32(i) / f32(os);
+        let p = mix3f(w0, w1, t);
+        let sdf = sceneSDF_mid(p);
+        let g = edge_dir * dot(sdf.n, edge_dir);
+        qef4_add(&qef4, p, g, sdf.d - uniforms.isoValue);
+    }
+    let solution = solveQEF4(qef4);
+    let eps = shrink_rel_eps();
+    let along = clamp(dot(finite_or_fallback3(solution.xyz, (w0 + w1) * 0.5) - w0, edge_dir), eps * edge_len, (1.0 - eps) * edge_len);
+    let pos = w0 + edge_dir * along;
+    let fval = sceneSDF_fast(pos).d - uniforms.isoValue;
+    let residual = qefCost4(qef4, vec4f(pos, fval));
+    return HermiteFit(DualVertex(pos, fval), residual);
+}
+
+/// Paper/reference style 2-cell dual: sample a small Hermite grid on the face,
+/// project gradients into the face plane, solve, then constrain into the shrunk face.
+/// `off_axis`: 0 = fixed X/YZ face, 1 = fixed Y/XZ face, 2 = fixed Z/XY face.
+fn fit_face_dual_hermite(w00: vec3f, w10: vec3f, w01: vec3f, w11: vec3f, face_normal: vec3f, off_axis: u32) -> HermiteFit {
+    let os = iso_qef_oversample();
+    var qef4 = qef4_zero();
+    for (var iy = 0u; iy <= os; iy = iy + 1u) {
+        let v = f32(iy) / f32(os);
+        for (var ix = 0u; ix <= os; ix = ix + 1u) {
+            let u = f32(ix) / f32(os);
+            let p = w00 * (1.0 - u) * (1.0 - v) + w10 * u * (1.0 - v) + w01 * (1.0 - u) * v + w11 * u * v;
+            let sdf = sceneSDF_mid(p);
+            let g = sdf.n - face_normal * dot(sdf.n, face_normal);
+            qef4_add(&qef4, p, g, sdf.d - uniforms.isoValue);
+        }
+    }
+
+    let eps = shrink_rel_eps();
+    let shrink = max(max(length(w10 - w00), length(w01 - w00)), 1e-20) * eps;
+    var box_min = min(min(w00, w10), min(w01, w11)) + vec3f(shrink);
+    var box_max = max(max(w00, w10), max(w01, w11)) - vec3f(shrink);
+    if (off_axis == 0u) {
+        box_min.x = w00.x;
+        box_max.x = w00.x;
+    } else if (off_axis == 1u) {
+        box_min.y = w00.y;
+        box_max.y = w00.y;
+    } else {
+        box_min.z = w00.z;
+        box_max.z = w00.z;
+    }
+    let solution = solveQEF4(qef4);
+    let mass = qef4.massPoint / f32(max(qef4.numPoints, 1u));
+    let pos = clamp(finite_or_fallback3(solution.xyz, mass), box_min, box_max);
+    let fval = sceneSDF_fast(pos).d - uniforms.isoValue;
+    let residual = qefCost4(qef4, vec4f(pos, fval));
+    return HermiteFit(DualVertex(pos, fval), residual);
+}
+
+/// Paper/reference style 3-cell dual: sample Hermite planes on the cube boundary,
+/// solve the 4D graph QEF, constrain to the shrunk cube, and re-evaluate F.
+fn fit_cube_dual_hermite(cell_min: vec3f, cell_max: vec3f) -> HermiteFit {
+    let os = iso_qef_oversample();
+    var qef4 = qef4_zero();
+    for (var iz = 0u; iz <= os; iz = iz + 1u) {
+        let tz = f32(iz) / f32(os);
+        for (var iy = 0u; iy <= os; iy = iy + 1u) {
+            let ty = f32(iy) / f32(os);
+            for (var ix = 0u; ix <= os; ix = ix + 1u) {
+                let tx = f32(ix) / f32(os);
+                let on_boundary = ix == 0u || ix == os
+                    || iy == 0u || iy == os
+                    || iz == 0u || iz == os;
+                if (!on_boundary) {
+                    continue;
+                }
+                let p = vec3f(
+                    mix(cell_min.x, cell_max.x, tx),
+                    mix(cell_min.y, cell_max.y, ty),
+                    mix(cell_min.z, cell_max.z, tz),
+                );
+                let sdf = sceneSDF_mid(p);
+                qef4_add(&qef4, p, sdf.n, sdf.d - uniforms.isoValue);
+            }
+        }
+    }
+    if (qef4.numPoints == 0u) {
+        let center = (cell_min + cell_max) * 0.5;
+        return HermiteFit(DualVertex(center, sceneSDF_fast(center).d - uniforms.isoValue), 0.0);
+    }
+    let eps = shrink_rel_eps();
+    let shrink = (cell_max - cell_min) * eps;
+    let solution = solveQEF4(qef4);
+    let mass = qef4.massPoint / f32(max(qef4.numPoints, 1u));
+    let pos = clamp(finite_or_fallback3(solution.xyz, mass), cell_min + shrink, cell_max - shrink);
+    let fval = sceneSDF_fast(pos).d - uniforms.isoValue;
+    let residual = qefCost4(qef4, vec4f(pos, fval));
+    return HermiteFit(DualVertex(pos, fval), residual);
+}
+
 // Marching tetrahedra (canonical tet edges): e0=(v0,v1), e1=(v1,v2), e2=(v2,v0), e3=(v0,v3), e4=(v1,v3), e5=(v2,v3).
 // Case index: bit i = vertex i has fval > 0 (outside). Table from mikolalysenko/isosurface marchingtetrahedra.js
 // with `ourCase = 15u - triindex` so bits match "outside = positive shifted SDF".
@@ -1080,10 +1332,10 @@ fn interp_iso_crossing(va: DualVertex, vb: DualVertex) -> vec3f {
 
 fn emit_mt_tetra(verts: array<DualVertex, 4>) {
     let case_id =
-        (select(0u, 1u, verts[0].fval > 0.0)) |
-        (select(0u, 2u, verts[1].fval > 0.0)) |
-        (select(0u, 4u, verts[2].fval > 0.0)) |
-        (select(0u, 8u, verts[3].fval > 0.0));
+        (select(0u, 1u, sdf_sign_bit_positive(verts[0].fval))) |
+        (select(0u, 2u, sdf_sign_bit_positive(verts[1].fval))) |
+        (select(0u, 4u, sdf_sign_bit_positive(verts[2].fval))) |
+        (select(0u, 8u, sdf_sign_bit_positive(verts[3].fval)));
     let nt = marching_tetra_num_tris(case_id);
     for (var ti = 0u; ti < 2u; ti = ti + 1u) {
         if (ti >= nt) {
@@ -1105,17 +1357,6 @@ fn emit_mt_tetra(verts: array<DualVertex, 4>) {
                 tp2 = pos;
             }
         }
-        // Phase 3 collapses many MT crossings onto improved dual positions (because the
-        // dual's fval is now exactly 0, so iso-crossings on tet edges incident to that
-        // dual interpolate to the dual position). The resulting triangles have 2 or 3
-        // coincident vertices — they render as zero-area but inflate post-process cost
-        // (welding 30M+ vertices per export). Skip emission GPU-side instead.
-        let degen_eps = uniforms.voxelSize * 1e-4;
-        let degen_eps2 = degen_eps * degen_eps;
-        if (length(tp1 - tp0) * length(tp1 - tp0) < degen_eps2) { continue; }
-        if (length(tp2 - tp0) * length(tp2 - tp0) < degen_eps2) { continue; }
-        if (length(tp2 - tp1) * length(tp2 - tp1) < degen_eps2) { continue; }
-
         // Analytic normals from the SDF gradient (sceneSDF_mid). Smooth surfaces would otherwise
         // get face-averaged shading via splitCreaseVertices, which breaks badly when our coarse
         // mesh produces adjacent face normals > crease threshold (every edge ends up a "crease").
@@ -1217,19 +1458,67 @@ fn classifyActiveCells_Pass1(
     if (!cancelled && cellFlatIndex < totalGridCells) {
         let cellPos = gridIndexTo3D(cellFlatIndex);
         if (all(cellPos < uniforms.gridDimensions - 1u)) {
-            var hasPositive = false;
-            var hasNegative = false;
+            // Cheap dual-aware classifier (replaces the corner-only sign test). 8 corners
+            // + 12 edge midpoints + 1 cube center, all `sceneSDF_fast` (distance only, no
+            // gradient). Edge midpoints catch thin slabs and small features that miss every
+            // corner; the cube center catches purely interior crossings.
+            //
+            // CRITICAL: do NOT call `resolveSignAtPos` / `sceneSDF_mid` here. Pass 1 runs
+            // one thread per base cell; for million-cell grids that escalates into a
+            // GPU-watchdog-killing dispatch (browser console flickers, then freezes as
+            // Chromium's TDR cycles). A coarse "near-iso => active" rule is good enough:
+            // these are gates, not final dual placements.
+            let cellMin = gridPosToWorldPos(cellPos);
+            let cellSize = uniforms.voxelSize;
+            let signAmbiguous = max(uniforms.mdcF0.y * 0.5, cellSize * uniforms.mdcF0.x * 0.5);
+
+            var sign_bits = 0u;
             for (var i = 0u; i < 8u; i = i + 1u) {
-                let cornerGridPos = getCellCornerPos(cellPos, i);
-                let cornerWorldPos = gridPosToWorldPos(cornerGridPos);
-                let sdfValue = sampleSDF(cornerWorldPos);
-                let c = vertexClassAtGridVertex(cornerWorldPos, sdfValue);
-                if (c > 0) { hasPositive = true; }
-                if (c < 0) { hasNegative = true; }
-                if (c == 0) { hasPositive = true; hasNegative = true; }
-                if (hasPositive && hasNegative) { break; }
+                let p = cellMin + vec3f(
+                    f32(i & 1u),
+                    f32((i >> 1u) & 1u),
+                    f32((i >> 2u) & 1u),
+                ) * cellSize;
+                let d = sceneSDF_fast(p).d - uniforms.isoValue;
+                if (d > signAmbiguous) { sign_bits = sign_bits | 1u; }
+                else if (d < -signAmbiguous) { sign_bits = sign_bits | 2u; }
+                else { sign_bits = 3u; }
+                if (sign_bits == 3u) { break; }
             }
-            if (hasPositive && hasNegative) {
+
+            if (sign_bits != 3u) {
+                let edge_mids = array<vec3f, 12>(
+                    cellMin + vec3f(0.5, 0.0, 0.0) * cellSize,
+                    cellMin + vec3f(0.5, 1.0, 0.0) * cellSize,
+                    cellMin + vec3f(0.5, 0.0, 1.0) * cellSize,
+                    cellMin + vec3f(0.5, 1.0, 1.0) * cellSize,
+                    cellMin + vec3f(0.0, 0.5, 0.0) * cellSize,
+                    cellMin + vec3f(1.0, 0.5, 0.0) * cellSize,
+                    cellMin + vec3f(0.0, 0.5, 1.0) * cellSize,
+                    cellMin + vec3f(1.0, 0.5, 1.0) * cellSize,
+                    cellMin + vec3f(0.0, 0.0, 0.5) * cellSize,
+                    cellMin + vec3f(1.0, 0.0, 0.5) * cellSize,
+                    cellMin + vec3f(0.0, 1.0, 0.5) * cellSize,
+                    cellMin + vec3f(1.0, 1.0, 0.5) * cellSize,
+                );
+                for (var e = 0u; e < 12u; e = e + 1u) {
+                    let d = sceneSDF_fast(edge_mids[e]).d - uniforms.isoValue;
+                    if (d > signAmbiguous) { sign_bits = sign_bits | 1u; }
+                    else if (d < -signAmbiguous) { sign_bits = sign_bits | 2u; }
+                    else { sign_bits = 3u; }
+                    if (sign_bits == 3u) { break; }
+                }
+            }
+
+            if (sign_bits != 3u) {
+                let p = cellMin + vec3f(0.5) * cellSize;
+                let d = sceneSDF_fast(p).d - uniforms.isoValue;
+                if (d > signAmbiguous) { sign_bits = sign_bits | 1u; }
+                else if (d < -signAmbiguous) { sign_bits = sign_bits | 2u; }
+                else { sign_bits = 3u; }
+            }
+
+            if (sign_bits == 3u) {
                 cell_is_active = 1u;
             }
         }
@@ -1339,59 +1628,10 @@ fn placeEdgeDuals_Pass3(
         p1 = vec3u(x, y, z + 1u);
     }
 
-    let eps_t = max(uniforms.mdcF0.x, 1e-6);
-    let t_max = 1.0 - eps_t;
-
-    let i0 = gridPosToIndex(p0);
-    let i1 = gridPosToIndex(p1);
-    let d0 = dual_corner(i0).fval;
-    let d1 = dual_corner(i1).fval;
     let w0 = gridPosToWorldPos(p0);
     let w1 = gridPosToWorldPos(p1);
-    let edge_dir = normalize(w1 - w0);
-
-    // Phase 4: 4D QEF on edge samples, with gradient projected onto the edge axis (the
-    // 1-cell subspace). Sample the two endpoints (analytic gradients there constrain F
-    // along the edge) plus the iso-crossing if one exists. With ≥4 samples the QEF can
-    // resolve a sharp feature on the edge; with fewer it gracefully falls back to the
-    // mass point (linear interpolation on the iso-crossing case).
-    var qef4 = qef4_zero();
-
-    let sdf0 = sceneSDF_mid(w0);
-    let sdf1 = sceneSDF_mid(w1);
-    let g0 = edge_dir * dot(sdf0.n, edge_dir);
-    let g1 = edge_dir * dot(sdf1.n, edge_dir);
-    qef4_add(&qef4, w0, g0, sdf0.d - uniforms.isoValue);
-    qef4_add(&qef4, w1, g1, sdf1.d - uniforms.isoValue);
-
-    let s0 = sdf_sign_bit_positive(d0);
-    let s1 = sdf_sign_bit_positive(d1);
-    if (s0 != s1) {
-        let denom = d1 - d0;
-        var t = 0.5;
-        if (abs(denom) > 1e-20) {
-            t = clamp(-d0 / denom, eps_t, t_max);
-        }
-        let pmid = mix3f(w0, w1, t);
-        let sdfm = sceneSDF_mid(pmid);
-        let gm = edge_dir * dot(sdfm.n, edge_dir);
-        qef4_add(&qef4, pmid, gm, sdfm.d - uniforms.isoValue);
-    } else {
-        // Sample the midpoint to give the QEF enough samples for a sharp feature.
-        let pmid = mix3f(w0, w1, 0.5);
-        let sdfm = sceneSDF_mid(pmid);
-        let gm = edge_dir * dot(sdfm.n, edge_dir);
-        qef4_add(&qef4, pmid, gm, sdfm.d - uniforms.isoValue);
-    }
-
-    let solution = solveQEF4(qef4);
-    // Project the QEF spatial solution onto the edge axis (numerical drift can pull it
-    // slightly off the edge line; the 1-cell subspace is the line through w0 along edge_dir).
-    let edge_len = length(w1 - w0);
-    let along = clamp(dot(solution.xyz - w0, edge_dir), eps_t * edge_len, t_max * edge_len);
-    let pos = w0 + edge_dir * along;
-    let f_shifted = sceneSDF_fast(pos).d - uniforms.isoValue;
-    write_dual_slot(absolute_slot, DualVertex(pos, f_shifted));
+    let fit = fit_edge_dual_hermite(w0, w1);
+    write_dual_slot(absolute_slot, fit.dual);
 }
 
 @compute @workgroup_size(64, 1, 1)
@@ -1427,7 +1667,7 @@ fn placeFaceDuals_Pass4(
     var absolute_slot: u32;
 
     if (idx < nxy_count) {
-        axis = 0u;
+        axis = 2u;
         absolute_slot = uniforms.sparseBases1.x + idx;
         let grid_idx = dualCompactList[absolute_slot];
         let fx = grid_idx % (dx - 1u);
@@ -1439,7 +1679,7 @@ fn placeFaceDuals_Pass4(
         c11 = vec3u(fx + 1u, fy + 1u, fz);
         face_normal = vec3f(0.0, 0.0, 1.0);
     } else if (idx < nxy_count + nyz_count) {
-        axis = 1u;
+        axis = 0u;
         let j = idx - nxy_count;
         absolute_slot = uniforms.sparseBases1.y + j;
         let grid_idx = dualCompactList[absolute_slot];
@@ -1452,7 +1692,7 @@ fn placeFaceDuals_Pass4(
         c11 = vec3u(ix, iy + 1u, iz + 1u);
         face_normal = vec3f(1.0, 0.0, 0.0);
     } else {
-        axis = 2u;
+        axis = 1u;
         let j = idx - nxy_count - nyz_count;
         absolute_slot = uniforms.sparseBases1.z + j;
         let grid_idx = dualCompactList[absolute_slot];
@@ -1466,108 +1706,12 @@ fn placeFaceDuals_Pass4(
         face_normal = vec3f(0.0, 1.0, 0.0);
     }
 
-    let eps_uv = max(uniforms.mdcF0.x, 1e-6);
-    let uv_max = 1.0 - eps_uv;
-    let vs = uniforms.voxelSize;
-
-    let i00 = gridPosToIndex(c00);
-    let i10 = gridPosToIndex(c10);
-    let i01 = gridPosToIndex(c01);
-    let i11 = gridPosToIndex(c11);
-
-    let f00 = dual_corner(i00).fval;
-    let f10 = dual_corner(i10).fval;
-    let f01 = dual_corner(i01).fval;
-    let f11 = dual_corner(i11).fval;
-
     let w00 = gridPosToWorldPos(c00);
     let w10 = gridPosToWorldPos(c10);
     let w01 = gridPosToWorldPos(c01);
     let w11 = gridPosToWorldPos(c11);
-
-    let p_center = (w00 + w10 + w01 + w11) * 0.25;
-    let s00 = sdf_sign_bit_positive(f00);
-    let s10 = sdf_sign_bit_positive(f10);
-    let s01 = sdf_sign_bit_positive(f01);
-    let s11 = sdf_sign_bit_positive(f11);
-    let face_has_sign_change = (s00 != s10) || (s01 != s11) || (s00 != s01) || (s10 != s11);
-
-    var pos = p_center;
-
-    if (face_has_sign_change) {
-        // Phase 4: 4D QEF on iso-crossings of the 4 face edges (each contributes a tangent
-        // hyperplane sample). Gradient is projected onto the face plane so the spatial
-        // part stays inside the 2D face subspace; the F dimension is unconstrained.
-        var qef4 = qef4_zero();
-
-        // Helper inlined for clarity: add a sample if endpoints have opposite sign.
-        // We re-evaluate the gradient at the iso-crossing and project onto face plane.
-        let edges = array<vec4u, 4>(
-            // (corner_a_idx, corner_b_idx, ...) where 0..3 = (00, 10, 11, 01) traversed CCW.
-            // Edge endpoints encoded as indices into [w00, w10, w11, w01] / [f00, f10, f11, f01].
-            vec4u(0u, 1u, 0u, 0u),
-            vec4u(1u, 2u, 0u, 0u),
-            vec4u(2u, 3u, 0u, 0u),
-            vec4u(3u, 0u, 0u, 0u),
-        );
-        let corner_pos = array<vec3f, 4>(w00, w10, w11, w01);
-        let corner_f   = array<f32, 4>(f00, f10, f11, f01);
-
-        for (var e = 0u; e < 4u; e = e + 1u) {
-            let ia = edges[e].x;
-            let ib = edges[e].y;
-            let fa = corner_f[ia];
-            let fb = corner_f[ib];
-            if (sdf_sign_bit_positive(fa) == sdf_sign_bit_positive(fb)) {
-                continue;
-            }
-            let denom = fb - fa;
-            var t = 0.5;
-            if (abs(denom) > 1e-20) {
-                t = clamp(-fa / denom, eps_uv, uv_max);
-            }
-            let p = mix3f(corner_pos[ia], corner_pos[ib], t);
-            let sdf_m = sceneSDF_mid(p);
-            // Project gradient onto the face plane: the F-derivative perpendicular to the
-            // face is undefined for a 2-cell, so we drop that component (paper §3).
-            let g_proj = sdf_m.n - face_normal * dot(sdf_m.n, face_normal);
-            qef4_add(&qef4, p, g_proj, sdf_m.d - uniforms.isoValue);
-        }
-
-        // Solve and clamp spatial part to (1−ε)·face. Re-evaluate F at the clamped pos.
-        let solution = solveQEF4(qef4);
-
-        // Pin the off-face axis to the face plane (it can drift due to regularization
-        // toward the mass point, which lies on the face but Cholesky float noise can
-        // wander off by a few ULPs).
-        var pos_solved = solution.xyz;
-        if (axis == 0u) {
-            pos_solved.z = w00.z;
-        } else if (axis == 1u) {
-            pos_solved.x = w00.x;
-        } else {
-            pos_solved.y = w00.y;
-        }
-
-        // (1−ε) box clamp inside the face's 2D AABB.
-        let rel = pos_solved - w00;
-        var u = 0.5;
-        var v = 0.5;
-        if (axis == 0u) {
-            u = clamp(rel.x / vs, eps_uv, uv_max);
-            v = clamp(rel.y / vs, eps_uv, uv_max);
-        } else if (axis == 1u) {
-            u = clamp(rel.y / vs, eps_uv, uv_max);
-            v = clamp(rel.z / vs, eps_uv, uv_max);
-        } else {
-            u = clamp(rel.x / vs, eps_uv, uv_max);
-            v = clamp(rel.z / vs, eps_uv, uv_max);
-        }
-        pos = w00 * (1.0 - u) * (1.0 - v) + w10 * u * (1.0 - v) + w01 * (1.0 - u) * v + w11 * u * v;
-    }
-
-    let f_out = sceneSDF_fast(pos).d - uniforms.isoValue;
-    write_dual_slot(absolute_slot, DualVertex(pos, f_out));
+    let fit = fit_face_dual_hermite(w00, w10, w01, w11, face_normal, axis);
+    write_dual_slot(absolute_slot, fit.dual);
 }
 
 @compute @workgroup_size(64, 1, 1)
@@ -1620,69 +1764,9 @@ fn placeCubeDuals_Pass5(
         return;
     }
 
-    let edges_v = array<vec2u, 12>(
-        vec2u(0u, 1u), vec2u(2u, 3u), vec2u(4u, 5u), vec2u(6u, 7u),
-        vec2u(0u, 2u), vec2u(1u, 3u), vec2u(4u, 6u), vec2u(5u, 7u),
-        vec2u(0u, 4u), vec2u(1u, 5u), vec2u(2u, 6u), vec2u(3u, 7u)
-    );
-
-    // Phase 4: 4D QEF on iso-crossings of the 12 cube edges.  Each crossing samples a
-    // tangent hyperplane (p, ∇F(p), F(p)) — F at the crossing is ≈0 by definition but we
-    // pass the actual sceneSDF_mid value to keep the linear system unbiased near the iso.
-    var qef4 = qef4_zero();
-
-    for (var e = 0u; e < 12u; e = e + 1u) {
-        let a = edges_v[e].x;
-        let b = edges_v[e].y;
-        let ga = getCellCornerPos(cell_pos, a);
-        let gb = getCellCornerPos(cell_pos, b);
-        let ia = gridPosToIndex(ga);
-        let ib = gridPosToIndex(gb);
-        let f0 = dual_corner(ia).fval;
-        let f1 = dual_corner(ib).fval;
-        if (sdf_sign_bit_positive(f0) == sdf_sign_bit_positive(f1)) {
-            continue;
-        }
-
-        let denom = f1 - f0;
-        var t = 0.5;
-        if (abs(denom) > 1e-20) {
-            t = clamp(-f0 / denom, eps_t, t_max);
-        }
-        let wa = gridPosToWorldPos(ga);
-        let wb = gridPosToWorldPos(gb);
-        let pw = mix3f(wa, wb, t);
-        let sdf_m = sceneSDF_mid(pw);
-        let f_at_p = sdf_m.d - uniforms.isoValue;
-        qef4_add(&qef4, pw, sdf_m.n, f_at_p);
-    }
-
-    // Solve 4D, clamp spatial part to (1−ε)·cell, then re-evaluate F at the clamped
-    // position (paper §3 fallback to avoid the dimpled-surface artifact in high-curvature
-    // regions where the QEF-predicted F* is biased convex- or concave-ward).
-    let solution = solveQEF4(qef4);
-    var pos: vec3f;
-    if (qef4.numPoints == 0u) {
-        // Pass 1 marked this cell active but every cube edge had matching endpoint signs,
-        // so no QEF samples were accumulated. `solveQEF4` returns vec4(0); clamping that to
-        // the cell picks up world origin whenever the cell contains (0,0,0) — common on
-        // axis-aligned boxes — producing spikes and degenerate MT triangles.
-        pos = (cell_min + cell_max) * 0.5;
-        cubeQefResidual[local_slot] = 0.0;
-    } else {
-        pos = clamp(solution.xyz, clamp_min, clamp_max);
-        // Stage 4: per-cube QEF residual at the (clamped) solution. Used CPU-side by the
-        // adaptive octree driver to drive subdivision (paper §5.1: refine cubes whose dual
-        // residual exceeds threshold). Residual is computed at the post-clamp `pos` paired
-        // with the QEF-predicted F* (`solution.w`), so the metric reflects how well the
-        // clamped position fits the local SDF tangent planes — i.e. how curved/sharp this
-        // cube actually is. Flat regions: residual ≈ 0. Sharp features clamped to the cell
-        // boundary: residual ≫ 0 (signalling "feature wants to live outside this cell").
-        let x4_solved = vec4f(pos, solution.w);
-        cubeQefResidual[local_slot] = qefCost4(qef4, x4_solved);
-    }
-    let f_shifted = sceneSDF_fast(pos).d - uniforms.isoValue;
-    write_dual_slot(absolute_slot, DualVertex(pos, f_shifted));
+    let fit = fit_cube_dual_hermite(cell_min, cell_max);
+    write_dual_slot(absolute_slot, fit.dual);
+    cubeQefResidual[local_slot] = fit.residual;
 }
 
 // ============================== Phase 3: Triangulation improvement (paper §4.1) ==============================
@@ -1827,13 +1911,7 @@ fn improveEdgeDuals_Pass8(
         fl = d1; fh = d0;
     }
     let pos = bisect_to_iso(lo, hi, fl, fh);
-    // Store the ACTUAL F value at the bisected position (small but non-zero) rather than
-    // forcing fval=0. Setting fval=0 makes MT crossings on adjacent tet edges all land at
-    // the dual position — coincident vertices that GPU degen-skip then drops, leaving
-    // visible holes around the relaxed dual. Preserving the small actual fval keeps MT
-    // crossings near (but not at) the dual, so triangles survive.
-    let f_at_pos = sceneSDF_fast(pos).d - uniforms.isoValue;
-    write_dual_slot(absolute_slot, DualVertex(pos, f_at_pos));
+    write_dual_slot(absolute_slot, DualVertex(pos, signed_zero_for_side(edge_dual.fval)));
 }
 
 /// Pass 9: face dual improvement. The 4-corner ring around an axis-aligned face must
@@ -1962,8 +2040,7 @@ fn improveFaceDuals_Pass9(
         let tf = fl; fl = fh; fh = tf;
     }
     let pos = bisect_to_iso(lo, hi, fl, fh);
-    let f_at_pos = sceneSDF_fast(pos).d - uniforms.isoValue;
-    write_dual_slot(absolute_slot, DualVertex(pos, f_at_pos));
+    write_dual_slot(absolute_slot, DualVertex(pos, signed_zero_for_side(face_f)));
 }
 
 // ============================== Pass 10: Cube dual improvement (paper §4.1, cube case) ==============================
@@ -2163,7 +2240,7 @@ fn improveCubeDuals_Pass10(
     // form additional components beyond the two well-defined sides.)
     var signs: array<u32, 26>;
     for (var v = 0u; v < 26u; v = v + 1u) {
-        signs[v] = select(0u, 1u, fvals[v] > 0.0);
+        signs[v] = select(0u, 1u, sdf_sign_bit_positive(fvals[v]));
     }
 
     // Initialize Union-Find with each vertex as its own component.
@@ -2241,7 +2318,7 @@ fn improveCubeDuals_Pass10(
     // Pick the bisection target: boundary vertex with opposite sign to the cube dual,
     // smallest |fval| (closest to iso → bisection converges fastest and lands near the
     // existing surface region rather than yanking across the cell).
-    let cube_sign = select(0u, 1u, cube_dual.fval > 0.0);
+    let cube_sign = select(0u, 1u, sdf_sign_bit_positive(cube_dual.fval));
     var best_v = 26u;
     var best_abs_f = 1e30f;
     for (var v = 0u; v < 26u; v = v + 1u) {
@@ -2268,8 +2345,7 @@ fn improveCubeDuals_Pass10(
         let tf = fl; fl = fh; fh = tf;
     }
     let pos = bisect_to_iso(lo, hi, fl, fh);
-    let f_at_pos = sceneSDF_fast(pos).d - uniforms.isoValue;
-    write_dual_slot(absolute_slot, DualVertex(pos, f_at_pos));
+    write_dual_slot(absolute_slot, DualVertex(pos, signed_zero_for_side(cube_dual.fval)));
 }
 
 // ============================== Pass 11 (Stage 4 Session 2): GPU sub-cube dual placement ==============================
@@ -2307,70 +2383,18 @@ fn placeChildCubeDuals_Pass11(
     let gsx = info.x;
     let gsy = info.y;
     let gsz = info.z;
+    let depth_u = max(info.w, 1u);
+    let max_d = max(octree_max_depth_packed(), 1u);
+    let finest_v = uniforms.voxelSize / f32(1u << max_d);
+    let cell_v = uniforms.voxelSize / f32(1u << depth_u);
+    // `gs*` are global finest-lattice indices; the leaf occupies one cell of side `cell_v`.
+    let sub_min = uniforms.gridOffset + vec3f(f32(gsx), f32(gsy), f32(gsz)) * finest_v;
+    let sub_max = sub_min + vec3f(cell_v);
 
-    // Global sub-grid coords → world position. Sub-voxel = base voxel × ½ at depth-1.
-    // Sub-grid origin matches base grid origin: world(gsx) = gridOffset + gsx × sub_voxel.
-    let sub_voxel = uniforms.voxelSize * 0.5;
-    let sub_min = uniforms.gridOffset + vec3f(f32(gsx), f32(gsy), f32(gsz)) * sub_voxel;
-    let sub_max = sub_min + vec3f(sub_voxel);
-
-    let eps = max(uniforms.mdcF0.x, 1e-6);
-    let t_max = 1.0 - eps;
-    let shrink = sub_voxel * eps;
-    let clamp_min = sub_min + vec3f(shrink);
-    let clamp_max = sub_max - vec3f(shrink);
-
-    // Sample the 8 sub-cube corners' shifted SDF values (no gradient yet — gradient is
-    // only sampled at iso-crossings below, where the QEF tangent plane is actually
-    // built). `_fast` is enough for the sign + interpolation `t`.
-    var sub_corners: array<vec3f, 8>;
-    var sub_fvals: array<f32, 8>;
-    for (var c = 0u; c < 8u; c = c + 1u) {
-        let off = vec3f(
-            f32(c & 1u),
-            f32((c >> 1u) & 1u),
-            f32((c >> 2u) & 1u),
-        );
-        let p = sub_min + off * sub_voxel;
-        sub_corners[c] = p;
-        sub_fvals[c] = sceneSDF_fast(p).d - uniforms.isoValue;
-    }
-
-    // Edge index pairs match `placeCubeDuals_Pass5`'s `edges_v` so the QEF-residual
-    // metric is comparable across depths.
-    let edges_v = array<vec2u, 12>(
-        vec2u(0u, 1u), vec2u(2u, 3u), vec2u(4u, 5u), vec2u(6u, 7u),
-        vec2u(0u, 2u), vec2u(1u, 3u), vec2u(4u, 6u), vec2u(5u, 7u),
-        vec2u(0u, 4u), vec2u(1u, 5u), vec2u(2u, 6u), vec2u(3u, 7u),
-    );
-
-    var qef4 = qef4_zero();
-    for (var e = 0u; e < 12u; e = e + 1u) {
-        let a = edges_v[e].x;
-        let b = edges_v[e].y;
-        let f0 = sub_fvals[a];
-        let f1 = sub_fvals[b];
-        if (sdf_sign_bit_positive(f0) == sdf_sign_bit_positive(f1)) {
-            continue;
-        }
-        let denom = f1 - f0;
-        var t = 0.5;
-        if (abs(denom) > 1e-20) {
-            t = clamp(-f0 / denom, eps, t_max);
-        }
-        let pw = mix3f(sub_corners[a], sub_corners[b], t);
-        let sdf_m = sceneSDF_mid(pw);
-        qef4_add(&qef4, pw, sdf_m.n, sdf_m.d - uniforms.isoValue);
-    }
-
-    let solution = solveQEF4(qef4);
-    let pos = clamp(solution.xyz, clamp_min, clamp_max);
-    let f_shifted = sceneSDF_fast(pos).d - uniforms.isoValue;
+    let fit = fit_cube_dual_hermite(sub_min, sub_max);
     // Stage 4 Session 7: write to unified `subCellAllDuals` at the cube base + index.
-    subCellAllDuals[uniforms.subCellBases.x + i] = DualVertex(pos, f_shifted);
-
-    let x4_solved = vec4f(pos, solution.w);
-    childResiduals[i] = qefCost4(qef4, x4_solved);
+    subCellAllDuals[uniforms.subCellBases.x + i] = fit.dual;
+    childResiduals[i] = fit.residual;
 }
 
 // ============================== Pass 12 (Stage 4 Session 5): GPU sub-edge dual placement ==============================
@@ -2407,7 +2431,8 @@ fn placeChildEdgeDuals_Pass12(
 
     // Global sub-grid coords → world endpoints. The sub-edge spans from its lo-corner
     // (gsx, gsy, gsz) to its hi-corner (one axis incremented).
-    let sub_voxel = uniforms.voxelSize * 0.5;
+    let finest_mul = octree_sub_axis_mul();
+    let sub_voxel = uniforms.voxelSize / f32(finest_mul);
     let lo_world = uniforms.gridOffset + vec3f(f32(gsx), f32(gsy), f32(gsz)) * sub_voxel;
     var w0: vec3f;
     var w1: vec3f;
@@ -2421,53 +2446,10 @@ fn placeChildEdgeDuals_Pass12(
         w0 = lo_world;
         w1 = lo_world + vec3f(0.0, 0.0, sub_voxel);
     }
-    let edge_dir = normalize(w1 - w0);
-
-    let eps = max(uniforms.mdcF0.x, 1e-6);
-    let t_max = 1.0 - eps;
-
-    // 4D QEF: 2 endpoint samples + 1 mid/iso-crossing sample. With 3 samples and
-    // edge-projected gradients (rank-2 ATA after projection), `solveQEF4`'s lowered
-    // numPoints<2 cutoff (the fix from earlier in this stage) lets the regularization
-    // place the spatial part along the edge axis at the iso-crossing while the off-axis
-    // dimensions fall back to the mass point (corrected by the edge projection below).
-    var qef4 = qef4_zero();
-    let sdf0 = sceneSDF_mid(w0);
-    let sdf1 = sceneSDF_mid(w1);
-    let g0 = edge_dir * dot(sdf0.n, edge_dir);
-    let g1 = edge_dir * dot(sdf1.n, edge_dir);
-    let f0 = sdf0.d - uniforms.isoValue;
-    let f1 = sdf1.d - uniforms.isoValue;
-    qef4_add(&qef4, w0, g0, f0);
-    qef4_add(&qef4, w1, g1, f1);
-
-    let s0 = sdf_sign_bit_positive(f0);
-    let s1 = sdf_sign_bit_positive(f1);
-    var pmid: vec3f;
-    if (s0 != s1) {
-        let denom = f1 - f0;
-        var t = 0.5;
-        if (abs(denom) > 1e-20) {
-            t = clamp(-f0 / denom, eps, t_max);
-        }
-        pmid = mix3f(w0, w1, t);
-    } else {
-        pmid = mix3f(w0, w1, 0.5);
-    }
-    let sdfm = sceneSDF_mid(pmid);
-    let gm = edge_dir * dot(sdfm.n, edge_dir);
-    qef4_add(&qef4, pmid, gm, sdfm.d - uniforms.isoValue);
-
-    // Solve, then project the spatial part onto the edge axis (numerical drift can
-    // pull it slightly off the line; the 1-cell subspace is the line through w0).
-    let solution = solveQEF4(qef4);
-    let edge_len = length(w1 - w0);
-    let along = clamp(dot(solution.xyz - w0, edge_dir), eps * edge_len, t_max * edge_len);
-    let pos = w0 + edge_dir * along;
-    let f_shifted = sceneSDF_fast(pos).d - uniforms.isoValue;
+    let fit = fit_edge_dual_hermite(w0, w1);
     // Stage 4 Session 7: unified subCellAllDuals at edge base + index.
-    subCellAllDuals[uniforms.subCellBases.y + i] = DualVertex(pos, f_shifted);
-    childEdgeResiduals[i] = qefCost4(qef4, vec4f(pos, solution.w));
+    subCellAllDuals[uniforms.subCellBases.y + i] = fit.dual;
+    childEdgeResiduals[i] = fit.residual;
 }
 
 // ============================== Pass 13 (Stage 4 Session 5): GPU sub-face dual placement ==============================
@@ -2500,7 +2482,8 @@ fn placeChildFaceDuals_Pass13(
     // Global sub-grid coords → world corners. The sub-face's min-corner is at
     // (gsx, gsy, gsz); the other 3 corners are reached by stepping +1 along each of the
     // 2 axes the face spans (i.e., NOT the perpendicular axis).
-    let sub_voxel = uniforms.voxelSize * 0.5;
+    let finest_mul = octree_sub_axis_mul();
+    let sub_voxel = uniforms.voxelSize / f32(finest_mul);
     let min_world = uniforms.gridOffset + vec3f(f32(gsx), f32(gsy), f32(gsz)) * sub_voxel;
     var w00: vec3f; var w10: vec3f; var w01: vec3f; var w11: vec3f;
     var face_normal: vec3f;
@@ -2527,132 +2510,442 @@ fn placeChildFaceDuals_Pass13(
         face_normal = vec3f(0.0, 0.0, 1.0);
     }
 
-    let f00 = sceneSDF_fast(w00).d - uniforms.isoValue;
-    let f10 = sceneSDF_fast(w10).d - uniforms.isoValue;
-    let f01 = sceneSDF_fast(w01).d - uniforms.isoValue;
-    let f11 = sceneSDF_fast(w11).d - uniforms.isoValue;
-
-    let p_center = (w00 + w10 + w01 + w11) * 0.25;
-    let s00 = sdf_sign_bit_positive(f00);
-    let s10 = sdf_sign_bit_positive(f10);
-    let s01 = sdf_sign_bit_positive(f01);
-    let s11 = sdf_sign_bit_positive(f11);
-    let face_has_sign_change = (s00 != s10) || (s01 != s11) || (s00 != s01) || (s10 != s11);
-
-    var pos = p_center;
-    var qef4 = qef4_zero();
-    var solution_w = 0.0;
-
-    if (face_has_sign_change) {
-        // 4-corner CCW ring (00 → 10 → 11 → 01) — matches `placeFaceDuals_Pass4`'s
-        // edge enumeration so per-cell QEF residuals are directly comparable across
-        // depth levels.
-        let edges = array<vec4u, 4>(
-            vec4u(0u, 1u, 0u, 0u),
-            vec4u(1u, 2u, 0u, 0u),
-            vec4u(2u, 3u, 0u, 0u),
-            vec4u(3u, 0u, 0u, 0u),
-        );
-        let corner_pos = array<vec3f, 4>(w00, w10, w11, w01);
-        let corner_f   = array<f32, 4>(f00, f10, f11, f01);
-
-        let eps_uv = max(uniforms.mdcF0.x, 1e-6);
-        let uv_max = 1.0 - eps_uv;
-        for (var e = 0u; e < 4u; e = e + 1u) {
-            let ia = edges[e].x;
-            let ib = edges[e].y;
-            let fa = corner_f[ia];
-            let fb = corner_f[ib];
-            if (sdf_sign_bit_positive(fa) == sdf_sign_bit_positive(fb)) {
-                continue;
-            }
-            let denom = fb - fa;
-            var t = 0.5;
-            if (abs(denom) > 1e-20) {
-                t = clamp(-fa / denom, eps_uv, uv_max);
-            }
-            let p = mix3f(corner_pos[ia], corner_pos[ib], t);
-            let sdf_m = sceneSDF_mid(p);
-            // Drop the off-face gradient component — F-derivative perpendicular to
-            // the face is undefined for a 2-cell (paper §3 subspace projection).
-            let g_proj = sdf_m.n - face_normal * dot(sdf_m.n, face_normal);
-            qef4_add(&qef4, p, g_proj, sdf_m.d - uniforms.isoValue);
-        }
-
-        let solution = solveQEF4(qef4);
-        solution_w = solution.w;
-
-        // Pin the off-face axis exactly to the face plane (regularization-driven
-        // mass-point bias can wander a few ULPs off otherwise).
-        var pos_solved = solution.xyz;
-        if (axis == 0u) {
-            pos_solved.x = w00.x;
-        } else if (axis == 1u) {
-            pos_solved.y = w00.y;
-        } else {
-            pos_solved.z = w00.z;
-        }
-
-        // (1−ε)·sub-face box clamp in the 2D face coords.
-        let vs = sub_voxel;
-        let rel = pos_solved - w00;
-        var u = 0.5;
-        var v = 0.5;
-        if (axis == 0u) {
-            u = clamp(rel.y / vs, eps_uv, uv_max);
-            v = clamp(rel.z / vs, eps_uv, uv_max);
-        } else if (axis == 1u) {
-            u = clamp(rel.x / vs, eps_uv, uv_max);
-            v = clamp(rel.z / vs, eps_uv, uv_max);
-        } else {
-            u = clamp(rel.x / vs, eps_uv, uv_max);
-            v = clamp(rel.y / vs, eps_uv, uv_max);
-        }
-        pos = w00 * (1.0 - u) * (1.0 - v) + w10 * u * (1.0 - v) + w01 * (1.0 - u) * v + w11 * u * v;
-    }
-
-    let f_out = sceneSDF_fast(pos).d - uniforms.isoValue;
+    let fit = fit_face_dual_hermite(w00, w10, w01, w11, face_normal, axis);
     // Stage 4 Session 7: unified subCellAllDuals at face base + index.
-    subCellAllDuals[uniforms.subCellBases.z + i] = DualVertex(pos, f_out);
-
-    if (face_has_sign_change) {
-        childFaceResiduals[i] = qefCost4(qef4, vec4f(pos, solution_w));
-    } else {
-        // No sign change → empty QEF, residual is meaningless. Zero is the same
-        // sentinel `placeCubeDuals_Pass5` writes for inactive cubes.
-        childFaceResiduals[i] = 0.0;
-    }
+    subCellAllDuals[uniforms.subCellBases.z + i] = fit.dual;
+    childFaceResiduals[i] = fit.residual;
 }
 
-// ============================== Pass 14 (Stage 4 Session 7): GPU multi-resolution sub-edge MT ==============================
-//
-// For each sub-edge in `childEdgeInfo`, walk the 4 surrounding sub-grid cube cells.
-// If ALL 4 cells are in refined parents (interior + refined-refined boundary cases),
-// emit MT triangles using sub-cube/sub-face/sub-edge duals — same `emit_four_tets_face_pair`
-// pattern as Pass 6, just at sub-resolution.
-//
-// Skipped (Session 8 work): sub-edges with any cell in an unrefined neighbor parent
-// (refined↔unrefined T-junction). Those leave cracks in the mesh at the refined-region
-// boundary; Session 8 will fan-triangulate the unrefined cube's contribution to close them.
-//
-// The combination of:
-//   - Pass 6 modified to skip base edges adjacent to refined parents (`any_cube_around_*_refined`)
-//   - Pass 14 emitting MT for sub-edges where all 4 cells are refined
-// produces a mesh that's correct + watertight INSIDE refined regions and INSIDE unrefined
-// regions, with a (visible) crack only at the refined-unrefined transition.
-
 /// Build a DualVertex for a sub-grid corner at global sub-grid coords (gsx, gsy, gsz).
-/// Always samples sceneSDF inline (does NOT call `dual_corner` even when the sub-corner
-/// aligns with a base corner) — this trade-off lets Pass 14 omit `allDuals` (binding 2)
-/// and `dualHashTable` (binding 6) from its call graph, freeing 2 storage bindings to
-/// stay within the WebGPU 10-storage-per-stage default. Cost: 1 extra sceneSDF_fast eval
-/// per sub-edge endpoint (4× per refined sub-edge); negligible compared to Pass 11/12/13's
-/// inline sceneSDF cost.
+/// Always samples `sceneSDF_fast` inline (does not call `dual_corner`). Used by Pass 16/17/18
+/// and Pass 15 corner walks so those entry points need not bind base `allDuals` / `dualHashTable`.
 fn make_subcorner_dual(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
-    let sub_voxel = uniforms.voxelSize * 0.5;
+    let finest_mul = octree_sub_axis_mul();
+    let sub_voxel = uniforms.voxelSize / f32(finest_mul);
     let pos = uniforms.gridOffset + vec3f(f32(gsx), f32(gsy), f32(gsz)) * sub_voxel;
     let fval = sceneSDF_fast(pos).d - uniforms.isoValue;
     return DualVertex(pos, fval);
+}
+
+// ============================== Sub-cell improvement (paper §4.1, sub-cell parity) ==============================
+//
+// Pass 16 / 17 / 18 mirror Pass 10 / 9 / 8 but operate on `subCellAllDuals`. They snap
+// sub-cube / sub-face / sub-edge duals onto the iso surface (signed-zero side) when the
+// same topology-safety tests that protect Pass 8/9/10 pass. Without these, refined
+// regions render with unimproved sub-duals while neighbouring base cells use improved
+// duals — a visible inconsistency at the refined↔unrefined boundary.
+//
+// All three passes use `make_subcorner_dual` (inline sceneSDF_fast) for sub-corner sign
+// gathering. Pass 16 resolves macro-edge / macro-face samples via the sub-hash (step
+// minimal cells per boundary element); Pass 17 / 18 call `dual_sub_*` for their
+// single minimal neighbours. None fall back to base-grid `allDuals` / `dualHashTable`,
+// staying within the WebGPU 10-storage-per-stage limit.
+//
+// Pass 16 (sub-cube): finest-depth leaves use one minimal sub-edge / sub-face per macro
+// boundary element. Coarser leaves use step = subMul >> depth (finest-grid span); each
+// macro edge merges `step` minimal X/Y/Z sub-edges and each macro face merges step²
+// sub-faces (same enumeration as CPU `emitLeafSubEdgesInto` / `emitLeafSubFacesInto`).
+
+fn improve_dispatch_in_range(idx: u32, count: u32) -> bool {
+    return idx < count;
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn improveSubEdgeDuals_Pass18(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let i = globalId.x + globalId.y * (numWg.x * 64u);
+    let n = arrayLength(&childEdgeInfo);
+    if (!improve_dispatch_in_range(i, n)) {
+        return;
+    }
+
+    let info = childEdgeInfo[i];
+    let gsx = info.x;
+    let gsy = info.y;
+    let gsz = info.z;
+    let axis = info.w & 3u;
+
+    let absolute_slot = uniforms.subCellBases.y + i;
+    let edge_dual = subCellAllDuals[absolute_slot];
+
+    // Sharp-feature gate — match Pass 8.
+    let sharp_eps = uniforms.voxelSize * 5e-2;
+    if (abs(edge_dual.fval) > sharp_eps) {
+        return;
+    }
+
+    // Endpoints in finest-grid coords. axis 0 = X, 1 = Y, 2 = Z.
+    var p0: DualVertex;
+    var p1: DualVertex;
+    if (axis == 0u) {
+        p0 = make_subcorner_dual(gsx,        gsy, gsz);
+        p1 = make_subcorner_dual(gsx + 1u,   gsy, gsz);
+    } else if (axis == 1u) {
+        p0 = make_subcorner_dual(gsx, gsy,        gsz);
+        p1 = make_subcorner_dual(gsx, gsy + 1u,   gsz);
+    } else {
+        p0 = make_subcorner_dual(gsx, gsy, gsz);
+        p1 = make_subcorner_dual(gsx, gsy, gsz + 1u);
+    }
+
+    // Edge topology test: endpoints must straddle the iso (Manson & Schaefer §4.1).
+    if (sdf_sign_bit_positive(p0.fval) == sdf_sign_bit_positive(p1.fval)) {
+        return;
+    }
+
+    var lo = p0.pos;
+    var hi = p1.pos;
+    var fl = p0.fval;
+    var fh = p1.fval;
+    if (fl > 0.0) {
+        let tp = lo; lo = hi; hi = tp;
+        let tf = fl; fl = fh; fh = tf;
+    }
+    let pos = bisect_to_iso(lo, hi, fl, fh);
+    subCellAllDuals[absolute_slot] = DualVertex(pos, signed_zero_for_side(edge_dual.fval));
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn improveSubFaceDuals_Pass17(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let i = globalId.x + globalId.y * (numWg.x * 64u);
+    let n = arrayLength(&childFaceInfo);
+    if (!improve_dispatch_in_range(i, n)) {
+        return;
+    }
+
+    let info = childFaceInfo[i];
+    let gsx = info.x;
+    let gsy = info.y;
+    let gsz = info.z;
+    let axis = info.w & 3u;  // 0 = YZ-face (perp X), 1 = XZ (perp Y), 2 = XY (perp Z)
+
+    let absolute_slot = uniforms.subCellBases.z + i;
+    let face_dual = subCellAllDuals[absolute_slot];
+
+    let sharp_eps = uniforms.voxelSize * 5e-2;
+    if (abs(face_dual.fval) > sharp_eps) {
+        return;
+    }
+
+    var c00: DualVertex;
+    var c10: DualVertex;
+    var c11: DualVertex;
+    var c01: DualVertex;
+    if (axis == 0u) {
+        c00 = make_subcorner_dual(gsx, gsy,        gsz       );
+        c10 = make_subcorner_dual(gsx, gsy + 1u,   gsz       );
+        c11 = make_subcorner_dual(gsx, gsy + 1u,   gsz + 1u  );
+        c01 = make_subcorner_dual(gsx, gsy,        gsz + 1u  );
+    } else if (axis == 1u) {
+        c00 = make_subcorner_dual(gsx,        gsy, gsz       );
+        c10 = make_subcorner_dual(gsx + 1u,   gsy, gsz       );
+        c11 = make_subcorner_dual(gsx + 1u,   gsy, gsz + 1u  );
+        c01 = make_subcorner_dual(gsx,        gsy, gsz + 1u  );
+    } else {
+        c00 = make_subcorner_dual(gsx,        gsy,        gsz);
+        c10 = make_subcorner_dual(gsx + 1u,   gsy,        gsz);
+        c11 = make_subcorner_dual(gsx + 1u,   gsy + 1u,   gsz);
+        c01 = make_subcorner_dual(gsx,        gsy + 1u,   gsz);
+    }
+
+    // 4-corner CCW ring 00 → 10 → 11 → 01 → 00; topology test passes iff exactly 2 sign changes.
+    let s00 = sdf_sign_bit_positive(c00.fval);
+    let s10 = sdf_sign_bit_positive(c10.fval);
+    let s11 = sdf_sign_bit_positive(c11.fval);
+    let s01 = sdf_sign_bit_positive(c01.fval);
+    var sign_changes = 0u;
+    if (s00 != s10) { sign_changes = sign_changes + 1u; }
+    if (s10 != s11) { sign_changes = sign_changes + 1u; }
+    if (s11 != s01) { sign_changes = sign_changes + 1u; }
+    if (s01 != s00) { sign_changes = sign_changes + 1u; }
+    if (sign_changes != 2u) {
+        return;
+    }
+
+    let face_sign_pos = sdf_sign_bit_positive(face_dual.fval);
+    let positions = array<vec3f, 4>(c00.pos, c10.pos, c11.pos, c01.pos);
+    let fvals = array<f32, 4>(c00.fval, c10.fval, c11.fval, c01.fval);
+
+    var best_idx = 4u;
+    var best_abs_f = 1e30f;
+    for (var k = 0u; k < 4u; k = k + 1u) {
+        if (sdf_sign_bit_positive(fvals[k]) == face_sign_pos) { continue; }
+        let af = abs(fvals[k]);
+        if (af < best_abs_f) {
+            best_abs_f = af;
+            best_idx = k;
+        }
+    }
+    if (best_idx >= 4u) {
+        return;
+    }
+
+    var lo = face_dual.pos;
+    var hi = positions[best_idx];
+    var fl = face_dual.fval;
+    var fh = fvals[best_idx];
+    if (fl > 0.0) {
+        let tp = lo; lo = hi; hi = tp;
+        let tf = fl; fl = fh; fh = tf;
+    }
+    let pos = bisect_to_iso(lo, hi, fl, fh);
+    subCellAllDuals[absolute_slot] = DualVertex(pos, signed_zero_for_side(face_dual.fval));
+}
+
+/// Aggregate `step` minimal sub-edges along one macro cube edge into one representative
+/// DualVertex (min |f|). All samples must exist in the sub-hash and share the same sign
+/// bit classification, or the caller aborts improvement.
+fn pass16_gather_macro_edge(
+    edge_i: u32,
+    ox: u32,
+    oy: u32,
+    oz: u32,
+    step_e: u32,
+    out_f: ptr<function, f32>,
+    out_p: ptr<function, vec3f>,
+) -> bool {
+    var first_sign = 2u;
+    var best_abs = 1e30f;
+    var chosen: DualVertex;
+    for (var t = 0u; t < step_e; t = t + 1u) {
+        var slot: u32;
+        if (edge_i < 4u) {
+            slot = lookup_sub_dual_slot(sub_edge_x_sparse_key(ox + t, oy, oz));
+        } else if (edge_i < 8u) {
+            slot = lookup_sub_dual_slot(sub_edge_y_sparse_key(ox, oy + t, oz));
+        } else {
+            slot = lookup_sub_dual_slot(sub_edge_z_sparse_key(ox, oy, oz + t));
+        }
+        if (slot == SPARSE_HASH_EMPTY) {
+            return false;
+        }
+        let dv = subCellAllDuals[slot];
+        let sb = select(0u, 1u, sdf_sign_bit_positive(dv.fval));
+        if (first_sign == 2u) {
+            first_sign = sb;
+        } else if (sb != first_sign) {
+            return false;
+        }
+        let af = abs(dv.fval);
+        if (af < best_abs) {
+            best_abs = af;
+            chosen = dv;
+        }
+    }
+    *out_f = chosen.fval;
+    *out_p = chosen.pos;
+    return true;
+}
+
+/// Aggregate step×step minimal sub-faces on one macro cube face (same rules as edges).
+fn pass16_gather_macro_face(
+    face_i: u32,
+    gsx: u32,
+    gsy: u32,
+    gsz: u32,
+    step_f: u32,
+    out_f: ptr<function, f32>,
+    out_p: ptr<function, vec3f>,
+) -> bool {
+    var first_sign = 2u;
+    var best_abs = 1e30f;
+    var chosen: DualVertex;
+    for (var u = 0u; u < step_f; u = u + 1u) {
+        for (var v = 0u; v < step_f; v = v + 1u) {
+            var slot: u32;
+            if (face_i == 0u) {
+                slot = lookup_sub_dual_slot(sub_face_yz_sparse_key(gsx, gsy + u, gsz + v));
+            } else if (face_i == 1u) {
+                slot = lookup_sub_dual_slot(sub_face_yz_sparse_key(gsx + step_f, gsy + u, gsz + v));
+            } else if (face_i == 2u) {
+                slot = lookup_sub_dual_slot(sub_face_xz_sparse_key(gsx + u, gsy, gsz + v));
+            } else if (face_i == 3u) {
+                slot = lookup_sub_dual_slot(sub_face_xz_sparse_key(gsx + u, gsy + step_f, gsz + v));
+            } else if (face_i == 4u) {
+                slot = lookup_sub_dual_slot(sub_face_xy_sparse_key(gsx + u, gsy + v, gsz));
+            } else {
+                slot = lookup_sub_dual_slot(sub_face_xy_sparse_key(gsx + u, gsy + v, gsz + step_f));
+            }
+            if (slot == SPARSE_HASH_EMPTY) {
+                return false;
+            }
+            let dv = subCellAllDuals[slot];
+            let sb = select(0u, 1u, sdf_sign_bit_positive(dv.fval));
+            if (first_sign == 2u) {
+                first_sign = sb;
+            } else if (sb != first_sign) {
+                return false;
+            }
+            let af = abs(dv.fval);
+            if (af < best_abs) {
+                best_abs = af;
+                chosen = dv;
+            }
+        }
+    }
+    *out_f = chosen.fval;
+    *out_p = chosen.pos;
+    return true;
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn improveSubCubeDuals_Pass16(
+    @builtin(global_invocation_id) globalId: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let i = globalId.x + globalId.y * (numWg.x * 64u);
+    let n = arrayLength(&childCubeInfo);
+    if (!improve_dispatch_in_range(i, n)) {
+        return;
+    }
+
+    let info = childCubeInfo[i];
+    let depth_u = info.w;
+    let max_d = max(octree_max_depth_packed(), 1u);
+    if (depth_u > max_d) {
+        return;
+    }
+
+    let gsx = info.x;
+    let gsy = info.y;
+    let gsz = info.z;
+
+    let absolute_slot = uniforms.subCellBases.x + i;
+    let cube_dual = subCellAllDuals[absolute_slot];
+
+    let sharp_eps = uniforms.voxelSize * 5e-2;
+    if (abs(cube_dual.fval) > sharp_eps) {
+        return;
+    }
+
+    let sub_mul = octree_sub_axis_mul();
+    let step = sub_mul >> depth_u;
+    if (step == 0u) {
+        return;
+    }
+
+    // 26 boundary duals: 8 sub-corners at step offsets + 12 macro edges + 6 macro faces.
+    var fvals: array<f32, 26>;
+    var positions: array<vec3f, 26>;
+
+    for (var c = 0u; c < 8u; c = c + 1u) {
+        let dxi = gsx + (c & 1u) * step;
+        let dyi = gsy + ((c >> 1u) & 1u) * step;
+        let dzi = gsz + ((c >> 2u) & 1u) * step;
+        let dv = make_subcorner_dual(dxi, dyi, dzi);
+        fvals[c] = dv.fval;
+        positions[c] = dv.pos;
+    }
+
+    for (var e = 0u; e < 12u; e = e + 1u) {
+        let base = CUBE_EDGE_BASE[e];
+        let ox = gsx + base.x * step;
+        let oy = gsy + base.y * step;
+        let oz = gsz + base.z * step;
+        if (!pass16_gather_macro_edge(e, ox, oy, oz, step, &fvals[8u + e], &positions[8u + e])) {
+            return;
+        }
+    }
+
+    for (var f = 0u; f < 6u; f = f + 1u) {
+        if (!pass16_gather_macro_face(f, gsx, gsy, gsz, step, &fvals[20u + f], &positions[20u + f])) {
+            return;
+        }
+    }
+
+    var signs: array<u32, 26>;
+    for (var v = 0u; v < 26u; v = v + 1u) {
+        signs[v] = select(0u, 1u, sdf_sign_bit_positive(fvals[v]));
+    }
+
+    var parent: array<u32, 26>;
+    for (var v = 0u; v < 26u; v = v + 1u) {
+        parent[v] = v;
+    }
+
+    for (var f = 0u; f < 6u; f = f + 1u) {
+        let face_dual_v = 20u + f;
+        let s_face = signs[face_dual_v];
+        for (var k = 0u; k < 4u; k = k + 1u) {
+            let corner_a_v = CUBE_FACE_CORNERS[f][k];
+            let corner_b_v = CUBE_FACE_CORNERS[f][(k + 1u) % 4u];
+            let edge_v = 8u + CUBE_FACE_EDGE_LOCALS[f][k];
+            if (signs[corner_a_v] == signs[edge_v])  { ufUnionCube(&parent, corner_a_v, edge_v); }
+            if (signs[corner_b_v] == signs[edge_v])  { ufUnionCube(&parent, corner_b_v, edge_v); }
+            if (signs[edge_v]     == s_face)         { ufUnionCube(&parent, edge_v,     face_dual_v); }
+            if (signs[corner_a_v] == s_face)         { ufUnionCube(&parent, corner_a_v, face_dual_v); }
+        }
+    }
+
+    var inside_root_count = 0u;
+    var outside_root_count = 0u;
+    var inside_roots: array<u32, 8>;
+    var outside_roots: array<u32, 8>;
+    for (var v = 0u; v < 26u; v = v + 1u) {
+        let r = ufFindCube(&parent, v);
+        if (signs[v] == 0u) {
+            var found = false;
+            for (var kk = 0u; kk < inside_root_count; kk = kk + 1u) {
+                if (inside_roots[kk] == r) { found = true; break; }
+            }
+            if (!found && inside_root_count < 8u) {
+                inside_roots[inside_root_count] = r;
+                inside_root_count = inside_root_count + 1u;
+            }
+        } else {
+            var found = false;
+            for (var kk = 0u; kk < outside_root_count; kk = kk + 1u) {
+                if (outside_roots[kk] == r) { found = true; break; }
+            }
+            if (!found && outside_root_count < 8u) {
+                outside_roots[outside_root_count] = r;
+                outside_root_count = outside_root_count + 1u;
+            }
+        }
+    }
+    if (inside_root_count > 1u || outside_root_count > 1u) {
+        return;
+    }
+
+    let cube_sign = select(0u, 1u, sdf_sign_bit_positive(cube_dual.fval));
+    var best_v = 26u;
+    var best_abs_f = 1e30f;
+    for (var v = 0u; v < 26u; v = v + 1u) {
+        if (signs[v] == cube_sign) { continue; }
+        let af = abs(fvals[v]);
+        if (af < best_abs_f) {
+            best_abs_f = af;
+            best_v = v;
+        }
+    }
+    if (best_v >= 26u) {
+        return;
+    }
+
+    var lo = cube_dual.pos;
+    var hi = positions[best_v];
+    var fl = cube_dual.fval;
+    var fh = fvals[best_v];
+    if (fl > 0.0) {
+        let tp = lo; lo = hi; hi = tp;
+        let tf = fl; fl = fh; fh = tf;
+    }
+    let pos = bisect_to_iso(lo, hi, fl, fh);
+    subCellAllDuals[absolute_slot] = DualVertex(pos, signed_zero_for_side(cube_dual.fval));
 }
 
 /// ============================== Stage 4 Session 8: multi-resolution duals ==============================
@@ -2668,13 +2961,14 @@ fn make_subcorner_dual(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
 ///           plane (thin coord odd), the only valid form is the sub-face — and that only
 ///           exists if the containing base cube is refined.
 ///
-/// `cube_dual_at_subpos` and `face_*_dual_at_subpos` encapsulate this; callers (Pass 14)
-/// just ask for "the cube dual at this sub-position" and get the right one back.
+/// `cube_dual_at_subpos` and `face_*_dual_at_subpos` encapsulate this; callers (Pass 15)
+/// ask for "the cube dual at this sub-position" and get the right one back.
 
 fn cube_dual_at_subpos(gscx: u32, gscy: u32, gscz: u32) -> DualVertex {
-    let bcx = gscx >> 1u;
-    let bcy = gscy >> 1u;
-    let bcz = gscz >> 1u;
+    let S = octree_sub_axis_mul();
+    let bcx = gscx / S;
+    let bcy = gscy / S;
+    let bcz = gscz / S;
     if (is_base_cube_refined(bcx, bcy, bcz)) {
         return dual_sub_cube(gscx, gscy, gscz);
     }
@@ -2687,31 +2981,33 @@ fn cube_dual_at_subpos(gscx: u32, gscy: u32, gscz: u32) -> DualVertex {
 /// sub-cubes in a refined parent. Only such sub-edges are minimal; the rest are covered by
 /// some base-grid edge that Pass 6 emits.
 fn sub_edge_x_is_minimal(gsx: u32, gsy: u32, gsz: u32) -> bool {
-    // Same 4-cube indexing as pass14_emit_x_sub_edge.
     if (gsy < 1u || gsz < 1u) { return false; }
-    let bcx = gsx >> 1u;
-    return is_base_cube_refined(bcx, (gsy - 1u) >> 1u, (gsz - 1u) >> 1u)
-        || is_base_cube_refined(bcx, gsy        >> 1u, (gsz - 1u) >> 1u)
-        || is_base_cube_refined(bcx, (gsy - 1u) >> 1u, gsz        >> 1u)
-        || is_base_cube_refined(bcx, gsy        >> 1u, gsz        >> 1u);
+    let S = octree_sub_axis_mul();
+    let bcx = gsx / S;
+    return is_base_cube_refined(bcx, (gsy - 1u) / S, (gsz - 1u) / S)
+        || is_base_cube_refined(bcx, gsy / S, (gsz - 1u) / S)
+        || is_base_cube_refined(bcx, (gsy - 1u) / S, gsz / S)
+        || is_base_cube_refined(bcx, gsy / S, gsz / S);
 }
 
 fn sub_edge_y_is_minimal(gsx: u32, gsy: u32, gsz: u32) -> bool {
     if (gsx < 1u || gsz < 1u) { return false; }
-    let bcy = gsy >> 1u;
-    return is_base_cube_refined((gsx - 1u) >> 1u, bcy, (gsz - 1u) >> 1u)
-        || is_base_cube_refined(gsx        >> 1u, bcy, (gsz - 1u) >> 1u)
-        || is_base_cube_refined((gsx - 1u) >> 1u, bcy, gsz        >> 1u)
-        || is_base_cube_refined(gsx        >> 1u, bcy, gsz        >> 1u);
+    let S = octree_sub_axis_mul();
+    let bcy = gsy / S;
+    return is_base_cube_refined((gsx - 1u) / S, bcy, (gsz - 1u) / S)
+        || is_base_cube_refined(gsx / S, bcy, (gsz - 1u) / S)
+        || is_base_cube_refined((gsx - 1u) / S, bcy, gsz / S)
+        || is_base_cube_refined(gsx / S, bcy, gsz / S);
 }
 
 fn sub_edge_z_is_minimal(gsx: u32, gsy: u32, gsz: u32) -> bool {
     if (gsx < 1u || gsy < 1u) { return false; }
-    let bcz = gsz >> 1u;
-    return is_base_cube_refined((gsx - 1u) >> 1u, (gsy - 1u) >> 1u, bcz)
-        || is_base_cube_refined(gsx        >> 1u, (gsy - 1u) >> 1u, bcz)
-        || is_base_cube_refined((gsx - 1u) >> 1u, gsy        >> 1u, bcz)
-        || is_base_cube_refined(gsx        >> 1u, gsy        >> 1u, bcz);
+    let S = octree_sub_axis_mul();
+    let bcz = gsz / S;
+    return is_base_cube_refined((gsx - 1u) / S, (gsy - 1u) / S, bcz)
+        || is_base_cube_refined(gsx / S, (gsy - 1u) / S, bcz)
+        || is_base_cube_refined((gsx - 1u) / S, gsy / S, bcz)
+        || is_base_cube_refined(gsx / S, gsy / S, bcz);
 }
 
 /// XY-face at sub-position (gsfx, gsfy, gsfz). Adjacent sub-cubes (in z): low z=gsfz-1, high z=gsfz.
@@ -2728,17 +3024,15 @@ fn face_xy_dual_at_subpos(gsfx: u32, gsfy: u32, gsfz: u32, lo_ref: bool, hi_ref:
         r.should_emit = true;
         return r;
     }
-    // Both adjacent cubes unrefined. Sub-face is "real" only if it sits on a base z-line:
-    // the sub-face z-coord must be EVEN (so it's the boundary between two distinct base cubes
-    // in z). Otherwise it's interior to a single unrefined cube — skip.
-    if ((gsfz & 1u) != 0u) {
+    let S = octree_sub_axis_mul();
+    if ((gsfz % S) != 0u) {
         r.dual = DualVertex(vec3f(0.0), 0.0);
         r.should_emit = false;
         return r;
     }
     let dx = uniforms.gridDimensions.x;
     let dy = uniforms.gridDimensions.y;
-    r.dual = face_xy_dual_at(gsfx >> 1u, gsfy >> 1u, gsfz >> 1u, dx, dy);
+    r.dual = face_xy_dual_at(gsfx / S, gsfy / S, gsfz / S, dx, dy);
     r.should_emit = true;
     return r;
 }
@@ -2750,14 +3044,15 @@ fn face_yz_dual_at_subpos(gsfx: u32, gsfy: u32, gsfz: u32, lo_ref: bool, hi_ref:
         r.should_emit = true;
         return r;
     }
-    if ((gsfx & 1u) != 0u) {
+    let S = octree_sub_axis_mul();
+    if ((gsfx % S) != 0u) {
         r.dual = DualVertex(vec3f(0.0), 0.0);
         r.should_emit = false;
         return r;
     }
     let dx = uniforms.gridDimensions.x;
     let dy = uniforms.gridDimensions.y;
-    r.dual = face_yz_dual_at(gsfx >> 1u, gsfy >> 1u, gsfz >> 1u, dx, dy);
+    r.dual = face_yz_dual_at(gsfx / S, gsfy / S, gsfz / S, dx, dy);
     r.should_emit = true;
     return r;
 }
@@ -2769,14 +3064,15 @@ fn face_xz_dual_at_subpos(gsfx: u32, gsfy: u32, gsfz: u32, lo_ref: bool, hi_ref:
         r.should_emit = true;
         return r;
     }
-    if ((gsfy & 1u) != 0u) {
+    let S = octree_sub_axis_mul();
+    if ((gsfy % S) != 0u) {
         r.dual = DualVertex(vec3f(0.0), 0.0);
         r.should_emit = false;
         return r;
     }
     let dx = uniforms.gridDimensions.x;
     let dy = uniforms.gridDimensions.y;
-    r.dual = face_xz_dual_at(gsfx >> 1u, gsfy >> 1u, gsfz >> 1u, dx, dy);
+    r.dual = face_xz_dual_at(gsfx / S, gsfy / S, gsfz / S, dx, dy);
     r.should_emit = true;
     return r;
 }
@@ -2795,10 +3091,14 @@ fn face_xz_dual_at_subpos(gsfx: u32, gsfy: u32, gsfz: u32, lo_ref: bool, hi_ref:
 //       gsy and gsz must be even (for X-axis), so the parent base edge is unambiguous.
 
 fn corner_dual_at_subpos(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
-    if ((gsx & 1u) == 0u && (gsy & 1u) == 0u && (gsz & 1u) == 0u) {
+    let S = octree_sub_axis_mul();
+    if ((gsx % S) == 0u && (gsy % S) == 0u && (gsz % S) == 0u) {
         let dx = uniforms.gridDimensions.x;
         let dy = uniforms.gridDimensions.y;
-        return dual_corner((gsx >> 1u) + (gsy >> 1u) * dx + (gsz >> 1u) * dx * dy);
+        let cx = gsx / S;
+        let cy = gsy / S;
+        let cz = gsz / S;
+        return dual_corner(cx + cy * dx + cz * dx * dy);
     }
     return make_subcorner_dual(gsx, gsy, gsz);
 }
@@ -2807,31 +3107,30 @@ fn edge_x_dual_at_subpos(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
     if (sub_edge_x_is_minimal(gsx, gsy, gsz)) {
         return dual_sub_edge_x(gsx, gsy, gsz);
     }
-    // Base edge fallback: when not minimal, (gsy, gsz) are both on base-grid lines (even),
-    // and (gsx, gsy/2, gsz/2) is the unique base-edge linear index. The sub-edge spans
-    // sub_x ∈ [gsx, gsx+1] which is one half of the base edge spanning base_x ∈ [gsx>>1,
-    // (gsx>>1)+1] — both halves of the same base edge resolve to the same dual.
+    let S = octree_sub_axis_mul();
     let dx = uniforms.gridDimensions.x;
     let dy = uniforms.gridDimensions.y;
-    return dual_edge_x((gsx >> 1u) + (gsy >> 1u) * (dx - 1u) + (gsz >> 1u) * (dx - 1u) * dy);
+    return dual_edge_x((gsx / S) + (gsy / S) * (dx - 1u) + (gsz / S) * (dx - 1u) * dy);
 }
 
 fn edge_y_dual_at_subpos(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
     if (sub_edge_y_is_minimal(gsx, gsy, gsz)) {
         return dual_sub_edge_y(gsx, gsy, gsz);
     }
+    let S = octree_sub_axis_mul();
     let dx = uniforms.gridDimensions.x;
     let dy = uniforms.gridDimensions.y;
-    return dual_edge_y((gsx >> 1u) + (gsy >> 1u) * dx + (gsz >> 1u) * dx * (dy - 1u));
+    return dual_edge_y((gsx / S) + (gsy / S) * dx + (gsz / S) * dx * (dy - 1u));
 }
 
 fn edge_z_dual_at_subpos(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
     if (sub_edge_z_is_minimal(gsx, gsy, gsz)) {
         return dual_sub_edge_z(gsx, gsy, gsz);
     }
+    let S = octree_sub_axis_mul();
     let dx = uniforms.gridDimensions.x;
     let dy = uniforms.gridDimensions.y;
-    return dual_edge_z((gsx >> 1u) + (gsy >> 1u) * dx + (gsz >> 1u) * dx * dy);
+    return dual_edge_z((gsx / S) + (gsy / S) * dx + (gsz / S) * dx * dy);
 }
 
 // Convenience wrappers around the Session 8 face_*_dual_at_subpos helpers that compute
@@ -2840,214 +3139,30 @@ fn edge_z_dual_at_subpos(gsx: u32, gsy: u32, gsz: u32) -> DualVertex {
 // 2 cubes on either side of F's "thin" axis (the axis perpendicular to the face plane).
 
 fn face_xy_dual_auto(gsfx: u32, gsfy: u32, gsfz: u32) -> FaceDualResult {
-    // XY-face's thin axis is Z. Adjacent sub-cubes at z = gsfz-1 and z = gsfz; their
-    // parent cubes are at z>>1.
-    let bfx = gsfx >> 1u;
-    let bfy = gsfy >> 1u;
-    let lo_ref = select(false, is_base_cube_refined(bfx, bfy, (gsfz - 1u) >> 1u), gsfz >= 1u);
-    let hi_ref = is_base_cube_refined(bfx, bfy, gsfz >> 1u);
+    let S = octree_sub_axis_mul();
+    let bfx = gsfx / S;
+    let bfy = gsfy / S;
+    let lo_ref = select(false, is_base_cube_refined(bfx, bfy, (gsfz - 1u) / S), gsfz >= 1u);
+    let hi_ref = is_base_cube_refined(bfx, bfy, gsfz / S);
     return face_xy_dual_at_subpos(gsfx, gsfy, gsfz, lo_ref, hi_ref);
 }
 
 fn face_yz_dual_auto(gsfx: u32, gsfy: u32, gsfz: u32) -> FaceDualResult {
-    // YZ-face's thin axis is X.
-    let bfy = gsfy >> 1u;
-    let bfz = gsfz >> 1u;
-    let lo_ref = select(false, is_base_cube_refined((gsfx - 1u) >> 1u, bfy, bfz), gsfx >= 1u);
-    let hi_ref = is_base_cube_refined(gsfx >> 1u, bfy, bfz);
+    let S = octree_sub_axis_mul();
+    let bfy = gsfy / S;
+    let bfz = gsfz / S;
+    let lo_ref = select(false, is_base_cube_refined((gsfx - 1u) / S, bfy, bfz), gsfx >= 1u);
+    let hi_ref = is_base_cube_refined(gsfx / S, bfy, bfz);
     return face_yz_dual_at_subpos(gsfx, gsfy, gsfz, lo_ref, hi_ref);
 }
 
 fn face_xz_dual_auto(gsfx: u32, gsfy: u32, gsfz: u32) -> FaceDualResult {
-    // XZ-face's thin axis is Y.
-    let bfx = gsfx >> 1u;
-    let bfz = gsfz >> 1u;
-    let lo_ref = select(false, is_base_cube_refined(bfx, (gsfy - 1u) >> 1u, bfz), gsfy >= 1u);
-    let hi_ref = is_base_cube_refined(bfx, gsfy >> 1u, bfz);
+    let S = octree_sub_axis_mul();
+    let bfx = gsfx / S;
+    let bfz = gsfz / S;
+    let lo_ref = select(false, is_base_cube_refined(bfx, (gsfy - 1u) / S, bfz), gsfy >= 1u);
+    let hi_ref = is_base_cube_refined(bfx, gsfy / S, bfz);
     return face_xz_dual_at_subpos(gsfx, gsfy, gsfz, lo_ref, hi_ref);
-}
-
-/// Per-axis sub-edge MT. `axis` is the edge direction: 0=X, 1=Y, 2=Z.
-/// Cell-array indexing convention (matches Pass 6's emit_pass6_*_edge logic):
-///   X-edge cells: A=(gsx, gsy-1, gsz-1), B=(gsx, gsy, gsz-1), C=(gsx, gsy-1, gsz), D=(gsx, gsy, gsz)
-///   Y-edge cells: A=(gsx-1, gsy, gsz-1), B=(gsx, gsy, gsz-1), C=(gsx-1, gsy, gsz), D=(gsx, gsy, gsz)
-///   Z-edge cells: A=(gsx-1, gsy-1, gsz), B=(gsx, gsy-1, gsz), C=(gsx-1, gsy, gsz), D=(gsx, gsy, gsz)
-/// Face pairs around the edge: AB, CD share a face perpendicular to one axis; AC, BD share
-/// a face perpendicular to another. See per-axis comments below for the exact face types.
-
-fn pass14_emit_x_sub_edge(gsx: u32, gsy: u32, gsz: u32) {
-    let nx_sub = 2u * (uniforms.gridDimensions.x - 1u);
-    let ny_sub = 2u * (uniforms.gridDimensions.y - 1u);
-    let nz_sub = 2u * (uniforms.gridDimensions.z - 1u);
-
-    // Bounds check 4 cells. If any cell is outside the sub-grid, this sub-edge is on
-    // the global grid boundary — skip (no surface activity beyond the bounds).
-    if (gsy < 1u || gsz < 1u || gsy > ny_sub || gsz > nz_sub) {
-        return;
-    }
-    if (gsx >= nx_sub) {
-        return;
-    }
-    let a_cy = gsy - 1u;
-    let a_cz = gsz - 1u;
-    let b_cy = gsy;
-    let b_cz = gsz - 1u;
-    let c_cy = gsy - 1u;
-    let c_cz = gsz;
-    let d_cy = gsy;
-    let d_cz = gsz;
-    if (b_cy >= ny_sub || d_cy >= ny_sub || c_cz >= nz_sub || d_cz >= nz_sub) {
-        return;
-    }
-
-    // Refinement check on all 4 base parents. The sub-edge is "minimal" iff at least one
-    // surrounding sub-cube's parent is refined. (If none refined, the covering base edge is
-    // the minimal one and Pass 6 emits MT at base resolution there — Pass 14 must NOT.)
-    let a_ref = is_base_cube_refined(gsx >> 1u, a_cy >> 1u, a_cz >> 1u);
-    let b_ref = is_base_cube_refined(gsx >> 1u, b_cy >> 1u, b_cz >> 1u);
-    let c_ref = is_base_cube_refined(gsx >> 1u, c_cy >> 1u, c_cz >> 1u);
-    let d_ref = is_base_cube_refined(gsx >> 1u, d_cy >> 1u, d_cz >> 1u);
-    if (!(a_ref || b_ref || c_ref || d_ref)) {
-        return;
-    }
-
-    // Cube duals: sub-cube dual on the refined side, BASE cube dual on the unrefined side.
-    // This is the "minimal cube" rule from the paper — the deepest available dual at each
-    // surrounding cube position. Mixing depths is correct and produces a single connected
-    // surface (refined-side neighbours share their base-dual with all other unrefined cells
-    // touching them, so the manifold is preserved).
-    let a_dual = cube_dual_at_subpos(gsx, a_cy, a_cz);
-    let b_dual = cube_dual_at_subpos(gsx, b_cy, b_cz);
-    let c_dual = cube_dual_at_subpos(gsx, c_cy, c_cz);
-    let d_dual = cube_dual_at_subpos(gsx, d_cy, d_cz);
-
-    let edge = dual_sub_edge_x(gsx, gsy, gsz);
-    let p0d = make_subcorner_dual(gsx,       gsy, gsz);
-    let p1d = make_subcorner_dual(gsx + 1u,  gsy, gsz);
-
-    // Face-adjacent cube pairs around X-edge:
-    //   PD: B↔D differ in z.   Face XY at sub_pos=(gsx, gsy, gsz)         (z = gsz)
-    //   PC: A↔C differ in z.   Face XY at sub_pos=(gsx, gsy - 1, gsz)     (z = gsz)
-    //   PB: C↔D differ in y.   Face XZ at sub_pos=(gsx, gsy, gsz)         (y = gsy)
-    //   PA: A↔B differ in y.   Face XZ at sub_pos=(gsx, gsy, gsz - 1)     (y = gsy)
-    let bd = face_xy_dual_at_subpos(gsx, gsy,      gsz,        b_ref, d_ref);
-    if (bd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, bd.dual, b_dual, d_dual); }
-    let ac = face_xy_dual_at_subpos(gsx, gsy - 1u, gsz,        a_ref, c_ref);
-    if (ac.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ac.dual, a_dual, c_dual); }
-    let cd = face_xz_dual_at_subpos(gsx, gsy,      gsz,        c_ref, d_ref);
-    if (cd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, cd.dual, c_dual, d_dual); }
-    let ab = face_xz_dual_at_subpos(gsx, gsy,      gsz - 1u,   a_ref, b_ref);
-    if (ab.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ab.dual, a_dual, b_dual); }
-}
-
-fn pass14_emit_y_sub_edge(gsx: u32, gsy: u32, gsz: u32) {
-    let nx_sub = 2u * (uniforms.gridDimensions.x - 1u);
-    let ny_sub = 2u * (uniforms.gridDimensions.y - 1u);
-    let nz_sub = 2u * (uniforms.gridDimensions.z - 1u);
-
-    if (gsx < 1u || gsz < 1u || gsx > nx_sub || gsz > nz_sub) {
-        return;
-    }
-    if (gsy >= ny_sub) {
-        return;
-    }
-    let a_cx = gsx - 1u;
-    let a_cz = gsz - 1u;
-    let b_cx = gsx;
-    let b_cz = gsz - 1u;
-    let c_cx = gsx - 1u;
-    let c_cz = gsz;
-    let d_cx = gsx;
-    let d_cz = gsz;
-    if (b_cx >= nx_sub || d_cx >= nx_sub || c_cz >= nz_sub || d_cz >= nz_sub) {
-        return;
-    }
-
-    let a_ref = is_base_cube_refined(a_cx >> 1u, gsy >> 1u, a_cz >> 1u);
-    let b_ref = is_base_cube_refined(b_cx >> 1u, gsy >> 1u, b_cz >> 1u);
-    let c_ref = is_base_cube_refined(c_cx >> 1u, gsy >> 1u, c_cz >> 1u);
-    let d_ref = is_base_cube_refined(d_cx >> 1u, gsy >> 1u, d_cz >> 1u);
-    if (!(a_ref || b_ref || c_ref || d_ref)) {
-        return;
-    }
-
-    let a_dual = cube_dual_at_subpos(a_cx, gsy, a_cz);
-    let b_dual = cube_dual_at_subpos(b_cx, gsy, b_cz);
-    let c_dual = cube_dual_at_subpos(c_cx, gsy, c_cz);
-    let d_dual = cube_dual_at_subpos(d_cx, gsy, d_cz);
-
-    let edge = dual_sub_edge_y(gsx, gsy, gsz);
-    let p0d = make_subcorner_dual(gsx, gsy,       gsz);
-    let p1d = make_subcorner_dual(gsx, gsy + 1u,  gsz);
-
-    // Face-adjacent pairs around Y-edge:
-    //   PD: C↔D differ in x.   Face YZ at sub_pos=(gsx, gsy, gsz)         (x = gsx)
-    //   PA: A↔B differ in x.   Face YZ at sub_pos=(gsx, gsy, gsz - 1)     (x = gsx)
-    //   PB: B↔D differ in z.   Face XY at sub_pos=(gsx, gsy, gsz)         (z = gsz)
-    //   PC: A↔C differ in z.   Face XY at sub_pos=(gsx - 1, gsy, gsz)     (z = gsz)
-    let cd = face_yz_dual_at_subpos(gsx,      gsy, gsz,        c_ref, d_ref);
-    if (cd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, cd.dual, c_dual, d_dual); }
-    let ab = face_yz_dual_at_subpos(gsx,      gsy, gsz - 1u,   a_ref, b_ref);
-    if (ab.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ab.dual, a_dual, b_dual); }
-    let bd = face_xy_dual_at_subpos(gsx,      gsy, gsz,        b_ref, d_ref);
-    if (bd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, bd.dual, b_dual, d_dual); }
-    let ac = face_xy_dual_at_subpos(gsx - 1u, gsy, gsz,        a_ref, c_ref);
-    if (ac.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ac.dual, a_dual, c_dual); }
-}
-
-fn pass14_emit_z_sub_edge(gsx: u32, gsy: u32, gsz: u32) {
-    let nx_sub = 2u * (uniforms.gridDimensions.x - 1u);
-    let ny_sub = 2u * (uniforms.gridDimensions.y - 1u);
-    let nz_sub = 2u * (uniforms.gridDimensions.z - 1u);
-
-    if (gsx < 1u || gsy < 1u || gsx > nx_sub || gsy > ny_sub) {
-        return;
-    }
-    if (gsz >= nz_sub) {
-        return;
-    }
-    let a_cx = gsx - 1u;
-    let a_cy = gsy - 1u;
-    let b_cx = gsx;
-    let b_cy = gsy - 1u;
-    let c_cx = gsx - 1u;
-    let c_cy = gsy;
-    let d_cx = gsx;
-    let d_cy = gsy;
-    if (b_cx >= nx_sub || d_cx >= nx_sub || c_cy >= ny_sub || d_cy >= ny_sub) {
-        return;
-    }
-
-    let a_ref = is_base_cube_refined(a_cx >> 1u, a_cy >> 1u, gsz >> 1u);
-    let b_ref = is_base_cube_refined(b_cx >> 1u, b_cy >> 1u, gsz >> 1u);
-    let c_ref = is_base_cube_refined(c_cx >> 1u, c_cy >> 1u, gsz >> 1u);
-    let d_ref = is_base_cube_refined(d_cx >> 1u, d_cy >> 1u, gsz >> 1u);
-    if (!(a_ref || b_ref || c_ref || d_ref)) {
-        return;
-    }
-
-    let a_dual = cube_dual_at_subpos(a_cx, a_cy, gsz);
-    let b_dual = cube_dual_at_subpos(b_cx, b_cy, gsz);
-    let c_dual = cube_dual_at_subpos(c_cx, c_cy, gsz);
-    let d_dual = cube_dual_at_subpos(d_cx, d_cy, gsz);
-
-    let edge = dual_sub_edge_z(gsx, gsy, gsz);
-    let p0d = make_subcorner_dual(gsx, gsy, gsz);
-    let p1d = make_subcorner_dual(gsx, gsy, gsz + 1u);
-
-    // Face-adjacent pairs around Z-edge:
-    //   PD: B↔D differ in y.   Face XZ at sub_pos=(gsx, gsy, gsz)         (y = gsy)
-    //   PA: A↔C differ in y.   Face XZ at sub_pos=(gsx - 1, gsy, gsz)     (y = gsy)
-    //   PB: C↔D differ in x.   Face YZ at sub_pos=(gsx, gsy, gsz)         (x = gsx)
-    //   PC: A↔B differ in x.   Face YZ at sub_pos=(gsx, gsy - 1, gsz)     (x = gsx)
-    let bd = face_xz_dual_at_subpos(gsx,      gsy,      gsz, b_ref, d_ref);
-    if (bd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, bd.dual, b_dual, d_dual); }
-    let ac = face_xz_dual_at_subpos(gsx - 1u, gsy,      gsz, a_ref, c_ref);
-    if (ac.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ac.dual, a_dual, c_dual); }
-    let cd = face_yz_dual_at_subpos(gsx,      gsy,      gsz, c_ref, d_ref);
-    if (cd.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, cd.dual, c_dual, d_dual); }
-    let ab = face_yz_dual_at_subpos(gsx,      gsy - 1u, gsz, a_ref, b_ref);
-    if (ab.should_emit) { emit_four_tets_face_pair(p0d, p1d, edge, ab.dual, a_dual, b_dual); }
 }
 
 // ============================== Phase 5 (Session 9): paper-correct multi-resolution MT ==============================
@@ -3099,12 +3214,9 @@ fn walk_face_y_edge(sx: u32, sy: u32, sz: u32, S: u32, Df: DualVertex, Dc: DualV
         emit_mt_tetra(array<DualVertex, 4>(Dp1, De, Df, Dc));
         return;
     }
-    // S == 2: base edge. Emit only if Pass 6 would skip it, i.e. it's split.
-    if (!sub_edge_y_is_minimal(sx, sy, sz)) {
-        return;
-    }
-    for (var k = 0u; k < 2u; k = k + 1u) {
+    for (var k = 0u; k < S; k = k + 1u) {
         let ey = sy + k;
+        if (!sub_edge_y_is_minimal(sx, ey, sz)) { continue; }
         let De = edge_y_dual_at_subpos(sx, ey, sz);
         let Dp0 = corner_dual_at_subpos(sx, ey,        sz);
         let Dp1 = corner_dual_at_subpos(sx, ey + 1u,   sz);
@@ -3122,11 +3234,9 @@ fn walk_face_x_edge(sx: u32, sy: u32, sz: u32, S: u32, Df: DualVertex, Dc: DualV
         emit_mt_tetra(array<DualVertex, 4>(Dp1, De, Df, Dc));
         return;
     }
-    if (!sub_edge_x_is_minimal(sx, sy, sz)) {
-        return;
-    }
-    for (var k = 0u; k < 2u; k = k + 1u) {
+    for (var k = 0u; k < S; k = k + 1u) {
         let ex = sx + k;
+        if (!sub_edge_x_is_minimal(ex, sy, sz)) { continue; }
         let De = edge_x_dual_at_subpos(ex, sy, sz);
         let Dp0 = corner_dual_at_subpos(ex,        sy, sz);
         let Dp1 = corner_dual_at_subpos(ex + 1u,   sy, sz);
@@ -3144,11 +3254,9 @@ fn walk_face_z_edge(sx: u32, sy: u32, sz: u32, S: u32, Df: DualVertex, Dc: DualV
         emit_mt_tetra(array<DualVertex, 4>(Dp1, De, Df, Dc));
         return;
     }
-    if (!sub_edge_z_is_minimal(sx, sy, sz)) {
-        return;
-    }
-    for (var k = 0u; k < 2u; k = k + 1u) {
+    for (var k = 0u; k < S; k = k + 1u) {
         let ez = sz + k;
+        if (!sub_edge_z_is_minimal(sx, sy, ez)) { continue; }
         let De = edge_z_dual_at_subpos(sx, sy, ez);
         let Dp0 = corner_dual_at_subpos(sx, sy, ez);
         let Dp1 = corner_dual_at_subpos(sx, sy, ez + 1u);
@@ -3162,12 +3270,10 @@ fn walk_face_z_edge(sx: u32, sy: u32, sz: u32, S: u32, Df: DualVertex, Dc: DualV
 // a refined base cube (only meaningful for depth-0 M; for depth-1 M the face is always
 // a sub-face regardless of neighbour state).
 
-fn walk_side_x(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bool, Dc: DualVertex) {
-    // Side X means face perpendicular to X axis. Caller passes msx = either the cube's
-    // -X coord (left face) or the cube's +X coord (right face). Face is YZ-axis.
-    let one_face = (depth == 1u) || !nbr_refined;
+fn walk_side_x(msx: u32, msy: u32, msz: u32, S: u32, wtag: u32, nbr_refined: bool, Dc: DualVertex) {
+    let max_d = octree_max_depth_packed();
+    let one_face = (wtag == max_d) || !nbr_refined;
     if (one_face) {
-        // 1 minimal face of width S (S=2 base, S=1 sub).
         let f = face_yz_dual_auto(msx, msy, msz);
         if (f.should_emit) {
             let Df = f.dual;
@@ -3177,9 +3283,8 @@ fn walk_side_x(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bo
             walk_face_z_edge(msx, msy + S, msz,     S, Df, Dc);
         }
     } else {
-        // 4 minimal sub-faces, each width 1, at offsets (a, b) in (y, z).
-        for (var a = 0u; a < 2u; a = a + 1u) {
-            for (var b = 0u; b < 2u; b = b + 1u) {
+        for (var a = 0u; a < S; a = a + 1u) {
+            for (var b = 0u; b < S; b = b + 1u) {
                 let sfy = msy + a;
                 let sfz = msz + b;
                 let f = face_yz_dual_auto(msx, sfy, sfz);
@@ -3194,9 +3299,9 @@ fn walk_side_x(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bo
     }
 }
 
-fn walk_side_y(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bool, Dc: DualVertex) {
-    // Face perpendicular to Y. Face axis is XZ.
-    let one_face = (depth == 1u) || !nbr_refined;
+fn walk_side_y(msx: u32, msy: u32, msz: u32, S: u32, wtag: u32, nbr_refined: bool, Dc: DualVertex) {
+    let max_d = octree_max_depth_packed();
+    let one_face = (wtag == max_d) || !nbr_refined;
     if (one_face) {
         let f = face_xz_dual_auto(msx, msy, msz);
         if (f.should_emit) {
@@ -3207,8 +3312,8 @@ fn walk_side_y(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bo
             walk_face_z_edge(msx + S, msy, msz,     S, Df, Dc);
         }
     } else {
-        for (var a = 0u; a < 2u; a = a + 1u) {
-            for (var b = 0u; b < 2u; b = b + 1u) {
+        for (var a = 0u; a < S; a = a + 1u) {
+            for (var b = 0u; b < S; b = b + 1u) {
                 let sfx = msx + a;
                 let sfz = msz + b;
                 let f = face_xz_dual_auto(sfx, msy, sfz);
@@ -3223,9 +3328,9 @@ fn walk_side_y(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bo
     }
 }
 
-fn walk_side_z(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bool, Dc: DualVertex) {
-    // Face perpendicular to Z. Face axis is XY.
-    let one_face = (depth == 1u) || !nbr_refined;
+fn walk_side_z(msx: u32, msy: u32, msz: u32, S: u32, wtag: u32, nbr_refined: bool, Dc: DualVertex) {
+    let max_d = octree_max_depth_packed();
+    let one_face = (wtag == max_d) || !nbr_refined;
     if (one_face) {
         let f = face_xy_dual_auto(msx, msy, msz);
         if (f.should_emit) {
@@ -3236,8 +3341,8 @@ fn walk_side_z(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bo
             walk_face_y_edge(msx + S, msy, msz,     S, Df, Dc);
         }
     } else {
-        for (var a = 0u; a < 2u; a = a + 1u) {
-            for (var b = 0u; b < 2u; b = b + 1u) {
+        for (var a = 0u; a < S; a = a + 1u) {
+            for (var b = 0u; b < S; b = b + 1u) {
                 let sfx = msx + a;
                 let sfy = msy + b;
                 let f = face_xy_dual_auto(sfx, sfy, msz);
@@ -3253,35 +3358,31 @@ fn walk_side_z(msx: u32, msy: u32, msz: u32, S: u32, depth: u32, nbr_refined: bo
 }
 
 fn walk_minimal_cube_tets(M_idx: u32) {
-    // Minimal-cube descriptor packed into the tail of subCellAllDuals (after the
-    // totalSlots dual entries), one vec4u per descriptor, format:
-    //   pos.x = gsx (sub-grid coord of cube's min corner)
-    //   pos.y = gsy
-    //   pos.z = gsz
-    //   fval (bitcast u32):
-    //     bit  0     = depth (0 = unrefined base cube of size 2 sub-grid units;
-    //                          1 = sub-cube of a refined parent of size 1 sub-grid unit)
-    //     bits 1..6  = neighbourRefinedMask (bit 0=-X, 1=+X, 2=-Y, 3=+Y, 4=-Z, 5=+Z)
-    //                  Only meaningful for depth=0; for depth=1 it's ignored (sub-cubes
-    //                  always have sub-faces regardless of neighbour state).
     let dv = subCellAllDuals[uniforms.subCellBases.w + M_idx];
     let msx = bitcast<u32>(dv.pos.x);
     let msy = bitcast<u32>(dv.pos.y);
     let msz = bitcast<u32>(dv.pos.z);
     let word3 = bitcast<u32>(dv.fval);
-    let depth = word3 & 1u;
+    let is_unrefined_pass15 = (word3 & 1u) == 0u;
     let mask = (word3 >> 1u) & 0x3fu;
-    let S = select(1u, 2u, depth == 0u);
-
+    let leaf_d = (word3 >> 8u) & 0xfu;
+    let max_d = max(octree_max_depth_packed(), 1u);
+    var S: u32;
+    var wtag: u32;
+    if (is_unrefined_pass15) {
+        S = octree_sub_axis_mul();
+        wtag = 0u;
+    } else {
+        S = 1u << (max_d - leaf_d);
+        wtag = leaf_d;
+    }
     let Dc = cube_dual_at_subpos(msx, msy, msz);
-
-    // 6 sides — bit positions in mask: 0=-X, 1=+X, 2=-Y, 3=+Y, 4=-Z, 5=+Z.
-    walk_side_x(msx,     msy, msz, S, depth, (mask & (1u << 0u)) != 0u, Dc); // -X
-    walk_side_x(msx + S, msy, msz, S, depth, (mask & (1u << 1u)) != 0u, Dc); // +X
-    walk_side_y(msx, msy,     msz, S, depth, (mask & (1u << 2u)) != 0u, Dc); // -Y
-    walk_side_y(msx, msy + S, msz, S, depth, (mask & (1u << 3u)) != 0u, Dc); // +Y
-    walk_side_z(msx, msy, msz,     S, depth, (mask & (1u << 4u)) != 0u, Dc); // -Z
-    walk_side_z(msx, msy, msz + S, S, depth, (mask & (1u << 5u)) != 0u, Dc); // +Z
+    walk_side_x(msx,     msy, msz, S, wtag, (mask & (1u << 0u)) != 0u, Dc);
+    walk_side_x(msx + S, msy, msz, S, wtag, (mask & (1u << 1u)) != 0u, Dc);
+    walk_side_y(msx, msy,     msz, S, wtag, (mask & (1u << 2u)) != 0u, Dc);
+    walk_side_y(msx, msy + S, msz, S, wtag, (mask & (1u << 3u)) != 0u, Dc);
+    walk_side_z(msx, msy, msz,     S, wtag, (mask & (1u << 4u)) != 0u, Dc);
+    walk_side_z(msx, msy, msz + S, S, wtag, (mask & (1u << 5u)) != 0u, Dc);
 }
 
 @compute @workgroup_size(64, 1, 1)
@@ -3301,39 +3402,6 @@ fn emitMinimalCubeMT_Pass15(
         return;
     }
     walk_minimal_cube_tets(i);
-}
-
-@compute @workgroup_size(64, 1, 1)
-fn emitSubedgeMT_Pass14(
-    @builtin(global_invocation_id) globalId: vec3u,
-    @builtin(num_workgroups) numWg: vec3u,
-) {
-    if (isCancelled()) {
-        return;
-    }
-    let i = globalId.x + globalId.y * (numWg.x * 64u);
-    // Stage 4 Session 8 (storage-budget fix): childEdgeInfo is packed at the END of
-    // `subCellAllDuals` (after the totalSlots dual entries), so Pass 14 doesn't need to
-    // bind a separate `childEdgeInfo` buffer. The CPU writes 4 packed u32s per sub-edge
-    // into 16-byte slots that we read back here via `bitcast`. `subSparseHash.z` carries
-    // the sub-edge count; `subCellBases.w` is the base offset (= totalSlots).
-    let n = uniforms.subSparseHash.z;
-    if (i >= n) {
-        return;
-    }
-    let info_dv = subCellAllDuals[uniforms.subCellBases.w + i];
-    let gsx  = bitcast<u32>(info_dv.pos.x);
-    let gsy  = bitcast<u32>(info_dv.pos.y);
-    let gsz  = bitcast<u32>(info_dv.pos.z);
-    let axis = bitcast<u32>(info_dv.fval) & 3u;
-
-    if (axis == 0u) {
-        pass14_emit_x_sub_edge(gsx, gsy, gsz);
-    } else if (axis == 1u) {
-        pass14_emit_y_sub_edge(gsx, gsy, gsz);
-    } else {
-        pass14_emit_z_sub_edge(gsx, gsy, gsz);
-    }
 }
 
 fn emit_pass6_x_edge(
@@ -3618,8 +3686,8 @@ fn emitTetMeshTriangles_Pass6(
         let ex = grid_idx % (dx - 1u);
         let ey = (grid_idx / (dx - 1u)) % dy;
         let ez = grid_idx / ((dx - 1u) * dy);
-        // Session 8: skip base edges where ANY surrounding cube is refined. Pass 14 emits
-        // sub-edge MT for those at sub-resolution, using mixed-depth duals so the surface
+        // Session 8: skip base edges where ANY surrounding cube is refined. Pass 15 emits
+        // minimal-cube MT for those at sub-resolution, using mixed-depth duals so the surface
         // remains a single connected manifold across the refined↔unrefined boundary.
         if (any_cube_around_x_edge_refined(ex, ey, ez, dx, dy, dz)) {
             return;
@@ -3646,54 +3714,4 @@ fn emitTetMeshTriangles_Pass6(
         }
         emit_pass6_z_edge(ex, ey, ez, dx, dy, dz, nx, ny, nz);
     }
-}
-
-/// Pass 7: snap welded mesh vertices onto the iso surface (Newton along
-/// analytic gradient) and overwrite their normals with the analytical surface
-/// normal from `sceneSDF_mid`. One thread per welded vertex.
-///
-/// Triangle vertices come from MT linear interpolation between dual positions
-/// — generally NOT exactly on the iso surface. With per-vertex face-averaged
-/// normals over a sliver-rich tetrahedral mesh this reads as jagged shading
-/// even when the geometry is manifold. Replacing both the position (Newton
-/// snap) and the normal (analytic) makes smooth regions of the SDF render
-/// smoothly without changing topology or triangle count.
-/// Pass 7: overwrite each welded vertex's normal with the analytic SDF gradient at the
-/// welded position. We deliberately do NOT move positions (a previous version ran a Newton
-/// projection that could converge two near-coincident welded vertices to slightly different
-/// points, re-fragmenting the mesh into per-triangle facets after welding had unified it).
-@compute @workgroup_size(64, 1, 1)
-fn projectAndNormalVertices_Pass7(
-    @builtin(global_invocation_id) globalId: vec3u,
-    @builtin(num_workgroups) numWg: vec3u,
-) {
-    if (isCancelled()) {
-        return;
-    }
-    let i = globalId.x + globalId.y * (numWg.x * 64u);
-    let n = arrayLength(&projectVertices);
-    if (i >= n) {
-        return;
-    }
-
-    let p = projectVertices[i].position;
-    let r = sceneSDF_mid(p);
-    var nrm = r.n;
-    let nl = length(nrm);
-    if (nl > 1e-20) {
-        nrm = nrm / nl;
-    } else {
-        // Fall back to the welded average normal Pass 6 deposited; if that's
-        // also degenerate (rare), use a neutral up-vector so we never render
-        // an undefined normal.
-        nrm = projectVertices[i].normal;
-        let pl = length(nrm);
-        if (pl > 1e-20) {
-            nrm = nrm / pl;
-        } else {
-            nrm = vec3f(0.0, 1.0, 0.0);
-        }
-    }
-
-    projectVertices[i].normal = nrm;
 }

@@ -137,16 +137,44 @@ export interface IsoExportSettings {
     creaseAngleDeg: number
     /**
      * ISO Stage 4: enable adaptive octree infrastructure (`MDCParams.adaptiveOctree` on the worker).
-     * Default off; when on, extra QEF/orchestrator work runs (mesh output may still be uniform-grid until later stages).
+     * Default off; when on, extra QEF/orchestrator work runs.
      */
     adaptiveOctree: boolean
+    /** Max octree subdivision depth past the base grid (1–5). */
+    octreeMaxDepth: number
+    /**
+     * Portion of highest-QEF-residual surface cubes that trigger base-level octree subdivision
+     * when `octreeResidualThreshold` is not set manually (see `MDCParams.octreeRefineFraction`).
+     */
+    octreeRefineFraction: number
+    /**
+     * Use analytic ∇F crease detection for ISO (clearer box/CSG edges). Turn off for smoother
+     * lathe / polygon-profile shells where analytic normals jump per segment.
+     */
+    isoCreaseByAnalyticNormal: boolean
+    /**
+     * Hermite QEF oversample for ISO dual placement (1–4): higher → more `sceneSDF_mid` samples
+     * on each cell edge/face/cube boundary. Default 2.
+     */
+    isoQefOversample: number
 }
 
 export function defaultIsoExportSettings(): IsoExportSettings {
     // creaseAngleDeg=60° pairs with Phase 4's 4D-QEF sharp-feature placement: smooths
     // piecewise-polygon SDF noise (~10° normal jumps for typical 32-segment circles) while
     // preserving real CSG/box edges (~90° jumps). 180° = uniform Phong smoothing.
-    return { voxelSizeMm: 0.1, padMm: 3.2, creaseAngleDeg: 60, adaptiveOctree: false }
+    // octreeRefineFraction 0.28: smooth spheres at coarse voxels need more than ~top-10%
+    // residuals flagged — distribution is often flat across the band on large cells.
+    return {
+        voxelSizeMm: 0.1,
+        padMm: 3.2,
+        creaseAngleDeg: 60,
+        adaptiveOctree: false,
+        octreeMaxDepth: 2,
+        octreeRefineFraction: 0.28,
+        isoCreaseByAnalyticNormal: true,
+        isoQefOversample: 2,
+    }
 }
 
 function defaultGlobalSettings(): GlobalSettings {
@@ -405,6 +433,30 @@ export class SettingsManager {
                 if (typeof iso.creaseAngleDeg !== "number" || iso.creaseAngleDeg < 0 || iso.creaseAngleDeg > 180)
                     iso.creaseAngleDeg = isoDef.creaseAngleDeg
                 if (typeof iso.adaptiveOctree !== "boolean") iso.adaptiveOctree = isoDef.adaptiveOctree
+                if (typeof iso.octreeMaxDepth !== "number" || !Number.isFinite(iso.octreeMaxDepth)) {
+                    iso.octreeMaxDepth = isoDef.octreeMaxDepth
+                }
+                if (
+                    typeof iso.octreeRefineFraction !== "number"
+                    || !Number.isFinite(iso.octreeRefineFraction)
+                    || iso.octreeRefineFraction < 0.02
+                    || iso.octreeRefineFraction > 0.5
+                ) {
+                    iso.octreeRefineFraction = isoDef.octreeRefineFraction
+                }
+                if (typeof iso.isoCreaseByAnalyticNormal !== "boolean") {
+                    iso.isoCreaseByAnalyticNormal = isoDef.isoCreaseByAnalyticNormal
+                }
+                if (
+                    typeof iso.isoQefOversample !== "number"
+                    || !Number.isFinite(iso.isoQefOversample)
+                    || iso.isoQefOversample < 1
+                    || iso.isoQefOversample > 4
+                ) {
+                    iso.isoQefOversample = isoDef.isoQefOversample
+                } else {
+                    iso.isoQefOversample = Math.trunc(iso.isoQefOversample)
+                }
                 app.isoExport = iso
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false

@@ -2,16 +2,37 @@ import { GPUHelper } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
 import { MeshData } from "./export.mjs"
 import {
+    computeMeshExportSanityMetrics,
     logExportMeshSanityStats,
     optionalSimplifyExportedMesh,
     reorientMeshTriangleWinding,
     smoothNormalsByAreaWeightedFaceAverage,
     splitCreaseVertices,
+    splitCreaseVerticesByAnalyticNormal,
 } from "./mesh-postprocess.mjs"
-import { computeSparseDualSetsFromDilatedCubeLinears } from "./iso-sparse.mjs"
+import {
+    computeSparseDualSetsFromDilatedCubeLinears,
+    mergeBrickLocalDilatedCubeLinearsIntoGlobalOwnedSet,
+    packSparseDualCompactList,
+    sortedGlobalDilatedCubeLinearsFromSet,
+} from "./iso-sparse.mjs"
+import { filterIsoPass1BricksByCoarseSceneOccupancy } from "./iso-vdb-occupancy.mjs"
 import { SIZEOF_VERTEX, type MDCParams, type ProgressCallback } from "./mdc.mjs"
 
 const VERTEX_STRIDE_F32 = SIZEOF_VERTEX / Float32Array.BYTES_PER_ELEMENT
+
+/** Hermite QEF boundary stencil divisions per axis (Pass 5 / 11–13); WGSL clamps to 1..4. */
+function clampIsoQefOversample(n: number | undefined): number {
+    const v = n === undefined || !Number.isFinite(n) ? 2 : Math.trunc(n)
+    return Math.max(1, Math.min(4, v))
+}
+
+/**
+ * Cap Pass-1 brick count so export does not run millions of GPU sync + readback rounds
+ * (each brick used to be O(1) main-thread work; `chooseIsoPass1BrickCoreSpan` also avoids
+ * enumerating all tiles when evaluating limits).
+ */
+const ISO_PASS1_MAX_BRICKS = 16_384
 
 /**
  * Drop triangles whose welded-vertex positions are coincident or near-coincident.
@@ -203,7 +224,7 @@ export type ISOParams = MDCParams
  *   128–143 : sparseBases1  = (faceXYBase, faceYZBase, faceXZBase, cubeBase)
  *   144–159 : sparseCounts0 = (cornerCount, edgeXCount, edgeYCount, edgeZCount)
  *   160–175 : sparseCounts1 = (faceXYCount, faceYZCount, faceXZCount, cubeCount)
- *   176–191 : sparseHash    = (hashMask, hashEntries, _, _)
+ *   176–191 : sparseHash    = (hashMask, hashEntries, isoQefOversample, _)
  */
 const ISO_UNIFORM_BYTE_SIZE = 224
 
@@ -246,6 +267,196 @@ export function estimateIsoExportBufferBytes(gridDimX: number, gridDimY: number,
     return { allDuals, meshVertices, meshIndices, activeCellFlags }
 }
 
+/** One brick for ISO Pass 1 + gpuSparse: cell min-corner ranges on the global base grid. */
+export type IsoPass1Brick = {
+    loCellX: number
+    loCellY: number
+    loCellZ: number
+    hiCellX: number
+    hiCellY: number
+    hiCellZ: number
+    core0X: number
+    core0Y: number
+    core0Z: number
+    core1X: number
+    core1Y: number
+    core1Z: number
+}
+
+export function computeIsoPass1Bricks(nx: number, ny: number, nz: number, coreCubeSpan: number): IsoPass1Brick[] {
+    const bricks: IsoPass1Brick[] = []
+    const bw = Math.max(1, coreCubeSpan | 0)
+    if (nx <= 0 || ny <= 0 || nz <= 0) {
+        return bricks
+    }
+    for (let cz0 = 0; cz0 < nz; cz0 += bw) {
+        for (let cy0 = 0; cy0 < ny; cy0 += bw) {
+            for (let cx0 = 0; cx0 < nx; cx0 += bw) {
+                const core1X = Math.min(nx, cx0 + bw)
+                const core1Y = Math.min(ny, cy0 + bw)
+                const core1Z = Math.min(nz, cz0 + bw)
+                const loCellX = Math.max(0, cx0 - 1)
+                const loCellY = Math.max(0, cy0 - 1)
+                const loCellZ = Math.max(0, cz0 - 1)
+                const hiCellX = Math.min(nx - 1, cx0 + bw)
+                const hiCellY = Math.min(ny - 1, cy0 + bw)
+                const hiCellZ = Math.min(nz - 1, cz0 + bw)
+                bricks.push({
+                    loCellX, loCellY, loCellZ, hiCellX, hiCellY, hiCellZ,
+                    core0X: cx0, core0Y: cy0, core0Z: cz0, core1X, core1Y, core1Z,
+                })
+            }
+        }
+    }
+    return bricks
+}
+
+/** Brick tile count for `computeIsoPass1Bricks` without allocating (used for limit checks). */
+export function countIsoPass1Bricks(nx: number, ny: number, nz: number, coreCubeSpan: number): number {
+    const bw = Math.max(1, coreCubeSpan | 0)
+    if (nx <= 0 || ny <= 0 || nz <= 0) return 0
+    return Math.ceil(nx / bw) * Math.ceil(ny / bw) * Math.ceil(nz / bw)
+}
+
+function brickLocalCornerDims(b: IsoPass1Brick): { dxL: number; dyL: number; dzL: number } {
+    return {
+        dxL: b.hiCellX - b.loCellX + 2,
+        dyL: b.hiCellY - b.loCellY + 2,
+        dzL: b.hiCellZ - b.loCellZ + 2,
+    }
+}
+
+/**
+ * Peak Pass 1 + gpuSparse dense bytes when using `coreCubeSpan`-wide bricks (worst brick).
+ * Uses an **analytic** upper bound (interior tile achieves `min(dx, bw+3)` vertices per axis)
+ * so limit checks never enumerate `O(nx·ny·nz)` brick tiles (that froze the browser for
+ * large grids when only small `coreCubeSpan` fit GPU memory).
+ */
+export function estimateIsoPass1BrickPeakPass1Bytes(
+    gridDimX: number,
+    gridDimY: number,
+    gridDimZ: number,
+    coreCubeSpan: number,
+): { activeCellFlags: number; gpuSparseMarks: number; gpuSparseDilated: number } {
+    const bw = Math.max(1, coreCubeSpan | 0)
+    const dx = gridDimX
+    const dy = gridDimY
+    const dz = gridDimZ
+    const dxL = Math.min(dx, bw + 3)
+    const dyL = Math.min(dy, bw + 3)
+    const dzL = Math.min(dz, bw + 3)
+    const cells = dxL * dyL * dzL
+    const nxb = Math.max(0, dxL - 1)
+    const nyb = Math.max(0, dyL - 1)
+    const nzb = Math.max(0, dzL - 1)
+    const cubes = nxb * nyb * nzb
+    const activeCellFlags = Math.ceil(cells / 32) * Uint32Array.BYTES_PER_ELEMENT
+    const gpuSparseMarks = Math.max(4, cubes * Uint32Array.BYTES_PER_ELEMENT)
+    return { activeCellFlags, gpuSparseMarks, gpuSparseDilated: gpuSparseMarks }
+}
+
+function chooseIsoPass1BrickCoreSpan(
+    nx: number,
+    ny: number,
+    nz: number,
+    limits: { maxBufferSize: number; maxStorageBufferBindingSize: number },
+): number {
+    const maxB = limits.maxBufferSize
+    const maxS = limits.maxStorageBufferBindingSize
+    const spanCap = Math.max(nx, ny, nz, 4)
+    for (let span = Math.min(spanCap, 256); span >= 1; span--) {
+        const p = estimateIsoPass1BrickPeakPass1Bytes(nx + 1, ny + 1, nz + 1, span)
+        if (
+            p.activeCellFlags <= maxB && p.activeCellFlags <= maxS
+            && p.gpuSparseMarks <= maxB && p.gpuSparseMarks <= maxS
+            && p.gpuSparseDilated <= maxB && p.gpuSparseDilated <= maxS
+            && countIsoPass1Bricks(nx, ny, nz, span) <= ISO_PASS1_MAX_BRICKS
+        ) {
+            return span
+        }
+    }
+    return 0
+}
+
+function mergePass1BrickActiveFlagsIntoGlobalWords(
+    merged: Uint32Array,
+    brickWords: Uint32Array,
+    loCellX: number,
+    loCellY: number,
+    loCellZ: number,
+    dxLocal: number,
+    dyLocal: number,
+    dzLocal: number,
+    dx: number,
+    dy: number,
+    dz: number,
+): void {
+    const dxL = dxLocal
+    const dyL = dyLocal
+    const dzL = dzLocal
+    for (let lz = 0; lz < dzL; lz++) {
+        const gz = loCellZ + lz
+        for (let ly = 0; ly < dyL; ly++) {
+            const gy = loCellY + ly
+            for (let lx = 0; lx < dxL; lx++) {
+                const gx = loCellX + lx
+                const localFlat = lx + ly * dxL + lz * dxL * dyL
+                const lw = localFlat >>> 5
+                const lb = localFlat & 31
+                if ((brickWords[lw]! >>> lb) & 1) {
+                    const gFlat = gx + gy * dx + gz * dx * dy
+                    const gw = gFlat >>> 5
+                    const gb = gFlat & 31
+                    merged[gw]! |= (1 << gb) >>> 0
+                }
+            }
+        }
+    }
+}
+
+/**
+ * True when ISO Pass 1 will stream bricks for gpuSparse marks/dilate (same condition as
+ * `ISOExport.export` `usePass1Bricks`). Full-grid `activeCellFlags` is still allocated after
+ * the brick merge; `chooseIsoVoxelForGpuLimits` continues to require that buffer to fit.
+ */
+export function isoExportWillUsePass1BrickStreaming(
+    gridDimX: number,
+    gridDimY: number,
+    gridDimZ: number,
+    limits: { maxBufferSize: number; maxStorageBufferBindingSize: number },
+): boolean {
+    const nx = Math.max(0, gridDimX - 1)
+    const ny = Math.max(0, gridDimY - 1)
+    const nz = Math.max(0, gridDimZ - 1)
+    const fullGpuSparseMarksBytes = Math.max(4, nx * ny * nz * Uint32Array.BYTES_PER_ELEMENT)
+    return (
+        fullGpuSparseMarksBytes > limits.maxStorageBufferBindingSize
+        || fullGpuSparseMarksBytes > limits.maxBufferSize
+    )
+}
+
+/**
+ * Pass-1 gpuSparse tier: full `nx×ny×nz` marks/dilated buffers fit, or brick peak fits
+ * (`chooseIsoPass1BrickCoreSpan` + `estimateIsoPass1BrickPeakPass1Bytes`).
+ */
+export function isoPass1GpuSparseBuffersFitDeviceLimits(
+    gridDimX: number,
+    gridDimY: number,
+    gridDimZ: number,
+    limits: { maxBufferSize: number; maxStorageBufferBindingSize: number },
+): boolean {
+    const nx = Math.max(0, gridDimX - 1)
+    const ny = Math.max(0, gridDimY - 1)
+    const nz = Math.max(0, gridDimZ - 1)
+    const maxB = limits.maxBufferSize
+    const maxS = limits.maxStorageBufferBindingSize
+    const gpuSparseMarksBytes = Math.max(4, nx * ny * nz * Uint32Array.BYTES_PER_ELEMENT)
+    if (gpuSparseMarksBytes <= maxB && gpuSparseMarksBytes <= maxS) {
+        return true
+    }
+    return chooseIsoPass1BrickCoreSpan(nx, ny, nz, limits) >= 1
+}
+
 export function isoExportBuffersFitDeviceLimits(
     gridDimX: number,
     gridDimY: number,
@@ -270,21 +481,27 @@ export function isoExportBuffersFitDeviceLimits(
     // and the factor reduction is 36/96 = 0.375.
     const sparseMeshVerts = Math.ceil(e.meshVertices * sparseFrac * 0.375)
     const sparseMeshIndices = Math.ceil(e.meshIndices * sparseFrac * 0.375)
-    // Hash table: 2× sparse slots × 8 bytes per entry = 1× slot bytes (since slots are
-    // 16 B). Approximately equal to sparseAllDuals.
-    const sparseHash = sparseAllDuals
+    // Hash table: ~4× sparse slots × 16 bytes per row (vec4u key_lo, key_hi, slot, _).
+    // Approximately 2× the sparseAllDuals vertex payload.
+    const sparseHash = Math.ceil(sparseAllDuals * 2)
     return (
         sparseAllDuals <= maxB && sparseAllDuals <= maxS
         && sparseHash <= maxB && sparseHash <= maxS
         && sparseMeshVerts <= maxB && sparseMeshVerts <= maxS
         && sparseMeshIndices <= maxB && sparseMeshIndices <= maxS
         && e.activeCellFlags <= maxB && e.activeCellFlags <= maxS
+        && isoPass1GpuSparseBuffersFitDeviceLimits(gridDimX, gridDimY, gridDimZ, limits)
     )
 }
 
 /**
  * Increase voxel (coarser grid) until ISO dense buffers fit both `maxBufferSize` and
  * `maxStorageBufferBindingSize`. Phase-1 ISO uses much more GPU memory than MDC per cell.
+ *
+ * The chosen grid must still fit the **full** `activeCellFlags` buffer (allocated after
+ * Pass 1 merges brick flags). Pass-1 **gpuSparse** marks/dilated lists may use brick
+ * streaming when the full `nx×ny×nz` tier would exceed limits — see
+ * `isoPass1GpuSparseBuffersFitDeviceLimits` / `isoExportWillUsePass1BrickStreaming`.
  */
 export function chooseIsoVoxelForGpuLimits(
     sizeX: number,
@@ -371,11 +588,17 @@ export class ISOExport {
             return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GiB`
         }
 
-        let estimatedGpuBufferBytes = 0
+        let liveGpuBufferBytes = 0
+        let peakGpuBufferBytes = 0
         let estimatedGpuReadbackBytes = 0
 
+        const bumpLiveGpuBytes = (delta: number) => {
+            liveGpuBufferBytes += delta
+            peakGpuBufferBytes = Math.max(peakGpuBufferBytes, liveGpuBufferBytes)
+        }
+
         const createBuffer = (label: string, size: number, usage: GPUBufferUsageFlags, mappedAtCreation?: boolean) => {
-            estimatedGpuBufferBytes += size
+            bumpLiveGpuBytes(size)
             const buffer = this.#device.createBuffer({
                 label,
                 mappedAtCreation,
@@ -387,6 +610,7 @@ export class ISOExport {
         }
 
         const retireBuffer = (buffer: GPUBuffer) => {
+            liveGpuBufferBytes -= buffer.size
             buffer.destroy()
             const ix = this.#localBuffers.indexOf(buffer)
             if (ix >= 0) {
@@ -403,9 +627,10 @@ export class ISOExport {
             const elapsedMs = perfNow() - t0
             dbgLog("IsoExport").debug(`${phase}`, {
                 elapsedMs: Math.round(elapsedMs * 1000) / 1000,
-                estimatedGpuBuffers: fmtBytes(estimatedGpuBufferBytes),
+                gpuBuffersLive: fmtBytes(liveGpuBufferBytes),
+                gpuBuffersPeak: fmtBytes(peakGpuBufferBytes),
                 estimatedGpuReadback: fmtBytes(estimatedGpuReadbackBytes),
-                estimatedGpuTotal: fmtBytes(estimatedGpuBufferBytes + estimatedGpuReadbackBytes),
+                estimatedGpuTotal: fmtBytes(liveGpuBufferBytes + estimatedGpuReadbackBytes),
                 ...extra,
             })
         }
@@ -442,7 +667,11 @@ export class ISOExport {
 
             orientationProbeScale = 0.5,
             orientationProbeMin = 1e-4,
+
+            isoSceneBoundsMinMm,
+            isoSceneBoundsMaxMm,
         } = this.params
+        const isoQefOversample = clampIsoQefOversample(this.params.isoQefOversample)
 
         dbgLog("IsoExport").info(
             `ISOExport.export(): grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`
@@ -500,8 +729,9 @@ export class ISOExport {
             }
         }
         // Phase 5B: don't pre-check the dense allDuals / meshVertices size — they're sized
-        // from the sparse cube count after Pass 1 runs. We still pre-check `activeCellFlags`
-        // because that's allocated on the dense grid before Pass 1.
+        // from the sparse cube count after Pass 1 runs. We pre-check the **full** merged
+        // `activeCellFlags` size (reallocated after Pass 1 even when brick streaming filled
+        // a smaller brick buffer first).
         const est = estimateIsoExportBufferBytes(dx, dy, dz)
         assertFitsGpuLimit("activeCellFlags", est.activeCellFlags)
 
@@ -512,6 +742,7 @@ export class ISOExport {
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             })
             this.#localBuffers.push(this.#cancellationBuffer)
+            bumpLiveGpuBytes(Uint32Array.BYTES_PER_ELEMENT)
             this.#device.queue.writeBuffer(this.#cancellationBuffer, 0, new Uint32Array([0]))
 
             progressCallback?.updateProgress("Initializing...", 0)
@@ -545,7 +776,7 @@ export class ISOExport {
             new Uint32Array(uniformBufferData, 96, 4).set([
                 Math.max(0, edgeProjIters) >>> 0,
                 Math.max(0, vertexProjIters) >>> 0,
-                0,
+                1,
                 0,
             ])
             new Uint32Array(uniformBufferData, 112, 4).set([
@@ -558,23 +789,15 @@ export class ISOExport {
             const uniformBuffer = createBuffer("ISO Uniforms", ISO_UNIFORM_BYTE_SIZE, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST)
             this.#device.queue.writeBuffer(uniformBuffer, 0, uniformBufferData)
 
-            const activeCellFlagsBuffer = createBuffer(
-                "ISO ActiveCellFlags",
-                totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT,
-                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-            )
-
             const totalCubes = nx * ny * nz
-            const gpuSparseCubeMarksBuffer = createBuffer(
-                "ISO gpuSparseCubeMarks",
-                Math.max(4, totalCubes * Uint32Array.BYTES_PER_ELEMENT),
-                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            )
-            const gpuSparseDilatedCubeListBuffer = createBuffer(
-                "ISO gpuSparseDilatedCubeList",
-                Math.max(4, totalCubes * Uint32Array.BYTES_PER_ELEMENT),
-                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-            )
+            const fullGpuSparseMarksBytes = Math.max(4, totalCubes * Uint32Array.BYTES_PER_ELEMENT)
+            const usePass1Bricks =
+                fullGpuSparseMarksBytes > limits.maxStorageBufferBindingSize
+                || fullGpuSparseMarksBytes > limits.maxBufferSize
+
+            let activeCellFlagsBuffer: GPUBuffer
+            let gpuSparseCubeMarksBuffer: GPUBuffer
+            let gpuSparseDilatedCubeListBuffer: GPUBuffer
             const gpuSparseAtomicsBuffer = createBuffer(
                 "ISO gpuSparseAtomics",
                 16,
@@ -587,9 +810,77 @@ export class ISOExport {
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
             )
 
+            let pass1BrickCoreSpan = 0
+            let maxBrickTotalCubes = totalCubes
+            let maxBrickCornerU32Flags = totalU32sInFlags
+
+            if (!usePass1Bricks) {
+                activeCellFlagsBuffer = createBuffer(
+                    "ISO ActiveCellFlags",
+                    totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT,
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+                )
+                gpuSparseCubeMarksBuffer = createBuffer(
+                    "ISO gpuSparseCubeMarks",
+                    fullGpuSparseMarksBytes,
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                )
+                gpuSparseDilatedCubeListBuffer = createBuffer(
+                    "ISO gpuSparseDilatedCubeList",
+                    fullGpuSparseMarksBytes,
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+                )
+            } else {
+                pass1BrickCoreSpan = chooseIsoPass1BrickCoreSpan(nx, ny, nz, limits)
+                if (pass1BrickCoreSpan < 1) {
+                    throw new Error(
+                        "ISO export: Pass 1 brick streaming could not find a brick size that fits "
+                        + "gpuSparseCubeMarks / activeCellFlags under GPU buffer limits and "
+                        + `the ${ISO_PASS1_MAX_BRICKS.toLocaleString()}-brick scheduling cap. `
+                        + "Use MDC export, increase voxel size, or tighten bounds.",
+                    )
+                }
+                const peak = estimateIsoPass1BrickPeakPass1Bytes(dx, dy, dz, pass1BrickCoreSpan)
+                assertFitsGpuLimit("pass1 brick activeCellFlags", peak.activeCellFlags)
+                assertFitsGpuLimit("pass1 brick gpuSparseCubeMarks", peak.gpuSparseMarks)
+                assertFitsGpuLimit("pass1 brick gpuSparseDilatedCubeList", peak.gpuSparseDilated)
+                const bricks = computeIsoPass1Bricks(nx, ny, nz, pass1BrickCoreSpan)
+                let maxCubesB = 0
+                let maxUw = 0
+                for (const b of bricks) {
+                    const { dxL, dyL, dzL } = brickLocalCornerDims(b)
+                    const nxb = Math.max(0, dxL - 1)
+                    const nyb = Math.max(0, dyL - 1)
+                    const nzb = Math.max(0, dzL - 1)
+                    const tc = nxb * nyb * nzb
+                    const cells = dxL * dyL * dzL
+                    const uw = Math.ceil(cells / 32)
+                    if (tc > maxCubesB) maxCubesB = tc
+                    if (uw > maxUw) maxUw = uw
+                }
+                maxBrickTotalCubes = Math.max(1, maxCubesB)
+                maxBrickCornerU32Flags = Math.max(1, maxUw)
+                activeCellFlagsBuffer = createBuffer(
+                    "ISO ActiveCellFlags (brick pass)",
+                    maxBrickCornerU32Flags * Uint32Array.BYTES_PER_ELEMENT,
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+                )
+                const brickSparseBytes = Math.max(4, maxBrickTotalCubes * Uint32Array.BYTES_PER_ELEMENT)
+                gpuSparseCubeMarksBuffer = createBuffer(
+                    "ISO gpuSparseCubeMarks (brick)",
+                    brickSparseBytes,
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                )
+                gpuSparseDilatedCubeListBuffer = createBuffer(
+                    "ISO gpuSparseDilatedCubeList (brick)",
+                    brickSparseBytes,
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+                )
+            }
+
             // Stage 4 Session 8: refinement is now derived from the sub-cell sparse hash
             // (see `is_base_cube_refined` in iso.wgsl) rather than a separate
-            // `cubeRefinedFlags` buffer — that lets Pass 14 fit under the WebGPU
+            // `cubeRefinedFlags` buffer — that keeps sub-cell passes within the WebGPU
             // 10-storage-per-stage limit. Pass 6's `any_cube_around_*_refined` helpers
             // also bind the sub-hash. To make this work uniformly:
             //   - `subHashBuffer` (binding 20) and `subCellAllDualsBuffer` (binding 22)
@@ -603,12 +894,12 @@ export class ISOExport {
             //     `is_base_cube_refined` always returns false.
             let subHashBufferRef: GPUBuffer = createBuffer(
                 "ISO subDualHashTable (stub)",
-                8, // 1 hash entry × 8 bytes (vec2u key/slot)
+                16, // 1 hash row × 16 bytes (vec4u key_lo, key_hi, slot, _)
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             )
             this.#device.queue.writeBuffer(
                 subHashBufferRef, 0,
-                new Uint32Array([0xffffffff, 0xffffffff]).buffer,
+                new Uint32Array([0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff]).buffer,
             )
             let subCellAllDualsBufferRef: GPUBuffer = createBuffer(
                 "ISO subCellAllDuals (stub)",
@@ -655,17 +946,22 @@ export class ISOExport {
             // octree found refined parents (same gating as Pass 11).
             const p12 = this.#helper.createComputePipeline(isoShaderModule, "placeChildEdgeDuals_Pass12")
             const p13 = this.#helper.createComputePipeline(isoShaderModule, "placeChildFaceDuals_Pass13")
-            // Stage 4 Session 7: multi-resolution sub-edge MT (DEPRECATED — disabled, replaced by Pass 15).
-            const p14 = this.#helper.createComputePipeline(isoShaderModule, "emitSubedgeMT_Pass14")
             // Phase 5 (Session 9): paper-correct multi-resolution MT. Walks per-minimal-cube
             // and emits the recursive simplicial decomposition (cube → faces → edges → corners).
-            // Replaces the dimension-broken Pass 14.
             const p15 = this.#helper.createComputePipeline(isoShaderModule, "emitMinimalCubeMT_Pass15")
+            // Sub-cell improvement parity with Pass 8/9/10. Snap sub-cube/sub-face/sub-edge
+            // duals onto the iso surface (signed-zero side) under the same topology gates,
+            // so refined regions render with the same paper-correct duals base cells use.
+            // Pass 16 (cube) walks a multi-step boundary stencil when depth < maxDepth;
+            // Pass 17 (face) and Pass 18 (edge) operate on every emitted sub-cell descriptor.
+            const p16 = this.#helper.createComputePipeline(isoShaderModule, "improveSubCubeDuals_Pass16")
+            const p17 = this.#helper.createComputePipeline(isoShaderModule, "improveSubFaceDuals_Pass17")
+            const p18 = this.#helper.createComputePipeline(isoShaderModule, "improveSubEdgeDuals_Pass18")
             const pGpuSparseDilate = this.#helper.createComputePipeline(isoShaderModule, "isoGpuSparseDilateCubeMarks_Pass")
             const pGpuSparseReset = this.#helper.createComputePipeline(isoShaderModule, "isoGpuSparseResetDilatedCount_Pass")
             const pGpuSparseScatter = this.#helper.createComputePipeline(isoShaderModule, "isoGpuSparseScatterDilatedCubeList_Pass")
             const pGpuSparseWriteMeta = this.#helper.createComputePipeline(isoShaderModule, "isoGpuSparseWriteDilatedMeta_Pass")
-            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p8, p9, p10, p11, p12, p13, p14, p15, pGpuSparseDilate, pGpuSparseReset, pGpuSparseScatter, pGpuSparseWriteMeta)
+            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p8, p9, p10, p11, p12, p13, p15, p16, p17, p18, pGpuSparseDilate, pGpuSparseReset, pGpuSparseScatter, pGpuSparseWriteMeta)
 
             const cancelBuf = this.#cancellationBuffer!
 
@@ -716,9 +1012,9 @@ export class ISOExport {
             )
             this.#localBindGroups.push(bgGpuSparseDilate[1], bgGpuSparseReset[1], bgGpuSparseScatter[1], bgGpuSparseMeta[1])
 
-            // Pass 1 + GPU dilation / stream-compact (no dense CPU flag walk).
             progressCallback?.updateProgress("ISO Pass 1 + GPU sparse compaction", 10)
-            {
+            let dilatedLinears: Uint32Array
+            if (!usePass1Bricks) {
                 const wgSparse = Math.ceil(totalCubes / 64)
                 const dxSparse = Math.min(wgSparse, 65535)
                 const dySparse = Math.ceil(wgSparse / dxSparse)
@@ -753,26 +1049,211 @@ export class ISOExport {
                 this.#device.queue.submit([ce.finish()])
                 await this.#device.queue.onSubmittedWorkDone()
                 checkCancelled()
-            }
-            logDiag("after pass1+gpuSparse")
 
-            const metaBytes = await readBufferData(gpuSparseMetaBuffer, 16)
-            const dilatedCount = new Uint32Array(metaBytes)[0]!
-            if (dilatedCount === 0 || dilatedCount > totalCubes) {
-                throw new Error(
-                    `ISO export: GPU sparse compaction invalid dilatedCount=${dilatedCount} (totalCubes=${totalCubes}).`,
+                const metaBytes = await readBufferData(gpuSparseMetaBuffer, 16)
+                const dilatedCount = new Uint32Array(metaBytes)[0]!
+                if (dilatedCount > totalCubes) {
+                    throw new Error(
+                        `ISO export: GPU sparse compaction internal error (dilatedCount=${dilatedCount} > totalCubes=${totalCubes}).`,
+                    )
+                }
+                if (dilatedCount === 0) {
+                    throw new Error(
+                        "ISO export: no isosurface cells in the export grid (dilated cube count 0). "
+                        + "The surface may lie outside the padded bounds, the field may not cross the chosen iso value in this volume, "
+                        + "or the sign-change test may miss the surface at this voxel size. "
+                        + "Try a larger bbox pad, a smaller voxel, or confirm the SDF spans the iso in the export region.",
+                    )
+                }
+                const dilatedData = await readBufferData(
+                    gpuSparseDilatedCubeListBuffer,
+                    dilatedCount * Uint32Array.BYTES_PER_ELEMENT,
+                )
+                dilatedLinears = new Uint32Array(dilatedData)
+            } else {
+                const bricks = computeIsoPass1Bricks(nx, ny, nz, pass1BrickCoreSpan)
+                let pass1BricksForGpu = bricks
+                let coarseOccSkipped = 0
+                let coarseOccMarginMm: number | undefined
+                if (
+                    isoSceneBoundsMinMm !== undefined
+                    && isoSceneBoundsMaxMm !== undefined
+                ) {
+                    const occ = filterIsoPass1BricksByCoarseSceneOccupancy(bricks, {
+                        gridOffsetX,
+                        gridOffsetY,
+                        gridOffsetZ,
+                        voxelSize,
+                        pass1BrickCoreSpan,
+                        sceneMinMm: isoSceneBoundsMinMm,
+                        sceneMaxMm: isoSceneBoundsMaxMm,
+                    })
+                    coarseOccMarginMm = occ.marginMm
+                    if (occ.bricks.length > 0) {
+                        pass1BricksForGpu = occ.bricks
+                        coarseOccSkipped = occ.skipped
+                    } else {
+                        dbgLog("IsoExport").warn(
+                            "Pass 1 coarse occupancy: all bricks would be culled; using full brick list "
+                            + "(check isoSceneBounds / scene).",
+                        )
+                    }
+                }
+                dbgLog("IsoExport").debug(
+                    `Pass 1 brick streaming: ${pass1BricksForGpu.length} brick(s) to run`
+                    + (coarseOccSkipped > 0 ? ` (${coarseOccSkipped} skipped by coarse occupancy)` : "")
+                    + ` of ${bricks.length} tiles (core ${pass1BrickCoreSpan}³ cubes), `
+                    + `maxBrickCubes=${maxBrickTotalCubes} maxBrickCornerFlagWords=${maxBrickCornerU32Flags}`
+                    + (
+                        coarseOccMarginMm !== undefined && coarseOccSkipped > 0
+                            ? ` margin≈${coarseOccMarginMm.toFixed(4)} mm`
+                            : ""
+                    ),
+                )
+                const mergedFlagWords = new Uint32Array(totalU32sInFlags)
+                const globalDilatedSet = new Set<number>()
+                for (let bi = 0; bi < pass1BricksForGpu.length; bi++) {
+                    const br = pass1BricksForGpu[bi]!
+                    const { dxL, dyL, dzL } = brickLocalCornerDims(br)
+                    const nxL = Math.max(0, dxL - 1)
+                    const nyL = Math.max(0, dyL - 1)
+                    const nzL = Math.max(0, dzL - 1)
+                    const brickTotalCubes = nxL * nyL * nzL
+                    const brickTotalGridCells = dxL * dyL * dzL
+                    const brickTotalU32Flags = Math.ceil(brickTotalGridCells / 32)
+                    new Uint32Array(uniformBufferData, 0, 3).set([dxL, dyL, dzL])
+                    new Float32Array(uniformBufferData, 16, 3).set([
+                        gridOffsetX + voxelSize * br.loCellX,
+                        gridOffsetY + voxelSize * br.loCellY,
+                        gridOffsetZ + voxelSize * br.loCellZ,
+                    ])
+                    this.#device.queue.writeBuffer(uniformBuffer, 0, uniformBufferData, 0, 32)
+
+                    const wgSparse = Math.ceil(brickTotalCubes / 64)
+                    const dxSparse = Math.min(wgSparse, 65535)
+                    const dySparse = Math.ceil(wgSparse / dxSparse)
+                    const ce = this.#device.createCommandEncoder({ label: `iso_pass1_gpu_sparse_brick_${bi}` })
+                    {
+                        const pass = this.#helper.beginComputePass(ce, p1, bg1)
+                        const dispatchX = Math.min(brickTotalU32Flags, 65535)
+                        const dispatchY = Math.ceil(brickTotalU32Flags / dispatchX)
+                        pass.dispatchWorkgroups(dispatchX, dispatchY)
+                        pass.end()
+                    }
+                    {
+                        const pass = this.#helper.beginComputePass(ce, pGpuSparseDilate, bgGpuSparseDilate)
+                        pass.dispatchWorkgroups(dxSparse, dySparse, 1)
+                        pass.end()
+                    }
+                    {
+                        const pass = this.#helper.beginComputePass(ce, pGpuSparseReset, bgGpuSparseReset)
+                        pass.dispatchWorkgroups(1, 1, 1)
+                        pass.end()
+                    }
+                    {
+                        const pass = this.#helper.beginComputePass(ce, pGpuSparseScatter, bgGpuSparseScatter)
+                        pass.dispatchWorkgroups(dxSparse, dySparse, 1)
+                        pass.end()
+                    }
+                    {
+                        const pass = this.#helper.beginComputePass(ce, pGpuSparseWriteMeta, bgGpuSparseMeta)
+                        pass.dispatchWorkgroups(1, 1, 1)
+                        pass.end()
+                    }
+                    this.#device.queue.submit([ce.finish()])
+                    await this.#device.queue.onSubmittedWorkDone()
+                    checkCancelled()
+
+                    const metaBytes = await readBufferData(gpuSparseMetaBuffer, 16)
+                    const dilatedCount = new Uint32Array(metaBytes)[0]!
+                    if (dilatedCount > brickTotalCubes) {
+                        throw new Error(
+                            `ISO export: brick ${bi} invalid dilatedCount=${dilatedCount} (brickTotalCubes=${brickTotalCubes}).`,
+                        )
+                    }
+                    if (dilatedCount > 0) {
+                        const dilatedData = await readBufferData(
+                            gpuSparseDilatedCubeListBuffer,
+                            dilatedCount * Uint32Array.BYTES_PER_ELEMENT,
+                        )
+                        const localLinears = new Uint32Array(dilatedData)
+                        mergeBrickLocalDilatedCubeLinearsIntoGlobalOwnedSet(
+                            globalDilatedSet,
+                            localLinears,
+                            nxL,
+                            nyL,
+                            br.loCellX,
+                            br.loCellY,
+                            br.loCellZ,
+                            nx,
+                            ny,
+                            br.core0X,
+                            br.core0Y,
+                            br.core0Z,
+                            br.core1X,
+                            br.core1Y,
+                            br.core1Z,
+                        )
+                    }
+                    const flagBytes = await readBufferData(
+                        activeCellFlagsBuffer,
+                        brickTotalU32Flags * Uint32Array.BYTES_PER_ELEMENT,
+                    )
+                    mergePass1BrickActiveFlagsIntoGlobalWords(
+                        mergedFlagWords,
+                        new Uint32Array(flagBytes),
+                        br.loCellX,
+                        br.loCellY,
+                        br.loCellZ,
+                        dxL,
+                        dyL,
+                        dzL,
+                        dx,
+                        dy,
+                        dz,
+                    )
+                    if ((bi & 15) === 15) {
+                        await new Promise<void>((r) => setTimeout(r, 0))
+                    }
+                }
+                new Uint32Array(uniformBufferData, 0, 3).set([dx, dy, dz])
+                new Float32Array(uniformBufferData, 16, 3).set([gridOffsetX, gridOffsetY, gridOffsetZ])
+                this.#device.queue.writeBuffer(uniformBuffer, 0, uniformBufferData, 0, 32)
+
+                if (globalDilatedSet.size === 0) {
+                    throw new Error(
+                        "ISO export: no isosurface cells in the export grid after Pass 1 (no dilated cubes in any brick). "
+                        + "The surface may lie outside the padded bounds, the field may not cross the chosen iso value, "
+                        + "or coarse brick skipping left no overlap with the surface. "
+                        + "Try a larger bbox pad, a smaller voxel, or disable void culling if scene bounds are wrong.",
+                    )
+                }
+                dilatedLinears = sortedGlobalDilatedCubeLinearsFromSet(globalDilatedSet)
+
+                retireBuffer(activeCellFlagsBuffer)
+                activeCellFlagsBuffer = createBuffer(
+                    "ISO ActiveCellFlags",
+                    totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT,
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+                )
+                this.#device.queue.writeBuffer(
+                    activeCellFlagsBuffer,
+                    0,
+                    mergedFlagWords.buffer,
+                    mergedFlagWords.byteOffset,
+                    mergedFlagWords.byteLength,
                 )
             }
-            const dilatedData = await readBufferData(
-                gpuSparseDilatedCubeListBuffer,
-                dilatedCount * Uint32Array.BYTES_PER_ELEMENT,
-            )
-            const dilatedLinears = new Uint32Array(dilatedData)
+
+            logDiag("after pass1+gpuSparse", usePass1Bricks ? { pass1Bricks: true, pass1BrickCoreSpan } : { pass1Bricks: false })
 
             retireBuffer(gpuSparseCubeMarksBuffer)
             retireBuffer(gpuSparseDilatedCubeListBuffer)
             retireBuffer(gpuSparseAtomicsBuffer)
             retireBuffer(gpuSparseMetaBuffer)
+
+            // Pass 5 bind group is created after sparse buffers exist; it must reference the
+            // final full-grid activeCellFlags (brick path reallocated above after CPU merge).
 
             const tSparse0 = perfNow()
             const sparse = computeSparseDualSetsFromDilatedCubeLinears(dilatedLinears, dx, dy, dz)
@@ -793,16 +1274,7 @@ export class ISOExport {
                 + `timing=${JSON.stringify(sparse.timingMs)}`,
             )
 
-            // Concatenate per-category compact lists in the order matching the WGSL bases.
-            const allCompactList = new Uint32Array(sparse.totalDualSlots)
-            allCompactList.set(sparse.cornerCompactList, sparse.cornerBase)
-            allCompactList.set(sparse.edgeXCompactList, sparse.edgeXBase)
-            allCompactList.set(sparse.edgeYCompactList, sparse.edgeYBase)
-            allCompactList.set(sparse.edgeZCompactList, sparse.edgeZBase)
-            allCompactList.set(sparse.faceXYCompactList, sparse.faceXYBase)
-            allCompactList.set(sparse.faceYZCompactList, sparse.faceYZBase)
-            allCompactList.set(sparse.faceXZCompactList, sparse.faceXZBase)
-            allCompactList.set(sparse.cubeCompactList, sparse.cubeBase)
+            const allCompactList = packSparseDualCompactList(sparse)
 
             const sparseAllDualsBytes = sparse.totalDualSlots * 16
             const sparseAllDualsBuffer = createBuffer(
@@ -839,7 +1311,7 @@ export class ISOExport {
                 sparse.faceXYCompactList.length, sparse.faceYZCompactList.length,
                 sparse.faceXZCompactList.length, sparse.cubeCompactList.length,
             ])
-            const sparseHash = new Uint32Array([sparse.hashMask, sparse.hashEntries, 0, 0])
+            const sparseHash = new Uint32Array([sparse.hashMask, sparse.hashEntries, isoQefOversample >>> 0, 0])
             // Stage 4 Session 6: subSparseHash starts as (0, 0, 0, 0). Mask=0 makes
             // `lookup_sub_dual_slot` return EMPTY immediately (so non-adaptive runs and
             // adaptive runs with no refined parents both work). Updated below after
@@ -860,12 +1332,12 @@ export class ISOExport {
             const PER_CUBE_VERT_FACTOR = 36
             const sparseMaxTriangles = sparse.cubeCompactList.length * PER_CUBE_VERT_FACTOR
             const sparseMaxIndices = sparseMaxTriangles * 3
-            const meshVerticesBuffer = createBuffer(
+            let meshVerticesBuffer = createBuffer(
                 "ISO meshVertices",
                 sparseMaxIndices * SIZEOF_VERTEX,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
             )
-            const meshIndicesBuffer = createBuffer(
+            let meshIndicesBuffer = createBuffer(
                 "ISO meshIndices",
                 sparseMaxIndices * Uint32Array.BYTES_PER_ELEMENT,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -876,6 +1348,31 @@ export class ISOExport {
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
             )
             this.#device.queue.writeBuffer(meshIndexCountBuffer, 0, new Uint32Array([0]))
+
+            let meshCapacityIndices = sparseMaxIndices
+            const ensureMeshOutputCapacity = (requiredIndices: number, reason: string) => {
+                if (requiredIndices <= meshCapacityIndices) return
+                const vertexBytes = requiredIndices * SIZEOF_VERTEX
+                const indexBytes = requiredIndices * Uint32Array.BYTES_PER_ELEMENT
+                assertFitsGpuLimit(`meshVertices (${reason})`, vertexBytes)
+                assertFitsGpuLimit(`meshIndices (${reason})`, indexBytes)
+                retireBuffer(meshVerticesBuffer)
+                retireBuffer(meshIndicesBuffer)
+                meshVerticesBuffer = createBuffer(
+                    `ISO meshVertices (${reason})`,
+                    vertexBytes,
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+                )
+                meshIndicesBuffer = createBuffer(
+                    `ISO meshIndices (${reason})`,
+                    indexBytes,
+                    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+                )
+                meshCapacityIndices = requiredIndices
+                dbgLog("IsoExport").info(
+                    `ISO mesh output capacity raised to ${requiredIndices} vertices/indices (${reason}).`,
+                )
+            }
 
             // Stage 4 (octree foundation): per-cube QEF residual buffer. One f32 per active
             // cube in the sparse list, indexed by `local_slot` in Pass 5. The Pass 5 WGSL
@@ -905,15 +1402,13 @@ export class ISOExport {
                 [28, this.#faceSelectionBuffer],
                 [30, this.#mdcSceneParamsBuffer],
             )
-            // Pass 3/4/5 all read endpoint corner duals via `dual_corner` → hash lookup →
-            // they need binding 6 (`dualHashTable`) too, even though they only WRITE through
-            // their absolute slot. WGSL strips bindings the entry point doesn't reference,
-            // so leaving binding 6 out causes the layout-vs-bind-group mismatch.
+            // Pass 3/4/5 now use transient Hermite boundary samples and write through their
+            // absolute slots, so they do not bind the sparse hash. Improvement and emit passes
+            // still need binding 6 for neighbor dual lookups.
             const bgPass3 = this.#helper.createBindGroup(
                 0, "ISO Pass3 sparse", p3,
                 [0, uniformBuffer],
                 [2, sparseAllDualsBuffer],
-                [6, sparseHashBuffer],
                 [8, sparseCompactBuffer],
                 [25, cancelBuf],
                 [27, this.#polygonVerticesBuffer],
@@ -924,7 +1419,6 @@ export class ISOExport {
                 0, "ISO Pass4 sparse", p4,
                 [0, uniformBuffer],
                 [2, sparseAllDualsBuffer],
-                [6, sparseHashBuffer],
                 [8, sparseCompactBuffer],
                 [25, cancelBuf],
                 [27, this.#polygonVerticesBuffer],
@@ -936,7 +1430,6 @@ export class ISOExport {
                 [0, uniformBuffer],
                 [1, activeCellFlagsBuffer],
                 [2, sparseAllDualsBuffer],
-                [6, sparseHashBuffer],
                 [8, sparseCompactBuffer],
                 [9, cubeResidualBuffer],
                 [25, cancelBuf],
@@ -1051,16 +1544,16 @@ export class ISOExport {
             //   3. Builds unified sub-cell sparse hash w/ absolute slots (Session 6)
             //   4. Allocates the unified `subCellAllDuals` buffer + uploads sub-hash + writes
             //      `subSparseHash` and `subCellBases` uniform fields
-            //   5. Populates `cubeRefinedFlags` from the refined-parent set
+            //   5. Derives refined-parent state from the sub-cell hash (no separate flags buffer)
             //   6. Dispatches Pass 11/12/13 (each writes to subCellAllDuals at its own base)
-            //   7. Stores Pass 14 bind group + handles to outer-scope vars; the actual Pass 14
+            //   7. Stores Pass 15 bind group + handles to outer-scope vars; the actual Pass 15
             //      DISPATCH is deferred until after Pass 8/9/10 so it sees the IMPROVED base
-            //      cube/face duals (otherwise the sub-edge MT in Pass 14 would interpolate
-            //      with pre-improvement positions while Pass 6 uses post-improvement, leaving
-            //      cracks at the refined↔unrefined seam).
+            //      cube/face duals (otherwise minimal-cube MT would interpolate with
+            //      pre-improvement positions while Pass 6 uses post-improvement, leaving cracks
+            //      at the refined↔unrefined seam).
             //
             // ALL sub-cell duals live in the unified `subCellAllDuals` buffer (one storage
-            // binding) so Pass 14 fits in WebGPU's 10-storage-per-stage default. Per-pass
+            // binding) so Pass 15 fits in WebGPU's 10-storage-per-stage default. Per-pass
             // residual buffers stay separate (CPU readback only, no shader cross-references).
             //
             // Outer-scope handles populated when adaptive runs and there are minimal cubes
@@ -1088,7 +1581,6 @@ export class ISOExport {
                     }
 
                     const {
-                        buildOctreeFromCubeResiduals,
                         logOctreeStats,
                         pickResidualThresholdFromPercentile,
                         buildChildCubeListFromOctree,
@@ -1101,63 +1593,245 @@ export class ISOExport {
                         packChildFaceInfo,
                         summarizeResidualDistribution,
                         CHILD_CUBE_INFO_STRIDE_U32,
+                        clampOctreeMaxDepth,
+                        assertFineSubGridHashPayloadFits,
+                        subAxisMulFromMaxDepth,
                     } = await import("./iso-octree.mjs")
                     void packChildEdgeInfo // Phase 5: childEdgeInfo packing replaced by minimalCubeList
 
-                    // Threshold: explicit param wins; otherwise auto-pick at 90th percentile.
+                    // Threshold: explicit param wins; otherwise rank residuals by `octreeRefineFraction`
+                    // (fraction of active cubes with largest residuals — wider surfaces at coarse voxels
+                    // often need a larger fraction because QEF residuals cluster tightly on gentle curvature).
                     const explicitThreshold = this.params.octreeResidualThreshold
+                    const refineFracRaw = this.params.octreeRefineFraction
+                    const autoRefineFraction = (refineFracRaw !== undefined && Number.isFinite(refineFracRaw))
+                        ? Math.max(0.02, Math.min(0.5, refineFracRaw))
+                        : 0.10
                     const threshold = (explicitThreshold !== undefined && Number.isFinite(explicitThreshold))
                         ? explicitThreshold
-                        : pickResidualThresholdFromPercentile(residuals, 0.10)
-                    // Default maxDepth = 1: Session 7 only handles depth-1 sub-cells, and the
-                    // current Session-1 octree builder inherits parent residuals to children
-                    // (so a leaf that exceeds threshold at depth N also exceeds it at N+1, and
-                    // every refined cube subdivides straight to maxDepth, skipping intermediate
-                    // depths). At maxDepth=1 the loop subdivides d=0→d=1 and stops, leaving
-                    // d=1 leaves intact for Pass 11/12/13/14 to consume. Going deeper requires
-                    // either per-child residual recompute (so children can drop below threshold)
-                    // or multi-level descriptor widening — both are Session 8+ work.
-                    const maxDepth = Math.max(0, Math.floor(this.params.octreeMaxDepth ?? 1))
+                        : pickResidualThresholdFromPercentile(residuals, autoRefineFraction)
+                    // Default 2 matches MDCParams docs; clamp 1..MAX (5) for the GPU path.
+                    const maxDepth = clampOctreeMaxDepth(this.params.octreeMaxDepth, 2)
+                    const subMul = subAxisMulFromMaxDepth(maxDepth)
+                    assertFineSubGridHashPayloadFits(nx, ny, nz, subMul)
 
-                    const octree = buildOctreeFromCubeResiduals(
-                        packedCellPos, residuals, nx, ny, nz, threshold, maxDepth,
-                    )
+                    type IterLeaf = {
+                        cellPos: [number, number, number]
+                        depth: number
+                        coveringResidual: number
+                    }
+                    const safeResidual = (v: number) => Number.isFinite(v) ? Math.max(0, v) : 0
+                    const packBaseKey = (leaf: IterLeaf) => {
+                        const scale = 1 << leaf.depth
+                        const bx = Math.floor(leaf.cellPos[0] / scale)
+                        const by = Math.floor(leaf.cellPos[1] / scale)
+                        const bz = Math.floor(leaf.cellPos[2] / scale)
+                        return bx + by * nx + bz * nx * ny
+                    }
+                    const childInfoFromLeaf = (leaf: IterLeaf) => {
+                        const scale = 1 << (maxDepth - leaf.depth)
+                        return {
+                            gsx: leaf.cellPos[0] * scale,
+                            gsy: leaf.cellPos[1] * scale,
+                            gsz: leaf.cellPos[2] * scale,
+                            depth: leaf.depth,
+                        }
+                    }
+                    const evaluateChildCubeResiduals = async (childrenToProbe: IterLeaf[]): Promise<Float32Array> => {
+                        if (childrenToProbe.length === 0) return new Float32Array(0)
+                        const childInfos = childrenToProbe.map(childInfoFromLeaf)
+                        const packedChildren = packChildCubeInfo(childInfos)
+                        const childInfoBuffer = createBuffer(
+                            "ISO iterative childCubeInfo",
+                            Math.max(16, packedChildren.byteLength),
+                            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                        )
+                        this.#device.queue.writeBuffer(
+                            childInfoBuffer, 0,
+                            packedChildren.buffer, packedChildren.byteOffset, packedChildren.byteLength,
+                        )
+                        const childResidualBytes = childrenToProbe.length * Float32Array.BYTES_PER_ELEMENT
+                        const childResidualBuffer = createBuffer(
+                            "ISO iterative childResiduals",
+                            Math.max(4, childResidualBytes),
+                            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+                        )
+                        const scratchDualsBuffer = createBuffer(
+                            "ISO iterative childDualScratch",
+                            Math.max(16, childrenToProbe.length * 16),
+                            GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+                        )
+                        this.#device.queue.writeBuffer(
+                            uniformBuffer, 104,
+                            new Uint32Array([subMul >>> 0, maxDepth >>> 0]),
+                        )
+                        this.#device.queue.writeBuffer(
+                            uniformBuffer, 208,
+                            new Uint32Array([0, 0, 0, 0]),
+                        )
+                        const bgProbe = this.#helper.createBindGroup(
+                            0, "ISO iterative Pass11 residual probe", p11,
+                            [0, uniformBuffer],
+                            [11, childInfoBuffer],
+                            [13, childResidualBuffer],
+                            [22, scratchDualsBuffer],
+                            [25, cancelBuf],
+                            [27, this.#polygonVerticesBuffer],
+                            [28, this.#faceSelectionBuffer],
+                            [30, this.#mdcSceneParamsBuffer],
+                        )
+                        this.#localBindGroups.push(bgProbe[1])
+                        const ce = this.#device.createCommandEncoder({ label: "iso_iterative_child_residual_probe" })
+                        const wg = Math.ceil(childrenToProbe.length / 64)
+                        const dispatchX = Math.min(wg, 65535)
+                        const dispatchY = Math.ceil(wg / dispatchX)
+                        const pass = this.#helper.beginComputePass(ce, p11, bgProbe)
+                        pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                        pass.end()
+                        this.#device.queue.submit([ce.finish()])
+                        await this.#device.queue.onSubmittedWorkDone()
+                        checkCancelled()
+                        const childResData = await readBufferData(childResidualBuffer, childResidualBytes)
+                        retireBuffer(childInfoBuffer)
+                        retireBuffer(childResidualBuffer)
+                        retireBuffer(scratchDualsBuffer)
+                        return new Float32Array(childResData)
+                    }
+                    const tIterStart = perfNow()
+                    const initialLeaves: IterLeaf[] = []
+                    let totalResidual = 0
+                    let maxResidual = 0
+                    for (let i = 0; i < cubeCount; i++) {
+                        const r = safeResidual(residuals[i]!)
+                        totalResidual += r
+                        maxResidual = Math.max(maxResidual, r)
+                        initialLeaves.push({
+                            cellPos: [
+                                packedCellPos[i * 3]!,
+                                packedCellPos[i * 3 + 1]!,
+                                packedCellPos[i * 3 + 2]!,
+                            ],
+                            depth: 0,
+                            coveringResidual: r,
+                        })
+                    }
+                    const finalLeaves: IterLeaf[] = []
+                    const refinedBaseSet = new Set<number>()
+                    let frontier = initialLeaves
+                    for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+                        const childFrontier: IterLeaf[] = []
+                        for (const leaf of frontier) {
+                            if (leaf.depth >= maxDepth || leaf.coveringResidual <= threshold) {
+                                finalLeaves.push(leaf)
+                                continue
+                            }
+                            refinedBaseSet.add(packBaseKey(leaf))
+                            const px = leaf.cellPos[0] * 2
+                            const py = leaf.cellPos[1] * 2
+                            const pz = leaf.cellPos[2] * 2
+                            const childDepth = leaf.depth + 1
+                            for (let oct = 0; oct < 8; oct++) {
+                                childFrontier.push({
+                                    cellPos: [
+                                        px + (oct & 1),
+                                        py + ((oct >> 1) & 1),
+                                        pz + ((oct >> 2) & 1),
+                                    ],
+                                    depth: childDepth,
+                                    coveringResidual: 0,
+                                })
+                            }
+                        }
+                        if (childFrontier.length === 0) {
+                            frontier = []
+                            break
+                        }
+                        const childResiduals = await evaluateChildCubeResiduals(childFrontier)
+                        const nextFrontier: IterLeaf[] = []
+                        for (let i = 0; i < childFrontier.length; i++) {
+                            const child = childFrontier[i]!
+                            child.coveringResidual = safeResidual(childResiduals[i]!)
+                            if (child.depth >= maxDepth || child.coveringResidual <= threshold) {
+                                finalLeaves.push(child)
+                            } else {
+                                nextFrontier.push(child)
+                            }
+                        }
+                        frontier = nextFrontier
+                    }
+                    finalLeaves.push(...frontier)
+                    const leavesPerDepth = new Map<number, number>()
+                    for (const leaf of finalLeaves) {
+                        leavesPerDepth.set(leaf.depth, (leavesPerDepth.get(leaf.depth) ?? 0) + 1)
+                    }
+                    const equivalentUniformLeafCount = cubeCount * Math.pow(8, maxDepth)
+                    const octree = {
+                        leaves: finalLeaves,
+                        leavesPerDepth,
+                        baseCubesRefined: refinedBaseSet.size,
+                        totalResidual,
+                        maxResidual,
+                        equivalentUniformLeafCount,
+                        adaptivityRatio: equivalentUniformLeafCount > 0 ? finalLeaves.length / equivalentUniformLeafCount : 1,
+                        timingMs: {
+                            initialLeaves: 0,
+                            refine: Math.round((perfNow() - tIterStart) * 100) / 100,
+                            total: Math.round((perfNow() - tIterStart) * 100) / 100,
+                        },
+                    }
                     dbgLog("IsoExport").info(
                         `Stage 4 octree (Session 1, threshold=${threshold.toExponential(3)}, maxDepth=${maxDepth}): `
-                        + `${cubeCount} active cubes → see octree stats below`,
+                        + `${cubeCount} active cubes → see octree stats below`
+                        + (
+                            explicitThreshold === undefined
+                                ? `; auto refine fraction=${autoRefineFraction} (active cubes in top band by QEF residual)`
+                                : ""
+                        ),
                     )
                     logOctreeStats(octree)
                     logDiag("after Stage 4 octree build")
 
                     // Build all 3 sub-cell lists upfront (need totals before allocating
                     // unified subCellAllDuals).
-                    const { children, skippedDeeperLeaves: childCubeSkipped } = buildChildCubeListFromOctree(octree)
+                    const { children, skippedDeeperLeaves: childCubeSkipped } = buildChildCubeListFromOctree(octree, maxDepth)
                     const { edges: childEdges, skippedDeeperLeaves: childEdgeSkipped }
-                        = buildChildEdgeListFromOctree(octree, nx, ny)
+                        = buildChildEdgeListFromOctree(octree, nx, ny, maxDepth)
                     const { faces: childFaces, skippedDeeperLeaves: childFaceSkipped }
-                        = buildChildFaceListFromOctree(octree, nx, ny)
+                        = buildChildFaceListFromOctree(octree, nx, ny, maxDepth)
                     const totalDeepSkipped = childCubeSkipped + childEdgeSkipped + childFaceSkipped
                     if (totalDeepSkipped > 0) {
                         dbgLog("IsoExport").info(
-                            `Stage 4: skipped depth≥2 leaves (cubes=${childCubeSkipped}, edges=${childEdgeSkipped}, faces=${childFaceSkipped}) `
-                            + `— deeper-than-1 refinement requires multi-level descriptor widening.`,
+                            `Stage 4: skipped leaves deeper than maxDepth=${maxDepth} (cubes=${childCubeSkipped}, edges=${childEdgeSkipped}, faces=${childFaceSkipped}).`,
                         )
                     }
                     if (children.length === 0 && childEdges.length === 0 && childFaces.length === 0) {
                         dbgLog("IsoExport").info(
-                            `Stage 4 adaptive: no depth-1 leaves to place — refinement budget unused for this scene.`,
+                            `Stage 4 adaptive: no refined leaves to place at maxDepth=${maxDepth} — refinement budget unused for this scene.`,
                         )
                     } else {
-                        /** Sub-cell placement passes queued here; one submit runs 11→12→13. */
+                        this.#device.queue.writeBuffer(
+                            uniformBuffer, 104,
+                            new Uint32Array([subMul >>> 0, maxDepth >>> 0]),
+                        )
+                        /** Sub-cell placement + improvement passes queued here; one submit
+                         *  runs 11→12→13→16→17→18 in order. */
                         const adaptSubPasses: {
                             pipeline: GPUComputePipeline
                             bg: GPUBindGroup
                             dx: number
                             dy: number
                         }[] = []
+                        // Captured by Pass 16/17/18 build sites and consumed below to
+                        // append the improvement dispatches in cube → face → edge order.
+                        let bgPass16Outer: GPUBindGroup | undefined
+                        let pass16Children = 0
+                        let bgPass17Outer: GPUBindGroup | undefined
+                        let pass17Faces = 0
+                        let bgPass18Outer: GPUBindGroup | undefined
+                        let pass18Edges = 0
 
                         // Build unified sub-hash w/ absolute slots into subCellAllDuals.
-                        const subHash = buildSubCellSparseHash(children, childEdges, childFaces, nx, ny)
+                        const subHash = buildSubCellSparseHash(children, childEdges, childFaces, nx, ny, subMul)
 
                         // Upload sub-hash to GPU. Replaces the upfront stub `subHashBufferRef`.
                         const subHashBytes = subHash.hashTable.byteLength
@@ -1177,11 +1851,22 @@ export class ISOExport {
                         // per thread and emits the recursive simplicial decomposition. The descriptor
                         // list is packed as 16-byte vec4u entries at the END of `subCellAllDuals`,
                         // mirroring the Session 8 trick for childEdgeInfo (one less storage binding).
-                        const minimal = buildMinimalCubeList(children, sparse.cubeCompactList, nx, ny, nz)
+                        const minimal = buildMinimalCubeList(children, sparse.cubeCompactList, nx, ny, nz, maxDepth)
                         dbgLog("IsoExport").info(
                             `Phase 5 minimal cubes: ${minimal.numMinimalCubes} total `
                             + `(${minimal.numDepth0} depth-0 unrefined-but-pass15-territory, `
-                            + `${minimal.numDepth1} depth-1 sub-cubes).`,
+                            + `${minimal.numDepth1} refined leaves up to depth ${maxDepth}).`,
+                        )
+                        // Deeper octree levels can emit more MT than the base sparse cube estimate,
+                        // but the absolute theoretical max (288 indices/minimal cube) grossly
+                        // over-allocates: most tets are empty or degenerate-skipped in `emit_mt_tetra`.
+                        // Use the same practical over-provisioning style as the base path, then
+                        // detect exhaustion after GPU emission instead of returning a partial mesh.
+                        const PASS15_ESTIMATED_INDICES_PER_MINIMAL_CUBE = 96
+                        const pass15EstimatedIndices = minimal.numMinimalCubes * PASS15_ESTIMATED_INDICES_PER_MINIMAL_CUBE
+                        ensureMeshOutputCapacity(
+                            sparseMaxIndices + pass15EstimatedIndices,
+                            `adaptive depth ${maxDepth}, ${minimal.numMinimalCubes} minimal cubes`,
                         )
 
                         // Allocate unified subCellAllDuals. Layout (Phase 5):
@@ -1229,9 +1914,9 @@ export class ISOExport {
                         // entries themselves at shader runtime (see `is_base_cube_refined`).
                         const refinedParentSet = new Set<number>()
                         for (const c of children) {
-                            const px = c.gsx >> 1
-                            const py = c.gsy >> 1
-                            const pz = c.gsz >> 1
+                            const px = Math.floor(c.gsx / subMul)
+                            const py = Math.floor(c.gsy / subMul)
+                            const pz = Math.floor(c.gsz / subMul)
                             const linear = px + py * nx + pz * nx * ny
                             if (refinedParentSet.has(linear)) continue
                             refinedParentSet.add(linear)
@@ -1277,6 +1962,22 @@ export class ISOExport {
                             )
                             this.#localBindGroups.push(bgPass11[1])
 
+                            // Pass 16 reuses childInfoBuffer + subCellAllDualsBuffer + sub-hash.
+                            const bgPass16 = this.#helper.createBindGroup(
+                                0, "ISO Pass16 sub-cube improve", p16,
+                                [0, uniformBuffer],
+                                [11, childInfoBuffer],
+                                [20, subHashBufferRef],
+                                [22, subCellAllDualsBuffer],
+                                [25, cancelBuf],
+                                [27, this.#polygonVerticesBuffer],
+                                [28, this.#faceSelectionBuffer],
+                                [30, this.#mdcSceneParamsBuffer],
+                            )
+                            this.#localBindGroups.push(bgPass16[1])
+                            bgPass16Outer = bgPass16[1]
+                            pass16Children = children.length
+
                             progressCallback?.updateProgress("ISO Pass 11: sub-cube duals", 65)
                             const wg = Math.ceil(children.length / 64)
                             const dispatchX = Math.min(wg, 65535)
@@ -1317,6 +2018,20 @@ export class ISOExport {
                                 [30, this.#mdcSceneParamsBuffer],
                             )
                             this.#localBindGroups.push(bgPass12[1])
+
+                            const bgPass18 = this.#helper.createBindGroup(
+                                0, "ISO Pass18 sub-edge improve", p18,
+                                [0, uniformBuffer],
+                                [14, childEdgeInfoBuffer],
+                                [22, subCellAllDualsBuffer],
+                                [25, cancelBuf],
+                                [27, this.#polygonVerticesBuffer],
+                                [28, this.#faceSelectionBuffer],
+                                [30, this.#mdcSceneParamsBuffer],
+                            )
+                            this.#localBindGroups.push(bgPass18[1])
+                            bgPass18Outer = bgPass18[1]
+                            pass18Edges = childEdges.length
 
                             progressCallback?.updateProgress("ISO Pass 12: sub-edge duals", 67)
                             const wg = Math.ceil(childEdges.length / 64)
@@ -1359,6 +2074,20 @@ export class ISOExport {
                             )
                             this.#localBindGroups.push(bgPass13[1])
 
+                            const bgPass17 = this.#helper.createBindGroup(
+                                0, "ISO Pass17 sub-face improve", p17,
+                                [0, uniformBuffer],
+                                [17, childFaceInfoBuffer],
+                                [22, subCellAllDualsBuffer],
+                                [25, cancelBuf],
+                                [27, this.#polygonVerticesBuffer],
+                                [28, this.#faceSelectionBuffer],
+                                [30, this.#mdcSceneParamsBuffer],
+                            )
+                            this.#localBindGroups.push(bgPass17[1])
+                            bgPass17Outer = bgPass17[1]
+                            pass17Faces = childFaces.length
+
                             progressCallback?.updateProgress("ISO Pass 13: sub-face duals", 69)
                             const wg = Math.ceil(childFaces.length / 64)
                             const dispatchX = Math.min(wg, 65535)
@@ -1366,8 +2095,32 @@ export class ISOExport {
                             adaptSubPasses.push({ pipeline: p13, bg: bgPass13[1], dx: dispatchX, dy: dispatchY })
                         }
 
+                        // Sub-cell improvement (Pass 16/17/18). cube → face → edge order
+                        // mirrors Pass 10 → 9 → 8 on base cells: the cube topology test reads
+                        // pre-relax sub-edge/sub-face fvals, then Pass 17/18 snap the
+                        // sub-face/sub-edge duals onto the iso surface (signed-zero side)
+                        // so refined regions render with the same paper-correct duals.
+                        if (bgPass16Outer && pass16Children > 0) {
+                            const wg = Math.ceil(pass16Children / 64)
+                            const dx = Math.min(wg, 65535)
+                            const dy = Math.ceil(wg / dx)
+                            adaptSubPasses.push({ pipeline: p16, bg: bgPass16Outer, dx, dy })
+                        }
+                        if (bgPass17Outer && pass17Faces > 0) {
+                            const wg = Math.ceil(pass17Faces / 64)
+                            const dx = Math.min(wg, 65535)
+                            const dy = Math.ceil(wg / dx)
+                            adaptSubPasses.push({ pipeline: p17, bg: bgPass17Outer, dx, dy })
+                        }
+                        if (bgPass18Outer && pass18Edges > 0) {
+                            const wg = Math.ceil(pass18Edges / 64)
+                            const dx = Math.min(wg, 65535)
+                            const dy = Math.ceil(wg / dx)
+                            adaptSubPasses.push({ pipeline: p18, bg: bgPass18Outer, dx, dy })
+                        }
+
                         if (adaptSubPasses.length > 0) {
-                            const ce = this.#device.createCommandEncoder({ label: "iso_pass11_12_13_sub_cell" })
+                            const ce = this.#device.createCommandEncoder({ label: "iso_pass11_to_18_sub_cell" })
                             for (const ap of adaptSubPasses) {
                                 const pass = this.#helper.beginComputePass(ce, ap.pipeline, [0, ap.bg])
                                 pass.dispatchWorkgroups(ap.dx, ap.dy, 1)
@@ -1376,7 +2129,7 @@ export class ISOExport {
                             this.#device.queue.submit([ce.finish()])
                             await this.#device.queue.onSubmittedWorkDone()
                             checkCancelled()
-                            logDiag("after Stage 4 Pass 11-13 (sub-cell duals)")
+                            logDiag("after Stage 4 Pass 11-13 + 16-18 (sub-cell place + improve)")
                         }
 
                         // ----- Diagnostic readback: parent / child residual comparison -----
@@ -1425,23 +2178,20 @@ export class ISOExport {
                             )
                         }
 
-                        // ----- Pass 14 (Stage 4 Session 7): multi-resolution sub-edge MT -----
-                        // Session 8: walks each minimal sub-edge (sub-edges owned by ≥ 1 refined
-                        // parent) and emits MT tets using mixed-depth duals — sub-cube/sub-face on
-                        // refined-parent neighbours, BASE cube/face dual on unrefined-parent
-                        // neighbours. Pass 6 has already SKIPPED the corresponding base edges
-                        // (`any_cube_around_*_refined` returns true for them) so the sub-edge
-                        // emissions here are the unique source of MT in the refined region. The
-                        // result is a single connected manifold that uses sub-resolution where
-                        // available and base resolution elsewhere — no two-surface stacking.
+                        // ----- Pass 15 (Phase 5): minimal-cube multi-resolution MT -----
+                        // Walks each minimal cube and emits MT tets using mixed-depth duals —
+                        // sub-cube/sub-face on refined-parent neighbours, BASE cube/face dual on
+                        // unrefined-parent neighbours. Pass 6 has already SKIPPED the corresponding
+                        // base edges (`any_cube_around_*_refined` returns true for them) so the
+                        // minimal-cube walk is the unique source of MT in the refined region.
                         if (minimal.numMinimalCubes > 0) {
                             // Phase 5: Pass 15 storage budget = 10 bindings exactly.
                             //   minimal-cube descriptors → packed into subCellAllDuals tail (no
                             //     separate binding for them).
                             //   cubeRefinedFlags → not needed (Session 8 derives refinement from
                             //     the sub-cube hash).
-                            //   childEdgeInfo (Pass 14) → no longer packed; replaced by
-                            //     minimal-cube descriptors at the same offset.
+                            //   Legacy childEdgeInfo packing at the same offset was removed when
+                            //     sub-edge-only Pass 14 was deleted in favor of Pass 15.
                             // Bindings 2 + 6 still needed for BASE cube/face/edge/corner dual
                             // fallback (cube_dual_at_subpos, face_*_dual_at_subpos, etc.).
                             const bgPass15 = this.#helper.createBindGroup(
@@ -1541,15 +2291,17 @@ export class ISOExport {
             }
             logDiag("after pass10-15-6")
 
-            // Suppress unused-import / unused-pipeline warnings for the deprecated Pass 14
-            // (kept compiled to avoid removing it in this commit; cleanup is a separate todo).
-            void p14
-
             progressCallback?.updateProgress("ISO: readback", 95)
             const countData = await readBufferData(meshIndexCountBuffer)
             const rawCount = new Uint32Array(countData)[0]!
-            const actualIndexCount = Math.min(rawCount, sparseMaxIndices)
+            const actualIndexCount = Math.min(rawCount, meshCapacityIndices)
             dbgLog("IsoExport").debug(`mesh index count: ${actualIndexCount}${actualIndexCount !== rawCount ? " (clamped)" : ""}`)
+            if (rawCount >= meshCapacityIndices) {
+                throw new Error(
+                    `ISO export: mesh output capacity exhausted (${meshCapacityIndices} vertex/index slots). `
+                    + `Increase voxel size, reduce octree depth, or tighten bounds.`,
+                )
+            }
 
             const verticesData = await readBufferData(meshVerticesBuffer, actualIndexCount * SIZEOF_VERTEX)
             const indicesData = await readBufferData(meshIndicesBuffer, actualIndexCount * Uint32Array.BYTES_PER_ELEMENT)
@@ -1625,30 +2377,30 @@ export class ISOExport {
             reorientMeshTriangleWinding(verts, tris, SIZEOF_VERTEX)
             logDiag("after BFS reorient")
 
-            // Crease-aware vertex splitting using **geometric face normals** (cross product
-            // of edge vectors). For smooth surfaces produced by lathe / twisted extrude,
-            // the analytic SDF gradient is piecewise (one direction per polygon segment) and
-            // gives "garbled" per-vertex normals across the surface. Geometric face normals
-            // are inherently smooth across the iso surface regardless of the underlying
-            // SDF's gradient discontinuities — so smooth-group averaging produces uniform
-            // Phong shading across a polygon-profile lathe instead of per-segment noise.
+            // Crease splitting: default **analytic** normals (`splitCreaseVerticesByAnalyticNormal`)
+            // so 90° CSG features (boxes, unions) split at true ∇F discontinuities. Optional
+            // **geometric** path (`isoCreaseByAnalyticNormal === false`) smooths lathe / polygon-
+            // profile surfaces where analytic gradients jump between segments (see mesh-postprocess).
             //
             // creaseAngleDeg ≥ 180 falls back to uniform Phong smoothing (no splits).
             const creaseAngle = this.params.creaseAngleDeg ?? 60
+            const creaseByAnalytic = this.params.isoCreaseByAnalyticNormal !== false
             if (creaseAngle >= 180) {
                 smoothNormalsByAreaWeightedFaceAverage(verts, tris, SIZEOF_VERTEX)
                 logDiag("after uniform Phong smoothing")
             } else {
                 const before = (verts.length / VERTEX_STRIDE_F32) | 0
-                const split = splitCreaseVertices(verts, tris, creaseAngle, SIZEOF_VERTEX)
+                const split = creaseByAnalytic
+                    ? splitCreaseVerticesByAnalyticNormal(verts, tris, creaseAngle, SIZEOF_VERTEX)
+                    : splitCreaseVertices(verts, tris, creaseAngle, SIZEOF_VERTEX)
                 verts = split.verts
                 tris = split.tris
                 const after = (verts.length / VERTEX_STRIDE_F32) | 0
                 dbgLog("IsoExport").debug(
-                    `Geometric crease split @ ${creaseAngle}°: verts ${before} → ${after} `
+                    `${creaseByAnalytic ? "Analytic" : "Geometric"} crease split @ ${creaseAngle}°: verts ${before} → ${after} `
                     + `(${before > 0 ? ((after / before - 1) * 100).toFixed(1) : "0"}% growth)`,
                 )
-                logDiag("after geometric crease split")
+                logDiag(creaseByAnalytic ? "after analytic crease split" : "after geometric crease split")
             }
 
             {
@@ -1658,9 +2410,15 @@ export class ISOExport {
             }
 
             logExportMeshSanityStats(verts, tris, voxelSize, SIZEOF_VERTEX, "IsoExport", "ISO")
+            const meshSanity = computeMeshExportSanityMetrics(verts, tris, voxelSize, SIZEOF_VERTEX)
 
             progressCallback?.updateProgress("Complete", 100)
-            logDiag("done")
+            logDiag("done", {
+                meshSanity,
+                pass1BrickCoreSpan: usePass1Bricks ? pass1BrickCoreSpan : 0,
+                pass1Bricks: usePass1Bricks,
+                peakGpuBufferBytes,
+            })
             return { verts, tris }
         } finally {
             this.#clearPassResourceLists()

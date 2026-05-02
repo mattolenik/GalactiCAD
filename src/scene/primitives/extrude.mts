@@ -355,7 +355,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let gz_tw = combined.w;
     // See compileAux: twist contributes ∂f/∂y via R(angle(p.y)). Without gy_world the
     // analytic normal is missing its vertical component, which produces faceted shading
-    // bands on twisted surfaces (visible especially in ISO export Pass 7 normals).
+    // bands on twisted surfaces (visible especially in ISO export normals).
     let withinSpan = capY > -h && capY < h && h > 1e-12;
     let dangle_dy = select(0.0, twist / (2.0 * h), withinSpan);
     let gy_world = dangle_dy * (gx_tw * twisted.y - gz_tw * twisted.x);

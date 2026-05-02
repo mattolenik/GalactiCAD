@@ -134,6 +134,17 @@ export interface IsoExportTuning {
     padMm: number
     creaseAngleDeg: number
     adaptiveOctree?: boolean
+    /** ISO adaptive octree max depth past base grid (default 2; worker clamps to implementation max). */
+    octreeMaxDepth?: number
+    /**
+     * Fraction of highest-QEF cubes to subdivide when not using explicit `octreeResidualThreshold`
+     * (default from app settings, typically ~0.28).
+     */
+    octreeRefineFraction?: number
+    /** Default true — analytic ∇F creases for ISO (boxes/CSG); false uses geometric normals (lathe-friendly). */
+    isoCreaseByAnalyticNormal?: boolean
+    /** Hermite QEF boundary stencil density for ISO dual placement; default 2, clamp 1..4. */
+    isoQefOversample?: number
 }
 
 export type MainToWorkerMessage =

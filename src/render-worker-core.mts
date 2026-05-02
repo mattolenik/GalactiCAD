@@ -15,7 +15,7 @@ import isoShader from "./shaders/iso.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import type { MeshData } from "./export/export.mjs"
-import { chooseIsoVoxelForGpuLimits, ISOExport } from "./export/iso.mjs"
+import { chooseIsoVoxelForGpuLimits, ISOExport, isoExportWillUsePass1BrickStreaming } from "./export/iso.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
@@ -990,6 +990,12 @@ export class RenderWorkerCore {
                             + `(grid ${gridDimX}×${gridDimY}×${gridDimZ}) to fit GPU buffer limits`,
                     )
                 }
+                if (isoExportWillUsePass1BrickStreaming(gridDimX, gridDimY, gridDimZ, this.#device.limits)) {
+                    log("RenderWorker").info(
+                        "ISO export: Pass 1 gpuSparse will use brick streaming at this voxel/grid "
+                            + "(full-grid activeCellFlags are still allocated after the brick merge).",
+                    )
+                }
             } else {
                 gridDimX = Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1)
                 gridDimY = Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1)
@@ -1005,7 +1011,25 @@ export class RenderWorkerCore {
                 gridOffsetZ: minZ,
                 voxelSize: voxelSizeMm,
                 creaseAngleDeg,
-                ...(exporter === "iso" ? { adaptiveOctree: isoTuning?.adaptiveOctree ?? false } : {}),
+                ...(exporter === "iso"
+                    ? {
+                        adaptiveOctree: isoTuning?.adaptiveOctree ?? false,
+                        octreeMaxDepth: isoTuning?.octreeMaxDepth ?? 2,
+                        octreeRefineFraction: isoTuning?.octreeRefineFraction ?? 0.28,
+                        isoCreaseByAnalyticNormal: isoTuning?.isoCreaseByAnalyticNormal !== false,
+                        isoQefOversample: isoTuning?.isoQefOversample ?? 2,
+                        isoSceneBoundsMinMm: [
+                            bounds.min[0]!,
+                            bounds.min[1]!,
+                            bounds.min[2]!,
+                        ] as [number, number, number],
+                        isoSceneBoundsMaxMm: [
+                            bounds.max[0]!,
+                            bounds.max[1]!,
+                            bounds.max[2]!,
+                        ] as [number, number, number],
+                    }
+                    : {}),
                 ...(simplifyOnExport && {
                     simplifyTargetRatio: 0.1,
                     simplifyRegularize: false,

@@ -63,6 +63,10 @@ export class DevToolsPanel extends HTMLElement {
     #isoVoxelInput!: HTMLInputElement
     #isoPadInput!: HTMLInputElement
     #isoCreaseInput!: HTMLInputElement
+    #isoCreaseAnalyticCheckbox!: HTMLInputElement
+    #isoOctreeMaxDepthInput!: HTMLInputElement
+    #isoOctreeRefineFractionInput!: HTMLInputElement
+    #isoQefOversampleInput!: HTMLInputElement
     #isoAdaptiveOctreeCheckbox!: HTMLInputElement
     #isoSection!: HTMLDivElement
     #lightingExpandedCheckbox: HTMLInputElement
@@ -392,16 +396,46 @@ export class DevToolsPanel extends HTMLElement {
         this.#isoPadInput = this.#addIsoNumberRow(this.#isoSection, "BBox pad (mm)", initialIso.padMm, {
             min: 0, max: 64, step: 0.1,
         })
-        this.#isoCreaseInput = this.#addIsoNumberRow(this.#isoSection, "Crease (°)", initialIso.creaseAngleDeg, {
-            min: 0, max: 180, step: 1,
-        })
         const isoCommit = (next: Partial<IsoExportSettings>) => {
             const merged: IsoExportSettings = { ...this.#isoExport$.value, ...next }
             this.#isoExport$.next(merged)
         }
+        this.#isoCreaseInput = this.#addIsoNumberRow(this.#isoSection, "Crease (°)", initialIso.creaseAngleDeg, {
+            min: 0, max: 180, step: 1,
+        })
+        this.#isoQefOversampleInput = this.#addIsoNumberRow(this.#isoSection, "QEF oversample", initialIso.isoQefOversample, {
+            min: 1, max: 4, step: 1,
+        })
+        this.#isoCreaseAnalyticCheckbox = this.#addCheckbox(
+            this.#isoSection,
+            "ISO creases: analytic ∇F",
+            initialIso.isoCreaseByAnalyticNormal,
+        )
+        this.#isoCreaseAnalyticCheckbox.addEventListener("change", () => {
+            isoCommit({ isoCreaseByAnalyticNormal: this.#isoCreaseAnalyticCheckbox.checked })
+        })
         this.#isoAdaptiveOctreeCheckbox = this.#addCheckbox(this.#isoSection, "Adaptive octree", initialIso.adaptiveOctree)
         this.#isoAdaptiveOctreeCheckbox.addEventListener("change", () => {
             isoCommit({ adaptiveOctree: this.#isoAdaptiveOctreeCheckbox.checked })
+        })
+        this.#isoOctreeMaxDepthInput = this.#addIsoNumberRow(this.#isoSection, "Octree max depth", initialIso.octreeMaxDepth, {
+            min: 1, max: 5, step: 1,
+        })
+        this.#isoOctreeRefineFractionInput = this.#addIsoNumberRow(
+            this.#isoSection,
+            "Octree refine (frac)",
+            initialIso.octreeRefineFraction,
+            { min: 0.02, max: 0.5, step: 0.02 },
+        )
+        this.#isoOctreeMaxDepthInput.addEventListener("change", () => {
+            const v = parseInt(this.#isoOctreeMaxDepthInput.value, 10)
+            if (Number.isFinite(v) && v >= 1 && v <= 5) isoCommit({ octreeMaxDepth: v })
+            else this.#isoOctreeMaxDepthInput.value = String(this.#isoExport$.value.octreeMaxDepth)
+        })
+        this.#isoOctreeRefineFractionInput.addEventListener("change", () => {
+            const v = parseFloat(this.#isoOctreeRefineFractionInput.value)
+            if (Number.isFinite(v) && v >= 0.02 && v <= 0.5) isoCommit({ octreeRefineFraction: v })
+            else this.#isoOctreeRefineFractionInput.value = String(this.#isoExport$.value.octreeRefineFraction)
         })
         this.#isoVoxelInput.addEventListener("change", () => {
             const v = parseFloat(this.#isoVoxelInput.value)
@@ -418,6 +452,11 @@ export class DevToolsPanel extends HTMLElement {
             if (Number.isFinite(v) && v >= 0 && v <= 180) isoCommit({ creaseAngleDeg: v })
             else this.#isoCreaseInput.value = String(this.#isoExport$.value.creaseAngleDeg)
         })
+        this.#isoQefOversampleInput.addEventListener("change", () => {
+            const v = parseInt(this.#isoQefOversampleInput.value, 10)
+            if (Number.isFinite(v) && v >= 1 && v <= 4) isoCommit({ isoQefOversample: v })
+            else this.#isoQefOversampleInput.value = String(this.#isoExport$.value.isoQefOversample)
+        })
         const isoDefaultsBtn = document.createElement("button")
         isoDefaultsBtn.textContent = "ISO defaults"
         isoDefaultsBtn.addEventListener("click", () => {
@@ -426,7 +465,11 @@ export class DevToolsPanel extends HTMLElement {
             this.#isoVoxelInput.value = String(def.voxelSizeMm)
             this.#isoPadInput.value = String(def.padMm)
             this.#isoCreaseInput.value = String(def.creaseAngleDeg)
+            this.#isoQefOversampleInput.value = String(def.isoQefOversample)
             this.#isoAdaptiveOctreeCheckbox.checked = def.adaptiveOctree
+            this.#isoOctreeMaxDepthInput.value = String(def.octreeMaxDepth)
+            this.#isoOctreeRefineFractionInput.value = String(def.octreeRefineFraction)
+            this.#isoCreaseAnalyticCheckbox.checked = def.isoCreaseByAnalyticNormal
         })
         this.#isoSection.appendChild(isoDefaultsBtn)
         shadow.appendChild(this.#isoSection)
@@ -434,6 +477,19 @@ export class DevToolsPanel extends HTMLElement {
             this.#isoExport$.subscribe(v => {
                 if (this.#isoAdaptiveOctreeCheckbox.checked !== v.adaptiveOctree) {
                     this.#isoAdaptiveOctreeCheckbox.checked = v.adaptiveOctree
+                }
+                if (parseInt(this.#isoOctreeMaxDepthInput.value, 10) !== v.octreeMaxDepth) {
+                    this.#isoOctreeMaxDepthInput.value = String(v.octreeMaxDepth)
+                }
+                const pRef = parseFloat(this.#isoOctreeRefineFractionInput.value)
+                if (!Number.isFinite(pRef) || Math.abs(pRef - v.octreeRefineFraction) > 1e-6) {
+                    this.#isoOctreeRefineFractionInput.value = String(v.octreeRefineFraction)
+                }
+                if (this.#isoCreaseAnalyticCheckbox.checked !== v.isoCreaseByAnalyticNormal) {
+                    this.#isoCreaseAnalyticCheckbox.checked = v.isoCreaseByAnalyticNormal
+                }
+                if (parseInt(this.#isoQefOversampleInput.value, 10) !== v.isoQefOversample) {
+                    this.#isoQefOversampleInput.value = String(v.isoQefOversample)
                 }
             }),
         )

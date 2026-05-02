@@ -388,8 +388,8 @@ export function splitCreaseVertices(
 }
 
 /**
- * Like `splitCreaseVertices` but uses the **analytic per-vertex normals already in
- * `verts` (from ISO Pass 7)** to detect smooth groups, instead of the geometric face
+ * Like `splitCreaseVertices` but uses the **per-vertex normals already in
+ * `verts` from the ISO export GPU path** to detect smooth groups, instead of the geometric face
  * normal of each triangle. Within each smooth group, the original analytic per-vertex
  * normal is preserved (not overwritten with face-averaged) so smooth regions get exact
  * SDF gradients and sharp features stay sharp at their actual gradient discontinuity.
@@ -462,7 +462,7 @@ export function splitCreaseVerticesByAnalyticNormal(
 
     // 3. For each vertex, flood-fill smooth groups of adjacent triangles where the
     //    analytic-normal cosine ≥ cosThresh. Emit one output vertex per group, KEEPING
-    //    the original analytic per-vertex normal (Pass 7 already gave us the best one).
+    //    the original per-vertex normal already in `verts`.
     const outTris = new Uint32Array(tris)
     let cap = Math.max(vertCount * 2, 1024)
     let outV = new Float32Array(cap * S)
@@ -610,10 +610,10 @@ export function smoothNormalsByAreaWeightedFaceAverage(
  * Orient each triangle's winding so its geometric face normal agrees with the
  * average analytic vertex normal across its 3 corners. Mutates `tris` in place.
  *
- * Designed for ISO export, where Pass 7 writes per-vertex analytic SDF gradients
- * (`safeUnit3(sceneSDF_mid(p).n)`) — by SDF convention these point canonically
- * outward (toward +F = outside the solid). Per-triangle alignment is robust to
- * non-manifold edges (unlike BFS-based reorientation, which fragments at any
+ * Designed for ISO export, where per-vertex normals in `verts` come from the GPU
+ * tessellation path (aligned with SDF gradients at dual samples where available). By SDF
+ * convention these point canonically outward (toward +F = outside the solid).
+ * Per-triangle alignment is robust to non-manifold edges (unlike BFS-based reorientation, which fragments at any
  * count != 2 edge) and to disconnected components from welding artifacts.
  *
  * Returns the number of triangles whose winding was flipped (for logging).
@@ -672,9 +672,9 @@ export function orientTrianglesToMatchAnalyticNormals(
 
 /**
  * Per-vertex: flip the stored normal if it points opposite the area-weighted
- * sum of incident triangle face normals. Designed for ISO export's Pass 7
- * analytic normals from `sceneSDF_mid`, which can come out backwards when:
- *   - Newton lands a welded vertex on the "wrong" side of a thin feature, or
+ * sum of incident triangle face normals. Designed for ISO export: per-vertex normals
+ * from the GPU path can disagree with face geometry when:
+ *   - a welded vertex lands on the "wrong" side of a thin feature, or
  *   - a CSG-difference seam returns an inward-pointing normal at the seam point.
  *
  * Must run AFTER `reorientMeshTriangleWinding` so the area-weighted sum is the
@@ -793,17 +793,21 @@ function edgeIncCountStats(lo: number, hi: number, buf: Int32Array, mask: number
     throw new Error("logExportMeshSanityStats: edge count hash overflow")
 }
 
-/**
- * Boundary / non-manifold edge counts and degenerate triangle tally (same logic as legacy MDC export).
- */
-export function logExportMeshSanityStats(
+/** Same edge / manifold tallies as `logExportMeshSanityStats`, for structured logs or regression checks. */
+export type MeshExportSanityMetrics = {
+    triCount: number
+    degenerateTris: number
+    boundaryEdges: number
+    nonManifoldEdges: number
+}
+
+/** Computes boundary / non-manifold edge counts and degenerate triangle tally (same logic as legacy MDC export). */
+export function computeMeshExportSanityMetrics(
     verts: Float32Array<ArrayBuffer>,
     tris: Uint32Array<ArrayBuffer>,
     voxelSize: number,
     vertexStrideBytes: number,
-    logModule: LogModule,
-    statsLabel: string,
-): void {
+): MeshExportSanityMetrics {
     const stride = vertexStrideBytes / 4
     const triCount = Math.floor(tris.length / 3)
     const areaEpsSq = Math.pow(voxelSize * voxelSize * 1e-6, 2)
@@ -859,7 +863,24 @@ export function logExportMeshSanityStats(
         if (c === 1) boundaryEdges++
         else if (c !== 2) nonManifoldEdges++
     }
+    return { triCount, degenerateTris: degenerate, boundaryEdges, nonManifoldEdges }
+}
+
+/**
+ * Boundary / non-manifold edge counts and degenerate triangle tally (same logic as legacy MDC export).
+ */
+export function logExportMeshSanityStats(
+    verts: Float32Array<ArrayBuffer>,
+    tris: Uint32Array<ArrayBuffer>,
+    voxelSize: number,
+    vertexStrideBytes: number,
+    logModule: LogModule,
+    statsLabel: string,
+): void {
+    const { triCount, degenerateTris, boundaryEdges, nonManifoldEdges } = computeMeshExportSanityMetrics(
+        verts, tris, voxelSize, vertexStrideBytes,
+    )
     dbgLog(logModule).debug(
-        `${statsLabel} mesh stats: tris=${triCount} degenerateTris=${degenerate} boundaryEdges=${boundaryEdges} nonManifoldEdges=${nonManifoldEdges}`,
+        `${statsLabel} mesh stats: tris=${triCount} degenerateTris=${degenerateTris} boundaryEdges=${boundaryEdges} nonManifoldEdges=${nonManifoldEdges}`,
     )
 }

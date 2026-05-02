@@ -11,24 +11,33 @@
  *    (`computeSparseDualSetsFromDilatedCubeLinears`; legacy `computeSparseDualSets` still
  *    implements CPU dilation from flags for tooling/tests.) Dilation uses Chebyshev
  *    distance ≤ 1 so every edge Pass 6 emits around has the four incident cube duals.
+ *    **Pass-1 brick streaming** merges per-brick GPU dilated lists into global cube linears
+ *    (`mergeBrickLocalDilatedCubeLinearsIntoGlobalOwnedSet` + `sortedGlobalDilatedCubeLinearsFromSet`),
+ *    then one `SparseDualSets` + `packSparseDualCompactList` for GPU upload.
  * 2. Enumerates the union of (corners, X/Y/Z edges, XY/YZ/XZ faces, cubes) belonging
  *    to dilated cubes — the "sparse set".
  * 3. Builds compact lists (slot → linear cell index) used to drive Pass 2/3/4/5
  *    dispatches, and a single open-addressed hash table (key → absolute slot in
  *    `allDuals`) used by Pass 6 to look up duals by grid index.
  *
- * Hash key layout: `key = (cellType << 28) | (linearIdx & 0x0fffffff)`.
+ * Hash key layout (Phase 3 wide addressing, matches WGSL `sparse_dual_hash_key`):
+ *   `key_lo = linearIdx & 0xffffffff`
+ *   `key_hi = (cellType << 28) | ((linearIdx >> 32) & 0x0fffffff)`
  *   cellType 0 = corner, 1 = X-edge, 2 = Y-edge, 3 = Z-edge,
  *            4 = XY-face, 5 = YZ-face, 6 = XZ-face, 7 = cube.
- *   linearIdx supports up to ~268 M cells per category (grid ≤ ~640³).
+ *   Up to **60 bits** of logical linear index per category (32 low + 28 high payload).
+ *   WGSL sub-cell lookups (`iso.wgsl` `sub_*_sparse_key`) use the same wide packing via
+ *   `sparse_dual_hash_key_from_u96`; base-grid categories still pass `linear < 2^32`.
  *
  * Hash table: power-of-two size, ≥ 4× total slot count (≤ 25% load factor → very low
- * probe counts). Slot encoding: `vec2u(key, absoluteSlot)`, with `key = 0xffffffffu`
- * marking empty.
+ * probe counts). Each entry is **four** u32: `(key_lo, key_hi, absoluteSlot, 0)`;
+ * empty rows use `key_lo = key_hi = 0xffffffff` (Knuth-mixed probe on both key words).
  */
 
 export const SPARSE_HASH_KEY_EMPTY = 0xffffffff
 export const SPARSE_HASH_KNUTH = 0x9e3779b1 // = 2654435761; matches WGSL helper
+/** Mixing constant for `key_hi` in the dual 32-bit probe (matches WGSL). */
+export const SPARSE_HASH_KNUTH_HI = 0x85ebca6b
 
 /** Cell type tag stored in the upper 4 bits of the hash key. */
 export const CELL_TYPE_CORNER = 0
@@ -40,8 +49,26 @@ export const CELL_TYPE_FACE_YZ = 5
 export const CELL_TYPE_FACE_XZ = 6
 export const CELL_TYPE_CUBE = 7
 
+/**
+ * Pack `(cellType, linearIdx)` for open-addressed ISO sparse dual hashes (base + sub).
+ * `linearIdx` must be an integer in `[0, 2^60)`; use `encodeSparseDualHashKeyBigInt`
+ * when the index may exceed `Number.MAX_SAFE_INTEGER`.
+ */
+export function encodeSparseDualHashKey(cellType: number, linearIdx: number): { keyLo: number; keyHi: number } {
+    const li = !Number.isFinite(linearIdx) || linearIdx < 0 ? 0n : BigInt(Math.floor(linearIdx))
+    return encodeSparseDualHashKeyBigInt(cellType, li)
+}
+
+export function encodeSparseDualHashKeyBigInt(cellType: number, linearIdx: bigint): { keyLo: number; keyHi: number } {
+    const li = linearIdx < 0n ? 0n : linearIdx
+    const keyLo = Number(li & 0xffffffffn)
+    const keyHi = ((cellType & 0xf) << 28) | Number((li >> 32n) & 0x0fffffffn)
+    return { keyLo, keyHi }
+}
+
+/** Legacy 28-bit packed key (pre Phase 3). Prefer `encodeSparseDualHashKey`. */
 export function makeSparseKey(cellType: number, linearIdx: number): number {
-    return ((cellType & 0xf) << 28) | (linearIdx & 0x0fffffff)
+    return ((cellType & 0xf) << 28) | (linearIdx >>> 0 & 0x0fffffff)
 }
 
 export interface SparseDualSets {
@@ -71,15 +98,116 @@ export interface SparseDualSets {
     /** Total `allDuals` slots = sum of all compact list lengths. */
     totalDualSlots: number
 
-    /** Open-addressed hash table: interleaved (key, absoluteSlot) pairs; power-of-two entries. */
+    /** Open-addressed hash table: `(key_lo, key_hi, absoluteSlot, 0)` per row; power-of-two rows. */
     hashTable: Uint32Array
-    /** Number of (key, value) entries (= hashTable.length / 2). Power of two. */
+    /** Number of hash rows (= `hashTable.length / 4`). Power of two. */
     hashEntries: number
     /** `hashEntries - 1`, used as the slot mask in WGSL. */
     hashMask: number
 
     /** Per-step CPU timing in ms (alloc/dilate/enumerate/compact/hash). Set when DEBUG. */
     timingMs?: Record<string, number>
+}
+
+/**
+ * Decode a brick-local dilated base-cube linear (same layout as GPU scatter) and map to the
+ * **global** cube linear `cx + cy*nx + cz*nx*ny` on the full export grid.
+ *
+ * @param localLinear — `lcx + lcy*nxLocal + lcz*nxLocal*nyLocal` for the brick's dense subgrid
+ * @param loGlobalCubeX/Y/Z — global minimum base-cube index stored at local `(0,0,0)` (Pass-1 brick `loCell*`)
+ */
+export function brickLocalDilatedCubeLinearToGlobal(
+    localLinear: number,
+    nxLocal: number,
+    nyLocal: number,
+    loGlobalCubeX: number,
+    loGlobalCubeY: number,
+    loGlobalCubeZ: number,
+    nxGlobal: number,
+    nyGlobal: number,
+): number {
+    const lcx = localLinear % nxLocal
+    const lcy = ((localLinear / nxLocal) | 0) % nyLocal
+    const lcz = (localLinear / (nxLocal * nyLocal)) | 0
+    const gcx = loGlobalCubeX + lcx
+    const gcy = loGlobalCubeY + lcy
+    const gcz = loGlobalCubeZ + lcz
+    return gcx + gcy * nxGlobal + gcz * nxGlobal * nyGlobal
+}
+
+/**
+ * Merge one brick's dilated cube linears into `out`, keeping only cubes in the brick's
+ * **owned** core `[core0*, core1*)` (half-open). Halo dilated entries are dropped so
+ * overlapping bricks do not duplicate global keys.
+ */
+export function mergeBrickLocalDilatedCubeLinearsIntoGlobalOwnedSet(
+    out: Set<number>,
+    localDilatedLinears: Uint32Array,
+    nxLocal: number,
+    nyLocal: number,
+    loGlobalCubeX: number,
+    loGlobalCubeY: number,
+    loGlobalCubeZ: number,
+    nxGlobal: number,
+    nyGlobal: number,
+    core0X: number,
+    core0Y: number,
+    core0Z: number,
+    core1X: number,
+    core1Y: number,
+    core1Z: number,
+): void {
+    for (let i = 0; i < localDilatedLinears.length; i++) {
+        const li = localDilatedLinears[i]!
+        const lcx = li % nxLocal
+        const lcy = ((li / nxLocal) | 0) % nyLocal
+        const lcz = (li / (nxLocal * nyLocal)) | 0
+        const gcx = loGlobalCubeX + lcx
+        const gcy = loGlobalCubeY + lcy
+        const gcz = loGlobalCubeZ + lcz
+        if (gcx >= core0X && gcx < core1X
+            && gcy >= core0Y && gcy < core1Y
+            && gcz >= core0Z && gcz < core1Z) {
+            out.add(brickLocalDilatedCubeLinearToGlobal(
+                li,
+                nxLocal,
+                nyLocal,
+                loGlobalCubeX,
+                loGlobalCubeY,
+                loGlobalCubeZ,
+                nxGlobal,
+                nyGlobal,
+            ))
+        }
+    }
+}
+
+/** Materialize a merged global dilated-cube set as a sorted `Uint32Array` (deterministic order). */
+export function sortedGlobalDilatedCubeLinearsFromSet(globalSet: Set<number>): Uint32Array {
+    const out = new Uint32Array(globalSet.size)
+    let di = 0
+    for (const v of globalSet) {
+        out[di++] = v
+    }
+    out.sort((a, b) => (a | 0) - (b | 0))
+    return out
+}
+
+/**
+ * Single GPU `sparseCompactList` layout: category lists concatenated at the bases in
+ * `sparse` (matches WGSL / `ISO_UNIFORM` sparse slot ordering).
+ */
+export function packSparseDualCompactList(sparse: SparseDualSets): Uint32Array {
+    const allCompactList = new Uint32Array(sparse.totalDualSlots)
+    allCompactList.set(sparse.cornerCompactList, sparse.cornerBase)
+    allCompactList.set(sparse.edgeXCompactList, sparse.edgeXBase)
+    allCompactList.set(sparse.edgeYCompactList, sparse.edgeYBase)
+    allCompactList.set(sparse.edgeZCompactList, sparse.edgeZBase)
+    allCompactList.set(sparse.faceXYCompactList, sparse.faceXYBase)
+    allCompactList.set(sparse.faceYZCompactList, sparse.faceYZBase)
+    allCompactList.set(sparse.faceXZCompactList, sparse.faceXZBase)
+    allCompactList.set(sparse.cubeCompactList, sparse.cubeBase)
+    return allCompactList
 }
 
 /**
@@ -229,29 +357,35 @@ export function computeSparseDualSetsFromDilatedCubeLinears(
     const target = Math.max(64, totalDualSlots * 4)
     while (hashEntries < target) hashEntries <<= 1
     const hashMask = hashEntries - 1
-    const hashTable = new Uint32Array(hashEntries * 2)
+    const hashTable = new Uint32Array(hashEntries * 4)
     hashTable.fill(0xffffffff)
 
-    const insertHash = (key: number, slot: number) => {
-        let probe = (Math.imul(key >>> 0, SPARSE_HASH_KNUTH) >>> 0) & hashMask
+    const insertHash = (keyLo: number, keyHi: number, slot: number) => {
+        let probe = (
+            (Math.imul(keyLo >>> 0, SPARSE_HASH_KNUTH) >>> 0)
+            ^ (Math.imul(keyHi >>> 0, SPARSE_HASH_KNUTH_HI) >>> 0)
+        ) & hashMask
         for (let i = 0; i < 4096; i++) {
-            const base2 = probe * 2
-            if (hashTable[base2] === 0xffffffff) {
-                hashTable[base2] = key >>> 0
-                hashTable[base2 + 1] = slot >>> 0
+            const base4 = probe * 4
+            if (hashTable[base4] === 0xffffffff && hashTable[base4 + 1] === 0xffffffff) {
+                hashTable[base4] = keyLo >>> 0
+                hashTable[base4 + 1] = keyHi >>> 0
+                hashTable[base4 + 2] = slot >>> 0
+                hashTable[base4 + 3] = 0
                 return
             }
             probe = (probe + 1) & hashMask
         }
         throw new Error(
-            `Sparse hash insert overflowed 4096 probes at key=${key}, slot=${slot}; `
+            `Sparse hash insert overflowed 4096 probes at keyLo=${keyLo} keyHi=${keyHi}, slot=${slot}; `
             + `entries=${hashEntries}, totalDualSlots=${totalDualSlots}`,
         )
     }
 
     const insertList = (list: Uint32Array, cellType: number, baseSlot: number) => {
         for (let i = 0; i < list.length; i++) {
-            insertHash(makeSparseKey(cellType, list[i]!), baseSlot + i)
+            const { keyLo, keyHi } = encodeSparseDualHashKey(cellType, list[i]!)
+            insertHash(keyLo, keyHi, baseSlot + i)
         }
     }
     insertList(cornerCompactList, CELL_TYPE_CORNER, cornerBase)

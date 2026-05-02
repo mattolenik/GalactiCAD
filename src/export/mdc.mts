@@ -121,6 +121,14 @@ export interface MDCParams {
     creaseAngleDeg?: number
 
     /**
+     * ISO export only: when `true` (default), crease detection uses **analytic** SDF normals
+     * already stored on vertices so splits follow real gradient discontinuities (box edges,
+     * CSG seams). When `false`, creases use **geometric** triangle normals — often smoother on
+     * lathe / polygon-profile surfaces where analytic gradients jump between segments.
+     */
+    isoCreaseByAnalyticNormal?: boolean
+
+    /**
      * ISO export only — Stage 4 octree adaptivity (Manson & Schaefer §5.1) foundation.
      *
      * Session 1 (current): when `true`, after Pass 5 the orchestrator reads back the per-cube
@@ -137,14 +145,38 @@ export interface MDCParams {
     adaptiveOctree?: boolean
 
     /** ISO Stage 4 only: residual threshold above which a cube is marked for subdivision.
-     * Defaults to a relative cutoff calibrated against `voxelSize`. Override to widen / tighten
-     * the refinement set without rebuilding the whole pipeline. */
+     * When omitted, the exporter picks a cutoff from the residual histogram (see `octreeRefineFraction`). */
     octreeResidualThreshold?: number
 
-    /** ISO Stage 4 only: maximum subdivision depth past the base uniform grid. Default 2 (each
-     * marked cube can refine up to 4×4×4 sub-cubes). The paper notes diminishing returns past
-     * 3-4 levels for most CAD parts. */
+    /**
+     * ISO Stage 4 only: used **only** when `octreeResidualThreshold` is omitted. Fraction of
+     * active surface cubes with the **largest** QEF residuals that are marked for subdivision at
+     * the base grid (e.g. `0.35` ≈ top 35% by residual). Smooth curved regions at **large**
+     * voxel sizes often have similar moderate residuals across many cubes; a larger fraction
+     * pulls more of them into the octree so sub-grid duals can approximate curvature. Range
+     * ~`0.02..0.5`. Typical tradeoff: higher → smoother spheres, more triangles and GPU work.
+     */
+    octreeRefineFraction?: number
+
+    /** ISO Stage 4 only: maximum subdivision depth past the base uniform grid (1–5).
+     * Defaults to 2 in the worker when omitted; the exporter clamps to the implementation cap. */
     octreeMaxDepth?: number
+
+    /**
+     * ISO Hermite dual placement only (Pass 5 / 11–13): boundary samples per axis use
+     * `(isoQefOversample+1)` divisions (edge/face/cube stencils in `iso.wgsl`). Default 2;
+     * clamped to 1..4 on CPU and GPU. Packed into `sparseHash.z` in the ISO uniform block.
+     */
+    isoQefOversample?: number
+
+    /**
+     * ISO Pass 1 (brick streaming) — optional **coarse CPU occupancy** (VDB-style top level):
+     * tight scene AABB in world mm from the mesh bounds pre-pass. When both min and max are
+     * set with finite numbers, bricks whose owned core cannot intersect the inflated AABB
+     * are skipped (void culling). Omitted or partial → no culling.
+     */
+    isoSceneBoundsMinMm?: readonly [number, number, number]
+    isoSceneBoundsMaxMm?: readonly [number, number, number]
 }
 
 export interface ProgressCallback {

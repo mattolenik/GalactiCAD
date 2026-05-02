@@ -1661,19 +1661,28 @@ fn placeCubeDuals_Pass5(
     // position (paper §3 fallback to avoid the dimpled-surface artifact in high-curvature
     // regions where the QEF-predicted F* is biased convex- or concave-ward).
     let solution = solveQEF4(qef4);
-    let pos = clamp(solution.xyz, clamp_min, clamp_max);
+    var pos: vec3f;
+    if (qef4.numPoints == 0u) {
+        // Pass 1 marked this cell active but every cube edge had matching endpoint signs,
+        // so no QEF samples were accumulated. `solveQEF4` returns vec4(0); clamping that to
+        // the cell picks up world origin whenever the cell contains (0,0,0) — common on
+        // axis-aligned boxes — producing spikes and degenerate MT triangles.
+        pos = (cell_min + cell_max) * 0.5;
+        cubeQefResidual[local_slot] = 0.0;
+    } else {
+        pos = clamp(solution.xyz, clamp_min, clamp_max);
+        // Stage 4: per-cube QEF residual at the (clamped) solution. Used CPU-side by the
+        // adaptive octree driver to drive subdivision (paper §5.1: refine cubes whose dual
+        // residual exceeds threshold). Residual is computed at the post-clamp `pos` paired
+        // with the QEF-predicted F* (`solution.w`), so the metric reflects how well the
+        // clamped position fits the local SDF tangent planes — i.e. how curved/sharp this
+        // cube actually is. Flat regions: residual ≈ 0. Sharp features clamped to the cell
+        // boundary: residual ≫ 0 (signalling "feature wants to live outside this cell").
+        let x4_solved = vec4f(pos, solution.w);
+        cubeQefResidual[local_slot] = qefCost4(qef4, x4_solved);
+    }
     let f_shifted = sceneSDF_fast(pos).d - uniforms.isoValue;
     write_dual_slot(absolute_slot, DualVertex(pos, f_shifted));
-
-    // Stage 4: per-cube QEF residual at the (clamped) solution. Used CPU-side by the
-    // adaptive octree driver to drive subdivision (paper §5.1: refine cubes whose dual
-    // residual exceeds threshold). Residual is computed at the post-clamp `pos` paired
-    // with the QEF-predicted F* (`solution.w`), so the metric reflects how well the
-    // clamped position fits the local SDF tangent planes — i.e. how curved/sharp this
-    // cube actually is. Flat regions: residual ≈ 0. Sharp features clamped to the cell
-    // boundary: residual ≫ 0 (signalling "feature wants to live outside this cell").
-    let x4_solved = vec4f(pos, solution.w);
-    cubeQefResidual[local_slot] = qefCost4(qef4, x4_solved);
 }
 
 // ============================== Phase 3: Triangulation improvement (paper §4.1) ==============================

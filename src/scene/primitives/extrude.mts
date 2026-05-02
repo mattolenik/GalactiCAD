@@ -343,92 +343,96 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
-    let edgeIdx = u32(combined.y);
-    let v0 = polygonVertices[${BASE}u + edgeIdx];
-    let v1 = polygonVertices[${BASE}u + (edgeIdx + 1u) % ${N}u];
-    let edge = v1 - v0;
-    let edgeLen2 = max(dot(edge, edge), 1e-12);
-    let edgeLen = sqrt(edgeLen2);
-    let edgeTan2 = edge / edgeLen;
-    let edgeOut2 = vec2f(edgeTan2.y, -edgeTan2.x) * ${windSignStr};
     let capPlaneY = ${capYOff} + sgn(capY) * capH;
-    let sideEps = max(max(SURF_DIST * 8.0, capH * 0.015), uniforms.voxelSize * 0.35);
-    let rimEps = max(max(SURF_DIST * 8.0, capH * 0.02), uniforms.voxelSize * 0.6);
-    let vtxEps = max(max(SURF_DIST * 8.0, capH * 0.03), uniforms.voxelSize * 1.1);
-    let featureVtxEps = min(vtxEps, uniforms.voxelSize * 2.5);
-    // Side-line vertex window must be strictly tight: a sample on the side surface
-    // only sits *on* the vertical polygon-vertex column when its projected 2D
-    // distance to that column is sub-voxel. A wider window catches samples on the
-    // adjacent flat polygon edge near v0, which then incorrectly snap MDC vertices
-    // onto the column and produce spurious vertical creases co-planar with the
-    // actual side face.
-    let sideLineVtxEps = max(SURF_DIST * 4.0, uniforms.voxelSize * 0.18);
-    let capCornerEps = max(rimEps, uniforms.voxelSize * 0.75);
+    // Primitive topology only — no uniforms.voxelSize in feature gates (glyphs must not
+    // fragment when voxel size changes). Band / vertexTol are model-relative + SURF_DIST.
+    let qProf = p.xz;
+    let vertexTol = max(SURF_DIST * 8.0, capH * 0.0001);
+    let featBand = max(SURF_DIST * 8.0, capH * 0.02);
+    let extrudeMidId = ${this.id}u;
 
-    if (!onSide && abs(d2d) < rimEps && abs(dCap) < rimEps) {
-        if (length(p.xz - v0) < featureVtxEps) {
-            let vPrev = polygonVertices[${BASE}u + (edgeIdx + ${N}u - 1u) % ${N}u];
-            let prevDir = normalize(v0 - vPrev);
-            let nextDir = normalize(v1 - v0);
+    var bestPd = 1e30;
+    var bestKe = 0u;
+    var bestTt = 0.0;
+    for (var ke = 0u; ke < ${N}u; ke = ke + 1u) {
+        let vk = polygonVertices[${BASE}u + ke];
+        let vk1 = polygonVertices[${BASE}u + (ke + 1u) % ${N}u];
+        let seg = vk1 - vk;
+        let sl2 = max(dot(seg, seg), 1e-12);
+        let tt = clamp(dot(qProf - vk, seg) / sl2, 0.0, 1.0);
+        let proj = vk + seg * tt;
+        let pd = length(qProf - proj);
+        if (pd < bestPd) {
+            bestPd = pd;
+            bestKe = ke;
+            bestTt = tt;
+        }
+    }
+
+    // Caps: closest point on polygon boundary → vertex corner vs edge rim LINE.
+    if (!onSide && bestPd < featBand) {
+        let vk = polygonVertices[${BASE}u + bestKe];
+        let vk1 = polygonVertices[${BASE}u + (bestKe + 1u) % ${N}u];
+        let seg = vk1 - vk;
+        let sl2 = max(dot(seg, seg), 1e-12);
+        let edgeLen = sqrt(sl2);
+        let edgeTan2 = seg / edgeLen;
+        let edgeOut2 = vec2f(edgeTan2.y, -edgeTan2.x) * ${windSignStr};
+        let tt = bestTt;
+        let rim = vk + seg * tt;
+        var cornerKv = ${N}u;
+        if (tt <= vertexTol) {
+            cornerKv = bestKe;
+        } else if (tt >= 1.0 - vertexTol) {
+            cornerKv = (bestKe + 1u) % ${N}u;
+        }
+        if (cornerKv < ${N}u) {
+            let cv = polygonVertices[${BASE}u + cornerKv];
+            let cvPrev = polygonVertices[${BASE}u + (cornerKv + ${N}u - 1u) % ${N}u];
+            let cvNext = polygonVertices[${BASE}u + (cornerKv + 1u) % ${N}u];
+            let prevDir = normalize(cv - cvPrev);
+            let nextDir = normalize(cvNext - cv);
             let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
             let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
             let n0 = safeNormalize(vec3f(prevOut2.x, 0.0, prevOut2.y), vec3f(1.0, 0.0, 0.0));
             let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
             if (dot(n0, n1) < ${EXTRUDE_MDC_FEATURE_DOT}) {
-                let featurePoint = vec3f(v0.x, capPlaneY, v0.y);
-                return sdfRMidCorner(d, 1.0, n, featurePoint, n0, n1, length(p - featurePoint));
+                let featurePoint = vec3f(cv.x, capPlaneY, cv.y);
+                var cr = sdfRMidCorner(d, 1.0, n, featurePoint, n0, n1, length(p - featurePoint));
+                cr.featureIdA = extrudeMidId;
+                cr.featureIdB = cornerKv + 1u;
+                return cr;
             }
         }
-        if (length(p.xz - v1) < featureVtxEps) {
-            let vNext = polygonVertices[${BASE}u + (edgeIdx + 2u) % ${N}u];
-            let prevDir = normalize(v1 - v0);
-            let nextDir = normalize(vNext - v1);
-            let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
-            let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
-            let n0 = safeNormalize(vec3f(prevOut2.x, 0.0, prevOut2.y), vec3f(1.0, 0.0, 0.0));
-            let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
-            if (dot(n0, n1) < ${EXTRUDE_MDC_FEATURE_DOT}) {
-                let featurePoint = vec3f(v1.x, capPlaneY, v1.y);
-                return sdfRMidCorner(d, 1.0, n, featurePoint, n0, n1, length(p - featurePoint));
-            }
-        }
-        let t = clamp(dot(p.xz - v0, edge) / edgeLen2, 0.0, 1.0);
-        let rim = v0 + edge * t;
         let featurePoint = vec3f(rim.x, capPlaneY, rim.y);
-        return sdfRMidLine(
+        var ln = sdfRMidLine(
             d, 1.0, n,
             featurePoint,
             safeNormalize(vec3f(edgeTan2.x, 0.0, edgeTan2.y), vec3f(1.0, 0.0, 0.0)),
             safeNormalize(vec3f(edgeOut2.x, 0.0, edgeOut2.y), vec3f(1.0, 0.0, 0.0)),
             length(p - featurePoint),
         );
+        ln.featureIdA = extrudeMidId;
+        ln.featureIdB = bestKe + 1u;
+        return ln;
     }
 
-    if (onSide && abs(d2d) < sideEps) {
-        let nearCap = abs(abs(capY) - capH) < capCornerEps;
-        if (length(p.xz - v0) < select(sideLineVtxEps, featureVtxEps, nearCap)) {
-            let vPrev = polygonVertices[${BASE}u + (edgeIdx + ${N}u - 1u) % ${N}u];
-            let prevDir = normalize(v0 - vPrev);
-            let nextDir = normalize(v1 - v0);
-            let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
-            let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
-            let n0 = safeNormalize(vec3f(prevOut2.x, 0.0, prevOut2.y), vec3f(1.0, 0.0, 0.0));
-            let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
-            if (dot(n0, n1) < ${EXTRUDE_MDC_FEATURE_DOT}) {
-                let sideOtherN = select(n1, n0, dot(nSide, n1) > dot(nSide, n0));
-                if (nearCap) {
-                    let capSign = sgn(capY);
-                    let featurePoint = vec3f(v0.x, ${capYOff} + capSign * capH, v0.y);
-                    return sdfRMidCorner(d, 1.0, n, featurePoint, vec3f(0.0, capSign, 0.0), sideOtherN, length(p - featurePoint));
-                }
-                let featurePoint = vec3f(v0.x, p.y, v0.y);
-                return sdfRMidLine(d, 1.0, n, featurePoint, vec3f(0.0, 1.0, 0.0), sideOtherN, length(p - featurePoint));
-            }
+    // Mantle: vertical crease only where closest boundary point is a polygon vertex (sharp).
+    if (onSide && bestPd < featBand) {
+        let nearCap = abs(abs(capY) - capH) < featBand;
+        let tt = bestTt;
+        var creaseKv = ${N}u;
+        if (tt <= vertexTol) {
+            creaseKv = bestKe;
+        } else if (tt >= 1.0 - vertexTol) {
+            creaseKv = (bestKe + 1u) % ${N}u;
         }
-        if (length(p.xz - v1) < select(sideLineVtxEps, featureVtxEps, nearCap)) {
-            let vNext = polygonVertices[${BASE}u + (edgeIdx + 2u) % ${N}u];
-            let prevDir = normalize(v1 - v0);
-            let nextDir = normalize(vNext - v1);
+        if (creaseKv < ${N}u) {
+            let sv = polygonVertices[${BASE}u + creaseKv];
+            let svPrev = polygonVertices[${BASE}u + (creaseKv + ${N}u - 1u) % ${N}u];
+            let svNext = polygonVertices[${BASE}u + (creaseKv + 1u) % ${N}u];
+            let prevDir = normalize(sv - svPrev);
+            let nextDir = normalize(svNext - sv);
             let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
             let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
             let n0 = safeNormalize(vec3f(prevOut2.x, 0.0, prevOut2.y), vec3f(1.0, 0.0, 0.0));
@@ -437,11 +441,17 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
                 let sideOtherN = select(n1, n0, dot(nSide, n1) > dot(nSide, n0));
                 if (nearCap) {
                     let capSign = sgn(capY);
-                    let featurePoint = vec3f(v1.x, ${capYOff} + capSign * capH, v1.y);
-                    return sdfRMidCorner(d, 1.0, n, featurePoint, vec3f(0.0, capSign, 0.0), sideOtherN, length(p - featurePoint));
+                    let featurePoint = vec3f(sv.x, ${capYOff} + capSign * capH, sv.y);
+                    var cr = sdfRMidCorner(d, 1.0, n, featurePoint, vec3f(0.0, capSign, 0.0), sideOtherN, length(p - featurePoint));
+                    cr.featureIdA = extrudeMidId;
+                    cr.featureIdB = creaseKv + 1u;
+                    return cr;
                 }
-                let featurePoint = vec3f(v1.x, p.y, v1.y);
-                return sdfRMidLine(d, 1.0, n, featurePoint, vec3f(0.0, 1.0, 0.0), sideOtherN, length(p - featurePoint));
+                let featurePoint = vec3f(sv.x, p.y, sv.y);
+                var ln = sdfRMidLine(d, 1.0, n, featurePoint, vec3f(0.0, 1.0, 0.0), sideOtherN, length(p - featurePoint));
+                ln.featureIdA = extrudeMidId;
+                ln.featureIdB = creaseKv + 1u;
+                return ln;
             }
         }
     }
@@ -456,8 +466,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let h = ${capH};
     let capY = p.y - ${capYOff};
     let twist = ${twistRad};
-    let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
-    let angle = twist * t;
+    let tTw = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
+    let angle = twist * tTw;
     let ca = cos(angle);
     let sa = sin(angle);
     let twisted = vec2f(ca * p.x + sa * p.z, -sa * p.x + ca * p.z);
@@ -471,87 +481,89 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, 0.0, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
-    let edgeIdx = u32(combined.y);
-    let v0 = polygonVertices[${BASE}u + edgeIdx];
-    let v1 = polygonVertices[${BASE}u + (edgeIdx + 1u) % ${N}u];
-    let edge = v1 - v0;
-    let edgeLen2 = max(dot(edge, edge), 1e-12);
-    let edgeLen = sqrt(edgeLen2);
-    let edgeTan2 = edge / edgeLen;
-    let edgeOut2 = vec2f(edgeTan2.y, -edgeTan2.x) * ${windSignStr};
     let capPlaneY = ${capYOff} + sgn(capY) * h;
-    let sideEps = max(max(SURF_DIST * 8.0, h * 0.015), uniforms.voxelSize * 0.35);
-    let rimEps = max(max(SURF_DIST * 8.0, h * 0.02), uniforms.voxelSize * 0.6);
-    let vtxEps = max(max(SURF_DIST * 8.0, h * 0.03), uniforms.voxelSize * 1.1);
-    let featureVtxEps = min(vtxEps, uniforms.voxelSize * 2.5);
-    // Side-line vertex window must be strictly tight so only samples genuinely
-    // on the helical polygon-vertex column emit a vertical-line feature.
-    // See the untwisted branch for rationale.
-    let sideLineVtxEps = max(SURF_DIST * 4.0, uniforms.voxelSize * 0.18);
-    let capCornerEps = max(rimEps, uniforms.voxelSize * 0.75);
+    let qProf = twisted;
+    let vertexTol = max(SURF_DIST * 8.0, h * 0.0001);
+    let featBand = max(SURF_DIST * 8.0, h * 0.02);
     let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
+    let extrudeMidId = ${this.id}u;
 
-    if (!onSide && abs(d2d) < rimEps && abs(dCap) < rimEps) {
-        if (length(twisted - v0) < featureVtxEps) {
-            let vPrev = polygonVertices[${BASE}u + (edgeIdx + ${N}u - 1u) % ${N}u];
-            let prevDir = normalize(v0 - vPrev);
-            let nextDir = normalize(v1 - v0);
-            let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
-            let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
-            let n0 = safeNormalize(vec3f(ca * prevOut2.x - sa * prevOut2.y, 0.0, sa * prevOut2.x + ca * prevOut2.y), vec3f(1.0, 0.0, 0.0));
-            let n1 = safeNormalize(vec3f(ca * nextOut2.x - sa * nextOut2.y, 0.0, sa * nextOut2.x + ca * nextOut2.y), vec3f(1.0, 0.0, 0.0));
-            if (dot(n0, n1) < ${EXTRUDE_MDC_FEATURE_DOT}) {
-                let featurePoint = vec3f(ca * v0.x - sa * v0.y, capPlaneY, sa * v0.x + ca * v0.y);
-                return sdfRMidCorner(d, 1.0, n, featurePoint, n0, n1, length(p - featurePoint));
-            }
+    var bestPd = 1e30;
+    var bestKe = 0u;
+    var bestTt = 0.0;
+    for (var ke = 0u; ke < ${N}u; ke = ke + 1u) {
+        let vk = polygonVertices[${BASE}u + ke];
+        let vk1 = polygonVertices[${BASE}u + (ke + 1u) % ${N}u];
+        let seg = vk1 - vk;
+        let sl2 = max(dot(seg, seg), 1e-12);
+        let tt = clamp(dot(qProf - vk, seg) / sl2, 0.0, 1.0);
+        let proj = vk + seg * tt;
+        let pd = length(qProf - proj);
+        if (pd < bestPd) {
+            bestPd = pd;
+            bestKe = ke;
+            bestTt = tt;
         }
-        if (length(twisted - v1) < featureVtxEps) {
-            let vNext = polygonVertices[${BASE}u + (edgeIdx + 2u) % ${N}u];
-            let prevDir = normalize(v1 - v0);
-            let nextDir = normalize(vNext - v1);
-            let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
-            let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
-            let n0 = safeNormalize(vec3f(ca * prevOut2.x - sa * prevOut2.y, 0.0, sa * prevOut2.x + ca * prevOut2.y), vec3f(1.0, 0.0, 0.0));
-            let n1 = safeNormalize(vec3f(ca * nextOut2.x - sa * nextOut2.y, 0.0, sa * nextOut2.x + ca * nextOut2.y), vec3f(1.0, 0.0, 0.0));
-            if (dot(n0, n1) < ${EXTRUDE_MDC_FEATURE_DOT}) {
-                let featurePoint = vec3f(ca * v1.x - sa * v1.y, capPlaneY, sa * v1.x + ca * v1.y);
-                return sdfRMidCorner(d, 1.0, n, featurePoint, n0, n1, length(p - featurePoint));
-            }
-        }
-        let tEdge = clamp(dot(twisted - v0, edge) / edgeLen2, 0.0, 1.0);
-        let rim = v0 + edge * tEdge;
-        let featurePoint = vec3f(ca * rim.x - sa * rim.y, capPlaneY, sa * rim.x + ca * rim.y);
-        let tangent = safeNormalize(vec3f(ca * edgeTan2.x - sa * edgeTan2.y, 0.0, sa * edgeTan2.x + ca * edgeTan2.y), vec3f(1.0, 0.0, 0.0));
-        let edgeOut = safeNormalize(vec3f(ca * edgeOut2.x - sa * edgeOut2.y, 0.0, sa * edgeOut2.x + ca * edgeOut2.y), vec3f(1.0, 0.0, 0.0));
-        return sdfRMidLine(d, 1.0, n, featurePoint, tangent, edgeOut, length(p - featurePoint));
     }
 
-    if (onSide && abs(d2d) < sideEps) {
-        let nearCap = abs(abs(capY) - h) < capCornerEps;
-        if (length(twisted - v0) < select(sideLineVtxEps, featureVtxEps, nearCap)) {
-            let vPrev = polygonVertices[${BASE}u + (edgeIdx + ${N}u - 1u) % ${N}u];
-            let prevDir = normalize(v0 - vPrev);
-            let nextDir = normalize(v1 - v0);
+    if (!onSide && bestPd < featBand) {
+        let vk = polygonVertices[${BASE}u + bestKe];
+        let vk1 = polygonVertices[${BASE}u + (bestKe + 1u) % ${N}u];
+        let seg = vk1 - vk;
+        let sl2 = max(dot(seg, seg), 1e-12);
+        let edgeLen = sqrt(sl2);
+        let edgeTan2 = seg / edgeLen;
+        let edgeOut2 = vec2f(edgeTan2.y, -edgeTan2.x) * ${windSignStr};
+        let tt = bestTt;
+        let rim = vk + seg * tt;
+        var cornerKv = ${N}u;
+        if (tt <= vertexTol) {
+            cornerKv = bestKe;
+        } else if (tt >= 1.0 - vertexTol) {
+            cornerKv = (bestKe + 1u) % ${N}u;
+        }
+        if (cornerKv < ${N}u) {
+            let cv = polygonVertices[${BASE}u + cornerKv];
+            let cvPrev = polygonVertices[${BASE}u + (cornerKv + ${N}u - 1u) % ${N}u];
+            let cvNext = polygonVertices[${BASE}u + (cornerKv + 1u) % ${N}u];
+            let prevDir = normalize(cv - cvPrev);
+            let nextDir = normalize(cvNext - cv);
             let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
             let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
             let n0 = safeNormalize(vec3f(ca * prevOut2.x - sa * prevOut2.y, 0.0, sa * prevOut2.x + ca * prevOut2.y), vec3f(1.0, 0.0, 0.0));
             let n1 = safeNormalize(vec3f(ca * nextOut2.x - sa * nextOut2.y, 0.0, sa * nextOut2.x + ca * nextOut2.y), vec3f(1.0, 0.0, 0.0));
             if (dot(n0, n1) < ${EXTRUDE_MDC_FEATURE_DOT}) {
-                let sideOtherN = select(n1, n0, dot(nSide, n1) > dot(nSide, n0));
-                if (nearCap) {
-                    let capSign = sgn(capY);
-                    let featurePoint = vec3f(ca * v0.x - sa * v0.y, ${capYOff} + capSign * h, sa * v0.x + ca * v0.y);
-                    return sdfRMidCorner(d, 1.0, n, featurePoint, vec3f(0.0, capSign, 0.0), sideOtherN, length(p - featurePoint));
-                }
-                let featurePoint = vec3f(ca * v0.x - sa * v0.y, p.y, sa * v0.x + ca * v0.y);
-                let tangent = safeNormalize(vec3f(-twistRate * featurePoint.z, 1.0, twistRate * featurePoint.x), vec3f(0.0, 1.0, 0.0));
-                return sdfRMidLine(d, 1.0, n, featurePoint, tangent, sideOtherN, length(p - featurePoint));
+                let featurePoint = vec3f(ca * cv.x - sa * cv.y, capPlaneY, sa * cv.x + ca * cv.y);
+                var cr = sdfRMidCorner(d, 1.0, n, featurePoint, n0, n1, length(p - featurePoint));
+                cr.featureIdA = extrudeMidId;
+                cr.featureIdB = cornerKv + 1u;
+                return cr;
             }
         }
-        if (length(twisted - v1) < select(sideLineVtxEps, featureVtxEps, nearCap)) {
-            let vNext = polygonVertices[${BASE}u + (edgeIdx + 2u) % ${N}u];
-            let prevDir = normalize(v1 - v0);
-            let nextDir = normalize(vNext - v1);
+        let tangent = safeNormalize(vec3f(ca * edgeTan2.x - sa * edgeTan2.y, 0.0, sa * edgeTan2.x + ca * edgeTan2.y), vec3f(1.0, 0.0, 0.0));
+        let edgeOut = safeNormalize(vec3f(ca * edgeOut2.x - sa * edgeOut2.y, 0.0, sa * edgeOut2.x + ca * edgeOut2.y), vec3f(1.0, 0.0, 0.0));
+        let featurePoint = vec3f(ca * rim.x - sa * rim.y, capPlaneY, sa * rim.x + ca * rim.y);
+        var ln = sdfRMidLine(d, 1.0, n, featurePoint, tangent, edgeOut, length(p - featurePoint));
+        ln.featureIdA = extrudeMidId;
+        ln.featureIdB = bestKe + 1u;
+        return ln;
+    }
+
+    if (onSide && bestPd < featBand) {
+        let nearCap = abs(abs(capY) - h) < featBand;
+        let tt = bestTt;
+        var creaseKv = ${N}u;
+        if (tt <= vertexTol) {
+            creaseKv = bestKe;
+        } else if (tt >= 1.0 - vertexTol) {
+            creaseKv = (bestKe + 1u) % ${N}u;
+        }
+        if (creaseKv < ${N}u) {
+            let sv = polygonVertices[${BASE}u + creaseKv];
+            let svPrev = polygonVertices[${BASE}u + (creaseKv + ${N}u - 1u) % ${N}u];
+            let svNext = polygonVertices[${BASE}u + (creaseKv + 1u) % ${N}u];
+            let prevDir = normalize(sv - svPrev);
+            let nextDir = normalize(svNext - sv);
             let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
             let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
             let n0 = safeNormalize(vec3f(ca * prevOut2.x - sa * prevOut2.y, 0.0, sa * prevOut2.x + ca * prevOut2.y), vec3f(1.0, 0.0, 0.0));
@@ -560,12 +572,18 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
                 let sideOtherN = select(n1, n0, dot(nSide, n1) > dot(nSide, n0));
                 if (nearCap) {
                     let capSign = sgn(capY);
-                    let featurePoint = vec3f(ca * v1.x - sa * v1.y, ${capYOff} + capSign * h, sa * v1.x + ca * v1.y);
-                    return sdfRMidCorner(d, 1.0, n, featurePoint, vec3f(0.0, capSign, 0.0), sideOtherN, length(p - featurePoint));
+                    let featurePoint = vec3f(ca * sv.x - sa * sv.y, ${capYOff} + capSign * h, sa * sv.x + ca * sv.y);
+                    var cr = sdfRMidCorner(d, 1.0, n, featurePoint, vec3f(0.0, capSign, 0.0), sideOtherN, length(p - featurePoint));
+                    cr.featureIdA = extrudeMidId;
+                    cr.featureIdB = creaseKv + 1u;
+                    return cr;
                 }
-                let featurePoint = vec3f(ca * v1.x - sa * v1.y, p.y, sa * v1.x + ca * v1.y);
-                let tangent = safeNormalize(vec3f(-twistRate * featurePoint.z, 1.0, twistRate * featurePoint.x), vec3f(0.0, 1.0, 0.0));
-                return sdfRMidLine(d, 1.0, n, featurePoint, tangent, sideOtherN, length(p - featurePoint));
+                let featurePoint = vec3f(ca * sv.x - sa * sv.y, p.y, sa * sv.x + ca * sv.y);
+                let tanHel = safeNormalize(vec3f(-twistRate * featurePoint.z, 1.0, twistRate * featurePoint.x), vec3f(0.0, 1.0, 0.0));
+                var ln = sdfRMidLine(d, 1.0, n, featurePoint, tanHel, sideOtherN, length(p - featurePoint));
+                ln.featureIdA = extrudeMidId;
+                ln.featureIdB = creaseKv + 1u;
+                return ln;
             }
         }
     }

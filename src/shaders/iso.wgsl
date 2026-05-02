@@ -407,7 +407,9 @@ fn make_sparse_key(cell_type: u32, linear_idx: u32) -> u32 {
 fn lookup_dual_slot(key: u32) -> u32 {
     let mask = uniforms.sparseHash.x;
     var slot = (key * SPARSE_HASH_KNUTH) & mask;
-    for (var probe = 0u; probe < 256u; probe = probe + 1u) {
+    // Large meshes + linear probing can exceed 256 slots in worst-case clusters; missing here
+    // returns DualVertex(0) and produces spikes to the origin.
+    for (var probe = 0u; probe < 4096u; probe = probe + 1u) {
         let entry = dualHashTable[slot];
         if (entry.x == key) { return entry.y; }
         if (entry.x == SPARSE_HASH_EMPTY) { return SPARSE_HASH_EMPTY; }
@@ -505,7 +507,7 @@ fn lookup_sub_dual_slot(key: u32) -> u32 {
         return SPARSE_HASH_EMPTY;
     }
     var slot = (key * SPARSE_HASH_KNUTH) & mask;
-    for (var probe = 0u; probe < 256u; probe = probe + 1u) {
+    for (var probe = 0u; probe < 4096u; probe = probe + 1u) {
         let entry = subDualHashTable[slot];
         if (entry.x == key) { return entry.y; }
         if (entry.x == SPARSE_HASH_EMPTY) { return SPARSE_HASH_EMPTY; }

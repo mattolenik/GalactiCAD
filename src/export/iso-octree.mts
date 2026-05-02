@@ -682,7 +682,7 @@ export function buildSubCellSparseHash(
     }
 
     let hashEntries = 1
-    const target = Math.max(64, totalSlots * 2)
+    const target = Math.max(64, totalSlots * 4)
     while (hashEntries < target) hashEntries <<= 1
     const hashMask = hashEntries - 1
     const hashTable = new Uint32Array(hashEntries * 2)
@@ -690,7 +690,7 @@ export function buildSubCellSparseHash(
 
     const insertHash = (key: number, slot: number) => {
         let probe = (Math.imul(key >>> 0, SUB_HASH_KNUTH) >>> 0) & hashMask
-        for (let i = 0; i < 256; i++) {
+        for (let i = 0; i < 4096; i++) {
             const base2 = probe * 2
             if (hashTable[base2] === SUB_HASH_KEY_EMPTY) {
                 hashTable[base2] = key >>> 0
@@ -700,7 +700,7 @@ export function buildSubCellSparseHash(
             probe = (probe + 1) & hashMask
         }
         throw new Error(
-            `Sub-cell sparse hash insert overflowed 256 probes at key=${key}, slot=${slot}; `
+            `Sub-cell sparse hash insert overflowed 4096 probes at key=${key}, slot=${slot}; `
             + `entries=${hashEntries}, totalSlots=${totalSlots}`,
         )
     }

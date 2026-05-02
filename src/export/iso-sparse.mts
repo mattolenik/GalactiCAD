@@ -225,7 +225,7 @@ export function computeSparseDualSetsFromDilatedCubeLinears(
     const totalDualSlots = base
 
     let hashEntries = 1
-    // Keep average linear-probe chains well under the WGSL 256-iter lookup cap on large CAD meshes.
+    // Match WGSL `lookup_dual_slot` probe budget (~4096); keep load modest so chains stay rare.
     const target = Math.max(64, totalDualSlots * 4)
     while (hashEntries < target) hashEntries <<= 1
     const hashMask = hashEntries - 1
@@ -234,7 +234,7 @@ export function computeSparseDualSetsFromDilatedCubeLinears(
 
     const insertHash = (key: number, slot: number) => {
         let probe = (Math.imul(key >>> 0, SPARSE_HASH_KNUTH) >>> 0) & hashMask
-        for (let i = 0; i < 256; i++) {
+        for (let i = 0; i < 4096; i++) {
             const base2 = probe * 2
             if (hashTable[base2] === 0xffffffff) {
                 hashTable[base2] = key >>> 0
@@ -244,7 +244,7 @@ export function computeSparseDualSetsFromDilatedCubeLinears(
             probe = (probe + 1) & hashMask
         }
         throw new Error(
-            `Sparse hash insert overflowed 256 probes at key=${key}, slot=${slot}; `
+            `Sparse hash insert overflowed 4096 probes at key=${key}, slot=${slot}; `
             + `entries=${hashEntries}, totalDualSlots=${totalDualSlots}`,
         )
     }

@@ -1369,70 +1369,32 @@ fn edgeDetection_Pass3(
 
     let featureConstraintsEnabled = uniforms.mdcU0.w != 0u;
 
-    // Canonical rebucket: when the component has an explicit feature with valid
-    // face normals, reassign every crossing's subcomponent index by matching its
-    // crossing-normal to the explicit feature's face normals (feature.n0/n1/n2).
-    // This makes subcomp index consistent across neighboring cells (bucket s
-    // always means "the face matching feature.n_s"), so Pass 5 stitches each
-    // quad to the right side of the crease and we don't get twisted/inverted
-    // dual faces along ring/edge creases (the cause of "missing" triangles in
-    // loft and similar swept solids).
-    for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
-        if (compCrossCount[c] == 0u) { continue; }
-        let f = inferredFeatures[c];
-        let hasExplicit = featureConstraintsEnabled && (
-            (f.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
-            (f.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) ||
-            (f.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
-            (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8)
-        );
-        if (!hasExplicit) { continue; }
-        let nFaces = f.normalCount;
-        if (nFaces < 2u) { continue; }
-        let n0len = length(f.n0);
-        let n1len = length(f.n1);
-        let n2len = length(f.n2);
-        if (n0len < 0.5 || n1len < 0.5) { continue; }
-        if (nFaces >= 3u && n2len < 0.5) { continue; }
-        for (var e = 0u; e < 12u; e = e + 1u) {
-            if (edgeCrossMask[e] == 0u) { continue; }
-            if (edgeComponent[e] != i32(c)) { continue; }
-            let normal = crossingNormal[e];
-            var bestS: u32 = 0u;
-            var bestDot = dot(normal, f.n0);
-            let d1 = dot(normal, f.n1);
-            if (d1 > bestDot) { bestDot = d1; bestS = 1u; }
-            if (nFaces >= 3u) {
-                let d2 = dot(normal, f.n2);
-                if (d2 > bestDot) { bestDot = d2; bestS = 2u; }
-            }
-            crossingSubcomp[e] = bestS;
-        }
-    }
-
-    // Collapse non-explicit components to a single sub-vertex.
+    // Collapse every component to a single sub-vertex (subcomp 0).
     //
-    // Inferred / rejected / unfeatured components still have crossings split
-    // across 2-3 physical normal buckets (from Phase 1's first-seen bucketing),
-    // but for those there is no canonical face-normal source to align bucket
-    // index across neighboring cells. Adjacent cells would disagree on which
-    // subcomp index represents "face A", and Pass 5 would stitch dual quads
-    // with twisted topology — visible as missing/inverted polygons on smooth
-    // high-curvature surfaces and at inferred creases. Forcing all crossings
-    // for these components into subcomp 0 reduces them to single-vertex-per-
-    // component (same as pre-Stage-C behavior) and keeps the mesh consistent.
-    // Crisp creases still come from explicit features, which keep their
-    // canonical multi-bucket layout.
+    // Stage C's per-bucket sub-vertex splitting was designed to give creases
+    // real geometric edges by emitting one vertex per face bucket within a
+    // component. In practice that needs neighbor cells to agree on which
+    // bucket index represents "face A" for every shared cube edge.
+    //
+    // - Non-explicit / inferred / smooth components have no canonical face-
+    //   normal source, so neighbor agreement on bucket index is impossible.
+    // - Explicit features (LINE / RING / CORNER / SEAM) DO have canonical face
+    //   normals, but for revolution features (rings) they're computed from each
+    //   cell's local `radDir`. Tiny per-cell numerical differences flip the
+    //   `dot(normal, f.n_s)` winner between neighbors, so two cells around the
+    //   same cube edge can pick different sub-buckets. Pass 5 then references
+    //   different cell sub-vertices for the same shared edge and the dual
+    //   triangles fail to share an edge — visible as missing triangles right
+    //   along the ring crease.
+    //
+    // With `featureConstrainedPlacement` enabled, every cell's vertex (across
+    // all sub-components) snaps to the same explicit feature locus anyway, so
+    // multi-bucket sub-vertices would collapse to coincident positions even
+    // when bucket indices DID agree. Collapsing to a single sub-vertex keeps
+    // the dual mesh manifold; the crease split CPU post-pass still recreates
+    // sharp shading at the geometric crease via per-face-group normals.
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         if (compCrossCount[c] == 0u) { continue; }
-        let f = inferredFeatures[c];
-        let hasExplicit = featureConstraintsEnabled && (
-            (f.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
-            (f.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) ||
-            (f.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
-            (f.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8)
-        );
-        if (hasExplicit) { continue; }
         for (var e = 0u; e < 12u; e = e + 1u) {
             if (edgeCrossMask[e] == 0u) { continue; }
             if (edgeComponent[e] != i32(c)) { continue; }
@@ -1583,44 +1545,27 @@ fn edgeDetection_Pass3(
     // inferred features for this active cell. componentFeatures stays per
     // component (one entry per cell-component, not per sub-vertex).
     //
-    // We repurpose feature.n0/n1/n2 as the per-subcomp shading normal so Pass 4
-    // can address the sub-vertex face normal as `feature.n[s]`.
-    //
-    // - Explicit features (LINE/RING/CORNER/SEAM with valid face normals): we
-    //   rebucketed crossings to match feature.n_s above, so the canonical
-    //   shading normal for sub-vertex s IS feature.n_s. We keep those values
-    //   intact (they're already aligned).
-    //
-    // - Non-explicit / inferred / smooth components: feature.n0/n1/n2 came
-    //   from the inference path (which used physical bucket normals) or are
-    //   zero. Overwrite with the actual bucket-averaged normals so each
-    //   sub-vertex still gets the right shading direction.
+    // All components were collapsed to subcomp 0 above, so feature.n0 is the
+    // shading normal for that single sub-vertex. Use the bucket-averaged
+    // direction across ALL physical buckets so soft chamfers and explicit
+    // features alike pick a normal that represents the surface at this cell
+    // without picking one side arbitrarily. The crease split CPU post-pass
+    // then re-derives per-face-group normals from triangle face normals so
+    // sharp shading creases are recreated even though the GPU only stores one
+    // averaged normal per cell vertex.
     let compBase = active_cell_array_idx * MAX_COMPONENTS_PER_CELL;
     let vertBase = active_cell_array_idx * VERTICES_PER_CELL;
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         var cf = inferredFeatures[c];
-        let hasExplicitFaces = featureConstraintsEnabled && (
-            (cf.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) ||
-            (cf.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) ||
-            (cf.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) ||
-            (cf.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8)
-        );
-        if (!hasExplicitFaces) {
-            // Non-explicit components were just collapsed to subcomp 0 above,
-            // so the per-subcomp shading normal for this component is the
-            // averaged direction across ALL physical buckets, not just bucket 0.
-            // (Bucket 0 alone could be a single side of a soft chamfer, giving
-            // a shading discontinuity even though the geometry is smooth.)
-            var nSum = vec3f(0.0);
-            for (var b = 0u; b < 3u; b = b + 1u) {
-                if (b < compNormalBucketCount[c] && compPointCounts[c][b] > 0u) {
-                    nSum = nSum + compNormalSums[c][b];
-                }
+        var nSum = vec3f(0.0);
+        for (var b = 0u; b < 3u; b = b + 1u) {
+            if (b < compNormalBucketCount[c] && compPointCounts[c][b] > 0u) {
+                nSum = nSum + compNormalSums[c][b];
             }
-            cf.n0 = safeUnit3(nSum);
-            cf.n1 = vec3f(0.0);
-            cf.n2 = vec3f(0.0);
         }
+        cf.n0 = safeUnit3(nSum);
+        cf.n1 = vec3f(0.0);
+        cf.n2 = vec3f(0.0);
         let cFeatIdx = compBase + c;
         if (cFeatIdx < arrayLength(&componentFeatures)) {
             componentFeatures[cFeatIdx] = cf;
@@ -1969,20 +1914,32 @@ fn chooseQuadTris(v0_idx: u32, v1_idx: u32, v2_idx: u32, v3_idx: u32) -> TriPair
         t1 = vec3u(v1_idx, v3_idx, v2_idx);
     }
 
-    // Orient both triangles consistently using SDF gradient at quad center.
-    let center = (p0 + p1 + p2 + p3) * 0.25;
-    // Use field sampling along the triangle normal to decide outward orientation.
-    // This is more robust than gradient-based orientation on sharp features / CSG seams.
+    // Orient both triangles consistently using the averaged analytic vertex
+    // normals. Field probing at the quad center is unreliable on sharp feature
+    // creases (rings, hard CSG seams) because the SDF is discontinuous there
+    // and the quad center can sit exactly on the feature, making both +/- probes
+    // land on the same side of the surface and flipping the winding wrong.
+    // Vertex normals come from `sceneSDF_mid` and are guaranteed to point
+    // outward, so checking their agreement with the face normal is robust.
     let faceN0 = cross(vertices[t0.y].position - vertices[t0.x].position,
                        vertices[t0.z].position - vertices[t0.x].position);
-    let nHat = safeUnit3(faceN0);
-    if (dot(nHat, nHat) > 0.0) {
-        let probe = max(uniforms.mdcF3.z, uniforms.voxelSize * uniforms.mdcF3.y);
-        let dPlus = sampleSDF(center + nHat * probe) - uniforms.isoValue;
-        let dMinus = sampleSDF(center - nHat * probe) - uniforms.isoValue;
-        // Outside should be on the +normal side for outward-facing triangles.
-        if (dPlus < dMinus) {
-            // Flip BOTH triangles.
+    if (dot(faceN0, faceN0) > 0.0) {
+        let nAvg = vertices[v0_idx].normal + vertices[v1_idx].normal +
+                   vertices[v2_idx].normal + vertices[v3_idx].normal;
+        var flip = false;
+        if (dot(nAvg, nAvg) > 1e-12) {
+            flip = dot(nAvg, faceN0) < 0.0;
+        } else {
+            // Fallback: SDF probe at quad center (legacy behavior) when the
+            // averaged vertex normal is degenerate (all-zero / cancelling).
+            let center = (p0 + p1 + p2 + p3) * 0.25;
+            let nHat = safeUnit3(faceN0);
+            let probe = max(uniforms.mdcF3.z, uniforms.voxelSize * uniforms.mdcF3.y);
+            let dPlus = sampleSDF(center + nHat * probe) - uniforms.isoValue;
+            let dMinus = sampleSDF(center - nHat * probe) - uniforms.isoValue;
+            flip = dPlus < dMinus;
+        }
+        if (flip) {
             t0 = vec3u(t0.x, t0.z, t0.y);
             t1 = vec3u(t1.x, t1.z, t1.y);
         }

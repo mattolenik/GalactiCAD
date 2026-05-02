@@ -119,6 +119,11 @@ export interface ShrecTuning {
      * adjacent sharp features.
      */
     mergeGradientWeightPower: number
+    /**
+     * Match MDC mesh export: project MergeSharp QEF Hermite crossings onto
+     * explicit / inferred feature loci when the cell has one iso component.
+     */
+    featureConstrainedPlacement: boolean
 }
 
 export const DEFAULT_SHREC_TUNING: ShrecTuning = {
@@ -131,6 +136,7 @@ export const DEFAULT_SHREC_TUNING: ShrecTuning = {
     seamAwareEnabled: true,
     seamAgreementCosThreshold: 0.97,
     edgeFitEnabled: false,
+    featureConstrainedPlacement: true,
 }
 
 /**

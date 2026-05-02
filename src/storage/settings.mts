@@ -461,6 +461,9 @@ export class SettingsManager {
                     if (typeof cur.seamAwareEnabled !== "boolean") cur.seamAwareEnabled = DEFAULT_SHREC_TUNING.seamAwareEnabled
                     if (typeof cur.seamAgreementCosThreshold !== "number" || !isFinite(cur.seamAgreementCosThreshold) || cur.seamAgreementCosThreshold < 0 || cur.seamAgreementCosThreshold > 1) cur.seamAgreementCosThreshold = DEFAULT_SHREC_TUNING.seamAgreementCosThreshold
                     if (typeof cur.edgeFitEnabled !== "boolean") cur.edgeFitEnabled = DEFAULT_SHREC_TUNING.edgeFitEnabled
+                    if (typeof cur.featureConstrainedPlacement !== "boolean") {
+                        cur.featureConstrainedPlacement = DEFAULT_SHREC_TUNING.featureConstrainedPlacement
+                    }
                     app.shrecTuning = cur
                 }
                 {

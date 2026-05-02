@@ -66,6 +66,21 @@ import {
     sym3Zero,
     type Sym3,
 } from "./svd3.mjs"
+import { classifyCubeEdgeComponents } from "./cube-edge-components.mjs"
+import {
+    buildSingleComponentMdcFeatureContext,
+    MDC_FEATURE_PLANE_WEIGHT,
+    type CrossingMidInput,
+} from "./mdc-cell-features-cpu.mjs"
+import { mdcClosestPointOnRingFeatureCpu, mdcFeatureProjectCrossingPositionCpu, MDC_RING_QEF_PROJECT_SCALE } from "../mdc-feature-crossing-project.mjs"
+import {
+    decodeMidGridSample,
+    interpMidSampleAlongEdge,
+    MID_FEATURE_BOOLEAN_SEAM,
+    MID_FEATURE_CORNER,
+    MID_FEATURE_LINE,
+    MID_FEATURE_RING,
+} from "../mdc-mid-grid.mjs"
 
 /** Floats per vertex (matches `SIZEOF_VERTEX / 4` in `mdc.mts`). */
 const VERTEX_STRIDE = 8
@@ -155,6 +170,14 @@ export interface MergeSharpParams {
      * is identical to the previous SHREC pipeline.
      */
     contourIndex?: ContourSpatialIndex
+
+    /**
+     * Match MDC `featureConstrainedPlacement`: for cells with a single iso
+     * component, project cube-edge Hermite samples onto explicit / inferred
+     * feature loci before the MergeSharp QEF (shared math with
+     * `mdc_feature_crossing_project.wgsl`). Default `true`.
+     */
+    featureConstrainedPlacement?: boolean
 }
 
 interface RelocationStats {
@@ -218,6 +241,13 @@ interface RelocationStats {
     debugSamples: Float32Array<ArrayBuffer>
 }
 
+function mergeSharpUnit3(x: number, y: number, z: number): [number, number, number] {
+    const len = Math.hypot(x, y, z)
+    if (len < 1e-12) return [0, 1, 0]
+    const inv = 1 / len
+    return [x * inv, y * inv, z * inv]
+}
+
 /**
  * Relocate the vertices of a DC mesh onto the underlying iso-surface's
  * sharp features using a per-cell QEF over the cube's edge crossings.
@@ -244,6 +274,7 @@ export function mergeSharpRelocate(
     const contourIndex = params.contourIndex
     const contourSnapEnabled = !!contourIndex && !contourIndex.isEmpty
     const snapScratch: SnapScratch | null = contourSnapEnabled ? makeSnapScratch() : null
+    const featureConstrainedPlacement = params.featureConstrainedPlacement !== false
 
     const [nx, ny, nz] = grid.dims
     const ox = grid.gridOffset[0]
@@ -253,6 +284,7 @@ export function mergeSharpRelocate(
     const scalar = grid.scalar
     const gradient = grid.gradient
     const seamTangent = grid.seamTangent
+    const midFeatureBuf = grid.midFeature
 
     const inVerts = dcMesh.verts
     const cellCoords = dcMesh.cellCoords
@@ -389,18 +421,36 @@ export function mergeSharpRelocate(
         let nCrossings = 0
         let weightSum = 0
 
-        // Enumerate the 12 cube edges; for each crossing accumulate its
-        // tangent plane (n · X = n · p) into the QEF.
+        const cornerScalar: number[] = new Array(8)
+        for (let ci = 0; ci < 8; ci++) {
+            const dx = ci & 1
+            const dy = (ci >> 1) & 1
+            const dz = (ci >> 2) & 1
+            cornerScalar[ci] = scalar[((cz + dz) * ny + (cy + dy)) * nx + (cx + dx)]!
+        }
+        const topo = classifyCubeEdgeComponents(cornerScalar, 0)
+
+        interface EdgeCrossRec {
+            ei: number
+            px: number
+            py: number
+            pz: number
+            nx: number
+            ny: number
+            nz: number
+            idxA: number
+            idxB: number
+            t: number
+            w: number
+        }
+        const crosses: EdgeCrossRec[] = []
+
+        // First pass: enumerate crossings (same Hermite construction as before).
         for (let ei = 0; ei < 12; ei++) {
             const edge = CUBE_EDGES[ei]!
             const lx = cx + edge.lo[0]
             const ly = cy + edge.lo[1]
             const lz = cz + edge.lo[2]
-            // The cell's corner voxels are guaranteed in-grid (DC only emits
-            // cells whose corners are valid voxel coords), so no bounds
-            // check needed for the lower endpoint. The upper endpoint is at
-            // (lx + dx, ly + dy, lz + dz) and is also in-grid for the same
-            // reason. (Defensive guard kept below for safety.)
             let hx = lx, hy = ly, hz = lz
             if (edge.axis === 0) hx = lx + 1
             else if (edge.axis === 1) hy = ly + 1
@@ -415,7 +465,6 @@ export function mergeSharpRelocate(
             const insideB = sB <= 0
             if (insideA === insideB) continue
 
-            // Linear interp of the zero-crossing along the edge.
             let t = (0 - sA) / (sB - sA)
             if (!isFinite(t)) t = 0.5
             if (t < 0) t = 0
@@ -433,36 +482,6 @@ export function mergeSharpRelocate(
 
             const gA = idxA * 4
             const gB = idxB * 4
-            // Per-crossing normal selection — three cases:
-            //
-            // 1) NEITHER endpoint is in the bevel band → the per-voxel
-            //    gradients are unique per-plane normals. Linear
-            //    interpolation works fine when both endpoints are on the
-            //    same plane (smooth case). When the cube edge spans a
-            //    sharp CSG seam (one endpoint per plane), the interpolated
-            //    grad has magnitude ≈ cos(angle/2) < 1; we detect this
-            //    and substitute the nearer endpoint's clean per-plane
-            //    gradient (the crossing is on plane A if closer to A, on
-            //    plane B if closer to B).
-            //
-            // 2) ONE endpoint is in the bevel band (gap < SURF_DIST in
-            //    `opUnionEx`/`opIntersectionEx` → operator returned an
-            //    averaged bevel normal). Always use the OTHER endpoint's
-            //    clean per-plane gradient — bevel-direction normals
-            //    pollute the QEF eigenstructure and bias rank-3 corner
-            //    vertices inward (worked example: a corner cell at a
-            //    rim with `(1+vs, 1+vs, 3-vs)` voxels carries a
-            //    `(0.707, 0, 0.707)` bevel normal — feeding it into the
-            //    QEF shifts the corner inward by a noticeable
-            //    fraction of a voxel).
-            //
-            // 3) BOTH endpoints in the bevel band → no clean gradient
-            //    available for this crossing. Skip it. The cell's other
-            //    crossings provide enough constraints to recover the
-            //    correct rank-3 vertex (worked example earlier: dropping
-            //    the polluted Y-axis crossing of a corner cell leaves 4
-            //    clean crossings whose pseudo-inverse still yields the
-            //    exact corner).
             const aBevel = seamTangent[gA + 3]! > 1.5
             const bBevel = seamTangent[gB + 3]! > 1.5
             let nx_: number, ny_: number, nz_: number
@@ -484,8 +503,6 @@ export function mergeSharpRelocate(
                 ny_ = gradient[gA + 1]! + t * (gradient[gB + 1]! - gradient[gA + 1]!)
                 nz_ = gradient[gA + 2]! + t * (gradient[gB + 2]! - gradient[gA + 2]!)
                 if (Math.hypot(nx_, ny_, nz_) < 0.95) {
-                    // Cross-seam edge: both endpoints clean per-plane but
-                    // on different planes. Substitute nearer endpoint.
                     if (t < 0.5) {
                         nx_ = gradient[gA]!
                         ny_ = gradient[gA + 1]!
@@ -505,41 +522,147 @@ export function mergeSharpRelocate(
             ny_ *= ninv
             nz_ *= ninv
 
-            // Per-crossing weight from the SDF gradient magnitude. Stored at
-            // `gradient[idx*4 + 3]` by `sample_grid.wgsl` as `r.g = |∇SDF|`;
-            // ≈ 1 for true SDFs, < 1 in CSG smooth-blend regions where the
-            // linearised iso-surface model is less reliable.
             let w = 1
             if (useGradWeight) {
                 const gAv = gradient[gA + 3]!
                 const gBv = gradient[gB + 3]!
                 const gInterp = gAv + t * (gBv - gAv)
-                // Clamp to a sensible range; gradient magnitudes can briefly
-                // exceed 1 in some smooth-CSG corners due to the analytical
-                // normal computation. The clamp keeps the QEF condition
-                // bounded and the weight monotone in `g`.
                 const gClamped = gInterp < 0 ? 0 : (gInterp > 2 ? 2 : gInterp)
                 w = gradWeightPower === 1 ? gClamped : Math.pow(gClamped, gradWeightPower)
-                // Below ~1e-6 the weight contributes nothing useful and may
-                // pollute Σw with floating-point noise; skip outright.
                 if (w < 1e-6) continue
             }
 
-            // Plane: n · X = n · p   (since p is on the iso-surface, d=0).
-            // Weighted least squares: each plane contributes `w · (n·x − c)²`.
-            const c = nx_ * px + ny_ * py + nz_ * pz
-            sym3AddOuter(M, nx_, ny_, nz_, w)
-            bvec[0] += w * c * nx_
-            bvec[1] += w * c * ny_
-            bvec[2] += w * c * nz_
-            massVec[0] += w * px
-            massVec[1] += w * py
-            massVec[2] += w * pz
-            sumNx += nx_
-            sumNy += ny_
-            sumNz += nz_
+            crosses.push({
+                ei,
+                px,
+                py,
+                pz,
+                nx: nx_,
+                ny: ny_,
+                nz: nz_,
+                idxA,
+                idxB,
+                t,
+                w,
+            })
+        }
+
+        let featCtx = null as ReturnType<typeof buildSingleComponentMdcFeatureContext> | null
+        if (
+            featureConstrainedPlacement &&
+            midFeatureBuf.length > 0 &&
+            topo.compCount === 1 &&
+            crosses.length > 0
+        ) {
+            const mids: CrossingMidInput[] = []
+            for (const c of crosses) {
+                const ma = decodeMidGridSample(midFeatureBuf, c.idxA)
+                const mb = decodeMidGridSample(midFeatureBuf, c.idxB)
+                const mid = interpMidSampleAlongEdge(ma, mb, c.t)
+                mids.push({
+                    ei: c.ei,
+                    compIdx: topo.edgeComp[c.ei]!,
+                    px: c.px,
+                    py: c.py,
+                    pz: c.pz,
+                    nx: c.nx,
+                    ny: c.ny,
+                    nz: c.nz,
+                    mid,
+                })
+            }
+            const only0 = mids.filter((m) => m.compIdx === 0)
+            featCtx = buildSingleComponentMdcFeatureContext(vs, only0)
+        }
+
+        const addBiasPlane = (
+            nnx: number, nny: number, nnz: number,
+            ppx: number, ppy: number, ppz: number,
+            weight: number,
+        ) => {
+            sym3AddOuter(M, nnx, nny, nnz, weight)
+            const cc = nnx * ppx + nny * ppy + nnz * ppz
+            bvec[0] += weight * cc * nnx
+            bvec[1] += weight * cc * nny
+            bvec[2] += weight * cc * nnz
+        }
+
+        let ringQefCircleProjection = false
+        if (featCtx && featCtx.inferred.kind === MID_FEATURE_RING && featCtx.explicitRingDist < 1e8) {
+            let maxGap = 0
+            const rf = featCtx.explicitRingFeature
+            for (const cr of crosses) {
+                if (topo.edgeComp[cr.ei] !== 0) continue
+                const onRing = mdcClosestPointOnRingFeatureCpu(rf, cr.px, cr.py, cr.pz)
+                const gap = Math.hypot(cr.px - onRing[0], cr.py - onRing[1], cr.pz - onRing[2])
+                if (gap > maxGap) maxGap = gap
+            }
+            ringQefCircleProjection = maxGap <= vs * MDC_RING_QEF_PROJECT_SCALE
+        }
+
+        for (const c of crosses) {
+            let uPx = c.px
+            let uPy = c.py
+            let uPz = c.pz
+            if (featCtx && topo.edgeComp[c.ei] === 0) {
+                const pr = mdcFeatureProjectCrossingPositionCpu(
+                    [c.px, c.py, c.pz],
+                    featCtx.inferred,
+                    featCtx.explicitRingFeature,
+                    true,
+                    featCtx.explicitLineDist,
+                    featCtx.explicitRingDist,
+                    featCtx.explicitCornerDist,
+                    featCtx.explicitSeamDist,
+                    ringQefCircleProjection,
+                )
+                uPx = pr[0]
+                uPy = pr[1]
+                uPz = pr[2]
+            }
+            const cc = c.nx * uPx + c.ny * uPy + c.nz * uPz
+            sym3AddOuter(M, c.nx, c.ny, c.nz, c.w)
+            bvec[0] += c.w * cc * c.nx
+            bvec[1] += c.w * cc * c.ny
+            bvec[2] += c.w * cc * c.nz
+            massVec[0] += c.w * uPx
+            massVec[1] += c.w * uPy
+            massVec[2] += c.w * uPz
+            sumNx += c.nx
+            sumNy += c.ny
+            sumNz += c.nz
             nCrossings++
-            weightSum += w
+            weightSum += c.w
+        }
+
+        if (featCtx && crosses.length > 0) {
+            const f = featCtx.inferred
+            const wb = MDC_FEATURE_PLANE_WEIGHT
+            if (f.kind === MID_FEATURE_LINE && !featCtx.isExplicitLine) {
+                const n0u = mergeSharpUnit3(f.n0[0], f.n0[1], f.n0[2])
+                const n1u = mergeSharpUnit3(f.n1[0], f.n1[1], f.n1[2])
+                const p0 = featCtx.compPlanePoint0
+                const p1 = featCtx.compPlanePoint1
+                addBiasPlane(n0u[0], n0u[1], n0u[2], p0[0], p0[1], p0[2], wb)
+                addBiasPlane(n1u[0], n1u[1], n1u[2], p1[0], p1[1], p1[2], wb)
+            } else if (f.kind === MID_FEATURE_CORNER && !featCtx.isExplicitCorner) {
+                const n0u = mergeSharpUnit3(f.n0[0], f.n0[1], f.n0[2])
+                const n1u = mergeSharpUnit3(f.n1[0], f.n1[1], f.n1[2])
+                const n2u = mergeSharpUnit3(f.n2[0], f.n2[1], f.n2[2])
+                const p0 = featCtx.compPlanePoint0
+                const p1 = featCtx.compPlanePoint1
+                const p2 = featCtx.compPlanePoint2
+                addBiasPlane(n0u[0], n0u[1], n0u[2], p0[0], p0[1], p0[2], wb)
+                addBiasPlane(n1u[0], n1u[1], n1u[2], p1[0], p1[1], p1[2], wb)
+                addBiasPlane(n2u[0], n2u[1], n2u[2], p2[0], p2[1], p2[2], wb)
+            } else if (f.kind === MID_FEATURE_BOOLEAN_SEAM && !featCtx.isExplicitSeam) {
+                const n0u = mergeSharpUnit3(f.n0[0], f.n0[1], f.n0[2])
+                const n1u = mergeSharpUnit3(f.n1[0], f.n1[1], f.n1[2])
+                const p0 = featCtx.compPlanePoint0
+                const p1 = featCtx.compPlanePoint1
+                addBiasPlane(n0u[0], n0u[1], n0u[2], p0[0], p0[1], p0[2], wb)
+                addBiasPlane(n1u[0], n1u[1], n1u[2], p1[0], p1[1], p1[2], wb)
+            }
         }
 
         if (nCrossings === 0) {

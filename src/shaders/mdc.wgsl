@@ -64,6 +64,8 @@ struct ComponentFeature {
     axisCenter: vec3f,
 }
 
+//:) include "mdc_feature_crossing_project.wgsl"
+
 // ============================== MDC CONSTANTS ==============================
 // "Proper" Manifold Dual Contouring requires multiple vertices per cell
 // (one per connected surface component within the cell).
@@ -532,6 +534,15 @@ fn clampFeatureVertex(p: vec3f, cellMin: vec3f, cellMax: vec3f) -> vec3f {
     return clamp(p, cellMin - vec3f(margin), cellMax + vec3f(margin));
 }
 
+fn clampRingFeatureVertex(p: vec3f, cellMin: vec3f, cellMax: vec3f) -> vec3f {
+    // Ring snaps are accepted up to MDC_RING_SNAP_COMMIT_SCALE voxels from the
+    // unconstrained QEF winner. Use the same bound when clamping; otherwise a
+    // valid snap can be truncated before it reaches the ring, leaving adjacent
+    // cells with slightly different loci.
+    let margin = uniforms.voxelSize * MDC_RING_SNAP_COMMIT_SCALE;
+    return clamp(p, cellMin - vec3f(margin), cellMax + vec3f(margin));
+}
+
 const MDC_FEATURE_PROX_SCALE: f32 = 0.75;
 const MDC_FEATURE_PLANE_WEIGHT: f32 = 0.12;
 // Sentinel `kind` for inferred-component features whose tangent solve failed
@@ -560,6 +571,12 @@ const MDC_CORNER_PROBE_PROX_SCALE: f32 = 1.9;
 // emit ghost edge glyphs along the same circle. 1.35 voxels matches CORNER and
 // covers the corner-to-cell-center distance for grids aligned to the ring.
 const MDC_RING_FEATURE_PROX_SCALE: f32 = 1.35;
+/** Pass 4 ring snap: only pull the vertex onto the circle if the unconstrained QEF
+ * winner was already within this distance of the ring curve. Classification noise can
+ * attach MID_FEATURE_RING to mantle samples far from the crease; snapping those onto the
+ * ring introduces flat ribbons that change the mesh silhouette — snapping must refine
+ * placement near the crease, not teleport distant vertices. */
+const MDC_RING_SNAP_COMMIT_SCALE: f32 = 2.1;
 
 fn mdcQefAddPlane(qef: ptr<function, QEFData>, normal: vec3f, point: vec3f, weight: f32) {
     let n = safeNormalize(normal, vec3f(0.0, 1.0, 0.0));
@@ -579,15 +596,6 @@ fn zeroComponentFeature() -> ComponentFeature {
 
 fn ownerPairEqual(a: vec2u, b: vec2u) -> bool {
     return a.x == b.x && a.y == b.y;
-}
-
-fn featureLineTangent(f: ComponentFeature) -> vec3f {
-    if (lengthSqr(f.tangent) > 1e-8) { return safeUnit3(f.tangent); }
-    if (f.normalCount >= 2u) {
-        let t = cross(f.n0, f.n1);
-        if (lengthSqr(t) > 1e-8) { return safeUnit3(t); }
-    }
-    return vec3f(0.0);
 }
 
 fn solveFeaturePoint(n0: vec3f, p0: vec3f, n1: vec3f, p1: vec3f, n2: vec3f, p2: vec3f, planeCount: u32) -> vec3f {
@@ -1427,12 +1435,32 @@ fn edgeDetection_Pass3(
         cellEdgeComponents[edgeCompBase + e] = packed;
     }
 
-    // Phase 3 (project) + Phase 4 (accumulate): project each crossing onto the
+    // Phase 3 (project) + Phase 4 (accumulate): project crossings onto the
     // explicit feature locus when present, then add the (possibly projected)
-    // crossing plane to the per-component QEF. Projecting all in-cell crossings
-    // onto the locus drives the QEF mass point and ATA/ATb onto the feature, so
-    // the eventual solve naturally lands on it without needing soft feature-plane
-    // bias terms.
+    // crossing plane to the per-component QEF.
+    //
+    // For rings, projection is all-or-none per component. Mixing projected
+    // ring crossings with raw mantle crossings builds an inconsistent QEF and
+    // produces the normal-colored trapezoid patches around shallow lathe rings.
+    var ringQefCircleProjection: array<bool, 4>;
+    for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
+        ringQefCircleProjection[c] = false;
+        if (compCrossCount[c] == 0u) { continue; }
+        let feature = inferredFeatures[c];
+        if (!(featureConstraintsEnabled && feature.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8)) {
+            continue;
+        }
+
+        var maxRingGap = 0.0;
+        for (var e = 0u; e < 12u; e = e + 1u) {
+            if (edgeCrossMask[e] == 0u) { continue; }
+            if (edgeComponent[e] != i32(c)) { continue; }
+            let onRing = mdcClosestPointOnRingFeature(explicitRingFeature[c], crossingPos[e]);
+            maxRingGap = max(maxRingGap, length(crossingPos[e] - onRing));
+        }
+        ringQefCircleProjection[c] = maxRingGap <= uniforms.voxelSize * MDC_RING_QEF_PROJECT_SCALE;
+    }
+
     var projectedPos: array<vec3f, 12>;
     for (var e = 0u; e < 12u; e = e + 1u) {
         if (edgeCrossMask[e] == 0u) { continue; }
@@ -1443,27 +1471,17 @@ fn edgeDetection_Pass3(
         let normal = crossingNormal[e];
         let feature = inferredFeatures[c];
 
-        var projPos = intersectionPos;
-        if (featureConstraintsEnabled && feature.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) {
-            let tangent = featureLineTangent(feature);
-            if (lengthSqr(tangent) > 1e-8) {
-                projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
-            }
-        } else if (featureConstraintsEnabled && feature.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8) {
-            // Treat the ring like a LINE locally — the stored anchor is the
-            // closest point on the circle to this cell's sample, and the stored
-            // tangent is the circle's tangent there, so a tangent-line projection
-            // is the correct linearization at cell scale.
-            let tangent = safeUnit3(feature.tangent);
-            projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
-        } else if (featureConstraintsEnabled && feature.kind == MID_FEATURE_CORNER && explicitCornerDist[c] < 1e8) {
-            projPos = feature.point;
-        } else if (featureConstraintsEnabled && feature.kind == MID_FEATURE_BOOLEAN_SEAM && explicitSeamDist[c] < 1e8) {
-            let tangent = featureLineTangent(feature);
-            if (lengthSqr(tangent) > 1e-8) {
-                projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
-            }
-        }
+        let projPos = mdcFeatureProjectCrossingPosition(
+            intersectionPos,
+            feature,
+            explicitRingFeature[c],
+            featureConstraintsEnabled,
+            explicitLineDist[c],
+            explicitRingDist[c],
+            explicitCornerDist[c],
+            explicitSeamDist[c],
+            ringQefCircleProjection[c],
+        );
         projectedPos[e] = projPos;
 
         let s = crossingSubcomp[e];
@@ -1687,26 +1705,31 @@ fn vertexGeneration_Pass4(
             // and can pull the sub-vertex off the surface.
             let radial = featureStart.point - featureStart.axisCenter;
             ringRadius = length(radial);
+            var ringFrameBuilt = false;
             if (ringRadius > 1e-8 && length(featureStart.tangent) > 1e-6) {
                 let tang = safeUnit3(featureStart.tangent);
                 let axisRaw = cross(tang, radial);
-                ringAxis = safeUnit3(axisRaw);
-                if (length(ringAxis) > 0.5) {
-                    // toV = vertexPos - axisCenter.
-                    // inPlane = component of toV in the ring plane.
-                    let toV = vertexPos - featureStart.axisCenter;
-                    let inPlane = toV - ringAxis * dot(toV, ringAxis);
-                    let inPlaneLen = length(inPlane);
-                    if (inPlaneLen > 1e-8) {
-                        featureTarget = featureStart.axisCenter + inPlane * (ringRadius / inPlaneLen);
+                if (lengthSqr(axisRaw) > 1e-12) {
+                    ringAxis = safeUnit3(axisRaw);
+                    ringFrameBuilt = true;
+                    // Use unconstrained QEF winner (`best`) — not a prior vertexPos edit.
+                    let toBest = best - featureStart.axisCenter;
+                    let inPlaneBest = toBest - ringAxis * dot(toBest, ringAxis);
+                    let inPlaneBestLen = length(inPlaneBest);
+                    if (inPlaneBestLen > 1e-8) {
+                        featureTarget = featureStart.axisCenter + inPlaneBest * (ringRadius / inPlaneBestLen);
                     } else {
                         featureTarget = featureStart.point;
                     }
-                    snappedToRing = true;
+                    let snapMag = length(best - featureTarget);
+                    if (snapMag <= uniforms.voxelSize * MDC_RING_SNAP_COMMIT_SCALE) {
+                        snappedToRing = true;
+                    }
                 }
             }
-            if (!snappedToRing && length(featureStart.tangent) > 1e-6) {
-                // Fallback: tangent-line snap if we couldn't build a ring frame.
+            if (!snappedToRing && length(featureStart.tangent) > 1e-6 && !ringFrameBuilt) {
+                // Degenerate ring geometry only — never tangent-fallback when we built a
+                // ring frame but refused snap (distance): that would still relocate mantle vertices.
                 lineTangent = safeUnit3(featureStart.tangent);
                 featureTarget = featureStart.point + lineTangent * dot(vertexPos - featureStart.point, lineTangent);
                 snappedToLine = true;
@@ -1722,7 +1745,11 @@ fn vertexGeneration_Pass4(
             snappedToFeature = true;
         }
         if (snappedToLine || snappedToRing || snappedToFeature) {
-            vertexPos = clampFeatureVertex(featureTarget, cellMin, cellMax);
+            if (snappedToRing) {
+                vertexPos = clampRingFeatureVertex(featureTarget, cellMin, cellMax);
+            } else {
+                vertexPos = clampFeatureVertex(featureTarget, cellMin, cellMax);
+            }
             snappedToFeature = true;
         }
     }
@@ -1787,7 +1814,7 @@ fn vertexGeneration_Pass4(
             if (inPlaneLen > 1e-8) {
                 vertexPos = featureStart.axisCenter + inPlane * (ringRadius / inPlaneLen);
             }
-            vertexPos = clampFeatureVertex(vertexPos, cellMin, cellMax);
+            vertexPos = clampRingFeatureVertex(vertexPos, cellMin, cellMax);
         }
     } else if (snappedToLine) {
         for (var iter = 0u; iter < 4u; iter = iter + 1u) {

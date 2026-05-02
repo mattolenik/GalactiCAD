@@ -92,6 +92,17 @@ fn sceneSDF(p: vec3f) -> SDFResult {
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
 }
 
+// Mid-path SDF (feature payloads for MDC / MergeSharp crossing projection).
+fn sceneSDF_mid(p: vec3f) -> SDFResultMid {
+    _ = polygonVertices[0];
+    _ = faceSelection.nodeId;
+    _ = mdcSceneParams[0];
+    return sdfRMid(0.0, 1.0, vec3f(0.0)); //:) insert sceneSDF_mid
+}
+
+// Packed `SDFResultMid` per voxel for CPU MergeSharp (7 vec4 = 28 f32 / voxel).
+@group(0) @binding(5) var<storage, read_write> midFeatureOut: array<vec4f>;
+
 // 3D dispatch: each invocation handles one voxel.
 @compute @workgroup_size(4, 4, 4)
 fn sampleGrid(@builtin(global_invocation_id) gid: vec3u) {
@@ -104,10 +115,30 @@ fn sampleGrid(@builtin(global_invocation_id) gid: vec3u) {
     let pos = uniforms.gridOffset.xyz + vec3f(gid) * voxelSize;
 
     let r = sceneSDF(pos);
+    let rmid = sceneSDF_mid(pos);
 
     let idx = (gid.z * dims.y + gid.y) * dims.x + gid.x;
     scalarOut[idx] = r.d;
     gradientOut[idx] = vec4f(r.n, r.g);
+
+    let midBase = idx * 7u;
+    midFeatureOut[midBase + 0u] = vec4f(
+        bitcast<f32>(rmid.featureKind),
+        rmid.featureDist,
+        bitcast<f32>(rmid.featureIdA),
+        bitcast<f32>(rmid.featureIdB),
+    );
+    midFeatureOut[midBase + 1u] = vec4f(
+        bitcast<f32>(rmid.featureNormalCount),
+        rmid.d,
+        rmid.g,
+        0.0,
+    );
+    midFeatureOut[midBase + 2u] = vec4f(rmid.featurePoint, 0.0);
+    midFeatureOut[midBase + 3u] = vec4f(rmid.featureTangent, 0.0);
+    midFeatureOut[midBase + 4u] = vec4f(rmid.featureN1, 0.0);
+    midFeatureOut[midBase + 5u] = vec4f(rmid.featureN2, 0.0);
+    midFeatureOut[midBase + 6u] = vec4f(rmid.featureAxisCenter, 0.0);
 
     // Seam tangent + bevel flag, packed into the w-component:
     //   w = 0.0  →  voxel is OFF any CSG seam (gradient is the unique

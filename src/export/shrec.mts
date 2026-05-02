@@ -109,6 +109,11 @@ export interface ShrecParams {
      * changing shader sampling.
      */
     preDcCsgSeamSnap?: boolean
+    /**
+     * When true (default), MergeSharp applies the same crossing projection +
+     * inferred feature-plane bias as MDC `featureConstrainedPlacement`.
+     */
+    featureConstrainedPlacement?: boolean
 }
 
 /**
@@ -274,6 +279,7 @@ export class ShrecExport {
                 seamAwareEnabled: this.params.seamAwareEnabled,
                 seamAgreementCosThreshold: this.params.seamAgreementCosThreshold,
                 contourIndex,
+                featureConstrainedPlacement: this.params.featureConstrainedPlacement,
             })
             mesh = result.mesh
             mergeDebugSamples = result.stats.debugSamples

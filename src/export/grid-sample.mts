@@ -57,6 +57,12 @@ export interface GridSampleResult {
      * and to drive Newton iteration when refinement is enabled.
      */
     seamVerify: Float32Array<ArrayBuffer>
+    /**
+     * Packed `sceneSDF_mid` samples per voxel (`sample_grid.wgsl` binding 5).
+     * Stride: `7 * vec4` floats per voxel — see `MID_GRID_VEC4_STRIDE` in
+     * `mdc-mid-grid.mts`.
+     */
+    midFeature: Float32Array<ArrayBuffer>
     dims: readonly [number, number, number]
     voxelSize: number
     gridOffset: readonly [number, number, number]
@@ -124,6 +130,7 @@ export class GridSampler {
         // each gradient voxel is 16 bytes (vec4f).
         const scalarBytes = totalVoxels * Float32Array.BYTES_PER_ELEMENT
         const gradientBytes = totalVoxels * 4 * Float32Array.BYTES_PER_ELEMENT
+        const midFeatureBytes = totalVoxels * 7 * 4 * Float32Array.BYTES_PER_ELEMENT
         const limit = this.#device.limits.maxStorageBufferBindingSize
         if (gradientBytes > limit) {
             throw new Error(
@@ -131,11 +138,17 @@ export class GridSampler {
                 `Reduce grid dims (currently ${gridDimX}x${gridDimY}x${gridDimZ} = ${totalVoxels} voxels) or split into tiles.`,
             )
         }
+        if (midFeatureBytes > limit) {
+            throw new Error(
+                `GridSampler: midFeature buffer ${midFeatureBytes} bytes exceeds device limit ${limit}. ` +
+                `Reduce grid dims or split into tiles.`,
+            )
+        }
 
-        if (scalarBytes > MAX_SAFE_ARRAY_BUFFER_BYTES || gradientBytes > MAX_SAFE_ARRAY_BUFFER_BYTES) {
+        if (scalarBytes > MAX_SAFE_ARRAY_BUFFER_BYTES || gradientBytes > MAX_SAFE_ARRAY_BUFFER_BYTES || midFeatureBytes > MAX_SAFE_ARRAY_BUFFER_BYTES) {
             throw new Error(
                 `GridSampler: grid is too large to read back for CPU meshing (scalar=${scalarBytes} B, ` +
-                `gradient=${gradientBytes} B; per-field limit ~${MAX_SAFE_ARRAY_BUFFER_BYTES} B). ` +
+                `gradient=${gradientBytes} B, midFeature=${midFeatureBytes} B; per-field limit ~${MAX_SAFE_ARRAY_BUFFER_BYTES} B). ` +
                 `Reduce ${gridDimX}x${gridDimY}x${gridDimZ} voxels or increase voxel spacing.`,
             )
         }
@@ -198,6 +211,13 @@ export class GridSampler {
             })
             this.#localBuffers.push(seamVerifyBuffer)
 
+            const midFeatureBuffer = this.#device.createBuffer({
+                label: "GridSampler.MidFeatureOut",
+                size: midFeatureBytes,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+            })
+            this.#localBuffers.push(midFeatureBuffer)
+
             const pipeline = this.#helper.createComputePipeline(sampleGridShaderModule, "sampleGrid")
 
             const bindGroup = this.#helper.createBindGroup(
@@ -209,6 +229,7 @@ export class GridSampler {
                 [2, gradientBuffer],
                 [3, seamTangentBuffer],
                 [4, seamVerifyBuffer],
+                [5, midFeatureBuffer],
                 [25, cancellationBuffer],
                 [27, this.#polygonVerticesBuffer],
                 [28, this.#faceSelectionBuffer],
@@ -236,6 +257,7 @@ export class GridSampler {
             const gradientData = new Float32Array(await this.#helper.readBufferData(gradientBuffer))
             const seamTangentData = new Float32Array(await this.#helper.readBufferData(seamTangentBuffer))
             const seamVerifyData = new Float32Array(await this.#helper.readBufferData(seamVerifyBuffer))
+            const midFeatureData = new Float32Array(await this.#helper.readBufferData(midFeatureBuffer))
 
             const elapsedMs = (globalThis.performance?.now ? globalThis.performance.now() : Date.now()) - t0
             dbgLog("ShrecExport").debug(
@@ -248,6 +270,7 @@ export class GridSampler {
                 gradient: gradientData,
                 seamTangent: seamTangentData,
                 seamVerify: seamVerifyData,
+                midFeature: midFeatureData,
                 dims: [gridDimX, gridDimY, gridDimZ] as const,
                 voxelSize,
                 gridOffset: [gridOffsetX, gridOffsetY, gridOffsetZ] as const,

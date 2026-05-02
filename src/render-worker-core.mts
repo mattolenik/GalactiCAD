@@ -1009,12 +1009,12 @@ export class RenderWorkerCore {
                     `handleRenderMesh: dispatching SHREC, incoming tuning=` +
                     `${shrecTuning ? JSON.stringify(shrecTuning) : "(undefined → defaults)"}`,
                 )
-                // SHREC pipeline only needs sceneAux + sceneSDF + sceneAuxFast (sample_grid.wgsl
-                // declares both Aux variants because hg_sdf includes share helpers between paths).
                 const shrecCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)
                     .replace("insert", "sceneAux", sceneAux)
+                    .replace("insert", "sceneAuxMid", sceneAuxMid)
                     .replace("insert", "sceneSDF", sceneSDF)
+                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
                 const sampleGridShaderModule = shrecCompiler.compile(sampleGridShader, "SHREC Sample Grid")
                 const params: ShrecParams = {
                     gridDimX,
@@ -1036,6 +1036,7 @@ export class RenderWorkerCore {
                         seamAwareEnabled: shrecTuning.seamAwareEnabled,
                         seamAgreementCosThreshold: shrecTuning.seamAgreementCosThreshold,
                         edgeFitEnabled: shrecTuning.edgeFitEnabled,
+                        featureConstrainedPlacement: shrecTuning.featureConstrainedPlacement,
                     }),
                 }
                 // Walk the scene tree and collect each primitive's explicit

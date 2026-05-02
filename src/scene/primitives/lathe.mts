@@ -9,6 +9,13 @@ import { Polygon2D, polygon2dWindingSign } from "./polygon2d.mjs"
 const LATHE_AXIS_RING_R = 1e-6
 /** Adjacent profile edges with dot(dirPrev, dirNext) above this are treated as collinear — no contour. */
 const LATHE_COLLINEAR_DOT = 0.995
+/**
+ * MDC feature constraints should only be emitted for real creases.
+ * `LATHE_COLLINEAR_DOT` is deliberately loose for preview edge picking, but
+ * using it for mesh export treats lightly polygonized smooth curves as ring
+ * features and creates constrained trapezoid patches near shallow turns.
+ */
+const LATHE_MDC_FEATURE_DOT = 0.95
 /** Minimum squared edge length (profile space) to treat as a real edge for corner tests. */
 const LATHE_MIN_EDGE_LEN2 = 1e-20
 
@@ -19,6 +26,13 @@ export type LatheProfileEpsPack = {
     sideEps: string
     /** For MDC mid: references `uniforms.voxelSize` */
     vtxEps: string
+    /**
+     * Profile-space distance cap for stamping MID_FEATURE_RING / CORNER on the mid path.
+     * `vtxEps` also scales with model size (`charScale`); without a voxel-relative cap,
+     * large lathes tag mantle samples far from the crease, and MDC feature constraints
+     * snap those vertices to the ring — visible as flat bands above/below ring features.
+     */
+    featureVtxEps: string
     /** For preview edge hit: no `uniforms.voxelSize` reference */
     previewSideEps: string
     /** For preview edge hit: no `uniforms.voxelSize` reference */
@@ -46,6 +60,7 @@ export function latheProfileEpsPack(child: Polygon2D): LatheProfileEpsPack {
         charScale,
         sideEps: `max(max(SURF_DIST * 8.0, ${charScale} * 0.015), uniforms.voxelSize * 0.35)`,
         vtxEps: `max(max(SURF_DIST * 8.0, ${charScale} * 0.03), uniforms.voxelSize * 1.1)`,
+        featureVtxEps: `min(max(max(SURF_DIST * 8.0, ${charScale} * 0.03), uniforms.voxelSize * 1.1), uniforms.voxelSize * 2.5)`,
         previewSideEps: `max(SURF_DIST * 8.0, ${charScale} * 0.015)`,
         previewVtxEps: `max(SURF_DIST * 8.0, ${charScale} * 0.03)`,
         edgeThreshold: `max(${charScale} * 0.12, 0.012)`,
@@ -258,7 +273,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
                 if (prevLeg2 >= ${LATHE_MIN_EDGE_LEN2.toExponential()} && nextLeg2 >= ${LATHE_MIN_EDGE_LEN2.toExponential()}) {
                     let prevDir = prevLeg * inverseSqrt(prevLeg2);
                     let nextDir = nextLeg * inverseSqrt(nextLeg2);
-                    if (dot(prevDir, nextDir) < ${LATHE_COLLINEAR_DOT}) {
+                    if (dot(prevDir, nextDir) < ${LATHE_MDC_FEATURE_DOT}) {
                         let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${eps.windSignStr};
                         let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${eps.windSignStr};
                         let n0m = safeNormalize(vec3f(prevOut2.x * radDir.x, prevOut2.y, prevOut2.x * radDir.y), vec3f(0.0, 1.0, 0.0));
@@ -294,7 +309,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     }
     let n = safeNormalize(vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y), vec3f(0.0, 1.0, 0.0));
     let sideEps = ${eps.sideEps};
-    let vtxEps = ${eps.vtxEps};
+    let featureVtxEps = ${eps.featureVtxEps};
     if (abs(d) < sideEps) {
         // Only inspect the two vertices of the closest profile edge (O(1) vertex checks).
         let edgeIdx = u32(combined.y);
@@ -302,7 +317,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         let v1 = polygonVertices[${BASE}u + (edgeIdx + 1u) % ${N}u];
 
         // Check v0 (start of closest edge).
-        if (length(q - vec2f(abs(v0.x), v0.y)) < vtxEps) {
+        if (length(q - vec2f(abs(v0.x), v0.y)) < featureVtxEps) {
             let vPrev = polygonVertices[${BASE}u + (edgeIdx + ${N}u - 1u) % ${N}u];
             let prevLeg = v0 - vPrev;
             let nextLeg = v1 - v0;
@@ -310,7 +325,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         }
 
         // Check v1 (end of closest edge).
-        if (length(q - vec2f(abs(v1.x), v1.y)) < vtxEps) {
+        if (length(q - vec2f(abs(v1.x), v1.y)) < featureVtxEps) {
             let vNext = polygonVertices[${BASE}u + (edgeIdx + 2u) % ${N}u];
             let prevLeg = v1 - v0;
             let nextLeg = vNext - v1;

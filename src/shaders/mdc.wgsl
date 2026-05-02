@@ -535,12 +535,12 @@ fn clampFeatureVertex(p: vec3f, cellMin: vec3f, cellMax: vec3f) -> vec3f {
 }
 
 fn clampRingFeatureVertex(p: vec3f, cellMin: vec3f, cellMax: vec3f) -> vec3f {
-    // Ring snaps are accepted up to MDC_RING_SNAP_COMMIT_SCALE voxels from the
-    // unconstrained QEF winner. Use the same bound when clamping; otherwise a
-    // valid snap can be truncated before it reaches the ring, leaving adjacent
-    // cells with slightly different loci.
-    let margin = uniforms.voxelSize * MDC_RING_SNAP_COMMIT_SCALE;
-    return clamp(p, cellMin - vec3f(margin), cellMax + vec3f(margin));
+    // A valid ring snap should land exactly on the shared circular locus.
+    // Any cell-local clamp moves some vertices off that circle while their
+    // neighbors remain on it, which creates tiny fins around the ring.
+    _ = cellMin;
+    _ = cellMax;
+    return p;
 }
 
 const MDC_FEATURE_PROX_SCALE: f32 = 0.75;
@@ -571,13 +571,6 @@ const MDC_CORNER_PROBE_PROX_SCALE: f32 = 1.9;
 // emit ghost edge glyphs along the same circle. 1.35 voxels matches CORNER and
 // covers the corner-to-cell-center distance for grids aligned to the ring.
 const MDC_RING_FEATURE_PROX_SCALE: f32 = 1.35;
-/** Pass 4 ring snap: only pull the vertex onto the circle if the unconstrained QEF
- * winner was already within this distance of the ring curve. Classification noise can
- * attach MID_FEATURE_RING to mantle samples far from the crease; snapping those onto the
- * ring introduces flat ribbons that change the mesh silhouette — snapping must refine
- * placement near the crease, not teleport distant vertices. */
-const MDC_RING_SNAP_COMMIT_SCALE: f32 = 2.1;
-
 fn mdcQefAddPlane(qef: ptr<function, QEFData>, normal: vec3f, point: vec3f, weight: f32) {
     let n = safeNormalize(normal, vec3f(0.0, 1.0, 0.0));
     (*qef).ATA[0] = (*qef).ATA[0] + n * (n.x * weight);
@@ -1721,10 +1714,7 @@ fn vertexGeneration_Pass4(
                     } else {
                         featureTarget = featureStart.point;
                     }
-                    let snapMag = length(best - featureTarget);
-                    if (snapMag <= uniforms.voxelSize * MDC_RING_SNAP_COMMIT_SCALE) {
-                        snappedToRing = true;
-                    }
+                    snappedToRing = true;
                 }
             }
             if (!snappedToRing && length(featureStart.tangent) > 1e-6 && !ringFrameBuilt) {
@@ -1962,12 +1952,12 @@ fn chooseQuadTris(v0_idx: u32, v1_idx: u32, v2_idx: u32, v3_idx: u32) -> TriPair
     let faceN0 = cross(vertices[t0.y].position - vertices[t0.x].position,
                        vertices[t0.z].position - vertices[t0.x].position);
     if (dot(faceN0, faceN0) > 0.0) {
+        var pos: i32 = 0;
+        var neg: i32 = 0;
         let n0v = vertices[v0_idx].normal;
         let n1v = vertices[v1_idx].normal;
         let n2v = vertices[v2_idx].normal;
         let n3v = vertices[v3_idx].normal;
-        var pos: i32 = 0;
-        var neg: i32 = 0;
         if (dot(n0v, n0v) > 1e-12) {
             if (dot(faceN0, n0v) > 0.0) { pos = pos + 1; } else { neg = neg + 1; }
         }

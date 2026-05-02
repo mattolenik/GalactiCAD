@@ -285,7 +285,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
                             let feat = vec3f(radDir.x * rUse, ${vVName}.y, radDir.y * rUse);
                             let axisCenter = vec3f(0.0, ${vVName}.y, 0.0);
                             let ringTangent = safeNormalize(vec3f(-radDir.y, 0.0, radDir.x), vec3f(0.0, 0.0, 1.0));
-                            var ring = sdfRMidRing(d, 1.0, n0m, feat, ringTangent, n1m, axisCenter, length(p - feat));
+                            var ring = sdfRMidRing(d, 1.0, n, feat, ringTangent, n1m, axisCenter, length(p - feat));
                             ring.featureIdB = vertexTag;
                             return ring;
                         }

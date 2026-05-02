@@ -69,16 +69,21 @@ export function splitCreaseVertices(
     const vertCount = (verts.length / S) | 0
     if (triCount === 0 || vertCount === 0) return { verts, tris }
 
-    // 1. Unit face normals
+    // 1. Unit face normals + double-area magnitudes. Smooth-group normals are
+    // area weighted below; otherwise tiny sliver/fill triangles near sharp
+    // features contribute as much as real surface triangles, which shows up as
+    // strong normal-color patches even when the geometry error is tiny.
     const fnx = new Float32Array(triCount)
     const fny = new Float32Array(triCount)
     const fnz = new Float32Array(triCount)
+    const fa = new Float32Array(triCount)
     for (let t = 0; t < triCount; t++) {
         const b0 = tris[t * 3]! * S, b1 = tris[t * 3 + 1]! * S, b2 = tris[t * 3 + 2]! * S
         const ax = verts[b1]! - verts[b0]!, ay = verts[b1 + 1]! - verts[b0 + 1]!, az = verts[b1 + 2]! - verts[b0 + 2]!
         const bx = verts[b2]! - verts[b0]!, by = verts[b2 + 1]! - verts[b0 + 1]!, bz = verts[b2 + 2]! - verts[b0 + 2]!
         let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx
         const l = Math.hypot(nx, ny, nz)
+        fa[t] = l
         if (l > 1e-20) { nx /= l; ny /= l; nz /= l }
         fnx[t] = nx; fny[t] = ny; fnz[t] = nz
     }
@@ -156,7 +161,8 @@ export function splitCreaseVertices(
             let nx = 0, ny = 0, nz = 0
             for (const idx of grp) {
                 const t = adjT[s0 + idx]!
-                nx += fnx[t]!; ny += fny[t]!; nz += fnz[t]!
+                const w = fa[t]!
+                nx += fnx[t]! * w; ny += fny[t]! * w; nz += fnz[t]! * w
             }
             const l = Math.hypot(nx, ny, nz)
             if (l > 1e-12) { nx /= l; ny /= l; nz /= l }

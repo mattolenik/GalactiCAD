@@ -155,6 +155,8 @@ export type MainToWorkerMessage =
           meshExporter?: MeshExporter
           /** Used when `meshExporter === "asc"`; default tier in worker is `2` (asc4). */
           meshAscTierIndex?: MeshAscTierIndex
+          /** Sampling step in mm for mesh grid (MDC + ASC). Default 0.1 when omitted. */
+          meshExportVoxelSizeMm?: number
       }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }

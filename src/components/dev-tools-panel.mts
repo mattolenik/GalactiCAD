@@ -19,6 +19,14 @@ import {
 } from "../render-worker-protocol.mjs"
 import { DEBUG_LOG_MODULES, log, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
 
+const MESH_EXPORT_VOXEL_MM_MIN = 0.01
+const MESH_EXPORT_VOXEL_MM_MAX = 50
+
+function clampMeshExportVoxelMm(v: number): number {
+    if (typeof v !== "number" || !Number.isFinite(v)) return 0.1
+    return Math.min(MESH_EXPORT_VOXEL_MM_MAX, Math.max(MESH_EXPORT_VOXEL_MM_MIN, v))
+}
+
 const PREVIEW_SHADING_KNOBS: {
     key: keyof PreviewShadingParams
     label: string
@@ -60,8 +68,10 @@ export class DevToolsPanel extends HTMLElement {
     #meshSimplify$: BehaviorSubject<boolean>
     #meshExporter$: BehaviorSubject<MeshExporter>
     #meshAscTier$: BehaviorSubject<MeshAscTierIndex>
+    #meshVoxelMm$: BehaviorSubject<number>
     #meshExporterSelect: HTMLSelectElement
     #meshAscTierSelect: HTMLSelectElement
+    #meshVoxelInput: HTMLInputElement
     #meshAscTierRow: HTMLLabelElement
     #lightingExpandedCheckbox: HTMLInputElement
     #lightingExpanded$: BehaviorSubject<boolean>
@@ -168,6 +178,14 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshAscTier$.next(t)
     }
 
+    get meshExportVoxelSizeMm(): number {
+        return this.#meshVoxelMm$.value
+    }
+
+    set meshExportVoxelSizeMm(mm: number) {
+        this.#meshVoxelMm$.next(clampMeshExportVoxelMm(mm))
+    }
+
     /** Show or hide the panel */
     get visible(): boolean {
         return this.style.display !== "none"
@@ -247,6 +265,16 @@ export class DevToolsPanel extends HTMLElement {
             padding: 1px 4px;
             max-width: 200px;
         }
+        input[type="number"] {
+            width: 72px;
+            font-size: 11px;
+            font-family: system-ui, sans-serif;
+            color: inherit;
+            background: rgb(from var(${__fg_color}) r g b / 0.08);
+            border: 1px solid var(${__tone_1});
+            border-radius: 3px;
+            padding: 2px 4px;
+        }
         .shade-head {
             font-size: 10px;
             opacity: 0.75;
@@ -311,6 +339,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshSimplify$ = new BehaviorSubject(g.meshSimplifyOnExport)
         this.#meshExporter$ = new BehaviorSubject(g.meshExporter)
         this.#meshAscTier$ = new BehaviorSubject(g.meshAscTierIndex)
+        this.#meshVoxelMm$ = new BehaviorSubject(clampMeshExportVoxelMm(g.meshExportVoxelSizeMm))
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
@@ -340,6 +369,39 @@ export class DevToolsPanel extends HTMLElement {
             this.#settings.updateGlobal({ app: { meshSimplifyOnExport: v } })
             this.onMeshSimplifyChange?.(v)
         })
+
+        const voxelRow = document.createElement("label")
+        voxelRow.style.display = "flex"
+        voxelRow.style.alignItems = "center"
+        voxelRow.style.gap = "6px"
+        voxelRow.style.fontSize = "11px"
+        voxelRow.title = "Sampling step for STL / mesh viewer export (MDC and ASC). Smaller values increase detail and cost."
+        const voxelLbl = document.createElement("span")
+        voxelLbl.textContent = "Mesh voxel (mm)"
+        this.#meshVoxelInput = document.createElement("input")
+        this.#meshVoxelInput.type = "number"
+        this.#meshVoxelInput.min = String(MESH_EXPORT_VOXEL_MM_MIN)
+        this.#meshVoxelInput.max = String(MESH_EXPORT_VOXEL_MM_MAX)
+        this.#meshVoxelInput.step = "0.01"
+        this.#meshVoxelInput.setAttribute("aria-label", "Mesh export voxel size in millimeters")
+        this.#meshVoxelInput.value = String(this.#meshVoxelMm$.value)
+        const commitVoxel = () => {
+            const c = clampMeshExportVoxelMm(parseFloat(this.#meshVoxelInput.value))
+            this.#meshVoxelInput.value = String(c)
+            if (c !== this.#meshVoxelMm$.value) this.#meshVoxelMm$.next(c)
+        }
+        this.#meshVoxelInput.addEventListener("change", commitVoxel)
+        this.#meshVoxelInput.addEventListener("blur", commitVoxel)
+        this.#subscriptions.push(this.#meshVoxelMm$.subscribe(v => {
+            this.#meshVoxelInput.value = String(v)
+        }))
+        this.#subscriptions.push(
+            this.#meshVoxelMm$.pipe(skip(1)).subscribe(v => {
+                this.#settings.updateGlobal({ app: { meshExportVoxelSizeMm: v } })
+            }),
+        )
+        voxelRow.append(voxelLbl, this.#meshVoxelInput)
+        shadow.appendChild(voxelRow)
 
         const mesherRow = document.createElement("label")
         mesherRow.style.display = "flex"

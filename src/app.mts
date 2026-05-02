@@ -1434,6 +1434,7 @@ class App {
                     simplifyOnExport: devTools.meshSimplifyOnExport,
                     meshExporter: devTools.meshExporter,
                     meshAscTierIndex: devTools.meshAscTierIndex,
+                    meshExportVoxelSizeMm: devTools.meshExportVoxelSizeMm,
                 })
                 await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
 
@@ -1511,6 +1512,7 @@ class App {
                     simplifyOnExport: this.#toolbarRefs.devTools.meshSimplifyOnExport,
                     meshExporter: this.#toolbarRefs.devTools.meshExporter,
                     meshAscTierIndex: this.#toolbarRefs.devTools.meshAscTierIndex,
+                    meshExportVoxelSizeMm: this.#toolbarRefs.devTools.meshExportVoxelSizeMm,
                 })
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {

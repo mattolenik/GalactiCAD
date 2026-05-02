@@ -951,6 +951,7 @@ export class RenderWorkerCore {
         simplifyOnExport = true,
         meshExporter?: MeshExporter,
         meshAscTierIndex?: MeshAscTierIndex,
+        meshExportVoxelSizeMm?: number,
     ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
@@ -961,7 +962,11 @@ export class RenderWorkerCore {
                 self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId, documentName })
                 return
             }
-            let voxelMm = 0.1
+            const requestedVoxel =
+                typeof meshExportVoxelSizeMm === "number" && Number.isFinite(meshExportVoxelSizeMm) && meshExportVoxelSizeMm > 0
+                    ? meshExportVoxelSizeMm
+                    : 0.1
+            let voxelMm = Math.min(50, Math.max(0.01, requestedVoxel))
             const pad = 3.2
             const minX = bounds.min[0] - pad
             const minY = bounds.min[1] - pad

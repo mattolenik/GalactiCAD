@@ -75,6 +75,8 @@ export interface GlobalSettings {
         meshExporter: MeshExporter
         /** ASC tier when `meshExporter === "asc"`. */
         meshAscTierIndex: MeshAscTierIndex
+        /** STL / mesh-viewer sampling step in mm (MDC and ASC). Clamped when loading. */
+        meshExportVoxelSizeMm: number
         diskSyncIntervalSeconds: number
         theme: ThemeMode
         editor: EditorSettings
@@ -136,6 +138,7 @@ function defaultGlobalSettings(): GlobalSettings {
             meshSimplifyOnExport: true,
             meshExporter: "mdc",
             meshAscTierIndex: 2,
+            meshExportVoxelSizeMm: 0.1,
             diskSyncIntervalSeconds: 30,
             theme: "dark",
             editor: defaultEditorSettings(),
@@ -374,6 +377,9 @@ export class SettingsManager {
                 const tier = app.meshAscTierIndex
                 if (typeof tier !== "number" || tier < 0 || tier > 7 || !Number.isInteger(tier)) app.meshAscTierIndex = 2
                 else app.meshAscTierIndex = tier as MeshAscTierIndex
+                const vx = app.meshExportVoxelSizeMm
+                if (typeof vx !== "number" || !Number.isFinite(vx)) app.meshExportVoxelSizeMm = def.app.meshExportVoxelSizeMm
+                else app.meshExportVoxelSizeMm = Math.min(50, Math.max(0.01, vx))
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false
                 if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"

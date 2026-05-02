@@ -156,6 +156,7 @@ export class SDFRenderer {
             simplifyOnExport?: boolean
             meshExporter?: MeshExporter
             meshAscTierIndex?: MeshAscTierIndex
+            meshExportVoxelSizeMm?: number
         }
     >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
@@ -561,6 +562,7 @@ export class SDFRenderer {
                 simplifyOnExport: pending.simplifyOnExport,
                 meshExporter: pending.meshExporter ?? "mdc",
                 meshAscTierIndex: pending.meshAscTierIndex,
+                meshExportVoxelSizeMm: pending.meshExportVoxelSizeMm,
             })
         } else if (pending.kind === "thumbnail") {
             if (requestId !== this.#latestThumbnailRequestId) {
@@ -1522,14 +1524,27 @@ export class SDFRenderer {
     async renderMesh(
         _src: string,
         documentName?: string,
-        options?: { simplifyOnExport?: boolean; meshExporter?: MeshExporter; meshAscTierIndex?: MeshAscTierIndex },
+        options?: {
+            simplifyOnExport?: boolean
+            meshExporter?: MeshExporter
+            meshAscTierIndex?: MeshAscTierIndex
+            meshExportVoxelSizeMm?: number
+        },
     ): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
         this.#latestRenderMeshRequestId = requestId
         const simplifyOnExport = options?.simplifyOnExport ?? true
         const meshExporter = options?.meshExporter ?? "mdc"
         const meshAscTierIndex = options?.meshAscTierIndex
-        this.#pendingTranspile.set(requestId, { kind: "renderMesh", documentName, simplifyOnExport, meshExporter, meshAscTierIndex })
+        const meshExportVoxelSizeMm = options?.meshExportVoxelSizeMm
+        this.#pendingTranspile.set(requestId, {
+            kind: "renderMesh",
+            documentName,
+            simplifyOnExport,
+            meshExporter,
+            meshAscTierIndex,
+            meshExportVoxelSizeMm,
+        })
         return new Promise<MeshData>((resolve, reject) => {
             this.#pendingRenderMesh.set(requestId, { resolve, reject })
             this.#transpileWorker.postMessage({ type: "transpile", src: _src.trim(), requestId, kind: "renderMesh", documentName })

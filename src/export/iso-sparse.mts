@@ -6,13 +6,14 @@
  * 50–500× more memory than necessary — the iso surface only intersects a thin shell
  * of cells. This module:
  *
- * 1. Reads back `activeCellFlags` (a bit per cube indicating sign-change presence).
- * 2. Dilates the active-cube set by 1 (each cube + its 26 neighbors). This guarantees
- *    that for every active edge that Pass 6 emits MT triangles around, the 4 incident
- *    cube duals exist (since they're at most 1 cube away from an active cube).
- * 3. Enumerates the union of (corners, X/Y/Z edges, XY/YZ/XZ faces, cubes) belonging
+ * 1. (`ISOExport`) GPU dilation + stream-compact base cubes from `activeCellFlags`, then a
+ *    small CPU readback of the dilated cube list only — no dense CPU walk of the bitmap.
+ *    (`computeSparseDualSetsFromDilatedCubeLinears`; legacy `computeSparseDualSets` still
+ *    implements CPU dilation from flags for tooling/tests.) Dilation uses Chebyshev
+ *    distance ≤ 1 so every edge Pass 6 emits around has the four incident cube duals.
+ * 2. Enumerates the union of (corners, X/Y/Z edges, XY/YZ/XZ faces, cubes) belonging
  *    to dilated cubes — the "sparse set".
- * 4. Builds 4 compact lists (slot → linear cell index) used to drive Pass 2/3/4/5
+ * 3. Builds compact lists (slot → linear cell index) used to drive Pass 2/3/4/5
  *    dispatches, and a single open-addressed hash table (key → absolute slot in
  *    `allDuals`) used by Pass 6 to look up duals by grid index.
  *
@@ -79,6 +80,213 @@ export interface SparseDualSets {
 
     /** Per-step CPU timing in ms (alloc/dilate/enumerate/compact/hash). Set when DEBUG. */
     timingMs?: Record<string, number>
+}
+
+/**
+ * Build sparse dual sets from **already dilated** base-cube linear indices
+ * (`cx + cy*nx + cz*nx*ny`, `nx = dx-1`), as produced by GPU compaction (`isoGpuSparse*` passes).
+ */
+export function computeSparseDualSetsFromDilatedCubeLinears(
+    dilatedCubeLinears: Uint32Array,
+    dx: number,
+    dy: number,
+    dz: number,
+): SparseDualSets {
+    const nx = Math.max(0, dx - 1)
+    const ny = Math.max(0, dy - 1)
+    const nz = Math.max(0, dz - 1)
+    const dxm1 = Math.max(1, dx - 1)
+    const dym1 = Math.max(1, dy - 1)
+
+    const _isoSparseT = (typeof performance !== "undefined" && performance.now)
+        ? () => performance.now()
+        : () => Date.now()
+    const _t0 = _isoSparseT()
+    const _times: Record<string, number> = {}
+    const _mark = (label: string, prevTime: number): number => {
+        const now = _isoSparseT()
+        _times[label] = Math.round((now - prevTime) * 100) / 100
+        return now
+    }
+    let _t = _t0
+
+    const dilatedCubeCount = dilatedCubeLinears.length
+    _t = _mark("fromGpuList", _t)
+
+    const cornerFlags = new Uint8Array(dx * dy * dz)
+    const edgeXFlags = new Uint8Array(dxm1 * dy * dz)
+    const edgeYFlags = new Uint8Array(dx * dym1 * dz)
+    const edgeZFlags = new Uint8Array(dx * dy * Math.max(1, dz - 1))
+    const faceXYFlags = new Uint8Array(nx * ny * dz)
+    const faceYZFlags = new Uint8Array(dx * ny * Math.max(1, dz - 1))
+    const faceXZFlags = new Uint8Array(nx * dy * Math.max(1, dz - 1))
+    const cornerRaw = new Uint32Array(Math.max(8, dilatedCubeCount * 8))
+    const edgeXRaw = new Uint32Array(Math.max(4, dilatedCubeCount * 4))
+    const edgeYRaw = new Uint32Array(Math.max(4, dilatedCubeCount * 4))
+    const edgeZRaw = new Uint32Array(Math.max(4, dilatedCubeCount * 4))
+    const faceXYRaw = new Uint32Array(Math.max(2, dilatedCubeCount * 2))
+    const faceYZRaw = new Uint32Array(Math.max(2, dilatedCubeCount * 2))
+    const faceXZRaw = new Uint32Array(Math.max(2, dilatedCubeCount * 2))
+    let cornerN = 0, eXN = 0, eYN = 0, eZN = 0, fXYN = 0, fYZN = 0, fXZN = 0
+    _t = _mark("flags-alloc", _t)
+
+    for (let i = 0; i < dilatedCubeCount; i++) {
+        const cubeIdx = dilatedCubeLinears[i]!
+        const cx = cubeIdx % nx
+        const cy = ((cubeIdx / nx) | 0) % ny
+        const cz = (cubeIdx / (nx * ny)) | 0
+
+        for (let dz1 = 0; dz1 <= 1; dz1++) {
+            for (let dy1 = 0; dy1 <= 1; dy1++) {
+                for (let dx1 = 0; dx1 <= 1; dx1++) {
+                    const idx = (cx + dx1) + (cy + dy1) * dx + (cz + dz1) * dx * dy
+                    if (cornerFlags[idx] === 0) {
+                        cornerFlags[idx] = 1
+                        cornerRaw[cornerN++] = idx
+                    }
+                }
+            }
+        }
+        for (let dz1 = 0; dz1 <= 1; dz1++) {
+            for (let dy1 = 0; dy1 <= 1; dy1++) {
+                const idx = cx + (cy + dy1) * dxm1 + (cz + dz1) * dxm1 * dy
+                if (edgeXFlags[idx] === 0) {
+                    edgeXFlags[idx] = 1
+                    edgeXRaw[eXN++] = idx
+                }
+            }
+        }
+        for (let dz1 = 0; dz1 <= 1; dz1++) {
+            for (let dx1 = 0; dx1 <= 1; dx1++) {
+                const idx = (cx + dx1) + cy * dx + (cz + dz1) * dx * dym1
+                if (edgeYFlags[idx] === 0) {
+                    edgeYFlags[idx] = 1
+                    edgeYRaw[eYN++] = idx
+                }
+            }
+        }
+        for (let dy1 = 0; dy1 <= 1; dy1++) {
+            for (let dx1 = 0; dx1 <= 1; dx1++) {
+                const idx = (cx + dx1) + (cy + dy1) * dx + cz * dx * dy
+                if (edgeZFlags[idx] === 0) {
+                    edgeZFlags[idx] = 1
+                    edgeZRaw[eZN++] = idx
+                }
+            }
+        }
+        for (let dz1 = 0; dz1 <= 1; dz1++) {
+            const idx = cx + cy * nx + (cz + dz1) * nx * ny
+            if (faceXYFlags[idx] === 0) {
+                faceXYFlags[idx] = 1
+                faceXYRaw[fXYN++] = idx
+            }
+        }
+        for (let dx1 = 0; dx1 <= 1; dx1++) {
+            const idx = (cx + dx1) + cy * dx + cz * dx * ny
+            if (faceYZFlags[idx] === 0) {
+                faceYZFlags[idx] = 1
+                faceYZRaw[fYZN++] = idx
+            }
+        }
+        for (let dy1 = 0; dy1 <= 1; dy1++) {
+            const idx = cx + (cy + dy1) * nx + cz * nx * dy
+            if (faceXZFlags[idx] === 0) {
+                faceXZFlags[idx] = 1
+                faceXZRaw[fXZN++] = idx
+            }
+        }
+    }
+    _t = _mark("enumerate", _t)
+
+    const trim = (raw: Uint32Array, n: number): Uint32Array => {
+        const out = new Uint32Array(n)
+        out.set(raw.subarray(0, n))
+        return out
+    }
+    const cornerCompactList = trim(cornerRaw, cornerN)
+    const edgeXCompactList = trim(edgeXRaw, eXN)
+    const edgeYCompactList = trim(edgeYRaw, eYN)
+    const edgeZCompactList = trim(edgeZRaw, eZN)
+    const faceXYCompactList = trim(faceXYRaw, fXYN)
+    const faceYZCompactList = trim(faceYZRaw, fYZN)
+    const faceXZCompactList = trim(faceXZRaw, fXZN)
+    _t = _mark("compact", _t)
+    const cubeCompactList = new Uint32Array(dilatedCubeLinears)
+
+    let base = 0
+    const cornerBase = base; base += cornerCompactList.length
+    const edgeXBase = base; base += edgeXCompactList.length
+    const edgeYBase = base; base += edgeYCompactList.length
+    const edgeZBase = base; base += edgeZCompactList.length
+    const faceXYBase = base; base += faceXYCompactList.length
+    const faceYZBase = base; base += faceYZCompactList.length
+    const faceXZBase = base; base += faceXZCompactList.length
+    const cubeBase = base; base += cubeCompactList.length
+    const totalDualSlots = base
+
+    let hashEntries = 1
+    // Keep average linear-probe chains well under the WGSL 256-iter lookup cap on large CAD meshes.
+    const target = Math.max(64, totalDualSlots * 4)
+    while (hashEntries < target) hashEntries <<= 1
+    const hashMask = hashEntries - 1
+    const hashTable = new Uint32Array(hashEntries * 2)
+    hashTable.fill(0xffffffff)
+
+    const insertHash = (key: number, slot: number) => {
+        let probe = (Math.imul(key >>> 0, SPARSE_HASH_KNUTH) >>> 0) & hashMask
+        for (let i = 0; i < 256; i++) {
+            const base2 = probe * 2
+            if (hashTable[base2] === 0xffffffff) {
+                hashTable[base2] = key >>> 0
+                hashTable[base2 + 1] = slot >>> 0
+                return
+            }
+            probe = (probe + 1) & hashMask
+        }
+        throw new Error(
+            `Sparse hash insert overflowed 256 probes at key=${key}, slot=${slot}; `
+            + `entries=${hashEntries}, totalDualSlots=${totalDualSlots}`,
+        )
+    }
+
+    const insertList = (list: Uint32Array, cellType: number, baseSlot: number) => {
+        for (let i = 0; i < list.length; i++) {
+            insertHash(makeSparseKey(cellType, list[i]!), baseSlot + i)
+        }
+    }
+    insertList(cornerCompactList, CELL_TYPE_CORNER, cornerBase)
+    insertList(edgeXCompactList, CELL_TYPE_EDGE_X, edgeXBase)
+    insertList(edgeYCompactList, CELL_TYPE_EDGE_Y, edgeYBase)
+    insertList(edgeZCompactList, CELL_TYPE_EDGE_Z, edgeZBase)
+    insertList(faceXYCompactList, CELL_TYPE_FACE_XY, faceXYBase)
+    insertList(faceYZCompactList, CELL_TYPE_FACE_YZ, faceYZBase)
+    insertList(faceXZCompactList, CELL_TYPE_FACE_XZ, faceXZBase)
+    insertList(cubeCompactList, CELL_TYPE_CUBE, cubeBase)
+    _t = _mark("hash", _t)
+
+    return {
+        cornerCompactList,
+        edgeXCompactList,
+        edgeYCompactList,
+        edgeZCompactList,
+        faceXYCompactList,
+        faceYZCompactList,
+        faceXZCompactList,
+        cubeCompactList,
+        cornerBase,
+        edgeXBase,
+        edgeYBase,
+        edgeZBase,
+        faceXYBase,
+        faceYZBase,
+        faceXZBase,
+        cubeBase,
+        totalDualSlots,
+        hashTable,
+        hashEntries,
+        hashMask,
+        timingMs: _times,
+    }
 }
 
 /**
@@ -183,199 +391,15 @@ export function computeSparseDualSets(
 
     _t = _mark("dilate", _t)
 
-    // Step 2: walk the dilated cube list and emit (deduplicated, unsorted) compact lists
-    // for each category. Per-category Uint8Array bit-set acts as a fast set for dedup;
-    // we write the index to the compact list at the same time we set the flag, avoiding
-    // any later O(grid_size) sweep over the flag arrays. Total cost: dilatedCubeCount ×
-    // ~30 ops, ~14M ops at ~30 ns = ~400 ms (vs ~18 s for the previous flag-sweep approach).
-    //
-    // Lists are unsorted; the hash table maps key→slot independent of compact-list order.
-    const cornerFlags = new Uint8Array(dx * dy * dz)
-    const edgeXFlags = new Uint8Array(dxm1 * dy * dz)
-    const edgeYFlags = new Uint8Array(dx * dym1 * dz)
-    const edgeZFlags = new Uint8Array(dx * dy * Math.max(1, dz - 1))
-    const faceXYFlags = new Uint8Array(nx * ny * dz)
-    const faceYZFlags = new Uint8Array(dx * ny * Math.max(1, dz - 1))
-    const faceXZFlags = new Uint8Array(nx * dy * Math.max(1, dz - 1))
-    const cornerRaw = new Uint32Array(dilatedCubeCount * 8)
-    const edgeXRaw = new Uint32Array(dilatedCubeCount * 4)
-    const edgeYRaw = new Uint32Array(dilatedCubeCount * 4)
-    const edgeZRaw = new Uint32Array(dilatedCubeCount * 4)
-    const faceXYRaw = new Uint32Array(dilatedCubeCount * 2)
-    const faceYZRaw = new Uint32Array(dilatedCubeCount * 2)
-    const faceXZRaw = new Uint32Array(dilatedCubeCount * 2)
-    let cornerN = 0, eXN = 0, eYN = 0, eZN = 0, fXYN = 0, fYZN = 0, fXZN = 0
-    _t = _mark("flags-alloc", _t)
-
-    for (let i = 0; i < dilatedCubeCount; i++) {
-        const cubeIdx = dilatedCubeList[i]!
-        const cx = cubeIdx % nx
-        const cy = ((cubeIdx / nx) | 0) % ny
-        const cz = (cubeIdx / (nx * ny)) | 0
-
-        // 8 corners
-        for (let dz1 = 0; dz1 <= 1; dz1++) {
-            for (let dy1 = 0; dy1 <= 1; dy1++) {
-                for (let dx1 = 0; dx1 <= 1; dx1++) {
-                    const idx = (cx + dx1) + (cy + dy1) * dx + (cz + dz1) * dx * dy
-                    if (cornerFlags[idx] === 0) {
-                        cornerFlags[idx] = 1
-                        cornerRaw[cornerN++] = idx
-                    }
-                }
-            }
-        }
-        // 4 X-edges
-        for (let dz1 = 0; dz1 <= 1; dz1++) {
-            for (let dy1 = 0; dy1 <= 1; dy1++) {
-                const idx = cx + (cy + dy1) * dxm1 + (cz + dz1) * dxm1 * dy
-                if (edgeXFlags[idx] === 0) {
-                    edgeXFlags[idx] = 1
-                    edgeXRaw[eXN++] = idx
-                }
-            }
-        }
-        // 4 Y-edges
-        for (let dz1 = 0; dz1 <= 1; dz1++) {
-            for (let dx1 = 0; dx1 <= 1; dx1++) {
-                const idx = (cx + dx1) + cy * dx + (cz + dz1) * dx * dym1
-                if (edgeYFlags[idx] === 0) {
-                    edgeYFlags[idx] = 1
-                    edgeYRaw[eYN++] = idx
-                }
-            }
-        }
-        // 4 Z-edges
-        for (let dy1 = 0; dy1 <= 1; dy1++) {
-            for (let dx1 = 0; dx1 <= 1; dx1++) {
-                const idx = (cx + dx1) + (cy + dy1) * dx + cz * dx * dy
-                if (edgeZFlags[idx] === 0) {
-                    edgeZFlags[idx] = 1
-                    edgeZRaw[eZN++] = idx
-                }
-            }
-        }
-        // 2 XY-faces
-        for (let dz1 = 0; dz1 <= 1; dz1++) {
-            const idx = cx + cy * nx + (cz + dz1) * nx * ny
-            if (faceXYFlags[idx] === 0) {
-                faceXYFlags[idx] = 1
-                faceXYRaw[fXYN++] = idx
-            }
-        }
-        // 2 YZ-faces
-        for (let dx1 = 0; dx1 <= 1; dx1++) {
-            const idx = (cx + dx1) + cy * dx + cz * dx * ny
-            if (faceYZFlags[idx] === 0) {
-                faceYZFlags[idx] = 1
-                faceYZRaw[fYZN++] = idx
-            }
-        }
-        // 2 XZ-faces
-        for (let dy1 = 0; dy1 <= 1; dy1++) {
-            const idx = cx + (cy + dy1) * nx + cz * nx * dy
-            if (faceXZFlags[idx] === 0) {
-                faceXZFlags[idx] = 1
-                faceXZRaw[fXZN++] = idx
-            }
-        }
-    }
-    _t = _mark("enumerate", _t)
-
-    // Step 3: trim each over-allocated raw list to its actual unique count.
-    const trim = (raw: Uint32Array, n: number): Uint32Array => {
-        const out = new Uint32Array(n)
-        out.set(raw.subarray(0, n))
-        return out
-    }
-    const cornerCompactList = trim(cornerRaw, cornerN)
-    const edgeXCompactList = trim(edgeXRaw, eXN)
-    const edgeYCompactList = trim(edgeYRaw, eYN)
-    const edgeZCompactList = trim(edgeZRaw, eZN)
-    const faceXYCompactList = trim(faceXYRaw, fXYN)
-    const faceYZCompactList = trim(faceYZRaw, fYZN)
-    const faceXZCompactList = trim(faceXZRaw, fXZN)
-    _t = _mark("compact", _t)
-    // Cubes already in `dilatedCubeList` (unique by construction); trim only.
-    const cubeCompactList = trim(dilatedCubeList, dilatedCubeCount)
-
-    let base = 0
-    const cornerBase = base; base += cornerCompactList.length
-    const edgeXBase = base; base += edgeXCompactList.length
-    const edgeYBase = base; base += edgeYCompactList.length
-    const edgeZBase = base; base += edgeZCompactList.length
-    const faceXYBase = base; base += faceXYCompactList.length
-    const faceYZBase = base; base += faceYZCompactList.length
-    const faceXZBase = base; base += faceXZCompactList.length
-    const cubeBase = base; base += cubeCompactList.length
-    const totalDualSlots = base
-
-    // Step 4: build hash table. Capacity ≥ 2 × totalDualSlots (50% max load), power of 2.
-    // Linear probing at 50% load keeps average probe count under ~1.5 in practice — well
-    // within the WGSL 256-iter cap — while halving the hash table memory overhead vs a
-    // 25%-load table. For the typical surface-shell scene the hash now dominates < 50% of
-    // sparse memory rather than 80%.
-    let hashEntries = 1
-    const target = Math.max(64, totalDualSlots * 2)
-    while (hashEntries < target) hashEntries <<= 1
-    const hashMask = hashEntries - 1
-    const hashTable = new Uint32Array(hashEntries * 2)
-    hashTable.fill(0xffffffff)
-
-    const insertHash = (key: number, slot: number) => {
-        let probe = (Math.imul(key >>> 0, SPARSE_HASH_KNUTH) >>> 0) & hashMask
-        for (let i = 0; i < 256; i++) {
-            const base2 = probe * 2
-            if (hashTable[base2] === 0xffffffff) {
-                hashTable[base2] = key >>> 0
-                hashTable[base2 + 1] = slot >>> 0
-                return
-            }
-            probe = (probe + 1) & hashMask
-        }
-        // 256 collisions in a row = table is too packed or pathological — fail loudly.
-        throw new Error(
-            `Sparse hash insert overflowed 256 probes at key=${key}, slot=${slot}; `
-            + `entries=${hashEntries}, totalDualSlots=${totalDualSlots}`,
-        )
-    }
-
-    const insertList = (list: Uint32Array, cellType: number, base: number) => {
-        for (let i = 0; i < list.length; i++) {
-            insertHash(makeSparseKey(cellType, list[i]!), base + i)
-        }
-    }
-    insertList(cornerCompactList, CELL_TYPE_CORNER, cornerBase)
-    insertList(edgeXCompactList, CELL_TYPE_EDGE_X, edgeXBase)
-    insertList(edgeYCompactList, CELL_TYPE_EDGE_Y, edgeYBase)
-    insertList(edgeZCompactList, CELL_TYPE_EDGE_Z, edgeZBase)
-    insertList(faceXYCompactList, CELL_TYPE_FACE_XY, faceXYBase)
-    insertList(faceYZCompactList, CELL_TYPE_FACE_YZ, faceYZBase)
-    insertList(faceXZCompactList, CELL_TYPE_FACE_XZ, faceXZBase)
-    insertList(cubeCompactList, CELL_TYPE_CUBE, cubeBase)
-    _t = _mark("hash", _t)
-
+    const dilatedSlice = dilatedCubeList.subarray(0, dilatedCubeCount)
+    const inner = computeSparseDualSetsFromDilatedCubeLinears(
+        new Uint32Array(dilatedSlice.buffer, dilatedSlice.byteOffset, dilatedSlice.length),
+        dx,
+        dy,
+        dz,
+    )
     return {
-        cornerCompactList,
-        edgeXCompactList,
-        edgeYCompactList,
-        edgeZCompactList,
-        faceXYCompactList,
-        faceYZCompactList,
-        faceXZCompactList,
-        cubeCompactList,
-        cornerBase,
-        edgeXBase,
-        edgeYBase,
-        edgeZBase,
-        faceXYBase,
-        faceYZBase,
-        faceXZBase,
-        cubeBase,
-        totalDualSlots,
-        hashTable,
-        hashEntries,
-        hashMask,
-        timingMs: _times,
+        ...inner,
+        timingMs: { ..._times, ...inner.timingMs },
     }
 }

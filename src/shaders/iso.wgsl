@@ -166,6 +166,121 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 // Cancellation flag: 0 = continue, 1 = cancelled
 @group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
 
+// ----- GPU sparse compaction (Phase 5B): dilation + stream-compact dilated base cubes -----
+// `cubeLinear` = cx + cy*nx + cz*nx*ny with nx=dx-1 (same as CPU iso-sparse). Marks/buffers
+// are length nx*ny*nz; scatter fills `isoGpuSparseDilatedCubeList[0..dilatedCount)`.
+struct IsoGpuSparseAtomics {
+    dilatedCount: atomic<u32>,
+}
+@group(0) @binding(31) var<storage, read_write> isoGpuSparseCubeMarks: array<u32>;
+@group(0) @binding(32) var<storage, read_write> isoGpuSparseDilatedCubeList: array<u32>;
+@group(0) @binding(33) var<storage, read_write> isoGpuSparseAtomics: IsoGpuSparseAtomics;
+// .x = dilatedCount copy for CPU readback (written after scatter); rest unused.
+@group(0) @binding(34) var<storage, read_write> isoGpuSparseMeta: vec4u;
+
+fn iso_sparse_pass1_corner_cell_active(cellFlat: u32) -> bool {
+    let word = cellFlat / 32u;
+    let bit = cellFlat % 32u;
+    if (word >= arrayLength(&activeCellFlags)) {
+        return false;
+    }
+    return (activeCellFlags[word] & (1u << bit)) != 0u;
+}
+
+/// One thread per base cube; dilation = exists active cube among 26 neighbours ∪ self (Chebyshev ≤ 1).
+@compute @workgroup_size(64, 1, 1)
+fn isoGpuSparseDilateCubeMarks_Pass(
+    @builtin(global_invocation_id) gid: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let dx = uniforms.gridDimensions.x;
+    let dy = uniforms.gridDimensions.y;
+    let dz = uniforms.gridDimensions.z;
+    let nx = dx - 1u;
+    let ny = dy - 1u;
+    let nz = dz - 1u;
+    if (nx < 1u || ny < 1u || nz < 1u) {
+        return;
+    }
+    let total_cubes = nx * ny * nz;
+    let cube_linear = gid.x + gid.y * (numWg.x * 64u);
+    if (cube_linear >= total_cubes) {
+        return;
+    }
+
+    let cx = cube_linear % nx;
+    let cy = (cube_linear / nx) % ny;
+    let cz = cube_linear / (nx * ny);
+
+    var hit = false;
+    for (var oz = -1; oz <= 1; oz = oz + 1) {
+        let az = i32(cz) + oz;
+        if (az < 0 || az >= i32(nz)) {
+            continue;
+        }
+        for (var oy = -1; oy <= 1; oy = oy + 1) {
+            let ay = i32(cy) + oy;
+            if (ay < 0 || ay >= i32(ny)) {
+                continue;
+            }
+            for (var ox = -1; ox <= 1; ox = ox + 1) {
+                let ax = i32(cx) + ox;
+                if (ax < 0 || ax >= i32(nx)) {
+                    continue;
+                }
+                let cell_flat = u32(ax) + u32(ay) * dx + u32(az) * dx * dy;
+                if (iso_sparse_pass1_corner_cell_active(cell_flat)) {
+                    hit = true;
+                }
+            }
+        }
+    }
+    isoGpuSparseCubeMarks[cube_linear] = select(0u, 1u, hit);
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn isoGpuSparseResetDilatedCount_Pass(@builtin(global_invocation_id) gid: vec3u) {
+    if (gid.x != 0u || gid.y != 0u || gid.z != 0u) {
+        return;
+    }
+    atomicStore(&isoGpuSparseAtomics.dilatedCount, 0u);
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn isoGpuSparseScatterDilatedCubeList_Pass(
+    @builtin(global_invocation_id) gid: vec3u,
+    @builtin(num_workgroups) numWg: vec3u,
+) {
+    if (isCancelled()) {
+        return;
+    }
+    let dx = uniforms.gridDimensions.x;
+    let nx = dx - 1u;
+    let ny = uniforms.gridDimensions.y - 1u;
+    let nz = uniforms.gridDimensions.z - 1u;
+    let total_cubes = nx * ny * nz;
+    let cube_linear = gid.x + gid.y * (numWg.x * 64u);
+    if (cube_linear >= total_cubes) {
+        return;
+    }
+    if (isoGpuSparseCubeMarks[cube_linear] != 0u) {
+        let slot = atomicAdd(&isoGpuSparseAtomics.dilatedCount, 1u);
+        isoGpuSparseDilatedCubeList[slot] = cube_linear;
+    }
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn isoGpuSparseWriteDilatedMeta_Pass(@builtin(global_invocation_id) gid: vec3u) {
+    if (gid.x != 0u || gid.y != 0u || gid.z != 0u) {
+        return;
+    }
+    let n = atomicLoad(&isoGpuSparseAtomics.dilatedCount);
+    isoGpuSparseMeta = vec4u(n, 0u, 0u, 0u);
+}
+
 // ============================== SCENE SDF HELPERS (must precede inserts; same as mdc.wgsl) ==============================
 
 fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32, halfH: f32) -> f32 {

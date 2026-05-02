@@ -8,7 +8,7 @@ import {
     smoothNormalsByAreaWeightedFaceAverage,
     splitCreaseVertices,
 } from "./mesh-postprocess.mjs"
-import { computeSparseDualSets } from "./iso-sparse.mjs"
+import { computeSparseDualSetsFromDilatedCubeLinears } from "./iso-sparse.mjs"
 import { SIZEOF_VERTEX, type MDCParams, type ProgressCallback } from "./mdc.mjs"
 
 const VERTEX_STRIDE_F32 = SIZEOF_VERTEX / Float32Array.BYTES_PER_ELEMENT
@@ -386,6 +386,14 @@ export class ISOExport {
             return buffer
         }
 
+        const retireBuffer = (buffer: GPUBuffer) => {
+            buffer.destroy()
+            const ix = this.#localBuffers.indexOf(buffer)
+            if (ix >= 0) {
+                this.#localBuffers.splice(ix, 1)
+            }
+        }
+
         const readBufferData = async (buffer: GPUBuffer, size = buffer.size) => {
             estimatedGpuReadbackBytes += Math.min(size, buffer.size)
             return await this.#helper.readBufferData(buffer, size)
@@ -555,6 +563,30 @@ export class ISOExport {
                 totalU32sInFlags * Uint32Array.BYTES_PER_ELEMENT,
                 GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
             )
+
+            const totalCubes = nx * ny * nz
+            const gpuSparseCubeMarksBuffer = createBuffer(
+                "ISO gpuSparseCubeMarks",
+                Math.max(4, totalCubes * Uint32Array.BYTES_PER_ELEMENT),
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            )
+            const gpuSparseDilatedCubeListBuffer = createBuffer(
+                "ISO gpuSparseDilatedCubeList",
+                Math.max(4, totalCubes * Uint32Array.BYTES_PER_ELEMENT),
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+            )
+            const gpuSparseAtomicsBuffer = createBuffer(
+                "ISO gpuSparseAtomics",
+                16,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+            )
+            this.#device.queue.writeBuffer(gpuSparseAtomicsBuffer, 0, new Uint32Array(4).buffer)
+            const gpuSparseMetaBuffer = createBuffer(
+                "ISO gpuSparseMeta",
+                16,
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+            )
+
             // Stage 4 Session 8: refinement is now derived from the sub-cell sparse hash
             // (see `is_base_cube_refined` in iso.wgsl) rather than a separate
             // `cubeRefinedFlags` buffer — that lets Pass 14 fit under the WebGPU
@@ -629,7 +661,11 @@ export class ISOExport {
             // and emits the recursive simplicial decomposition (cube → faces → edges → corners).
             // Replaces the dimension-broken Pass 14.
             const p15 = this.#helper.createComputePipeline(isoShaderModule, "emitMinimalCubeMT_Pass15")
-            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p8, p9, p10, p11, p12, p13, p14, p15)
+            const pGpuSparseDilate = this.#helper.createComputePipeline(isoShaderModule, "isoGpuSparseDilateCubeMarks_Pass")
+            const pGpuSparseReset = this.#helper.createComputePipeline(isoShaderModule, "isoGpuSparseResetDilatedCount_Pass")
+            const pGpuSparseScatter = this.#helper.createComputePipeline(isoShaderModule, "isoGpuSparseScatterDilatedCubeList_Pass")
+            const pGpuSparseWriteMeta = this.#helper.createComputePipeline(isoShaderModule, "isoGpuSparseWriteDilatedMeta_Pass")
+            this.#localPipelines.push(p1, p2, p3, p4, p5, p6, p8, p9, p10, p11, p12, p13, p14, p15, pGpuSparseDilate, pGpuSparseReset, pGpuSparseScatter, pGpuSparseWriteMeta)
 
             const cancelBuf = this.#cancellationBuffer!
 
@@ -646,27 +682,100 @@ export class ISOExport {
             )
             this.#localBindGroups.push(bg1[1])
 
-            // Pass 1
-            progressCallback?.updateProgress("ISO Pass 1: classify cells", 10)
+            const bgGpuSparseDilate = this.#helper.createBindGroup(
+                0,
+                "ISO gpuSparse dilate",
+                pGpuSparseDilate,
+                [0, uniformBuffer],
+                [1, activeCellFlagsBuffer],
+                [31, gpuSparseCubeMarksBuffer],
+                [25, cancelBuf],
+            )
+            const bgGpuSparseReset = this.#helper.createBindGroup(
+                0,
+                "ISO gpuSparse reset count",
+                pGpuSparseReset,
+                [33, gpuSparseAtomicsBuffer],
+            )
+            const bgGpuSparseScatter = this.#helper.createBindGroup(
+                0,
+                "ISO gpuSparse scatter",
+                pGpuSparseScatter,
+                [0, uniformBuffer],
+                [31, gpuSparseCubeMarksBuffer],
+                [32, gpuSparseDilatedCubeListBuffer],
+                [33, gpuSparseAtomicsBuffer],
+                [25, cancelBuf],
+            )
+            const bgGpuSparseMeta = this.#helper.createBindGroup(
+                0,
+                "ISO gpuSparse meta",
+                pGpuSparseWriteMeta,
+                [33, gpuSparseAtomicsBuffer],
+                [34, gpuSparseMetaBuffer],
+            )
+            this.#localBindGroups.push(bgGpuSparseDilate[1], bgGpuSparseReset[1], bgGpuSparseScatter[1], bgGpuSparseMeta[1])
+
+            // Pass 1 + GPU dilation / stream-compact (no dense CPU flag walk).
+            progressCallback?.updateProgress("ISO Pass 1 + GPU sparse compaction", 10)
             {
-                const ce = this.#device.createCommandEncoder({ label: "iso_pass1" })
-                const pass = this.#helper.beginComputePass(ce, p1, bg1)
-                const dispatchX = Math.min(totalU32sInFlags, 65535)
-                const dispatchY = Math.ceil(totalU32sInFlags / dispatchX)
-                pass.dispatchWorkgroups(dispatchX, dispatchY)
-                pass.end()
+                const wgSparse = Math.ceil(totalCubes / 64)
+                const dxSparse = Math.min(wgSparse, 65535)
+                const dySparse = Math.ceil(wgSparse / dxSparse)
+                const ce = this.#device.createCommandEncoder({ label: "iso_pass1_gpu_sparse" })
+                {
+                    const pass = this.#helper.beginComputePass(ce, p1, bg1)
+                    const dispatchX = Math.min(totalU32sInFlags, 65535)
+                    const dispatchY = Math.ceil(totalU32sInFlags / dispatchX)
+                    pass.dispatchWorkgroups(dispatchX, dispatchY)
+                    pass.end()
+                }
+                {
+                    const pass = this.#helper.beginComputePass(ce, pGpuSparseDilate, bgGpuSparseDilate)
+                    pass.dispatchWorkgroups(dxSparse, dySparse, 1)
+                    pass.end()
+                }
+                {
+                    const pass = this.#helper.beginComputePass(ce, pGpuSparseReset, bgGpuSparseReset)
+                    pass.dispatchWorkgroups(1, 1, 1)
+                    pass.end()
+                }
+                {
+                    const pass = this.#helper.beginComputePass(ce, pGpuSparseScatter, bgGpuSparseScatter)
+                    pass.dispatchWorkgroups(dxSparse, dySparse, 1)
+                    pass.end()
+                }
+                {
+                    const pass = this.#helper.beginComputePass(ce, pGpuSparseWriteMeta, bgGpuSparseMeta)
+                    pass.dispatchWorkgroups(1, 1, 1)
+                    pass.end()
+                }
                 this.#device.queue.submit([ce.finish()])
                 await this.#device.queue.onSubmittedWorkDone()
                 checkCancelled()
             }
-            logDiag("after pass1")
+            logDiag("after pass1+gpuSparse")
 
-            // Phase 5B: read back active flags, compute the dilated sparse set, allocate
-            // and upload sparse buffers, and update the per-pass uniforms with bases / counts.
-            const flagsData = await readBufferData(activeCellFlagsBuffer)
-            const flags = new Uint32Array(flagsData)
+            const metaBytes = await readBufferData(gpuSparseMetaBuffer, 16)
+            const dilatedCount = new Uint32Array(metaBytes)[0]!
+            if (dilatedCount === 0 || dilatedCount > totalCubes) {
+                throw new Error(
+                    `ISO export: GPU sparse compaction invalid dilatedCount=${dilatedCount} (totalCubes=${totalCubes}).`,
+                )
+            }
+            const dilatedData = await readBufferData(
+                gpuSparseDilatedCubeListBuffer,
+                dilatedCount * Uint32Array.BYTES_PER_ELEMENT,
+            )
+            const dilatedLinears = new Uint32Array(dilatedData)
+
+            retireBuffer(gpuSparseCubeMarksBuffer)
+            retireBuffer(gpuSparseDilatedCubeListBuffer)
+            retireBuffer(gpuSparseAtomicsBuffer)
+            retireBuffer(gpuSparseMetaBuffer)
+
             const tSparse0 = perfNow()
-            const sparse = computeSparseDualSets(flags, dx, dy, dz)
+            const sparse = computeSparseDualSetsFromDilatedCubeLinears(dilatedLinears, dx, dy, dz)
             const sparseMs = perfNow() - tSparse0
             if (sparse.totalDualSlots === 0) {
                 throw new Error("ISO export: no active cells found in sparse set; scene SDF may be empty.")
@@ -674,7 +783,7 @@ export class ISOExport {
             const denseSlotsForLog = totalDualSlots
             const ratio = denseSlotsForLog > 0 ? sparse.totalDualSlots / denseSlotsForLog : 1
             dbgLog("IsoExport").debug(
-                `Sparse build (CPU ${sparseMs.toFixed(1)}ms): `
+                `Sparse build (GPU dilate + CPU enum/hash ${sparseMs.toFixed(1)}ms): `
                 + `slots ${sparse.totalDualSlots} / ${denseSlotsForLog} (${(ratio * 100).toFixed(2)}% of dense), `
                 + `corners=${sparse.cornerCompactList.length} `
                 + `edgesXYZ=${sparse.edgeXCompactList.length}+${sparse.edgeYCompactList.length}+${sparse.edgeZCompactList.length} `
@@ -881,26 +990,18 @@ export class ISOExport {
             // bgPass6 is created later (just before Pass 6 dispatch) and pushed there.
             this.#localBindGroups.push(bgPass2[1], bgPass3[1], bgPass4[1], bgPass5[1], bgPass8[1], bgPass9[1], bgPass10[1])
 
-            // Pass 2 (corners)
-            progressCallback?.updateProgress("ISO Pass 2: corner duals", 25)
+            // Passes 2–5 in one submission (corner → edge → face → cube dual placement).
+            progressCallback?.updateProgress("ISO Pass 2–5: dual placement", 55)
             {
-                const wg = Math.ceil(sparse.cornerCompactList.length / 64)
-                const dispatchX = Math.min(wg, 65535)
-                const dispatchY = Math.ceil(wg / dispatchX)
-                const ce = this.#device.createCommandEncoder({ label: "iso_pass2" })
-                const pass = this.#helper.beginComputePass(ce, p2, bgPass2)
-                pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
-                pass.end()
-                this.#device.queue.submit([ce.finish()])
-                await this.#device.queue.onSubmittedWorkDone()
-                checkCancelled()
-            }
-            logDiag("after pass2")
-
-            // Passes 3–5 (single encoder; each dispatched per its sparse category count).
-            progressCallback?.updateProgress("ISO Pass 3–5: edge/face/cube duals", 55)
-            {
-                const enc = this.#device.createCommandEncoder({ label: "iso_pass345" })
+                const enc = this.#device.createCommandEncoder({ label: "iso_pass2_to_5" })
+                {
+                    const wg = Math.ceil(sparse.cornerCompactList.length / 64)
+                    const dispatchX = Math.min(wg, 65535)
+                    const dispatchY = Math.ceil(wg / dispatchX)
+                    const pass = this.#helper.beginComputePass(enc, p2, bgPass2)
+                    pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                    pass.end()
+                }
                 {
                     const total = sparse.edgeXCompactList.length + sparse.edgeYCompactList.length
                         + sparse.edgeZCompactList.length
@@ -933,7 +1034,7 @@ export class ISOExport {
                 await this.#device.queue.onSubmittedWorkDone()
                 checkCancelled()
             }
-            logDiag("after pass3-5")
+            logDiag("after pass2-5")
 
             // Stage 4 (Manson & Schaefer §5.1) octree foundation — Session 1: read back the
             // per-cube QEF residuals Pass 5 wrote, build the CPU-side octree, and log
@@ -1047,6 +1148,14 @@ export class ISOExport {
                             `Stage 4 adaptive: no depth-1 leaves to place — refinement budget unused for this scene.`,
                         )
                     } else {
+                        /** Sub-cell placement passes queued here; one submit runs 11→12→13. */
+                        const adaptSubPasses: {
+                            pipeline: GPUComputePipeline
+                            bg: GPUBindGroup
+                            dx: number
+                            dy: number
+                        }[] = []
+
                         // Build unified sub-hash w/ absolute slots into subCellAllDuals.
                         const subHash = buildSubCellSparseHash(children, childEdges, childFaces, nx, ny)
 
@@ -1172,14 +1281,7 @@ export class ISOExport {
                             const wg = Math.ceil(children.length / 64)
                             const dispatchX = Math.min(wg, 65535)
                             const dispatchY = Math.ceil(wg / dispatchX)
-                            const ce = this.#device.createCommandEncoder({ label: "iso_pass11_sub_cube_duals" })
-                            const pass = this.#helper.beginComputePass(ce, p11, bgPass11)
-                            pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
-                            pass.end()
-                            this.#device.queue.submit([ce.finish()])
-                            await this.#device.queue.onSubmittedWorkDone()
-                            checkCancelled()
-                            logDiag("after Stage 4 Pass 11 (sub-cube duals)")
+                            adaptSubPasses.push({ pipeline: p11, bg: bgPass11[1], dx: dispatchX, dy: dispatchY })
                         }
 
                         // ----- Pass 12 (sub-edge placement) -----
@@ -1220,14 +1322,7 @@ export class ISOExport {
                             const wg = Math.ceil(childEdges.length / 64)
                             const dispatchX = Math.min(wg, 65535)
                             const dispatchY = Math.ceil(wg / dispatchX)
-                            const ce = this.#device.createCommandEncoder({ label: "iso_pass12_sub_edge_duals" })
-                            const pass = this.#helper.beginComputePass(ce, p12, bgPass12)
-                            pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
-                            pass.end()
-                            this.#device.queue.submit([ce.finish()])
-                            await this.#device.queue.onSubmittedWorkDone()
-                            checkCancelled()
-                            logDiag("after Stage 4 Pass 12 (sub-edge duals)")
+                            adaptSubPasses.push({ pipeline: p12, bg: bgPass12[1], dx: dispatchX, dy: dispatchY })
                         }
 
                         // ----- Pass 13 (sub-face placement) -----
@@ -1268,14 +1363,20 @@ export class ISOExport {
                             const wg = Math.ceil(childFaces.length / 64)
                             const dispatchX = Math.min(wg, 65535)
                             const dispatchY = Math.ceil(wg / dispatchX)
-                            const ce = this.#device.createCommandEncoder({ label: "iso_pass13_sub_face_duals" })
-                            const pass = this.#helper.beginComputePass(ce, p13, bgPass13)
-                            pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
-                            pass.end()
+                            adaptSubPasses.push({ pipeline: p13, bg: bgPass13[1], dx: dispatchX, dy: dispatchY })
+                        }
+
+                        if (adaptSubPasses.length > 0) {
+                            const ce = this.#device.createCommandEncoder({ label: "iso_pass11_12_13_sub_cell" })
+                            for (const ap of adaptSubPasses) {
+                                const pass = this.#helper.beginComputePass(ce, ap.pipeline, [0, ap.bg])
+                                pass.dispatchWorkgroups(ap.dx, ap.dy, 1)
+                                pass.end()
+                            }
                             this.#device.queue.submit([ce.finish()])
                             await this.#device.queue.onSubmittedWorkDone()
                             checkCancelled()
-                            logDiag("after Stage 4 Pass 13 (sub-face duals)")
+                            logDiag("after Stage 4 Pass 11-13 (sub-cell duals)")
                         }
 
                         // ----- Diagnostic readback: parent / child residual comparison -----
@@ -1366,41 +1467,43 @@ export class ISOExport {
                 }
             }
 
-            // Phase 3 (paper §4.1): cube → face → edge dual improvement. Each pass moves
-            // duals ONTO the iso surface (fval ≈ 0) when the per-cell topology safety test
-            // passes. This collapses MT crossings on tet edges incident to those duals
-            // onto the dual position — producing degenerate triangles that we drop after
-            // the weld. Per the paper this gives ~3× triangle reduction.
-            //
-            // Order is important: cube dual improvement (Pass 10) must run BEFORE face
-            // (Pass 9) and edge (Pass 8) improvement, because its topology test reads
-            // the boundary face/edge dual fvals to partition them by sign — Pass 9/8
-            // would relax those fvals to ~0 and break the partition.
-            progressCallback?.updateProgress("ISO Pass 10: improve cube duals", 70)
-            {
-                const wg = Math.ceil(sparse.cubeCompactList.length / 64)
-                const dispatchX = Math.min(wg, 65535)
-                const dispatchY = Math.ceil(wg / dispatchX)
-                const ce = this.#device.createCommandEncoder({ label: "iso_pass10_improve_cube" })
-                const pass = this.#helper.beginComputePass(ce, p10, bgPass10)
-                pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
-                pass.end()
-                this.#device.queue.submit([ce.finish()])
-                await this.#device.queue.onSubmittedWorkDone()
-                checkCancelled()
-            }
-            logDiag("after pass10 cube improvement")
+            // Phase 3 (paper §4.1): cube → face → edge dual improvement, then Pass 15 + Pass 6
+            // in one submission (single GPU→CPU sync before mesh readback).
+            progressCallback?.updateProgress("ISO Pass 10–6: improve duals + emit mesh", 80)
+            const bgPass6 = this.#helper.createBindGroup(
+                0, "ISO Pass6 sparse", p6,
+                [0, uniformBuffer],
+                [2, sparseAllDualsBuffer],
+                [3, meshVerticesBuffer],
+                [4, meshIndicesBuffer],
+                [5, meshIndexCountBuffer],
+                [6, sparseHashBuffer],
+                [8, sparseCompactBuffer],
+                [20, subHashBufferRef],
+                [25, cancelBuf],
+                [27, this.#polygonVerticesBuffer],
+                [28, this.#faceSelectionBuffer],
+                [30, this.#mdcSceneParamsBuffer],
+            )
+            this.#localBindGroups.push(bgPass6[1])
 
-            progressCallback?.updateProgress("ISO Pass 8/9: improve duals", 75)
             {
-                const enc = this.#device.createCommandEncoder({ label: "iso_pass89_improve" })
+                const ce = this.#device.createCommandEncoder({ label: "iso_pass10_through_6" })
+                {
+                    const wg = Math.ceil(sparse.cubeCompactList.length / 64)
+                    const dispatchX = Math.min(wg, 65535)
+                    const dispatchY = Math.ceil(wg / dispatchX)
+                    const pass = this.#helper.beginComputePass(ce, p10, bgPass10)
+                    pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                    pass.end()
+                }
                 {
                     const total = sparse.edgeXCompactList.length + sparse.edgeYCompactList.length
                         + sparse.edgeZCompactList.length
                     const wg = Math.ceil(total / 64)
                     const dx_ = Math.min(wg, 65535)
                     const dy_ = Math.ceil(wg / dx_)
-                    const pass = this.#helper.beginComputePass(enc, p8, bgPass8)
+                    const pass = this.#helper.beginComputePass(ce, p8, bgPass8)
                     pass.dispatchWorkgroups(dx_, dy_, 1)
                     pass.end()
                 }
@@ -1410,114 +1513,37 @@ export class ISOExport {
                     const wg = Math.ceil(total / 64)
                     const dx_ = Math.min(wg, 65535)
                     const dy_ = Math.ceil(wg / dx_)
-                    const pass = this.#helper.beginComputePass(enc, p9, bgPass9)
+                    const pass = this.#helper.beginComputePass(ce, p9, bgPass9)
                     pass.dispatchWorkgroups(dx_, dy_, 1)
                     pass.end()
                 }
-                this.#device.queue.submit([enc.finish()])
-                await this.#device.queue.onSubmittedWorkDone()
-                checkCancelled()
-            }
-            logDiag("after pass8-9 improvement")
-
-            // ----- Pass 15 (deferred): paper-correct multi-resolution MT -----
-            // Runs AFTER Pass 8/9/10 so it interpolates with the IMPROVED base cube/face
-            // duals (otherwise Pass 15 would use Pass-5 raw positions while Pass 6 uses
-            // post-improvement positions, leaving cracks at every shared base dual).
-            if (bgPass15_outer !== undefined && pass15MinimalCubeCount > 0) {
-                progressCallback?.updateProgress("ISO Pass 15: minimal-cube multi-res MT", 82)
-                const preCountData = await readBufferData(meshIndexCountBuffer)
-                const preCount = new Uint32Array(preCountData)[0]!
-
-                const wg = Math.ceil(pass15MinimalCubeCount / 64)
-                const dispatchX = Math.min(wg, 65535)
-                const dispatchY = Math.ceil(wg / dispatchX)
-                const ce = this.#device.createCommandEncoder({ label: "iso_pass15_minimalcube_mt" })
-                const pass = this.#helper.beginComputePass(ce, p15, bgPass15_outer)
-                pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
-                pass.end()
+                if (bgPass15_outer !== undefined && pass15MinimalCubeCount > 0) {
+                    const wg = Math.ceil(pass15MinimalCubeCount / 64)
+                    const dispatchX = Math.min(wg, 65535)
+                    const dispatchY = Math.ceil(wg / dispatchX)
+                    const pass = this.#helper.beginComputePass(ce, p15, bgPass15_outer)
+                    pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                    pass.end()
+                }
+                {
+                    const totalActiveEdges = sparse.edgeXCompactList.length + sparse.edgeYCompactList.length
+                        + sparse.edgeZCompactList.length
+                    const wg = Math.ceil(totalActiveEdges / 64)
+                    const dispatchX = Math.min(wg, 65535)
+                    const dispatchY = Math.ceil(wg / dispatchX)
+                    const pass = this.#helper.beginComputePass(ce, p6, bgPass6)
+                    pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
+                    pass.end()
+                }
                 this.#device.queue.submit([ce.finish()])
                 await this.#device.queue.onSubmittedWorkDone()
                 checkCancelled()
-
-                const postCountData = await readBufferData(meshIndexCountBuffer)
-                const postCount = new Uint32Array(postCountData)[0]!
-                const pass15Indices = Math.max(0, postCount - preCount)
-                const pass15Tris = Math.floor(pass15Indices / 3)
-                dbgLog("IsoExport").info(
-                    `Phase 5 Pass 15: dispatched ${pass15MinimalCubeCount} minimal cubes, emitted `
-                    + `${pass15Tris} triangles (${pass15Indices} indices). `
-                    + `Index count: ${preCount} → ${postCount}.`,
-                )
-                logDiag("after Phase 5 Pass 15 (minimal-cube multi-res MT)")
             }
+            logDiag("after pass10-15-6")
+
             // Suppress unused-import / unused-pipeline warnings for the deprecated Pass 14
             // (kept compiled to avoid removing it in this commit; cleanup is a separate todo).
             void p14
-
-            // Pass 6 — one thread per active edge in the sparse set.
-            // Bind group is created HERE (deferred from earlier in setup) so it picks up
-            // whichever variant of `subHashBufferRef` is live: the upfront stub in the
-            // non-adaptive path, or the full sub-cell hash that the adaptive block built.
-            // Pass 6's `any_cube_around_*_refined` → `is_base_cube_refined` reads
-            // `subDualHashTable` (binding 20); when the hash is the stub (mask=0), the
-            // refinement check short-circuits to false and Pass 6 emits as standard
-            // non-adaptive MT.
-            progressCallback?.updateProgress("ISO Pass 6: emit triangles", 85)
-            {
-                // Pass 6 bind group. Binding 20 (`subDualHashTable`) is needed because
-                // `any_cube_around_*_edge_refined` → `is_base_cube_refined` reads the sub-cube
-                // hash to determine refinement. In non-adaptive runs `subHashBufferRef` points
-                // to a 1-entry empty hash (mask=0) so the lookup short-circuits to EMPTY and
-                // Pass 6 emits as standard non-adaptive MT (no edges skipped).
-                const bgPass6 = this.#helper.createBindGroup(
-                    0, "ISO Pass6 sparse", p6,
-                    [0, uniformBuffer],
-                    [2, sparseAllDualsBuffer],
-                    [3, meshVerticesBuffer],
-                    [4, meshIndicesBuffer],
-                    [5, meshIndexCountBuffer],
-                    [6, sparseHashBuffer],
-                    [8, sparseCompactBuffer],
-                    [20, subHashBufferRef],
-                    [25, cancelBuf],
-                    [27, this.#polygonVerticesBuffer],
-                    [28, this.#faceSelectionBuffer],
-                    [30, this.#mdcSceneParamsBuffer],
-                )
-                this.#localBindGroups.push(bgPass6[1])
-
-                // Snapshot index counter BEFORE Pass 6 so we can split out Pass 14's
-                // contribution from Pass 6's. With adaptive refinement enabled, Pass 6
-                // skips edges adjacent to refined cubes (those are emitted by Pass 14
-                // at sub-resolution). The before/after delta tells us whether the skip
-                // logic actually fires.
-                const prePass6Data = await readBufferData(meshIndexCountBuffer)
-                const prePass6Count = new Uint32Array(prePass6Data)[0]!
-
-                const totalActiveEdges = sparse.edgeXCompactList.length + sparse.edgeYCompactList.length
-                    + sparse.edgeZCompactList.length
-                const wg = Math.ceil(totalActiveEdges / 64)
-                const dispatchX = Math.min(wg, 65535)
-                const dispatchY = Math.ceil(wg / dispatchX)
-                const ce = this.#device.createCommandEncoder({ label: "iso_pass6" })
-                const pass = this.#helper.beginComputePass(ce, p6, bgPass6)
-                pass.dispatchWorkgroups(dispatchX, dispatchY, 1)
-                pass.end()
-                this.#device.queue.submit([ce.finish()])
-                await this.#device.queue.onSubmittedWorkDone()
-                checkCancelled()
-
-                const postPass6Data = await readBufferData(meshIndexCountBuffer)
-                const postPass6Count = new Uint32Array(postPass6Data)[0]!
-                const pass6Indices = Math.max(0, postPass6Count - prePass6Count)
-                dbgLog("IsoExport").info(
-                    `Stage 4 Pass 6: dispatched ${totalActiveEdges} active base edges, emitted `
-                    + `${Math.floor(pass6Indices / 3)} triangles (${pass6Indices} indices). `
-                    + `Index count: ${prePass6Count} → ${postPass6Count}.`,
-                )
-            }
-            logDiag("after pass6")
 
             progressCallback?.updateProgress("ISO: readback", 95)
             const countData = await readBufferData(meshIndexCountBuffer)

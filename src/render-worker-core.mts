@@ -1090,19 +1090,18 @@ export class RenderWorkerCore {
                 mesh = await mdc.export(mdcShaderModule)
             }
 
-            // Unified mesh-simplification post-pass. Runs for **both** MDC and
-            // SHREC outputs through the same code path so the simplify knobs
-            // in Dev Tools have identical effect regardless of which exporter
-            // produced the mesh.
-            if (simplifyOnExport && mesh.tris.length > 0) {
+            // Unified mesh post-passes for **both** MDC and SHREC: optional QEM
+            // simplification (when enabled and targetRatio < 1), then optional
+            // normal recompute — gated only by `simplifyTuning.renormalizeTriangles`
+            // (Dev Tools checkbox), not by simplify enablement or target ratio.
+            if (mesh.tris.length > 0) {
                 const s = { ...DEFAULT_SIMPLIFY_TUNING, ...simplifyTuning }
-                if (s.targetRatio < 1) {
+                if (simplifyOnExport && s.targetRatio < 1) {
                     log("Simplify").info(
                         `Mesh simplification dispatched: exporter=${exporter} ` +
                         `targetRatio=${s.targetRatio} targetError=${s.targetError} ` +
                         `lockBorder=${s.lockBorder} sparse=${s.sparse} errorAbsolute=${s.errorAbsolute} ` +
-                        `prune=${s.prune} regularize=${s.regularize} normalWeight=${s.normalWeight} ` +
-                        `renormalizeTriangles=${s.renormalizeTriangles}`,
+                        `prune=${s.prune} regularize=${s.regularize} normalWeight=${s.normalWeight}`,
                     )
                     const { simplifyMesh } = await import("./export/simplify.mjs")
                     mesh = await simplifyMesh(
@@ -1116,9 +1115,17 @@ export class RenderWorkerCore {
                             prune: s.prune,
                             regularize: s.regularize,
                             normalWeight: s.normalWeight > 0 ? s.normalWeight : undefined,
-                            renormalizeTriangles: s.renormalizeTriangles,
+                            renormalizeTriangles: false,
                         },
                     )
+                }
+                if (s.renormalizeTriangles) {
+                    log("Simplify").info(
+                        `Mesh normal recompute: exporter=${exporter} renormalizeTriangles=true`,
+                    )
+                    const { renormalizeTriangleNormals } = await import("./export/crease-split.mjs")
+                    const renorm = renormalizeTriangleNormals(mesh.verts, mesh.tris)
+                    mesh = { verts: renorm.verts, tris: renorm.tris, debug: mesh.debug }
                 }
             }
 

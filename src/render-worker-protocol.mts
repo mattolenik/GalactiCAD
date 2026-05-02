@@ -150,8 +150,9 @@ export interface SimplifyTuning {
     /** When positive, uses normal-aware simplification (protects sharp features). */
     normalWeight: number
     /**
-     * After QEM simplification, recompute vertex normals from the output triangles
-     * (stale normals otherwise). Off keeps pre-simplify normals through compacting.
+     * Recompute vertex normals from triangle geometry on export (smooth shading).
+     * Applied only in the worker post-pass after export (and after QEM if it ran);
+     * not coupled to simplify enablement or `targetRatio`. Off keeps exporter normals.
      */
     renormalizeTriangles: boolean
 }

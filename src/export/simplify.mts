@@ -33,7 +33,9 @@ export interface SimplifyFlags {
      */
     normalWeight?: number
     /**
-     * When true (default), recompute vertex normals from simplified triangle geometry.
+     * When true (default), recompute vertex normals from triangle geometry after QEM.
+     * The render worker passes `false` and runs `renormalizeTriangleNormals` once
+     * afterward so normals are gated only by `SimplifyTuning.renormalizeTriangles`.
      */
     renormalizeTriangles?: boolean
 }
@@ -51,7 +53,7 @@ export interface SimplifyFlags {
  *
  * When `renormalizeTriangles` is true (default), vertex normals are recomputed from
  * the output triangles so shading matches the new geometry (QEM does not update
- * stored normals).
+ * stored normals). The render worker sets this to false and renormalizes separately.
  *
  * @param mesh          Input mesh (interleaved verts, triangle indices).
  * @param targetRatio   Fraction of triangles to keep, 0–1 (e.g. 0.5 = 50%).

@@ -72,7 +72,13 @@ import {
     MDC_FEATURE_PLANE_WEIGHT,
     type CrossingMidInput,
 } from "./mdc-cell-features-cpu.mjs"
-import { mdcClosestPointOnRingFeatureCpu, mdcFeatureProjectCrossingPositionCpu, MDC_RING_QEF_PROJECT_SCALE } from "../mdc-feature-crossing-project.mjs"
+import {
+    mdcClosestPointOnLineFeatureCpu,
+    mdcClosestPointOnRingFeatureCpu,
+    mdcFeatureProjectCrossingPositionCpu,
+    MDC_LINE_QEF_PROJECT_SCALE,
+    MDC_RING_QEF_PROJECT_SCALE,
+} from "../mdc-feature-crossing-project.mjs"
 import {
     decodeMidGridSample,
     interpMidSampleAlongEdge,
@@ -587,6 +593,19 @@ export function mergeSharpRelocate(
             bvec[2] += weight * cc * nnz
         }
 
+        let lineQefProjection = false
+        if (featCtx && featCtx.inferred.kind === MID_FEATURE_LINE && featCtx.explicitLineDist < 1e8) {
+            let maxGap = 0
+            const lf = featCtx.inferred
+            for (const cr of crosses) {
+                if (topo.edgeComp[cr.ei] !== 0) continue
+                const onLine = mdcClosestPointOnLineFeatureCpu(lf, cr.px, cr.py, cr.pz)
+                const gap = Math.hypot(cr.px - onLine[0], cr.py - onLine[1], cr.pz - onLine[2])
+                if (gap > maxGap) maxGap = gap
+            }
+            lineQefProjection = maxGap <= vs * MDC_LINE_QEF_PROJECT_SCALE
+        }
+
         let ringQefCircleProjection = false
         if (featCtx && featCtx.inferred.kind === MID_FEATURE_RING && featCtx.explicitRingDist < 1e8) {
             let maxGap = 0
@@ -614,6 +633,7 @@ export function mergeSharpRelocate(
                     featCtx.explicitRingDist,
                     featCtx.explicitCornerDist,
                     featCtx.explicitSeamDist,
+                    lineQefProjection,
                     ringQefCircleProjection,
                 )
                 uPx = pr[0]

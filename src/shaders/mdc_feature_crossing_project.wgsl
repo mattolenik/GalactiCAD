@@ -4,6 +4,8 @@
 //
 // Include after `struct ComponentFeature` and `//:) include "hg_sdf.wgsl"`.
 
+/** Same symbol as `mdc.wgsl`; keep numerically in sync with TS `MDC_LINE_QEF_PROJECT_SCALE`. */
+const MDC_LINE_QEF_PROJECT_SCALE: f32 = 1.85;
 /** Same symbol as `mdc.wgsl`; keep numerically in sync with TS `MDC_RING_QEF_PROJECT_SCALE`. */
 const MDC_RING_QEF_PROJECT_SCALE: f32 = 1.85;
 
@@ -33,6 +35,14 @@ fn featureLineTangent(f: ComponentFeature) -> vec3f {
     return vec3f(0.0);
 }
 
+fn mdcClosestPointOnLineFeature(f: ComponentFeature, p: vec3f) -> vec3f {
+    let tangent = featureLineTangent(f);
+    if (lengthSqr(tangent) > 1e-8) {
+        return f.point + tangent * dot(p - f.point, tangent);
+    }
+    return p;
+}
+
 fn mdcFeatureProjectCrossingPosition(
     intersectionPos: vec3f,
     feature: ComponentFeature,
@@ -42,14 +52,16 @@ fn mdcFeatureProjectCrossingPosition(
     explicitRingDist: f32,
     explicitCornerDist: f32,
     explicitSeamDist: f32,
+    lineQefProjection: bool,
     ringQefCircleProjection: bool,
 ) -> vec3f {
     var projPos = intersectionPos;
     if (!featureConstraintsEnabled) { return projPos; }
     if (feature.kind == MID_FEATURE_LINE && explicitLineDist < 1e8) {
-        let tangent = featureLineTangent(feature);
-        if (lengthSqr(tangent) > 1e-8) {
-            projPos = feature.point + tangent * dot(intersectionPos - feature.point, tangent);
+        if (lineQefProjection) {
+            projPos = mdcClosestPointOnLineFeature(feature, intersectionPos);
+        } else {
+            projPos = intersectionPos;
         }
     } else if (feature.kind == MID_FEATURE_RING && explicitRingDist < 1e8) {
         if (ringQefCircleProjection) {

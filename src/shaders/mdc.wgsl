@@ -1432,14 +1432,26 @@ fn edgeDetection_Pass3(
     // explicit feature locus when present, then add the (possibly projected)
     // crossing plane to the per-component QEF.
     //
-    // For rings, projection is all-or-none per component. Mixing projected
-    // ring crossings with raw mantle crossings builds an inconsistent QEF and
-    // produces the normal-colored trapezoid patches around shallow lathe rings.
+    // For explicit feature loci, projection is all-or-none per component.
+    // Mixing projected crossings with raw surface crossings builds an
+    // inconsistent QEF and can add flat bands or divots near the crease.
+    var lineQefProjection: array<bool, 4>;
     var ringQefCircleProjection: array<bool, 4>;
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
+        lineQefProjection[c] = false;
         ringQefCircleProjection[c] = false;
         if (compCrossCount[c] == 0u) { continue; }
         let feature = inferredFeatures[c];
+        if (featureConstraintsEnabled && feature.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) {
+            var maxLineGap = 0.0;
+            for (var e = 0u; e < 12u; e = e + 1u) {
+                if (edgeCrossMask[e] == 0u) { continue; }
+                if (edgeComponent[e] != i32(c)) { continue; }
+                let onLine = mdcClosestPointOnLineFeature(feature, crossingPos[e]);
+                maxLineGap = max(maxLineGap, length(crossingPos[e] - onLine));
+            }
+            lineQefProjection[c] = maxLineGap <= uniforms.voxelSize * MDC_LINE_QEF_PROJECT_SCALE;
+        }
         if (!(featureConstraintsEnabled && feature.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8)) {
             continue;
         }
@@ -1473,6 +1485,7 @@ fn edgeDetection_Pass3(
             explicitRingDist[c],
             explicitCornerDist[c],
             explicitSeamDist[c],
+            lineQefProjection[c],
             ringQefCircleProjection[c],
         );
         projectedPos[e] = projPos;

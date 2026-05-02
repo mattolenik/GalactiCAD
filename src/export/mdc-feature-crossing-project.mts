@@ -2,9 +2,10 @@
  * CPU mirror of `mdc_feature_crossing_project.wgsl` (`mdcFeatureProjectCrossingPosition`).
  * Keep formulas and constants aligned with the WGSL include.
  *
- * For rings, pass `ringQefCircleProjection`: true iff the **maximum** 3D distance from every
- * Hermite crossing in that cell-component to the ring circle is ≤ `voxelSize * MDC_RING_QEF_PROJECT_SCALE`
- * (same rule as `edgeDetection_Pass3` in `mdc.wgsl`). Per-edge mixed projection breaks QEF consistency.
+ * For lines/rings, pass the QEF projection booleans as true iff the **maximum**
+ * 3D distance from every Hermite crossing in that cell-component to the explicit
+ * feature locus is within the matching scale. Per-edge mixed projection breaks
+ * QEF consistency.
  */
 
 import type { ComponentFeatureCpu } from "./mdc-mid-grid.mjs"
@@ -15,6 +16,8 @@ import {
     MID_FEATURE_RING,
 } from "./mdc-mid-grid.mjs"
 
+/** Matches WGSL `MDC_LINE_QEF_PROJECT_SCALE` in `mdc_feature_crossing_project.wgsl`. */
+export const MDC_LINE_QEF_PROJECT_SCALE = 1.85
 /** Matches WGSL `MDC_RING_QEF_PROJECT_SCALE` in `mdc_feature_crossing_project.wgsl`. */
 export const MDC_RING_QEF_PROJECT_SCALE = 1.85
 
@@ -87,6 +90,19 @@ export function featureLineTangentCpu(f: ComponentFeatureCpu): [number, number, 
     return [0, 0, 0]
 }
 
+export function mdcClosestPointOnLineFeatureCpu(f: ComponentFeatureCpu, px: number, py: number, pz: number): [number, number, number] {
+    const tangent = featureLineTangentCpu(f)
+    if (lengthSqr3(tangent[0], tangent[1], tangent[2]) > 1e-8) {
+        const tdot = dot3(px - f.point[0], py - f.point[1], pz - f.point[2], tangent[0], tangent[1], tangent[2])
+        return [
+            f.point[0] + tangent[0] * tdot,
+            f.point[1] + tangent[1] * tdot,
+            f.point[2] + tangent[2] * tdot,
+        ]
+    }
+    return [px, py, pz]
+}
+
 export function mdcFeatureProjectCrossingPositionCpu(
     intersectionPos: readonly [number, number, number],
     feature: ComponentFeatureCpu,
@@ -96,6 +112,7 @@ export function mdcFeatureProjectCrossingPositionCpu(
     explicitRingDist: number,
     explicitCornerDist: number,
     explicitSeamDist: number,
+    lineQefProjection: boolean,
     ringQefCircleProjection: boolean,
 ): [number, number, number] {
     let projPos: [number, number, number] = [intersectionPos[0], intersectionPos[1], intersectionPos[2]]
@@ -106,14 +123,10 @@ export function mdcFeatureProjectCrossingPositionCpu(
     const pz = intersectionPos[2]
 
     if (feature.kind === MID_FEATURE_LINE && explicitLineDist < 1e8) {
-        const tangent = featureLineTangentCpu(feature)
-        if (lengthSqr3(tangent[0], tangent[1], tangent[2]) > 1e-8) {
-            const tdot = dot3(px - feature.point[0], py - feature.point[1], pz - feature.point[2], tangent[0], tangent[1], tangent[2])
-            projPos = [
-                feature.point[0] + tangent[0] * tdot,
-                feature.point[1] + tangent[1] * tdot,
-                feature.point[2] + tangent[2] * tdot,
-            ]
+        if (lineQefProjection) {
+            projPos = mdcClosestPointOnLineFeatureCpu(feature, px, py, pz)
+        } else {
+            projPos = [px, py, pz]
         }
     } else if (feature.kind === MID_FEATURE_RING && explicitRingDist < 1e8) {
         if (ringQefCircleProjection) {

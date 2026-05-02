@@ -14,6 +14,7 @@ import mdcShader from "./shaders/mdc.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import { AscExport, ascGridSampleShader, type AscParams } from "./export/asc.mjs"
+import type { AscExportCpuTimingMs } from "./export/asc-cpu-timing.mjs"
 import type { MeshData } from "./export/export.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
@@ -978,7 +979,7 @@ export class RenderWorkerCore {
             const exporter: MeshExporter = meshExporter ?? "mdc"
             const rawTier = meshAscTierIndex
             let ascTier: MeshAscTierIndex = 2
-            if (typeof rawTier === "number" && Number.isInteger(rawTier) && rawTier >= 0 && rawTier <= 3) {
+            if (typeof rawTier === "number" && Number.isInteger(rawTier) && rawTier >= 0 && rawTier <= 7) {
                 ascTier = rawTier as MeshAscTierIndex
             }
 
@@ -1047,6 +1048,7 @@ export class RenderWorkerCore {
                 .replace("insert", "sceneSDF_mid", sceneSDF_mid)
 
             let mesh: MeshData
+            let ascCpuTimingMs: AscExportCpuTimingMs | undefined
 
             if (exporter === "asc") {
                 const ascShaderModule = shaderCompiler.compile(ascGridSampleShader, "ASC Grid Sample")
@@ -1076,7 +1078,9 @@ export class RenderWorkerCore {
                     this.#uniformBuffers.faceSelection,
                     this.#uniformBuffers.mdcSceneParams,
                 )
-                mesh = await asc.export(ascShaderModule)
+                const ascMesh = await asc.export(ascShaderModule)
+                mesh = { verts: ascMesh.verts, tris: ascMesh.tris }
+                ascCpuTimingMs = ascMesh.ascCpuTimingMs
             } else {
                 const mdcShaderModule = shaderCompiler.compile(mdcShader, "MDC Export")
                 const mdc = new MDCExport(
@@ -1088,7 +1092,10 @@ export class RenderWorkerCore {
                 )
                 mesh = await mdc.export(mdcShaderModule)
             }
-            self.postMessage({ type: "renderMeshResult", mesh, requestId, documentName }, { transfer: [mesh.verts.buffer, mesh.tris.buffer] })
+            self.postMessage(
+                { type: "renderMeshResult", mesh, requestId, documentName, ascCpuTimingMs },
+                { transfer: [mesh.verts.buffer, mesh.tris.buffer] },
+            )
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "renderMeshResult", error: errorMsg, requestId, documentName })

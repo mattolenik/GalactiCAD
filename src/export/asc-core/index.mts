@@ -1,4 +1,5 @@
 export {
+    ASC_TIER_MAX_INDEX,
     ascBinTier,
     ascTierShortLabel,
     buildAscDikeTables,

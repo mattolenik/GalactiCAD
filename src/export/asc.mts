@@ -2,6 +2,7 @@ import ascGridSampleShader from "../shaders/asc-grid-sample.wgsl"
 import { GPUHelper } from "../gpu/helper.mjs"
 import { log as dbgLog } from "../logging/debug-log.mjs"
 import { MeshData } from "./export.mjs"
+import type { AscExportCpuTimingMs } from "./asc-cpu-timing.mjs"
 import { applyAscHermiteQef } from "./asc-hermite-qef.mjs"
 import { stripSamplingGridShellTriangles } from "./grid-shell-filter.mjs"
 import { SIZEOF_VERTEX, splitCreaseVertices, type ProgressCallback } from "./mdc.mjs"
@@ -9,6 +10,7 @@ import {
     AscVoxelGrid,
     ascTierShortLabel,
     runAscLayerSweep,
+    ASC_TIER_MAX_INDEX,
     type AscLayerSweepResult,
     type AscTierIndex,
 } from "./asc-core/index.mjs"
@@ -33,7 +35,16 @@ export interface AscGridSampleParams {
      * Also clamped by `device.limits.maxStorageBufferBindingSize`.
      */
     maxScalarSamples?: number
+    /**
+     * Max GPU slab size for scalar grid readback (bytes per Z slab of nx×ny vertices).
+     * Smaller tiles overlap GPU compute with CPU map/unpack more; larger reduces submission overhead.
+     * Default ~32 MiB.
+     */
+    ascGpuTileBytes?: number
 }
+
+/** Full result from `AscExport.export` (mesh + CPU timings for profiling). */
+export type AscExportMeshResult = MeshData & { ascCpuTimingMs: AscExportCpuTimingMs }
 
 /** ASC mesh extraction parameters (grid + CPU extractor + optional post-process like MDC). */
 export interface AscParams extends AscGridSampleParams {
@@ -107,6 +118,43 @@ export function packAscGridSharedUniforms(params: AscGridSampleParams): ArrayBuf
     return uniformBufferData
 }
 
+/** 32-byte `AscTileUniforms` in [`asc-grid-sample.wgsl`](../shaders/asc-grid-sample.wgsl) @binding(31). */
+export function packAscTileUniforms(
+    tileOriginX: number,
+    tileOriginY: number,
+    tileOriginZ: number,
+    tileDimX: number,
+    tileDimY: number,
+    tileDimZ: number,
+): ArrayBuffer {
+    const data = new ArrayBuffer(32)
+    new Uint32Array(data, 0, 4).set([tileOriginX >>> 0, tileOriginY >>> 0, tileOriginZ >>> 0, 0])
+    new Uint32Array(data, 16, 4).set([tileDimX >>> 0, tileDimY >>> 0, tileDimZ >>> 0, 0])
+    return data
+}
+
+const ASC_GRID_WG = 256
+const ASC_GRID_MAX_WG = 65535
+
+/**
+ * WebGPU dispatch grid for 256-wide 1D logical thread space (must match `ascGridScalar_sample` in asc-grid-sample.wgsl).
+ */
+export function ascGridSampleDispatchShape(totalInvocations: number): { dx: number; dy: number; dz: number } {
+    const totalWg = Math.ceil(totalInvocations / ASC_GRID_WG)
+    const dx = Math.min(totalWg, ASC_GRID_MAX_WG)
+    const dy = Math.min(Math.ceil(totalWg / dx), ASC_GRID_MAX_WG)
+    const dz = Math.ceil(totalWg / (dx * dy))
+    if (dz > ASC_GRID_MAX_WG) {
+        throw new Error(
+            `ASC grid tile: ${totalInvocations} threads (${totalWg} workgroups) exceeds GPU dispatch limits; increase ascGpuTileBytes or reduce grid.`,
+        )
+    }
+    return { dx, dy, dz }
+}
+
+/** Default max bytes per Z slab for overlapped ASC GPU readback (~32 MiB). */
+export const DEFAULT_ASC_GPU_TILE_BYTES = 32 * 1024 * 1024
+
 /**
  * ASC partitions the grid into N×N×N-cell macro-blocks per axis with N = 2^tierIndex.
  * Tier 0 (N=1) implies one block per base cell → block count ~ product of (dim−1), which is
@@ -137,17 +185,16 @@ export function effectiveAscTierForGrid(
     maxMacroBlocks = ASC_MACRO_BLOCK_HARD_CAP,
 ): AscTierIndex {
     let t = requested
-    while (t < 3 && ascMacroBlockCount(gridDimX, gridDimY, gridDimZ, t) > maxMacroBlocks) {
+    while (t < ASC_TIER_MAX_INDEX && ascMacroBlockCount(gridDimX, gridDimY, gridDimZ, t) > maxMacroBlocks) {
         t = (t + 1) as AscTierIndex
     }
     return t
 }
 
-const WORKGROUP_X = 256
-
 /**
  * GPU dense scalar grid: `sceneSDF_fast(p).d - iso` at each lattice vertex, same world framing as MDC.
- * Bindings @group(0): 0 uniform, 1 output f32[], 27 polygon vertices, 28 face selection, 30 mdcSceneParams.
+ * Uses Z-slabs with ping-pong MAP_READ staging so CPU unpack overlaps GPU work on later slabs.
+ * Bindings @group(0): 0 uniform, 1 output f32[], 27 polygon vertices, 28 face selection, 30 mdcSceneParams, 31 tile uniform.
  */
 export async function sampleAscScalarGrid(
     helper: GPUHelper,
@@ -168,6 +215,7 @@ export async function sampleAscScalarGrid(
         gridOffsetZ,
         voxelSize,
         maxScalarSamples = 50_000_000,
+        ascGpuTileBytes = DEFAULT_ASC_GPU_TILE_BYTES,
     } = params
 
     const total = gridDimX * gridDimY * gridDimZ
@@ -183,12 +231,27 @@ export async function sampleAscScalarGrid(
         `sampleAscScalarGrid: grid=${gridDimX}x${gridDimY}x${gridDimZ} voxel=${voxelSize} iso=${isoValue} offset=(${gridOffsetX},${gridOffsetY},${gridOffsetZ})`,
     )
 
+    const nx = gridDimX
+    const ny = gridDimY
+    const nz = gridDimZ
+    const planeFloats = nx * ny
+    let zChunk = Math.floor(ascGpuTileBytes / (planeFloats * Float32Array.BYTES_PER_ELEMENT))
+    if (!Number.isFinite(zChunk) || zChunk < 1) zChunk = 1
+    zChunk = Math.min(zChunk, nz)
+    const slabCount = Math.ceil(nz / zChunk)
+
     const uniformBuffer = device.createBuffer({
         label: "AscGridUniforms",
         size: 112,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
     device.queue.writeBuffer(uniformBuffer, 0, packAscGridSharedUniforms(params))
+
+    const tileUniformBuffer = device.createBuffer({
+        label: "AscTileUniforms",
+        size: 32,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    })
 
     const outSize = total * Float32Array.BYTES_PER_ELEMENT
     const outBuffer = device.createBuffer({
@@ -208,24 +271,72 @@ export async function sampleAscScalarGrid(
         [27, polygonVerticesBuffer],
         [28, faceSelectionBuffer],
         [30, mdcSceneParamsBuffer],
+        [31, tileUniformBuffer],
     )
 
-    const linearWg = Math.ceil(total / WORKGROUP_X)
-    const dispatchX = Math.min(linearWg, 65535)
-    const dispatchY = Math.ceil(linearWg / dispatchX)
+    const maxSlabFloats = planeFloats * zChunk
+    const maxSlabBytes = maxSlabFloats * Float32Array.BYTES_PER_ELEMENT
+    const stagingA = device.createBuffer({
+        label: "AscGridSlabReadback_A",
+        size: maxSlabBytes,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    })
+    const stagingB = device.createBuffer({
+        label: "AscGridSlabReadback_B",
+        size: maxSlabBytes,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    })
 
-    const ce = device.createCommandEncoder({ label: "asc_grid_sample" })
-    const pass = helper.beginComputePass(ce, pipeline, bindGroup)
-    pass.dispatchWorkgroups(dispatchX, dispatchY)
-    pass.end()
-    device.queue.submit([ce.finish()])
-    await device.queue.onSubmittedWorkDone()
+    if (slabCount > 1) {
+        dbgLog("AscExport").info(
+            `sampleAscScalarGrid: overlapped Z slabs=${slabCount} (~${zChunk} planes/slab, ~${(maxSlabBytes / (1024 * 1024)).toFixed(1)} MiB/slab staging)`,
+        )
+    }
 
-    const raw = await helper.readBufferData(outBuffer, outSize)
+    const output = new Float32Array(total)
+    const tileDone: Promise<void>[] = []
+
+    for (let z0 = 0, ti = 0; z0 < nz; z0 += zChunk, ti++) {
+        if (ti >= 2) await tileDone[ti - 2]!
+
+        const zCount = Math.min(zChunk, nz - z0)
+        const tileFloats = planeFloats * zCount
+        const byteSize = tileFloats * Float32Array.BYTES_PER_ELEMENT
+        const dstByteOffset = z0 * planeFloats * Float32Array.BYTES_PER_ELEMENT
+
+        device.queue.writeBuffer(
+            tileUniformBuffer,
+            0,
+            packAscTileUniforms(0, 0, z0, nx, ny, zCount),
+        )
+
+        const { dx, dy, dz } = ascGridSampleDispatchShape(tileFloats)
+
+        const encoder = device.createCommandEncoder({ label: `asc_grid_sample_slab_${z0}` })
+        const pass = helper.beginComputePass(encoder, pipeline, bindGroup)
+        pass.dispatchWorkgroups(dx, dy, dz)
+        pass.end()
+
+        const staging = ti % 2 === 0 ? stagingA : stagingB
+        encoder.copyBufferToBuffer(outBuffer, dstByteOffset, staging, 0, byteSize)
+        device.queue.submit([encoder.finish()])
+
+        tileDone[ti] = staging.mapAsync(GPUMapMode.READ, 0, byteSize).then(() => {
+            const mapped = new Float32Array(staging.getMappedRange(0, byteSize).slice(0))
+            output.set(mapped, z0 * planeFloats)
+            staging.unmap()
+        })
+    }
+
+    await Promise.all(tileDone)
+
     uniformBuffer.destroy()
+    tileUniformBuffer.destroy()
     outBuffer.destroy()
+    stagingA.destroy()
+    stagingB.destroy()
 
-    return new Float32Array(raw, 0, total)
+    return output
 }
 
 const VERTEX_STRIDE_F32 = SIZEOF_VERTEX / Float32Array.BYTES_PER_ELEMENT
@@ -281,7 +392,7 @@ export class AscExport {
         this.#mdcSceneParamsBuffer = mdcSceneParamsBuffer
     }
 
-    async export(ascGridShaderModule: GPUShaderModule, progressCallback?: ProgressCallback): Promise<MeshData> {
+    async export(ascGridShaderModule: GPUShaderModule, progressCallback?: ProgressCallback): Promise<AscExportMeshResult> {
         const perfNow = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now())
         const t0 = perfNow()
 
@@ -341,6 +452,7 @@ export class AscExport {
             gridOffsetZ,
             voxelSize,
             maxScalarSamples: this.#params.maxScalarSamples,
+            ascGpuTileBytes: this.#params.ascGpuTileBytes,
         }
 
         const scalars = await sampleAscScalarGrid(
@@ -385,7 +497,8 @@ export class AscExport {
                     : "") +
                 `; ~${macroBlocks.toLocaleString()} macro-blocks)`,
         )
-        const ascOut = runAscLayerSweep({
+        const tSweep0 = perfNow()
+        const ascOut = await runAscLayerSweep({
             tierIndex: effectiveTier,
             grid,
             handleAmbiguity,
@@ -396,14 +509,17 @@ export class AscExport {
             handleBeauty,
             angleThreshRad,
         })
+        const ascLayerSweepMs = perfNow() - tSweep0
 
         checkCancelled()
         progressCallback?.updateProgress("ASC: packing mesh", 75)
 
         let { verts, tris } = packAscLayerResultToMeshData(ascOut, gridOffsetX, gridOffsetY, gridOffsetZ)
 
+        let ascHermiteMs = 0
         if (tris.length > 0) {
-            const sharpened = applyAscHermiteQef(
+            const tHerm0 = perfNow()
+            const sharpened = await applyAscHermiteQef(
                 { verts, tris },
                 grid,
                 {
@@ -415,12 +531,18 @@ export class AscExport {
                     scaleZ: heightScale,
                 },
             )
+            ascHermiteMs = perfNow() - tHerm0
             verts = sharpened.verts
             tris = sharpened.tris
             if (sharpened.movedVertices > 0) {
                 dbgLog("AscExport").info(`ASC Hermite/QEF sharp-feature correction: moved ${sharpened.movedVertices.toLocaleString()} vertices`)
             }
         }
+
+        const ascCpuTimingMs: AscExportCpuTimingMs = { ascLayerSweepMs, ascHermiteMs }
+        dbgLog("AscExport").debug(
+            `ASC CPU timings: layerSweep=${ascLayerSweepMs.toFixed(1)} ms hermite=${ascHermiteMs.toFixed(1)} ms`,
+        )
 
         {
             const before = (tris.length / 3) | 0
@@ -475,6 +597,6 @@ export class AscExport {
         progressCallback?.updateProgress("Complete", 100)
         dbgLog("AscExport").debug(`AscExport.export done in ${(perfNow() - t0).toFixed(1)} ms; tris=${(tris.length / 3) | 0}`)
 
-        return { verts, tris }
+        return { verts, tris, ascCpuTimingMs }
     }
 }

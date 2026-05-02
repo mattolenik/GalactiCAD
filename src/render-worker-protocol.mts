@@ -6,12 +6,13 @@
 import type { CameraState } from "./controls/camera-controller.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import type { MeshData } from "./export/export.mjs"
+import type { AscExportCpuTimingMs } from "./export/asc-cpu-timing.mjs"
 
 /** Mesh extraction backend for `renderMesh` (STL / mesh viewer). */
 export type MeshExporter = "mdc" | "asc"
 
-/** ASC binary subdivision tier (`asc.h` headers): 0 = ASC1 … 3 = asc8. */
-export type MeshAscTierIndex = 0 | 1 | 2 | 3
+/** ASC macro-block tier: index `t` ⇒ edge length N = 2^t (0 = ASC1 … 7 = asc128). */
+export type MeshAscTierIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
 
 /** Worker-reported `#doBuild` breakdown (ms); used for devtools / regression triage. */
 export interface BuildTimingBreakdownMs {
@@ -252,7 +253,15 @@ export type WorkerToMainMessage =
     | { type: "clickResult"; clickedId: number; edgeHits: EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number]; shiftKey: boolean; altKey: boolean; documentName?: string }
     | { type: "selectionInfo"; info: SelectionInfo; documentName?: string; hoverRequestId?: number }
     | { type: "objectDoubleClick"; nodeId: number; hitPos?: [number, number, number]; documentName?: string }
-    | { type: "renderMeshResult"; mesh?: MeshData; error?: string; requestId?: number; documentName?: string }
+    | {
+          type: "renderMeshResult"
+          mesh?: MeshData
+          error?: string
+          requestId?: number
+          documentName?: string
+          /** Present when ASC exporter finished CPU sweep/Hermite (see `AscExport.export`). */
+          ascCpuTimingMs?: AscExportCpuTimingMs
+      }
     | { type: "benchmarkResult"; result: BenchmarkResultPayload; requestId?: number }
     | { type: "thumbnailResult"; imageData?: ImageData; error?: string; requestId?: number; documentName?: string }
     | { type: "pickPosResult"; hitPos: [number, number, number] | null; requestId: number }

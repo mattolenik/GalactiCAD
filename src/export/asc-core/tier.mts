@@ -1,13 +1,25 @@
 /**
- * Binary subdivision tier matching asc `asc.h` compile-time headers.
- * Tier index: 0 = ASC1 (N=1), 1 = asc2 (N=2), 2 = asc4 (N=4), 3 = asc8 (N=8).
+ * Binary subdivision tier matching asc `asc.h`-style block sizes (JS port supports beyond legacy asc8).
+ * Tier index `t`: macro-block edge length **N = 2^t** lattice cells per axis (`SIZE = 2^(t+1)` dikes).
  */
-export type AscTierIndex = 0 | 1 | 2 | 3
+export type AscTierIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
 
-/** Dev Tools mesh exporter uses the same strings (`ASC1 (N=1)` … `ASC8 (N=8)`). */
-const ASC_TIER_SHORT_LABELS = ["ASC1 (N=1)", "ASC2 (N=2)", "ASC4 (N=4)", "ASC8 (N=8)"] as const
+/** Inclusive maximum `AscTierIndex` (`effectiveAscTierForGrid` stops raising here). */
+export const ASC_TIER_MAX_INDEX: AscTierIndex = 7
 
-/** Human-readable tier for logs (index 2 is ASC4, not ASC2). */
+/** Dev Tools / logs (`ASC1` … `asc128`). */
+const ASC_TIER_SHORT_LABELS = [
+    "ASC1 (N=1)",
+    "ASC2 (N=2)",
+    "ASC4 (N=4)",
+    "ASC8 (N=8)",
+    "asc16 (N=16)",
+    "asc32 (N=32)",
+    "asc64 (N=64)",
+    "asc128 (N=128)",
+] as const
+
+/** Human-readable tier for logs (index 2 is ASC4 / N=4; index 7 is asc128 / N=128). */
 export function ascTierShortLabel(tierIndex: AscTierIndex): string {
     return ASC_TIER_SHORT_LABELS[tierIndex]
 }

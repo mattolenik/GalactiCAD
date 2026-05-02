@@ -372,7 +372,7 @@ export class SettingsManager {
                 if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
                 if (app.meshExporter !== "mdc" && app.meshExporter !== "asc") app.meshExporter = "mdc"
                 const tier = app.meshAscTierIndex
-                if (typeof tier !== "number" || tier < 0 || tier > 3 || !Number.isInteger(tier)) app.meshAscTierIndex = 2
+                if (typeof tier !== "number" || tier < 0 || tier > 7 || !Number.isInteger(tier)) app.meshAscTierIndex = 2
                 else app.meshAscTierIndex = tier as MeshAscTierIndex
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
                 if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false

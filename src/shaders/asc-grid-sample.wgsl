@@ -34,6 +34,17 @@ const FACE_HIGHLIGHT_TOP: u32 = 1023u;
 const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;
 
 @group(0) @binding(30) var<storage, read> mdcSceneParams: array<f32>;
+
+// Sub-volume sampling: tileOrigin + tileDims index a box inside gridDimensions (vertex counts).
+// Full grid: origin (0,0,0), tileDims == gridDimensions.
+struct AscTileUniforms {
+    tileOrigin: vec3u,
+    _padOrigin: u32,
+    tileDims: vec3u,
+    _padDims: u32,
+}
+
+@group(0) @binding(31) var<uniform> ascTile: AscTileUniforms;
 //:) include "mdc_scene_params_read.wgsl"
 
 // Same helper as mdc.wgsl / bounds.wgsl — injected `sceneAux*` may call `rectSDF2D` (e.g. polygon2d).
@@ -77,29 +88,38 @@ fn gridPosToWorldPos(gridPos: vec3u) -> vec3f {
     return vec3f(gridPos) * uniforms.voxelSize + uniforms.gridOffset;
 }
 
-fn gridIndexTo3D(index: u32) -> vec3u {
-    let x = index % uniforms.gridDimensions.x;
-    let y = (index / uniforms.gridDimensions.x) % uniforms.gridDimensions.y;
-    let z = index / (uniforms.gridDimensions.x * uniforms.gridDimensions.y);
-    return vec3u(x, y, z);
-}
-
-// One thread per grid vertex. Dispatch as 2D grid of workgroups (see mdc edge pass).
+// One thread per vertex in the current tile. Dispatch as 2D/3D grid of workgroups (see bounds.wgsl).
 @compute @workgroup_size(256u, 1u, 1u)
 fn ascGridScalar_sample(
     @builtin(global_invocation_id) globalId: vec3u,
     @builtin(num_workgroups) numWg: vec3u,
 ) {
-    let idx = globalId.x + globalId.y * (numWg.x * 256u);
+    let idx =
+        globalId.x +
+        globalId.y * (numWg.x * 256u) +
+        globalId.z * (numWg.x * numWg.y * 256u);
     let nx = uniforms.gridDimensions.x;
     let ny = uniforms.gridDimensions.y;
     let nz = uniforms.gridDimensions.z;
-    let total = nx * ny * nz;
-    if (idx >= total) {
+    let tx = ascTile.tileDims.x;
+    let ty = ascTile.tileDims.y;
+    let tz = ascTile.tileDims.z;
+    let tileTotal = tx * ty * tz;
+    if (idx >= tileTotal) {
         return;
     }
-    let g = gridIndexTo3D(idx);
+    let lx = idx % tx;
+    let ly = (idx / tx) % ty;
+    let lz = idx / (tx * ty);
+    let gx = ascTile.tileOrigin.x + lx;
+    let gy = ascTile.tileOrigin.y + ly;
+    let gz = ascTile.tileOrigin.z + lz;
+    if (gx >= nx || gy >= ny || gz >= nz) {
+        return;
+    }
+    let globalIdx = gx + gy * nx + gz * nx * ny;
+    let g = vec3u(gx, gy, gz);
     let p = gridPosToWorldPos(g);
     let d = sceneSDF_fast(p).d;
-    ascGridScalars[idx] = d - uniforms.isoValue;
+    ascGridScalars[globalIdx] = d - uniforms.isoValue;
 }

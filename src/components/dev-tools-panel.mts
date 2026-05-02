@@ -391,6 +391,10 @@ export class DevToolsPanel extends HTMLElement {
             { v: 1, label: "asc2 (N=2)" },
             { v: 2, label: "asc4 (N=4)" },
             { v: 3, label: "asc8 (N=8)" },
+            { v: 4, label: "asc16 (N=16)" },
+            { v: 5, label: "asc32 (N=32)" },
+            { v: 6, label: "asc64 (N=64)" },
+            { v: 7, label: "asc128 (N=128)" },
         ]
         for (const { v, label } of tierChoices) {
             const o = document.createElement("option")
@@ -401,7 +405,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshAscTierSelect.value = String(this.#meshAscTier$.value)
         this.#meshAscTierSelect.addEventListener("change", () => {
             const t = Number(this.#meshAscTierSelect.value)
-            if (t >= 0 && t <= 3 && Number.isInteger(t)) this.#meshAscTier$.next(t as MeshAscTierIndex)
+            if (t >= 0 && t <= 7 && Number.isInteger(t)) this.#meshAscTier$.next(t as MeshAscTierIndex)
         })
         this.#subscriptions.push(this.#meshAscTier$.subscribe(t => {
             this.#meshAscTierSelect.value = String(t)

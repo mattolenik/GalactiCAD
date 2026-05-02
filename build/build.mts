@@ -41,7 +41,15 @@ const Static = {
 }
 
 const Options = {
-    entryPoints: ["./src/app.mts", "./src/components/preview-window.mts", "./src/components/mesh-viewer.mts", "./src/render-worker.mts", "./src/transpile-worker.mts"],
+    entryPoints: [
+        "./src/app.mts",
+        "./src/components/preview-window.mts",
+        "./src/components/mesh-viewer.mts",
+        "./src/render-worker.mts",
+        "./src/transpile-worker.mts",
+        "./src/export/asc-hermite-worker.mts",
+        "./src/export/asc-collect-worker.mts",
+    ],
     plugins: [await wgslLoader(), await versionPlugin(), await fileListerPlugin(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
     outDir: "./dist",
     isProd: IS_PROD,

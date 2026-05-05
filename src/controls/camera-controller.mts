@@ -79,6 +79,8 @@ export class CameraController {
     #getInteractionRect?: () => DOMRect
     /** Last Cmd/Ctrl+double-click focus hit (world space); used to preserve viewing distance when refocusing. */
     #lastFocusWorld: Vec3f | null = null
+    /** Optical center in [0,1] UV space (matches preview.wgsl viewCenter). Updated by host when editor overlaps view. */
+    #viewCenter: Vec2f = vec2(0.5, 0.5)
 
     /** Emitted when camera state changes (rotate, pan, zoom). */
     readonly change$ = new Subject<CameraState>()
@@ -96,13 +98,23 @@ export class CameraController {
         this.#pivot = pivot
         this.zoom = radius
         this.#zoomController = new PinchZoomController(host, this.zoom)
-        this.#zoomController.onZoom = zoom => {
+        this.#zoomController.onZoom = (zoom, cursor) => {
+            const zoomOld = this.zoom
             this.zoom = zoom
             // Clamp may change the value; keep controller state aligned.
             this.#zoomController.setZoom(this.zoom, false)
-            // Zoom doesn't affect viewTransform, but it *must* emit so other views stay synced.
+            const dZoom = this.zoom - zoomOld
+            if (Math.abs(dZoom) > 1e-10 && !this.#lastFocusWorld) {
+                // No focus anchor: zoom-to-cursor so the world point under the cursor stays
+                // fixed on screen (typical CAD dolly behaviour).
+                this.#applyZoomToCursor(dZoom, cursor.x, cursor.y)
+            }
+            // When #lastFocusWorld is set, zoom is pure ortho-scale (no translation).
+            // This keeps the orbit/focus pivot anchored while the user zooms in/out.
+            // #lastFocusWorld is preserved so the next Cmd+dblclick continues to
+            // use the prevFocus path (preserving viewing distance to the focus point).
+            this.#updateTransforms()
             this.#saveCameraState()
-            this.change$.next(this.state)
         }
         this.#zoomController.onRotate = angleDelta => {
             if (Math.abs(angleDelta) < 1e-10) return
@@ -366,6 +378,8 @@ export class CameraController {
     }
 
     #computeCameraPosition(): Vec3f {
+        // Fixed standoff from pivot; zoom is orthographic half-height only (preview `camera.zoom`).
+        // Coupling zoom to this offset breaks Cmd-dblclick recenter (|O − lastFocus|) and T·R·lookAt.
         return this.#pivot.add(vec3(0, 0, 1))
     }
 
@@ -527,6 +541,45 @@ export class CameraController {
     /** Set the trackball rotation method at runtime (e.g. from Settings). */
     setRotationMethod(m: TrackballRotationMethod): void {
         this.#trackball.rotationMethod = m
+    }
+
+    /**
+     * Update the optical view centre (UV [0,1] x [0,1], default 0.5 x 0.5).
+     * Called by the host whenever the editor overlay shifts the visible centre.
+     * Must match preview.wgsl `camera.viewCenter` so zoom-to-cursor is accurate.
+     */
+    setViewCenter(x: number, y: number): void {
+        this.#viewCenter = vec2(x, y)
+    }
+
+    /**
+     * Zoom-to-cursor: shift #cameraTranslation so the world point under clientX/Y
+     * stays fixed on screen after the ortho scale changed by dZoom.
+     *
+     * Derivation: camera-space ray origin at cursor = (ndcX*zoom, ndcY*zoom, depth).
+     * When zoom changes by dZoom the offset shifts by (ndcX*dZoom, ndcY*dZoom).
+     * To keep the cursor world-point fixed, translate the camera by the world-space
+     * equivalent of that shift (using current view rotation columns; translation T
+     * in T·R·lookAt does not affect columns 0-2 so viewTransform columns are valid).
+     */
+    #applyZoomToCursor(dZoom: number, clientX: number, clientY: number): void {
+        const rect = this.#host.canvas.getBoundingClientRect()
+        if (rect.width < 1 || rect.height < 1) return
+        const vc = this.#viewCenter
+        const aspect = rect.width / rect.height
+        // Screen UV: sx in [0,1] left→right, sy in [0,1] top→bottom.
+        const screenSx = (clientX - rect.left) / rect.width
+        const screenSy = (clientY - rect.top) / rect.height
+        // Match preview.wgsl uvAspect / computeRayOrigin (shader uv.y = 1 − screenSy).
+        const ndcX = 2 * (screenSx - vc.x) * aspect
+        const ndcY = 2 * (1 - screenSy - vc.y)
+        // World-space compensation (d = -dZoom: positive when zooming in).
+        const d = -dZoom
+        const m = this.viewTransform.data
+        // camRight = column 0, camUp = column 1 of viewTransform (rotation only, unaffected by T).
+        this.#cameraTranslation.x += d * (ndcX * m[0] + ndcY * m[4])
+        this.#cameraTranslation.y += d * (ndcX * m[1] + ndcY * m[5])
+        this.#cameraTranslation.z += d * (ndcX * m[2] + ndcY * m[6])
     }
 
     /**

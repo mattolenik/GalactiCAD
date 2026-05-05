@@ -19,8 +19,10 @@ export class PinchZoomController {
     #wheelZoomTimer: ReturnType<typeof setTimeout> | null = null
 
     isZooming = false
-    onZoom?: (zoom: number) => void
+    onZoom?: (zoom: number, cursor: { x: number; y: number }) => void
     onRotate?: (angleDelta: number) => void
+
+    #lastCursor: { x: number; y: number } = { x: 0, y: 0 }
 
     constructor(el: HTMLElement, defaultZoom = 40) {
         this.#zoom = defaultZoom
@@ -39,6 +41,7 @@ export class PinchZoomController {
             this.#wheelZoomTimer = null
             this.isZooming = false
         }, 150)
+        this.#lastCursor = { x: e.clientX, y: e.clientY }
         const s = zoomDeltaScale(this.#zoom)
         this.#zoom += e.deltaY * this.#zoomSensitivity * s
         this.#emitZoom()
@@ -64,6 +67,11 @@ export class PinchZoomController {
             const delta = currentDistance - this.#initialPinchDistance
             const s = zoomDeltaScale(this.#zoom)
             this.#zoom = this.#initialZoom - delta * this.#zoomSensitivity * s
+            // Use midpoint of two touches as the pinch cursor position
+            this.#lastCursor = {
+                x: (e.touches[0]!.clientX + e.touches[1]!.clientX) / 2,
+                y: (e.touches[0]!.clientY + e.touches[1]!.clientY) / 2,
+            }
             this.#emitZoom()
 
             const currentAngle = this.#getAngle(e.touches)
@@ -85,7 +93,7 @@ export class PinchZoomController {
     }
 
     #emitZoom() {
-        this.onZoom?.(this.#zoom)
+        this.onZoom?.(this.#zoom, this.#lastCursor)
     }
 
     setZoom(zoom: number, emit = false) {

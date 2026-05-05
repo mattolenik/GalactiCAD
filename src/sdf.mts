@@ -1263,6 +1263,7 @@ export class SDFRenderer {
 
     setViewCenter(x: number, y: number, editorOffsetPx?: number): void {
         this.#viewCenter = vec2(x, y)
+        this.#controls.setViewCenter(x, y)
         this.#preview.setSelectionInfoLeft(editorOffsetPx ?? 0)
         this.#needsRender = true
     }

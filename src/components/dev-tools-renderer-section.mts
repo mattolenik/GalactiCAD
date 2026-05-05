@@ -5,7 +5,9 @@ import {
     DEFAULT_PREVIEW_SHADING,
     type PreviewShadingParams,
 } from "../render-worker-protocol.mjs"
+import { DEVTOOLS_COLLAPSE } from "./dev-tools-protocol.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
+import "./dev-tools-collapse.mjs"
 
 const PREVIEW_SHADING_KNOBS: {
     key: keyof PreviewShadingParams
@@ -65,7 +67,19 @@ export class DevToolsRendererSection extends HTMLElement {
         this.#lightingSection.className = "lighting-section"
         this.#lightingSection.hidden = true
 
-        this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)
+        const perfBox = document.createElement("dev-tools-collapse")
+        perfBox.setAttribute("label", "Performance")
+        perfBox.setAttribute("nested", "")
+        perfBox.setAttribute("collapse-id", DEVTOOLS_COLLAPSE.rendererPerformance)
+        shadow.appendChild(perfBox)
+
+        const previewBox = document.createElement("dev-tools-collapse")
+        previewBox.setAttribute("label", "Preview shading")
+        previewBox.setAttribute("nested", "")
+        previewBox.setAttribute("collapse-id", DEVTOOLS_COLLAPSE.rendererPreviewShading)
+        shadow.appendChild(previewBox)
+
+        this.#cameraOptCheckbox = this.#addCheckbox(perfBox, "Camera halfres", this.#cameraOptimization$.value)
         this.#subscriptions.push(connectCheckbox(this.#cameraOptCheckbox, this.#cameraOptimization$))
         this.#subscriptions.push(
             this.#cameraOptimization$.pipe(skip(1)).subscribe(v => {
@@ -73,7 +87,7 @@ export class DevToolsRendererSection extends HTMLElement {
             })
         )
 
-        this.#beamOptCheckbox = this.#addCheckbox(shadow, "Beam render", this.#beamOptimization$.value)
+        this.#beamOptCheckbox = this.#addCheckbox(perfBox, "Beam render", this.#beamOptimization$.value)
         this.#subscriptions.push(connectCheckbox(this.#beamOptCheckbox, this.#beamOptimization$))
         this.#subscriptions.push(
             this.#beamOptimization$.pipe(skip(1)).subscribe(v => {
@@ -81,7 +95,7 @@ export class DevToolsRendererSection extends HTMLElement {
             })
         )
 
-        this.#bvhOptCheckbox = this.#addCheckbox(shadow, "BVH optimize", this.#bvhOptimization$.value)
+        this.#bvhOptCheckbox = this.#addCheckbox(perfBox, "BVH optimize", this.#bvhOptimization$.value)
         this.#subscriptions.push(connectCheckbox(this.#bvhOptCheckbox, this.#bvhOptimization$))
         this.#subscriptions.push(
             this.#bvhOptimization$.pipe(skip(1)).subscribe(v => {
@@ -89,17 +103,12 @@ export class DevToolsRendererSection extends HTMLElement {
             })
         )
 
-        this.#normalPreviewCheckbox = this.#addCheckbox(shadow, "Normal mode", false)
+        this.#normalPreviewCheckbox = this.#addCheckbox(previewBox, "Normal mode", false)
         this.#normalPreviewCheckbox.addEventListener("change", () => {
             this.onPreviewNormalShadingChange?.(this.#normalPreviewCheckbox.checked)
         })
 
-        shadow.appendChild(this.#lightingSection)
-
-        const shadeHead = document.createElement("div")
-        shadeHead.className = "shade-head"
-        shadeHead.textContent = "Preview lighting"
-        this.#lightingSection.appendChild(shadeHead)
+        previewBox.appendChild(this.#lightingSection)
 
         for (const k of PREVIEW_SHADING_KNOBS) {
             const row = document.createElement("div")

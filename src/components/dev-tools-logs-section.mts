@@ -11,6 +11,7 @@ import {
     type JSONValue,
 } from "./dev-tools-protocol.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
+import "./dev-tools-collapse.mjs"
 
 export class DevToolsLogsSection extends HTMLElement implements DevToolsPersistable {
     readonly devToolsSectionId = DEVTOOLS_SECTION_LOGS
@@ -25,11 +26,6 @@ export class DevToolsLogsSection extends HTMLElement implements DevToolsPersista
         const style = document.createElement("style")
         style.textContent = devToolsBaseShadowCss()
         shadow.appendChild(style)
-
-        const debugHead = document.createElement("div")
-        debugHead.className = "shade-head"
-        debugHead.textContent = "Logs"
-        shadow.appendChild(debugHead)
 
         const debugAllRow = document.createElement("div")
         debugAllRow.style.display = "flex"

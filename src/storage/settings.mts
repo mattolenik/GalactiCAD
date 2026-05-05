@@ -76,6 +76,8 @@ export interface GlobalSettings {
         editor: EditorSettings
         /** Dev tools panel sections: keyed by `devToolsSectionId`. */
         devToolsSections: DevToolsSectionsMap
+        /** Dev tools `<details>` groups: keyed by `DEVTOOLS_COLLAPSE` id; `true` = expanded. */
+        devToolsCollapseOpen: Record<string, boolean>
     }
     layout: LayoutSettings
 }
@@ -130,6 +132,7 @@ function defaultGlobalSettings(): GlobalSettings {
             theme: "dark",
             editor: defaultEditorSettings(),
             devToolsSections: {},
+            devToolsCollapseOpen: {},
         },
         layout: defaultLayout(),
     }
@@ -308,6 +311,15 @@ export class SettingsManager {
         this.#globalSave$.next()
     }
 
+    /** Persist one dev tools collapsible expanded state (`true` = open). */
+    mergeGlobalDevToolsCollapse(id: string, open: boolean): void {
+        this.#globalSettings.app.devToolsCollapseOpen = {
+            ...this.#globalSettings.app.devToolsCollapseOpen,
+            [id]: open,
+        }
+        this.#globalSave$.next()
+    }
+
     /** Per-module debug flags from persisted dev tools logs section. */
     getDebugLogModules(): DebugLogModulesState {
         const blob = this.#globalSettings.app.devToolsSections[DEVTOOLS_SECTION_LOGS]
@@ -380,6 +392,13 @@ export class SettingsManager {
                         if (v && typeof v === "object" && !Array.isArray(v)) devToolsSections[k] = { ...(v as Record<string, unknown>) }
                     }
                 }
+                const collapseRaw = rawApp.devToolsCollapseOpen
+                const devToolsCollapseOpen: Record<string, boolean> = {}
+                if (collapseRaw && typeof collapseRaw === "object" && !Array.isArray(collapseRaw)) {
+                    for (const [k, v] of Object.entries(collapseRaw as Record<string, unknown>)) {
+                        if (typeof v === "boolean") devToolsCollapseOpen[k] = v
+                    }
+                }
                 const diskRaw = rawApp.diskSyncIntervalSeconds
                 const themeRaw = rawApp.theme
                 const editorDef = defaultEditorSettings()
@@ -411,6 +430,7 @@ export class SettingsManager {
                             : def.app.theme,
                     editor,
                     devToolsSections,
+                    devToolsCollapseOpen,
                 }
                 this.#globalSettings = {
                     preview,

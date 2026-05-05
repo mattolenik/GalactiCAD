@@ -3,12 +3,14 @@ import type { Subscription } from "rxjs"
 import { connectCheckbox } from "../binding/bind.mjs"
 import {
     DEFAULT_APP_DEVTOOLS_STATE,
+    DEVTOOLS_COLLAPSE,
     DEVTOOLS_SECTION_APP,
     dispatchDevToolsStateChange,
     type DevToolsPersistable,
     type JSONValue,
 } from "./dev-tools-protocol.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
+import "./dev-tools-collapse.mjs"
 
 function asBool(v: unknown, fallback: boolean): boolean {
     return typeof v === "boolean" ? v : fallback
@@ -72,28 +74,40 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             dispatchDevToolsStateChange(this, this.devToolsSectionId)
         }
 
-        const showFpsCb = this.#addCheckbox(shadow, "Show FPS", this.#showFps$.value)
+        const viewportBox = document.createElement("dev-tools-collapse")
+        viewportBox.setAttribute("label", "Viewport")
+        viewportBox.setAttribute("nested", "")
+        viewportBox.setAttribute("collapse-id", DEVTOOLS_COLLAPSE.appViewport)
+        shadow.appendChild(viewportBox)
+
+        const exportBox = document.createElement("dev-tools-collapse")
+        exportBox.setAttribute("label", "Export")
+        exportBox.setAttribute("nested", "")
+        exportBox.setAttribute("collapse-id", DEVTOOLS_COLLAPSE.appExport)
+        shadow.appendChild(exportBox)
+
+        const showFpsCb = this.#addCheckbox(viewportBox, "Show FPS", this.#showFps$.value)
         this.#subscriptions.push(connectCheckbox(showFpsCb, this.#showFps$))
         this.#showFps$.pipe(skip(1)).subscribe(() => {
             persist()
             this.dispatchEvent(new CustomEvent("galacticad-show-fps-change", { bubbles: true, composed: true }))
         })
 
-        const meshCb = this.#addCheckbox(shadow, "Export preview", this.#meshViewer$.value)
+        const meshCb = this.#addCheckbox(exportBox, "Export preview", this.#meshViewer$.value)
         this.#subscriptions.push(connectCheckbox(meshCb, this.#meshViewer$))
         this.#meshViewer$.pipe(skip(1)).subscribe(() => {
             persist()
             this.dispatchEvent(new CustomEvent("galacticad-mesh-viewer-change", { bubbles: true, composed: true }))
         })
 
-        const meshSimpCb = this.#addCheckbox(shadow, "Mesh simplify", this.#meshSimplify$.value)
+        const meshSimpCb = this.#addCheckbox(exportBox, "Mesh simplify", this.#meshSimplify$.value)
         this.#subscriptions.push(connectCheckbox(meshSimpCb, this.#meshSimplify$))
         this.#meshSimplify$.pipe(skip(1)).subscribe(() => {
             persist()
             this.dispatchEvent(new CustomEvent("galacticad-mesh-simplify-change", { bubbles: true, composed: true }))
         })
 
-        const lightingCb = this.#addCheckbox(shadow, "Show lighting", this.#lightingExpanded$.value)
+        const lightingCb = this.#addCheckbox(viewportBox, "Show lighting", this.#lightingExpanded$.value)
         this.#subscriptions.push(connectCheckbox(lightingCb, this.#lightingExpanded$))
         this.#lightingExpanded$.pipe(skip(1)).subscribe(v => {
             persist()

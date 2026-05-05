@@ -15,6 +15,26 @@ export type DevToolsStateChangeDetail = { sectionId: string }
 export const DEVTOOLS_SECTION_APP = "galacticad.app"
 export const DEVTOOLS_SECTION_LOGS = "galacticad.logs"
 
+/** Keys for `GlobalSettings.app.devToolsCollapseOpen` — expanded state of dev-tools collapsibles. */
+export const DEVTOOLS_COLLAPSE = {
+    panelApp: "galacticad.collapse.panelApp",
+    panelRenderer: "galacticad.collapse.panelRenderer",
+    panelLogs: "galacticad.collapse.panelLogs",
+    panelBenchmark: "galacticad.collapse.panelBenchmark",
+    panelReset: "galacticad.collapse.panelReset",
+    appViewport: "galacticad.collapse.appViewport",
+    appExport: "galacticad.collapse.appExport",
+    rendererPerformance: "galacticad.collapse.rendererPerformance",
+    rendererPreviewShading: "galacticad.collapse.rendererPreviewShading",
+} as const
+
+export type DevToolsCollapseId = (typeof DEVTOOLS_COLLAPSE)[keyof typeof DEVTOOLS_COLLAPSE]
+
+/** When a key is absent from storage, use this default (`true` = expanded). Only list exceptions. */
+export const DEFAULT_DEVTOOLS_COLLAPSE_OPEN: Partial<Record<DevToolsCollapseId, boolean>> = {
+    [DEVTOOLS_COLLAPSE.panelReset]: false,
+}
+
 /** Defaults when `devToolsSections[DEVTOOLS_SECTION_APP]` is missing or partial. */
 export const DEFAULT_APP_DEVTOOLS_STATE: Record<string, JSONValue> = {
     showFps: true,

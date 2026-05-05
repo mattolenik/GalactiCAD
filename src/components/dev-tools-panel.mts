@@ -12,6 +12,7 @@ import type { PreviewShadingParams } from "../render-worker-protocol.mjs"
 import { log, type DebugLogModulesState } from "../logging/debug-log.mjs"
 import {
     DEFAULT_APP_DEVTOOLS_STATE,
+    DEVTOOLS_COLLAPSE,
     DEVTOOLS_STATE_CHANGE_EVENT,
     isDevToolsPersistable,
     type DevToolsPersistable,
@@ -20,6 +21,7 @@ import {
 import { DevToolsAppSection } from "./dev-tools-app-section.mjs"
 import { DevToolsLogsSection } from "./dev-tools-logs-section.mjs"
 import { DevToolsRendererSection } from "./dev-tools-renderer-section.mjs"
+import "./dev-tools-collapse.mjs"
 
 export type DevToolsSectionScope = "global" | "document"
 
@@ -39,7 +41,7 @@ export class DevToolsPanel extends HTMLElement {
     #debounceTimers = new Map<string, number>()
     #persistListener: ((e: Event) => void) | null = null
     #shadow: ShadowRoot
-    #firstBenchButton: HTMLButtonElement
+    #benchmarkSectionEl: HTMLElement
 
     /** Callback when camera optimization changes */
     onCameraOptimizationChange?: (enabled: boolean) => void
@@ -186,7 +188,19 @@ export class DevToolsPanel extends HTMLElement {
             this.onMeshSimplifyChange?.(this.#appSection.meshSimplifyOnExport)
         })
 
-        this.#shadow.append(this.#appSection, this.#rendererSection, this.#logsSection)
+        const mkSection = (label: string, collapseId: string, ...nodes: Node[]) => {
+            const wrap = document.createElement("dev-tools-collapse")
+            wrap.setAttribute("label", label)
+            wrap.setAttribute("collapse-id", collapseId)
+            for (const n of nodes) wrap.appendChild(n)
+            return wrap
+        }
+
+        this.#shadow.append(
+            mkSection("App", DEVTOOLS_COLLAPSE.panelApp, this.#appSection),
+            mkSection("Renderer", DEVTOOLS_COLLAPSE.panelRenderer, this.#rendererSection),
+            mkSection("Logs", DEVTOOLS_COLLAPSE.panelLogs, this.#logsSection)
+        )
 
         this.#restorePersistableSection(this.#appSection)
         this.#restorePersistableSection(this.#logsSection)
@@ -203,7 +217,6 @@ export class DevToolsPanel extends HTMLElement {
         this.#shadow.addEventListener(DEVTOOLS_STATE_CHANGE_EVENT, this.#persistListener)
 
         const saveSuiteButton = document.createElement("button")
-        this.#firstBenchButton = saveSuiteButton
         saveSuiteButton.textContent = "Save Bench Suite"
         saveSuiteButton.addEventListener("click", async () => {
             saveSuiteButton.disabled = true
@@ -213,7 +226,6 @@ export class DevToolsPanel extends HTMLElement {
                 saveSuiteButton.disabled = false
             }
         })
-        this.#shadow.appendChild(saveSuiteButton)
 
         const benchmarkButton = document.createElement("button")
         benchmarkButton.textContent = "Bench Suite"
@@ -225,7 +237,6 @@ export class DevToolsPanel extends HTMLElement {
                 benchmarkButton.disabled = false
             }
         })
-        this.#shadow.appendChild(benchmarkButton)
 
         const benchmarkThisButton = document.createElement("button")
         benchmarkThisButton.textContent = "Benchmark"
@@ -237,12 +248,17 @@ export class DevToolsPanel extends HTMLElement {
                 benchmarkThisButton.disabled = false
             }
         })
-        this.#shadow.appendChild(benchmarkThisButton)
+
+        const benchmarkWrap = mkSection("Benchmark", DEVTOOLS_COLLAPSE.panelBenchmark, saveSuiteButton, benchmarkButton, benchmarkThisButton)
+        this.#benchmarkSectionEl = benchmarkWrap
 
         const factoryResetButton = document.createElement("button")
         factoryResetButton.textContent = "Factory Reset"
         factoryResetButton.addEventListener("click", () => this.factoryReset())
-        this.#shadow.appendChild(factoryResetButton)
+
+        const resetWrap = mkSection("Reset", DEVTOOLS_COLLAPSE.panelReset, factoryResetButton)
+
+        this.#shadow.append(benchmarkWrap, resetWrap)
 
         this.style.display = "none"
     }
@@ -259,7 +275,7 @@ export class DevToolsPanel extends HTMLElement {
         const order = reg.order ?? 1000
         host.style.order = String(order)
         this.#extraSectionHosts.push(host)
-        this.#shadow.insertBefore(host, this.#firstBenchButton)
+        this.#shadow.insertBefore(host, this.#benchmarkSectionEl)
 
         if (scope === "document") {
             log("Settings").warn("registerSection: document scope not implemented; section mounted without persistence")

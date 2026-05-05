@@ -78,11 +78,13 @@ export class MeshViewer extends HTMLElement {
     /** Set the center of the visible (non-editor) area in UV space (0-1). */
     setViewCenter(x: number, y: number): void {
         this.#viewCenter = vec2(x, y)
+        this.#controls.setViewCenter(x, y)
     }
 
     /**
      * @param tabsElement Optional tabs for camera persistence wiring.
-     * @param getInteractionRect When set, camera/trackball input is limited to this screen rect (same as SDF preview).
+     * @param getInteractionRect When set, camera/trackball drags are accepted only inside this screen rect.
+     *  Omit for a standalone mesh panel (e.g. app shell); use only when the canvas overlaps a clipped region.
      */
     constructor(tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect) {
         super()

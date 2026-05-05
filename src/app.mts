@@ -1596,7 +1596,9 @@ class App {
             }
 
             // Create mesh viewer element dynamically using the class constructor
-            const meshViewer = new MeshViewer(this.#tabs, this.#getVisiblePreviewRect)
+            // Mesh viewer lives in its own panel; do not clip input to the SDF preview's
+            // visible rect (that would reject all drags when the mesh canvas does not overlap it).
+            const meshViewer = new MeshViewer(this.#tabs)
             meshViewer.id = "mesh"
 
             // Add element to viewports (flexbox will distribute space automatically)

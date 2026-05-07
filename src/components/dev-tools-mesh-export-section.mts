@@ -1,17 +1,20 @@
 import { BehaviorSubject, skip } from "rxjs"
 import type { Subscription } from "rxjs"
-import { connectCheckbox } from "../binding/bind.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import {
     DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_SHREC_TUNING,
     DEFAULT_SIMPLIFY_TUNING,
+    DEFAULT_ISO_SIMPLICIAL_TUNING,
+    type ExporterKind,
+    type IsoSimplicialTuning,
     type MdcExportLevers,
     type ShrecTuning,
     type SimplifyTuning,
 } from "../render-worker-protocol.mjs"
 import { DEVTOOLS_COLLAPSE } from "./dev-tools-protocol.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
+import { IsoSimplicialConstants } from "../export/iso-simplicial/constants.mjs"
 import "./dev-tools-collapse.mjs"
 
 /** Boolean fields on `SimplifyTuning` for the meshoptimizer simplify panel (excludes renormalize). */
@@ -84,12 +87,22 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
     >()
     #mdcFeatureConstrainedPlacementCheckbox: HTMLInputElement
     #renormalizeTrianglesCheckbox: HTMLInputElement
+    #meshExporter$: BehaviorSubject<ExporterKind>
+    #exporterRadios: Record<ExporterKind, HTMLInputElement> = {} as Record<ExporterKind, HTMLInputElement>
+    #isoCollapse: HTMLElement
+    #isoPhase5Checkbox: HTMLInputElement
+    #isoDepthMinRange: HTMLInputElement
+    #isoDepthMinValueEl: HTMLSpanElement
+    #isoDepthMaxRange: HTMLInputElement
+    #isoDepthMaxValueEl: HTMLSpanElement
     #subscriptions: Subscription[] = []
 
     onVoxelSizeMmChange?: (mm: number) => void
     onMdcExportLeversChange?: () => void
     /** Fired when renormalize toggle changes (full `SimplifyTuning` after merge). */
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
+    onMeshExporterChange?: (exporter: ExporterKind) => void
+    onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
 
     get voxelSizeMm(): number {
         return this.#voxelSizeMm$.value
@@ -97,6 +110,18 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
 
     set voxelSizeMm(mm: number) {
         this.#voxelSizeMm$.next(mm)
+    }
+
+    get meshExporter(): ExporterKind {
+        return this.#meshExporter$.value
+    }
+
+    set meshExporter(v: ExporterKind) {
+        this.#meshExporter$.next(v)
+    }
+
+    get isoSimplicialTuning(): IsoSimplicialTuning {
+        return { ...this.#settings.getGlobal().app.isoSimplicialTuning }
     }
 
     constructor() {
@@ -140,6 +165,122 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
                 this.onVoxelSizeMmChange?.(v)
             })
         )
+
+        this.#meshExporter$ = new BehaviorSubject<ExporterKind>(g.meshExporter)
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("span")
+            lab.className = "knob-label"
+            lab.textContent = "Exporter"
+            const box = document.createElement("div")
+            box.style.display = "flex"
+            box.style.flexDirection = "column"
+            box.style.alignItems = "flex-start"
+            box.style.gap = "2px"
+            const addExp = (value: ExporterKind, label: string) => {
+                const w = document.createElement("label")
+                const r = document.createElement("input")
+                r.type = "radio"
+                r.name = "galacticad-mesh-exporter"
+                r.value = value
+                r.checked = this.#meshExporter$.value === value
+                r.addEventListener("change", () => {
+                    if (r.checked) this.#meshExporter$.next(value)
+                })
+                w.append(r, document.createTextNode(` ${label}`))
+                box.appendChild(w)
+                this.#exporterRadios[value] = r
+            }
+            addExp("mdc", "MDC (GPU dual contouring)")
+            addExp("shrec", "SHREC (MergeSharp)")
+            addExp("isoSimplicial", "Iso-simplicial (GPU samples + CPU octree/MT)")
+            row.append(lab, box)
+            shadow.appendChild(row)
+        }
+        this.#subscriptions.push(
+            this.#meshExporter$.subscribe(v => {
+                for (const k of ["mdc", "shrec", "isoSimplicial"] as const) {
+                    this.#exporterRadios[k]!.checked = k === v
+                }
+                if (v !== this.#settings.getGlobal().app.meshExporter) {
+                    this.#settings.updateGlobal({ app: { meshExporter: v, useShrecExporter: v === "shrec" } })
+                    this.onMeshExporterChange?.(v)
+                }
+            })
+        )
+
+        const isoT = g.isoSimplicialTuning
+        const depthMinDisp = isoT.depthMin ?? IsoSimplicialConstants.depthMin
+        const depthMaxDisp = isoT.depthMax ?? IsoSimplicialConstants.depthMax
+        this.#isoCollapse = document.createElement("dev-tools-collapse")
+        this.#isoCollapse.setAttribute("label", "Iso-simplicial")
+        this.#isoCollapse.setAttribute("nested", "")
+        shadow.appendChild(this.#isoCollapse)
+
+        this.#isoPhase5Checkbox = addCheckbox(this.#isoCollapse, "Phase 5 GPU edge snap", isoT.phase5Snap ?? false)
+        this.#isoPhase5Checkbox.addEventListener("change", () => {
+            this.#persistIsoTuning({ phase5Snap: this.#isoPhase5Checkbox.checked })
+        })
+
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Octree depth min"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "1"
+            range.max = "12"
+            range.step = "1"
+            range.value = String(depthMinDisp)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = String(depthMinDisp)
+            range.addEventListener("input", () => {
+                const v = parseInt(range.value, 10)
+                valueEl.textContent = String(v)
+                this.#persistIsoTuning({ depthMin: v })
+            })
+            row.append(lab, range, valueEl)
+            this.#isoCollapse.appendChild(row)
+            this.#isoDepthMinRange = range
+            this.#isoDepthMinValueEl = valueEl
+        }
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Octree depth max"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "1"
+            range.max = "14"
+            range.step = "1"
+            range.value = String(depthMaxDisp)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = String(depthMaxDisp)
+            range.addEventListener("input", () => {
+                const v = parseInt(range.value, 10)
+                valueEl.textContent = String(v)
+                this.#persistIsoTuning({ depthMax: v })
+            })
+            row.append(lab, range, valueEl)
+            this.#isoCollapse.appendChild(row)
+            this.#isoDepthMaxRange = range
+            this.#isoDepthMaxValueEl = valueEl
+        }
+        const isoDefaults = document.createElement("button")
+        isoDefaults.textContent = "Iso defaults"
+        isoDefaults.addEventListener("click", () => {
+            this.#settings.updateGlobal({ app: { isoSimplicialTuning: { ...DEFAULT_ISO_SIMPLICIAL_TUNING } } })
+            this.syncIsoSimplicialTuningFromSettings(this.#settings.getGlobal().app.isoSimplicialTuning)
+            this.onIsoSimplicialTuningChange?.(this.#settings.getGlobal().app.isoSimplicialTuning)
+        })
+        this.#isoCollapse.appendChild(isoDefaults)
 
         const mdcCollapse = document.createElement("dev-tools-collapse")
         mdcCollapse.setAttribute("label", "MDC mesh export")
@@ -249,6 +390,27 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
             row.range.value = String(levers[k.key])
             row.valueEl.textContent = formatMdcValue(k.key, levers[k.key])
         }
+    }
+
+    syncMeshExporterFromSettings(exporter: ExporterKind): void {
+        this.#meshExporter$.next(exporter)
+    }
+
+    syncIsoSimplicialTuningFromSettings(tuning: IsoSimplicialTuning): void {
+        this.#isoPhase5Checkbox.checked = tuning.phase5Snap ?? false
+        const dmin = tuning.depthMin ?? IsoSimplicialConstants.depthMin
+        const dmax = tuning.depthMax ?? IsoSimplicialConstants.depthMax
+        this.#isoDepthMinRange.value = String(dmin)
+        this.#isoDepthMinValueEl.textContent = String(dmin)
+        this.#isoDepthMaxRange.value = String(dmax)
+        this.#isoDepthMaxValueEl.textContent = String(dmax)
+    }
+
+    #persistIsoTuning(patch: Partial<IsoSimplicialTuning>): void {
+        const cur = this.#settings.getGlobal().app.isoSimplicialTuning
+        const next: IsoSimplicialTuning = { ...cur, ...patch }
+        this.#settings.updateGlobal({ app: { isoSimplicialTuning: next } })
+        this.onIsoSimplicialTuningChange?.(next)
     }
 
     disconnectedCallback(): void {
@@ -424,11 +586,9 @@ export class DevToolsMeshSimplifySection extends HTMLElement {
     }
 }
 
-/** SHREC exporter toggle and tuning (persisted on `GlobalSettings.app`). */
+/** SHREC MergeSharp tuning (select **SHREC** under Mesh export → Exporter). */
 export class DevToolsShrecExportSection extends HTMLElement {
     #settings = SettingsManager.instance
-    #useShrecCheckbox: HTMLInputElement
-    #useShrec$: BehaviorSubject<boolean>
     #shrecTuningState: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
     #shrecMergeSharpCheckbox: HTMLInputElement
     #shrecRelCutoffRange: HTMLInputElement
@@ -447,16 +607,7 @@ export class DevToolsShrecExportSection extends HTMLElement {
     #shrecEdgeFitCheckbox: HTMLInputElement
     #subscriptions: Subscription[] = []
 
-    onUseShrecExporterChange?: (enabled: boolean) => void
     onShrecTuningChange?: (tuning: ShrecTuning) => void
-
-    get useShrecExporter(): boolean {
-        return this.#useShrec$.value
-    }
-
-    set useShrecExporter(enabled: boolean) {
-        this.#useShrec$.next(enabled)
-    }
 
     get shrecTuning(): ShrecTuning {
         return { ...this.#shrecTuningState }
@@ -470,16 +621,6 @@ export class DevToolsShrecExportSection extends HTMLElement {
         shadow.appendChild(style)
 
         const g = this.#settings.getGlobal().app
-        this.#useShrec$ = new BehaviorSubject(g.useShrecExporter)
-
-        this.#useShrecCheckbox = addCheckbox(shadow, "SHREC exporter", this.#useShrec$.value)
-        this.#subscriptions.push(connectCheckbox(this.#useShrecCheckbox, this.#useShrec$))
-        this.#subscriptions.push(
-            this.#useShrec$.pipe(skip(1)).subscribe(v => {
-                this.#settings.updateGlobal({ app: { useShrecExporter: v } })
-                this.onUseShrecExporterChange?.(v)
-            })
-        )
 
         this.#shrecTuningState = { ...DEFAULT_SHREC_TUNING, ...g.shrecTuning }
         const root = document.createElement("div")

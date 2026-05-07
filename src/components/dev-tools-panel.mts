@@ -9,6 +9,8 @@ import {
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
 import type {
+    ExporterKind,
+    IsoSimplicialTuning,
     MdcExportLevers,
     RayMarchParams,
     ShrecTuning,
@@ -65,7 +67,8 @@ export class DevToolsPanel extends HTMLElement {
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
     onVoxelSizeMmChange?: (mm: number) => void
-    onUseShrecExporterChange?: (enabled: boolean) => void
+    onMeshExporterChange?: (exporter: ExporterKind) => void
+    onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
     onShrecTuningChange?: (tuning: ShrecTuning) => void
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMdcExportLeversChange?: () => void
@@ -150,12 +153,16 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshExportCoreSection.voxelSizeMm = mm
     }
 
-    get useShrecExporter(): boolean {
-        return this.#shrecExportSection.useShrecExporter
+    get meshExporter(): ExporterKind {
+        return this.#meshExportCoreSection.meshExporter
     }
 
-    set useShrecExporter(enabled: boolean) {
-        this.#shrecExportSection.useShrecExporter = enabled
+    set meshExporter(v: ExporterKind) {
+        this.#meshExportCoreSection.meshExporter = v
+    }
+
+    get isoSimplicialTuning(): IsoSimplicialTuning {
+        return this.#meshExportCoreSection.isoSimplicialTuning
     }
 
     get shrecTuning(): ShrecTuning {
@@ -177,6 +184,14 @@ export class DevToolsPanel extends HTMLElement {
 
     syncMdcLeversFromSettings(levers: MdcExportLevers): void {
         this.#meshExportCoreSection.syncMdcLeversFromSettings(levers)
+    }
+
+    syncMeshExporterFromSettings(exporter: ExporterKind): void {
+        this.#meshExportCoreSection.syncMeshExporterFromSettings(exporter)
+    }
+
+    syncIsoSimplicialTuningFromSettings(tuning: IsoSimplicialTuning): void {
+        this.#meshExportCoreSection.syncIsoSimplicialTuningFromSettings(tuning)
     }
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
@@ -241,10 +256,11 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshExportCoreSection.onVoxelSizeMmChange = v => this.onVoxelSizeMmChange?.(v)
         this.#meshExportCoreSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
         this.#meshExportCoreSection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
+        this.#meshExportCoreSection.onMeshExporterChange = v => this.onMeshExporterChange?.(v)
+        this.#meshExportCoreSection.onIsoSimplicialTuningChange = v => this.onIsoSimplicialTuningChange?.(v)
 
         this.#meshSimplifySection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
 
-        this.#shrecExportSection.onUseShrecExporterChange = v => this.onUseShrecExporterChange?.(v)
         this.#shrecExportSection.onShrecTuningChange = v => this.onShrecTuningChange?.(v)
 
         this.#rendererSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)

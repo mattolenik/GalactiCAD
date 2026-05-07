@@ -319,7 +319,17 @@ fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
 }
 
 fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
-    return sdfFast(${this.wgslFieldFuncName}(p), 0.8, 0.8);
+    let h = ${capH};
+    let twist = ${twistRad};
+    let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
+    let rho = length(p.xz);
+    let stretch = sqrt(1.0 + twistRate * twistRate * rho * rho);
+    // Match the operator-level sdfTwistFast for ray marching: the effective
+    // step is d * safeStepMul = d / stretch. We keep d raw and g = 0.8 (the
+    // historical placeholder) so MDC's voxel sampling, bisection trigger
+    // (g < 0.95), and post-bisection projection all behave exactly as they
+    // did before, avoiding any change to mesh extraction along twisted edges.
+    return sdfFast(${this.wgslFieldFuncName}(p), 0.8, 1.0 / stretch);
 }
 `
     }

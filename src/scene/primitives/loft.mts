@@ -86,6 +86,7 @@ export class Loft extends Node {
     }
 
     get wgslFieldFuncName(): string { return `fLoft_${this.id}_field` }
+    get wgslProfileFieldFuncName(): string { return `fLoft_${this.id}_profile` }
     get wgslExFuncName(): string { return `fLoft_${this.id}_Ex` }
     get wgslFastFuncName(): string { return `fLoft_${this.id}_Fast` }
     get wgslMidFuncName(): string { return `fLoft_${this.id}_Mid` }
@@ -130,9 +131,11 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let dCap = abs(capY) - capH;
     let onSide = d > dCap;
     let eps = 0.001;
-    let gx = ${this.wgslFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
-    let gy = ${this.wgslFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, eps, 0.0));
-    let gz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
+    // FD on the profile-only field, not max(profile, cap), so the side normal stays
+    // continuous across the side/cap seam (the max would otherwise step the y derivative).
+    let gx = ${this.wgslProfileFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslProfileFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
+    let gy = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, eps, 0.0));
+    let gz = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, 0.0, eps));
     let nSide = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
@@ -298,9 +301,11 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let dCap = abs(capY) - h;
     let onSide = d > dCap;
     let eps = 0.001;
-    let gx = ${this.wgslFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
-    let gy = ${this.wgslFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, eps, 0.0));
-    let gz = ${this.wgslFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslFieldFuncName}(p - vec3f(0.0, 0.0, eps));
+    // FD on the profile-only field, not max(profile, cap), so the side normal stays
+    // continuous across the side/cap seam (the max would otherwise step the y derivative).
+    let gx = ${this.wgslProfileFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslProfileFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
+    let gy = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, eps, 0.0));
+    let gz = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, 0.0, eps));
     let nSide = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
@@ -426,13 +431,19 @@ ${sideFeatureBlock}
         const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
 
         return `
-fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
+fn ${this.wgslProfileFieldFuncName}(p: vec3f) -> f32 {
     let h = ${capH};
     let capY = p.y - ${capYOff};
     let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
 ${fieldBody}
+    return d_profile;
+}
+
+fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
+    let h = ${capH};
+    let capY = p.y - ${capYOff};
     let dCap = abs(capY) - h;
-    return max(d_profile, dCap);
+    return max(${this.wgslProfileFieldFuncName}(p), dCap);
 }
 
 fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {

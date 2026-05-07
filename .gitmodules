@@ -1,0 +1,3 @@
+[submodule "docs/reference_impl/isosurf"]
+	path = docs/reference_impl/isosurf
+	url = https://github.com/mattolenik/isosurf.git

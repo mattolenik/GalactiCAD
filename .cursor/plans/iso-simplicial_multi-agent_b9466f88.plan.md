@@ -16,7 +16,7 @@ todos:
       status: completed
     - id: agent-5
       content: "Agent 5: traverse + VisitorExtract + MT extraction → MeshData"
-      status: pending
+      status: completed
     - id: agent-6
       content: "Agent 6 (optional): Phase 5 snap/degenerate pass behind flag"
       status: pending

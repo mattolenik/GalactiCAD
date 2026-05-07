@@ -349,6 +349,7 @@ export class SDFRenderer {
         const prev = this.#settings.getPreview()
         const global = this.#settings.getGlobal()
         this.#xrayMode = prev.xrayMode
+        this.#previewNormalShading = prev.previewNormalShading
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
         this.#bvhEnabled = prev.bvhOptimization
@@ -1303,6 +1304,7 @@ export class SDFRenderer {
     set previewNormalShading(enabled: boolean) {
         if (this.#previewNormalShading === enabled) return
         this.#previewNormalShading = enabled
+        this.#settings.updatePreview("previewNormalShading", enabled)
         this.#needsRender = true
     }
 

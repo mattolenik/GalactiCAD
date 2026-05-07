@@ -187,6 +187,7 @@ export async function runBenchmarkSuite(
                 await renderer.build(benchCase.source)
                 renderer.controls.applyState(cameraStateFromSettings(benchCase.camera), { emit: false })
                 renderer.xrayMode = benchCase.preview.xrayMode
+                renderer.previewNormalShading = benchCase.preview.previewNormalShading
                 renderer.beamEnabled = benchCase.preview.beamOptimization
                 renderer.cameraOptimization = benchCase.preview.cameraOptimization
                 renderer.bvhEnabled = benchCase.preview.bvhOptimization

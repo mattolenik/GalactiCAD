@@ -26,6 +26,8 @@ export interface CameraSettings {
 
 export interface PreviewSettings {
     xrayMode: boolean
+    /** When true, preview uses analytical normals for shading ("normal mode"). */
+    previewNormalShading: boolean
     cameraOptimization: boolean
     beamOptimization: boolean
     bvhOptimization: boolean
@@ -121,7 +123,13 @@ function defaultCamera(): CameraSettings {
 }
 
 function defaultPreview(): PreviewSettings {
-    return { xrayMode: false, cameraOptimization: true, beamOptimization: true, bvhOptimization: true }
+    return {
+        xrayMode: false,
+        previewNormalShading: false,
+        cameraOptimization: true,
+        beamOptimization: true,
+        bvhOptimization: true,
+    }
 }
 
 function defaultLayout(): LayoutSettings {

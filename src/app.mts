@@ -1226,6 +1226,7 @@ class App {
                 },
                 preview: {
                     xrayMode: this.renderer.xrayMode,
+                    previewNormalShading: this.renderer.previewNormalShading,
                     cameraOptimization: this.renderer.cameraOptimization,
                     beamOptimization: this.renderer.beamEnabled,
                     bvhOptimization: this.renderer.bvhEnabled,

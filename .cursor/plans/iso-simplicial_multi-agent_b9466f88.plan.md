@@ -7,7 +7,7 @@ todos:
       status: completed
     - id: agent-2
       content: "Agent 2: iso_sample_batch.wgsl + GridSampler-style TS + parity test"
-      status: pending
+      status: completed
     - id: agent-3
       content: "Agent 3: CPU QEF solvers (double precision) + synthetic tests"
       status: pending

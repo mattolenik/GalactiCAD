@@ -13,6 +13,7 @@ import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import mdcShader from "./shaders/mdc.wgsl"
 import sampleGridShader from "./shaders/sample_grid.wgsl"
+import isoSampleBatchShaderSource from "./shaders/iso_sample_batch.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
 import { DEFAULT_MDC_EXPORT_LEVERS, type MdcExportLevers } from "./render-worker-protocol.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
@@ -56,6 +57,10 @@ import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
 import { log, logWgsl } from "./logging/debug-log.mjs"
 import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset } from "./shared-render-buffer.mjs"
+
+if (!isoSampleBatchShaderSource.includes("fn isoSampleBatch")) {
+    throw new Error("iso_sample_batch.wgsl failed to bundle for render worker")
+}
 
 const MAX_POLYGON_VERTICES = 1024
 const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8

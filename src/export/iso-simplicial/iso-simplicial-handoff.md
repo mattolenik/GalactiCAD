@@ -20,6 +20,13 @@
 - **Solver:** Prefer `solveLinearSystem`; on singular pivot fall back to `symMatPseudoinverse` + `symMatVec` (rank-deficient parallel-plane stacks).
 - **Tests:** `dual-vertex-qef_test.mts` — synthetic full-rank cube/face/edge cases plus boundary snap smoke test.
 
+## Agent 4 (CPU octree + GPU batch integration)
+
+- **Module:** `iso-octree.mts` — `IsoOctree.build({ sample, bounds, signal?, constants? })` builds a reference-aligned `TNode::eval` tree. `sample(positions)` is the only distance/normal source (world-space `Float32Array` triples in / interleaved `vec4` SDF out — same layout as `IsoSampleBatch`). Vertices are stored in **normalized** root-cell `[0,1]³` so `DEPTH_MIN` / `DEPTH_MAX` / `is_outside` match reference scaling; `createIsoOctreeSampleFn` adapts `IsoSampleBatch` + shader module.
+- **Exports:** `isoOctreeChangesSign`, `isoOctreeIsOutside`, `IsoOctreeRuntimeConstants` / override types for tests.
+- **Tests:** `iso-octree_test.mts` — `changesSign` / `is_outside` unit checks; `IsoOctree.build` with a **mock** plane field (no `SceneInfo` / transpile); deterministic `treeCellCount` with capped constants.
+
 ## Gaps / next agents
 
-- Agent 3+: QEF solvers consume Hermite samples; iteration order for oversampling must match reference triple loops in `iso_method_ours.h` (x outer, y, z inner with `<= OVERSAMPLE_QEF`).
+- Guide-tree (`TNode::eval` with non-null `guide`) not implemented (reference dual-pass); v1 always builds from scratch.
+- Agent 5: `extractMesh` / traversal; Agent 6 optional snap; Agent 7 worker + UI.

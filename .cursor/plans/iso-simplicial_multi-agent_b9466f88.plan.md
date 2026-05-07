@@ -13,7 +13,7 @@ todos:
       status: completed
     - id: agent-4
       content: "Agent 4: CPU octree build + GPU batch integration + subdivision parity"
-      status: pending
+      status: completed
     - id: agent-5
       content: "Agent 5: traverse + VisitorExtract + MT extraction → MeshData"
       status: pending

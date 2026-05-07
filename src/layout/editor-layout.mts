@@ -75,3 +75,15 @@ export function getEditorLayout(mainPanels: HTMLElement): EditorLayout {
         frac,
     }
 }
+
+/**
+ * Visible preview area for a viewport canvas: intersection of the canvas rect with the
+ * region not covered by the editor overlay (same split as CSS vars).
+ */
+export function visibleRegionForCanvas(canvas: HTMLElement, mainPanels: HTMLElement): DOMRect {
+    const canvasRect = canvas.getBoundingClientRect()
+    const mainRect = mainPanels.getBoundingClientRect()
+    if (mainRect.width === 0 || canvasRect.width === 0) return canvasRect
+    const layout = getEditorLayout(mainPanels)
+    return visiblePreviewRegion(canvasRect, mainRect, layout.editorOnLeft, layout.frac)
+}

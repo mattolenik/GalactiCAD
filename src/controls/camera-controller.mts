@@ -1,6 +1,5 @@
 import { Subject } from "rxjs"
 import { fromEvent } from "rxjs"
-import { clamped } from "../math.mjs"
 import { SettingsManager, type CameraSettings } from "../storage/settings.mjs"
 import { lookAt, Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
@@ -13,22 +12,42 @@ import Quaternion from "quaternion"
 /** Must match `RAY_ORIGIN_DEPTH` in preview.wgsl / `computeRayOrigin` at optical center */
 const PREVIEW_RAY_ORIGIN_DEPTH = 300
 
+/** Reference dolly distance (orbit stand-off): orthographic half-height is proportional. */
+export const DOLLY_REF = 50
+/** Orthographic half-height in world units when `dollyDistance === DOLLY_REF`. */
+export const ORTHO_HALF_REF = 40
+
+/** Legacy ortho half-height range [0.2, 250] maps to dolly via {@link dollyFromOrthoHalf}. */
+const DOLLY_MIN = DOLLY_REF * (0.2 / ORTHO_HALF_REF)
+const DOLLY_MAX = DOLLY_REF * (250 / ORTHO_HALF_REF)
+
+/** WGSL `camera.zoom`: orthographic half-height derived from dolly distance. */
+export function orthoHalfFromDolly(dollyDistance: number): number {
+    return ORTHO_HALF_REF * (dollyDistance / DOLLY_REF)
+}
+
+/** Inverse of {@link orthoHalfFromDolly}; used for migrating saved ortho `zoom`. */
+export function dollyFromOrthoHalf(orthoHalf: number): number {
+    return DOLLY_REF * (orthoHalf / ORTHO_HALF_REF)
+}
+
 export interface CameraHost extends HTMLElement {
     canvas: HTMLCanvasElement
 }
 
 export interface CameraState {
     rotation: [number, number, number, number] // quaternion [w, x, y, z]
-    zoom: number
+    /** Stand-off dolly distance; WGSL ortho half-height is {@link orthoHalfFromDolly}(dollyDistance). */
+    dollyDistance: number
     translation: Vec3f
     /** Scene-space orbit / look-at pivot (defaults to origin when omitted for older callers). */
     pivot?: Vec3f
 }
 
-/** Orbit radius at/above this → pan stays at the linear world-per-CSS-pixel scale. */
-const PAN_ZOOM_REF = 50
-/** When zoomed in (`zoom` < ref), pan speed scales up by up to this fraction (sqrt easing). */
-const PAN_ZOOM_IN_BOOST = 0.34
+/** At/above this dolly distance → pan uses full linear world-per-CSS-pixel scale. */
+const PAN_DOLLY_REF = DOLLY_REF
+/** When close in (small dolly), pan speed scales up by up to this fraction (sqrt easing). */
+const PAN_DOLLY_IN_BOOST = 0.34
 
 
 export class CameraController {
@@ -41,8 +60,8 @@ export class CameraController {
 
     #rotation: Quaternion = new Quaternion(1, 0, 0, 0) // identity quaternion
 
-    @clamped(0.2, 250)
-    accessor zoom: number = 40
+    /** Stand-off dolly distance; wheel adjusts this; WGSL gets {@link orthoHalfFromDolly}. */
+    #dollyDistance = DOLLY_REF
 
     #isDragging = false
     get isDragging() {
@@ -93,28 +112,36 @@ export class CameraController {
     /** Emitted on hover when not dragging (screen position, alt). */
     readonly hover$ = new Subject<{ screenPos: Vec2f; altKey: boolean }>()
 
-    constructor(host: CameraHost, pivot: Vec3f, radius: number, initialTheta: number = 0, initialPhi: number = Math.PI / 2, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect) {
+    /** Orthographic half-height for WGSL (`camera.zoom`), mesh rasterization, push-pull. */
+    get zoom(): number {
+        return orthoHalfFromDolly(this.#dollyDistance)
+    }
+
+    constructor(
+        host: CameraHost,
+        pivot: Vec3f,
+        initialDollyDistance: number = DOLLY_REF,
+        initialTheta: number = 0,
+        initialPhi: number = Math.PI / 2,
+        tabsElement?: EventTarget | null,
+        getInteractionRect?: () => DOMRect,
+    ) {
         this.#settings = SettingsManager.instance
         this.#host = host
         this.#getInteractionRect = getInteractionRect
         this.#pivot = pivot
-        this.zoom = radius
-        this.#zoomController = new PinchZoomController(host, this.zoom)
-        this.#zoomController.onZoom = (zoom, cursor) => {
-            const zoomOld = this.zoom
-            this.zoom = zoom
-            // Clamp may change the value; keep controller state aligned.
-            this.#zoomController.setZoom(this.zoom, false)
-            const dZoom = this.zoom - zoomOld
-            if (Math.abs(dZoom) > 1e-10 && !this.#lastFocusWorld) {
-                // No focus anchor: zoom-to-cursor so the world point under the cursor stays
-                // fixed on screen (typical CAD dolly behaviour).
-                this.#applyZoomToCursor(dZoom, cursor.x, cursor.y)
+        this.#dollyDistance = Math.min(DOLLY_MAX, Math.max(DOLLY_MIN, initialDollyDistance))
+        this.#zoomController = new PinchZoomController(host, this.#dollyDistance, getInteractionRect)
+        this.#zoomController.onZoom = (dolly, cursor) => {
+            const dollyOld = this.#dollyDistance
+            this.#dollyDistance = Math.min(DOLLY_MAX, Math.max(DOLLY_MIN, dolly))
+            this.#zoomController.setDollyDistance(this.#dollyDistance, false)
+            const orthoOld = orthoHalfFromDolly(dollyOld)
+            const orthoNew = orthoHalfFromDolly(this.#dollyDistance)
+            const dOrtho = orthoNew - orthoOld
+            if (Math.abs(dOrtho) > 1e-10 && !this.#lastFocusWorld) {
+                this.#applyOrthoDeltaToCursor(dOrtho, cursor.x, cursor.y)
             }
-            // When #lastFocusWorld is set, zoom is pure ortho-scale (no translation).
-            // This keeps the orbit/focus pivot anchored while the user zooms in/out.
-            // #lastFocusWorld is preserved so the next Cmd+dblclick continues to
-            // use the prevFocus path (preserving viewing distance to the focus point).
             this.#updateTransforms()
             this.#saveCameraState()
         }
@@ -171,7 +198,7 @@ export class CameraController {
         const q = this.#rotation.toVector()
         return {
             rotation: [q[0], q[1], q[2], q[3]], // [w, x, y, z]
-            zoom: this.zoom,
+            dollyDistance: this.#dollyDistance,
             translation: this.#cameraTranslation.clone(),
             pivot: this.#pivot.clone(),
         }
@@ -180,8 +207,8 @@ export class CameraController {
     applyState(state: CameraState, opts: { emit?: boolean } = {}): void {
         const emit = opts.emit ?? true
         this.#rotation = new Quaternion(state.rotation[0], state.rotation[1], state.rotation[2], state.rotation[3])
-        this.zoom = state.zoom
-        this.#zoomController.setZoom(this.zoom, false)
+        this.#dollyDistance = Math.min(DOLLY_MAX, Math.max(DOLLY_MIN, state.dollyDistance))
+        this.#zoomController.setDollyDistance(this.#dollyDistance, false)
         this.#cameraTranslation = state.translation.clone()
         if (state.pivot) {
             this.#pivot = state.pivot.clone()
@@ -353,8 +380,8 @@ export class CameraController {
             // apply a gentle boost so close-in panning does not feel sluggish vs. linear world lock.
             const cssH = Math.max(1, this.#host.canvas.getBoundingClientRect().height)
             const linearWorldPerCssPixel = (2 * this.zoom) / cssH
-            const zNorm = Math.min(1, this.zoom / PAN_ZOOM_REF)
-            const panCurve = 1 + PAN_ZOOM_IN_BOOST * (1 - Math.sqrt(zNorm))
+            const zNorm = Math.min(1, this.#dollyDistance / PAN_DOLLY_REF)
+            const panCurve = 1 + PAN_DOLLY_IN_BOOST * (1 - Math.sqrt(zNorm))
             const worldPerCssPixel = linearWorldPerCssPixel * panCurve
 
             const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
@@ -384,8 +411,8 @@ export class CameraController {
     }
 
     #computeCameraPosition(): Vec3f {
-        // Fixed standoff from pivot; zoom is orthographic half-height only (preview `camera.zoom`).
-        // Coupling zoom to this offset breaks Cmd-dblclick recenter (|O − lastFocus|) and T·R·lookAt.
+        // Fixed standoff from pivot; ortho half-height comes from dolly via {@link orthoHalfFromDolly}.
+        // Coupling stand-off to dolly breaks Cmd-dblclick recenter (|O − lastFocus|) and T·R·lookAt.
         return this.#pivot.add(vec3(0, 0, 1))
     }
 
@@ -552,7 +579,7 @@ export class CameraController {
         const cam: CameraSettings = {
             position: [this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z],
             translation: [this.#cameraTranslation.x, this.#cameraTranslation.y, this.#cameraTranslation.z],
-            zoom: this.zoom,
+            dollyDistance: this.#dollyDistance,
             rotation: [q[0], q[1], q[2], q[3]],
             pivot: [this.#pivot.x, this.#pivot.y, this.#pivot.z],
         }
@@ -571,8 +598,16 @@ export class CameraController {
         this.#pivot = vec3(pv?.[0] ?? 0, pv?.[1] ?? 0, pv?.[2] ?? 0)
         this.cameraPosition = vec3(cam.position[0], cam.position[1], cam.position[2])
         this.#cameraTranslation = vec3(cam.translation[0], cam.translation[1], cam.translation[2])
-        this.zoom = cam.zoom
-        this.#zoomController.setZoom(this.zoom, false)
+        let dolly = cam.dollyDistance
+        if (dolly === undefined || !Number.isFinite(dolly)) {
+            const legacyZoom = cam.zoom
+            dolly =
+                legacyZoom !== undefined && Number.isFinite(legacyZoom)
+                    ? dollyFromOrthoHalf(legacyZoom)
+                    : DOLLY_REF
+        }
+        this.#dollyDistance = Math.min(DOLLY_MAX, Math.max(DOLLY_MIN, dolly))
+        this.#zoomController.setDollyDistance(this.#dollyDistance, false)
         this.#rotation = new Quaternion(cam.rotation[0], cam.rotation[1], cam.rotation[2], cam.rotation[3]).normalize()
         this.#syncTrackball()
         this.#updateTransforms()
@@ -601,15 +636,15 @@ export class CameraController {
 
     /**
      * Zoom-to-cursor: shift #cameraTranslation so the world point under clientX/Y
-     * stays fixed on screen after the ortho scale changed by dZoom.
+     * stays fixed on screen after the orthographic half-height changed by `dOrtho`.
      *
-     * Derivation: camera-space ray origin at cursor = (ndcX*zoom, ndcY*zoom, depth).
-     * When zoom changes by dZoom the offset shifts by (ndcX*dZoom, ndcY*dZoom).
+     * Derivation: camera-space ray origin at cursor = (ndcX*h, ndcY*h, depth) with h = ortho half-height.
+     * When h changes by dOrtho the offset shifts by (ndcX*dOrtho, ndcY*dOrtho).
      * To keep the cursor world-point fixed, translate the camera by the world-space
      * equivalent of that shift (using current view rotation columns; translation T
      * in T·R·lookAt does not affect columns 0-2 so viewTransform columns are valid).
      */
-    #applyZoomToCursor(dZoom: number, clientX: number, clientY: number): void {
+    #applyOrthoDeltaToCursor(dOrtho: number, clientX: number, clientY: number): void {
         const rect = this.#host.canvas.getBoundingClientRect()
         if (rect.width < 1 || rect.height < 1) return
         const vc = this.#viewCenter
@@ -620,8 +655,8 @@ export class CameraController {
         // Match preview.wgsl uvAspect / computeRayOrigin (shader uv.y = 1 − screenSy).
         const ndcX = 2 * (screenSx - vc.x) * aspect
         const ndcY = 2 * (1 - screenSy - vc.y)
-        // World-space compensation (d = -dZoom: positive when zooming in).
-        const d = -dZoom
+        // World-space compensation (d = -dOrtho: positive when zooming in / ortho half decreases).
+        const d = -dOrtho
         const m = this.viewTransform.data
         // camRight = column 0, camUp = column 1 of viewTransform (rotation only, unaffected by T).
         this.#cameraTranslation.x += d * (ndcX * m[0] + ndcY * m[4])

@@ -29,7 +29,13 @@ export type DevToolsSectionsMap = Record<string, Record<string, unknown>>
 export interface CameraSettings {
     position: [number, number, number]
     translation: [number, number, number]
-    zoom: number
+    /** Dolly stand-off; WGSL ortho half-height is derived (see `orthoHalfFromDolly`). */
+    dollyDistance?: number
+    /**
+     * Legacy persisted orthographic half-height from builds before dolly zoom.
+     * Migrated to `dollyDistance` on load when `dollyDistance` is absent.
+     */
+    zoom?: number
     rotation: [number, number, number, number] // quaternion [w, x, y, z]
     /** Orbit / look-at pivot in scene space; omitted in older saves → origin. */
     pivot?: [number, number, number]
@@ -125,7 +131,14 @@ export type GlobalSettingsPatch = {
 // ---------------------------------------------------------------------------
 
 function defaultCamera(): CameraSettings {
-    return { position: [0, 0, 0], translation: [0, 0, 0], zoom: 20, rotation: [1, 0, 0, 0], pivot: [0, 0, 0] }
+    // ~same framing as legacy default ortho half-height 20 (zoom field): dolly = 50 * 20/40 = 25
+    return {
+        position: [0, 0, 0],
+        translation: [0, 0, 0],
+        dollyDistance: 25,
+        rotation: [1, 0, 0, 0],
+        pivot: [0, 0, 0],
+    }
 }
 
 function defaultPreview(): PreviewSettings {

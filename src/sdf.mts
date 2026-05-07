@@ -9,7 +9,7 @@ import { throttleTime } from "rxjs"
 import type { Subscription } from "rxjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
-import { CameraController } from "./controls/camera-controller.mjs"
+import { CameraController, DOLLY_REF } from "./controls/camera-controller.mjs"
 import type { Vec3f } from "./vecmat/vector.mjs"
 import { vec2, vec3 } from "./vecmat/vector.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
@@ -230,7 +230,7 @@ export class SDFRenderer {
 
     constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect, getActiveDocument?: () => string | undefined) {
         this.#preview = preview
-        this.#controls = new CameraController(preview, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement ?? null, getInteractionRect ?? undefined)
+        this.#controls = new CameraController(preview, vec3(0, 0, 0), DOLLY_REF, 0, Math.PI / 2, tabsElement ?? null, getInteractionRect ?? undefined)
         this.#tabsElement = tabsElement ?? null
         this.#getInteractionRect = getInteractionRect ?? null
         this.#getActiveDocument = getActiveDocument ?? null

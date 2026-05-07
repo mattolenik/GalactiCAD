@@ -59,6 +59,7 @@ import {
     getEditorLayout,
     viewCenterUv,
     visiblePreviewRegion,
+    visibleRegionForCanvas,
 } from "./layout/editor-layout.mjs"
 import { initCadDocumentHighlights } from "./editor/cad-document-highlights.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
@@ -929,25 +930,35 @@ class App {
         const resizeHandleEl = document.getElementById("resize-handle")!
         new ResizeHandle(resizeHandleEl, mainPanels, workspace).connect()
 
-        const getVisiblePreviewRect = (): DOMRect => {
-            const mainRect = mainPanels.getBoundingClientRect()
-            const canvasRect = this.#preview.canvas.getBoundingClientRect()
-            if (mainRect.width === 0 || canvasRect.width === 0) return canvasRect
-            const layout = getEditorLayout(mainPanels)
-            return visiblePreviewRegion(canvasRect, mainRect, layout.editorOnLeft, layout.frac)
-        }
+        const getVisiblePreviewRect = (): DOMRect => visibleRegionForCanvas(this.#preview.canvas, mainPanels)
 
         const updateViewCenter = () => {
             if (!this.renderer) return
             const mainRect = mainPanels.getBoundingClientRect()
-            const canvasRect = this.#preview.canvas.getBoundingClientRect()
-            if (mainRect.width === 0 || canvasRect.width === 0) return
+            const previewCanvasRect = this.#preview.canvas.getBoundingClientRect()
+            if (mainRect.width === 0 || previewCanvasRect.width === 0) return
             const layout = getEditorLayout(mainPanels)
-            const region = visiblePreviewRegion(canvasRect, mainRect, layout.editorOnLeft, layout.frac)
-            const { u, v } = viewCenterUv(canvasRect, region)
+            const regionPreview = visiblePreviewRegion(
+                previewCanvasRect,
+                mainRect,
+                layout.editorOnLeft,
+                layout.frac,
+            )
+            const { u, v } = viewCenterUv(previewCanvasRect, regionPreview)
             const editorOffsetPx = editorSelectionInfoOffset(mainRect, layout.editorOnLeft, layout.frac)
             this.renderer.setViewCenter(u, v, editorOffsetPx)
-            this.#mesh?.setViewCenter(u, v)
+            const mesh = this.#mesh
+            if (mesh) {
+                const meshCanvasRect = mesh.canvas.getBoundingClientRect()
+                const regionMesh = visiblePreviewRegion(
+                    meshCanvasRect,
+                    mainRect,
+                    layout.editorOnLeft,
+                    layout.frac,
+                )
+                const uvMesh = viewCenterUv(meshCanvasRect, regionMesh)
+                mesh.setViewCenter(uvMesh.u, uvMesh.v)
+            }
         }
         this.#updateViewCenter = updateViewCenter
 
@@ -1227,7 +1238,7 @@ class App {
                 camera: {
                     position: [pos.x, pos.y, pos.z],
                     translation: [state.translation.x, state.translation.y, state.translation.z],
-                    zoom: state.zoom,
+                    dollyDistance: state.dollyDistance,
                     rotation: state.rotation,
                 },
                 preview: {
@@ -1602,10 +1613,14 @@ class App {
                 this.#mesh = null
             }
 
-            // Create mesh viewer element dynamically using the class constructor
-            // Mesh viewer lives in its own panel; do not clip input to the SDF preview's
-            // visible rect (that would reject all drags when the mesh canvas does not overlap it).
-            const meshViewer = new MeshViewer(this.#tabs)
+            // Logical viewport = mesh canvas minus editor overlay (same as SDF preview).
+            const mainPanels = document.getElementById("main-panels")!
+            const meshSlot: { viewer: MeshViewer | null } = { viewer: null }
+            const meshViewer = new MeshViewer(this.#tabs, () => {
+                const v = meshSlot.viewer
+                return v ? visibleRegionForCanvas(v.canvas, mainPanels) : mainPanels.getBoundingClientRect()
+            })
+            meshSlot.viewer = meshViewer
             meshViewer.id = "mesh"
 
             // Add element to viewports (flexbox will distribute space automatically)
@@ -1635,8 +1650,8 @@ class App {
                 }
 
                 this.#meshViewerCameraSubs.push(
-                    previewControls.change$.subscribe(state => push("preview", state)),
-                    meshControls.change$.subscribe(state => push("mesh", state))
+                    previewControls.change$.subscribe((state: CameraState) => push("preview", state)),
+                    meshControls.change$.subscribe((state: CameraState) => push("mesh", state))
                 )
                 // Sync initial camera state
                 meshControls.applyState(previewControls.state, { emit: false })

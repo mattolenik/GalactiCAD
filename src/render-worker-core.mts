@@ -6,6 +6,7 @@
 import { AveragedBuffer } from "./collections/averagedbuffer.mjs"
 import { GPUHelper } from "./gpu/helper.mjs"
 import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPalette.mjs"
+import { orthoHalfFromDolly } from "./controls/camera-controller.mjs"
 import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
 import outlineShader from "./shaders/outline.wgsl"
 import previewShader from "./shaders/preview.wgsl"
@@ -652,7 +653,7 @@ export class RenderWorkerCore {
             cameraPosition,
             sceneWidth,
             sceneHeight,
-            msg.cameraState.zoom,
+            orthoHalfFromDolly(msg.cameraState.dollyDistance),
             viewCenter,
             msg.viewSettings.previewShading ?? DEFAULT_PREVIEW_SHADING,
             msg.viewSettings.previewNormalShading,
@@ -1320,7 +1321,7 @@ export class RenderWorkerCore {
             const viewMatrix = lookAt(eye, center, up)
             const thumbMsg: Extract<MainToWorkerMessage, { type: "render" }> = {
                 type: "render",
-                cameraState: { rotation: [1, 0, 0, 0], zoom: 50, translation: vec3(0, 0, 0) },
+                cameraState: { rotation: [1, 0, 0, 0], dollyDistance: 50, translation: vec3(0, 0, 0) },
                 viewTransform: viewMatrix.data,
                 cameraPosition: [eye.x, eye.y, eye.z],
                 cameraRes: [thumbWidth, thumbHeight],

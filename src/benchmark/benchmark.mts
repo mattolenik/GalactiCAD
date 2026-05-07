@@ -1,6 +1,6 @@
 import { vec3 } from "../vecmat/vector.mjs"
 import type { CameraSettings, PreviewSettings } from "../storage/settings.mjs"
-import type { CameraState } from "../controls/camera-controller.mjs"
+import { DOLLY_REF, dollyFromOrthoHalf, type CameraState } from "../controls/camera-controller.mjs"
 import { SDFRenderer, type BuildTimingBreakdownMs } from "../sdf.mjs"
 import { db } from "../storage/db.mjs"
 
@@ -124,9 +124,14 @@ function createOffscreenHost(width: number, height: number): import("../componen
 
 function cameraStateFromSettings(cam: CameraSettings): CameraState {
     const pv = cam.pivot
+    let dolly = cam.dollyDistance
+    if (dolly === undefined || !Number.isFinite(dolly)) {
+        const lz = cam.zoom
+        dolly = lz !== undefined && Number.isFinite(lz) ? dollyFromOrthoHalf(lz) : DOLLY_REF
+    }
     return {
         rotation: cam.rotation,
-        zoom: cam.zoom,
+        dollyDistance: dolly,
         translation: vec3(cam.translation[0], cam.translation[1], cam.translation[2]),
         pivot: vec3(pv?.[0] ?? 0, pv?.[1] ?? 0, pv?.[2] ?? 0),
     }

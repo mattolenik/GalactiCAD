@@ -1,5 +1,5 @@
 import { MESH_MDC_DEBUG_SAMPLE_STRIDE, MeshData, type MeshMdcDebugStats } from "../export/export.mjs"
-import { CameraController } from "../controls/camera-controller.mjs"
+import { CameraController, DOLLY_REF } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
 import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
@@ -277,7 +277,7 @@ export class MeshViewer extends HTMLElement {
         })
 
         this.#cameraRes = vec2(this.canvas.clientWidth, this.canvas.clientHeight)
-        this.#controls = new CameraController(this, vec3(0, 0, 0), 50, 0, Math.PI / 2, tabsElement ?? null, getInteractionRect)
+        this.#controls = new CameraController(this, vec3(0, 0, 0), DOLLY_REF, 0, Math.PI / 2, tabsElement ?? null, getInteractionRect)
         this.#initializing = this.#initialize()
 
         const observer = new ResizeObserver(entries => {

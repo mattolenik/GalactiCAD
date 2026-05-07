@@ -7,7 +7,7 @@
  * from the published slot, avoiding torn-frame reads.
  */
 
-import type { CameraState } from "./controls/camera-controller.mjs"
+import { dollyFromOrthoHalf, orthoHalfFromDolly, type CameraState } from "./controls/camera-controller.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
     type RenderSelectionState,
@@ -164,7 +164,7 @@ export function writeRenderPayloadSlot(
     f32[b4 + S_O_CAMERA_RES / 4 + 1] = payload.cameraRes[1]
 
     const cam = payload.cameraState
-    f32[b4 + S_O_ZOOM / 4] = cam.zoom
+    f32[b4 + S_O_ZOOM / 4] = orthoHalfFromDolly(cam.dollyDistance)
     f32.set(cam.rotation, base / 4 + S_O_QUATERNION / 4)
     f32[b4 + S_O_TRANSLATION / 4] = cam.translation.x
     f32[b4 + S_O_TRANSLATION / 4 + 1] = cam.translation.y
@@ -323,7 +323,7 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
 
     const cameraState: CameraState = {
         rotation: [f32[b4 + S_O_QUATERNION / 4], f32[b4 + S_O_QUATERNION / 4 + 1], f32[b4 + S_O_QUATERNION / 4 + 2], f32[b4 + S_O_QUATERNION / 4 + 3]],
-        zoom: f32[b4 + S_O_ZOOM / 4],
+        dollyDistance: dollyFromOrthoHalf(f32[b4 + S_O_ZOOM / 4]),
         translation: { x: f32[b4 + S_O_TRANSLATION / 4], y: f32[b4 + S_O_TRANSLATION / 4 + 1], z: f32[b4 + S_O_TRANSLATION / 4 + 2] } as CameraState["translation"],
     }
 

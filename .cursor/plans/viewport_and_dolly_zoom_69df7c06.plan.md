@@ -4,16 +4,16 @@ overview: Unify per-panel logical viewports (preview vs mesh, editor overlay, st
 todos:
     - id: viewport-helpers
       content: Per-canvas visiblePreviewRegion + fix app updateViewCenter for mesh UV; add MeshViewer getInteractionRect + pinch wheel clipping
-      status: pending
+      status: completed
     - id: dolly-design
       content: Pick exact dolly vs ortho-extent rule; update CameraController (wheel, zoom-to-cursor, pan sensitivity), settings migration
-      status: pending
+      status: completed
     - id: gpu-parity
       content: Update preview/beam WGSL, worker packing, mesh-viewer WGSL, push-pull worldPerPixel
-      status: pending
+      status: completed
     - id: verify-build-test
       content: make build + make test; manual QA matrix note for editor layout + dual viewer
-      status: pending
+      status: completed
 isProject: false
 ---
 

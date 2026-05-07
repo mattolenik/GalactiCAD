@@ -24,7 +24,11 @@ import {
     type JSONValue,
 } from "./dev-tools-protocol.mjs"
 import { DevToolsAppSection } from "./dev-tools-app-section.mjs"
-import { DevToolsMeshExportSection } from "./dev-tools-mesh-export-section.mjs"
+import {
+    DevToolsMeshExportCoreSection,
+    DevToolsMeshSimplifySection,
+    DevToolsShrecExportSection,
+} from "./dev-tools-mesh-export-section.mjs"
 import { DevToolsLogsSection } from "./dev-tools-logs-section.mjs"
 import { DevToolsRendererSection } from "./dev-tools-renderer-section.mjs"
 import "./dev-tools-collapse.mjs"
@@ -41,7 +45,9 @@ export class DevToolsPanel extends HTMLElement {
     #settings: SettingsManager
     #tabs: DocumentTabs
     #appSection: DevToolsAppSection
-    #meshExportSection: DevToolsMeshExportSection
+    #meshExportCoreSection: DevToolsMeshExportCoreSection
+    #meshSimplifySection: DevToolsMeshSimplifySection
+    #shrecExportSection: DevToolsShrecExportSection
     #rendererSection: DevToolsRendererSection
     #logsSection: DevToolsLogsSection
     #extraSectionHosts: HTMLDivElement[] = []
@@ -78,10 +84,6 @@ export class DevToolsPanel extends HTMLElement {
 
     get logsSection(): DevToolsLogsSection {
         return this.#logsSection
-    }
-
-    get meshExportSection(): DevToolsMeshExportSection {
-        return this.#meshExportSection
     }
 
     get cameraOptimization(): boolean {
@@ -133,43 +135,44 @@ export class DevToolsPanel extends HTMLElement {
     }
 
     get voxelSizeMm(): number {
-        return this.#meshExportSection.voxelSizeMm
+        return this.#meshExportCoreSection.voxelSizeMm
     }
 
     set voxelSizeMm(mm: number) {
-        this.#meshExportSection.voxelSizeMm = mm
+        this.#meshExportCoreSection.voxelSizeMm = mm
     }
 
     get useShrecExporter(): boolean {
-        return this.#meshExportSection.useShrecExporter
+        return this.#shrecExportSection.useShrecExporter
     }
 
     set useShrecExporter(enabled: boolean) {
-        this.#meshExportSection.useShrecExporter = enabled
+        this.#shrecExportSection.useShrecExporter = enabled
     }
 
     get shrecTuning(): ShrecTuning {
-        return this.#meshExportSection.shrecTuning
+        return this.#shrecExportSection.shrecTuning
     }
 
     get simplifyTuning(): SimplifyTuning {
-        return this.#meshExportSection.simplifyTuning
+        return this.#meshSimplifySection.simplifyTuning
     }
 
     syncVoxelSizeMmFromSettings(mm: number): void {
-        this.#meshExportSection.syncVoxelSizeMmFromSettings(mm)
+        this.#meshExportCoreSection.syncVoxelSizeMmFromSettings(mm)
     }
 
     syncSimplifyTuningFromSettings(tuning: SimplifyTuning): void {
-        this.#meshExportSection.syncSimplifyTuningFromSettings(tuning)
+        this.#meshSimplifySection.syncSimplifyTuningFromSettings(tuning)
+        this.#meshExportCoreSection.syncRenormalizeFromSimplifyTuning(tuning)
     }
 
     syncMdcLeversFromSettings(levers: MdcExportLevers): void {
-        this.#meshExportSection.syncMdcLeversFromSettings(levers)
+        this.#meshExportCoreSection.syncMdcLeversFromSettings(levers)
     }
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
-        this.#meshExportSection.syncShrecTuningFromSettings(tuning)
+        this.#shrecExportSection.syncShrecTuningFromSettings(tuning)
     }
 
     get visible(): boolean {
@@ -191,13 +194,15 @@ export class DevToolsPanel extends HTMLElement {
         style.textContent = `
         :host {
             position: absolute;
-            top: 76px;
+            top: 12px;
             right: 10px;
             z-index: 1;
             display: flex;
             flex-direction: column;
             align-items: flex-start;
             gap: 6px;
+            box-sizing: border-box;
+            max-width: 20%;
             background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
@@ -219,15 +224,20 @@ export class DevToolsPanel extends HTMLElement {
         this.#shadow.appendChild(style)
 
         this.#appSection = new DevToolsAppSection()
-        this.#meshExportSection = new DevToolsMeshExportSection()
+        this.#meshExportCoreSection = new DevToolsMeshExportCoreSection()
+        this.#meshSimplifySection = new DevToolsMeshSimplifySection()
+        this.#shrecExportSection = new DevToolsShrecExportSection()
         this.#rendererSection = new DevToolsRendererSection()
         this.#logsSection = new DevToolsLogsSection()
 
-        this.#meshExportSection.onVoxelSizeMmChange = v => this.onVoxelSizeMmChange?.(v)
-        this.#meshExportSection.onUseShrecExporterChange = v => this.onUseShrecExporterChange?.(v)
-        this.#meshExportSection.onShrecTuningChange = v => this.onShrecTuningChange?.(v)
-        this.#meshExportSection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
-        this.#meshExportSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
+        this.#meshExportCoreSection.onVoxelSizeMmChange = v => this.onVoxelSizeMmChange?.(v)
+        this.#meshExportCoreSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
+        this.#meshExportCoreSection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
+
+        this.#meshSimplifySection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
+
+        this.#shrecExportSection.onUseShrecExporterChange = v => this.onUseShrecExporterChange?.(v)
+        this.#shrecExportSection.onShrecTuningChange = v => this.onShrecTuningChange?.(v)
 
         this.#appSection.onLightingExpandedChange = expanded => {
             this.#rendererSection.setLightingSectionVisible(expanded)
@@ -261,7 +271,9 @@ export class DevToolsPanel extends HTMLElement {
 
         this.#shadow.append(
             mkSection("App", DEVTOOLS_COLLAPSE.panelApp, this.#appSection),
-            mkSection("Mesh export", DEVTOOLS_COLLAPSE.panelMeshExport, this.#meshExportSection),
+            mkSection("Mesh export", DEVTOOLS_COLLAPSE.panelMeshExport, this.#meshExportCoreSection),
+            mkSection("Mesh Simplify", DEVTOOLS_COLLAPSE.panelMeshSimplify, this.#meshSimplifySection),
+            mkSection("SHREC export", DEVTOOLS_COLLAPSE.panelShrecExport, this.#shrecExportSection),
             mkSection("Renderer", DEVTOOLS_COLLAPSE.panelRenderer, this.#rendererSection),
             mkSection("Logs", DEVTOOLS_COLLAPSE.panelLogs, this.#logsSection)
         )
@@ -466,12 +478,12 @@ export class DevToolsPanel extends HTMLElement {
                     r.result.error
                         ? { document: r.name, error: r.result.error }
                         : {
-                              document: r.name,
-                              "avg (ms)": r.result.averageFrameTime.toFixed(2),
-                              fps: r.result.framesPerSecond.toFixed(2),
-                              "min (ms)": r.result.minFrameTime.toFixed(2),
-                              "max (ms)": r.result.maxFrameTime.toFixed(2),
-                          }
+                            document: r.name,
+                            "avg (ms)": r.result.averageFrameTime.toFixed(2),
+                            fps: r.result.framesPerSecond.toFixed(2),
+                            "min (ms)": r.result.minFrameTime.toFixed(2),
+                            "max (ms)": r.result.maxFrameTime.toFixed(2),
+                        }
                 )
             )
 
@@ -510,12 +522,12 @@ export class DevToolsPanel extends HTMLElement {
                     r.result.error
                         ? { document: r.name, error: r.result.error }
                         : {
-                              document: r.name,
-                              "avg (ms)": r.result.averageFrameTime.toFixed(2),
-                              fps: r.result.framesPerSecond.toFixed(2),
-                              "min (ms)": r.result.minFrameTime.toFixed(2),
-                              "max (ms)": r.result.maxFrameTime.toFixed(2),
-                          }
+                            document: r.name,
+                            "avg (ms)": r.result.averageFrameTime.toFixed(2),
+                            fps: r.result.framesPerSecond.toFixed(2),
+                            "min (ms)": r.result.minFrameTime.toFixed(2),
+                            "max (ms)": r.result.maxFrameTime.toFixed(2),
+                        }
                 )
             )
 

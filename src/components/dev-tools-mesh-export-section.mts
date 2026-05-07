@@ -14,14 +14,8 @@ import { DEVTOOLS_COLLAPSE } from "./dev-tools-protocol.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
 import "./dev-tools-collapse.mjs"
 
-/** Boolean fields on `SimplifyTuning` (meshoptimizer flags + post-pass toggles). */
-type SimplifyBoolKey =
-    | "lockBorder"
-    | "sparse"
-    | "errorAbsolute"
-    | "prune"
-    | "regularize"
-    | "renormalizeTriangles"
+/** Boolean fields on `SimplifyTuning` for the meshoptimizer simplify panel (excludes renormalize). */
+type SimplifyBoolKey = "lockBorder" | "sparse" | "errorAbsolute" | "prune" | "regularize"
 
 const MDC_RANGE_KNOBS: {
     key: keyof Pick<MdcExportLevers, "isoValue" | "creaseAngleDeg">
@@ -34,10 +28,52 @@ const MDC_RANGE_KNOBS: {
     { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1 },
 ]
 
+function formatVoxelSize(mm: number): string {
+    if (mm < 0.1) return mm.toFixed(3)
+    return mm.toFixed(2)
+}
+
+function formatShrecValue(key: keyof ShrecTuning, v: number | boolean): string {
+    if (typeof v === "boolean") return v ? "on" : "off"
+    if (key === "mergeRelCutoff") return v.toFixed(3)
+    if (key === "mergeMaxDisplacement") return v === 0 ? "off" : v.toFixed(2)
+    if (key === "creaseAngleDeg") return `${Math.round(v)}°`
+    if (key === "mergeGradientWeightPower") return v === 0 ? "off" : `g^${v.toFixed(1)}`
+    if (key === "dedupRadiusVoxels") return v === 0 ? "off" : v.toFixed(2)
+    if (key === "seamAgreementCosThreshold") {
+        const deg = (Math.acos(Math.max(-1, Math.min(1, v))) * 180) / Math.PI
+        return `${deg.toFixed(0)}°`
+    }
+    return v.toFixed(2)
+}
+
+function formatSimplifyValue(key: "targetRatio" | "targetError" | "normalWeight", v: number): string {
+    if (key === "targetRatio") return `${(v * 100).toFixed(0)}%`
+    if (key === "targetError") return v < 0.001 ? v.toExponential(2) : v.toFixed(4)
+    return v === 0 ? "0" : v.toFixed(2)
+}
+
+function formatMdcValue(key: (typeof MDC_RANGE_KNOBS)[number]["key"], v: number): string {
+    if (key === "isoValue") return v.toFixed(3)
+    if (key === "creaseAngleDeg") return String(Math.round(v))
+    return v.toFixed(2)
+}
+
+function addCheckbox(parent: ParentNode, label: string, checked: boolean): HTMLInputElement {
+    const el = document.createElement("label")
+    const cb = document.createElement("input")
+    cb.type = "checkbox"
+    cb.checked = checked
+    el.append(cb, label)
+    parent.appendChild(el)
+    return cb
+}
+
 /**
- * Voxel size, MDC levers, mesh simplification, and SHREC tuning (persisted on `GlobalSettings.app`).
+ * Voxel size, MDC mesh export levers, and standalone renormalize-triangles toggle
+ * (`SimplifyTuning.renormalizeTriangles`, persisted on `GlobalSettings.app`).
  */
-export class DevToolsMeshExportSection extends HTMLElement {
+export class DevToolsMeshExportCoreSection extends HTMLElement {
     #settings = SettingsManager.instance
     #voxelSizeMm$: BehaviorSubject<number>
     #voxelSizeRange: HTMLInputElement
@@ -47,41 +83,13 @@ export class DevToolsMeshExportSection extends HTMLElement {
         { range: HTMLInputElement; valueEl: HTMLSpanElement }
     >()
     #mdcFeatureConstrainedPlacementCheckbox: HTMLInputElement
-    #useShrecCheckbox: HTMLInputElement
-    #useShrec$: BehaviorSubject<boolean>
-    #shrecTuningState: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
-    #shrecMergeSharpCheckbox: HTMLInputElement
-    #shrecRelCutoffRange: HTMLInputElement
-    #shrecRelCutoffValueEl: HTMLSpanElement
-    #shrecMaxDispRange: HTMLInputElement
-    #shrecMaxDispValueEl: HTMLSpanElement
-    #shrecCreaseRange: HTMLInputElement
-    #shrecCreaseValueEl: HTMLSpanElement
-    #shrecGradWeightRange: HTMLInputElement
-    #shrecGradWeightValueEl: HTMLSpanElement
-    #shrecDedupRange: HTMLInputElement
-    #shrecDedupValueEl: HTMLSpanElement
-    #shrecSeamAwareCheckbox: HTMLInputElement
-    #shrecSeamAgreementRange: HTMLInputElement
-    #shrecSeamAgreementValueEl: HTMLSpanElement
-    #shrecEdgeFitCheckbox: HTMLInputElement
-    #shrecSection: HTMLDivElement
-    #simplifyTuningState: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
-    #simplifySection: HTMLDivElement
-    #simplifyTargetRatioRange: HTMLInputElement
-    #simplifyTargetRatioValueEl: HTMLSpanElement
-    #simplifyTargetErrorRange: HTMLInputElement
-    #simplifyTargetErrorValueEl: HTMLSpanElement
-    #simplifyNormalWeightRange: HTMLInputElement
-    #simplifyNormalWeightValueEl: HTMLSpanElement
-    #simplifyBoolCheckboxes: Map<SimplifyBoolKey, HTMLInputElement> = new Map()
+    #renormalizeTrianglesCheckbox: HTMLInputElement
     #subscriptions: Subscription[] = []
 
     onVoxelSizeMmChange?: (mm: number) => void
-    onUseShrecExporterChange?: (enabled: boolean) => void
-    onShrecTuningChange?: (tuning: ShrecTuning) => void
-    onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMdcExportLeversChange?: () => void
+    /** Fired when renormalize toggle changes (full `SimplifyTuning` after merge). */
+    onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
 
     get voxelSizeMm(): number {
         return this.#voxelSizeMm$.value
@@ -89,22 +97,6 @@ export class DevToolsMeshExportSection extends HTMLElement {
 
     set voxelSizeMm(mm: number) {
         this.#voxelSizeMm$.next(mm)
-    }
-
-    get useShrecExporter(): boolean {
-        return this.#useShrec$.value
-    }
-
-    set useShrecExporter(enabled: boolean) {
-        this.#useShrec$.next(enabled)
-    }
-
-    get shrecTuning(): ShrecTuning {
-        return { ...this.#shrecTuningState }
-    }
-
-    get simplifyTuning(): SimplifyTuning {
-        return { ...this.#simplifyTuningState }
     }
 
     constructor() {
@@ -116,7 +108,6 @@ export class DevToolsMeshExportSection extends HTMLElement {
 
         const g = this.#settings.getGlobal().app
         this.#voxelSizeMm$ = new BehaviorSubject(g.meshExportVoxelSizeMm)
-        this.#useShrec$ = new BehaviorSubject(g.useShrecExporter)
 
         {
             const row = document.createElement("div")
@@ -132,11 +123,11 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#voxelSizeMm$.value)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatVoxelSize(this.#voxelSizeMm$.value)
+            valueEl.textContent = formatVoxelSize(this.#voxelSizeMm$.value)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#voxelSizeMm$.next(v)
-                valueEl.textContent = DevToolsMeshExportSection.#formatVoxelSize(v)
+                valueEl.textContent = formatVoxelSize(v)
             })
             row.append(lab, range, valueEl)
             shadow.appendChild(row)
@@ -157,7 +148,7 @@ export class DevToolsMeshExportSection extends HTMLElement {
         shadow.appendChild(mdcCollapse)
 
         const mdcLevers = this.#settings.getMdcExportLevers()
-        this.#mdcFeatureConstrainedPlacementCheckbox = this.#addCheckbox(
+        this.#mdcFeatureConstrainedPlacementCheckbox = addCheckbox(
             mdcCollapse,
             "Feature-constrained vertices",
             mdcLevers.featureConstrainedPlacement
@@ -186,7 +177,7 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(mdcLevers[k.key])
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatMdcValue(k.key, mdcLevers[k.key])
+            valueEl.textContent = formatMdcValue(k.key, mdcLevers[k.key])
             range.addEventListener("input", () => {
                 let v = parseFloat(range.value)
                 if (!Number.isFinite(v)) v = k.min
@@ -194,7 +185,7 @@ export class DevToolsMeshExportSection extends HTMLElement {
                 this.#settings.updateGlobal({
                     app: { mdcExportLevers: { [k.key]: v } },
                 })
-                valueEl.textContent = DevToolsMeshExportSection.#formatMdcValue(k.key, v)
+                valueEl.textContent = formatMdcValue(k.key, v)
                 this.onMdcExportLeversChange?.()
             })
             row.append(lab, range, valueEl)
@@ -220,21 +211,87 @@ export class DevToolsMeshExportSection extends HTMLElement {
                 const row = this.#mdcRows.get(knob.key)
                 if (!row) continue
                 row.range.value = String(next[knob.key])
-                row.valueEl.textContent = DevToolsMeshExportSection.#formatMdcValue(knob.key, next[knob.key])
+                row.valueEl.textContent = formatMdcValue(knob.key, next[knob.key])
             }
             this.onMdcExportLeversChange?.()
         })
         mdcCollapse.appendChild(mdcDefaults)
 
-        this.#simplifyTuningState = { ...DEFAULT_SIMPLIFY_TUNING, ...g.simplifyTuning }
-        this.#simplifySection = document.createElement("div")
-        this.#simplifySection.className = "lighting-section"
-        shadow.appendChild(this.#simplifySection)
+        const st = g.simplifyTuning
+        this.#renormalizeTrianglesCheckbox = addCheckbox(
+            shadow,
+            "Renormalize triangles",
+            st.renormalizeTriangles
+        )
+        this.#renormalizeTrianglesCheckbox.addEventListener("change", () => {
+            const cur = this.#settings.getGlobal().app.simplifyTuning
+            const next: SimplifyTuning = { ...cur, renormalizeTriangles: this.#renormalizeTrianglesCheckbox.checked }
+            this.#settings.updateGlobal({ app: { simplifyTuning: next } })
+            this.onSimplifyTuningChange?.(next)
+        })
+    }
 
-        const simpHead = document.createElement("div")
-        simpHead.className = "shade-head"
-        simpHead.textContent = "MDC simplification"
-        this.#simplifySection.appendChild(simpHead)
+    syncVoxelSizeMmFromSettings(mm: number): void {
+        this.#voxelSizeMm$.next(mm)
+        this.#voxelSizeRange.value = String(mm)
+        this.#voxelSizeValueEl.textContent = formatVoxelSize(mm)
+    }
+
+    syncRenormalizeFromSimplifyTuning(tuning: SimplifyTuning): void {
+        this.#renormalizeTrianglesCheckbox.checked = tuning.renormalizeTriangles
+    }
+
+    syncMdcLeversFromSettings(levers: MdcExportLevers): void {
+        this.#mdcFeatureConstrainedPlacementCheckbox.checked = levers.featureConstrainedPlacement
+        for (const k of MDC_RANGE_KNOBS) {
+            const row = this.#mdcRows.get(k.key)
+            if (!row) continue
+            row.range.value = String(levers[k.key])
+            row.valueEl.textContent = formatMdcValue(k.key, levers[k.key])
+        }
+    }
+
+    disconnectedCallback(): void {
+        for (const s of this.#subscriptions) s.unsubscribe()
+        this.#subscriptions = []
+    }
+}
+
+/**
+ * Meshoptimizer / QEM simplification tuning (persisted in `SimplifyTuning`; renormalize lives on
+ * {@link DevToolsMeshExportCoreSection}).
+ */
+export class DevToolsMeshSimplifySection extends HTMLElement {
+    #settings = SettingsManager.instance
+    #simplifyTuningState: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
+    #simplifyTargetRatioRange: HTMLInputElement
+    #simplifyTargetRatioValueEl: HTMLSpanElement
+    #simplifyTargetErrorRange: HTMLInputElement
+    #simplifyTargetErrorValueEl: HTMLSpanElement
+    #simplifyNormalWeightRange: HTMLInputElement
+    #simplifyNormalWeightValueEl: HTMLSpanElement
+    #simplifyBoolCheckboxes: Map<SimplifyBoolKey, HTMLInputElement> = new Map()
+
+    onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
+
+    get simplifyTuning(): SimplifyTuning {
+        const r = this.#settings.getGlobal().app.simplifyTuning.renormalizeTriangles
+        return { ...this.#simplifyTuningState, renormalizeTriangles: r }
+    }
+
+    constructor() {
+        super()
+        const shadow = this.attachShadow({ mode: "open" })
+        const style = document.createElement("style")
+        style.textContent = devToolsBaseShadowCss()
+        shadow.appendChild(style)
+
+        const g = this.#settings.getGlobal().app
+        this.#simplifyTuningState = { ...DEFAULT_SIMPLIFY_TUNING, ...g.simplifyTuning }
+
+        const root = document.createElement("div")
+        root.className = "lighting-section"
+        shadow.appendChild(root)
 
         {
             const row = document.createElement("div")
@@ -250,15 +307,15 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#simplifyTuningState.targetRatio)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatSimplifyValue("targetRatio", this.#simplifyTuningState.targetRatio)
+            valueEl.textContent = formatSimplifyValue("targetRatio", this.#simplifyTuningState.targetRatio)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#simplifyTuningState = { ...this.#simplifyTuningState, targetRatio: v }
-                valueEl.textContent = DevToolsMeshExportSection.#formatSimplifyValue("targetRatio", v)
+                valueEl.textContent = formatSimplifyValue("targetRatio", v)
                 this.#persistSimplifyTuning()
             })
             row.append(lab, range, valueEl)
-            this.#simplifySection.appendChild(row)
+            root.appendChild(row)
             this.#simplifyTargetRatioRange = range
             this.#simplifyTargetRatioValueEl = valueEl
         }
@@ -277,15 +334,15 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#simplifyTuningState.targetError)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatSimplifyValue("targetError", this.#simplifyTuningState.targetError)
+            valueEl.textContent = formatSimplifyValue("targetError", this.#simplifyTuningState.targetError)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#simplifyTuningState = { ...this.#simplifyTuningState, targetError: v }
-                valueEl.textContent = DevToolsMeshExportSection.#formatSimplifyValue("targetError", v)
+                valueEl.textContent = formatSimplifyValue("targetError", v)
                 this.#persistSimplifyTuning()
             })
             row.append(lab, range, valueEl)
-            this.#simplifySection.appendChild(row)
+            root.appendChild(row)
             this.#simplifyTargetErrorRange = range
             this.#simplifyTargetErrorValueEl = valueEl
         }
@@ -304,15 +361,15 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#simplifyTuningState.normalWeight)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatSimplifyValue("normalWeight", this.#simplifyTuningState.normalWeight)
+            valueEl.textContent = formatSimplifyValue("normalWeight", this.#simplifyTuningState.normalWeight)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#simplifyTuningState = { ...this.#simplifyTuningState, normalWeight: v }
-                valueEl.textContent = DevToolsMeshExportSection.#formatSimplifyValue("normalWeight", v)
+                valueEl.textContent = formatSimplifyValue("normalWeight", v)
                 this.#persistSimplifyTuning()
             })
             row.append(lab, range, valueEl)
-            this.#simplifySection.appendChild(row)
+            root.appendChild(row)
             this.#simplifyNormalWeightRange = range
             this.#simplifyNormalWeightValueEl = valueEl
         }
@@ -323,10 +380,9 @@ export class DevToolsMeshExportSection extends HTMLElement {
             { key: "errorAbsolute", label: "Absolute error" },
             { key: "prune", label: "Prune" },
             { key: "regularize", label: "Regularize" },
-            { key: "renormalizeTriangles", label: "Renormalize triangles" },
         ]
         for (const { key, label } of simplifyBoolRows) {
-            const cb = this.#addCheckbox(this.#simplifySection, label, this.#simplifyTuningState[key])
+            const cb = addCheckbox(root, label, this.#simplifyTuningState[key])
             this.#simplifyBoolCheckboxes.set(key, cb)
             cb.addEventListener("change", () => {
                 const next: SimplifyTuning = { ...this.#simplifyTuningState }
@@ -339,12 +395,84 @@ export class DevToolsMeshExportSection extends HTMLElement {
         const simplifyDefaults = document.createElement("button")
         simplifyDefaults.textContent = "Simplify defaults"
         simplifyDefaults.addEventListener("click", () => {
-            this.syncSimplifyTuningFromSettings({ ...DEFAULT_SIMPLIFY_TUNING })
+            const keepRenorm = this.#settings.getGlobal().app.simplifyTuning.renormalizeTriangles
+            this.syncSimplifyTuningFromSettings({ ...DEFAULT_SIMPLIFY_TUNING, renormalizeTriangles: keepRenorm })
             this.#persistSimplifyTuning()
         })
-        this.#simplifySection.appendChild(simplifyDefaults)
+        root.appendChild(simplifyDefaults)
+    }
 
-        this.#useShrecCheckbox = this.#addCheckbox(shadow, "SHREC exporter", this.#useShrec$.value)
+    syncSimplifyTuningFromSettings(tuning: SimplifyTuning): void {
+        this.#simplifyTuningState = { ...tuning }
+        this.#simplifyTargetRatioRange.value = String(tuning.targetRatio)
+        this.#simplifyTargetRatioValueEl.textContent = formatSimplifyValue("targetRatio", tuning.targetRatio)
+        this.#simplifyTargetErrorRange.value = String(tuning.targetError)
+        this.#simplifyTargetErrorValueEl.textContent = formatSimplifyValue("targetError", tuning.targetError)
+        this.#simplifyNormalWeightRange.value = String(tuning.normalWeight)
+        this.#simplifyNormalWeightValueEl.textContent = formatSimplifyValue("normalWeight", tuning.normalWeight)
+        for (const key of this.#simplifyBoolCheckboxes.keys()) {
+            const cb = this.#simplifyBoolCheckboxes.get(key)!
+            cb.checked = tuning[key]
+        }
+    }
+
+    #persistSimplifyTuning(): void {
+        const r = this.#settings.getGlobal().app.simplifyTuning.renormalizeTriangles
+        const next = { ...this.#simplifyTuningState, renormalizeTriangles: r }
+        this.#settings.updateGlobal({ app: { simplifyTuning: next } })
+        this.onSimplifyTuningChange?.(next)
+    }
+}
+
+/** SHREC exporter toggle and tuning (persisted on `GlobalSettings.app`). */
+export class DevToolsShrecExportSection extends HTMLElement {
+    #settings = SettingsManager.instance
+    #useShrecCheckbox: HTMLInputElement
+    #useShrec$: BehaviorSubject<boolean>
+    #shrecTuningState: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
+    #shrecMergeSharpCheckbox: HTMLInputElement
+    #shrecRelCutoffRange: HTMLInputElement
+    #shrecRelCutoffValueEl: HTMLSpanElement
+    #shrecMaxDispRange: HTMLInputElement
+    #shrecMaxDispValueEl: HTMLSpanElement
+    #shrecCreaseRange: HTMLInputElement
+    #shrecCreaseValueEl: HTMLSpanElement
+    #shrecGradWeightRange: HTMLInputElement
+    #shrecGradWeightValueEl: HTMLSpanElement
+    #shrecDedupRange: HTMLInputElement
+    #shrecDedupValueEl: HTMLSpanElement
+    #shrecSeamAwareCheckbox: HTMLInputElement
+    #shrecSeamAgreementRange: HTMLInputElement
+    #shrecSeamAgreementValueEl: HTMLSpanElement
+    #shrecEdgeFitCheckbox: HTMLInputElement
+    #subscriptions: Subscription[] = []
+
+    onUseShrecExporterChange?: (enabled: boolean) => void
+    onShrecTuningChange?: (tuning: ShrecTuning) => void
+
+    get useShrecExporter(): boolean {
+        return this.#useShrec$.value
+    }
+
+    set useShrecExporter(enabled: boolean) {
+        this.#useShrec$.next(enabled)
+    }
+
+    get shrecTuning(): ShrecTuning {
+        return { ...this.#shrecTuningState }
+    }
+
+    constructor() {
+        super()
+        const shadow = this.attachShadow({ mode: "open" })
+        const style = document.createElement("style")
+        style.textContent = devToolsBaseShadowCss()
+        shadow.appendChild(style)
+
+        const g = this.#settings.getGlobal().app
+        this.#useShrec$ = new BehaviorSubject(g.useShrecExporter)
+
+        this.#useShrecCheckbox = addCheckbox(shadow, "SHREC exporter", this.#useShrec$.value)
         this.#subscriptions.push(connectCheckbox(this.#useShrecCheckbox, this.#useShrec$))
         this.#subscriptions.push(
             this.#useShrec$.pipe(skip(1)).subscribe(v => {
@@ -354,16 +482,11 @@ export class DevToolsMeshExportSection extends HTMLElement {
         )
 
         this.#shrecTuningState = { ...DEFAULT_SHREC_TUNING, ...g.shrecTuning }
-        this.#shrecSection = document.createElement("div")
-        this.#shrecSection.className = "lighting-section"
-        shadow.appendChild(this.#shrecSection)
+        const root = document.createElement("div")
+        root.className = "lighting-section"
+        shadow.appendChild(root)
 
-        const shrecHead = document.createElement("div")
-        shrecHead.className = "shade-head"
-        shrecHead.textContent = "SHREC tuning"
-        this.#shrecSection.appendChild(shrecHead)
-
-        this.#shrecMergeSharpCheckbox = this.#addCheckbox(this.#shrecSection, "MergeSharp", this.#shrecTuningState.mergeSharpEnabled)
+        this.#shrecMergeSharpCheckbox = addCheckbox(root, "MergeSharp", this.#shrecTuningState.mergeSharpEnabled)
         this.#shrecMergeSharpCheckbox.addEventListener("change", () => {
             this.#shrecTuningState = { ...this.#shrecTuningState, mergeSharpEnabled: this.#shrecMergeSharpCheckbox.checked }
             this.#persistShrecTuning()
@@ -383,15 +506,15 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#shrecTuningState.mergeRelCutoff)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("mergeRelCutoff", this.#shrecTuningState.mergeRelCutoff)
+            valueEl.textContent = formatShrecValue("mergeRelCutoff", this.#shrecTuningState.mergeRelCutoff)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#shrecTuningState = { ...this.#shrecTuningState, mergeRelCutoff: v }
-                valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("mergeRelCutoff", v)
+                valueEl.textContent = formatShrecValue("mergeRelCutoff", v)
                 this.#persistShrecTuning()
             })
             row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
+            root.appendChild(row)
             this.#shrecRelCutoffRange = range
             this.#shrecRelCutoffValueEl = valueEl
         }
@@ -410,15 +533,15 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#shrecTuningState.mergeMaxDisplacement)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("mergeMaxDisplacement", this.#shrecTuningState.mergeMaxDisplacement)
+            valueEl.textContent = formatShrecValue("mergeMaxDisplacement", this.#shrecTuningState.mergeMaxDisplacement)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#shrecTuningState = { ...this.#shrecTuningState, mergeMaxDisplacement: v }
-                valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("mergeMaxDisplacement", v)
+                valueEl.textContent = formatShrecValue("mergeMaxDisplacement", v)
                 this.#persistShrecTuning()
             })
             row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
+            root.appendChild(row)
             this.#shrecMaxDispRange = range
             this.#shrecMaxDispValueEl = valueEl
         }
@@ -437,15 +560,15 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#shrecTuningState.creaseAngleDeg)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("creaseAngleDeg", this.#shrecTuningState.creaseAngleDeg)
+            valueEl.textContent = formatShrecValue("creaseAngleDeg", this.#shrecTuningState.creaseAngleDeg)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#shrecTuningState = { ...this.#shrecTuningState, creaseAngleDeg: v }
-                valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("creaseAngleDeg", v)
+                valueEl.textContent = formatShrecValue("creaseAngleDeg", v)
                 this.#persistShrecTuning()
             })
             row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
+            root.appendChild(row)
             this.#shrecCreaseRange = range
             this.#shrecCreaseValueEl = valueEl
         }
@@ -464,15 +587,15 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#shrecTuningState.mergeGradientWeightPower)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("mergeGradientWeightPower", this.#shrecTuningState.mergeGradientWeightPower)
+            valueEl.textContent = formatShrecValue("mergeGradientWeightPower", this.#shrecTuningState.mergeGradientWeightPower)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#shrecTuningState = { ...this.#shrecTuningState, mergeGradientWeightPower: v }
-                valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("mergeGradientWeightPower", v)
+                valueEl.textContent = formatShrecValue("mergeGradientWeightPower", v)
                 this.#persistShrecTuning()
             })
             row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
+            root.appendChild(row)
             this.#shrecGradWeightRange = range
             this.#shrecGradWeightValueEl = valueEl
         }
@@ -491,20 +614,20 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#shrecTuningState.dedupRadiusVoxels)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("dedupRadiusVoxels", this.#shrecTuningState.dedupRadiusVoxels)
+            valueEl.textContent = formatShrecValue("dedupRadiusVoxels", this.#shrecTuningState.dedupRadiusVoxels)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#shrecTuningState = { ...this.#shrecTuningState, dedupRadiusVoxels: v }
-                valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("dedupRadiusVoxels", v)
+                valueEl.textContent = formatShrecValue("dedupRadiusVoxels", v)
                 this.#persistShrecTuning()
             })
             row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
+            root.appendChild(row)
             this.#shrecDedupRange = range
             this.#shrecDedupValueEl = valueEl
         }
 
-        this.#shrecSeamAwareCheckbox = this.#addCheckbox(this.#shrecSection, "Seam-aware QEF", this.#shrecTuningState.seamAwareEnabled)
+        this.#shrecSeamAwareCheckbox = addCheckbox(root, "Seam-aware QEF", this.#shrecTuningState.seamAwareEnabled)
         this.#shrecSeamAwareCheckbox.addEventListener("change", () => {
             this.#shrecTuningState = { ...this.#shrecTuningState, seamAwareEnabled: this.#shrecSeamAwareCheckbox.checked }
             this.#persistShrecTuning()
@@ -524,20 +647,20 @@ export class DevToolsMeshExportSection extends HTMLElement {
             range.value = String(this.#shrecTuningState.seamAgreementCosThreshold)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("seamAgreementCosThreshold", this.#shrecTuningState.seamAgreementCosThreshold)
+            valueEl.textContent = formatShrecValue("seamAgreementCosThreshold", this.#shrecTuningState.seamAgreementCosThreshold)
             range.addEventListener("input", () => {
                 const v = parseFloat(range.value)
                 this.#shrecTuningState = { ...this.#shrecTuningState, seamAgreementCosThreshold: v }
-                valueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("seamAgreementCosThreshold", v)
+                valueEl.textContent = formatShrecValue("seamAgreementCosThreshold", v)
                 this.#persistShrecTuning()
             })
             row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
+            root.appendChild(row)
             this.#shrecSeamAgreementRange = range
             this.#shrecSeamAgreementValueEl = valueEl
         }
 
-        this.#shrecEdgeFitCheckbox = this.#addCheckbox(this.#shrecSection, "Edge fit (line)", this.#shrecTuningState.edgeFitEnabled)
+        this.#shrecEdgeFitCheckbox = addCheckbox(root, "Edge fit (line)", this.#shrecTuningState.edgeFitEnabled)
         this.#shrecEdgeFitCheckbox.addEventListener("change", () => {
             this.#shrecTuningState = { ...this.#shrecTuningState, edgeFitEnabled: this.#shrecEdgeFitCheckbox.checked }
             this.#persistShrecTuning()
@@ -549,55 +672,25 @@ export class DevToolsMeshExportSection extends HTMLElement {
             this.syncShrecTuningFromSettings({ ...DEFAULT_SHREC_TUNING })
             this.#persistShrecTuning()
         })
-        this.#shrecSection.appendChild(shrecDefaults)
-    }
-
-    syncVoxelSizeMmFromSettings(mm: number): void {
-        this.#voxelSizeMm$.next(mm)
-        this.#voxelSizeRange.value = String(mm)
-        this.#voxelSizeValueEl.textContent = DevToolsMeshExportSection.#formatVoxelSize(mm)
-    }
-
-    syncSimplifyTuningFromSettings(tuning: SimplifyTuning): void {
-        this.#simplifyTuningState = { ...tuning }
-        this.#simplifyTargetRatioRange.value = String(tuning.targetRatio)
-        this.#simplifyTargetRatioValueEl.textContent = DevToolsMeshExportSection.#formatSimplifyValue("targetRatio", tuning.targetRatio)
-        this.#simplifyTargetErrorRange.value = String(tuning.targetError)
-        this.#simplifyTargetErrorValueEl.textContent = DevToolsMeshExportSection.#formatSimplifyValue("targetError", tuning.targetError)
-        this.#simplifyNormalWeightRange.value = String(tuning.normalWeight)
-        this.#simplifyNormalWeightValueEl.textContent = DevToolsMeshExportSection.#formatSimplifyValue("normalWeight", tuning.normalWeight)
-        for (const key of this.#simplifyBoolCheckboxes.keys()) {
-            const cb = this.#simplifyBoolCheckboxes.get(key)!
-            cb.checked = tuning[key]
-        }
-    }
-
-    syncMdcLeversFromSettings(levers: MdcExportLevers): void {
-        this.#mdcFeatureConstrainedPlacementCheckbox.checked = levers.featureConstrainedPlacement
-        for (const k of MDC_RANGE_KNOBS) {
-            const row = this.#mdcRows.get(k.key)
-            if (!row) continue
-            row.range.value = String(levers[k.key])
-            row.valueEl.textContent = DevToolsMeshExportSection.#formatMdcValue(k.key, levers[k.key])
-        }
+        root.appendChild(shrecDefaults)
     }
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
         this.#shrecTuningState = { ...tuning }
         this.#shrecMergeSharpCheckbox.checked = tuning.mergeSharpEnabled
         this.#shrecRelCutoffRange.value = String(tuning.mergeRelCutoff)
-        this.#shrecRelCutoffValueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("mergeRelCutoff", tuning.mergeRelCutoff)
+        this.#shrecRelCutoffValueEl.textContent = formatShrecValue("mergeRelCutoff", tuning.mergeRelCutoff)
         this.#shrecMaxDispRange.value = String(tuning.mergeMaxDisplacement)
-        this.#shrecMaxDispValueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("mergeMaxDisplacement", tuning.mergeMaxDisplacement)
+        this.#shrecMaxDispValueEl.textContent = formatShrecValue("mergeMaxDisplacement", tuning.mergeMaxDisplacement)
         this.#shrecCreaseRange.value = String(tuning.creaseAngleDeg)
-        this.#shrecCreaseValueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("creaseAngleDeg", tuning.creaseAngleDeg)
+        this.#shrecCreaseValueEl.textContent = formatShrecValue("creaseAngleDeg", tuning.creaseAngleDeg)
         this.#shrecGradWeightRange.value = String(tuning.mergeGradientWeightPower)
-        this.#shrecGradWeightValueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("mergeGradientWeightPower", tuning.mergeGradientWeightPower)
+        this.#shrecGradWeightValueEl.textContent = formatShrecValue("mergeGradientWeightPower", tuning.mergeGradientWeightPower)
         this.#shrecDedupRange.value = String(tuning.dedupRadiusVoxels)
-        this.#shrecDedupValueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("dedupRadiusVoxels", tuning.dedupRadiusVoxels)
+        this.#shrecDedupValueEl.textContent = formatShrecValue("dedupRadiusVoxels", tuning.dedupRadiusVoxels)
         this.#shrecSeamAwareCheckbox.checked = tuning.seamAwareEnabled
         this.#shrecSeamAgreementRange.value = String(tuning.seamAgreementCosThreshold)
-        this.#shrecSeamAgreementValueEl.textContent = DevToolsMeshExportSection.#formatShrecValue("seamAgreementCosThreshold", tuning.seamAgreementCosThreshold)
+        this.#shrecSeamAgreementValueEl.textContent = formatShrecValue("seamAgreementCosThreshold", tuning.seamAgreementCosThreshold)
         this.#shrecEdgeFitCheckbox.checked = tuning.edgeFitEnabled
     }
 
@@ -607,63 +700,20 @@ export class DevToolsMeshExportSection extends HTMLElement {
         this.onShrecTuningChange?.(next)
     }
 
-    #persistSimplifyTuning(): void {
-        const next = { ...this.#simplifyTuningState }
-        this.#settings.updateGlobal({ app: { simplifyTuning: next } })
-        this.onSimplifyTuningChange?.(next)
-    }
-
-    static #formatVoxelSize(mm: number): string {
-        if (mm < 0.1) return mm.toFixed(3)
-        return mm.toFixed(2)
-    }
-
-    static #formatShrecValue(key: keyof ShrecTuning, v: number | boolean): string {
-        if (typeof v === "boolean") return v ? "on" : "off"
-        if (key === "mergeRelCutoff") return v.toFixed(3)
-        if (key === "mergeMaxDisplacement") return v === 0 ? "off" : v.toFixed(2)
-        if (key === "creaseAngleDeg") return `${Math.round(v)}°`
-        if (key === "mergeGradientWeightPower") return v === 0 ? "off" : `g^${v.toFixed(1)}`
-        if (key === "dedupRadiusVoxels") return v === 0 ? "off" : v.toFixed(2)
-        if (key === "seamAgreementCosThreshold") {
-            const deg = Math.acos(Math.max(-1, Math.min(1, v))) * 180 / Math.PI
-            return `${deg.toFixed(0)}°`
-        }
-        return v.toFixed(2)
-    }
-
-    static #formatSimplifyValue(key: "targetRatio" | "targetError" | "normalWeight", v: number): string {
-        if (key === "targetRatio") return `${(v * 100).toFixed(0)}%`
-        if (key === "targetError") return v < 0.001 ? v.toExponential(2) : v.toFixed(4)
-        return v === 0 ? "0" : v.toFixed(2)
-    }
-
-    static #formatMdcValue(key: (typeof MDC_RANGE_KNOBS)[number]["key"], v: number): string {
-        if (key === "isoValue") return v.toFixed(3)
-        if (key === "creaseAngleDeg") return String(Math.round(v))
-        return v.toFixed(2)
-    }
-
-    #addCheckbox(parent: ParentNode, label: string, checked: boolean): HTMLInputElement {
-        const el = document.createElement("label")
-        const cb = document.createElement("input")
-        cb.type = "checkbox"
-        cb.checked = checked
-        el.append(cb, label)
-        parent.appendChild(el)
-        return cb
-    }
-
     disconnectedCallback(): void {
         for (const s of this.#subscriptions) s.unsubscribe()
         this.#subscriptions = []
     }
 }
 
-customElements.define("dev-tools-mesh-export-section", DevToolsMeshExportSection)
+customElements.define("dev-tools-mesh-export-core-section", DevToolsMeshExportCoreSection)
+customElements.define("dev-tools-mesh-simplify-section", DevToolsMeshSimplifySection)
+customElements.define("dev-tools-shrec-export-section", DevToolsShrecExportSection)
 
 declare global {
     interface HTMLElementTagNameMap {
-        "dev-tools-mesh-export-section": DevToolsMeshExportSection
+        "dev-tools-mesh-export-core-section": DevToolsMeshExportCoreSection
+        "dev-tools-mesh-simplify-section": DevToolsMeshSimplifySection
+        "dev-tools-shrec-export-section": DevToolsShrecExportSection
     }
 }

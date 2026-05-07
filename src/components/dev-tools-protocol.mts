@@ -19,6 +19,8 @@ export const DEVTOOLS_SECTION_LOGS = "galacticad.logs"
 export const DEVTOOLS_COLLAPSE = {
     panelApp: "galacticad.collapse.panelApp",
     panelMeshExport: "galacticad.collapse.panelMeshExport",
+    panelMeshSimplify: "galacticad.collapse.panelMeshSimplify",
+    panelShrecExport: "galacticad.collapse.panelShrecExport",
     panelRenderer: "galacticad.collapse.panelRenderer",
     panelLogs: "galacticad.collapse.panelLogs",
     panelBenchmark: "galacticad.collapse.panelBenchmark",

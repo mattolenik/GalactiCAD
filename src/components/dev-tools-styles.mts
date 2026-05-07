@@ -54,11 +54,11 @@ export function devToolsBaseShadowCss(): string {
         .shade-row {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 3px;
             width: 100%;
         }
         .shade-row label.knob-label {
-            flex: 0 0 92px;
+            flex: 0 0 86px;
             font-size: 11px;
             cursor: default;
         }
@@ -68,10 +68,13 @@ export function devToolsBaseShadowCss(): string {
             margin: 0;
         }
         .shade-val {
-            flex: 0 0 44px;
+            flex: 0 0 40px;
             text-align: right;
             font-variant-numeric: tabular-nums;
             font-size: 11px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .lighting-section {
             display: flex;

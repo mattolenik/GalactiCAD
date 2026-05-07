@@ -14,6 +14,12 @@
 - **Compile:** `ShaderCompiler` replaces `sceneAuxFast`, `sceneAux`, `sceneAuxMid`, `sceneSDF` (no `sceneSDF_mid`). `render-worker-core.mts` imports the WGSL string so esbuild wgsl-loader validates it on `make build`.
 - **Test:** `iso-sample-batch_test.mts` — expands includes with `fs`, `await import("webgpu")` **after** `SceneInfo` (static `webgpu` import pollutes `globalThis` and breaks the `sphere` binding). `Object.defineProperty(globalThis, "navigator", …)` for Node. Skips if no adapter. CAD source uses `return sphere.radius(10)` (fluent API). Compares batch vs `GridSampler` 1×1×1; sample points avoid the sphere center where the normal is singular.
 
+## Agent 3 (QEF dual vertex, CPU double precision)
+
+- **Modules:** `qef-matrix.mts` (Jacobi symmetric eigendecomposition, pseudoinverse matching reference eigen-thresholding; **column** eigenvector packing consistent with NR Jacobi; dense Gaussian elimination with partial pivot for well-conditioned solves); `qef-normal.mts` (`qefAccumulatePlane`, `unpackNormalEquations`, packed layout from `qefnorm.h`); `dual-vertex-qef.mts` (`encodeCubeHermitePlane`, `encodeFaceHermitePlane`, `encodeEdgeHermitePlane`, `computeDualVertexCube` / `Face` / `Edge` — ports `TNode::vertNode` / `vertFace` / `vertEdge` constraint cascade).
+- **Solver:** Prefer `solveLinearSystem`; on singular pivot fall back to `symMatPseudoinverse` + `symMatVec` (rank-deficient parallel-plane stacks).
+- **Tests:** `dual-vertex-qef_test.mts` — synthetic full-rank cube/face/edge cases plus boundary snap smoke test.
+
 ## Gaps / next agents
 
 - Agent 3+: QEF solvers consume Hermite samples; iteration order for oversampling must match reference triple loops in `iso_method_ours.h` (x outer, y, z inner with `<= OVERSAMPLE_QEF`).

@@ -357,13 +357,48 @@ fn sdfTwistFeatureMid(r: SDFResultMid, p: vec3f, rate: f32) -> SDFResultMid {
     let hasPoint = midFeatureHasPoint(r);
     let angleY = select(p.y, r.featurePoint.y, hasPoint);
     let angle = -(angleY * rate);
-    out.featureTangent = safeNormalize(rotateY(r.featureTangent, angle), r.featureTangent);
-    out.featureN1 = safeNormalize(rotateY(r.featureN1, angle), r.featureN1);
-    out.featureN2 = safeNormalize(rotateY(r.featureN2, angle), r.featureN2);
+    let cA = cos(angle);
+    let sA = sin(angle);
+
+    // q-space xz at the feature; r.featurePoint is in q-space when hasPoint, else q = twist(p).
+    let qx = select(cA * p.x - sA * p.z, r.featurePoint.x, hasPoint);
+    let qz = select(sA * p.x + cA * p.z, r.featurePoint.z, hasPoint);
+
+    // Gradient-like (face normals) — J^T: rotate XZ by `angle` + chain-rule on y, matching
+    // the fix applied to `out.n` in `sdfTwistNormalMid`.
+    let n1Rot = rotateY(r.featureN1, angle);
+    let n2Rot = rotateY(r.featureN2, angle);
+    out.featureN1 = safeNormalize(
+        vec3f(n1Rot.x, r.featureN1.y + rate * (qz * r.featureN1.x - qx * r.featureN1.z), n1Rot.z),
+        r.featureN1,
+    );
+    out.featureN2 = safeNormalize(
+        vec3f(n2Rot.x, r.featureN2.y + rate * (qz * r.featureN2.x - qx * r.featureN2.z), n2Rot.z),
+        r.featureN2,
+    );
+
     if (hasPoint) {
         out.featurePoint = rotateY(r.featurePoint, -(r.featurePoint.y * rate));
         out.featureDist = length(p - out.featurePoint);
     }
+
+    // World xz at the feature — drives the helix cross-term on the tangent.
+    let pwx = select(p.x, out.featurePoint.x, hasPoint);
+    let pwz = select(p.z, out.featurePoint.z, hasPoint);
+
+    // Tangent — J^{-1}: rotate XZ by `angle` + helix cross-term in xz from y dependence.
+    // For t_q = (0, 1, 0) this recovers `(-rate*p_w.z, 1, rate*p_w.x)`, matching the
+    // `tanHel` formula in extrude's twisted-side feature path.
+    let tRot = rotateY(r.featureTangent, angle);
+    out.featureTangent = safeNormalize(
+        vec3f(
+            tRot.x - rate * pwz * r.featureTangent.y,
+            r.featureTangent.y,
+            tRot.z + rate * pwx * r.featureTangent.y,
+        ),
+        r.featureTangent,
+    );
+
     if (r.featureKind == MID_FEATURE_RING) {
         // axisCenter is on the ring's axis; for a Y-axis ring it lies at
         // (cx, vy, cz) and rotation about Y about the same point is a no-op
@@ -386,14 +421,43 @@ fn sdfTaperFeatureMid(r: SDFResultMid, p: vec3f, ratio: f32, height: f32) -> SDF
     let hasPoint = midFeatureHasPoint(r);
     let y = select(p.y, r.featurePoint.y, hasPoint);
     let s = taperScaleAtY(y, ratio, height);
-    out.featureTangent = safeNormalize(vec3f(r.featureTangent.x * s, r.featureTangent.y, r.featureTangent.z * s), r.featureTangent);
-    out.featureN1 = safeNormalize(vec3f(r.featureN1.x / s, r.featureN1.y, r.featureN1.z / s), r.featureN1);
-    out.featureN2 = safeNormalize(vec3f(r.featureN2.x / s, r.featureN2.y, r.featureN2.z / s), r.featureN2);
+    let inActive = y > 0.0 && y < height;
+    let dsdy = select(0.0, (ratio - 1.0) / max(height, 1e-6), inActive);
+
+    // Featurepoint to world; taper preserves y, so r.featurePoint.y = world y.
     if (hasPoint) {
         let sp = taperScaleAtY(r.featurePoint.y, ratio, height);
         out.featurePoint = vec3f(r.featurePoint.x * sp, r.featurePoint.y, r.featurePoint.z * sp);
         out.featureDist = length(p - out.featurePoint);
     }
+
+    // World xz at the feature; drives both gradient and tangent cross-terms.
+    let pwx = select(p.x, out.featurePoint.x, hasPoint);
+    let pwz = select(p.z, out.featurePoint.z, hasPoint);
+
+    // Gradient-like (face normals) — J^T: XZ scaled by 1/s + chain-rule on y, matching
+    // the fix applied to `out.n` in `sdfTaperNormalMid`. Without the y term, a tapered
+    // crease's two face normals stay perpendicular to Y instead of tilting toward the apex.
+    let invS = 1.0 / s;
+    let n1y = r.featureN1.y - (pwx * r.featureN1.x + pwz * r.featureN1.z) / (s * s) * dsdy;
+    let n2y = r.featureN2.y - (pwx * r.featureN2.x + pwz * r.featureN2.z) / (s * s) * dsdy;
+    out.featureN1 = safeNormalize(vec3f(r.featureN1.x * invS, n1y, r.featureN1.z * invS), r.featureN1);
+    out.featureN2 = safeNormalize(vec3f(r.featureN2.x * invS, n2y, r.featureN2.z * invS), r.featureN2);
+
+    // Tangent — J^{-1}: XZ scaled by s + cross-term on xz from y dependence. For a
+    // q-space tangent (0, 1, 0) on a vertical crease this gives the cone's slanted
+    // line tangent in world space.
+    let txCross = pwx * invS * dsdy * r.featureTangent.y;
+    let tzCross = pwz * invS * dsdy * r.featureTangent.y;
+    out.featureTangent = safeNormalize(
+        vec3f(
+            r.featureTangent.x * s + txCross,
+            r.featureTangent.y,
+            r.featureTangent.z * s + tzCross,
+        ),
+        r.featureTangent,
+    );
+
     if (r.featureKind == MID_FEATURE_RING) {
         let sc = taperScaleAtY(r.featureAxisCenter.y, ratio, height);
         out.featureAxisCenter = vec3f(r.featureAxisCenter.x * sc, r.featureAxisCenter.y, r.featureAxisCenter.z * sc);
@@ -2086,29 +2150,42 @@ fn sdfTwistFast(r: FastSDFResult, p: vec3f, rate: f32) -> FastSDFResult {
     return sdfFast(r.d / stretch, r.g * stretch, r.safeStepMul);
 }
 
-// Twist Ex: untwist the normal back to world space at the original point p.
-// Apply inverse twist (negative angle) to the child's normal.
+// Twist Ex: convert the child's q-space gradient to world space at p.
+// q = twist(p): q.x = C*p.x + S*p.z, q.z = -S*p.x + C*p.z, with A = rate*p.y, C=cos(A), S=sin(A).
+// XZ rotation handles ∂q.{x,z}/∂p.{x,z}; the y row picks up the chain-rule term
+// rate*(q.z*n.x - q.x*n.z) because A depends on p.y. Without it, a twisted shape
+// produces normals with a flat (untwisted) y component everywhere off the wall.
 fn sdfTwistNormal(r: SDFResult, p: vec3f, rate: f32) -> SDFResult {
     var out = r;
     let a = -(p.y * rate);
     let c = cos(a);
     let s = sin(a);
+    let qx = c * p.x - s * p.z;
+    let qz = s * p.x + c * p.z;
+    let nxw = c * out.n.x + s * out.n.z;
+    let nyw = out.n.y + rate * (qz * out.n.x - qx * out.n.z);
+    let nzw = -s * out.n.x + c * out.n.z;
     let rho = length(p.xz);
     let stretch = sqrt(1.0 + rate * rate * rho * rho);
-    out.n = safeNormalize(vec3f(c * out.n.x + s * out.n.z, out.n.y, -s * out.n.x + c * out.n.z), out.n);
+    out.n = safeNormalize(vec3f(nxw, nyw, nzw), out.n);
     out.g = out.g * stretch;
     return out;
 }
 
-// Twist Mid: untwist the normal back to world space
+// Twist Mid: same world-space gradient as Ex.
 fn sdfTwistNormalMid(r: SDFResultMid, p: vec3f, rate: f32) -> SDFResultMid {
     var out = r;
     let a = -(p.y * rate);
     let c = cos(a);
     let s = sin(a);
+    let qx = c * p.x - s * p.z;
+    let qz = s * p.x + c * p.z;
+    let nxw = c * out.n.x + s * out.n.z;
+    let nyw = out.n.y + rate * (qz * out.n.x - qx * out.n.z);
+    let nzw = -s * out.n.x + c * out.n.z;
     let rho = length(p.xz);
     let stretch = sqrt(1.0 + rate * rate * rho * rho);
-    out.n = safeNormalize(vec3f(c * out.n.x + s * out.n.z, out.n.y, -s * out.n.x + c * out.n.z), out.n);
+    out.n = safeNormalize(vec3f(nxw, nyw, nzw), out.n);
     out.g = out.g * stretch;
     return sdfTwistFeatureMid(out, p, rate);
 }
@@ -2128,26 +2205,39 @@ fn sdfBendFast(r: FastSDFResult, p: vec3f, amount: f32) -> FastSDFResult {
     return sdfFast(r.d / stretch, r.g * stretch, r.safeStepMul);
 }
 
-// Bend Ex: unbend the normal back to world space at the original point p.
+// Bend Ex: convert the child's q-space gradient to world space at p.
+// q = bend(p): q.x = C*p.x - S*p.y, q.y = S*p.x + C*p.y, with A = amount*p.x, C=cos(A), S=sin(A).
+// XY rotation handles ∂q.{x,y}/∂p.y; the x row picks up the chain-rule term
+// amount*(q.x*n.y - q.y*n.x) because A depends on p.x.
 fn sdfBendNormal(r: SDFResult, p: vec3f, amount: f32) -> SDFResult {
     var out = r;
     let a = -(amount * p.x);
     let c = cos(a);
     let s = sin(a);
+    let qx = c * p.x + s * p.y;
+    let qy = -s * p.x + c * p.y;
+    let nxw = c * out.n.x - s * out.n.y + amount * (qx * out.n.y - qy * out.n.x);
+    let nyw = s * out.n.x + c * out.n.y;
+    let nzw = out.n.z;
     let stretch = sqrt(1.0 + amount * amount * p.y * p.y);
-    out.n = safeNormalize(vec3f(c * out.n.x - s * out.n.y, s * out.n.x + c * out.n.y, out.n.z), out.n);
+    out.n = safeNormalize(vec3f(nxw, nyw, nzw), out.n);
     out.g = out.g * stretch;
     return out;
 }
 
-// Bend Mid: unbend the normal back to world space
+// Bend Mid: same world-space gradient as Ex.
 fn sdfBendNormalMid(r: SDFResultMid, p: vec3f, amount: f32) -> SDFResultMid {
     var out = r;
     let a = -(amount * p.x);
     let c = cos(a);
     let s = sin(a);
+    let qx = c * p.x + s * p.y;
+    let qy = -s * p.x + c * p.y;
+    let nxw = c * out.n.x - s * out.n.y + amount * (qx * out.n.y - qy * out.n.x);
+    let nyw = s * out.n.x + c * out.n.y;
+    let nzw = out.n.z;
     let stretch = sqrt(1.0 + amount * amount * p.y * p.y);
-    out.n = safeNormalize(vec3f(c * out.n.x - s * out.n.y, s * out.n.x + c * out.n.y, out.n.z), out.n);
+    out.n = safeNormalize(vec3f(nxw, nyw, nzw), out.n);
     out.g = out.g * stretch;
     return clearMidFeature(out);
 }
@@ -2171,27 +2261,34 @@ fn sdfTaperFast(r: FastSDFResult, p: vec3f, ratio: f32, height: f32) -> FastSDFR
     return sdfFast(r.d * correction, r.g / correction, r.safeStepMul);
 }
 
-// Taper Ex: correct the normal for the non-uniform scaling.
-// In tapered space, the XZ components of the gradient are scaled by 1/s.
-// Unscale them to get the world-space normal.
+// Taper Ex: convert the child's q-space gradient to world space at p.
+// q = (p.x/s, p.y, p.z/s), s = 1 + (ratio-1)*clamp(p.y/h, 0, 1). XZ components
+// scale by 1/s; the y row picks up the chain-rule term -(p.x*n.x + p.z*n.z)/s² · ds/dy
+// (only inside the active 0 < p.y < h band, where s actually varies). Without it a
+// tapered cylinder reads as cylindrical for shading — side normals never tilt.
 fn sdfTaperNormal(r: SDFResult, p: vec3f, ratio: f32, height: f32) -> SDFResult {
     var out = r;
     let t = clamp(p.y / height, 0.0, 1.0);
     let s = 1.0 + (ratio - 1.0) * t;
     let correction = min(s, 1.0);
-    // Normal in tapered space has XZ scaled by 1/s; undo this
-    out.n = safeNormalize(vec3f(out.n.x / s, out.n.y, out.n.z / s), out.n);
+    let inActive = p.y > 0.0 && p.y < height;
+    let dsdy = select(0.0, (ratio - 1.0) / max(height, 1e-6), inActive);
+    let nyCross = -(p.x * out.n.x + p.z * out.n.z) / (s * s) * dsdy;
+    out.n = safeNormalize(vec3f(out.n.x / s, out.n.y + nyCross, out.n.z / s), out.n);
     out.g = out.g / correction;
     return out;
 }
 
-// Taper Mid: correct the normal for the non-uniform scaling
+// Taper Mid: same world-space gradient as Ex.
 fn sdfTaperNormalMid(r: SDFResultMid, p: vec3f, ratio: f32, height: f32) -> SDFResultMid {
     var out = r;
     let t = clamp(p.y / height, 0.0, 1.0);
     let s = 1.0 + (ratio - 1.0) * t;
     let correction = min(s, 1.0);
-    out.n = safeNormalize(vec3f(out.n.x / s, out.n.y, out.n.z / s), out.n);
+    let inActive = p.y > 0.0 && p.y < height;
+    let dsdy = select(0.0, (ratio - 1.0) / max(height, 1e-6), inActive);
+    let nyCross = -(p.x * out.n.x + p.z * out.n.z) / (s * s) * dsdy;
+    out.n = safeNormalize(vec3f(out.n.x / s, out.n.y + nyCross, out.n.z / s), out.n);
     out.g = out.g / correction;
     return sdfTaperFeatureMid(out, p, ratio, height);
 }

@@ -1,0 +1,73 @@
+/** JSON-serializable values for dev tools section snapshots. */
+export type JSONValue =
+    | null
+    | boolean
+    | number
+    | string
+    | JSONValue[]
+    | { [key: string]: JSONValue }
+
+export const DEVTOOLS_STATE_CHANGE_EVENT = "devtools-state-change" as const
+
+export type DevToolsStateChangeDetail = { sectionId: string }
+
+/** Stable storage keys for `GlobalSettings.app.devToolsSections`. */
+export const DEVTOOLS_SECTION_APP = "galacticad.app"
+export const DEVTOOLS_SECTION_LOGS = "galacticad.logs"
+
+/** Keys for `GlobalSettings.app.devToolsCollapseOpen` — expanded state of dev-tools collapsibles. */
+export const DEVTOOLS_COLLAPSE = {
+    panelApp: "galacticad.collapse.panelApp",
+    panelMeshExport: "galacticad.collapse.panelMeshExport",
+    panelRenderer: "galacticad.collapse.panelRenderer",
+    panelLogs: "galacticad.collapse.panelLogs",
+    panelBenchmark: "galacticad.collapse.panelBenchmark",
+    panelReset: "galacticad.collapse.panelReset",
+    appViewport: "galacticad.collapse.appViewport",
+    appExport: "galacticad.collapse.appExport",
+    appMeshExportMdc: "galacticad.collapse.appMeshExportMdc",
+    rendererPerformance: "galacticad.collapse.rendererPerformance",
+    rendererPreviewShading: "galacticad.collapse.rendererPreviewShading",
+} as const
+
+export type DevToolsCollapseId = (typeof DEVTOOLS_COLLAPSE)[keyof typeof DEVTOOLS_COLLAPSE]
+
+/** When a key is absent from storage, use this default (`true` = expanded). Only list exceptions. */
+export const DEFAULT_DEVTOOLS_COLLAPSE_OPEN: Partial<Record<DevToolsCollapseId, boolean>> = {
+    [DEVTOOLS_COLLAPSE.panelReset]: false,
+    [DEVTOOLS_COLLAPSE.appMeshExportMdc]: false,
+}
+
+/** Defaults when `devToolsSections[DEVTOOLS_SECTION_APP]` is missing or partial. */
+export const DEFAULT_APP_DEVTOOLS_STATE: Record<string, JSONValue> = {
+    showFps: true,
+    meshViewerEnabled: false,
+    meshSimplifyOnExport: true,
+    lightingExpanded: false,
+}
+
+export interface DevToolsPersistable extends HTMLElement {
+    readonly devToolsSectionId: string
+    getDevToolsState(): Record<string, JSONValue>
+    setDevToolsState(state: Record<string, JSONValue>): void
+}
+
+export function isDevToolsPersistable(el: unknown): el is DevToolsPersistable {
+    if (!(el instanceof HTMLElement)) return false
+    const p = el as Partial<DevToolsPersistable>
+    return (
+        typeof p.devToolsSectionId === "string" &&
+        typeof p.getDevToolsState === "function" &&
+        typeof p.setDevToolsState === "function"
+    )
+}
+
+export function dispatchDevToolsStateChange(host: HTMLElement, sectionId: string): void {
+    host.dispatchEvent(
+        new CustomEvent<DevToolsStateChangeDetail>(DEVTOOLS_STATE_CHANGE_EVENT, {
+            bubbles: true,
+            composed: true,
+            detail: { sectionId },
+        })
+    )
+}

@@ -206,6 +206,12 @@ const INJECTED_BRIDGE_SCRIPT = `
                     trySend(socket, JSON.stringify({ type: "consoleLogsError", id: id, message: "send failed" }));
                 }
             }
+            function sendActiveSceneSource(socket, id, source) {
+                var ok = JSON.stringify({ type: "activeSceneSourceResult", id: id, source: source });
+                if (!trySend(socket, ok)) {
+                    trySend(socket, JSON.stringify({ type: "activeSceneSourceError", id: id, message: "send failed" }));
+                }
+            }
             function onGetConsoleLogs(msg, socket) {
                 if (msg.type !== "getConsoleLogs") return false;
                 if (typeof msg.id !== "string" || typeof msg.n !== "number") return false;
@@ -215,6 +221,26 @@ const INJECTED_BRIDGE_SCRIPT = `
                 var n = Math.min(10000, Math.max(1, Math.floor(msg.n)));
                 var lines = collectConsoleLogs(n, levels, modules);
                 sendConsoleLogs(socket, msg.id, lines);
+                return true;
+            }
+            function onGetActiveSceneSource(msg, socket) {
+                if (msg.type !== "getActiveSceneSource") return false;
+                if (typeof msg.id !== "string") return false;
+                var fn = globalThis.__galacticadDevGetActiveSceneSource;
+                if (typeof fn !== "function") {
+                    sendActiveSceneSource(socket, msg.id, "");
+                    return true;
+                }
+                try {
+                    var s = fn();
+                    sendActiveSceneSource(socket, msg.id, typeof s === "string" ? s : String(s));
+                } catch (e) {
+                    var em = e && e.message ? String(e.message) : String(e);
+                    var err = JSON.stringify({ type: "activeSceneSourceError", id: msg.id, message: em });
+                    if (!trySend(socket, err)) {
+                        trySend(socket, JSON.stringify({ type: "activeSceneSourceError", id: msg.id, message: "send failed" }));
+                    }
+                }
                 return true;
             }
             function onMessage(event) {
@@ -234,6 +260,7 @@ const INJECTED_BRIDGE_SCRIPT = `
                     return;
                 }
                 void onGetConsoleLogs(msg, socket);
+                void onGetActiveSceneSource(msg, socket);
             }
             function scheduleReconnect() {
                 if (intentionalClose) return;
@@ -300,7 +327,7 @@ export class DevServer {
         if (options) {
             await fs.writeFile(options.runFile, JSON.stringify({ pid: options.pid, port: actualPort } satisfies RunFileData, null, 2))
         }
-        log(`Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); logs endpoint GET http://localhost:${actualPort}/_logs`)
+        log(`Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET http://localhost:${actualPort}/_logs GET http://localhost:${actualPort}/_sceneSource`)
         return instance
     }
 
@@ -351,6 +378,18 @@ function createHttpServer(
             const text = lines ? lines.join("\n") : ""
             res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
             res.end(text)
+            return
+        }
+
+        if (pathname === "/_sceneSource") {
+            if (req.method !== "GET") {
+                res.writeHead(405, { "content-type": "text/plain; charset=utf-8", Allow: "GET", "Access-Control-Allow-Origin": "*" })
+                res.end("method not allowed")
+                return
+            }
+            const source = await bridge.requestActiveSceneSource()
+            res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+            res.end(source ?? "")
             return
         }
 

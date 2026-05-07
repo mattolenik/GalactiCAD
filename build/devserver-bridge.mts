@@ -21,18 +21,35 @@ export type DevServerConsoleLogsResultMessage = { type: "consoleLogsResult"; id:
 /** Browser → server: could not produce lines for this request. */
 export type DevServerConsoleLogsErrorMessage = { type: "consoleLogsError"; id: string; message?: string }
 
-export type DevServerToBrowserMessage = DevServerReloadMessage | DevServerGetConsoleLogsMessage
-export type DevServerFromBrowserMessage = DevServerConsoleLogsResultMessage | DevServerConsoleLogsErrorMessage
+/** Server → browser: return scene source for the active editor tab (injected script asks `__galacticadDevGetActiveSceneSource`). */
+export type DevServerGetActiveSceneSourceMessage = { type: "getActiveSceneSource"; id: string }
+
+/** Browser → server: UTF-8 scene source (empty when no model / no provider). */
+export type DevServerActiveSceneSourceResultMessage = { type: "activeSceneSourceResult"; id: string; source: string }
+
+/** Browser → server: failed to read scene source. */
+export type DevServerActiveSceneSourceErrorMessage = { type: "activeSceneSourceError"; id: string; message?: string }
+
+export type DevServerToBrowserMessage =
+    | DevServerReloadMessage
+    | DevServerGetConsoleLogsMessage
+    | DevServerGetActiveSceneSourceMessage
+export type DevServerFromBrowserMessage =
+    | DevServerConsoleLogsResultMessage
+    | DevServerConsoleLogsErrorMessage
+    | DevServerActiveSceneSourceResultMessage
+    | DevServerActiveSceneSourceErrorMessage
 
 const DEFAULT_TIMEOUT_MS = 5000
 
 /**
  * Tracks browser WebSocket clients and supports live reload plus request/response
- * for fetching recent page-console lines from the injected bridge script.
+ * for fetching recent page-console lines and the active scene source from the injected bridge script.
  */
 export class BrowserBridge {
     private wsServer: WebSocketServer | null = null
     private readonly pending = new Map<string, { resolve: (v: string[] | null) => void }>()
+    private readonly pendingSceneSource = new Map<string, { resolve: (v: string | null) => void }>()
     private seq = 0
 
     setWsServer(wsServer: WebSocketServer) {
@@ -94,6 +111,44 @@ export class BrowserBridge {
         })
     }
 
+    /**
+     * Ask connected browser tab(s) for the active document's scene source (Monaco value).
+     * First response wins. Returns `null` if no client, timeout, or bridge reports failure.
+     */
+    requestActiveSceneSource(timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string | null> {
+        const wss = this.wsServer
+        if (!wss || wss.clients.size === 0) {
+            return Promise.resolve(null)
+        }
+        const id = `ssrc-${Date.now()}-${++this.seq}`
+        return new Promise(resolve => {
+            const timeout = setTimeout(() => {
+                this.pendingSceneSource.delete(id)
+                resolve(null)
+            }, timeoutMs)
+            const finish = (v: string | null) => {
+                clearTimeout(timeout)
+                this.pendingSceneSource.delete(id)
+                resolve(v)
+            }
+            this.pendingSceneSource.set(id, { resolve: finish })
+            const msg: DevServerGetActiveSceneSourceMessage = { type: "getActiveSceneSource", id }
+            const payload = JSON.stringify(msg)
+            let sent = false
+            wss.clients.forEach(client => {
+                if (client.readyState === 1) {
+                    client.send(payload)
+                    sent = true
+                }
+            })
+            if (!sent) {
+                clearTimeout(timeout)
+                this.pendingSceneSource.delete(id)
+                resolve(null)
+            }
+        })
+    }
+
     handleClientMessage(raw: Buffer | ArrayBuffer | Buffer[]) {
         let data: string
         if (typeof raw === "string") data = raw
@@ -116,6 +171,18 @@ export class BrowserBridge {
         }
         if (msg.type === "consoleLogsError" && typeof msg.id === "string") {
             const p = this.pending.get(msg.id)
+            if (p) p.resolve(null)
+            return
+        }
+        if (msg.type === "activeSceneSourceResult" && typeof msg.id === "string" && typeof msg.source === "string") {
+            const p = this.pendingSceneSource.get(msg.id)
+            if (p) {
+                p.resolve(msg.source)
+            }
+            return
+        }
+        if (msg.type === "activeSceneSourceError" && typeof msg.id === "string") {
+            const p = this.pendingSceneSource.get(msg.id)
             if (p) p.resolve(null)
         }
     }

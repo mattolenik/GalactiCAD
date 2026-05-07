@@ -1,7 +1,4 @@
-import { BehaviorSubject, skip } from "rxjs"
-import type { Subscription } from "rxjs"
-import { __fg_color, __tone_1, __tone_2 } from "../style/style.mjs"
-import { connectCheckbox } from "../binding/bind.mjs"
+import { __fg_color, __tone_2 } from "../style/style.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import type { DocumentTabs } from "./document-tabs.mjs"
 import {
@@ -11,297 +8,170 @@ import {
     formatBenchmarkResultsHtml,
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
-import {
-    DEFAULT_MDC_EXPORT_LEVERS,
-    DEFAULT_PREVIEW_SHADING,
-    DEFAULT_SHREC_TUNING,
-    DEFAULT_SIMPLIFY_TUNING,
-    type MdcExportLevers,
-    type PreviewShadingParams,
-    type ShrecTuning,
-    type SimplifyTuning,
+import type {
+    MdcExportLevers,
+    PreviewShadingParams,
+    ShrecTuning,
+    SimplifyTuning,
 } from "../render-worker-protocol.mjs"
-import { DEBUG_LOG_MODULES, log, type DebugLogModulesState, type LogModule } from "../logging/debug-log.mjs"
+import { log, type DebugLogModulesState } from "../logging/debug-log.mjs"
+import {
+    DEFAULT_APP_DEVTOOLS_STATE,
+    DEVTOOLS_COLLAPSE,
+    DEVTOOLS_STATE_CHANGE_EVENT,
+    isDevToolsPersistable,
+    type DevToolsPersistable,
+    type JSONValue,
+} from "./dev-tools-protocol.mjs"
+import { DevToolsAppSection } from "./dev-tools-app-section.mjs"
+import { DevToolsMeshExportSection } from "./dev-tools-mesh-export-section.mjs"
+import { DevToolsLogsSection } from "./dev-tools-logs-section.mjs"
+import { DevToolsRendererSection } from "./dev-tools-renderer-section.mjs"
+import "./dev-tools-collapse.mjs"
 
-/** Boolean fields on `SimplifyTuning` (meshoptimizer flags + post-pass toggles). */
-type SimplifyBoolKey =
-    | "lockBorder"
-    | "sparse"
-    | "errorAbsolute"
-    | "prune"
-    | "regularize"
-    | "renormalizeTriangles"
+export type DevToolsSectionScope = "global" | "document"
 
-/** MDC-only knobs (voxel + mesh simplify use the shared sliders above). */
-const MDC_RANGE_KNOBS: {
-    key: keyof Pick<MdcExportLevers, "isoValue" | "creaseAngleDeg">
-    label: string
-    min: number
-    max: number
-    step: number
-}[] = [
-        { key: "isoValue", label: "Iso value", min: -0.2, max: 0.2, step: 0.002 },
-        { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1 },
-    ]
-
-const PREVIEW_SHADING_KNOBS: {
-    key: keyof PreviewShadingParams
-    label: string
-    min: number
-    max: number
-    step: number
-}[] = [
-        { key: "ambient", label: "Ambient", min: 0, max: 0.45, step: 0.01 },
-        { key: "diffuseWrap", label: "Diffuse wrap", min: 0, max: 1, step: 0.02 },
-        { key: "keyWeight", label: "Key light", min: 0, max: 1, step: 0.02 },
-        { key: "fillWeight", label: "Fill light", min: 0, max: 1, step: 0.02 },
-        { key: "rimWeight", label: "Rim light", min: 0, max: 1, step: 0.02 },
-        { key: "backWeight", label: "Back light", min: 0, max: 1, step: 0.02 },
-        { key: "specIntensity", label: "Specular", min: 0, max: 0.45, step: 0.01 },
-        { key: "specShininess", label: "Spec power", min: 1, max: 256, step: 1 },
-        { key: "fresnelPower", label: "Fresnel pow", min: 0.5, max: 8, step: 0.1 },
-        { key: "fresnelIntensity", label: "Fresnel", min: 0, max: 0.45, step: 0.01 },
-        { key: "aoStrength", label: "AO strength", min: 0, max: 1, step: 0.02 },
-        { key: "aoRadius", label: "AO radius", min: 0.01, max: 0.5, step: 0.01 },
-        { key: "aoSteps", label: "AO steps", min: 1, max: 8, step: 1 },
-        { key: "aoBias", label: "AO bias", min: 0, max: 0.1, step: 0.005 },
-    ]
+export type DevToolsSectionRegistration = {
+    element: HTMLElement
+    scope?: DevToolsSectionScope
+    order?: number
+}
 
 export class DevToolsPanel extends HTMLElement {
-    #cameraOptCheckbox: HTMLInputElement
-    #cameraOptimization$: BehaviorSubject<boolean>
-    #beamOptCheckbox: HTMLInputElement
-    #beamOptimization$: BehaviorSubject<boolean>
-    #bvhOptCheckbox: HTMLInputElement
-    #bvhOptimization$: BehaviorSubject<boolean>
-    #shadingState: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
-    #shadingRows = new Map<keyof PreviewShadingParams, { range: HTMLInputElement; valueEl: HTMLSpanElement }>()
-    #showFpsCheckbox: HTMLInputElement
-    #showFps$: BehaviorSubject<boolean>
-    #meshViewerCheckbox: HTMLInputElement
-    #meshViewer$: BehaviorSubject<boolean>
-    #meshSimplifyCheckbox: HTMLInputElement
-    #meshSimplify$: BehaviorSubject<boolean>
-    #voxelSizeMm$: BehaviorSubject<number>
-    #voxelSizeRange: HTMLInputElement
-    #voxelSizeValueEl: HTMLSpanElement
-    #mdcExpandedCheckbox: HTMLInputElement
-    #mdcExpanded$: BehaviorSubject<boolean>
-    #mdcSection: HTMLDivElement
-    #mdcFeatureConstrainedPlacementCheckbox: HTMLInputElement
-    #mdcRows = new Map<
-        (typeof MDC_RANGE_KNOBS)[number]["key"],
-        { range: HTMLInputElement; valueEl: HTMLSpanElement }
-    >()
-    #useShrecCheckbox: HTMLInputElement
-    #useShrec$: BehaviorSubject<boolean>
-    #shrecTuningState: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
-    #shrecMergeSharpCheckbox: HTMLInputElement
-    #shrecRelCutoffRange: HTMLInputElement
-    #shrecRelCutoffValueEl: HTMLSpanElement
-    #shrecMaxDispRange: HTMLInputElement
-    #shrecMaxDispValueEl: HTMLSpanElement
-    #shrecCreaseRange: HTMLInputElement
-    #shrecCreaseValueEl: HTMLSpanElement
-    #shrecGradWeightRange: HTMLInputElement
-    #shrecGradWeightValueEl: HTMLSpanElement
-    #shrecDedupRange: HTMLInputElement
-    #shrecDedupValueEl: HTMLSpanElement
-    #shrecSeamAwareCheckbox: HTMLInputElement
-    #shrecSeamAgreementRange: HTMLInputElement
-    #shrecSeamAgreementValueEl: HTMLSpanElement
-    #shrecEdgeFitCheckbox: HTMLInputElement
-    #shrecSection: HTMLDivElement
-    #simplifyTuningState: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
-    #simplifySection: HTMLDivElement
-    #simplifyTargetRatioRange: HTMLInputElement
-    #simplifyTargetRatioValueEl: HTMLSpanElement
-    #simplifyTargetErrorRange: HTMLInputElement
-    #simplifyTargetErrorValueEl: HTMLSpanElement
-    #simplifyNormalWeightRange: HTMLInputElement
-    #simplifyNormalWeightValueEl: HTMLSpanElement
-    #simplifyBoolCheckboxes: Map<SimplifyBoolKey, HTMLInputElement> = new Map()
-    #lightingExpandedCheckbox: HTMLInputElement
-    #lightingExpanded$: BehaviorSubject<boolean>
-    #lightingSection: HTMLDivElement
     #settings: SettingsManager
     #tabs: DocumentTabs
-    #subscriptions: Subscription[] = []
-    #debugLogCheckboxes = new Map<LogModule, HTMLInputElement>()
+    #appSection: DevToolsAppSection
+    #meshExportSection: DevToolsMeshExportSection
+    #rendererSection: DevToolsRendererSection
+    #logsSection: DevToolsLogsSection
+    #extraSectionHosts: HTMLDivElement[] = []
+    #debounceTimers = new Map<string, number>()
+    #persistListener: ((e: Event) => void) | null = null
+    #shadow: ShadowRoot
+    #benchmarkSectionEl: HTMLElement
 
     /** Callback when camera optimization changes */
     onCameraOptimizationChange?: (enabled: boolean) => void
-
-    /** Callback when beam optimization changes */
     onBeamOptimizationChange?: (enabled: boolean) => void
-
-    /** Callback when BVH optimization changes */
     onBvhOptimizationChange?: (enabled: boolean) => void
-
-    /** Callback when show FPS changes */
     onShowFpsChange?: (enabled: boolean) => void
-
-    /** Callback when mesh viewer toggle changes */
     onMeshViewerChange?: (enabled: boolean) => void
-
-    /** Callback when mesh simplify on export toggle changes */
     onMeshSimplifyChange?: (enabled: boolean) => void
-
-    /** Callback when the mesh-export voxel-size slider changes (mm). */
     onVoxelSizeMmChange?: (mm: number) => void
-
-    /** Callback when the SHREC/MergeSharp exporter toggle changes (off = MDC). */
     onUseShrecExporterChange?: (enabled: boolean) => void
-
-    /** Callback when any SHREC tuning knob changes; receives the full tuning object. */
     onShrecTuningChange?: (tuning: ShrecTuning) => void
-
-    /** Callback when MDC mesh simplification tuning changes. */
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
-
-    /** Callback when MDC iso/crease levers change (mesh export preview). */
     onMdcExportLeversChange?: () => void
-
-    /** Preview shading uniforms; knob values are not persisted (section visibility is). */
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
-
-    /** Callback to get current view as a benchmark case. Returns null if no active document. */
+    onPreviewNormalShadingChange?: (enabled: boolean) => void
     onBenchmarkThisRequest?: () => BenchmarkCase | null
-
-    /** Callback to get current viewport size for benchmark. When null, benchmark uses 800×600. */
     onGetViewportSize?: () => { width: number; height: number } | null
-
-    /** After debug log toggles are persisted; apply flags and sync worker. */
     onDebugLogModulesChange?: () => void
 
+    get appSection(): DevToolsAppSection {
+        return this.#appSection
+    }
+
+    get rendererSection(): DevToolsRendererSection {
+        return this.#rendererSection
+    }
+
+    get logsSection(): DevToolsLogsSection {
+        return this.#logsSection
+    }
+
+    get meshExportSection(): DevToolsMeshExportSection {
+        return this.#meshExportSection
+    }
+
     get cameraOptimization(): boolean {
-        return this.#cameraOptimization$.value
+        return this.#rendererSection.cameraOptimization
     }
 
     set cameraOptimization(enabled: boolean) {
-        this.#cameraOptimization$.next(enabled)
+        this.#rendererSection.cameraOptimization = enabled
     }
 
     get beamOptimization(): boolean {
-        return this.#beamOptimization$.value
+        return this.#rendererSection.beamOptimization
     }
 
     set beamOptimization(enabled: boolean) {
-        this.#beamOptimization$.next(enabled)
+        this.#rendererSection.beamOptimization = enabled
     }
 
     get bvhOptimization(): boolean {
-        return this.#bvhOptimization$.value
+        return this.#rendererSection.bvhOptimization
     }
 
     set bvhOptimization(enabled: boolean) {
-        this.#bvhOptimization$.next(enabled)
+        this.#rendererSection.bvhOptimization = enabled
     }
 
     get showFps(): boolean {
-        return this.#showFps$.value
+        return this.#appSection.showFps
     }
 
     set showFps(enabled: boolean) {
-        this.#showFps$.next(enabled)
+        this.#appSection.showFps = enabled
     }
 
     get meshViewer(): boolean {
-        return this.#meshViewer$.value
+        return this.#appSection.meshViewer
     }
 
     set meshViewer(enabled: boolean) {
-        this.#meshViewer$.next(enabled)
+        this.#appSection.meshViewer = enabled
     }
 
     get meshSimplifyOnExport(): boolean {
-        return this.#meshSimplify$.value
+        return this.#appSection.meshSimplifyOnExport
     }
 
     set meshSimplifyOnExport(enabled: boolean) {
-        this.#meshSimplify$.next(enabled)
+        this.#appSection.meshSimplifyOnExport = enabled
     }
 
-    /** Mesh-export grid voxel size in mm. Master quality knob; affects MDC and SHREC equally. */
     get voxelSizeMm(): number {
-        return this.#voxelSizeMm$.value
+        return this.#meshExportSection.voxelSizeMm
     }
 
     set voxelSizeMm(mm: number) {
-        this.#voxelSizeMm$.next(mm)
-    }
-
-    /** Sync the voxel-size slider from persisted settings. */
-    syncVoxelSizeMmFromSettings(mm: number): void {
-        this.#voxelSizeMm$.next(mm)
-        this.#voxelSizeRange.value = String(mm)
-        this.#voxelSizeValueEl.textContent = DevToolsPanel.#formatVoxelSize(mm)
+        this.#meshExportSection.voxelSizeMm = mm
     }
 
     get useShrecExporter(): boolean {
-        return this.#useShrec$.value
+        return this.#meshExportSection.useShrecExporter
     }
 
     set useShrecExporter(enabled: boolean) {
-        this.#useShrec$.next(enabled)
+        this.#meshExportSection.useShrecExporter = enabled
     }
 
-    /** Read-only view of current SHREC tuning state (mutate via setter or sync method). */
     get shrecTuning(): ShrecTuning {
-        return { ...this.#shrecTuningState }
+        return this.#meshExportSection.shrecTuning
     }
 
     get simplifyTuning(): SimplifyTuning {
-        return { ...this.#simplifyTuningState }
+        return this.#meshExportSection.simplifyTuning
     }
 
-    /** Sync MDC simplification knobs from persisted settings. */
+    syncVoxelSizeMmFromSettings(mm: number): void {
+        this.#meshExportSection.syncVoxelSizeMmFromSettings(mm)
+    }
+
     syncSimplifyTuningFromSettings(tuning: SimplifyTuning): void {
-        this.#simplifyTuningState = { ...tuning }
-        this.#simplifyTargetRatioRange.value = String(tuning.targetRatio)
-        this.#simplifyTargetRatioValueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetRatio", tuning.targetRatio)
-        this.#simplifyTargetErrorRange.value = String(tuning.targetError)
-        this.#simplifyTargetErrorValueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetError", tuning.targetError)
-        this.#simplifyNormalWeightRange.value = String(tuning.normalWeight)
-        this.#simplifyNormalWeightValueEl.textContent = DevToolsPanel.#formatSimplifyValue("normalWeight", tuning.normalWeight)
-        for (const key of this.#simplifyBoolCheckboxes.keys()) {
-            const cb = this.#simplifyBoolCheckboxes.get(key)!
-            cb.checked = tuning[key]
-        }
+        this.#meshExportSection.syncSimplifyTuningFromSettings(tuning)
     }
 
-    /** Sync SHREC knobs from persisted settings (e.g. after storage load). */
-    /** Sync MDC iso/crease sliders from persisted settings (e.g. after storage load). */
     syncMdcLeversFromSettings(levers: MdcExportLevers): void {
-        this.#mdcFeatureConstrainedPlacementCheckbox.checked = levers.featureConstrainedPlacement
-        for (const k of MDC_RANGE_KNOBS) {
-            const row = this.#mdcRows.get(k.key)
-            if (!row) continue
-            row.range.value = String(levers[k.key])
-            row.valueEl.textContent = DevToolsPanel.#formatMdcValue(k.key, levers[k.key])
-        }
+        this.#meshExportSection.syncMdcLeversFromSettings(levers)
     }
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
-        this.#shrecTuningState = { ...tuning }
-        this.#shrecMergeSharpCheckbox.checked = tuning.mergeSharpEnabled
-        this.#shrecRelCutoffRange.value = String(tuning.mergeRelCutoff)
-        this.#shrecRelCutoffValueEl.textContent = DevToolsPanel.#formatShrecValue("mergeRelCutoff", tuning.mergeRelCutoff)
-        this.#shrecMaxDispRange.value = String(tuning.mergeMaxDisplacement)
-        this.#shrecMaxDispValueEl.textContent = DevToolsPanel.#formatShrecValue("mergeMaxDisplacement", tuning.mergeMaxDisplacement)
-        this.#shrecCreaseRange.value = String(tuning.creaseAngleDeg)
-        this.#shrecCreaseValueEl.textContent = DevToolsPanel.#formatShrecValue("creaseAngleDeg", tuning.creaseAngleDeg)
-        this.#shrecGradWeightRange.value = String(tuning.mergeGradientWeightPower)
-        this.#shrecGradWeightValueEl.textContent = DevToolsPanel.#formatShrecValue("mergeGradientWeightPower", tuning.mergeGradientWeightPower)
-        this.#shrecDedupRange.value = String(tuning.dedupRadiusVoxels)
-        this.#shrecDedupValueEl.textContent = DevToolsPanel.#formatShrecValue("dedupRadiusVoxels", tuning.dedupRadiusVoxels)
-        this.#shrecSeamAwareCheckbox.checked = tuning.seamAwareEnabled
-        this.#shrecSeamAgreementRange.value = String(tuning.seamAgreementCosThreshold)
-        this.#shrecSeamAgreementValueEl.textContent = DevToolsPanel.#formatShrecValue("seamAgreementCosThreshold", tuning.seamAgreementCosThreshold)
-        this.#shrecEdgeFitCheckbox.checked = tuning.edgeFitEnabled
+        this.#meshExportSection.syncShrecTuningFromSettings(tuning)
     }
 
-    /** Show or hide the panel */
     get visible(): boolean {
         return this.style.display !== "none"
     }
@@ -315,7 +185,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#settings = settings
         this.#tabs = tabs
 
-        const shadow = this.attachShadow({ mode: "open" })
+        this.#shadow = this.attachShadow({ mode: "open" })
 
         const style = document.createElement("style")
         style.textContent = `
@@ -338,724 +208,78 @@ export class DevToolsPanel extends HTMLElement {
             font-family: system-ui, sans-serif;
         }
         :host([hidden]) { display: none; }
-        label {
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        input[type="checkbox"] {
-            cursor: pointer;
-            margin: 0;
-            font-size: 16px;
-        }
-        button {
-            cursor: pointer;
-            padding: 2px 8px;
-            border: 1px solid var(${__tone_1});
-            background: rgb(from var(${__fg_color}) r g b / 0.1);
-            color: rgb(from var(${__fg_color}) r g b / 0.85);
-            font-size: 12px;
-            font-family: system-ui, sans-serif;
-            border-radius: 3px;
-            transition: background 0.2s ease;
-        }
-        button:hover {
-            background: rgb(from var(${__fg_color}) r g b / 0.2);
-        }
-        button:active {
-            background: rgb(from var(${__fg_color}) r g b / 0.3);
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .shade-head {
-            font-size: 10px;
-            opacity: 0.75;
-            margin-top: 6px;
-            align-self: stretch;
-        }
-        .shade-row {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            width: 100%;
-        }
-        .shade-row label.knob-label {
-            flex: 0 0 92px;
-            font-size: 11px;
-            cursor: default;
-        }
-        .shade-row input[type="range"] {
-            flex: 1;
-            min-width: 0;
-            margin: 0;
-        }
-        .shade-val {
-            flex: 0 0 44px;
-            text-align: right;
-            font-variant-numeric: tabular-nums;
-            font-size: 11px;
-        }
-        .lighting-section {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            align-self: stretch;
-            width: 100%;
-        }
-        .lighting-section > .shade-head {
-            margin-top: 2px;
-        }
-        .lighting-section[hidden] {
-            display: none !important;
-        }
-        .debug-log-list {
+        .extra-slot {
             display: flex;
             flex-direction: column;
             align-items: flex-start;
-            gap: 1px;
-            align-self: start;
-        }
-        .debug-log-list label {
-            font-size: 11px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            width: max-content;
+            gap: 6px;
+            align-self: stretch;
         }
 `
-        shadow.appendChild(style)
+        this.#shadow.appendChild(style)
 
-        const g = this.#settings.getGlobal().app
-        this.#showFps$ = new BehaviorSubject(g.showFps)
-        this.#meshViewer$ = new BehaviorSubject(g.meshViewerEnabled)
-        this.#meshSimplify$ = new BehaviorSubject(g.meshSimplifyOnExport)
-        this.#voxelSizeMm$ = new BehaviorSubject(g.meshExportVoxelSizeMm)
-        this.#useShrec$ = new BehaviorSubject(g.useShrecExporter)
-        this.#cameraOptimization$ = new BehaviorSubject(true)
-        this.#beamOptimization$ = new BehaviorSubject(false)
-        this.#bvhOptimization$ = new BehaviorSubject(true)
+        this.#appSection = new DevToolsAppSection()
+        this.#meshExportSection = new DevToolsMeshExportSection()
+        this.#rendererSection = new DevToolsRendererSection()
+        this.#logsSection = new DevToolsLogsSection()
 
-        this.#lightingExpanded$ = new BehaviorSubject(g.devToolsLightingExpanded)
-        this.#lightingSection = document.createElement("div")
-        this.#lightingSection.className = "lighting-section"
-        this.#lightingSection.hidden = !this.#lightingExpanded$.value
+        this.#meshExportSection.onVoxelSizeMmChange = v => this.onVoxelSizeMmChange?.(v)
+        this.#meshExportSection.onUseShrecExporterChange = v => this.onUseShrecExporterChange?.(v)
+        this.#meshExportSection.onShrecTuningChange = v => this.onShrecTuningChange?.(v)
+        this.#meshExportSection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
+        this.#meshExportSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
 
-        this.#showFpsCheckbox = this.#addCheckbox(shadow, "Show FPS", this.#showFps$.value)
-        this.#subscriptions.push(connectCheckbox(this.#showFpsCheckbox, this.#showFps$))
-        this.#showFps$.pipe(skip(1)).subscribe(v => {
-            this.#settings.updateGlobal({ app: { showFps: v } })
-            this.onShowFpsChange?.(v)
-        })
-
-        this.#meshViewerCheckbox = this.#addCheckbox(shadow, "Export preview", this.#meshViewer$.value)
-        this.#subscriptions.push(connectCheckbox(this.#meshViewerCheckbox, this.#meshViewer$))
-        this.#meshViewer$.pipe(skip(1)).subscribe(v => {
-            this.#settings.updateGlobal({ app: { meshViewerEnabled: v } })
-            this.onMeshViewerChange?.(v)
-        })
-
-        this.#meshSimplifyCheckbox = this.#addCheckbox(shadow, "Mesh simplify", this.#meshSimplify$.value)
-        this.#subscriptions.push(connectCheckbox(this.#meshSimplifyCheckbox, this.#meshSimplify$))
-        this.#meshSimplify$.pipe(skip(1)).subscribe(v => {
-            this.#settings.updateGlobal({ app: { meshSimplifyOnExport: v } })
-            this.onMeshSimplifyChange?.(v)
-        })
-
-        // Voxel-size slider — the master quality / cost knob for mesh export.
-        // Halving voxel size → ~8× the voxel count → ~8× the time and memory.
-        // Applies to both MDC and SHREC; lives at the top level rather than in
-        // the SHREC subsection because it's exporter-agnostic.
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Voxel (mm)"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0.02"
-            range.max = "0.5"
-            range.step = "0.01"
-            range.value = String(this.#voxelSizeMm$.value)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatVoxelSize(this.#voxelSizeMm$.value)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#voxelSizeMm$.next(v)
-                valueEl.textContent = DevToolsPanel.#formatVoxelSize(v)
-            })
-            row.append(lab, range, valueEl)
-            shadow.appendChild(row)
-            this.#voxelSizeRange = range
-            this.#voxelSizeValueEl = valueEl
+        this.#appSection.onLightingExpandedChange = expanded => {
+            this.#rendererSection.setLightingSectionVisible(expanded)
         }
-        this.#voxelSizeMm$.pipe(skip(1)).subscribe(v => {
-            this.#settings.updateGlobal({ app: { meshExportVoxelSizeMm: v } })
-            this.onVoxelSizeMmChange?.(v)
+
+        this.#rendererSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)
+        this.#rendererSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
+        this.#rendererSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
+        this.#rendererSection.onPreviewShadingChange = p => this.onPreviewShadingChange?.(p)
+        this.#rendererSection.onPreviewNormalShadingChange = v => this.onPreviewNormalShadingChange?.(v)
+
+        this.#logsSection.onDebugLogModulesChange = () => this.onDebugLogModulesChange?.()
+
+        this.#appSection.addEventListener("galacticad-show-fps-change", () => {
+            this.onShowFpsChange?.(this.#appSection.showFps)
+        })
+        this.#appSection.addEventListener("galacticad-mesh-viewer-change", () => {
+            this.onMeshViewerChange?.(this.#appSection.meshViewer)
+        })
+        this.#appSection.addEventListener("galacticad-mesh-simplify-change", () => {
+            this.onMeshSimplifyChange?.(this.#appSection.meshSimplifyOnExport)
         })
 
-        this.#mdcExpanded$ = new BehaviorSubject(g.devToolsMdcExportExpanded)
-        this.#mdcSection = document.createElement("div")
-        this.#mdcSection.className = "lighting-section"
-        this.#mdcSection.hidden = !this.#mdcExpanded$.value
+        const mkSection = (label: string, collapseId: string, ...nodes: Node[]) => {
+            const wrap = document.createElement("dev-tools-collapse")
+            wrap.setAttribute("label", label)
+            wrap.setAttribute("collapse-id", collapseId)
+            for (const n of nodes) wrap.appendChild(n)
+            return wrap
+        }
 
-        this.#mdcExpandedCheckbox = this.#addCheckbox(shadow, "Show MDC export", this.#mdcExpanded$.value)
-        this.#subscriptions.push(connectCheckbox(this.#mdcExpandedCheckbox, this.#mdcExpanded$))
-        this.#mdcExpanded$.pipe(skip(1)).subscribe(v => {
-            this.#settings.updateGlobal({ app: { devToolsMdcExportExpanded: v } })
-            this.#mdcSection.hidden = !v
-        })
-        shadow.appendChild(this.#mdcSection)
-
-        const mdcHead = document.createElement("div")
-        mdcHead.className = "shade-head"
-        mdcHead.textContent = "Mesh export (MDC)"
-        this.#mdcSection.appendChild(mdcHead)
-
-        const mdcLevers = this.#settings.getMdcExportLevers()
-        this.#mdcFeatureConstrainedPlacementCheckbox = this.#addCheckbox(
-            this.#mdcSection,
-            "Feature-constrained vertices",
-            mdcLevers.featureConstrainedPlacement,
+        this.#shadow.append(
+            mkSection("App", DEVTOOLS_COLLAPSE.panelApp, this.#appSection),
+            mkSection("Mesh export", DEVTOOLS_COLLAPSE.panelMeshExport, this.#meshExportSection),
+            mkSection("Renderer", DEVTOOLS_COLLAPSE.panelRenderer, this.#rendererSection),
+            mkSection("Logs", DEVTOOLS_COLLAPSE.panelLogs, this.#logsSection)
         )
-        this.#mdcFeatureConstrainedPlacementCheckbox.addEventListener("change", () => {
-            this.#settings.updateGlobal({
-                app: {
-                    mdcExportLevers: {
-                        featureConstrainedPlacement: this.#mdcFeatureConstrainedPlacementCheckbox.checked,
-                    },
-                },
-            })
-            this.onMdcExportLeversChange?.()
-        })
-        for (const k of MDC_RANGE_KNOBS) {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = k.label
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = String(k.min)
-            range.max = String(k.max)
-            range.step = String(k.step)
-            range.value = String(mdcLevers[k.key])
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatMdcValue(k.key, mdcLevers[k.key])
-            range.addEventListener("input", () => {
-                let v = parseFloat(range.value)
-                if (!Number.isFinite(v)) v = k.min
-                v = Math.max(k.min, Math.min(k.max, v))
-                this.#settings.updateGlobal({
-                    app: { mdcExportLevers: { [k.key]: v } },
-                })
-                valueEl.textContent = DevToolsPanel.#formatMdcValue(k.key, v)
-                this.onMdcExportLeversChange?.()
-            })
-            row.append(lab, range, valueEl)
-            this.#mdcSection.appendChild(row)
-            this.#mdcRows.set(k.key, { range, valueEl })
+
+        this.#restorePersistableSection(this.#appSection)
+        this.#restorePersistableSection(this.#logsSection)
+        this.#rendererSection.setLightingSectionVisible(this.#appSection.lightingExpanded)
+
+        this.#persistListener = (ev: Event) => {
+            if (!(ev instanceof CustomEvent)) return
+            const id = (ev as CustomEvent<{ sectionId?: string }>).detail?.sectionId
+            if (typeof id !== "string") return
+            const t = ev.target
+            if (!isDevToolsPersistable(t) || t.devToolsSectionId !== id) return
+            this.#schedulePersistGlobal(id, t)
         }
+        this.#shadow.addEventListener(DEVTOOLS_STATE_CHANGE_EVENT, this.#persistListener)
 
-        const mdcDefaults = document.createElement("button")
-        mdcDefaults.textContent = "MDC defaults"
-        mdcDefaults.addEventListener("click", () => {
-            this.#settings.updateGlobal({
-                app: {
-                    mdcExportLevers: {
-                        isoValue: DEFAULT_MDC_EXPORT_LEVERS.isoValue,
-                        creaseAngleDeg: DEFAULT_MDC_EXPORT_LEVERS.creaseAngleDeg,
-                        featureConstrainedPlacement: DEFAULT_MDC_EXPORT_LEVERS.featureConstrainedPlacement,
-                    },
-                },
-            })
-            const next = this.#settings.getGlobal().app.mdcExportLevers
-            this.#mdcFeatureConstrainedPlacementCheckbox.checked = next.featureConstrainedPlacement
-            for (const knob of MDC_RANGE_KNOBS) {
-                const row = this.#mdcRows.get(knob.key)
-                if (!row) continue
-                row.range.value = String(next[knob.key])
-                row.valueEl.textContent = DevToolsPanel.#formatMdcValue(knob.key, next[knob.key])
-            }
-            this.onMdcExportLeversChange?.()
-        })
-        this.#mdcSection.appendChild(mdcDefaults)
-
-        this.#simplifyTuningState = { ...DEFAULT_SIMPLIFY_TUNING, ...g.simplifyTuning }
-        this.#simplifySection = document.createElement("div")
-        this.#simplifySection.className = "lighting-section"
-        shadow.appendChild(this.#simplifySection)
-
-        const simpHead = document.createElement("div")
-        simpHead.className = "shade-head"
-        simpHead.textContent = "MDC simplification"
-        this.#simplifySection.appendChild(simpHead)
-
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Tri ratio"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0.01"
-            range.max = "1"
-            range.step = "0.01"
-            range.value = String(this.#simplifyTuningState.targetRatio)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetRatio", this.#simplifyTuningState.targetRatio)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#simplifyTuningState = { ...this.#simplifyTuningState, targetRatio: v }
-                valueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetRatio", v)
-                this.#persistSimplifyTuning()
-            })
-            row.append(lab, range, valueEl)
-            this.#simplifySection.appendChild(row)
-            this.#simplifyTargetRatioRange = range
-            this.#simplifyTargetRatioValueEl = valueEl
-        }
-
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Max error"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0.00005"
-            range.max = "0.05"
-            range.step = "0.00005"
-            range.value = String(this.#simplifyTuningState.targetError)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetError", this.#simplifyTuningState.targetError)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#simplifyTuningState = { ...this.#simplifyTuningState, targetError: v }
-                valueEl.textContent = DevToolsPanel.#formatSimplifyValue("targetError", v)
-                this.#persistSimplifyTuning()
-            })
-            row.append(lab, range, valueEl)
-            this.#simplifySection.appendChild(row)
-            this.#simplifyTargetErrorRange = range
-            this.#simplifyTargetErrorValueEl = valueEl
-        }
-
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Normal wt"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0"
-            range.max = "4"
-            range.step = "0.05"
-            range.value = String(this.#simplifyTuningState.normalWeight)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatSimplifyValue("normalWeight", this.#simplifyTuningState.normalWeight)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#simplifyTuningState = { ...this.#simplifyTuningState, normalWeight: v }
-                valueEl.textContent = DevToolsPanel.#formatSimplifyValue("normalWeight", v)
-                this.#persistSimplifyTuning()
-            })
-            row.append(lab, range, valueEl)
-            this.#simplifySection.appendChild(row)
-            this.#simplifyNormalWeightRange = range
-            this.#simplifyNormalWeightValueEl = valueEl
-        }
-
-        const simplifyBoolRows: { key: SimplifyBoolKey; label: string }[] = [
-            { key: "lockBorder", label: "Lock border" },
-            { key: "sparse", label: "Sparse" },
-            { key: "errorAbsolute", label: "Absolute error" },
-            { key: "prune", label: "Prune" },
-            { key: "regularize", label: "Regularize" },
-            { key: "renormalizeTriangles", label: "Renormalize triangles" },
-        ]
-        for (const { key, label } of simplifyBoolRows) {
-            const cb = this.#addCheckbox(this.#simplifySection, label, this.#simplifyTuningState[key])
-            this.#simplifyBoolCheckboxes.set(key, cb)
-            cb.addEventListener("change", () => {
-                const next: SimplifyTuning = { ...this.#simplifyTuningState }
-                next[key] = cb.checked
-                this.#simplifyTuningState = next
-                this.#persistSimplifyTuning()
-            })
-        }
-
-        const simplifyDefaults = document.createElement("button")
-        simplifyDefaults.textContent = "Simplify defaults"
-        simplifyDefaults.addEventListener("click", () => {
-            this.syncSimplifyTuningFromSettings({ ...DEFAULT_SIMPLIFY_TUNING })
-            this.#persistSimplifyTuning()
-        })
-        this.#simplifySection.appendChild(simplifyDefaults)
-
-        this.#useShrecCheckbox = this.#addCheckbox(shadow, "SHREC exporter", this.#useShrec$.value)
-        this.#subscriptions.push(connectCheckbox(this.#useShrecCheckbox, this.#useShrec$))
-        this.#useShrec$.pipe(skip(1)).subscribe(v => {
-            this.#settings.updateGlobal({ app: { useShrecExporter: v } })
-            this.onUseShrecExporterChange?.(v)
-        })
-
-        // SHREC tuning subsection (visible regardless of toggle so it can be
-        // dialled in pre-flight; values only take effect when the SHREC
-        // exporter is selected and `mergeSharpEnabled` is true).
-        this.#shrecTuningState = { ...DEFAULT_SHREC_TUNING, ...g.shrecTuning }
-        this.#shrecSection = document.createElement("div")
-        this.#shrecSection.className = "lighting-section"
-        shadow.appendChild(this.#shrecSection)
-
-        const shrecHead = document.createElement("div")
-        shrecHead.className = "shade-head"
-        shrecHead.textContent = "SHREC tuning"
-        this.#shrecSection.appendChild(shrecHead)
-
-        // MergeSharp on/off (within SHREC). When false, plain DC mass-point
-        // output is returned — useful for A/B testing the relocation pass.
-        this.#shrecMergeSharpCheckbox = this.#addCheckbox(this.#shrecSection, "MergeSharp", this.#shrecTuningState.mergeSharpEnabled)
-        this.#shrecMergeSharpCheckbox.addEventListener("change", () => {
-            this.#shrecTuningState = { ...this.#shrecTuningState, mergeSharpEnabled: this.#shrecMergeSharpCheckbox.checked }
-            this.#persistShrecTuning()
-        })
-
-        // Rel cutoff slider: smaller → more vertices snap to detected features.
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Rel cutoff"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0.005"
-            range.max = "0.5"
-            range.step = "0.005"
-            range.value = String(this.#shrecTuningState.mergeRelCutoff)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeRelCutoff", this.#shrecTuningState.mergeRelCutoff)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#shrecTuningState = { ...this.#shrecTuningState, mergeRelCutoff: v }
-                valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeRelCutoff", v)
-                this.#persistShrecTuning()
-            })
-            row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
-            this.#shrecRelCutoffRange = range
-            this.#shrecRelCutoffValueEl = valueEl
-        }
-
-        // Max displacement slider (mm). 0 = disabled (only cell-bounds clamp applies).
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Max disp (mm)"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0"
-            range.max = "2"
-            range.step = "0.05"
-            range.value = String(this.#shrecTuningState.mergeMaxDisplacement)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeMaxDisplacement", this.#shrecTuningState.mergeMaxDisplacement)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#shrecTuningState = { ...this.#shrecTuningState, mergeMaxDisplacement: v }
-                valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeMaxDisplacement", v)
-                this.#persistShrecTuning()
-            })
-            row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
-            this.#shrecMaxDispRange = range
-            this.#shrecMaxDispValueEl = valueEl
-        }
-
-        // Crease angle slider (deg). 180 = no splitting (single smooth group),
-        // 0 = every triangle its own face. -1 skips the crease-split pass. Default 30.
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Crease (°)"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "-1"
-            range.max = "180"
-            range.step = "1"
-            range.value = String(this.#shrecTuningState.creaseAngleDeg)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatShrecValue("creaseAngleDeg", this.#shrecTuningState.creaseAngleDeg)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#shrecTuningState = { ...this.#shrecTuningState, creaseAngleDeg: v }
-                valueEl.textContent = DevToolsPanel.#formatShrecValue("creaseAngleDeg", v)
-                this.#persistShrecTuning()
-            })
-            row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
-            this.#shrecCreaseRange = range
-            this.#shrecCreaseValueEl = valueEl
-        }
-
-        // Gradient-weight power slider. 0 = uniform weights (every crossing
-        // counts the same; current default). 1 = linear weighting w = g.
-        // 2 = squared weighting w = g² (the IJK reference). Higher = even
-        // more aggressive de-weighting of smooth-blend regions where g < 1.
-        // Has no visible effect on scenes built from true SDFs only.
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Grad weight"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0"
-            range.max = "4"
-            range.step = "0.1"
-            range.value = String(this.#shrecTuningState.mergeGradientWeightPower)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeGradientWeightPower", this.#shrecTuningState.mergeGradientWeightPower)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#shrecTuningState = { ...this.#shrecTuningState, mergeGradientWeightPower: v }
-                valueEl.textContent = DevToolsPanel.#formatShrecValue("mergeGradientWeightPower", v)
-                this.#persistShrecTuning()
-            })
-            row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
-            this.#shrecGradWeightRange = range
-            this.#shrecGradWeightValueEl = valueEl
-        }
-
-        // Dedup radius slider (in voxels). 0 = off (no merging). 0.5 = typical
-        // for collapsing CSG-corner clusters into a single shared vertex.
-        // 1.0 = aggressive (can also collapse across edge-shared cells).
-        // This is the "Merge" half of MergeSharp's name.
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Dedup (vx)"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0"
-            range.max = "1"
-            range.step = "0.05"
-            range.value = String(this.#shrecTuningState.dedupRadiusVoxels)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatShrecValue("dedupRadiusVoxels", this.#shrecTuningState.dedupRadiusVoxels)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#shrecTuningState = { ...this.#shrecTuningState, dedupRadiusVoxels: v }
-                valueEl.textContent = DevToolsPanel.#formatShrecValue("dedupRadiusVoxels", v)
-                this.#persistShrecTuning()
-            })
-            row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
-            this.#shrecDedupRange = range
-            this.#shrecDedupValueEl = valueEl
-        }
-
-        // Seam-aware QEF toggle. When on, cells whose corner voxels report
-        // a coherent CSG seam tangent are solved with a 1D constrained
-        // QEF along the known seam line — eliminates residual sub-voxel
-        // jitter that the unconstrained Tikhonov path leaves on long
-        // sharp edges.
-        this.#shrecSeamAwareCheckbox = this.#addCheckbox(this.#shrecSection, "Seam-aware QEF", this.#shrecTuningState.seamAwareEnabled)
-        this.#shrecSeamAwareCheckbox.addEventListener("change", () => {
-            this.#shrecTuningState = { ...this.#shrecTuningState, seamAwareEnabled: this.#shrecSeamAwareCheckbox.checked }
-            this.#persistShrecTuning()
-        })
-
-        // Seam tangent-agreement threshold (cos-of-angle). Higher values
-        // are stricter (fewer cells admitted to the seam path); lower
-        // values admit more cells but risk over-constraining cells that
-        // are near a seam but not on a single line.
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Seam agree"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0.5"
-            range.max = "1"
-            range.step = "0.01"
-            range.value = String(this.#shrecTuningState.seamAgreementCosThreshold)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatShrecValue("seamAgreementCosThreshold", this.#shrecTuningState.seamAgreementCosThreshold)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#shrecTuningState = { ...this.#shrecTuningState, seamAgreementCosThreshold: v }
-                valueEl.textContent = DevToolsPanel.#formatShrecValue("seamAgreementCosThreshold", v)
-                this.#persistShrecTuning()
-            })
-            row.append(lab, range, valueEl)
-            this.#shrecSection.appendChild(row)
-            this.#shrecSeamAgreementRange = range
-            this.#shrecSeamAgreementValueEl = valueEl
-        }
-
-        // Edge-fit refinement toggle. When on, post-MergeSharp groups
-        // seam-classified cells into chains and projects each chain's
-        // vertices onto an SVD-fitted line — eliminates per-cell QEF
-        // jitter on long CSG seams. Off-by-toggle for A/B comparison.
-        this.#shrecEdgeFitCheckbox = this.#addCheckbox(this.#shrecSection, "Edge fit (line)", this.#shrecTuningState.edgeFitEnabled)
-        this.#shrecEdgeFitCheckbox.addEventListener("change", () => {
-            this.#shrecTuningState = { ...this.#shrecTuningState, edgeFitEnabled: this.#shrecEdgeFitCheckbox.checked }
-            this.#persistShrecTuning()
-        })
-
-        const shrecDefaults = document.createElement("button")
-        shrecDefaults.textContent = "SHREC defaults"
-        shrecDefaults.addEventListener("click", () => {
-            this.syncShrecTuningFromSettings({ ...DEFAULT_SHREC_TUNING })
-            this.#persistShrecTuning()
-        })
-        this.#shrecSection.appendChild(shrecDefaults)
-
-        this.#cameraOptCheckbox = this.#addCheckbox(shadow, "Camera halfres", this.#cameraOptimization$.value)
-        this.#subscriptions.push(connectCheckbox(this.#cameraOptCheckbox, this.#cameraOptimization$))
-        this.#cameraOptimization$.pipe(skip(1)).subscribe(v => {
-            this.onCameraOptimizationChange?.(v)
-        })
-
-        this.#beamOptCheckbox = this.#addCheckbox(shadow, "Beam render", this.#beamOptimization$.value)
-        this.#subscriptions.push(connectCheckbox(this.#beamOptCheckbox, this.#beamOptimization$))
-        this.#beamOptimization$.pipe(skip(1)).subscribe(v => {
-            this.onBeamOptimizationChange?.(v)
-        })
-
-        this.#bvhOptCheckbox = this.#addCheckbox(shadow, "BVH optimize", this.#bvhOptimization$.value)
-        this.#subscriptions.push(connectCheckbox(this.#bvhOptCheckbox, this.#bvhOptimization$))
-        this.#bvhOptimization$.pipe(skip(1)).subscribe(v => {
-            this.onBvhOptimizationChange?.(v)
-        })
-
-        const debugHead = document.createElement("div")
-        debugHead.className = "shade-head"
-        debugHead.textContent = "Logs"
-        shadow.appendChild(debugHead)
-
-        const debugAllRow = document.createElement("div")
-        debugAllRow.style.display = "flex"
-        debugAllRow.style.gap = "6px"
-        debugAllRow.style.flexWrap = "wrap"
-        const allOn = document.createElement("button")
-        allOn.textContent = "All on"
-        const allOff = document.createElement("button")
-        allOff.textContent = "All off"
-        const setAllDebugLogs = (on: boolean) => {
-            const base = { ...this.#settings.getGlobal().app.debugLogModules }
-            for (const mod of DEBUG_LOG_MODULES) {
-                base[mod] = on
-                const cb = this.#debugLogCheckboxes.get(mod)
-                if (cb) cb.checked = on
-            }
-            this.#settings.updateGlobal({ app: { debugLogModules: base } })
-            this.onDebugLogModulesChange?.()
-        }
-        allOn.addEventListener("click", () => setAllDebugLogs(true))
-        allOff.addEventListener("click", () => setAllDebugLogs(false))
-        debugAllRow.append(allOn, allOff)
-        shadow.appendChild(debugAllRow)
-
-        const debugLogGrid = document.createElement("div")
-        debugLogGrid.className = "debug-log-list"
-        shadow.appendChild(debugLogGrid)
-
-        for (const mod of DEBUG_LOG_MODULES) {
-            const checked = g.debugLogModules?.[mod] === true
-            const cb = this.#addCheckbox(debugLogGrid, mod, checked)
-            this.#debugLogCheckboxes.set(mod, cb)
-            cb.addEventListener("change", () => {
-                const next = { ...this.#settings.getGlobal().app.debugLogModules, [mod]: cb.checked }
-                this.#settings.updateGlobal({ app: { debugLogModules: next } })
-                this.onDebugLogModulesChange?.()
-            })
-        }
-
-        this.#lightingExpandedCheckbox = this.#addCheckbox(shadow, "Show lighting", this.#lightingExpanded$.value)
-        this.#subscriptions.push(connectCheckbox(this.#lightingExpandedCheckbox, this.#lightingExpanded$))
-        this.#lightingExpanded$.pipe(skip(1)).subscribe(v => {
-            this.#settings.updateGlobal({ app: { devToolsLightingExpanded: v } })
-            this.#lightingSection.hidden = !v
-        })
-        shadow.appendChild(this.#lightingSection)
-
-        const shadeHead = document.createElement("div")
-        shadeHead.className = "shade-head"
-        shadeHead.textContent = "Preview lighting"
-        this.#lightingSection.appendChild(shadeHead)
-
-        for (const k of PREVIEW_SHADING_KNOBS) {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = k.label
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = String(k.min)
-            range.max = String(k.max)
-            range.step = String(k.step)
-            const v0 = this.#shadingState[k.key]
-            range.value = String(v0)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = DevToolsPanel.#formatShadeValue(k.key, v0)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#shadingState[k.key] = v
-                valueEl.textContent = DevToolsPanel.#formatShadeValue(k.key, v)
-                this.onPreviewShadingChange?.({ ...this.#shadingState })
-            })
-            row.append(lab, range, valueEl)
-            this.#lightingSection.appendChild(row)
-            this.#shadingRows.set(k.key, { range, valueEl })
-        }
-
-        const shadeDefaults = document.createElement("button")
-        shadeDefaults.textContent = "Lighting defaults"
-        shadeDefaults.addEventListener("click", () => {
-            this.#shadingState = { ...DEFAULT_PREVIEW_SHADING }
-            for (const knob of PREVIEW_SHADING_KNOBS) {
-                const row = this.#shadingRows.get(knob.key)!
-                const v = this.#shadingState[knob.key]
-                row.range.value = String(v)
-                row.valueEl.textContent = DevToolsPanel.#formatShadeValue(knob.key, v)
-            }
-            this.onPreviewShadingChange?.({ ...this.#shadingState })
-        })
-        this.#lightingSection.appendChild(shadeDefaults)
-
-        // Save Suite button
         const saveSuiteButton = document.createElement("button")
         saveSuiteButton.textContent = "Save Bench Suite"
         saveSuiteButton.addEventListener("click", async () => {
@@ -1066,9 +290,7 @@ export class DevToolsPanel extends HTMLElement {
                 saveSuiteButton.disabled = false
             }
         })
-        shadow.appendChild(saveSuiteButton)
 
-        // Benchmark button
         const benchmarkButton = document.createElement("button")
         benchmarkButton.textContent = "Bench Suite"
         benchmarkButton.addEventListener("click", async () => {
@@ -1079,9 +301,7 @@ export class DevToolsPanel extends HTMLElement {
                 benchmarkButton.disabled = false
             }
         })
-        shadow.appendChild(benchmarkButton)
 
-        // Benchmark this button (current view, no save)
         const benchmarkThisButton = document.createElement("button")
         benchmarkThisButton.textContent = "Benchmark"
         benchmarkThisButton.addEventListener("click", async () => {
@@ -1092,105 +312,109 @@ export class DevToolsPanel extends HTMLElement {
                 benchmarkThisButton.disabled = false
             }
         })
-        shadow.appendChild(benchmarkThisButton)
 
-        // Factory Reset button
+        const benchmarkWrap = mkSection("Benchmark", DEVTOOLS_COLLAPSE.panelBenchmark, saveSuiteButton, benchmarkButton, benchmarkThisButton)
+        this.#benchmarkSectionEl = benchmarkWrap
+
         const factoryResetButton = document.createElement("button")
         factoryResetButton.textContent = "Factory Reset"
         factoryResetButton.addEventListener("click", () => this.factoryReset())
-        shadow.appendChild(factoryResetButton)
 
-        // Hidden by default
+        const resetWrap = mkSection("Reset", DEVTOOLS_COLLAPSE.panelReset, factoryResetButton)
+
+        this.#shadow.append(benchmarkWrap, resetWrap)
+
         this.style.display = "none"
     }
 
-    /** Sync debug-log checkboxes from persisted settings (e.g. after storage load). */
+    /**
+     * Append a custom dev tools block. When `element` implements `DevToolsPersistable` and
+     * `scope` is `"global"`, state is restored from `app.devToolsSections` and changes are persisted.
+     */
+    registerSection(reg: DevToolsSectionRegistration): void {
+        const scope = reg.scope ?? "global"
+        const host = document.createElement("div")
+        host.className = "extra-slot"
+        host.appendChild(reg.element)
+        const order = reg.order ?? 1000
+        host.style.order = String(order)
+        this.#extraSectionHosts.push(host)
+        this.#shadow.insertBefore(host, this.#benchmarkSectionEl)
+
+        if (scope === "document") {
+            log("Settings").warn("registerSection: document scope not implemented; section mounted without persistence")
+        }
+        if (scope === "global" && isDevToolsPersistable(reg.element)) {
+            this.#restorePersistableSection(reg.element)
+        }
+    }
+
+    unregisterSection(element: HTMLElement): void {
+        const host = this.#extraSectionHosts.find(h => h.contains(element))
+        if (!host) return
+        if (isDevToolsPersistable(element)) {
+            this.#flushPersistTimer(element.devToolsSectionId)
+            this.#settings.mergeGlobalDevToolsSection(element.devToolsSectionId, element.getDevToolsState() as Record<string, unknown>)
+        }
+        host.remove()
+        const i = this.#extraSectionHosts.indexOf(host)
+        if (i >= 0) this.#extraSectionHosts.splice(i, 1)
+    }
+
+    #restorePersistableSection(el: DevToolsPersistable): void {
+        const saved = this.#settings.getGlobal().app.devToolsSections[el.devToolsSectionId]
+        const defaults: Record<string, JSONValue> =
+            el.devToolsSectionId === this.#appSection.devToolsSectionId ? { ...DEFAULT_APP_DEVTOOLS_STATE } : {}
+        el.setDevToolsState({ ...defaults, ...(saved as Record<string, JSONValue>) })
+    }
+
+    #schedulePersistGlobal(sectionId: string, source: DevToolsPersistable): void {
+        const prev = this.#debounceTimers.get(sectionId)
+        if (prev !== undefined) clearTimeout(prev)
+        this.#debounceTimers.set(
+            sectionId,
+            window.setTimeout(() => {
+                this.#debounceTimers.delete(sectionId)
+                this.#settings.mergeGlobalDevToolsSection(sectionId, source.getDevToolsState() as Record<string, unknown>)
+            }, 100)
+        )
+    }
+
+    #flushPersistTimer(sectionId: string): void {
+        const t = this.#debounceTimers.get(sectionId)
+        if (t !== undefined) {
+            clearTimeout(t)
+            this.#debounceTimers.delete(sectionId)
+        }
+    }
+
     syncDebugLogModulesFromSettings(state: DebugLogModulesState): void {
-        for (const mod of DEBUG_LOG_MODULES) {
-            const cb = this.#debugLogCheckboxes.get(mod)
-            if (cb) cb.checked = state[mod] === true
-        }
+        this.#logsSection.syncFromSettings(state)
     }
 
-    /** Sync range UI from renderer (e.g. after settings load). */
     syncPreviewShadingFromRenderer(params: PreviewShadingParams): void {
-        this.#shadingState = { ...params }
-        for (const knob of PREVIEW_SHADING_KNOBS) {
-            const row = this.#shadingRows.get(knob.key)
-            if (!row) continue
-            const v = params[knob.key]
-            row.range.value = String(v)
-            row.valueEl.textContent = DevToolsPanel.#formatShadeValue(knob.key, v)
+        this.#rendererSection.syncPreviewShadingFromRenderer(params)
+    }
+
+    syncPreviewNormalShadingFromRenderer(enabled: boolean): void {
+        this.#rendererSection.syncPreviewNormalShadingFromRenderer(enabled)
+    }
+
+    disconnectedCallback(): void {
+        for (const t of this.#debounceTimers.values()) clearTimeout(t)
+        this.#debounceTimers.clear()
+        if (this.#persistListener) {
+            this.#shadow.removeEventListener(DEVTOOLS_STATE_CHANGE_EVENT, this.#persistListener)
+            this.#persistListener = null
         }
-    }
-
-    static #formatShadeValue(key: keyof PreviewShadingParams, v: number): string {
-        if (key === "specShininess" || key === "aoSteps") return String(Math.round(v))
-        return v.toFixed(2)
-    }
-
-    /** Format a voxel-size value in mm for the slider readout. */
-    static #formatVoxelSize(mm: number): string {
-        // Sub-mm values render with extra precision; ≥1 mm rounds nicely.
-        if (mm < 0.1) return mm.toFixed(3)
-        return mm.toFixed(2)
-    }
-
-    static #formatShrecValue(key: keyof ShrecTuning, v: number | boolean): string {
-        if (typeof v === "boolean") return v ? "on" : "off"
-        if (key === "mergeRelCutoff") return v.toFixed(3)
-        if (key === "mergeMaxDisplacement") return v === 0 ? "off" : v.toFixed(2)
-        if (key === "creaseAngleDeg") return `${Math.round(v)}°`
-        if (key === "mergeGradientWeightPower") return v === 0 ? "off" : `g^${v.toFixed(1)}`
-        if (key === "dedupRadiusVoxels") return v === 0 ? "off" : v.toFixed(2)
-        if (key === "seamAgreementCosThreshold") {
-            // Show as the equivalent angle (in degrees) for readability —
-            // the slider's underlying value is the cosine.
-            const deg = Math.acos(Math.max(-1, Math.min(1, v))) * 180 / Math.PI
-            return `${deg.toFixed(0)}°`
-        }
-        return v.toFixed(2)
-    }
-
-    /** Persist the current SHREC tuning state and notify listeners. */
-    #persistShrecTuning(): void {
-        const next = { ...this.#shrecTuningState }
-        this.#settings.updateGlobal({ app: { shrecTuning: next } })
-        this.onShrecTuningChange?.(next)
-    }
-
-    #persistSimplifyTuning(): void {
-        const next = { ...this.#simplifyTuningState }
-        this.#settings.updateGlobal({ app: { simplifyTuning: next } })
-        this.onSimplifyTuningChange?.(next)
-    }
-
-    static #formatSimplifyValue(key: "targetRatio" | "targetError" | "normalWeight", v: number): string {
-        if (key === "targetRatio") return `${(v * 100).toFixed(0)}%`
-        if (key === "targetError") return v < 0.001 ? v.toExponential(2) : v.toFixed(4)
-        return v === 0 ? "0" : v.toFixed(2)
-    }
-
-    static #formatMdcValue(key: (typeof MDC_RANGE_KNOBS)[number]["key"], v: number): string {
-        if (key === "isoValue") return v.toFixed(3)
-        if (key === "creaseAngleDeg") return String(Math.round(v))
-        return v.toFixed(2)
-    }
-    #addCheckbox(parent: ParentNode, label: string, checked: boolean): HTMLInputElement {
-        const el = document.createElement("label")
-        const cb = document.createElement("input")
-        cb.type = "checkbox"
-        cb.checked = checked
-        el.append(cb, label)
-        parent.appendChild(el)
-        return cb
-    }
-
-    disconnectedCallback() {
-        for (const sub of this.#subscriptions) {
-            sub.unsubscribe()
-        }
-        this.#subscriptions = []
+        this.#settings.mergeGlobalDevToolsSection(
+            this.#appSection.devToolsSectionId,
+            this.#appSection.getDevToolsState() as Record<string, unknown>
+        )
+        this.#settings.mergeGlobalDevToolsSection(
+            this.#logsSection.devToolsSectionId,
+            this.#logsSection.getDevToolsState() as Record<string, unknown>
+        )
     }
 
     async #saveBenchmarkSuite(): Promise<void> {
@@ -1242,12 +466,12 @@ export class DevToolsPanel extends HTMLElement {
                     r.result.error
                         ? { document: r.name, error: r.result.error }
                         : {
-                            document: r.name,
-                            "avg (ms)": r.result.averageFrameTime.toFixed(2),
-                            fps: r.result.framesPerSecond.toFixed(2),
-                            "min (ms)": r.result.minFrameTime.toFixed(2),
-                            "max (ms)": r.result.maxFrameTime.toFixed(2),
-                        }
+                              document: r.name,
+                              "avg (ms)": r.result.averageFrameTime.toFixed(2),
+                              fps: r.result.framesPerSecond.toFixed(2),
+                              "min (ms)": r.result.minFrameTime.toFixed(2),
+                              "max (ms)": r.result.maxFrameTime.toFixed(2),
+                          }
                 )
             )
 
@@ -1286,12 +510,12 @@ export class DevToolsPanel extends HTMLElement {
                     r.result.error
                         ? { document: r.name, error: r.result.error }
                         : {
-                            document: r.name,
-                            "avg (ms)": r.result.averageFrameTime.toFixed(2),
-                            fps: r.result.framesPerSecond.toFixed(2),
-                            "min (ms)": r.result.minFrameTime.toFixed(2),
-                            "max (ms)": r.result.maxFrameTime.toFixed(2),
-                        }
+                              document: r.name,
+                              "avg (ms)": r.result.averageFrameTime.toFixed(2),
+                              fps: r.result.framesPerSecond.toFixed(2),
+                              "min (ms)": r.result.minFrameTime.toFixed(2),
+                              "max (ms)": r.result.maxFrameTime.toFixed(2),
+                          }
                 )
             )
 
@@ -1305,7 +529,6 @@ export class DevToolsPanel extends HTMLElement {
         }
     }
 
-    /** Public API for console: factoryReset() */
     async factoryReset(): Promise<void> {
         return this.#doFactoryReset()
     }

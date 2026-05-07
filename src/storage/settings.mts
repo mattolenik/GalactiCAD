@@ -3,6 +3,12 @@ import { debounceTime } from "rxjs/operators"
 import type { DebugLogModulesState } from "../logging/debug-log.mjs"
 import { log, mergeDebugLogModulesFromStorage } from "../logging/debug-log.mjs"
 import {
+    DEFAULT_APP_DEVTOOLS_STATE,
+    DEVTOOLS_COLLAPSE,
+    DEVTOOLS_SECTION_APP,
+    DEVTOOLS_SECTION_LOGS,
+} from "../components/dev-tools-protocol.mjs"
+import {
     DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
     DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_SHREC_TUNING,
@@ -13,6 +19,9 @@ import {
 } from "../render-worker-protocol.mjs"
 import { db } from "./db.mjs"
 
+/** Per-section JSON snapshots under `GlobalSettings.app.devToolsSections`. */
+export type DevToolsSectionsMap = Record<string, Record<string, unknown>>
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -22,6 +31,8 @@ export interface CameraSettings {
     translation: [number, number, number]
     zoom: number
     rotation: [number, number, number, number] // quaternion [w, x, y, z]
+    /** Orbit / look-at pivot in scene space; omitted in older saves → origin. */
+    pivot?: [number, number, number]
 }
 
 export interface PreviewSettings {
@@ -75,14 +86,7 @@ export interface GlobalSettings {
     preview: { movementScale: number; selectionMode: SelectionMode; cameraRotationMethod: CameraRotationMethod }
     meshViewer: { translucentFaces: boolean; wireframe: boolean }
     app: {
-        meshViewerEnabled: boolean
         devToolsEnabled: boolean
-        /** When true, dev tools shows the preview lighting sliders. */
-        devToolsLightingExpanded: boolean
-        /** When true, dev tools shows MDC mesh export levers. */
-        devToolsMdcExportExpanded: boolean
-        showFps: boolean
-        meshSimplifyOnExport: boolean
         /** Voxel edge length (mm) for the mesh-export grid; applies to both MDC and SHREC. */
         meshExportVoxelSizeMm: number
         /** When true, mesh export uses the SHREC/MergeSharp pipeline; otherwise MDC. */
@@ -96,8 +100,10 @@ export interface GlobalSettings {
         diskSyncIntervalSeconds: number
         theme: ThemeMode
         editor: EditorSettings
-        /** Per-module debug logging; Dev Tools checkboxes. */
-        debugLogModules: DebugLogModulesState
+        /** Dev tools panel sections: keyed by `devToolsSectionId`. */
+        devToolsSections: DevToolsSectionsMap
+        /** Dev tools `<details>` groups: keyed by `DEVTOOLS_COLLAPSE` id; `true` = expanded. */
+        devToolsCollapseOpen: Record<string, boolean>
     }
     layout: LayoutSettings
 }
@@ -119,7 +125,7 @@ export type GlobalSettingsPatch = {
 // ---------------------------------------------------------------------------
 
 function defaultCamera(): CameraSettings {
-    return { position: [0, 0, 0], translation: [0, 0, 0], zoom: 20, rotation: [1, 0, 0, 0] }
+    return { position: [0, 0, 0], translation: [0, 0, 0], zoom: 20, rotation: [1, 0, 0, 0], pivot: [0, 0, 0] }
 }
 
 function defaultPreview(): PreviewSettings {
@@ -190,12 +196,7 @@ function defaultGlobalSettings(): GlobalSettings {
         preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
         meshViewer: { translucentFaces: false, wireframe: false },
         app: {
-            meshViewerEnabled: false,
             devToolsEnabled: false,
-            devToolsLightingExpanded: false,
-            devToolsMdcExportExpanded: false,
-            showFps: true,
-            meshSimplifyOnExport: true,
             meshExportVoxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
             useShrecExporter: false,
             shrecTuning: { ...DEFAULT_SHREC_TUNING },
@@ -204,7 +205,8 @@ function defaultGlobalSettings(): GlobalSettings {
             diskSyncIntervalSeconds: 30,
             theme: "dark",
             editor: defaultEditorSettings(),
-            debugLogModules: {},
+            devToolsSections: {},
+            devToolsCollapseOpen: {},
         },
         layout: defaultLayout(),
     }
@@ -394,6 +396,30 @@ export class SettingsManager {
         })
     }
 
+    /** Replace one dev tools section snapshot and debounce-persist global settings. */
+    mergeGlobalDevToolsSection(sectionId: string, snapshot: Record<string, unknown>): void {
+        this.#globalSettings.app.devToolsSections = {
+            ...this.#globalSettings.app.devToolsSections,
+            [sectionId]: { ...snapshot },
+        }
+        this.#globalSave$.next()
+    }
+
+    /** Persist one dev tools collapsible expanded state (`true` = open). */
+    mergeGlobalDevToolsCollapse(id: string, open: boolean): void {
+        this.#globalSettings.app.devToolsCollapseOpen = {
+            ...this.#globalSettings.app.devToolsCollapseOpen,
+            [id]: open,
+        }
+        this.#globalSave$.next()
+    }
+
+    /** Per-module debug flags from persisted dev tools logs section. */
+    getDebugLogModules(): DebugLogModulesState {
+        const blob = this.#globalSettings.app.devToolsSections[DEVTOOLS_SECTION_LOGS]
+        return mergeDebugLogModulesFromStorage(blob)
+    }
+
     // -----------------------------------------------------------------------
     // Flush
     // -----------------------------------------------------------------------
@@ -452,37 +478,107 @@ export class SettingsManager {
             try {
                 const parsed = row.value as Partial<GlobalSettings>
                 const preview = { ...def.preview, ...parsed.preview }
-                const app = { ...def.app, ...parsed.app }
-                if (typeof app.diskSyncIntervalSeconds !== "number") app.diskSyncIntervalSeconds = 30
-                if (typeof app.meshSimplifyOnExport !== "boolean") app.meshSimplifyOnExport = true
-                if (typeof app.meshExportVoxelSizeMm !== "number" || !isFinite(app.meshExportVoxelSizeMm) || app.meshExportVoxelSizeMm <= 0) app.meshExportVoxelSizeMm = DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
-                if (typeof app.useShrecExporter !== "boolean") app.useShrecExporter = false
+                const rawApp = (parsed.app ?? {}) as Record<string, unknown>
+                const devToolsSectionsRaw = rawApp.devToolsSections
+                const devToolsSections: DevToolsSectionsMap = {}
+                if (devToolsSectionsRaw && typeof devToolsSectionsRaw === "object" && !Array.isArray(devToolsSectionsRaw)) {
+                    for (const [k, v] of Object.entries(devToolsSectionsRaw as Record<string, unknown>)) {
+                        if (v && typeof v === "object" && !Array.isArray(v)) devToolsSections[k] = { ...(v as Record<string, unknown>) }
+                    }
+                }
+                const collapseRaw = rawApp.devToolsCollapseOpen
+                const devToolsCollapseOpen: Record<string, boolean> = {}
+                if (collapseRaw && typeof collapseRaw === "object" && !Array.isArray(collapseRaw)) {
+                    for (const [k, v] of Object.entries(collapseRaw as Record<string, unknown>)) {
+                        if (typeof v === "boolean") devToolsCollapseOpen[k] = v
+                    }
+                }
+
+                if (
+                    typeof rawApp.showFps === "boolean" ||
+                    typeof rawApp.meshViewerEnabled === "boolean" ||
+                    typeof rawApp.meshSimplifyOnExport === "boolean" ||
+                    typeof rawApp.devToolsLightingExpanded === "boolean"
+                ) {
+                    const base: Record<string, unknown> = {
+                        ...DEFAULT_APP_DEVTOOLS_STATE,
+                        ...(devToolsSections[DEVTOOLS_SECTION_APP] ?? {}),
+                    }
+                    if (typeof rawApp.showFps === "boolean") base.showFps = rawApp.showFps
+                    if (typeof rawApp.meshViewerEnabled === "boolean") base.meshViewerEnabled = rawApp.meshViewerEnabled
+                    if (typeof rawApp.meshSimplifyOnExport === "boolean") base.meshSimplifyOnExport = rawApp.meshSimplifyOnExport
+                    if (typeof rawApp.devToolsLightingExpanded === "boolean") base.lightingExpanded = rawApp.devToolsLightingExpanded
+                    devToolsSections[DEVTOOLS_SECTION_APP] = base
+                }
+                const legacyLogs = rawApp.debugLogModules
+                if (legacyLogs && typeof legacyLogs === "object" && !Array.isArray(legacyLogs)) {
+                    const logSec: Record<string, unknown> = { ...(devToolsSections[DEVTOOLS_SECTION_LOGS] ?? {}) }
+                    for (const [k, v] of Object.entries(legacyLogs as Record<string, unknown>)) {
+                        if (typeof v === "boolean") logSec[k] = v
+                    }
+                    devToolsSections[DEVTOOLS_SECTION_LOGS] = logSec
+                }
+                if (typeof rawApp.devToolsMdcExportExpanded === "boolean") {
+                    devToolsCollapseOpen[DEVTOOLS_COLLAPSE.appMeshExportMdc] = rawApp.devToolsMdcExportExpanded
+                }
+
+                const diskRaw = rawApp.diskSyncIntervalSeconds
+                const themeRaw = rawApp.theme
+
+                let meshExportVoxelSizeMm = def.app.meshExportVoxelSizeMm
+                if (
+                    typeof rawApp.meshExportVoxelSizeMm === "number" &&
+                    isFinite(rawApp.meshExportVoxelSizeMm) &&
+                    rawApp.meshExportVoxelSizeMm > 0
+                ) {
+                    meshExportVoxelSizeMm = rawApp.meshExportVoxelSizeMm
+                }
+
+                let useShrecExporter =
+                    typeof rawApp.useShrecExporter === "boolean" ? rawApp.useShrecExporter : def.app.useShrecExporter
+
+                let shrecTuning: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
                 {
-                    const t = (app as { shrecTuning?: Partial<ShrecTuning> }).shrecTuning
+                    const t = rawApp.shrecTuning as Partial<ShrecTuning> | undefined
                     const cur = { ...DEFAULT_SHREC_TUNING, ...(t ?? {}) }
                     if (typeof cur.mergeSharpEnabled !== "boolean") cur.mergeSharpEnabled = DEFAULT_SHREC_TUNING.mergeSharpEnabled
                     if (typeof cur.mergeRelCutoff !== "number" || !isFinite(cur.mergeRelCutoff)) cur.mergeRelCutoff = DEFAULT_SHREC_TUNING.mergeRelCutoff
-                    if (typeof cur.mergeMaxDisplacement !== "number" || !isFinite(cur.mergeMaxDisplacement) || cur.mergeMaxDisplacement < 0) cur.mergeMaxDisplacement = DEFAULT_SHREC_TUNING.mergeMaxDisplacement
-                    if (typeof cur.creaseAngleDeg !== "number" || !isFinite(cur.creaseAngleDeg) || cur.creaseAngleDeg < -1 || cur.creaseAngleDeg > 180) cur.creaseAngleDeg = DEFAULT_SHREC_TUNING.creaseAngleDeg
-                    if (typeof cur.mergeGradientWeightPower !== "number" || !isFinite(cur.mergeGradientWeightPower) || cur.mergeGradientWeightPower < 0) cur.mergeGradientWeightPower = DEFAULT_SHREC_TUNING.mergeGradientWeightPower
-                    if (typeof cur.dedupRadiusVoxels !== "number" || !isFinite(cur.dedupRadiusVoxels) || cur.dedupRadiusVoxels < 0) cur.dedupRadiusVoxels = DEFAULT_SHREC_TUNING.dedupRadiusVoxels
+                    if (typeof cur.mergeMaxDisplacement !== "number" || !isFinite(cur.mergeMaxDisplacement) || cur.mergeMaxDisplacement < 0) {
+                        cur.mergeMaxDisplacement = DEFAULT_SHREC_TUNING.mergeMaxDisplacement
+                    }
+                    if (typeof cur.creaseAngleDeg !== "number" || !isFinite(cur.creaseAngleDeg) || cur.creaseAngleDeg < -1 || cur.creaseAngleDeg > 180) {
+                        cur.creaseAngleDeg = DEFAULT_SHREC_TUNING.creaseAngleDeg
+                    }
+                    if (typeof cur.mergeGradientWeightPower !== "number" || !isFinite(cur.mergeGradientWeightPower) || cur.mergeGradientWeightPower < 0) {
+                        cur.mergeGradientWeightPower = DEFAULT_SHREC_TUNING.mergeGradientWeightPower
+                    }
+                    if (typeof cur.dedupRadiusVoxels !== "number" || !isFinite(cur.dedupRadiusVoxels) || cur.dedupRadiusVoxels < 0) {
+                        cur.dedupRadiusVoxels = DEFAULT_SHREC_TUNING.dedupRadiusVoxels
+                    }
                     if (typeof cur.seamAwareEnabled !== "boolean") cur.seamAwareEnabled = DEFAULT_SHREC_TUNING.seamAwareEnabled
-                    if (typeof cur.seamAgreementCosThreshold !== "number" || !isFinite(cur.seamAgreementCosThreshold) || cur.seamAgreementCosThreshold < 0 || cur.seamAgreementCosThreshold > 1) cur.seamAgreementCosThreshold = DEFAULT_SHREC_TUNING.seamAgreementCosThreshold
+                    if (
+                        typeof cur.seamAgreementCosThreshold !== "number" ||
+                        !isFinite(cur.seamAgreementCosThreshold) ||
+                        cur.seamAgreementCosThreshold < 0 ||
+                        cur.seamAgreementCosThreshold > 1
+                    ) {
+                        cur.seamAgreementCosThreshold = DEFAULT_SHREC_TUNING.seamAgreementCosThreshold
+                    }
                     if (typeof cur.edgeFitEnabled !== "boolean") cur.edgeFitEnabled = DEFAULT_SHREC_TUNING.edgeFitEnabled
                     if (typeof cur.featureConstrainedPlacement !== "boolean") {
                         cur.featureConstrainedPlacement = DEFAULT_SHREC_TUNING.featureConstrainedPlacement
                     }
-                    app.shrecTuning = cur
+                    shrecTuning = cur
                 }
+
+                let simplifyTuning: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
                 {
-                    const st = (app as { simplifyTuning?: Partial<SimplifyTuning> }).simplifyTuning
+                    const st = rawApp.simplifyTuning as Partial<SimplifyTuning> | undefined
                     const s = { ...DEFAULT_SIMPLIFY_TUNING, ...(st ?? {}) }
                     const clamp01 = (x: number, d: number) =>
                         typeof x === "number" && isFinite(x) ? Math.min(1, Math.max(0.01, x)) : d
-                    const clampErr = (x: number, d: number) =>
-                        typeof x === "number" && isFinite(x) && x >= 0 ? x : d
-                    const clampNw = (x: number, d: number) =>
-                        typeof x === "number" && isFinite(x) && x >= 0 ? Math.min(8, x) : d
+                    const clampErr = (x: number, d: number) => (typeof x === "number" && isFinite(x) && x >= 0 ? x : d)
+                    const clampNw = (x: number, d: number) => (typeof x === "number" && isFinite(x) && x >= 0 ? Math.min(8, x) : d)
                     s.targetRatio = clamp01(s.targetRatio, DEFAULT_SIMPLIFY_TUNING.targetRatio)
                     s.targetError = clampErr(s.targetError, DEFAULT_SIMPLIFY_TUNING.targetError)
                     if (typeof s.lockBorder !== "boolean") s.lockBorder = DEFAULT_SIMPLIFY_TUNING.lockBorder
@@ -494,15 +590,13 @@ export class SettingsManager {
                         s.renormalizeTriangles = DEFAULT_SIMPLIFY_TUNING.renormalizeTriangles
                     }
                     s.normalWeight = clampNw(s.normalWeight, DEFAULT_SIMPLIFY_TUNING.normalWeight)
-                    app.simplifyTuning = s
+                    simplifyTuning = s
                 }
-                if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false
-                if (typeof app.devToolsLightingExpanded !== "boolean") app.devToolsLightingExpanded = false
-                if (typeof app.devToolsMdcExportExpanded !== "boolean") app.devToolsMdcExportExpanded = false
-                app.mdcExportLevers = normalizeMdcExportLevers(app.mdcExportLevers)
-                if (app.theme !== "light" && app.theme !== "dark" && app.theme !== "auto") app.theme = "dark"
+
+                let mdcExportLevers = normalizeMdcExportLevers(rawApp.mdcExportLevers)
+
                 const editorDef = defaultEditorSettings()
-                const editor = { ...editorDef, ...(parsed.app as { editor?: Partial<EditorSettings> })?.editor }
+                const editor = { ...editorDef, ...(rawApp.editor as Partial<EditorSettings> | undefined) }
                 if (editor.lineNumbers !== "on" && editor.lineNumbers !== "off" && editor.lineNumbers !== "relative")
                     editor.lineNumbers = editorDef.lineNumbers
                 if (editor.wordWrap !== "on" && editor.wordWrap !== "off") editor.wordWrap = editorDef.wordWrap
@@ -519,8 +613,24 @@ export class SettingsManager {
                 if (typeof editor.folding !== "boolean") editor.folding = editorDef.folding
                 if (typeof editor.tabSize !== "number" || editor.tabSize < 2 || editor.tabSize > 8)
                     editor.tabSize = editorDef.tabSize
-                app.editor = editor
-                app.debugLogModules = mergeDebugLogModulesFromStorage(app.debugLogModules)
+                let diskSyncIntervalSeconds = typeof diskRaw === "number" ? diskRaw : def.app.diskSyncIntervalSeconds
+                if (typeof diskSyncIntervalSeconds !== "number") diskSyncIntervalSeconds = 30
+                const app: GlobalSettings["app"] = {
+                    devToolsEnabled: typeof rawApp.devToolsEnabled === "boolean" ? rawApp.devToolsEnabled : def.app.devToolsEnabled,
+                    meshExportVoxelSizeMm,
+                    useShrecExporter,
+                    shrecTuning,
+                    simplifyTuning,
+                    mdcExportLevers,
+                    diskSyncIntervalSeconds,
+                    theme:
+                        themeRaw === "light" || themeRaw === "dark" || themeRaw === "auto"
+                            ? themeRaw
+                            : def.app.theme,
+                    editor,
+                    devToolsSections,
+                    devToolsCollapseOpen,
+                }
                 this.#globalSettings = {
                     preview,
                     meshViewer: { ...def.meshViewer, ...parsed.meshViewer },

@@ -66,7 +66,12 @@ import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad } from "./fs/file-picker.mjs"
 import { clearRecentDocuments, db, getDoc, getRecentDocuments } from "./storage/db.mjs"
 import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
-import { applyDebugLogModules, connectMainThreadDevLogToBridge, log as debugLog } from "./logging/debug-log.mjs"
+import {
+    applyDebugLogModules,
+    connectMainThreadDevLogToBridge,
+    installDevActiveSceneSourceGetter,
+    log as debugLog,
+} from "./logging/debug-log.mjs"
 import { VERSION } from "./version.mjs"
 
 connectMainThreadDevLogToBridge()
@@ -551,6 +556,10 @@ class App {
         this.#tabs = new DocumentTabs(this.editor)
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
+        installDevActiveSceneSourceGetter(() => {
+            const model = this.editor.getModel()
+            return model ? model.getValue() : ""
+        })
 
         this.#injectStyles()
         const initialTheme = resolveEffectiveTheme(this.#settings.getGlobal().app.theme)
@@ -735,7 +744,7 @@ class App {
 
     async #restoreOrShowWelcome(): Promise<void> {
         await this.#settings.ready()
-        applyDebugLogModules(this.#settings.getGlobal().app.debugLogModules)
+        applyDebugLogModules(this.#settings.getDebugLogModules())
         const anchor = this.#resolveAnchor()
         if (anchor) {
             const docRow = await db.documents.get(anchor)
@@ -1167,21 +1176,18 @@ class App {
             devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
         })
 
-        const showFps = this.#settings.getGlobal().app.showFps
-        devTools.showFps = showFps
+        const showFps = devTools.showFps
         preview.showFps = showFps
         devTools.onShowFpsChange = (enabled) => {
             preview.showFps = enabled
         }
 
-        const meshViewerEnabled = this.#settings.getGlobal().app.meshViewerEnabled
-        devTools.meshViewer = meshViewerEnabled
+        const meshViewerEnabled = devTools.meshViewer
         this.#setMeshViewerEnabled(meshViewerEnabled)
         devTools.onMeshViewerChange = (enabled) => {
             this.#setMeshViewerEnabled(enabled)
         }
 
-        devTools.meshSimplifyOnExport = this.#settings.getGlobal().app.meshSimplifyOnExport
         devTools.syncVoxelSizeMmFromSettings(this.#settings.getGlobal().app.meshExportVoxelSizeMm)
         devTools.useShrecExporter = this.#settings.getGlobal().app.useShrecExporter
         devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
@@ -1202,9 +1208,9 @@ class App {
         devTools.onVoxelSizeMmChange = remeshIfMeshViewerOn
         devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 
-        devTools.syncDebugLogModulesFromSettings(this.#settings.getGlobal().app.debugLogModules)
+        devTools.syncDebugLogModulesFromSettings(this.#settings.getDebugLogModules())
         devTools.onDebugLogModulesChange = () => {
-            applyDebugLogModules(this.#settings.getGlobal().app.debugLogModules)
+            applyDebugLogModules(this.#settings.getDebugLogModules())
             this.renderer.syncDebugLogModulesToWorker()
         }
 

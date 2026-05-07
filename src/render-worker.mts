@@ -24,16 +24,35 @@ let pendingBuild: { body: string; documentName?: string | null; requestId?: numb
 /** Pending render message for coalescing; used for benchmark/thumbnail which still send render via postMessage. */
 let pendingRender: Extract<MainToWorkerMessage, { type: "render" }> | null = null
 let renderScheduled = false
+let renderTimeoutId: ReturnType<typeof setTimeout> | null = null
 
 function scheduleRender(): void {
     if (renderScheduled || !core) return
     renderScheduled = true
-    setTimeout(() => {
+    renderTimeoutId = setTimeout(() => {
+        renderTimeoutId = null
         renderScheduled = false
         const msg = pendingRender
         pendingRender = null
         if (core && msg) core.render(msg)
     }, 0)
+}
+
+/**
+ * Normal renders are deferred with `setTimeout(0)`. Pick/click/hover can arrive in the same turn
+ * right after a sync render (`#syncCameraToWorkerForPick`); without flushing, `handlePickPos` would
+ * still use stale `#lastRenderMsg` and return misses after the camera has moved.
+ */
+function flushPendingRender(): void {
+    if (renderTimeoutId !== null) {
+        clearTimeout(renderTimeoutId)
+        renderTimeoutId = null
+    }
+    if (!core) return
+    const msg = pendingRender
+    pendingRender = null
+    renderScheduled = false
+    if (msg) core.render(msg)
 }
 
 function runRenderFromSharedBuffer(): void {
@@ -86,18 +105,21 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
             break
         case "click":
             if (core) {
+                flushPendingRender()
                 await core.handleClick(msg.clickUV, msg.shiftKey, msg.altKey, msg.documentName, sharedBuffer ?? undefined)
                 markSABVersionConsumed()
             }
             break
         case "doubleClick":
             if (core) {
+                flushPendingRender()
                 await core.handleDoubleClick(msg.clickUV, msg.documentName, sharedBuffer ?? undefined)
                 markSABVersionConsumed()
             }
             break
         case "hover":
             if (core) {
+                flushPendingRender()
                 await core.handleHover(msg.clickUV, msg.altKey, msg.documentName, msg.hoverRequestId, sharedBuffer ?? undefined)
                 markSABVersionConsumed()
             }
@@ -129,13 +151,7 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
             break
         case "benchmark":
             if (core) {
-                if (pendingRender) {
-                    core.render(pendingRender)
-                    pendingRender = null
-                    if (renderScheduled) {
-                        renderScheduled = false
-                    }
-                }
+                flushPendingRender()
                 core.handleBenchmark(msg.frameCount, msg.waitForGPU, msg.requestId)
             }
             break
@@ -148,6 +164,7 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
             break
         case "pickPos":
             if (core) {
+                flushPendingRender()
                 await core.handlePickPos(msg.clickUV, msg.requestId, sharedBuffer ?? undefined)
                 markSABVersionConsumed()
             } else {
@@ -156,6 +173,7 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
             break
         case "pickObject":
             if (core) {
+                flushPendingRender()
                 await core.handlePickObject(msg.clickUV, msg.requestId, sharedBuffer ?? undefined)
                 markSABVersionConsumed()
             } else {

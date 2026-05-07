@@ -123,10 +123,12 @@ function createOffscreenHost(width: number, height: number): import("../componen
 }
 
 function cameraStateFromSettings(cam: CameraSettings): CameraState {
+    const pv = cam.pivot
     return {
         rotation: cam.rotation,
         zoom: cam.zoom,
         translation: vec3(cam.translation[0], cam.translation[1], cam.translation[2]),
+        pivot: vec3(pv?.[0] ?? 0, pv?.[1] ?? 0, pv?.[2] ?? 0),
     }
 }
 

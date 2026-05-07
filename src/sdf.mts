@@ -255,9 +255,9 @@ export class SDFRenderer {
             }),
             this.#controls.doubleClick$.subscribe(({ screenPos, metaKey, ctrlKey }) => {
                 if (metaKey || ctrlKey) {
-                    // Cmd/Ctrl+double-click: recenter camera on the hit point
+                    // Cmd/Ctrl+double-click: set orbit pivot to pick hit (world xyz)
                     this.pickPosAtScreen(screenPos.x, screenPos.y).then(pos => {
-                        if (pos) this.#controls.recenterOnPoint(vec3(pos[0], pos[1], pos[2]))
+                        if (pos) this.#controls.setPivotToWorldHit(vec3(pos[0], pos[1], pos[2]))
                     })
                     return
                 }
@@ -1026,7 +1026,7 @@ export class SDFRenderer {
 
     /** Push current debug-log flags to the render worker (call after settings change). */
     syncDebugLogModulesToWorker(): void {
-        const mods = this.#settings.getGlobal().app.debugLogModules
+        const mods = this.#settings.getDebugLogModules()
         this.#worker.postMessage({ type: "setDebugLogModules", modules: snapshotDebugLogModules(mods) })
     }
 

@@ -4,7 +4,7 @@ overview: "Sequence seven bounded work packages for sequential agents implementi
 todos:
     - id: agent-1
       content: "Agent 1: cube/tet tables + IsoSimplicialConstants + unit tests"
-      status: pending
+      status: completed
     - id: agent-2
       content: "Agent 2: iso_sample_batch.wgsl + GridSampler-style TS + parity test"
       status: pending

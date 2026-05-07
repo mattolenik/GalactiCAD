@@ -10,7 +10,7 @@ todos:
       status: completed
     - id: agent-3
       content: "Agent 3: CPU QEF solvers (double precision) + synthetic tests"
-      status: pending
+      status: completed
     - id: agent-4
       content: "Agent 4: CPU octree build + GPU batch integration + subdivision parity"
       status: pending

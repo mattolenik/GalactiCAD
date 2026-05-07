@@ -26,7 +26,14 @@
 - **Exports:** `isoOctreeChangesSign`, `isoOctreeIsOutside`, `IsoOctreeRuntimeConstants` / override types for tests.
 - **Tests:** `iso-octree_test.mts` — `changesSign` / `is_outside` unit checks; `IsoOctree.build` with a **mock** plane field (no `SceneInfo` / transpile); deterministic `treeCellCount` with capped constants.
 
+## Agent 5 (traverse + MT extraction)
+
+- **Module:** `iso-extract.mts` — reference `traverse.h` with `TraversalType::trav_edge` (faces + edges, no `traverse_vert`). `IsoExtractVisitor` ports `VisitorExtract::on_node` / `on_face` / `on_edge` / `processTet`; Marching Tetrahedra uses `tetTris` / `tetEdge2Vert` from `tet-tables.mts`.
+- **API:** `extractIsoSimplicialMesh(tree: { root: IsoOctreeNode }, options?: { worldBounds?: IsoOctreeBounds }): MeshData` — verts start in normalized root `[0,1]³`; optional `worldBounds` maps to world space before `renormalizeTriangleNormals` (face-derived normals, same stride as other exporters).
+- **Helpers:** `traverseIsoExtract`, `genTrav`, `isOctreeLeaf` (matches reference `children[0]==0`), `isoExtractFindZero`.
+- **Tests:** `iso-extract_test.mts` — `findZero` smoke; extraction on mock plane with subdivided octree (`triCount > 0`, finite verts); `worldBounds` scaling.
+
 ## Gaps / next agents
 
 - Guide-tree (`TNode::eval` with non-null `guide`) not implemented (reference dual-pass); v1 always builds from scratch.
-- Agent 5: `extractMesh` / traversal; Agent 6 optional snap; Agent 7 worker + UI.
+- Agent 6 optional snap; Agent 7 worker + UI.

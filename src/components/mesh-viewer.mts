@@ -326,6 +326,7 @@ export class MeshViewer extends HTMLElement {
     }
 
     connectedCallback(): void {
+        if (this.getAttribute("data-skip-autostart") != null) return
         this.startLoop()
     }
 
@@ -699,22 +700,22 @@ export class MeshViewer extends HTMLElement {
     startLoop() {
         if (this.#started) return
         this.#started = true
-        requestAnimationFrame(this.update.bind(this))
+        requestAnimationFrame(() => this.update(true))
     }
 
-    update(): void {
+    update(scheduleNext = true): void {
         if (this.#disposed) return
 
         if (!this.#device || !this.#uniformBuffer) {
             this.#clearDebugOverlay()
-            if (!this.#disposed) requestAnimationFrame(() => this.update())
+            if (!this.#disposed) requestAnimationFrame(() => this.update(true))
             return
         }
 
         // Skip rendering if canvas is collapsed (0x0 size)
         if (this.canvas.width === 0 || this.canvas.height === 0) {
             this.#clearDebugOverlay()
-            if (!this.#disposed) requestAnimationFrame(() => this.update())
+            if (!this.#disposed) requestAnimationFrame(() => this.update(true))
             return
         }
 
@@ -842,7 +843,39 @@ export class MeshViewer extends HTMLElement {
         this.#device.queue.submit([commandEncoder.finish()])
         this.#drawMdcDebugOverlay(sceneToCamera, meshCameraOrigin)
 
-        if (!this.#disposed) requestAnimationFrame(() => this.update())
+        if (scheduleNext && !this.#disposed) requestAnimationFrame(() => this.update(true))
+    }
+
+    /**
+     * Renders one frame (opaque normal RGB when wireframe/translucent are off) and reads pixels for automation.
+     */
+    async captureFrameToImageData(): Promise<ImageData> {
+        await this.ready()
+        if (!this.#device) {
+            throw new Error("Mesh viewer GPU not ready")
+        }
+        this.update(false)
+        await this.#device.queue.onSubmittedWorkDone()
+        const bitmap = await createImageBitmap(this.canvas)
+        try {
+            const oc = new OffscreenCanvas(this.canvas.width, this.canvas.height)
+            const ctx = oc.getContext("2d")
+            if (!ctx) {
+                throw new Error("2D context unavailable for mesh capture")
+            }
+            ctx.drawImage(bitmap, 0, 0)
+            return ctx.getImageData(0, 0, this.canvas.width, this.canvas.height)
+        } finally {
+            bitmap.close()
+        }
+    }
+
+    /** Keep orthographic projection in sync when canvas backing store size is set directly (agent capture). */
+    syncCameraResolutionFromCanvas(): void {
+        this.#cameraRes = vec2(this.canvas.width, this.canvas.height)
+        if (this.#device) {
+            this.#recreateAttachments()
+        }
     }
 
     #clearDebugOverlay(): void {

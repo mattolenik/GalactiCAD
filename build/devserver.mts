@@ -3,6 +3,11 @@ import http from "http"
 import path from "path"
 import WebSocket, { WebSocketServer } from "ws"
 import { BrowserBridge, type DevServerConsoleLogLevel } from "./devserver-bridge.mjs"
+import {
+    mergeAgentRenderRequest,
+    type AgentRenderRequest,
+    type AgentTestcaseJson,
+} from "../src/agent-testcase/agent-testcase.mjs"
 
 export interface RunFileData {
     pid: number
@@ -82,6 +87,62 @@ function parseLogQuery(url: URL): DevLogQuery {
     const n = clampLogCount(Number(url.searchParams.get("n") ?? "20"))
     const modules = parseModuleFilters(url.searchParams)
     return { n, levels, ...(modules ? { modules } : {}) }
+}
+
+const AGENT_TESTCASE_DIR_SEGMENTS = ["src", "scene", "testdata"] as const
+
+function resolveAgentTestcaseFile(repoRoot: string, basenameOnly: string): string | null {
+    const base = path.basename(basenameOnly)
+    if (base !== basenameOnly.replace(/\\/g, "/")) return null
+    if (!/^[\w.-]+\.json$/i.test(base)) return null
+    const rootDir = path.resolve(repoRoot, ...AGENT_TESTCASE_DIR_SEGMENTS)
+    const full = path.resolve(rootDir, base)
+    const rel = path.relative(rootDir, full)
+    if (rel.startsWith("..") || path.isAbsolute(rel)) return null
+    return full
+}
+
+async function writeAgentImagelogPng(repoRoot: string, labelSlug: string, role: string, pngBytes: Buffer): Promise<string> {
+    const dir = path.join(repoRoot, ".agents", "imagelog")
+    await fs.mkdir(dir, { recursive: true })
+    const now = new Date()
+    const hhmm = `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`
+    const safe = labelSlug.replace(/[^\w.-]+/g, "_").slice(0, 56)
+    const safeRole = role.replace(/[^\w.-]+/g, "_").slice(0, 32)
+    const fn = `${safe}-${hhmm}-${safeRole}.png`
+    const fp = path.join(dir, fn)
+    await fs.writeFile(fp, pngBytes)
+    return fp
+}
+
+function readHttpBody(req: http.IncomingMessage): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = []
+        req.on("data", chunk => chunks.push(chunk as Buffer))
+        req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))
+        req.on("error", reject)
+    })
+}
+
+async function respondAgentRenderPng(
+    bridge: BrowserBridge,
+    repoRoot: string,
+    payload: AgentRenderRequest,
+    labelSlug: string,
+    role: string,
+    res: http.ServerResponse,
+): Promise<void> {
+    const out = await bridge.requestAgentRender(payload as unknown as Record<string, unknown>)
+    if (!out?.pngBase64) {
+        const errText = out?.error ?? "bridge failed (no browser, timeout, or GPU error)"
+        res.writeHead(503, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+        res.end(errText)
+        return
+    }
+    const buf = Buffer.from(out.pngBase64, "base64")
+    await writeAgentImagelogPng(repoRoot, labelSlug, role, buf)
+    res.writeHead(200, { "content-type": "image/png", "Access-Control-Allow-Origin": "*" })
+    res.end(buf)
 }
 
 /** Ring buffer + bridge WebSocket; `__galacticadDevLogPush` is consumed by `connectMainThreadDevLogToBridge()` in app. */
@@ -259,6 +320,49 @@ const INJECTED_BRIDGE_SCRIPT = `
                     window.location.reload();
                     return;
                 }
+                if (msg.type === "exportAgentTestcase" && typeof msg.id === "string") {
+                    try {
+                        var cap = globalThis.__galacticadExportAgentTestcase;
+                        if (typeof cap !== "function") {
+                            trySend(socket, JSON.stringify({ type: "agentTestcaseError", id: msg.id, message: "no handler" }));
+                            return;
+                        }
+                        var atc = cap();
+                        var out = JSON.stringify({ type: "agentTestcaseResult", id: msg.id, data: atc });
+                        if (!trySend(socket, out)) {
+                            trySend(socket, JSON.stringify({ type: "agentTestcaseError", id: msg.id, message: "send failed" }));
+                        }
+                    } catch (e) {
+                        var em = (e && e.message) ? e.message : String(e);
+                        trySend(socket, JSON.stringify({ type: "agentTestcaseError", id: msg.id, message: em }));
+                    }
+                    return;
+                }
+                if (msg.type === "agentRender" && typeof msg.id === "string" && msg.payload != null && typeof msg.payload === "object") {
+                    var run = globalThis.__galacticadAgentRender;
+                    if (typeof run !== "function") {
+                        trySend(socket, JSON.stringify({ type: "agentRenderResult", id: msg.id, error: "no handler" }));
+                        return;
+                    }
+                    Promise.resolve(run(msg.payload))
+                        .then(function (out) {
+                            var o = out || {};
+                            trySend(
+                                socket,
+                                JSON.stringify({
+                                    type: "agentRenderResult",
+                                    id: msg.id,
+                                    pngBase64: o.pngBase64,
+                                    error: o.error,
+                                }),
+                            );
+                        })
+                        .catch(function (e) {
+                            var em = e && e.message ? e.message : String(e);
+                            trySend(socket, JSON.stringify({ type: "agentRenderResult", id: msg.id, error: em }));
+                        });
+                    return;
+                }
                 void onGetConsoleLogs(msg, socket);
                 void onGetActiveSceneSource(msg, socket);
             }
@@ -327,7 +431,9 @@ export class DevServer {
         if (options) {
             await fs.writeFile(options.runFile, JSON.stringify({ pid: options.pid, port: actualPort } satisfies RunFileData, null, 2))
         }
-        log(`Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET http://localhost:${actualPort}/_logs GET http://localhost:${actualPort}/_sceneSource`)
+        log(
+            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource; GET /_agent/capture-testcase; GET|POST /_agent/render`,
+        )
         return instance
     }
 
@@ -363,6 +469,8 @@ function createHttpServer(
 
     const defaultContentType = "application/octet-stream"
 
+    const repoRoot = process.cwd()
+
     async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
         const url = new URL(req.url ?? "/", "http://localhost")
         const pathname = url.pathname
@@ -390,6 +498,114 @@ function createHttpServer(
             const source = await bridge.requestActiveSceneSource()
             res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
             res.end(source ?? "")
+            return
+        }
+
+        if (pathname === "/_agent/capture-testcase") {
+            if (req.method !== "GET") {
+                res.writeHead(405, {
+                    "content-type": "text/plain; charset=utf-8",
+                    Allow: "GET",
+                    "Access-Control-Allow-Origin": "*",
+                })
+                res.end("method not allowed")
+                return
+            }
+            const data = await bridge.requestAgentTestcase()
+            if (!data) {
+                res.writeHead(503, {
+                    "content-type": "text/plain; charset=utf-8",
+                    "Access-Control-Allow-Origin": "*",
+                })
+                res.end(
+                    "no testcase (browser disconnected, capture threw, or timed out — ensure the app is open with an active document)",
+                )
+                return
+            }
+            res.writeHead(200, { "content-type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+            res.end(JSON.stringify(data))
+            return
+        }
+
+        if (pathname === "/_agent/render") {
+            if (req.method === "GET") {
+                const testcase = url.searchParams.get("testcase")
+                if (!testcase) {
+                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end("missing testcase query (basename of a JSON file in src/scene/testdata/)")
+                    return
+                }
+                const safePath = resolveAgentTestcaseFile(repoRoot, testcase)
+                if (!safePath) {
+                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end("invalid testcase name")
+                    return
+                }
+                let rawJson: string
+                try {
+                    rawJson = await fs.readFile(safePath, "utf8")
+                } catch {
+                    res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end("testcase file not found")
+                    return
+                }
+                let tc: AgentTestcaseJson
+                try {
+                    tc = JSON.parse(rawJson) as AgentTestcaseJson
+                } catch {
+                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end("invalid testcase JSON")
+                    return
+                }
+                const modeQ = url.searchParams.get("mode")
+                const mode = modeQ === "mesh" || modeQ === "sdf" ? modeQ : undefined
+                const vw = url.searchParams.get("viewportWidth")
+                const vh = url.searchParams.get("viewportHeight")
+                const vwn = vw !== null && vw !== "" ? Number(vw) : undefined
+                const vhn = vh !== null && vh !== "" ? Number(vh) : undefined
+                let payload: AgentRenderRequest
+                try {
+                    payload = mergeAgentRenderRequest(tc, {
+                        mode,
+                        ...(Number.isFinite(vwn) ? { viewportWidth: vwn } : {}),
+                        ...(Number.isFinite(vhn) ? { viewportHeight: vhn } : {}),
+                    })
+                } catch (e) {
+                    const msg = e instanceof Error ? e.message : String(e)
+                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end(msg)
+                    return
+                }
+                const label = url.searchParams.get("label")?.trim() || path.basename(testcase, ".json") || "render"
+                const role = url.searchParams.get("role")?.trim() || payload.mode
+                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, res)
+                return
+            }
+            if (req.method === "POST") {
+                const raw = await readHttpBody(req)
+                let parsed: Record<string, unknown>
+                try {
+                    parsed = JSON.parse(raw) as Record<string, unknown>
+                } catch {
+                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end("invalid JSON body")
+                    return
+                }
+                const label =
+                    typeof parsed.label === "string" && parsed.label.trim() !== "" ? parsed.label.trim() : "render"
+                const role = typeof parsed.role === "string" && parsed.role.trim() !== "" ? parsed.role.trim() : "render"
+                delete parsed.label
+                delete parsed.role
+                const payload = parsed as unknown as AgentRenderRequest
+                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, res)
+                return
+            }
+            res.writeHead(405, {
+                "content-type": "text/plain; charset=utf-8",
+                Allow: "GET, POST",
+                "Access-Control-Allow-Origin": "*",
+            })
+            res.end("method not allowed")
             return
         }
 

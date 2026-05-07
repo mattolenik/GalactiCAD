@@ -1,18 +1,31 @@
 ---
 name: devserver-logs
-description: "Query runtime browser logs (`GET /_logs`) and active scene source (`GET /_sceneSource`) from the local devserver with curl."
+description: "Query runtime browser logs (GET /_logs), active scene source (GET /_sceneSource), and agent automation (GET /_agent/capture-testcase, GET|POST /_agent/render) from the local devserver with curl."
 ---
 
-# Devserver logs and scene source
+# Devserver HTTP / WebSocket bridge
 
-Use this skill when you want **runtime log signal** or a **plain-text dump of the active CAD document** from a running local devserver (`make serve` / `make start`). Both routes share the **same HTTP port** and the same **browser WebSocket bridge** as live reload.
+Use this skill for **runtime log signal**, a **plain-text dump of the active CAD document**, and for **agent automation** that talks to a **connected browser tab** (Chromium with WebGPU) over the same devserver port (HTTP + WebSocket).
 
-## When to Use
+## When to use
 
-- Validate runtime issues after a code change (especially rendering/WebGPU behavior).
-- Check warnings/errors quickly without opening browser DevTools.
-- Confirm there are no fresh runtime errors before finishing a task.
-- Capture the **currently selected editor tab’s scene source** (including unsaved buffer content) for debugging, repro scripts, or diffing against disk.
+- **Logs:** validate runtime after a change, check WebGPU or app errors, read dev log buffer without opening DevTools.
+- **Scene source:** capture the **currently selected editor tab’s scene source** (including unsaved buffer content) for debugging, repro scripts, or diffing against disk.
+- **Agent automation:** fetch a **testcase JSON** from the live editor, or request **PNG** renders of the SDF (normal-vector colors) or **meshed** normal RGB for a testcase / inline JSON body. Each successful `/_agent/render` also writes a copy under **`.agents/imagelog/`** on the server.
+
+## Port discovery (main devserver)
+
+- **Run file:** **`.devserver.run`** in the repo root (JSON: `pid`, `port`), written when `make serve` / `make start` runs.
+- **Port:** `port=$(jq -r .port .devserver.run)` — **`-r`** emits raw digits only. If the file is missing or `jq` fails, the server is not running — **do not guess a port**.
+
+## Optional agent devserver (separate process)
+
+- **Run file:** **`.devserver.agent.run`** when using **`make serve-agent`** or **`make start-agent`** (starts from **PORT=7000**; devserver may bind the next free port if busy — read **`port`** from the run file).
+- Read the port the same way: `jq -r .port .devserver.agent.run`.
+- **Logs file:** `.devserver.agent.log` (tail with **`make logs-agent`**).
+- **Stop:** **`make stop-agent`**.
+
+Use this when you want automation isolated from the default `.devserver.run` server.
 
 ---
 
@@ -47,35 +60,69 @@ After `port=$(jq -r .port .devserver.run)`:
 - **Module toggles vs errors:** In-app `log("Module").error` is **always** written to the browser console and the dev log ring buffer (Dev Tools **Logs** checkboxes do not suppress it). **`debug` / `info` / `warn`** from `log("Module")` only appear when that module is enabled in Dev Tools. `GET /_logs?module=…` still filters by the entry’s `module` field—errors from other modules are omitted when a non-empty `module` list is used.
 - **Empty result behavior:** `200` with empty body when no matches, no connected browser, or bridge timeout
 
-## Query Parameters (`/_logs` only)
+### Query Parameters (`/_logs` only)
 
-### `level` (minimum threshold)
+Full documentation of `level`, `only`, `module`, `n` is unchanged from historical usage.
 
-- Single value, case-insensitive: `error`, `warning`, `info`, or `debug`
-- **Cumulative** (includes everything at or above that severity):
-  - `error` → errors only
-  - `warning` → errors + warnings
-  - `info` → errors + warnings + info (**default** when `level` is omitted, empty, or unrecognized)
-  - `debug` → all four buckets
-- Public name `warning` maps to the internal warn bucket (log lines still parse `warn` in the second bracketed token)
+Default check:
 
-### `only` (exact buckets)
+`curl -sS "http://localhost:${port}/_logs"`
 
-- Comma-separated list using the same tokens: `error`, `warning`, `info`, `debug`
-- Keeps **only** those buckets (e.g. `only=error` → errors only; `only=error,debug` → errors and debug, **no** info or warning)
-- **Precedence:** if the `only` query parameter is **present** and at least one token is valid, `only` wins and **`level` is ignored**
-- If `only` is present but the list is empty or every token is invalid, fall back to the same default as missing `level` (**info** threshold)
+---
 
-### Other parameters (unchanged)
+## `GET /_agent/capture-testcase`
 
-- **`n`**: optional integer `1..10000`, default `20`, applied **per bucket**
-- **`module`**: optional comma-separated module names (e.g. `module=App,MdcExport,WelcomeScreen` or `module=Settings`)
-  - Missing or empty → all modules
-  - Non-empty → module-tagged / module-attributed lines only; generic mirrored `console` lines without module context are excluded
+- **Purpose:** Serialize the **current** editor scene + camera + mesh export settings into JSON (same schema as Dev Tools **Export agent testcase**), via the WebSocket bridge (`exportAgentTestcase` → `__galacticadExportAgentTestcase`).
+- **Requires:** devserver running **and** a **browser tab** connected to that server’s origin (WebSocket open), with an **active document**.
+- **Response:** `200` + `application/json` body, or **`503`** if no browser, timeout, or capture failed.
 
-Legacy presence flags (`err`, `warn`, `info`, `debug` as separate boolean query keys) are **not** used; do not rely on them.
+Example:
 
-## Agent Workflow
+`curl -sS "http://localhost:${port}/_agent/capture-testcase" -o testcase.json`
+
+---
+
+## `GET | POST /_agent/render`
+
+Runs the **agent render pipeline** in the browser (normal-vector SDF preview **or** mesh export + opaque normal RGB). Uses **`agentRender`** over WebSocket (`__galacticadAgentRender`). Response is **`image/png`** on success; **`503`** with plain-text error on failure.
+
+**Prerequisites:** Same as capture-testcase — **connected Chromium tab** with WebGPU so the bridge can execute GPU work.
+
+### POST
+
+- **Body:** JSON matching **`AgentRenderRequest`** (see `src/agent-testcase/agent-testcase.mts`): `mode` (`"sdf"` \| `"mesh"`), `sourceBase64`, `camera`, `viewCenter`, `resolutionScale`, `viewportWidth`, `viewportHeight`, `meshExport`, optional `documentName`.
+- **Optional:** `label` and `role` (strings for **`.agents/imagelog/`** filenames). Removed before dispatch; not part of `AgentRenderRequest`.
+
+Example (conceptual — embed real base64):
+
+`curl -sS -X POST "http://localhost:${port}/_agent/render" -H 'Content-Type: application/json' -d @payload.json -o out.png`
+
+### GET
+
+- **Query:** `testcase` = **basename only** of a JSON file under **`src/scene/testdata/`** (no `..`, must end with `.json`).
+- **Optional:** `mode=sdf|mesh`, `viewportWidth`, `viewportHeight`, `label`, `role`.
+
+Example:
+
+`curl -sS "http://localhost:${port}/_agent/render?testcase=my-case.json&mode=sdf" -o sdf.png`
+
+### Imagelog files
+
+On success the server writes **`repo/.agents/imagelog/<label>-<HHMM>-<role>.png`** (short slug + local time + role).
+
+---
+
+## Agent workflow (ordered)
+
+1. Start a devserver (`make serve` or `make serve-agent`); read **`port`** from the matching **`.run`** file.
+2. Open the app in **system Chromium** with WebGPU (helper: **`.agents/scripts/agent-open-chromium.sh`** — reads **`.devserver.agent.run`** by default; set **`RUN_FILE`** to use the interactive server). Leave the tab open.
+3. Optional: **`GET /_agent/capture-testcase`** to save a testcase JSON from the user’s session.
+4. **`GET` or `POST /_agent/render`** with testcase file or inline body; save PNG from response and/or inspect **`.agents/imagelog/`**.
+5. Optional: **`GET /_logs`** for runtime errors during the run.
+
+---
+
+## Standard check workflow (`/_logs` and optional `/_sceneSource`)
 
 1. Assign `port=$(jq -r .port .devserver.run)` from the repo root (or pass the full path to `.devserver.run` as `jq`'s file argument). If the file does not exist, `jq` errors, or `port` is empty, **stop**—the devserver is not running; do not assume any default port. See **`/_logs`** host/port notes for why `-r` is used.
 2. **Default** runtime check: `curl` **`http://localhost:${port}/_logs`** with no `level` or `only` so the server applies default **info** threshold (errors, warnings, and info—no debug spam).
@@ -87,37 +134,10 @@ Legacy presence flags (`err`, `warn`, `info`, `debug` as separate boolean query 
 5. If the `/_logs` body is empty or too narrow to be useful, **broaden**: drop `module`, raise threshold (`level=debug`), or drop `only` and retry—before concluding there is no signal.
 6. Report relevant lines or source; note empty body explicitly.
 
-## Examples (`/_logs`)
-
-Use a subshell so `curl` always gets a clean port string:
-
-`port=$(jq -r .port .devserver.run)` (run from the repo root, or pass the full path to `.devserver.run` as the second argument to `jq`).
-
-- Default (info threshold, last 20 per included bucket):
-
-  `curl -sS "http://localhost:${port}/_logs"`
-
-- Include debug lines:
-
-  `curl -sS "http://localhost:${port}/_logs?level=debug"`
-
-- Errors only:
-
-  `curl -sS "http://localhost:${port}/_logs?only=error"`
-
-- Errors and warnings only (no info/debug):
-
-  `curl -sS "http://localhost:${port}/_logs?only=error,warning"`
-
-- Scoped modules:
-
-  `curl -sS "http://localhost:${port}/_logs?module=App,MdcExport,WelcomeScreen"`
-
-- Five errors per bucket:
-
-  `curl -sS "http://localhost:${port}/_logs?only=error&n=5"`
+---
 
 ## Notes
 
-- Use shell **`jq -r .port .devserver.run`** for the port (raw ASCII number, no quotes) and **`curl`** for **`/_logs`** and **`/_sceneSource`** on the same host/port.
-- Keep build/test commands compliant with project rules (`make build`, `make test`).
+- Use shell **`jq -r .port .devserver.run`** for the port (raw ASCII number, no quotes) and **`curl`** for **`/_logs`**, **`/_sceneSource`**, and agent routes on the same host/port.
+- **`make build`** / **`make test`** follow project rules; do not use `npm` / `npx` / `node` directly for builds.
+- Cross-reference: **`AGENTS.md`** (devserver logs endpoint and agent automation overview).

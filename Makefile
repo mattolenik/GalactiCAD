@@ -65,6 +65,40 @@ stop:
 .PHONY: restart
 restart: stop start
 
+.PHONY: serve-agent
+serve-agent: clean setup
+	env RUN_FILE=.devserver.agent.run PORT=7000 $(BUILD) -w $(BUILD_FLAGS)
+
+.PHONY: start-agent
+start-agent:
+	nohup env RUN_FILE=.devserver.agent.run PORT=7000 $(BUILD) -w $(BUILD_FLAGS) > .devserver.agent.log 2>&1 &
+	@i=0; while (( $$i < 20 )); do \
+		sleep 0.2; \
+		if [[ -f ".devserver.agent.run" ]]; then \
+			port=$$(jq -r .port ".devserver.agent.run"); \
+			echo ""; \
+			echo "Agent devserver at http://localhost:$$port"; \
+			break; \
+		fi; \
+		i=$$((i+1)); \
+	done
+	@echo "Logs: .devserver.agent.log (make logs-agent)"
+
+.PHONY: logs-agent
+logs-agent:
+	@tail -fn 50 .devserver.agent.log
+
+.PHONY: stop-agent
+stop-agent:
+	@if [ -f ".devserver.agent.run" ]; then \
+		pid=$$(jq -r .pid ".devserver.agent.run"); \
+		[ -n "$$pid" ] && kill -TERM $$pid 2>/dev/null || true; \
+		rm -f ".devserver.agent.run"; \
+	fi
+
+.PHONY: restart-agent
+restart-agent: stop-agent start-agent
+
 .PHONY: release
 release: export PRODUCTION=1
 release: build test

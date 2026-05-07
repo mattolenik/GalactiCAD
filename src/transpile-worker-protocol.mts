@@ -2,7 +2,7 @@
  * Message protocol for main thread <-> transpile worker communication.
  */
 
-export type TranspileKind = "build" | "renderMesh" | "thumbnail"
+export type TranspileKind = "build" | "renderMesh" | "thumbnail" | "agentPreview"
 
 export type MainToTranspileMessage = {
     type: "transpile"

@@ -362,6 +362,19 @@ export type MainToWorkerMessage =
       }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
+    | {
+          type: "agentPreview"
+          body: string
+          width: number
+          height: number
+          requestId?: number
+          documentName?: string
+          cameraState: CameraState
+          viewTransform: Float32Array
+          cameraPosition: [number, number, number]
+          viewCenter: [number, number]
+          resolutionScale: number
+      }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
     | { type: "pickObject"; clickUV: [number, number]; requestId: number }
     | { type: "setBvhEnabled"; enabled: boolean }

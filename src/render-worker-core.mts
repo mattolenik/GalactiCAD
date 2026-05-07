@@ -1441,6 +1441,140 @@ export class RenderWorkerCore {
         }
     }
 
+    /** Off-screen SDF capture for agents: parameterized camera, normal-vector shading, larger max resolution than welcome thumbnails. */
+    async handleAgentPreview(msg: Extract<MainToWorkerMessage, { type: "agentPreview" }>): Promise<void> {
+        const AGENT_PREVIEW_MAX = 2048
+        const tw = Math.max(1, Math.min(AGENT_PREVIEW_MAX, Math.floor(msg.width)))
+        const th = Math.max(1, Math.min(AGENT_PREVIEW_MAX, Math.floor(msg.height)))
+        const body = msg.body
+        const requestId = msg.requestId
+        const documentName = msg.documentName
+        const previousBody = this.#builtBody
+        let builtForThis = false
+        try {
+            if (!this.#device) {
+                self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable", requestId, documentName })
+                return
+            }
+            if (!this.#scene || this.#builtBody !== body) {
+                await this.build(body, undefined)
+                builtForThis = true
+            }
+            if (!this.#pipeline) {
+                self.postMessage({ type: "thumbnailResult", error: "Scene failed to build", requestId, documentName })
+                return
+            }
+            const vt = new Float32Array(msg.viewTransform)
+            const thumbMsg: Extract<MainToWorkerMessage, { type: "render" }> = {
+                type: "render",
+                cameraState: msg.cameraState,
+                viewTransform: vt,
+                cameraPosition: msg.cameraPosition,
+                cameraRes: [tw, th],
+                selectionState: {
+                    selectedObjectIds: [],
+                    selectedEdges: [],
+                    hoveredObjectId: 0,
+                    hoveredEdges: [],
+                },
+                viewSettings: {
+                    xrayMode: false,
+                    beamEnabled: false,
+                    selectionMode: 0,
+                    outlineMode: 0,
+                    outlineThickness: 1,
+                    outlineColor: [1, 1, 0],
+                    selectionStyles: {
+                        face: { darken: DEFAULT_SELECTION_STYLES.face.darken, tint: [...DEFAULT_SELECTION_STYLES.face.tint] },
+                        edge: { color: [...DEFAULT_SELECTION_STYLES.edge.color] },
+                    },
+                    previewShading: DEFAULT_PREVIEW_SHADING,
+                    previewNormalShading: true,
+                },
+                viewCenter: [msg.viewCenter[0], msg.viewCenter[1]],
+                resolutionScale: msg.resolutionScale,
+            }
+            let thumbOutputTexture: GPUTexture | undefined
+            let readbackBuffer: GPUBuffer | undefined
+            let readbackMapped = false
+            try {
+                thumbOutputTexture = this.#device.createTexture({
+                    label: "AgentPreviewOutput",
+                    size: [tw, th],
+                    format: this.#format,
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+                })
+                this.render(thumbMsg, thumbOutputTexture.createView())
+                await this.#device.queue.onSubmittedWorkDone()
+                const bytesPerRow = Math.ceil((tw * 4) / 256) * 256
+                const bufferSize = bytesPerRow * th
+                readbackBuffer = this.#device.createBuffer({
+                    label: "AgentPreviewReadback",
+                    size: bufferSize,
+                    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+                })
+                const encoder = this.#device.createCommandEncoder()
+                encoder.copyTextureToBuffer(
+                    { texture: thumbOutputTexture },
+                    { buffer: readbackBuffer, bytesPerRow, rowsPerImage: th },
+                    [tw, th, 1],
+                )
+                this.#device.queue.submit([encoder.finish()])
+                await readbackBuffer.mapAsync(GPUMapMode.READ)
+                readbackMapped = true
+                const mapped = new Uint8Array(readbackBuffer.getMappedRange())
+                const imageData = new ImageData(tw, th)
+                const isBgra = this.#format.includes("bgra")
+                for (let y = 0; y < th; y++) {
+                    const srcRow = y * bytesPerRow
+                    const dstRow = y * tw * 4
+                    for (let x = 0; x < tw; x++) {
+                        const srcOff = srcRow + x * 4
+                        const dstOff = dstRow + x * 4
+                        if (isBgra) {
+                            imageData.data[dstOff + 0] = mapped[srcOff + 2]
+                            imageData.data[dstOff + 1] = mapped[srcOff + 1]
+                            imageData.data[dstOff + 2] = mapped[srcOff + 0]
+                            imageData.data[dstOff + 3] = mapped[srcOff + 3]
+                        } else {
+                            imageData.data[dstOff + 0] = mapped[srcOff + 0]
+                            imageData.data[dstOff + 1] = mapped[srcOff + 1]
+                            imageData.data[dstOff + 2] = mapped[srcOff + 2]
+                            imageData.data[dstOff + 3] = mapped[srcOff + 3]
+                        }
+                    }
+                }
+                self.postMessage({ type: "thumbnailResult", imageData, requestId, documentName }, { transfer: [imageData.data.buffer] })
+            } finally {
+                if (readbackMapped) {
+                    try {
+                        readbackBuffer?.unmap()
+                    } catch {
+                        /* ignore */
+                    }
+                }
+                readbackBuffer?.destroy()
+                thumbOutputTexture?.destroy()
+            }
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId, documentName })
+        } finally {
+            if (
+                builtForThis &&
+                previousBody !== null &&
+                previousBody !== body &&
+                this.#builtBody === body
+            ) {
+                try {
+                    await this.build(previousBody, undefined)
+                } catch {
+                    /* ignore */
+                }
+            }
+        }
+    }
+
     #ensureRenderTextures(width: number, height: number): void {
         const w = Math.max(1, width)
         const h = Math.max(1, height)

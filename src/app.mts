@@ -20,7 +20,7 @@ import {
 import { getShapePalette } from "./colorPalette.mjs"
 import { getSelectionStylesForTheme } from "./selectionStyles.mjs"
 import { GALACTICAD_DARK_THEME, GALACTICAD_LIGHT_THEME } from "./themes.mjs"
-import type { EditorSettings, ThemeMode } from "./storage/settings.mjs"
+import type { CameraSettings, EditorSettings, ThemeMode } from "./storage/settings.mjs"
 import type { MeshData } from "./export/export.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
@@ -74,6 +74,9 @@ import {
     log as debugLog,
 } from "./logging/debug-log.mjs"
 import { VERSION } from "./version.mjs"
+import { buildAgentTestcase, type AgentTestcaseJson } from "./agent-testcase/agent-testcase.mjs"
+import { registerAgentTestcaseCapture } from "./agent-testcase/register-agent-testcase-capture.mjs"
+import { registerAgentRenderBridge } from "./agent-testcase/register-agent-render-bridge.mjs"
 
 connectMainThreadDevLogToBridge()
 debugLog("App").info(`GalactiCAD ${VERSION}`)
@@ -1251,6 +1254,17 @@ class App {
             }
         }
         devTools.onGetViewportSize = () => this.renderer?.renderSize ?? null
+
+        devTools.onAgentTestcaseExportRequest = (): AgentTestcaseJson | null => {
+            try {
+                return this.#captureAgentTestcaseJson()
+            } catch {
+                return null
+            }
+        }
+
+        registerAgentTestcaseCapture(() => this.#captureAgentTestcaseJson())
+        registerAgentRenderBridge(this.renderer)
     }
 
     #wireEditorAndTabs() {
@@ -1557,6 +1571,40 @@ class App {
             simplifyTuning: devTools.simplifyTuning,
             mdcExportLevers: this.#settings.getMdcExportLevers(),
         }
+    }
+
+    /** Camera, viewport, mesh export levers, and base64 scene — for agent testcase JSON / WS bridge. */
+    #captureAgentTestcaseJson(): AgentTestcaseJson {
+        const active = this.#tabs.active
+        if (!active) {
+            throw new Error("No active document")
+        }
+        const model = this.#tabs.getByName(active)
+        if (!model) {
+            throw new Error("No active document")
+        }
+        const state = this.renderer.controls.state
+        const pos = this.renderer.controls.cameraPosition
+        const rs = this.renderer.renderSize
+        const vc = this.renderer.viewCenter
+        return buildAgentTestcase({
+            sourceUtf8: model.getValue(),
+            camera: {
+                position: [pos.x, pos.y, pos.z],
+                translation: [state.translation.x, state.translation.y, state.translation.z],
+                dollyDistance: state.dollyDistance,
+                rotation: [...state.rotation] as CameraSettings["rotation"],
+                ...(state.pivot !== undefined
+                    ? { pivot: [state.pivot.x, state.pivot.y, state.pivot.z] as [number, number, number] }
+                    : {}),
+            },
+            viewCenter: [vc.x, vc.y],
+            resolutionScale: 1,
+            viewportWidth: rs.width,
+            viewportHeight: rs.height,
+            meshExport: this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools),
+            documentName: active,
+        })
     }
 
     /** Fingerprint of `renderMesh` inputs; must match what `#scheduleMeshUpdate` and export use. */

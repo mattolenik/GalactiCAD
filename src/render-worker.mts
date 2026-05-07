@@ -162,6 +162,13 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
                 self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready", requestId: msg.requestId })
             }
             break
+        case "agentPreview":
+            if (core) {
+                void core.handleAgentPreview(msg)
+            } else {
+                self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready", requestId: msg.requestId })
+            }
+            break
         case "pickPos":
             if (core) {
                 flushPendingRender()

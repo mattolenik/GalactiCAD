@@ -32,6 +32,7 @@ import {
 import { DevToolsLogsSection } from "./dev-tools-logs-section.mjs"
 import { DevToolsRendererSection } from "./dev-tools-renderer-section.mjs"
 import "./dev-tools-collapse.mjs"
+import type { AgentTestcaseJson } from "../agent-testcase/agent-testcase.mjs"
 
 export type DevToolsSectionScope = "global" | "document"
 
@@ -72,6 +73,14 @@ export class DevToolsPanel extends HTMLElement {
     onPreviewNormalShadingChange?: (enabled: boolean) => void
     onBenchmarkThisRequest?: () => BenchmarkCase | null
     onGetViewportSize?: () => { width: number; height: number } | null
+
+    /**
+     * Serialize current scene + camera + mesh export settings for agent replay.
+     * Returns null when no active document or capture fails.
+     */
+    onAgentTestcaseExportRequest?: () => AgentTestcaseJson | null
+
+    /** After debug log toggles are persisted; apply flags and sync worker. */
     onDebugLogModulesChange?: () => void
 
     get appSection(): DevToolsAppSection {
@@ -325,7 +334,27 @@ export class DevToolsPanel extends HTMLElement {
             }
         })
 
-        const benchmarkWrap = mkSection("Benchmark", DEVTOOLS_COLLAPSE.panelBenchmark, saveSuiteButton, benchmarkButton, benchmarkThisButton)
+        const exportAgentTestcaseButton = document.createElement("button")
+        exportAgentTestcaseButton.textContent = "Export agent testcase"
+        exportAgentTestcaseButton.title =
+            "Save JSON: scene source (base64), camera, viewport, and mesh export settings for agent render replay"
+        exportAgentTestcaseButton.addEventListener("click", async () => {
+            exportAgentTestcaseButton.disabled = true
+            try {
+                await this.#exportAgentTestcaseToDisk()
+            } finally {
+                exportAgentTestcaseButton.disabled = false
+            }
+        })
+
+        const benchmarkWrap = mkSection(
+            "Benchmark",
+            DEVTOOLS_COLLAPSE.panelBenchmark,
+            saveSuiteButton,
+            benchmarkButton,
+            benchmarkThisButton,
+            exportAgentTestcaseButton,
+        )
         this.#benchmarkSectionEl = benchmarkWrap
 
         const factoryResetButton = document.createElement("button")
@@ -494,6 +523,47 @@ export class DevToolsPanel extends HTMLElement {
             const errorMsg = err instanceof Error ? err.message : String(err)
             statusDialog.updateMessage(`Benchmark failed: ${errorMsg}`, true)
             await dialogPromise
+        }
+    }
+
+    async #exportAgentTestcaseToDisk(): Promise<void> {
+        const { StatusDialog } = await import("./status-dialog.mjs")
+        const tc = this.onAgentTestcaseExportRequest?.() ?? null
+        if (!tc) {
+            const statusDialog = new StatusDialog(
+                "No active document. Open a document to export an agent testcase.",
+                true,
+            )
+            await statusDialog.show()
+            return
+        }
+
+        try {
+            const rawName = tc.documentName ?? "scene"
+            const suggested = `${rawName.replace(/[^\w.-]+/g, "_")}-agent-testcase.json`
+            const handle = await window.showSaveFilePicker({
+                suggestedName: suggested,
+                startIn: "desktop",
+                types: [
+                    {
+                        description: "Agent testcase JSON",
+                        accept: { "application/json": [".json"] },
+                    },
+                ],
+                excludeAcceptAllOption: false,
+            })
+            const writable = await handle.createWritable()
+            await writable.write(JSON.stringify(tc, null, 2))
+            await writable.close()
+            const ok = new StatusDialog("Agent testcase saved")
+            await ok.show()
+        } catch (err) {
+            if (`${err}`.includes("AbortError")) {
+                return
+            }
+            const msg = err instanceof Error ? err.message : String(err)
+            const statusDialog = new StatusDialog(`Could not save testcase: ${msg}`, true)
+            await statusDialog.show()
         }
     }
 

@@ -7,10 +7,11 @@ import { Subject } from "rxjs"
 import { fromEvent } from "rxjs"
 import { throttleTime } from "rxjs"
 import type { Subscription } from "rxjs"
-import { SettingsManager } from "./storage/settings.mjs"
+import { SettingsManager, type CameraSettings } from "./storage/settings.mjs"
 import { PreviewWindow } from "./components/preview-window.mjs"
 import { CameraController, DOLLY_REF } from "./controls/camera-controller.mjs"
-import type { Vec3f } from "./vecmat/vector.mjs"
+import type { CameraState } from "./controls/camera-controller.mjs"
+import type { Vec2f, Vec3f } from "./vecmat/vector.mjs"
 import { vec2, vec3 } from "./vecmat/vector.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
 import type { MeshData } from "./export/export.mjs"
@@ -39,6 +40,8 @@ import {
 } from "./shared-render-buffer.mjs"
 import type { TranspileKind, TranspileToMainMessage } from "./transpile-worker-protocol.mjs"
 import { appendDevLogLine, log, snapshotDebugLogModules } from "./logging/debug-log.mjs"
+import { computeAgentPreviewCameraParams } from "./agent-testcase/agent-preview-camera.mjs"
+import { captureAgentMeshImageData } from "./agent-testcase/agent-mesh-capture.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -150,6 +153,7 @@ export class SDFRenderer {
     #latestBuildRequestId = 0
     #latestRenderMeshRequestId = 0
     #latestThumbnailRequestId = 0
+    #latestAgentPreviewRequestId = 0
     #pendingTranspile = new Map<
         number,
         {
@@ -163,6 +167,11 @@ export class SDFRenderer {
             simplifyTuning?: SimplifyTuning
             voxelSizeMm?: number
             mdcExportLevers?: MdcExportLevers
+            cameraState?: CameraState
+            viewTransform?: Float32Array
+            cameraPosition?: [number, number, number]
+            viewCenter?: [number, number]
+            resolutionScale?: number
         }
     >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
@@ -531,6 +540,9 @@ export class SDFRenderer {
             } else if (pending.kind === "thumbnail") {
                 this.#pendingThumbnail.get(requestId)?.reject(new Error(error))
                 this.#pendingThumbnail.delete(requestId)
+            } else if (pending.kind === "agentPreview") {
+                this.#pendingThumbnail.get(requestId)?.reject(new Error(error))
+                this.#pendingThumbnail.delete(requestId)
             }
             return
         }
@@ -580,6 +592,37 @@ export class SDFRenderer {
                 return
             }
             this.#worker.postMessage({ type: "thumbnail", body, width: pending.width, height: pending.height, requestId, documentName: pending.documentName })
+        } else if (pending.kind === "agentPreview") {
+            if (requestId !== this.#latestAgentPreviewRequestId) {
+                this.#pendingThumbnail.get(requestId)?.reject(new Error("Superseded"))
+                this.#pendingThumbnail.delete(requestId)
+                return
+            }
+            const camState = pending.cameraState
+            const vt = pending.viewTransform
+            const cp = pending.cameraPosition
+            const vc = pending.viewCenter
+            const rs = pending.resolutionScale
+            const w = pending.width
+            const h = pending.height
+            if (!camState || !vt || !cp || !vc || rs === undefined || w === undefined || h === undefined) {
+                this.#pendingThumbnail.get(requestId)?.reject(new Error("Incomplete agent preview params"))
+                this.#pendingThumbnail.delete(requestId)
+                return
+            }
+            this.#worker.postMessage({
+                type: "agentPreview",
+                body,
+                width: w,
+                height: h,
+                requestId,
+                documentName: pending.documentName,
+                cameraState: camState,
+                viewTransform: vt,
+                cameraPosition: cp,
+                viewCenter: vc,
+                resolutionScale: rs,
+            })
         }
     }
 
@@ -1180,6 +1223,11 @@ export class SDFRenderer {
         return { width: this.#fullWidth || 800, height: this.#fullHeight || 600 }
     }
 
+    /** Optical center in [0,1] UV space (matches preview / mesh viewer). */
+    get viewCenter(): Vec2f {
+        return this.#viewCenter
+    }
+
     #getCompactSelectedIds(): number[] {
         if (!this.#selectionDirty) return this.#cachedSelectedIds
         this.#cachedSelectedIds.length = 0
@@ -1627,6 +1675,68 @@ export class SDFRenderer {
         })
         await this.#setCachedThumbnail(cacheKey, imageData)
         return imageData
+    }
+
+    /**
+     * Off-screen SDF raymarch with **normal-vector RGB** shading and testcase camera (for agent automation).
+     * Does not use the thumbnail cache. Max dimension 2048 (worker).
+     */
+    async agentPreviewPixels(
+        src: string,
+        camera: CameraSettings,
+        viewCenter: [number, number],
+        resolutionScale: number,
+        width = 1000,
+        height = 1000,
+        documentName?: string,
+    ): Promise<ImageData> {
+        await this.#readyPromise
+        const trimmed = src.trim()
+        const params = computeAgentPreviewCameraParams(camera, width, height, viewCenter, resolutionScale)
+        try {
+            const requestId = ++this.#requestIdCounter
+            this.#latestAgentPreviewRequestId = requestId
+            const docName = documentName ?? undefined
+            this.#pendingTranspile.set(requestId, {
+                kind: "agentPreview",
+                documentName: docName,
+                width: params.cameraRes[0],
+                height: params.cameraRes[1],
+                cameraState: params.cameraState,
+                viewTransform: params.viewTransform,
+                cameraPosition: params.cameraPosition,
+                viewCenter: params.viewCenter,
+                resolutionScale: params.resolutionScale,
+            })
+            return await new Promise<ImageData>((resolve, reject) => {
+                this.#pendingThumbnail.set(requestId, { resolve, reject })
+                this.#transpileWorker.postMessage({ type: "transpile", src: trimmed, requestId, kind: "agentPreview", documentName: docName })
+            })
+        } finally {
+            params.dispose()
+        }
+    }
+
+    /** Mesh raster normal RGB (opaque), matching testcase camera; runs full CPU/GPU mesh extraction then capture. */
+    async agentMeshPreviewPixels(
+        src: string,
+        camera: CameraSettings,
+        viewCenter: [number, number],
+        resolutionScale: number,
+        meshOptions: {
+            simplifyOnExport?: boolean
+            exporter?: ExporterKind
+            shrecTuning?: ShrecTuning
+            simplifyTuning?: SimplifyTuning
+            voxelSizeMm?: number
+            mdcExportLevers?: MdcExportLevers
+        },
+        width = 1000,
+        height = 1000,
+        documentName?: string,
+    ): Promise<ImageData> {
+        const mesh = await this.renderMesh(src, documentName, meshOptions)
+        return captureAgentMeshImageData(mesh, camera, viewCenter, resolutionScale, width, height)
     }
 
     async #getCachedThumbnail(cacheKey: string): Promise<ImageData | null> {

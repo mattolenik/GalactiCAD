@@ -263,10 +263,12 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d2d = combined.x;
     let dCap = abs(capY) - h;
     let d = max(d2d, dCap);
-    let onSide = (d - dCap) > 0.01;
+    let onSide = d2d > dCap;
     let gx_tw = combined.z;
     let gz_tw = combined.w;
-    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, 0.0, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
+    let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
+    let gySide = twistRate * (gx_tw * twisted.y - gz_tw * twisted.x);
+    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, gySide, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
     let capId = select(${capBottomId}u, ${capTopId}u, capY > 0.0);
@@ -361,7 +363,9 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let onSide = d2d > dCap;
     let gx_tw = combined.z;
     let gz_tw = combined.w;
-    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, 0.0, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
+    let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
+    let gySide = twistRate * (gx_tw * twisted.y - gz_tw * twisted.x);
+    let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, gySide, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
     let capPlaneY = ${capYOff} + sgn(capY) * h;
@@ -369,7 +373,6 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     // Topological bands — model-relative + SURF_DIST; tt tolerance is dimensionless (edge fraction).
     let vertexTTol = ${EXTRUDE_MDC_VERTEX_EDGE_T};
     let featBand = max(SURF_DIST * 8.0, h * 0.02);
-    let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
     let extrudeMidId = ${this.id}u;
 
     var bestPd = 1e30;
@@ -452,8 +455,10 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             let vertexTurn = abs(prevDir.x * nextDir.y - prevDir.y * nextDir.x);
             let prevOut2 = vec2f(prevDir.y, -prevDir.x) * ${windSignStr};
             let nextOut2 = vec2f(nextDir.y, -nextDir.x) * ${windSignStr};
-            let n0 = safeNormalize(vec3f(ca * prevOut2.x - sa * prevOut2.y, 0.0, sa * prevOut2.x + ca * prevOut2.y), vec3f(1.0, 0.0, 0.0));
-            let n1 = safeNormalize(vec3f(ca * nextOut2.x - sa * nextOut2.y, 0.0, sa * nextOut2.x + ca * nextOut2.y), vec3f(1.0, 0.0, 0.0));
+            let n0gy = twistRate * (prevOut2.x * twisted.y - prevOut2.y * twisted.x);
+            let n1gy = twistRate * (nextOut2.x * twisted.y - nextOut2.y * twisted.x);
+            let n0 = safeNormalize(vec3f(ca * prevOut2.x - sa * prevOut2.y, n0gy, sa * prevOut2.x + ca * prevOut2.y), vec3f(1.0, 0.0, 0.0));
+            let n1 = safeNormalize(vec3f(ca * nextOut2.x - sa * nextOut2.y, n1gy, sa * nextOut2.x + ca * nextOut2.y), vec3f(1.0, 0.0, 0.0));
             if (vertexTurn >= ${EXTRUDE_MDC_VERTEX_TURN_MIN} && dot(n0, n1) < ${EXTRUDE_MDC_FEATURE_DOT}) {
                 let sideOtherN = select(n1, n0, dot(nSide, n1) > dot(nSide, n0));
                 if (nearCap) {

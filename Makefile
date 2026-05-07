@@ -72,3 +72,7 @@ release: build test
 clean: stop
 	rm -rf $(DIST)
 	rm -f .devserver.*
+
+.PHONY: submodules
+submodules:
+	git submodule update --init --recursive

@@ -15,8 +15,15 @@ import mdcShader from "./shaders/mdc.wgsl"
 import sampleGridShader from "./shaders/sample_grid.wgsl"
 import isoSampleBatchShaderSource from "./shaders/iso_sample_batch.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
-import { DEFAULT_MDC_EXPORT_LEVERS, type MdcExportLevers } from "./render-worker-protocol.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
+import {
+    createIsoOctreeSampleFn,
+    extractIsoSimplicialMesh,
+    extractIsoSimplicialMeshAsync,
+    IsoOctree,
+    IsoSampleBatch,
+} from "./export/iso-simplicial/index.mjs"
+import { IsoSimplicialConstants } from "./export/iso-simplicial/constants.mjs"
 import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
 import { ContourBuffer } from "./scene/contour-buffer.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
@@ -39,13 +46,17 @@ import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import {
+    DEFAULT_ISO_SIMPLICIAL_TUNING,
     DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
+    DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_PREVIEW_SHADING,
     DEFAULT_RAY_MARCH_PARAMS,
     DEFAULT_SIMPLIFY_TUNING,
     type BuildTimingBreakdownMs,
     type ExporterKind,
+    type IsoSimplicialTuning,
     type MainToWorkerMessage,
+    type MdcExportLevers,
     type PreviewShadingParams,
     type RayMarchParams,
     type RenderSelectionState,
@@ -1032,6 +1043,7 @@ export class RenderWorkerCore {
         simplifyTuning?: SimplifyTuning,
         voxelSizeMmFromCaller?: number,
         mdcExportLevers?: MdcExportLevers,
+        isoSimplicialTuning?: IsoSimplicialTuning,
     ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
@@ -1075,6 +1087,17 @@ export class RenderWorkerCore {
             const sceneSDF = scene.compile()
             const sceneSDF_fast = scene.compileFast()
             const sceneSDF_mid = scene.compileMid()
+
+            const worldBoundsCube = (): { min: [number, number, number]; max: [number, number, number] } => {
+                const cx = (minX + maxX) * 0.5
+                const cy = (minY + maxY) * 0.5
+                const cz = (minZ + maxZ) * 0.5
+                const half = Math.max(sizeX, sizeY, sizeZ) * 0.5
+                return {
+                    min: [cx - half, cy - half, cz - half],
+                    max: [cx + half, cy + half, cz + half],
+                }
+            }
 
             let mesh
             if (exporter === "shrec") {
@@ -1133,6 +1156,62 @@ export class RenderWorkerCore {
                     contours,
                 )
                 mesh = await shrec.export(sampleGridShaderModule)
+            } else if (exporter === "isoSimplicial") {
+                const isoT = { ...DEFAULT_ISO_SIMPLICIAL_TUNING, ...isoSimplicialTuning }
+                log("IsoSimplicialExport").info(
+                    `handleRenderMesh: dispatching iso-simplicial, tuning=${JSON.stringify(isoT)}`,
+                )
+                const tIso0 = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
+                const isoCompiler = new ShaderCompiler(this.#device)
+                    .replace("insert", "sceneAuxFast", sceneAuxFast)
+                    .replace("insert", "sceneAux", sceneAux)
+                    .replace("insert", "sceneAuxMid", sceneAuxMid)
+                    .replace("insert", "sceneSDF", sceneSDF)
+                const isoSampleModule = isoCompiler.compile(isoSampleBatchShaderSource, "Iso sample batch")
+                const isoBatch = new IsoSampleBatch(
+                    this.#helper,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.mdcSceneParams,
+                )
+                const sampleFn = createIsoOctreeSampleFn(isoBatch, isoSampleModule)
+                const cube = worldBoundsCube()
+                const constOverrides = {
+                    ...(typeof isoT.depthMin === "number" && Number.isFinite(isoT.depthMin) ? { depthMin: isoT.depthMin } : {}),
+                    ...(typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ? { depthMax: isoT.depthMax } : {}),
+                    ...(typeof isoT.oversampleQef === "number" && Number.isFinite(isoT.oversampleQef) ? { oversampleQef: isoT.oversampleQef } : {}),
+                    ...(typeof isoT.dualVertexBorderFraction === "number" && Number.isFinite(isoT.dualVertexBorderFraction)
+                        ? { dualVertexBorderFraction: isoT.dualVertexBorderFraction }
+                        : {}),
+                    ...(typeof isoT.findRootDepth === "number" && Number.isFinite(isoT.findRootDepth) ? { findRootDepth: isoT.findRootDepth } : {}),
+                    ...(typeof isoT.qefRelativeErrorRefineThreshold === "number" && Number.isFinite(isoT.qefRelativeErrorRefineThreshold)
+                        ? { qefRelativeErrorRefineThreshold: isoT.qefRelativeErrorRefineThreshold }
+                        : {}),
+                }
+                const tree = await IsoOctree.build({
+                    sample: sampleFn,
+                    bounds: { min: cube.min, max: cube.max },
+                    constants: Object.keys(constOverrides).length > 0 ? constOverrides : undefined,
+                })
+                const tIsoOct = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
+                const worldB = { min: cube.min as readonly [number, number, number], max: cube.max as readonly [number, number, number] }
+                if (isoT.phase5Snap) {
+                    mesh = await extractIsoSimplicialMeshAsync(tree, {
+                        worldBounds: worldB,
+                        phase5: { enabled: true, sample: sampleFn },
+                    })
+                } else {
+                    mesh = extractIsoSimplicialMesh(tree, { worldBounds: worldB })
+                }
+                const tIso1 = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
+                log("IsoSimplicialExport").info("iso-simplicial export complete", {
+                    treeCellCount: tree.treeCellCount,
+                    triCount: mesh.tris.length / 3,
+                    octreeMs: Math.round((tIsoOct - tIso0) * 1000) / 1000,
+                    totalMs: Math.round((tIso1 - tIso0) * 1000) / 1000,
+                    depthMin: constOverrides.depthMin ?? IsoSimplicialConstants.depthMin,
+                    depthMax: constOverrides.depthMax ?? IsoSimplicialConstants.depthMax,
+                })
             } else {
                 const params: MDCParams = {
                     gridDimX,

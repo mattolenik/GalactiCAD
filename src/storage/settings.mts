@@ -10,9 +10,12 @@ import {
 } from "../components/dev-tools-protocol.mjs"
 import {
     DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
+    DEFAULT_ISO_SIMPLICIAL_TUNING,
     DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_SHREC_TUNING,
     DEFAULT_SIMPLIFY_TUNING,
+    type ExporterKind,
+    type IsoSimplicialTuning,
     type MdcExportLevers,
     type ShrecTuning,
     type SimplifyTuning,
@@ -111,12 +114,19 @@ export interface GlobalSettings {
     }
     app: {
         devToolsEnabled: boolean
-        /** Voxel edge length (mm) for the mesh-export grid; applies to both MDC and SHREC. */
+        /** Voxel edge length (mm) for the mesh-export grid; applies to MDC, SHREC, and iso-simplicial. */
         meshExportVoxelSizeMm: number
-        /** When true, mesh export uses the SHREC/MergeSharp pipeline; otherwise MDC. */
+        /**
+         * Which mesh extraction pipeline Dev Tools / mesh viewer use.
+         * Legacy `useShrecExporter` is kept in sync on save for older builds (`meshExporter === "shrec"`).
+         */
+        meshExporter: ExporterKind
+        /** When true, mesh export uses the SHREC/MergeSharp pipeline (mirror of `meshExporter === "shrec"`). */
         useShrecExporter: boolean
         /** Tuning knobs for the SHREC/MergeSharp pipeline. */
         shrecTuning: ShrecTuning
+        /** Optional overrides for iso-simplicial octree / extract (Dev Tools). */
+        isoSimplicialTuning: IsoSimplicialTuning
         /** Post-export mesh simplification (meshoptimizer); used when mesh simplify on export is enabled. */
         simplifyTuning: SimplifyTuning
         /** Mesh export (MDC) tuning; merged with defaults and clamped on load. */
@@ -133,8 +143,9 @@ export interface GlobalSettings {
 }
 
 /** Partial global update; `app.mdcExportLevers` may be a partial merge. */
-export type AppSettingsPatch = Omit<Partial<GlobalSettings["app"]>, "mdcExportLevers"> & {
+export type AppSettingsPatch = Omit<Partial<GlobalSettings["app"]>, "mdcExportLevers" | "isoSimplicialTuning"> & {
     mdcExportLevers?: Partial<MdcExportLevers>
+    isoSimplicialTuning?: Partial<IsoSimplicialTuning>
 }
 
 export type GlobalSettingsPatch = {
@@ -202,6 +213,40 @@ function clampMdcNumber(v: unknown, lo: number, hi: number, fallback: number): n
     return Math.min(hi, Math.max(lo, v))
 }
 
+/** Normalize persisted iso-simplicial overrides (depth clamps, finite checks). */
+export function normalizeIsoSimplicialTuning(raw: unknown): IsoSimplicialTuning {
+    const out: IsoSimplicialTuning = {}
+    if (!raw || typeof raw !== "object") return out
+    const o = raw as Record<string, unknown>
+    if (typeof o.phase5Snap === "boolean") out.phase5Snap = o.phase5Snap
+    const clampDepth = (v: unknown): number | undefined => {
+        if (typeof v !== "number" || !Number.isFinite(v)) return undefined
+        return Math.min(16, Math.max(1, Math.round(v)))
+    }
+    const dMin = clampDepth(o.depthMin)
+    const dMax = clampDepth(o.depthMax)
+    if (dMin !== undefined) out.depthMin = dMin
+    if (dMax !== undefined) out.depthMax = dMax
+    if (out.depthMin !== undefined && out.depthMax !== undefined && out.depthMin > out.depthMax) {
+        const t = out.depthMin
+        out.depthMin = out.depthMax
+        out.depthMax = t
+    }
+    if (typeof o.oversampleQef === "number" && Number.isFinite(o.oversampleQef) && o.oversampleQef >= 1 && o.oversampleQef <= 8) {
+        out.oversampleQef = Math.round(o.oversampleQef)
+    }
+    if (typeof o.dualVertexBorderFraction === "number" && Number.isFinite(o.dualVertexBorderFraction) && o.dualVertexBorderFraction > 0 && o.dualVertexBorderFraction <= 0.5) {
+        out.dualVertexBorderFraction = o.dualVertexBorderFraction
+    }
+    if (typeof o.findRootDepth === "number" && Number.isFinite(o.findRootDepth) && o.findRootDepth >= 0 && o.findRootDepth <= 24) {
+        out.findRootDepth = Math.round(o.findRootDepth)
+    }
+    if (typeof o.qefRelativeErrorRefineThreshold === "number" && Number.isFinite(o.qefRelativeErrorRefineThreshold) && o.qefRelativeErrorRefineThreshold > 0) {
+        out.qefRelativeErrorRefineThreshold = o.qefRelativeErrorRefineThreshold
+    }
+    return out
+}
+
 /** Normalize persisted MDC export levers (Dev Tools / mesh pipeline). */
 export function normalizeMdcExportLevers(raw: unknown): MdcExportLevers {
     const d = DEFAULT_MDC_EXPORT_LEVERS
@@ -236,8 +281,10 @@ function defaultGlobalSettings(): GlobalSettings {
         app: {
             devToolsEnabled: false,
             meshExportVoxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
+            meshExporter: "mdc",
             useShrecExporter: false,
             shrecTuning: { ...DEFAULT_SHREC_TUNING },
+            isoSimplicialTuning: { ...DEFAULT_ISO_SIMPLICIAL_TUNING },
             simplifyTuning: { ...DEFAULT_SIMPLIFY_TUNING },
             mdcExportLevers: { ...DEFAULT_MDC_EXPORT_LEVERS },
             diskSyncIntervalSeconds: 30,
@@ -425,6 +472,15 @@ export class SettingsManager {
                     ...appPatch.mdcExportLevers,
                 })
             }
+            if (appPatch.isoSimplicialTuning !== undefined) {
+                mergedApp.isoSimplicialTuning = normalizeIsoSimplicialTuning({
+                    ...this.#globalSettings.app.isoSimplicialTuning,
+                    ...appPatch.isoSimplicialTuning,
+                })
+            }
+            if (appPatch.meshExporter !== undefined) {
+                mergedApp.useShrecExporter = appPatch.meshExporter === "shrec"
+            }
             Object.assign(this.#globalSettings.app, mergedApp)
         }
         if (patch.layout) Object.assign(this.#globalSettings.layout, patch.layout)
@@ -576,8 +632,18 @@ export class SettingsManager {
                     meshExportVoxelSizeMm = rawApp.meshExportVoxelSizeMm
                 }
 
-                let useShrecExporter =
+                let useShrecLegacy =
                     typeof rawApp.useShrecExporter === "boolean" ? rawApp.useShrecExporter : def.app.useShrecExporter
+
+                let meshExporter: ExporterKind =
+                    rawApp.meshExporter === "mdc" || rawApp.meshExporter === "shrec" || rawApp.meshExporter === "isoSimplicial"
+                        ? rawApp.meshExporter
+                        : useShrecLegacy
+                          ? "shrec"
+                          : "mdc"
+                const useShrecExporter = meshExporter === "shrec"
+
+                const isoSimplicialTuning = normalizeIsoSimplicialTuning(rawApp.isoSimplicialTuning)
 
                 let shrecTuning: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
                 {
@@ -660,8 +726,10 @@ export class SettingsManager {
                 const app: GlobalSettings["app"] = {
                     devToolsEnabled: typeof rawApp.devToolsEnabled === "boolean" ? rawApp.devToolsEnabled : def.app.devToolsEnabled,
                     meshExportVoxelSizeMm,
+                    meshExporter,
                     useShrecExporter,
                     shrecTuning,
+                    isoSimplicialTuning,
                     simplifyTuning,
                     mdcExportLevers,
                     diskSyncIntervalSeconds,

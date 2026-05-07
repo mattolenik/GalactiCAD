@@ -28,6 +28,7 @@ export const DEBUG_LOG_MODULES = [
     "MonacoHighlighter",
     "WelcomeScreen",
     "MdcExport",
+    "IsoSimplicialExport",
     "ShrecExport",
     "Simplify",
     "Settings",

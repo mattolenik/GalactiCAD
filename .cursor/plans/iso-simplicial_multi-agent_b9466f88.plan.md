@@ -22,7 +22,7 @@ todos:
       status: completed
     - id: agent-7
       content: "Agent 7: ExporterKind + handleRenderMesh + Dev Tools + AGENTS note"
-      status: pending
+      status: completed
 isProject: false
 ---
 

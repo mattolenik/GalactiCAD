@@ -40,7 +40,13 @@
 - **Async** `extractIsoSimplicialMeshAsync`: when `phase5.enabled` and `sample` present, traverses in pending-snap mode, runs reference `rootfind.h`-style bisection (GPU midpoint evals only), maps `worldBounds`, `renormalizeTriangleNormals`, then degenerate filter.
 - **Parity test:** compare `extractIsoSimplicialMesh(..., { phase5: { enabled: true } })` (degenerate filter only) to `extractIsoSimplicialMeshAsync` with `findRootDepth: 0` — async path always runs the same filter after snap; unfiltered sync mesh is not comparable.
 
+## Agent 7 (worker + UI)
+
+- **`ExporterKind`:** `"mdc" | "shrec" | "isoSimplicial"` in `render-worker-protocol.mts`; `renderMesh` message carries `isoSimplicialTuning?: IsoSimplicialTuning`.
+- **Worker:** `handleRenderMesh` compiles `iso_sample_batch.wgsl`, `IsoOctree.build` + `extractIsoSimplicialMesh` / `extractIsoSimplicialMeshAsync` (Phase 5 when `phase5Snap`), cubic bounds from padded scene AABB; `log("IsoSimplicialExport").info` timing (`treeCellCount`, `octreeMs`, `totalMs`).
+- **Dev Tools:** Mesh export → Exporter radios + Iso-simplicial collapse (depth min/max, Phase 5 snap, defaults); settings `meshExporter` + `isoSimplicialTuning` (legacy `useShrecExporter` synced when exporter is SHREC).
+- **`AGENTS.md`:** iso-simplicial mesh export paragraph.
+
 ## Gaps / next agents
 
 - Guide-tree (`TNode::eval` with non-null `guide`) not implemented (reference dual-pass); v1 always builds from scratch.
-- Agent 7 worker + UI.

@@ -1206,11 +1206,12 @@ class App {
         }
 
         devTools.syncVoxelSizeMmFromSettings(this.#settings.getGlobal().app.meshExportVoxelSizeMm)
-        devTools.useShrecExporter = this.#settings.getGlobal().app.useShrecExporter
+        devTools.syncMeshExporterFromSettings(this.#settings.getGlobal().app.meshExporter)
+        devTools.syncIsoSimplicialTuningFromSettings(this.#settings.getGlobal().app.isoSimplicialTuning)
         devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
         devTools.syncMdcLeversFromSettings(this.#settings.getGlobal().app.mdcExportLevers)
-        // Re-mesh live when the SHREC exporter toggle or its tuning knobs
+        // Re-mesh live when the mesh exporter or exporter tuning knobs
         // change, so the mesh viewer reflects edits immediately. The
         // `#scheduleMeshUpdate` debounce avoids re-meshing per slider tick.
         const remeshIfMeshViewerOn = () => {
@@ -1219,7 +1220,8 @@ class App {
             if (!m) return
             this.#scheduleMeshUpdate(m.getValue())
         }
-        devTools.onUseShrecExporterChange = remeshIfMeshViewerOn
+        devTools.onMeshExporterChange = remeshIfMeshViewerOn
+        devTools.onIsoSimplicialTuningChange = remeshIfMeshViewerOn
         devTools.onShrecTuningChange = remeshIfMeshViewerOn
         devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
         devTools.onVoxelSizeMmChange = remeshIfMeshViewerOn
@@ -1569,8 +1571,9 @@ class App {
         return {
             simplifyOnExport: devTools.meshSimplifyOnExport,
             voxelSizeMm: devTools.voxelSizeMm,
-            exporter: devTools.useShrecExporter ? "shrec" as const : "mdc" as const,
+            exporter: devTools.meshExporter,
             shrecTuning: devTools.shrecTuning,
+            isoSimplicialTuning: devTools.isoSimplicialTuning,
             simplifyTuning: devTools.simplifyTuning,
             mdcExportLevers: this.#settings.getMdcExportLevers(),
         }

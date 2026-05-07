@@ -8,8 +8,8 @@ import type { SelectionInfo } from "./components/preview-window.mjs"
 import type { MeshData } from "./export/export.mjs"
 
 /**
- * Default world-space voxel edge length (mm) used by both MDC and SHREC mesh
- * extractors when the user has not set one explicitly. Half this value → 8×
+ * Default world-space voxel edge length (mm) used by mesh extractors (MDC, SHREC,
+ * iso-simplicial) when the user has not set one explicitly. Half this value → 8×
  * more voxels → ~8× more time and memory; double this value → 8× cheaper but
  * blockier corners.
  */
@@ -24,8 +24,31 @@ export const DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM = 0.1
  * - `"shrec"`: GPU samples (scalar, gradient) on a uniform grid, then a CPU
  *   stage runs dual contouring + MergeSharp vertex relocation (see
  *   `src/export/shrec.mts` and `src/shaders/sample_grid.wgsl`).
+ * - `"isoSimplicial"`: GPU batched `sceneSDF` samples for Hermite data, CPU
+ *   adaptive octree plus Marching Tetrahedra (`src/export/iso-simplicial/`).
  */
-export type ExporterKind = "mdc" | "shrec"
+export type ExporterKind = "mdc" | "shrec" | "isoSimplicial"
+
+/**
+ * Optional overrides for iso-simplicial export (`IsoSimplicialConstants` in
+ * `src/export/iso-simplicial/constants.mts`). Omitted fields use frozen defaults.
+ */
+export interface IsoSimplicialTuning {
+    depthMin?: number
+    depthMax?: number
+    oversampleQef?: number
+    dualVertexBorderFraction?: number
+    findRootDepth?: number
+    qefRelativeErrorRefineThreshold?: number
+    /**
+     * When true, run async Phase 5 GPU bisection on MT edge crossings
+     * (`extractIsoSimplicialMeshAsync`). When false, linear edge intersection only.
+     */
+    phase5Snap?: boolean
+}
+
+/** Default iso-simplicial tuning: all fields omitted → worker uses `IsoSimplicialConstants`. */
+export const DEFAULT_ISO_SIMPLICIAL_TUNING: IsoSimplicialTuning = {}
 
 /**
  * Tuning knobs for the SHREC / MergeSharp exporter that the user may adjust
@@ -367,6 +390,7 @@ export type MainToWorkerMessage =
           simplifyOnExport?: boolean
           exporter?: ExporterKind
           shrecTuning?: ShrecTuning
+          isoSimplicialTuning?: IsoSimplicialTuning
           simplifyTuning?: SimplifyTuning
           voxelSizeMm?: number
           /** When set, overrides worker defaults for MDC export (Dev Tools). */

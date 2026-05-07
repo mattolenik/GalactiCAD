@@ -19,7 +19,7 @@ todos:
       status: completed
     - id: agent-6
       content: "Agent 6 (optional): Phase 5 snap/degenerate pass behind flag"
-      status: pending
+      status: completed
     - id: agent-7
       content: "Agent 7: ExporterKind + handleRenderMesh + Dev Tools + AGENTS note"
       status: pending

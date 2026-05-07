@@ -33,7 +33,14 @@
 - **Helpers:** `traverseIsoExtract`, `genTrav`, `isOctreeLeaf` (matches reference `children[0]==0`), `isoExtractFindZero`.
 - **Tests:** `iso-extract_test.mts` — `findZero` smoke; extraction on mock plane with subdivided octree (`triCount > 0`, finite verts); `worldBounds` scaling.
 
+## Agent 6 (Phase 5 quality — optional)
+
+- **`IsoExtractOptions.phase5`:** `enabled` (default off), optional `sample` (GPU `IsoOctreeBatchFn`), `findRootDepth` (defaults to `IsoSimplicialConstants.findRootDepth`), `minTriangleAreaSq` (defaults to `ISO_EXTRACT_DEFAULT_MIN_TRIANGLE_AREA_SQ`), `signal`.
+- **Sync** `extractIsoSimplicialMesh`: with `phase5.enabled` and **no** `sample`, runs degenerate-triangle filter only. With `sample` set, **throws** — use async API.
+- **Async** `extractIsoSimplicialMeshAsync`: when `phase5.enabled` and `sample` present, traverses in pending-snap mode, runs reference `rootfind.h`-style bisection (GPU midpoint evals only), maps `worldBounds`, `renormalizeTriangleNormals`, then degenerate filter.
+- **Parity test:** compare `extractIsoSimplicialMesh(..., { phase5: { enabled: true } })` (degenerate filter only) to `extractIsoSimplicialMeshAsync` with `findRootDepth: 0` — async path always runs the same filter after snap; unfiltered sync mesh is not comparable.
+
 ## Gaps / next agents
 
 - Guide-tree (`TNode::eval` with non-null `guide`) not implemented (reference dual-pass); v1 always builds from scratch.
-- Agent 6 optional snap; Agent 7 worker + UI.
+- Agent 7 worker + UI.

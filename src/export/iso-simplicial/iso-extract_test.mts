@@ -1,7 +1,12 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { extractIsoSimplicialMesh, isoExtractFindZero } from "./iso-extract.mjs"
+import {
+    extractIsoSimplicialMesh,
+    extractIsoSimplicialMeshAsync,
+    filterIsoExtractDegenerateTriangles,
+    isoExtractFindZero,
+} from "./iso-extract.mjs"
 import { IsoOctree, type IsoOctreeBatchFn } from "./iso-octree.mjs"
 
 /** Horizontal plane `z = 0.5`; matches `iso-octree_test.mts`. */
@@ -60,4 +65,53 @@ test("extractIsoSimplicialMesh: worldBounds scales positions", async () => {
         maxZ = Math.max(maxZ, mesh.verts[i * stride + 2]!)
     }
     assert.ok(maxZ <= 2.01)
+})
+
+test("extractIsoSimplicialMesh: phase5 + sample throws (use async)", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 2, depthMax: 3, qefRelativeErrorRefineThreshold: 1e30 },
+    })
+    assert.throws(
+        () =>
+            extractIsoSimplicialMesh(tree, {
+                phase5: { enabled: true, sample: mockPlaneHalfZ },
+            }),
+        /extractIsoSimplicialMeshAsync/,
+    )
+})
+
+test("extractIsoSimplicialMeshAsync: findRootDepth 0 matches sync mesh (same Phase 5 filter)", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 2, depthMax: 4, qefRelativeErrorRefineThreshold: 1e30 },
+    })
+    const a = extractIsoSimplicialMesh(tree, { phase5: { enabled: true } })
+    const b = await extractIsoSimplicialMeshAsync(tree, {
+        phase5: { enabled: true, sample: mockPlaneHalfZ, findRootDepth: 0 },
+    })
+    assert.equal(a.tris.length, b.tris.length)
+    assert.equal(a.verts.length, b.verts.length)
+    for (let i = 0; i < a.verts.length; i++) {
+        assert.ok(Math.abs(a.verts[i]! - b.verts[i]!) < 1e-5)
+    }
+})
+
+test("filterIsoExtractDegenerateTriangles: removes flat triangle", () => {
+    const S = 8
+    const verts = new Float32Array(new ArrayBuffer(3 * S * 4))
+    verts[0] = 0
+    verts[1] = 0
+    verts[2] = 0
+    verts[S] = 1
+    verts[S + 1] = 0
+    verts[S + 2] = 0
+    verts[2 * S] = 0.5
+    verts[2 * S + 1] = 0
+    verts[2 * S + 2] = 0
+    const tris = new Uint32Array([0, 1, 2])
+    const mesh = filterIsoExtractDegenerateTriangles({ verts: verts as Float32Array<ArrayBuffer>, tris: tris as Uint32Array<ArrayBuffer> }, 1e-20)
+    assert.equal(mesh.tris.length, 0)
 })

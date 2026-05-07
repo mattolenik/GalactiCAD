@@ -4,25 +4,62 @@
  *
  * Positions in `IsoOctreeNode` are stored in **normalized root-cell** coordinates in `[0,1]³`
  * (same as `IsoOctree.build`). Pass `worldBounds` to map vertices to world space for `MeshData`.
+ *
+ * **Phase 5 quality** (paper §4.1-style snap, reference `rootfind.h`): optional GPU bisection along
+ * each Marching-Tetrahedra edge bracket (`binarySearch` + `function(p)`), then degenerate removal.
+ * New field values always come from `phase5.sample` — never from CPU SDF. When `phase5.enabled` is
+ * false, output matches the Agent-5 linear `findZero` path only.
  */
 
 import type { MeshData } from "../export.mjs"
 import { renormalizeTriangleNormals } from "../crease-split.mjs"
+import { IsoSimplicialConstants } from "./constants.mjs"
 import { cubeCornerIndex, cubeEdge2Vert, cubeFace2Opposite, cubeOrient2Edge } from "./cube-tables.mjs"
 import { extractFaceTable, extractFlipTable } from "./extract-tables.mjs"
-import { isoOctreeIsOutside, type IsoOctreeBounds, type IsoOctreeNode } from "./iso-octree.mjs"
+import { isoOctreeIsOutside, type IsoOctreeBatchFn, type IsoOctreeBounds, type IsoOctreeNode } from "./iso-octree.mjs"
 import { tetEdge2Vert, tetTris } from "./tet-tables.mjs"
 
 const VERT_STRIDE = 8
+
+/** Default squared-area cutoff for {@link IsoExtractPhase5Options.minTriangleAreaSq}. */
+export const ISO_EXTRACT_DEFAULT_MIN_TRIANGLE_AREA_SQ = 1e-28
 
 export interface TraversalData {
     node: IsoOctreeNode
     depth: number
 }
 
+/**
+ * Optional Phase 5 pass: GPU isosurface snap (`rootfind.h` bisection) plus degenerate triangle drop.
+ * With `enabled: false` (default), {@link extractIsoSimplicialMesh} behaves as Agent 5 only.
+ */
+export interface IsoExtractPhase5Options {
+    /** When true, apply degenerate filtering; when `sample` is set, also snap MT edge crossings. */
+    enabled: boolean
+    /**
+     * GPU batch sampler (same contract as `IsoOctree.build` `sample`: world-space positions in,
+     * interleaved `vec4` SDF out). Required for snap; omit to only filter degenerates (sync path).
+     */
+    sample?: IsoOctreeBatchFn
+    /** Reference `FIND_ROOT_DEPTH` — bisection steps before terminal `findZero`. Default from constants. */
+    findRootDepth?: number
+    /** Squared triangle area below which triangles are dropped (after snap, in output coordinates). */
+    minTriangleAreaSq?: number
+    signal?: AbortSignal
+}
+
 export interface IsoExtractOptions {
     /** If set, maps normalized octree coordinates into world space (axis-aligned cube). */
     worldBounds?: IsoOctreeBounds
+    phase5?: IsoExtractPhase5Options
+}
+
+/** One extracted triangle worth of Marching-Tetrahedra wedges for GPU snap (normalized coords). */
+export interface IsoExtractPendingSnapTri {
+    /** Copy of the six-point `vect4f` wedge (`visitorextract.cpp` layout), length 24. */
+    wedge: Float32Array
+    /** Three MT edges as corner indices 0..5 into `wedge`. */
+    edgePairs: readonly [readonly [number, number], readonly [number, number], readonly [number, number]]
 }
 
 /** Reference `TNode::is_leaf` tests `children[0] == 0` only. */
@@ -94,11 +131,157 @@ function isoExtractFindZeroFlat(p: Float32Array, ia: number, ib: number): [numbe
     return [p[ia]! + t * (p[ib]! - p[ia]!), p[ia + 1]! + t * (p[ib + 1]! - p[ia + 1]!), p[ia + 2]! + t * (p[ib + 2]! - p[ia + 2]!)]
 }
 
+/** Reference `sign` in `rootfind.h` (`x[3] < 0 ? -1 : 1`). */
+function isoExtractP5SignW(buf: Float32Array, off: number): number {
+    return buf[off + 3]! < 0 ? -1 : 1
+}
+
+/** Map normalized octree xyz into coordinates passed to `IsoOctree.build` / `sample` (world AABB or identity). */
+function isoExtractNormToSampleWorld(
+    x: number,
+    y: number,
+    z: number,
+    worldBounds: IsoOctreeBounds | undefined,
+    out3: Float32Array,
+): void {
+    if (!worldBounds) {
+        out3[0] = x
+        out3[1] = y
+        out3[2] = z
+        return
+    }
+    const mn = worldBounds.min
+    const mx = worldBounds.max
+    out3[0] = mn[0]! + x * (mx[0]! - mn[0]!)
+    out3[1] = mn[1]! + y * (mx[1]! - mn[1]!)
+    out3[2] = mn[2]! + z * (mx[2]! - mn[2]!)
+}
+
+/**
+ * Reference `binarySearch` in `rootfind.h` (iterative): bracket `a`/`b` as `vect4` in normalized space,
+ * midpoint SDF from `sample` only. Returns crossing position in normalized coordinates.
+ */
+async function isoExtractSnapEdgeVertexGpu(
+    sample: IsoOctreeBatchFn,
+    signal: AbortSignal | undefined,
+    findRootDepth: number,
+    worldBounds: IsoOctreeBounds | undefined,
+    wedge: Float32Array,
+    i0: number,
+    i1: number,
+    scratchMid: Float32Array,
+    copyA: Float32Array,
+    copyB: Float32Array,
+    worldIn: Float32Array,
+): Promise<[number, number, number]> {
+    const o0 = i0 * 4
+    const o1 = i1 * 4
+    if (findRootDepth <= 0) {
+        return isoExtractFindZero(wedge.subarray(o0, o0 + 4), wedge.subarray(o1, o1 + 4))
+    }
+    copyA.set(wedge.subarray(o0, o0 + 4))
+    copyB.set(wedge.subarray(o1, o1 + 4))
+    for (let step = 0; step < findRootDepth; step++) {
+        scratchMid[0] = (copyA[0]! + copyB[0]!) * 0.5
+        scratchMid[1] = (copyA[1]! + copyB[1]!) * 0.5
+        scratchMid[2] = (copyA[2]! + copyB[2]!) * 0.5
+        isoExtractNormToSampleWorld(scratchMid[0]!, scratchMid[1]!, scratchMid[2]!, worldBounds, worldIn)
+        const sdf = await sample(worldIn, signal)
+        scratchMid[3] = sdf[3]!
+        const sa = isoExtractP5SignW(copyA, 0)
+        const sm = isoExtractP5SignW(scratchMid, 0)
+        if (sa !== sm) {
+            copyB.set(scratchMid)
+        } else {
+            copyA.set(scratchMid)
+        }
+    }
+    return isoExtractFindZero(copyA, copyB)
+}
+
+/**
+ * Drop triangles with squared area below `minAreaSq` (or non-finite area), compacting vertices.
+ * Re-runs {@link renormalizeTriangleNormals} on the compact mesh.
+ */
+export function filterIsoExtractDegenerateTriangles(mesh: MeshData, minAreaSq: number): MeshData {
+    const S = VERT_STRIDE
+    const { verts, tris } = mesh
+    const triCount = (tris.length / 3) | 0
+    if (triCount === 0) return mesh
+
+    const triAreaSq = (t: number): number => {
+        const b = t * 3
+        const i0 = tris[b]!
+        const i1 = tris[b + 1]!
+        const i2 = tris[b + 2]!
+        const o0 = i0 * S
+        const o1 = i1 * S
+        const o2 = i2 * S
+        const ax = verts[o1]! - verts[o0]!
+        const ay = verts[o1 + 1]! - verts[o0 + 1]!
+        const az = verts[o1 + 2]! - verts[o0 + 2]!
+        const bx = verts[o2]! - verts[o0]!
+        const by = verts[o2 + 1]! - verts[o0 + 1]!
+        const bz = verts[o2 + 2]! - verts[o0 + 2]!
+        const cx = ay * bz - az * by
+        const cy = az * bx - ax * bz
+        const cz = ax * by - ay * bx
+        return cx * cx + cy * cy + cz * cz
+    }
+
+    const kept: number[] = []
+    for (let t = 0; t < triCount; t++) {
+        const a2 = triAreaSq(t)
+        if (a2 >= minAreaSq && Number.isFinite(a2)) kept.push(t)
+    }
+    if (kept.length === triCount) return mesh
+
+    const vertCount = (verts.length / S) | 0
+    const used = new Uint8Array(vertCount)
+    for (const t of kept) {
+        const b = t * 3
+        used[tris[b]!] = 1
+        used[tris[b + 1]!] = 1
+        used[tris[b + 2]!] = 1
+    }
+    const map = new Int32Array(vertCount).fill(-1)
+    let nv = 0
+    for (let i = 0; i < vertCount; i++) {
+        if (used[i]) map[i] = nv++
+    }
+    const newVerts = new Float32Array(new ArrayBuffer(nv * S * 4))
+    for (let i = 0; i < vertCount; i++) {
+        const ni = map[i]!
+        if (ni < 0) continue
+        const src = i * S
+        const dst = ni * S
+        for (let k = 0; k < S; k++) {
+            newVerts[dst + k] = verts[src + k]!
+        }
+    }
+    const newTris = new Uint32Array(kept.length * 3)
+    for (let j = 0; j < kept.length; j++) {
+        const t = kept[j]!
+        const b = t * 3
+        newTris[j * 3] = map[tris[b]!]!
+        newTris[j * 3 + 1] = map[tris[b + 1]!]!
+        newTris[j * 3 + 2] = map[tris[b + 2]!]!
+    }
+    return renormalizeTriangleNormals(newVerts as Float32Array<ArrayBuffer>, newTris as Uint32Array<ArrayBuffer>)
+}
+
 class IsoExtractVisitor {
     private readonly scratchA = new Float32Array(4)
     private readonly scratchB = new Float32Array(4)
     private readonly verts: number[] = []
     private readonly tris: number[] = []
+    private readonly pendingSnap: IsoExtractPendingSnapTri[] = []
+
+    constructor(private readonly capturePendingSnap: boolean = false) {}
+
+    getPendingSnapTris(): readonly IsoExtractPendingSnapTri[] {
+        return this.pendingSnap
+    }
 
     onNode(td: TraversalData): boolean {
         return !isOctreeLeaf(td.node)
@@ -227,12 +410,24 @@ class IsoExtractVisitor {
             const e1 = row[t + 1]!
             const e2 = row[t + 2]!
             const gc = [g0, g1, g2, g3]
-            const tri: [number, number, number][] = []
-            for (const e of [e0, e1, e2]) {
-                const ec = tetEdge2Vert[e]!
-                tri.push(isoExtractFindZeroFlat(p, gc[ec[0]!]! * 4, gc[ec[1]!]! * 4))
+            if (this.capturePendingSnap) {
+                const wedge = new Float32Array(24)
+                wedge.set(p)
+                const ec0 = tetEdge2Vert[e0]!
+                const ec1 = tetEdge2Vert[e1]!
+                const ec2 = tetEdge2Vert[e2]!
+                const ep0: readonly [number, number] = [gc[ec0[0]!]!, gc[ec0[1]!]!]
+                const ep1: readonly [number, number] = [gc[ec1[0]!]!, gc[ec1[1]!]!]
+                const ep2: readonly [number, number] = [gc[ec2[0]!]!, gc[ec2[1]!]!]
+                this.pendingSnap.push({ wedge, edgePairs: [ep0, ep1, ep2] })
+            } else {
+                const tri: [number, number, number][] = []
+                for (const e of [e0, e1, e2]) {
+                    const ec = tetEdge2Vert[e]!
+                    tri.push(isoExtractFindZeroFlat(p, gc[ec[0]!]! * 4, gc[ec[1]!]! * 4))
+                }
+                this.pushTriangle(tri[0]!, tri[1]!, tri[2]!)
             }
-            this.pushTriangle(tri[0]!, tri[1]!, tri[2]!)
         }
     }
 
@@ -245,6 +440,9 @@ class IsoExtractVisitor {
     }
 
     finish(worldBounds?: IsoOctreeBounds): MeshData {
+        if (this.capturePendingSnap) {
+            throw new Error("iso-extract: finish() is invalid in pending-snap mode — use extractIsoSimplicialMeshAsync")
+        }
         const vn = this.verts.length / VERT_STRIDE
         const verts = new Float32Array(new ArrayBuffer(vn * VERT_STRIDE * 4))
         verts.set(this.verts)
@@ -512,11 +710,130 @@ function traverseEdgeZ(visitor: IsoExtractVisitor, n00: TraversalData, n10: Trav
     }
 }
 
+async function meshFromPendingSnap(
+    pending: readonly IsoExtractPendingSnapTri[],
+    worldBounds: IsoOctreeBounds | undefined,
+    phase5: IsoExtractPhase5Options,
+): Promise<MeshData> {
+    const sample = phase5.sample
+    if (!sample) {
+        throw new Error("iso-extract: meshFromPendingSnap requires phase5.sample")
+    }
+    const findRootDepth = phase5.findRootDepth ?? IsoSimplicialConstants.findRootDepth
+    const signal = phase5.signal
+    const scratchMid = new Float32Array(4)
+    const copyA = new Float32Array(4)
+    const copyB = new Float32Array(4)
+    const worldIn = new Float32Array(3)
+    const verts: number[] = []
+    const tris: number[] = []
+
+    for (const tri of pending) {
+        const p0 = await isoExtractSnapEdgeVertexGpu(
+            sample,
+            signal,
+            findRootDepth,
+            worldBounds,
+            tri.wedge,
+            tri.edgePairs[0]![0],
+            tri.edgePairs[0]![1],
+            scratchMid,
+            copyA,
+            copyB,
+            worldIn,
+        )
+        const p1 = await isoExtractSnapEdgeVertexGpu(
+            sample,
+            signal,
+            findRootDepth,
+            worldBounds,
+            tri.wedge,
+            tri.edgePairs[1]![0],
+            tri.edgePairs[1]![1],
+            scratchMid,
+            copyA,
+            copyB,
+            worldIn,
+        )
+        const p2 = await isoExtractSnapEdgeVertexGpu(
+            sample,
+            signal,
+            findRootDepth,
+            worldBounds,
+            tri.wedge,
+            tri.edgePairs[2]![0],
+            tri.edgePairs[2]![1],
+            scratchMid,
+            copyA,
+            copyB,
+            worldIn,
+        )
+        const base = (verts.length / VERT_STRIDE) | 0
+        for (const p of [p0, p1, p2]) {
+            verts.push(p[0]!, p[1]!, p[2]!, 0, 0, 0, 0, 0)
+        }
+        tris.push(base, base + 1, base + 2)
+    }
+
+    const vn = (verts.length / VERT_STRIDE) | 0
+    const vertBuf = new Float32Array(new ArrayBuffer(vn * VERT_STRIDE * 4))
+    vertBuf.set(verts)
+    if (worldBounds) {
+        const mn = worldBounds.min
+        const mx = worldBounds.max
+        const sx = mx[0]! - mn[0]!
+        const sy = mx[1]! - mn[1]!
+        const sz = mx[2]! - mn[2]!
+        for (let i = 0; i < vn; i++) {
+            const o = i * VERT_STRIDE
+            vertBuf[o] = mn[0]! + vertBuf[o]! * sx
+            vertBuf[o + 1] = mn[1]! + vertBuf[o + 1]! * sy
+            vertBuf[o + 2] = mn[2]! + vertBuf[o + 2]! * sz
+        }
+    }
+    const triBuf = new Uint32Array(tris)
+    return renormalizeTriangleNormals(vertBuf as Float32Array<ArrayBuffer>, triBuf as Uint32Array<ArrayBuffer>)
+}
+
 /**
  * Extract a triangle mesh from a built iso-simplicial octree (`IsoOctree.build`).
+ *
+ * When `options.phase5.enabled` is true and `phase5.sample` is set, throws — use
+ * {@link extractIsoSimplicialMeshAsync} so midpoint refinement can call the GPU batch.
  */
 export function extractIsoSimplicialMesh(tree: { root: IsoOctreeNode }, options?: IsoExtractOptions): MeshData {
-    const visitor = new IsoExtractVisitor()
+    const p5 = options?.phase5
+    if (p5?.enabled && p5.sample) {
+        throw new Error(
+            "extractIsoSimplicialMesh: phase5 with sample requires extractIsoSimplicialMeshAsync (GPU snap is async)",
+        )
+    }
+    const visitor = new IsoExtractVisitor(false)
     traverseIsoExtract(visitor, { node: tree.root, depth: 0 })
-    return visitor.finish(options?.worldBounds)
+    let mesh = visitor.finish(options?.worldBounds)
+    if (p5?.enabled) {
+        const minA = p5.minTriangleAreaSq ?? ISO_EXTRACT_DEFAULT_MIN_TRIANGLE_AREA_SQ
+        mesh = filterIsoExtractDegenerateTriangles(mesh, minA)
+    }
+    return mesh
+}
+
+/**
+ * Same as {@link extractIsoSimplicialMesh}, but resolves Phase 5 GPU snap when `phase5.enabled` and
+ * `phase5.sample` are both set.
+ */
+export async function extractIsoSimplicialMeshAsync(
+    tree: { root: IsoOctreeNode },
+    options?: IsoExtractOptions,
+): Promise<MeshData> {
+    const p5 = options?.phase5
+    if (!p5?.enabled || !p5.sample) {
+        return extractIsoSimplicialMesh(tree, options)
+    }
+    const visitor = new IsoExtractVisitor(true)
+    traverseIsoExtract(visitor, { node: tree.root, depth: 0 })
+    let mesh = await meshFromPendingSnap(visitor.getPendingSnapTris(), options?.worldBounds, p5)
+    const minA = p5.minTriangleAreaSq ?? ISO_EXTRACT_DEFAULT_MIN_TRIANGLE_AREA_SQ
+    mesh = filterIsoExtractDegenerateTriangles(mesh, minA)
+    return mesh
 }

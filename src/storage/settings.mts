@@ -88,9 +88,23 @@ export interface EditorSettings {
     tabSize: number
 }
 
+/** MDC mesh viewer overlay: feature-class glyphs (debug samples must come from mesh export). */
+export interface MeshViewerFeatureGlyphsSettings {
+    line: boolean
+    corner: boolean
+    seam: boolean
+    ring: boolean
+}
+
 export interface GlobalSettings {
     preview: { movementScale: number; selectionMode: SelectionMode; cameraRotationMethod: CameraRotationMethod }
-    meshViewer: { translucentFaces: boolean; wireframe: boolean }
+    meshViewer: {
+        translucentFaces: boolean
+        wireframe: boolean
+        /** Raw per-sample squares (MDC debug overlay). */
+        mdcDebugPoints: boolean
+        featureGlyphs: MeshViewerFeatureGlyphsSettings
+    }
     app: {
         devToolsEnabled: boolean
         /** Voxel edge length (mm) for the mesh-export grid; applies to both MDC and SHREC. */
@@ -207,7 +221,12 @@ export function normalizeMdcExportLevers(raw: unknown): MdcExportLevers {
 function defaultGlobalSettings(): GlobalSettings {
     return {
         preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
-        meshViewer: { translucentFaces: false, wireframe: false },
+        meshViewer: {
+            translucentFaces: false,
+            wireframe: false,
+            mdcDebugPoints: false,
+            featureGlyphs: { line: false, corner: false, seam: false, ring: false },
+        },
         app: {
             devToolsEnabled: false,
             meshExportVoxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
@@ -384,7 +403,13 @@ export class SettingsManager {
     /** Update global settings with a partial patch (MDC levers deep-merged). */
     updateGlobal(patch: GlobalSettingsPatch): void {
         if (patch.preview) Object.assign(this.#globalSettings.preview, patch.preview)
-        if (patch.meshViewer) Object.assign(this.#globalSettings.meshViewer, patch.meshViewer)
+        if (patch.meshViewer) {
+            const { featureGlyphs, ...mvRest } = patch.meshViewer
+            Object.assign(this.#globalSettings.meshViewer, mvRest)
+            if (featureGlyphs) {
+                Object.assign(this.#globalSettings.meshViewer.featureGlyphs, featureGlyphs)
+            }
+        }
         if (patch.app) {
             const appPatch = patch.app
             const mergedApp: AppSettingsPatch = { ...appPatch }
@@ -644,9 +669,20 @@ export class SettingsManager {
                     devToolsSections,
                     devToolsCollapseOpen,
                 }
+                const mvDef = def.meshViewer
+                const mvParsed = (parsed.meshViewer ?? {}) as Partial<GlobalSettings["meshViewer"]>
+                const meshViewer = {
+                    ...mvDef,
+                    ...mvParsed,
+                    featureGlyphs: {
+                        ...mvDef.featureGlyphs,
+                        ...(mvParsed.featureGlyphs ?? {}),
+                    },
+                }
+                if (typeof meshViewer.mdcDebugPoints !== "boolean") meshViewer.mdcDebugPoints = mvDef.mdcDebugPoints
                 this.#globalSettings = {
                     preview,
-                    meshViewer: { ...def.meshViewer, ...parsed.meshViewer },
+                    meshViewer,
                     app,
                     layout: { ...def.layout, ...parsed.layout },
                 }

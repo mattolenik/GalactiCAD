@@ -40,8 +40,9 @@ import {
 } from "./shared-render-buffer.mjs"
 import type { TranspileKind, TranspileToMainMessage } from "./transpile-worker-protocol.mjs"
 import { appendDevLogLine, log, snapshotDebugLogModules } from "./logging/debug-log.mjs"
+import { DEFAULT_APP_DEVTOOLS_STATE, DEVTOOLS_SECTION_APP } from "./components/dev-tools-protocol.mjs"
 import { computeAgentPreviewCameraParams } from "./agent-testcase/agent-preview-camera.mjs"
-import { captureAgentMeshImageData } from "./agent-testcase/agent-mesh-capture.mjs"
+import { captureAgentMeshImageData, captureMeshThumbnailImageData } from "./agent-testcase/agent-mesh-capture.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -1661,15 +1662,71 @@ export class SDFRenderer {
         return { structural, paramOnly }
     }
 
+    /** Mesh export options for welcome/recent thumbnails when drawing MDC debug / feature glyphs. */
+    #thumbnailMeshExportOptions(): {
+        simplifyOnExport?: boolean
+        exporter?: ExporterKind
+        shrecTuning?: ShrecTuning
+        simplifyTuning?: SimplifyTuning
+        voxelSizeMm?: number
+        mdcExportLevers?: MdcExportLevers
+    } {
+        const app = this.#settings.getGlobal().app
+        const appDev = {
+            ...DEFAULT_APP_DEVTOOLS_STATE,
+            ...(app.devToolsSections[DEVTOOLS_SECTION_APP] ?? {}),
+        }
+        const simplifyRaw = appDev.meshSimplifyOnExport
+        const simplifyOnExport = typeof simplifyRaw === "boolean" ? simplifyRaw : true
+        return {
+            simplifyOnExport,
+            voxelSizeMm: app.meshExportVoxelSizeMm,
+            exporter: app.useShrecExporter ? "shrec" : "mdc",
+            shrecTuning: app.shrecTuning,
+            simplifyTuning: app.simplifyTuning,
+            mdcExportLevers: app.mdcExportLevers,
+        }
+    }
+
     async thumbnail(src: string, width?: number, height?: number, documentName?: string): Promise<ImageData> {
         await this.#readyPromise
         const trimmed = src.trim()
         const w = width ?? 256
         const h = height ?? 256
         const key = await sha1Hash(trimmed)
-        const cacheKey = `https://galacticad.local/thumbnail/${key}-${w}x${h}`
+        const mv = this.#settings.getGlobal().meshViewer
+        const glyphOverlay =
+            mv.mdcDebugPoints ||
+            mv.featureGlyphs.line ||
+            mv.featureGlyphs.corner ||
+            mv.featureGlyphs.seam ||
+            mv.featureGlyphs.ring
+        const glyphTag = glyphOverlay
+            ? `-g${+mv.mdcDebugPoints}${+mv.featureGlyphs.line}${+mv.featureGlyphs.corner}${+mv.featureGlyphs.seam}${+mv.featureGlyphs.ring}`
+            : ""
+        const cacheKey = `https://galacticad.local/thumbnail/${key}-${w}x${h}${glyphTag}`
         const cached = await this.#getCachedThumbnail(cacheKey)
         if (cached) return cached
+
+        if (glyphOverlay) {
+            try {
+                const mesh = await this.renderMesh(trimmed, documentName, this.#thumbnailMeshExportOptions())
+                const imageData = await captureMeshThumbnailImageData(mesh, w, h, {
+                    mdcDebugPoints: mv.mdcDebugPoints,
+                    featureGlyphs: {
+                        line: mv.featureGlyphs.line,
+                        corner: mv.featureGlyphs.corner,
+                        seam: mv.featureGlyphs.seam,
+                        ring: mv.featureGlyphs.ring,
+                    },
+                })
+                await this.#setCachedThumbnail(cacheKey, imageData)
+                return imageData
+            } catch {
+                log("Sdf").warn("Mesh thumbnail with glyph overlay failed; falling back to SDF raymarch thumbnail")
+            }
+        }
+
         const requestId = ++this.#requestIdCounter
         this.#latestThumbnailRequestId = requestId
         const docName = documentName ?? undefined

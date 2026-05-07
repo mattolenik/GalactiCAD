@@ -95,10 +95,10 @@ export class MeshViewer extends HTMLElement {
 
         this.#settings = SettingsManager.instance
 
-        // Initialize state from attribute (if present in HTML), then load from storage.
+        // Initialize state from attribute (if present in HTML); persisted prefs applied in
+        // `#loadViewerState()` after overlay checkboxes exist (see below).
         this.#translucentFaces = (this.getAttribute("translucentFaces") ?? "").toLowerCase() === "true"
         this.#wireframe = (this.getAttribute("wireframe") ?? "").toLowerCase() === "true"
-        this.#loadViewerState()
 
         const style = document.createElement("style")
         style.textContent = `
@@ -245,6 +245,8 @@ export class MeshViewer extends HTMLElement {
         overlay.append(featureGlyphBox)
         shadow.appendChild(overlay)
 
+        this.#loadViewerState()
+
         this.#translucentCheckbox.addEventListener("change", () => {
             this.translucentFaces = this.#translucentCheckbox.checked
         })
@@ -253,18 +255,23 @@ export class MeshViewer extends HTMLElement {
         })
         this.#mdcDebugCheckbox.addEventListener("change", () => {
             this.#mdcDebug = this.#mdcDebugCheckbox.checked
+            this.#saveViewerState()
         })
         this.#mdcFeatureGlyphLineCheckbox.addEventListener("change", () => {
             this.#mdcFeatureGlyphLine = this.#mdcFeatureGlyphLineCheckbox.checked
+            this.#saveViewerState()
         })
         this.#mdcFeatureGlyphCornerCheckbox.addEventListener("change", () => {
             this.#mdcFeatureGlyphCorner = this.#mdcFeatureGlyphCornerCheckbox.checked
+            this.#saveViewerState()
         })
         this.#mdcFeatureGlyphSeamCheckbox.addEventListener("change", () => {
             this.#mdcFeatureGlyphSeam = this.#mdcFeatureGlyphSeamCheckbox.checked
+            this.#saveViewerState()
         })
         this.#mdcFeatureGlyphRingCheckbox.addEventListener("change", () => {
             this.#mdcFeatureGlyphRing = this.#mdcFeatureGlyphRingCheckbox.checked
+            this.#saveViewerState()
         })
         this.canvas.addEventListener("pointermove", event => {
             const rect = this.canvas.getBoundingClientRect()
@@ -1415,6 +1422,13 @@ export class MeshViewer extends HTMLElement {
             meshViewer: {
                 translucentFaces: this.#translucentFaces,
                 wireframe: this.#wireframe,
+                mdcDebugPoints: this.#mdcDebug,
+                featureGlyphs: {
+                    line: this.#mdcFeatureGlyphLine,
+                    corner: this.#mdcFeatureGlyphCorner,
+                    seam: this.#mdcFeatureGlyphSeam,
+                    ring: this.#mdcFeatureGlyphRing,
+                },
             },
         })
     }
@@ -1423,6 +1437,37 @@ export class MeshViewer extends HTMLElement {
         const g = this.#settings.getGlobal().meshViewer
         this.#syncBool("translucentFaces", g.translucentFaces)
         this.#syncBool("wireframe", g.wireframe)
+        this.#mdcDebug = !!g.mdcDebugPoints
+        this.#mdcDebugCheckbox.checked = this.#mdcDebug
+        const fg = g.featureGlyphs ?? { line: false, corner: false, seam: false, ring: false }
+        this.#mdcFeatureGlyphLine = fg.line
+        this.#mdcFeatureGlyphLineCheckbox.checked = fg.line
+        this.#mdcFeatureGlyphCorner = fg.corner
+        this.#mdcFeatureGlyphCornerCheckbox.checked = fg.corner
+        this.#mdcFeatureGlyphSeam = fg.seam
+        this.#mdcFeatureGlyphSeamCheckbox.checked = fg.seam
+        this.#mdcFeatureGlyphRing = fg.ring
+        this.#mdcFeatureGlyphRingCheckbox.checked = fg.ring
+    }
+
+    /**
+     * Snapshot overlay toggles for off-screen thumbnail capture; does not persist.
+     * Matches the worker thumbnail camera when paired with `THUMBNAIL_MESH_PREVIEW_CAMERA`.
+     */
+    applyThumbnailGlyphOverlay(opts: {
+        mdcDebugPoints: boolean
+        featureGlyphs: { line: boolean; corner: boolean; seam: boolean; ring: boolean }
+    }): void {
+        this.#mdcDebug = opts.mdcDebugPoints
+        this.#mdcDebugCheckbox.checked = opts.mdcDebugPoints
+        this.#mdcFeatureGlyphLine = opts.featureGlyphs.line
+        this.#mdcFeatureGlyphLineCheckbox.checked = opts.featureGlyphs.line
+        this.#mdcFeatureGlyphCorner = opts.featureGlyphs.corner
+        this.#mdcFeatureGlyphCornerCheckbox.checked = opts.featureGlyphs.corner
+        this.#mdcFeatureGlyphSeam = opts.featureGlyphs.seam
+        this.#mdcFeatureGlyphSeamCheckbox.checked = opts.featureGlyphs.seam
+        this.#mdcFeatureGlyphRing = opts.featureGlyphs.ring
+        this.#mdcFeatureGlyphRingCheckbox.checked = opts.featureGlyphs.ring
     }
 }
 

@@ -1,5 +1,6 @@
 import type { CameraSettings } from "../storage/settings.mjs"
 import type { MdcExportLevers, ShrecTuning, SimplifyTuning } from "../render-worker-protocol.mjs"
+import type { CanvasPreviewUvRect } from "../layout/editor-layout.mjs"
 
 export const AGENT_TESTCASE_SCHEMA_VERSION = 1 as const
 
@@ -22,10 +23,15 @@ export interface AgentTestcaseJson {
     sourceBase64: string
     camera: CameraSettings
     viewCenter: [number, number]
-    /** Use 1.0 for full-res agent captures; included for future parity. */
+    /** Matches interactive preview (`1` full, `0.5` during camera half-res motion when optimization is on). */
     resolutionScale: number
     viewportWidth: number
     viewportHeight: number
+    /**
+     * Visible SDF preview on the full canvas (shader UV: u left→right, v bottom→top).
+     * When present, agent renders crop to this rect so PNGs omit the editor overlay.
+     */
+    previewUvRect?: CanvasPreviewUvRect
     meshExport: AgentTestcaseMeshExport
     /** Active document tab name when captured, if any. */
     documentName?: string
@@ -38,6 +44,7 @@ export interface BuildAgentTestcaseInput {
     resolutionScale: number
     viewportWidth: number
     viewportHeight: number
+    previewUvRect?: CanvasPreviewUvRect
     meshExport: AgentTestcaseMeshExport
     documentName?: string
 }
@@ -70,6 +77,7 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
         resolutionScale: input.resolutionScale,
         viewportWidth: input.viewportWidth,
         viewportHeight: input.viewportHeight,
+        ...(input.previewUvRect !== undefined ? { previewUvRect: { ...input.previewUvRect } } : {}),
         meshExport: {
             simplifyOnExport: input.meshExport.simplifyOnExport,
             voxelSizeMm: input.meshExport.voxelSizeMm,
@@ -93,6 +101,7 @@ export interface AgentRenderRequest {
     resolutionScale: number
     viewportWidth: number
     viewportHeight: number
+    previewUvRect?: CanvasPreviewUvRect
     meshExport: AgentTestcaseMeshExport
     documentName?: string
 }
@@ -123,6 +132,9 @@ export function mergeAgentRenderRequest(
         resolutionScale: testcase.resolutionScale,
         viewportWidth: w,
         viewportHeight: h,
+        ...(testcase.previewUvRect !== undefined
+            ? { previewUvRect: { ...testcase.previewUvRect } }
+            : {}),
         meshExport: {
             simplifyOnExport: testcase.meshExport.simplifyOnExport,
             voxelSizeMm: testcase.meshExport.voxelSizeMm,

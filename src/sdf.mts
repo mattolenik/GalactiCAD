@@ -1223,6 +1223,11 @@ export class SDFRenderer {
         return { width: this.#fullWidth || 800, height: this.#fullHeight || 600 }
     }
 
+    /** Last scale applied to interactive preview (1 or 0.5 when camera half-res is active during motion). */
+    get lastRenderedResolutionScale(): number {
+        return this.#lastRenderedResolutionScale
+    }
+
     /** Optical center in [0,1] UV space (matches preview / mesh viewer). */
     get viewCenter(): Vec2f {
         return this.#viewCenter

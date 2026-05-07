@@ -1,5 +1,6 @@
 import type { SDFRenderer } from "../sdf.mjs"
 import { base64ToUtf8, type AgentRenderRequest } from "./agent-testcase.mjs"
+import { cropImageDataToCanvasPreviewUvRect, isFullCanvasPreviewUvRect } from "./crop-agent-preview-image.mjs"
 
 async function imageDataToPngBase64(img: ImageData): Promise<string> {
     const canvas = new OffscreenCanvas(img.width, img.height)
@@ -35,9 +36,13 @@ export async function runAgentRenderPipeline(renderer: SDFRenderer, req: AgentRe
         voxelSizeMm: req.meshExport.voxelSizeMm,
         mdcExportLevers: req.meshExport.mdcExportLevers,
     }
-    const img =
+    let img =
         req.mode === "sdf"
             ? await renderer.agentPreviewPixels(src, cam, vc, rs, w, h, doc)
             : await renderer.agentMeshPreviewPixels(src, cam, vc, rs, meshOpts, w, h, doc)
+    const rect = req.previewUvRect
+    if (rect !== undefined && !isFullCanvasPreviewUvRect(rect)) {
+        img = cropImageDataToCanvasPreviewUvRect(img, rect)
+    }
     return imageDataToPngBase64(img)
 }

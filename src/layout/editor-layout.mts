@@ -54,6 +54,38 @@ export function viewCenterUv(canvasRect: DOMRect, visibleRegion: DOMRect): { u: 
     return { u, v }
 }
 
+/** Shader / fragment UV: u left→right, v bottom→top (matches `preview.wgsl` fragment uv). */
+export interface CanvasPreviewUvRect {
+    u0: number
+    v0: number
+    u1: number
+    v1: number
+}
+
+function clamp01(x: number): number {
+    return Math.min(1, Math.max(0, x))
+}
+
+/**
+ * Visible preview area (excluding editor overlay) as normalized coords on the full WebGPU canvas.
+ * Used to crop agent renders so PNGs match the on-screen SDF preview region.
+ */
+export function canvasPreviewUvRect(canvasRect: DOMRect, visibleRegion: DOMRect): CanvasPreviewUvRect {
+    if (canvasRect.width <= 0 || canvasRect.height <= 0) {
+        return { u0: 0, v0: 0, u1: 1, v1: 1 }
+    }
+    const u0 = clamp01((visibleRegion.left - canvasRect.left) / canvasRect.width)
+    const u1 = clamp01((visibleRegion.right - canvasRect.left) / canvasRect.width)
+    const v1 = clamp01(1 - (visibleRegion.top - canvasRect.top) / canvasRect.height)
+    const v0 = clamp01(1 - (visibleRegion.bottom - canvasRect.top) / canvasRect.height)
+    return {
+        u0: Math.min(u0, u1),
+        v0: Math.min(v0, v1),
+        u1: Math.max(u0, u1),
+        v1: Math.max(v0, v1),
+    }
+}
+
 /** Horizontal px offset for preview chrome so it clears the editor column (landscape only). */
 export function editorSelectionInfoOffset(mainPanelsRect: DOMRect, editorOnLeft: boolean, frac: number): number {
     return editorOnLeft ? mainPanelsRect.width * frac : 0

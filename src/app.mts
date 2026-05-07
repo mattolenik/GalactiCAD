@@ -55,6 +55,7 @@ import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
 import {
+    canvasPreviewUvRect,
     editorSelectionInfoOffset,
     getEditorLayout,
     viewCenterUv,
@@ -1587,6 +1588,9 @@ class App {
         const pos = this.renderer.controls.cameraPosition
         const rs = this.renderer.renderSize
         const vc = this.renderer.viewCenter
+        const canvasRect = this.#preview.canvas.getBoundingClientRect()
+        const visibleRegion = this.#getVisiblePreviewRect()
+        const previewUvRect = canvasPreviewUvRect(canvasRect, visibleRegion)
         return buildAgentTestcase({
             sourceUtf8: model.getValue(),
             camera: {
@@ -1599,9 +1603,10 @@ class App {
                     : {}),
             },
             viewCenter: [vc.x, vc.y],
-            resolutionScale: 1,
+            resolutionScale: this.renderer.lastRenderedResolutionScale,
             viewportWidth: rs.width,
             viewportHeight: rs.height,
+            previewUvRect,
             meshExport: this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools),
             documentName: active,
         })

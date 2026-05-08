@@ -2,6 +2,7 @@ import { execFileSync, spawn } from "node:child_process"
 import { existsSync, writeSync } from "node:fs"
 import fs from "fs/promises"
 import http from "http"
+import os from "node:os"
 import path from "path"
 import { fileURLToPath } from "node:url"
 import WebSocket, { WebSocketServer } from "ws"
@@ -14,6 +15,9 @@ import {
     type AgentRenderRequest,
     type AgentTestcase,
 } from "../src/agent-autotest/agent-testcase.mjs"
+
+/** Substring in headless agent Chrome `--user-data-dir`; suffix is the devserver PID (`options.pid`). */
+const AGENT_HEADLESS_CHROME_USER_DATA_TAG = "galacticad-agent-headless-chrome"
 
 export interface RunFileData {
     pid: number
@@ -574,6 +578,8 @@ export class DevServer {
     private readonly bridge: BrowserBridge
     /** Child root PID for headless agent Chrome (same as `chromePid` in the run file while running). */
     #agentChromePid: number | null = null
+    /** Profile dir passed as `--user-data-dir` (removed on shutdown after Chrome exits). */
+    #agentChromeUserDataDir: string | null = null
 
     private constructor(
         public serveRoot: string,
@@ -612,7 +618,12 @@ export class DevServer {
             const bin = resolveChromeBinary(err)
             if (bin) {
                 const url = `http://127.0.0.1:${actualPort}/`
+                const userDataDir = path.join(
+                    os.tmpdir(),
+                    `${AGENT_HEADLESS_CHROME_USER_DATA_TAG}-${options.pid}`,
+                )
                 try {
+                    await fs.mkdir(userDataDir, { recursive: true })
                     const child = spawn(
                         bin,
                         [
@@ -622,6 +633,8 @@ export class DevServer {
                             "--no-default-browser-check",
                             "--disable-sync",
                             "--disable-extensions",
+                            "--user-data-dir",
+                            userDataDir,
                             url,
                         ],
                         { detached: true, stdio: "ignore" },
@@ -633,7 +646,10 @@ export class DevServer {
                     if (typeof child.pid === "number" && child.pid > 0) {
                         chromePid = child.pid
                         instance.#agentChromePid = chromePid
-                        log(`Agent headless Chrome PID ${chromePid} → ${url}`)
+                        instance.#agentChromeUserDataDir = userDataDir
+                        log(
+                            `Agent headless Chrome PID ${chromePid} → ${url} (ps: grep ${AGENT_HEADLESS_CHROME_USER_DATA_TAG})`,
+                        )
                     }
                 } catch (e) {
                     err(`agent headless Chrome: ${e}`)
@@ -663,9 +679,18 @@ export class DevServer {
      */
     async shutdown(): Promise<void> {
         const cpid = this.#agentChromePid
+        const profileDir = this.#agentChromeUserDataDir
         this.#agentChromePid = null
+        this.#agentChromeUserDataDir = null
         if (cpid != null) {
             await stopProcessTreeRoot(cpid, 5000, console.error)
+        }
+        if (profileDir != null) {
+            try {
+                await fs.rm(profileDir, { recursive: true, force: true })
+            } catch {
+                /* best-effort cleanup */
+            }
         }
         await new Promise<void>(resolve => {
             this.wsServer.close(() => {

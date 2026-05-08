@@ -1,7 +1,7 @@
 import type { MeshData } from "../export/export.mjs"
 import type { CameraSettings } from "../storage/settings.mjs"
 import { computeAgentPreviewCameraParams } from "./agent-preview-camera.mjs"
-import type { MeshViewer } from "../components/mesh-viewer.mjs"
+import { MeshViewer } from "../components/mesh-viewer.mjs"
 import { dollyFromOrthoHalf } from "../controls/camera-controller.mjs"
 import { lookAt } from "../vecmat/matrix.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
@@ -25,7 +25,7 @@ export async function captureAgentMeshImageData(
     const params = computeAgentPreviewCameraParams(camera, w, h, viewCenter, resolutionScale)
     const wrap = document.createElement("div")
     wrap.style.cssText = `position:fixed;left:-9999px;top:0;width:${w}px;height:${h}px;pointer-events:none`
-    const mv = document.createElement("mesh-viewer") as MeshViewer
+    const mv = new MeshViewer(null, undefined)
     mv.setAttribute("data-skip-autostart", "")
     mv.setAttribute("wireframe", "false")
     mv.setAttribute("translucentFaces", "false")
@@ -62,7 +62,7 @@ export async function captureMeshThumbnailImageData(
     const h = Math.max(1, Math.min(THUMBNAIL_MESH_MAX, Math.floor(height)))
     const wrap = document.createElement("div")
     wrap.style.cssText = `position:fixed;left:-9999px;top:0;width:${w}px;height:${h}px;pointer-events:none`
-    const mv = document.createElement("mesh-viewer") as MeshViewer
+    const mv = new MeshViewer(null, undefined)
     mv.setAttribute("data-skip-autostart", "")
     mv.setAttribute("wireframe", "false")
     mv.setAttribute("translucentFaces", "false")

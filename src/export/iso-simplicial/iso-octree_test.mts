@@ -57,6 +57,51 @@ test("IsoOctree.build: mock sampler only, depthMax=0 yields single evaluated cel
     assert.ok(tree.root.children.every(c => c === null))
 })
 
+test("IsoOctree.build: dual vertex stays in cell interior for non-unit worldBounds (unit-mismatch regression)", async () => {
+    // Sphere of radius 30 centered at world origin; world cube spans [-50, 50]³. The sphere surface
+    // crosses well inside the root cell, and varying gradients across samples make the cube QEF full
+    // rank, so the unconstrained minimizer must pin to the sphere center: world (0,0,0) → normalized
+    // (0.5, 0.5, 0.5). Returns world `d = |p|-30` and unit world normal `p/|p|`, matching the GPU
+    // `iso_sample_batch.wgsl` contract.
+    const RADIUS_WORLD = 30
+    const sphereField: IsoOctreeBatchFn = positions => {
+        const n = positions.length / 3
+        const out = new Float32Array(n * 4)
+        for (let i = 0; i < n; i++) {
+            const x = positions[i * 3]!
+            const y = positions[i * 3 + 1]!
+            const z = positions[i * 3 + 2]!
+            const r = Math.sqrt(x * x + y * y + z * z)
+            const inv = r > 1e-12 ? 1 / r : 0
+            out[i * 4] = x * inv
+            out[i * 4 + 1] = y * inv
+            out[i * 4 + 2] = z * inv
+            out[i * 4 + 3] = r - RADIUS_WORLD
+        }
+        return Promise.resolve(out)
+    }
+
+    const tree = await IsoOctree.build({
+        sample: sphereField,
+        bounds: { min: [-50, -50, -50], max: [50, 50, 50] },
+        constants: { depthMin: 0, depthMax: 0, qefRelativeErrorRefineThreshold: 1e30 },
+    })
+
+    // Root cube dual vertex must land near the sphere center in normalized coords (0.5, 0.5, 0.5),
+    // not be clamped to {0,1} by the constrained-cascade fallback that fires when the unconstrained
+    // QEF returns junk (which is what happens when world d is mixed with normalized positions).
+    const nx = tree.root.node[0]!
+    const ny = tree.root.node[1]!
+    const nz = tree.root.node[2]!
+    for (const [name, v] of [["x", nx], ["y", ny], ["z", nz]] as const) {
+        assert.ok(
+            v > 0.4 && v < 0.6,
+            `root cube dual-vertex ${name}=${v} expected near 0.5 (sphere center, normalized); ` +
+                `values near {0,1} indicate QEF unit mismatch (world d vs normalized p)`,
+        )
+    }
+})
+
 test("IsoOctree.build: deterministic treeCellCount for fixed mock + caps", async () => {
     const params = {
         sample: mockPlaneHalfZ,

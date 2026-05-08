@@ -232,8 +232,9 @@ export class IsoOctree {
         }
 
         const counter = { n: 0 }
+        const worldScale = rootMax[0] - rootMin[0]
 
-        await evalNode(root, gradCorners, rootMin, rootMax, C, sample, signal, counter)
+        await evalNode(root, gradCorners, rootMin, rootMax, worldScale, C, sample, signal, counter)
 
         return new IsoOctree(root, counter.n)
     }
@@ -277,6 +278,7 @@ async function evalNode(
     gradCorners: Float32Array,
     rootMin: readonly [number, number, number],
     rootMax: readonly [number, number, number],
+    worldScale: number,
     C: IsoOctreeRuntimeConstants,
     sample: IsoOctreeBatchFn,
     signal: AbortSignal | undefined,
@@ -360,6 +362,8 @@ async function evalNode(
 
     const reEvalNorm = new Float32Array(19 * 3)
 
+    const invWorldScale = 1 / worldScale
+
     {
         const packed = zeroQefPacked(4)
         const planeNorms4: [number, number, number, number][] = []
@@ -367,10 +371,12 @@ async function evalNode(
         for (let i = 0; i < nodeCount; i++) {
             const si = (nodeOff + i) * 4
             const px = normPts[si]!, py = normPts[si + 1]!, pz = normPts[si + 2]!
-            const nx = sdfPhase1[si]!, ny = sdfPhase1[si + 1]!, nz = sdfPhase1[si + 2]!, d = sdfPhase1[si + 3]!
-            qefAccumulatePlane(encodeCubeHermitePlane(nx, ny, nz, px, py, pz, d), packed)
+            const nx = sdfPhase1[si]!, ny = sdfPhase1[si + 1]!, nz = sdfPhase1[si + 2]!
+            // Scale world-space SDF d to normalized cell coords so positions and distances share units.
+            const dN = sdfPhase1[si + 3]! * invWorldScale
+            qefAccumulatePlane(encodeCubeHermitePlane(nx, ny, nz, px, py, pz, dN), packed)
             planeNorms4.push([nx, ny, nz, -1])
-            planePts4.push([px, py, pz, d])
+            planePts4.push([px, py, pz, dN])
         }
         const { position, qefError: nodeQef } = computeDualVertexCube({
             cellMin, cellMax, qefPacked: packed, planeNorms4, planePts4,
@@ -398,11 +404,12 @@ async function evalNode(
         for (let i = 0; i < edgeSamples; i++) {
             const si = (off + i) * 4
             const pXi = normPts[si + xi]!
-            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!, d = sdfPhase1[si + 3]!
+            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!
+            const dN = sdfPhase1[si + 3]! * invWorldScale
             const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
-            qefAccumulatePlane(encodeEdgeHermitePlane(nXi, pXi, d), packed)
+            qefAccumulatePlane(encodeEdgeHermitePlane(nXi, pXi, dN), packed)
             planeNorms2.push([nXi, -1])
-            planePts2.push([pXi, d])
+            planePts2.push([pXi, dN])
         }
         const { position, qefError: edgeQef } = computeDualVertexEdge({
             xi, yi, zi, c0: ec0, c1: ec1, qefPacked: packed, planeNorms2, planePts2,
@@ -430,12 +437,13 @@ async function evalNode(
         for (let i = 0; i < faceSamples; i++) {
             const si = (off + i) * 4
             const px = normPts[si + xi]!, py = normPts[si + yi]!
-            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!, d = sdfPhase1[si + 3]!
+            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!
+            const dN = sdfPhase1[si + 3]! * invWorldScale
             const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
             const nYi = (yi === 0 ? n4x : yi === 1 ? n4y : n4z) as number
-            qefAccumulatePlane(encodeFaceHermitePlane(nXi, nYi, px, py, d), packed)
+            qefAccumulatePlane(encodeFaceHermitePlane(nXi, nYi, px, py, dN), packed)
             planeNorms3.push([nXi, nYi, -1])
-            planePts3.push([px, py, d])
+            planePts3.push([px, py, dN])
         }
         const { position, qefError: faceQef } = computeDualVertexFace({
             c0: fc0, c2: fc2, xi, yi, zi, qefPacked: packed, planeNorms3, planePts3,
@@ -533,6 +541,6 @@ async function evalNode(
             gChild[j * 3 + 1] = g[1]!
             gChild[j * 3 + 2] = g[2]!
         }
-        await evalNode(child, gChild, rootMin, rootMax, C, sample, signal, counter)
+        await evalNode(child, gChild, rootMin, rootMax, worldScale, C, sample, signal, counter)
     }
 }

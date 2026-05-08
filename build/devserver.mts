@@ -1,5 +1,6 @@
+import { execFileSync, spawn } from "node:child_process"
+import { existsSync, writeSync } from "node:fs"
 import fs from "fs/promises"
-import { writeSync } from "node:fs"
 import http from "http"
 import path from "path"
 import { fileURLToPath } from "node:url"
@@ -17,6 +18,64 @@ import {
 export interface RunFileData {
     pid: number
     port: number
+    /** Headless agent browser PID (AGENT=true devserver); stopped on devserver shutdown. */
+    chromePid?: number
+}
+
+function resolveChromeBinary(errLog: (msg: unknown) => void): string | null {
+    const fromEnv = process.env.CHROME ?? process.env.CHROMIUM_PATH
+    if (typeof fromEnv === "string" && fromEnv.length > 0 && existsSync(fromEnv)) {
+        return fromEnv
+    }
+    const pathCandidates = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ]
+    for (const p of pathCandidates) {
+        if (existsSync(p)) return p
+    }
+    const pathNames = ["chromium", "google-chrome-stable", "google-chrome", "chromium-browser"]
+    for (const name of pathNames) {
+        try {
+            const p = execFileSync("which", [name], { encoding: "utf8" }).trim()
+            if (p.length > 0) return p
+        } catch {
+            /* not on PATH */
+        }
+    }
+    errLog("agent mode: could not find Chrome/Chromium (set CHROME or CHROMIUM_PATH)")
+    return null
+}
+
+/** SIGTERM then wait up to `waitMs`; SIGKILL if still alive. */
+async function stopProcessTreeRoot(pid: number, waitMs: number, errLog: (msg: unknown) => void): Promise<void> {
+    if (!Number.isFinite(pid) || pid <= 0) return
+    try {
+        process.kill(pid, 0)
+    } catch {
+        return
+    }
+    try {
+        process.kill(pid, "SIGTERM")
+    } catch (e) {
+        errLog(e)
+    }
+    const deadline = Date.now() + waitMs
+    while (Date.now() < deadline) {
+        try {
+            process.kill(pid, 0)
+        } catch {
+            return
+        }
+        await new Promise<void>(r => {
+            setTimeout(r, 100)
+        })
+    }
+    try {
+        process.kill(pid, "SIGKILL")
+    } catch {
+        /* already gone */
+    }
 }
 
 type DevLogQuery = {
@@ -494,6 +553,8 @@ export class DevServer {
     httpServer!: http.Server
     wsServer!: WebSocketServer
     private readonly bridge: BrowserBridge
+    /** Child root PID for headless agent Chrome (same as `chromePid` in the run file while running). */
+    #agentChromePid: number | null = null
 
     private constructor(
         public serveRoot: string,
@@ -510,7 +571,7 @@ export class DevServer {
         indexFileName = "index.html",
         log = console.log,
         err = console.error,
-        options?: { runFile: string; pid: number }
+        options?: { runFile: string; pid: number; agentHeadlessChrome?: boolean },
     ): Promise<DevServer> {
         const bridge = new BrowserBridge()
 
@@ -526,8 +587,47 @@ export class DevServer {
         const instance = new DevServer(serveRoot, actualPort, indexFileName, bridge)
         instance.httpServer = server
         instance.wsServer = wss
+
+        let chromePid: number | undefined
+        if (options?.agentHeadlessChrome) {
+            const bin = resolveChromeBinary(err)
+            if (bin) {
+                const url = `http://127.0.0.1:${actualPort}/`
+                try {
+                    const child = spawn(
+                        bin,
+                        [
+                            "--headless=new",
+                            "--enable-unsafe-webgpu",
+                            "--no-first-run",
+                            "--no-default-browser-check",
+                            "--disable-sync",
+                            "--disable-extensions",
+                            url,
+                        ],
+                        { detached: true, stdio: "ignore" },
+                    )
+                    child.unref()
+                    child.on("error", e => {
+                        err(`agent headless Chrome spawn error: ${e}`)
+                    })
+                    if (typeof child.pid === "number" && child.pid > 0) {
+                        chromePid = child.pid
+                        instance.#agentChromePid = chromePid
+                        log(`Agent headless Chrome PID ${chromePid} → ${url}`)
+                    }
+                } catch (e) {
+                    err(`agent headless Chrome: ${e}`)
+                }
+            }
+        }
+
         if (options) {
-            await fs.writeFile(options.runFile, JSON.stringify({ pid: options.pid, port: actualPort } satisfies RunFileData, null, 2))
+            const payload: RunFileData = { pid: options.pid, port: actualPort }
+            if (chromePid != null) {
+                payload.chromePid = chromePid
+            }
+            await fs.writeFile(options.runFile, JSON.stringify(payload, null, 2))
         }
         log(
             `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource; GET /_agent/capture-testcase; GET|POST /_agent/render (GET testcase: /_agent/render/testcase/<path-under-test-testcases>?mode=…)`,
@@ -537,6 +637,25 @@ export class DevServer {
 
     public reload() {
         this.bridge.broadcastReload()
+    }
+
+    /**
+     * Stops agent headless Chrome (SIGTERM, then SIGKILL), then closes the WebSocket server and HTTP server.
+     */
+    async shutdown(): Promise<void> {
+        const cpid = this.#agentChromePid
+        this.#agentChromePid = null
+        if (cpid != null) {
+            await stopProcessTreeRoot(cpid, 5000, console.error)
+        }
+        await new Promise<void>(resolve => {
+            this.wsServer.close(() => {
+                this.httpServer.closeAllConnections()
+                this.httpServer.close(() => {
+                    resolve()
+                })
+            })
+        })
     }
 
     public close() {

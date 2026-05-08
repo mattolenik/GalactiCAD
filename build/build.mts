@@ -6,7 +6,7 @@ import fs from "fs/promises"
 import nodePath from "node:path"
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
-import { DevServer } from "./devserver.mjs"
+import { DevServer, type RunFileData } from "./devserver.mjs"
 import { fileListerPlugin } from "./file-lister.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
 import staticBundler from "./static-bundler.mjs"
@@ -74,11 +74,6 @@ const ServerOptions = {
 
 const RUN_FILE = process.env.RUN_FILE ?? ".devserver.run"
 
-interface RunFileData {
-    pid: number
-    port: number
-}
-
 async function checkRunFile(): Promise<boolean> {
     try {
         const data = JSON.parse(await fs.readFile(RUN_FILE, "utf8")) as RunFileData
@@ -95,10 +90,6 @@ async function checkRunFile(): Promise<boolean> {
     } catch {
         return false
     }
-}
-
-async function writeRunFile(data: RunFileData): Promise<void> {
-    await fs.writeFile(RUN_FILE, JSON.stringify(data, null, 2))
 }
 
 async function build() {
@@ -178,8 +169,36 @@ async function main() {
         if (await checkRunFile()) {
             process.exit(0)
         }
-        let server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err)
-        await writeRunFile({ pid: process.pid, port: server.port })
+        let server: DevServer | null = null
+        const shutdown = async (sig: string) => {
+            log(`${sig}, shutting down.`)
+            if (server) {
+                try {
+                    await server.shutdown()
+                } catch (e) {
+                    err(e)
+                }
+                server = null
+            }
+            try {
+                await fs.unlink(RUN_FILE)
+            } catch {
+                /* no run file */
+            }
+            process.exit(0)
+        }
+        process.on("SIGINT", () => {
+            void shutdown("SIGINT")
+        })
+        process.on("SIGTERM", () => {
+            void shutdown("SIGTERM")
+        })
+
+        server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err, {
+            runFile: RUN_FILE,
+            pid: process.pid,
+            agentHeadlessChrome: process.env.AGENT === "true",
+        })
         const change$ = new Subject<{ event: EventName; path: string }>()
         change$
             .pipe(debounceTime(300))
@@ -187,7 +206,7 @@ async function main() {
                 log(`Build triggered by ${event}: ${path}`)
                 await build()
                 if (!shouldSuppressLiveReload(path)) {
-                    server.reload()
+                    server?.reload()
                 }
             })
         let watcher = watch(
@@ -212,8 +231,6 @@ async function main() {
             }
         )
 
-        process.on("SIGINT", () => { log("SIGINT, shutting down."); process.exit(0) })
-        process.on("SIGTERM", () => { log("SIGTERM, shutting down."); process.exit(0) })
     }
 }
 

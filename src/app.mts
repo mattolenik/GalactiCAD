@@ -75,9 +75,9 @@ import {
     log as debugLog,
 } from "./logging/debug-log.mjs"
 import { VERSION } from "./version.mjs"
-import { buildAgentTestcase, type AgentTestcaseJson } from "./agent-testcase/agent-testcase.mjs"
-import { registerAgentTestcaseCapture } from "./agent-testcase/register-agent-testcase-capture.mjs"
-import { registerAgentRenderBridge } from "./agent-testcase/register-agent-render-bridge.mjs"
+import { buildAgentTestcase, type AgentTestcaseJson } from "./agent-autotest/agent-testcase.mjs"
+import { registerAgentTestcaseCapture } from "./agent-autotest/register-agent-testcase-capture.mjs"
+import { registerAgentRenderBridge } from "./agent-autotest/register-agent-render-bridge.mjs"
 
 connectMainThreadDevLogToBridge()
 debugLog("App").info(`GalactiCAD ${VERSION}`)

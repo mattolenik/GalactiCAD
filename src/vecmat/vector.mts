@@ -596,7 +596,15 @@ export function vec3(vec: Vec3 | number, y?: number, z?: number): Vec3f {
     if (vec instanceof Vec3f) {
         return vec
     }
-    throw new Error("unsupported vec3 type")
+    let detail: string
+    try {
+        const ctor = (vec as { constructor?: { name?: string } } | null)?.constructor?.name ?? "(no ctor)"
+        const json = JSON.stringify(vec)
+        detail = `typeof=${typeof vec}, ctor=${ctor}, value=${json ?? "(unjsonable)"}`
+    } catch {
+        detail = `typeof=${typeof vec}, ctor=(threw on inspect)`
+    }
+    throw new Error(`unsupported vec-3 type: ${detail}`)
 }
 
 export function vec4(x: number, y: number, z: number, w: number): Vec4f

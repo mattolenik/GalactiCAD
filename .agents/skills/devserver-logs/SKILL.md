@@ -84,13 +84,13 @@ Example:
 
 ## `GET | POST /_agent/render`
 
-Runs the **agent render pipeline** in the browser (normal-vector SDF preview **or** mesh export + opaque normal RGB). Uses **`agentRender`** over WebSocket (`__galacticadAgentRender`). Response is **`image/png`** on success; **`503`** with plain-text error on failure.
+Runs the **agent render pipeline** in the browser (normal-vector SDF preview **or** mesh export + opaque normal RGB). Uses **`agentRender`** over WebSocket (`__galacticadAgentRender`). Response is **`image/png`** on success; on failure, plain-text body with **`400`** when the browser reports a pipeline / scene error, or **`503`** when there is no connected tab, the bridge times out, or the message cannot be delivered.
 
 **Prerequisites:** Same as capture-testcase — **connected Chromium tab** with WebGPU so the bridge can execute GPU work.
 
 ### POST
 
-- **Body:** JSON matching **`AgentRenderRequest`** (see `src/agent-testcase/agent-testcase.mts`): `mode` (`"sdf"` \| `"mesh"`), `sourceBase64`, `camera`, `viewCenter`, `resolutionScale`, `viewportWidth`, `viewportHeight`, `meshExport`, optional `documentName`.
+- **Body:** JSON matching **`AgentRenderRequest`** (see `src/agent-autotest/agent-testcase.mts`): `mode` (`"sdf"` \| `"mesh"`), `sourceBase64`, `camera`, `viewCenter`, `resolutionScale`, `viewportWidth`, `viewportHeight`, `meshExport`, optional `documentName`.
 - **Optional:** `label` and `role` (strings for **`.agents/imagelog/`** filenames). Removed before dispatch; not part of `AgentRenderRequest`.
 
 Example (conceptual — embed real base64):
@@ -99,12 +99,12 @@ Example (conceptual — embed real base64):
 
 ### GET
 
-- **Query:** `testcase` = **basename only** of a JSON file under **`src/scene/testdata/`** (no `..`, must end with `.json`).
+- **Query:** `testcase` = **relative path** (slashes OK) under **`$PWD/test/testcases/`** — e.g. `meshing/foo.json`.
 - **Optional:** `mode=sdf|mesh`, `viewportWidth`, `viewportHeight`, `label`, `role`.
 
 Example:
 
-`curl -sS "http://localhost:${port}/_agent/render?testcase=my-case.json&mode=sdf" -o sdf.png`
+`curl -sS "http://localhost:${port}/_agent/render?testcase=meshing/my-case.json&mode=sdf" -o sdf.png`
 
 ### Imagelog files
 

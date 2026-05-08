@@ -11,3 +11,5 @@ node_modules/
 .cursor/mcp.json
 
 sharpiso/
+.testresults
+.agents/imagelog

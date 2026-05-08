@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # Open the bundled app in system Chromium so WebGPU initializes and the devserver WS bridge connects.
-# Requires an active devserver; port is read from RUN_FILE (default: repo .devserver.agent.run).
+# Requires an active devserver; port is read from RUN_FILE.
+# Default RUN_FILE matches `make start` (.devserver.run). Use AGENT=true for .devserver.agent.run (same as `make start AGENT=true`).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-RUN_FILE="${RUN_FILE:-$ROOT/.devserver.agent.run}"
+if [[ "${AGENT:-}" == "true" ]]; then
+	RUN_FILE="${RUN_FILE:-$ROOT/.devserver.agent.run}"
+else
+	RUN_FILE="${RUN_FILE:-$ROOT/.devserver.run}"
+fi
 if [[ ! -f "$RUN_FILE" ]]; then
-    echo "Missing $RUN_FILE — start the server with: make serve   or   make serve-agent" >&2
+	echo "Missing $RUN_FILE — start the server with: make start  or  AGENT=true make start" >&2
     exit 1
 fi
 PORT="$(jq -r .port "$RUN_FILE")"

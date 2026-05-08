@@ -33,7 +33,7 @@ export type DevServerActiveSceneSourceErrorMessage = { type: "activeSceneSourceE
 /** Server → browser: build agent testcase JSON from the live app (camera + mesh export + base64 source). */
 export type DevServerExportAgentTestcaseMessage = { type: "exportAgentTestcase"; id: string }
 
-/** Browser → server: testcase payload (same shape as `AgentTestcaseJson` in `src/agent-testcase/`). */
+/** Browser → server: testcase payload (same shape as `AgentTestcaseJson` in `src/agent-autotest/`). */
 export type DevServerAgentTestcaseResultMessage = {
     type: "agentTestcaseResult"
     id: string
@@ -56,7 +56,7 @@ export type DevServerAgentRenderResultMessage = {
 export type DevServerAgentRenderMessage = {
     type: "agentRender"
     id: string
-    /** Same shape as `AgentRenderRequest` in `src/agent-testcase/agent-render-pipeline.mts`. */
+    /** Same shape as `AgentRenderRequest` in `src/agent-autotest/agent-render-pipeline.mts`. */
     payload: Record<string, unknown>
 }
 
@@ -193,7 +193,7 @@ export class BrowserBridge {
 
     /**
      * Ask a connected browser tab to serialize the current scene + camera + mesh export settings
-     * into an agent testcase object (see `src/agent-testcase/`).
+     * into an agent testcase object (see `src/agent-autotest/`).
      * Requires `registerAgentTestcaseCapture` on the app main thread and `__galacticadExportAgentTestcase`.
      */
     requestAgentTestcase(timeoutMs = AGENT_TESTCASE_TIMEOUT_MS): Promise<Record<string, unknown> | null> {

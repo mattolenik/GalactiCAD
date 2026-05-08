@@ -41,8 +41,8 @@ import {
 import type { TranspileKind, TranspileToMainMessage } from "./transpile-worker-protocol.mjs"
 import { appendDevLogLine, log, snapshotDebugLogModules } from "./logging/debug-log.mjs"
 import { DEFAULT_APP_DEVTOOLS_STATE, DEVTOOLS_SECTION_APP } from "./components/dev-tools-protocol.mjs"
-import { computeAgentPreviewCameraParams } from "./agent-testcase/agent-preview-camera.mjs"
-import { captureAgentMeshImageData, captureMeshThumbnailImageData } from "./agent-testcase/agent-mesh-capture.mjs"
+import { computeAgentPreviewCameraParams } from "./agent-autotest/agent-preview-camera.mjs"
+import { captureAgentMeshImageData, captureMeshThumbnailImageData } from "./agent-autotest/agent-mesh-capture.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"

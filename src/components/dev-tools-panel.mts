@@ -32,7 +32,7 @@ import {
 import { DevToolsLogsSection } from "./dev-tools-logs-section.mjs"
 import { DevToolsRendererSection } from "./dev-tools-renderer-section.mjs"
 import "./dev-tools-collapse.mjs"
-import type { AgentTestcaseJson } from "../agent-testcase/agent-testcase.mjs"
+import type { AgentTestcaseJson } from "../agent-autotest/agent-testcase.mjs"
 
 export type DevToolsSectionScope = "global" | "document"
 

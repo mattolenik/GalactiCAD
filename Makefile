@@ -2,12 +2,27 @@ SHELL           := bash
 SED             := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
 export TSX      ?= node_modules/.bin/tsx
 export TSC      ?= node_modules/.bin/tsc
+BUILD           := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
+
+# AGENT=true: .devserver.agent.run + .devserver.agent.log + default PORT 7000 (optional isolation for automation).
+# Default: regular interactive devserver paths (.devserver.run / .devserver.log); browser + /_agent/* use the same server.
+ifeq ($(AGENT),true)
+export RUN_FILE := .devserver.agent.run
+export LOG_FILE := .devserver.agent.log
+ifndef PORT
+export PORT := 7000
+endif
+else
 export RUN_FILE := .devserver.run
 export LOG_FILE := .devserver.log
+ifndef PORT
+export PORT := $(shell $(BUILD) port)
+endif
+endif
+export PORT
+
 BROWSER         ?= chromium
 DIST            ?= dist
-PORT            ?= $(shell $(BUILD) port)
-BUILD           := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 
 default: build test
 
@@ -49,7 +64,7 @@ start:
 		fi; \
 		i=$$((i+1)); \
 	done
-	@echo "View logs at $(LOG_FILE) or with 'make logs'"
+	@echo "View logs at $(LOG_FILE) (run: make logs$(if $(filter true,$(AGENT)), AGENT=true,))"
 
 logs:
 	@tail -fn 50 $(LOG_FILE)
@@ -66,38 +81,24 @@ stop:
 restart: stop start
 
 .PHONY: serve-agent
-serve-agent: clean setup
-	env RUN_FILE=.devserver.agent.run PORT=7000 $(BUILD) -w $(BUILD_FLAGS)
+serve-agent:
+	$(MAKE) serve AGENT=true
 
 .PHONY: start-agent
 start-agent:
-	nohup env RUN_FILE=.devserver.agent.run PORT=7000 $(BUILD) -w $(BUILD_FLAGS) > .devserver.agent.log 2>&1 &
-	@i=0; while (( $$i < 20 )); do \
-		sleep 0.2; \
-		if [[ -f ".devserver.agent.run" ]]; then \
-			port=$$(jq -r .port ".devserver.agent.run"); \
-			echo ""; \
-			echo "Agent devserver at http://localhost:$$port"; \
-			break; \
-		fi; \
-		i=$$((i+1)); \
-	done
-	@echo "Logs: .devserver.agent.log (make logs-agent)"
+	$(MAKE) start AGENT=true
 
 .PHONY: logs-agent
 logs-agent:
-	@tail -fn 50 .devserver.agent.log
+	$(MAKE) logs AGENT=true
 
 .PHONY: stop-agent
 stop-agent:
-	@if [ -f ".devserver.agent.run" ]; then \
-		pid=$$(jq -r .pid ".devserver.agent.run"); \
-		[ -n "$$pid" ] && kill -TERM $$pid 2>/dev/null || true; \
-		rm -f ".devserver.agent.run"; \
-	fi
+	$(MAKE) stop AGENT=true
 
 .PHONY: restart-agent
-restart-agent: stop-agent start-agent
+restart-agent:
+	$(MAKE) restart AGENT=true
 
 .PHONY: release
 release: export PRODUCTION=1

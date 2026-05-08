@@ -35,13 +35,21 @@ export interface CameraHost extends HTMLElement {
     canvas: HTMLCanvasElement
 }
 
+/**
+ * Component-shaped 3D point. Both `Vec3f` (with prototype getters) and a
+ * plain `{x, y, z}` object are accepted; the latter is what survives
+ * `worker.postMessage` structured clone (Vec3f's private `#elements` and
+ * prototype getters do not).
+ */
+export type CameraStateVec3 = { x: number; y: number; z: number }
+
 export interface CameraState {
     rotation: [number, number, number, number] // quaternion [w, x, y, z]
     /** Stand-off dolly distance; WGSL ortho half-height is {@link orthoHalfFromDolly}(dollyDistance). */
     dollyDistance: number
-    translation: Vec3f
+    translation: CameraStateVec3
     /** Scene-space orbit / look-at pivot (defaults to origin when omitted for older callers). */
-    pivot?: Vec3f
+    pivot?: CameraStateVec3
 }
 
 /** At/above this dolly distance → pan uses full linear world-per-CSS-pixel scale. */
@@ -198,11 +206,13 @@ export class CameraController {
 
     get state(): CameraState {
         const q = this.#rotation.toVector()
+        // Plain {x,y,z} so `state` survives `worker.postMessage` structured
+        // clone (Vec3f instances lose their prototype/private storage).
         return {
             rotation: [q[0], q[1], q[2], q[3]], // [w, x, y, z]
             dollyDistance: this.#dollyDistance,
-            translation: this.#cameraTranslation.clone(),
-            pivot: this.#pivot.clone(),
+            translation: { x: this.#cameraTranslation.x, y: this.#cameraTranslation.y, z: this.#cameraTranslation.z },
+            pivot: { x: this.#pivot.x, y: this.#pivot.y, z: this.#pivot.z },
         }
     }
 
@@ -211,9 +221,9 @@ export class CameraController {
         this.#rotation = new Quaternion(state.rotation[0], state.rotation[1], state.rotation[2], state.rotation[3])
         this.#dollyDistance = Math.min(DOLLY_MAX, Math.max(DOLLY_MIN, state.dollyDistance))
         this.#zoomController.setDollyDistance(this.#dollyDistance, false)
-        this.#cameraTranslation = state.translation.clone()
+        this.#cameraTranslation = vec3(state.translation.x, state.translation.y, state.translation.z)
         if (state.pivot) {
-            this.#pivot = state.pivot.clone()
+            this.#pivot = vec3(state.pivot.x, state.pivot.y, state.pivot.z)
         }
         this.#lastFocusWorld = null
         this.#syncTrackball()

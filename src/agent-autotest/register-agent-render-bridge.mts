@@ -15,7 +15,7 @@ export function registerAgentRenderBridge(renderer: SDFRenderer): void {
             const pngBase64 = await runAgentRenderPipeline(renderer, req)
             return { pngBase64 }
         } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e)
+            const msg = e instanceof Error ? (e.stack ?? e.message) : String(e)
             return { error: msg }
         }
     }

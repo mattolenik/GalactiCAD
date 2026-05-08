@@ -1,13 +1,15 @@
 import fs from "fs/promises"
+import { writeSync } from "node:fs"
 import http from "http"
 import path from "path"
+import { fileURLToPath } from "node:url"
 import WebSocket, { WebSocketServer } from "ws"
 import { BrowserBridge, type DevServerConsoleLogLevel } from "./devserver-bridge.mjs"
 import {
     mergeAgentRenderRequest,
     type AgentRenderRequest,
     type AgentTestcaseJson,
-} from "../src/agent-testcase/agent-testcase.mjs"
+} from "../src/agent-autotest/agent-testcase.mjs"
 
 export interface RunFileData {
     pid: number
@@ -89,17 +91,14 @@ function parseLogQuery(url: URL): DevLogQuery {
     return { n, levels, ...(modules ? { modules } : {}) }
 }
 
-const AGENT_TESTCASE_DIR_SEGMENTS = ["src", "scene", "testdata"] as const
+/** Repo root for paths that must stay stable when `cwd` is wrong (e.g. imagelog under `.agents/`). */
+const REPO_ROOT_FOR_HTTP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
-function resolveAgentTestcaseFile(repoRoot: string, basenameOnly: string): string | null {
-    const base = path.basename(basenameOnly)
-    if (base !== basenameOnly.replace(/\\/g, "/")) return null
-    if (!/^[\w.-]+\.json$/i.test(base)) return null
-    const rootDir = path.resolve(repoRoot, ...AGENT_TESTCASE_DIR_SEGMENTS)
-    const full = path.resolve(rootDir, base)
-    const rel = path.relative(rootDir, full)
-    if (rel.startsWith("..") || path.isAbsolute(rel)) return null
-    return full
+/** `$PWD/test/testcases/<testcase>` — rejects empty query and obvious `..` traversal only. */
+function resolveAgentTestcaseFile(testcaseQuery: string): string | null {
+    const rel = testcaseQuery.replace(/\\/g, "/").trim().replace(/^\/+/, "")
+    if (!rel || rel.includes("..")) return null
+    return path.join(process.cwd(), "test", "testcases", rel)
 }
 
 async function writeAgentImagelogPng(repoRoot: string, labelSlug: string, role: string, pngBytes: Buffer): Promise<string> {
@@ -124,6 +123,14 @@ function readHttpBody(req: http.IncomingMessage): Promise<string> {
     })
 }
 
+/** Pipeline / request failures reported by the browser use 400; bridge unavailable / timeout uses 503. */
+function agentRenderErrorHttpStatus(out: { pngBase64?: string; error?: string } | null): number {
+    if (out != null && typeof out.error === "string" && out.error.length > 0) {
+        return 400
+    }
+    return 503
+}
+
 async function respondAgentRenderPng(
     bridge: BrowserBridge,
     repoRoot: string,
@@ -135,7 +142,8 @@ async function respondAgentRenderPng(
     const out = await bridge.requestAgentRender(payload as unknown as Record<string, unknown>)
     if (!out?.pngBase64) {
         const errText = out?.error ?? "bridge failed (no browser, timeout, or GPU error)"
-        res.writeHead(503, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+        const status = agentRenderErrorHttpStatus(out)
+        res.writeHead(status, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
         res.end(errText)
         return
     }
@@ -469,11 +477,23 @@ function createHttpServer(
 
     const defaultContentType = "application/octet-stream"
 
-    const repoRoot = process.cwd()
+    const repoRoot = REPO_ROOT_FOR_HTTP
+
+    function writeAccessLogLine(req: http.IncomingMessage, pathname: string, search: string): void {
+        const stamp = new Date().toLocaleTimeString(undefined, { hour12: false })
+        const line = `${stamp} HTTP ${req.method ?? "?"} ${pathname}${search}\n`
+        try {
+            // Sync write so lines show up immediately in nohup → .devserver.log (stdout can be block-buffered when not a TTY).
+            writeSync(1, line)
+        } catch {
+            log(line.trimEnd())
+        }
+    }
 
     async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
         const url = new URL(req.url ?? "/", "http://localhost")
         const pathname = url.pathname
+        writeAccessLogLine(req, pathname, url.search)
 
         if (pathname === "/_logs") {
             if (req.method !== "GET") {
@@ -532,13 +552,16 @@ function createHttpServer(
                 const testcase = url.searchParams.get("testcase")
                 if (!testcase) {
                     res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-                    res.end("missing testcase query (basename of a JSON file in src/scene/testdata/)")
+                    res.end("missing testcase query (relative to ./test/testcases/, e.g. meshing/foo.json)")
                     return
                 }
-                const safePath = resolveAgentTestcaseFile(repoRoot, testcase)
+                const safePath = resolveAgentTestcaseFile(testcase)
                 if (!safePath) {
+                    log(`/_agent/render GET: rejected testcase param ${JSON.stringify(testcase)}`)
                     res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-                    res.end("invalid testcase name")
+                    res.end(
+                        "invalid testcase query: relative path under cwd ./test/testcases/ (e.g. foo.json); no ..",
+                    )
                     return
                 }
                 let rawJson: string

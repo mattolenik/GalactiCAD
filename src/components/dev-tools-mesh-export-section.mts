@@ -2,10 +2,11 @@ import { BehaviorSubject, skip } from "rxjs"
 import type { Subscription } from "rxjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import {
+    DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM,
+    DEFAULT_ISO_SIMPLICIAL_TUNING,
     DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_SHREC_TUNING,
     DEFAULT_SIMPLIFY_TUNING,
-    DEFAULT_ISO_SIMPLICIAL_TUNING,
     type ExporterKind,
     type IsoSimplicialTuning,
     type MdcExportLevers,
@@ -91,6 +92,8 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
     #exporterRadios: Record<ExporterKind, HTMLInputElement> = {} as Record<ExporterKind, HTMLInputElement>
     #isoCollapse: HTMLElement
     #isoPhase5Checkbox: HTMLInputElement
+    #isoBoundsPadRange: HTMLInputElement
+    #isoBoundsPadValueEl: HTMLSpanElement
     #isoDepthMinRange: HTMLInputElement
     #isoDepthMinValueEl: HTMLSpanElement
     #isoDepthMaxRange: HTMLInputElement
@@ -213,6 +216,7 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         const isoT = g.isoSimplicialTuning
         const depthMinDisp = isoT.depthMin ?? IsoSimplicialConstants.depthMin
         const depthMaxDisp = isoT.depthMax ?? IsoSimplicialConstants.depthMax
+        const isoPadDisp = isoT.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
         this.#isoCollapse = document.createElement("dev-tools-collapse")
         this.#isoCollapse.setAttribute("label", "Iso-simplicial")
         this.#isoCollapse.setAttribute("nested", "")
@@ -222,6 +226,34 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         this.#isoPhase5Checkbox.addEventListener("change", () => {
             this.#persistIsoTuning({ phase5Snap: this.#isoPhase5Checkbox.checked })
         })
+
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Bounds padding (mm)"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0"
+            range.max = "20"
+            range.step = "0.1"
+            range.value = String(isoPadDisp)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = isoPadDisp.toFixed(1)
+            range.addEventListener("input", () => {
+                let v = parseFloat(range.value)
+                if (!Number.isFinite(v)) v = 0
+                v = Math.max(0, Math.min(20, v))
+                valueEl.textContent = v.toFixed(1)
+                this.#persistIsoTuning({ boundingBoxPaddingMm: v })
+            })
+            row.append(lab, range, valueEl)
+            this.#isoCollapse.appendChild(row)
+            this.#isoBoundsPadRange = range
+            this.#isoBoundsPadValueEl = valueEl
+        }
 
         {
             const row = document.createElement("div")
@@ -398,6 +430,9 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
 
     syncIsoSimplicialTuningFromSettings(tuning: IsoSimplicialTuning): void {
         this.#isoPhase5Checkbox.checked = tuning.phase5Snap ?? false
+        const pad = tuning.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
+        this.#isoBoundsPadRange.value = String(pad)
+        this.#isoBoundsPadValueEl.textContent = pad.toFixed(1)
         const dmin = tuning.depthMin ?? IsoSimplicialConstants.depthMin
         const dmax = tuning.depthMax ?? IsoSimplicialConstants.depthMax
         this.#isoDepthMinRange.value = String(dmin)

@@ -45,10 +45,18 @@ export interface IsoSimplicialTuning {
      * (`extractIsoSimplicialMeshAsync`). When false, linear edge intersection only.
      */
     phase5Snap?: boolean
+    /**
+     * Extra margin (mm) applied symmetrically when expanding refined scene bounds into the
+     * iso-simplicial world cube. Omitted → {@link DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM}.
+     */
+    boundingBoxPaddingMm?: number
 }
 
 /** Default iso-simplicial tuning: all fields omitted → worker uses `IsoSimplicialConstants`. */
 export const DEFAULT_ISO_SIMPLICIAL_TUNING: IsoSimplicialTuning = {}
+
+/** Padding (mm) added to refined scene bounds when sizing the iso-simplicial sampling cube. */
+export const DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM = 3.2
 
 /**
  * Tuning knobs for the SHREC / MergeSharp exporter that the user may adjust

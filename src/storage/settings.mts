@@ -244,6 +244,9 @@ export function normalizeIsoSimplicialTuning(raw: unknown): IsoSimplicialTuning 
     if (typeof o.qefRelativeErrorRefineThreshold === "number" && Number.isFinite(o.qefRelativeErrorRefineThreshold) && o.qefRelativeErrorRefineThreshold > 0) {
         out.qefRelativeErrorRefineThreshold = o.qefRelativeErrorRefineThreshold
     }
+    if (typeof o.boundingBoxPaddingMm === "number" && Number.isFinite(o.boundingBoxPaddingMm) && o.boundingBoxPaddingMm >= 0 && o.boundingBoxPaddingMm <= 100) {
+        out.boundingBoxPaddingMm = o.boundingBoxPaddingMm
+    }
     return out
 }
 

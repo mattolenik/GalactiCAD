@@ -46,6 +46,7 @@ import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import {
+    DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM,
     DEFAULT_ISO_SIMPLICIAL_TUNING,
     DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
     DEFAULT_MDC_EXPORT_LEVERS,
@@ -343,9 +344,7 @@ export class RenderWorkerCore {
         this.#buildGeneration++
     }
 
-    async #doBuild(
-        body: string,
-    ): Promise<
+    async #doBuild(body: string): Promise<
         | {
               sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]
               compiledPosY: [number, number][]
@@ -1158,9 +1157,7 @@ export class RenderWorkerCore {
                 mesh = await shrec.export(sampleGridShaderModule)
             } else if (exporter === "isoSimplicial") {
                 const isoT = { ...DEFAULT_ISO_SIMPLICIAL_TUNING, ...isoSimplicialTuning }
-                log("IsoSimplicialExport").info(
-                    `handleRenderMesh: dispatching iso-simplicial, tuning=${JSON.stringify(isoT)}`,
-                )
+                log("IsoSimplicialExport").info(`handleRenderMesh: dispatching iso-simplicial, tuning=${JSON.stringify(isoT)}`)
                 const tIso0 = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
                 const isoCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)
@@ -1177,16 +1174,24 @@ export class RenderWorkerCore {
                 const cube = worldBoundsCube()
                 const MIN_DEPTH_FLOOR = 3
                 const constOverrides = {
-                    ...(typeof isoT.depthMin === "number" && Number.isFinite(isoT.depthMin) ? { depthMin: Math.max(MIN_DEPTH_FLOOR, isoT.depthMin) } : {}),
-                    ...(typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ? { depthMax: Math.max(MIN_DEPTH_FLOOR, isoT.depthMax) } : {}),
-                    ...(typeof isoT.oversampleQef === "number" && Number.isFinite(isoT.oversampleQef) ? { oversampleQef: isoT.oversampleQef } : {}),
-                    ...(typeof isoT.dualVertexBorderFraction === "number" && Number.isFinite(isoT.dualVertexBorderFraction)
-                        ? { dualVertexBorderFraction: isoT.dualVertexBorderFraction }
-                        : {}),
-                    ...(typeof isoT.findRootDepth === "number" && Number.isFinite(isoT.findRootDepth) ? { findRootDepth: isoT.findRootDepth } : {}),
-                    ...(typeof isoT.qefRelativeErrorRefineThreshold === "number" && Number.isFinite(isoT.qefRelativeErrorRefineThreshold)
-                        ? { qefRelativeErrorRefineThreshold: isoT.qefRelativeErrorRefineThreshold }
-                        : {}),
+                    ...(typeof isoT.depthMin === "number" && Number.isFinite(isoT.depthMin) ?
+                        { depthMin: Math.max(MIN_DEPTH_FLOOR, isoT.depthMin) }
+                    :   {}),
+                    ...(typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ?
+                        { depthMax: Math.max(MIN_DEPTH_FLOOR, isoT.depthMax) }
+                    :   {}),
+                    ...(typeof isoT.oversampleQef === "number" && Number.isFinite(isoT.oversampleQef) ?
+                        { oversampleQef: isoT.oversampleQef }
+                    :   {}),
+                    ...(typeof isoT.dualVertexBorderFraction === "number" && Number.isFinite(isoT.dualVertexBorderFraction) ?
+                        { dualVertexBorderFraction: isoT.dualVertexBorderFraction }
+                    :   {}),
+                    ...(typeof isoT.findRootDepth === "number" && Number.isFinite(isoT.findRootDepth) ?
+                        { findRootDepth: isoT.findRootDepth }
+                    :   {}),
+                    ...(typeof isoT.qefRelativeErrorRefineThreshold === "number" && Number.isFinite(isoT.qefRelativeErrorRefineThreshold) ?
+                        { qefRelativeErrorRefineThreshold: isoT.qefRelativeErrorRefineThreshold }
+                    :   {}),
                 }
                 const tree = await IsoOctree.build({
                     sample: sampleFn,
@@ -1209,6 +1214,7 @@ export class RenderWorkerCore {
                     triCount: mesh.tris.length / 3,
                     octreeMs: Math.round((tIsoOct - tIso0) * 1000) / 1000,
                     totalMs: Math.round((tIso1 - tIso0) * 1000) / 1000,
+                    boundsPaddingMm: pad,
                     depthMin: constOverrides.depthMin ?? IsoSimplicialConstants.depthMin,
                     depthMax: constOverrides.depthMax ?? IsoSimplicialConstants.depthMax,
                 })

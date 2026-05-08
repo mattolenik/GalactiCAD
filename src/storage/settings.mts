@@ -476,10 +476,16 @@ export class SettingsManager {
                 })
             }
             if (appPatch.isoSimplicialTuning !== undefined) {
-                mergedApp.isoSimplicialTuning = normalizeIsoSimplicialTuning({
-                    ...this.#globalSettings.app.isoSimplicialTuning,
-                    ...appPatch.isoSimplicialTuning,
-                })
+                const incoming = appPatch.isoSimplicialTuning
+                // `{}` (e.g. Dev Tools “Iso defaults”) must replace stored overrides, not merge —
+                // merge would keep stale keys because `{ ...cur, ...{} } === cur`.
+                mergedApp.isoSimplicialTuning =
+                    Object.keys(incoming).length === 0
+                        ? normalizeIsoSimplicialTuning({})
+                        : normalizeIsoSimplicialTuning({
+                              ...this.#globalSettings.app.isoSimplicialTuning,
+                              ...incoming,
+                          })
             }
             if (appPatch.meshExporter !== undefined) {
                 mergedApp.useShrecExporter = appPatch.meshExporter === "shrec"

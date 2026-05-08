@@ -26,11 +26,7 @@ import {
     type JSONValue,
 } from "./dev-tools-protocol.mjs"
 import { DevToolsAppSection } from "./dev-tools-app-section.mjs"
-import {
-    DevToolsMeshExportCoreSection,
-    DevToolsMeshSimplifySection,
-    DevToolsShrecExportSection,
-} from "./dev-tools-mesh-export-section.mjs"
+import { DevToolsMeshExportCoreSection, DevToolsMeshSimplifySection, DevToolsShrecExportSection } from "./dev-tools-mesh-export-section.mjs"
 import { DevToolsLogsSection } from "./dev-tools-logs-section.mjs"
 import { DevToolsRendererSection } from "./dev-tools-renderer-section.mjs"
 import "./dev-tools-collapse.mjs"
@@ -294,7 +290,7 @@ export class DevToolsPanel extends HTMLElement {
             mkSection("Mesh Simplify", DEVTOOLS_COLLAPSE.panelMeshSimplify, this.#meshSimplifySection),
             mkSection("SHREC export", DEVTOOLS_COLLAPSE.panelShrecExport, this.#shrecExportSection),
             mkSection("Renderer", DEVTOOLS_COLLAPSE.panelRenderer, this.#rendererSection),
-            mkSection("Logs", DEVTOOLS_COLLAPSE.panelLogs, this.#logsSection)
+            mkSection("Logs", DEVTOOLS_COLLAPSE.panelLogs, this.#logsSection),
         )
 
         this.#restorePersistableSection(this.#appSection)
@@ -426,7 +422,7 @@ export class DevToolsPanel extends HTMLElement {
             window.setTimeout(() => {
                 this.#debounceTimers.delete(sectionId)
                 this.#settings.mergeGlobalDevToolsSection(sectionId, source.getDevToolsState() as Record<string, unknown>)
-            }, 100)
+            }, 100),
         )
     }
 
@@ -451,11 +447,11 @@ export class DevToolsPanel extends HTMLElement {
         }
         this.#settings.mergeGlobalDevToolsSection(
             this.#appSection.devToolsSectionId,
-            this.#appSection.getDevToolsState() as Record<string, unknown>
+            this.#appSection.getDevToolsState() as Record<string, unknown>,
         )
         this.#settings.mergeGlobalDevToolsSection(
             this.#logsSection.devToolsSectionId,
-            this.#logsSection.getDevToolsState() as Record<string, unknown>
+            this.#logsSection.getDevToolsState() as Record<string, unknown>,
         )
     }
 
@@ -476,10 +472,7 @@ export class DevToolsPanel extends HTMLElement {
         }
         await saveBenchmarkSuite(suite)
         const { StatusDialog } = await import("./status-dialog.mjs")
-        const statusDialog = new StatusDialog(
-            `Saved benchmark suite with ${suite.length} case(s) to storage.`,
-            true
-        )
+        const statusDialog = new StatusDialog(`Saved benchmark suite with ${suite.length} case(s) to storage.`, true)
         await statusDialog.show()
     }
 
@@ -487,10 +480,7 @@ export class DevToolsPanel extends HTMLElement {
         const { StatusDialog } = await import("./status-dialog.mjs")
         const suite = await loadBenchmarkSuite()
         if (suite.length === 0) {
-            const statusDialog = new StatusDialog(
-                "No benchmark suite found. Save a suite first using the Save Suite button.",
-                true
-            )
+            const statusDialog = new StatusDialog("No benchmark suite found. Save a suite first using the Save Suite button.", true)
             await statusDialog.show()
             return
         }
@@ -505,16 +495,16 @@ export class DevToolsPanel extends HTMLElement {
             log("App").info("Benchmark Results:")
             console.table(
                 results.map(r =>
-                    r.result.error
-                        ? { document: r.name, error: r.result.error }
-                        : {
+                    r.result.error ?
+                        { document: r.name, error: r.result.error }
+                    :   {
                             document: r.name,
                             "avg (ms)": r.result.averageFrameTime.toFixed(2),
                             fps: r.result.framesPerSecond.toFixed(2),
                             "min (ms)": r.result.minFrameTime.toFixed(2),
                             "max (ms)": r.result.maxFrameTime.toFixed(2),
-                        }
-                )
+                        },
+                ),
             )
 
             const html = formatBenchmarkResultsHtml(results)
@@ -531,10 +521,7 @@ export class DevToolsPanel extends HTMLElement {
         const { StatusDialog } = await import("./status-dialog.mjs")
         const tc = this.onAgentTestcaseExportRequest?.() ?? null
         if (!tc) {
-            const statusDialog = new StatusDialog(
-                "No active document. Open a document to export an agent testcase.",
-                true,
-            )
+            const statusDialog = new StatusDialog("No active document. Open a document to export an agent testcase.", true)
             await statusDialog.show()
             return
         }
@@ -572,10 +559,7 @@ export class DevToolsPanel extends HTMLElement {
         const { StatusDialog } = await import("./status-dialog.mjs")
         const benchCase = this.onBenchmarkThisRequest?.() ?? null
         if (!benchCase) {
-            const statusDialog = new StatusDialog(
-                "No active document. Open a document to benchmark the current view.",
-                true
-            )
+            const statusDialog = new StatusDialog("No active document. Open a document to benchmark the current view.", true)
             await statusDialog.show()
             return
         }
@@ -590,16 +574,16 @@ export class DevToolsPanel extends HTMLElement {
             log("App").info("Benchmark this Results:")
             console.table(
                 results.map(r =>
-                    r.result.error
-                        ? { document: r.name, error: r.result.error }
-                        : {
+                    r.result.error ?
+                        { document: r.name, error: r.result.error }
+                    :   {
                             document: r.name,
                             "avg (ms)": r.result.averageFrameTime.toFixed(2),
                             fps: r.result.framesPerSecond.toFixed(2),
                             "min (ms)": r.result.minFrameTime.toFixed(2),
                             "max (ms)": r.result.maxFrameTime.toFixed(2),
-                        }
-                )
+                        },
+                ),
             )
 
             const html = formatBenchmarkResultsHtml(results)
@@ -618,9 +602,7 @@ export class DevToolsPanel extends HTMLElement {
 
     async #doFactoryReset(): Promise<void> {
         const { YesNoDialog } = await import("./yesno-dialog.mjs")
-        const dialog = new YesNoDialog(
-            "Clear all localStorage, IndexedDB, and CacheStorage, then reload? This cannot be undone."
-        )
+        const dialog = new YesNoDialog("Clear all localStorage, IndexedDB, and CacheStorage, then reload? This cannot be undone.")
         const confirmed = await dialog.show()
         if (!confirmed) return
 
@@ -637,12 +619,12 @@ export class DevToolsPanel extends HTMLElement {
                             const req = indexedDB.deleteDatabase(name)
                             req.onsuccess = () => resolve()
                             req.onerror = () => reject(req.error)
-                        })
-                )
+                        }),
+                ),
         )
 
         const cacheNames = await caches.keys()
-        await Promise.all(cacheNames.map((name) => caches.delete(name)))
+        await Promise.all(cacheNames.map(name => caches.delete(name)))
 
         location.reload()
     }

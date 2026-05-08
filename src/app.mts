@@ -110,7 +110,7 @@ function formatSceneError(err: unknown, src: string): string {
 }
 
 const CONTENT_CHANGE_DEBOUNCE_MS = 200
-const MESH_UPDATE_DEBOUNCE_MS = 600
+const MESH_UPDATE_DEBOUNCE_MS = 250
 const SELECTION_FEEDBACK_DELAY_MS = 50
 
 class App {
@@ -1532,6 +1532,7 @@ class App {
     }
 
     #wireDevToolsFromSettings(devTools: DevToolsPanel) {
+        devTools.syncPersistableSectionsFromSettings()
         const devToolsEnabled = this.#settings.getGlobal().app.devToolsEnabled
         devTools.visible = devToolsEnabled
     }

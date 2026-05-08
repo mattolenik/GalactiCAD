@@ -100,6 +100,7 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
     #isoDepthMaxValueEl: HTMLSpanElement
     #isoOversampleQefRange: HTMLInputElement
     #isoOversampleQefValueEl: HTMLSpanElement
+    #isoDefaultsButton: HTMLButtonElement
     #subscriptions: Subscription[] = []
 
     onVoxelSizeMmChange?: (mm: number) => void
@@ -203,17 +204,6 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
             row.append(lab, box)
             shadow.appendChild(row)
         }
-        this.#subscriptions.push(
-            this.#meshExporter$.subscribe(v => {
-                for (const k of ["mdc", "shrec", "isoSimplicial"] as const) {
-                    this.#exporterRadios[k]!.checked = k === v
-                }
-                if (v !== this.#settings.getGlobal().app.meshExporter) {
-                    this.#settings.updateGlobal({ app: { meshExporter: v, useShrecExporter: v === "shrec" } })
-                    this.onMeshExporterChange?.(v)
-                }
-            })
-        )
 
         const isoT = g.isoSimplicialTuning
         const depthMinDisp = isoT.depthMin ?? IsoSimplicialConstants.depthMin
@@ -223,6 +213,10 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         this.#isoCollapse = document.createElement("dev-tools-collapse")
         this.#isoCollapse.setAttribute("label", "Iso-simplicial")
         this.#isoCollapse.setAttribute("nested", "")
+        this.#isoCollapse.setAttribute(
+            "title",
+            "Used only when Exporter is Iso-simplicial. Does not change the main SDF ray-march preview — turn on App → Export preview to see mesh updates here.",
+        )
         shadow.appendChild(this.#isoCollapse)
 
         this.#isoPhase5Checkbox = addCheckbox(this.#isoCollapse, "Phase 5 GPU edge snap", isoT.phase5Snap ?? false)
@@ -345,6 +339,20 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
             this.onIsoSimplicialTuningChange?.(this.#settings.getGlobal().app.isoSimplicialTuning)
         })
         this.#isoCollapse.appendChild(isoDefaults)
+        this.#isoDefaultsButton = isoDefaults
+
+        this.#subscriptions.push(
+            this.#meshExporter$.subscribe(v => {
+                for (const k of ["mdc", "shrec", "isoSimplicial"] as const) {
+                    this.#exporterRadios[k]!.checked = k === v
+                }
+                this.#setIsoTuningControlsEnabled(v === "isoSimplicial")
+                if (v !== this.#settings.getGlobal().app.meshExporter) {
+                    this.#settings.updateGlobal({ app: { meshExporter: v, useShrecExporter: v === "shrec" } })
+                    this.onMeshExporterChange?.(v)
+                }
+            })
+        )
 
         const mdcCollapse = document.createElement("dev-tools-collapse")
         mdcCollapse.setAttribute("label", "MDC mesh export")
@@ -481,6 +489,15 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         const next: IsoSimplicialTuning = { ...cur, ...patch }
         this.#settings.updateGlobal({ app: { isoSimplicialTuning: next } })
         this.onIsoSimplicialTuningChange?.(next)
+    }
+
+    #setIsoTuningControlsEnabled(enabled: boolean): void {
+        this.#isoPhase5Checkbox.disabled = !enabled
+        this.#isoBoundsPadRange.disabled = !enabled
+        this.#isoDepthMinRange.disabled = !enabled
+        this.#isoDepthMaxRange.disabled = !enabled
+        this.#isoOversampleQefRange.disabled = !enabled
+        this.#isoDefaultsButton.disabled = !enabled
     }
 
     disconnectedCallback(): void {

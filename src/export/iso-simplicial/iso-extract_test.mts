@@ -99,6 +99,47 @@ test("extractIsoSimplicialMeshAsync: findRootDepth 0 matches sync mesh (same Pha
     }
 })
 
+test("extractIsoSimplicialMeshAsync (batched bisection): findRootDepth > 0 on a linear field equals findRootDepth 0", async () => {
+    // Linearly interpolated zero crossings of a linear SDF are exact, so any number of bisection
+    // steps must reach the same final position as the no-bisection baseline. Counts the number of
+    // sample-batch dispatches and confirms it equals findRootDepth (not 3·triCount·findRootDepth).
+    let batchDispatchCount = 0
+    const countingPlane: IsoOctreeBatchFn = positions => {
+        batchDispatchCount++
+        return mockPlaneHalfZ(positions)
+    }
+
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 2, depthMax: 4, qefRelativeErrorRefineThreshold: 1e30 },
+    })
+
+    const a = await extractIsoSimplicialMeshAsync(tree, {
+        phase5: { enabled: true, sample: mockPlaneHalfZ, findRootDepth: 0 },
+    })
+
+    batchDispatchCount = 0
+    const FIND_ROOT_DEPTH = 4
+    const b = await extractIsoSimplicialMeshAsync(tree, {
+        phase5: { enabled: true, sample: countingPlane, findRootDepth: FIND_ROOT_DEPTH },
+    })
+
+    assert.equal(a.tris.length, b.tris.length)
+    assert.equal(a.verts.length, b.verts.length)
+    for (let i = 0; i < a.verts.length; i++) {
+        assert.ok(
+            Math.abs(a.verts[i]! - b.verts[i]!) < 1e-4,
+            `vert[${i}] mismatch: a=${a.verts[i]} b=${b.verts[i]}`,
+        )
+    }
+    assert.equal(
+        batchDispatchCount,
+        FIND_ROOT_DEPTH,
+        `expected exactly ${FIND_ROOT_DEPTH} batched sample dispatches (one per bisection step), got ${batchDispatchCount}`,
+    )
+})
+
 test("filterIsoExtractDegenerateTriangles: removes flat triangle", () => {
     const S = 8
     const verts = new Float32Array(new ArrayBuffer(3 * S * 4))

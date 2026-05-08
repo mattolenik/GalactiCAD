@@ -131,72 +131,93 @@ function isoExtractFindZeroFlat(p: Float32Array, ia: number, ib: number): [numbe
     return [p[ia]! + t * (p[ib]! - p[ia]!), p[ia + 1]! + t * (p[ib + 1]! - p[ia + 1]!), p[ia + 2]! + t * (p[ib + 2]! - p[ia + 2]!)]
 }
 
-/** Reference `sign` in `rootfind.h` (`x[3] < 0 ? -1 : 1`). */
-function isoExtractP5SignW(buf: Float32Array, off: number): number {
-    return buf[off + 3]! < 0 ? -1 : 1
-}
-
-/** Map normalized octree xyz into coordinates passed to `IsoOctree.build` / `sample` (world AABB or identity). */
-function isoExtractNormToSampleWorld(
-    x: number,
-    y: number,
-    z: number,
-    worldBounds: IsoOctreeBounds | undefined,
-    out3: Float32Array,
-): void {
-    if (!worldBounds) {
-        out3[0] = x
-        out3[1] = y
-        out3[2] = z
-        return
-    }
-    const mn = worldBounds.min
-    const mx = worldBounds.max
-    out3[0] = mn[0]! + x * (mx[0]! - mn[0]!)
-    out3[1] = mn[1]! + y * (mx[1]! - mn[1]!)
-    out3[2] = mn[2]! + z * (mx[2]! - mn[2]!)
-}
-
 /**
- * Reference `binarySearch` in `rootfind.h` (iterative): bracket `a`/`b` as `vect4` in normalized space,
- * midpoint SDF from `sample` only. Returns crossing position in normalized coordinates.
+ * Batched reference `binarySearch` (`rootfind.h`) over many MT edge brackets at once.
+ *
+ * Inputs are packed as `vec4f` (xyz, w) in `bracketsA` / `bracketsB`, one bracket per slot
+ * (length `bracketCount * 4` for each). Each step computes the midpoint of every active
+ * bracket, dispatches **one** GPU `sample` call for all midpoints, and then narrows each
+ * bracket toward the sign change. Returns the per-bracket linear-interpolated zero crossings
+ * in the same normalized coordinate space as the input brackets, packed as `[x,y,z, x,y,z, …]`.
+ *
+ * Replaces the per-edge serial `await sample(...)` loop in earlier versions; the GPU call
+ * count drops from `3·triCount·findRootDepth` to `findRootDepth` regardless of mesh size.
  */
-async function isoExtractSnapEdgeVertexGpu(
+async function isoExtractSnapBracketsBatched(
     sample: IsoOctreeBatchFn,
     signal: AbortSignal | undefined,
     findRootDepth: number,
     worldBounds: IsoOctreeBounds | undefined,
-    wedge: Float32Array,
-    i0: number,
-    i1: number,
-    scratchMid: Float32Array,
-    copyA: Float32Array,
-    copyB: Float32Array,
-    worldIn: Float32Array,
-): Promise<[number, number, number]> {
-    const o0 = i0 * 4
-    const o1 = i1 * 4
-    if (findRootDepth <= 0) {
-        return isoExtractFindZero(wedge.subarray(o0, o0 + 4), wedge.subarray(o1, o1 + 4))
-    }
-    copyA.set(wedge.subarray(o0, o0 + 4))
-    copyB.set(wedge.subarray(o1, o1 + 4))
-    for (let step = 0; step < findRootDepth; step++) {
-        scratchMid[0] = (copyA[0]! + copyB[0]!) * 0.5
-        scratchMid[1] = (copyA[1]! + copyB[1]!) * 0.5
-        scratchMid[2] = (copyA[2]! + copyB[2]!) * 0.5
-        isoExtractNormToSampleWorld(scratchMid[0]!, scratchMid[1]!, scratchMid[2]!, worldBounds, worldIn)
-        const sdf = await sample(worldIn, signal)
-        scratchMid[3] = sdf[3]!
-        const sa = isoExtractP5SignW(copyA, 0)
-        const sm = isoExtractP5SignW(scratchMid, 0)
-        if (sa !== sm) {
-            copyB.set(scratchMid)
-        } else {
-            copyA.set(scratchMid)
+    bracketsA: Float32Array,
+    bracketsB: Float32Array,
+    bracketCount: number,
+): Promise<Float32Array> {
+    if (findRootDepth > 0 && bracketCount > 0) {
+        const midPositionsWorld = new Float32Array(bracketCount * 3)
+        const mn = worldBounds?.min
+        const mx = worldBounds?.max
+        const sx = worldBounds ? mx![0]! - mn![0]! : 1
+        const sy = worldBounds ? mx![1]! - mn![1]! : 1
+        const sz = worldBounds ? mx![2]! - mn![2]! : 1
+        const ox = worldBounds ? mn![0]! : 0
+        const oy = worldBounds ? mn![1]! : 0
+        const oz = worldBounds ? mn![2]! : 0
+
+        for (let step = 0; step < findRootDepth; step++) {
+            for (let i = 0; i < bracketCount; i++) {
+                const ai = i * 4
+                const wi = i * 3
+                const mx0 = (bracketsA[ai]! + bracketsB[ai]!) * 0.5
+                const my0 = (bracketsA[ai + 1]! + bracketsB[ai + 1]!) * 0.5
+                const mz0 = (bracketsA[ai + 2]! + bracketsB[ai + 2]!) * 0.5
+                midPositionsWorld[wi] = ox + mx0 * sx
+                midPositionsWorld[wi + 1] = oy + my0 * sy
+                midPositionsWorld[wi + 2] = oz + mz0 * sz
+            }
+            const sdf = await sample(midPositionsWorld, signal)
+            for (let i = 0; i < bracketCount; i++) {
+                const ai = i * 4
+                const si = i * 4
+                const mx0 = (bracketsA[ai]! + bracketsB[ai]!) * 0.5
+                const my0 = (bracketsA[ai + 1]! + bracketsB[ai + 1]!) * 0.5
+                const mz0 = (bracketsA[ai + 2]! + bracketsB[ai + 2]!) * 0.5
+                const mw0 = sdf[si + 3]!
+                const sa = bracketsA[ai + 3]! < 0 ? -1 : 1
+                const sm = mw0 < 0 ? -1 : 1
+                if (sa !== sm) {
+                    bracketsB[ai] = mx0
+                    bracketsB[ai + 1] = my0
+                    bracketsB[ai + 2] = mz0
+                    bracketsB[ai + 3] = mw0
+                } else {
+                    bracketsA[ai] = mx0
+                    bracketsA[ai + 1] = my0
+                    bracketsA[ai + 2] = mz0
+                    bracketsA[ai + 3] = mw0
+                }
+            }
         }
     }
-    return isoExtractFindZero(copyA, copyB)
+
+    const out = new Float32Array(bracketCount * 3)
+    for (let i = 0; i < bracketCount; i++) {
+        const ai = i * 4
+        const oi = i * 3
+        const fa = bracketsA[ai + 3]!
+        const fb = bracketsB[ai + 3]!
+        const denom = fa - fb
+        if (!(Math.abs(denom) > 1e-30)) {
+            out[oi] = (bracketsA[ai]! + bracketsB[ai]!) * 0.5
+            out[oi + 1] = (bracketsA[ai + 1]! + bracketsB[ai + 1]!) * 0.5
+            out[oi + 2] = (bracketsA[ai + 2]! + bracketsB[ai + 2]!) * 0.5
+        } else {
+            const t = fa / denom
+            out[oi] = bracketsA[ai]! + t * (bracketsB[ai]! - bracketsA[ai]!)
+            out[oi + 1] = bracketsA[ai + 1]! + t * (bracketsB[ai + 1]! - bracketsA[ai + 1]!)
+            out[oi + 2] = bracketsA[ai + 2]! + t * (bracketsB[ai + 2]! - bracketsA[ai + 2]!)
+        }
+    }
+    return out
 }
 
 /**
@@ -721,63 +742,44 @@ async function meshFromPendingSnap(
     }
     const findRootDepth = phase5.findRootDepth ?? IsoSimplicialConstants.findRootDepth
     const signal = phase5.signal
-    const scratchMid = new Float32Array(4)
-    const copyA = new Float32Array(4)
-    const copyB = new Float32Array(4)
-    const worldIn = new Float32Array(3)
-    const verts: number[] = []
-    const tris: number[] = []
 
-    for (const tri of pending) {
-        const p0 = await isoExtractSnapEdgeVertexGpu(
-            sample,
-            signal,
-            findRootDepth,
-            worldBounds,
-            tri.wedge,
-            tri.edgePairs[0]![0],
-            tri.edgePairs[0]![1],
-            scratchMid,
-            copyA,
-            copyB,
-            worldIn,
-        )
-        const p1 = await isoExtractSnapEdgeVertexGpu(
-            sample,
-            signal,
-            findRootDepth,
-            worldBounds,
-            tri.wedge,
-            tri.edgePairs[1]![0],
-            tri.edgePairs[1]![1],
-            scratchMid,
-            copyA,
-            copyB,
-            worldIn,
-        )
-        const p2 = await isoExtractSnapEdgeVertexGpu(
-            sample,
-            signal,
-            findRootDepth,
-            worldBounds,
-            tri.wedge,
-            tri.edgePairs[2]![0],
-            tri.edgePairs[2]![1],
-            scratchMid,
-            copyA,
-            copyB,
-            worldIn,
-        )
-        const base = (verts.length / VERT_STRIDE) | 0
-        for (const p of [p0, p1, p2]) {
-            verts.push(p[0]!, p[1]!, p[2]!, 0, 0, 0, 0, 0)
+    // Pack one bracket per (tri, edge): 3 brackets per pending triangle, all `vec4f` (xyz, w)
+    // copied from the wedge. Then run a single batched bisection so the GPU sees one dispatch
+    // per refinement step instead of one per edge per step.
+    const triCount = pending.length
+    const bracketCount = triCount * 3
+    const bracketsA = new Float32Array(bracketCount * 4)
+    const bracketsB = new Float32Array(bracketCount * 4)
+    for (let t = 0; t < triCount; t++) {
+        const tri = pending[t]!
+        for (let e = 0; e < 3; e++) {
+            const [i0, i1] = tri.edgePairs[e]!
+            const ai = (t * 3 + e) * 4
+            const o0 = i0 * 4
+            const o1 = i1 * 4
+            bracketsA[ai] = tri.wedge[o0]!
+            bracketsA[ai + 1] = tri.wedge[o0 + 1]!
+            bracketsA[ai + 2] = tri.wedge[o0 + 2]!
+            bracketsA[ai + 3] = tri.wedge[o0 + 3]!
+            bracketsB[ai] = tri.wedge[o1]!
+            bracketsB[ai + 1] = tri.wedge[o1 + 1]!
+            bracketsB[ai + 2] = tri.wedge[o1 + 2]!
+            bracketsB[ai + 3] = tri.wedge[o1 + 3]!
         }
-        tris.push(base, base + 1, base + 2)
     }
 
-    const vn = (verts.length / VERT_STRIDE) | 0
+    const positions = await isoExtractSnapBracketsBatched(
+        sample,
+        signal,
+        findRootDepth,
+        worldBounds,
+        bracketsA,
+        bracketsB,
+        bracketCount,
+    )
+
+    const vn = bracketCount
     const vertBuf = new Float32Array(new ArrayBuffer(vn * VERT_STRIDE * 4))
-    vertBuf.set(verts)
     if (worldBounds) {
         const mn = worldBounds.min
         const mx = worldBounds.max
@@ -785,13 +787,28 @@ async function meshFromPendingSnap(
         const sy = mx[1]! - mn[1]!
         const sz = mx[2]! - mn[2]!
         for (let i = 0; i < vn; i++) {
-            const o = i * VERT_STRIDE
-            vertBuf[o] = mn[0]! + vertBuf[o]! * sx
-            vertBuf[o + 1] = mn[1]! + vertBuf[o + 1]! * sy
-            vertBuf[o + 2] = mn[2]! + vertBuf[o + 2]! * sz
+            const di = i * VERT_STRIDE
+            const si = i * 3
+            vertBuf[di] = mn[0]! + positions[si]! * sx
+            vertBuf[di + 1] = mn[1]! + positions[si + 1]! * sy
+            vertBuf[di + 2] = mn[2]! + positions[si + 2]! * sz
+        }
+    } else {
+        for (let i = 0; i < vn; i++) {
+            const di = i * VERT_STRIDE
+            const si = i * 3
+            vertBuf[di] = positions[si]!
+            vertBuf[di + 1] = positions[si + 1]!
+            vertBuf[di + 2] = positions[si + 2]!
         }
     }
-    const triBuf = new Uint32Array(tris)
+    const triBuf = new Uint32Array(triCount * 3)
+    for (let t = 0; t < triCount; t++) {
+        const base = t * 3
+        triBuf[base] = base
+        triBuf[base + 1] = base + 1
+        triBuf[base + 2] = base + 2
+    }
     return renormalizeTriangleNormals(vertBuf as Float32Array<ArrayBuffer>, triBuf as Uint32Array<ArrayBuffer>)
 }
 

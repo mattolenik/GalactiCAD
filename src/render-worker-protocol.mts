@@ -339,7 +339,19 @@ export type MainToWorkerMessage =
     | { type: "renderKick"; version: number }
     | { type: "build"; body: string; documentName?: string | null; requestId?: number }
     | { type: "cancelBuilds" }
-    | { type: "render"; cameraState: CameraState; viewTransform: Float32Array; cameraPosition: [number, number, number]; cameraRes: [number, number]; selectionState: RenderSelectionState; viewSettings: RenderViewSettings; viewCenter: [number, number]; resolutionScale: number }
+    | {
+          type: "render"
+          cameraState: CameraState
+          viewTransform: Float32Array
+          cameraPosition: [number, number, number]
+          cameraRes: [number, number]
+          selectionState: RenderSelectionState
+          viewSettings: RenderViewSettings
+          viewCenter: [number, number]
+          resolutionScale: number
+          /** When true, GPU skips drawing the pivot cursor (welcome thumbnails, agent SDF capture). */
+          hidePivotCursor?: boolean
+      }
     | { type: "click"; clickUV: [number, number]; shiftKey: boolean; altKey: boolean; documentName?: string }
     | { type: "doubleClick"; clickUV: [number, number]; documentName?: string }
     | { type: "hover"; clickUV: [number, number]; altKey: boolean; documentName?: string; hoverRequestId?: number }

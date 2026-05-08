@@ -31,7 +31,8 @@ struct Camera {
     previewShade3: vec4f,
     /** Pivot projected to framebuffer pixels (`frag uv * camera.res`). Uploaded from CPU. */
     pivotPx: vec2f,
-    _padPivot: vec2f,
+    /** .x = 1 draws pivot cursor at pivotPx; .x = 0 skips (off-screen capture). .y unused. */
+    pivotCursorFlags: vec2f,
 };
 
 @group(0) @binding(1) var<uniform> camera: Camera;
@@ -677,6 +678,13 @@ fn blendPivotOnto(base: vec4f, pixelCoord: vec2f, pivotPx: vec2f) -> vec4f {
     return vec4f(outRgb / max(outA, 1e-6), outA);
 }
 
+fn maybeBlendPivotOnto(base: vec4f, pixelCoord: vec2f, pivotPx: vec2f) -> vec4f {
+    if (camera.pivotCursorFlags.x <= 0.5) {
+        return base;
+    }
+    return blendPivotOnto(base, pixelCoord, pivotPx);
+}
+
 // Raymarch from inside the surface to find the exit point. Returns HitData; the
 // full SDFResult is only transiently alive during the toHitData() projection.
 fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
@@ -854,6 +862,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
     _ = hoveredEdge.count;
     _ = selectionStyles.faceDarken;
     _ = camera.pivotPx.x;
+    _ = camera.pivotCursorFlags.x;
 
     let uv = fragCoord;
     let pixelCoord = uv * camera.res;
@@ -1009,24 +1018,24 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
                 let frontAlpha = 0.4;
                 let composited = shadedColor * frontAlpha + backColor * (1.0 - frontAlpha);
                 return FragmentOutput(
-                    blendPivotOnto(vec4f(composited, 1.0), pixelCoord, pivotPx),
+                    maybeBlendPivotOnto(vec4f(composited, 1.0), pixelCoord, pivotPx),
                     vec4<u32>(hit.id, 0u, 0u, 0u),
                 );
             } else {
                 let alpha = 0.6;
                 return FragmentOutput(
-                    blendPivotOnto(vec4f(shadedColor * alpha, alpha), pixelCoord, pivotPx),
+                    maybeBlendPivotOnto(vec4f(shadedColor * alpha, alpha), pixelCoord, pivotPx),
                     vec4<u32>(hit.id, 0u, 0u, 0u),
                 );
             }
         }
         return FragmentOutput(
-            blendPivotOnto(vec4f(shadedColor, 1.0), pixelCoord, pivotPx),
+            maybeBlendPivotOnto(vec4f(shadedColor, 1.0), pixelCoord, pivotPx),
             vec4<u32>(hit.id, 0u, 0u, 0u),
         );
     } else {
         return FragmentOutput(
-            blendPivotOnto(vec4f(0.0, 0.0, 0.0, 0.0), pixelCoord, pivotPx),
+            maybeBlendPivotOnto(vec4f(0.0, 0.0, 0.0, 0.0), pixelCoord, pivotPx),
             vec4<u32>(0xFFFFFFFFu, 0u, 0u, 0u),
         );
     }
@@ -1044,6 +1053,7 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     _ = previewParamsMat3[0];
     _ = previewCapParamDrag[0];
     _ = camera.pivotPx.x;
+    _ = camera.pivotCursorFlags.x;
 
     let outDims = textureDimensions(tStartOut);
     if (gid.x >= outDims.x || gid.y >= outDims.y) {

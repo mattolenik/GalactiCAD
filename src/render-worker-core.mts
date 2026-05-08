@@ -660,6 +660,7 @@ export class RenderWorkerCore {
             msg.viewSettings.previewShading ?? DEFAULT_PREVIEW_SHADING,
             msg.viewSettings.previewNormalShading,
             pivotW,
+            msg.hidePivotCursor === true,
         )
 
         this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
@@ -860,6 +861,7 @@ export class RenderWorkerCore {
             previewShading,
             (packed & 128) !== 0,
             pivotW,
+            false,
         )
 
         this.#viewSettingsBuf[0] = (packed & 1) ? 1 : 0
@@ -1356,6 +1358,7 @@ export class RenderWorkerCore {
                 },
                 viewCenter: [0.5, 0.5],
                 resolutionScale: 1.0,
+                hidePivotCursor: true,
             }
             let thumbOutputTexture: GPUTexture | undefined
             let readbackBuffer: GPUBuffer | undefined
@@ -1493,6 +1496,7 @@ export class RenderWorkerCore {
                 },
                 viewCenter: [msg.viewCenter[0], msg.viewCenter[1]],
                 resolutionScale: msg.resolutionScale,
+                hidePivotCursor: true,
             }
             let thumbOutputTexture: GPUTexture | undefined
             let readbackBuffer: GPUBuffer | undefined
@@ -2174,6 +2178,7 @@ export class RenderWorkerCore {
         previewShading: PreviewShadingParams,
         previewNormalShading: boolean,
         pivotWorld: [number, number, number],
+        hidePivotCursor: boolean,
     ): void {
         this.#camTransform.data.set(viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform))
         const invCam = this.#camTransform.inverse()
@@ -2232,7 +2237,8 @@ export class RenderWorkerCore {
         f32[59] = ps.aoBias
         f32[60] = pivotPxX
         f32[61] = pivotPxY
-        f32[62] = 0
+        // preview.wgsl `camera.pivotCursorFlags.x`: 1 = draw pivot cursor, 0 = skip (thumbnails / agent capture).
+        f32[62] = hidePivotCursor ? 0.0 : 1.0
         f32[63] = 0
         this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 256, this.#cameraCache)
     }

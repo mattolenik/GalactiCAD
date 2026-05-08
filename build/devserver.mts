@@ -7,8 +7,11 @@ import WebSocket, { WebSocketServer } from "ws"
 import { BrowserBridge, type DevServerConsoleLogLevel } from "./devserver-bridge.mjs"
 import {
     mergeAgentRenderRequest,
+    normalizeAgentTestcaseFromBridge,
+    parseAgentTestcaseYaml,
+    serializeAgentTestcaseYaml,
     type AgentRenderRequest,
-    type AgentTestcaseJson,
+    type AgentTestcase,
 } from "../src/agent-autotest/agent-testcase.mjs"
 
 export interface RunFileData {
@@ -128,14 +131,14 @@ function resolveAgentTestcaseFile(testcaseRelative: string): string | null {
     return path.join(process.cwd(), "test", "testcases", rel)
 }
 
-/** Stem of the testcase JSON filename (no `.json`), or `render` if missing / not under testcases. */
+/** Stem of the testcase filename (no `.yaml` / `.yml` / `.json`), or `render` if missing / not under testcases. */
 function agentRenderDownloadBasename(testcaseRelative: string | undefined | null): string {
     const rel = (testcaseRelative ?? "").trim()
     if (!rel) return "render"
     const abs = resolveAgentTestcaseFile(rel)
     if (!abs) return "render"
     const bn = path.basename(abs)
-    const stem = bn.endsWith(".json") ? bn.slice(0, -".json".length) : path.parse(bn).name
+    const stem = path.parse(bn).name
     const safe = stem.replace(/[^\w.-]+/g, "_").slice(0, 120)
     return safe.length > 0 ? safe : "render"
 }
@@ -596,8 +599,21 @@ function createHttpServer(
                 )
                 return
             }
-            res.writeHead(200, { "content-type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-            res.end(JSON.stringify(data))
+            let yamlBody: string
+            try {
+                const tc = normalizeAgentTestcaseFromBridge(data)
+                yamlBody = serializeAgentTestcaseYaml(tc)
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e)
+                res.writeHead(500, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                res.end(`agent testcase serialization failed: ${msg}`)
+                return
+            }
+            res.writeHead(200, {
+                "content-type": "application/x-yaml; charset=utf-8",
+                "Access-Control-Allow-Origin": "*",
+            })
+            res.end(yamlBody)
             return
         }
 
@@ -644,7 +660,7 @@ function createHttpServer(
                             "Access-Control-Allow-Origin": "*",
                         })
                         res.end(
-                            "GET testcase render uses path /_agent/render/testcase/<relative> where <relative> is under ./test/testcases/ (e.g. /_agent/render/testcase/meshing/foo.json?mode=sdf)",
+                            "GET testcase render uses path /_agent/render/testcase/<relative> where <relative> is under ./test/testcases/ (e.g. /_agent/render/testcase/meshing/foo.yaml?mode=sdf)",
                         )
                         return
                     }
@@ -662,24 +678,25 @@ function createHttpServer(
                     log(`/_agent/render GET: rejected testcase path ${JSON.stringify(testcase)}`)
                     res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
                     res.end(
-                        "invalid testcase path: relative path under cwd ./test/testcases/ (e.g. meshing/foo.json); no ..",
+                        "invalid testcase path: relative path under cwd ./test/testcases/ (e.g. meshing/foo.yaml); no ..",
                     )
                     return
                 }
-                let rawJson: string
+                let rawYaml: string
                 try {
-                    rawJson = await fs.readFile(safePath, "utf8")
+                    rawYaml = await fs.readFile(safePath, "utf8")
                 } catch {
                     res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
                     res.end(`testcase file not found: ${testcase} (${safePath})`)
                     return
                 }
-                let tc: AgentTestcaseJson
+                let tc: AgentTestcase
                 try {
-                    tc = JSON.parse(rawJson) as AgentTestcaseJson
-                } catch {
+                    tc = parseAgentTestcaseYaml(rawYaml)
+                } catch (e) {
+                    const msg = e instanceof Error ? e.message : String(e)
                     res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-                    res.end("invalid testcase JSON")
+                    res.end(`invalid testcase YAML: ${msg}`)
                     return
                 }
                 const modeQ = url.searchParams.get("mode")
@@ -701,7 +718,7 @@ function createHttpServer(
                     res.end(msg)
                     return
                 }
-                const label = url.searchParams.get("label")?.trim() || path.basename(testcase, ".json") || "render"
+                const label = url.searchParams.get("label")?.trim() || path.parse(path.basename(testcase)).name || "render"
                 const role = url.searchParams.get("role")?.trim() || payload.mode
                 const downloadBasename = agentRenderDownloadBasename(testcase)
                 await respondAgentRenderPng(bridge, repoRoot, payload, label, role, downloadBasename, res)

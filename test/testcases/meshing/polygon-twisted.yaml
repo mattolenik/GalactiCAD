@@ -1,0 +1,82 @@
+schemaVersion: 1
+source: |
+  let star = polygon2d([
+    [0, 4],
+    [4.66, 4.94],
+    [4, 1.2],
+    [3.06, -0.97],
+    [2.5, -3.5],
+    [-0.16, -2.82],
+    [-1.57, -3.19],
+    [-1.52, -1.73],
+    [0.23, -0.04],
+    [-0.69, 2.27],
+  ])
+  let twistedStar = extrude.profile(star).height(6.256).twist(90).shift([40, -1.744, 0])
+
+  return twistedStar
+camera:
+  position:
+    - 37.963253021240234
+    - 4.512990951538086
+    - 3.773036479949951
+  translation:
+    - 63.079551696777344
+    - 10.324182510375977
+    - 12.090909957885742
+  dollyDistance: 14.251805860742273
+  rotation:
+    - 0.8327475853559161
+    - 0.1919892837282831
+    - -0.5060248732560205
+    - -0.11666362613780036
+  pivot:
+    - 37.963253021240234
+    - 4.512990951538086
+    - 2.773036479949951
+viewCenter:
+  - 0.64748215675354
+  - 0.5
+resolutionScale: 1
+viewportWidth: 3456
+viewportHeight: 1844
+previewUvRect:
+  u0: 0.2949643574788991
+  v0: 0
+  u1: 1
+  v1: 1
+meshExport:
+  simplifyOnExport: false
+  voxelSizeMm: 0.38
+  exporter: mdc
+  shrecTuning:
+    mergeSharpEnabled: true
+    mergeRelCutoff: 0.05
+    mergeMaxDisplacement: 0
+    creaseAngleDeg: 30
+    mergeGradientWeightPower: 0
+    dedupRadiusVoxels: 0
+    seamAwareEnabled: true
+    seamAgreementCosThreshold: 0.97
+    edgeFitEnabled: false
+    featureConstrainedPlacement: true
+  simplifyTuning:
+    targetRatio: 0.05
+    targetError: 0.001
+    lockBorder: true
+    sparse: false
+    errorAbsolute: false
+    prune: false
+    regularize: true
+    normalWeight: 0
+    renormalizeTriangles: true
+  mdcExportLevers:
+    voxelSizeMm: 0.38
+    isoValue: 0
+    creaseAngleDeg: 30
+    featureConstrainedPlacement: true
+    simplifyTargetRatio: 0.1
+    simplifyTargetError: 0.001
+    simplifyNormalWeight: 0
+    simplifyRegularize: false
+documentName: polygon-twisted-test

@@ -1,3 +1,4 @@
+import yaml from "js-yaml"
 import type { CameraSettings } from "../storage/settings.mjs"
 import type { MdcExportLevers, ShrecTuning, SimplifyTuning } from "../render-worker-protocol.mjs"
 import type { CanvasPreviewUvRect } from "../layout/editor-layout.mjs"
@@ -16,11 +17,11 @@ export interface AgentTestcaseMeshExport {
 
 /**
  * Frozen snapshot for agent render replay (GET /_agent/render/testcase/…) and diffs.
- * `sourceBase64` is UTF-8 scene text (e.g. .gcad) encoded for JSON transport.
+ * Serialized as YAML with `source` as a literal block (UTF-8 scene text, e.g. .gcad).
  */
-export interface AgentTestcaseJson {
+export interface AgentTestcase {
     schemaVersion: typeof AGENT_TESTCASE_SCHEMA_VERSION
-    sourceBase64: string
+    source: string
     camera: CameraSettings
     viewCenter: [number, number]
     /** Matches interactive preview (`1` full, `0.5` during camera half-res motion when optimization is on). */
@@ -49,7 +50,7 @@ export interface BuildAgentTestcaseInput {
     documentName?: string
 }
 
-/** UTF-8 → base64 (browser / app main thread). */
+/** UTF-8 → base64 (browser / main thread) for `AgentRenderRequest` wire payloads. */
 export function utf8ToBase64(s: string): string {
     return btoa(
         new Uint8Array(new TextEncoder().encode(s)).reduce(
@@ -68,10 +69,10 @@ export function base64ToUtf8(b64: string): string {
     return new TextDecoder().decode(bytes)
 }
 
-export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcaseJson {
+export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcase {
     return {
         schemaVersion: AGENT_TESTCASE_SCHEMA_VERSION,
-        sourceBase64: utf8ToBase64(input.sourceUtf8),
+        source: input.sourceUtf8,
         camera: { ...input.camera },
         viewCenter: [input.viewCenter[0], input.viewCenter[1]],
         resolutionScale: input.resolutionScale,
@@ -90,6 +91,54 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
     }
 }
 
+const YAML_DUMP_OPTS = {
+    indent: 2,
+    lineWidth: -1,
+    noRefs: true,
+    sortKeys: false,
+    flowLevel: -1,
+    quotingType: '"' as const,
+    forceQuotes: false,
+}
+
+/** Round-trip safe YAML for disk and `GET /_agent/capture-testcase`. */
+export function serializeAgentTestcaseYaml(tc: AgentTestcase): string {
+    return yaml.dump(tc, YAML_DUMP_OPTS)
+}
+
+function assertAgentTestcaseSchema(tc: { schemaVersion?: unknown }): void {
+    if (tc.schemaVersion !== AGENT_TESTCASE_SCHEMA_VERSION) {
+        throw new Error(`Unsupported agent testcase schemaVersion: ${String(tc.schemaVersion)}`)
+    }
+}
+
+/** Parse testcase YAML from disk or HTTP; validates `schemaVersion` and `source`. */
+export function parseAgentTestcaseYaml(text: string): AgentTestcase {
+    const loaded = yaml.load(text)
+    if (loaded === null || typeof loaded !== "object") {
+        throw new Error("Agent testcase YAML must be a mapping at the root")
+    }
+    const o = loaded as Record<string, unknown>
+    assertAgentTestcaseSchema(o)
+    if (typeof o.source !== "string") {
+        throw new Error("Agent testcase YAML must include a string `source` (scene body)")
+    }
+    return loaded as AgentTestcase
+}
+
+/** Validate testcase object from the browser bridge (`source` must be plain UTF-8). */
+export function normalizeAgentTestcaseFromBridge(data: unknown): AgentTestcase {
+    if (data === null || typeof data !== "object") {
+        throw new Error("Agent testcase payload must be an object")
+    }
+    const o = data as Record<string, unknown>
+    assertAgentTestcaseSchema(o)
+    if (typeof o.source !== "string") {
+        throw new Error("Agent testcase must include string `source` (scene body)")
+    }
+    return data as AgentTestcase
+}
+
 export type AgentRenderMode = "sdf" | "mesh"
 
 /** Single render request for WS / HTTP agent automation. */
@@ -106,15 +155,9 @@ export interface AgentRenderRequest {
     documentName?: string
 }
 
-function assertAgentTestcaseSchema(tc: { schemaVersion?: number }): void {
-    if (tc.schemaVersion !== AGENT_TESTCASE_SCHEMA_VERSION) {
-        throw new Error(`Unsupported agent testcase schemaVersion: ${String(tc.schemaVersion)}`)
-    }
-}
-
-/** Merge saved testcase JSON with optional overrides (GET query / POST body). */
+/** Merge saved testcase YAML (in-memory `AgentTestcase`) with optional overrides (GET query / POST body). */
 export function mergeAgentRenderRequest(
-    testcase: AgentTestcaseJson,
+    testcase: AgentTestcase,
     overrides: Partial<Pick<AgentRenderRequest, "mode">> & {
         viewportWidth?: number
         viewportHeight?: number
@@ -126,7 +169,7 @@ export function mergeAgentRenderRequest(
     const mode = overrides.mode ?? "sdf"
     return {
         mode,
-        sourceBase64: testcase.sourceBase64,
+        sourceBase64: utf8ToBase64(testcase.source),
         camera: { ...testcase.camera },
         viewCenter: [testcase.viewCenter[0], testcase.viewCenter[1]],
         resolutionScale: testcase.resolutionScale,

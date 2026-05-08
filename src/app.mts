@@ -75,7 +75,7 @@ import {
     log as debugLog,
 } from "./logging/debug-log.mjs"
 import { VERSION } from "./version.mjs"
-import { buildAgentTestcase, type AgentTestcaseJson } from "./agent-autotest/agent-testcase.mjs"
+import { buildAgentTestcase, type AgentTestcase } from "./agent-autotest/agent-testcase.mjs"
 import { registerAgentTestcaseCapture } from "./agent-autotest/register-agent-testcase-capture.mjs"
 import { registerAgentRenderBridge } from "./agent-autotest/register-agent-render-bridge.mjs"
 
@@ -1256,15 +1256,15 @@ class App {
         }
         devTools.onGetViewportSize = () => this.renderer?.renderSize ?? null
 
-        devTools.onAgentTestcaseExportRequest = (): AgentTestcaseJson | null => {
+        devTools.onAgentTestcaseExportRequest = (): AgentTestcase | null => {
             try {
-                return this.#captureAgentTestcaseJson()
+                return this.#captureAgentTestcase()
             } catch {
                 return null
             }
         }
 
-        registerAgentTestcaseCapture(() => this.#captureAgentTestcaseJson())
+        registerAgentTestcaseCapture(() => this.#captureAgentTestcase())
         registerAgentRenderBridge(this.renderer)
     }
 
@@ -1574,8 +1574,8 @@ class App {
         }
     }
 
-    /** Camera, viewport, mesh export levers, and base64 scene — for agent testcase JSON / WS bridge. */
-    #captureAgentTestcaseJson(): AgentTestcaseJson {
+    /** Camera, viewport, mesh export levers, and scene source — for agent testcase YAML / WS bridge. */
+    #captureAgentTestcase(): AgentTestcase {
         const active = this.#tabs.active
         if (!active) {
             throw new Error("No active document")

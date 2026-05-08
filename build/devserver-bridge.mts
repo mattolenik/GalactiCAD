@@ -33,7 +33,7 @@ export type DevServerActiveSceneSourceErrorMessage = { type: "activeSceneSourceE
 /** Server → browser: build agent testcase JSON from the live app (camera + mesh export + base64 source). */
 export type DevServerExportAgentTestcaseMessage = { type: "exportAgentTestcase"; id: string }
 
-/** Browser → server: testcase payload (same shape as `AgentTestcaseJson` in `src/agent-autotest/`). */
+/** Browser → server: testcase payload (same shape as `AgentTestcase` in `src/agent-autotest/`). */
 export type DevServerAgentTestcaseResultMessage = {
     type: "agentTestcaseResult"
     id: string

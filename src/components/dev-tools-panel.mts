@@ -32,7 +32,7 @@ import {
 import { DevToolsLogsSection } from "./dev-tools-logs-section.mjs"
 import { DevToolsRendererSection } from "./dev-tools-renderer-section.mjs"
 import "./dev-tools-collapse.mjs"
-import type { AgentTestcaseJson } from "../agent-autotest/agent-testcase.mjs"
+import { serializeAgentTestcaseYaml, type AgentTestcase } from "../agent-autotest/agent-testcase.mjs"
 
 export type DevToolsSectionScope = "global" | "document"
 
@@ -78,7 +78,7 @@ export class DevToolsPanel extends HTMLElement {
      * Serialize current scene + camera + mesh export settings for agent replay.
      * Returns null when no active document or capture fails.
      */
-    onAgentTestcaseExportRequest?: () => AgentTestcaseJson | null
+    onAgentTestcaseExportRequest?: () => AgentTestcase | null
 
     /** After debug log toggles are persisted; apply flags and sync worker. */
     onDebugLogModulesChange?: () => void
@@ -337,7 +337,7 @@ export class DevToolsPanel extends HTMLElement {
         const exportAgentTestcaseButton = document.createElement("button")
         exportAgentTestcaseButton.textContent = "Export agent testcase"
         exportAgentTestcaseButton.title =
-            "Save JSON: scene source (base64), camera, viewport, and mesh export settings for agent render replay"
+            "Save YAML: scene source (multiline), camera, viewport, and mesh export settings for agent render replay"
         exportAgentTestcaseButton.addEventListener("click", async () => {
             exportAgentTestcaseButton.disabled = true
             try {
@@ -540,20 +540,20 @@ export class DevToolsPanel extends HTMLElement {
 
         try {
             const rawName = tc.documentName ?? "scene"
-            const suggested = `${rawName.replace(/[^\w.-]+/g, "_")}-agent-testcase.json`
+            const suggested = `${rawName.replace(/[^\w.-]+/g, "_")}-agent-testcase.yaml`
             const handle = await window.showSaveFilePicker({
                 suggestedName: suggested,
                 startIn: "desktop",
                 types: [
                     {
-                        description: "Agent testcase JSON",
-                        accept: { "application/json": [".json"] },
+                        description: "Agent testcase YAML",
+                        accept: { "application/x-yaml": [".yaml", ".yml"] },
                     },
                 ],
                 excludeAcceptAllOption: false,
             })
             const writable = await handle.createWritable()
-            await writable.write(JSON.stringify(tc, null, 2))
+            await writable.write(serializeAgentTestcaseYaml(tc))
             await writable.close()
             const ok = new StatusDialog("Agent testcase saved")
             await ok.show()

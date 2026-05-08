@@ -15,7 +15,7 @@ export interface AgentTestcaseMeshExport {
 }
 
 /**
- * Frozen snapshot for agent render replay (GET /_agent/render) and diffs.
+ * Frozen snapshot for agent render replay (GET /_agent/render/testcase/…) and diffs.
  * `sourceBase64` is UTF-8 scene text (e.g. .gcad) encoded for JSON transport.
  */
 export interface AgentTestcaseJson {

@@ -94,11 +94,59 @@ function parseLogQuery(url: URL): DevLogQuery {
 /** Repo root for paths that must stay stable when `cwd` is wrong (e.g. imagelog under `.agents/`). */
 const REPO_ROOT_FOR_HTTP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
-/** `$PWD/test/testcases/<testcase>` — rejects empty query and obvious `..` traversal only. */
-function resolveAgentTestcaseFile(testcaseQuery: string): string | null {
-    const rel = testcaseQuery.replace(/\\/g, "/").trim().replace(/^\/+/, "")
+/** POST JSON body only. */
+const AGENT_RENDER_ROOT = "/_agent/render"
+/** GET testcase file: path after this prefix is relative to `./test/testcases/` (e.g. `meshing/foo.json`). */
+const AGENT_RENDER_TESTCASE_PREFIX = "/_agent/render/testcase"
+
+function isAgentRenderPathname(pathname: string): boolean {
+    return pathname === AGENT_RENDER_ROOT || pathname === AGENT_RENDER_TESTCASE_PREFIX || pathname.startsWith(`${AGENT_RENDER_TESTCASE_PREFIX}/`)
+}
+
+/**
+ * Returns relative path under `test/testcases/` or null if missing/unsafe.
+ * Pathname is already percent-decoded by `URL` (e.g. spaces); rejects `..` before/after decode.
+ */
+function parseAgentRenderTestcaseRelativeFromPathname(pathname: string): string | null {
+    if (pathname === AGENT_RENDER_TESTCASE_PREFIX) return null
+    if (!pathname.startsWith(`${AGENT_RENDER_TESTCASE_PREFIX}/`)) return null
+    let rest = pathname.slice(AGENT_RENDER_TESTCASE_PREFIX.length + 1)
+    if (!rest || rest.includes("..")) return null
+    try {
+        rest = decodeURIComponent(rest)
+    } catch {
+        return null
+    }
+    if (!rest || rest.includes("..") || rest.startsWith("/")) return null
+    return rest
+}
+
+/** `$PWD/test/testcases/<relative>` — rejects empty path and obvious `..` traversal only. */
+function resolveAgentTestcaseFile(testcaseRelative: string): string | null {
+    const rel = testcaseRelative.replace(/\\/g, "/").trim().replace(/^\/+/, "")
     if (!rel || rel.includes("..")) return null
     return path.join(process.cwd(), "test", "testcases", rel)
+}
+
+/** Stem of the testcase JSON filename (no `.json`), or `render` if missing / not under testcases. */
+function agentRenderDownloadBasename(testcaseRelative: string | undefined | null): string {
+    const rel = (testcaseRelative ?? "").trim()
+    if (!rel) return "render"
+    const abs = resolveAgentTestcaseFile(rel)
+    if (!abs) return "render"
+    const bn = path.basename(abs)
+    const stem = bn.endsWith(".json") ? bn.slice(0, -".json".length) : path.parse(bn).name
+    const safe = stem.replace(/[^\w.-]+/g, "_").slice(0, 120)
+    return safe.length > 0 ? safe : "render"
+}
+
+function agentRenderPngContentDisposition(downloadBasename: string, mode: AgentRenderRequest["mode"]): string {
+    const base = downloadBasename.replace(/[^\w.-]+/g, "_").slice(0, 120) || "render"
+    const m = mode === "mesh" || mode === "sdf" ? mode : "sdf"
+    const filename = `${base}-${m}.png`
+    const esc = filename.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+    const star = encodeURIComponent(filename)
+    return `attachment; filename="${esc}"; filename*=UTF-8''${star}`
 }
 
 async function writeAgentImagelogPng(repoRoot: string, labelSlug: string, role: string, pngBytes: Buffer): Promise<string> {
@@ -137,6 +185,7 @@ async function respondAgentRenderPng(
     payload: AgentRenderRequest,
     labelSlug: string,
     role: string,
+    downloadBasename: string,
     res: http.ServerResponse,
 ): Promise<void> {
     const out = await bridge.requestAgentRender(payload as unknown as Record<string, unknown>)
@@ -149,7 +198,12 @@ async function respondAgentRenderPng(
     }
     const buf = Buffer.from(out.pngBase64, "base64")
     await writeAgentImagelogPng(repoRoot, labelSlug, role, buf)
-    res.writeHead(200, { "content-type": "image/png", "Access-Control-Allow-Origin": "*" })
+    res.writeHead(200, {
+        "content-type": "image/png",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "Content-Disposition",
+        "Content-Disposition": agentRenderPngContentDisposition(downloadBasename, payload.mode),
+    })
     res.end(buf)
 }
 
@@ -440,7 +494,7 @@ export class DevServer {
             await fs.writeFile(options.runFile, JSON.stringify({ pid: options.pid, port: actualPort } satisfies RunFileData, null, 2))
         }
         log(
-            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource; GET /_agent/capture-testcase; GET|POST /_agent/render`,
+            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource; GET /_agent/capture-testcase; GET|POST /_agent/render (GET testcase: /_agent/render/testcase/<path-under-test-testcases>?mode=…)`,
         )
         return instance
     }
@@ -547,20 +601,68 @@ function createHttpServer(
             return
         }
 
-        if (pathname === "/_agent/render") {
-            if (req.method === "GET") {
-                const testcase = url.searchParams.get("testcase")
-                if (!testcase) {
+        if (isAgentRenderPathname(pathname)) {
+            if (req.method === "POST") {
+                if (pathname !== AGENT_RENDER_ROOT) {
+                    res.writeHead(405, {
+                        "content-type": "text/plain; charset=utf-8",
+                        Allow: "GET",
+                        "Access-Control-Allow-Origin": "*",
+                    })
+                    res.end("POST is only accepted at /_agent/render")
+                    return
+                }
+                const raw = await readHttpBody(req)
+                let parsed: Record<string, unknown>
+                try {
+                    parsed = JSON.parse(raw) as Record<string, unknown>
+                } catch {
                     res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-                    res.end("missing testcase query (relative to ./test/testcases/, e.g. meshing/foo.json)")
+                    res.end("invalid JSON body")
+                    return
+                }
+                const testcaseFromBody =
+                    typeof parsed.testcase === "string" && parsed.testcase.trim() !== "" ? parsed.testcase.trim() : undefined
+                delete parsed.testcase
+                const testcaseForFilename = testcaseFromBody
+                const label =
+                    typeof parsed.label === "string" && parsed.label.trim() !== "" ? parsed.label.trim() : "render"
+                const role = typeof parsed.role === "string" && parsed.role.trim() !== "" ? parsed.role.trim() : "render"
+                delete parsed.label
+                delete parsed.role
+                const payload = parsed as unknown as AgentRenderRequest
+                const downloadBasename = agentRenderDownloadBasename(testcaseForFilename)
+                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, downloadBasename, res)
+                return
+            }
+            if (req.method === "GET") {
+                const testcase = parseAgentRenderTestcaseRelativeFromPathname(pathname)
+                if (testcase === null) {
+                    if (pathname === AGENT_RENDER_ROOT) {
+                        res.writeHead(400, {
+                            "content-type": "text/plain; charset=utf-8",
+                            "Access-Control-Allow-Origin": "*",
+                        })
+                        res.end(
+                            "GET testcase render uses path /_agent/render/testcase/<relative> where <relative> is under ./test/testcases/ (e.g. /_agent/render/testcase/meshing/foo.json?mode=sdf)",
+                        )
+                        return
+                    }
+                    res.writeHead(400, {
+                        "content-type": "text/plain; charset=utf-8",
+                        "Access-Control-Allow-Origin": "*",
+                    })
+                    res.end(
+                        "invalid testcase path: expected /_agent/render/testcase/<path> relative to ./test/testcases/; no .. or empty path",
+                    )
                     return
                 }
                 const safePath = resolveAgentTestcaseFile(testcase)
                 if (!safePath) {
-                    log(`/_agent/render GET: rejected testcase param ${JSON.stringify(testcase)}`)
+                    log(`/_agent/render GET: rejected testcase path ${JSON.stringify(testcase)}`)
                     res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
                     res.end(
-                        "invalid testcase query: relative path under cwd ./test/testcases/ (e.g. foo.json); no ..",
+                        "invalid testcase path: relative path under cwd ./test/testcases/ (e.g. meshing/foo.json); no ..",
                     )
                     return
                 }
@@ -569,7 +671,7 @@ function createHttpServer(
                     rawJson = await fs.readFile(safePath, "utf8")
                 } catch {
                     res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-                    res.end("testcase file not found")
+                    res.end(`testcase file not found: ${testcase} (${safePath})`)
                     return
                 }
                 let tc: AgentTestcaseJson
@@ -601,26 +703,8 @@ function createHttpServer(
                 }
                 const label = url.searchParams.get("label")?.trim() || path.basename(testcase, ".json") || "render"
                 const role = url.searchParams.get("role")?.trim() || payload.mode
-                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, res)
-                return
-            }
-            if (req.method === "POST") {
-                const raw = await readHttpBody(req)
-                let parsed: Record<string, unknown>
-                try {
-                    parsed = JSON.parse(raw) as Record<string, unknown>
-                } catch {
-                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-                    res.end("invalid JSON body")
-                    return
-                }
-                const label =
-                    typeof parsed.label === "string" && parsed.label.trim() !== "" ? parsed.label.trim() : "render"
-                const role = typeof parsed.role === "string" && parsed.role.trim() !== "" ? parsed.role.trim() : "render"
-                delete parsed.label
-                delete parsed.role
-                const payload = parsed as unknown as AgentRenderRequest
-                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, res)
+                const downloadBasename = agentRenderDownloadBasename(testcase)
+                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, downloadBasename, res)
                 return
             }
             res.writeHead(405, {
@@ -664,7 +748,7 @@ function createHttpServer(
                     "Cross-Origin-Opener-Policy": "same-origin",
                     "Cross-Origin-Embedder-Policy": "credentialless",
                 })
-                res.end("404 not found")
+                res.end(`404 not found: ${pathname}`)
             } else {
                 console.error(`Internal error: ${e}`)
                 res.writeHead(500, {

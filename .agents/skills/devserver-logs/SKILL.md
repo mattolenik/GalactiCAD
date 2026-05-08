@@ -1,6 +1,6 @@
 ---
 name: devserver-logs
-description: "Query runtime browser logs (GET /_logs), active scene source (GET /_sceneSource), and agent automation (GET /_agent/capture-testcase, GET|POST /_agent/render) from the local devserver with curl."
+description: "Query runtime browser logs (GET /_logs), active scene source (GET /_sceneSource), and agent automation (GET /_agent/capture-testcase, GET /_agent/render/testcase/…, POST /_agent/render) from the local devserver with curl."
 ---
 
 # Devserver HTTP / WebSocket bridge
@@ -11,7 +11,7 @@ Use this skill for **runtime log signal**, a **plain-text dump of the active CAD
 
 - **Logs:** validate runtime after a change, check WebGPU or app errors, read dev log buffer without opening DevTools.
 - **Scene source:** capture the **currently selected editor tab’s scene source** (including unsaved buffer content) for debugging, repro scripts, or diffing against disk.
-- **Agent automation:** fetch a **testcase JSON** from the live editor, or request **PNG** renders of the SDF (normal-vector colors) or **meshed** normal RGB for a testcase / inline JSON body. Each successful `/_agent/render` also writes a copy under **`.agents/imagelog/`** on the server.
+- **Agent automation:** fetch a **testcase JSON** from the live editor, or request **PNG** renders via **`GET /_agent/render/testcase/<path>`** (file under `test/testcases/`) or **`POST /_agent/render`** with an inline JSON body. Each successful render also writes a copy under **`.agents/imagelog/`** on the server.
 
 ## Port discovery (main devserver)
 
@@ -91,7 +91,7 @@ Runs the **agent render pipeline** in the browser (normal-vector SDF preview **o
 ### POST
 
 - **Body:** JSON matching **`AgentRenderRequest`** (see `src/agent-autotest/agent-testcase.mts`): `mode` (`"sdf"` \| `"mesh"`), `sourceBase64`, `camera`, `viewCenter`, `resolutionScale`, `viewportWidth`, `viewportHeight`, `meshExport`, optional `documentName`.
-- **Optional:** `label` and `role` (strings for **`.agents/imagelog/`** filenames). Removed before dispatch; not part of `AgentRenderRequest`.
+- **Optional:** `label` and `role` (strings for **`.agents/imagelog/`** filenames). Optional **`testcase`** (relative path under `test/testcases/`, same shape as GET path) for **`Content-Disposition`** basename only; removed before dispatch. Not part of `AgentRenderRequest`.
 
 Example (conceptual — embed real base64):
 
@@ -99,12 +99,13 @@ Example (conceptual — embed real base64):
 
 ### GET
 
-- **Query:** `testcase` = **relative path** (slashes OK) under **`$PWD/test/testcases/`** — e.g. `meshing/foo.json`.
-- **Optional:** `mode=sdf|mesh`, `viewportWidth`, `viewportHeight`, `label`, `role`.
+- **Path:** **`/_agent/render/testcase/<relative>`** where `<relative>` is the path under **`$PWD/test/testcases/`** (slashes OK), e.g. `meshing/my-case.json` → `/_agent/render/testcase/meshing/my-case.json`.
+- **Query:** optional `mode=sdf|mesh`, `viewportWidth`, `viewportHeight`, `label`, `role`.
+- **Filename:** successful responses set **`Content-Disposition`** to **`<basename>-<mode>.png`** (e.g. `my-case-sdf.png`). Use **`curl -OJ`** to save under that name.
 
 Example:
 
-`curl -sS "http://localhost:${port}/_agent/render?testcase=meshing/my-case.json&mode=sdf" -o sdf.png`
+`curl -sS -OJ "http://localhost:${port}/_agent/render/testcase/meshing/my-case.json?mode=sdf"`
 
 ### Imagelog files
 
@@ -117,7 +118,7 @@ On success the server writes **`repo/.agents/imagelog/<label>-<HHMM>-<role>.png`
 1. Start a devserver (`make serve` or `make serve-agent`); read **`port`** from the matching **`.run`** file.
 2. Open the app in **system Chromium** with WebGPU (helper: **`.agents/scripts/agent-open-chromium.sh`** — reads **`.devserver.agent.run`** by default; set **`RUN_FILE`** to use the interactive server). Leave the tab open.
 3. Optional: **`GET /_agent/capture-testcase`** to save a testcase JSON from the user’s session.
-4. **`GET` or `POST /_agent/render`** with testcase file or inline body; save PNG from response and/or inspect **`.agents/imagelog/`**.
+4. **`GET /_agent/render/testcase/…`** (file under `test/testcases/`) or **`POST /_agent/render`** with inline JSON body; save PNG (`curl -OJ` respects **`Content-Disposition`**) and/or inspect **`.agents/imagelog/`**.
 5. Optional: **`GET /_logs`** for runtime errors during the run.
 
 ---

@@ -5,7 +5,10 @@ import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import { __fg_color, __tone_2, __tone_accent } from "../style/style.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
-import { vec2, Vec2f, vec3, vec4 } from "../vecmat/vector.mjs"
+import { vec2, Vec2f, vec3, Vec3f, vec4 } from "../vecmat/vector.mjs"
+
+/** Must match RAY_ORIGIN_DEPTH in preview.wgsl. */
+const PREVIEW_RAY_ORIGIN_DEPTH = 300
 
 export class MeshViewer extends HTMLElement {
     static get observedAttributes() {
@@ -715,17 +718,16 @@ export class MeshViewer extends HTMLElement {
             return
         }
 
-        // The raymarch preview uses `camera.transform` as a camera-space -> scene-space transform.
-        // For rasterizing scene-space vertices, we upload the inverse (scene-space -> camera-space).
+        // Match preview.wgsl exactly: it transforms camera-space ray origins with viewTransform,
+        // so raster projection uses the inverse to bring scene-space vertices back to camera space.
         const sceneToCamera = this.#controls.viewTransform.inverse()
-        // Rotate 180° to match PreviewWindow's handedness/orientation.
-        const rotated = Mat4x4f.rotationY(Math.PI).multiply(sceneToCamera)
-        this.#device.queue.writeBuffer(this.#uniformBuffer, 0, rotated.data as BufferSource)
-        this.#device.queue.writeBuffer(this.#uniformBuffer, 64, this.#controls.cameraPosition.data as BufferSource)
+        const meshCameraOrigin = this.#controls.cameraPosition.add(vec3(0, 0, PREVIEW_RAY_ORIGIN_DEPTH))
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 0, sceneToCamera.data as BufferSource)
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 64, meshCameraOrigin.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 64 + 16, this.#cameraRes.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 64 + 16 + 8, new Float32Array([this.#controls.zoom]))
         // Provide camera-space -> scene-space so lighting can move with the camera (matching PreviewWindow).
-        const camToScene = rotated.inverse()
+        const camToScene = this.#controls.viewTransform
         this.#device.queue.writeBuffer(this.#uniformBuffer, 96, camToScene.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 160, this.#viewCenter.data as BufferSource)
 
@@ -838,7 +840,7 @@ export class MeshViewer extends HTMLElement {
             renderPass.end()
         }
         this.#device.queue.submit([commandEncoder.finish()])
-        this.#drawMdcDebugOverlay(rotated)
+        this.#drawMdcDebugOverlay(sceneToCamera, meshCameraOrigin)
 
         if (!this.#disposed) requestAnimationFrame(() => this.update())
     }
@@ -847,19 +849,20 @@ export class MeshViewer extends HTMLElement {
         this.#debugOverlayCtx?.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
     }
 
-    #projectDebugPoint(cameraTransform: Mat4x4f, x: number, y: number, z: number): { x: number; y: number; depth: number } | null {
+    #projectDebugPoint(cameraTransform: Mat4x4f, cameraOrigin: Vec3f, x: number, y: number, z: number): { x: number; y: number; depth: number } | null {
         const pCam = cameraTransform.transform(vec4(x, y, z, 1))
         const p = {
-            x: pCam.x - this.#controls.cameraPosition.x,
-            y: pCam.y - this.#controls.cameraPosition.y,
-            z: pCam.z - (this.#controls.cameraPosition.z + 100.0),
+            x: pCam.x - cameraOrigin.x,
+            y: pCam.y - cameraOrigin.y,
+            z: pCam.z - cameraOrigin.z,
         }
         const aspect = this.#cameraRes.y !== 0 ? this.#cameraRes.x / this.#cameraRes.y : 1
-        const ndcX = -p.x / (this.#controls.zoom * aspect)
+        const ndcX = p.x / (this.#controls.zoom * aspect)
         const ndcY = p.y / this.#controls.zoom
         const near = -10000.0
         const far = 10000.0
-        const ndcZ = (p.z - near) / (far - near)
+        // Preview rays march along camera -Z, so larger camera-space Z is closer.
+        const ndcZ = (far - p.z) / (far - near)
         if (!Number.isFinite(ndcX) || !Number.isFinite(ndcY) || !Number.isFinite(ndcZ) || ndcZ < 0 || ndcZ > 1) {
             return null
         }
@@ -877,7 +880,7 @@ export class MeshViewer extends HTMLElement {
         }
     }
 
-    #drawMdcDebugOverlay(cameraTransform: Mat4x4f): void {
+    #drawMdcDebugOverlay(cameraTransform: Mat4x4f, cameraOrigin: Vec3f): void {
         const ctx = this.#debugOverlayCtx
         if (!ctx) return
         ctx.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
@@ -924,7 +927,7 @@ export class MeshViewer extends HTMLElement {
                 default: return "none"
             }
         }
-        const project = (ox: number, oy: number, oz: number) => this.#projectDebugPoint(cameraTransform, ox, oy, oz)
+        const project = (ox: number, oy: number, oz: number) => this.#projectDebugPoint(cameraTransform, cameraOrigin, ox, oy, oz)
         const drawLine = (
             ax: number,
             ay: number,
@@ -1393,7 +1396,7 @@ export class MeshViewer extends HTMLElement {
 const MESH_SHADER_COMMON = /* wgsl */ `
 struct Camera {
     transform: mat4x4f,
-    position: vec3f,
+    origin: vec3f,
     res: vec2f,
     zoom: f32,
     camToScene: mat4x4f,
@@ -1421,22 +1424,22 @@ fn vertexMain(v: VertexIn) -> VertexOut {
     let aspect = camera.res.x / camera.res.y;
     // camera.transform is scene-space -> camera-space (uploaded as inverse of PreviewWindow camera.transform).
     let pCam = (camera.transform * vec4f(v.position, 1.0)).xyz;
-    // PreviewWindow's camera ray origin is (camera.position + vec3(offsetX, offsetY, 100.0)) in camera-space,
-    // so shift vertices by the same camera origin (offsetX/offsetY are handled by projection below).
-    let p = pCam - (camera.position + vec3f(0.0, 0.0, 100.0));
+    // Shift by the same camera-space ray origin used by preview.wgsl.
+    // offsetX/offsetY become the orthographic projection coordinates below.
+    let p = pCam - camera.origin;
 
     // Match the raymarch preview's screen-space scaling:
     // x in [-zoom*aspect, zoom*aspect] maps to [-1, 1]
     // y in [-zoom, zoom] maps to [-1, 1]
-    // Flip X so the mesh matches the raymarch preview orientation.
-    let ndcX = -p.x / (camera.zoom * aspect);
+    let ndcX = p.x / (camera.zoom * aspect);
     let ndcY = p.y / camera.zoom;
 
     // Depth: WebGPU NDC z is 0..1 (not -1..1 like OpenGL).
     // Use a wide-ish orthographic range to avoid clipping.
     let near = -10000.0;
     let far = 10000.0;
-    let ndcZ = clamp((p.z - near) / (far - near), 0.0, 1.0);
+    // Preview rays march along camera -Z, so larger camera-space Z is closer.
+    let ndcZ = clamp((far - p.z) / (far - near), 0.0, 1.0);
 
     // Shift NDC so the scene center aligns with the viewCenter screen position,
     // matching the SDF preview's camera offset for the editor overlay.

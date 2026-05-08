@@ -465,18 +465,27 @@ export class CameraController {
         this.#saveCameraState()
     }
 
-    /** World-space translation delta so `worldPoint` lies on the optical axis (matches preview center ray). */
-    #translationDeltaSnapWorldPointToCentralRay(worldPoint: Vec3f): Vec3f {
-        const ro = vec3(
+    /**
+     * Central optical-axis ray in world space (fragment uv = viewCenter → uvAspect (0.5, 0.5) in preview.wgsl).
+     * Direction matches WGSL `normalize(-camera.transform[2].xyz)` via camera −Z → world.
+     */
+    #worldCentralRay(): { origin: Vec3f; dir: Vec3f } {
+        const roCam = vec3(
             this.cameraPosition.x,
             this.cameraPosition.y,
             this.cameraPosition.z + PREVIEW_RAY_ORIGIN_DEPTH,
         )
-        const O = this.viewTransform.transformPoint(ro)
-        const m = this.viewTransform.data
-        const dirRaw = vec3(-m[8], -m[9], -m[10])
-        if (dirRaw.length() < 1e-20) return vec3(0, 0, 0)
-        const dir = dirRaw.normalize()
+        const origin = this.viewTransform.transformPoint(roCam)
+        const dirRaw = this.viewTransform.transformVector(vec3(0, 0, -1))
+        if (dirRaw.length() < 1e-20) {
+            return { origin, dir: vec3(0, 0, -1) }
+        }
+        return { origin, dir: dirRaw.normalize() }
+    }
+
+    /** World-space translation delta so `worldPoint` lies on the optical axis (matches preview center ray). */
+    #translationDeltaSnapWorldPointToCentralRay(worldPoint: Vec3f): Vec3f {
+        const { origin: O, dir } = this.#worldCentralRay()
         const toP = worldPoint.subtract(O)
         const tLine = toP.dot(dir)
         const Q = O.add(dir.scale(tLine))
@@ -489,16 +498,7 @@ export class CameraController {
      * so it equals the previous |O − lastFocus|; otherwise only snap the hit onto the ray.
      */
     recenterOnPoint(worldPoint: Vec3f): void {
-        const ro = vec3(
-            this.cameraPosition.x,
-            this.cameraPosition.y,
-            this.cameraPosition.z + PREVIEW_RAY_ORIGIN_DEPTH,
-        )
-        const O = this.viewTransform.transformPoint(ro)
-        const m = this.viewTransform.data
-        const dirRaw = vec3(-m[8], -m[9], -m[10])
-        if (dirRaw.length() < 1e-20) return
-        const dir = dirRaw.normalize()
+        const { origin: O, dir } = this.#worldCentralRay()
 
         let delta: Vec3f
         const prevFocus = this.#lastFocusWorld
@@ -657,11 +657,11 @@ export class CameraController {
         const ndcY = 2 * (1 - screenSy - vc.y)
         // World-space compensation (d = -dOrtho: positive when zooming in / ortho half decreases).
         const d = -dOrtho
-        const m = this.viewTransform.data
-        // camRight = column 0, camUp = column 1 of viewTransform (rotation only, unaffected by T).
-        this.#cameraTranslation.x += d * (ndcX * m[0] + ndcY * m[4])
-        this.#cameraTranslation.y += d * (ndcX * m[1] + ndcY * m[5])
-        this.#cameraTranslation.z += d * (ndcX * m[2] + ndcY * m[6])
+        const right = this.viewTransform.transformVector(vec3(1, 0, 0))
+        const up = this.viewTransform.transformVector(vec3(0, 1, 0))
+        this.#cameraTranslation.x += d * (ndcX * right.x + ndcY * up.x)
+        this.#cameraTranslation.y += d * (ndcX * right.y + ndcY * up.y)
+        this.#cameraTranslation.z += d * (ndcX * right.z + ndcY * up.z)
     }
 
     /**

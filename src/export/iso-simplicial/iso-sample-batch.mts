@@ -160,7 +160,7 @@ export class IsoSampleBatch {
             const sdf = new Float32Array(await this.#helper.readBufferData(sdfBuffer))
 
             const elapsedMs = (globalThis.performance?.now ? globalThis.performance.now() : Date.now()) - t0
-            dbgLog("ShrecExport").debug(
+            dbgLog("IsoSimplicialExport").debug(
                 `IsoSampleBatch: ${sampleCount} samples elapsed=${elapsedMs.toFixed(1)}ms`,
             )
 

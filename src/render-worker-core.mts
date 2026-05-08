@@ -1165,7 +1165,6 @@ export class RenderWorkerCore {
                 const isoCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)
                     .replace("insert", "sceneAux", sceneAux)
-                    .replace("insert", "sceneAuxMid", sceneAuxMid)
                     .replace("insert", "sceneSDF", sceneSDF)
                 const isoSampleModule = isoCompiler.compile(isoSampleBatchShaderSource, "Iso sample batch")
                 const isoBatch = new IsoSampleBatch(
@@ -1176,9 +1175,10 @@ export class RenderWorkerCore {
                 )
                 const sampleFn = createIsoOctreeSampleFn(isoBatch, isoSampleModule)
                 const cube = worldBoundsCube()
+                const MIN_DEPTH_FLOOR = 3
                 const constOverrides = {
-                    ...(typeof isoT.depthMin === "number" && Number.isFinite(isoT.depthMin) ? { depthMin: isoT.depthMin } : {}),
-                    ...(typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ? { depthMax: isoT.depthMax } : {}),
+                    ...(typeof isoT.depthMin === "number" && Number.isFinite(isoT.depthMin) ? { depthMin: Math.max(MIN_DEPTH_FLOOR, isoT.depthMin) } : {}),
+                    ...(typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ? { depthMax: Math.max(MIN_DEPTH_FLOOR, isoT.depthMax) } : {}),
                     ...(typeof isoT.oversampleQef === "number" && Number.isFinite(isoT.oversampleQef) ? { oversampleQef: isoT.oversampleQef } : {}),
                     ...(typeof isoT.dualVertexBorderFraction === "number" && Number.isFinite(isoT.dualVertexBorderFraction)
                         ? { dualVertexBorderFraction: isoT.dualVertexBorderFraction }

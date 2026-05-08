@@ -231,7 +231,7 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
             lab.textContent = "Octree depth min"
             const range = document.createElement("input")
             range.type = "range"
-            range.min = "1"
+            range.min = "3"
             range.max = "12"
             range.step = "1"
             range.value = String(depthMinDisp)
@@ -256,7 +256,7 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
             lab.textContent = "Octree depth max"
             const range = document.createElement("input")
             range.type = "range"
-            range.min = "1"
+            range.min = "3"
             range.max = "14"
             range.step = "1"
             range.value = String(depthMaxDisp)

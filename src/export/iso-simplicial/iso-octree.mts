@@ -232,10 +232,8 @@ export class IsoOctree {
         }
 
         const counter = { n: 0 }
-        const scratch4 = new Float32Array(27 * 4)
-        const scratchWorld = new Float32Array(27 * 3)
 
-        await evalNode(root, gradCorners, rootMin, rootMax, C, sample, signal, counter, scratch4, scratchWorld)
+        await evalNode(root, gradCorners, rootMin, rootMax, C, sample, signal, counter)
 
         return new IsoOctree(root, counter.n)
     }
@@ -249,256 +247,6 @@ function createEmptyNode(): IsoOctreeNode {
         node: new Float32Array(4),
         children: new Array(8).fill(null),
     }
-}
-
-/** Reference `function(p)`: re-evaluate scalar field at fixed `(x,y,z)`; leave position unchanged. */
-async function sampleScalarWAtNorm(
-    nx: number,
-    ny: number,
-    nz: number,
-    rootMin: readonly [number, number, number],
-    rootMax: readonly [number, number, number],
-    sample: IsoOctreeBatchFn,
-    signal: AbortSignal | undefined,
-): Promise<number> {
-    const w = new Float32Array(3)
-    normToWorld(nx, ny, nz, rootMin, rootMax, w, 0)
-    const sdf = await sample(w, signal)
-    return sdf[3]!
-}
-
-async function vertNode(
-    node: IsoOctreeNode,
-    rootMin: readonly [number, number, number],
-    rootMax: readonly [number, number, number],
-    C: IsoOctreeRuntimeConstants,
-    sample: IsoOctreeBatchFn,
-    signal: AbortSignal | undefined,
-): Promise<number> {
-    const v0 = readV4(node.verts, 0)
-    const v7 = readV4(node.verts, 7)
-    const cellMin: [number, number, number] = [v0[0], v0[1], v0[2]]
-    const cellMax: [number, number, number] = [v7[0], v7[1], v7[2]]
-    const O = C.oversampleQef
-    const num = (O + 1) ** 3
-    const normPts = new Float32Array(num * 4)
-    let pi = 0
-    for (let x = 0; x <= O; x++) {
-        for (let y = 0; y <= O; y++) {
-            for (let z = 0; z <= O; z++) {
-                const nx = (1 - x / O) * v0[0] + (x / O) * v7[0]
-                const ny = (1 - y / O) * v0[1] + (y / O) * v7[1]
-                const nz = (1 - z / O) * v0[2] + (z / O) * v7[2]
-                normPts[pi * 4] = nx
-                normPts[pi * 4 + 1] = ny
-                normPts[pi * 4 + 2] = nz
-                normPts[pi * 4 + 3] = 0
-                pi++
-            }
-        }
-    }
-    const world = packWorldFromNorm4(normPts, num, rootMin, rootMax)
-    const sdf = await sample(world, signal)
-
-    const packed = zeroQefPacked(4)
-    const planeNorms4: [number, number, number, number][] = []
-    const planePts4: [number, number, number, number][] = []
-    for (let i = 0; i < num; i++) {
-        const px = normPts[i * 4]!
-        const py = normPts[i * 4 + 1]!
-        const pz = normPts[i * 4 + 2]!
-        const nx = sdf[i * 4]!
-        const ny = sdf[i * 4 + 1]!
-        const nz = sdf[i * 4 + 2]!
-        const d = sdf[i * 4 + 3]!
-        qefAccumulatePlane(encodeCubeHermitePlane(nx, ny, nz, px, py, pz, d), packed)
-        planeNorms4.push([nx, ny, nz, -1])
-        planePts4.push([px, py, pz, d])
-    }
-
-    const cellSize = v7[0] - v0[0]
-    const { position, qefError } = computeDualVertexCube({
-        cellMin,
-        cellMax,
-        qefPacked: packed,
-        planeNorms4,
-        planePts4,
-        borderFraction: C.dualVertexBorderFraction,
-    })
-
-    node.node[0] = position[0]!
-    node.node[1] = position[1]!
-    node.node[2] = position[2]!
-    node.node[3] = await sampleScalarWAtNorm(position[0]!, position[1]!, position[2]!, rootMin, rootMax, sample, signal)
-
-    return qefError
-}
-
-async function vertFace(
-    node: IsoOctreeNode,
-    whichFace: number,
-    rootMin: readonly [number, number, number],
-    rootMax: readonly [number, number, number],
-    C: IsoOctreeRuntimeConstants,
-    sample: IsoOctreeBatchFn,
-    signal: AbortSignal | undefined,
-): Promise<number> {
-    const orient = cubeFace2Orient[whichFace]!
-    const xi = ((orient + 1) % 3) as 0 | 1 | 2
-    const yi = ((orient + 2) % 3) as 0 | 1 | 2
-    const zi = orient as 0 | 1 | 2
-
-    const c0 = readV4(node.verts, cubeFace2Vert[whichFace]![0]!)
-    const c2 = readV4(node.verts, cubeFace2Vert[whichFace]![2]!)
-
-    const O = C.oversampleQef
-    const num = (O + 1) ** 2
-    const normPts = new Float32Array(num * 4)
-    let pi = 0
-    for (let x = 0; x <= O; x++) {
-        for (let y = 0; y <= O; y++) {
-            const p4: [number, number, number, number] = [0, 0, 0, 0]
-            p4[xi] = (1 - x / O) * c0[xi] + (x / O) * c2[xi]
-            p4[yi] = (1 - y / O) * c0[yi] + (y / O) * c2[yi]
-            p4[zi] = c0[zi]
-            p4[3] = 0
-            normPts[pi * 4] = p4[0]!
-            normPts[pi * 4 + 1] = p4[1]!
-            normPts[pi * 4 + 2] = p4[2]!
-            normPts[pi * 4 + 3] = 0
-            pi++
-        }
-    }
-
-    const world = packWorldFromNorm4(normPts, num, rootMin, rootMax)
-    const sdf = await sample(world, signal)
-
-    const packed = zeroQefPacked(3)
-    const planeNorms3: [number, number, number][] = []
-    const planePts3: [number, number, number][] = []
-    for (let i = 0; i < num; i++) {
-        const px = normPts[i * 4 + xi]!
-        const py = normPts[i * 4 + yi]!
-        const n4x = sdf[i * 4]!
-        const n4y = sdf[i * 4 + 1]!
-        const n4z = sdf[i * 4 + 2]!
-        const d = sdf[i * 4 + 3]!
-        const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
-        const nYi = (yi === 0 ? n4x : yi === 1 ? n4y : n4z) as number
-        qefAccumulatePlane(encodeFaceHermitePlane(nXi, nYi, px, py, d), packed)
-        planeNorms3.push([nXi, nYi, -1])
-        planePts3.push([px, py, d])
-    }
-
-    const v0 = readV4(node.verts, 0)
-    const v7 = readV4(node.verts, 7)
-    const cellSize = v7[0] - v0[0]
-
-    const { position, qefError } = computeDualVertexFace({
-        c0,
-        c2,
-        xi,
-        yi,
-        zi,
-        qefPacked: packed,
-        planeNorms3,
-        planePts3,
-        cellSizeForBorder: cellSize,
-        borderFraction: C.dualVertexBorderFraction,
-    })
-
-    writeV4(node.faces, whichFace, position[0]!, position[1]!, position[2]!, position[3]!)
-    node.faces[whichFace * 4 + 3] = await sampleScalarWAtNorm(
-        position[0]!,
-        position[1]!,
-        position[2]!,
-        rootMin,
-        rootMax,
-        sample,
-        signal,
-    )
-
-    return qefError
-}
-
-async function vertEdge(
-    node: IsoOctreeNode,
-    whichEdge: number,
-    rootMin: readonly [number, number, number],
-    rootMax: readonly [number, number, number],
-    C: IsoOctreeRuntimeConstants,
-    sample: IsoOctreeBatchFn,
-    signal: AbortSignal | undefined,
-): Promise<number> {
-    const xi = cubeEdge2Orient[whichEdge]! as 0 | 1 | 2
-    const yi = ((xi + 1) % 3) as 0 | 1 | 2
-    const zi = ((xi + 2) % 3) as 0 | 1 | 2
-
-    const c0 = readV4(node.verts, cubeEdge2Vert[whichEdge]![0]!)
-    const c1 = readV4(node.verts, cubeEdge2Vert[whichEdge]![1]!)
-
-    const O = C.oversampleQef
-    const num = O + 1
-    const normPts = new Float32Array(num * 4)
-    for (let i = 0; i <= O; i++) {
-        const p4: [number, number, number, number] = [0, 0, 0, 0]
-        p4[xi] = (1 - i / O) * c0[xi] + (i / O) * c1[xi]
-        p4[yi] = c0[yi]
-        p4[zi] = c0[zi]
-        p4[3] = 0
-        normPts[i * 4] = p4[0]!
-        normPts[i * 4 + 1] = p4[1]!
-        normPts[i * 4 + 2] = p4[2]!
-        normPts[i * 4 + 3] = 0
-    }
-
-    const world = packWorldFromNorm4(normPts, num, rootMin, rootMax)
-    const sdf = await sample(world, signal)
-
-    const packed = zeroQefPacked(2)
-    const planeNorms2: [number, number][] = []
-    const planePts2: [number, number][] = []
-    for (let i = 0; i < num; i++) {
-        const pXi = normPts[i * 4 + xi]!
-        const n4x = sdf[i * 4]!
-        const n4y = sdf[i * 4 + 1]!
-        const n4z = sdf[i * 4 + 2]!
-        const d = sdf[i * 4 + 3]!
-        const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
-        qefAccumulatePlane(encodeEdgeHermitePlane(nXi, pXi, d), packed)
-        planeNorms2.push([nXi, -1])
-        planePts2.push([pXi, d])
-    }
-
-    const v0 = readV4(node.verts, 0)
-    const v7 = readV4(node.verts, 7)
-    const cellSize = v7[0] - v0[0]
-
-    const { position, qefError } = computeDualVertexEdge({
-        xi,
-        yi,
-        zi,
-        c0,
-        c1,
-        qefPacked: packed,
-        planeNorms2,
-        planePts2,
-        cellSizeForBorder: cellSize,
-        borderFraction: C.dualVertexBorderFraction,
-    })
-
-    writeV4(node.edges, whichEdge, position[0]!, position[1]!, position[2]!, position[3]!)
-    node.edges[whichEdge * 4 + 3] = await sampleScalarWAtNorm(
-        position[0]!,
-        position[1]!,
-        position[2]!,
-        rootMin,
-        rootMax,
-        sample,
-        signal,
-    )
-
-    return qefError
 }
 
 function gridGradient(
@@ -533,20 +281,183 @@ async function evalNode(
     sample: IsoOctreeBatchFn,
     signal: AbortSignal | undefined,
     counter: { n: number },
-    scratch4: Float32Array,
-    scratchWorld: Float32Array,
 ): Promise<void> {
-    let qefError = 0
     counter.n++
-    qefError += await vertNode(node, rootMin, rootMax, C, sample, signal)
-    for (let e = 0; e < 12; e++) {
-        qefError += await vertEdge(node, e, rootMin, rootMax, C, sample, signal)
-    }
-    for (let f = 0; f < 6; f++) {
-        qefError += await vertFace(node, f, rootMin, rootMax, C, sample, signal)
+
+    const v0 = readV4(node.verts, 0)
+    const v7 = readV4(node.verts, 7)
+    const O = C.oversampleQef
+    const nodeCount = (O + 1) ** 3
+    const edgeSamples = O + 1
+    const faceSamples = (O + 1) ** 2
+    const totalPhase1 = nodeCount + 12 * edgeSamples + 6 * faceSamples
+
+    const normPts = new Float32Array(totalPhase1 * 4)
+    let pi = 0
+
+    const nodeOff = 0
+    for (let x = 0; x <= O; x++) {
+        for (let y = 0; y <= O; y++) {
+            for (let z = 0; z <= O; z++) {
+                normPts[pi * 4] = (1 - x / O) * v0[0] + (x / O) * v7[0]
+                normPts[pi * 4 + 1] = (1 - y / O) * v0[1] + (y / O) * v7[1]
+                normPts[pi * 4 + 2] = (1 - z / O) * v0[2] + (z / O) * v7[2]
+                pi++
+            }
+        }
     }
 
-    const cellSize = node.verts[7 * 4] - node.verts[0]
+    const edgeOffs: number[] = []
+    for (let e = 0; e < 12; e++) {
+        edgeOffs.push(pi)
+        const xi = cubeEdge2Orient[e]! as 0 | 1 | 2
+        const yi = ((xi + 1) % 3) as 0 | 1 | 2
+        const zi = ((xi + 2) % 3) as 0 | 1 | 2
+        const ec0 = readV4(node.verts, cubeEdge2Vert[e]![0]!)
+        const ec1 = readV4(node.verts, cubeEdge2Vert[e]![1]!)
+        for (let i = 0; i <= O; i++) {
+            const p4: [number, number, number] = [0, 0, 0]
+            p4[xi] = (1 - i / O) * ec0[xi] + (i / O) * ec1[xi]
+            p4[yi] = ec0[yi]
+            p4[zi] = ec0[zi]
+            normPts[pi * 4] = p4[0]!
+            normPts[pi * 4 + 1] = p4[1]!
+            normPts[pi * 4 + 2] = p4[2]!
+            pi++
+        }
+    }
+
+    const faceOffs: number[] = []
+    for (let f = 0; f < 6; f++) {
+        faceOffs.push(pi)
+        const orient = cubeFace2Orient[f]!
+        const xi = ((orient + 1) % 3) as 0 | 1 | 2
+        const yi = ((orient + 2) % 3) as 0 | 1 | 2
+        const zi = orient as 0 | 1 | 2
+        const fc0 = readV4(node.verts, cubeFace2Vert[f]![0]!)
+        const fc2 = readV4(node.verts, cubeFace2Vert[f]![2]!)
+        for (let x = 0; x <= O; x++) {
+            for (let y = 0; y <= O; y++) {
+                const p4: [number, number, number] = [0, 0, 0]
+                p4[xi] = (1 - x / O) * fc0[xi] + (x / O) * fc2[xi]
+                p4[yi] = (1 - y / O) * fc0[yi] + (y / O) * fc2[yi]
+                p4[zi] = fc0[zi]
+                normPts[pi * 4] = p4[0]!
+                normPts[pi * 4 + 1] = p4[1]!
+                normPts[pi * 4 + 2] = p4[2]!
+                pi++
+            }
+        }
+    }
+
+    const worldPhase1 = packWorldFromNorm4(normPts, totalPhase1, rootMin, rootMax)
+    const sdfPhase1 = await sample(worldPhase1, signal)
+
+    let qefError = 0
+    const cellMin: [number, number, number] = [v0[0], v0[1], v0[2]]
+    const cellMax: [number, number, number] = [v7[0], v7[1], v7[2]]
+    const cellSize = v7[0] - v0[0]
+
+    const reEvalNorm = new Float32Array(19 * 3)
+
+    {
+        const packed = zeroQefPacked(4)
+        const planeNorms4: [number, number, number, number][] = []
+        const planePts4: [number, number, number, number][] = []
+        for (let i = 0; i < nodeCount; i++) {
+            const si = (nodeOff + i) * 4
+            const px = normPts[si]!, py = normPts[si + 1]!, pz = normPts[si + 2]!
+            const nx = sdfPhase1[si]!, ny = sdfPhase1[si + 1]!, nz = sdfPhase1[si + 2]!, d = sdfPhase1[si + 3]!
+            qefAccumulatePlane(encodeCubeHermitePlane(nx, ny, nz, px, py, pz, d), packed)
+            planeNorms4.push([nx, ny, nz, -1])
+            planePts4.push([px, py, pz, d])
+        }
+        const { position, qefError: nodeQef } = computeDualVertexCube({
+            cellMin, cellMax, qefPacked: packed, planeNorms4, planePts4,
+            borderFraction: C.dualVertexBorderFraction,
+        })
+        node.node[0] = position[0]!
+        node.node[1] = position[1]!
+        node.node[2] = position[2]!
+        reEvalNorm[0] = position[0]!
+        reEvalNorm[1] = position[1]!
+        reEvalNorm[2] = position[2]!
+        qefError += nodeQef
+    }
+
+    for (let e = 0; e < 12; e++) {
+        const xi = cubeEdge2Orient[e]! as 0 | 1 | 2
+        const yi = ((xi + 1) % 3) as 0 | 1 | 2
+        const zi = ((xi + 2) % 3) as 0 | 1 | 2
+        const ec0 = readV4(node.verts, cubeEdge2Vert[e]![0]!)
+        const ec1 = readV4(node.verts, cubeEdge2Vert[e]![1]!)
+        const off = edgeOffs[e]!
+        const packed = zeroQefPacked(2)
+        const planeNorms2: [number, number][] = []
+        const planePts2: [number, number][] = []
+        for (let i = 0; i < edgeSamples; i++) {
+            const si = (off + i) * 4
+            const pXi = normPts[si + xi]!
+            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!, d = sdfPhase1[si + 3]!
+            const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
+            qefAccumulatePlane(encodeEdgeHermitePlane(nXi, pXi, d), packed)
+            planeNorms2.push([nXi, -1])
+            planePts2.push([pXi, d])
+        }
+        const { position, qefError: edgeQef } = computeDualVertexEdge({
+            xi, yi, zi, c0: ec0, c1: ec1, qefPacked: packed, planeNorms2, planePts2,
+            cellSizeForBorder: cellSize, borderFraction: C.dualVertexBorderFraction,
+        })
+        writeV4(node.edges, e, position[0]!, position[1]!, position[2]!, position[3]!)
+        const ro = (1 + e) * 3
+        reEvalNorm[ro] = position[0]!
+        reEvalNorm[ro + 1] = position[1]!
+        reEvalNorm[ro + 2] = position[2]!
+        qefError += edgeQef
+    }
+
+    for (let f = 0; f < 6; f++) {
+        const orient = cubeFace2Orient[f]!
+        const xi = ((orient + 1) % 3) as 0 | 1 | 2
+        const yi = ((orient + 2) % 3) as 0 | 1 | 2
+        const zi = orient as 0 | 1 | 2
+        const fc0 = readV4(node.verts, cubeFace2Vert[f]![0]!)
+        const fc2 = readV4(node.verts, cubeFace2Vert[f]![2]!)
+        const off = faceOffs[f]!
+        const packed = zeroQefPacked(3)
+        const planeNorms3: [number, number, number][] = []
+        const planePts3: [number, number, number][] = []
+        for (let i = 0; i < faceSamples; i++) {
+            const si = (off + i) * 4
+            const px = normPts[si + xi]!, py = normPts[si + yi]!
+            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!, d = sdfPhase1[si + 3]!
+            const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
+            const nYi = (yi === 0 ? n4x : yi === 1 ? n4y : n4z) as number
+            qefAccumulatePlane(encodeFaceHermitePlane(nXi, nYi, px, py, d), packed)
+            planeNorms3.push([nXi, nYi, -1])
+            planePts3.push([px, py, d])
+        }
+        const { position, qefError: faceQef } = computeDualVertexFace({
+            c0: fc0, c2: fc2, xi, yi, zi, qefPacked: packed, planeNorms3, planePts3,
+            cellSizeForBorder: cellSize, borderFraction: C.dualVertexBorderFraction,
+        })
+        writeV4(node.faces, f, position[0]!, position[1]!, position[2]!, position[3]!)
+        const ro = (1 + 12 + f) * 3
+        reEvalNorm[ro] = position[0]!
+        reEvalNorm[ro + 1] = position[1]!
+        reEvalNorm[ro + 2] = position[2]!
+        qefError += faceQef
+    }
+
+    const reEvalWorld = new Float32Array(19 * 3)
+    for (let i = 0; i < 19; i++) {
+        normToWorld(reEvalNorm[i * 3]!, reEvalNorm[i * 3 + 1]!, reEvalNorm[i * 3 + 2]!, rootMin, rootMax, reEvalWorld, i * 3)
+    }
+    const reEvalSdf = await sample(reEvalWorld, signal)
+    node.node[3] = reEvalSdf[3]!
+    for (let e = 0; e < 12; e++) node.edges[e * 4 + 3] = reEvalSdf[(1 + e) * 4 + 3]!
+    for (let f = 0; f < 6; f++) node.faces[f * 4 + 3] = reEvalSdf[(1 + 12 + f) * 4 + 3]!
+
     const minsize = 0.5 ** C.depthMax
     const maxsize = 0.5 ** C.depthMin
 
@@ -559,7 +470,7 @@ async function evalNode(
     const recur = isbig || (signchange && badqef)
     if (!recur) return
 
-    const p = scratch4
+    const p = new Float32Array(27 * 4)
     for (let x = 0; x < 3; x++) {
         for (let y = 0; y < 3; y++) {
             for (let z = 0; z < 3; z++) {
@@ -583,6 +494,7 @@ async function evalNode(
     const midToBatch = new Map<number, number>()
     let midSdf = new Float32Array(0)
     if (midList.length > 0) {
+        const midWorld = new Float32Array(midList.length * 3)
         for (let i = 0; i < midList.length; i++) {
             const idxFlat = midList[i]!
             midToBatch.set(idxFlat, i)
@@ -592,13 +504,11 @@ async function evalNode(
                 p[idxFlat * 4 + 2]!,
                 rootMin,
                 rootMax,
-                scratchWorld,
+                midWorld,
                 i * 3,
             )
         }
-        const worldBatch = new Float32Array(midList.length * 3)
-        worldBatch.set(scratchWorld.subarray(0, midList.length * 3))
-        midSdf = new Float32Array(await sample(worldBatch, signal))
+        midSdf = new Float32Array(await sample(midWorld, signal))
         for (let i = 0; i < midList.length; i++) {
             const idxFlat = midList[i]!
             p[idxFlat * 4 + 3] = midSdf[i * 4 + 3]!
@@ -623,6 +533,6 @@ async function evalNode(
             gChild[j * 3 + 1] = g[1]!
             gChild[j * 3 + 2] = g[2]!
         }
-        await evalNode(child, gChild, rootMin, rootMax, C, sample, signal, counter, scratch4, scratchWorld)
+        await evalNode(child, gChild, rootMin, rootMax, C, sample, signal, counter)
     }
 }

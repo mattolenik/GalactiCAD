@@ -59,8 +59,8 @@ test("IsoSampleBatch vs GridSampler (1×1×1) parity on sphere scene", async (t)
     }
     const sceneAux = scene.compileAux()
     const sceneAuxFast = scene.compileAuxFast()
-    const sceneAuxMid = scene.compileAuxMid()
     const sceneSDF = scene.compile()
+    const sceneAuxMid = scene.compileAuxMid()
     const sceneSDF_mid = scene.compileMid()
 
     const wgslPath = path.join(SHADERS_DIR, "iso_sample_batch.wgsl")
@@ -69,7 +69,6 @@ test("IsoSampleBatch vs GridSampler (1×1×1) parity on sphere scene", async (t)
     const batchModule = new ShaderCompiler(helper.device)
         .replace("insert", "sceneAuxFast", sceneAuxFast)
         .replace("insert", "sceneAux", sceneAux)
-        .replace("insert", "sceneAuxMid", sceneAuxMid)
         .replace("insert", "sceneSDF", sceneSDF)
         .compile(isoWgslExpanded, "IsoSampleBatch test")
 

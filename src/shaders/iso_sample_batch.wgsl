@@ -62,7 +62,6 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
 
 //:) insert sceneAuxFast
 //:) insert sceneAux
-//:) insert sceneAuxMid
 
 fn sceneSDF(p: vec3f) -> SDFResult {
     _ = polygonVertices[0];

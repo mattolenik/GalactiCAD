@@ -11,7 +11,7 @@
 
 - **WGSL:** `src/shaders/iso_sample_batch.wgsl` — compute `isoSampleBatch`, `@workgroup_size(256)`. Uniform `sampleCount`; `positionsIn` = tight `f32` triples; `sdfOut[i]` = `vec4(nx, ny, nz, d)`. Bindings `0,1,2,25,27,28,30` aligned with `sample_grid.wgsl` scene bindings.
 - **TS:** `iso-sample-batch.mts` — `IsoSampleBatch` mirrors `GridSampler` buffer lifecycle (local cancellation/uniforms/positions/out destroyed after `run`). Export from `index.mts`.
-- **Compile:** `ShaderCompiler` replaces `sceneAuxFast`, `sceneAux`, `sceneAuxMid`, `sceneSDF` (no `sceneSDF_mid`). `render-worker-core.mts` imports the WGSL string so esbuild wgsl-loader validates it on `make build`.
+- **Compile:** `ShaderCompiler` replaces `sceneAuxFast`, `sceneAux`, `sceneSDF` (no `sceneAuxMid` — mid-path aux references `uniforms.voxelSize` which this shader lacks; no `sceneSDF_mid`). `render-worker-core.mts` imports the WGSL string so esbuild wgsl-loader validates it on `make build`.
 - **Test:** `iso-sample-batch_test.mts` — expands includes with `fs`, `await import("webgpu")` **after** `SceneInfo` (static `webgpu` import pollutes `globalThis` and breaks the `sphere` binding). `Object.defineProperty(globalThis, "navigator", …)` for Node. Skips if no adapter. CAD source uses `return sphere.radius(10)` (fluent API). Compares batch vs `GridSampler` 1×1×1; sample points avoid the sphere center where the normal is singular.
 
 ## Agent 3 (QEF dual vertex, CPU double precision)

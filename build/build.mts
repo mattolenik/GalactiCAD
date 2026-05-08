@@ -68,8 +68,10 @@ function shouldSuppressLiveReload(relativePath: string): boolean {
     })
 }
 
+const defaultDevServerPort = () => (process.env.AGENT === "true" ? "7000" : "6900")
+
 const ServerOptions = {
-    port: parseInt(process.env.PORT || "6900", 10),
+    port: parseInt(process.env.PORT || defaultDevServerPort(), 10),
 }
 
 const RUN_FILE = process.env.RUN_FILE ?? ".devserver.run"

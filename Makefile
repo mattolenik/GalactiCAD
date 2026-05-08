@@ -4,13 +4,17 @@ export TSX      ?= node_modules/.bin/tsx
 export TSC      ?= node_modules/.bin/tsc
 BUILD           := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 
-# AGENT=true: .devserver.agent.run + .devserver.agent.log + default PORT 7000; devserver spawns headless Chrome
+# AGENT=true: .devserver.agent.run + .devserver.agent.log + default PORT 7000 (override inherited PORT unless
+# PORT is on the command line, e.g. make serve AGENT=true PORT=8080); devserver spawns headless Chrome
 # (chromePid in run file; stopped with devserver on SIGINT/SIGTERM or make stop). Else .devserver.run / .devserver.log.
 ifeq ($(AGENT),true)
 export RUN_FILE := .devserver.agent.run
 export LOG_FILE := .devserver.agent.log
 export AGENT := true
-ifndef PORT
+# Default 7000 unless PORT was set on this make's command line (e.g. make serve AGENT=true PORT=8080).
+# Ifdef PORT is wrong here: `make serve-agent` parses the parent with AGENT unset, so the parent
+# may already have exported PORT=6900 from $(BUILD) port; the child must still override to 7000.
+ifneq ($(origin PORT),command line)
 export PORT := 7000
 endif
 else
@@ -79,11 +83,11 @@ stop:
 		pid=$$(jq -r .pid "$(RUN_FILE)")
 		chrome_pid=$$(jq -r '.chromePid // empty' "$(RUN_FILE)")
 		if [ -n "$$pid" ] && [ "$$pid" != "null" ]; then
-			kill -TERM $$pid 2>/dev/null || true
-			timeout -k 5s 5s bash -c 'while kill -0 "$$1" 2>/dev/null; do sleep 0.1; done' bash $$pid 2>/dev/null || true
+			kill -TERM $$pid || true
+			timeout -p -k 5s 5s wait $$pid
 		fi
-		[ -n "$$pid" ] && [ "$$pid" != "null" ] && kill -KILL $$pid 2>/dev/null || true
-		[ -n "$$chrome_pid" ] && [ "$$chrome_pid" != "null" ] && kill -KILL $$chrome_pid 2>/dev/null || true
+		kill -KILL $$pid 2>/dev/null || true
+		kill -KILL $$chrome_pid 2>/dev/null || true
 		rm -f "$(RUN_FILE)"
 	fi
 

@@ -86,6 +86,23 @@ type DevLogQuery = {
 
 const ALL_LOG_LEVELS: DevServerConsoleLogLevel[] = ["error", "warn", "info", "debug"]
 
+/** After `/_agent/render`, snapshot bridge buffer into this file (overwrite). */
+function browserLogFilePath(): string {
+    const name = !!process.env.AGENT ? ".devserver.agent.browser.log" : ".devserver.browser.log"
+    return path.join(process.cwd(), name)
+}
+
+/** Fetch up to 10k lines (all levels) and replace the browser log file; ignores failures. */
+async function overwriteBrowserLogAfterAgentRender(bridge: BrowserBridge, errLog: (msg: unknown) => void): Promise<void> {
+    const lines = await bridge.requestConsoleLogs({ n: 10_000, levels: ALL_LOG_LEVELS }, 30_000)
+    const body = lines != null && lines.length > 0 ? `${lines.join("\n")}\n` : ""
+    try {
+        await fs.writeFile(browserLogFilePath(), body, "utf8")
+    } catch (e) {
+        errLog(e)
+    }
+}
+
 function clampLogCount(n: number): number {
     if (!Number.isFinite(n)) return 20
     return Math.min(10_000, Math.max(1, Math.floor(n)))
@@ -265,8 +282,10 @@ async function respondAgentRenderPng(
     role: string,
     downloadBasename: string,
     res: http.ServerResponse,
+    err: (msg: unknown) => void,
 ): Promise<void> {
     const out = await bridge.requestAgentRender(payload as unknown as Record<string, unknown>)
+    await overwriteBrowserLogAfterAgentRender(bridge, err)
     if (!out?.pngBase64) {
         const errText = out?.error ?? "bridge failed (no browser, timeout, or GPU error)"
         const status = agentRenderErrorHttpStatus(out)
@@ -800,7 +819,7 @@ function createHttpServer(
                 delete parsed.role
                 const payload = parsed as unknown as AgentRenderRequest
                 const downloadBasename = agentRenderDownloadBasename(testcaseForFilename)
-                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, downloadBasename, res)
+                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, downloadBasename, res, err)
                 return
             }
             if (req.method === "GET") {
@@ -873,7 +892,7 @@ function createHttpServer(
                 const label = url.searchParams.get("label")?.trim() || path.parse(path.basename(testcase)).name || "render"
                 const role = url.searchParams.get("role")?.trim() || payload.mode
                 const downloadBasename = agentRenderDownloadBasename(testcase)
-                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, downloadBasename, res)
+                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, downloadBasename, res, err)
                 return
             }
             res.writeHead(405, {

@@ -570,18 +570,20 @@ export class CameraController {
     }
 
     /**
-     * Orbit compensation: adjust #cameraTranslation so the pivot stays fixed on screen
-     * when rotation changes. Without this, rotation orbits around the eye (pivot + (0,0,1))
-     * instead of the pivot itself.
+     * Orbit compensation: adjust #cameraTranslation so the scene-space pivot stays fixed on screen
+     * when rotation changes. The visible camera transform is effectively T(translation) * R, so
+     * keep the pivot's old camera-space vector and solve for the translation needed after R changes.
      */
     #applyOrbitCompensation(oldQ: Quaternion, newQ: Quaternion): void {
         const oldMat = this.#quaternionToMatrix(oldQ)
         const newMat = this.#quaternionToMatrix(newQ)
-        const pivotCamOld = oldMat.transformVector(vec3(0, 0, -1))
-        const pivotCamNew = newMat.transformVector(vec3(0, 0, -1))
-        this.#cameraTranslation.x += pivotCamOld.x - pivotCamNew.x
-        this.#cameraTranslation.y += pivotCamOld.y - pivotCamNew.y
-        this.#cameraTranslation.z += pivotCamOld.z - pivotCamNew.z
+        const pivotFromTranslation = this.#pivot.subtract(this.#cameraTranslation)
+        const pivotCamOld = oldMat.inverse().transformVector(pivotFromTranslation)
+        const pivotWorldOld = oldMat.transformVector(pivotCamOld)
+        const pivotWorldNew = newMat.transformVector(pivotCamOld)
+        this.#cameraTranslation.x += pivotWorldOld.x - pivotWorldNew.x
+        this.#cameraTranslation.y += pivotWorldOld.y - pivotWorldNew.y
+        this.#cameraTranslation.z += pivotWorldOld.z - pivotWorldNew.z
     }
 
     /** Push current camera state to SettingsManager (persisted via rxjs debounce). */

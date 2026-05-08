@@ -171,14 +171,14 @@ export class RenderWorkerCore {
     #edgeStrideF32 = new Float32Array(this.#edgeStrideBuf)
     #camTransform = new Mat4x4f(new Float32Array(16))
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
-    #cameraCache = new ArrayBuffer(240)
+    #cameraCache = new ArrayBuffer(256)
     #viewSettingsCache = new ArrayBuffer(16)
     #outlineCache = new ArrayBuffer(48)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #hoveredEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
-    #cameraStagingBuf = new ArrayBuffer(240)
+    #cameraStagingBuf = new ArrayBuffer(256)
     #edgesStagingBuf = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     /** Worker-owned staging for SAB snapshot; max(SELECTED_OBJECT_IDS_SIZE, SELECTED_EDGES_TOTAL) */
     #sabStagingBuf = new ArrayBuffer(4096)
@@ -648,6 +648,8 @@ export class RenderWorkerCore {
 
         this.#ensureRenderTextures(sceneWidth, sceneHeight)
 
+        const pv = msg.cameraState.pivot
+        const pivotW: [number, number, number] = pv ? [pv.x, pv.y, pv.z] : [0, 0, 0]
         this.#uploadCameraIfDirty(
             viewTransform,
             cameraPosition,
@@ -657,6 +659,7 @@ export class RenderWorkerCore {
             viewCenter,
             msg.viewSettings.previewShading ?? DEFAULT_PREVIEW_SHADING,
             msg.viewSettings.previewNormalShading,
+            pivotW,
         )
 
         this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
@@ -842,6 +845,11 @@ export class RenderWorkerCore {
             aoSteps: f32[psBase + 12],
             aoBias: f32[psBase + 13],
         }
+        const pivotW: [number, number, number] = [
+            f32[b4 + L.O_CAMERA_PIVOT / 4],
+            f32[b4 + L.O_CAMERA_PIVOT / 4 + 1],
+            f32[b4 + L.O_CAMERA_PIVOT / 4 + 2],
+        ]
         this.#uploadCameraIfDirty(
             viewTransform,
             cameraPosition,
@@ -851,6 +859,7 @@ export class RenderWorkerCore {
             viewCenter,
             previewShading,
             (packed & 128) !== 0,
+            pivotW,
         )
 
         this.#viewSettingsBuf[0] = (packed & 1) ? 1 : 0
@@ -1555,7 +1564,7 @@ export class RenderWorkerCore {
         })
 
         ub.camera = this.#device.createBuffer({
-            size: 240,
+            size: 256,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "camera",
         })
@@ -2020,7 +2029,7 @@ export class RenderWorkerCore {
         }
     }
 
-    /** Build full 240-byte camera uniform and upload if dirty. */
+    /** Build full 256-byte camera uniform and upload if dirty. */
     #uploadCameraIfDirty(
         viewTransform: Float32Array | ArrayBuffer,
         cameraPosition: [number, number, number],
@@ -2030,8 +2039,18 @@ export class RenderWorkerCore {
         viewCenter: [number, number],
         previewShading: PreviewShadingParams,
         previewNormalShading: boolean,
+        pivotWorld: [number, number, number],
     ): void {
         this.#camTransform.data.set(viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform))
+        const invCam = this.#camTransform.inverse()
+        const pCam = invCam.transformPoint(vec3(pivotWorld[0], pivotWorld[1], pivotWorld[2]))
+        const aspectRt = sceneHeight > 0 ? sceneWidth / sceneHeight : 1
+        const uvAspX = ((pCam.x - cameraPosition[0]) / zoom) * 0.5 + 0.5
+        const uvAspY = ((pCam.y - cameraPosition[1]) / zoom) * 0.5 + 0.5
+        const uvPivotX = (uvAspX - 0.5) / aspectRt + viewCenter[0]
+        const uvPivotY = uvAspY - 0.5 + viewCenter[1]
+        const pivotPxX = uvPivotX * sceneWidth
+        const pivotPxY = uvPivotY * sceneHeight
         const v1 = this.#camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
         const v2 = this.#camTransform.transformVector(vec3(-0.6, 0.3, 0.8).normalize())
         const v3 = this.#camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
@@ -2077,7 +2096,11 @@ export class RenderWorkerCore {
         f32[57] = ps.aoRadius
         f32[58] = ps.aoSteps
         f32[59] = ps.aoBias
-        this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 240, this.#cameraCache)
+        f32[60] = pivotPxX
+        f32[61] = pivotPxY
+        f32[62] = 0
+        f32[63] = 0
+        this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 256, this.#cameraCache)
     }
 
     /** Compare src[offset:offset+byteLength] with cache; if different, write to GPU and update cache. Returns true if wrote. */

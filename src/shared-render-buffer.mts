@@ -48,24 +48,25 @@ const S_O_ZOOM = 96
 const S_O_QUATERNION = 100
 const S_O_TRANSLATION = 116
 const S_O_VIEW_CENTER = 128
-const S_O_VIEW_SETTINGS = 136
-const S_O_OUTLINE_THICKNESS = 140
-const S_O_OUTLINE_COLOR = 144
-const S_O_SELECTION_STYLES = 156  // faceDarken(1) + faceTint(3) + edgeColor(3) = 7 floats = 28 bytes
-const S_O_PREVIEW_SHADING = 184 // 14 floats: PreviewShadingParams
-const S_O_SELECTED_OBJECT_IDS = 240
-const S_O_SELECTED_EDGES_HEADER = 4336
-const S_O_SELECTED_EDGES_DATA = 4352
-const S_O_HOVERED_EDGES_HEADER = 5632
-const S_O_HOVERED_EDGES_DATA = 5648
-const S_O_HOVERED_OBJECT_ID = 6928
+const S_O_CAMERA_PIVOT = 136
+const S_O_VIEW_SETTINGS = 152
+const S_O_OUTLINE_THICKNESS = 156
+const S_O_OUTLINE_COLOR = 160
+const S_O_SELECTION_STYLES = 172
+const S_O_PREVIEW_SHADING = 200 // 14 floats: PreviewShadingParams
+const S_O_SELECTED_OBJECT_IDS = 256
+const S_O_SELECTED_EDGES_HEADER = 4352
+const S_O_SELECTED_EDGES_DATA = 4368
+const S_O_HOVERED_EDGES_HEADER = 5648
+const S_O_HOVERED_EDGES_DATA = 5664
+const S_O_HOVERED_OBJECT_ID = 6944
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16
 const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 
 /** Size of one payload slot in bytes */
-export const SLOT_SIZE = 6932
+export const SLOT_SIZE = 6948
 
 /** Total buffer size in bytes */
 export const SHARED_RENDER_BUFFER_SIZE = HEADER_SIZE + 2 * SLOT_SIZE
@@ -96,6 +97,7 @@ export const SAB_LAYOUT = {
     O_CAMERA_RES: S_O_CAMERA_RES,
     O_ZOOM: S_O_ZOOM,
     O_VIEW_CENTER: S_O_VIEW_CENTER,
+    O_CAMERA_PIVOT: S_O_CAMERA_PIVOT,
     O_VIEW_SETTINGS: S_O_VIEW_SETTINGS,
     O_OUTLINE_THICKNESS: S_O_OUTLINE_THICKNESS,
     O_OUTLINE_COLOR: S_O_OUTLINE_COLOR,
@@ -172,6 +174,12 @@ export function writeRenderPayloadSlot(
 
     f32[b4 + S_O_VIEW_CENTER / 4] = payload.viewCenter[0]
     f32[b4 + S_O_VIEW_CENTER / 4 + 1] = payload.viewCenter[1]
+
+    const piv = payload.cameraState.pivot
+    f32[b4 + S_O_CAMERA_PIVOT / 4] = piv?.x ?? 0
+    f32[b4 + S_O_CAMERA_PIVOT / 4 + 1] = piv?.y ?? 0
+    f32[b4 + S_O_CAMERA_PIVOT / 4 + 2] = piv?.z ?? 0
+    f32[b4 + S_O_CAMERA_PIVOT / 4 + 3] = 0
 
     const vs = payload.viewSettings
     const packed =
@@ -325,6 +333,11 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
         rotation: [f32[b4 + S_O_QUATERNION / 4], f32[b4 + S_O_QUATERNION / 4 + 1], f32[b4 + S_O_QUATERNION / 4 + 2], f32[b4 + S_O_QUATERNION / 4 + 3]],
         dollyDistance: dollyFromOrthoHalf(f32[b4 + S_O_ZOOM / 4]),
         translation: { x: f32[b4 + S_O_TRANSLATION / 4], y: f32[b4 + S_O_TRANSLATION / 4 + 1], z: f32[b4 + S_O_TRANSLATION / 4 + 2] } as CameraState["translation"],
+        pivot: {
+            x: f32[b4 + S_O_CAMERA_PIVOT / 4],
+            y: f32[b4 + S_O_CAMERA_PIVOT / 4 + 1],
+            z: f32[b4 + S_O_CAMERA_PIVOT / 4 + 2],
+        } as CameraState["pivot"],
     }
 
     const viewTransform = new Float32Array(16)

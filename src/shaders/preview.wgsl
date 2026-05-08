@@ -29,6 +29,9 @@ struct Camera {
     previewShade2: vec4f,
     // x=aoStrength, y=aoRadius, z=aoSteps (rounded 1–8), w=aoBias
     previewShade3: vec4f,
+    /** Pivot projected to framebuffer pixels (`frag uv * camera.res`). Uploaded from CPU. */
+    pivotPx: vec2f,
+    _padPivot: vec2f,
 };
 
 @group(0) @binding(1) var<uniform> camera: Camera;
@@ -171,6 +174,7 @@ struct FragmentOutput {
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
+    @location(1) @interpolate(flat) pivotPx: vec2f,
 }
 
 // Oriented rectangle SDF in 2D (used by extrude mode for the bump rectangle).
@@ -630,6 +634,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     var output: VertexOutput;
     output.position = vec4f(pos[vertexIndex], 0.0, 1.0);
     output.uv = (pos[vertexIndex] + vec2f(1.0)) * 0.5;
+    output.pivotPx = camera.pivotPx;
     return output;
 }
 
@@ -637,6 +642,39 @@ fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
     let offsetX = (uv.x * 2.0 - 1.0) * camera.zoom;
     let offsetY = (uv.y * 2.0 - 1.0) * camera.zoom;
     return camPos + vec3f(offsetX, offsetY, RAY_ORIGIN_DEPTH);
+}
+
+/** Blender-style 3D cursor: dashed red/white ring + cross (screen space). */
+fn pivotCursorRgba(pixelCoord: vec2f, pivotPx: vec2f) -> vec4f {
+    let d = pixelCoord - pivotPx;
+    let r = length(d);
+    let ang = atan2(d.y, d.x);
+    let tau = 6.28318530718;
+
+    let ringMask = smoothstep(1.45, 0.42, abs(r - 15.0)) + smoothstep(1.15, 0.38, abs(r - 8.5));
+    let ringMaskClamped = min(ringMask, 1.0);
+    let dash = fract((ang + 3.14159265) / tau * 14.0);
+    let ringRgb = select(vec3f(1.0, 1.0, 1.0), vec3f(0.9, 0.14, 0.11), dash < 0.5);
+
+    let arm = 13.0;
+    let tk = 1.05;
+    let horiz = smoothstep(tk, 0.28, abs(d.y)) * step(abs(d.x), arm);
+    let vert = smoothstep(tk, 0.28, abs(d.x)) * step(abs(d.y), arm);
+    let crossMask = max(horiz, vert);
+
+    let alpha = clamp(max(ringMaskClamped, crossMask), 0.0, 1.0);
+    if (alpha < 0.02) {
+        return vec4f(0.0, 0.0, 0.0, 0.0);
+    }
+    let rgb = ringRgb * ringMaskClamped * (1.0 - crossMask) + vec3f(0.94, 0.94, 0.96) * crossMask;
+    return vec4f(rgb, alpha);
+}
+
+fn blendPivotOnto(base: vec4f, pixelCoord: vec2f, pivotPx: vec2f) -> vec4f {
+    let c = pivotCursorRgba(pixelCoord, pivotPx);
+    let outA = c.a + base.a * (1.0 - c.a);
+    let outRgb = c.rgb * c.a + base.rgb * base.a * (1.0 - c.a);
+    return vec4f(outRgb / max(outA, 1e-6), outA);
 }
 
 // Raymarch from inside the surface to find the exit point. Returns HitData; the
@@ -799,7 +837,7 @@ fn applyFaceDottedPattern(color: vec3f, pixelCoord: vec2f) -> vec3f {
 }
 
 @fragment
-fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
+fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) pivotPx: vec2f) -> FragmentOutput {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = polygonVertices[0];
     _ = clickedHitPos[0];
@@ -815,8 +853,10 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
     _ = hoverEdgeHits[0].kind;
     _ = hoveredEdge.count;
     _ = selectionStyles.faceDarken;
+    _ = camera.pivotPx.x;
 
     let uv = fragCoord;
+    let pixelCoord = uv * camera.res;
     let aspect = camera.res.x / camera.res.y;
     let wppu = (2.0 * camera.zoom) / camera.res.y;
 
@@ -952,7 +992,6 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
         var frontResult = shadeHit(hit, false, viewDir, aoPos);
         var shadedColor = frontResult.color;
         if (frontResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
-            let pixelCoord = uv * camera.res;
             shadedColor = applyFaceDottedPattern(shadedColor, pixelCoord);
         }
         shadedColor = applySelectedEdgeHighlight(shadedColor, hitPos, hit, wppu);
@@ -963,22 +1002,33 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> FragmentOutput {
                 var backResult = shadeHit(backHit, true, viewDir, backAoPos);
                 var backColor = backResult.color;
                 if (backResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
-                    let pixelCoord = uv * camera.res;
                     backColor = applyFaceDottedPattern(backColor, pixelCoord);
                 }
                 let backPos = transformedOrigin + transformedDir * backHit.t;
                 backColor = applySelectedEdgeHighlight(backColor, backPos, backHit, wppu);
                 let frontAlpha = 0.4;
                 let composited = shadedColor * frontAlpha + backColor * (1.0 - frontAlpha);
-                return FragmentOutput(vec4f(composited, 1.0), vec4<u32>(hit.id, 0u, 0u, 0u));
+                return FragmentOutput(
+                    blendPivotOnto(vec4f(composited, 1.0), pixelCoord, pivotPx),
+                    vec4<u32>(hit.id, 0u, 0u, 0u),
+                );
             } else {
                 let alpha = 0.6;
-                return FragmentOutput(vec4f(shadedColor * alpha, alpha), vec4<u32>(hit.id, 0u, 0u, 0u));
+                return FragmentOutput(
+                    blendPivotOnto(vec4f(shadedColor * alpha, alpha), pixelCoord, pivotPx),
+                    vec4<u32>(hit.id, 0u, 0u, 0u),
+                );
             }
         }
-        return FragmentOutput(vec4f(shadedColor, 1.0), vec4<u32>(hit.id, 0u, 0u, 0u));
+        return FragmentOutput(
+            blendPivotOnto(vec4f(shadedColor, 1.0), pixelCoord, pivotPx),
+            vec4<u32>(hit.id, 0u, 0u, 0u),
+        );
     } else {
-        return FragmentOutput(vec4f(0, 0, 0, 0), vec4<u32>(0xFFFFFFFFu, 0u, 0u, 0u));
+        return FragmentOutput(
+            blendPivotOnto(vec4f(0.0, 0.0, 0.0, 0.0), pixelCoord, pivotPx),
+            vec4<u32>(0xFFFFFFFFu, 0u, 0u, 0u),
+        );
     }
 }
 
@@ -993,6 +1043,7 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     _ = previewParamsVec3[0];
     _ = previewParamsMat3[0];
     _ = previewCapParamDrag[0];
+    _ = camera.pivotPx.x;
 
     let outDims = textureDimensions(tStartOut);
     if (gid.x >= outDims.x || gid.y >= outDims.y) {

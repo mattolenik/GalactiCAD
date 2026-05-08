@@ -26,6 +26,11 @@ endif
 endif
 export PORT
 
+# Prefix for headless agent Chrome --user-data-dir under TMPDIR; keep in sync with
+# AGENT_HEADLESS_CHROME_USER_DATA_TAG in build/devserver.mts. make stop kills PIDs whose ps line contains
+# $(AGENT_HEADLESS_PROFILE_PREFIX)-<devserver pid from run file>.
+AGENT_HEADLESS_PROFILE_PREFIX := galacticad-agent-headless-chrome
+
 BROWSER         ?= chromium
 DIST            ?= dist
 
@@ -88,6 +93,12 @@ stop:
 		fi
 		kill -KILL $$pid 2>/dev/null || true
 		kill -KILL $$chrome_pid 2>/dev/null || true
+		if [ -n "$$pid" ] && [ "$$pid" != "null" ]; then
+			_tag="$(AGENT_HEADLESS_PROFILE_PREFIX)-$$pid"
+			awk -v tag="$$_tag" -v dvpid="$$pid" 'NR>1 && index($$0, tag) != 0 && $$2+0 != dvpid+0 { print $$2 }' <(ps auxww 2>/dev/null) | while read -r _opid; do
+				[ -n "$$_opid" ] && kill -KILL "$$_opid" 2>/dev/null || true
+			done
+		fi
 		rm -f "$(RUN_FILE)"
 	fi
 

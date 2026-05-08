@@ -16,7 +16,7 @@ import {
     type AgentTestcase,
 } from "../src/agent-autotest/agent-testcase.mjs"
 
-/** Substring in headless agent Chrome `--user-data-dir`; suffix is the devserver PID (`options.pid`). */
+/** Substring in headless agent Chrome `--user-data-dir`; suffix is the devserver PID (`options.pid`). Keep in sync with AGENT_HEADLESS_PROFILE_PREFIX in the Makefile (make stop sweeps by this path). */
 const AGENT_HEADLESS_CHROME_USER_DATA_TAG = "galacticad-agent-headless-chrome"
 
 export interface RunFileData {

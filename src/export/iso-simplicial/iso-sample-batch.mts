@@ -1,5 +1,4 @@
 import { GPUHelper, MAX_SAFE_ARRAY_BUFFER_BYTES } from "../../gpu/helper.mjs"
-import { log as dbgLog } from "../../logging/debug-log.mjs"
 
 /**
  * Byte size of {@link IsoSampleBatchUniforms} in WGSL (16 bytes).
@@ -22,6 +21,9 @@ export interface IsoSampleBatchResult {
  * sampling). Scene SDF stays on the GPU; bind the same `polygonVertices`,
  * `faceSelection`, and `mdcSceneParams` buffers as `GridSampler` / MDC export.
  *
+ * Reuses the compute pipeline and grows persistent GPU buffers across {@link IsoSampleBatch.run}
+ * calls with the same shader module (typical: one export session).
+ *
  * The shader source is `iso_sample_batch.wgsl`; compile with `ShaderCompiler`
  * using the same `//:) insert` replacements as `sample_grid.wgsl` (aux + `sceneSDF`;
  * no `sceneSDF_mid` / fast-path inserts required by this shader).
@@ -29,10 +31,19 @@ export interface IsoSampleBatchResult {
 export class IsoSampleBatch {
     #helper: GPUHelper
     #device: GPUDevice
-    #localBuffers: GPUBuffer[] = []
     #polygonVerticesBuffer: GPUBuffer
     #faceSelectionBuffer: GPUBuffer
     #mdcSceneParamsBuffer: GPUBuffer
+
+    #pipelineModule: GPUShaderModule | undefined
+    #pipeline: GPUComputePipeline | undefined
+    #cancellationBuffer: GPUBuffer | undefined
+    #uniformBuffer: GPUBuffer | undefined
+    #positionsBuffer: GPUBuffer | undefined
+    #positionsCapacity = 0
+    #sdfBuffer: GPUBuffer | undefined
+    #sdfCapacity = 0
+    #bindGroup: [number, GPUBindGroup] | undefined
 
     constructor(
         helper: GPUHelper,
@@ -47,11 +58,104 @@ export class IsoSampleBatch {
         this.#mdcSceneParamsBuffer = mdcSceneParamsBuffer
     }
 
-    #destroyLocalBuffers() {
-        for (const buffer of this.#localBuffers) {
-            buffer.destroy()
+    /** Release cached pipeline and pooled GPU buffers (e.g. when abandoning an export). */
+    destroy(): void {
+        this.#pipeline = undefined
+        this.#pipelineModule = undefined
+        this.#bindGroup = undefined
+        this.#cancellationBuffer?.destroy()
+        this.#cancellationBuffer = undefined
+        this.#uniformBuffer?.destroy()
+        this.#uniformBuffer = undefined
+        this.#positionsBuffer?.destroy()
+        this.#positionsBuffer = undefined
+        this.#positionsCapacity = 0
+        this.#sdfBuffer?.destroy()
+        this.#sdfBuffer = undefined
+        this.#sdfCapacity = 0
+    }
+
+    #ensurePipeline(isoSampleBatchShaderModule: GPUShaderModule): GPUComputePipeline {
+        if (this.#pipelineModule !== isoSampleBatchShaderModule || !this.#pipeline) {
+            this.#pipelineModule = isoSampleBatchShaderModule
+            this.#pipeline = this.#helper.createComputePipeline(isoSampleBatchShaderModule, "isoSampleBatch")
+            this.#bindGroup = undefined
         }
-        this.#localBuffers = []
+        return this.#pipeline
+    }
+
+    #ensureCancellationBuffer(): GPUBuffer {
+        if (!this.#cancellationBuffer) {
+            this.#cancellationBuffer = this.#device.createBuffer({
+                label: "IsoSampleBatch.Cancellation",
+                size: Uint32Array.BYTES_PER_ELEMENT,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            })
+        }
+        return this.#cancellationBuffer
+    }
+
+    #ensureUniformBuffer(): GPUBuffer {
+        if (!this.#uniformBuffer) {
+            this.#uniformBuffer = this.#device.createBuffer({
+                label: "IsoSampleBatch.Uniforms",
+                size: ISO_SAMPLE_BATCH_UNIFORM_BYTES,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            })
+        }
+        return this.#uniformBuffer
+    }
+
+    #ensurePositionBuffer(minBytes: number): GPUBuffer {
+        if (!this.#positionsBuffer || this.#positionsCapacity < minBytes) {
+            this.#positionsBuffer?.destroy()
+            this.#positionsCapacity = Math.max(minBytes, this.#positionsCapacity * 2 || 4096)
+            this.#positionsBuffer = this.#device.createBuffer({
+                label: "IsoSampleBatch.PositionsIn",
+                size: this.#positionsCapacity,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            })
+            this.#bindGroup = undefined
+        }
+        return this.#positionsBuffer
+    }
+
+    #ensureSdfBuffer(minBytes: number): GPUBuffer {
+        if (!this.#sdfBuffer || this.#sdfCapacity < minBytes) {
+            this.#sdfBuffer?.destroy()
+            this.#sdfCapacity = Math.max(minBytes, this.#sdfCapacity * 2 || 4096)
+            this.#sdfBuffer = this.#device.createBuffer({
+                label: "IsoSampleBatch.SdfOut",
+                size: this.#sdfCapacity,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+            })
+            this.#bindGroup = undefined
+        }
+        return this.#sdfBuffer
+    }
+
+    #ensureBindGroup(
+        pipeline: GPUComputePipeline,
+        uniformBuffer: GPUBuffer,
+        positionsBuffer: GPUBuffer,
+        sdfBuffer: GPUBuffer,
+        cancellationBuffer: GPUBuffer,
+    ): [number, GPUBindGroup] {
+        if (!this.#bindGroup) {
+            this.#bindGroup = this.#helper.createBindGroup(
+                0,
+                "IsoSampleBatch.BindGroup",
+                pipeline,
+                [0, uniformBuffer],
+                [1, positionsBuffer],
+                [2, sdfBuffer],
+                [25, cancellationBuffer],
+                [27, this.#polygonVerticesBuffer],
+                [28, this.#faceSelectionBuffer],
+                [30, this.#mdcSceneParamsBuffer],
+            )
+        }
+        return this.#bindGroup
     }
 
     /**
@@ -87,86 +191,41 @@ export class IsoSampleBatch {
             throw new Error(`IsoSampleBatch: readback ${outBytes} B exceeds safe ArrayBuffer limit`)
         }
 
-        const t0 = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
-
-        const cancellationBuffer = this.#device.createBuffer({
-            label: "IsoSampleBatch.Cancellation",
-            size: Uint32Array.BYTES_PER_ELEMENT,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        })
-        this.#localBuffers.push(cancellationBuffer)
+        const pipeline = this.#ensurePipeline(isoSampleBatchShaderModule)
+        const cancellationBuffer = this.#ensureCancellationBuffer()
         this.#device.queue.writeBuffer(cancellationBuffer, 0, new Uint32Array([0]))
 
-        try {
-            const uniformData = new ArrayBuffer(ISO_SAMPLE_BATCH_UNIFORM_BYTES)
-            new Uint32Array(uniformData, 0, 4).set([sampleCount >>> 0, 0, 0, 0])
+        const uniformBuffer = this.#ensureUniformBuffer()
+        const uniformData = new ArrayBuffer(ISO_SAMPLE_BATCH_UNIFORM_BYTES)
+        new Uint32Array(uniformData, 0, 4).set([sampleCount >>> 0, 0, 0, 0])
+        this.#device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 
-            const uniformBuffer = this.#device.createBuffer({
-                label: "IsoSampleBatch.Uniforms",
-                size: ISO_SAMPLE_BATCH_UNIFORM_BYTES,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            })
-            this.#localBuffers.push(uniformBuffer)
-            this.#device.queue.writeBuffer(uniformBuffer, 0, uniformData)
+        const positionsBuffer = this.#ensurePositionBuffer(positionsBytes)
+        this.#device.queue.writeBuffer(positionsBuffer, 0, positions)
 
-            const positionsBuffer = this.#device.createBuffer({
-                label: "IsoSampleBatch.PositionsIn",
-                size: positionsBytes,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            })
-            this.#localBuffers.push(positionsBuffer)
-            this.#device.queue.writeBuffer(positionsBuffer, 0, positions)
+        const sdfBuffer = this.#ensureSdfBuffer(outBytes)
+        const bindGroup = this.#ensureBindGroup(pipeline, uniformBuffer, positionsBuffer, sdfBuffer, cancellationBuffer)
 
-            const sdfBuffer = this.#device.createBuffer({
-                label: "IsoSampleBatch.SdfOut",
-                size: outBytes,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-            })
-            this.#localBuffers.push(sdfBuffer)
-
-            const pipeline = this.#helper.createComputePipeline(isoSampleBatchShaderModule, "isoSampleBatch")
-
-            const bindGroup = this.#helper.createBindGroup(
-                0,
-                "IsoSampleBatch.BindGroup",
-                pipeline,
-                [0, uniformBuffer],
-                [1, positionsBuffer],
-                [2, sdfBuffer],
-                [25, cancellationBuffer],
-                [27, this.#polygonVerticesBuffer],
-                [28, this.#faceSelectionBuffer],
-                [30, this.#mdcSceneParamsBuffer],
-            )
-
-            const wg = Math.ceil(sampleCount / 256)
-            if (wg > 65535) {
-                throw new Error(`IsoSampleBatch: workgroup count ${wg} exceeds 65535; split the batch.`)
-            }
-
-            const ce = this.#device.createCommandEncoder({ label: "iso_sample_batch" })
-            const pass = this.#helper.beginComputePass(ce, pipeline, bindGroup)
-            pass.dispatchWorkgroups(wg)
-            pass.end()
-            this.#device.queue.submit([ce.finish()])
-            await this.#device.queue.onSubmittedWorkDone()
-
-            if (options?.signal?.aborted) {
-                const err = new Error("IsoSampleBatch aborted")
-                err.name = "AbortError"
-                throw err
-            }
-
-            const sdf = new Float32Array(await this.#helper.readBufferData(sdfBuffer))
-
-            const elapsedMs = (globalThis.performance?.now ? globalThis.performance.now() : Date.now()) - t0
-            // dbgLog("IsoSimplicialExport").debug(
-            //     `IsoSampleBatch: ${sampleCount} samples elapsed=${elapsedMs.toFixed(1)}ms`,
-            // )
-
-            return { sdf, sampleCount }
-        } finally {
-            this.#destroyLocalBuffers()
+        const wg = Math.ceil(sampleCount / 256)
+        if (wg > 65535) {
+            throw new Error(`IsoSampleBatch: workgroup count ${wg} exceeds 65535; split the batch.`)
         }
+
+        const ce = this.#device.createCommandEncoder({ label: "iso_sample_batch" })
+        const pass = this.#helper.beginComputePass(ce, pipeline, bindGroup)
+        pass.dispatchWorkgroups(wg)
+        pass.end()
+        this.#device.queue.submit([ce.finish()])
+        await this.#device.queue.onSubmittedWorkDone()
+
+        if (options?.signal?.aborted) {
+            const err = new Error("IsoSampleBatch aborted")
+            err.name = "AbortError"
+            throw err
+        }
+
+        const sdf = new Float32Array(await this.#helper.readBufferData(sdfBuffer, outBytes))
+
+        return { sdf, sampleCount }
     }
 }

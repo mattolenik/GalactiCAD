@@ -147,15 +147,16 @@ export class CameraController {
         }
         this.#zoomController.onRotate = angleDelta => {
             if (Math.abs(angleDelta) < 1e-10) return
-            // Rotate around the axis perpendicular to the screen (camera forward direction).
-            // The base view looks down -Z; apply current rotation to get world-space forward.
             const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
             const forward = rotationMatrix.transformVector(vec3(0, 0, -1)).normalize()
             const twist = Quaternion.fromAxisAngle([forward.x, forward.y, forward.z], angleDelta)
-            this.#rotation = this.#rotation.mul(twist).normalize()
+            const newQ = this.#rotation.mul(twist).normalize()
+            this.#applyOrbitCompensation(this.#rotation, newQ)
+            this.#rotation = newQ
             // Pinch updates the camera but not the trackball (touchmove only runs for 1 touch);
             // applySceneRotation → #draw → onDraw keeps them aligned so touchend does not snap back.
             this.#trackball.applySceneRotation(this.#rotation)
+            this.#updateTransforms()
         }
         // Initialize rotation from Euler angles (for backward compatibility)
         this.#rotation = Quaternion.fromEuler(initialPhi, initialTheta, 0, "YXZ")
@@ -170,6 +171,7 @@ export class CameraController {
             q: this.#rotation,
             onDraw: (q) => {
                 if (this.#isSyncing) return
+                this.#applyOrbitCompensation(this.#rotation, q)
                 this.#rotation = q
                 this.#updateTransforms()
             },
@@ -410,9 +412,8 @@ export class CameraController {
         }
     }
 
+    /** World-space eye: orbit standoff direction from pivot (fixed at +Z; rotation applied separately in viewTransform). */
     #computeCameraPosition(): Vec3f {
-        // Fixed standoff from pivot; ortho half-height comes from dolly via {@link orthoHalfFromDolly}.
-        // Coupling stand-off to dolly breaks Cmd-dblclick recenter (|O − lastFocus|) and T·R·lookAt.
         return this.#pivot.add(vec3(0, 0, 1))
     }
 
@@ -444,11 +445,8 @@ export class CameraController {
     }
 
     /**
-     * Orbit / look-at target in scene space: set to the pick hit `xyz`.
-     * The view matrix is `translation * rotation * lookAt(eye, pivot)`; the rotation premultiply
-     * means the world pivot is generally **not** on the central view ray (see preview.wgsl ray at
-     * view center). After updating pivot we apply the same small pan as {@link recenterOnPoint}
-     * (no animation) so that ray passes through this point — otherwise it feels like “pivot ≠ hit”.
+     * Orbit center in scene space: set to the pick hit `xyz`.
+     * After updating pivot, snap the hit onto the central view ray so it appears centered.
      */
     setPivotToWorldHit(hitWorld: Vec3f): void {
         this.#pivot = hitWorld.clone()
@@ -470,12 +468,12 @@ export class CameraController {
      * Direction matches WGSL `normalize(-camera.transform[2].xyz)` via camera −Z → world.
      */
     #worldCentralRay(): { origin: Vec3f; dir: Vec3f } {
-        const roCam = vec3(
+        const ro = vec3(
             this.cameraPosition.x,
             this.cameraPosition.y,
             this.cameraPosition.z + PREVIEW_RAY_ORIGIN_DEPTH,
         )
-        const origin = this.viewTransform.transformPoint(roCam)
+        const origin = this.viewTransform.transformPoint(ro)
         const dirRaw = this.viewTransform.transformVector(vec3(0, 0, -1))
         if (dirRaw.length() < 1e-20) {
             return { origin, dir: vec3(0, 0, -1) }
@@ -561,9 +559,7 @@ export class CameraController {
 
     #updateTransforms(emit = true) {
         this.cameraPosition = this.#computeCameraPosition()
-        // Use a fixed up vector (world up) for constructing the view matrix
         let view = lookAt(this.cameraPosition, this.#pivot, vec3(0, 1, 0))
-        // Apply quaternion rotation
         const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
         view = rotationMatrix.multiply(view)
         view = Mat4x4f.translation(this.#cameraTranslation).multiply(view)
@@ -571,6 +567,21 @@ export class CameraController {
         if (emit) {
             this.change$.next(this.state)
         }
+    }
+
+    /**
+     * Orbit compensation: adjust #cameraTranslation so the pivot stays fixed on screen
+     * when rotation changes. Without this, rotation orbits around the eye (pivot + (0,0,1))
+     * instead of the pivot itself.
+     */
+    #applyOrbitCompensation(oldQ: Quaternion, newQ: Quaternion): void {
+        const oldMat = this.#quaternionToMatrix(oldQ)
+        const newMat = this.#quaternionToMatrix(newQ)
+        const pivotCamOld = oldMat.transformVector(vec3(0, 0, -1))
+        const pivotCamNew = newMat.transformVector(vec3(0, 0, -1))
+        this.#cameraTranslation.x += pivotCamOld.x - pivotCamNew.x
+        this.#cameraTranslation.y += pivotCamOld.y - pivotCamNew.y
+        this.#cameraTranslation.z += pivotCamOld.z - pivotCamNew.z
     }
 
     /** Push current camera state to SettingsManager (persisted via rxjs debounce). */
@@ -642,7 +653,7 @@ export class CameraController {
      * When h changes by dOrtho the offset shifts by (ndcX*dOrtho, ndcY*dOrtho).
      * To keep the cursor world-point fixed, translate the camera by the world-space
      * equivalent of that shift (using current view rotation columns; translation T
-     * in T·R·lookAt does not affect columns 0-2 so viewTransform columns are valid).
+     * in T·lookAt does not affect columns 0-2 so viewTransform columns are valid).
      */
     #applyOrthoDeltaToCursor(dOrtho: number, clientX: number, clientY: number): void {
         const rect = this.#host.canvas.getBoundingClientRect()
@@ -657,8 +668,9 @@ export class CameraController {
         const ndcY = 2 * (1 - screenSy - vc.y)
         // World-space compensation (d = -dOrtho: positive when zooming in / ortho half decreases).
         const d = -dOrtho
-        const right = this.viewTransform.transformVector(vec3(1, 0, 0))
-        const up = this.viewTransform.transformVector(vec3(0, 1, 0))
+        const rotationMatrix = this.#quaternionToMatrix(this.#rotation)
+        const right = rotationMatrix.transformVector(vec3(1, 0, 0))
+        const up = rotationMatrix.transformVector(vec3(0, 1, 0))
         this.#cameraTranslation.x += d * (ndcX * right.x + ndcY * up.x)
         this.#cameraTranslation.y += d * (ndcX * right.y + ndcY * up.y)
         this.#cameraTranslation.z += d * (ndcX * right.z + ndcY * up.z)

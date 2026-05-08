@@ -1,4 +1,5 @@
 SHELL           := bash
+SED             := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
 export TSX      ?= node_modules/.bin/tsx
 export TSC      ?= node_modules/.bin/tsc
 export RUN_FILE := .devserver.run
@@ -72,6 +73,12 @@ release: build test
 clean: stop
 	rm -rf $(DIST)
 	rm -f .devserver.*
+
+.PHONY: fix-newlines
+fix-newlines:
+	@git ls-files -z | while IFS= read -r -d '' f; do \
+		$(SED) -i 's/\r$$//' "$$f"; \
+	done
 
 .PHONY: submodules
 submodules:

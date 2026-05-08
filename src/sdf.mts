@@ -185,9 +185,15 @@ export class SDFRenderer {
     #lastBuildTimingMs: BuildTimingBreakdownMs | null = null
     /** Last successful end-to-end pipeline (transpile wall + worker round-trip + worker breakdown). */
     #lastSceneBuildPipelineMs: SceneBuildPipelineMs | null = null
-    #pendingRenderMesh = new Map<number, { resolve: (v: MeshData) => void; reject: (err: unknown) => void }>()
+    #pendingRenderMesh = new Map<
+        number,
+        { resolve: (v: MeshData) => void; reject: (err: unknown) => void; skipDocumentGuard?: boolean }
+    >()
     #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
-    #pendingThumbnail = new Map<number, { resolve: (v: ImageData) => void; reject: (err: unknown) => void }>()
+    #pendingThumbnail = new Map<
+        number,
+        { resolve: (v: ImageData) => void; reject: (err: unknown) => void; skipDocumentGuard?: boolean }
+    >()
     #pendingPickPos = new Map<number, { resolve: (v: [number, number, number] | null) => void }>()
     #pendingPickObject = new Map<number, { clientX: number; clientY: number }>()
     #pickObjectRequestId = 0
@@ -463,7 +469,10 @@ export class SDFRenderer {
                 const pending = msg.requestId != null ? this.#pendingRenderMesh.get(msg.requestId) : null
                 if (pending) {
                     const active = this.#getActiveDocument?.()
-                    const stillActive = msg.documentName === undefined || msg.documentName === active
+                    const stillActive =
+                        pending.skipDocumentGuard === true ||
+                        msg.documentName === undefined ||
+                        msg.documentName === active
                     if (!stillActive) {
                         pending.reject(new Error("Document changed"))
                     } else if (msg.mesh) {
@@ -485,7 +494,10 @@ export class SDFRenderer {
                 const pending = msg.requestId != null ? this.#pendingThumbnail.get(msg.requestId) : null
                 if (pending) {
                     const active = this.#getActiveDocument?.()
-                    const stillActive = msg.documentName === undefined || msg.documentName === active
+                    const stillActive =
+                        pending.skipDocumentGuard === true ||
+                        msg.documentName === undefined ||
+                        msg.documentName === active
                     if (!stillActive) {
                         pending.reject(new Error("Document changed"))
                     } else if (msg.imageData) {
@@ -1601,6 +1613,8 @@ export class SDFRenderer {
             simplifyTuning?: SimplifyTuning
             voxelSizeMm?: number
             mdcExportLevers?: MdcExportLevers
+            /** When true, `renderMeshResult` is not rejected if the active tab differs from `documentName` (agent automation). */
+            agentAutomation?: boolean
         },
     ): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
@@ -1622,7 +1636,11 @@ export class SDFRenderer {
             mdcExportLevers,
         })
         return new Promise<MeshData>((resolve, reject) => {
-            this.#pendingRenderMesh.set(requestId, { resolve, reject })
+            this.#pendingRenderMesh.set(requestId, {
+                resolve,
+                reject,
+                skipDocumentGuard: options?.agentAutomation === true,
+            })
             this.#transpileWorker.postMessage({ type: "transpile", src: _src.trim(), requestId, kind: "renderMesh", documentName })
         })
     }
@@ -1771,7 +1789,7 @@ export class SDFRenderer {
                 resolutionScale: params.resolutionScale,
             })
             return await new Promise<ImageData>((resolve, reject) => {
-                this.#pendingThumbnail.set(requestId, { resolve, reject })
+                this.#pendingThumbnail.set(requestId, { resolve, reject, skipDocumentGuard: true })
                 this.#transpileWorker.postMessage({ type: "transpile", src: trimmed, requestId, kind: "agentPreview", documentName: docName })
             })
         } finally {
@@ -1797,7 +1815,7 @@ export class SDFRenderer {
         height = 1000,
         documentName?: string,
     ): Promise<ImageData> {
-        const mesh = await this.renderMesh(src, documentName, meshOptions)
+        const mesh = await this.renderMesh(src, documentName, { ...meshOptions, agentAutomation: true })
         return captureAgentMeshImageData(mesh, camera, viewCenter, resolutionScale, width, height)
     }
 

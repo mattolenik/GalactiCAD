@@ -604,7 +604,7 @@ export function vec3(vec: Vec3 | number, y?: number, z?: number): Vec3f {
     } catch {
         detail = `typeof=${typeof vec}, ctor=(threw on inspect)`
     }
-    throw new Error(`unsupported vec-3 type: ${detail}`)
+    throw new Error(`unsupported vec3 type: ${detail}`)
 }
 
 export function vec4(x: number, y: number, z: number, w: number): Vec4f

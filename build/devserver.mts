@@ -182,6 +182,22 @@ function agentRenderErrorHttpStatus(out: { pngBase64?: string; error?: string } 
     return 503
 }
 
+/** Wait until the HTTP response body is fully flushed (avoids curl/client write errors on short reads). */
+function endHttpResponseWithBuffer(res: http.ServerResponse, status: number, headers: http.OutgoingHttpHeaders, body: Buffer): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const onError = (e: Error) => {
+            res.off("error", onError)
+            reject(e)
+        }
+        res.once("error", onError)
+        res.writeHead(status, headers)
+        res.end(body, () => {
+            res.off("error", onError)
+            resolve()
+        })
+    })
+}
+
 async function respondAgentRenderPng(
     bridge: BrowserBridge,
     repoRoot: string,
@@ -199,15 +215,32 @@ async function respondAgentRenderPng(
         res.end(errText)
         return
     }
-    const buf = Buffer.from(out.pngBase64, "base64")
-    await writeAgentImagelogPng(repoRoot, labelSlug, role, buf)
-    res.writeHead(200, {
+    let buf: Buffer
+    try {
+        buf = Buffer.from(out.pngBase64, "base64")
+    } catch {
+        res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+        res.end("invalid PNG base64 from bridge")
+        return
+    }
+    if (buf.length === 0) {
+        res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+        res.end("empty PNG from bridge")
+        return
+    }
+    try {
+        await writeAgentImagelogPng(repoRoot, labelSlug, role, buf)
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`writeAgentImagelogPng: ${msg}`)
+    }
+    await endHttpResponseWithBuffer(res, 200, {
         "content-type": "image/png",
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Expose-Headers": "Content-Disposition",
         "Content-Disposition": agentRenderPngContentDisposition(downloadBasename, payload.mode),
-    })
-    res.end(buf)
+        "Content-Length": String(buf.length),
+    }, buf)
 }
 
 /** Ring buffer + bridge WebSocket; `__galacticadDevLogPush` is consumed by `connectMainThreadDevLogToBridge()` in app. */

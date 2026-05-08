@@ -79,6 +79,26 @@ const DEFAULT_TIMEOUT_MS = 5000
 const AGENT_TESTCASE_TIMEOUT_MS = 60_000
 const AGENT_RENDER_TIMEOUT_MS = 120_000
 
+/** `ws` WebSocket.OPEN — ready to send. */
+const WS_OPEN = 1
+
+/**
+ * Request/response RPC must target a single tab. Broadcasting to every client races
+ * multiple handlers and "first response wins" can be an error from the wrong tab.
+ */
+function sendPayloadToFirstOpenClient(wss: WebSocketServer, payload: string): boolean {
+    for (const client of wss.clients) {
+        if (client.readyState !== WS_OPEN) continue
+        try {
+            client.send(payload)
+            return true
+        } catch {
+            /* stale socket; try next */
+        }
+    }
+    return false
+}
+
 /**
  * Tracks browser WebSocket clients and supports live reload plus request/response
  * for fetching recent page-console lines and the active scene source from the injected bridge script.
@@ -107,7 +127,7 @@ export class BrowserBridge {
     }
 
     /**
-     * Ask connected browser tab(s) for up to `n` lines per requested level (newest first, deduped by level).
+     * Ask one connected browser tab (first open WebSocket) for up to `n` lines per requested level.
      * First response wins. Returns `null` if no client is connected, times out, or the bridge reports failure.
      */
     requestConsoleLogs(
@@ -138,14 +158,7 @@ export class BrowserBridge {
                 ...(query.modules != null && query.modules.length > 0 ? { modules: query.modules } : {}),
             }
             const payload = JSON.stringify(msg)
-            let sent = false
-            wss.clients.forEach(client => {
-                if (client.readyState === 1) {
-                    client.send(payload)
-                    sent = true
-                }
-            })
-            if (!sent) {
+            if (!sendPayloadToFirstOpenClient(wss, payload)) {
                 clearTimeout(timeout)
                 this.pending.delete(id)
                 resolve(null)
@@ -154,7 +167,7 @@ export class BrowserBridge {
     }
 
     /**
-     * Ask connected browser tab(s) for the active document's scene source (Monaco value).
+     * Ask one connected browser tab for the active document's scene source (Monaco value).
      * First response wins. Returns `null` if no client, timeout, or bridge reports failure.
      */
     requestActiveSceneSource(timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string | null> {
@@ -176,14 +189,7 @@ export class BrowserBridge {
             this.pendingSceneSource.set(id, { resolve: finish })
             const msg: DevServerGetActiveSceneSourceMessage = { type: "getActiveSceneSource", id }
             const payload = JSON.stringify(msg)
-            let sent = false
-            wss.clients.forEach(client => {
-                if (client.readyState === 1) {
-                    client.send(payload)
-                    sent = true
-                }
-            })
-            if (!sent) {
+            if (!sendPayloadToFirstOpenClient(wss, payload)) {
                 clearTimeout(timeout)
                 this.pendingSceneSource.delete(id)
                 resolve(null)
@@ -192,7 +198,7 @@ export class BrowserBridge {
     }
 
     /**
-     * Ask a connected browser tab to serialize the current scene + camera + mesh export settings
+     * Ask one connected browser tab to serialize the current scene + camera + mesh export settings
      * into an agent testcase object (see `src/agent-autotest/`).
      * Requires `registerAgentTestcaseCapture` on the app main thread and `__galacticadExportAgentTestcase`.
      */
@@ -215,14 +221,7 @@ export class BrowserBridge {
             this.pendingAgentTestcase.set(id, { resolve: finish })
             const msg: DevServerExportAgentTestcaseMessage = { type: "exportAgentTestcase", id }
             const payload = JSON.stringify(msg)
-            let sent = false
-            wss.clients.forEach(client => {
-                if (client.readyState === 1) {
-                    client.send(payload)
-                    sent = true
-                }
-            })
-            if (!sent) {
+            if (!sendPayloadToFirstOpenClient(wss, payload)) {
                 clearTimeout(timeout)
                 this.pendingAgentTestcase.delete(id)
                 resolve(null)
@@ -231,7 +230,7 @@ export class BrowserBridge {
     }
 
     /**
-     * Ask the browser to run `runAgentRenderPipeline` (WebGPU). Payload matches `AgentRenderRequest`.
+     * Ask one connected browser tab to run `runAgentRenderPipeline` (WebGPU). Payload matches `AgentRenderRequest`.
      */
     requestAgentRender(payload: Record<string, unknown>, timeoutMs = AGENT_RENDER_TIMEOUT_MS): Promise<{ pngBase64?: string; error?: string } | null> {
         const wss = this.wsServer
@@ -252,14 +251,7 @@ export class BrowserBridge {
             this.pendingAgentRender.set(id, { resolve: finish })
             const msg: DevServerAgentRenderMessage = { type: "agentRender", id, payload }
             const wire = JSON.stringify(msg)
-            let sent = false
-            wss.clients.forEach(client => {
-                if (client.readyState === 1) {
-                    client.send(wire)
-                    sent = true
-                }
-            })
-            if (!sent) {
+            if (!sendPayloadToFirstOpenClient(wss, wire)) {
                 clearTimeout(timeout)
                 this.pendingAgentRender.delete(id)
                 resolve(null)
@@ -321,6 +313,7 @@ export class BrowserBridge {
             if (p) {
                 p.resolve({ pngBase64: msg.pngBase64, error: msg.error })
             }
+            return
         }
     }
 }

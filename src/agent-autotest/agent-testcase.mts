@@ -186,6 +186,5 @@ export function mergeAgentRenderRequest(
             simplifyTuning: { ...testcase.meshExport.simplifyTuning },
             mdcExportLevers: { ...testcase.meshExport.mdcExportLevers },
         },
-        documentName: testcase.documentName,
     }
 }

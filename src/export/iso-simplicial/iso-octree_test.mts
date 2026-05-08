@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
+import { IsoSimplicialConstants } from "./constants.mjs"
 import { IsoOctree, isoOctreeChangesSign, isoOctreeIsOutside, type IsoOctreeBatchFn } from "./iso-octree.mjs"
 
 /** Horizontal plane `z = 0.5`; outward normal `(0,0,1)` (mock GPU layout). */
@@ -112,4 +113,33 @@ test("IsoOctree.build: deterministic treeCellCount for fixed mock + caps", async
     const b = await IsoOctree.build(params)
     assert.equal(a.treeCellCount, b.treeCellCount)
     assert.ok(a.treeCellCount > 1)
+})
+
+test("IsoOctree.build: sibling megabatch coalesces phase1 and reEval sample counts", async () => {
+    const O = IsoSimplicialConstants.oversampleQef
+    const nodeCount = (O + 1) ** 3
+    const edgeSamples = O + 1
+    const faceSamples = (O + 1) ** 2
+    const totalPhase1 = nodeCount + 12 * edgeSamples + 6 * faceSamples
+
+    const batchSampleCounts: number[] = []
+    const trackingSampler: IsoOctreeBatchFn = positions => {
+        batchSampleCounts.push(positions.length / 3)
+        return mockPlaneHalfZ(positions)
+    }
+
+    await IsoOctree.build({
+        sample: trackingSampler,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 2, depthMax: 4, qefRelativeErrorRefineThreshold: 1e30 },
+    })
+
+    assert.ok(
+        batchSampleCounts.some(n => n === 8 * totalPhase1),
+        `expected 8×phase1 megabatch (${8 * totalPhase1}), got ${batchSampleCounts.join(",")}`,
+    )
+    assert.ok(
+        batchSampleCounts.some(n => n === 8 * 19),
+        `expected 8×19 reEval megabatch (152), got ${batchSampleCounts.join(",")}`,
+    )
 })

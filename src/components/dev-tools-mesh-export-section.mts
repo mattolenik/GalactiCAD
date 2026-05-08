@@ -98,6 +98,8 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
     #isoDepthMinValueEl: HTMLSpanElement
     #isoDepthMaxRange: HTMLInputElement
     #isoDepthMaxValueEl: HTMLSpanElement
+    #isoOversampleQefRange: HTMLInputElement
+    #isoOversampleQefValueEl: HTMLSpanElement
     #subscriptions: Subscription[] = []
 
     onVoxelSizeMmChange?: (mm: number) => void
@@ -216,6 +218,7 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         const isoT = g.isoSimplicialTuning
         const depthMinDisp = isoT.depthMin ?? IsoSimplicialConstants.depthMin
         const depthMaxDisp = isoT.depthMax ?? IsoSimplicialConstants.depthMax
+        const oversampleQefDisp = isoT.oversampleQef ?? IsoSimplicialConstants.oversampleQef
         const isoPadDisp = isoT.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
         this.#isoCollapse = document.createElement("dev-tools-collapse")
         this.#isoCollapse.setAttribute("label", "Iso-simplicial")
@@ -304,6 +307,35 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
             this.#isoCollapse.appendChild(row)
             this.#isoDepthMaxRange = range
             this.#isoDepthMaxValueEl = valueEl
+        }
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "QEF Hermite oversample"
+            lab.title =
+                "Denser internal/edge/face sample lattices for Hermite+QEF (higher = more sceneSDF work per cell, often sharper)."
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "1"
+            range.max = "8"
+            range.step = "1"
+            range.value = String(oversampleQefDisp)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = String(oversampleQefDisp)
+            range.addEventListener("input", () => {
+                let v = parseInt(range.value, 10)
+                if (!Number.isFinite(v)) v = IsoSimplicialConstants.oversampleQef
+                v = Math.max(1, Math.min(8, Math.round(v)))
+                valueEl.textContent = String(v)
+                this.#persistIsoTuning({ oversampleQef: v })
+            })
+            row.append(lab, range, valueEl)
+            this.#isoCollapse.appendChild(row)
+            this.#isoOversampleQefRange = range
+            this.#isoOversampleQefValueEl = valueEl
         }
         const isoDefaults = document.createElement("button")
         isoDefaults.textContent = "Iso defaults"
@@ -439,6 +471,9 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         this.#isoDepthMinValueEl.textContent = String(dmin)
         this.#isoDepthMaxRange.value = String(dmax)
         this.#isoDepthMaxValueEl.textContent = String(dmax)
+        const oq = tuning.oversampleQef ?? IsoSimplicialConstants.oversampleQef
+        this.#isoOversampleQefRange.value = String(oq)
+        this.#isoOversampleQefValueEl.textContent = String(oq)
     }
 
     #persistIsoTuning(patch: Partial<IsoSimplicialTuning>): void {

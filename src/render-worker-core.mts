@@ -1170,54 +1170,65 @@ export class RenderWorkerCore {
                     this.#uniformBuffers.faceSelection,
                     this.#uniformBuffers.mdcSceneParams,
                 )
-                const sampleFn = createIsoOctreeSampleFn(isoBatch, isoSampleModule)
-                const cube = worldBoundsCube()
-                const MIN_DEPTH_FLOOR = 3
-                const constOverrides = {
-                    ...(typeof isoT.depthMin === "number" && Number.isFinite(isoT.depthMin) ?
-                        { depthMin: Math.max(MIN_DEPTH_FLOOR, isoT.depthMin) }
-                    :   {}),
-                    ...(typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ?
-                        { depthMax: Math.max(MIN_DEPTH_FLOOR, isoT.depthMax) }
-                    :   {}),
-                    ...(typeof isoT.oversampleQef === "number" && Number.isFinite(isoT.oversampleQef) ?
-                        { oversampleQef: isoT.oversampleQef }
-                    :   {}),
-                    ...(typeof isoT.dualVertexBorderFraction === "number" && Number.isFinite(isoT.dualVertexBorderFraction) ?
-                        { dualVertexBorderFraction: isoT.dualVertexBorderFraction }
-                    :   {}),
-                    ...(typeof isoT.findRootDepth === "number" && Number.isFinite(isoT.findRootDepth) ?
-                        { findRootDepth: isoT.findRootDepth }
-                    :   {}),
-                    ...(typeof isoT.qefRelativeErrorRefineThreshold === "number" && Number.isFinite(isoT.qefRelativeErrorRefineThreshold) ?
-                        { qefRelativeErrorRefineThreshold: isoT.qefRelativeErrorRefineThreshold }
-                    :   {}),
-                }
-                const tree = await IsoOctree.build({
-                    sample: sampleFn,
-                    bounds: { min: cube.min, max: cube.max },
-                    constants: Object.keys(constOverrides).length > 0 ? constOverrides : undefined,
-                })
-                const tIsoOct = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
-                const worldB = { min: cube.min as readonly [number, number, number], max: cube.max as readonly [number, number, number] }
-                if (isoT.phase5Snap) {
-                    mesh = await extractIsoSimplicialMeshAsync(tree, {
-                        worldBounds: worldB,
-                        phase5: { enabled: true, sample: sampleFn },
+                try {
+                    const sampleFn = createIsoOctreeSampleFn(isoBatch, isoSampleModule)
+                    const cube = worldBoundsCube()
+                    const MIN_DEPTH_FLOOR = 3
+                    const constOverrides = {
+                        ...(typeof isoT.depthMin === "number" && Number.isFinite(isoT.depthMin) ?
+                            { depthMin: Math.max(MIN_DEPTH_FLOOR, isoT.depthMin) }
+                        :   {}),
+                        ...(typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ?
+                            { depthMax: Math.max(MIN_DEPTH_FLOOR, isoT.depthMax) }
+                        :   {}),
+                        ...(typeof isoT.oversampleQef === "number" && Number.isFinite(isoT.oversampleQef) ?
+                            { oversampleQef: isoT.oversampleQef }
+                        :   {}),
+                        ...(typeof isoT.dualVertexBorderFraction === "number" && Number.isFinite(isoT.dualVertexBorderFraction) ?
+                            { dualVertexBorderFraction: isoT.dualVertexBorderFraction }
+                        :   {}),
+                        ...(typeof isoT.findRootDepth === "number" && Number.isFinite(isoT.findRootDepth) ?
+                            { findRootDepth: isoT.findRootDepth }
+                        :   {}),
+                        ...((
+                            typeof isoT.qefRelativeErrorRefineThreshold === "number" &&
+                            Number.isFinite(isoT.qefRelativeErrorRefineThreshold)
+                        ) ?
+                            { qefRelativeErrorRefineThreshold: isoT.qefRelativeErrorRefineThreshold }
+                        :   {}),
+                    }
+                    const tree = await IsoOctree.build({
+                        sample: sampleFn,
+                        bounds: { min: cube.min, max: cube.max },
+                        constants: Object.keys(constOverrides).length > 0 ? constOverrides : undefined,
                     })
-                } else {
-                    mesh = extractIsoSimplicialMesh(tree, { worldBounds: worldB })
+                    const tIsoOct = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
+                    const worldB = {
+                        min: cube.min as readonly [number, number, number],
+                        max: cube.max as readonly [number, number, number],
+                    }
+                    if (isoT.phase5Snap) {
+                        mesh = await extractIsoSimplicialMeshAsync(tree, {
+                            worldBounds: worldB,
+                            phase5: { enabled: true, sample: sampleFn },
+                        })
+                    } else {
+                        mesh = extractIsoSimplicialMesh(tree, { worldBounds: worldB })
+                    }
+                    const tIso1 = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
+                    log("IsoSimplicialExport").info("iso-simplicial export complete", {
+                        treeCellCount: tree.treeCellCount,
+                        triCount: mesh.tris.length / 3,
+                        octreeMs: Math.round((tIsoOct - tIso0) * 1000) / 1000,
+                        totalMs: Math.round((tIso1 - tIso0) * 1000) / 1000,
+                        boundsPaddingMm: pad,
+                        depthMin: constOverrides.depthMin ?? IsoSimplicialConstants.depthMin,
+                        depthMax: constOverrides.depthMax ?? IsoSimplicialConstants.depthMax,
+                        oversampleQef: constOverrides.oversampleQef ?? IsoSimplicialConstants.oversampleQef,
+                    })
+                } finally {
+                    isoBatch.destroy()
                 }
-                const tIso1 = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
-                log("IsoSimplicialExport").info("iso-simplicial export complete", {
-                    treeCellCount: tree.treeCellCount,
-                    triCount: mesh.tris.length / 3,
-                    octreeMs: Math.round((tIsoOct - tIso0) * 1000) / 1000,
-                    totalMs: Math.round((tIso1 - tIso0) * 1000) / 1000,
-                    boundsPaddingMm: pad,
-                    depthMin: constOverrides.depthMin ?? IsoSimplicialConstants.depthMin,
-                    depthMax: constOverrides.depthMax ?? IsoSimplicialConstants.depthMax,
-                })
             } else {
                 const params: MDCParams = {
                     gridDimX,

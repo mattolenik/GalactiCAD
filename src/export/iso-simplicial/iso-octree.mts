@@ -197,6 +197,206 @@ function packWorldFromNorm4(normPts: Float32Array, count: number, rootMin: reado
     return world
 }
 
+interface Phase1NormScratch {
+    normPts: Float32Array
+    edgeOffs: number[]
+    faceOffs: number[]
+    totalPhase1: number
+    nodeCount: number
+    edgeSamples: number
+    faceSamples: number
+}
+
+function buildPhase1NormPts(node: IsoOctreeNode, C: IsoOctreeRuntimeConstants): Phase1NormScratch {
+    const v0 = readV4(node.verts, 0)
+    const v7 = readV4(node.verts, 7)
+    const O = C.oversampleQef
+    const nodeCount = (O + 1) ** 3
+    const edgeSamples = O + 1
+    const faceSamples = (O + 1) ** 2
+    const totalPhase1 = nodeCount + 12 * edgeSamples + 6 * faceSamples
+
+    const normPts = new Float32Array(totalPhase1 * 4)
+    let pi = 0
+
+    const nodeOff = 0
+    for (let x = 0; x <= O; x++) {
+        for (let y = 0; y <= O; y++) {
+            for (let z = 0; z <= O; z++) {
+                normPts[pi * 4] = (1 - x / O) * v0[0]! + (x / O) * v7[0]!
+                normPts[pi * 4 + 1] = (1 - y / O) * v0[1]! + (y / O) * v7[1]!
+                normPts[pi * 4 + 2] = (1 - z / O) * v0[2]! + (z / O) * v7[2]!
+                pi++
+            }
+        }
+    }
+
+    const edgeOffs: number[] = []
+    for (let e = 0; e < 12; e++) {
+        edgeOffs.push(pi)
+        const xi = cubeEdge2Orient[e]! as 0 | 1 | 2
+        const yi = ((xi + 1) % 3) as 0 | 1 | 2
+        const zi = ((xi + 2) % 3) as 0 | 1 | 2
+        const ec0 = readV4(node.verts, cubeEdge2Vert[e]![0]!)
+        const ec1 = readV4(node.verts, cubeEdge2Vert[e]![1]!)
+        for (let i = 0; i <= O; i++) {
+            const p4: [number, number, number] = [0, 0, 0]
+            p4[xi] = (1 - i / O) * ec0[xi]! + (i / O) * ec1[xi]!
+            p4[yi] = ec0[yi]!
+            p4[zi] = ec0[zi]!
+            normPts[pi * 4] = p4[0]!
+            normPts[pi * 4 + 1] = p4[1]!
+            normPts[pi * 4 + 2] = p4[2]!
+            pi++
+        }
+    }
+
+    const faceOffs: number[] = []
+    for (let f = 0; f < 6; f++) {
+        faceOffs.push(pi)
+        const orient = cubeFace2Orient[f]!
+        const xi = ((orient + 1) % 3) as 0 | 1 | 2
+        const yi = ((orient + 2) % 3) as 0 | 1 | 2
+        const zi = orient as 0 | 1 | 2
+        const fc0 = readV4(node.verts, cubeFace2Vert[f]![0]!)
+        const fc2 = readV4(node.verts, cubeFace2Vert[f]![2]!)
+        for (let x = 0; x <= O; x++) {
+            for (let y = 0; y <= O; y++) {
+                const p4: [number, number, number] = [0, 0, 0]
+                p4[xi] = (1 - x / O) * fc0[xi]! + (x / O) * fc2[xi]!
+                p4[yi] = (1 - y / O) * fc0[yi]! + (y / O) * fc2[yi]!
+                p4[zi] = fc0[zi]!
+                normPts[pi * 4] = p4[0]!
+                normPts[pi * 4 + 1] = p4[1]!
+                normPts[pi * 4 + 2] = p4[2]!
+                pi++
+            }
+        }
+    }
+
+    return { normPts, edgeOffs, faceOffs, totalPhase1, nodeCount, edgeSamples, faceSamples }
+}
+
+function phase1SdfToReEvalNorm(
+    node: IsoOctreeNode,
+    scratch: Phase1NormScratch,
+    sdfPhase1: Float32Array,
+    C: IsoOctreeRuntimeConstants,
+    invWorldScale: number,
+): { qefError: number; reEvalNorm: Float32Array } {
+    const v0 = readV4(node.verts, 0)
+    const v7 = readV4(node.verts, 7)
+    const { normPts, edgeOffs, faceOffs, nodeCount, edgeSamples, faceSamples } = scratch
+    const nodeOff = 0
+
+    let qefError = 0
+    const cellMin: [number, number, number] = [v0[0], v0[1], v0[2]]
+    const cellMax: [number, number, number] = [v7[0], v7[1], v7[2]]
+    const cellSize = v7[0] - v0[0]
+
+    const reEvalNorm = new Float32Array(19 * 3)
+
+    {
+        const packed = zeroQefPacked(4)
+        const planeNorms4: [number, number, number, number][] = []
+        const planePts4: [number, number, number, number][] = []
+        for (let i = 0; i < nodeCount; i++) {
+            const si = (nodeOff + i) * 4
+            const px = normPts[si]!, py = normPts[si + 1]!, pz = normPts[si + 2]!
+            const nx = sdfPhase1[si]!, ny = sdfPhase1[si + 1]!, nz = sdfPhase1[si + 2]!
+            const dN = sdfPhase1[si + 3]! * invWorldScale
+            qefAccumulatePlane(encodeCubeHermitePlane(nx, ny, nz, px, py, pz, dN), packed)
+            planeNorms4.push([nx, ny, nz, -1])
+            planePts4.push([px, py, pz, dN])
+        }
+        const { position, qefError: nodeQef } = computeDualVertexCube({
+            cellMin, cellMax, qefPacked: packed, planeNorms4, planePts4,
+            borderFraction: C.dualVertexBorderFraction,
+        })
+        node.node[0] = position[0]!
+        node.node[1] = position[1]!
+        node.node[2] = position[2]!
+        reEvalNorm[0] = position[0]!
+        reEvalNorm[1] = position[1]!
+        reEvalNorm[2] = position[2]!
+        qefError += nodeQef
+    }
+
+    for (let e = 0; e < 12; e++) {
+        const xi = cubeEdge2Orient[e]! as 0 | 1 | 2
+        const yi = ((xi + 1) % 3) as 0 | 1 | 2
+        const zi = ((xi + 2) % 3) as 0 | 1 | 2
+        const ec0 = readV4(node.verts, cubeEdge2Vert[e]![0]!)
+        const ec1 = readV4(node.verts, cubeEdge2Vert[e]![1]!)
+        const off = edgeOffs[e]!
+        const packed = zeroQefPacked(2)
+        const planeNorms2: [number, number][] = []
+        const planePts2: [number, number][] = []
+        for (let i = 0; i < edgeSamples; i++) {
+            const si = (off + i) * 4
+            const pXi = normPts[si + xi]!
+            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!
+            const dN = sdfPhase1[si + 3]! * invWorldScale
+            const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
+            qefAccumulatePlane(encodeEdgeHermitePlane(nXi, pXi, dN), packed)
+            planeNorms2.push([nXi, -1])
+            planePts2.push([pXi, dN])
+        }
+        const { position, qefError: edgeQef } = computeDualVertexEdge({
+            xi, yi, zi, c0: ec0, c1: ec1, qefPacked: packed, planeNorms2, planePts2,
+            cellSizeForBorder: cellSize, borderFraction: C.dualVertexBorderFraction,
+        })
+        writeV4(node.edges, e, position[0]!, position[1]!, position[2]!, position[3]!)
+        const ro = (1 + e) * 3
+        reEvalNorm[ro] = position[0]!
+        reEvalNorm[ro + 1] = position[1]!
+        reEvalNorm[ro + 2] = position[2]!
+        qefError += edgeQef
+    }
+
+    for (let f = 0; f < 6; f++) {
+        const orient = cubeFace2Orient[f]!
+        const xi = ((orient + 1) % 3) as 0 | 1 | 2
+        const yi = ((orient + 2) % 3) as 0 | 1 | 2
+        const zi = orient as 0 | 1 | 2
+        const fc0 = readV4(node.verts, cubeFace2Vert[f]![0]!)
+        const fc2 = readV4(node.verts, cubeFace2Vert[f]![2]!)
+        const off = faceOffs[f]!
+        const packed = zeroQefPacked(3)
+        const planeNorms3: [number, number, number][] = []
+        const planePts3: [number, number, number][] = []
+        for (let i = 0; i < faceSamples; i++) {
+            const si = (off + i) * 4
+            const px = normPts[si + xi]!, py = normPts[si + yi]!
+            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!
+            const dN = sdfPhase1[si + 3]! * invWorldScale
+            const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
+            const nYi = (yi === 0 ? n4x : yi === 1 ? n4y : n4z) as number
+            qefAccumulatePlane(encodeFaceHermitePlane(nXi, nYi, px, py, dN), packed)
+            planeNorms3.push([nXi, nYi, -1])
+            planePts3.push([px, py, dN])
+        }
+        const { position, qefError: faceQef } = computeDualVertexFace({
+            c0: fc0, c2: fc2, xi, yi, zi, qefPacked: packed, planeNorms3, planePts3,
+            cellSizeForBorder: cellSize, borderFraction: C.dualVertexBorderFraction,
+        })
+        writeV4(node.faces, f, position[0]!, position[1]!, position[2]!, position[3]!)
+        const ro = (1 + 12 + f) * 3
+        reEvalNorm[ro] = position[0]!
+        reEvalNorm[ro + 1] = position[1]!
+        reEvalNorm[ro + 2] = position[2]!
+        qefError += faceQef
+    }
+
+    return { qefError, reEvalNorm }
+}
+
+function applyReEvalDistances(node: IsoOctreeNode, reEvalSdf: Float32Array): void {
+    node.node[3] = reEvalSdf[3]!
+    for (let e = 0; e < 12; e++) node.edges[e * 4 + 3] = reEvalSdf[(1 + e) * 4 + 3]!
+    for (let f = 0; f < 6; f++) node.faces[f * 4 + 3] = reEvalSdf[(1 + 12 + f) * 4 + 3]!
+}
+
 export class IsoOctree {
     readonly root: IsoOctreeNode
     /** Cells that ran Hermite+QEF (`tree_cells` in reference). */
@@ -285,186 +485,35 @@ async function evalNode(
     counter: { n: number },
 ): Promise<void> {
     counter.n++
-
-    const v0 = readV4(node.verts, 0)
-    const v7 = readV4(node.verts, 7)
-    const O = C.oversampleQef
-    const nodeCount = (O + 1) ** 3
-    const edgeSamples = O + 1
-    const faceSamples = (O + 1) ** 2
-    const totalPhase1 = nodeCount + 12 * edgeSamples + 6 * faceSamples
-
-    const normPts = new Float32Array(totalPhase1 * 4)
-    let pi = 0
-
-    const nodeOff = 0
-    for (let x = 0; x <= O; x++) {
-        for (let y = 0; y <= O; y++) {
-            for (let z = 0; z <= O; z++) {
-                normPts[pi * 4] = (1 - x / O) * v0[0] + (x / O) * v7[0]
-                normPts[pi * 4 + 1] = (1 - y / O) * v0[1] + (y / O) * v7[1]
-                normPts[pi * 4 + 2] = (1 - z / O) * v0[2] + (z / O) * v7[2]
-                pi++
-            }
-        }
-    }
-
-    const edgeOffs: number[] = []
-    for (let e = 0; e < 12; e++) {
-        edgeOffs.push(pi)
-        const xi = cubeEdge2Orient[e]! as 0 | 1 | 2
-        const yi = ((xi + 1) % 3) as 0 | 1 | 2
-        const zi = ((xi + 2) % 3) as 0 | 1 | 2
-        const ec0 = readV4(node.verts, cubeEdge2Vert[e]![0]!)
-        const ec1 = readV4(node.verts, cubeEdge2Vert[e]![1]!)
-        for (let i = 0; i <= O; i++) {
-            const p4: [number, number, number] = [0, 0, 0]
-            p4[xi] = (1 - i / O) * ec0[xi] + (i / O) * ec1[xi]
-            p4[yi] = ec0[yi]
-            p4[zi] = ec0[zi]
-            normPts[pi * 4] = p4[0]!
-            normPts[pi * 4 + 1] = p4[1]!
-            normPts[pi * 4 + 2] = p4[2]!
-            pi++
-        }
-    }
-
-    const faceOffs: number[] = []
-    for (let f = 0; f < 6; f++) {
-        faceOffs.push(pi)
-        const orient = cubeFace2Orient[f]!
-        const xi = ((orient + 1) % 3) as 0 | 1 | 2
-        const yi = ((orient + 2) % 3) as 0 | 1 | 2
-        const zi = orient as 0 | 1 | 2
-        const fc0 = readV4(node.verts, cubeFace2Vert[f]![0]!)
-        const fc2 = readV4(node.verts, cubeFace2Vert[f]![2]!)
-        for (let x = 0; x <= O; x++) {
-            for (let y = 0; y <= O; y++) {
-                const p4: [number, number, number] = [0, 0, 0]
-                p4[xi] = (1 - x / O) * fc0[xi] + (x / O) * fc2[xi]
-                p4[yi] = (1 - y / O) * fc0[yi] + (y / O) * fc2[yi]
-                p4[zi] = fc0[zi]
-                normPts[pi * 4] = p4[0]!
-                normPts[pi * 4 + 1] = p4[1]!
-                normPts[pi * 4 + 2] = p4[2]!
-                pi++
-            }
-        }
-    }
-
-    const worldPhase1 = packWorldFromNorm4(normPts, totalPhase1, rootMin, rootMax)
+    const scratch = buildPhase1NormPts(node, C)
+    const worldPhase1 = packWorldFromNorm4(scratch.normPts, scratch.totalPhase1, rootMin, rootMax)
     const sdfPhase1 = await sample(worldPhase1, signal)
-
-    let qefError = 0
-    const cellMin: [number, number, number] = [v0[0], v0[1], v0[2]]
-    const cellMax: [number, number, number] = [v7[0], v7[1], v7[2]]
-    const cellSize = v7[0] - v0[0]
-
-    const reEvalNorm = new Float32Array(19 * 3)
-
     const invWorldScale = 1 / worldScale
-
-    {
-        const packed = zeroQefPacked(4)
-        const planeNorms4: [number, number, number, number][] = []
-        const planePts4: [number, number, number, number][] = []
-        for (let i = 0; i < nodeCount; i++) {
-            const si = (nodeOff + i) * 4
-            const px = normPts[si]!, py = normPts[si + 1]!, pz = normPts[si + 2]!
-            const nx = sdfPhase1[si]!, ny = sdfPhase1[si + 1]!, nz = sdfPhase1[si + 2]!
-            // Scale world-space SDF d to normalized cell coords so positions and distances share units.
-            const dN = sdfPhase1[si + 3]! * invWorldScale
-            qefAccumulatePlane(encodeCubeHermitePlane(nx, ny, nz, px, py, pz, dN), packed)
-            planeNorms4.push([nx, ny, nz, -1])
-            planePts4.push([px, py, pz, dN])
-        }
-        const { position, qefError: nodeQef } = computeDualVertexCube({
-            cellMin, cellMax, qefPacked: packed, planeNorms4, planePts4,
-            borderFraction: C.dualVertexBorderFraction,
-        })
-        node.node[0] = position[0]!
-        node.node[1] = position[1]!
-        node.node[2] = position[2]!
-        reEvalNorm[0] = position[0]!
-        reEvalNorm[1] = position[1]!
-        reEvalNorm[2] = position[2]!
-        qefError += nodeQef
-    }
-
-    for (let e = 0; e < 12; e++) {
-        const xi = cubeEdge2Orient[e]! as 0 | 1 | 2
-        const yi = ((xi + 1) % 3) as 0 | 1 | 2
-        const zi = ((xi + 2) % 3) as 0 | 1 | 2
-        const ec0 = readV4(node.verts, cubeEdge2Vert[e]![0]!)
-        const ec1 = readV4(node.verts, cubeEdge2Vert[e]![1]!)
-        const off = edgeOffs[e]!
-        const packed = zeroQefPacked(2)
-        const planeNorms2: [number, number][] = []
-        const planePts2: [number, number][] = []
-        for (let i = 0; i < edgeSamples; i++) {
-            const si = (off + i) * 4
-            const pXi = normPts[si + xi]!
-            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!
-            const dN = sdfPhase1[si + 3]! * invWorldScale
-            const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
-            qefAccumulatePlane(encodeEdgeHermitePlane(nXi, pXi, dN), packed)
-            planeNorms2.push([nXi, -1])
-            planePts2.push([pXi, dN])
-        }
-        const { position, qefError: edgeQef } = computeDualVertexEdge({
-            xi, yi, zi, c0: ec0, c1: ec1, qefPacked: packed, planeNorms2, planePts2,
-            cellSizeForBorder: cellSize, borderFraction: C.dualVertexBorderFraction,
-        })
-        writeV4(node.edges, e, position[0]!, position[1]!, position[2]!, position[3]!)
-        const ro = (1 + e) * 3
-        reEvalNorm[ro] = position[0]!
-        reEvalNorm[ro + 1] = position[1]!
-        reEvalNorm[ro + 2] = position[2]!
-        qefError += edgeQef
-    }
-
-    for (let f = 0; f < 6; f++) {
-        const orient = cubeFace2Orient[f]!
-        const xi = ((orient + 1) % 3) as 0 | 1 | 2
-        const yi = ((orient + 2) % 3) as 0 | 1 | 2
-        const zi = orient as 0 | 1 | 2
-        const fc0 = readV4(node.verts, cubeFace2Vert[f]![0]!)
-        const fc2 = readV4(node.verts, cubeFace2Vert[f]![2]!)
-        const off = faceOffs[f]!
-        const packed = zeroQefPacked(3)
-        const planeNorms3: [number, number, number][] = []
-        const planePts3: [number, number, number][] = []
-        for (let i = 0; i < faceSamples; i++) {
-            const si = (off + i) * 4
-            const px = normPts[si + xi]!, py = normPts[si + yi]!
-            const n4x = sdfPhase1[si]!, n4y = sdfPhase1[si + 1]!, n4z = sdfPhase1[si + 2]!
-            const dN = sdfPhase1[si + 3]! * invWorldScale
-            const nXi = (xi === 0 ? n4x : xi === 1 ? n4y : n4z) as number
-            const nYi = (yi === 0 ? n4x : yi === 1 ? n4y : n4z) as number
-            qefAccumulatePlane(encodeFaceHermitePlane(nXi, nYi, px, py, dN), packed)
-            planeNorms3.push([nXi, nYi, -1])
-            planePts3.push([px, py, dN])
-        }
-        const { position, qefError: faceQef } = computeDualVertexFace({
-            c0: fc0, c2: fc2, xi, yi, zi, qefPacked: packed, planeNorms3, planePts3,
-            cellSizeForBorder: cellSize, borderFraction: C.dualVertexBorderFraction,
-        })
-        writeV4(node.faces, f, position[0]!, position[1]!, position[2]!, position[3]!)
-        const ro = (1 + 12 + f) * 3
-        reEvalNorm[ro] = position[0]!
-        reEvalNorm[ro + 1] = position[1]!
-        reEvalNorm[ro + 2] = position[2]!
-        qefError += faceQef
-    }
-
+    const { qefError, reEvalNorm } = phase1SdfToReEvalNorm(node, scratch, sdfPhase1, C, invWorldScale)
     const reEvalWorld = new Float32Array(19 * 3)
     for (let i = 0; i < 19; i++) {
         normToWorld(reEvalNorm[i * 3]!, reEvalNorm[i * 3 + 1]!, reEvalNorm[i * 3 + 2]!, rootMin, rootMax, reEvalWorld, i * 3)
     }
     const reEvalSdf = await sample(reEvalWorld, signal)
-    node.node[3] = reEvalSdf[3]!
-    for (let e = 0; e < 12; e++) node.edges[e * 4 + 3] = reEvalSdf[(1 + e) * 4 + 3]!
-    for (let f = 0; f < 6; f++) node.faces[f * 4 + 3] = reEvalSdf[(1 + 12 + f) * 4 + 3]!
+    applyReEvalDistances(node, reEvalSdf)
+    await evalNodeAfterReEval(node, gradCorners, rootMin, rootMax, worldScale, C, sample, signal, counter, qefError)
+}
+
+async function evalNodeAfterReEval(
+    node: IsoOctreeNode,
+    gradCorners: Float32Array,
+    rootMin: readonly [number, number, number],
+    rootMax: readonly [number, number, number],
+    worldScale: number,
+    C: IsoOctreeRuntimeConstants,
+    sample: IsoOctreeBatchFn,
+    signal: AbortSignal | undefined,
+    counter: { n: number },
+    qefError: number,
+): Promise<void> {
+    const v0 = readV4(node.verts, 0)
+    const v7 = readV4(node.verts, 7)
+    const cellSize = v7[0] - v0[0]
 
     const minsize = 0.5 ** C.depthMax
     const maxsize = 0.5 ** C.depthMin
@@ -523,11 +572,13 @@ async function evalNode(
         }
     }
 
-    const gChild = new Float32Array(24)
-
+    const children: IsoOctreeNode[] = []
+    const gradEach: Float32Array[] = []
     for (let ci = 0; ci < 8; ci++) {
         const child = createEmptyNode()
+        children.push(child)
         node.children[ci] = child
+        const gChild = new Float32Array(24)
         const ib = indexBits(ci)
         for (let j = 0; j < 8; j++) {
             const jb = indexBits(j)
@@ -541,6 +592,72 @@ async function evalNode(
             gChild[j * 3 + 1] = g[1]!
             gChild[j * 3 + 2] = g[2]!
         }
-        await evalNode(child, gChild, rootMin, rootMax, worldScale, C, sample, signal, counter)
+        gradEach.push(gChild)
+    }
+    await evalEightChildren(children, gradEach, rootMin, rootMax, worldScale, C, sample, signal, counter)
+}
+
+async function evalEightChildren(
+    children: IsoOctreeNode[],
+    gradCornersEach: Float32Array[],
+    rootMin: readonly [number, number, number],
+    rootMax: readonly [number, number, number],
+    worldScale: number,
+    C: IsoOctreeRuntimeConstants,
+    sample: IsoOctreeBatchFn,
+    signal: AbortSignal | undefined,
+    counter: { n: number },
+): Promise<void> {
+    counter.n += 8
+    const scratches = children.map(c => buildPhase1NormPts(c, C))
+    const t1 = scratches[0]!.totalPhase1
+    for (let i = 1; i < 8; i++) {
+        if (scratches[i]!.totalPhase1 !== t1) {
+            throw new Error("iso-octree: sibling phase1 sample count mismatch (oversampleQef must match)")
+        }
+    }
+    const invWorldScale = 1 / worldScale
+
+    const bigPhase1 = new Float32Array(8 * t1 * 3)
+    for (let ci = 0; ci < 8; ci++) {
+        const w = packWorldFromNorm4(scratches[ci]!.normPts, t1, rootMin, rootMax)
+        bigPhase1.set(w, ci * t1 * 3)
+    }
+    const sdfBig = await sample(bigPhase1, signal)
+
+    const qefs: number[] = []
+    const reNorms: Float32Array[] = []
+    for (let ci = 0; ci < 8; ci++) {
+        const slice = sdfBig.subarray(ci * t1 * 4, (ci + 1) * t1 * 4)
+        const r = phase1SdfToReEvalNorm(children[ci]!, scratches[ci]!, slice, C, invWorldScale)
+        qefs.push(r.qefError)
+        reNorms.push(r.reEvalNorm)
+    }
+
+    const bigReEval = new Float32Array(8 * 19 * 3)
+    for (let ci = 0; ci < 8; ci++) {
+        const rn = reNorms[ci]!
+        const base = ci * 19 * 3
+        for (let i = 0; i < 19; i++) {
+            normToWorld(rn[i * 3]!, rn[i * 3 + 1]!, rn[i * 3 + 2]!, rootMin, rootMax, bigReEval, base + i * 3)
+        }
+    }
+    const sdfRe = await sample(bigReEval, signal)
+
+    for (let ci = 0; ci < 8; ci++) {
+        const reSlice = sdfRe.subarray(ci * 19 * 4, (ci + 1) * 19 * 4)
+        applyReEvalDistances(children[ci]!, reSlice)
+        await evalNodeAfterReEval(
+            children[ci]!,
+            gradCornersEach[ci]!,
+            rootMin,
+            rootMax,
+            worldScale,
+            C,
+            sample,
+            signal,
+            counter,
+            qefs[ci]!,
+        )
     }
 }

@@ -120,6 +120,10 @@ test("IsoSampleBatch vs GridSampler (1×1×1) parity on sphere scene", async (t)
 
     const batchResult = await batcher.run(batchModule, points)
 
+    const points2 = new Float32Array([0, 1, 2, 5, 5, 5])
+    const batchResult2 = await batcher.run(batchModule, points2)
+    assert.equal(batchResult2.sampleCount, 2)
+
     const tolD = 5e-4
     const tolN = 5e-4
 
@@ -148,6 +152,33 @@ test("IsoSampleBatch vs GridSampler (1×1×1) parity on sphere scene", async (t)
             )
         }
     }
+
+    for (let i = 0; i < points2.length / 3; i++) {
+        const px = points2[i * 3]!
+        const py = points2[i * 3 + 1]!
+        const pz = points2[i * 3 + 2]!
+        const grid = await gridSampler.sample(gridModule, {
+            gridDimX: 1,
+            gridDimY: 1,
+            gridDimZ: 1,
+            voxelSize: 1,
+            gridOffsetX: px,
+            gridOffsetY: py,
+            gridOffsetZ: pz,
+        })
+        const bi = i * 4
+        const dBatch = batchResult2.sdf[bi + 3]!
+        const dGrid = grid.scalar[0]!
+        assert.ok(Math.abs(dBatch - dGrid) < tolD, `second-run d mismatch i=${i}`)
+        for (let c = 0; c < 3; c++) {
+            assert.ok(
+                Math.abs(batchResult2.sdf[bi + c]! - grid.gradient[c]!) < tolN,
+                `second-run n[${c}] i=${i}`,
+            )
+        }
+    }
+
+    batcher.destroy()
 
     polygonVerticesBuffer.destroy()
     faceSelectionBuffer.destroy()

@@ -99,7 +99,7 @@ const REPO_ROOT_FOR_HTTP = path.resolve(path.dirname(fileURLToPath(import.meta.u
 
 /** POST JSON body only. */
 const AGENT_RENDER_ROOT = "/_agent/render"
-/** GET testcase file: path after this prefix is relative to `./test/testcases/` (e.g. `meshing/foo.json`). */
+/** GET testcase file: path after this prefix is relative to `./test/testcases/` (e.g. `meshing/foo.yaml`). */
 const AGENT_RENDER_TESTCASE_PREFIX = "/_agent/render/testcase"
 
 function isAgentRenderPathname(pathname: string): boolean {

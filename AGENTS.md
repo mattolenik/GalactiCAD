@@ -144,13 +144,24 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 **Do not run build or lint commands on WGSL files directly.** WGSL files will be compiled with `make build` by the custom build logic. This means when making changes to WGSL files, you should run `make build` to validate them. If they don't compile, you will see the compiler error in `make build`. This custom build logic is what handles the `//:) include` directive, meaning this shader compiler output is indicative of what happens at runtime.
 
-### Devserver logs endpoint (optional browser console)
+### Devserver HTTP (logs, scene source, agent render)
 
-When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`** at `http://localhost:<port>/_logs` and **`GET /_sceneSource`** at `http://localhost:<port>/_sceneSource` (active editor tab’s scene source as `text/plain`). **Read `<port>` from `.devserver.run`** (JSON `port` field) when the server starts; if that file is absent, the devserver is not running and there is **no** default port to use for these routes. The recorded port may differ from the configured default if the listen port was already in use.
+When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`**, **`GET /_sceneSource`**, and **agent automation** routes. **Read `<port>` from `.devserver.run`** (JSON `port` field); if that file is absent, the devserver is not running and there is **no** default port. The recorded port may differ from the configured default if the listen port was already in use.
 
-For **`/_sceneSource`**: response is the current Monaco document value; **200 with empty body** if no browser is connected, the bridge times out, the getter throws, or there is no active model (e.g. welcome-only state). No query parameters.
+**WebSocket bridge:** log, scene-source, testcase capture, and render RPCs are delivered to the **first connected browser client** in OPEN state (not broadcast to every tab). Prefer a single connected tab for automation.
 
-The same origin also exposes **agent automation** endpoints (`GET /_agent/capture-testcase`, `GET /_agent/render/testcase/…`, `POST /_agent/render`) that require a **connected Chromium tab** (WebGPU + WebSocket bridge). See [`.agents/skills/devserver-logs/SKILL.md`](.agents/skills/devserver-logs/SKILL.md). Optional **`make serve-agent`** / **`make start-agent`** use **`.devserver.agent.run`**.
+- **`GET /_logs`** — `http://localhost:<port>/_logs` (query parameters below).
+- **`GET /_sceneSource`** — active editor tab’s scene source as `text/plain`. **200 with empty body** if no browser is connected, the bridge times out, the getter throws, or there is no active model (e.g. welcome-only). No query parameters.
+
+**Agent automation** (WebGPU in the browser; see [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) for curl examples and workflow):
+
+- **`GET /_agent/capture-testcase`** — returns **`application/x-yaml`**: current session as an agent testcase (`schemaVersion`, multiline **`source`**, camera, viewport, `meshExport`, optional fields). **`503`** if no browser / timeout / capture failure.
+- **`GET /_agent/render/testcase/<relative>`** — `<relative>` is a path under **`./test/testcases/`** (e.g. `meshing/polygon-twisted.yaml`). Server reads YAML, builds **`AgentRenderRequest`** via **`mergeAgentRenderRequest`** (does **not** put testcase `documentName` on the wire payload, so replay is not tied to the active tab name). Query: optional **`mode=sdf|mesh`**, **`viewportWidth`**, **`viewportHeight`**, **`label`**, **`role`**. Wrong path (e.g. bare **`GET /_agent/render`**) → **400** with a short hint. Missing file → **404** with relative path and resolved path in the body.
+- **`POST /_agent/render`** — **only** at exactly **`/_agent/render`**. JSON body: **`AgentRenderRequest`** (`mode`, `sourceBase64`, `camera`, `viewCenter`, `resolutionScale`, `viewportWidth`, `viewportHeight`, `meshExport`, optional `previewUvRect`, optional `documentName`) plus optional **`label`**, **`role`**, **`testcase`** (relative under `test/testcases/` for suggested download basename only; stripped before dispatch).
+
+Successful PNG responses set **`Content-Disposition`** (suggested filename **`<basename>-<mode>.png`**) and **`Access-Control-Expose-Headers: Content-Disposition`** so **`curl -OJ`** can save with the right name. **`400`** / **`503`** on failure return **plain text** (browser pipeline error vs no bridge / timeout). Server also mirrors successful PNGs under **`.agents/imagelog/`**.
+
+Optional **`make serve-agent`** / **`make start-agent`** use **`.devserver.agent.run`**.
 
 - **Response format**: `text/plain; charset=utf-8`, one log line per line: the **exact** in-browser buffer lines (including `[timestamp] [level]` and the rest), newline-joined with no server-side rewriting. If no browser tab is connected, bridge times out, or nothing matches filters, response is **200 with empty body**.
 - **`level`**: optional single threshold among `error`, `warning`, `info`, `debug` (case-insensitive). Cumulative: `error` → errors only; `warning` → errors and warnings; `info` → errors, warnings, and info; `debug` → all four. Default when `level` is missing, empty, or not recognized: **`info`** (errors, warnings, and info—no debug). URL token `warning` maps to the internal warn bucket.
@@ -164,7 +175,7 @@ The same origin also exposes **agent automation** endpoints (`GET /_agent/captur
 1. Prefer **`make build`** for compile-time WGSL and bundling errors after shader edits.
 2. If **`.devserver.run`** exists with a `port`, use shell `curl` against `http://localhost:<port>/_logs` (default response uses **`level=info`** semantics; add `level=debug` or `only=…` only when you need a different mix; omit `n` unless asked). Use `http://localhost:<port>/_sceneSource` to dump the active tab’s scene source as plain text.
 3. If `.devserver.run` is **missing** (devserver not running), **do nothing**; do not guess a port or fail the task for missing runtime logs.
-4. See [`.agents/skills/devserver-logs/SKILL.md`](.agents/skills/devserver-logs/SKILL.md) for the standard runtime-log and `/_sceneSource` check flow.
+4. See [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) for the standard runtime-log, `/_sceneSource`, and agent render check flow.
 
 ## Performance regression triage
 

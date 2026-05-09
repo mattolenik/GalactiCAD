@@ -565,6 +565,15 @@ const MDC_INFER_LINE_MIN_BUCKET_SAMPLES: u32 = 2u;
 const MDC_INFER_LINE_BUCKET_COHERENCE: f32 = 0.95;
 const MDC_CORNER_FEATURE_PROX_SCALE: f32 = 1.35;
 const MDC_CORNER_PROBE_PROX_SCALE: f32 = 1.9;
+/** Cell-interior LINE probe acceptance: a probe sampled at the 2-plane
+ * intersection passes if the SDF reports a LINE feature within voxelSize ×
+ * this scale of the probe point. The probe sits in the cube interior (the
+ * QEF intersection of the two face buckets), not on the surface — its
+ * distance to the analytic line locus is the cube-diagonal-scale cell radius
+ * plus whatever 2D offset the polygon vertex gives, so the threshold has to
+ * cover roughly one full voxel diagonal (~1.73). Up to 3.0 to be safe with
+ * twisted edges where the polygon vertex curves in 3D. */
+const MDC_LINE_PROBE_PROX_SCALE: f32 = 3.0;
 // Rings (closed circular creases) deserve a more permissive proximity threshold
 // than straight LINE creases: every cell that touches the ring should pick it
 // up, otherwise neighbors that miss it fall back to the inferred-LINE path and
@@ -1285,6 +1294,61 @@ fn edgeDetection_Pass3(
             }
         }
 
+        // LINE probe: when no Hermite sample on a cube edge classified as LINE
+        // (e.g. a helical sharp edge from a twisted polygon threads diagonally
+        // across the cube interior without crossing a cube edge near a polygon
+        // vertex, so the polygon-vertex test in `Extrude.compileMid` never
+        // fires), pick the closest point on the *2-plane intersection* of the
+        // two face buckets to the cell mass point — that's where the sharp
+        // edge would live if the Hermite samples are correct — Newton-step
+        // to the surface, then ask `sceneSDF_mid` whether the probe sits on a
+        // LINE feature locus. Captures helical edges from `twist`, arc creases
+        // from `bend`, and any other operator-induced curved edge in cells
+        // that the cube-edge Hermite sampling missed. Operator-agnostic:
+        // we don't ask what kind of curve; we trust the SDF's local LINE
+        // classification at the probe.
+        //
+        // Requires bucketCount >= 2: with only one face bucket we can't form
+        // an intersection line, and the cell-center / mass-point would just
+        // sit on the smooth face and report no feature.
+        if (
+            explicitLineDist[c] >= 1e8 &&
+            explicitCornerDist[c] >= 1e8 &&
+            explicitRingDist[c] >= 1e8 &&
+            bucketCount >= 2u &&
+            dot(n0, n1) < MDC_INFER_LINE_DOT_MAX
+        ) {
+            // Sample directly at the 2-plane intersection — that's geometrically
+            // where the sharp edge lives in this cell. Newton-stepping to the
+            // surface from here would push the probe perpendicular to ∇SDF
+            // toward whichever face is nearest, which on a curved sharp edge
+            // (helix, arc) lands on a side face — not on the line — and the
+            // operator-level LINE classifier (e.g. `Extrude.compileMid`'s
+            // polygon-vertex `tt < 1e-4` test) wouldn't fire there.
+            let probePos = clamp(solveFeaturePoint(n0, p0, n1, p1, vec3f(0.0), vec3f(0.0), 2u), cellMin, cellMax);
+            let probeSdf = sceneSDF_mid(probePos);
+            let probeLineOk =
+                probeSdf.featureKind == MID_FEATURE_LINE &&
+                probeSdf.featureIdA != 0u &&
+                probeSdf.featureNormalCount == 2u &&
+                probeSdf.featureDist <= uniforms.voxelSize * MDC_LINE_PROBE_PROX_SCALE;
+            if (probeLineOk) {
+                explicitLineDist[c] = probeSdf.featureDist;
+                explicitLineFeature[c] = ComponentFeature(
+                    MID_FEATURE_LINE,
+                    probeSdf.featureIdA,
+                    probeSdf.featureIdB,
+                    probeSdf.featureNormalCount,
+                    probeSdf.featurePoint,
+                    probeSdf.featureTangent,
+                    probeSdf.n,
+                    probeSdf.featureN1,
+                    vec3f(0.0),
+                    vec3f(0.0),
+                );
+            }
+        }
+
         let seamEligible =
             pairCount >= 2u &&
             compOwnerPair0[c].x == compOwnerPair0[c].y &&
@@ -1443,14 +1507,26 @@ fn edgeDetection_Pass3(
         if (compCrossCount[c] == 0u) { continue; }
         let feature = inferredFeatures[c];
         if (featureConstraintsEnabled && feature.kind == MID_FEATURE_LINE && explicitLineDist[c] < 1e8) {
+            // Measure the projection gap with the same curve-following iteration
+            // that Phase 3 will use. Crossings whose own local sample classifies
+            // as LINE land on the curve and contribute zero gap; crossings whose
+            // sample falls off the LINE feature locus return `intersectionPos`
+            // unchanged and likewise contribute zero gap. Cells where every
+            // crossing fails to attach to the curve still see the projection
+            // disabled (so the soft feature-plane bias takes over), but cells
+            // whose crossings *can* attach are no longer mis-rejected because
+            // the static tangent line was a poor approximation of the curve.
             var maxLineGap = 0.0;
+            var refinedAny = false;
             for (var e = 0u; e < 12u; e = e + 1u) {
                 if (edgeCrossMask[e] == 0u) { continue; }
                 if (edgeComponent[e] != i32(c)) { continue; }
-                let onLine = mdcClosestPointOnLineFeature(feature, crossingPos[e]);
-                maxLineGap = max(maxLineGap, length(crossingPos[e] - onLine));
+                let onCurve = mdcLineFeatureFollow(crossingPos[e]);
+                let gap = length(crossingPos[e] - onCurve);
+                if (gap > 0.0) { refinedAny = true; }
+                maxLineGap = max(maxLineGap, gap);
             }
-            lineQefProjection[c] = maxLineGap <= uniforms.voxelSize * MDC_LINE_QEF_PROJECT_SCALE;
+            lineQefProjection[c] = refinedAny && maxLineGap <= uniforms.voxelSize * MDC_LINE_QEF_PROJECT_SCALE;
         }
         if (!(featureConstraintsEnabled && feature.kind == MID_FEATURE_RING && explicitRingDist[c] < 1e8)) {
             continue;
@@ -1500,19 +1576,26 @@ fn edgeDetection_Pass3(
         subQefs[c][s].numPoints = subQefs[c][s].numPoints + 1u;
     }
 
-    // For inferred (non-explicit) features only, keep the soft feature-plane bias.
-    // Explicit features no longer need it since Phase 3 already projected the
-    // crossings onto the locus. Bias is applied to every populated subcomponent
-    // so the eventual sub-vertex solve is nudged toward the inferred locus.
+    // For inferred (non-explicit) features the soft feature-plane bias nudges
+    // the QEF toward the inferred locus. We *also* apply it to explicit-LINE
+    // cells where Phase 3 projection was disabled (gap test failed): without
+    // it those cells get no curve constraint at all and the QEF wanders into
+    // visible chips along curved sharp edges (helices from twist, arcs from
+    // bend, etc.). For explicit cells where projection ran (or for
+    // CORNER/SEAM where projection is unconditional), the locus is already
+    // baked into the projected crossings and the soft bias is redundant.
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         if (compCrossCount[c] == 0u) { continue; }
         let feature = inferredFeatures[c];
         let isExplicitLine = featureConstraintsEnabled && (feature.kind == MID_FEATURE_LINE) && (explicitLineDist[c] < 1e8);
         let isExplicitCorner = featureConstraintsEnabled && (feature.kind == MID_FEATURE_CORNER) && (explicitCornerDist[c] < 1e8);
         let isExplicitSeam = featureConstraintsEnabled && (feature.kind == MID_FEATURE_BOOLEAN_SEAM) && (explicitSeamDist[c] < 1e8);
+        // LINE cells need the bias whenever projection didn't run, regardless
+        // of whether the cell was inferred-only or explicit-LINE-but-gap-failed.
+        let lineNeedsBias = (feature.kind == MID_FEATURE_LINE) && !lineQefProjection[c];
         for (var s = 0u; s < MAX_SUBCOMPONENTS_PER_COMPONENT; s = s + 1u) {
             if (subQefs[c][s].numPoints == 0u) { continue; }
-            if (feature.kind == MID_FEATURE_LINE && !isExplicitLine) {
+            if (lineNeedsBias) {
                 mdcQefAddPlane(&subQefs[c][s], feature.n0, compPlanePoint0[c], MDC_FEATURE_PLANE_WEIGHT);
                 mdcQefAddPlane(&subQefs[c][s], feature.n1, compPlanePoint1[c], MDC_FEATURE_PLANE_WEIGHT);
                 atomicAdd(&debugSkipCounters[13], 2u);

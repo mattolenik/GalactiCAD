@@ -243,9 +243,16 @@ export class SceneInfo {
 
     add(node: Node) {
         if (this.#nodes.hasValue(node)) return
-        const id = this.#nodes.size
+        // 1-indexed: ID 0 is reserved as the "no owner" / "no selection" sentinel
+        // throughout the SDF pipeline (e.g. `featureIdA == 0` means "unset" in
+        // `sdfMidSetOwner` and the MDC `explicitIdsValid` gate; preview's
+        // `faceSelection.nodeId == 0` means "no face selection"). Assigning the
+        // first scene node `id == 0` previously caused its owner-stamped LINE
+        // feature payloads to be rejected as malformed, defeating MDC's curve
+        // projection on scenes whose root is a single primitive.
+        const id = this.#nodes.size + 1
         if (id > MAX_SCENE_NODE_ID) {
-            throw new Error(`Scene has too many nodes (max ${MAX_SCENE_NODE_ID + 1})`)
+            throw new Error(`Scene has too many nodes (max ${MAX_SCENE_NODE_ID})`)
         }
         node.id = id
         this.#nodes.set(node.id, node)

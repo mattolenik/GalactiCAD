@@ -12,6 +12,8 @@ import {
     normalizeAgentTestcaseFromBridge,
     parseAgentTestcaseYaml,
     serializeAgentTestcaseYaml,
+    type AgentMeshOverlay,
+    type AgentRenderMode,
     type AgentRenderRequest,
     type AgentTestcase,
 } from "../src/agent-autotest/agent-testcase.mjs"
@@ -225,11 +227,62 @@ const REPO_ROOT_FOR_HTTP = path.resolve(path.dirname(fileURLToPath(import.meta.u
 
 /** POST JSON body only. */
 const AGENT_RENDER_ROOT = "/_agent/render"
+/** POST inline testcase YAML (e.g. pipe `GET /_agent/capture-testcase` from the interactive devserver). */
+const AGENT_RENDER_TESTCASE_BODY = "/_agent/render/testcase-body"
 /** GET testcase file: path after this prefix is relative to `./test/testcases/` (e.g. `meshing/foo.yaml`). */
 const AGENT_RENDER_TESTCASE_PREFIX = "/_agent/render/testcase"
 
 function isAgentRenderPathname(pathname: string): boolean {
-    return pathname === AGENT_RENDER_ROOT || pathname === AGENT_RENDER_TESTCASE_PREFIX || pathname.startsWith(`${AGENT_RENDER_TESTCASE_PREFIX}/`)
+    return (
+        pathname === AGENT_RENDER_ROOT ||
+        pathname === AGENT_RENDER_TESTCASE_BODY ||
+        pathname === AGENT_RENDER_TESTCASE_PREFIX ||
+        pathname.startsWith(`${AGENT_RENDER_TESTCASE_PREFIX}/`)
+    )
+}
+
+/** Shared query params for GET file render and POST `testcase-body` (mode, viewport, mesh overlays). */
+function agentRenderQueryOverrides(url: URL): {
+    mode?: AgentRenderMode
+    viewportWidth?: number
+    viewportHeight?: number
+    meshOverlay?: AgentMeshOverlay
+} {
+    const modeQ = url.searchParams.get("mode")
+    const mode: AgentRenderMode | undefined = modeQ === "mesh" || modeQ === "sdf" ? modeQ : undefined
+    const vw = url.searchParams.get("viewportWidth")
+    const vh = url.searchParams.get("viewportHeight")
+    const vwn = vw !== null && vw !== "" ? Number(vw) : undefined
+    const vhn = vh !== null && vh !== "" ? Number(vh) : undefined
+    const flag = (key: string): boolean => {
+        const v = url.searchParams.get(key)
+        if (v === null) return false
+        const lower = v.trim().toLowerCase()
+        return lower === "1" || lower === "true" || lower === "yes" || lower === "on"
+    }
+    const meshOverlay = (() => {
+        const debugPoints = flag("debugPoints") || flag("mdcDebugPoints")
+        const fgLine = flag("glyphLine") || flag("featureGlyphs.line")
+        const fgCorner = flag("glyphCorner") || flag("featureGlyphs.corner")
+        const fgSeam = flag("glyphSeam") || flag("featureGlyphs.seam")
+        const fgRing = flag("glyphRing") || flag("featureGlyphs.ring")
+        const cellVerts = flag("cellVertices") || flag("mdcCellVertices")
+        const qefPlanes = flag("qefPlanes") || flag("mdcQefPlanes")
+        const any = debugPoints || fgLine || fgCorner || fgSeam || fgRing || cellVerts || qefPlanes
+        if (!any) return undefined
+        return {
+            mdcDebugPoints: debugPoints,
+            featureGlyphs: { line: fgLine, corner: fgCorner, seam: fgSeam, ring: fgRing },
+            mdcCellVertices: cellVerts,
+            mdcQefPlanes: qefPlanes,
+        }
+    })()
+    return {
+        ...(mode !== undefined ? { mode } : {}),
+        ...(Number.isFinite(vwn) ? { viewportWidth: vwn } : {}),
+        ...(Number.isFinite(vhn) ? { viewportHeight: vhn } : {}),
+        ...(meshOverlay !== undefined ? { meshOverlay } : {}),
+    }
 }
 
 /**
@@ -764,7 +817,7 @@ export class DevServer {
             await fs.writeFile(options.runFile, JSON.stringify(payload, null, 2))
         }
         log(
-            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET|POST /_agent/render (GET testcase: /_agent/render/testcase/<path-under-test-testcases>?mode=…)`,
+            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET|POST /_agent/render (JSON); POST /_agent/render/testcase-body (YAML); GET testcase: /_agent/render/testcase/<path-under-test-testcases>?mode=…`,
         )
         return instance
     }
@@ -929,6 +982,45 @@ function createHttpServer(
         }
 
         if (isAgentRenderPathname(pathname)) {
+            if (pathname === AGENT_RENDER_TESTCASE_BODY) {
+                if (req.method !== "POST") {
+                    res.writeHead(405, {
+                        "content-type": "text/plain; charset=utf-8",
+                        Allow: "POST",
+                        "Access-Control-Allow-Origin": "*",
+                    })
+                    res.end("POST only: send agent testcase YAML as the body (same schema as GET /_agent/capture-testcase)")
+                    return
+                }
+                const rawYaml = await readHttpBody(req)
+                if (rawYaml.trim() === "") {
+                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end("empty body: expected agent testcase YAML")
+                    return
+                }
+                let tc: AgentTestcase
+                try {
+                    tc = parseAgentTestcaseYaml(rawYaml)
+                } catch (e) {
+                    const msg = e instanceof Error ? e.message : String(e)
+                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end(`invalid testcase YAML: ${msg}`)
+                    return
+                }
+                let payload: AgentRenderRequest
+                try {
+                    payload = mergeAgentRenderRequest(tc, agentRenderQueryOverrides(url))
+                } catch (e) {
+                    const msg = e instanceof Error ? e.message : String(e)
+                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end(msg)
+                    return
+                }
+                const label = url.searchParams.get("label")?.trim() || "mirror-capture"
+                const role = url.searchParams.get("role")?.trim() || payload.mode
+                await respondAgentRenderPng(bridge, repoRoot, payload, label, role, "render", res, err)
+                return
+            }
             if (req.method === "POST") {
                 if (pathname !== AGENT_RENDER_ROOT) {
                     res.writeHead(405, {
@@ -936,7 +1028,7 @@ function createHttpServer(
                         Allow: "GET",
                         "Access-Control-Allow-Origin": "*",
                     })
-                    res.end("POST is only accepted at /_agent/render")
+                    res.end("POST JSON only at /_agent/render; POST YAML at /_agent/render/testcase-body")
                     return
                 }
                 const raw = await readHttpBody(req)
@@ -975,6 +1067,14 @@ function createHttpServer(
                         )
                         return
                     }
+                    if (pathname === AGENT_RENDER_TESTCASE_BODY) {
+                        res.writeHead(400, {
+                            "content-type": "text/plain; charset=utf-8",
+                            "Access-Control-Allow-Origin": "*",
+                        })
+                        res.end("POST only: same URL with agent testcase YAML in the body (mirror capture from interactive devserver)")
+                        return
+                    }
                     res.writeHead(400, {
                         "content-type": "text/plain; charset=utf-8",
                         "Access-Control-Allow-Origin": "*",
@@ -1010,47 +1110,9 @@ function createHttpServer(
                     res.end(`invalid testcase YAML: ${msg}`)
                     return
                 }
-                const modeQ = url.searchParams.get("mode")
-                const mode = modeQ === "mesh" || modeQ === "sdf" ? modeQ : undefined
-                const vw = url.searchParams.get("viewportWidth")
-                const vh = url.searchParams.get("viewportHeight")
-                const vwn = vw !== null && vw !== "" ? Number(vw) : undefined
-                const vhn = vh !== null && vh !== "" ? Number(vh) : undefined
-                // Mesh-overlay query flags. Each toggle is enabled by `=1` /
-                // `=true` and silently ignored otherwise; missing flags default
-                // to off so existing testcase URLs keep producing clean meshes.
-                // Documented in `.agents/skills/devserver/SKILL.md`.
-                const flag = (key: string): boolean => {
-                    const v = url.searchParams.get(key)
-                    if (v === null) return false
-                    const lower = v.trim().toLowerCase()
-                    return lower === "1" || lower === "true" || lower === "yes" || lower === "on"
-                }
-                const meshOverlay = (() => {
-                    const debugPoints = flag("debugPoints") || flag("mdcDebugPoints")
-                    const fgLine = flag("glyphLine") || flag("featureGlyphs.line")
-                    const fgCorner = flag("glyphCorner") || flag("featureGlyphs.corner")
-                    const fgSeam = flag("glyphSeam") || flag("featureGlyphs.seam")
-                    const fgRing = flag("glyphRing") || flag("featureGlyphs.ring")
-                    const cellVerts = flag("cellVertices") || flag("mdcCellVertices")
-                    const qefPlanes = flag("qefPlanes") || flag("mdcQefPlanes")
-                    const any = debugPoints || fgLine || fgCorner || fgSeam || fgRing || cellVerts || qefPlanes
-                    if (!any) return undefined
-                    return {
-                        mdcDebugPoints: debugPoints,
-                        featureGlyphs: { line: fgLine, corner: fgCorner, seam: fgSeam, ring: fgRing },
-                        mdcCellVertices: cellVerts,
-                        mdcQefPlanes: qefPlanes,
-                    }
-                })()
                 let payload: AgentRenderRequest
                 try {
-                    payload = mergeAgentRenderRequest(tc, {
-                        mode,
-                        ...(Number.isFinite(vwn) ? { viewportWidth: vwn } : {}),
-                        ...(Number.isFinite(vhn) ? { viewportHeight: vhn } : {}),
-                        ...(meshOverlay !== undefined ? { meshOverlay } : {}),
-                    })
+                    payload = mergeAgentRenderRequest(tc, agentRenderQueryOverrides(url))
                 } catch (e) {
                     const msg = e instanceof Error ? e.message : String(e)
                     res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })

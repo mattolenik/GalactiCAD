@@ -75,7 +75,11 @@ import {
     log as debugLog,
 } from "./logging/debug-log.mjs"
 import { VERSION } from "./version.mjs"
-import { buildAgentTestcase, type AgentTestcase } from "./agent-autotest/agent-testcase.mjs"
+import {
+    agentMeshOverlayFromSettingsMeshViewer,
+    buildAgentTestcase,
+    type AgentTestcase,
+} from "./agent-autotest/agent-testcase.mjs"
 import { registerAgentTestcaseCapture } from "./agent-autotest/register-agent-testcase-capture.mjs"
 import { registerAgentRenderBridge } from "./agent-autotest/register-agent-render-bridge.mjs"
 
@@ -1608,6 +1612,7 @@ class App {
             viewportHeight: rs.height,
             previewUvRect,
             meshExport: this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools),
+            meshOverlay: agentMeshOverlayFromSettingsMeshViewer(this.#settings.getGlobal().meshViewer),
             documentName: active,
         })
     }

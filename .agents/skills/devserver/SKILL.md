@@ -1,6 +1,6 @@
 ---
 name: devserver
-description: "Local devserver: GET /_logs, GET /_sceneSource, and agent automation via curl; WebSocket bridge to Chromium (WebGPU). Cursor agents: always make start-agent + .devserver.agent.run — do not launch Chromium yourself."
+description: "Local devserver: GET /_logs, GET /_sceneSource, agent render (JSON, YAML testcase-body, GET testcase file), WebSocket bridge. Mirror interactive session via .devserver.run capture + .devserver.agent.run render. make start-agent — do not launch Chromium yourself."
 ---
 
 # Devserver HTTP / WebSocket bridge
@@ -9,13 +9,14 @@ Use this skill for **runtime log signal**, a **plain-text dump of the active CAD
 
 ## Cursor agents (read first)
 
-- **Always use the agent devserver:** run **`make start-agent`** from the repo root when you need **`/_logs`**, **`/_sceneSource`**, or **`/_agent/*`**. It is the **idempotent** project entry point for that stack (same target can be invoked whenever you need the server up per Makefile conventions).
+- **Default for automation:** run **`make start-agent`** when you need **`/_logs`**, **`/_sceneSource`**, **`/_agent/*`**, or a **self-contained** headless render. Read **`port`** from **`.devserver.agent.run`**.
+- **Mirroring a human’s interactive tab** ( **`make serve`** / **`make start`** ): that browser talks to **`.devserver.run`**. To copy their scene + camera + export + mesh debug overlays into the agent stack, use **two ports** — capture from **`.devserver.run`**, render on **`.devserver.agent.run`** (see **Mirror interactive → agent** below).
 - **Port:** read **`port`** from **`.devserver.agent.run`** only: `jq -r .port .devserver.agent.run`. If the file is missing after **`make start-agent`**, the agent HTTP bridge is unavailable — **do not guess a port**.
 - **Do not** launch Chromium, Chrome, **`open`**, or **`.agents/scripts/agent-open-chromium.sh`** yourself. The **`AGENT=true`** devserver starts **headless** Chromium for the WebSocket bridge.
 - **Test images on disk:** When saving PNGs or similar into the repo yourself (not relying on the server’s **`.agents/imagelog/`** mirror), use **`.agents/testimages/`** — do not drop files loose under **`.agents/`** root.
 - **Logs:** **`.devserver.agent.log`** (tail with **`make logs-agent`**). **Stop:** **`make stop-agent`**.
 
-**Humans / interactive sessions** may use **`make serve`** / **`make start`** and **`.devserver.run`** instead; automated agents should still prefer **`make start-agent`** so the headless browser and run file stay aligned.
+**Humans / interactive sessions** use **`make serve`** / **`make start`** and **`.devserver.run`**. Use that port for **`/_sceneSource`** and **`/_agent/capture-testcase`** when the goal is “what the user sees right now.” Use **`make start-agent`** and **`.devserver.agent.run`** for headless **`/_agent/render`** and for **`/_logs`** after those renders (the interactive tab does not receive agent render RPCs).
 
 ## When to use
 
@@ -35,7 +36,7 @@ Use this skill for **runtime log signal**, a **plain-text dump of the active CAD
 - **Logs file:** **`.devserver.agent.log`** ( **`make logs-agent`** ).
 - **Stop:** **`make stop-agent`**.
 
-Cursor agents should use this stack exclusively (see **Cursor agents** above).
+Cursor agents use **`.devserver.agent.run`** for **`/_agent/render`** and for **`/_logs`** after a headless render; use **`.devserver.run`** only when you need to **read** the human’s interactive tab (**`/_sceneSource`**, **`/_agent/capture-testcase`**). See **Mirror interactive → agent** above.
 
 ---
 
@@ -96,7 +97,7 @@ Example:
 
 `curl -sS "http://localhost:${port}/_agent/capture-testcase" -o testcase.yaml`
 
-**Testcase format (disk / capture):** Root mapping with `schemaVersion: 1`, multiline string **`source`** (scene body UTF‑8, e.g. `.gcad`), `camera`, `viewCenter`, `resolutionScale`, `viewportWidth`, `viewportHeight`, optional `previewUvRect`, `meshExport`, optional `documentName` (provenance only). Implementation: `src/agent-autotest/agent-testcase.mts` (`parseAgentTestcaseYaml`, `serializeAgentTestcaseYaml`, `AgentRenderRequest`).
+**Testcase format (disk / capture):** Root mapping with `schemaVersion: 1`, multiline string **`source`** (scene body UTF‑8, e.g. `.gcad`), `camera`, `viewCenter`, `resolutionScale`, `viewportWidth`, `viewportHeight`, optional `previewUvRect`, `meshExport`, optional **`meshOverlay`** (mesh-viewer debug toggles when any are on), optional `documentName` (provenance only). Implementation: `src/agent-autotest/agent-testcase.mts` (`parseAgentTestcaseYaml`, `serializeAgentTestcaseYaml`, `AgentRenderRequest`).
 
 ---
 
@@ -127,7 +128,30 @@ Example:
 - **File:** Read as UTF‑8 YAML; parsed with **`parseAgentTestcaseYaml`**. Prefer **`.yaml`** fixtures.
 - **Query:** Optional **`mode=sdf|mesh`** (default **`sdf`** when omitted or invalid). Optional **`viewportWidth`**, **`viewportHeight`** (numbers; **override** the testcase YAML—**omit** for faithful replay unless the user asks for a different size). Optional **`label`**, **`role`** for imagelog (defaults derived from filename / mode).
 - **Mesh-overlay query flags** (`mode=mesh` only; each accepts `1` / `true` / `yes` / `on`, otherwise off): **`debugPoints`** (raw per-edge sample squares), **`glyphLine`** / **`glyphCorner`** / **`glyphSeam`** / **`glyphRing`** (per-class feature glyphs), **`cellVertices`** (per-cell-component vertex markers, MDC QEF debug), **`qefPlanes`** (per-(cell, component) QEF input plane normals as short blue sticks). Each flag also accepts the dotted alias matching the API field (`mdcDebugPoints`, `featureGlyphs.line` … `mdcCellVertices`, `mdcQefPlanes`). Overlays default to off so existing testcase URLs keep producing clean meshes; the overlay 2D canvas is composited into the captured PNG.
-- **Merged request:** **`parseAgentTestcaseYaml`** then **`mergeAgentRenderRequest`** builds the `AgentRenderRequest` (base64 from testcase `source`; does not inject testcase `documentName` into the wire payload).
+- **Merged request:** **`parseAgentTestcaseYaml`** then **`mergeAgentRenderRequest`** builds the `AgentRenderRequest` (base64 from testcase `source`; does not inject testcase `documentName` into the wire payload). If the testcase YAML includes **`meshOverlay`**, it is used for **`mode=mesh`** unless query flags supply a replacement overlay (any overlay query flag present still wins and replaces the whole overlay, same as before).
+
+### `POST /_agent/render/testcase-body`
+
+- **Purpose:** Feed **inline testcase YAML** (same schema as **`GET /_agent/capture-testcase`**) without saving under **`test/testcases/`** and without building JSON **`sourceBase64`** yourself. Use this to **pipe** a capture from the interactive devserver into the agent devserver.
+- **Route:** **`POST`** only at exactly **`/_agent/render/testcase-body`**. **Body:** raw UTF‑8 YAML ( **`Content-Type`** may be anything; the server reads the body as text).
+- **Query:** Same as GET testcase render: **`mode=sdf|mesh`**, optional **`viewportWidth`**, **`viewportHeight`**, optional **`label`**, **`role`**, and the same **mesh-overlay flags** as **`GET /_agent/render/testcase/...`** when you want to override captured overlays.
+- **Responses / errors:** Same success / **`400`** / **`503`** behavior as other agent render routes.
+
+Example — mirror the user’s session on the agent stack (read both ports from the run files):
+
+```bash
+user_port=$(jq -r .port .devserver.run)
+agent_port=$(jq -r .port .devserver.agent.run)
+curl -sS "http://localhost:${user_port}/_agent/capture-testcase" \
+  | curl -sS -X POST "http://localhost:${agent_port}/_agent/render/testcase-body?mode=mesh" \
+    -H "Content-Type: application/x-yaml" --data-binary @- -OJ
+```
+
+Then pull logs from the **agent** port (e.g. **`MdcExport`** when enabled in the headless tab’s Dev Tools):
+
+`curl -sS "http://localhost:${agent_port}/_logs?module=MdcExport&level=debug"`
+
+After you change code, the interactive browser may livereload on its own; the **agent** headless tab does **not**. Trigger a reload there with **`GET`** or **`POST /_refresh`** on the **agent** port before re-running **`testcase-body`** or **`POST /_agent/render`**.
 
 Example (clean mesh, no overlay):
 
@@ -143,12 +167,24 @@ Example (per-cell vertex markers and QEF input plane normals — useful for diag
 
 ## Agent workflow (ordered)
 
-1. Run **`make start-agent`** if **`.devserver.agent.run`** is not present; read **`port`** from that file. **Do not** launch Chromium yourself—the agent devserver starts headless Chrome for the bridge.
-2. Optional: **`GET /_agent/capture-testcase`** to save testcase YAML from the user’s session.
-3. **`GET /_agent/render/testcase/…`** or **`POST /_agent/render`**; save PNG (`curl -OJ` respects **`Content-Disposition`**) and/or inspect **`.agents/imagelog/`**. If you save to an explicit path, target **`.agents/testimages/`** (not **`.agents/`** root). For GET testcase renders, **do not** add **`viewportWidth`** / **`viewportHeight`** unless the user explicitly wants to override the YAML—default is faithful replay.
-4. Optional: **`GET /_logs`** for runtime errors during the run.
+### A — Single devserver (headless only)
 
-*(Interactive developers may use **`make serve`** + a normal browser tab instead of **`make start-agent`**, but Cursor agents should stick to **`make start-agent`**.)*
+1. Run **`make start-agent`** if **`.devserver.agent.run`** is not present; read **`port`** from that file. **Do not** launch Chromium yourself—the agent devserver starts headless Chrome for the bridge.
+2. Optional: **`GET /_agent/capture-testcase`** (same port) to dump YAML from the headless session.
+3. **`GET /_agent/render/testcase/…`**, **`POST /_agent/render/testcase-body`**, or **`POST /_agent/render`**; save PNG (`curl -OJ` respects **`Content-Disposition`**) and/or inspect **`.agents/imagelog/`**. If you save to an explicit path, target **`.agents/testimages/`** (not **`.agents/`** root). For faithful replay, **omit** **`viewportWidth`** / **`viewportHeight`** overrides unless the user asked for a different resolution.
+4. Optional: **`GET /_logs`** on the **same** port for runtime errors and dev-log lines from that browser.
+
+### B — Mirror interactive → agent (what the user sees)
+
+Use this when the human runs **`make serve`** / **`make start`** and you want the **same** scene text, camera, viewport crop, **`meshExport`** levers, and **mesh debug overlay** flags as in their tab, then render and inspect logs **without** asking them to switch to the agent devserver.
+
+1. **Interactive port:** `user_port=$(jq -r .port .devserver.run)` — if missing, the user’s devserver is not running; you cannot capture their session.
+2. **Capture:** prefer **`GET http://localhost:${user_port}/_agent/capture-testcase`** (full snapshot). Use **`GET /_sceneSource`** only if you need **text only** (no camera / export / overlays).
+3. **Agent stack:** run **`make start-agent`** if **`.devserver.agent.run`** is absent; `agent_port=$(jq -r .port .devserver.agent.run)`.
+4. **Render:** pipe YAML to **`POST http://localhost:${agent_port}/_agent/render/testcase-body?mode=sdf`** or **`mode=mesh`** (see example under **`POST /_agent/render/testcase-body`**). For **stats / diagnostics first**, fetch **`/_logs`** on **`agent_port`**; open the PNG only when the task needs pixels (e.g. meshing visual QA). **Dev Tools log-module checkboxes are per browser profile** — `debug` / `info` / `warn` lines follow what is enabled in **that** tab; use **`user_port`** for **`/_logs`** if you need the human’s toggle mix, **`agent_port`** for logs from the headless render itself.
+5. **Iterate:** after local code changes, call **`/_refresh`** on **`agent_port`**, then repeat capture (if the user changed the doc) or re-POST the same YAML file.
+
+**Note:** Each HTTP server has its **own** WebSocket client. The interactive tab never executes **`/_agent/render`** for you; only the headless agent tab does.
 
 ---
 

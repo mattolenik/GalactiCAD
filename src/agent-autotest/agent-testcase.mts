@@ -1,5 +1,5 @@
 import yaml from "js-yaml"
-import type { CameraSettings } from "../storage/settings.mjs"
+import type { CameraSettings, GlobalSettings } from "../storage/settings.mjs"
 import type { MdcExportLevers, ShrecTuning, SimplifyTuning } from "../render-worker-protocol.mjs"
 import type { CanvasPreviewUvRect } from "../layout/editor-layout.mjs"
 
@@ -34,6 +34,11 @@ export interface AgentTestcase {
      */
     previewUvRect?: CanvasPreviewUvRect
     meshExport: AgentTestcaseMeshExport
+    /**
+     * Mesh-viewer debug overlay toggles when captured (from global meshViewer settings).
+     * Omitted when all off. For `mode: "mesh"` agent renders only.
+     */
+    meshOverlay?: AgentMeshOverlay
     /** Active document tab name when captured, if any. */
     documentName?: string
 }
@@ -47,6 +52,7 @@ export interface BuildAgentTestcaseInput {
     viewportHeight: number
     previewUvRect?: CanvasPreviewUvRect
     meshExport: AgentTestcaseMeshExport
+    meshOverlay?: AgentMeshOverlay
     documentName?: string
 }
 
@@ -87,7 +93,41 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
             simplifyTuning: { ...input.meshExport.simplifyTuning },
             mdcExportLevers: { ...input.meshExport.mdcExportLevers },
         },
+        ...(input.meshOverlay !== undefined
+            ? {
+                  meshOverlay: {
+                      mdcDebugPoints: input.meshOverlay.mdcDebugPoints,
+                      mdcCellVertices: input.meshOverlay.mdcCellVertices,
+                      mdcQefPlanes: input.meshOverlay.mdcQefPlanes,
+                      ...(input.meshOverlay.featureGlyphs !== undefined
+                          ? { featureGlyphs: { ...input.meshOverlay.featureGlyphs } }
+                          : {}),
+                  },
+              }
+            : {}),
         ...(input.documentName !== undefined ? { documentName: input.documentName } : {}),
+    }
+}
+
+/** Maps persisted mesh-viewer settings to agent render overlay (omit when all flags off). */
+export function agentMeshOverlayFromSettingsMeshViewer(
+    mv: GlobalSettings["meshViewer"],
+): AgentMeshOverlay | undefined {
+    const fg = mv.featureGlyphs
+    const any =
+        mv.mdcDebugPoints ||
+        fg.line ||
+        fg.corner ||
+        fg.seam ||
+        fg.ring ||
+        mv.mdcCellVertices ||
+        mv.mdcQefPlanes
+    if (!any) return undefined
+    return {
+        mdcDebugPoints: mv.mdcDebugPoints,
+        featureGlyphs: { line: fg.line, corner: fg.corner, seam: fg.seam, ring: fg.ring },
+        mdcCellVertices: mv.mdcCellVertices,
+        mdcQefPlanes: mv.mdcQefPlanes,
     }
 }
 
@@ -209,6 +249,10 @@ export function mergeAgentRenderRequest(
             simplifyTuning: { ...testcase.meshExport.simplifyTuning },
             mdcExportLevers: { ...testcase.meshExport.mdcExportLevers },
         },
-        ...(overrides.meshOverlay !== undefined ? { meshOverlay: overrides.meshOverlay } : {}),
+        ...(() => {
+            const meshOverlay =
+                overrides.meshOverlay !== undefined ? overrides.meshOverlay : testcase.meshOverlay
+            return meshOverlay !== undefined ? { meshOverlay } : {}
+        })(),
     }
 }

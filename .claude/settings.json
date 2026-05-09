@@ -1,8 +1,9 @@
 {
-    "permissions": {
-        "allow": [
-            "Bash(ast-index *)",
-            "Bash(make *)"
-        ]
-    }
+  "permissions": {
+    "allow": [
+      "Bash(ast-index *)",
+      "Bash(make *)",
+      "Bash(npx @blazediff/cli *)"
+    ]
+  }
 }

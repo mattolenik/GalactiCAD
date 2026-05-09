@@ -1096,10 +1096,6 @@ export class MeshViewer extends HTMLElement {
                 throw new Error("2D context unavailable for mesh capture")
             }
             ctx.drawImage(bitmap, 0, 0)
-            // MDC debug geometry is on the WebGPU canvas (depth-tested). The
-            // stacked 2D canvas carries the stats HUD and hover callouts only;
-            // composite it so agent PNGs match the interactive view.
-            ctx.drawImage(this.#debugOverlayCanvas, 0, 0)
             return ctx.getImageData(0, 0, this.canvas.width, this.canvas.height)
         } finally {
             bitmap.close()

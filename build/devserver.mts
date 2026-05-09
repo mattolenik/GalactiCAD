@@ -217,7 +217,7 @@ function parseLogQuery(url: URL): DevLogQuery {
     return { n, levels, ...(modules ? { modules } : {}) }
 }
 
-/** Repo root for paths that must stay stable when `cwd` is wrong (e.g. imagelog under `.agents/`). */
+/** Repo root for paths that must stay stable when `cwd` is wrong (e.g. imagelog under `.agents/`). Agents saving their own PNGs should use `.agents/testimages/` (documented in AGENTS.md / devserver skill), not `.agents/` root. */
 const REPO_ROOT_FOR_HTTP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
 /** POST JSON body only. */
@@ -276,6 +276,7 @@ function agentRenderPngContentDisposition(downloadBasename: string, mode: AgentR
 }
 
 async function writeAgentImagelogPng(repoRoot: string, labelSlug: string, role: string, pngBytes: Buffer): Promise<string> {
+    // Server mirror only; ad-hoc agent saves belong under `.agents/testimages/` per AGENTS.md.
     const dir = path.join(repoRoot, ".agents", "imagelog")
     await fs.mkdir(dir, { recursive: true })
     const now = new Date()

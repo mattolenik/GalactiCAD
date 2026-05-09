@@ -12,6 +12,7 @@ Use this skill for **runtime log signal**, a **plain-text dump of the active CAD
 - **Always use the agent devserver:** run **`make start-agent`** from the repo root when you need **`/_logs`**, **`/_sceneSource`**, or **`/_agent/*`**. It is the **idempotent** project entry point for that stack (same target can be invoked whenever you need the server up per Makefile conventions).
 - **Port:** read **`port`** from **`.devserver.agent.run`** only: `jq -r .port .devserver.agent.run`. If the file is missing after **`make start-agent`**, the agent HTTP bridge is unavailable — **do not guess a port**.
 - **Do not** launch Chromium, Chrome, **`open`**, or **`.agents/scripts/agent-open-chromium.sh`** yourself. The **`AGENT=true`** devserver starts **headless** Chromium for the WebSocket bridge.
+- **Test images on disk:** When saving PNGs or similar into the repo yourself (not relying on the server’s **`.agents/imagelog/`** mirror), use **`.agents/testimages/`** — do not drop files loose under **`.agents/`** root.
 - **Logs:** **`.devserver.agent.log`** (tail with **`make logs-agent`**). **Stop:** **`make stop-agent`**.
 
 **Humans / interactive sessions** may use **`make serve`** / **`make start`** and **`.devserver.run`** instead; automated agents should still prefer **`make start-agent`** so the headless browser and run file stay aligned.
@@ -20,7 +21,7 @@ Use this skill for **runtime log signal**, a **plain-text dump of the active CAD
 
 - **Logs:** validate runtime after a change, check WebGPU or app errors, read dev log buffer without opening DevTools.
 - **Scene source:** capture the **currently selected editor tab’s scene source** (including unsaved buffer content) for debugging, repro scripts, or diffing against disk.
-- **Agent automation:** fetch a **testcase YAML** from the live editor, or request **PNG** renders from a **saved testcase file** (`GET`) or an **inline JSON body** (`POST`). Each successful render also writes a copy under **`.agents/imagelog/`** on the server.
+- **Agent automation:** fetch a **testcase YAML** from the live editor, or request **PNG** renders from a **saved testcase file** (`GET`) or an **inline JSON body** (`POST`). Each successful render also writes a copy under **`.agents/imagelog/`** on the server. When you intentionally save PNGs or other test images into the repo yourself (e.g. **`curl -o`** to a fixed path), use **`.agents/testimages/`** — not loose files under **`.agents/`** root (keeps skills/scripts separate from disposable captures).
 
 ## Port discovery (interactive devserver — not the default for Cursor agents)
 
@@ -109,7 +110,7 @@ Runs the **agent render pipeline** in the browser (normal-vector **SDF** preview
 
 **Success headers:** `Content-Type: image/png`, `Content-Length`, `Access-Control-Allow-Origin: *`, **`Access-Control-Expose-Headers: Content-Disposition`**, and **`Content-Disposition: attachment; filename="<basename>-<mode>.png"`** where `<basename>` is the testcase stem for GET, or derived from optional POST `testcase` path / defaults to `render` for bare POST. `<mode>` is `sdf` or `mesh`. Browsers and **`curl -OJ`** can use the suggested filename.
 
-**Imagelog:** On success the server writes **`repo/.agents/imagelog/<label>-<HHMM>-<role>.png`** (`label` / `role` from query or POST extras; see devserver implementation).
+**Imagelog:** On success the server writes **`repo/.agents/imagelog/<label>-<HHMM>-<role>.png`** (`label` / `role` from query or POST extras; see devserver implementation). That path is server-owned. For **agent-chosen** on-disk paths (manual **`curl -o`**, copies, composites), write under **`repo/.agents/testimages/`** (create it if missing); do **not** scatter PNGs under **`repo/.agents/`** root.
 
 ### `POST /_agent/render` (only at exact path `/_agent/render`)
 
@@ -124,7 +125,7 @@ Example:
 
 - **Path:** **`/_agent/render/testcase/<relative>`** where **`<relative>`** is a path under **`./test/testcases/`** from the devserver’s current working directory (usually repo root). URL path segments may be percent-encoded. **`..`**, empty segments, and absolute paths are rejected (**400**).
 - **File:** Read as UTF‑8 YAML; parsed with **`parseAgentTestcaseYaml`**. Prefer **`.yaml`** fixtures.
-- **Query:** Optional **`mode=sdf|mesh`** (default **`sdf`** when omitted or invalid). Optional **`viewportWidth`**, **`viewportHeight`** (numbers). Optional **`label`**, **`role`** for imagelog (defaults derived from filename / mode).
+- **Query:** Optional **`mode=sdf|mesh`** (default **`sdf`** when omitted or invalid). Optional **`viewportWidth`**, **`viewportHeight`** (numbers; **override** the testcase YAML—**omit** for faithful replay unless the user asks for a different size). Optional **`label`**, **`role`** for imagelog (defaults derived from filename / mode).
 - **Mesh-overlay query flags** (`mode=mesh` only; each accepts `1` / `true` / `yes` / `on`, otherwise off): **`debugPoints`** (raw per-edge sample squares), **`glyphLine`** / **`glyphCorner`** / **`glyphSeam`** / **`glyphRing`** (per-class feature glyphs), **`cellVertices`** (per-cell-component vertex markers, MDC QEF debug), **`qefPlanes`** (per-(cell, component) QEF input plane normals as short blue sticks). Each flag also accepts the dotted alias matching the API field (`mdcDebugPoints`, `featureGlyphs.line` … `mdcCellVertices`, `mdcQefPlanes`). Overlays default to off so existing testcase URLs keep producing clean meshes; the overlay 2D canvas is composited into the captured PNG.
 - **Merged request:** **`parseAgentTestcaseYaml`** then **`mergeAgentRenderRequest`** builds the `AgentRenderRequest` (base64 from testcase `source`; does not inject testcase `documentName` into the wire payload).
 
@@ -144,7 +145,7 @@ Example (per-cell vertex markers and QEF input plane normals — useful for diag
 
 1. Run **`make start-agent`** if **`.devserver.agent.run`** is not present; read **`port`** from that file. **Do not** launch Chromium yourself—the agent devserver starts headless Chrome for the bridge.
 2. Optional: **`GET /_agent/capture-testcase`** to save testcase YAML from the user’s session.
-3. **`GET /_agent/render/testcase/…`** or **`POST /_agent/render`**; save PNG (`curl -OJ` respects **`Content-Disposition`**) and/or inspect **`.agents/imagelog/`**.
+3. **`GET /_agent/render/testcase/…`** or **`POST /_agent/render`**; save PNG (`curl -OJ` respects **`Content-Disposition`**) and/or inspect **`.agents/imagelog/`**. If you save to an explicit path, target **`.agents/testimages/`** (not **`.agents/`** root). For GET testcase renders, **do not** add **`viewportWidth`** / **`viewportHeight`** unless the user explicitly wants to override the YAML—default is faithful replay.
 4. Optional: **`GET /_logs`** for runtime errors during the run.
 
 *(Interactive developers may use **`make serve`** + a normal browser tab instead of **`make start-agent`**, but Cursor agents should stick to **`make start-agent`**.)*

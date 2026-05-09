@@ -135,6 +135,30 @@ When making changes to binding groups, make sure all the bindings and mappings a
 - Diagnostic logging: `src/logging/debug-log.mts` (`log("ModuleName").debug` / `.info` / `.warn` / `.error`), persisted as `app.debugLogModules`, toggles under Dev Tools **Logs**, flags pushed to the render worker with `setDebugLogModules` on ready and when toggles change. **`log("Module").error` is not gated** by those toggles (always browser console + dev log bridge). **`debug` / `info` / `warn`** are gated per module. Known modules include **App** (shell / scene orchestration / startup banner when **App** is on), **Settings**, **RenderWorker**, **WelcomeScreen**, **MdcExport**, **SourceParser**, **Wgsl** (`logWgsl` always-on), and others listed in `DEBUG_LOG_MODULES` in `debug-log.mts`. Dev log **buffer** entries are `{ line, module? }`: for `log("ModuleName")` / `logWgsl`, `line` is `[timestamp] [level] [Module]` plus optional `[thread]` (e.g. `main`, `render-worker`) and message text; `module` duplicates the module name for filtering. The second bracketed token in `line` is still the level. Mirrored `console.*` lines use `[timestamp] [method]` and optional `[thread]` without a module bracket; window errors and similar omit `module`.
 - ThreadedRod: `threadedRod.left`/`right` (default right) and `profile.fdm()`/`iso()`/`acme()` after profile; bare `radius(...)` is FDM. ACME profile defaults meridional `threadAngle` to 61° (90° − 29°) because nominal ACME 29° uses a different angular reference than meridional `threadAngle`. In `cad-types-decl.mts`, avoid backticks around `fdm`/`iso` in ThreadedRod JSDoc comment bodies—TypeScript can misparse that line.
 
+## Code Search (ast-index vs grep)
+
+This repo has [`ast-index`](https://crates.io/crates/ast-index) available on the path. It indexes the TypeScript AST of the codebase and answers symbol-level queries far faster and more precisely than text grep. Prefer it whenever you are looking for something that is part of the TypeScript AST — class, interface, function, method, property, enum, type alias, import, or cross-references between them.
+
+Useful subcommands (run `ast-index <cmd> --help` for full options):
+
+- `ast-index symbol <Name>` — find a symbol by exact name. `--pattern '*Foo*'` for glob, `--type class|interface|function|property` to narrow, `--fuzzy` for exact → prefix → contains fallback.
+- `ast-index class <Name>` / `ast-index hierarchy <Name>` / `ast-index implementations <Name>` — class/interface lookups and subclass/implementor chains.
+- `ast-index refs <Symbol>` — definitions, imports, and usages of a symbol in one shot. `ast-index usages <Symbol>` for usages only; `ast-index callers <fn>` / `call-tree` for call graph.
+- `ast-index search <query>` — universal search across files and symbols (use `--type` / `--in-file` / `--module` / `--fuzzy`).
+- `ast-index file <name>` / `ast-index outline <file>` / `ast-index imports <file>` — find files, list symbols in a file, list imports of a file.
+- `ast-index map` / `ast-index conventions` — high-level project map and detected architecture/frameworks; good first step when orienting in unfamiliar areas.
+- `ast-index update` — incremental reindex if results look stale after large edits.
+- `ast-index rebuild --path src --path build` — full reindex. **Always pass `--path src --path build`** so both the app source and the build/devserver code are indexed; without it the index can miss one or the other and queries will silently return incomplete results.
+
+When to use grep instead:
+
+- The target is **not** TypeScript: WGSL shaders, Makefiles, JSON/YAML configs, Markdown, HTML, CSS, build scripts. ast-index does not index these.
+- You are searching for **string content** rather than a symbol: log messages, error strings, comments, magic constants, regexes, route paths, CSS class names.
+- You are tracing a TypeScript symbol into **non-TS** territory — e.g. a TS function name that may also appear in a WGSL `//:) include`, a binding-group label referenced in both `.mts` and `.wgsl`, a class name embedded in a YAML testcase, or a string key looked up dynamically. Use `ast-index refs` for the TS side, then `grep` for the cross-language references.
+- Dynamic / stringly-typed lookups where the AST does not capture the relationship (e.g. `someObj["methodName"]`, message tags, debug log module names).
+
+Rule of thumb: **named TypeScript thing → `ast-index`; raw text or non-TS file → `grep`; both → `ast-index` first to anchor the symbol, then `grep` to find the off-AST references.**
+
 ## Building and Linting
 
 See `.cursor/rules/build-commands.mdc` for build/test command rules.

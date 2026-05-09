@@ -1779,52 +1779,6 @@ export class MeshViewer extends HTMLElement {
         if (!ctx) return
         ctx.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
 
-        const stats = this.#mdcDebugStats
-        const showRawSamples = this.#mdcDebug
-        const showFeatureGlyphs =
-            this.#mdcFeatureGlyphLine
-            || this.#mdcFeatureGlyphCorner
-            || this.#mdcFeatureGlyphSeam
-            || this.#mdcFeatureGlyphRing
-        const interestingSampleCount =
-            (stats?.acceptedLine ?? 0)
-            + (stats?.acceptedCorner ?? 0)
-            + (stats?.acceptedSeam ?? 0)
-            + (stats?.rejected ?? 0)
-        const hideNoneSamples = interestingSampleCount > 0
-
-        if (stats) {
-            const text1 = `Mesh debug ${stats.totalSamples} samples`
-            const text2 = `L ${stats.acceptedLine}  C ${stats.acceptedCorner}  S ${stats.acceptedSeam}  Ring ${stats.acceptedRing}  Rej ${stats.rejected}`
-            const glyphModeParts = [
-                this.#mdcFeatureGlyphLine && "line",
-                this.#mdcFeatureGlyphCorner && "corner",
-                this.#mdcFeatureGlyphSeam && "seam",
-                this.#mdcFeatureGlyphRing && "ring",
-            ].filter(Boolean) as string[]
-            const glyphModeLabel = glyphModeParts.length > 0 ? glyphModeParts.join("+") : "glyphs off"
-            const overlayMode =
-                showRawSamples && showFeatureGlyphs ? `raw squares + ${glyphModeLabel}`
-                    : showRawSamples ? "raw squares only"
-                        : glyphModeLabel
-            const text3 = hideNoneSamples ? `${overlayMode}  gray hidden  N ${stats.acceptedNone}` : `${overlayMode}  N ${stats.acceptedNone}`
-            ctx.save()
-            ctx.font = "12px system-ui, sans-serif"
-            ctx.textBaseline = "top"
-            const width = Math.max(ctx.measureText(text1).width, ctx.measureText(text2).width, ctx.measureText(text3).width) + 16
-            const height = 50
-            const margin = 12
-            const hudX = this.#debugOverlayCanvas.width - width - margin
-            const hudY = this.#debugOverlayCanvas.height - height - 118
-            ctx.fillStyle = "rgba(12, 14, 18, 0.66)"
-            ctx.fillRect(hudX, hudY, width, height)
-            ctx.fillStyle = "rgba(245, 247, 250, 0.92)"
-            ctx.fillText(text1, hudX + 8, hudY + 6)
-            ctx.fillText(text2, hudX + 8, hudY + 20)
-            ctx.fillText(text3, hudX + 8, hudY + 34)
-            ctx.restore()
-        }
-
         const hoveredIndex = this.#mdcOverlayHoveredSampleIdx
         const samples = this.#mdcDebugSamples
         const stride = MESH_MDC_DEBUG_SAMPLE_STRIDE

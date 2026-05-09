@@ -1590,7 +1590,6 @@ class App {
         }
         const state = this.renderer.controls.state
         const pos = this.renderer.controls.cameraPosition
-        const rs = this.renderer.renderSize
         const vc = this.renderer.viewCenter
         const canvasRect = this.#preview.canvas.getBoundingClientRect()
         const visibleRegion = this.#getVisiblePreviewRect()
@@ -1607,8 +1606,6 @@ class App {
                     : {}),
             },
             viewCenter: [vc.x, vc.y],
-            viewportWidth: rs.width,
-            viewportHeight: rs.height,
             previewUvRect,
             meshExport: this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools),
             meshOverlay: agentMeshOverlayFromSettingsMeshViewer(this.#settings.getGlobal().meshViewer),

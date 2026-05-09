@@ -24,8 +24,12 @@ export interface AgentTestcase {
     source: string
     camera: CameraSettings
     viewCenter: [number, number]
-    viewportWidth: number
-    viewportHeight: number
+    /**
+     * Optional render dimensions. When omitted, agent renders default to 1000×1000;
+     * values are clamped to [1, 2048] in the render pipeline.
+     */
+    viewportWidth?: number
+    viewportHeight?: number
     /**
      * Visible SDF preview on the full canvas (shader UV: u left→right, v bottom→top).
      * When present, agent renders crop to this rect so PNGs omit the editor overlay.
@@ -45,8 +49,8 @@ export interface BuildAgentTestcaseInput {
     sourceUtf8: string
     camera: CameraSettings
     viewCenter: [number, number]
-    viewportWidth: number
-    viewportHeight: number
+    viewportWidth?: number
+    viewportHeight?: number
     previewUvRect?: CanvasPreviewUvRect
     meshExport: AgentTestcaseMeshExport
     meshOverlay?: AgentMeshOverlay
@@ -78,8 +82,8 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
         source: input.sourceUtf8,
         camera: { ...input.camera },
         viewCenter: [input.viewCenter[0], input.viewCenter[1]],
-        viewportWidth: input.viewportWidth,
-        viewportHeight: input.viewportHeight,
+        ...(input.viewportWidth !== undefined ? { viewportWidth: input.viewportWidth } : {}),
+        ...(input.viewportHeight !== undefined ? { viewportHeight: input.viewportHeight } : {}),
         ...(input.previewUvRect !== undefined ? { previewUvRect: { ...input.previewUvRect } } : {}),
         meshExport: {
             simplifyOnExport: input.meshExport.simplifyOnExport,
@@ -203,8 +207,9 @@ export interface AgentRenderRequest {
     sourceBase64: string
     camera: CameraSettings
     viewCenter: [number, number]
-    viewportWidth: number
-    viewportHeight: number
+    /** Optional render dims; pipeline defaults to 1000×1000 and clamps to [1, 2048]. */
+    viewportWidth?: number
+    viewportHeight?: number
     previewUvRect?: CanvasPreviewUvRect
     meshExport: AgentTestcaseMeshExport
     documentName?: string
@@ -230,8 +235,8 @@ export function mergeAgentRenderRequest(
         sourceBase64: utf8ToBase64(testcase.source),
         camera: { ...testcase.camera },
         viewCenter: [testcase.viewCenter[0], testcase.viewCenter[1]],
-        viewportWidth: w,
-        viewportHeight: h,
+        ...(w !== undefined ? { viewportWidth: w } : {}),
+        ...(h !== undefined ? { viewportHeight: h } : {}),
         ...(testcase.previewUvRect !== undefined
             ? { previewUvRect: { ...testcase.previewUvRect } }
             : {}),

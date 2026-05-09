@@ -115,6 +115,37 @@ test("IsoOctree.build: deterministic treeCellCount for fixed mock + caps", async
     assert.ok(a.treeCellCount > 1)
 })
 
+test("IsoOctree.build: skips standalone 8-corner batch; corners seeded from phase1 lattice", async () => {
+    const O = IsoSimplicialConstants.oversampleQef
+    const nodeCount = (O + 1) ** 3
+    const totalPhase1 = nodeCount + 12 * (O + 1) + 6 * (O + 1) ** 2
+
+    const batchSampleCounts: number[] = []
+    const trackingSampler: IsoOctreeBatchFn = positions => {
+        batchSampleCounts.push(positions.length / 3)
+        return mockPlaneHalfZ(positions)
+    }
+
+    const tree = await IsoOctree.build({
+        sample: trackingSampler,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 0, depthMax: 0, qefRelativeErrorRefineThreshold: 1e30 },
+    })
+
+    assert.equal(batchSampleCounts[0], totalPhase1, `first batch should be phase1 (${totalPhase1}); got ${batchSampleCounts[0]}`)
+    assert.ok(
+        !batchSampleCounts.includes(8),
+        `root 8-corner batch should be eliminated; got batch sizes ${batchSampleCounts.join(",")}`,
+    )
+
+    // Corner SDF must match the mock plane (z - 0.5) at each corner position (b.z * 1).
+    for (let i = 0; i < 8; i++) {
+        const bz = (i >> 2) & 1
+        const expected = bz - 0.5
+        assert.equal(tree.root.verts[i * 4 + 3], expected, `root.verts corner ${i} d`)
+    }
+})
+
 test("IsoOctree.build: sibling megabatch coalesces phase1 and reEval sample counts", async () => {
     const O = IsoSimplicialConstants.oversampleQef
     const nodeCount = (O + 1) ** 3

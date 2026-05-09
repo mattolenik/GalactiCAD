@@ -2,8 +2,8 @@ import type { SDFRenderer } from "../sdf.mjs"
 import { base64ToUtf8, type AgentRenderRequest } from "./agent-testcase.mjs"
 import { cropImageDataToCanvasPreviewUvRect, isFullCanvasPreviewUvRect } from "./crop-agent-preview-image.mjs"
 
-export const AGENT_RENDER_DEFAULT_DIM = 2048
-export const AGENT_RENDER_MAX_DIM = 4096
+export const AGENT_RENDER_DEFAULT_DIM = 4096
+export const AGENT_RENDER_MAX_DIM = 8192
 
 function resolveDim(value: number | undefined): number {
     if (value === undefined || !Number.isFinite(value) || value <= 0) return AGENT_RENDER_DEFAULT_DIM
@@ -30,8 +30,8 @@ async function imageDataToPngBase64(img: ImageData): Promise<string> {
 /** Run SDF normal-vector preview or mesh normal RGB capture; returns PNG as base64. */
 export async function runAgentRenderPipeline(renderer: SDFRenderer, req: AgentRenderRequest): Promise<string> {
     const src = base64ToUtf8(req.sourceBase64).trim()
-    const w = resolveDim(req.viewportWidth)
-    const h = resolveDim(req.viewportHeight)
+    const w = resolveDim(req.viewportWidth) * 2
+    const h = resolveDim(req.viewportHeight) * 2
     const cam = req.camera
     const vc = req.viewCenter
     const doc = req.documentName

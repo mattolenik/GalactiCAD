@@ -7,7 +7,7 @@ import { dollyFromOrthoHalf } from "../controls/camera-controller.mjs"
 import { lookAt } from "../vecmat/matrix.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
 
-const AGENT_MESH_MAX = 2048
+const AGENT_MESH_MAX = 4096
 
 /** Normalize the optional `AgentMeshOverlay` into the strict shape `MeshViewer.applyThumbnailGlyphOverlay` expects. */
 function resolveOverlayOptions(overlay: AgentMeshOverlay | undefined): {

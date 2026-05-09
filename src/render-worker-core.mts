@@ -268,7 +268,7 @@ export class RenderWorkerCore {
                 },
             })
         } catch (err) {
-            const text = err instanceof Error ? err.stack ?? err.message : String(err)
+            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
             logWgsl("error", `Outline post-process pipeline creation failed: ${text}`)
             throw err
         }
@@ -281,12 +281,24 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, new ArrayBuffer(20))
 
         // Init empty edges
-        this.#writeEdgesToBuffer(this.#uniformBuffers.selectedEdges, [], DEFAULT_SELECTION_STYLES.edge.lineWidthPx, DEFAULT_SELECTION_STYLES.edge.epsilon)
+        this.#writeEdgesToBuffer(
+            this.#uniformBuffers.selectedEdges,
+            [],
+            DEFAULT_SELECTION_STYLES.edge.lineWidthPx,
+            DEFAULT_SELECTION_STYLES.edge.epsilon,
+        )
         this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, [], 6.0, 0.02)
     }
 
-    async build(body: string, _documentName?: string | null): Promise<
-        | { sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][]; timingMs: BuildTimingBreakdownMs }
+    async build(
+        body: string,
+        _documentName?: string | null,
+    ): Promise<
+        | {
+              sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]
+              compiledPosY: [number, number][]
+              timingMs: BuildTimingBreakdownMs
+          }
         | { superseded: true }
     > {
         const prev = this.#buildLock
@@ -308,8 +320,14 @@ export class RenderWorkerCore {
         this.#buildGeneration++
     }
 
-    async #doBuild(body: string): Promise<
-        | { sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]; compiledPosY: [number, number][]; timingMs: BuildTimingBreakdownMs }
+    async #doBuild(
+        body: string,
+    ): Promise<
+        | {
+              sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]
+              compiledPosY: [number, number][]
+              timingMs: BuildTimingBreakdownMs
+          }
         | { superseded: true }
     > {
         const roundMs = (x: number) => Math.round(x * 100) / 100
@@ -332,9 +350,8 @@ export class RenderWorkerCore {
             this.#sceneShader !== null
 
         const tPoly0 = performance.now()
-        const polygonVertexData = scene.totalPolygonVertices > 0
-            ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer)
-            : new ArrayBuffer(0)
+        const polygonVertexData =
+            scene.totalPolygonVertices > 0 ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer) : new ArrayBuffer(0)
         const tPoly1 = performance.now()
         const newCompiledPosY = new Map<number, number>()
         for (const node of allNodes) {
@@ -443,7 +460,7 @@ export class RenderWorkerCore {
                 }),
             ])
         } catch (err) {
-            const text = err instanceof Error ? err.stack ?? err.message : String(err)
+            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
             logWgsl("error", `Pipeline creation failed for Preview + Beam shader: ${text}`)
             throw err
         }
@@ -615,7 +632,11 @@ export class RenderWorkerCore {
         this.#canvas.height = Math.max(1, fullHeight)
     }
 
-    render(msg: Extract<MainToWorkerMessage, { type: "render" }>, outputTextureView?: GPUTextureView, sharedBuffer?: SharedArrayBuffer): void {
+    render(
+        msg: Extract<MainToWorkerMessage, { type: "render" }>,
+        outputTextureView?: GPUTextureView,
+        sharedBuffer?: SharedArrayBuffer,
+    ): void {
         const now = performance.now()
         if (this.#lastRenderTime > 0) {
             const delta = now - this.#lastRenderTime
@@ -664,7 +685,7 @@ export class RenderWorkerCore {
         )
 
         this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
-        this.#viewSettingsBuf[1] = 0  // unused (was refinementSteps)
+        this.#viewSettingsBuf[1] = 0 // unused (was refinementSteps)
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
@@ -710,13 +731,7 @@ export class RenderWorkerCore {
             DEFAULT_SELECTION_STYLES.edge.epsilon,
             this.#selectedEdgesCache,
         )
-        this.#writeEdgesToBufferIfDirty(
-            this.#uniformBuffers.hoveredEdge,
-            selectionState.hoveredEdges,
-            6.0,
-            0.02,
-            this.#hoveredEdgesCache,
-        )
+        this.#writeEdgesToBufferIfDirty(this.#uniformBuffers.hoveredEdge, selectionState.hoveredEdges, 6.0, 0.02, this.#hoveredEdgesCache)
 
         const canvasTexture = outputTextureView ? null : this.#context.getCurrentTexture()
         const outlineTarget = outputTextureView ?? canvasTexture!.createView()
@@ -753,7 +768,7 @@ export class RenderWorkerCore {
         const scenePass = commandEncoder.beginRenderPass({
             colorAttachments: [
                 { view: this.#colorTextureView, loadOp: "clear", storeOp: "store" },
-                { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xFFFFFFFF, g: 0, b: 0, a: 0 } },
+                { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xffffffff, g: 0, b: 0, a: 0 } },
             ],
         })
         scenePass.setPipeline(this.#pipeline)
@@ -864,7 +879,7 @@ export class RenderWorkerCore {
             false,
         )
 
-        this.#viewSettingsBuf[0] = (packed & 1) ? 1 : 0
+        this.#viewSettingsBuf[0] = packed & 1 ? 1 : 0
         this.#viewSettingsBuf[1] = 0
         this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
@@ -900,9 +915,27 @@ export class RenderWorkerCore {
         this.#selectionStylesF32[17] = resolutionScale
         this.#writeBufferViewIfDirty(this.#uniformBuffers.selectionStyles, this.#selectionStylesF32, this.#selectionStylesCache)
 
-        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.selectedObjectIds, buffer, slotBase + L.O_SELECTED_OBJECT_IDS, L.SELECTED_OBJECT_IDS_SIZE, this.#selectedIdsCache)
-        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.selectedEdges, buffer, slotBase + L.O_SELECTED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#selectedEdgesCache)
-        this.#writeBufferFromSABIfDirty(this.#uniformBuffers.hoveredEdge, buffer, slotBase + L.O_HOVERED_EDGES_HEADER, L.SELECTED_EDGES_TOTAL, this.#hoveredEdgesCache)
+        this.#writeBufferFromSABIfDirty(
+            this.#uniformBuffers.selectedObjectIds,
+            buffer,
+            slotBase + L.O_SELECTED_OBJECT_IDS,
+            L.SELECTED_OBJECT_IDS_SIZE,
+            this.#selectedIdsCache,
+        )
+        this.#writeBufferFromSABIfDirty(
+            this.#uniformBuffers.selectedEdges,
+            buffer,
+            slotBase + L.O_SELECTED_EDGES_HEADER,
+            L.SELECTED_EDGES_TOTAL,
+            this.#selectedEdgesCache,
+        )
+        this.#writeBufferFromSABIfDirty(
+            this.#uniformBuffers.hoveredEdge,
+            buffer,
+            slotBase + L.O_HOVERED_EDGES_HEADER,
+            L.SELECTED_EDGES_TOTAL,
+            this.#hoveredEdgesCache,
+        )
 
         const canvasTexture = this.#context.getCurrentTexture()
         const outlineTarget = canvasTexture.createView()
@@ -939,7 +972,7 @@ export class RenderWorkerCore {
         const scenePass = commandEncoder.beginRenderPass({
             colorAttachments: [
                 { view: this.#colorTextureView, loadOp: "clear", storeOp: "store" },
-                { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xFFFFFFFF, g: 0, b: 0, a: 0 } },
+                { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xffffffff, g: 0, b: 0, a: 0 } },
             ],
         })
         scenePass.setPipeline(this.#pipeline)
@@ -981,18 +1014,21 @@ export class RenderWorkerCore {
             }
             const bounds = await this.#computeSceneBoundsRefined()
             if (!bounds) {
-                self.postMessage({ type: "renderMeshResult", error: "Bounds compute found no inside samples; is the SDF empty or far from origin?", requestId, documentName })
+                self.postMessage({
+                    type: "renderMeshResult",
+                    error: "Bounds compute found no inside samples; is the SDF empty or far from origin?",
+                    requestId,
+                    documentName,
+                })
                 return
             }
             const levers: MdcExportLevers = { ...DEFAULT_MDC_EXPORT_LEVERS, ...mdcExportLevers }
             // Voxel size: caller-supplied value (from the Dev Tools slider) wins;
             // otherwise fall back to MDC levers / protocol default.
             const voxelSizeMm =
-                voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0
-                    ? voxelSizeMmFromCaller
-                    : levers.voxelSizeMm > 0
-                      ? levers.voxelSizeMm
-                      : DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
+                voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0 ? voxelSizeMmFromCaller
+                : levers.voxelSizeMm > 0 ? levers.voxelSizeMm
+                : DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
             const pad = 3.2
             const minX = bounds.min[0] - pad
             const minY = bounds.min[1] - pad
@@ -1019,7 +1055,7 @@ export class RenderWorkerCore {
             if (exporter === "shrec") {
                 log("ShrecExport").info(
                     `handleRenderMesh: dispatching SHREC, incoming tuning=` +
-                    `${shrecTuning ? JSON.stringify(shrecTuning) : "(undefined → defaults)"}`,
+                        `${shrecTuning ? JSON.stringify(shrecTuning) : "(undefined → defaults)"}`,
                 )
                 const shrecCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)
@@ -1112,30 +1148,23 @@ export class RenderWorkerCore {
                 if (simplifyOnExport && s.targetRatio < 1) {
                     log("Simplify").info(
                         `Mesh simplification dispatched: exporter=${exporter} ` +
-                        `targetRatio=${s.targetRatio} targetError=${s.targetError} ` +
-                        `lockBorder=${s.lockBorder} sparse=${s.sparse} errorAbsolute=${s.errorAbsolute} ` +
-                        `prune=${s.prune} regularize=${s.regularize} normalWeight=${s.normalWeight}`,
+                            `targetRatio=${s.targetRatio} targetError=${s.targetError} ` +
+                            `lockBorder=${s.lockBorder} sparse=${s.sparse} errorAbsolute=${s.errorAbsolute} ` +
+                            `prune=${s.prune} regularize=${s.regularize} normalWeight=${s.normalWeight}`,
                     )
                     const { simplifyMesh } = await import("./export/simplify.mjs")
-                    mesh = await simplifyMesh(
-                        mesh,
-                        s.targetRatio,
-                        s.targetError,
-                        {
-                            lockBorder: s.lockBorder,
-                            sparse: s.sparse,
-                            errorAbsolute: s.errorAbsolute,
-                            prune: s.prune,
-                            regularize: s.regularize,
-                            normalWeight: s.normalWeight > 0 ? s.normalWeight : undefined,
-                            renormalizeTriangles: false,
-                        },
-                    )
+                    mesh = await simplifyMesh(mesh, s.targetRatio, s.targetError, {
+                        lockBorder: s.lockBorder,
+                        sparse: s.sparse,
+                        errorAbsolute: s.errorAbsolute,
+                        prune: s.prune,
+                        regularize: s.regularize,
+                        normalWeight: s.normalWeight > 0 ? s.normalWeight : undefined,
+                        renormalizeTriangles: false,
+                    })
                 }
                 if (s.renormalizeTriangles) {
-                    log("Simplify").info(
-                        `Mesh normal recompute: exporter=${exporter} renormalizeTriangles=true`,
-                    )
+                    log("Simplify").info(`Mesh normal recompute: exporter=${exporter} renormalizeTriangles=true`)
                     const { renormalizeTriangleNormals } = await import("./export/crease-split.mjs")
                     const renorm = renormalizeTriangleNormals(mesh.verts, mesh.tris)
                     mesh = { verts: renorm.verts, tris: renorm.tris, debug: mesh.debug }
@@ -1153,7 +1182,11 @@ export class RenderWorkerCore {
         }
     }
 
-    async #computeSceneBounds(searchMin: [number, number, number], searchMax: [number, number, number], stepMm: number): Promise<{ min: readonly [number, number, number]; max: readonly [number, number, number] } | null> {
+    async #computeSceneBounds(
+        searchMin: [number, number, number],
+        searchMax: [number, number, number],
+        stepMm: number,
+    ): Promise<{ min: readonly [number, number, number]; max: readonly [number, number, number] } | null> {
         const SCALE = 1000
         const dimsX = Math.max(1, Math.ceil((searchMax[0] - searchMin[0]) / stepMm) + 1)
         const dimsY = Math.max(1, Math.ceil((searchMax[1] - searchMin[1]) / stepMm) + 1)
@@ -1267,7 +1300,11 @@ export class RenderWorkerCore {
 
     async #computeSceneBoundsRefined(): Promise<{ min: readonly [number, number, number]; max: readonly [number, number, number] } | null> {
         const COARSE_HALF = 250
-        const coarse = await this.#computeSceneBounds([-COARSE_HALF, -COARSE_HALF, -COARSE_HALF], [COARSE_HALF, COARSE_HALF, COARSE_HALF], 2.0)
+        const coarse = await this.#computeSceneBounds(
+            [-COARSE_HALF, -COARSE_HALF, -COARSE_HALF],
+            [COARSE_HALF, COARSE_HALF, COARSE_HALF],
+            2.0,
+        )
         if (!coarse) return null
         const inflate = 4.0
         const min = [coarse.min[0] - inflate, coarse.min[1] - inflate, coarse.min[2] - inflate] as const
@@ -1278,7 +1315,19 @@ export class RenderWorkerCore {
 
     async handleBenchmark(frameCount: number, waitForGPU: boolean, requestId?: number): Promise<void> {
         if (!this.#pipeline) {
-            self.postMessage({ type: "benchmarkResult", result: { totalTime: 0, averageFrameTime: 0, minFrameTime: 0, maxFrameTime: 0, framesPerSecond: 0, frameTimes: [], error: "Cannot benchmark: renderer not initialized. Call build() first." }, requestId })
+            self.postMessage({
+                type: "benchmarkResult",
+                result: {
+                    totalTime: 0,
+                    averageFrameTime: 0,
+                    minFrameTime: 0,
+                    maxFrameTime: 0,
+                    framesPerSecond: 0,
+                    frameTimes: [],
+                    error: "Cannot benchmark: renderer not initialized. Call build() first.",
+                },
+                requestId,
+            })
             return
         }
         const frameTimes: number[] = []
@@ -1429,12 +1478,7 @@ export class RenderWorkerCore {
             // Thumbnails call build() directly (not the render worker queue). If the user opens a document
             // while welcome thumbnails are still loading, a later thumb can overwrite the preview pipeline.
             // Restore whatever scene was current before this thumbnail when we actually switched bodies.
-            if (
-                builtForThisThumb &&
-                previousBody !== null &&
-                previousBody !== body &&
-                this.#builtBody === body
-            ) {
+            if (builtForThisThumb && previousBody !== null && previousBody !== body && this.#builtBody === body) {
                 try {
                     await this.build(previousBody, undefined)
                 } catch {
@@ -1446,7 +1490,7 @@ export class RenderWorkerCore {
 
     /** Off-screen SDF capture for agents: parameterized camera, normal-vector shading, larger max resolution than welcome thumbnails. */
     async handleAgentPreview(msg: Extract<MainToWorkerMessage, { type: "agentPreview" }>): Promise<void> {
-        const AGENT_PREVIEW_MAX = 2048
+        const AGENT_PREVIEW_MAX = 8192
         const tw = Math.max(1, Math.min(AGENT_PREVIEW_MAX, Math.floor(msg.width)))
         const th = Math.max(1, Math.min(AGENT_PREVIEW_MAX, Math.floor(msg.height)))
         const body = msg.body
@@ -1518,11 +1562,11 @@ export class RenderWorkerCore {
                     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
                 })
                 const encoder = this.#device.createCommandEncoder()
-                encoder.copyTextureToBuffer(
-                    { texture: thumbOutputTexture },
-                    { buffer: readbackBuffer, bytesPerRow, rowsPerImage: th },
-                    [tw, th, 1],
-                )
+                encoder.copyTextureToBuffer({ texture: thumbOutputTexture }, { buffer: readbackBuffer, bytesPerRow, rowsPerImage: th }, [
+                    tw,
+                    th,
+                    1,
+                ])
                 this.#device.queue.submit([encoder.finish()])
                 await readbackBuffer.mapAsync(GPUMapMode.READ)
                 readbackMapped = true
@@ -1564,12 +1608,7 @@ export class RenderWorkerCore {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId, documentName })
         } finally {
-            if (
-                builtForThis &&
-                previousBody !== null &&
-                previousBody !== body &&
-                this.#builtBody === body
-            ) {
+            if (builtForThis && previousBody !== null && previousBody !== body && this.#builtBody === body) {
                 try {
                     await this.build(previousBody, undefined)
                 } catch {
@@ -1887,12 +1926,15 @@ export class RenderWorkerCore {
 
     /** Read from a GPU buffer using the persistent readback buffer when available, else fresh allocation. */
     #readGPU(source: GPUBuffer, readback: GPUBuffer, size: number, reuse: boolean): Promise<ArrayBuffer> {
-        return reuse
-            ? this.#helper.readBufferDataReuse(source, readback, size)
-            : this.#helper.readBufferData(source, size)
+        return reuse ? this.#helper.readBufferDataReuse(source, readback, size) : this.#helper.readBufferData(source, size)
     }
 
-    async #readClickResult(): Promise<{ clickedId: number; edgeHits: import("./render-worker-protocol.mjs").EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number] }> {
+    async #readClickResult(): Promise<{
+        clickedId: number
+        edgeHits: import("./render-worker-protocol.mjs").EdgeHitData[]
+        hitPos: [number, number, number, number]
+        clickedNormal: [number, number, number]
+    }> {
         const reuse = !this.#clickReadbackBusy
         if (reuse) this.#clickReadbackBusy = true
         const [idBuf, edgeBuf, hitBuf, normalBuf] = await Promise.all([
@@ -1933,12 +1975,7 @@ export class RenderWorkerCore {
     async #readHoverResult(): Promise<{ hoveredObjectId: number; hoveredEdges: SelectedEdgePayload[] }> {
         const reuse = !this.#hoverReadbackBusy
         if (reuse) this.#hoverReadbackBusy = true
-        const readback = await this.#readGPU(
-            this.#uniformBuffers.hoverEdgeHit,
-            this.#hoverEdgeHitReadback,
-            EDGE_HITS_SIZE,
-            reuse,
-        )
+        const readback = await this.#readGPU(this.#uniformBuffers.hoverEdgeHit, this.#hoverEdgeHitReadback, EDGE_HITS_SIZE, reuse)
         if (reuse) this.#hoverReadbackBusy = false
         const u32 = new Uint32Array(readback)
         const f32 = new Float32Array(readback)
@@ -1969,7 +2006,13 @@ export class RenderWorkerCore {
         return { hoveredObjectId, hoveredEdges: edges }
     }
 
-    async handleClick(clickUV: [number, number], shiftKey: boolean, altKey: boolean, documentName?: string, sab?: SharedArrayBuffer): Promise<void> {
+    async handleClick(
+        clickUV: [number, number],
+        shiftKey: boolean,
+        altKey: boolean,
+        documentName?: string,
+        sab?: SharedArrayBuffer,
+    ): Promise<void> {
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return
         this.#writeClickState(clickUV, true, false)
@@ -1993,7 +2036,13 @@ export class RenderWorkerCore {
         })
     }
 
-    async handleHover(clickUV: [number, number], altKey: boolean, documentName?: string, hoverRequestId?: number, sab?: SharedArrayBuffer): Promise<void> {
+    async handleHover(
+        clickUV: [number, number],
+        altKey: boolean,
+        documentName?: string,
+        hoverRequestId?: number,
+        sab?: SharedArrayBuffer,
+    ): Promise<void> {
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return
         this.#writeClickState(clickUV, false, true, clickUV)
@@ -2004,9 +2053,10 @@ export class RenderWorkerCore {
         } else {
             this.render(this.#lastRenderMsg!)
         }
-        const selectionMode = sab
-            ? (new Uint32Array(sab)[(getSlotByteOffset(getPublishedRenderSlot(sab)) + SAB_LAYOUT.O_VIEW_SETTINGS) / 4] >> 2) & 7
-            : this.#lastSelectionMode
+        const selectionMode =
+            sab ?
+                (new Uint32Array(sab)[(getSlotByteOffset(getPublishedRenderSlot(sab)) + SAB_LAYOUT.O_VIEW_SETTINGS) / 4] >> 2) & 7
+            :   this.#lastSelectionMode
         const effectiveMode = altKey && selectionMode === 0 ? 1 : selectionMode
 
         const { hoveredObjectId, hoveredEdges } = await this.#readHoverResult()
@@ -2038,19 +2088,22 @@ export class RenderWorkerCore {
                 opType: e.opType,
             })),
             face: null,
-            hover: hoveredObjectId > 0 ? {
-                objectId: hoveredObjectId,
-                edges: edges.map(e => ({
-                    kind: e.kind,
-                    primaryId: e.primaryId,
-                    secondaryId: e.secondaryId,
-                    featureA: e.featureA,
-                    opType: e.opType,
-                    seedPoint: e.seedPoint,
-                    seedTangent: e.seedTangent,
-                    seedNormal: e.seedNormal,
-                })),
-            } : null,
+            hover:
+                hoveredObjectId > 0 ?
+                    {
+                        objectId: hoveredObjectId,
+                        edges: edges.map(e => ({
+                            kind: e.kind,
+                            primaryId: e.primaryId,
+                            secondaryId: e.secondaryId,
+                            featureA: e.featureA,
+                            opType: e.opType,
+                            seedPoint: e.seedPoint,
+                            seedTangent: e.seedTangent,
+                            seedNormal: e.seedNormal,
+                        })),
+                    }
+                :   null,
         }
         self.postMessage({ type: "selectionInfo", info, documentName, hoverRequestId })
     }
@@ -2125,11 +2178,7 @@ export class RenderWorkerCore {
             this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, msg.faceSelection)
         }
         if (msg.polygonVertices) {
-            this.#device.queue.writeBuffer(
-                this.#uniformBuffers.polygonVertices,
-                msg.polygonVertices.offset,
-                msg.polygonVertices.data,
-            )
+            this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, msg.polygonVertices.offset, msg.polygonVertices.data)
         }
         if (msg.previewParamsF32Patch) {
             const patch = new Float32Array(msg.previewParamsF32Patch.data)
@@ -2195,9 +2244,18 @@ export class RenderWorkerCore {
         const v3 = this.#camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
         const v4 = this.#camTransform.transformVector(vec3(-0.2, 0.2, 1.0).normalize())
         const ld = this.#lightDirBuf
-        ld[0] = v1.x; ld[1] = v1.y; ld[2] = v1.z; ld[3] = 0
-        ld[4] = v2.x; ld[5] = v2.y; ld[6] = v2.z; ld[7] = 0
-        ld[8] = v3.x; ld[9] = v3.y; ld[10] = v3.z; ld[11] = 0
+        ld[0] = v1.x
+        ld[1] = v1.y
+        ld[2] = v1.z
+        ld[3] = 0
+        ld[4] = v2.x
+        ld[5] = v2.y
+        ld[6] = v2.z
+        ld[7] = 0
+        ld[8] = v3.x
+        ld[9] = v3.y
+        ld[10] = v3.z
+        ld[11] = 0
         const staging = new Uint8Array(this.#cameraStagingBuf)
         const f32 = new Float32Array(this.#cameraStagingBuf)
         const viewF32 = viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform)
@@ -2210,14 +2268,26 @@ export class RenderWorkerCore {
         f32[21] = sceneHeight
         f32[22] = zoom
         f32[23] = 0
-        f32[24] = ld[0]; f32[25] = ld[1]; f32[26] = ld[2]; f32[27] = 0
-        f32[28] = ld[4]; f32[29] = ld[5]; f32[30] = ld[6]; f32[31] = 0
-        f32[32] = ld[8]; f32[33] = ld[9]; f32[34] = ld[10]; f32[35] = 0
+        f32[24] = ld[0]
+        f32[25] = ld[1]
+        f32[26] = ld[2]
+        f32[27] = 0
+        f32[28] = ld[4]
+        f32[29] = ld[5]
+        f32[30] = ld[6]
+        f32[31] = 0
+        f32[32] = ld[8]
+        f32[33] = ld[9]
+        f32[34] = ld[10]
+        f32[35] = 0
         f32[36] = viewCenter[0]
         f32[37] = viewCenter[1]
         f32[38] = 0
         f32[39] = 0
-        f32[40] = v4.x; f32[41] = v4.y; f32[42] = v4.z; f32[43] = 0
+        f32[40] = v4.x
+        f32[41] = v4.y
+        f32[42] = v4.z
+        f32[43] = 0
         const ps = previewShading
         f32[44] = ps.ambient
         f32[45] = ps.diffuseWrap
@@ -2298,7 +2368,21 @@ export class RenderWorkerCore {
     /** Build edges into staging, upload to GPU if dirty. */
     #writeEdgesToBufferIfDirty(
         gpuBuffer: GPUBuffer,
-        edges: (SelectedEdgePayload | { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx?: number; epsilon?: number; seedPoint?: [number, number, number]; seedTangent?: [number, number, number]; seedNormal?: [number, number, number] })[],
+        edges: (
+            | SelectedEdgePayload
+            | {
+                  kind: number
+                  primaryId: number
+                  secondaryId: number
+                  featureA: number
+                  opType: number
+                  lineWidthPx?: number
+                  epsilon?: number
+                  seedPoint?: [number, number, number]
+                  seedTangent?: [number, number, number]
+                  seedNormal?: [number, number, number]
+              }
+        )[],
         lineWidthPx: number,
         epsilon: number,
         cache: ArrayBuffer,
@@ -2319,11 +2403,17 @@ export class RenderWorkerCore {
             f32[base + 5] = e.lineWidthPx ?? lineWidthPx
             f32[base + 6] = e.epsilon ?? epsilon
             const sp = e.seedPoint ?? [0, 0, 0]
-            f32[base + 8] = sp[0]; f32[base + 9] = sp[1]; f32[base + 10] = sp[2]
+            f32[base + 8] = sp[0]
+            f32[base + 9] = sp[1]
+            f32[base + 10] = sp[2]
             const st = e.seedTangent ?? [0, 0, 0]
-            f32[base + 12] = st[0]; f32[base + 13] = st[1]; f32[base + 14] = st[2]
+            f32[base + 12] = st[0]
+            f32[base + 13] = st[1]
+            f32[base + 14] = st[2]
             const sn = e.seedNormal ?? [0, 0, 0]
-            f32[base + 16] = sn[0]; f32[base + 17] = sn[1]; f32[base + 18] = sn[2]
+            f32[base + 16] = sn[0]
+            f32[base + 17] = sn[1]
+            f32[base + 18] = sn[2]
         }
         new Uint8Array(this.#edgesStagingBuf).fill(0, SELECTED_EDGES_HEADER + count * SELECTED_EDGE_SIZE, SELECTED_EDGES_TOTAL)
         this.#writeBufferIfDirty(gpuBuffer, this.#edgesStagingBuf, 0, SELECTED_EDGES_TOTAL, cache)
@@ -2331,7 +2421,21 @@ export class RenderWorkerCore {
 
     #writeEdgesToBuffer(
         buffer: GPUBuffer,
-        edges: (SelectedEdgePayload | { kind: number; primaryId: number; secondaryId: number; featureA: number; opType: number; lineWidthPx?: number; epsilon?: number; seedPoint?: [number, number, number]; seedTangent?: [number, number, number]; seedNormal?: [number, number, number] })[],
+        edges: (
+            | SelectedEdgePayload
+            | {
+                  kind: number
+                  primaryId: number
+                  secondaryId: number
+                  featureA: number
+                  opType: number
+                  lineWidthPx?: number
+                  epsilon?: number
+                  seedPoint?: [number, number, number]
+                  seedTangent?: [number, number, number]
+                  seedNormal?: [number, number, number]
+              }
+        )[],
         lineWidthPx: number,
         epsilon: number,
     ): void {

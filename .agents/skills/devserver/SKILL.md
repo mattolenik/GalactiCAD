@@ -1,11 +1,20 @@
 ---
 name: devserver
-description: "Local devserver: GET /_logs, GET /_sceneSource, and agent automation (GET /_agent/capture-testcase, GET /_agent/render/testcase/…, POST /_agent/render) via curl; WebSocket bridge to a connected Chromium tab."
+description: "Local devserver: GET /_logs, GET /_sceneSource, and agent automation via curl; WebSocket bridge to Chromium (WebGPU). Cursor agents: always make start-agent + .devserver.agent.run — do not launch Chromium yourself."
 ---
 
 # Devserver HTTP / WebSocket bridge
 
 Use this skill for **runtime log signal**, a **plain-text dump of the active CAD document**, and for **agent automation** that talks to a **connected browser tab** (Chromium with WebGPU) over the same devserver port (HTTP + WebSocket).
+
+## Cursor agents (read first)
+
+- **Always use the agent devserver:** run **`make start-agent`** from the repo root when you need **`/_logs`**, **`/_sceneSource`**, or **`/_agent/*`**. It is the **idempotent** project entry point for that stack (same target can be invoked whenever you need the server up per Makefile conventions).
+- **Port:** read **`port`** from **`.devserver.agent.run`** only: `jq -r .port .devserver.agent.run`. If the file is missing after **`make start-agent`**, the agent HTTP bridge is unavailable — **do not guess a port**.
+- **Do not** launch Chromium, Chrome, **`open`**, or **`.agents/scripts/agent-open-chromium.sh`** yourself. The **`AGENT=true`** devserver starts **headless** Chromium for the WebSocket bridge.
+- **Logs:** **`.devserver.agent.log`** (tail with **`make logs-agent`**). **Stop:** **`make stop-agent`**.
+
+**Humans / interactive sessions** may use **`make serve`** / **`make start`** and **`.devserver.run`** instead; automated agents should still prefer **`make start-agent`** so the headless browser and run file stay aligned.
 
 ## When to use
 
@@ -13,19 +22,19 @@ Use this skill for **runtime log signal**, a **plain-text dump of the active CAD
 - **Scene source:** capture the **currently selected editor tab’s scene source** (including unsaved buffer content) for debugging, repro scripts, or diffing against disk.
 - **Agent automation:** fetch a **testcase YAML** from the live editor, or request **PNG** renders from a **saved testcase file** (`GET`) or an **inline JSON body** (`POST`). Each successful render also writes a copy under **`.agents/imagelog/`** on the server.
 
-## Port discovery (main devserver)
+## Port discovery (interactive devserver — not the default for Cursor agents)
 
-- **Run file:** **`.devserver.run`** in the repo root (JSON: `pid`, `port`), written when `make serve` / `make start` runs.
-- **Port:** `port=$(jq -r .port .devserver.run)` — **`-r`** emits raw digits only. If the file is missing or `jq` fails, the server is not running — **do not guess a port**.
+- **Run file:** **`.devserver.run`** in the repo root (JSON: `pid`, `port`), written when **`make serve`** / **`make start`** runs (without **`AGENT=true`**).
+- **Port:** `port=$(jq -r .port .devserver.run)` — **`-r`** emits raw digits only. If the file is missing or `jq` fails, this server is not running — **do not guess a port**.
 
-## Optional agent devserver (separate process)
+## Agent devserver (**`.devserver.agent.run`**)
 
-- **Run file:** **`.devserver.agent.run`** when using **`make serve-agent`** or **`make start-agent`** (starts from **PORT=7000**; devserver may bind the next free port if busy — read **`port`** from the run file).
-- Read the port the same way: `jq -r .port .devserver.agent.run`.
-- **Logs file:** `.devserver.agent.log` (tail with **`make logs-agent`**).
+- **Start:** **`make start-agent`** or **`make serve-agent`** ( **`AGENT=true`** ; default **PORT=7000** unless overridden; devserver may bind the next free port if busy — always read **`port`** from the run file).
+- **Run file:** **`.devserver.agent.run`**. Read the port: `jq -r .port .devserver.agent.run`.
+- **Logs file:** **`.devserver.agent.log`** ( **`make logs-agent`** ).
 - **Stop:** **`make stop-agent`**.
 
-Use this when you want automation isolated from the default `.devserver.run` server.
+Cursor agents should use this stack exclusively (see **Cursor agents** above).
 
 ---
 
@@ -38,7 +47,7 @@ RPCs (`/_logs`, `/_sceneSource`, `/_agent/capture-testcase`, `/_agent/render`) s
 ## `GET /_sceneSource` (active document)
 
 - **Route:** `GET /_sceneSource` only. Other methods → **405** with `Allow: GET`.
-- **URL:** `http://localhost:<port>/_sceneSource`, where **`<port>`** is read from **`.devserver.run`**. If the file is missing or unusable, the devserver is not running—**do not guess a port**.
+- **URL:** `http://localhost:<port>/_sceneSource`, where **`<port>`** is read from **`.devserver.agent.run`** (agents) or **`.devserver.run`** (interactive). If the file is missing or unusable, the devserver is not running—**do not guess a port**.
 - **Response:** `text/plain; charset=utf-8`. Body is the **full Monaco model value** for the **active tab**. Unsaved edits are included. **No query parameters.**
 - **How it works:** The devserver asks the connected browser (via WebSocket) to run `globalThis.__galacticadDevGetActiveSceneSource()`, which the app registers when the dev log bridge is present.
 - **200 with empty body** when: no browser tab has an open WebSocket to this devserver, the bridge **times out** (~5s), the getter **throws**, there is **no editor model** (e.g. welcome screen only, or editor not ready), or the app was **not** loaded through this devserver’s injected bridge.
@@ -46,7 +55,7 @@ RPCs (`/_logs`, `/_sceneSource`, `/_agent/capture-testcase`, `/_agent/render`) s
 
 ### Examples (`/_sceneSource`)
 
-After `port=$(jq -r .port .devserver.run)`:
+After `port=$(jq -r .port .devserver.agent.run)` (agents) or the matching **`.run`** file for your stack:
 
 - Print to terminal:
 
@@ -61,7 +70,7 @@ After `port=$(jq -r .port .devserver.run)`:
 ## `GET /_logs`
 
 - **Route:** `GET /_logs`
-- **Host/port:** **`http://localhost:<port>/_logs`**, where **`<port>` comes from `.devserver.run`**. **Read it with `jq`:** `jq -r .port .devserver.run` from the directory that contains the file (usually the repo root). If that file is missing, `jq` fails, or the value is unusable, the devserver is not running—**do not guess a port**; skip `/_logs` or ask the user to start the server.
+- **Host/port:** **`http://localhost:<port>/_logs`**, where **`<port>`** comes from **`.devserver.agent.run`** (agents) or **`.devserver.run`** (interactive). **Read it with `jq`:** e.g. `jq -r .port .devserver.agent.run` from the repo root. If that file is missing, `jq` fails, or the value is unusable, the devserver is not running—**do not guess a port**; skip `/_logs` or run **`make start-agent`** (agents) before concluding there is no signal.
 - **Response:** plain text (`text/plain; charset=utf-8`), one buffer line per line: **full** lines as stored (including `[timestamp] [level]`, `[Module]`, optional `[thread]`, message)—the devserver does not strip or rewrite them.
 - **Module toggles vs errors:** In-app `log("Module").error` is **always** written to the browser console and the dev log ring buffer (Dev Tools **Logs** checkboxes do not suppress it). **`debug` / `info` / `warn`** from `log("Module")` only appear when that module is enabled in Dev Tools. `GET /_logs?module=…` still filters by the entry’s `module` field—errors from other modules are omitted when a non-empty `module` list is used.
 - **Empty result behavior:** `200` with empty body when no matches, no connected browser, or bridge timeout
@@ -128,17 +137,18 @@ Example:
 
 ## Agent workflow (ordered)
 
-1. Start a devserver (`make serve` or `make serve-agent`); read **`port`** from the matching **`.run`** file.
-2. Open the app in **system Chromium** with WebGPU (helper: **`.agents/scripts/agent-open-chromium.sh`** — reads **`.devserver.agent.run`** by default; set **`RUN_FILE`** to use the interactive server). Leave **one** tab connected for predictable RPC.
-3. Optional: **`GET /_agent/capture-testcase`** to save testcase YAML from the user’s session.
-4. **`GET /_agent/render/testcase/…`** or **`POST /_agent/render`**; save PNG (`curl -OJ` respects **`Content-Disposition`**) and/or inspect **`.agents/imagelog/`**.
-5. Optional: **`GET /_logs`** for runtime errors during the run.
+1. Run **`make start-agent`** if **`.devserver.agent.run`** is not present; read **`port`** from that file. **Do not** launch Chromium yourself—the agent devserver starts headless Chrome for the bridge.
+2. Optional: **`GET /_agent/capture-testcase`** to save testcase YAML from the user’s session.
+3. **`GET /_agent/render/testcase/…`** or **`POST /_agent/render`**; save PNG (`curl -OJ` respects **`Content-Disposition`**) and/or inspect **`.agents/imagelog/`**.
+4. Optional: **`GET /_logs`** for runtime errors during the run.
+
+*(Interactive developers may use **`make serve`** + a normal browser tab instead of **`make start-agent`**, but Cursor agents should stick to **`make start-agent`**.)*
 
 ---
 
 ## Standard check workflow (`/_logs` and optional `/_sceneSource`)
 
-1. Assign `port=$(jq -r .port .devserver.run)` from the repo root. If the file does not exist, `jq` errors, or `port` is empty, **stop**—the devserver is not running; do not assume any default port.
+1. Assign `port=$(jq -r .port .devserver.agent.run)` from the repo root (**agents**). If the file does not exist, run **`make start-agent`** and retry once; if `jq` still errors or `port` is empty, **stop**—do not assume any default port. *(Interactive: use **`.devserver.run`** instead.)*
 2. **Default** runtime check: `curl` **`http://localhost:${port}/_logs`** with no `level` or `only` so the server applies default **info** threshold (errors, warnings, and info—no debug spam).
 3. **Optional scene source:** `curl -sS "http://localhost:${port}/_sceneSource"` when you need the live editor buffer. If the body is empty, confirm a browser tab is open on this devserver URL and a document tab is active (not welcome-only with no model).
 4. Add `/_logs` query parameters only when you have a reason (see **AGENTS.md**).
@@ -149,6 +159,6 @@ Example:
 
 ## Notes
 
-- Use **`jq -r .port .devserver.run`** and **`curl`** for **`/_logs`**, **`/_sceneSource`**, and agent routes on the same host/port.
+- **Agents:** **`jq -r .port .devserver.agent.run`** after **`make start-agent`**. **Interactive:** **`.devserver.run`**. Then **`curl`** **`/_logs`**, **`/_sceneSource`**, and agent routes on that host/port.
 - **`make build`** / **`make test`** follow project rules; do not use `npm` / `npx` / `node` directly for builds.
 - Cross-reference: **`AGENTS.md`** (devserver overview, log query parameters, agent automation summary).

@@ -146,7 +146,9 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 ### Devserver HTTP (logs, scene source, agent render)
 
-When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`**, **`GET /_sceneSource`**, and **agent automation** routes. **Read `<port>` from `.devserver.run`** (JSON `port` field); if that file is absent, the devserver is not running and there is **no** default port. The recorded port may differ from the configured default if the listen port was already in use.
+**Agents (Cursor/automation):** Always use the **agent** devserver for **`/_logs`**, **`/_sceneSource`**, and **`/_agent/*`**. Run **`make start-agent`** to start it (idempotent project entry point). **Read `<port>` from `.devserver.agent.run`** (JSON `port` field). Do **not** launch Chromium, Chrome, or **`.agents/scripts/agent-open-chromium.sh`** yourself—the Makefile/devserver starts the headless browser the bridge needs.
+
+**Interactive use:** When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`**, **`GET /_sceneSource`**, and **agent automation** routes. **Read `<port>` from `.devserver.run`** (JSON `port` field); if that file is absent, that devserver is not running and there is **no** default port. The recorded port may differ from the configured default if the listen port was already in use.
 
 **WebSocket bridge:** log, scene-source, testcase capture, and render RPCs are delivered to the **first connected browser client** in OPEN state (not broadcast to every tab). Prefer a single connected tab for automation.
 
@@ -161,7 +163,7 @@ When the watch devserver is running (`make serve` / `make start`, or `make serve
 
 Successful PNG responses set **`Content-Disposition`** (suggested filename **`<basename>-<mode>.png`**) and **`Access-Control-Expose-Headers: Content-Disposition`** so **`curl -OJ`** can save with the right name. **`400`** / **`503`** on failure return **plain text** (browser pipeline error vs no bridge / timeout). Server also mirrors successful PNGs under **`.agents/imagelog/`**.
 
-Optional **`make serve-agent`** / **`make start-agent`** use **`.devserver.agent.run`**.
+**Agent devserver:** **`make serve-agent`** / **`make start-agent`** ( **`AGENT=true`** ) write **`.devserver.agent.run`** and spawn headless Chromium for the WebSocket bridge—this is what automated agents must use (see above).
 
 - **Response format**: `text/plain; charset=utf-8`, one log line per line: the **exact** in-browser buffer lines (including `[timestamp] [level]` and the rest), newline-joined with no server-side rewriting. If no browser tab is connected, bridge times out, or nothing matches filters, response is **200 with empty body**.
 - **`level`**: optional single threshold among `error`, `warning`, `info`, `debug` (case-insensitive). Cumulative: `error` → errors only; `warning` → errors and warnings; `info` → errors, warnings, and info; `debug` → all four. Default when `level` is missing, empty, or not recognized: **`info`** (errors, warnings, and info—no debug). URL token `warning` maps to the internal warn bucket.
@@ -173,9 +175,9 @@ Optional **`make serve-agent`** / **`make start-agent`** use **`.devserver.agent
 **Agent workflow**
 
 1. Prefer **`make build`** for compile-time WGSL and bundling errors after shader edits.
-2. If **`.devserver.run`** exists with a `port`, use shell `curl` against `http://localhost:<port>/_logs` (default response uses **`level=info`** semantics; add `level=debug` or `only=…` only when you need a different mix; omit `n` unless asked). Use `http://localhost:<port>/_sceneSource` to dump the active tab’s scene source as plain text.
-3. If `.devserver.run` is **missing** (devserver not running), **do nothing**; do not guess a port or fail the task for missing runtime logs.
-4. See [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) for the standard runtime-log, `/_sceneSource`, and agent render check flow.
+2. For runtime **`/_logs`**, **`/_sceneSource`**, or **`/_agent/*`**: run **`make start-agent`** if **`.devserver.agent.run`** is absent, then read **`port`** with **`jq -r .port .devserver.agent.run`**. Use shell **`curl`** against `http://localhost:<port>/…` (for **`/_logs`**, default response uses **`level=info`** semantics; add `level=debug` or `only=…` only when you need a different mix; omit `n` unless asked). Do **not** guess a port, do **not** launch a browser yourself.
+3. If **`.devserver.agent.run`** is still missing after **`make start-agent`** (or you cannot start the devserver), **do not** invent a port; treat runtime HTTP checks as unavailable rather than failing the whole task unless the user asked specifically for a running browser.
+4. See [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) for curl examples and the standard runtime-log, `/_sceneSource`, and agent render check flow.
 
 ## Performance regression triage
 

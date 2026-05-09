@@ -4,8 +4,8 @@
       "Bash(ast-index *)",
       "Bash(make *)",
       "Bash(npx @blazediff/cli *)",
-      "Bash(curl -sS \"http://localhost:*\")",
-      "Bash(curl -sS -X POST \"http://localhost:*\")"
+      "Bash(pnpm tsc *)",
+      "Bash(echo *)"
     ]
   }
 }

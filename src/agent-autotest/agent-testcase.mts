@@ -24,8 +24,6 @@ export interface AgentTestcase {
     source: string
     camera: CameraSettings
     viewCenter: [number, number]
-    /** Matches interactive preview (`1` full, `0.5` during camera half-res motion when optimization is on). */
-    resolutionScale: number
     viewportWidth: number
     viewportHeight: number
     /**
@@ -47,7 +45,6 @@ export interface BuildAgentTestcaseInput {
     sourceUtf8: string
     camera: CameraSettings
     viewCenter: [number, number]
-    resolutionScale: number
     viewportWidth: number
     viewportHeight: number
     previewUvRect?: CanvasPreviewUvRect
@@ -81,7 +78,6 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
         source: input.sourceUtf8,
         camera: { ...input.camera },
         viewCenter: [input.viewCenter[0], input.viewCenter[1]],
-        resolutionScale: input.resolutionScale,
         viewportWidth: input.viewportWidth,
         viewportHeight: input.viewportHeight,
         ...(input.previewUvRect !== undefined ? { previewUvRect: { ...input.previewUvRect } } : {}),
@@ -207,7 +203,6 @@ export interface AgentRenderRequest {
     sourceBase64: string
     camera: CameraSettings
     viewCenter: [number, number]
-    resolutionScale: number
     viewportWidth: number
     viewportHeight: number
     previewUvRect?: CanvasPreviewUvRect
@@ -235,7 +230,6 @@ export function mergeAgentRenderRequest(
         sourceBase64: utf8ToBase64(testcase.source),
         camera: { ...testcase.camera },
         viewCenter: [testcase.viewCenter[0], testcase.viewCenter[1]],
-        resolutionScale: testcase.resolutionScale,
         viewportWidth: w,
         viewportHeight: h,
         ...(testcase.previewUvRect !== undefined

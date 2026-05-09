@@ -385,7 +385,6 @@ export type MainToWorkerMessage =
           viewTransform: Float32Array
           cameraPosition: [number, number, number]
           viewCenter: [number, number]
-          resolutionScale: number
       }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
     | { type: "pickObject"; clickUV: [number, number]; requestId: number }

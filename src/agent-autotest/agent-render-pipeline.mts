@@ -29,7 +29,6 @@ export async function runAgentRenderPipeline(renderer: SDFRenderer, req: AgentRe
     const h = Math.max(1, Math.round(req.viewportHeight * AGENT_RENDER_VIEWPORT_SCALE))
     const cam = req.camera
     const vc = req.viewCenter
-    const rs = req.resolutionScale
     const doc = req.documentName
     const meshOpts = {
         simplifyOnExport: req.meshExport.simplifyOnExport,
@@ -41,8 +40,8 @@ export async function runAgentRenderPipeline(renderer: SDFRenderer, req: AgentRe
     }
     let img =
         req.mode === "sdf"
-            ? await renderer.agentPreviewPixels(src, cam, vc, rs, w, h, doc)
-            : await renderer.agentMeshPreviewPixels(src, cam, vc, rs, meshOpts, w, h, doc, req.meshOverlay)
+            ? await renderer.agentPreviewPixels(src, cam, vc, w, h, doc)
+            : await renderer.agentMeshPreviewPixels(src, cam, vc, meshOpts, w, h, doc, req.meshOverlay)
     const rect = req.previewUvRect
     if (rect !== undefined && !isFullCanvasPreviewUvRect(rect)) {
         img = cropImageDataToCanvasPreviewUvRect(img, rect)

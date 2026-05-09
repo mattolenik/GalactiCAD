@@ -1495,7 +1495,7 @@ export class RenderWorkerCore {
                     previewNormalShading: true,
                 },
                 viewCenter: [msg.viewCenter[0], msg.viewCenter[1]],
-                resolutionScale: msg.resolutionScale,
+                resolutionScale: 1.0,
                 hidePivotCursor: true,
             }
             let thumbOutputTexture: GPUTexture | undefined

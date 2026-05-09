@@ -173,7 +173,6 @@ export class SDFRenderer {
             viewTransform?: Float32Array
             cameraPosition?: [number, number, number]
             viewCenter?: [number, number]
-            resolutionScale?: number
         }
     >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
@@ -616,10 +615,9 @@ export class SDFRenderer {
             const vt = pending.viewTransform
             const cp = pending.cameraPosition
             const vc = pending.viewCenter
-            const rs = pending.resolutionScale
             const w = pending.width
             const h = pending.height
-            if (!camState || !vt || !cp || !vc || rs === undefined || w === undefined || h === undefined) {
+            if (!camState || !vt || !cp || !vc || w === undefined || h === undefined) {
                 this.#pendingThumbnail.get(requestId)?.reject(new Error("Incomplete agent preview params"))
                 this.#pendingThumbnail.delete(requestId)
                 return
@@ -635,7 +633,6 @@ export class SDFRenderer {
                 viewTransform: vt,
                 cameraPosition: cp,
                 viewCenter: vc,
-                resolutionScale: rs,
             })
         }
     }
@@ -1766,14 +1763,13 @@ export class SDFRenderer {
         src: string,
         camera: CameraSettings,
         viewCenter: [number, number],
-        resolutionScale: number,
         width = 1000,
         height = 1000,
         documentName?: string,
     ): Promise<ImageData> {
         await this.#readyPromise
         const trimmed = src.trim()
-        const params = computeAgentPreviewCameraParams(camera, width, height, viewCenter, resolutionScale)
+        const params = computeAgentPreviewCameraParams(camera, width, height, viewCenter)
         try {
             const requestId = ++this.#requestIdCounter
             this.#latestAgentPreviewRequestId = requestId
@@ -1787,7 +1783,6 @@ export class SDFRenderer {
                 viewTransform: params.viewTransform,
                 cameraPosition: params.cameraPosition,
                 viewCenter: params.viewCenter,
-                resolutionScale: params.resolutionScale,
             })
             return await new Promise<ImageData>((resolve, reject) => {
                 this.#pendingThumbnail.set(requestId, { resolve, reject, skipDocumentGuard: true })
@@ -1803,7 +1798,6 @@ export class SDFRenderer {
         src: string,
         camera: CameraSettings,
         viewCenter: [number, number],
-        resolutionScale: number,
         meshOptions: {
             simplifyOnExport?: boolean
             exporter?: ExporterKind
@@ -1818,7 +1812,7 @@ export class SDFRenderer {
         overlay?: AgentMeshOverlay,
     ): Promise<ImageData> {
         const mesh = await this.renderMesh(src, documentName, { ...meshOptions, agentAutomation: true })
-        return captureAgentMeshImageData(mesh, camera, viewCenter, resolutionScale, width, height, overlay)
+        return captureAgentMeshImageData(mesh, camera, viewCenter, width, height, overlay)
     }
 
     async #getCachedThumbnail(cacheKey: string): Promise<ImageData | null> {

@@ -46,14 +46,12 @@ export function computeAgentPreviewCameraParams(
     width: number,
     height: number,
     viewCenter: [number, number],
-    resolutionScale: number,
 ): {
     cameraState: CameraState
     viewTransform: Float32Array
     cameraPosition: [number, number, number]
     cameraRes: [number, number]
     viewCenter: [number, number]
-    resolutionScale: number
     dispose: () => void
 } {
     const w = Math.max(1, Math.floor(width))
@@ -72,7 +70,6 @@ export function computeAgentPreviewCameraParams(
         cameraPosition: [eye.x, eye.y, eye.z],
         cameraRes: [w, h],
         viewCenter: [viewCenter[0], viewCenter[1]],
-        resolutionScale,
         dispose,
     }
 }

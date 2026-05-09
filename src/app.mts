@@ -1607,7 +1607,6 @@ class App {
                     : {}),
             },
             viewCenter: [vc.x, vc.y],
-            resolutionScale: this.renderer.lastRenderedResolutionScale,
             viewportWidth: rs.width,
             viewportHeight: rs.height,
             previewUvRect,

@@ -42,14 +42,13 @@ export async function captureAgentMeshImageData(
     mesh: MeshData,
     camera: CameraSettings,
     viewCenter: [number, number],
-    resolutionScale: number,
     width = 1000,
     height = 1000,
     overlay?: AgentMeshOverlay,
 ): Promise<ImageData> {
     const w = Math.max(1, Math.min(AGENT_MESH_MAX, Math.floor(width)))
     const h = Math.max(1, Math.min(AGENT_MESH_MAX, Math.floor(height)))
-    const params = computeAgentPreviewCameraParams(camera, w, h, viewCenter, resolutionScale)
+    const params = computeAgentPreviewCameraParams(camera, w, h, viewCenter)
     const wrap = document.createElement("div")
     wrap.style.cssText = `position:fixed;left:-9999px;top:0;width:${w}px;height:${h}px;pointer-events:none`
     const mv = new MeshViewer(null, undefined)

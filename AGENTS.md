@@ -159,6 +159,8 @@ When to use grep instead:
 
 Rule of thumb: **named TypeScript thing → `ast-index`; raw text or non-TS file → `grep`; both → `ast-index` first to anchor the symbol, then `grep` to find the off-AST references.**
 
+**NEVER EVER EVER grep, search, read, or otherwise look inside `dist/`.** It is generated build output — bundled, minified, and duplicated from source. Searching it produces noisy, misleading hits and wastes context. Always search the source tree (`src/`, `build/`, etc.) instead. This applies to `grep`, `rg`, `find`, `ast-index`, Glob, and any other search tool — exclude `dist/` unconditionally.
+
 ## Building and Linting
 
 See `.cursor/rules/build-commands.mdc` for build/test command rules.

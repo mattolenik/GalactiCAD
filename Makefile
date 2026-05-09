@@ -131,7 +131,7 @@ release: export PRODUCTION=1
 release: build test
 
 .PHONY: clean
-clean: stop
+clean: stop stop-agent
 	rm -rf $(DIST)
 	rm -f .devserver.*
 

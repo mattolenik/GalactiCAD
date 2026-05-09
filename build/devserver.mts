@@ -16,6 +16,9 @@ import {
     type AgentTestcase,
 } from "../src/agent-autotest/agent-testcase.mjs"
 
+/** True when `AGENT` is set to a non-empty value (agent devserver: headless Chrome, no watch auto-reload, …). */
+export const AGENT_MODE = !!process.env.AGENT
+
 /** Substring in headless agent Chrome `--user-data-dir`; suffix is the devserver PID (`options.pid`). Keep in sync with AGENT_HEADLESS_PROFILE_PREFIX in the Makefile (make stop sweeps by this path). */
 const AGENT_HEADLESS_CHROME_USER_DATA_TAG = "galacticad-agent-headless-chrome"
 
@@ -135,7 +138,7 @@ const ALL_LOG_LEVELS: DevServerConsoleLogLevel[] = ["error", "warn", "info", "de
 
 /** After `/_agent/render`, snapshot bridge buffer into this file (overwrite). */
 function browserLogFilePath(): string {
-    const name = !!process.env.AGENT ? ".devserver.agent.browser.log" : ".devserver.browser.log"
+    const name = AGENT_MODE ? ".devserver.agent.browser.log" : ".devserver.browser.log"
     return path.join(process.cwd(), name)
 }
 
@@ -647,7 +650,7 @@ export class DevServer {
         indexFileName = "index.html",
         log = console.log,
         err = console.error,
-        options?: { runFile: string; pid: number; agentHeadlessChrome?: boolean },
+        options?: { runFile: string; pid: number },
     ): Promise<DevServer> {
         const bridge = new BrowserBridge()
 
@@ -667,7 +670,7 @@ export class DevServer {
         let chromePid: number | undefined
         /** Why auto-Chromium PID may be missing (for `.devserver.agent.run` diagnostics). */
         let chromeLaunchNote: string | undefined
-        if (options?.agentHeadlessChrome) {
+        if (AGENT_MODE && options) {
             const bin = resolveChromeBinary(log, err)
             if (!bin) {
                 chromeLaunchNote = "chrome_binary_not_found"
@@ -755,13 +758,13 @@ export class DevServer {
             const payload: RunFileData = { pid: options.pid, port: actualPort }
             if (chromePid != null) {
                 payload.chromePid = chromePid
-            } else if (options.agentHeadlessChrome && chromeLaunchNote != null) {
+            } else if (AGENT_MODE && chromeLaunchNote != null) {
                 payload.chromeLaunchNote = chromeLaunchNote
             }
             await fs.writeFile(options.runFile, JSON.stringify(payload, null, 2))
         }
         log(
-            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource; GET /_agent/capture-testcase; GET|POST /_agent/render (GET testcase: /_agent/render/testcase/<path-under-test-testcases>?mode=…)`,
+            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET|POST /_agent/render (GET testcase: /_agent/render/testcase/<path-under-test-testcases>?mode=…)`,
         )
         return instance
     }
@@ -867,6 +870,22 @@ function createHttpServer(
             const source = await bridge.requestActiveSceneSource()
             res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
             res.end(source ?? "")
+            return
+        }
+
+        if (pathname === "/_refresh") {
+            if (req.method !== "GET" && req.method !== "POST") {
+                res.writeHead(405, {
+                    "content-type": "text/plain; charset=utf-8",
+                    Allow: "GET, POST",
+                    "Access-Control-Allow-Origin": "*",
+                })
+                res.end("method not allowed")
+                return
+            }
+            bridge.broadcastReload()
+            res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+            res.end("ok\n")
             return
         }
 

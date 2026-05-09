@@ -6,7 +6,7 @@ import fs from "fs/promises"
 import nodePath from "node:path"
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
-import { DevServer, type RunFileData } from "./devserver.mjs"
+import { DevServer, type RunFileData, AGENT_MODE } from "./devserver.mjs"
 import { fileListerPlugin } from "./file-lister.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
 import staticBundler from "./static-bundler.mjs"
@@ -79,11 +79,8 @@ function shouldSuppressLiveReload(relativePath: string): boolean {
     })
 }
 
-const defaultDevServerPort = () =>
-    process.env.AGENT === "true" || process.env.AGENT === "1" ? "7000" : "6900"
-
 const ServerOptions = {
-    port: parseInt(process.env.PORT || defaultDevServerPort(), 10),
+    port: parseInt(process.env.PORT || (AGENT_MODE ? "7000" : "6900"), 10),
 }
 
 const RUN_FILE = process.env.RUN_FILE ?? ".devserver.run"
@@ -211,7 +208,6 @@ async function main() {
         server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err, {
             runFile: RUN_FILE,
             pid: process.pid,
-            agentHeadlessChrome: process.env.AGENT === "true" || process.env.AGENT === "1",
         })
         const change$ = new Subject<{ event: EventName; path: string }>()
         change$
@@ -219,7 +215,7 @@ async function main() {
             .subscribe(async ({ event, path }) => {
                 log(`Build triggered by ${event}: ${path}`)
                 await build()
-                if (!shouldSuppressLiveReload(path)) {
+                if (!shouldSuppressLiveReload(path) && !AGENT_MODE) {
                     server?.reload()
                 }
             })

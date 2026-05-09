@@ -66,7 +66,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         const d = DEFAULT_APP_DEVTOOLS_STATE
         this.#showFps$ = new BehaviorSubject(asBool(d.showFps, true))
         this.#meshViewer$ = new BehaviorSubject(asBool(d.meshViewerEnabled, false))
-        this.#meshSimplify$ = new BehaviorSubject(asBool(d.meshSimplifyOnExport, true))
+        this.#meshSimplify$ = new BehaviorSubject(asBool(d.meshSimplifyOnExport, false))
         this.#lightingExpanded$ = new BehaviorSubject(asBool(d.lightingExpanded, false))
 
         const persist = () => {
@@ -130,7 +130,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             const d = DEFAULT_APP_DEVTOOLS_STATE
             this.#showFps$.next(asBool(state.showFps, asBool(d.showFps, true)))
             this.#meshViewer$.next(asBool(state.meshViewerEnabled, asBool(d.meshViewerEnabled, false)))
-            this.#meshSimplify$.next(asBool(state.meshSimplifyOnExport, asBool(d.meshSimplifyOnExport, true)))
+            this.#meshSimplify$.next(asBool(state.meshSimplifyOnExport, asBool(d.meshSimplifyOnExport, false)))
             this.#lightingExpanded$.next(asBool(state.lightingExpanded, asBool(d.lightingExpanded, false)))
             this.onLightingExpandedChange?.(this.#lightingExpanded$.value)
         } finally {

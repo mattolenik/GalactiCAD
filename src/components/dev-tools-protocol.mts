@@ -44,7 +44,7 @@ export const DEFAULT_DEVTOOLS_COLLAPSE_OPEN: Partial<Record<DevToolsCollapseId, 
 export const DEFAULT_APP_DEVTOOLS_STATE: Record<string, JSONValue> = {
     showFps: true,
     meshViewerEnabled: false,
-    meshSimplifyOnExport: true,
+    meshSimplifyOnExport: false,
     lightingExpanded: false,
 }
 

@@ -968,7 +968,7 @@ export class RenderWorkerCore {
         body: string,
         requestId?: number,
         documentName?: string,
-        simplifyOnExport = true,
+        simplifyOnExport = false,
         exporter: ExporterKind = "mdc",
         shrecTuning?: ShrecTuning,
         simplifyTuning?: SimplifyTuning,

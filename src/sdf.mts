@@ -1620,7 +1620,7 @@ export class SDFRenderer {
     ): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
         this.#latestRenderMeshRequestId = requestId
-        const simplifyOnExport = options?.simplifyOnExport ?? true
+        const simplifyOnExport = options?.simplifyOnExport ?? false
         const exporter = options?.exporter
         const shrecTuning = options?.shrecTuning
         const simplifyTuning = options?.simplifyTuning
@@ -1696,7 +1696,7 @@ export class SDFRenderer {
             ...(app.devToolsSections[DEVTOOLS_SECTION_APP] ?? {}),
         }
         const simplifyRaw = appDev.meshSimplifyOnExport
-        const simplifyOnExport = typeof simplifyRaw === "boolean" ? simplifyRaw : true
+        const simplifyOnExport = typeof simplifyRaw === "boolean" ? simplifyRaw : false
         return {
             simplifyOnExport,
             voxelSizeMm: app.meshExportVoxelSizeMm,

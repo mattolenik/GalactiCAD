@@ -3,7 +3,9 @@
     "allow": [
       "Bash(ast-index *)",
       "Bash(make *)",
-      "Bash(npx @blazediff/cli *)"
+      "Bash(npx @blazediff/cli *)",
+      "Bash(curl -sS \"http://localhost:*\")",
+      "Bash(curl -sS -X POST \"http://localhost:*\")"
     ]
   }
 }

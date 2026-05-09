@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process"
-import { existsSync, writeSync } from "node:fs"
+import { closeSync, existsSync, openSync, writeSync } from "node:fs"
 import fs from "fs/promises"
 import http from "http"
 import os from "node:os"
@@ -24,21 +24,61 @@ export interface RunFileData {
     port: number
     /** Headless agent browser PID (AGENT=true devserver); stopped on devserver shutdown. */
     chromePid?: number
+    /**
+     * When agent mode expects auto-spawned Chromium but no `chromePid` was recorded (spawn failed,
+     * no binary, or process exited before PID was stored). Check devserver stderr and `.devserver.agent.chrome.log`.
+     */
+    chromeLaunchNote?: string
 }
 
-function resolveChromeBinary(errLog: (msg: unknown) => void): string | null {
+/** First `.app` bundle path from Spotlight, or null. */
+function macBundlePathForId(bundleId: string): string | null {
+    try {
+        const out = execFileSync(
+            "mdfind",
+            [`kMDItemCFBundleIdentifier == '${bundleId}'`],
+            { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+        )
+        const line = out
+            .trim()
+            .split("\n")
+            .find(l => l.endsWith(".app"))
+        return line?.length ? line : null
+    } catch {
+        return null
+    }
+}
+
+function resolveChromeBinary(log: (msg: unknown) => void, errLog: (msg: unknown) => void): string | null {
     const fromEnv = process.env.CHROME ?? process.env.CHROMIUM_PATH
     if (typeof fromEnv === "string" && fromEnv.length > 0 && existsSync(fromEnv)) {
         return fromEnv
     }
+    if (typeof fromEnv === "string" && fromEnv.length > 0) {
+        errLog(`agent mode: CHROME/CHROMIUM_PATH set but not found: ${fromEnv}`)
+    }
     const pathCandidates = [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta",
         "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
     ]
     for (const p of pathCandidates) {
         if (existsSync(p)) return p
     }
-    const pathNames = ["chromium", "google-chrome-stable", "google-chrome", "chromium-browser"]
+    if (process.platform === "darwin") {
+        const chromeApp = macBundlePathForId("com.google.Chrome")
+        if (chromeApp) {
+            const exe = path.join(chromeApp, "Contents/MacOS/Google Chrome")
+            if (existsSync(exe)) return exe
+        }
+        const chromiumApp = macBundlePathForId("org.chromium.Chromium")
+        if (chromiumApp) {
+            const exe = path.join(chromiumApp, "Contents/MacOS/Chromium")
+            if (existsSync(exe)) return exe
+        }
+    }
+    const pathNames = ["chromium", "google-chrome-stable", "google-chrome", "chrome", "chromium-browser"]
     for (const name of pathNames) {
         try {
             const p = execFileSync("which", [name], { encoding: "utf8" }).trim()
@@ -47,7 +87,10 @@ function resolveChromeBinary(errLog: (msg: unknown) => void): string | null {
             /* not on PATH */
         }
     }
-    errLog("agent mode: could not find Chrome/Chromium (set CHROME or CHROMIUM_PATH)")
+    errLog("agent mode: could not find Chrome/Chromium (set CHROME or CHROMIUM_PATH to the executable)")
+    log(
+        "agent mode: open a Chromium-based browser manually at the server URL (with WebGPU); bridge RPCs need one connected tab.",
+    )
     return null
 }
 
@@ -289,40 +332,47 @@ async function respondAgentRenderPng(
     err: (msg: unknown) => void,
 ): Promise<void> {
     const out = await bridge.requestAgentRender(payload as unknown as Record<string, unknown>)
-    await overwriteBrowserLogAfterAgentRender(bridge, err)
-    if (!out?.pngBase64) {
-        const errText = out?.error ?? "bridge failed (no browser, timeout, or GPU error)"
-        const status = agentRenderErrorHttpStatus(out)
-        res.writeHead(status, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-        res.end(errText)
-        return
-    }
-    let buf: Buffer
     try {
-        buf = Buffer.from(out.pngBase64, "base64")
-    } catch {
-        res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-        res.end("invalid PNG base64 from bridge")
-        return
+        if (!out?.pngBase64) {
+            const errText = out?.error ?? "bridge failed (no browser, timeout, or GPU error)"
+            const status = agentRenderErrorHttpStatus(out)
+            res.writeHead(status, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+            res.end(errText)
+            return
+        }
+        let buf: Buffer
+        try {
+            buf = Buffer.from(out.pngBase64, "base64")
+        } catch {
+            res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+            res.end("invalid PNG base64 from bridge")
+            return
+        }
+        if (buf.length === 0) {
+            res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+            res.end("empty PNG from bridge")
+            return
+        }
+        try {
+            await writeAgentImagelogPng(repoRoot, labelSlug, role, buf)
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e)
+            console.error(`writeAgentImagelogPng: ${msg}`)
+        }
+        await endHttpResponseWithBuffer(res, 200, {
+            "content-type": "image/png",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Disposition",
+            "Content-Disposition": agentRenderPngContentDisposition(downloadBasename, payload.mode),
+            "Content-Length": String(buf.length),
+        }, buf)
+    } finally {
+        try {
+            await overwriteBrowserLogAfterAgentRender(bridge, err)
+        } catch (e) {
+            err(e)
+        }
     }
-    if (buf.length === 0) {
-        res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-        res.end("empty PNG from bridge")
-        return
-    }
-    try {
-        await writeAgentImagelogPng(repoRoot, labelSlug, role, buf)
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        console.error(`writeAgentImagelogPng: ${msg}`)
-    }
-    await endHttpResponseWithBuffer(res, 200, {
-        "content-type": "image/png",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Expose-Headers": "Content-Disposition",
-        "Content-Disposition": agentRenderPngContentDisposition(downloadBasename, payload.mode),
-        "Content-Length": String(buf.length),
-    }, buf)
 }
 
 /** Ring buffer + bridge WebSocket; `__galacticadDevLogPush` is consumed by `connectMainThreadDevLogToBridge()` in app. */
@@ -614,44 +664,87 @@ export class DevServer {
         instance.wsServer = wss
 
         let chromePid: number | undefined
+        /** Why auto-Chromium PID may be missing (for `.devserver.agent.run` diagnostics). */
+        let chromeLaunchNote: string | undefined
         if (options?.agentHeadlessChrome) {
-            const bin = resolveChromeBinary(err)
-            if (bin) {
+            const bin = resolveChromeBinary(log, err)
+            if (!bin) {
+                chromeLaunchNote = "chrome_binary_not_found"
+            } else {
                 const url = `http://127.0.0.1:${actualPort}/`
                 const userDataDir = path.join(
                     os.tmpdir(),
                     `${AGENT_HEADLESS_CHROME_USER_DATA_TAG}-${options.pid}`,
                 )
+                const chromeLogPath = path.join(process.cwd(), ".devserver.agent.chrome.log")
                 try {
+                    // Path includes devserver PID → new folder each launch; tmp only, no reuse across runs.
                     await fs.mkdir(userDataDir, { recursive: true })
-                    const child = spawn(
-                        bin,
-                        [
-                            "--headless=new",
-                            "--enable-unsafe-webgpu",
-                            "--no-first-run",
-                            "--no-default-browser-check",
-                            "--disable-sync",
-                            "--disable-extensions",
-                            "--user-data-dir",
-                            userDataDir,
-                            url,
-                        ],
-                        { detached: true, stdio: "ignore" },
-                    )
+                    // Chromium headless rejects command_line->GetArgs().size() > 1 (chrome_main.cc). Two-arg form
+                    // `--user-data-dir` + path leaves *two* positionals (profile dir + URL); use `--user-data-dir=PATH`.
+                    const argv = [
+                        "--headless=new",
+                        "--enable-unsafe-webgpu",
+                        "--no-first-run",
+                        "--no-default-browser-check",
+                        "--disable-sync",
+                        "--disable-extensions",
+                        ...(process.platform !== "darwin" ? (["--disable-dev-shm-usage"] as const) : []),
+                        `--user-data-dir=${userDataDir}`,
+                        url,
+                    ]
+                    const banner = `\n--- ${new Date().toISOString()} spawn ${JSON.stringify(bin)} argv=${JSON.stringify(argv)} ---\n`
+                    let stderrFd: number | undefined
+                    try {
+                        stderrFd = openSync(chromeLogPath, "a")
+                        writeSync(stderrFd, banner)
+                    } catch (e) {
+                        err(`agent mode: could not open ${chromeLogPath}: ${e}`)
+                        chromeLaunchNote = "chrome_log_open_failed"
+                    }
+                    const child = spawn(bin, argv, {
+                        detached: true,
+                        stdio: ["ignore", "ignore", stderrFd ?? "ignore"],
+                    })
+                    if (stderrFd !== undefined) {
+                        try {
+                            closeSync(stderrFd)
+                        } catch {
+                            /* ignore */
+                        }
+                    }
                     child.unref()
                     child.on("error", e => {
                         err(`agent headless Chrome spawn error: ${e}`)
+                    })
+                    child.on("exit", (code, signal) => {
+                        err(
+                            `agent headless Chrome exited (code=${code ?? "null"} signal=${signal ?? "null"}); stderr/log: ${chromeLogPath}`,
+                        )
                     })
                     if (typeof child.pid === "number" && child.pid > 0) {
                         chromePid = child.pid
                         instance.#agentChromePid = chromePid
                         instance.#agentChromeUserDataDir = userDataDir
                         log(
-                            `Agent headless Chrome PID ${chromePid} → ${url} (ps: grep ${AGENT_HEADLESS_CHROME_USER_DATA_TAG})`,
+                            `Agent headless Chrome PID ${chromePid} → ${url} (logs: ${chromeLogPath}; ps: grep ${AGENT_HEADLESS_CHROME_USER_DATA_TAG})`,
                         )
+                        const cpid = chromePid
+                        setTimeout(() => {
+                            try {
+                                process.kill(cpid, 0)
+                            } catch {
+                                err(
+                                    `agent headless Chrome (pid ${cpid}) died within ~1.5s — check ${chromeLogPath} and CHROME`,
+                                )
+                            }
+                        }, 1500).unref()
+                    } else {
+                        chromeLaunchNote = "spawn_returned_no_pid"
+                        err(`agent headless Chrome: spawn returned no pid (binary=${bin})`)
                     }
                 } catch (e) {
+                    chromeLaunchNote = "spawn_threw"
                     err(`agent headless Chrome: ${e}`)
                 }
             }
@@ -661,6 +754,8 @@ export class DevServer {
             const payload: RunFileData = { pid: options.pid, port: actualPort }
             if (chromePid != null) {
                 payload.chromePid = chromePid
+            } else if (options.agentHeadlessChrome && chromeLaunchNote != null) {
+                payload.chromeLaunchNote = chromeLaunchNote
             }
             await fs.writeFile(options.runFile, JSON.stringify(payload, null, 2))
         }

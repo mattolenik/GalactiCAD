@@ -89,7 +89,8 @@ stop:
 		chrome_pid=$$(jq -r '.chromePid // empty' "$(RUN_FILE)")
 		if [ -n "$$pid" ] && [ "$$pid" != "null" ]; then
 			kill -TERM $$pid || true
-			timeout -p -k 5s 5s wait $$pid
+			sleep 0.2
+			timeout -p -k 5s 5s sh -c 'while kill -0 $$pid 2>/dev/null; do sleep 0.5; done'
 		fi
 		kill -KILL $$pid 2>/dev/null || true
 		kill -KILL $$chrome_pid 2>/dev/null || true

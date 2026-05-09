@@ -112,6 +112,8 @@ export class BrowserBridge {
         string,
         { resolve: (v: { pngBase64?: string; error?: string } | null) => void }
     >()
+    /** Only one agent-render RPC at a time so the browser does not supersede `SDFRenderer` pipeline work. */
+    private agentRenderChain = Promise.resolve()
     private seq = 0
 
     setWsServer(wsServer: WebSocketServer) {
@@ -231,32 +233,41 @@ export class BrowserBridge {
 
     /**
      * Ask one connected browser tab to run `runAgentRenderPipeline` (WebGPU). Payload matches `AgentRenderRequest`.
+     * Serialized: the next HTTP caller waits until the previous render round-trip finishes (avoids "Superseded" races).
      */
     requestAgentRender(payload: Record<string, unknown>, timeoutMs = AGENT_RENDER_TIMEOUT_MS): Promise<{ pngBase64?: string; error?: string } | null> {
-        const wss = this.wsServer
-        if (!wss || wss.clients.size === 0) {
-            return Promise.resolve(null)
+        const run = (): Promise<{ pngBase64?: string; error?: string } | null> => {
+            const wss = this.wsServer
+            if (!wss || wss.clients.size === 0) {
+                return Promise.resolve(null)
+            }
+            const id = `ard-${Date.now()}-${++this.seq}`
+            return new Promise(resolve => {
+                const timeout = setTimeout(() => {
+                    this.pendingAgentRender.delete(id)
+                    resolve(null)
+                }, timeoutMs)
+                const finish = (v: { pngBase64?: string; error?: string } | null) => {
+                    clearTimeout(timeout)
+                    this.pendingAgentRender.delete(id)
+                    resolve(v)
+                }
+                this.pendingAgentRender.set(id, { resolve: finish })
+                const msg: DevServerAgentRenderMessage = { type: "agentRender", id, payload }
+                const wire = JSON.stringify(msg)
+                if (!sendPayloadToFirstOpenClient(wss, wire)) {
+                    clearTimeout(timeout)
+                    this.pendingAgentRender.delete(id)
+                    resolve(null)
+                }
+            })
         }
-        const id = `ard-${Date.now()}-${++this.seq}`
-        return new Promise(resolve => {
-            const timeout = setTimeout(() => {
-                this.pendingAgentRender.delete(id)
-                resolve(null)
-            }, timeoutMs)
-            const finish = (v: { pngBase64?: string; error?: string } | null) => {
-                clearTimeout(timeout)
-                this.pendingAgentRender.delete(id)
-                resolve(v)
-            }
-            this.pendingAgentRender.set(id, { resolve: finish })
-            const msg: DevServerAgentRenderMessage = { type: "agentRender", id, payload }
-            const wire = JSON.stringify(msg)
-            if (!sendPayloadToFirstOpenClient(wss, wire)) {
-                clearTimeout(timeout)
-                this.pendingAgentRender.delete(id)
-                resolve(null)
-            }
-        })
+        const out = this.agentRenderChain.then(run)
+        this.agentRenderChain = out.then(
+            () => undefined,
+            () => undefined,
+        )
+        return out
     }
 
     handleClientMessage(raw: Buffer | ArrayBuffer | Buffer[]) {

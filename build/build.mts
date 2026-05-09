@@ -68,7 +68,8 @@ function shouldSuppressLiveReload(relativePath: string): boolean {
     })
 }
 
-const defaultDevServerPort = () => (process.env.AGENT === "true" ? "7000" : "6900")
+const defaultDevServerPort = () =>
+    process.env.AGENT === "true" || process.env.AGENT === "1" ? "7000" : "6900"
 
 const ServerOptions = {
     port: parseInt(process.env.PORT || defaultDevServerPort(), 10),
@@ -199,7 +200,7 @@ async function main() {
         server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err, {
             runFile: RUN_FILE,
             pid: process.pid,
-            agentHeadlessChrome: process.env.AGENT === "true",
+            agentHeadlessChrome: process.env.AGENT === "true" || process.env.AGENT === "1",
         })
         const change$ = new Subject<{ event: EventName; path: string }>()
         change$

@@ -147,9 +147,10 @@ export type AgentRenderMode = "sdf" | "mesh"
  * mesh-viewer GUI checkboxes (raw debug points, per-class feature glyphs,
  * per-cell-component vertex markers, per-cell QEF input plane normals).
  *
- * The overlays are drawn into the same 2D canvas as the existing mesh
- * normal-RGB pass, so a single PNG response shows both the mesh and the
- * requested debug glyphs / markers.
+ * Debug geometry (raw points, feature glyphs, cell vertices, QEF planes) is
+ * drawn on the WebGPU canvas with depth testing against the mesh. A stacked
+ * 2D canvas adds only the stats HUD and hover callouts; captures composite
+ * both so the PNG matches the viewer.
  */
 export interface AgentMeshOverlay {
     mdcDebugPoints?: boolean

@@ -82,6 +82,23 @@ export class MeshViewer extends HTMLElement {
     #mdcDebugQefPlanes: Float32Array<ArrayBuffer> = new Float32Array(0)
     #mdcDebugStats: MeshMdcDebugStats | null = null
 
+    /** Depth-tested MDC/QEF overlay (WebGPU); rebuilt each frame when enabled. */
+    #mdcOverlayLineBuffer: GPUBuffer | null = null
+    #mdcOverlayTriBuffer: GPUBuffer | null = null
+    #mdcOverlayLineCapVerts = 0
+    #mdcOverlayTriCapVerts = 0
+    #mdcOverlayLineVertCount = 0
+    #mdcOverlayTriVertCount = 0
+    #mdcOverlayLineScratch = new Float32Array(0)
+    #mdcOverlayTriScratch = new Float32Array(0)
+    #shaderModuleMdcOverlay!: GPUShaderModule
+    #shaderModuleDepthPrepassFrag!: GPUShaderModule
+    #pipelineMdcOverlayLine!: GPURenderPipeline
+    #pipelineMdcOverlayTri!: GPURenderPipeline
+    #pipelineMeshDepthPrepass!: GPURenderPipeline
+    /** Sample index under cursor; rebuilt with GPU overlay each frame. */
+    #mdcOverlayHoveredSampleIdx = -1
+
     get controls(): CameraController {
         return this.#controls
     }
@@ -509,6 +526,114 @@ export class MeshViewer extends HTMLElement {
             },
         })
 
+        this.#shaderModuleDepthPrepassFrag = this.#device.createShaderModule({
+            label: "meshViewer.shader.depthPrepassFrag",
+            code: MESH_DEPTH_PREPASS_FRAG,
+        })
+        scheduleShaderModuleCompilationLogging(
+            this.#shaderModuleDepthPrepassFrag,
+            "meshViewer.shader.depthPrepassFrag",
+            MESH_DEPTH_PREPASS_FRAG,
+        )
+        this.#pipelineMeshDepthPrepass = this.#device.createRenderPipeline({
+            label: "MeshViewer Pipeline (depth prepass)",
+            layout: this.#pipelineLayout,
+            vertex: {
+                module: this.#shaderModuleOpaque,
+                entryPoint: "vertexMain",
+                buffers: [
+                    {
+                        arrayStride: 32,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0, format: "float32x3" },
+                            { shaderLocation: 1, offset: 16, format: "float32x3" },
+                        ],
+                    },
+                ],
+            },
+            fragment: {
+                module: this.#shaderModuleDepthPrepassFrag,
+                entryPoint: "fragmentMain",
+                targets: [{ format: this.#format, writeMask: 0 }],
+            },
+            primitive: {
+                topology: "triangle-list",
+                frontFace: "ccw",
+                cullMode: "none",
+            },
+            depthStencil: {
+                format: "depth24plus",
+                depthWriteEnabled: true,
+                depthCompare: "less",
+            },
+        })
+
+        this.#shaderModuleMdcOverlay = this.#device.createShaderModule({
+            label: "meshViewer.shader.mdcOverlay",
+            code: MDC_OVERLAY_SHADER,
+        })
+        scheduleShaderModuleCompilationLogging(this.#shaderModuleMdcOverlay, "meshViewer.shader.mdcOverlay", MDC_OVERLAY_SHADER)
+        const mdcOverlayBlend: GPUBlendState = {
+            color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+            alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+        }
+        this.#pipelineMdcOverlayLine = this.#device.createRenderPipeline({
+            label: "MeshViewer Pipeline (mdc overlay lines)",
+            layout: this.#pipelineLayout,
+            vertex: {
+                module: this.#shaderModuleMdcOverlay,
+                entryPoint: "vertexMain",
+                buffers: [
+                    {
+                        arrayStride: 32,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0, format: "float32x3" },
+                            { shaderLocation: 1, offset: 16, format: "float32x4" },
+                        ],
+                    },
+                ],
+            },
+            fragment: {
+                module: this.#shaderModuleMdcOverlay,
+                entryPoint: "fragmentMain",
+                targets: [{ format: this.#format, blend: mdcOverlayBlend }],
+            },
+            primitive: { topology: "line-list", frontFace: "ccw", cullMode: "none" },
+            depthStencil: {
+                format: "depth24plus",
+                depthWriteEnabled: true,
+                depthCompare: "less",
+            },
+        })
+        this.#pipelineMdcOverlayTri = this.#device.createRenderPipeline({
+            label: "MeshViewer Pipeline (mdc overlay tris)",
+            layout: this.#pipelineLayout,
+            vertex: {
+                module: this.#shaderModuleMdcOverlay,
+                entryPoint: "vertexMain",
+                buffers: [
+                    {
+                        arrayStride: 32,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0, format: "float32x3" },
+                            { shaderLocation: 1, offset: 16, format: "float32x4" },
+                        ],
+                    },
+                ],
+            },
+            fragment: {
+                module: this.#shaderModuleMdcOverlay,
+                entryPoint: "fragmentMain",
+                targets: [{ format: this.#format, blend: mdcOverlayBlend }],
+            },
+            primitive: { topology: "triangle-list", frontFace: "ccw", cullMode: "none" },
+            depthStencil: {
+                format: "depth24plus",
+                depthWriteEnabled: true,
+                depthCompare: "less",
+            },
+        })
+
         this.#pipelineTranslucent = this.#device.createRenderPipeline({
             label: "MeshViewer Pipeline (translucent)",
             layout: this.#pipelineLayout,
@@ -611,6 +736,12 @@ export class MeshViewer extends HTMLElement {
             /* ignore */
         }
         this.#compositeBindGroup = null
+        this.#mdcOverlayLineBuffer?.destroy()
+        this.#mdcOverlayLineBuffer = null
+        this.#mdcOverlayTriBuffer?.destroy()
+        this.#mdcOverlayTriBuffer = null
+        this.#mdcOverlayLineCapVerts = 0
+        this.#mdcOverlayTriCapVerts = 0
         this.#depthTexture?.destroy()
         this.#depthTexture = null
         this.#oitAccumTexture?.destroy()
@@ -780,6 +911,9 @@ export class MeshViewer extends HTMLElement {
         this.#device.queue.writeBuffer(this.#uniformBuffer, 96, camToScene.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 160, this.#viewCenter.data as BufferSource)
 
+        this.#rebuildMdcOverlayFrameData(sceneToCamera, meshCameraOrigin)
+        const mdcOverlayGeo = this.#mdcOverlayLineVertCount > 0 || this.#mdcOverlayTriVertCount > 0
+
         const commandEncoder = this.#device.createCommandEncoder()
         // Wireframe mode overrides face rendering.
         if (this.#wireframe) {
@@ -808,10 +942,40 @@ export class MeshViewer extends HTMLElement {
                 renderPass.setIndexBuffer(this.#edgeIndexBuffer, "uint32")
                 renderPass.drawIndexed(this.#edgeIndexCount)
             }
+            this.#encodeMdcOverlayDraws(renderPass)
             renderPass.end()
         } else if (this.#translucentFaces) {
             if (!this.#oitAccumTexture || !this.#oitRevealTexture || !this.#compositeBindGroup) {
                 this.#recreateAttachments()
+            }
+
+            // When MDC debug geometry is shown, prime the shared depth texture with the opaque mesh
+            // so glyphs / QEF markers depth-test against the surface after the OIT composite.
+            if (mdcOverlayGeo && this.#depthTexture) {
+                const depthPre = commandEncoder.beginRenderPass({
+                    colorAttachments: [
+                        {
+                            view: this.#context.getCurrentTexture().createView(),
+                            loadOp: "clear",
+                            storeOp: "store",
+                            clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                        },
+                    ],
+                    depthStencilAttachment: {
+                        view: this.#depthTexture.createView(),
+                        depthClearValue: 1.0,
+                        depthLoadOp: "clear",
+                        depthStoreOp: "store",
+                    },
+                })
+                depthPre.setPipeline(this.#pipelineMeshDepthPrepass)
+                depthPre.setBindGroup(0, this.#bindGroup)
+                if (this.#vertexBuffer && this.#indexBuffer && this.#indexCount > 0) {
+                    depthPre.setVertexBuffer(0, this.#vertexBuffer)
+                    depthPre.setIndexBuffer(this.#indexBuffer, "uint32")
+                    depthPre.drawIndexed(this.#indexCount)
+                }
+                depthPre.end()
             }
 
             // Pass 1: weighted blended OIT into offscreen buffers.
@@ -856,6 +1020,25 @@ export class MeshViewer extends HTMLElement {
             compositePass.setBindGroup(0, this.#compositeBindGroup)
             compositePass.draw(3)
             compositePass.end()
+
+            if (mdcOverlayGeo && this.#depthTexture) {
+                const overlayPass = commandEncoder.beginRenderPass({
+                    colorAttachments: [
+                        {
+                            view: this.#context.getCurrentTexture().createView(),
+                            loadOp: "load",
+                            storeOp: "store",
+                        },
+                    ],
+                    depthStencilAttachment: {
+                        view: this.#depthTexture.createView(),
+                        depthLoadOp: "load",
+                        depthStoreOp: "store",
+                    },
+                })
+                this.#encodeMdcOverlayDraws(overlayPass)
+                overlayPass.end()
+            }
         } else {
             // Opaque pass (existing).
             const renderPass = commandEncoder.beginRenderPass({
@@ -886,6 +1069,7 @@ export class MeshViewer extends HTMLElement {
                 renderPass.drawIndexed(this.#indexCount)
             }
 
+            this.#encodeMdcOverlayDraws(renderPass)
             renderPass.end()
         }
         this.#device.queue.submit([commandEncoder.finish()])
@@ -912,12 +1096,9 @@ export class MeshViewer extends HTMLElement {
                 throw new Error("2D context unavailable for mesh capture")
             }
             ctx.drawImage(bitmap, 0, 0)
-            // The mesh-viewer's debug glyphs / cell-vertex / QEF-plane markers
-            // live on a separate stacked 2D canvas (`#debugOverlayCanvas`) so
-            // the WebGPU pipeline doesn't have to know about them. The capture
-            // path here would silently drop those pixels if we only read the
-            // WebGPU canvas — composite the overlay canvas on top so any
-            // requested debug overlay actually shows up in the agent PNG.
+            // MDC debug geometry is on the WebGPU canvas (depth-tested). The
+            // stacked 2D canvas carries the stats HUD and hover callouts only;
+            // composite it so agent PNGs match the interactive view.
             ctx.drawImage(this.#debugOverlayCanvas, 0, 0)
             return ctx.getImageData(0, 0, this.canvas.width, this.canvas.height)
         } finally {
@@ -945,41 +1126,71 @@ export class MeshViewer extends HTMLElement {
         this.#debugOverlayCtx?.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
     }
 
-    #projectDebugPoint(cameraTransform: Mat4x4f, cameraOrigin: Vec3f, x: number, y: number, z: number): { x: number; y: number; depth: number } | null {
-        const pCam = cameraTransform.transform(vec4(x, y, z, 1))
-        const p = {
-            x: pCam.x - cameraOrigin.x,
-            y: pCam.y - cameraOrigin.y,
-            z: pCam.z - cameraOrigin.z,
+    #encodeMdcOverlayDraws(renderPass: GPURenderPassEncoder): void {
+        if (!this.#device) return
+        renderPass.setBindGroup(0, this.#bindGroup)
+        if (this.#mdcOverlayTriVertCount > 0 && this.#mdcOverlayTriBuffer) {
+            renderPass.setPipeline(this.#pipelineMdcOverlayTri)
+            renderPass.setVertexBuffer(0, this.#mdcOverlayTriBuffer)
+            renderPass.draw(this.#mdcOverlayTriVertCount)
         }
-        const aspect = this.#cameraRes.y !== 0 ? this.#cameraRes.x / this.#cameraRes.y : 1
-        const ndcX = p.x / (this.#controls.zoom * aspect)
-        const ndcY = p.y / this.#controls.zoom
-        const near = -10000.0
-        const far = 10000.0
-        // Preview rays march along camera -Z, so larger camera-space Z is closer.
-        const ndcZ = (far - p.z) / (far - near)
-        if (!Number.isFinite(ndcX) || !Number.isFinite(ndcY) || !Number.isFinite(ndcZ) || ndcZ < 0 || ndcZ > 1) {
-            return null
-        }
-        const vcOffsetX = 2 * (this.#viewCenter.x - 0.5)
-        const vcOffsetY = -2 * (this.#viewCenter.y - 0.5)
-        const clipX = ndcX + vcOffsetX
-        const clipY = ndcY + vcOffsetY
-        if (clipX < -1.1 || clipX > 1.1 || clipY < -1.1 || clipY > 1.1) {
-            return null
-        }
-        return {
-            x: (clipX * 0.5 + 0.5) * this.#debugOverlayCanvas.width,
-            y: (1 - (clipY * 0.5 + 0.5)) * this.#debugOverlayCanvas.height,
-            depth: ndcZ,
+        if (this.#mdcOverlayLineVertCount > 0 && this.#mdcOverlayLineBuffer) {
+            renderPass.setPipeline(this.#pipelineMdcOverlayLine)
+            renderPass.setVertexBuffer(0, this.#mdcOverlayLineBuffer)
+            renderPass.draw(this.#mdcOverlayLineVertCount)
         }
     }
 
-    #drawMdcDebugOverlay(cameraTransform: Mat4x4f, cameraOrigin: Vec3f): void {
-        const ctx = this.#debugOverlayCtx
-        if (!ctx) return
-        ctx.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
+    #ensureMdcOverlayLineVerts(minVerts: number): void {
+        if (!this.#device || minVerts <= 0) return
+        const needBytes = minVerts * 32
+        if (!this.#mdcOverlayLineBuffer || this.#mdcOverlayLineBuffer.size < needBytes) {
+            this.#mdcOverlayLineBuffer?.destroy()
+            const size = Math.max(needBytes, 65536)
+            this.#mdcOverlayLineBuffer = this.#device.createBuffer({
+                label: "meshViewer.mdcOverlayLines",
+                size,
+                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            })
+            this.#mdcOverlayLineCapVerts = Math.floor(size / 32)
+        }
+    }
+
+    #ensureMdcOverlayTriVerts(minVerts: number): void {
+        if (!this.#device || minVerts <= 0) return
+        const needBytes = minVerts * 32
+        if (!this.#mdcOverlayTriBuffer || this.#mdcOverlayTriBuffer.size < needBytes) {
+            this.#mdcOverlayTriBuffer?.destroy()
+            const size = Math.max(needBytes, 65536)
+            this.#mdcOverlayTriBuffer = this.#device.createBuffer({
+                label: "meshViewer.mdcOverlayTris",
+                size,
+                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            })
+            this.#mdcOverlayTriCapVerts = Math.floor(size / 32)
+        }
+    }
+
+    #uploadMdcOverlayScratch(lineVerts: number, triVerts: number): void {
+        this.#mdcOverlayLineVertCount = lineVerts
+        this.#mdcOverlayTriVertCount = triVerts
+        if (!this.#device) return
+        if (lineVerts > 0) {
+            this.#ensureMdcOverlayLineVerts(lineVerts)
+            this.#device.queue.writeBuffer(this.#mdcOverlayLineBuffer!, 0, this.#mdcOverlayLineScratch.buffer, 0, lineVerts * 32)
+        }
+        if (triVerts > 0) {
+            this.#ensureMdcOverlayTriVerts(triVerts)
+            this.#device.queue.writeBuffer(this.#mdcOverlayTriBuffer!, 0, this.#mdcOverlayTriScratch.buffer, 0, triVerts * 32)
+        }
+    }
+
+    /** Rebuild depth-tested overlay geometry (WebGPU) and hover pick state. Call before the render pass. */
+    #rebuildMdcOverlayFrameData(cameraTransform: Mat4x4f, cameraOrigin: Vec3f): void {
+        this.#mdcOverlayLineVertCount = 0
+        this.#mdcOverlayTriVertCount = 0
+        this.#mdcOverlayHoveredSampleIdx = -1
+
         const showRawSamples = this.#mdcDebug
         const showFeatureGlyphs =
             this.#mdcFeatureGlyphLine
@@ -991,65 +1202,256 @@ export class MeshViewer extends HTMLElement {
         const haveSampleData = this.#mdcDebugSamples.length > 0
         const samplesNeeded = showRawSamples || showFeatureGlyphs
         if (!samplesNeeded && !showCellVertices && !showQefPlanes) return
-        // Independent QEF debug overlays: render even when no per-edge samples
-        // are present (e.g. SHREC pipeline has cellVertices/qefPlanes empty,
-        // or the user only wants the QEF debug pair without the sample points).
-        const projectStandalone = (ox: number, oy: number, oz: number) =>
-            this.#projectDebugPoint(cameraTransform, cameraOrigin, ox, oy, oz)
-        const drawCellVertexAndPlaneOverlays = () => {
-            if (showCellVertices) {
-                const data = this.#mdcDebugCellVertices
-                const stride = MESH_MDC_CELL_VERTEX_STRIDE
-                ctx.save()
-                ctx.fillStyle = "rgba(255, 240, 120, 0.95)"
-                ctx.strokeStyle = "rgba(20, 20, 20, 0.85)"
-                ctx.lineWidth = 1
-                const r = 1.75
-                for (let i = 0; i + stride <= data.length; i += stride) {
-                    const p = projectStandalone(data[i]!, data[i + 1]!, data[i + 2]!)
-                    if (!p) continue
-                    ctx.beginPath()
-                    ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
-                    ctx.fill()
-                    ctx.stroke()
-                }
-                ctx.restore()
-            }
-            if (showQefPlanes) {
-                const data = this.#mdcDebugQefPlanes
-                const stride = MESH_MDC_QEF_PLANE_STRIDE
-                // Per-plane normal-direction stick: short line segment from
-                // the anchor in the plane's normal direction. Length scales
-                // with the orbit zoom so it stays readable across distances.
-                const len = Math.min(Math.max(this.#controls.zoom * 0.04, 0.06), 1.5)
-                ctx.save()
-                ctx.lineCap = "round"
-                ctx.lineWidth = 1.8
-                for (let i = 0; i + stride <= data.length; i += stride) {
-                    const ax = data[i]!
-                    const ay = data[i + 1]!
-                    const az = data[i + 2]!
-                    const nx = data[i + 4]!
-                    const ny = data[i + 5]!
-                    const nz = data[i + 6]!
-                    const p0 = projectStandalone(ax, ay, az)
-                    const p1 = projectStandalone(ax + nx * len, ay + ny * len, az + nz * len)
-                    if (!p0 || !p1) continue
-                    ctx.strokeStyle = "rgba(120, 200, 255, 0.85)"
-                    ctx.beginPath()
-                    ctx.moveTo(p0.x, p0.y)
-                    ctx.lineTo(p1.x, p1.y)
-                    ctx.stroke()
-                    ctx.fillStyle = "rgba(120, 200, 255, 0.95)"
-                    ctx.beginPath()
-                    ctx.arc(p0.x, p0.y, 1.5, 0, Math.PI * 2)
-                    ctx.fill()
-                }
-                ctx.restore()
+
+        const FP = 8
+        let li = 0
+        let ti = 0
+        const growLine = (extraVerts: number) => {
+            const need = (li + extraVerts) * FP
+            if (need > this.#mdcOverlayLineScratch.length) {
+                const n = Math.max(need, Math.ceil(this.#mdcOverlayLineScratch.length * 1.25) + 8192)
+                this.#mdcOverlayLineScratch = new Float32Array(n)
             }
         }
+        const growTri = (extraVerts: number) => {
+            const need = (ti + extraVerts) * FP
+            if (need > this.#mdcOverlayTriScratch.length) {
+                const n = Math.max(need, Math.ceil(this.#mdcOverlayTriScratch.length * 1.25) + 8192)
+                this.#mdcOverlayTriScratch = new Float32Array(n)
+            }
+        }
+        const pl = (x: number, y: number, z: number, r: number, g: number, b: number, a: number) => {
+            growLine(1)
+            const o = li * FP
+            const B = this.#mdcOverlayLineScratch
+            B[o] = x
+            B[o + 1] = y
+            B[o + 2] = z
+            B[o + 3] = 0
+            B[o + 4] = r
+            B[o + 5] = g
+            B[o + 6] = b
+            B[o + 7] = a
+            li++
+        }
+        const plSeg = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, r: number, g: number, b: number, a: number) => {
+            pl(ax, ay, az, r, g, b, a)
+            pl(bx, by, bz, r, g, b, a)
+        }
+        const pt = (x: number, y: number, z: number, r: number, g: number, b: number, a: number) => {
+            growTri(1)
+            const o = ti * FP
+            const B = this.#mdcOverlayTriScratch
+            B[o] = x
+            B[o + 1] = y
+            B[o + 2] = z
+            B[o + 3] = 0
+            B[o + 4] = r
+            B[o + 5] = g
+            B[o + 6] = b
+            B[o + 7] = a
+            ti++
+        }
+        const triPush = (
+            ax: number,
+            ay: number,
+            az: number,
+            bx: number,
+            by: number,
+            bz: number,
+            cx: number,
+            cy: number,
+            cz: number,
+            r: number,
+            g: number,
+            b: number,
+            a: number,
+        ) => {
+            pt(ax, ay, az, r, g, b, a)
+            pt(bx, by, bz, r, g, b, a)
+            pt(cx, cy, cz, r, g, b, a)
+        }
+
+        const rgbaForKlass = (klass: number): [number, number, number, number] => {
+            switch (klass) {
+                case 1: return [86 / 255, 214 / 255, 191 / 255, 1]
+                case 2: return [255 / 255, 199 / 255, 92 / 255, 0.92]
+                case 3: return [214 / 255, 138 / 255, 255 / 255, 1]
+                case 4: return [120 / 255, 220 / 255, 255 / 255, 0.95]
+                case 5: return [255 / 255, 102 / 255, 102 / 255, 0.95]
+                default: return [190 / 255, 195 / 255, 205 / 255, 0.45]
+            }
+        }
+
+        const worldUnitsPerPixel =
+            this.#debugOverlayCanvas.height > 0
+                ? (2 * this.#controls.zoom) / this.#debugOverlayCanvas.height
+                : this.#controls.zoom * 0.01
+
+        const billboardHalfAxes = (px: number, py: number, pz: number, half: number) => {
+            const eye = this.#controls.cameraPosition
+            const wx = px - eye.x
+            const wy = py - eye.y
+            const wz = pz - eye.z
+            const wlen = Math.hypot(wx, wy, wz)
+            if (wlen < 1e-12) return null
+            const nx = wx / wlen
+            const ny = wy / wlen
+            const nz = wz / wlen
+            let upx = 0
+            let upy = 1
+            let upz = 0
+            if (Math.abs(ny) > 0.92) {
+                upx = 1
+                upy = 0
+                upz = 0
+            }
+            let ux = ny * upz - nz * upy
+            let uy = nz * upx - nx * upz
+            let uz = nx * upy - ny * upx
+            const ulen = Math.hypot(ux, uy, uz)
+            if (ulen < 1e-12) return null
+            ux = (ux / ulen) * half
+            uy = (uy / ulen) * half
+            uz = (uz / ulen) * half
+            const vx = (ny * uz - nz * uy) * half
+            const vy = (nz * ux - nx * uz) * half
+            const vz = (nx * uy - ny * ux) * half
+            return { ux, uy, uz, vx, vy, vz }
+        }
+
+        const pushBillboardQuad = (px: number, py: number, pz: number, half: number, r: number, g: number, b: number, a: number) => {
+            const ax = billboardHalfAxes(px, py, pz, half)
+            if (!ax) return
+            const x0 = px + ax.ux + ax.vx
+            const y0 = py + ax.uy + ax.vy
+            const z0 = pz + ax.uz + ax.vz
+            const x1 = px - ax.ux + ax.vx
+            const y1 = py - ax.uy + ax.vy
+            const z1 = pz - ax.uz + ax.vz
+            const x2 = px - ax.ux - ax.vx
+            const y2 = py - ax.uy - ax.vy
+            const z2 = pz - ax.uz - ax.vz
+            const x3 = px + ax.ux - ax.vx
+            const y3 = py + ax.uy - ax.vy
+            const z3 = pz + ax.uz - ax.vz
+            triPush(x0, y0, z0, x1, y1, z1, x2, y2, z2, r, g, b, a)
+            triPush(x0, y0, z0, x2, y2, z2, x3, y3, z3, r, g, b, a)
+        }
+
+        /** Camera-facing ribbon (2 tris); avoids WebGPU ~1px line-list limits. */
+        const pushLineRibbon = (
+            ax: number,
+            ay: number,
+            az: number,
+            bx: number,
+            by: number,
+            bz: number,
+            halfWidth: number,
+            r: number,
+            g: number,
+            b: number,
+            a: number,
+        ) => {
+            const dx = bx - ax
+            const dy = by - ay
+            const dz = bz - az
+            const len = Math.hypot(dx, dy, dz)
+            if (len < 1e-9 || halfWidth < 1e-12) return
+            const ox = dx / len
+            const oy = dy / len
+            const oz = dz / len
+            const eye = this.#controls.cameraPosition
+            const mx = (ax + bx) * 0.5
+            const my = (ay + by) * 0.5
+            const mz = (az + bz) * 0.5
+            let vx = mx - eye.x
+            let vy = my - eye.y
+            let vz = mz - eye.z
+            const vlen = Math.hypot(vx, vy, vz)
+            if (vlen > 1e-12) {
+                vx /= vlen
+                vy /= vlen
+                vz /= vlen
+            } else {
+                vx = 0
+                vy = 0
+                vz = 1
+            }
+            let px = oy * vz - oz * vy
+            let py = oz * vx - ox * vz
+            let pz = ox * vy - oy * vx
+            let plen = Math.hypot(px, py, pz)
+            if (plen < 1e-6) {
+                let refx = 0
+                let refy = 1
+                let refz = 0
+                if (Math.abs(oy) > 0.9) {
+                    refx = 1
+                    refy = 0
+                    refz = 0
+                }
+                px = oy * refz - oz * refy
+                py = oz * refx - ox * refz
+                pz = ox * refy - oy * refx
+                plen = Math.hypot(px, py, pz)
+                if (plen < 1e-12) return
+            }
+            px = (px / plen) * halfWidth
+            py = (py / plen) * halfWidth
+            pz = (pz / plen) * halfWidth
+            triPush(ax + px, ay + py, az + pz, ax - px, ay - py, az - pz, bx - px, by - py, bz - pz, r, g, b, a)
+            triPush(ax + px, ay + py, az + pz, bx - px, by - py, bz - pz, bx + px, by + py, bz + pz, r, g, b, a)
+        }
+
+        const cellR = 1
+        const cellG = 235 / 255
+        const cellB = 70 / 255
+        const cellA = 1
+        const cellCrossHalfW = Math.max(worldUnitsPerPixel * 2.8, 1e-5)
+        if (showCellVertices) {
+            const data = this.#mdcDebugCellVertices
+            const stride = MESH_MDC_CELL_VERTEX_STRIDE
+            const half = Math.max(worldUnitsPerPixel * 4.2, 1e-5)
+            for (let i = 0; i + stride <= data.length; i += stride) {
+                const cx = data[i]!
+                const cy = data[i + 1]!
+                const cz = data[i + 2]!
+                pushBillboardQuad(cx, cy, cz, half, cellR, cellG, cellB, cellA)
+                const cr = 0.12
+                const cg = 0.12
+                const cb = 0.12
+                const ca = 0.98
+                pushLineRibbon(cx - half, cy, cz, cx + half, cy, cz, cellCrossHalfW, cr, cg, cb, ca)
+                pushLineRibbon(cx, cy - half, cz, cx, cy + half, cz, cellCrossHalfW, cr, cg, cb, ca)
+            }
+        }
+        if (showQefPlanes) {
+            const data = this.#mdcDebugQefPlanes
+            const stride = MESH_MDC_QEF_PLANE_STRIDE
+            const len = Math.min(Math.max(this.#controls.zoom * 0.11, 0.16), 3.5)
+            const qStickHalfW = Math.max(worldUnitsPerPixel * 3.2, 2.5e-4)
+            const qr = 90 / 255
+            const qg = 210 / 255
+            const qb = 1
+            const qa = 0.98
+            for (let i = 0; i + stride <= data.length; i += stride) {
+                const ax = data[i]!
+                const ay = data[i + 1]!
+                const az = data[i + 2]!
+                const nx = data[i + 4]!
+                const ny = data[i + 5]!
+                const nz = data[i + 6]!
+                const tx = ax + nx * len
+                const ty = ay + ny * len
+                const tz = az + nz * len
+                pushLineRibbon(ax, ay, az, tx, ty, tz, qStickHalfW, qr, qg, qb, qa)
+                pushBillboardQuad(ax, ay, az, Math.max(worldUnitsPerPixel * 3.2, 1e-5), qr, qg, qb, 1)
+            }
+        }
+
         if (!samplesNeeded || !haveSampleData) {
-            drawCellVertexAndPlaneOverlays()
+            this.#uploadMdcOverlayScratch(li, ti)
             return
         }
 
@@ -1063,69 +1465,30 @@ export class MeshViewer extends HTMLElement {
             + (this.#mdcDebugStats?.rejected ?? 0)
         const hideNoneSamples = interestingSampleCount > 0
         const pointSize = samples.length / stride > 2000 ? 3 : 4
-        let hoveredIndex = -1
         let bestHoverDistSq = 9 * 9
         let bestHoverPriority = -1
         const vectorLen = Math.min(Math.max(this.#controls.zoom * 0.045, 0.08), 2.0)
-
-        const colorForClass = (klass: number): string => {
-            switch (klass) {
-                case 1: return "rgba(86, 214, 191, 0.90)"  // line — teal
-                case 2: return "rgba(255, 199, 92, 0.92)"  // corner — amber
-                case 3: return "rgba(214, 138, 255, 0.92)" // seam — violet
-                case 4: return "rgba(120, 220, 255, 0.95)" // ring — cyan
-                case 5: return "rgba(255, 102, 102, 0.95)" // rejected — red
-                default: return "rgba(190, 195, 205, 0.45)"
-            }
-        }
-        const labelForClass = (klass: number): string => {
-            switch (klass) {
-                case 1: return "line"
-                case 2: return "corner"
-                case 3: return "seam"
-                case 4: return "ring"
-                case 5: return "rejected"
-                default: return "none"
-            }
-        }
-        const project = (ox: number, oy: number, oz: number) => this.#projectDebugPoint(cameraTransform, cameraOrigin, ox, oy, oz)
-        const drawLine = (
-            ax: number,
-            ay: number,
-            az: number,
-            bx: number,
-            by: number,
-            bz: number,
-            color: string,
-            width: number,
-            dashed = false,
-        ) => {
-            const p0 = project(ax, ay, az)
-            const p1 = project(bx, by, bz)
-            if (!p0 || !p1) return
-            ctx.save()
-            ctx.strokeStyle = color
-            ctx.lineWidth = width
-            if (dashed) ctx.setLineDash([5, 4])
-            ctx.beginPath()
-            ctx.moveTo(p0.x, p0.y)
-            ctx.lineTo(p1.x, p1.y)
-            ctx.stroke()
-            ctx.restore()
-        }
+        const lineGlyphHalfW = Math.max(worldUnitsPerPixel * 6.2, 1.8e-4)
 
         const drawPriorityForClass = (klass: number): number => {
             switch (klass) {
                 case 0: return 0
-                case 1: return 1 // line
-                case 3: return 2 // seam
-                case 5: return 3 // rejected
-                case 4: return 4 // ring
-                case 2: return 5 // corner
+                case 1: return 1
+                case 3: return 2
+                case 5: return 3
+                case 4: return 4
+                case 2: return 5
                 default: return 1
             }
         }
-        const drawRecords: { sampleIdx: number, klass: number, x: number, y: number, depth: number, priority: number }[] = []
+        const drawRecords: {
+            sampleIdx: number
+            klass: number
+            x: number
+            y: number
+            depth: number
+            priority: number
+        }[] = []
         const featureRecords: {
             sampleIdx: number
             klass: number
@@ -1148,18 +1511,14 @@ export class MeshViewer extends HTMLElement {
             ownerB: number
             featureDist: number
         }[] = []
-        const worldUnitsPerPixel =
-            this.#debugOverlayCanvas.height > 0
-                ? (2 * this.#controls.zoom) / this.#debugOverlayCanvas.height
-                : this.#controls.zoom * 0.01
         const featureDedupWorld = Math.max(worldUnitsPerPixel * 8, 1e-4)
         const featureDedupWorldSq = featureDedupWorld * featureDedupWorld
         const featurePriorityForClass = (klass: number): number => {
             switch (klass) {
-                case 1: return 1 // line
-                case 3: return 2 // seam
-                case 4: return 3 // ring
-                case 2: return 4 // corner
+                case 1: return 1
+                case 3: return 2
+                case 4: return 3
+                case 2: return 4
                 default: return 0
             }
         }
@@ -1171,6 +1530,7 @@ export class MeshViewer extends HTMLElement {
             if (len < 1e-6) return null
             return { x: tx / len, y: ty / len, z: tz / len }
         }
+        const project = (ox: number, oy: number, oz: number) => this.#projectDebugPoint(cameraTransform, cameraOrigin, ox, oy, oz)
         const updateHover = (sampleIdx: number, px: number, py: number, priority: number) => {
             if (!hoverPos) return
             const dx = px - hoverPos.x
@@ -1179,9 +1539,10 @@ export class MeshViewer extends HTMLElement {
             if (distSq < bestHoverDistSq || (distSq === bestHoverDistSq && priority >= bestHoverPriority)) {
                 bestHoverDistSq = distSq
                 bestHoverPriority = priority
-                hoveredIndex = sampleIdx
+                this.#mdcOverlayHoveredSampleIdx = sampleIdx
             }
         }
+
         for (let sampleIdx = 0; sampleIdx < samples.length / stride; sampleIdx++) {
             const base = sampleIdx * stride
             const klass = Math.round(samples[base + 3]!)
@@ -1203,8 +1564,6 @@ export class MeshViewer extends HTMLElement {
             const fx = samples[base + 8]!
             const fy = samples[base + 9]!
             const fz = samples[base + 10]!
-            // Skip the "none" (0) and "rejected" (5) classes; everything else is
-            // a real feature payload worth a glyph (line/corner/seam/ring).
             if (klass !== 0 && klass !== 5 && Math.abs(fx) + Math.abs(fy) + Math.abs(fz) > 1e-6) {
                 const projectedFeature = project(fx, fy, fz)
                 if (projectedFeature) {
@@ -1214,19 +1573,10 @@ export class MeshViewer extends HTMLElement {
                     const ax = samples[base + 20]!
                     const ay = samples[base + 21]!
                     const az = samples[base + 22]!
-                    // Rings have a globally-unique identity (latheId in ownerA,
-                    // per-profile-vertex tag in ownerB) so cells anywhere on the
-                    // same circle dedup down to a single record purely by id —
-                    // their per-cell `feat` points scatter around the ring and
-                    // would never satisfy the spatial filter.
                     const isRing = klass === 4
                     let merged = false
                     for (const existing of featureRecords) {
-                        if (
-                            existing.klass === klass &&
-                            existing.ownerA === ownerA &&
-                            existing.ownerB === ownerB
-                        ) {
+                        if (existing.klass === klass && existing.ownerA === ownerA && existing.ownerB === ownerB) {
                             const dfx = existing.fx - fx
                             const dfy = existing.fy - fy
                             const dfz = existing.fz - fz
@@ -1283,15 +1633,22 @@ export class MeshViewer extends HTMLElement {
                 }
             }
         }
+
+        const halfPx = worldUnitsPerPixel * (pointSize * 0.5)
         if (showRawSamples) {
             drawRecords.sort((a, b) => b.depth - a.depth || a.priority - b.priority || a.sampleIdx - b.sampleIdx)
             for (const record of drawRecords) {
-                ctx.fillStyle = colorForClass(record.klass)
-                const size = record.klass === 0 ? pointSize : pointSize + 2
-                ctx.fillRect(record.x - size * 0.5, record.y - size * 0.5, size, size)
+                const base = record.sampleIdx * stride
+                const px = samples[base]!
+                const py = samples[base + 1]!
+                const pz = samples[base + 2]!
+                const [r, g, b, a] = rgbaForKlass(record.klass)
+                const h = record.klass === 0 ? halfPx : halfPx * 1.15
+                pushBillboardQuad(px, py, pz, h, r, g, b, a)
                 updateHover(record.sampleIdx, record.x, record.y, record.priority)
             }
         }
+
         const featureGlyphEnabled = (klass: number): boolean => {
             switch (klass) {
                 case 1: return this.#mdcFeatureGlyphLine
@@ -1301,109 +1658,145 @@ export class MeshViewer extends HTMLElement {
                 default: return false
             }
         }
+
+        const cornerHalfWorld = worldUnitsPerPixel * (pointSize + 3)
+
         if (showFeatureGlyphs) {
-            featureRecords.sort((a, b) => b.depth - a.depth || featurePriorityForClass(a.klass) - featurePriorityForClass(b.klass) || a.sampleIdx - b.sampleIdx)
+            featureRecords.sort((a, b) =>
+                b.depth - a.depth
+                || featurePriorityForClass(a.klass) - featurePriorityForClass(b.klass)
+                || a.sampleIdx - b.sampleIdx
+            )
             for (const record of featureRecords) {
                 if (!featureGlyphEnabled(record.klass)) continue
-                const featureColor = colorForClass(record.klass).replace(/0\.\d+\)/, "1.0)")
-                ctx.save()
-                ctx.strokeStyle = featureColor
-                ctx.fillStyle = featureColor
-                ctx.lineWidth = 2.5
+                const [r, g, b, a] = rgbaForKlass(record.klass)
+                const [rf, gf, bf, af] = [r, g, b, 1]
                 if (record.klass === 1 || record.klass === 3) {
                     const tangent = tangentFromNormals(record.n1x, record.n1y, record.n1z, record.n2x, record.n2y, record.n2z)
                     if (tangent) {
-                        const halfLen = vectorLen * 0.75
-                        drawLine(
+                        const halfLen = vectorLen * 1.05
+                        pushLineRibbon(
                             record.fx - tangent.x * halfLen,
                             record.fy - tangent.y * halfLen,
                             record.fz - tangent.z * halfLen,
                             record.fx + tangent.x * halfLen,
                             record.fy + tangent.y * halfLen,
                             record.fz + tangent.z * halfLen,
-                            featureColor,
-                            2.5,
-                            record.klass === 3,
+                            lineGlyphHalfW,
+                            rf,
+                            gf,
+                            bf,
+                            af,
                         )
                     }
-                    ctx.beginPath()
-                    ctx.arc(record.x, record.y, pointSize + 1.5, 0, Math.PI * 2)
-                    ctx.stroke()
+                    pushBillboardQuad(record.fx, record.fy, record.fz, worldUnitsPerPixel * (pointSize + 2.2), rf, gf, bf, af)
                 } else if (record.klass === 2) {
-                    const r = pointSize + 3
-                    ctx.beginPath()
-                    ctx.moveTo(record.x, record.y - r)
-                    ctx.lineTo(record.x + r, record.y)
-                    ctx.lineTo(record.x, record.y + r)
-                    ctx.lineTo(record.x - r, record.y)
-                    ctx.closePath()
-                    ctx.stroke()
-                    ctx.beginPath()
-                    ctx.moveTo(record.x - r * 0.65, record.y - r * 0.65)
-                    ctx.lineTo(record.x + r * 0.65, record.y + r * 0.65)
-                    ctx.moveTo(record.x + r * 0.65, record.y - r * 0.65)
-                    ctx.lineTo(record.x - r * 0.65, record.y + r * 0.65)
-                    ctx.stroke()
+                    const rW = cornerHalfWorld
+                    const fx = record.fx
+                    const fy = record.fy
+                    const fz = record.fz
+                    plSeg(fx, fy - rW, fz, fx + rW, fy, fz, rf, gf, bf, af)
+                    plSeg(fx + rW, fy, fz, fx, fy + rW, fz, rf, gf, bf, af)
+                    plSeg(fx, fy + rW, fz, fx - rW, fy, fz, rf, gf, bf, af)
+                    plSeg(fx - rW, fy, fz, fx, fy - rW, fz, rf, gf, bf, af)
+                    const d = rW * 0.65
+                    plSeg(fx - d, fy - d, fz, fx + d, fy + d, fz, rf, gf, bf, af)
+                    plSeg(fx + d, fy - d, fz, fx - d, fy + d, fz, rf, gf, bf, af)
                 } else if (record.klass === 4) {
-                    // Ring: reconstruct the full circle from the dedup'd record.
-                    //   radial = featurePoint - axisCenter   (in the ring plane, magnitude = radius)
-                    //   tangent = unit(cross(n0, n1))        (perpendicular to both face normals,
-                    //                                         which lie in the radial-axis plane)
-                    //   axis    = unit(cross(tangent, radial))
-                    //   ring plane basis: u = radial/radius, v = cross(axis, u)
                     const radialX = record.fx - record.ax
                     const radialY = record.fy - record.ay
                     const radialZ = record.fz - record.az
                     const radius = Math.hypot(radialX, radialY, radialZ)
                     const tangent = tangentFromNormals(record.n1x, record.n1y, record.n1z, record.n2x, record.n2y, record.n2z)
                     if (radius > 1e-8 && tangent) {
-                        // axis = cross(tangent, radial)
                         const axisX = tangent.y * radialZ - tangent.z * radialY
                         const axisY = tangent.z * radialX - tangent.x * radialZ
                         const axisZ = tangent.x * radialY - tangent.y * radialX
                         const axisLen = Math.hypot(axisX, axisY, axisZ)
                         if (axisLen > 1e-8) {
-                            const aX = axisX / axisLen, aY = axisY / axisLen, aZ = axisZ / axisLen
-                            const uX = radialX / radius, uY = radialY / radius, uZ = radialZ / radius
-                            // v = cross(axis, u)
+                            const aX = axisX / axisLen
+                            const aY = axisY / axisLen
+                            const aZ = axisZ / axisLen
+                            const uX = radialX / radius
+                            const uY = radialY / radius
+                            const uZ = radialZ / radius
                             const vX = aY * uZ - aZ * uY
                             const vY = aZ * uX - aX * uZ
                             const vZ = aX * uY - aY * uX
-                            // 64 segments is plenty for typical lathe scales without flooding the canvas.
                             const SEG = 64
-                            ctx.beginPath()
-                            let started = false
-                            for (let i = 0; i <= SEG; i++) {
-                                const t = (i / SEG) * Math.PI * 2
-                                const cosT = Math.cos(t), sinT = Math.sin(t)
-                                const wx = record.ax + radius * (uX * cosT + vX * sinT)
-                                const wy = record.ay + radius * (uY * cosT + vY * sinT)
-                                const wz = record.az + radius * (uZ * cosT + vZ * sinT)
-                                const sp = project(wx, wy, wz)
-                                if (!sp) { started = false; continue }
-                                if (!started) {
-                                    ctx.moveTo(sp.x, sp.y)
-                                    started = true
-                                } else {
-                                    ctx.lineTo(sp.x, sp.y)
-                                }
+                            for (let i = 0; i < SEG; i++) {
+                                const t0 = (i / SEG) * Math.PI * 2
+                                const t1 = ((i + 1) / SEG) * Math.PI * 2
+                                const wx0 = record.ax + radius * (uX * Math.cos(t0) + vX * Math.sin(t0))
+                                const wy0 = record.ay + radius * (uY * Math.cos(t0) + vY * Math.sin(t0))
+                                const wz0 = record.az + radius * (uZ * Math.cos(t0) + vZ * Math.sin(t0))
+                                const wx1 = record.ax + radius * (uX * Math.cos(t1) + vX * Math.sin(t1))
+                                const wy1 = record.ay + radius * (uY * Math.cos(t1) + vY * Math.sin(t1))
+                                const wz1 = record.az + radius * (uZ * Math.cos(t1) + vZ * Math.sin(t1))
+                                pushLineRibbon(wx0, wy0, wz0, wx1, wy1, wz1, lineGlyphHalfW, rf, gf, bf, af)
                             }
-                            ctx.stroke()
                         }
                     }
-                    // Mark the dedup anchor with a small ring so hover targeting works.
-                    ctx.beginPath()
-                    ctx.arc(record.x, record.y, pointSize, 0, Math.PI * 2)
-                    ctx.stroke()
+                    pushBillboardQuad(record.fx, record.fy, record.fz, worldUnitsPerPixel * pointSize, rf, gf, bf, af)
                 }
-                ctx.restore()
                 updateHover(record.sampleIdx, record.x, record.y, 10 + featurePriorityForClass(record.klass))
             }
         }
 
-        drawCellVertexAndPlaneOverlays()
+        this.#uploadMdcOverlayScratch(li, ti)
+    }
+
+    #projectDebugPoint(cameraTransform: Mat4x4f, cameraOrigin: Vec3f, x: number, y: number, z: number): { x: number; y: number; depth: number } | null {
+        const pCam = cameraTransform.transform(vec4(x, y, z, 1))
+        const p = {
+            x: pCam.x - cameraOrigin.x,
+            y: pCam.y - cameraOrigin.y,
+            z: pCam.z - cameraOrigin.z,
+        }
+        const aspect = this.#cameraRes.y !== 0 ? this.#cameraRes.x / this.#cameraRes.y : 1
+        const ndcX = p.x / (this.#controls.zoom * aspect)
+        const ndcY = p.y / this.#controls.zoom
+        const near = -10000.0
+        const far = 10000.0
+        // Preview rays march along camera -Z, so larger camera-space Z is closer.
+        const ndcZ = (far - p.z) / (far - near)
+        if (!Number.isFinite(ndcX) || !Number.isFinite(ndcY) || !Number.isFinite(ndcZ) || ndcZ < 0 || ndcZ > 1) {
+            return null
+        }
+        const vcOffsetX = 2 * (this.#viewCenter.x - 0.5)
+        const vcOffsetY = -2 * (this.#viewCenter.y - 0.5)
+        const clipX = ndcX + vcOffsetX
+        const clipY = ndcY + vcOffsetY
+        if (clipX < -1.1 || clipX > 1.1 || clipY < -1.1 || clipY > 1.1) {
+            return null
+        }
+        return {
+            x: (clipX * 0.5 + 0.5) * this.#debugOverlayCanvas.width,
+            y: (1 - (clipY * 0.5 + 0.5)) * this.#debugOverlayCanvas.height,
+            depth: ndcZ,
+        }
+    }
+
+    /** Stacked 2D canvas: stats HUD + hover callouts only; MDC geometry is GPU depth-tested on the WebGPU canvas. */
+    #drawMdcDebugOverlay(cameraTransform: Mat4x4f, cameraOrigin: Vec3f): void {
+        const ctx = this.#debugOverlayCtx
+        if (!ctx) return
+        ctx.clearRect(0, 0, this.#debugOverlayCanvas.width, this.#debugOverlayCanvas.height)
 
         const stats = this.#mdcDebugStats
+        const showRawSamples = this.#mdcDebug
+        const showFeatureGlyphs =
+            this.#mdcFeatureGlyphLine
+            || this.#mdcFeatureGlyphCorner
+            || this.#mdcFeatureGlyphSeam
+            || this.#mdcFeatureGlyphRing
+        const interestingSampleCount =
+            (stats?.acceptedLine ?? 0)
+            + (stats?.acceptedCorner ?? 0)
+            + (stats?.acceptedSeam ?? 0)
+            + (stats?.rejected ?? 0)
+        const hideNoneSamples = interestingSampleCount > 0
+
         if (stats) {
             const text1 = `Mesh debug ${stats.totalSamples} samples`
             const text2 = `L ${stats.acceptedLine}  C ${stats.acceptedCorner}  S ${stats.acceptedSeam}  Ring ${stats.acceptedRing}  Rej ${stats.rejected}`
@@ -1425,7 +1818,6 @@ export class MeshViewer extends HTMLElement {
             const width = Math.max(ctx.measureText(text1).width, ctx.measureText(text2).width, ctx.measureText(text3).width) + 16
             const height = 50
             const margin = 12
-            // Keep the HUD close to the bottom-right mesh-viewer controls without sitting directly under them.
             const hudX = this.#debugOverlayCanvas.width - width - margin
             const hudY = this.#debugOverlayCanvas.height - height - 118
             ctx.fillStyle = "rgba(12, 14, 18, 0.66)"
@@ -1437,8 +1829,50 @@ export class MeshViewer extends HTMLElement {
             ctx.restore()
         }
 
-        if (hoveredIndex < 0) return
+        const hoveredIndex = this.#mdcOverlayHoveredSampleIdx
+        const samples = this.#mdcDebugSamples
+        const stride = MESH_MDC_DEBUG_SAMPLE_STRIDE
+        if (hoveredIndex < 0 || samples.length === 0) return
         const base = hoveredIndex * stride
+        if (base + stride > samples.length) return
+
+        const vectorLen = Math.min(Math.max(this.#controls.zoom * 0.045, 0.08), 2.0)
+        const labelForClass = (klass: number): string => {
+            switch (klass) {
+                case 1: return "line"
+                case 2: return "corner"
+                case 3: return "seam"
+                case 4: return "ring"
+                case 5: return "rejected"
+                default: return "none"
+            }
+        }
+        const project = (ox: number, oy: number, oz: number) => this.#projectDebugPoint(cameraTransform, cameraOrigin, ox, oy, oz)
+        const drawLine = (
+            ax: number,
+            ay: number,
+            az: number,
+            bx: number,
+            by: number,
+            bz: number,
+            color: string,
+            width: number,
+            dashed = false,
+        ) => {
+            const p0 = project(ax, ay, az)
+            const p1 = project(bx, by, bz)
+            if (!p0 || !p1) return
+            ctx.save()
+            ctx.strokeStyle = color
+            ctx.lineWidth = width
+            if (dashed) ctx.setLineDash([5, 4])
+            ctx.beginPath()
+            ctx.moveTo(p0.x, p0.y)
+            ctx.lineTo(p1.x, p1.y)
+            ctx.stroke()
+            ctx.restore()
+        }
+
         const px = samples[base]!
         const py = samples[base + 1]!
         const pz = samples[base + 2]!
@@ -1605,6 +2039,59 @@ export class MeshViewer extends HTMLElement {
         this.#mdcQefPlanesCheckbox.checked = !!opts.mdcQefPlanes
     }
 }
+
+const MESH_DEPTH_PREPASS_FRAG = /* wgsl */ `
+@fragment
+fn fragmentMain() -> @location(0) vec4f {
+    return vec4f(0.0, 0.0, 0.0, 1.0);
+}
+`
+
+const MDC_OVERLAY_SHADER = /* wgsl */ `
+struct Camera {
+    transform: mat4x4f,
+    origin: vec3f,
+    res: vec2f,
+    zoom: f32,
+    camToScene: mat4x4f,
+    viewCenter: vec2f,
+};
+
+@group(0) @binding(0) var<uniform> camera: Camera;
+
+struct OverlayIn {
+    @location(0) position: vec3f,
+    @location(1) color: vec4f,
+};
+
+struct OverlayVsOut {
+    @builtin(position) position: vec4f,
+    @location(0) color: vec4f,
+};
+
+@vertex
+fn vertexMain(v: OverlayIn) -> OverlayVsOut {
+    let aspect = camera.res.x / camera.res.y;
+    let pCam = (camera.transform * vec4f(v.position, 1.0)).xyz;
+    let p = pCam - camera.origin;
+    let ndcX = p.x / (camera.zoom * aspect);
+    let ndcY = p.y / camera.zoom;
+    let near = -10000.0;
+    let far = 10000.0;
+    let ndcZ = clamp((far - p.z) / (far - near), 0.0, 1.0);
+    let vcOffsetX = 2.0 * (camera.viewCenter.x - 0.5);
+    let vcOffsetY = -2.0 * (camera.viewCenter.y - 0.5);
+    var out: OverlayVsOut;
+    out.position = vec4f(ndcX + vcOffsetX, ndcY + vcOffsetY, ndcZ, 1.0);
+    out.color = v.color;
+    return out;
+}
+
+@fragment
+fn fragmentMain(v: OverlayVsOut) -> @location(0) vec4f {
+    return v.color;
+}
+`
 
 const MESH_SHADER_COMMON = /* wgsl */ `
 struct Camera {

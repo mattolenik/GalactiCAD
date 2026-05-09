@@ -113,7 +113,7 @@ Runs the **agent render pipeline** in the browser (normal-vector **SDF** preview
 
 ### `POST /_agent/render` (only at exact path `/_agent/render`)
 
-- **Body:** JSON. Core fields match **`AgentRenderRequest`** (`src/agent-autotest/agent-testcase.mts`): **`mode`** (`"sdf"` \| `"mesh"`), **`sourceBase64`**, **`camera`**, **`viewCenter`**, **`resolutionScale`**, **`viewportWidth`**, **`viewportHeight`**, **`meshExport`**, optional **`previewUvRect`**, optional **`documentName`** (POST may include it; file-driven GET merge does **not** forward `documentName` from disk testcase so automation is not tied to the active tab name).
+- **Body:** JSON. Core fields match **`AgentRenderRequest`** (`src/agent-autotest/agent-testcase.mts`): **`mode`** (`"sdf"` \| `"mesh"`), **`sourceBase64`**, **`camera`**, **`viewCenter`**, **`resolutionScale`**, **`viewportWidth`**, **`viewportHeight`**, **`meshExport`**, optional **`previewUvRect`**, optional **`documentName`** (POST may include it; file-driven GET merge does **not** forward `documentName` from disk testcase so automation is not tied to the active tab name), optional **`meshOverlay`** (mesh-only debug glyphs / markers — see `AgentMeshOverlay` interface, mirrors mesh-viewer GUI checkboxes).
 - **POST-only extras** (stripped before dispatch to the app): **`label`**, **`role`** (strings for imagelog filenames), optional **`testcase`** (relative path under `test/testcases/` — used only for **`Content-Disposition`** basename via stem of that path, not sent as part of `AgentRenderRequest`).
 
 Example:
@@ -125,11 +125,16 @@ Example:
 - **Path:** **`/_agent/render/testcase/<relative>`** where **`<relative>`** is a path under **`./test/testcases/`** from the devserver’s current working directory (usually repo root). URL path segments may be percent-encoded. **`..`**, empty segments, and absolute paths are rejected (**400**).
 - **File:** Read as UTF‑8 YAML; parsed with **`parseAgentTestcaseYaml`**. Prefer **`.yaml`** fixtures.
 - **Query:** Optional **`mode=sdf|mesh`** (default **`sdf`** when omitted or invalid). Optional **`viewportWidth`**, **`viewportHeight`** (numbers). Optional **`label`**, **`role`** for imagelog (defaults derived from filename / mode).
+- **Mesh-overlay query flags** (`mode=mesh` only; each accepts `1` / `true` / `yes` / `on`, otherwise off): **`debugPoints`** (raw per-edge sample squares), **`glyphLine`** / **`glyphCorner`** / **`glyphSeam`** / **`glyphRing`** (per-class feature glyphs), **`cellVertices`** (per-cell-component vertex markers, MDC QEF debug), **`qefPlanes`** (per-(cell, component) QEF input plane normals as short blue sticks). Each flag also accepts the dotted alias matching the API field (`mdcDebugPoints`, `featureGlyphs.line` … `mdcCellVertices`, `mdcQefPlanes`). Overlays default to off so existing testcase URLs keep producing clean meshes; the overlay 2D canvas is composited into the captured PNG.
 - **Merged request:** **`parseAgentTestcaseYaml`** then **`mergeAgentRenderRequest`** builds the `AgentRenderRequest` (base64 from testcase `source`; does not inject testcase `documentName` into the wire payload).
 
-Example:
+Example (clean mesh, no overlay):
 
 `curl -sS -OJ "http://localhost:${port}/_agent/render/testcase/meshing/polygon-twisted.yaml?mode=mesh"`
+
+Example (per-cell vertex markers and QEF input plane normals — useful for diagnosing single-cell vertex misplacement that surfaces as a "chip" only after crease-split shading):
+
+`curl -sS -OJ "http://localhost:${port}/_agent/render/testcase/meshing/polygon-twisted.yaml?mode=mesh&cellVertices=1&qefPlanes=1"`
 
 **Wrong:** `GET /_agent/render` with no testcase path → **400** with a hint to use **`/_agent/render/testcase/...`**.
 

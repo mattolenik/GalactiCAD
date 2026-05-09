@@ -476,6 +476,13 @@ export class ShrecExport {
                 debug: {
                     mdc: {
                         samples: mergeDebugSamples,
+                        // SHREC doesn't currently expose per-cell QEF input
+                        // planes or pre-crease-split vertex positions through
+                        // the same channel the GPU MDC exporter does — leave
+                        // these empty so the mesh-viewer overlays simply have
+                        // nothing to draw rather than NPE-ing on missing data.
+                        cellVertices: new Float32Array(0),
+                        qefPlanes: new Float32Array(0),
                         stats: {
                             totalSamples: mergeDebugStats.vertexCount,
                             // Map SHREC's classification onto the existing

@@ -104,6 +104,10 @@ export interface GlobalSettings {
         /** Raw per-sample squares (MDC debug overlay). */
         mdcDebugPoints: boolean
         featureGlyphs: MeshViewerFeatureGlyphsSettings
+        /** Per-cell-component vertex position markers (MDC QEF debug). */
+        mdcCellVertices: boolean
+        /** Per-(cell, component) QEF input plane normals (MDC QEF debug). */
+        mdcQefPlanes: boolean
     }
     app: {
         devToolsEnabled: boolean
@@ -226,6 +230,8 @@ function defaultGlobalSettings(): GlobalSettings {
             wireframe: false,
             mdcDebugPoints: false,
             featureGlyphs: { line: false, corner: false, seam: false, ring: false },
+            mdcCellVertices: false,
+            mdcQefPlanes: false,
         },
         app: {
             devToolsEnabled: false,
@@ -680,6 +686,8 @@ export class SettingsManager {
                     },
                 }
                 if (typeof meshViewer.mdcDebugPoints !== "boolean") meshViewer.mdcDebugPoints = mvDef.mdcDebugPoints
+                if (typeof meshViewer.mdcCellVertices !== "boolean") meshViewer.mdcCellVertices = mvDef.mdcCellVertices
+                if (typeof meshViewer.mdcQefPlanes !== "boolean") meshViewer.mdcQefPlanes = mvDef.mdcQefPlanes
                 this.#globalSettings = {
                     preview,
                     meshViewer,

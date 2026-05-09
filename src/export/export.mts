@@ -11,6 +11,11 @@ export interface MeshMdcDebugStats {
     rejected: number
 }
 
+/** Floats per record in `MeshMdcDebugData.cellVertices`: xyz + reserved. */
+export const MESH_MDC_CELL_VERTEX_STRIDE = 4
+/** Floats per record in `MeshMdcDebugData.qefPlanes`: anchor.xyz + pad + normal.xyz + pad. */
+export const MESH_MDC_QEF_PLANE_STRIDE = 8
+
 export interface MeshMdcDebugData {
     /**
      * Packed sample records for mesh-viewer diagnostics.
@@ -30,6 +35,23 @@ export interface MeshMdcDebugData {
      * - `23`: reserved (currently 0)
      */
     samples: Float32Array<ArrayBuffer>
+    /**
+     * Per-cell-component vertex positions (pre-crease-split, one record per
+     * distinct vertex referenced by the raw triangle list). Stride
+     * `MESH_MDC_CELL_VERTEX_STRIDE`: `[x, y, z, _]`. Mesh viewer renders
+     * markers at each position to expose the QEF-solved sub-vertex placements
+     * before they get duplicated for shading.
+     */
+    cellVertices: Float32Array<ArrayBuffer>
+    /**
+     * Per-(cell, component) QEF input planes. Stride
+     * `MESH_MDC_QEF_PLANE_STRIDE`: `[anchorX, anchorY, anchorZ, _, normalX,
+     * normalY, normalZ, _]`. One record per non-zero face-bucket normal in
+     * the component's `ComponentFeature`. Anchor is the component's mass /
+     * feature point; mesh viewer renders a short line in the normal direction
+     * starting at the anchor so the plane orientation is visible.
+     */
+    qefPlanes: Float32Array<ArrayBuffer>
     stats: MeshMdcDebugStats
 }
 

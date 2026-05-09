@@ -1,3 +1,4 @@
+import type { AgentMeshOverlay } from "./agent-testcase.mjs"
 import type { MeshData } from "../export/export.mjs"
 import type { CameraSettings } from "../storage/settings.mjs"
 import { computeAgentPreviewCameraParams } from "./agent-preview-camera.mjs"
@@ -8,9 +9,34 @@ import { vec3 } from "../vecmat/vector.mjs"
 
 const AGENT_MESH_MAX = 2048
 
+/** Normalize the optional `AgentMeshOverlay` into the strict shape `MeshViewer.applyThumbnailGlyphOverlay` expects. */
+function resolveOverlayOptions(overlay: AgentMeshOverlay | undefined): {
+    mdcDebugPoints: boolean
+    featureGlyphs: { line: boolean; corner: boolean; seam: boolean; ring: boolean }
+    mdcCellVertices: boolean
+    mdcQefPlanes: boolean
+} {
+    return {
+        mdcDebugPoints: !!overlay?.mdcDebugPoints,
+        featureGlyphs: {
+            line: !!overlay?.featureGlyphs?.line,
+            corner: !!overlay?.featureGlyphs?.corner,
+            seam: !!overlay?.featureGlyphs?.seam,
+            ring: !!overlay?.featureGlyphs?.ring,
+        },
+        mdcCellVertices: !!overlay?.mdcCellVertices,
+        mdcQefPlanes: !!overlay?.mdcQefPlanes,
+    }
+}
+
 /**
  * Renders mesh with the same normal→RGB shader as the interactive mesh viewer (opaque pass).
  * Caller is responsible for obtaining `MeshData` (e.g. `SDFRenderer.renderMesh`).
+ *
+ * `overlay` (optional) enables mesh-viewer debug glyphs / markers in the captured PNG —
+ * raw per-edge sample squares, per-class feature glyphs (line/corner/seam/ring), per-cell
+ * vertex markers, and/or per-(cell, component) QEF input plane normals. Overlays default
+ * to off so existing testcases capture clean meshes.
  */
 export async function captureAgentMeshImageData(
     mesh: MeshData,
@@ -19,6 +45,7 @@ export async function captureAgentMeshImageData(
     resolutionScale: number,
     width = 1000,
     height = 1000,
+    overlay?: AgentMeshOverlay,
 ): Promise<ImageData> {
     const w = Math.max(1, Math.min(AGENT_MESH_MAX, Math.floor(width)))
     const h = Math.max(1, Math.min(AGENT_MESH_MAX, Math.floor(height)))
@@ -38,6 +65,9 @@ export async function captureAgentMeshImageData(
         mv.syncCameraResolutionFromCanvas()
         mv.controls.applyState(params.cameraState, { emit: false })
         mv.setViewCenter(params.viewCenter[0], params.viewCenter[1])
+        if (overlay) {
+            mv.applyThumbnailGlyphOverlay(resolveOverlayOptions(overlay))
+        }
         await mv.setMesh(mesh)
         return await mv.captureFrameToImageData()
     } finally {

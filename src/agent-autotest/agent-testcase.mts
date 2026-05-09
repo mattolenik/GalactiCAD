@@ -141,6 +141,25 @@ export function normalizeAgentTestcaseFromBridge(data: unknown): AgentTestcase {
 
 export type AgentRenderMode = "sdf" | "mesh"
 
+/**
+ * Mesh-viewer debug overlay flags for `mode: "mesh"` agent renders. All
+ * fields are optional; missing flags default to `false`. Mirrors the
+ * mesh-viewer GUI checkboxes (raw debug points, per-class feature glyphs,
+ * per-cell-component vertex markers, per-cell QEF input plane normals).
+ *
+ * The overlays are drawn into the same 2D canvas as the existing mesh
+ * normal-RGB pass, so a single PNG response shows both the mesh and the
+ * requested debug glyphs / markers.
+ */
+export interface AgentMeshOverlay {
+    mdcDebugPoints?: boolean
+    featureGlyphs?: { line?: boolean; corner?: boolean; seam?: boolean; ring?: boolean }
+    /** Per-cell-component vertex positions (pre-crease-split). */
+    mdcCellVertices?: boolean
+    /** Per-(cell, component) QEF input plane normals (anchored at the cell mass / feature point). */
+    mdcQefPlanes?: boolean
+}
+
 /** Single render request for WS / HTTP agent automation. */
 export interface AgentRenderRequest {
     mode: AgentRenderMode
@@ -153,6 +172,8 @@ export interface AgentRenderRequest {
     previewUvRect?: CanvasPreviewUvRect
     meshExport: AgentTestcaseMeshExport
     documentName?: string
+    /** Mesh-viewer debug glyph overlays (only consulted when `mode === "mesh"`). */
+    meshOverlay?: AgentMeshOverlay
 }
 
 /** Merge saved testcase YAML (in-memory `AgentTestcase`) with optional overrides (GET query / POST body). */
@@ -161,6 +182,7 @@ export function mergeAgentRenderRequest(
     overrides: Partial<Pick<AgentRenderRequest, "mode">> & {
         viewportWidth?: number
         viewportHeight?: number
+        meshOverlay?: AgentMeshOverlay
     },
 ): AgentRenderRequest {
     assertAgentTestcaseSchema(testcase)
@@ -186,5 +208,6 @@ export function mergeAgentRenderRequest(
             simplifyTuning: { ...testcase.meshExport.simplifyTuning },
             mdcExportLevers: { ...testcase.meshExport.mdcExportLevers },
         },
+        ...(overrides.meshOverlay !== undefined ? { meshOverlay: overrides.meshOverlay } : {}),
     }
 }

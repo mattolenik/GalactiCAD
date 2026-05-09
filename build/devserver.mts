@@ -996,12 +996,40 @@ function createHttpServer(
                 const vh = url.searchParams.get("viewportHeight")
                 const vwn = vw !== null && vw !== "" ? Number(vw) : undefined
                 const vhn = vh !== null && vh !== "" ? Number(vh) : undefined
+                // Mesh-overlay query flags. Each toggle is enabled by `=1` /
+                // `=true` and silently ignored otherwise; missing flags default
+                // to off so existing testcase URLs keep producing clean meshes.
+                // Documented in `.agents/skills/devserver/SKILL.md`.
+                const flag = (key: string): boolean => {
+                    const v = url.searchParams.get(key)
+                    if (v === null) return false
+                    const lower = v.trim().toLowerCase()
+                    return lower === "1" || lower === "true" || lower === "yes" || lower === "on"
+                }
+                const meshOverlay = (() => {
+                    const debugPoints = flag("debugPoints") || flag("mdcDebugPoints")
+                    const fgLine = flag("glyphLine") || flag("featureGlyphs.line")
+                    const fgCorner = flag("glyphCorner") || flag("featureGlyphs.corner")
+                    const fgSeam = flag("glyphSeam") || flag("featureGlyphs.seam")
+                    const fgRing = flag("glyphRing") || flag("featureGlyphs.ring")
+                    const cellVerts = flag("cellVertices") || flag("mdcCellVertices")
+                    const qefPlanes = flag("qefPlanes") || flag("mdcQefPlanes")
+                    const any = debugPoints || fgLine || fgCorner || fgSeam || fgRing || cellVerts || qefPlanes
+                    if (!any) return undefined
+                    return {
+                        mdcDebugPoints: debugPoints,
+                        featureGlyphs: { line: fgLine, corner: fgCorner, seam: fgSeam, ring: fgRing },
+                        mdcCellVertices: cellVerts,
+                        mdcQefPlanes: qefPlanes,
+                    }
+                })()
                 let payload: AgentRenderRequest
                 try {
                     payload = mergeAgentRenderRequest(tc, {
                         mode,
                         ...(Number.isFinite(vwn) ? { viewportWidth: vwn } : {}),
                         ...(Number.isFinite(vhn) ? { viewportHeight: vhn } : {}),
+                        ...(meshOverlay !== undefined ? { meshOverlay } : {}),
                     })
                 } catch (e) {
                     const msg = e instanceof Error ? e.message : String(e)

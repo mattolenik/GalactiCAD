@@ -43,6 +43,7 @@ import { appendDevLogLine, log, snapshotDebugLogModules } from "./logging/debug-
 import { DEFAULT_APP_DEVTOOLS_STATE, DEVTOOLS_SECTION_APP } from "./components/dev-tools-protocol.mjs"
 import { computeAgentPreviewCameraParams } from "./agent-autotest/agent-preview-camera.mjs"
 import { captureAgentMeshImageData, captureMeshThumbnailImageData } from "./agent-autotest/agent-mesh-capture.mjs"
+import type { AgentMeshOverlay } from "./agent-autotest/agent-testcase.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
@@ -1814,9 +1815,10 @@ export class SDFRenderer {
         width = 1000,
         height = 1000,
         documentName?: string,
+        overlay?: AgentMeshOverlay,
     ): Promise<ImageData> {
         const mesh = await this.renderMesh(src, documentName, { ...meshOptions, agentAutomation: true })
-        return captureAgentMeshImageData(mesh, camera, viewCenter, resolutionScale, width, height)
+        return captureAgentMeshImageData(mesh, camera, viewCenter, resolutionScale, width, height, overlay)
     }
 
     async #getCachedThumbnail(cacheKey: string): Promise<ImageData | null> {

@@ -1,4 +1,4 @@
-import { MESH_MDC_DEBUG_SAMPLE_STRIDE, MeshData, type MeshMdcDebugStats } from "../export/export.mjs"
+import { MESH_MDC_CELL_VERTEX_STRIDE, MESH_MDC_DEBUG_SAMPLE_STRIDE, MESH_MDC_QEF_PLANE_STRIDE, MeshData, type MeshMdcDebugStats } from "../export/export.mjs"
 import { CameraController, DOLLY_REF } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
 import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
@@ -71,7 +71,15 @@ export class MeshViewer extends HTMLElement {
     #mdcFeatureGlyphCornerCheckbox!: HTMLInputElement
     #mdcFeatureGlyphSeamCheckbox!: HTMLInputElement
     #mdcFeatureGlyphRingCheckbox!: HTMLInputElement
+    /** Per-cell-component vertex position overlay (MDC debug, post-mesh). */
+    #mdcCellVerticesEnabled = false
+    #mdcCellVerticesCheckbox!: HTMLInputElement
+    /** Per-(cell, component) QEF plane overlay (MDC debug, post-mesh). */
+    #mdcQefPlanesEnabled = false
+    #mdcQefPlanesCheckbox!: HTMLInputElement
     #mdcDebugSamples: Float32Array<ArrayBuffer> = new Float32Array(0)
+    #mdcDebugCellVertices: Float32Array<ArrayBuffer> = new Float32Array(0)
+    #mdcDebugQefPlanes: Float32Array<ArrayBuffer> = new Float32Array(0)
     #mdcDebugStats: MeshMdcDebugStats | null = null
 
     get controls(): CameraController {
@@ -243,6 +251,29 @@ export class MeshViewer extends HTMLElement {
         addFeatureGlyphRow("Seam", this.#mdcFeatureGlyphSeam, el => { this.#mdcFeatureGlyphSeamCheckbox = el })
         addFeatureGlyphRow("Ring", this.#mdcFeatureGlyphRing, el => { this.#mdcFeatureGlyphRingCheckbox = el })
         overlay.append(featureGlyphBox)
+
+        // Per-cell QEF debug overlays (vertex positions, plane normals).
+        // Reuse the feature-glyph CSS classes for consistent styling.
+        const qefDebugBox = document.createElement("div")
+        qefDebugBox.className = "overlay-feature-glyphs"
+        const qefDebugTitle = document.createElement("div")
+        qefDebugTitle.className = "overlay-feature-glyphs-title"
+        qefDebugTitle.textContent = "QEF debug"
+        qefDebugBox.append(qefDebugTitle)
+        const addQefDebugRow = (text: string, checked: boolean, assign: (el: HTMLInputElement) => void) => {
+            const row = document.createElement("label")
+            const cb = document.createElement("input")
+            cb.type = "checkbox"
+            cb.checked = checked
+            assign(cb)
+            const span = document.createElement("span")
+            span.textContent = text
+            row.append(cb, span)
+            qefDebugBox.append(row)
+        }
+        addQefDebugRow("Cell vertices", this.#mdcCellVerticesEnabled, el => { this.#mdcCellVerticesCheckbox = el })
+        addQefDebugRow("QEF planes", this.#mdcQefPlanesEnabled, el => { this.#mdcQefPlanesCheckbox = el })
+        overlay.append(qefDebugBox)
         shadow.appendChild(overlay)
 
         this.#loadViewerState()
@@ -271,6 +302,14 @@ export class MeshViewer extends HTMLElement {
         })
         this.#mdcFeatureGlyphRingCheckbox.addEventListener("change", () => {
             this.#mdcFeatureGlyphRing = this.#mdcFeatureGlyphRingCheckbox.checked
+            this.#saveViewerState()
+        })
+        this.#mdcCellVerticesCheckbox.addEventListener("change", () => {
+            this.#mdcCellVerticesEnabled = this.#mdcCellVerticesCheckbox.checked
+            this.#saveViewerState()
+        })
+        this.#mdcQefPlanesCheckbox.addEventListener("change", () => {
+            this.#mdcQefPlanesEnabled = this.#mdcQefPlanesCheckbox.checked
             this.#saveViewerState()
         })
         this.canvas.addEventListener("pointermove", event => {
@@ -633,6 +672,8 @@ export class MeshViewer extends HTMLElement {
         const meshToUpload = this.#pendingMesh
         this.#pendingMesh = null
         this.#mdcDebugSamples = meshToUpload.debug?.mdc?.samples ?? new Float32Array(0)
+        this.#mdcDebugCellVertices = meshToUpload.debug?.mdc?.cellVertices ?? new Float32Array(0)
+        this.#mdcDebugQefPlanes = meshToUpload.debug?.mdc?.qefPlanes ?? new Float32Array(0)
         this.#mdcDebugStats = meshToUpload.debug?.mdc?.stats ?? null
         this.#uploadMesh(meshToUpload)
     }
@@ -871,6 +912,13 @@ export class MeshViewer extends HTMLElement {
                 throw new Error("2D context unavailable for mesh capture")
             }
             ctx.drawImage(bitmap, 0, 0)
+            // The mesh-viewer's debug glyphs / cell-vertex / QEF-plane markers
+            // live on a separate stacked 2D canvas (`#debugOverlayCanvas`) so
+            // the WebGPU pipeline doesn't have to know about them. The capture
+            // path here would silently drop those pixels if we only read the
+            // WebGPU canvas — composite the overlay canvas on top so any
+            // requested debug overlay actually shows up in the agent PNG.
+            ctx.drawImage(this.#debugOverlayCanvas, 0, 0)
             return ctx.getImageData(0, 0, this.canvas.width, this.canvas.height)
         } finally {
             bitmap.close()
@@ -880,6 +928,14 @@ export class MeshViewer extends HTMLElement {
     /** Keep orthographic projection in sync when canvas backing store size is set directly (agent capture). */
     syncCameraResolutionFromCanvas(): void {
         this.#cameraRes = vec2(this.canvas.width, this.canvas.height)
+        // Keep the stacked 2D overlay canvas in sync with the WebGPU canvas
+        // dimensions. The interactive path normally relies on the
+        // `ResizeObserver` to do this, but agent captures size `this.canvas`
+        // imperatively (no layout change), so without an explicit copy the
+        // overlay stays at its initial 0×0 and `#drawMdcDebugOverlay` paints
+        // into nothing.
+        this.#debugOverlayCanvas.width = this.canvas.width
+        this.#debugOverlayCanvas.height = this.canvas.height
         if (this.#device) {
             this.#recreateAttachments()
         }
@@ -930,7 +986,72 @@ export class MeshViewer extends HTMLElement {
             || this.#mdcFeatureGlyphCorner
             || this.#mdcFeatureGlyphSeam
             || this.#mdcFeatureGlyphRing
-        if ((!showRawSamples && !showFeatureGlyphs) || this.#mdcDebugSamples.length === 0) return
+        const showCellVertices = this.#mdcCellVerticesEnabled && this.#mdcDebugCellVertices.length > 0
+        const showQefPlanes = this.#mdcQefPlanesEnabled && this.#mdcDebugQefPlanes.length > 0
+        const haveSampleData = this.#mdcDebugSamples.length > 0
+        const samplesNeeded = showRawSamples || showFeatureGlyphs
+        if (!samplesNeeded && !showCellVertices && !showQefPlanes) return
+        // Independent QEF debug overlays: render even when no per-edge samples
+        // are present (e.g. SHREC pipeline has cellVertices/qefPlanes empty,
+        // or the user only wants the QEF debug pair without the sample points).
+        const projectStandalone = (ox: number, oy: number, oz: number) =>
+            this.#projectDebugPoint(cameraTransform, cameraOrigin, ox, oy, oz)
+        const drawCellVertexAndPlaneOverlays = () => {
+            if (showCellVertices) {
+                const data = this.#mdcDebugCellVertices
+                const stride = MESH_MDC_CELL_VERTEX_STRIDE
+                ctx.save()
+                ctx.fillStyle = "rgba(255, 240, 120, 0.95)"
+                ctx.strokeStyle = "rgba(20, 20, 20, 0.85)"
+                ctx.lineWidth = 1
+                const r = 1.75
+                for (let i = 0; i + stride <= data.length; i += stride) {
+                    const p = projectStandalone(data[i]!, data[i + 1]!, data[i + 2]!)
+                    if (!p) continue
+                    ctx.beginPath()
+                    ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
+                    ctx.fill()
+                    ctx.stroke()
+                }
+                ctx.restore()
+            }
+            if (showQefPlanes) {
+                const data = this.#mdcDebugQefPlanes
+                const stride = MESH_MDC_QEF_PLANE_STRIDE
+                // Per-plane normal-direction stick: short line segment from
+                // the anchor in the plane's normal direction. Length scales
+                // with the orbit zoom so it stays readable across distances.
+                const len = Math.min(Math.max(this.#controls.zoom * 0.04, 0.06), 1.5)
+                ctx.save()
+                ctx.lineCap = "round"
+                ctx.lineWidth = 1.8
+                for (let i = 0; i + stride <= data.length; i += stride) {
+                    const ax = data[i]!
+                    const ay = data[i + 1]!
+                    const az = data[i + 2]!
+                    const nx = data[i + 4]!
+                    const ny = data[i + 5]!
+                    const nz = data[i + 6]!
+                    const p0 = projectStandalone(ax, ay, az)
+                    const p1 = projectStandalone(ax + nx * len, ay + ny * len, az + nz * len)
+                    if (!p0 || !p1) continue
+                    ctx.strokeStyle = "rgba(120, 200, 255, 0.85)"
+                    ctx.beginPath()
+                    ctx.moveTo(p0.x, p0.y)
+                    ctx.lineTo(p1.x, p1.y)
+                    ctx.stroke()
+                    ctx.fillStyle = "rgba(120, 200, 255, 0.95)"
+                    ctx.beginPath()
+                    ctx.arc(p0.x, p0.y, 1.5, 0, Math.PI * 2)
+                    ctx.fill()
+                }
+                ctx.restore()
+            }
+        }
+        if (!samplesNeeded || !haveSampleData) {
+            drawCellVertexAndPlaneOverlays()
+            return
+        }
 
         const samples = this.#mdcDebugSamples
         const hoverPos = this.#hoverCanvasPos
@@ -1280,6 +1401,8 @@ export class MeshViewer extends HTMLElement {
             }
         }
 
+        drawCellVertexAndPlaneOverlays()
+
         const stats = this.#mdcDebugStats
         if (stats) {
             const text1 = `Mesh debug ${stats.totalSamples} samples`
@@ -1429,6 +1552,8 @@ export class MeshViewer extends HTMLElement {
                     seam: this.#mdcFeatureGlyphSeam,
                     ring: this.#mdcFeatureGlyphRing,
                 },
+                mdcCellVertices: this.#mdcCellVerticesEnabled,
+                mdcQefPlanes: this.#mdcQefPlanesEnabled,
             },
         })
     }
@@ -1448,6 +1573,10 @@ export class MeshViewer extends HTMLElement {
         this.#mdcFeatureGlyphSeamCheckbox.checked = fg.seam
         this.#mdcFeatureGlyphRing = fg.ring
         this.#mdcFeatureGlyphRingCheckbox.checked = fg.ring
+        this.#mdcCellVerticesEnabled = !!g.mdcCellVertices
+        this.#mdcCellVerticesCheckbox.checked = this.#mdcCellVerticesEnabled
+        this.#mdcQefPlanesEnabled = !!g.mdcQefPlanes
+        this.#mdcQefPlanesCheckbox.checked = this.#mdcQefPlanesEnabled
     }
 
     /**
@@ -1457,6 +1586,8 @@ export class MeshViewer extends HTMLElement {
     applyThumbnailGlyphOverlay(opts: {
         mdcDebugPoints: boolean
         featureGlyphs: { line: boolean; corner: boolean; seam: boolean; ring: boolean }
+        mdcCellVertices?: boolean
+        mdcQefPlanes?: boolean
     }): void {
         this.#mdcDebug = opts.mdcDebugPoints
         this.#mdcDebugCheckbox.checked = opts.mdcDebugPoints
@@ -1468,6 +1599,10 @@ export class MeshViewer extends HTMLElement {
         this.#mdcFeatureGlyphSeamCheckbox.checked = opts.featureGlyphs.seam
         this.#mdcFeatureGlyphRing = opts.featureGlyphs.ring
         this.#mdcFeatureGlyphRingCheckbox.checked = opts.featureGlyphs.ring
+        this.#mdcCellVerticesEnabled = !!opts.mdcCellVertices
+        this.#mdcCellVerticesCheckbox.checked = !!opts.mdcCellVertices
+        this.#mdcQefPlanesEnabled = !!opts.mdcQefPlanes
+        this.#mdcQefPlanesCheckbox.checked = !!opts.mdcQefPlanes
     }
 }
 

@@ -509,7 +509,7 @@ export class MDCExport {
             const componentFeaturesBuffer = createBuffer(
                 "ComponentFeatures",
                 activeCellCount * MAX_COMPONENTS_PER_CELL * SIZEOF_COMPONENT_FEATURE,
-                GPUBufferUsage.STORAGE
+                GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
             )
             const verticesBuffer = createBuffer(
                 "Vertices",
@@ -687,6 +687,88 @@ export class MDCExport {
                 actualIndexCount * Uint32Array.BYTES_PER_ELEMENT
             )
             let tris = new Uint32Array(indicesData)
+
+            // Per-cell-component QEF debug: pre-crease-split vertex positions
+            // and the 1-3 plane normals contributing to each cell's QEF.
+            // Read back BEFORE `splitCreaseVertices` rewrites `verts` (which
+            // duplicates each cell vertex into per-face-group copies and so
+            // loses the 1:1 cell ↔ vertex mapping). One marker per distinct
+            // vertex index referenced by the raw triangle list eliminates
+            // sentinel slots without scanning every cell. QEF planes anchor at
+            // `feature.point` (the cell mass-point or feature locus the QEF
+            // pulled toward); direction is each `n0` / `n1` / `n2` from
+            // `ComponentFeature` — the bucket face normals contributed to the
+            // QEF by Phase 3.
+            const cellComponentCount = activeCellCount * MAX_COMPONENTS_PER_CELL
+            const componentFeaturesData = await readBufferData(
+                componentFeaturesBuffer,
+                cellComponentCount * SIZEOF_COMPONENT_FEATURE,
+            )
+            const cfU32 = new Uint32Array(componentFeaturesData)
+            const cfF32 = new Float32Array(componentFeaturesData)
+            // 112 bytes / 4 = 28 floats (or u32) per ComponentFeature record.
+            // Layout (std430):
+            //   [0..3]  u32   kind, ownerA, ownerB, normalCount
+            //   [4..7]  vec3f point.xyz + pad
+            //   [8..11] vec3f tangent.xyz + pad
+            //   [12..15] vec3f n0.xyz + pad
+            //   [16..19] vec3f n1.xyz + pad
+            //   [20..23] vec3f n2.xyz + pad
+            //   [24..27] vec3f axisCenter.xyz + pad
+            const CF_STRIDE = 28
+            const CF_KIND = 0
+            const CF_NORMAL_COUNT = 3
+            const CF_POINT = 4
+            const CF_N0 = 12
+            const CF_N1 = 16
+            const CF_N2 = 20
+            // Plane record stride: 8 floats (vec4 anchor + vec4 normal). The
+            // mesh-viewer overlay treats this as a flat list of (anchor,
+            // normal) pairs and only consults the .xyz channels.
+            const PLANE_STRIDE = 8
+            // Cell-vertex record stride: 4 floats (xyz + reserved 0).
+            const VERT_STRIDE = 4
+            const usedVertexIdx = new Set<number>()
+            for (let i = 0; i < tris.length; i++) usedVertexIdx.add(tris[i]!)
+            const vStrideF = SIZEOF_VERTEX / 4
+            const cellVertices = new Float32Array(usedVertexIdx.size * VERT_STRIDE)
+            {
+                let w = 0
+                for (const vIdx of usedVertexIdx) {
+                    const b = vIdx * vStrideF
+                    cellVertices[w * VERT_STRIDE + 0] = verts[b]!
+                    cellVertices[w * VERT_STRIDE + 1] = verts[b + 1]!
+                    cellVertices[w * VERT_STRIDE + 2] = verts[b + 2]!
+                    cellVertices[w * VERT_STRIDE + 3] = 0
+                    w++
+                }
+            }
+            // Walk every (cell, component) slot. Emit one plane per non-zero
+            // normal that the component reports. Empty / sentinel slots have
+            // `normalCount == 0` and zero normals; they're skipped naturally.
+            const qefPlanesScratch: number[] = []
+            for (let c = 0; c < cellComponentCount; c++) {
+                const base = c * CF_STRIDE
+                const kind = cfU32[base + CF_KIND]!
+                if (kind === 0) continue
+                const normalCount = cfU32[base + CF_NORMAL_COUNT]!
+                if (normalCount === 0) continue
+                const ax = cfF32[base + CF_POINT]!
+                const ay = cfF32[base + CF_POINT + 1]!
+                const az = cfF32[base + CF_POINT + 2]!
+                const pushPlane = (nOff: number) => {
+                    const nx = cfF32[base + nOff]!
+                    const ny = cfF32[base + nOff + 1]!
+                    const nz = cfF32[base + nOff + 2]!
+                    if (nx === 0 && ny === 0 && nz === 0) return
+                    qefPlanesScratch.push(ax, ay, az, 0, nx, ny, nz, 0)
+                }
+                pushPlane(CF_N0)
+                if (normalCount >= 2) pushPlane(CF_N1)
+                if (normalCount >= 3) pushPlane(CF_N2)
+            }
+            const qefPlanes = new Float32Array(qefPlanesScratch.length)
+            qefPlanes.set(qefPlanesScratch)
             logDiag("after GPU readback", {
                 actualIndexCount,
                 actualDebugSampleCount,
@@ -936,6 +1018,8 @@ export class MDCExport {
                 debug: {
                     mdc: {
                         samples: debugSamples,
+                        cellVertices,
+                        qefPlanes,
                         stats: {
                             totalSamples: actualDebugSampleCount,
                             acceptedNone: debugCounts[8] ?? 0,

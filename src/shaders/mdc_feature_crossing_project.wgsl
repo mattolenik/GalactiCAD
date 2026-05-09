@@ -111,9 +111,6 @@ fn mdcSeamFeatureFollow(intersectionPos: vec3f) -> vec3f {
     return q;
 }
 
-// Backwards-compatible wrappers used by `mdcFeatureProjectCrossingPosition` (the
-// `feature` arg lets the static fallback path keep its old signature; the
-// iterative implementation does not consult it).
 fn mdcClosestPointOnLineFeatureIterative(feature: ComponentFeature, intersectionPos: vec3f) -> vec3f {
     return mdcLineFeatureFollow(intersectionPos);
 }

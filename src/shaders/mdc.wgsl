@@ -1298,19 +1298,18 @@ fn edgeDetection_Pass3(
         // (e.g. a helical sharp edge from a twisted polygon threads diagonally
         // across the cube interior without crossing a cube edge near a polygon
         // vertex, so the polygon-vertex test in `Extrude.compileMid` never
-        // fires), pick the closest point on the *2-plane intersection* of the
-        // two face buckets to the cell mass point — that's where the sharp
-        // edge would live if the Hermite samples are correct — Newton-step
-        // to the surface, then ask `sceneSDF_mid` whether the probe sits on a
-        // LINE feature locus. Captures helical edges from `twist`, arc creases
-        // from `bend`, and any other operator-induced curved edge in cells
-        // that the cube-edge Hermite sampling missed. Operator-agnostic:
-        // we don't ask what kind of curve; we trust the SDF's local LINE
-        // classification at the probe.
+        // fires on a Hermite sample), sample `sceneSDF_mid` at the 2-plane
+        // intersection — geometrically where the sharp edge lives in this
+        // cell — and accept any LINE classification the SDF reports.
+        // Operator-agnostic: we don't ask what kind of curve; we trust the
+        // SDF's local LINE classification at the probe.
         //
-        // Requires bucketCount >= 2: with only one face bucket we can't form
-        // an intersection line, and the cell-center / mass-point would just
-        // sit on the smooth face and report no feature.
+        // Requires bucketCount >= 2 with a sharp-enough dot: with only one
+        // bucket we can't form an intersection line. Newton-stepping to the
+        // surface is intentionally NOT done — it would push the probe
+        // perpendicular to ∇SDF toward whichever face is nearest, which on a
+        // curved sharp edge lands on a side face where the operator-level
+        // LINE classifier (e.g. polygon-vertex `tt < 1e-4`) doesn't fire.
         if (
             explicitLineDist[c] >= 1e8 &&
             explicitCornerDist[c] >= 1e8 &&
@@ -1318,13 +1317,6 @@ fn edgeDetection_Pass3(
             bucketCount >= 2u &&
             dot(n0, n1) < MDC_INFER_LINE_DOT_MAX
         ) {
-            // Sample directly at the 2-plane intersection — that's geometrically
-            // where the sharp edge lives in this cell. Newton-stepping to the
-            // surface from here would push the probe perpendicular to ∇SDF
-            // toward whichever face is nearest, which on a curved sharp edge
-            // (helix, arc) lands on a side face — not on the line — and the
-            // operator-level LINE classifier (e.g. `Extrude.compileMid`'s
-            // polygon-vertex `tt < 1e-4` test) wouldn't fire there.
             let probePos = clamp(solveFeaturePoint(n0, p0, n1, p1, vec3f(0.0), vec3f(0.0), 2u), cellMin, cellMax);
             let probeSdf = sceneSDF_mid(probePos);
             let probeLineOk =
@@ -1581,17 +1573,13 @@ fn edgeDetection_Pass3(
     // cells where Phase 3 projection was disabled (gap test failed): without
     // it those cells get no curve constraint at all and the QEF wanders into
     // visible chips along curved sharp edges (helices from twist, arcs from
-    // bend, etc.). For explicit cells where projection ran (or for
-    // CORNER/SEAM where projection is unconditional), the locus is already
-    // baked into the projected crossings and the soft bias is redundant.
+    // bend, etc.).
     for (var c = 0u; c < MAX_COMPONENTS_PER_CELL; c = c + 1u) {
         if (compCrossCount[c] == 0u) { continue; }
         let feature = inferredFeatures[c];
         let isExplicitLine = featureConstraintsEnabled && (feature.kind == MID_FEATURE_LINE) && (explicitLineDist[c] < 1e8);
         let isExplicitCorner = featureConstraintsEnabled && (feature.kind == MID_FEATURE_CORNER) && (explicitCornerDist[c] < 1e8);
         let isExplicitSeam = featureConstraintsEnabled && (feature.kind == MID_FEATURE_BOOLEAN_SEAM) && (explicitSeamDist[c] < 1e8);
-        // LINE cells need the bias whenever projection didn't run, regardless
-        // of whether the cell was inferred-only or explicit-LINE-but-gap-failed.
         let lineNeedsBias = (feature.kind == MID_FEATURE_LINE) && !lineQefProjection[c];
         for (var s = 0u; s < MAX_SUBCOMPONENTS_PER_COMPONENT; s = s + 1u) {
             if (subQefs[c][s].numPoints == 0u) { continue; }

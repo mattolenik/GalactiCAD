@@ -1,0 +1,71 @@
+schemaVersion: 1
+source: |-
+  let lShape = polygon2d([[-3, -3], [3, -3], [3, -1], [-1, -1], [-1, 3], [-3, 3]])
+  let extrudedL = extrude.profile(lShape).height(9.84).twist(500)
+
+  return extrudedL
+camera:
+  position:
+    - 0
+    - 0
+    - 1
+  translation:
+    - 0.38979992270469666
+    - 0.03873288258910179
+    - 0.47839024662971497
+  dollyDistance: 15.816086411013762
+  rotation:
+    - 0.8861636929380715
+    - 0.14859872298785853
+    - 0.4328554225554762
+    - 0.07258451631758367
+  pivot:
+    - 0
+    - 0
+    - 0
+viewCenter:
+  - 0.6807858943939209
+  - 0.5
+resolutionScale: 1
+viewportWidth: 1715
+viewportHeight: 624
+previewUvRect:
+  u0: 0.3615717974383898
+  v0: 0
+  u1: 1
+  v1: 1
+meshExport:
+  simplifyOnExport: false
+  voxelSizeMm: 0.25
+  exporter: shrec
+  shrecTuning:
+    mergeSharpEnabled: true
+    mergeRelCutoff: 0.05
+    mergeMaxDisplacement: 0
+    creaseAngleDeg: 30
+    mergeGradientWeightPower: 0
+    dedupRadiusVoxels: 0
+    seamAwareEnabled: false
+    seamAgreementCosThreshold: 0.97
+    edgeFitEnabled: false
+    featureConstrainedPlacement: true
+  simplifyTuning:
+    targetRatio: 0.05
+    targetError: 0.001
+    lockBorder: true
+    sparse: false
+    errorAbsolute: false
+    prune: false
+    regularize: true
+    normalWeight: 0
+    renormalizeTriangles: true
+  mdcExportLevers:
+    voxelSizeMm: 0.25
+    isoValue: 0
+    creaseAngleDeg: 30
+    featureConstrainedPlacement: true
+    simplifyTargetRatio: 0.1
+    simplifyTargetError: 0.001
+    simplifyNormalWeight: 0
+    simplifyRegularize: false
+documentName: twisted-l-500

@@ -421,20 +421,13 @@ export class IsoOctree {
             writeV4(root.verts, i, b.x, b.y, b.z, 0)
         }
 
-        const cornerWorld = packWorldFromNorm4(root.verts, 8, rootMin, rootMax)
-        const cornerSdf = await sample(cornerWorld, signal)
-        const gradCorners = new Float32Array(24)
-        for (let i = 0; i < 8; i++) {
-            root.verts[i * 4 + 3] = cornerSdf[i * 4 + 3]!
-            gradCorners[i * 3] = cornerSdf[i * 4]!
-            gradCorners[i * 3 + 1] = cornerSdf[i * 4 + 1]!
-            gradCorners[i * 3 + 2] = cornerSdf[i * 4 + 2]!
-        }
-
         const counter = { n: 0 }
         const worldScale = rootMax[0] - rootMin[0]
 
-        await evalNode(root, gradCorners, rootMin, rootMax, worldScale, C, sample, signal, counter)
+        // The 8 root corners are already part of the phase-1 lattice that
+        // `evalNode` will sample — passing `null` lets it harvest corner SDF
+        // and gradients from that lattice instead of issuing a separate batch.
+        await evalNode(root, null, rootMin, rootMax, worldScale, C, sample, signal, counter)
 
         return new IsoOctree(root, counter.n)
     }
@@ -473,9 +466,22 @@ function gridGradient(
     return [gradParent[o]!, gradParent[o + 1]!, gradParent[o + 2]!]
 }
 
+/**
+ * Phase-1 lattice index of cube corner `i` for oversample `O`.
+ *
+ * `buildPhase1NormPts` lays the lattice out in `(x, y, z)` order with `x` outermost,
+ * each axis stepping `0..O`, so the flat index is `x*(O+1)^2 + y*(O+1) + z`. Cube
+ * corner `i = indexBits(i) = (b.x, b.y, b.z)` sits at `(b.x*O, b.y*O, b.z*O)`.
+ */
+function phase1LatticeIndexForCorner(i: number, O: number): number {
+    const b = indexBits(i)
+    const stride = O + 1
+    return (b.x * O) * stride * stride + (b.y * O) * stride + (b.z * O)
+}
+
 async function evalNode(
     node: IsoOctreeNode,
-    gradCorners: Float32Array,
+    gradCorners: Float32Array | null,
     rootMin: readonly [number, number, number],
     rootMax: readonly [number, number, number],
     worldScale: number,
@@ -488,6 +494,17 @@ async function evalNode(
     const scratch = buildPhase1NormPts(node, C)
     const worldPhase1 = packWorldFromNorm4(scratch.normPts, scratch.totalPhase1, rootMin, rootMax)
     const sdfPhase1 = await sample(worldPhase1, signal)
+    if (!gradCorners) {
+        gradCorners = new Float32Array(24)
+        for (let i = 0; i < 8; i++) {
+            const li = phase1LatticeIndexForCorner(i, C.oversampleQef)
+            const o = li * 4
+            node.verts[i * 4 + 3] = sdfPhase1[o + 3]!
+            gradCorners[i * 3] = sdfPhase1[o]!
+            gradCorners[i * 3 + 1] = sdfPhase1[o + 1]!
+            gradCorners[i * 3 + 2] = sdfPhase1[o + 2]!
+        }
+    }
     const invWorldScale = 1 / worldScale
     const { qefError, reEvalNorm } = phase1SdfToReEvalNorm(node, scratch, sdfPhase1, C, invWorldScale)
     const reEvalWorld = new Float32Array(19 * 3)

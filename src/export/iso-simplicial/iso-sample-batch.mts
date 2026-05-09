@@ -43,6 +43,8 @@ export class IsoSampleBatch {
     #positionsCapacity = 0
     #sdfBuffer: GPUBuffer | undefined
     #sdfCapacity = 0
+    #stagingBuffer: GPUBuffer | undefined
+    #stagingCapacity = 0
     #bindGroup: [number, GPUBindGroup] | undefined
 
     constructor(
@@ -73,6 +75,9 @@ export class IsoSampleBatch {
         this.#sdfBuffer?.destroy()
         this.#sdfBuffer = undefined
         this.#sdfCapacity = 0
+        this.#stagingBuffer?.destroy()
+        this.#stagingBuffer = undefined
+        this.#stagingCapacity = 0
     }
 
     #ensurePipeline(isoSampleBatchShaderModule: GPUShaderModule): GPUComputePipeline {
@@ -132,6 +137,19 @@ export class IsoSampleBatch {
             this.#bindGroup = undefined
         }
         return this.#sdfBuffer
+    }
+
+    #ensureStagingBuffer(minBytes: number): GPUBuffer {
+        if (!this.#stagingBuffer || this.#stagingCapacity < minBytes) {
+            this.#stagingBuffer?.destroy()
+            this.#stagingCapacity = Math.max(minBytes, this.#stagingCapacity * 2 || 4096)
+            this.#stagingBuffer = this.#device.createBuffer({
+                label: "IsoSampleBatch.Staging",
+                size: this.#stagingCapacity,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            })
+        }
+        return this.#stagingBuffer
     }
 
     #ensureBindGroup(
@@ -204,6 +222,7 @@ export class IsoSampleBatch {
         this.#device.queue.writeBuffer(positionsBuffer, 0, positions)
 
         const sdfBuffer = this.#ensureSdfBuffer(outBytes)
+        const stagingBuffer = this.#ensureStagingBuffer(outBytes)
         const bindGroup = this.#ensureBindGroup(pipeline, uniformBuffer, positionsBuffer, sdfBuffer, cancellationBuffer)
 
         const wg = Math.ceil(sampleCount / 256)
@@ -211,21 +230,27 @@ export class IsoSampleBatch {
             throw new Error(`IsoSampleBatch: workgroup count ${wg} exceeds 65535; split the batch.`)
         }
 
+        // One command encoder: compute pass + copy-to-staging, single submit.
+        // Avoids the redundant `onSubmittedWorkDone` wait between dispatch and copy
+        // that a separate `readBufferData` round would impose.
         const ce = this.#device.createCommandEncoder({ label: "iso_sample_batch" })
         const pass = this.#helper.beginComputePass(ce, pipeline, bindGroup)
         pass.dispatchWorkgroups(wg)
         pass.end()
+        ce.copyBufferToBuffer(sdfBuffer, 0, stagingBuffer, 0, outBytes)
         this.#device.queue.submit([ce.finish()])
-        await this.#device.queue.onSubmittedWorkDone()
 
-        if (options?.signal?.aborted) {
-            const err = new Error("IsoSampleBatch aborted")
-            err.name = "AbortError"
-            throw err
+        await stagingBuffer.mapAsync(GPUMapMode.READ, 0, outBytes)
+        try {
+            if (options?.signal?.aborted) {
+                const err = new Error("IsoSampleBatch aborted")
+                err.name = "AbortError"
+                throw err
+            }
+            const sdf = new Float32Array(stagingBuffer.getMappedRange(0, outBytes).slice(0))
+            return { sdf, sampleCount }
+        } finally {
+            stagingBuffer.unmap()
         }
-
-        const sdf = new Float32Array(await this.#helper.readBufferData(sdfBuffer, outBytes))
-
-        return { sdf, sampleCount }
     }
 }

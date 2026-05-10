@@ -64,7 +64,7 @@ serve: clean setup
 	$(BUILD) -w $(BUILD_FLAGS)
 
 .PHONY: start
-start:
+start: build
 	@nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
 	i=0
 	while (( i < 20 )); do

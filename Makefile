@@ -4,16 +4,13 @@ export TSX      ?= node_modules/.bin/tsx
 export TSC      ?= node_modules/.bin/tsc
 BUILD           := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 
-# AGENT=true: .devserver.agent.run + .devserver.agent.log + default PORT 7000 (override inherited PORT unless
-# PORT is on the command line, e.g. make serve AGENT=true PORT=8080); devserver spawns headless Chrome
+# AGENT=true: .devserver.agent.run + .devserver.agent.log + default PORT 7000 (override inherited PORT env var)
 # (chromePid in run file; stopped with devserver on SIGINT/SIGTERM or make stop). Else .devserver.run / .devserver.log.
 ifeq ($(AGENT),true)
 export RUN_FILE := .devserver.agent.run
 export LOG_FILE := .devserver.agent.log
 export AGENT := true
 # Default 7000 unless PORT was set on this make's command line (e.g. make serve AGENT=true PORT=8080).
-# Ifdef PORT is wrong here: `make serve-agent` parses the parent with AGENT unset, so the parent
-# may already have exported PORT=6900 from $(BUILD) port; the child must still override to 7000.
 ifneq ($(origin PORT),command line)
 export PORT := 7000
 endif
@@ -106,32 +103,12 @@ stop:
 .PHONY: restart
 restart: stop start
 
-.PHONY: serve-agent
-serve-agent:
-	$(MAKE) serve AGENT=true
-
-.PHONY: start-agent
-start-agent:
-	$(MAKE) start AGENT=true
-
-.PHONY: logs-agent
-logs-agent:
-	$(MAKE) logs AGENT=true
-
-.PHONY: stop-agent
-stop-agent:
-	$(MAKE) stop AGENT=true
-
-.PHONY: restart-agent
-restart-agent:
-	$(MAKE) restart AGENT=true
-
 .PHONY: release
 release: export PRODUCTION=1
 release: build test
 
 .PHONY: clean
-clean: stop stop-agent
+clean: stop
 	rm -rf $(DIST)
 	rm -f .devserver.*
 

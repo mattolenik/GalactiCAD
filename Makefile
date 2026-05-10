@@ -58,16 +58,17 @@ start:
 			exit 0
 		fi
 	fi
+	make setup
 	nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
 	i=0
 	while (( i < 20 )); do
-		sleep 0.2
 		if [[ -f "$(RUN_FILE)" ]]; then
 			port=$$(jq -r .port "$(RUN_FILE)")
 			echo ""
 			echo "Server running at http://localhost:$$port"
 			break
 		fi
+		sleep 1
 		i=$$((i+1))
 	done
 	echo "View logs at $(LOG_FILE) (run: make logs$(if $(filter true,$(AGENT)), AGENT=true,))"

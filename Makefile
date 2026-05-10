@@ -89,7 +89,7 @@ release: build test
 .PHONY: clean
 clean: stop
 	rm -rf $(DIST)
-	rm -f .devserver.*
+	rm -f .devserver*log
 
 .PHONY: scrub
 scrub: clean

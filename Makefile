@@ -44,10 +44,6 @@ test: check
 check: setup
 	$(TSC) --noEmit
 
-.PHONY: serve
-serve: clean setup
-	$(BUILD) -w $(BUILD_FLAGS)
-
 .PHONY: start
 start:
 	@if [[ -f "$(RUN_FILE)" ]]; then

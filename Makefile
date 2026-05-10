@@ -79,6 +79,10 @@ stop:
 		kill -TERM $$pid && rm -f "$(RUN_FILE)" || true
 	fi
 
+stop-all:
+	make stop AGENT=false
+	make stop AGENT=true
+
 .PHONY: restart
 restart: stop start
 

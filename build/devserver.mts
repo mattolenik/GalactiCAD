@@ -39,11 +39,7 @@ export interface RunFileData {
 /** First `.app` bundle path from Spotlight, or null. */
 function macBundlePathForId(bundleId: string): string | null {
     try {
-        const out = execFileSync(
-            "mdfind",
-            [`kMDItemCFBundleIdentifier == '${bundleId}'`],
-            { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
-        )
+        const out = execFileSync("mdfind", [`kMDItemCFBundleIdentifier == '${bundleId}'`], { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 })
         const line = out
             .trim()
             .split("\n")
@@ -93,9 +89,7 @@ function resolveChromeBinary(log: (msg: unknown) => void, errLog: (msg: unknown)
         }
     }
     errLog("agent mode: could not find Chrome/Chromium (set CHROME or CHROMIUM_PATH to the executable)")
-    log(
-        "agent mode: open a Chromium-based browser manually at the server URL (with WebGPU); bridge RPCs need one connected tab.",
-    )
+    log("agent mode: open a Chromium-based browser manually at the server URL (with WebGPU); bridge RPCs need one connected tab.")
     return null
 }
 
@@ -363,7 +357,12 @@ function agentRenderErrorHttpStatus(out: { pngBase64?: string; error?: string } 
 }
 
 /** Wait until the HTTP response body is fully flushed (avoids curl/client write errors on short reads). */
-function endHttpResponseWithBuffer(res: http.ServerResponse, status: number, headers: http.OutgoingHttpHeaders, body: Buffer): Promise<void> {
+function endHttpResponseWithBuffer(
+    res: http.ServerResponse,
+    status: number,
+    headers: http.OutgoingHttpHeaders,
+    body: Buffer,
+): Promise<void> {
     return new Promise((resolve, reject) => {
         const onError = (e: Error) => {
             res.off("error", onError)
@@ -416,13 +415,18 @@ async function respondAgentRenderPng(
             const msg = e instanceof Error ? e.message : String(e)
             console.error(`writeAgentImagelogPng: ${msg}`)
         }
-        await endHttpResponseWithBuffer(res, 200, {
-            "content-type": "image/png",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Expose-Headers": "Content-Disposition",
-            "Content-Disposition": agentRenderPngContentDisposition(downloadBasename, payload.mode),
-            "Content-Length": String(buf.length),
-        }, buf)
+        await endHttpResponseWithBuffer(
+            res,
+            200,
+            {
+                "content-type": "image/png",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Expose-Headers": "Content-Disposition",
+                "Content-Disposition": agentRenderPngContentDisposition(downloadBasename, payload.mode),
+                "Content-Length": String(buf.length),
+            },
+            buf,
+        )
     } finally {
         try {
             await overwriteBrowserLogAfterAgentRender(bridge, err)
@@ -707,15 +711,11 @@ export class DevServer {
     ): Promise<DevServer> {
         const bridge = new BrowserBridge()
 
-        const { server, port: actualPort, wss } = await listenWithPortRetry(
-            serveRoot,
-            port,
-            INJECTED_BRIDGE_SCRIPT,
-            indexFileName,
-            bridge,
-            log,
-            err,
-        )
+        const {
+            server,
+            port: actualPort,
+            wss,
+        } = await listenWithPortRetry(serveRoot, port, INJECTED_BRIDGE_SCRIPT, indexFileName, bridge, log, err)
         const instance = new DevServer(serveRoot, actualPort, indexFileName, bridge)
         instance.httpServer = server
         instance.wsServer = wss
@@ -729,10 +729,7 @@ export class DevServer {
                 chromeLaunchNote = "chrome_binary_not_found"
             } else {
                 const url = `http://127.0.0.1:${actualPort}/`
-                const userDataDir = path.join(
-                    os.tmpdir(),
-                    `${AGENT_HEADLESS_CHROME_USER_DATA_TAG}-${options.pid}`,
-                )
+                const userDataDir = path.join(os.tmpdir(), `${AGENT_HEADLESS_CHROME_USER_DATA_TAG}-${options.pid}`)
                 const chromeLogPath = path.join(process.cwd(), ".devserver.agent.chrome.log")
                 try {
                     // Path includes devserver PID → new folder each launch; tmp only, no reuse across runs.
@@ -741,6 +738,7 @@ export class DevServer {
                     // `--user-data-dir` + path leaves *two* positionals (profile dir + URL); use `--user-data-dir=PATH`.
                     const argv = [
                         "--headless=new",
+                        "--window-size=8192,8192",
                         "--enable-unsafe-webgpu",
                         "--no-first-run",
                         "--no-default-browser-check",
@@ -791,9 +789,7 @@ export class DevServer {
                             try {
                                 process.kill(cpid, 0)
                             } catch {
-                                err(
-                                    `agent headless Chrome (pid ${cpid}) died within ~1.5s — check ${chromeLogPath} and CHROME`,
-                                )
+                                err(`agent headless Chrome (pid ${cpid}) died within ~1.5s — check ${chromeLogPath} and CHROME`)
                             }
                         }, 1500).unref()
                     } else {
@@ -958,9 +954,7 @@ function createHttpServer(
                     "content-type": "text/plain; charset=utf-8",
                     "Access-Control-Allow-Origin": "*",
                 })
-                res.end(
-                    "no testcase (browser disconnected, capture threw, or timed out — ensure the app is open with an active document)",
-                )
+                res.end("no testcase (browser disconnected, capture threw, or timed out — ensure the app is open with an active document)")
                 return
             }
             let yamlBody: string
@@ -1044,8 +1038,7 @@ function createHttpServer(
                     typeof parsed.testcase === "string" && parsed.testcase.trim() !== "" ? parsed.testcase.trim() : undefined
                 delete parsed.testcase
                 const testcaseForFilename = testcaseFromBody
-                const label =
-                    typeof parsed.label === "string" && parsed.label.trim() !== "" ? parsed.label.trim() : "render"
+                const label = typeof parsed.label === "string" && parsed.label.trim() !== "" ? parsed.label.trim() : "render"
                 const role = typeof parsed.role === "string" && parsed.role.trim() !== "" ? parsed.role.trim() : "render"
                 delete parsed.label
                 delete parsed.role
@@ -1088,9 +1081,7 @@ function createHttpServer(
                 if (!safePath) {
                     log(`/_agent/render GET: rejected testcase path ${JSON.stringify(testcase)}`)
                     res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-                    res.end(
-                        "invalid testcase path: relative path under cwd ./test/testcases/ (e.g. meshing/foo.yaml); no ..",
-                    )
+                    res.end("invalid testcase path: relative path under cwd ./test/testcases/ (e.g. meshing/foo.yaml); no ..")
                     return
                 }
                 let rawYaml: string

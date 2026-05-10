@@ -31,7 +31,7 @@ Use this skill for **runtime log signal**, a **plain-text dump of the active CAD
 
 ## Agent devserver (**`.devserver.agent.run`**)
 
-- **Start:** **`make start-agent`** or **`make serve-agent`** ( **`AGENT=true`** ; default **PORT=7000** unless overridden; devserver may bind the next free port if busy — always read **`port`** from the run file).
+- **Start:** **`make start-agent`** or **`make serve-agent`** ( **`AGENT=true`** ; default **PORT=7900** unless overridden; devserver may bind the next free port if busy — always read **`port`** from the run file).
 - **Run file:** **`.devserver.agent.run`**. Read the port: `jq -r .port .devserver.agent.run`.
 - **Logs file:** **`.devserver.agent.log`** ( **`make logs-agent`** ).
 - **Stop:** **`make stop-agent`**.

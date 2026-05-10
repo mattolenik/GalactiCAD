@@ -9,7 +9,8 @@
       "Read(//tmp/**)",
       "Read(//private/tmp/**)",
       "Bash(env)",
-      "WebFetch(domain:pptr.dev)"
+      "WebFetch(domain:pptr.dev)",
+      "Bash(node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

@@ -10,7 +10,7 @@ BROWSERS_DIR := .browsers
 ifeq ($(AGENT),true)
 export RUN_FILE := .devserver.agent.run
 export LOG_FILE := .devserver.agent.log
-export PORT ?= 7000
+export PORT ?= 7900
 else
 export RUN_FILE := .devserver.run
 export LOG_FILE := .devserver.log
@@ -49,10 +49,14 @@ serve: clean setup
 	$(BUILD) -w $(BUILD_FLAGS)
 
 .PHONY: start
-start: build
+start:
 	@if [[ -f "$(RUN_FILE)" ]]; then
-		echo "Server running at http://localhost:$(RUNNING_PORT)"
-		exit 0
+		port=$$(jq -r .port "$(RUN_FILE)")
+		pid=$$(jq -r .pid "$(RUN_FILE)")
+		if kill -0 $$pid; then
+			echo "Server running at http://localhost:$$port"
+			exit 0
+		fi
 	fi
 	nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
 	i=0
@@ -61,7 +65,7 @@ start: build
 		if [[ -f "$(RUN_FILE)" ]]; then
 			port=$$(jq -r .port "$(RUN_FILE)")
 			echo ""
-			echo "Server running at http://localhost:$(RUNNING_PORT)"
+			echo "Server running at http://localhost:$$port"
 			break
 		fi
 		i=$$((i+1))
@@ -75,7 +79,7 @@ logs:
 stop:
 	@if [[ -f "$(RUN_FILE)" ]]; then
 		pid=$$(jq -r .pid "$(RUN_FILE)")
-		kill -TERM $$pid && rm -f "$(RUN_FILE)"
+		kill -TERM $$pid && rm -f "$(RUN_FILE)" || true
 	fi
 
 .PHONY: restart

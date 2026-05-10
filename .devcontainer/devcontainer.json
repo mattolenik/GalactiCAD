@@ -6,13 +6,13 @@
     },
     "workspaceMount": "source=galacticad-workspace,target=/workspace,type=volume",
     "workspaceFolder": "/workspace",
-    "forwardPorts": [6900, 7000],
+    "forwardPorts": [6900, 7900],
     "portsAttributes": {
         "6900": {
             "label": "dev server",
             "onAutoForward": "notify"
         },
-        "7000": {
+        "7900": {
             "label": "dev server (agent)",
             "onAutoForward": "notify"
         }

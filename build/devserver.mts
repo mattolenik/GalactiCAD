@@ -676,20 +676,25 @@ export class DevServer {
         const browser = this.#agentBrowser
         this.#agentBrowser = null
         if (browser != null) {
+            const proc = browser.process()
             try {
-                await browser.close()
+                await Promise.race([
+                    browser.close(),
+                    new Promise<never>((_, reject) => {
+                        setTimeout(() => reject(new Error("browser.close timeout")), 5000).unref()
+                    }),
+                ])
             } catch (e) {
                 console.error(e)
+                proc?.kill("SIGKILL")
             }
         }
-        await new Promise<void>(resolve => {
-            this.wsServer.close(() => {
-                this.httpServer.closeAllConnections()
-                this.httpServer.close(() => {
-                    resolve()
-                })
-            })
-        })
+        // Drop sockets first so the close callbacks (which only fire when all connections drain) actually fire.
+        this.httpServer.closeAllConnections()
+        await Promise.all([
+            new Promise<void>(resolve => this.wsServer.close(() => resolve())),
+            new Promise<void>(resolve => this.httpServer.close(() => resolve())),
+        ])
     }
 
     public close() {

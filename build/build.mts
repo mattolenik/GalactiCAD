@@ -42,8 +42,20 @@ const Static = {
 }
 
 const Options = {
-    entryPoints: ["./src/app.mts", "./src/components/preview-window.mts", "./src/components/mesh-viewer.mts", "./src/render-worker.mts", "./src/transpile-worker.mts"],
-    plugins: [await wgslLoader(), await versionPlugin(), await fileListerPlugin(), staticBundler(Static, log), monacoEditorPlugin({ urlPrefix: "/editor" })],
+    entryPoints: [
+        "./src/app.mts",
+        "./src/components/preview-window.mts",
+        "./src/components/mesh-viewer.mts",
+        "./src/render-worker.mts",
+        "./src/transpile-worker.mts",
+    ],
+    plugins: [
+        await wgslLoader(),
+        await versionPlugin(),
+        await fileListerPlugin(),
+        staticBundler(Static, log),
+        monacoEditorPlugin({ urlPrefix: "/editor" }),
+    ],
     outDir: "./dist",
     isProd: IS_PROD,
 }
@@ -60,7 +72,8 @@ const WatchOptions = {
         "node_modules",
         "assets",
         /.devserver.*/,
-        Options.outDir],
+        Options.outDir,
+    ],
     causesRebuild: [/^build\//, /\.lock$/, /tsconfig\.json$/, /package\.json$/],
 }
 
@@ -80,7 +93,7 @@ function shouldSuppressLiveReload(relativePath: string): boolean {
 }
 
 const ServerOptions = {
-    port: parseInt(process.env.PORT || (AGENT_MODE ? "7000" : "6900"), 10),
+    port: parseInt(process.env.PORT || (AGENT_MODE ? "7900" : "6900"), 10),
 }
 
 const RUN_FILE = process.env.RUN_FILE ?? ".devserver.run"
@@ -141,7 +154,7 @@ async function build() {
 function watch(
     location: string,
     onChange: (event: EventName, path: string) => Promise<void>,
-    onRebuild: (event: EventName, path: string) => Promise<void>
+    onRebuild: (event: EventName, path: string) => Promise<void>,
 ) {
     return chokidar
         .watch(location, {
@@ -183,6 +196,10 @@ async function main() {
         let server: DevServer | null = null
         const shutdown = async (sig: string) => {
             log(`${sig}, shutting down.`)
+            setTimeout(() => {
+                err("shutdown timed out after 8s, forcing exit")
+                process.exit(1)
+            }, 8000).unref()
             if (server) {
                 try {
                     await server.shutdown()
@@ -210,15 +227,13 @@ async function main() {
             pid: process.pid,
         })
         const change$ = new Subject<{ event: EventName; path: string }>()
-        change$
-            .pipe(debounceTime(300))
-            .subscribe(async ({ event, path }) => {
-                log(`Build triggered by ${event}: ${path}`)
-                await build()
-                if (!shouldSuppressLiveReload(path) && !AGENT_MODE) {
-                    server?.reload()
-                }
-            })
+        change$.pipe(debounceTime(300)).subscribe(async ({ event, path }) => {
+            log(`Build triggered by ${event}: ${path}`)
+            await build()
+            if (!shouldSuppressLiveReload(path) && !AGENT_MODE) {
+                server?.reload()
+            }
+        })
         let watcher = watch(
             ".",
             async (event, path) => {
@@ -238,9 +253,8 @@ async function main() {
                 // await rm(Options.outDir, { recursive: true, force: true })
                 // const args = [tsxPath, "--disable-warning=ExperimentalWarning"].concat(process.argv.slice(1))
                 // process.execve(tsxPath, args, process.env)
-            }
+            },
         )
-
     }
 }
 

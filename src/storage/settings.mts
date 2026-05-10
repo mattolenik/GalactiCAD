@@ -541,8 +541,7 @@ export class SettingsManager {
                 if (
                     typeof rawApp.showFps === "boolean" ||
                     typeof rawApp.meshViewerEnabled === "boolean" ||
-                    typeof rawApp.meshSimplifyOnExport === "boolean" ||
-                    typeof rawApp.devToolsLightingExpanded === "boolean"
+                    typeof rawApp.meshSimplifyOnExport === "boolean"
                 ) {
                     const base: Record<string, unknown> = {
                         ...DEFAULT_APP_DEVTOOLS_STATE,
@@ -551,7 +550,6 @@ export class SettingsManager {
                     if (typeof rawApp.showFps === "boolean") base.showFps = rawApp.showFps
                     if (typeof rawApp.meshViewerEnabled === "boolean") base.meshViewerEnabled = rawApp.meshViewerEnabled
                     if (typeof rawApp.meshSimplifyOnExport === "boolean") base.meshSimplifyOnExport = rawApp.meshSimplifyOnExport
-                    if (typeof rawApp.devToolsLightingExpanded === "boolean") base.lightingExpanded = rawApp.devToolsLightingExpanded
                     devToolsSections[DEVTOOLS_SECTION_APP] = base
                 }
                 const legacyLogs = rawApp.debugLogModules

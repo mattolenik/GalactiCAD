@@ -29,7 +29,6 @@ export const DEVTOOLS_COLLAPSE = {
     appExport: "galacticad.collapse.appExport",
     appMeshExportMdc: "galacticad.collapse.appMeshExportMdc",
     rendererPerformance: "galacticad.collapse.rendererPerformance",
-    rendererPreviewShading: "galacticad.collapse.rendererPreviewShading",
 } as const
 
 export type DevToolsCollapseId = (typeof DEVTOOLS_COLLAPSE)[keyof typeof DEVTOOLS_COLLAPSE]
@@ -45,7 +44,6 @@ export const DEFAULT_APP_DEVTOOLS_STATE: Record<string, JSONValue> = {
     showFps: true,
     meshViewerEnabled: false,
     meshSimplifyOnExport: false,
-    lightingExpanded: false,
 }
 
 export interface DevToolsPersistable extends HTMLElement {

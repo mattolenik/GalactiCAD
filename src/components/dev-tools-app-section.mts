@@ -22,15 +22,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #showFps$: BehaviorSubject<boolean>
     #meshViewer$: BehaviorSubject<boolean>
     #meshSimplify$: BehaviorSubject<boolean>
-    #lightingExpanded$: BehaviorSubject<boolean>
     #subscriptions: Subscription[] = []
-
-    /** Panel wires this so the renderer section can show/hide lighting sliders. */
-    onLightingExpandedChange?: (expanded: boolean) => void
-
-    get lightingExpanded(): boolean {
-        return this.#lightingExpanded$.value
-    }
 
     get showFps(): boolean {
         return this.#showFps$.value
@@ -67,7 +59,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#showFps$ = new BehaviorSubject(asBool(d.showFps, true))
         this.#meshViewer$ = new BehaviorSubject(asBool(d.meshViewerEnabled, false))
         this.#meshSimplify$ = new BehaviorSubject(asBool(d.meshSimplifyOnExport, false))
-        this.#lightingExpanded$ = new BehaviorSubject(asBool(d.lightingExpanded, false))
 
         const persist = () => {
             if (this.#applying) return
@@ -107,12 +98,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             this.dispatchEvent(new CustomEvent("galacticad-mesh-simplify-change", { bubbles: true, composed: true }))
         })
 
-        const lightingCb = this.#addCheckbox(viewportBox, "Show lighting", this.#lightingExpanded$.value)
-        this.#subscriptions.push(connectCheckbox(lightingCb, this.#lightingExpanded$))
-        this.#lightingExpanded$.pipe(skip(1)).subscribe(v => {
-            persist()
-            this.onLightingExpandedChange?.(v)
-        })
     }
 
     getDevToolsState(): Record<string, JSONValue> {
@@ -120,7 +105,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             showFps: this.#showFps$.value,
             meshViewerEnabled: this.#meshViewer$.value,
             meshSimplifyOnExport: this.#meshSimplify$.value,
-            lightingExpanded: this.#lightingExpanded$.value,
         }
     }
 
@@ -131,8 +115,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             this.#showFps$.next(asBool(state.showFps, asBool(d.showFps, true)))
             this.#meshViewer$.next(asBool(state.meshViewerEnabled, asBool(d.meshViewerEnabled, false)))
             this.#meshSimplify$.next(asBool(state.meshSimplifyOnExport, asBool(d.meshSimplifyOnExport, false)))
-            this.#lightingExpanded$.next(asBool(state.lightingExpanded, asBool(d.lightingExpanded, false)))
-            this.onLightingExpandedChange?.(this.#lightingExpanded$.value)
         } finally {
             this.#applying = false
         }

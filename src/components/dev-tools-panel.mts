@@ -10,7 +10,6 @@ import {
 } from "../benchmark/benchmark.mjs"
 import type {
     MdcExportLevers,
-    PreviewShadingParams,
     RayMarchParams,
     ShrecTuning,
     SimplifyTuning,
@@ -70,8 +69,6 @@ export class DevToolsPanel extends HTMLElement {
     onShrecTuningChange?: (tuning: ShrecTuning) => void
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMdcExportLeversChange?: () => void
-    onPreviewShadingChange?: (params: PreviewShadingParams) => void
-    onPreviewNormalShadingChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onBenchmarkThisRequest?: () => BenchmarkCase | null
     onGetViewportSize?: () => { width: number; height: number } | null
@@ -250,15 +247,9 @@ export class DevToolsPanel extends HTMLElement {
         this.#shrecExportSection.onUseShrecExporterChange = v => this.onUseShrecExporterChange?.(v)
         this.#shrecExportSection.onShrecTuningChange = v => this.onShrecTuningChange?.(v)
 
-        this.#appSection.onLightingExpandedChange = expanded => {
-            this.#rendererSection.setLightingSectionVisible(expanded)
-        }
-
         this.#rendererSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)
         this.#rendererSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
         this.#rendererSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
-        this.#rendererSection.onPreviewShadingChange = p => this.onPreviewShadingChange?.(p)
-        this.#rendererSection.onPreviewNormalShadingChange = v => this.onPreviewNormalShadingChange?.(v)
         this.#rendererSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
 
         this.#logsSection.onDebugLogModulesChange = () => this.onDebugLogModulesChange?.()
@@ -292,7 +283,6 @@ export class DevToolsPanel extends HTMLElement {
 
         this.#restorePersistableSection(this.#appSection)
         this.#restorePersistableSection(this.#logsSection)
-        this.#rendererSection.setLightingSectionVisible(this.#appSection.lightingExpanded)
 
         this.#persistListener = (ev: Event) => {
             if (!(ev instanceof CustomEvent)) return
@@ -434,14 +424,6 @@ export class DevToolsPanel extends HTMLElement {
 
     syncDebugLogModulesFromSettings(state: DebugLogModulesState): void {
         this.#logsSection.syncFromSettings(state)
-    }
-
-    syncPreviewShadingFromRenderer(params: PreviewShadingParams): void {
-        this.#rendererSection.syncPreviewShadingFromRenderer(params)
-    }
-
-    syncPreviewNormalShadingFromRenderer(enabled: boolean): void {
-        this.#rendererSection.syncPreviewNormalShadingFromRenderer(enabled)
     }
 
     disconnectedCallback(): void {

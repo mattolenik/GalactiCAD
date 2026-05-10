@@ -5,7 +5,9 @@
       "Bash(make *)",
       "Bash(npx @blazediff/cli *)",
       "Bash(pnpm tsc *)",
-      "Bash(echo *)"
+      "Bash(echo *)",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)"
     ]
   }
 }

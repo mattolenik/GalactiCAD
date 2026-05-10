@@ -577,11 +577,32 @@ const INJECTED_BRIDGE_SCRIPT = `
                 }, reconnectDelayMs);
                 reconnectDelayMs = Math.min(Math.floor(reconnectDelayMs * 1.5), 8000);
             }
+            // Poll until the app finishes registering the agent render handler,
+            // then send a "agentBridgeReady" message. The server waits for this
+            // signal in broadcastReloadAndAwaitReady so callers chaining
+            // /_refresh -> /_agent/render don't race the post-reload handler
+            // registration.
+            function notifyWhenReady(socket) {
+                var attempts = 0;
+                function tick() {
+                    if (socket.readyState !== 1) return;
+                    var ready = typeof globalThis.__galacticadAgentRender === "function";
+                    if (ready) {
+                        trySend(socket, JSON.stringify({ type: "agentBridgeReady" }));
+                        return;
+                    }
+                    attempts++;
+                    if (attempts > 600) return; // ~60s — stop polling rather than spin forever
+                    setTimeout(tick, 100);
+                }
+                tick();
+            }
             function connect() {
                 var socket = new WebSocket("ws://" + location.host);
                 socket.addEventListener("message", onMessage);
                 socket.addEventListener("open", function () {
                     reconnectDelayMs = 300;
+                    notifyWhenReady(socket);
                 });
                 socket.addEventListener("close", function () {
                     if (!intentionalClose) scheduleReconnect();
@@ -779,9 +800,25 @@ function createHttpServer(
                 res.end("method not allowed")
                 return
             }
-            bridge.broadcastReload()
-            res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-            res.end("ok\n")
+            // Broadcast reload, then wait for a fresh WebSocket connection from
+            // the reloaded page. This lets agent automation chain `_refresh`
+            // → render without a manual sleep — the response only returns once
+            // the bridge is ready to deliver RPCs to the new page. The 8s
+            // timeout is empirically generous for headless Chromium startup.
+            const result = await bridge.broadcastReloadAndAwaitReady(8000)
+            if (result.status === "ok") {
+                res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                res.end("ok\n")
+                return
+            }
+            if (result.status === "no-clients") {
+                res.writeHead(503, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                res.end("no browser clients connected — nothing to reload\n")
+                return
+            }
+            // timeout
+            res.writeHead(504, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+            res.end("timed out waiting for browser to reconnect after reload (8s)\n")
             return
         }
 
@@ -1059,6 +1096,7 @@ function listenWithPortRetry(
                     ws.on("message", (data: Buffer | ArrayBuffer | Buffer[]) => {
                         bridge.handleClientMessage(data)
                     })
+                    bridge.notifyClientConnected()
                 })
                 bridge.setWsServer(wss)
                 resolve({ server, port: p, wss })

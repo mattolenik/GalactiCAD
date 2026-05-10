@@ -44,6 +44,13 @@ export type DevServerAgentTestcaseResultMessage = {
 /** Browser → server: capture failed (no document, no handler, etc.). */
 export type DevServerAgentTestcaseErrorMessage = { type: "agentTestcaseError"; id: string; message?: string }
 
+/**
+ * Browser → server: the injected client has reconnected AND the app finished
+ * registering `__galacticadAgentRender`. Used by `broadcastReloadAndAwaitReady`
+ * to gate `/_refresh` on a fully-ready bridge, not just a re-opened socket.
+ */
+export type DevServerAgentBridgeReadyMessage = { type: "agentBridgeReady" }
+
 /** Browser → server: PNG bytes as base64 from agent render pipeline. */
 export type DevServerAgentRenderResultMessage = {
     type: "agentRenderResult"
@@ -74,6 +81,7 @@ export type DevServerFromBrowserMessage =
     | DevServerAgentTestcaseResultMessage
     | DevServerAgentTestcaseErrorMessage
     | DevServerAgentRenderResultMessage
+    | DevServerAgentBridgeReadyMessage
 
 const DEFAULT_TIMEOUT_MS = 5000
 const AGENT_TESTCASE_TIMEOUT_MS = 60_000
@@ -99,6 +107,12 @@ function sendPayloadToFirstOpenClient(wss: WebSocketServer, payload: string): bo
     return false
 }
 
+/** Result of `broadcastReloadAndAwaitReady`. */
+export type ReloadAwaitResult =
+    | { status: "ok" }
+    | { status: "no-clients" }
+    | { status: "timeout" }
+
 /**
  * Tracks browser WebSocket clients and supports live reload plus request/response
  * for fetching recent page-console lines and the active scene source from the injected bridge script.
@@ -115,9 +129,28 @@ export class BrowserBridge {
     /** Only one agent-render RPC at a time so the browser does not supersede `SDFRenderer` pipeline work. */
     private agentRenderChain = Promise.resolve()
     private seq = 0
+    /** Monotonic counter incremented on every new WS connection — used by `broadcastReloadAndAwaitReady` to detect a fresh post-reload connection. */
+    private connectionEpoch = 0
+    /** Resolvers waiting for the next post-reload connection. Resolved by `notifyClientConnected`. */
+    private readonly pendingReloadAwaits: Array<() => void> = []
 
     setWsServer(wsServer: WebSocketServer) {
         this.wsServer = wsServer
+    }
+
+    /** Called by the devserver's WS `connection` handler on every new client. */
+    notifyClientConnected() {
+        this.connectionEpoch++
+        // Note: we deliberately do NOT resolve `pendingReloadAwaits` here —
+        // that happens when the client sends `agentBridgeReady`, which lets us
+        // know the app's render handler is actually registered.
+    }
+
+    private notifyAgentBridgeReady() {
+        if (this.pendingReloadAwaits.length > 0) {
+            const resolvers = this.pendingReloadAwaits.splice(0, this.pendingReloadAwaits.length)
+            for (const r of resolvers) r()
+        }
     }
 
     broadcastReload() {
@@ -125,6 +158,37 @@ export class BrowserBridge {
         const payload = JSON.stringify(msg)
         this.wsServer?.clients.forEach(client => {
             if (client.readyState === 1) client.send(payload)
+        })
+    }
+
+    /**
+     * Broadcast a reload and resolve only after the reloaded page sends
+     * `agentBridgeReady` — i.e. the WS reconnected AND the app finished
+     * registering `__galacticadAgentRender`. This lets agent automation
+     * chain `/_refresh` → `/_agent/render` without a manual sleep.
+     *
+     * Times out with `{ status: "timeout" }` after `timeoutMs`. Returns
+     * `{ status: "no-clients" }` if there were no clients to reload.
+     */
+    broadcastReloadAndAwaitReady(timeoutMs: number): Promise<ReloadAwaitResult> {
+        const wss = this.wsServer
+        if (!wss || wss.clients.size === 0) {
+            return Promise.resolve({ status: "no-clients" })
+        }
+        return new Promise<ReloadAwaitResult>(resolve => {
+            let settled = false
+            const settle = (result: ReloadAwaitResult) => {
+                if (settled) return
+                settled = true
+                clearTimeout(timer)
+                const idx = this.pendingReloadAwaits.indexOf(onConnect)
+                if (idx >= 0) this.pendingReloadAwaits.splice(idx, 1)
+                resolve(result)
+            }
+            const onConnect = () => settle({ status: "ok" })
+            const timer = setTimeout(() => settle({ status: "timeout" }), timeoutMs)
+            this.pendingReloadAwaits.push(onConnect)
+            this.broadcastReload()
         })
     }
 
@@ -324,6 +388,10 @@ export class BrowserBridge {
             if (p) {
                 p.resolve({ pngBase64: msg.pngBase64, error: msg.error })
             }
+            return
+        }
+        if (msg.type === "agentBridgeReady") {
+            this.notifyAgentBridgeReady()
             return
         }
     }

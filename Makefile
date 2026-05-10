@@ -1,48 +1,36 @@
-SHELL           := bash
-SED             := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
-export TSX      ?= node_modules/.bin/tsx
-export TSC      ?= node_modules/.bin/tsc
-BUILD           := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
+SHELL        := bash
+DIST         ?= dist
+SED          := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
+export TSX   ?= node_modules/.bin/tsx
+export TSC   ?= node_modules/.bin/tsc
+BUILD        := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
+BROWSERS_CLI := npx @puppeteer/browsers
+BROWSERS_DIR := .browsers
 
-# AGENT=true: .devserver.agent.run + .devserver.agent.log + default PORT 7000 (override inherited PORT env var)
-# (chromePid in run file; stopped with devserver on SIGINT/SIGTERM or make stop). Else .devserver.run / .devserver.log.
 ifeq ($(AGENT),true)
 export RUN_FILE := .devserver.agent.run
 export LOG_FILE := .devserver.agent.log
-export AGENT := true
-# Default 7000 unless PORT was set on this make's command line (e.g. make serve AGENT=true PORT=8080).
-ifneq ($(origin PORT),command line)
-export PORT := 7000
-endif
+export PORT ?= 7000
 else
 export RUN_FILE := .devserver.run
 export LOG_FILE := .devserver.log
-ifndef PORT
-export PORT := $(shell $(BUILD) port)
+export PORT ?= 6900
 endif
-endif
-export PORT
 
-# Prefix for headless agent Chrome --user-data-dir under TMPDIR; keep in sync with
-# AGENT_HEADLESS_CHROME_USER_DATA_TAG in build/devserver.mts. make stop kills PIDs whose ps line contains
-# $(AGENT_HEADLESS_PROFILE_PREFIX)-<devserver pid from run file>.
-AGENT_HEADLESS_PROFILE_PREFIX := galacticad-agent-headless-chrome
+RUNNING_PORT = $(shell jq -r .port "$(RUN_FILE)")
 
-BROWSER         ?= chromium
-DIST            ?= dist
-
+SHELL := bash
 .ONESHELL:
 
 default: build test
-
-.PHONY: open
-open:
-	$(BROWSER) http://localhost:$(PORT)
 
 .PHONY: setup
 setup:
 	@mkdir -p $(DIST)
 	pnpm install
+	if ! $(BROWSERS_CLI) list --path $(BROWSERS_DIR) | grep -q chromium; then
+		$(BROWSERS_CLI) install chromium@latest --path $(BROWSERS_DIR)
+	fi
 
 .PHONY: build
 build: check
@@ -62,14 +50,18 @@ serve: clean setup
 
 .PHONY: start
 start: build
-	@nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
+	@if [[ -f "$(RUN_FILE)" ]]; then
+		echo "Server running at http://localhost:$(RUNNING_PORT)"
+		exit 0
+	fi
+	nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
 	i=0
 	while (( i < 20 )); do
 		sleep 0.2
 		if [[ -f "$(RUN_FILE)" ]]; then
 			port=$$(jq -r .port "$(RUN_FILE)")
 			echo ""
-			echo "Server running at http://localhost:$$port"
+			echo "Server running at http://localhost:$(RUNNING_PORT)"
 			break
 		fi
 		i=$$((i+1))
@@ -81,23 +73,9 @@ logs:
 
 .PHONY: stop
 stop:
-	@if [ -f "$(RUN_FILE)" ]; then
+	@if [[ -f "$(RUN_FILE)" ]]; then
 		pid=$$(jq -r .pid "$(RUN_FILE)")
-		chrome_pid=$$(jq -r '.chromePid // empty' "$(RUN_FILE)")
-		if [ -n "$$pid" ] && [ "$$pid" != "null" ]; then
-			kill -TERM $$pid || true
-			sleep 0.2
-			timeout -p -k 5s 5s sh -c 'while kill -0 $$pid 2>/dev/null; do sleep 0.5; done'
-		fi
-		kill -KILL $$pid 2>/dev/null || true
-		kill -KILL $$chrome_pid 2>/dev/null || true
-		if [ -n "$$pid" ] && [ "$$pid" != "null" ]; then
-			_tag="$(AGENT_HEADLESS_PROFILE_PREFIX)-$$pid"
-			awk -v tag="$$_tag" -v dvpid="$$pid" 'NR>1 && index($$0, tag) != 0 && $$2+0 != dvpid+0 { print $$2 }' <(ps auxww 2>/dev/null) | while read -r _opid; do
-				[ -n "$$_opid" ] && kill -KILL "$$_opid" 2>/dev/null || true
-			done
-		fi
-		rm -f "$(RUN_FILE)"
+		kill -TERM $$pid && rm -f "$(RUN_FILE)"
 	fi
 
 .PHONY: restart
@@ -111,6 +89,11 @@ release: build test
 clean: stop
 	rm -rf $(DIST)
 	rm -f .devserver.*
+
+.PHONY: scrub
+scrub: clean
+	rm -rf $(BROWSERS_DIR)
+	rm -rf node_modules
 
 .PHONY: fix-newlines
 fix-newlines:

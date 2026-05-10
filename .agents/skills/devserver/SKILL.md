@@ -12,7 +12,7 @@ Use this skill for **runtime log signal**, a **plain-text dump of the active CAD
 - **Default for automation:** run **`make start-agent`** when you need **`/_logs`**, **`/_sceneSource`**, **`/_agent/*`**, or a **self-contained** headless render. Read **`port`** from **`.devserver.agent.run`**.
 - **Mirroring a human’s interactive tab** ( **`make serve`** / **`make start`** ): that browser talks to **`.devserver.run`**. To copy their scene + camera + export + mesh debug overlays into the agent stack, use **two ports** — capture from **`.devserver.run`**, render on **`.devserver.agent.run`** (see **Mirror interactive → agent** below).
 - **Port:** read **`port`** from **`.devserver.agent.run`** only: `jq -r .port .devserver.agent.run`. If the file is missing after **`make start-agent`**, the agent HTTP bridge is unavailable — **do not guess a port**.
-- **Do not** launch Chromium, Chrome, **`open`**, or **`.agents/scripts/agent-open-chromium.sh`** yourself. The **`AGENT=true`** devserver starts **headless** Chromium for the WebSocket bridge.
+- **Do not** launch Chromium or Chrome yourself. The **`AGENT=true`** devserver starts **headless** Chromium for the WebSocket bridge.
 - **Test images on disk:** When saving PNGs or similar into the repo yourself (not relying on the server’s **`.agents/imagelog/`** mirror), use **`.agents/testimages/`** — do not drop files loose under **`.agents/`** root.
 - **Logs:** **`.devserver.agent.log`** (tail with **`make logs-agent`**). **Stop:** **`make stop-agent`**.
 
@@ -61,11 +61,11 @@ After `port=$(jq -r .port .devserver.agent.run)` (agents) or the matching **`.ru
 
 - Print to terminal:
 
-  `curl -sS "http://localhost:${port}/_sceneSource"`
+    `curl -sS "http://localhost:${port}/_sceneSource"`
 
 - Save to a file:
 
-  `curl -sS "http://localhost:${port}/_sceneSource" -o scene-dump.js`
+    `curl -sS "http://localhost:${port}/_sceneSource" -o scene-dump.js`
 
 ---
 
@@ -190,7 +190,7 @@ Use this when the human runs **`make serve`** / **`make start`** and you want th
 
 ## Standard check workflow (`/_logs` and optional `/_sceneSource`)
 
-1. Assign `port=$(jq -r .port .devserver.agent.run)` from the repo root (**agents**). If the file does not exist, run **`make start-agent`** and retry once; if `jq` still errors or `port` is empty, **stop**—do not assume any default port. *(Interactive: use **`.devserver.run`** instead.)*
+1. Assign `port=$(jq -r .port .devserver.agent.run)` from the repo root (**agents**). If the file does not exist, run **`make start-agent`** and retry once; if `jq` still errors or `port` is empty, **stop**—do not assume any default port. _(Interactive: use **`.devserver.run`** instead.)_
 2. **Default** runtime check: `curl` **`http://localhost:${port}/_logs`** with no `level` or `only` so the server applies default **info** threshold (errors, warnings, and info—no debug spam).
 3. **Optional scene source:** `curl -sS "http://localhost:${port}/_sceneSource"` when you need the live editor buffer. If the body is empty, confirm a browser tab is open on this devserver URL and a document tab is active (not welcome-only with no model).
 4. Add `/_logs` query parameters only when you have a reason (see **AGENTS.md**).

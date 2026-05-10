@@ -15,3 +15,4 @@ sharpiso/
 .agents/imagelog
 .agents/testimages
 .claude/settings.local.json
+.browsers/

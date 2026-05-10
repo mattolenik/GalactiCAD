@@ -1,10 +1,10 @@
-import { execFileSync, spawn } from "node:child_process"
-import { closeSync, existsSync, openSync, writeSync } from "node:fs"
+import { writeSync } from "node:fs"
 import fs from "fs/promises"
 import http from "http"
-import os from "node:os"
 import path from "path"
 import { fileURLToPath } from "node:url"
+import { getInstalledBrowsers } from "@puppeteer/browsers"
+import puppeteer, { type Browser } from "puppeteer"
 import WebSocket, { WebSocketServer } from "ws"
 import { BrowserBridge, type DevServerConsoleLogLevel } from "./devserver-bridge.mjs"
 import {
@@ -21,107 +21,18 @@ import {
 /** True when `AGENT` is set to a non-empty value (agent devserver: headless Chrome, no watch auto-reload, …). */
 export const AGENT_MODE = !!process.env.AGENT
 
-/** Substring in headless agent Chrome `--user-data-dir`; suffix is the devserver PID (`options.pid`). Keep in sync with AGENT_HEADLESS_PROFILE_PREFIX in the Makefile (make stop sweeps by this path). */
-const AGENT_HEADLESS_CHROME_USER_DATA_TAG = "galacticad-agent-headless-chrome"
+/** Cache dir for `@puppeteer/browsers` install (see `setup` in Makefile). */
+const PUPPETEER_BROWSERS_DIR = ".browsers"
 
 export interface RunFileData {
     pid: number
     port: number
-    /** Headless agent browser PID (AGENT=true devserver); stopped on devserver shutdown. */
-    chromePid?: number
-    /**
-     * When agent mode expects auto-spawned Chromium but no `chromePid` was recorded (spawn failed,
-     * no binary, or process exited before PID was stored). Check devserver stderr and `.devserver.agent.chrome.log`.
-     */
-    chromeLaunchNote?: string
 }
 
-/** First `.app` bundle path from Spotlight, or null. */
-function macBundlePathForId(bundleId: string): string | null {
-    try {
-        const out = execFileSync("mdfind", [`kMDItemCFBundleIdentifier == '${bundleId}'`], { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 })
-        const line = out
-            .trim()
-            .split("\n")
-            .find(l => l.endsWith(".app"))
-        return line?.length ? line : null
-    } catch {
-        return null
-    }
-}
-
-function resolveChromeBinary(log: (msg: unknown) => void, errLog: (msg: unknown) => void): string | null {
-    const fromEnv = process.env.CHROME ?? process.env.CHROMIUM_PATH
-    if (typeof fromEnv === "string" && fromEnv.length > 0 && existsSync(fromEnv)) {
-        return fromEnv
-    }
-    if (typeof fromEnv === "string" && fromEnv.length > 0) {
-        errLog(`agent mode: CHROME/CHROMIUM_PATH set but not found: ${fromEnv}`)
-    }
-    const pathCandidates = [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    ]
-    for (const p of pathCandidates) {
-        if (existsSync(p)) return p
-    }
-    if (process.platform === "darwin") {
-        const chromeApp = macBundlePathForId("com.google.Chrome")
-        if (chromeApp) {
-            const exe = path.join(chromeApp, "Contents/MacOS/Google Chrome")
-            if (existsSync(exe)) return exe
-        }
-        const chromiumApp = macBundlePathForId("org.chromium.Chromium")
-        if (chromiumApp) {
-            const exe = path.join(chromiumApp, "Contents/MacOS/Chromium")
-            if (existsSync(exe)) return exe
-        }
-    }
-    const pathNames = ["chromium", "google-chrome-stable", "google-chrome", "chrome", "chromium-browser"]
-    for (const name of pathNames) {
-        try {
-            const p = execFileSync("which", [name], { encoding: "utf8" }).trim()
-            if (p.length > 0) return p
-        } catch {
-            /* not on PATH */
-        }
-    }
-    errLog("agent mode: could not find Chrome/Chromium (set CHROME or CHROMIUM_PATH to the executable)")
-    log("agent mode: open a Chromium-based browser manually at the server URL (with WebGPU); bridge RPCs need one connected tab.")
-    return null
-}
-
-/** SIGTERM then wait up to `waitMs`; SIGKILL if still alive. */
-async function stopProcessTreeRoot(pid: number, waitMs: number, errLog: (msg: unknown) => void): Promise<void> {
-    if (!Number.isFinite(pid) || pid <= 0) return
-    try {
-        process.kill(pid, 0)
-    } catch {
-        return
-    }
-    try {
-        process.kill(pid, "SIGTERM")
-    } catch (e) {
-        errLog(e)
-    }
-    const deadline = Date.now() + waitMs
-    while (Date.now() < deadline) {
-        try {
-            process.kill(pid, 0)
-        } catch {
-            return
-        }
-        await new Promise<void>(r => {
-            setTimeout(r, 100)
-        })
-    }
-    try {
-        process.kill(pid, "SIGKILL")
-    } catch {
-        /* already gone */
-    }
+async function resolveChromiumExecutable(): Promise<string | null> {
+    const installed = await getInstalledBrowsers({ cacheDir: path.resolve(process.cwd(), PUPPETEER_BROWSERS_DIR) })
+    const chromium = installed.find(b => b.browser === "chromium")
+    return chromium?.executablePath ?? null
 }
 
 type DevLogQuery = {
@@ -687,10 +598,8 @@ export class DevServer {
     httpServer!: http.Server
     wsServer!: WebSocketServer
     private readonly bridge: BrowserBridge
-    /** Child root PID for headless agent Chrome (same as `chromePid` in the run file while running). */
-    #agentChromePid: number | null = null
-    /** Profile dir passed as `--user-data-dir` (removed on shutdown after Chrome exits). */
-    #agentChromeUserDataDir: string | null = null
+    /** Headless agent Chromium launched via puppeteer in AGENT mode; closed on shutdown. */
+    #agentBrowser: Browser | null = null
 
     private constructor(
         public serveRoot: string,
@@ -720,96 +629,34 @@ export class DevServer {
         instance.httpServer = server
         instance.wsServer = wss
 
-        let chromePid: number | undefined
-        /** Why auto-Chromium PID may be missing (for `.devserver.agent.run` diagnostics). */
-        let chromeLaunchNote: string | undefined
         if (AGENT_MODE && options) {
-            const bin = resolveChromeBinary(log, err)
-            if (!bin) {
-                chromeLaunchNote = "chrome_binary_not_found"
-            } else {
-                const url = `http://127.0.0.1:${actualPort}/`
-                const userDataDir = path.join(os.tmpdir(), `${AGENT_HEADLESS_CHROME_USER_DATA_TAG}-${options.pid}`)
-                const chromeLogPath = path.join(process.cwd(), ".devserver.agent.chrome.log")
-                try {
-                    // Path includes devserver PID → new folder each launch; tmp only, no reuse across runs.
-                    await fs.mkdir(userDataDir, { recursive: true })
-                    // Chromium headless rejects command_line->GetArgs().size() > 1 (chrome_main.cc). Two-arg form
-                    // `--user-data-dir` + path leaves *two* positionals (profile dir + URL); use `--user-data-dir=PATH`.
-                    const argv = [
-                        "--headless=new",
-                        "--window-size=8192,8192",
-                        "--enable-unsafe-webgpu",
-                        "--no-first-run",
-                        "--no-default-browser-check",
-                        "--disable-sync",
-                        "--disable-extensions",
-                        ...(process.platform !== "darwin" ? (["--disable-dev-shm-usage"] as const) : []),
-                        `--user-data-dir=${userDataDir}`,
-                        url,
-                    ]
-                    const banner = `\n--- ${new Date().toISOString()} spawn ${JSON.stringify(bin)} argv=${JSON.stringify(argv)} ---\n`
-                    let stderrFd: number | undefined
-                    try {
-                        stderrFd = openSync(chromeLogPath, "a")
-                        writeSync(stderrFd, banner)
-                    } catch (e) {
-                        err(`agent mode: could not open ${chromeLogPath}: ${e}`)
-                        chromeLaunchNote = "chrome_log_open_failed"
-                    }
-                    const child = spawn(bin, argv, {
-                        detached: true,
-                        stdio: ["ignore", "ignore", stderrFd ?? "ignore"],
+            const url = `http://127.0.0.1:${actualPort}/`
+            try {
+                const executablePath = await resolveChromiumExecutable()
+                if (!executablePath) {
+                    err(`agent mode: chromium not found in ${PUPPETEER_BROWSERS_DIR}/ (run 'make setup')`)
+                } else {
+                    const browser = await puppeteer.launch({
+                        executablePath,
+                        headless: true,
+                        // Puppeteer would otherwise tear down the browser before our SIGTERM handler runs `shutdown()`.
+                        handleSIGINT: false,
+                        handleSIGTERM: false,
+                        handleSIGHUP: false,
+                        args: ["--enable-unsafe-webgpu", "--window-size=8192,8192"],
                     })
-                    if (stderrFd !== undefined) {
-                        try {
-                            closeSync(stderrFd)
-                        } catch {
-                            /* ignore */
-                        }
-                    }
-                    child.unref()
-                    child.on("error", e => {
-                        err(`agent headless Chrome spawn error: ${e}`)
-                    })
-                    child.on("exit", (code, signal) => {
-                        err(
-                            `agent headless Chrome exited (code=${code ?? "null"} signal=${signal ?? "null"}); stderr/log: ${chromeLogPath}`,
-                        )
-                    })
-                    if (typeof child.pid === "number" && child.pid > 0) {
-                        chromePid = child.pid
-                        instance.#agentChromePid = chromePid
-                        instance.#agentChromeUserDataDir = userDataDir
-                        log(
-                            `Agent headless Chrome PID ${chromePid} → ${url} (logs: ${chromeLogPath}; ps: grep ${AGENT_HEADLESS_CHROME_USER_DATA_TAG})`,
-                        )
-                        const cpid = chromePid
-                        setTimeout(() => {
-                            try {
-                                process.kill(cpid, 0)
-                            } catch {
-                                err(`agent headless Chrome (pid ${cpid}) died within ~1.5s — check ${chromeLogPath} and CHROME`)
-                            }
-                        }, 1500).unref()
-                    } else {
-                        chromeLaunchNote = "spawn_returned_no_pid"
-                        err(`agent headless Chrome: spawn returned no pid (binary=${bin})`)
-                    }
-                } catch (e) {
-                    chromeLaunchNote = "spawn_threw"
-                    err(`agent headless Chrome: ${e}`)
+                    instance.#agentBrowser = browser
+                    const page = await browser.newPage()
+                    await page.goto(url)
+                    log(`Agent headless Chromium → ${url}`)
                 }
+            } catch (e) {
+                err(`agent headless Chromium launch failed: ${e}`)
             }
         }
 
         if (options) {
             const payload: RunFileData = { pid: options.pid, port: actualPort }
-            if (chromePid != null) {
-                payload.chromePid = chromePid
-            } else if (AGENT_MODE && chromeLaunchNote != null) {
-                payload.chromeLaunchNote = chromeLaunchNote
-            }
             await fs.writeFile(options.runFile, JSON.stringify(payload, null, 2))
         }
         log(
@@ -823,21 +670,16 @@ export class DevServer {
     }
 
     /**
-     * Stops agent headless Chrome (SIGTERM, then SIGKILL), then closes the WebSocket server and HTTP server.
+     * Closes agent headless Chromium (puppeteer), then closes the WebSocket server and HTTP server.
      */
     async shutdown(): Promise<void> {
-        const cpid = this.#agentChromePid
-        const profileDir = this.#agentChromeUserDataDir
-        this.#agentChromePid = null
-        this.#agentChromeUserDataDir = null
-        if (cpid != null) {
-            await stopProcessTreeRoot(cpid, 5000, console.error)
-        }
-        if (profileDir != null) {
+        const browser = this.#agentBrowser
+        this.#agentBrowser = null
+        if (browser != null) {
             try {
-                await fs.rm(profileDir, { recursive: true, force: true })
-            } catch {
-                /* best-effort cleanup */
+                await browser.close()
+            } catch (e) {
+                console.error(e)
             }
         }
         await new Promise<void>(resolve => {

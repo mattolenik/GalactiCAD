@@ -172,7 +172,7 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 ### Devserver HTTP (logs, scene source, agent render)
 
-**Agents (Cursor/automation):** Run **`make start-agent`** for a headless bridge (**`.devserver.agent.run`**). Use that **`port`** for **`/_agent/render`**, **`POST /_agent/render/testcase-body`**, and for **`/_logs`** after those runs. To **mirror a human’s interactive tab** ( **`make serve`** — **`.devserver.run`** ), **`GET /_agent/capture-testcase`** (and optionally **`/_sceneSource`**) on the **interactive** port, then render on the **agent** port; see [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) (**Mirror interactive → agent**). Do **not** launch Chromium, Chrome, or **`.agents/scripts/agent-open-chromium.sh`** yourself—the Makefile/devserver starts the headless browser the bridge needs.
+**Agents (Cursor/automation):** Run **`make start-agent`** for a headless bridge (**`.devserver.agent.run`**). Use that **`port`** for **`/_agent/render`**, **`POST /_agent/render/testcase-body`**, and for **`/_logs`** after those runs. To **mirror a human’s interactive tab** ( **`make serve`** — **`.devserver.run`** ), **`GET /_agent/capture-testcase`** (and optionally **`/_sceneSource`**) on the **interactive** port, then render on the **agent** port; see [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) (**Mirror interactive → agent**). Do **not** launch Chromium or Chrome yourself—the Makefile/devserver starts the headless browser the bridge needs.
 
 **Interactive use:** When the watch devserver is running (`make serve` / `make start`, or `make serve` inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`**, **`GET /_sceneSource`**, and **agent automation** routes. **Read `<port>` from `.devserver.run`** (JSON `port` field); if that file is absent, that devserver is not running and there is **no** default port. The recorded port may differ from the configured default if the listen port was already in use.
 
@@ -208,6 +208,10 @@ When an agent writes ad-hoc test images or other capture files into the repo (fo
 2. For **`/_agent/render`** and **`/_logs`** after a headless render: ensure **`make start-agent`** and **`.devserver.agent.run`**, then read **`port`** with **`jq -r .port .devserver.agent.run`**. To read the **interactive** editor ( **`make serve`** ), use **`jq -r .port .devserver.run`** for **`/_sceneSource`** / **`/_agent/capture-testcase`** only. Use shell **`curl`** (for **`/_logs`**, default response uses **`level=info`** semantics; add `level=debug` or `only=…` only when you need a different mix; omit `n` unless asked). Do **not** guess a port, do **not** launch a browser yourself.
 3. If **`.devserver.agent.run`** is still missing after **`make start-agent`** (or you cannot start the devserver), **do not** invent a port; treat runtime HTTP checks as unavailable rather than failing the whole task unless the user asked specifically for a running browser.
 4. See [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) for curl examples, **mirror interactive → agent**, **`POST /_agent/render/testcase-body`**, and **`GET|POST /_refresh`** on the agent port after code changes.
+
+## Documentation
+
+- Puppeteer: https://pptr.dev/api
 
 ## Performance regression triage
 

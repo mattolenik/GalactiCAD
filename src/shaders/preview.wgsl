@@ -1,10 +1,17 @@
 //:) include "hg_sdf.wgsl"
 
-const MAX_STEPS: i32 = 300;   // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
-const MAX_DIST: f32 = 600.0;  // AGENTS: Do not lower these to improve performance, it is not a bottleneck in this codebase.
-const MAX_BEAM_STEPS: i32 = 200;
-const HIT_REFINE_STEPS: i32 = 6;
-const RAY_ORIGIN_DEPTH: f32 = 300.0;
+struct RayMarchParams {
+    maxSteps: i32,
+    maxBeamSteps: i32,
+    hitRefineSteps: i32,
+    _pad0: i32,
+    maxDist: f32,
+    rayOriginDepth: f32,
+    _pad1: f32,
+    _pad2: f32,
+}
+
+@group(0) @binding(25) var<uniform> rayMarchParams: RayMarchParams;
 
 struct Camera {
     transform: mat4x4f,
@@ -513,7 +520,7 @@ fn sceneSDF_fast(p: vec3f) -> FastSDFResult {
 fn refineRayHit(origin: vec3f, dir: vec3f, tLo: f32, tHi: f32) -> f32 {
     var lo = tLo;
     var hi = tHi;
-    for (var r: i32 = 0; r < HIT_REFINE_STEPS; r = r + 1) {
+    for (var r: i32 = 0; r < rayMarchParams.hitRefineSteps; r = r + 1) {
         let mid = 0.5 * (lo + hi);
         let dm = sceneSDF_fast(origin + mid * dir).d;
         if (dm < SURF_DIST) {
@@ -531,7 +538,7 @@ fn refineRayHit(origin: vec3f, dir: vec3f, tLo: f32, tHi: f32) -> f32 {
 fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
     var t: f32 = t_start;
     var tLastOutside: f32 = -1.0;
-    for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
+    for (var i: i32 = 0; i < rayMarchParams.maxSteps; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: distance + gradMag + safeStepMul
         let step = sr.d * sr.safeStepMul;
@@ -542,7 +549,7 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
         }
         tLastOutside = t;
         t = t + step;
-        if (t >= MAX_DIST) {
+        if (t >= rayMarchParams.maxDist) {
             break;
         }
     }
@@ -642,7 +649,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
     let offsetX = (uv.x * 2.0 - 1.0) * camera.zoom;
     let offsetY = (uv.y * 2.0 - 1.0) * camera.zoom;
-    return camPos + vec3f(offsetX, offsetY, RAY_ORIGIN_DEPTH);
+    return camPos + vec3f(offsetX, offsetY, rayMarchParams.rayOriginDepth);
 }
 
 /** Blender-style 3D cursor: dashed red/white ring + cross (screen space). */
@@ -692,7 +699,7 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
     var t: f32 = startT + eps;  // Start just inside the entry surface
     var tInside = startT;
 
-    for (var i: i32 = 0; i < MAX_STEPS; i = i + 1) {
+    for (var i: i32 = 0; i < rayMarchParams.maxSteps; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: distance + gradMag + safeStepMul
         let step = max(abs(sr.d) * sr.safeStepMul, eps);
@@ -708,7 +715,7 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
 
         tInside = t;
         t = t + step;
-        if (t >= MAX_DIST) {
+        if (t >= rayMarchParams.maxDist) {
             break;
         }
     }
@@ -1083,7 +1090,7 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
 
     let offsetX = (uvAspect.x * 2.0 - 1.0) * camera.zoom;
     let offsetY = (uvAspect.y * 2.0 - 1.0) * camera.zoom;
-    let rayOrigin = camera.position + vec3f(offsetX, offsetY, RAY_ORIGIN_DEPTH);
+    let rayOrigin = camera.position + vec3f(offsetX, offsetY, rayMarchParams.rayOriginDepth);
 
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
     let transformedDir = -camera.transform[2].xyz;
@@ -1095,13 +1102,13 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     let tileRadius = sqrt(hx * hx + hy * hy);
 
     var t: f32 = 0.001;
-    for (var i: i32 = 0; i < MAX_BEAM_STEPS; i = i + 1) {
+    for (var i: i32 = 0; i < rayMarchParams.maxBeamSteps; i = i + 1) {
         let p = transformedOrigin + t * transformedDir;
         let sr = sceneSDF_fast(p);
         let d = sr.d * sr.safeStepMul;
         let safeStep = d - tileRadius;
 
-        if (safeStep < tileRadius || t >= MAX_DIST) {
+        if (safeStep < tileRadius || t >= rayMarchParams.maxDist) {
             break;
         }
         t = t + safeStep;

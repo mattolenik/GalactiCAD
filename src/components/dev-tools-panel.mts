@@ -11,6 +11,7 @@ import {
 import type {
     MdcExportLevers,
     PreviewShadingParams,
+    RayMarchParams,
     ShrecTuning,
     SimplifyTuning,
 } from "../render-worker-protocol.mjs"
@@ -71,6 +72,7 @@ export class DevToolsPanel extends HTMLElement {
     onMdcExportLeversChange?: () => void
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
     onPreviewNormalShadingChange?: (enabled: boolean) => void
+    onRayMarchParamsChange?: (params: RayMarchParams) => void
     onBenchmarkThisRequest?: () => BenchmarkCase | null
     onGetViewportSize?: () => { width: number; height: number } | null
 
@@ -257,6 +259,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#rendererSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
         this.#rendererSection.onPreviewShadingChange = p => this.onPreviewShadingChange?.(p)
         this.#rendererSection.onPreviewNormalShadingChange = v => this.onPreviewNormalShadingChange?.(v)
+        this.#rendererSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
 
         this.#logsSection.onDebugLogModulesChange = () => this.onDebugLogModulesChange?.()
 

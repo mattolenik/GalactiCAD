@@ -17,10 +17,12 @@ import { PushPullController } from "./interaction/push-pull.mjs"
 import type { MeshData } from "./export/export.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
+    DEFAULT_RAY_MARCH_PARAMS,
     type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
     type MdcExportLevers,
     type PreviewShadingParams,
+    type RayMarchParams,
     type SceneBuildPipelineMs,
     type WorkerToMainMessage,
 } from "./render-worker-protocol.mjs"
@@ -123,6 +125,7 @@ export class SDFRenderer {
     #xrayMode = false
     #beamEnabled = false
     #previewShading: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
+    #rayMarchParams: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #previewNormalShading = false
     #bvhEnabled = true
     #selectionMode: SelectionMode = "object"
@@ -1361,6 +1364,16 @@ export class SDFRenderer {
         this.#needsRender = true
     }
 
+    get rayMarchParams(): RayMarchParams {
+        return { ...this.#rayMarchParams }
+    }
+
+    /** Dev tools: tune ray march quality constants (not persisted). */
+    setRayMarchParams(params: RayMarchParams): void {
+        this.#rayMarchParams = { ...params }
+        this.#needsRender = true
+    }
+
     get previewNormalShading(): boolean {
         return this.#previewNormalShading
     }
@@ -1510,6 +1523,7 @@ export class SDFRenderer {
         p.viewSettings.selectionStyles = this.#selectionStyles
         p.viewSettings.previewShading = { ...this.#previewShading }
         p.viewSettings.previewNormalShading = this.#previewNormalShading
+        p.viewSettings.rayMarchParams = { ...this.#rayMarchParams }
         p.viewCenter[0] = this.#viewCenter.x
         p.viewCenter[1] = this.#viewCenter.y
         const halfRes =

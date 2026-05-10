@@ -10,6 +10,7 @@
 import { dollyFromOrthoHalf, orthoHalfFromDolly, type CameraState } from "./controls/camera-controller.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
+    DEFAULT_RAY_MARCH_PARAMS,
     type RenderSelectionState,
     type RenderViewSettings,
     type SelectedEdgePayload,
@@ -60,13 +61,15 @@ const S_O_SELECTED_EDGES_DATA = 4368
 const S_O_HOVERED_EDGES_HEADER = 5648
 const S_O_HOVERED_EDGES_DATA = 5664
 const S_O_HOVERED_OBJECT_ID = 6944
+// Ray march quality params: 5 values packed as [maxSteps, maxBeamSteps, hitRefineSteps, _pad, maxDist, rayOriginDepth, _pad, _pad]
+const S_O_RAY_MARCH_PARAMS = 6948
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16
 const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 
 /** Size of one payload slot in bytes */
-export const SLOT_SIZE = 6948
+export const SLOT_SIZE = 6980
 
 /** Total buffer size in bytes */
 export const SHARED_RENDER_BUFFER_SIZE = HEADER_SIZE + 2 * SLOT_SIZE
@@ -107,6 +110,7 @@ export const SAB_LAYOUT = {
     O_SELECTED_EDGES_HEADER: S_O_SELECTED_EDGES_HEADER,
     O_HOVERED_EDGES_HEADER: S_O_HOVERED_EDGES_HEADER,
     O_RESOLUTION_SCALE: S_O_RESOLUTION_SCALE,
+    O_RAY_MARCH_PARAMS: S_O_RAY_MARCH_PARAMS,
     SELECTED_OBJECT_IDS_SIZE,
     SELECTED_EDGES_TOTAL: EDGES_HEADER_SIZE + EDGES_DATA_SIZE,
 } as const
@@ -213,6 +217,16 @@ export function writeRenderPayloadSlot(
     f32[psB + 12] = ps.aoSteps
     f32[psB + 13] = ps.aoBias
 
+    const rm = payload.viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS
+    const rmI32 = new Int32Array(buffer, base + S_O_RAY_MARCH_PARAMS, 4)
+    const rmF32 = new Float32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 16, 4)
+    rmI32[0] = rm.maxSteps
+    rmI32[1] = rm.maxBeamSteps
+    rmI32[2] = rm.hitRefineSteps
+    rmI32[3] = 0
+    rmF32[0] = rm.maxDist
+    rmF32[1] = rm.rayOriginDepth
+
     const sel = payload.selectionState
     const selIds = new Uint32Array(buffer, base + S_O_SELECTED_OBJECT_IDS, 1024)
     selIds.fill(0)
@@ -317,6 +331,13 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
             aoBias: f32[psB + 13],
         },
         previewNormalShading: (packed & 128) !== 0,
+        rayMarchParams: {
+            maxSteps: new Int32Array(buffer, base + S_O_RAY_MARCH_PARAMS, 1)[0],
+            maxBeamSteps: new Int32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 4, 1)[0],
+            hitRefineSteps: new Int32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 8, 1)[0],
+            maxDist: new Float32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 16, 1)[0],
+            rayOriginDepth: new Float32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 20, 1)[0],
+        },
     }
 
     const selectedObjectIds: number[] = []

@@ -3,7 +3,9 @@ import type { Subscription } from "rxjs"
 import { connectCheckbox } from "../binding/bind.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
+    DEFAULT_RAY_MARCH_PARAMS,
     type PreviewShadingParams,
+    type RayMarchParams,
 } from "../render-worker-protocol.mjs"
 import { DEVTOOLS_COLLAPSE } from "./dev-tools-protocol.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
@@ -46,11 +48,14 @@ export class DevToolsRendererSection extends HTMLElement {
     #lightingSection: HTMLDivElement
     #subscriptions: Subscription[] = []
 
+    #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
+
     onCameraOptimizationChange?: (enabled: boolean) => void
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
     onPreviewNormalShadingChange?: (enabled: boolean) => void
+    onRayMarchParamsChange?: (params: RayMarchParams) => void
 
     constructor() {
         super()
@@ -102,6 +107,36 @@ export class DevToolsRendererSection extends HTMLElement {
                 this.onBvhOptimizationChange?.(v)
             })
         )
+
+        const rayMarchKnobs: { key: keyof RayMarchParams; label: string; min: number; max: number; step: number }[] = [
+            { key: "maxSteps", label: "Max steps", min: 50, max: 2000, step: 50 },
+            { key: "maxDist", label: "Max dist", min: 50, max: 2000, step: 50 },
+            { key: "maxBeamSteps", label: "Beam steps", min: 20, max: 1000, step: 20 },
+            { key: "hitRefineSteps", label: "Hit refine", min: 1, max: 64, step: 1 },
+            { key: "rayOriginDepth", label: "Ray origin Z", min: 50, max: 1000, step: 10 },
+        ]
+        for (const k of rayMarchKnobs) {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = k.label
+            const input = document.createElement("input")
+            input.type = "number"
+            input.min = String(k.min)
+            input.max = String(k.max)
+            input.step = String(k.step)
+            input.value = String(this.#rayMarchState[k.key])
+            input.style.cssText = "width:60px;font-size:11px;"
+            input.addEventListener("change", () => {
+                const v = parseFloat(input.value)
+                if (!Number.isFinite(v)) return
+                ;(this.#rayMarchState[k.key] as number) = v
+                this.onRayMarchParamsChange?.({ ...this.#rayMarchState })
+            })
+            row.append(lab, input)
+            perfBox.appendChild(row)
+        }
 
         this.#normalPreviewCheckbox = this.#addCheckbox(previewBox, "Normal mode", false)
         this.#normalPreviewCheckbox.addEventListener("change", () => {

@@ -40,11 +40,13 @@ import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import {
     DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
     DEFAULT_PREVIEW_SHADING,
+    DEFAULT_RAY_MARCH_PARAMS,
     DEFAULT_SIMPLIFY_TUNING,
     type BuildTimingBreakdownMs,
     type ExporterKind,
     type MainToWorkerMessage,
     type PreviewShadingParams,
+    type RayMarchParams,
     type RenderSelectionState,
     type SelectedEdgePayload,
     type ShrecTuning,
@@ -103,6 +105,7 @@ class UniformBuffers {
     previewParamsMat3!: GPUBuffer
     /** Dense f32 mirror for cap drag (same logical indices as preview f32 uniforms). */
     previewCapParamDrag!: GPUBuffer
+    rayMarchParams!: GPUBuffer
     edgeHit!: GPUBuffer
     selectedEdges!: GPUBuffer
     hoverEdgeHit!: GPUBuffer
@@ -179,6 +182,10 @@ export class RenderWorkerCore {
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #hoveredEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #cameraStagingBuf = new ArrayBuffer(256)
+    #rayMarchParamsBuf = new ArrayBuffer(32)
+    #rayMarchParamsI32 = new Int32Array(this.#rayMarchParamsBuf)
+    #rayMarchParamsF32 = new Float32Array(this.#rayMarchParamsBuf)
+    #rayMarchParamsCache = new ArrayBuffer(32)
     #edgesStagingBuf = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     /** Worker-owned staging for SAB snapshot; max(SELECTED_OBJECT_IDS_SIZE, SELECTED_EDGES_TOTAL) */
     #sabStagingBuf = new ArrayBuffer(4096)
@@ -690,6 +697,8 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
+        this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
+
         this.#outlineU32[0] = viewSettings.outlineMode
         this.#outlineThicknessF32[0] = viewSettings.outlineThickness
         this.#outlineColorF32.set(viewSettings.outlineColor)
@@ -751,6 +760,7 @@ export class RenderWorkerCore {
                         { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                         { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
                         { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
+                        { binding: 25, resource: { buffer: this.#uniformBuffers.rayMarchParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -885,6 +895,15 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
+        const rmBase = slotBase + L.O_RAY_MARCH_PARAMS
+        this.#uploadRayMarchParams({
+            maxSteps: new Int32Array(buffer, rmBase, 1)[0],
+            maxBeamSteps: new Int32Array(buffer, rmBase + 4, 1)[0],
+            hitRefineSteps: new Int32Array(buffer, rmBase + 8, 1)[0],
+            maxDist: new Float32Array(buffer, rmBase + 16, 1)[0],
+            rayOriginDepth: new Float32Array(buffer, rmBase + 20, 1)[0],
+        })
+
         this.#outlineU32[0] = (packed >> 5) & 3
         this.#outlineThicknessF32[0] = u32[b4 + L.O_OUTLINE_THICKNESS / 4]
         this.#outlineColorF32[0] = f32[b4 + L.O_OUTLINE_COLOR / 4]
@@ -955,6 +974,7 @@ export class RenderWorkerCore {
                         { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                         { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
                         { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
+                        { binding: 25, resource: { buffer: this.#uniformBuffers.rayMarchParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -1537,6 +1557,7 @@ export class RenderWorkerCore {
                     },
                     previewShading: DEFAULT_PREVIEW_SHADING,
                     previewNormalShading: true,
+                    rayMarchParams: { ...DEFAULT_RAY_MARCH_PARAMS, maxSteps: 600, hitRefineSteps: 24 },
                 },
                 viewCenter: [msg.viewCenter[0], msg.viewCenter[1]],
                 resolutionScale: 1.0,
@@ -1684,6 +1705,7 @@ export class RenderWorkerCore {
                         { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                         { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
                         { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
+                        { binding: 25, resource: { buffer: this.#uniformBuffers.rayMarchParams } },
                     ],
                 })
                 this.#beamBindGroupInvalid = false
@@ -1720,6 +1742,7 @@ export class RenderWorkerCore {
                     { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
                     { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
                     { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
+                    { binding: 25, resource: { buffer: this.#uniformBuffers.rayMarchParams } },
                 ],
             })
             this.#sceneBindGroupInvalid = false
@@ -1857,6 +1880,12 @@ export class RenderWorkerCore {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "previewCapParamDrag",
         })
+        ub.rayMarchParams = this.#device.createBuffer({
+            size: 32,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "rayMarchParams",
+        })
+        this.#uploadRayMarchParams(DEFAULT_RAY_MARCH_PARAMS)
 
         this.#previewF32Shadow = new Float32Array(PREVIEW_UNIFORM_F32_COUNT)
         this.#previewVec2Shadow = new Float32Array(PREVIEW_UNIFORM_VEC2_COUNT * 2)
@@ -2351,6 +2380,20 @@ export class RenderWorkerCore {
     }
 
     /** Compare src view with cache; if different, write to GPU and update cache. Returns true if wrote. */
+    #uploadRayMarchParams(params: RayMarchParams): void {
+        this.#rayMarchParamsI32[0] = params.maxSteps
+        this.#rayMarchParamsI32[1] = params.maxBeamSteps
+        this.#rayMarchParamsI32[2] = params.hitRefineSteps
+        this.#rayMarchParamsI32[3] = 0
+        this.#rayMarchParamsF32[4] = params.maxDist
+        this.#rayMarchParamsF32[5] = params.rayOriginDepth
+        this.#writeBufferViewIfDirty(
+            this.#uniformBuffers.rayMarchParams,
+            new Uint8Array(this.#rayMarchParamsBuf),
+            this.#rayMarchParamsCache,
+        )
+    }
+
     #writeBufferViewIfDirty(gpuBuffer: GPUBuffer, src: ArrayBufferView, cache: ArrayBuffer): boolean {
         const byteLength = src.byteLength
         const srcU8 = new Uint8Array(src.buffer, src.byteOffset, byteLength)

@@ -417,6 +417,28 @@ export interface RenderSelectionStyles {
     edge: { color: [number, number, number] }
 }
 
+/** Tunable ray marching quality constants; passed as a uniform so they can be changed without recompilation. */
+export interface RayMarchParams {
+    /** Max ray march iterations (default 300). Higher = less chance of missing thin features. */
+    maxSteps: number
+    /** Far clipping distance (default 600). */
+    maxDist: number
+    /** Max beam pre-pass iterations (default 200). */
+    maxBeamSteps: number
+    /** Binary-search refinement iterations after a hit (default 6). Higher = sharper surface accuracy. */
+    hitRefineSteps: number
+    /** Camera z-offset for ray origin (default 300). */
+    rayOriginDepth: number
+}
+
+export const DEFAULT_RAY_MARCH_PARAMS: RayMarchParams = {
+    maxSteps: 300,
+    maxDist: 600,
+    maxBeamSteps: 200,
+    hitRefineSteps: 6,
+    rayOriginDepth: 300,
+}
+
 /** Preview fragment shading (SDF raymarch); tunable from dev tools. */
 export interface PreviewShadingParams {
     ambient: number
@@ -467,6 +489,7 @@ export interface RenderViewSettings {
     previewShading: PreviewShadingParams
     /** When true, SDF preview shades hits with scene-space normal RGB (matches mesh viewer opaque). */
     previewNormalShading: boolean
+    rayMarchParams?: RayMarchParams
 }
 
 // ---------------------------------------------------------------------------

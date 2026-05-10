@@ -1184,6 +1184,9 @@ class App {
         devTools.onPreviewShadingChange = (params) => {
             this.renderer.setPreviewShading(params)
         }
+        devTools.onRayMarchParamsChange = (params) => {
+            this.renderer.setRayMarchParams(params)
+        }
         devTools.syncPreviewShadingFromRenderer(this.renderer.previewShading)
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode

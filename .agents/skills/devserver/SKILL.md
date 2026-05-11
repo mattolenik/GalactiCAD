@@ -1,6 +1,6 @@
 ---
 name: devserver
-description: "Local devserver: GET /_logs, GET /_sceneSource, agent render (JSON, YAML testcase-body, GET testcase file), WebSocket bridge. Mirror interactive session via .devserver.run capture + .devserver.agent.run render. make start AGENT=true — do not launch Chromium yourself."
+description: "Use when reading runtime logs, dumping the active scene source, capturing an agent testcase from the live editor, or rendering SDF/mesh PNGs headlessly. Two devservers run side-by-side: interactive (`make start`, `.devserver.run`) for the human's tab, and agent (`make start AGENT=true`, `.devserver.agent.run`) for headless Chromium — agents default to the agent port, read it from the run file, and never launch Chromium themselves. Endpoints: `/_logs`, `/_sceneSource`, `/_refresh`, `/_agent/capture-testcase`, `/_agent/render` (POST JSON), `/_agent/render/testcase-body` (POST YAML), `/_agent/render/testcase/<path>` (GET saved testcase). Mirror the human's session by piping `/_agent/capture-testcase` from the interactive port into `/_agent/render/testcase-body` on the agent port."
 ---
 
 # Devserver HTTP / WebSocket bridge

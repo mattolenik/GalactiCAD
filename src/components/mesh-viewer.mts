@@ -1088,6 +1088,15 @@ export class MeshViewer extends HTMLElement {
         }
         this.update(false)
         await this.#device.queue.onSubmittedWorkDone()
+        // `onSubmittedWorkDone` confirms the GPU finished writing into the
+        // swap-chain texture, but the canvas only "presents" that texture
+        // at the next compositor tick. Without an rAF wait, an immediate
+        // `createImageBitmap(canvas)` may capture the previously-presented
+        // frame (blank on first capture, stale on subsequent captures) —
+        // observed as intermittent blank PNGs from `/_agent/render`,
+        // worst on slow renders where the main thread shifts the rAF
+        // boundary.
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
         const bitmap = await createImageBitmap(this.canvas)
         try {
             const oc = new OffscreenCanvas(this.canvas.width, this.canvas.height)

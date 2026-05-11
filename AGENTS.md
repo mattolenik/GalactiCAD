@@ -167,7 +167,7 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 - **Build**: `make build`
 - **Test**: `make test`
-- **Type check**: `make check` — use this instead of invoking `tsc` directly
+- **Type check**: `make check` — use this instead of invoking `npx tsc --noEmit`
 
 **Do not run build or lint commands on WGSL files directly.** WGSL files will be compiled with `make build` by the custom build logic. This means when making changes to WGSL files, you should run `make build` to validate them. If they don't compile, you will see the compiler error in `make build`. This custom build logic is what handles the `//:) include` directive, meaning this shader compiler output is indicative of what happens at runtime.
 

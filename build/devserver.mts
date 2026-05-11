@@ -134,7 +134,7 @@ const REPO_ROOT_FOR_HTTP = path.resolve(path.dirname(fileURLToPath(import.meta.u
 const AGENT_RENDER_ROOT = "/_agent/render"
 /** POST inline testcase YAML (e.g. pipe `GET /_agent/capture-testcase` from the interactive devserver). */
 const AGENT_RENDER_TESTCASE_BODY = "/_agent/render/testcase-body"
-/** GET testcase file: path after this prefix is relative to `./test/testcases/` (e.g. `meshing/foo.yaml`). */
+/** GET testcase file. Path after this prefix is resolved as: (1) relative to cwd, (2) relative to `./test/testcases/`, or absolute (leading `/` after the prefix → `//abs/path`). First existing match wins. */
 const AGENT_RENDER_TESTCASE_PREFIX = "/_agent/render/testcase"
 
 function isAgentRenderPathname(pathname: string): boolean {
@@ -191,37 +191,52 @@ function agentRenderQueryOverrides(url: URL): {
 }
 
 /**
- * Returns relative path under `test/testcases/` or null if missing/unsafe.
- * Pathname is already percent-decoded by `URL` (e.g. spaces); rejects `..` before/after decode.
+ * Returns the raw user-supplied testcase path (percent-decoded), or null if missing.
+ * The path may be relative (resolved against cwd or `test/testcases/` by {@link resolveAgentTestcaseFile})
+ * or absolute (leading `/` survives because the URL has a double slash after the prefix).
  */
-function parseAgentRenderTestcaseRelativeFromPathname(pathname: string): string | null {
+function parseAgentRenderTestcasePathFromPathname(pathname: string): string | null {
     if (pathname === AGENT_RENDER_TESTCASE_PREFIX) return null
     if (!pathname.startsWith(`${AGENT_RENDER_TESTCASE_PREFIX}/`)) return null
     let rest = pathname.slice(AGENT_RENDER_TESTCASE_PREFIX.length + 1)
-    if (!rest || rest.includes("..")) return null
+    if (!rest) return null
     try {
         rest = decodeURIComponent(rest)
     } catch {
         return null
     }
-    if (!rest || rest.includes("..") || rest.startsWith("/")) return null
+    if (!rest) return null
     return rest
 }
 
-/** `$PWD/test/testcases/<relative>` — rejects empty path and obvious `..` traversal only. */
-function resolveAgentTestcaseFile(testcaseRelative: string): string | null {
-    const rel = testcaseRelative.replace(/\\/g, "/").trim().replace(/^\/+/, "")
-    if (!rel || rel.includes("..")) return null
-    return path.join(process.cwd(), "test", "testcases", rel)
+/**
+ * Resolve a testcase path. Precedence: (1) relative to cwd, (2) relative to `cwd/test/testcases/`.
+ * Absolute paths are used as-is. If the input has no `.yaml` / `.yml` / `.json` suffix, `.yaml` is
+ * appended. Returns the first existing file, or null.
+ */
+async function resolveAgentTestcaseFile(testcasePath: string): Promise<string | null> {
+    const input = testcasePath.replace(/\\/g, "/").trim()
+    if (!input) return null
+    const withExt = /\.(ya?ml|json)$/i.test(input) ? input : `${input}.yaml`
+    const candidates = path.isAbsolute(withExt)
+        ? [withExt]
+        : [path.resolve(process.cwd(), withExt), path.resolve(process.cwd(), "test", "testcases", withExt)]
+    for (const c of candidates) {
+        try {
+            if ((await fs.stat(c)).isFile()) return c
+        } catch {
+            // try next candidate
+        }
+    }
+    return null
 }
 
-/** Stem of the testcase filename (no `.yaml` / `.yml` / `.json`), or `render` if missing / not under testcases. */
-function agentRenderDownloadBasename(testcaseRelative: string | undefined | null): string {
-    const rel = (testcaseRelative ?? "").trim()
-    if (!rel) return "render"
-    const abs = resolveAgentTestcaseFile(rel)
-    if (!abs) return "render"
-    const bn = path.basename(abs)
+/** Stem of the testcase filename (no `.yaml` / `.yml` / `.json`), or `render` if missing. */
+function agentRenderDownloadBasename(testcasePath: string | undefined | null): string {
+    const raw = (testcasePath ?? "").trim().replace(/\\/g, "/")
+    if (!raw) return "render"
+    const bn = path.basename(raw)
+    if (!bn || bn === "." || bn === "..") return "render"
     const stem = path.parse(bn).name
     const safe = stem.replace(/[^\w.-]+/g, "_").slice(0, 120)
     return safe.length > 0 ? safe : "render"
@@ -681,7 +696,7 @@ export class DevServer {
             await fs.writeFile(options.runFile, JSON.stringify(payload, null, 2))
         }
         log(
-            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET|POST /_agent/render (JSON); POST /_agent/render/testcase-body (YAML); GET testcase: /_agent/render/testcase/<path-under-test-testcases>?mode=…`,
+            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET|POST /_agent/render (JSON); POST /_agent/render/testcase-body (YAML); GET testcase: /_agent/render/testcase/<path>?mode=… (path resolved: cwd → test/testcases/ → absolute)`,
         )
         return instance
     }
@@ -932,7 +947,7 @@ function createHttpServer(
                 return
             }
             if (req.method === "GET") {
-                const testcase = parseAgentRenderTestcaseRelativeFromPathname(pathname)
+                const testcase = parseAgentRenderTestcasePathFromPathname(pathname)
                 if (testcase === null) {
                     if (pathname === AGENT_RENDER_ROOT) {
                         res.writeHead(400, {
@@ -940,7 +955,7 @@ function createHttpServer(
                             "Access-Control-Allow-Origin": "*",
                         })
                         res.end(
-                            "GET testcase render uses path /_agent/render/testcase/<relative> where <relative> is under ./test/testcases/ (e.g. /_agent/render/testcase/meshing/foo.yaml?mode=sdf)",
+                            "GET testcase render uses path /_agent/render/testcase/<path> where <path> is relative to cwd, relative to ./test/testcases/, or absolute (e.g. /_agent/render/testcase/meshing/foo.yaml?mode=sdf)",
                         )
                         return
                     }
@@ -957,15 +972,17 @@ function createHttpServer(
                         "Access-Control-Allow-Origin": "*",
                     })
                     res.end(
-                        "invalid testcase path: expected /_agent/render/testcase/<path> relative to ./test/testcases/; no .. or empty path",
+                        "invalid testcase path: expected /_agent/render/testcase/<path> (relative to cwd, relative to ./test/testcases/, or absolute)",
                     )
                     return
                 }
-                const safePath = resolveAgentTestcaseFile(testcase)
+                const safePath = await resolveAgentTestcaseFile(testcase)
                 if (!safePath) {
-                    log(`/_agent/render GET: rejected testcase path ${JSON.stringify(testcase)}`)
-                    res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-                    res.end("invalid testcase path: relative path under cwd ./test/testcases/ (e.g. meshing/foo.yaml); no ..")
+                    log(`/_agent/render GET: testcase not found ${JSON.stringify(testcase)}`)
+                    res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                    res.end(
+                        `testcase file not found: ${testcase} (tried relative to cwd, then ./test/testcases/; absolute paths used as-is)`,
+                    )
                     return
                 }
                 let rawYaml: string
@@ -973,7 +990,7 @@ function createHttpServer(
                     rawYaml = await fs.readFile(safePath, "utf8")
                 } catch {
                     res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-                    res.end(`testcase file not found: ${testcase} (${safePath})`)
+                    res.end(`testcase file not readable: ${testcase} (${safePath})`)
                     return
                 }
                 let tc: AgentTestcase

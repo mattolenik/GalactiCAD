@@ -1,0 +1,916 @@
+#!/usr/bin/env bash
+# agentcli — bash wrapper for devserver renders + SSIM/pixel diffs.
+#
+# See docs/plans/mesh-diff-cli.md for the design rationale. v1 scope:
+# render saved testcases against the agent devserver, compare PNGs via
+# @blazediff/cli, run small batch sweeps and triangle (mesh-vs-SDF) checks.
+#
+# Exit codes:
+#   0 success
+#   1 verdict failure (compare below threshold, regression detected)
+#   2 usage error (bad flags / args)
+#   3 devserver not reachable / can't start
+#   4 diff tool failure
+
+set -Eeuo pipefail
+
+# No ERR trap: the subshells used for resolve_testcase / process substitution
+# trigger ERR with misleading line numbers when a subshell `die`s. The `die`
+# helper already logs a precise error before exiting, so we let it speak.
+
+# ============================================================================
+# Globals + small utilities
+# ============================================================================
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+SCRIPT_NAME="$(basename -- "${BASH_SOURCE[0]}")"
+
+REPO_ROOT=""
+AGENT_PORT=""
+
+# Resolve repo root once. Falls back to walking up from SCRIPT_DIR if git
+# isn't available (rare but defensive).
+_repo_root() {
+    if [[ -n "$REPO_ROOT" ]]; then
+        printf '%s\n' "$REPO_ROOT"
+        return 0
+    fi
+    local root
+    if root=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null); then
+        REPO_ROOT="$root"
+    else
+        REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+    fi
+    printf '%s\n' "$REPO_ROOT"
+}
+
+log_info() { printf '[%s] INFO  %s\n' "$(date +'%H:%M:%S')" "$*" >&2; }
+log_warn() { printf '[%s] WARN  %s\n' "$(date +'%H:%M:%S')" "$*" >&2; }
+log_error() { printf '[%s] ERROR %s\n' "$(date +'%H:%M:%S')" "$*" >&2; }
+
+die() {
+    local -r code="$1"
+    shift
+    log_error "$*"
+    exit "$code"
+}
+
+check_dependencies() {
+    local -a missing=()
+    local -ar required=("curl" "jq" "make" "npx")
+    for cmd in "${required[@]}"; do
+        command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+    done
+    if (( ${#missing[@]} > 0 )); then
+        die 3 "missing required commands: ${missing[*]}"
+    fi
+}
+
+# ============================================================================
+# Devserver lifecycle
+# ============================================================================
+
+_run_file() {
+    printf '%s/.devserver.agent.run\n' "$(_repo_root)"
+}
+
+_agent_status() {
+    # Echoes "running PID PORT" or "stopped". Never errors.
+    local rf
+    rf=$(_run_file)
+    if [[ ! -f "$rf" ]]; then
+        printf 'stopped\n'
+        return 0
+    fi
+    local pid port
+    pid=$(jq -r '.pid // empty' "$rf" 2>/dev/null || true)
+    port=$(jq -r '.port // empty' "$rf" 2>/dev/null || true)
+    if [[ -z "$pid" || -z "$port" ]]; then
+        printf 'stopped\n'
+        return 0
+    fi
+    if kill -0 "$pid" 2>/dev/null; then
+        printf 'running %s %s\n' "$pid" "$port"
+    else
+        printf 'stopped\n'
+    fi
+}
+
+agent_running() {
+    local status
+    status=$(_agent_status)
+    [[ "$status" == running* ]]
+}
+
+# Resolve the agent port, auto-starting the devserver if needed.
+# Result is cached in AGENT_PORT for the lifetime of this invocation.
+_agent_port() {
+    if [[ -n "$AGENT_PORT" ]]; then
+        printf '%s\n' "$AGENT_PORT"
+        return 0
+    fi
+    if ! agent_running; then
+        log_info "agent devserver not running; starting"
+        cmd_server start
+    fi
+    local status
+    status=$(_agent_status)
+    if [[ "$status" != running* ]]; then
+        die 3 "agent devserver failed to start (see .devserver.agent.log)"
+    fi
+    AGENT_PORT="${status##* }"
+    printf '%s\n' "$AGENT_PORT"
+}
+
+# ============================================================================
+# Testcase resolution
+# ============================================================================
+
+# Resolve a testcase argument to an absolute path AND a path relative to
+# `test/testcases/` (the latter is what the devserver URL needs).
+# Resolution order: absolute → exact relative → relative to test/testcases/.
+# `.yaml` extension is optional.
+#
+# Echoes two lines: absolute path, then testcases-relative path.
+resolve_testcase() {
+    local -r arg="$1"
+    local repo testcases candidate abs rel
+    repo=$(_repo_root)
+    testcases="$repo/test/testcases"
+
+    local -a candidates=()
+    if [[ "$arg" == /* ]]; then
+        candidates+=("$arg")
+        [[ "$arg" != *.yaml ]] && candidates+=("$arg.yaml")
+    else
+        # exact relative path (interpreted from cwd)
+        candidates+=("$arg")
+        [[ "$arg" != *.yaml ]] && candidates+=("$arg.yaml")
+        # relative to test/testcases
+        candidates+=("$testcases/$arg")
+        [[ "$arg" != *.yaml ]] && candidates+=("$testcases/$arg.yaml")
+    fi
+
+    for candidate in "${candidates[@]}"; do
+        if [[ -f "$candidate" ]]; then
+            abs=$(cd -- "$(dirname -- "$candidate")" && pwd -P)/"$(basename -- "$candidate")"
+            # Compute relative to testcases dir
+            if [[ "$abs" == "$testcases/"* ]]; then
+                rel="${abs#"$testcases/"}"
+            else
+                # Outside testcases — devserver only accepts paths under test/testcases/,
+                # so this is a usage error.
+                die 2 "testcase '$arg' resolved to '$abs' which is outside test/testcases/"
+            fi
+            printf '%s\n%s\n' "$abs" "$rel"
+            return 0
+        fi
+    done
+
+    die 2 "testcase not found: '$arg' (tried ${candidates[*]})"
+}
+
+# Echo just the stem (filename without .yaml) for use in default output names.
+testcase_stem() {
+    local -r arg="$1"
+    local stem
+    stem="$(basename -- "$arg")"
+    stem="${stem%.yaml}"
+    printf '%s\n' "$stem"
+}
+
+# ============================================================================
+# HTTP helpers
+# ============================================================================
+
+_curl_get() {
+    # Usage: _curl_get URL OUTPATH
+    # On HTTP 2xx: writes the response body to OUTPATH and echoes "200 BYTES".
+    # On any other status (or curl error): writes the error body to a sibling
+    # `.error` file, leaves OUTPATH untouched, logs, and returns 1.
+    local -r url="$1"
+    local -r outpath="$2"
+    local tmpbody code bytes
+    tmpbody=$(mktemp -t agentcli.body.XXXXXX)
+    code=$(curl --silent --show-error \
+        --connect-timeout 10 --max-time 600 \
+        --output "$tmpbody" --write-out '%{http_code}' \
+        "$url" 2>&1) || {
+        local rc=$?
+        log_error "curl exited $rc for $url"
+        rm -f -- "$tmpbody"
+        return 1
+    }
+    if [[ "$code" != 2* ]]; then
+        local errpath="${outpath}.error"
+        mv -f -- "$tmpbody" "$errpath"
+        log_error "HTTP $code from $url (response body in $errpath)"
+        return 1
+    fi
+    mv -f -- "$tmpbody" "$outpath"
+    bytes=$(wc -c <"$outpath" | tr -d ' ')
+    printf '%s %s\n' "$code" "$bytes"
+}
+
+_curl_post_empty() {
+    # POST with no body, return HTTP code on success.
+    local -r url="$1"
+    curl --silent --show-error --fail \
+        --connect-timeout 10 --max-time 60 \
+        -X POST -o /dev/null --write-out '%{http_code}' \
+        "$url"
+}
+
+# ============================================================================
+# Render URL builder + writer
+# ============================================================================
+
+# url_encode SEGMENT — percent-encodes path segments. Conservatively encodes
+# anything outside [A-Za-z0-9._~-] and `/` (which we keep intact for paths).
+url_encode_path() {
+    local -r s="$1"
+    local out=""
+    local i ch
+    for (( i = 0; i < ${#s}; i++ )); do
+        ch="${s:i:1}"
+        case "$ch" in
+            [A-Za-z0-9._~/-]) out+="$ch" ;;
+            *) printf -v out '%s%%%02X' "$out" "'$ch" ;;
+        esac
+    done
+    printf '%s\n' "$out"
+}
+
+# url_encode_qparam VALUE — encodes for use as a URL query parameter value
+# (slashes and other reserved chars get encoded too).
+url_encode_qparam() {
+    local -r s="$1"
+    local out=""
+    local i ch
+    for (( i = 0; i < ${#s}; i++ )); do
+        ch="${s:i:1}"
+        case "$ch" in
+            [A-Za-z0-9._~-]) out+="$ch" ;;
+            *) printf -v out '%s%%%02X' "$out" "'$ch" ;;
+        esac
+    done
+    printf '%s\n' "$out"
+}
+
+# ============================================================================
+# blazediff parsers
+# ============================================================================
+
+# Parse `similarity: NN.NN%` from blazediff hitchhikers-ssim output.
+# Echoes the percent number (no % sign) on success.
+_ssim() {
+    local -r a="$1"
+    local -r b="$2"
+    local out
+    if ! out=$(npx --yes @blazediff/cli hitchhikers-ssim "$a" "$b" 2>&1); then
+        log_error "blazediff hitchhikers-ssim failed:"
+        printf '%s\n' "$out" >&2
+        return 4
+    fi
+    local pct
+    pct=$(printf '%s\n' "$out" | awk -F'[: %]+' '/^similarity:/{print $2; exit}')
+    if [[ -z "$pct" ]]; then
+        log_error "could not parse similarity from blazediff output:"
+        printf '%s\n' "$out" >&2
+        return 4
+    fi
+    printf '%s\n' "$pct"
+}
+
+# Run blazediff core-native, write a diff PNG, echo "DIFF_PIXELS ERROR_PCT".
+# blazediff exit codes: 0 = identical, 1 = differ (still a successful run),
+# 2+ = real error (missing file, etc.).
+_pixeldiff() {
+    local -r a="$1"
+    local -r b="$2"
+    local -r diff_png="$3"
+    local out rc
+    out=$(npx --yes @blazediff/cli core-native "$a" "$b" "$diff_png" 2>&1) && rc=0 || rc=$?
+    if (( rc > 1 )); then
+        log_error "blazediff core-native failed (exit $rc):"
+        printf '%s\n' "$out" >&2
+        return 4
+    fi
+    local px err
+    if (( rc == 0 )); then
+        # Identical — blazediff prints just "Images are identical!" with no
+        # numeric breakdown. Treat as zero pixels different.
+        px=0
+        err="0.00"
+    else
+        px=$(printf '%s\n' "$out" | awk -F'[: ]+' '/^different pixels:/{print $3; exit}')
+        err=$(printf '%s\n' "$out" | awk -F'[: %]+' '/^error:/{print $2; exit}')
+        if [[ -z "$px" || -z "$err" ]]; then
+            log_error "could not parse pixel diff from blazediff output:"
+            printf '%s\n' "$out" >&2
+            return 4
+        fi
+    fi
+    printf '%s %s\n' "$px" "$err"
+}
+
+# Width × height of a PNG (used to compute total pixel counts).
+_png_dims() {
+    local -r path="$1"
+    # Use file(1)'s description, which prints "PNG image data, W x H" on macOS+GNU.
+    local desc
+    desc=$(file -b -- "$path" 2>/dev/null || true)
+    local w h
+    w=$(printf '%s\n' "$desc" | awk -F'[, ]+' '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $(i+1)=="x" && $(i+2) ~ /^[0-9]+$/){print $i; exit}}')
+    h=$(printf '%s\n' "$desc" | awk -F'[, ]+' '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $(i+1)=="x" && $(i+2) ~ /^[0-9]+$/){print $(i+2); exit}}')
+    if [[ -z "$w" || -z "$h" ]]; then
+        printf '0 0\n'
+    else
+        printf '%s %s\n' "$w" "$h"
+    fi
+}
+
+# ============================================================================
+# Default output paths
+# ============================================================================
+
+_default_outdir() {
+    printf '%s/.agents/testimages\n' "$(_repo_root)"
+}
+
+_default_out_path() {
+    # Args: stem tag mode
+    printf '%s/%s-%s-%s.png\n' "$(_default_outdir)" "$1" "$2" "$3"
+}
+
+ensure_outdir_for() {
+    local -r path="$1"
+    local dir
+    dir="$(dirname -- "$path")"
+    mkdir -p "$dir"
+}
+
+# ============================================================================
+# cmd: render
+# ============================================================================
+
+usage_render() {
+    cat <<'EOF'
+Usage: agentcli render <testcase> [options]
+
+Options:
+    --mode mesh|sdf            Render mode (default: mesh)
+    --tag NAME                 Tag for the output filename (default: latest)
+    --out PATH                 Override output path
+    --width W                  Override viewportWidth
+    --height H                 Override viewportHeight
+    --overlay name=val,...     Mesh overlay flags passed verbatim as query params
+    -h, --help                 This help
+EOF
+}
+
+cmd_render() {
+    local testcase=""
+    local mode="mesh"
+    local tag="latest"
+    local out=""
+    local width=""
+    local height=""
+    local overlay=""
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --mode) mode="$2"; shift 2 ;;
+            --tag) tag="$2"; shift 2 ;;
+            --out) out="$2"; shift 2 ;;
+            --width) width="$2"; shift 2 ;;
+            --height) height="$2"; shift 2 ;;
+            --overlay) overlay="$2"; shift 2 ;;
+            -h|--help) usage_render; return 0 ;;
+            -*) die 2 "render: unknown option: $1" ;;
+            *)
+                if [[ -z "$testcase" ]]; then
+                    testcase="$1"
+                    shift
+                else
+                    die 2 "render: unexpected argument: $1"
+                fi
+                ;;
+        esac
+    done
+    [[ -n "$testcase" ]] || { usage_render >&2; die 2 "render: <testcase> is required"; }
+    [[ "$mode" == "mesh" || "$mode" == "sdf" ]] || die 2 "render: --mode must be mesh or sdf"
+
+    local rel stem
+    {
+        read -r _abs
+        read -r rel
+    } < <(resolve_testcase "$testcase")
+    stem=$(testcase_stem "$rel")
+
+    if [[ -z "$out" ]]; then
+        out=$(_default_out_path "$stem" "$tag" "$mode")
+    fi
+    ensure_outdir_for "$out"
+
+    local port url
+    port=$(_agent_port)
+    local enc_rel
+    enc_rel=$(url_encode_path "$rel")
+    url="http://localhost:${port}/_agent/render/testcase/${enc_rel}?mode=${mode}"
+    url+="&label=$(url_encode_qparam "${stem}-${tag}")"
+    url+="&role=$(url_encode_qparam "$mode")"
+    [[ -n "$width" ]] && url+="&viewportWidth=${width}"
+    [[ -n "$height" ]] && url+="&viewportHeight=${height}"
+    if [[ -n "$overlay" ]]; then
+        local IFS_BAK="$IFS"
+        IFS=','
+        local kv
+        for kv in $overlay; do
+            [[ -z "$kv" ]] && continue
+            # Validate shape "k=v" minimally.
+            if [[ "$kv" != *=* ]]; then
+                IFS="$IFS_BAK"
+                die 2 "render: --overlay expects name=val,... ; got '$kv'"
+            fi
+            local k="${kv%%=*}" v="${kv#*=}"
+            url+="&$(url_encode_qparam "$k")=$(url_encode_qparam "$v")"
+        done
+        IFS="$IFS_BAK"
+    fi
+
+    local result code bytes
+    result=$(_curl_get "$url" "$out")
+    code="${result%% *}"
+    bytes="${result##* }"
+    if [[ "$code" != "200" ]]; then
+        die 1 "render: HTTP $code (response body in $out)"
+    fi
+    printf '%s  %s  HTTP=%s  bytes=%s  saved=%s\n' "$stem" "$mode" "$code" "$bytes" "$out"
+}
+
+# ============================================================================
+# cmd: sweep
+# ============================================================================
+
+usage_sweep() {
+    cat <<'EOF'
+Usage: agentcli sweep <testcase>... [options]
+
+Options:
+    --mode mesh|sdf            Render mode (default: mesh)
+    --tag NAME                 Tag for the output filenames (default: latest)
+    --out-dir DIR              Directory to write PNGs into (default: .agents/testimages/)
+    -h, --help                 This help
+EOF
+}
+
+cmd_sweep() {
+    local mode="mesh"
+    local tag="latest"
+    local outdir=""
+    local -a testcases=()
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --mode) mode="$2"; shift 2 ;;
+            --tag) tag="$2"; shift 2 ;;
+            --out-dir) outdir="$2"; shift 2 ;;
+            -h|--help) usage_sweep; return 0 ;;
+            -*) die 2 "sweep: unknown option: $1" ;;
+            *) testcases+=("$1"); shift ;;
+        esac
+    done
+    (( ${#testcases[@]} > 0 )) || { usage_sweep >&2; die 2 "sweep: at least one testcase is required"; }
+    [[ -z "$outdir" ]] && outdir=$(_default_outdir)
+    mkdir -p "$outdir"
+
+    local rendered=0
+    for tc in "${testcases[@]}"; do
+        local rel stem out
+        {
+            read -r _abs
+            read -r rel
+        } < <(resolve_testcase "$tc")
+        stem=$(testcase_stem "$rel")
+        out="$outdir/${stem}-${tag}-${mode}.png"
+        # Re-use cmd_render to keep one code path (sub-shell so its locals don't leak).
+        ( cmd_render "$tc" --mode "$mode" --tag "$tag" --out "$out" )
+        rendered=$((rendered + 1))
+    done
+    printf 'sweep: rendered %d testcase(s) into %s\n' "$rendered" "$outdir"
+}
+
+# ============================================================================
+# cmd: compare
+# ============================================================================
+
+usage_compare() {
+    cat <<'EOF'
+Usage: agentcli compare <a.png> <b.png> [options]
+
+Options:
+    --diff-png PATH            Where to write the diff PNG (default: tmpfile)
+    --threshold PCT            SSIM pass threshold 0..100 (default: 99)
+    -h, --help                 This help
+
+Exit code 0 if SSIM >= threshold, 1 otherwise.
+EOF
+}
+
+cmd_compare() {
+    local a=""
+    local b=""
+    local diff_png=""
+    local threshold="99"
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --diff-png) diff_png="$2"; shift 2 ;;
+            --threshold) threshold="$2"; shift 2 ;;
+            -h|--help) usage_compare; return 0 ;;
+            -*) die 2 "compare: unknown option: $1" ;;
+            *)
+                if [[ -z "$a" ]]; then
+                    a="$1"; shift
+                elif [[ -z "$b" ]]; then
+                    b="$1"; shift
+                else
+                    die 2 "compare: unexpected argument: $1"
+                fi
+                ;;
+        esac
+    done
+    [[ -n "$a" && -n "$b" ]] || { usage_compare >&2; die 2 "compare: both <a.png> and <b.png> are required"; }
+    [[ -f "$a" ]] || die 2 "compare: file not found: $a"
+    [[ -f "$b" ]] || die 2 "compare: file not found: $b"
+
+    if [[ -z "$diff_png" ]]; then
+        diff_png=$(mktemp -t mdiff.XXXXXX).png
+    else
+        ensure_outdir_for "$diff_png"
+    fi
+
+    local ssim_pct
+    ssim_pct=$(_ssim "$a" "$b") || return $?
+
+    local diff_result diff_pixels diff_err total_pixels w h
+    diff_result=$(_pixeldiff "$a" "$b" "$diff_png") || return $?
+    diff_pixels="${diff_result%% *}"
+    diff_err="${diff_result##* }"
+
+    read -r w h < <(_png_dims "$a")
+    total_pixels=$(( w * h ))
+
+    local verdict_text="UNCHANGED"
+    local exit_code=0
+    # Use awk for floating-point comparison — bash can't compare decimals natively.
+    if awk -v s="$ssim_pct" -v t="$threshold" 'BEGIN{ exit !(s + 0 < t + 0) }'; then
+        verdict_text="CHANGED"
+        exit_code=1
+    fi
+
+    printf 'ssim:        %s%%\n' "$ssim_pct"
+    if (( total_pixels > 0 )); then
+        printf 'pixel diff:  %s / %s  (%s%%)\n' "$diff_pixels" "$total_pixels" "$diff_err"
+    else
+        printf 'pixel diff:  %s  (%s%%)\n' "$diff_pixels" "$diff_err"
+    fi
+    printf 'diff PNG:    %s\n' "$diff_png"
+    printf 'verdict:     %s   (threshold %s%%)\n' "$verdict_text" "$threshold"
+
+    return $exit_code
+}
+
+# ============================================================================
+# cmd: triangle
+# ============================================================================
+
+usage_triangle() {
+    cat <<'EOF'
+Usage: agentcli triangle <testcase> [options]
+
+Renders both SDF and mesh for a testcase and reports the SSIM between
+them — i.e. how faithfully the mesh captures the SDF reference. Optionally
+also compares an existing baseline-tag mesh against the same SDF and
+reports the delta.
+
+Options:
+    --tag NAME                 Tag for the new mesh render (default: latest)
+    --baseline-tag NAME        Tag of an existing mesh PNG to compare against
+    --out-dir DIR              Directory to write PNGs into (default: .agents/testimages/)
+    -h, --help                 This help
+EOF
+}
+
+cmd_triangle() {
+    local testcase=""
+    local tag="latest"
+    local baseline_tag=""
+    local outdir=""
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --tag) tag="$2"; shift 2 ;;
+            --baseline-tag) baseline_tag="$2"; shift 2 ;;
+            --out-dir) outdir="$2"; shift 2 ;;
+            -h|--help) usage_triangle; return 0 ;;
+            -*) die 2 "triangle: unknown option: $1" ;;
+            *)
+                if [[ -z "$testcase" ]]; then
+                    testcase="$1"; shift
+                else
+                    die 2 "triangle: unexpected argument: $1"
+                fi
+                ;;
+        esac
+    done
+    [[ -n "$testcase" ]] || { usage_triangle >&2; die 2 "triangle: <testcase> is required"; }
+    [[ -z "$outdir" ]] && outdir=$(_default_outdir)
+    mkdir -p "$outdir"
+
+    local rel stem
+    {
+        read -r _abs
+        read -r rel
+    } < <(resolve_testcase "$testcase")
+    stem=$(testcase_stem "$rel")
+
+    local sdf_png="$outdir/${stem}-${tag}-sdf.png"
+    local mesh_png="$outdir/${stem}-${tag}-mesh.png"
+    ( cmd_render "$testcase" --mode sdf --tag "$tag" --out "$sdf_png" )
+    ( cmd_render "$testcase" --mode mesh --tag "$tag" --out "$mesh_png" )
+
+    local post_pct
+    post_pct=$(_ssim "$sdf_png" "$mesh_png") || return $?
+    printf 'ssim mesh-vs-sdf  %-12s %s%%\n' "$tag:" "$post_pct"
+
+    if [[ -n "$baseline_tag" ]]; then
+        local base_mesh="$outdir/${stem}-${baseline_tag}-mesh.png"
+        if [[ ! -f "$base_mesh" ]]; then
+            die 2 "triangle: baseline mesh not found: $base_mesh"
+        fi
+        local base_pct
+        base_pct=$(_ssim "$sdf_png" "$base_mesh") || return $?
+        printf 'ssim mesh-vs-sdf  %-12s %s%%\n' "$baseline_tag:" "$base_pct"
+        local delta
+        delta=$(awk -v p="$post_pct" -v b="$base_pct" 'BEGIN{ printf "%+.2f", p - b }')
+        printf 'delta vs baseline: %s%%\n' "$delta"
+    fi
+}
+
+# ============================================================================
+# cmd: regress
+# ============================================================================
+
+usage_regress() {
+    cat <<'EOF'
+Usage: agentcli regress <testcase>... --baseline-tag B --post-tag P [options]
+
+Compares pre-rendered mesh PNGs (e.g. from prior `sweep`s) for each
+testcase. Prints a one-line table row per testcase plus a summary.
+
+Options:
+    --baseline-tag NAME        Required: tag of the baseline PNGs
+    --post-tag NAME            Required: tag of the post-change PNGs
+    --out-dir DIR              Directory containing the PNGs (default: .agents/testimages/);
+                               diff PNGs are written next to the inputs
+    --threshold PCT            SSIM pass threshold (default: 99)
+    -h, --help                 This help
+
+Exit code 0 if all testcases pass threshold, 1 otherwise.
+EOF
+}
+
+cmd_regress() {
+    local baseline_tag=""
+    local post_tag=""
+    local outdir=""
+    local threshold="99"
+    local -a testcases=()
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --baseline-tag) baseline_tag="$2"; shift 2 ;;
+            --post-tag) post_tag="$2"; shift 2 ;;
+            --out-dir) outdir="$2"; shift 2 ;;
+            --threshold) threshold="$2"; shift 2 ;;
+            -h|--help) usage_regress; return 0 ;;
+            -*) die 2 "regress: unknown option: $1" ;;
+            *) testcases+=("$1"); shift ;;
+        esac
+    done
+    (( ${#testcases[@]} > 0 )) || { usage_regress >&2; die 2 "regress: at least one testcase is required"; }
+    [[ -n "$baseline_tag" ]] || die 2 "regress: --baseline-tag is required"
+    [[ -n "$post_tag" ]] || die 2 "regress: --post-tag is required"
+    [[ -z "$outdir" ]] && outdir=$(_default_outdir)
+
+    printf '%-25s %8s  %10s  %s\n' "testcase" "ssim" "pixels" "verdict"
+    local changed=0 unchanged=0 missing=0 failed=0
+    for tc in "${testcases[@]}"; do
+        local rel stem
+        {
+            read -r _abs
+            read -r rel
+        } < <(resolve_testcase "$tc")
+        stem=$(testcase_stem "$rel")
+        local a="$outdir/${stem}-${baseline_tag}-mesh.png"
+        local b="$outdir/${stem}-${post_tag}-mesh.png"
+        if [[ ! -f "$a" || ! -f "$b" ]]; then
+            printf '%-25s %8s  %10s  %s\n' "$stem" "-" "-" "MISSING"
+            missing=$((missing + 1))
+            continue
+        fi
+        local diff_png="$outdir/${stem}-${baseline_tag}-vs-${post_tag}.diff.png"
+        local ssim_pct diff_result diff_pixels diff_err verdict
+        if ! ssim_pct=$(_ssim "$a" "$b"); then
+            printf '%-25s %8s  %10s  %s\n' "$stem" "?" "?" "DIFF-FAILED"
+            failed=$((failed + 1))
+            continue
+        fi
+        if ! diff_result=$(_pixeldiff "$a" "$b" "$diff_png"); then
+            printf '%-25s %8s  %10s  %s\n' "$stem" "$ssim_pct" "?" "DIFF-FAILED"
+            failed=$((failed + 1))
+            continue
+        fi
+        diff_pixels="${diff_result%% *}"
+        if awk -v s="$ssim_pct" -v t="$threshold" 'BEGIN{ exit !(s + 0 < t + 0) }'; then
+            verdict="CHANGED"
+            changed=$((changed + 1))
+        else
+            verdict="UNCHANGED"
+            unchanged=$((unchanged + 1))
+        fi
+        printf '%-25s %7s%%  %10s  %s\n' "$stem" "$ssim_pct" "$diff_pixels" "$verdict"
+    done
+    printf '%d unchanged, %d changed' "$unchanged" "$changed"
+    (( missing > 0 )) && printf ', %d missing' "$missing"
+    (( failed > 0 )) && printf ', %d failed' "$failed"
+    printf '.   threshold = %s%%\n' "$threshold"
+
+    if (( changed > 0 || missing > 0 || failed > 0 )); then
+        return 1
+    fi
+    return 0
+}
+
+# ============================================================================
+# cmd: server
+# ============================================================================
+
+usage_server() {
+    cat <<'EOF'
+Usage: agentcli server <subcommand>
+
+Subcommands:
+    start       Start the agent devserver if not already running
+    stop        Stop the agent devserver
+    restart     Stop, then start
+    refresh     POST /_refresh on the agent devserver (blocks on browser ack)
+    status      Print port/PID/state; non-zero exit if not running
+EOF
+}
+
+cmd_server() {
+    local sub="${1:-}"
+    case "$sub" in
+        start)
+            if agent_running; then
+                local s
+                s=$(_agent_status)
+                log_info "agent devserver already running ($s)"
+                return 0
+            fi
+            ( cd -- "$(_repo_root)" && make start AGENT=true )
+            # Run file is created by `make start`; nothing else to wait for —
+            # subsequent commands that hit the server will block as needed.
+            ;;
+        stop)
+            ( cd -- "$(_repo_root)" && make stop AGENT=true )
+            ;;
+        restart)
+            cmd_server stop || true
+            cmd_server start
+            ;;
+        refresh)
+            local port code
+            port=$(_agent_port)
+            code=$(_curl_post_empty "http://localhost:${port}/_refresh")
+            if [[ "$code" != "200" ]]; then
+                die 3 "refresh: HTTP $code"
+            fi
+            log_info "refreshed agent tab (HTTP $code)"
+            ;;
+        status)
+            local s
+            s=$(_agent_status)
+            printf '%s\n' "$s"
+            [[ "$s" == running* ]] || return 3
+            ;;
+        -h|--help|"")
+            usage_server
+            [[ -z "$sub" ]] && return 2
+            ;;
+        *)
+            usage_server >&2
+            die 2 "server: unknown subcommand: $sub"
+            ;;
+    esac
+}
+
+# ============================================================================
+# cmd: logs
+# ============================================================================
+
+usage_logs() {
+    cat <<'EOF'
+Usage: agentcli logs [options]
+
+Options:
+    --module M    Comma-separated module filter passed to /_logs
+    --level L     Level filter (debug|info|warn|error)
+    --n N         Limit number of returned lines
+    -h, --help    This help
+EOF
+}
+
+cmd_logs() {
+    local module="" level="" n=""
+    while (( $# > 0 )); do
+        case "$1" in
+            --module) module="$2"; shift 2 ;;
+            --level) level="$2"; shift 2 ;;
+            --n) n="$2"; shift 2 ;;
+            -h|--help) usage_logs; return 0 ;;
+            -*) die 2 "logs: unknown option: $1" ;;
+            *) die 2 "logs: unexpected argument: $1" ;;
+        esac
+    done
+
+    local port url qs="" sep="?"
+    port=$(_agent_port)
+    if [[ -n "$module" ]]; then qs+="${sep}module=$(url_encode_qparam "$module")"; sep="&"; fi
+    if [[ -n "$level" ]];  then qs+="${sep}level=$(url_encode_qparam "$level")";   sep="&"; fi
+    if [[ -n "$n" ]];      then qs+="${sep}n=$(url_encode_qparam "$n")";           sep="&"; fi
+    url="http://localhost:${port}/_logs${qs}"
+
+    local body bytes
+    body=$(curl --silent --show-error --fail \
+        --connect-timeout 10 --max-time 30 \
+        "$url") || die 3 "logs: HTTP request failed for $url"
+    bytes=${#body}
+    if (( bytes == 0 )); then
+        printf '(no matching entries — module may be disabled in dev tools)\n' >&2
+        return 0
+    fi
+    printf '%s\n' "$body"
+}
+
+# ============================================================================
+# Top-level dispatch
+# ============================================================================
+
+usage() {
+    cat <<EOF
+Usage: $SCRIPT_NAME <command> [args]
+
+Commands:
+    render    <testcase> [options]                 Render one saved testcase
+    sweep     <testcase>... [options]              Render multiple testcases
+    compare   <a.png> <b.png> [options]            SSIM + pixel diff between two PNGs
+    triangle  <testcase> [options]                 SDF + mesh render, report SSIM mesh-vs-sdf
+    regress   <testcase>... [options]              Compare pre-rendered baseline vs post sets
+    server    <start|stop|restart|refresh|status>  Devserver lifecycle
+    logs      [options]                            Pass-through to /_logs
+
+Run '$SCRIPT_NAME <command> --help' for command-specific options.
+
+Design: docs/plans/mesh-diff-cli.md
+EOF
+}
+
+main() {
+    if (( $# == 0 )); then
+        usage
+        exit 0
+    fi
+    local cmd="$1"
+    shift
+    case "$cmd" in
+        render)   cmd_render   "$@" ;;
+        sweep)    cmd_sweep    "$@" ;;
+        compare)  cmd_compare  "$@" ;;
+        triangle) cmd_triangle "$@" ;;
+        regress)  cmd_regress  "$@" ;;
+        server)   cmd_server   "$@" ;;
+        logs)     cmd_logs     "$@" ;;
+        -h|--help) usage; exit 0 ;;
+        *)
+            usage >&2
+            die 2 "unknown command: $cmd"
+            ;;
+    esac
+}
+
+check_dependencies
+main "$@"

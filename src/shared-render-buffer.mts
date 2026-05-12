@@ -82,6 +82,21 @@ export function getSlotByteOffset(slot: 0 | 1): number {
 }
 
 /**
+ * Seed slot 0 with safe defaults so a pre-first-publish read (slot index defaults to 0)
+ * yields an invertible camera matrix and non-zero zoom rather than all-zero garbage.
+ */
+export function initSharedRenderBuffer(buffer: SharedArrayBuffer): void {
+    const f32 = new Float32Array(buffer)
+    const base = HEADER_SIZE / 4
+    const vt = base + S_O_VIEW_TRANSFORM / 4
+    f32[vt + 0] = 1
+    f32[vt + 5] = 1
+    f32[vt + 10] = 1
+    f32[vt + 15] = 1
+    f32[base + S_O_ZOOM / 4] = 1
+}
+
+/**
  * Read the currently published slot index from the SAB header.
  */
 export function getPublishedRenderSlot(buffer: SharedArrayBuffer): 0 | 1 {

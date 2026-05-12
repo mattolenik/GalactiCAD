@@ -46,6 +46,7 @@ import {
     getPublishedRenderSlot,
     readFps,
     SHARED_RENDER_BUFFER_SIZE,
+    initSharedRenderBuffer,
 } from "./shared-render-buffer.mjs"
 import type { TranspileKind, TranspileToMainMessage } from "./transpile-worker-protocol.mjs"
 import { appendDevLogLine, log, snapshotDebugLogModules } from "./logging/debug-log.mjs"
@@ -1088,6 +1089,7 @@ export class SDFRenderer {
         log("Sdf").info("useSharedMemory", this.#useSharedMemory)
         if (this.#useSharedMemory) {
             this.#sharedBuffer = new SharedArrayBuffer(SHARED_RENDER_BUFFER_SIZE)
+            initSharedRenderBuffer(this.#sharedBuffer)
         }
         this.#worker.postMessage(
             { type: "init", canvas: offscreen, sharedBuffer: this.#sharedBuffer ?? undefined },

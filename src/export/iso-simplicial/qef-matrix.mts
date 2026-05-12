@@ -141,9 +141,9 @@ function invertEigenWeightsRef(eig: Float64Array, n: number, tolerance: number):
 }
 
 /**
- * Symmetric pseudoinverse (reference `matInverse<double,n>` first overload, tolerance `1e-9`).
+ * Symmetric pseudoinverse (reference `matInverse<double,n>` first overload).
  */
-export function symMatPseudoinverse(a: SymMat, n: number, tolerance = 1e-9): SymMat {
+export function symMatPseudoinverse(a: SymMat, n: number, tolerance = 1e-6): SymMat {
     const eig = new Float64Array(n)
     const v = symMatZeros(n)
     jacobiSymmetric(a, n, eig, v)

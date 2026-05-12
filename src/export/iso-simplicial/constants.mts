@@ -16,7 +16,7 @@ export const IsoSimplicialConstants = {
     dualVertexBorderFraction: 1 / 16,
     depthMin: 4,
     depthMax: 7,
-    findRootDepth: 0,
+    findRootDepth: 2,
     qefRelativeErrorRefineThreshold: 1e-3,
 } as const
 

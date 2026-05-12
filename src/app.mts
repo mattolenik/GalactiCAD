@@ -1532,7 +1532,6 @@ class App {
     }
 
     #wireDevToolsFromSettings(devTools: DevToolsPanel) {
-        devTools.syncPersistableSectionsFromSettings()
         const devToolsEnabled = this.#settings.getGlobal().app.devToolsEnabled
         devTools.visible = devToolsEnabled
     }

@@ -22,8 +22,10 @@ export function symMatPackUpper(a: SymMat, n: number, out: Float64Array): void {
 }
 
 /**
- * Jacobi diagonalization: symmetric `a` (n×n row-major) → eigenvalues `d`, eigenvectors as rows of `v` (n×n row-major),
- * matching the reference `jacobi` / `matInverse` reconstruction (`w[k] * u[k][i] * u[k][j]`).
+ * Jacobi diagonalization: symmetric `a` (n×n row-major) → eigenvalues `d` in descending `|λ|` order,
+ * eigenvectors as columns of `v` (n×n row-major) reordered to match `d`. The descending sort matches
+ * reference `qefnorm.h::jacobi`, which is required for `matInverse`'s tolerance check `|w[i]/w[0]|`
+ * (it assumes `w[0]` is the largest magnitude eigenvalue).
  */
 export function jacobiSymmetric(aIn: SymMat, n: number, d: Float64Array, v: SymMat): void {
     const a = new Float64Array(n * n)
@@ -52,7 +54,9 @@ export function jacobiSymmetric(aIn: SymMat, n: number, d: Float64Array, v: SymM
         }
 
         /** Reference compares `sm == 0` exactly; double arithmetic needs a tolerance. */
+        // if (sm < 1e-14 * n * n) {
         if (sm < 1e-14 * n * n) {
+            sortEigDescending(d, v, n)
             return
         }
 
@@ -130,6 +134,36 @@ function rotate(
     mat[k * n + l] = h + s * (g - h * tau)
 }
 
+/**
+ * Sort eigenvalues `d` by `|λ|` descending and reorder eigenvector columns of `v` to match.
+ * `matInverse`'s tolerance check `|w[i]/w[0]| < tol` requires `w[0]` to be the largest magnitude
+ * eigenvalue; without this, rank-deficient QEFs (creases/corners) get a catastrophic `1/λ_min`
+ * regularization instead of zeroing the small mode.
+ */
+function sortEigDescending(d: Float64Array, v: SymMat, n: number): void {
+    for (let i = 0; i < n - 1; i++) {
+        let maxIdx = i
+        let maxAbs = Math.abs(d[i]!)
+        for (let j = i + 1; j < n; j++) {
+            const a = Math.abs(d[j]!)
+            if (a > maxAbs) {
+                maxAbs = a
+                maxIdx = j
+            }
+        }
+        if (maxIdx !== i) {
+            const tmp = d[i]!
+            d[i] = d[maxIdx]!
+            d[maxIdx] = tmp
+            for (let r = 0; r < n; r++) {
+                const tv = v[r * n + i]!
+                v[r * n + i] = v[r * n + maxIdx]!
+                v[r * n + maxIdx] = tv
+            }
+        }
+    }
+}
+
 /** Matches `matInverse` inverse eigenweights: zero small `λᵢ` vs `λ₀`, then `inv = Σ_k w_k u_k u_kᵀ`. */
 function invertEigenWeightsRef(eig: Float64Array, n: number, tolerance: number): Float64Array {
     const w = new Float64Array(n)
@@ -175,56 +209,3 @@ export function symMatVec(inv: SymMat, n: number, b: Float64Array): Float64Array
     return x
 }
 
-/**
- * Solve `A x = b` for dense row-major `A` via Gaussian elimination with partial pivoting.
- * Reference Jacobi+pseudoinverse is parity-sensitive; unconstrained/constrained QEF systems use this for stability.
- */
-export function solveLinearSystem(aIn: SymMat, n: number, bIn: Float64Array, pivotEps = 1e-12): Float64Array {
-    const A = new Float64Array(aIn)
-    const b = Float64Array.from(bIn)
-
-    for (let k = 0; k < n; k++) {
-        let piv = k
-        let maxAbs = Math.abs(A[k * n + k])
-        for (let r = k + 1; r < n; r++) {
-            const v = Math.abs(A[r * n + k])
-            if (v > maxAbs) {
-                maxAbs = v
-                piv = r
-            }
-        }
-        if (maxAbs < pivotEps) {
-            throw new Error(`solveLinearSystem: singular or ill-conditioned (pivot ${maxAbs} at column ${k})`)
-        }
-        if (piv !== k) {
-            for (let c = 0; c < n; c++) {
-                const t = A[piv * n + c]
-                A[piv * n + c] = A[k * n + c]
-                A[k * n + c] = t
-            }
-            const tb = b[piv]!
-            b[piv] = b[k]!
-            b[k] = tb
-        }
-
-        const akk = A[k * n + k]!
-        for (let r = k + 1; r < n; r++) {
-            const f = A[r * n + k]! / akk
-            A[r * n + k] = 0
-            for (let c = k + 1; c < n; c++) {
-                A[r * n + c]! -= f * A[k * n + c]!
-            }
-            b[r]! -= f * b[k]!
-        }
-    }
-
-    const x = new Float64Array(n)
-    for (let i = n - 1; i >= 0; i--) {
-        let s = b[i]!
-        for (let j = i + 1; j < n; j++) {
-            s -= A[i * n + j]! * x[j]!
-        }
-        x[i] = s / A[i * n + i]!
-    }
-    return x
-}

@@ -16,8 +16,8 @@
 
 ## Agent 3 (QEF dual vertex, CPU double precision)
 
-- **Modules:** `qef-matrix.mts` (Jacobi symmetric eigendecomposition, pseudoinverse matching reference eigen-thresholding; **column** eigenvector packing consistent with NR Jacobi; dense Gaussian elimination with partial pivot for well-conditioned solves); `qef-normal.mts` (`qefAccumulatePlane`, `unpackNormalEquations`, packed layout from `qefnorm.h`); `dual-vertex-qef.mts` (`encodeCubeHermitePlane`, `encodeFaceHermitePlane`, `encodeEdgeHermitePlane`, `computeDualVertexCube` / `Face` / `Edge` — ports `TNode::vertNode` / `vertFace` / `vertEdge` constraint cascade).
-- **Solver:** Prefer `solveLinearSystem`; on singular pivot fall back to `symMatPseudoinverse` + `symMatVec` (rank-deficient parallel-plane stacks).
+- **Modules:** `qef-matrix.mts` (Jacobi symmetric eigendecomposition, pseudoinverse matching reference eigen-thresholding; **column** eigenvector packing consistent with NR Jacobi); `qef-normal.mts` (`qefAccumulatePlane`, `unpackNormalEquations`, packed layout from `qefnorm.h`); `dual-vertex-qef.mts` (`encodeCubeHermitePlane`, `encodeFaceHermitePlane`, `encodeEdgeHermitePlane`, `computeDualVertexCube` / `Face` / `Edge` — ports `TNode::vertNode` / `vertFace` / `vertEdge` constraint cascade).
+- **Solver:** `symMatPseudoinverse` + `symMatVec` always (matches reference `matInverse` / `calcPoint`; rank-deficient parallel-plane stacks handled uniformly via eigen-thresholding).
 - **Tests:** `dual-vertex-qef_test.mts` — synthetic full-rank cube/face/edge cases plus boundary snap smoke test.
 
 ## Agent 4 (CPU octree + GPU batch integration)

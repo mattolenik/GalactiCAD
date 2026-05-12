@@ -8,22 +8,12 @@
  */
 
 import { IsoSimplicialConstants } from "./constants.mjs"
-import {
-    solveLinearSystem,
-    symMatPseudoinverse,
-    symMatVec,
-    symMatZeros,
-    type SymMat,
-} from "./qef-matrix.mjs"
+import { symMatPseudoinverse, symMatVec, symMatZeros, type SymMat } from "./qef-matrix.mjs"
 import { unpackNormalEquations } from "./qef-normal.mjs"
 
 function solveSymmetricQef(a: SymMat, n: number, b: Float64Array): Float64Array {
-    try {
-        return solveLinearSystem(a, n, b)
-    } catch {
-        const inv = symMatPseudoinverse(a, n)
-        return symMatVec(inv, n, b)
-    }
+    const inv = symMatPseudoinverse(a, n)
+    return symMatVec(inv, n, b)
 }
 
 export interface DualVertexQefResult {

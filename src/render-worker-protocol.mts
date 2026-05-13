@@ -50,6 +50,12 @@ export interface IsoSimplicialTuning {
      * iso-simplicial world cube. Omitted → {@link DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM}.
      */
     boundingBoxPaddingMm?: number
+    /**
+     * Skip the Phase 2 SDF re-evaluation at chosen dual vertices. Trades a GPU mega-batch per
+     * frontier (~10% of octree-build GPU work) for using QEF-estimated `w` at the dual vertices
+     * instead of the true SDF. Default `false` — turn on to A/B-compare quality vs speed.
+     */
+    skipPhase2ReEval?: boolean
 }
 
 /** Default iso-simplicial tuning: all fields omitted → worker uses `IsoSimplicialConstants`. */

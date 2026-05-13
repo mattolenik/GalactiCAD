@@ -23,6 +23,7 @@ import {
     IsoOctree,
     IsoSampleBatch,
 } from "./export/iso-simplicial/index.mjs"
+import { QefWorkerPool } from "./export/iso-simplicial/qef-worker-pool.mjs"
 import { IsoSimplicialConstants } from "./export/iso-simplicial/constants.mjs"
 import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
 import { ContourBuffer } from "./scene/contour-buffer.mjs"
@@ -1172,6 +1173,19 @@ export class RenderWorkerCore {
                     this.#uniformBuffers.faceSelection,
                     this.#uniformBuffers.mdcSceneParams,
                 )
+                // `import.meta.url` here resolves to the render-worker bundle (`/render-worker.js`),
+                // and the QEF worker is emitted at its source-tree path under dist.
+                const qefWorkerUrl = new URL("./export/iso-simplicial/iso-qef-worker.js", import.meta.url)
+                const navAny = (globalThis as { navigator?: { hardwareConcurrency?: number } }).navigator
+                const hwCores = navAny?.hardwareConcurrency ?? 4
+                const qefWorkerCount = Math.max(1, Math.min(8, hwCores - 1))
+                let qefWorkerPool: QefWorkerPool | undefined
+                try {
+                    qefWorkerPool = new QefWorkerPool({ workerUrl: qefWorkerUrl, workerCount: qefWorkerCount })
+                } catch (e) {
+                    log("IsoSimplicialExport").warn("QefWorkerPool unavailable, falling back to inline QEF", e)
+                    qefWorkerPool = undefined
+                }
                 try {
                     const sampleFn = createIsoOctreeSampleFn(isoBatch, isoSampleModule)
                     const cube = worldBoundsCube()
@@ -1203,6 +1217,8 @@ export class RenderWorkerCore {
                         sample: sampleFn,
                         bounds: { min: cube.min, max: cube.max },
                         constants: Object.keys(constOverrides).length > 0 ? constOverrides : undefined,
+                        qefWorkerPool,
+                        skipPhase2ReEval: isoT.skipPhase2ReEval ?? false,
                     })
                     const tIsoOct = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
                     const worldB = {
@@ -1218,11 +1234,26 @@ export class RenderWorkerCore {
                         mesh = extractIsoSimplicialMesh(tree, { worldBounds: worldB })
                     }
                     const tIso1 = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
+                    const r1 = (n: number) => Math.round(n * 10) / 10
+                    const bp = tree.buildPerf
                     log("IsoSimplicialExport").info("iso-simplicial export complete", {
                         treeCellCount: tree.treeCellCount,
                         triCount: mesh.tris.length / 3,
                         octreeMs: Math.round((tIsoOct - tIso0) * 1000) / 1000,
                         totalMs: Math.round((tIso1 - tIso0) * 1000) / 1000,
+                        buildPerf: {
+                            frontiers: bp.frontierCount,
+                            cellsPerFrontier: bp.cellsPerFrontier,
+                            wallMs: r1(bp.totalWallMs),
+                            phase1GpuMs: r1(bp.phase1SampleMs),
+                            phase2GpuMs: r1(bp.phase2SampleMs),
+                            midGpuMs: r1(bp.midSampleMs),
+                            nearFeatureGpuMs: r1(bp.nearFeatureSampleMs),
+                            qefCpuMs: r1(bp.qefMs),
+                            otherCpuMs: r1(bp.otherCpuMs),
+                            extractMs: r1((tIso1 - tIsoOct)),
+                            qefWorkers: qefWorkerPool?.workerCount ?? 0,
+                        },
                         boundsPaddingMm: pad,
                         depthMin: constOverrides.depthMin ?? IsoSimplicialConstants.depthMin,
                         depthMax: constOverrides.depthMax ?? IsoSimplicialConstants.depthMax,
@@ -1230,6 +1261,7 @@ export class RenderWorkerCore {
                     })
                 } finally {
                     isoBatch.destroy()
+                    qefWorkerPool?.destroy()
                 }
             } else {
                 const params: MDCParams = {

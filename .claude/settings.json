@@ -26,7 +26,8 @@
       "Skill(web-components)",
       "Skill(web-components:*)",
       "Skill(webgpu)",
-      "Skill(webgpu:*)"
+      "Skill(webgpu:*)",
+      "Bash(curl *)"
     ]
   }
 }

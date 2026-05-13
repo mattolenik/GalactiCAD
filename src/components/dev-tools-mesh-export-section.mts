@@ -92,6 +92,7 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
     #exporterRadios: Record<ExporterKind, HTMLInputElement> = {} as Record<ExporterKind, HTMLInputElement>
     #isoCollapse: HTMLElement
     #isoPhase5Checkbox: HTMLInputElement
+    #isoSkipPhase2Checkbox: HTMLInputElement
     #isoBoundsPadRange: HTMLInputElement
     #isoBoundsPadValueEl: HTMLSpanElement
     #isoDepthMinRange: HTMLInputElement
@@ -228,6 +229,11 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         this.#isoPhase5Checkbox = addCheckbox(this.#isoCollapse, "Phase 5 GPU edge snap", isoT.phase5Snap ?? false)
         this.#isoPhase5Checkbox.addEventListener("change", () => {
             this.#persistIsoTuning({ phase5Snap: this.#isoPhase5Checkbox.checked })
+        })
+
+        this.#isoSkipPhase2Checkbox = addCheckbox(this.#isoCollapse, "Skip Phase 2 re-eval (use QEF w)", isoT.skipPhase2ReEval ?? false)
+        this.#isoSkipPhase2Checkbox.addEventListener("change", () => {
+            this.#persistIsoTuning({ skipPhase2ReEval: this.#isoSkipPhase2Checkbox.checked })
         })
 
         {
@@ -462,6 +468,7 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
 
     syncIsoSimplicialTuningFromSettings(tuning: IsoSimplicialTuning): void {
         this.#isoPhase5Checkbox.checked = tuning.phase5Snap ?? false
+        this.#isoSkipPhase2Checkbox.checked = tuning.skipPhase2ReEval ?? false
         const pad = tuning.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
         this.#isoBoundsPadRange.value = String(pad)
         this.#isoBoundsPadValueEl.textContent = pad.toFixed(1)

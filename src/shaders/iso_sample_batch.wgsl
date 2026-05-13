@@ -33,6 +33,9 @@ struct IsoSampleBatchUniforms {
 // Per sample: vec4(nx, ny, nz, distance d).
 @group(0) @binding(2) var<storage, read_write> sdfOut: array<vec4f>;
 
+// Per sample: 7 vec4 packed `SDFResultMid`, matching `sample_grid.wgsl` `midFeatureOut`.
+@group(0) @binding(3) var<storage, read_write> midFeatureOut: array<vec4f>;
+
 @group(0) @binding(25) var<storage, read_write> cancelled: atomic<u32>;
 
 @group(0) @binding(27) var<storage, read> polygonVertices: array<vec2f>;
@@ -62,12 +65,20 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
 
 //:) insert sceneAuxFast
 //:) insert sceneAux
+//:) insert sceneAuxMid
 
 fn sceneSDF(p: vec3f) -> SDFResult {
     _ = polygonVertices[0];
     _ = faceSelection.nodeId;
     _ = mdcSceneParams[0];
     return sdfTrue(0.0, 0u, vec3f(0.0)); //:) insert sceneSDF
+}
+
+fn sceneSDF_mid(p: vec3f) -> SDFResultMid {
+    _ = polygonVertices[0];
+    _ = faceSelection.nodeId;
+    _ = mdcSceneParams[0];
+    return sdfRMid(0.0, 1.0, vec3f(0.0)); //:) insert sceneSDF_mid
 }
 
 @compute @workgroup_size(256)
@@ -81,4 +92,35 @@ fn isoSampleBatch(@builtin(global_invocation_id) gid: vec3u) {
     let p = vec3f(positionsIn[base], positionsIn[base + 1u], positionsIn[base + 2u]);
     let r = sceneSDF(p);
     sdfOut[i] = vec4f(r.n, r.d);
+}
+
+@compute @workgroup_size(256)
+fn isoSampleBatchMid(@builtin(global_invocation_id) gid: vec3u) {
+    if (atomicLoad(&cancelled) != 0u) { return; }
+
+    let i = gid.x;
+    if (i >= uniforms.sampleCount) { return; }
+
+    let base = 3u * i;
+    let p = vec3f(positionsIn[base], positionsIn[base + 1u], positionsIn[base + 2u]);
+    let rmid = sceneSDF_mid(p);
+
+    let midBase = i * 7u;
+    midFeatureOut[midBase + 0u] = vec4f(
+        bitcast<f32>(rmid.featureKind),
+        rmid.featureDist,
+        bitcast<f32>(rmid.featureIdA),
+        bitcast<f32>(rmid.featureIdB),
+    );
+    midFeatureOut[midBase + 1u] = vec4f(
+        bitcast<f32>(rmid.featureNormalCount),
+        rmid.d,
+        rmid.g,
+        0.0,
+    );
+    midFeatureOut[midBase + 2u] = vec4f(rmid.featurePoint, 0.0);
+    midFeatureOut[midBase + 3u] = vec4f(rmid.featureTangent, 0.0);
+    midFeatureOut[midBase + 4u] = vec4f(rmid.featureN1, 0.0);
+    midFeatureOut[midBase + 5u] = vec4f(rmid.featureN2, 0.0);
+    midFeatureOut[midBase + 6u] = vec4f(rmid.featureAxisCenter, 0.0);
 }

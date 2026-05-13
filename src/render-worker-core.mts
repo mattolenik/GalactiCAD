@@ -70,7 +70,7 @@ import { EdgeKind } from "./edge-kind.mjs"
 import { log, logWgsl } from "./logging/debug-log.mjs"
 import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset } from "./shared-render-buffer.mjs"
 
-if (!isoSampleBatchShaderSource.includes("fn isoSampleBatch")) {
+if (!isoSampleBatchShaderSource.includes("fn isoSampleBatch") || !isoSampleBatchShaderSource.includes("fn isoSampleBatchMid")) {
     throw new Error("iso_sample_batch.wgsl failed to bundle for render worker")
 }
 
@@ -1162,7 +1162,9 @@ export class RenderWorkerCore {
                 const isoCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)
                     .replace("insert", "sceneAux", sceneAux)
+                    .replace("insert", "sceneAuxMid", sceneAuxMid)
                     .replace("insert", "sceneSDF", sceneSDF)
+                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
                 const isoSampleModule = isoCompiler.compile(isoSampleBatchShaderSource, "Iso sample batch")
                 const isoBatch = new IsoSampleBatch(
                     this.#helper,

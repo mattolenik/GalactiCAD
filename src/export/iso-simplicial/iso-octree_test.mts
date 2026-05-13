@@ -4,6 +4,35 @@ import test from "node:test"
 import { IsoSimplicialConstants } from "./constants.mjs"
 import { IsoOctree, isoOctreeChangesSign, isoOctreeIsOutside, type IsoOctreeBatchFn } from "./iso-octree.mjs"
 
+const MID_FEATURE_NONE = 0
+const MID_FEATURE_LINE = 1
+
+/** Build a mock mid-feature sampler returning constant (kind, dist) at every position. */
+function mockMidFeatureConst(kind: number, dist: number): IsoOctreeBatchFn {
+    return positions => {
+        const n = positions.length / 3
+        const out = new Float32Array(n * 28)
+        const u = new Uint32Array(out.buffer)
+        for (let i = 0; i < n; i++) {
+            const base = i * 28
+            u[base + 0] = kind
+            out[base + 1] = dist
+        }
+        return Promise.resolve(out)
+    }
+}
+
+/** Constant-negative SDF: no sign change anywhere. */
+const mockSdfInside: IsoOctreeBatchFn = positions => {
+    const n = positions.length / 3
+    const out = new Float32Array(n * 4)
+    for (let i = 0; i < n; i++) {
+        out[i * 4 + 2] = 1
+        out[i * 4 + 3] = -1
+    }
+    return Promise.resolve(out)
+}
+
 /** Horizontal plane `z = 0.5`; outward normal `(0,0,1)` (mock GPU layout). */
 const mockPlaneHalfZ: IsoOctreeBatchFn = positions => {
     const n = positions.length / 3
@@ -172,5 +201,89 @@ test("IsoOctree.build: sibling megabatch coalesces phase1 and reEval sample coun
     assert.ok(
         batchSampleCounts.some(n => n === 8 * 19),
         `expected 8×19 reEval megabatch (152), got ${batchSampleCounts.join(",")}`,
+    )
+})
+
+test("featureRefine: mode='off' never calls sampleMidFeature", async () => {
+    let midCalls = 0
+    const trackingMid: IsoOctreeBatchFn = positions => {
+        midCalls++
+        return mockMidFeatureConst(MID_FEATURE_LINE, 0)(positions)
+    }
+    await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 0, depthMax: 1, qefRelativeErrorRefineThreshold: 1e30 },
+        featureRefine: { mode: "off", proximityFactor: 2.0, sampleMidFeature: trackingMid },
+    })
+    assert.equal(midCalls, 0)
+})
+
+test("featureRefine: 'signchangeGated' subdivides when signchange + near feature, badqef off", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 0, depthMax: 1, qefRelativeErrorRefineThreshold: 1e30 },
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: mockMidFeatureConst(MID_FEATURE_LINE, 0),
+        },
+    })
+    assert.ok(tree.treeCellCount > 1, `expected subdivision (>1 cell), got ${tree.treeCellCount}`)
+})
+
+test("featureRefine: 'signchangeGated' does NOT subdivide when no signchange (cut-away feature)", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockSdfInside,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 0, depthMax: 1, qefRelativeErrorRefineThreshold: 1e30 },
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: mockMidFeatureConst(MID_FEATURE_LINE, 0),
+        },
+    })
+    assert.equal(tree.treeCellCount, 1, "signchangeGated must require signchange — no surface → no subdivide")
+})
+
+test("featureRefine: 'signchangeGated' does NOT subdivide when feature is far (dist > factor*cellSize)", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 0, depthMax: 1, qefRelativeErrorRefineThreshold: 1e30 },
+        featureRefine: {
+            // cellSizeWorld = 1, threshold = 2 * 1 = 2; dist = 5 is outside → no subdivide
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: mockMidFeatureConst(MID_FEATURE_LINE, 5.0),
+        },
+    })
+    assert.equal(tree.treeCellCount, 1)
+})
+
+test("featureRefine: 'signchangeGated' kind=NONE never triggers, regardless of dist", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        constants: { depthMin: 0, depthMax: 1, qefRelativeErrorRefineThreshold: 1e30 },
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: mockMidFeatureConst(MID_FEATURE_NONE, 0),
+        },
+    })
+    assert.equal(tree.treeCellCount, 1)
+})
+
+test("featureRefine: mode != 'off' without sampleMidFeature throws", async () => {
+    await assert.rejects(
+        IsoOctree.build({
+            sample: mockPlaneHalfZ,
+            bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+            constants: { depthMin: 0, depthMax: 1 },
+            featureRefine: { mode: "signchangeGated", proximityFactor: 2.0 },
+        }),
+        /sampleMidFeature/,
     )
 })

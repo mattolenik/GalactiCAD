@@ -41,6 +41,26 @@ export type IsoOctreeBatchFn = (
     signal?: AbortSignal,
 ) => Promise<Float32Array>
 
+/**
+ * Feature-driven subdivision predicate (Path I — explicit primitive features from `sceneSDF_mid`).
+ * - `"off"`: existing gate `isbig || (signchange && badqef)`. No mid-feature GPU sampling.
+ * - `"signchangeGated"`: `isbig || (signchange && (badqef || nearFeature))`.
+ */
+export type IsoFeatureRefineMode = "off" | "signchangeGated"
+
+export interface IsoFeatureRefineOptions {
+    mode: IsoFeatureRefineMode
+    /** Cell counts as "near" when `featureDist < proximityFactor * cellSize`. */
+    proximityFactor: number
+    /** Packed `SDFResultMid` batch sampler (7 vec4 / sample). Required when `mode !== "off"`. */
+    sampleMidFeature?: IsoOctreeBatchFn
+}
+
+export const DEFAULT_FEATURE_REFINE_OPTIONS: IsoFeatureRefineOptions = {
+    mode: "off",
+    proximityFactor: 2.0,
+}
+
 export interface IsoOctreeBuildConstantsOverrides {
     oversampleQef?: number
     dualVertexBorderFraction?: number
@@ -55,6 +75,7 @@ export interface IsoOctreeBuildParams {
     bounds: IsoOctreeBounds
     signal?: AbortSignal
     constants?: IsoOctreeBuildConstantsOverrides
+    featureRefine?: IsoFeatureRefineOptions
 }
 
 /** Mutable copy of {@link IsoSimplicialConstants} for runtime overrides. */
@@ -171,6 +192,21 @@ export function createIsoOctreeSampleFn(
             { signal },
         )
         return sdf
+    }
+}
+
+/** Adapter: {@link IsoSampleBatch.runMidFeature} → {@link IsoOctreeBatchFn}-shaped mid-feature sampler. */
+export function createIsoOctreeMidFeatureSampleFn(
+    batch: IsoSampleBatch,
+    isoSampleBatchShaderModule: GPUShaderModule,
+): IsoOctreeBatchFn {
+    return async (positions, signal) => {
+        const { midFeature } = await batch.runMidFeature(
+            isoSampleBatchShaderModule,
+            positions as Float32Array<ArrayBuffer>,
+            { signal },
+        )
+        return midFeature
     }
 }
 
@@ -414,6 +450,7 @@ export class IsoOctree {
         const rootMax = params.bounds.max
         const sample = params.sample
         const signal = params.signal
+        const featureRefine = normalizeFeatureRefine(params.featureRefine)
 
         const root = createEmptyNode()
         for (let i = 0; i < 8; i++) {
@@ -427,10 +464,69 @@ export class IsoOctree {
         // The 8 root corners are already part of the phase-1 lattice that
         // `evalNode` will sample — passing `null` lets it harvest corner SDF
         // and gradients from that lattice instead of issuing a separate batch.
-        await evalNode(root, null, rootMin, rootMax, worldScale, C, sample, signal, counter)
+        await evalNode(root, null, rootMin, rootMax, worldScale, C, sample, signal, counter, featureRefine)
 
         return new IsoOctree(root, counter.n)
     }
+}
+
+function normalizeFeatureRefine(opt: IsoFeatureRefineOptions | undefined): IsoFeatureRefineOptions {
+    if (!opt || opt.mode === "off") return { ...DEFAULT_FEATURE_REFINE_OPTIONS }
+    if (!opt.sampleMidFeature) {
+        throw new Error("IsoOctree.build: featureRefine.mode != 'off' requires sampleMidFeature")
+    }
+    return {
+        mode: opt.mode,
+        proximityFactor: opt.proximityFactor > 0 ? opt.proximityFactor : DEFAULT_FEATURE_REFINE_OPTIONS.proximityFactor,
+        sampleMidFeature: opt.sampleMidFeature,
+    }
+}
+
+/**
+ * Per-sample read of `featureKind` (slot 0, bitcast u32) and `featureDist` (slot 1)
+ * from the packed `SDFResultMid` layout (`midFeatureOut`, 7 vec4 per sample).
+ * Used by `nearFeature` checks during subdivision.
+ */
+function readMidFeatureKindAndDist(midBuf: Float32Array, sampleIdx: number): { kind: number; dist: number } {
+    const base = sampleIdx * 28
+    const kindU = new Uint32Array(midBuf.buffer, midBuf.byteOffset + base * 4, 1)[0]!
+    return { kind: kindU, dist: midBuf[base + 1]! }
+}
+
+const MID_FEATURE_NONE_KIND = 0
+
+/**
+ * Sample mid-feature data at the cell's 8 corners + center and report whether any sees
+ * a feature within `proximityFactor * cellSize`. Returns false fast when mode is `"off"`.
+ */
+async function isCellNearFeature(
+    node: IsoOctreeNode,
+    rootMin: readonly [number, number, number],
+    rootMax: readonly [number, number, number],
+    cellSizeWorld: number,
+    featureRefine: IsoFeatureRefineOptions,
+    signal: AbortSignal | undefined,
+): Promise<boolean> {
+    const sampleMidFeature = featureRefine.sampleMidFeature
+    if (!sampleMidFeature) return false
+    const positions = new Float32Array(9 * 3)
+    for (let i = 0; i < 8; i++) {
+        const nx = node.verts[i * 4]!
+        const ny = node.verts[i * 4 + 1]!
+        const nz = node.verts[i * 4 + 2]!
+        normToWorld(nx, ny, nz, rootMin, rootMax, positions, i * 3)
+    }
+    const v0x = node.verts[0]!, v0y = node.verts[1]!, v0z = node.verts[2]!
+    const v7x = node.verts[7 * 4]!, v7y = node.verts[7 * 4 + 1]!, v7z = node.verts[7 * 4 + 2]!
+    normToWorld((v0x + v7x) * 0.5, (v0y + v7y) * 0.5, (v0z + v7z) * 0.5, rootMin, rootMax, positions, 8 * 3)
+
+    const midBuf = await sampleMidFeature(positions, signal)
+    const distThreshold = featureRefine.proximityFactor * cellSizeWorld
+    for (let i = 0; i < 9; i++) {
+        const { kind, dist } = readMidFeatureKindAndDist(midBuf, i)
+        if (kind !== MID_FEATURE_NONE_KIND && dist < distThreshold) return true
+    }
+    return false
 }
 
 function createEmptyNode(): IsoOctreeNode {
@@ -489,6 +585,7 @@ async function evalNode(
     sample: IsoOctreeBatchFn,
     signal: AbortSignal | undefined,
     counter: { n: number },
+    featureRefine: IsoFeatureRefineOptions,
 ): Promise<void> {
     counter.n++
     const scratch = buildPhase1NormPts(node, C)
@@ -513,7 +610,7 @@ async function evalNode(
     }
     const reEvalSdf = await sample(reEvalWorld, signal)
     applyReEvalDistances(node, reEvalSdf)
-    await evalNodeAfterReEval(node, gradCorners, rootMin, rootMax, worldScale, C, sample, signal, counter, qefError)
+    await evalNodeAfterReEval(node, gradCorners, rootMin, rootMax, worldScale, C, sample, signal, counter, qefError, featureRefine)
 }
 
 async function evalNodeAfterReEval(
@@ -527,6 +624,7 @@ async function evalNodeAfterReEval(
     signal: AbortSignal | undefined,
     counter: { n: number },
     qefError: number,
+    featureRefine: IsoFeatureRefineOptions,
 ): Promise<void> {
     const v0 = readV4(node.verts, 0)
     const v7 = readV4(node.verts, 7)
@@ -541,7 +639,13 @@ async function evalNodeAfterReEval(
     const isbig = cellSize > maxsize
     const signchange = !isbig && isoOctreeChangesSign(node.verts, node.edges, node.faces, node.node)
     const badqef = qefError / cellSize > C.qefRelativeErrorRefineThreshold
-    const recur = isbig || (signchange && badqef)
+    let recur = isbig || (signchange && badqef)
+
+    if (!recur && featureRefine.mode === "signchangeGated" && signchange && !isbig) {
+        const cellSizeWorld = cellSize * worldScale
+        const near = await isCellNearFeature(node, rootMin, rootMax, cellSizeWorld, featureRefine, signal)
+        recur = recur || near
+    }
     if (!recur) return
 
     const p = new Float32Array(27 * 4)
@@ -611,7 +715,7 @@ async function evalNodeAfterReEval(
         }
         gradEach.push(gChild)
     }
-    await evalEightChildren(children, gradEach, rootMin, rootMax, worldScale, C, sample, signal, counter)
+    await evalEightChildren(children, gradEach, rootMin, rootMax, worldScale, C, sample, signal, counter, featureRefine)
 }
 
 async function evalEightChildren(
@@ -624,6 +728,7 @@ async function evalEightChildren(
     sample: IsoOctreeBatchFn,
     signal: AbortSignal | undefined,
     counter: { n: number },
+    featureRefine: IsoFeatureRefineOptions,
 ): Promise<void> {
     counter.n += 8
     const scratches = children.map(c => buildPhase1NormPts(c, C))
@@ -675,6 +780,7 @@ async function evalEightChildren(
             signal,
             counter,
             qefs[ci]!,
+            featureRefine,
         )
     }
 }

@@ -82,15 +82,6 @@ export interface IsoOctreeBuildParams {
      * Plumbed through to {@link buildOctreeBFS}; safely ignored in tests / Node environments.
      */
     qefWorkerPool?: QefWorkerPoolLike
-    /**
-     * Skip the Phase 2 SDF re-evaluation at chosen dual vertices. When `true`, `node.node[3]` /
-     * `node.edges[*+3]` / `node.faces[*+3]` keep their QEF-estimated `w` instead of the true SDF.
-     * Saves one GPU mega-batch per frontier (~10% of GPU work). Quality cost: sign-change
-     * detection and MT edge crossings see a least-squares plane approximation of the SDF rather
-     * than the analytical value, which is fine for smooth fields but may shift crossings on
-     * curved features. Default `false` (preserves reference parity).
-     */
-    skipPhase2ReEval?: boolean
 }
 
 /** Subset of {@link QefWorkerPool} that BFS depends on — keeps iso-octree.mts decoupled from the pool module. */
@@ -680,7 +671,7 @@ export class IsoOctree {
         // midSdf + optional nearFeature) regardless of how wide the tree is at that depth,
         // collapsing the original recursive structure's per-cell round-trip cost.
         const tWall0 = nowMs()
-        await buildOctreeBFS(root, rootMin, rootMax, worldScale, C, sample, signal, counter, featureRefine, perf, params.qefWorkerPool, params.skipPhase2ReEval ?? false)
+        await buildOctreeBFS(root, rootMin, rootMax, worldScale, C, sample, signal, counter, featureRefine, perf, params.qefWorkerPool)
         perf.totalWallMs = nowMs() - tWall0
 
         return new IsoOctree(root, counter.n, perf)
@@ -810,7 +801,6 @@ async function buildOctreeBFS(
     featureRefine: IsoFeatureRefineOptions,
     perf: IsoOctreeBuildPerf,
     qefWorkerPool: QefWorkerPoolLike | undefined,
-    skipPhase2ReEval: boolean,
 ): Promise<void> {
     let frontier: BFSEntry[] = [{ node: root, gradCorners: null }]
     const invWorldScale = 1 / worldScale
@@ -915,29 +905,24 @@ async function buildOctreeBFS(
         perf.qefMs += nowMs() - tQef0
 
         // ── Phase 2 mega-batch (re-eval at chosen dual vertices) ─────────────────
-        // Skipped when `skipPhase2ReEval` is true. With Phase 2 skipped, `node.node[3]`,
-        // `node.edges[*+3]`, `node.faces[*+3]` retain their QEF-estimated `w` from Phase 1's
-        // 4D solve — a least-squares plane approximation rather than the true SDF.
-        if (!skipPhase2ReEval) {
-            const tOther2 = nowMs()
-            const bigReEval = new Float32Array(N * 19 * 3)
-            for (let i = 0; i < N; i++) {
-                const rn = reNorms[i]!
-                const base = i * 19 * 3
-                for (let j = 0; j < 19; j++) {
-                    normToWorld(rn[j * 3]!, rn[j * 3 + 1]!, rn[j * 3 + 2]!, rootMin, rootMax, bigReEval, base + j * 3)
-                }
+        const tOther2 = nowMs()
+        const bigReEval = new Float32Array(N * 19 * 3)
+        for (let i = 0; i < N; i++) {
+            const rn = reNorms[i]!
+            const base = i * 19 * 3
+            for (let j = 0; j < 19; j++) {
+                normToWorld(rn[j * 3]!, rn[j * 3 + 1]!, rn[j * 3 + 2]!, rootMin, rootMax, bigReEval, base + j * 3)
             }
-            perf.otherCpuMs += nowMs() - tOther2
-            const tP20 = nowMs()
-            const sdfRe = await sample(bigReEval, signal)
-            perf.phase2SampleMs += nowMs() - tP20
-            const tOther3 = nowMs()
-            for (let i = 0; i < N; i++) {
-                applyReEvalDistances(frontier[i]!.node, sdfRe.subarray(i * 19 * 4, (i + 1) * 19 * 4))
-            }
-            perf.otherCpuMs += nowMs() - tOther3
         }
+        perf.otherCpuMs += nowMs() - tOther2
+        const tP20 = nowMs()
+        const sdfRe = await sample(bigReEval, signal)
+        perf.phase2SampleMs += nowMs() - tP20
+        const tOther3 = nowMs()
+        for (let i = 0; i < N; i++) {
+            applyReEvalDistances(frontier[i]!.node, sdfRe.subarray(i * 19 * 4, (i + 1) * 19 * 4))
+        }
+        perf.otherCpuMs += nowMs() - tOther3
 
         // ── Per-node subdivision decision (sync, fast) ────────────────────────────
         // `recurDecision[i]`:

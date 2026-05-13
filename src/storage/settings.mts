@@ -247,9 +247,6 @@ export function normalizeIsoSimplicialTuning(raw: unknown): IsoSimplicialTuning 
     if (typeof o.boundingBoxPaddingMm === "number" && Number.isFinite(o.boundingBoxPaddingMm) && o.boundingBoxPaddingMm >= 0 && o.boundingBoxPaddingMm <= 100) {
         out.boundingBoxPaddingMm = o.boundingBoxPaddingMm
     }
-    if (typeof o.skipPhase2ReEval === "boolean") {
-        out.skipPhase2ReEval = o.skipPhase2ReEval
-    }
     return out
 }
 

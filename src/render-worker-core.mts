@@ -1218,7 +1218,6 @@ export class RenderWorkerCore {
                         bounds: { min: cube.min, max: cube.max },
                         constants: Object.keys(constOverrides).length > 0 ? constOverrides : undefined,
                         qefWorkerPool,
-                        skipPhase2ReEval: isoT.skipPhase2ReEval ?? false,
                     })
                     const tIsoOct = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
                     const worldB = {

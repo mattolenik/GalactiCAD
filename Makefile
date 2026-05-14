@@ -10,14 +10,10 @@ BROWSERS_DIR := .browsers
 ifeq ($(AGENT),true)
 export RUN_FILE := .devserver.agent.run
 export LOG_FILE := .devserver.agent.log
-export PORT ?= 7900
 else
 export RUN_FILE := .devserver.run
 export LOG_FILE := .devserver.log
-export PORT ?= 6900
 endif
-
-RUNNING_PORT = $(shell jq -r .port "$(RUN_FILE)")
 
 SHELL := bash
 .ONESHELL:
@@ -35,6 +31,9 @@ setup:
 .PHONY: build
 build: check
 	$(BUILD) $(BUILD_FLAGS)
+
+logs:
+	@tail -fn 50 $(LOG_FILE)
 
 .PHONY: test
 test: check
@@ -54,8 +53,11 @@ start:
 			exit 0
 		fi
 	fi
-	make setup
-	nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
+	if [[ -z $$SKIP_SETUP ]]; then
+		make setup
+	fi
+	port=$$( [[ "$$AGENT" == true ]] && echo $${PORT:-7900} || echo $${PORT:-6900} )
+	PORT=$$port nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
 	i=0
 	while (( i < 20 )); do
 		if [[ -f "$(RUN_FILE)" ]]; then
@@ -69,8 +71,10 @@ start:
 	done
 	echo "View logs at $(LOG_FILE) (run: make logs$(if $(filter true,$(AGENT)), AGENT=true,))"
 
-logs:
-	@tail -fn 50 $(LOG_FILE)
+.PHONY: start-all
+start-all:
+	make start AGENT=false
+	make start AGENT=true SKIP_SETUP=true
 
 .PHONY: stop
 stop:
@@ -79,12 +83,16 @@ stop:
 		kill -TERM $$pid && rm -f "$(RUN_FILE)" || true
 	fi
 
+.PHONY: stop-all
 stop-all:
 	make stop AGENT=false
 	make stop AGENT=true
 
 .PHONY: restart
 restart: stop start
+
+.PHONY: restart-all
+restart-all: stop-all restart-all
 
 .PHONY: release
 release: export PRODUCTION=1

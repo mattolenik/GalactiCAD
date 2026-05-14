@@ -1021,7 +1021,6 @@ export class RenderWorkerCore {
                         adaptiveOctree: isoTuning?.adaptiveOctree ?? false,
                         octreeMaxDepth: isoTuning?.octreeMaxDepth ?? 2,
                         octreeRefineFraction: isoTuning?.octreeRefineFraction ?? 0.28,
-                        isoCreaseByAnalyticNormal: isoTuning?.isoCreaseByAnalyticNormal !== false,
                         isoQefOversample: isoTuning?.isoQefOversample ?? 2,
                         isoMaxGpuBytes: isoTuning?.isoMaxGpuBytes,
                         isoMaxDispatchInvocations: isoTuning?.isoMaxDispatchInvocations,

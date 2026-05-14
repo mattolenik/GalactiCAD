@@ -141,8 +141,6 @@ export interface IsoExportTuning {
      * (default from app settings, typically ~0.28).
      */
     octreeRefineFraction?: number
-    /** Default true — analytic ∇F creases for ISO (boxes/CSG); false uses geometric normals (lathe-friendly). */
-    isoCreaseByAnalyticNormal?: boolean
     /** Hermite QEF boundary stencil density for ISO dual placement; default 2, clamp 1..4. */
     isoQefOversample?: number
     /**

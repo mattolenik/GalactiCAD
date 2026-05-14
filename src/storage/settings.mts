@@ -148,11 +148,6 @@ export interface IsoExportSettings {
      */
     octreeRefineFraction: number
     /**
-     * Use analytic ∇F crease detection for ISO (clearer box/CSG edges). Turn off for smoother
-     * lathe / polygon-profile shells where analytic normals jump per segment.
-     */
-    isoCreaseByAnalyticNormal: boolean
-    /**
      * Hermite QEF oversample for ISO dual placement (1–4): higher → more `sceneSDF_mid` samples
      * on each cell edge/face/cube boundary. Default 2.
      */
@@ -183,7 +178,6 @@ export function defaultIsoExportSettings(): IsoExportSettings {
         adaptiveOctree: false,
         octreeMaxDepth: 2,
         octreeRefineFraction: 0.28,
-        isoCreaseByAnalyticNormal: true,
         isoQefOversample: 2,
         // 1 GiB / 1e9 invocations — conservative; raise via dev-tools once a scene is known
         // to fit. Browser `maxBufferSize` (often ~4 GiB) lies about actual VRAM, and Pass 1
@@ -459,9 +453,6 @@ export class SettingsManager {
                     || iso.octreeRefineFraction > 0.5
                 ) {
                     iso.octreeRefineFraction = isoDef.octreeRefineFraction
-                }
-                if (typeof iso.isoCreaseByAnalyticNormal !== "boolean") {
-                    iso.isoCreaseByAnalyticNormal = isoDef.isoCreaseByAnalyticNormal
                 }
                 if (
                     typeof iso.isoQefOversample !== "number"

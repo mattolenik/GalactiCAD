@@ -8,7 +8,6 @@ import {
     reorientMeshTriangleWinding,
     smoothNormalsByAreaWeightedFaceAverage,
     splitCreaseVertices,
-    splitCreaseVerticesByAnalyticNormal,
 } from "./mesh-postprocess.mjs"
 import {
     computeSparseDualSetsFromDilatedCubeLinears,
@@ -2458,30 +2457,24 @@ export class ISOExport {
             reorientMeshTriangleWinding(verts, tris, SIZEOF_VERTEX)
             logDiag("after BFS reorient")
 
-            // Crease splitting: default **analytic** normals (`splitCreaseVerticesByAnalyticNormal`)
-            // so 90° CSG features (boxes, unions) split at true ∇F discontinuities. Optional
-            // **geometric** path (`isoCreaseByAnalyticNormal === false`) smooths lathe / polygon-
-            // profile surfaces where analytic gradients jump between segments (see mesh-postprocess).
-            //
-            // creaseAngleDeg ≥ 180 falls back to uniform Phong smoothing (no splits).
+            // Crease splitting via geometric face normals (cross-product) with area-weighted
+            // smooth-group normal averaging. creaseAngleDeg ≥ 180 falls back to uniform Phong
+            // smoothing (no splits).
             const creaseAngle = this.params.creaseAngleDeg ?? 60
-            const creaseByAnalytic = this.params.isoCreaseByAnalyticNormal !== false
             if (creaseAngle >= 180) {
                 smoothNormalsByAreaWeightedFaceAverage(verts, tris, SIZEOF_VERTEX)
                 logDiag("after uniform Phong smoothing")
             } else {
                 const before = (verts.length / VERTEX_STRIDE_F32) | 0
-                const split = creaseByAnalytic
-                    ? splitCreaseVerticesByAnalyticNormal(verts, tris, creaseAngle, SIZEOF_VERTEX)
-                    : splitCreaseVertices(verts, tris, creaseAngle, SIZEOF_VERTEX)
+                const split = splitCreaseVertices(verts, tris, creaseAngle, SIZEOF_VERTEX)
                 verts = split.verts
                 tris = split.tris
                 const after = (verts.length / VERTEX_STRIDE_F32) | 0
                 dbgLog("IsoExport").debug(
-                    `${creaseByAnalytic ? "Analytic" : "Geometric"} crease split @ ${creaseAngle}°: verts ${before} → ${after} `
+                    `Geometric crease split @ ${creaseAngle}°: verts ${before} → ${after} `
                     + `(${before > 0 ? ((after / before - 1) * 100).toFixed(1) : "0"}% growth)`,
                 )
-                logDiag(creaseByAnalytic ? "after analytic crease split" : "after geometric crease split")
+                logDiag("after geometric crease split")
             }
 
             {

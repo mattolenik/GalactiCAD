@@ -121,14 +121,6 @@ export interface MDCParams {
     creaseAngleDeg?: number
 
     /**
-     * ISO export only: when `true` (default), crease detection uses **analytic** SDF normals
-     * already stored on vertices so splits follow real gradient discontinuities (box edges,
-     * CSG seams). When `false`, creases use **geometric** triangle normals — often smoother on
-     * lathe / polygon-profile surfaces where analytic gradients jump between segments.
-     */
-    isoCreaseByAnalyticNormal?: boolean
-
-    /**
      * ISO export only — Stage 4 octree adaptivity (Manson & Schaefer §5.1) foundation.
      *
      * Session 1 (current): when `true`, after Pass 5 the orchestrator reads back the per-cube

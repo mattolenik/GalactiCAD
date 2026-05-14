@@ -63,7 +63,6 @@ export class DevToolsPanel extends HTMLElement {
     #isoVoxelInput!: HTMLInputElement
     #isoPadInput!: HTMLInputElement
     #isoCreaseInput!: HTMLInputElement
-    #isoCreaseAnalyticCheckbox!: HTMLInputElement
     #isoOctreeMaxDepthInput!: HTMLInputElement
     #isoOctreeRefineFractionInput!: HTMLInputElement
     #isoQefOversampleInput!: HTMLInputElement
@@ -423,14 +422,6 @@ export class DevToolsPanel extends HTMLElement {
             Math.max(1, Math.round(initialIso.isoMaxDispatchInvocations / 1_000_000)),
             { min: 1, max: 64_000, step: 50 },
         )
-        this.#isoCreaseAnalyticCheckbox = this.#addCheckbox(
-            this.#isoSection,
-            "ISO creases: analytic ∇F",
-            initialIso.isoCreaseByAnalyticNormal,
-        )
-        this.#isoCreaseAnalyticCheckbox.addEventListener("change", () => {
-            isoCommit({ isoCreaseByAnalyticNormal: this.#isoCreaseAnalyticCheckbox.checked })
-        })
         this.#isoAdaptiveOctreeCheckbox = this.#addCheckbox(this.#isoSection, "Adaptive octree", initialIso.adaptiveOctree)
         this.#isoAdaptiveOctreeCheckbox.addEventListener("change", () => {
             isoCommit({ adaptiveOctree: this.#isoAdaptiveOctreeCheckbox.checked })
@@ -502,7 +493,6 @@ export class DevToolsPanel extends HTMLElement {
             this.#isoAdaptiveOctreeCheckbox.checked = def.adaptiveOctree
             this.#isoOctreeMaxDepthInput.value = String(def.octreeMaxDepth)
             this.#isoOctreeRefineFractionInput.value = String(def.octreeRefineFraction)
-            this.#isoCreaseAnalyticCheckbox.checked = def.isoCreaseByAnalyticNormal
             this.#isoMaxGpuMiBInput.value = String(Math.round(def.isoMaxGpuBytes / (1024 * 1024)))
             this.#isoMaxDispatchMInput.value = String(Math.round(def.isoMaxDispatchInvocations / 1_000_000))
         })
@@ -519,9 +509,6 @@ export class DevToolsPanel extends HTMLElement {
                 const pRef = parseFloat(this.#isoOctreeRefineFractionInput.value)
                 if (!Number.isFinite(pRef) || Math.abs(pRef - v.octreeRefineFraction) > 1e-6) {
                     this.#isoOctreeRefineFractionInput.value = String(v.octreeRefineFraction)
-                }
-                if (this.#isoCreaseAnalyticCheckbox.checked !== v.isoCreaseByAnalyticNormal) {
-                    this.#isoCreaseAnalyticCheckbox.checked = v.isoCreaseByAnalyticNormal
                 }
                 if (parseInt(this.#isoQefOversampleInput.value, 10) !== v.isoQefOversample) {
                     this.#isoQefOversampleInput.value = String(v.isoQefOversample)

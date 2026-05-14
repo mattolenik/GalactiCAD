@@ -67,6 +67,8 @@ export class DevToolsPanel extends HTMLElement {
     #isoOctreeMaxDepthInput!: HTMLInputElement
     #isoOctreeRefineFractionInput!: HTMLInputElement
     #isoQefOversampleInput!: HTMLInputElement
+    #isoMaxGpuMiBInput!: HTMLInputElement
+    #isoMaxDispatchMInput!: HTMLInputElement
     #isoAdaptiveOctreeCheckbox!: HTMLInputElement
     #isoSection!: HTMLDivElement
     #lightingExpandedCheckbox: HTMLInputElement
@@ -406,6 +408,21 @@ export class DevToolsPanel extends HTMLElement {
         this.#isoQefOversampleInput = this.#addIsoNumberRow(this.#isoSection, "QEF oversample", initialIso.isoQefOversample, {
             min: 1, max: 4, step: 1,
         })
+        // Safety budgets. The browser-reported `maxBufferSize` overstates available VRAM and
+        // big Pass-1 dispatches can TDR the GPU; these knobs gate both. Persisted as bytes /
+        // invocations but surfaced as MiB / millions for readability.
+        this.#isoMaxGpuMiBInput = this.#addIsoNumberRow(
+            this.#isoSection,
+            "Max GPU (MiB)",
+            Math.max(1, 8*Math.round(initialIso.isoMaxGpuBytes / (1024 * 1024))),
+            { min: 16, max: 16384, step: 16 },
+        )
+        this.#isoMaxDispatchMInput = this.#addIsoNumberRow(
+            this.#isoSection,
+            "Max dispatch (M invoc)",
+            Math.max(1, Math.round(initialIso.isoMaxDispatchInvocations / 1_000_000)),
+            { min: 1, max: 64_000, step: 50 },
+        )
         this.#isoCreaseAnalyticCheckbox = this.#addCheckbox(
             this.#isoSection,
             "ISO creases: analytic ∇F",
@@ -457,6 +474,22 @@ export class DevToolsPanel extends HTMLElement {
             if (Number.isFinite(v) && v >= 1 && v <= 4) isoCommit({ isoQefOversample: v })
             else this.#isoQefOversampleInput.value = String(this.#isoExport$.value.isoQefOversample)
         })
+        this.#isoMaxGpuMiBInput.addEventListener("change", () => {
+            const mib = parseFloat(this.#isoMaxGpuMiBInput.value)
+            if (Number.isFinite(mib) && mib >= 16) {
+                isoCommit({ isoMaxGpuBytes: Math.floor(mib * 1024 * 1024) })
+            } else {
+                this.#isoMaxGpuMiBInput.value = String(Math.round(this.#isoExport$.value.isoMaxGpuBytes / (1024 * 1024)))
+            }
+        })
+        this.#isoMaxDispatchMInput.addEventListener("change", () => {
+            const m = parseFloat(this.#isoMaxDispatchMInput.value)
+            if (Number.isFinite(m) && m >= 1) {
+                isoCommit({ isoMaxDispatchInvocations: Math.floor(m * 1_000_000) })
+            } else {
+                this.#isoMaxDispatchMInput.value = String(Math.round(this.#isoExport$.value.isoMaxDispatchInvocations / 1_000_000))
+            }
+        })
         const isoDefaultsBtn = document.createElement("button")
         isoDefaultsBtn.textContent = "ISO defaults"
         isoDefaultsBtn.addEventListener("click", () => {
@@ -470,6 +503,8 @@ export class DevToolsPanel extends HTMLElement {
             this.#isoOctreeMaxDepthInput.value = String(def.octreeMaxDepth)
             this.#isoOctreeRefineFractionInput.value = String(def.octreeRefineFraction)
             this.#isoCreaseAnalyticCheckbox.checked = def.isoCreaseByAnalyticNormal
+            this.#isoMaxGpuMiBInput.value = String(Math.round(def.isoMaxGpuBytes / (1024 * 1024)))
+            this.#isoMaxDispatchMInput.value = String(Math.round(def.isoMaxDispatchInvocations / 1_000_000))
         })
         this.#isoSection.appendChild(isoDefaultsBtn)
         shadow.appendChild(this.#isoSection)
@@ -490,6 +525,14 @@ export class DevToolsPanel extends HTMLElement {
                 }
                 if (parseInt(this.#isoQefOversampleInput.value, 10) !== v.isoQefOversample) {
                     this.#isoQefOversampleInput.value = String(v.isoQefOversample)
+                }
+                const curMib = Math.round(v.isoMaxGpuBytes / (1024 * 1024))
+                if (parseInt(this.#isoMaxGpuMiBInput.value, 10) !== curMib) {
+                    this.#isoMaxGpuMiBInput.value = String(curMib)
+                }
+                const curDispM = Math.round(v.isoMaxDispatchInvocations / 1_000_000)
+                if (parseInt(this.#isoMaxDispatchMInput.value, 10) !== curDispM) {
+                    this.#isoMaxDispatchMInput.value = String(curDispM)
                 }
             }),
         )

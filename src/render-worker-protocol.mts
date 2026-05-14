@@ -145,6 +145,18 @@ export interface IsoExportTuning {
     isoCreaseByAnalyticNormal?: boolean
     /** Hermite QEF boundary stencil density for ISO dual placement; default 2, clamp 1..4. */
     isoQefOversample?: number
+    /**
+     * Soft cap on total GPU buffer bytes the ISO exporter is allowed to size against. The
+     * browser-reported `maxBufferSize` is a logical ceiling far above actual VRAM, and exceeding
+     * VRAM crashes the shared Chromium GPU process. Default ~1 GiB (see `ISO_DEFAULT_MAX_GPU_BYTES`).
+     */
+    isoMaxGpuBytes?: number
+    /**
+     * Hard cap on per-dispatch GPU invocations. ISO Pass 1 walks every grid corner; on big
+     * scenes the implied workgroup count can TDR the driver. Default 1e9
+     * (see `ISO_DEFAULT_MAX_DISPATCH_INVOCATIONS`).
+     */
+    isoMaxDispatchInvocations?: number
 }
 
 export type MainToWorkerMessage =

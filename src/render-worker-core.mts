@@ -15,7 +15,7 @@ import isoShader from "./shaders/iso.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import type { MeshData } from "./export/export.mjs"
-import { chooseIsoVoxelForGpuLimits, ISOExport, isoExportWillUsePass1BrickStreaming } from "./export/iso.mjs"
+import { chooseIsoVoxelForGpuLimits, effectiveIsoLimits, ISOExport, isoExportWillUsePass1BrickStreaming } from "./export/iso.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
@@ -979,7 +979,12 @@ export class RenderWorkerCore {
             let gridDimY: number
             let gridDimZ: number
             if (exporter === "iso") {
-                const chosen = chooseIsoVoxelForGpuLimits(sizeX, sizeY, sizeZ, baseVoxelMm, this.#device.limits)
+                // Honour the operator's `isoMaxGpuBytes` budget: the browser-reported
+                // `maxBufferSize` is a logical ceiling, not actual VRAM. Sizing voxels against
+                // it has crashed the shared Chromium GPU process. `effectiveIsoLimits` narrows
+                // both `maxBufferSize` and `maxStorageBufferBindingSize` to the operator cap.
+                const isoLimits = effectiveIsoLimits(this.#device.limits, isoTuning?.isoMaxGpuBytes)
+                const chosen = chooseIsoVoxelForGpuLimits(sizeX, sizeY, sizeZ, baseVoxelMm, isoLimits)
                 voxelSizeMm = chosen.voxelSizeMm
                 gridDimX = chosen.gridDimX
                 gridDimY = chosen.gridDimY
@@ -990,7 +995,7 @@ export class RenderWorkerCore {
                             + `(grid ${gridDimX}×${gridDimY}×${gridDimZ}) to fit GPU buffer limits`,
                     )
                 }
-                if (isoExportWillUsePass1BrickStreaming(gridDimX, gridDimY, gridDimZ, this.#device.limits)) {
+                if (isoExportWillUsePass1BrickStreaming(gridDimX, gridDimY, gridDimZ, isoLimits)) {
                     log("RenderWorker").info(
                         "ISO export: Pass 1 gpuSparse will use brick streaming at this voxel/grid "
                             + "(full-grid activeCellFlags are still allocated after the brick merge).",
@@ -1018,6 +1023,8 @@ export class RenderWorkerCore {
                         octreeRefineFraction: isoTuning?.octreeRefineFraction ?? 0.28,
                         isoCreaseByAnalyticNormal: isoTuning?.isoCreaseByAnalyticNormal !== false,
                         isoQefOversample: isoTuning?.isoQefOversample ?? 2,
+                        isoMaxGpuBytes: isoTuning?.isoMaxGpuBytes,
+                        isoMaxDispatchInvocations: isoTuning?.isoMaxDispatchInvocations,
                         isoSceneBoundsMinMm: [
                             bounds.min[0]!,
                             bounds.min[1]!,

@@ -177,6 +177,23 @@ export interface MDCParams {
      */
     isoSceneBoundsMinMm?: readonly [number, number, number]
     isoSceneBoundsMaxMm?: readonly [number, number, number]
+
+    /**
+     * ISO export only — soft cap on total GPU buffer bytes the exporter is allowed to plan for.
+     * Browser-reported `maxBufferSize` is the **logical** WebGPU ceiling (often ~4 GiB) and is
+     * unsafe to size against: exceeding actual VRAM kills Chromium's shared GPU process and
+     * takes out every browser window. Voxel/grid auto-coarsening (`chooseIsoVoxelForGpuLimits`)
+     * and Pass-1 bricking honour this budget. Default `ISO_DEFAULT_MAX_GPU_BYTES` (1 GiB).
+     */
+    isoMaxGpuBytes?: number
+
+    /**
+     * ISO export only — hard cap on per-dispatch GPU invocations. Pre-flight check at the top
+     * of `ISOExport.export()`; aborts with a clear error rather than dispatching enough work to
+     * TDR the GPU driver. Default `ISO_DEFAULT_MAX_DISPATCH_INVOCATIONS` (1e9). Raise once you
+     * have a known-good scene; lower if iso exports are crashing the browser.
+     */
+    isoMaxDispatchInvocations?: number
 }
 
 export interface ProgressCallback {

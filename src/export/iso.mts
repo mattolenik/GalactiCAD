@@ -28,6 +28,42 @@ function clampIsoQefOversample(n: number | undefined): number {
 }
 
 /**
+ * Conservative defaults for the new physical-budget knobs. The browser-reported
+ * `maxBufferSize` is the **logical** WebGPU ceiling (often UINT32-ish on desktop GPUs)
+ * and is unsafe to plan allocations against — actual VRAM available to the GPU process
+ * is usually a small fraction of that, and exceeding it crashes Chromium's shared GPU
+ * process (taking out *all* browser windows). 1 GiB and 1e9 invocations are slow-but-safe
+ * starting points; bump them via dev-tools once a scene is known to fit.
+ */
+export const ISO_DEFAULT_MAX_GPU_BYTES = 1 * 1024 * 1024 * 1024
+export const ISO_DEFAULT_MAX_DISPATCH_INVOCATIONS = 1_000_000_000
+
+/** Soft cap on total GPU buffer bytes used for ISO sizing decisions (defaults to {@link ISO_DEFAULT_MAX_GPU_BYTES}). */
+export function clampIsoMaxGpuBytes(n: number | undefined, deviceMaxBufferSize: number, deviceMaxStorageBindingSize: number): number {
+    const deviceCap = Math.min(deviceMaxBufferSize, deviceMaxStorageBindingSize)
+    if (n === undefined || !Number.isFinite(n) || n <= 0) return Math.min(ISO_DEFAULT_MAX_GPU_BYTES, deviceCap)
+    return Math.max(1024, Math.min(Math.floor(n), deviceCap))
+}
+
+/** Soft cap on per-dispatch GPU invocations for ISO Pass 1 / sparse passes (defaults to {@link ISO_DEFAULT_MAX_DISPATCH_INVOCATIONS}). */
+export function clampIsoMaxDispatchInvocations(n: number | undefined): number {
+    if (n === undefined || !Number.isFinite(n) || n <= 0) return ISO_DEFAULT_MAX_DISPATCH_INVOCATIONS
+    return Math.max(1024, Math.floor(n))
+}
+
+/** Build an effective limits object that respects both the device caps and the operator's `isoMaxGpuBytes` budget. */
+export function effectiveIsoLimits(
+    deviceLimits: { maxBufferSize: number; maxStorageBufferBindingSize: number },
+    isoMaxGpuBytes: number | undefined,
+): { maxBufferSize: number; maxStorageBufferBindingSize: number } {
+    const cap = clampIsoMaxGpuBytes(isoMaxGpuBytes, deviceLimits.maxBufferSize, deviceLimits.maxStorageBufferBindingSize)
+    return {
+        maxBufferSize: Math.min(deviceLimits.maxBufferSize, cap),
+        maxStorageBufferBindingSize: Math.min(deviceLimits.maxStorageBufferBindingSize, cap),
+    }
+}
+
+/**
  * Cap Pass-1 brick count so export does not run millions of GPU sync + readback rounds
  * (each brick used to be O(1) main-thread work; `chooseIsoPass1BrickCoreSpan` also avoids
  * enumerating all tiles when evaluating limits).
@@ -679,10 +715,6 @@ export class ISOExport {
         if (gridDimX < 2 || gridDimY < 2 || gridDimZ < 2) {
             throw new Error("ISO export requires gridDimensions >= 2 on each axis")
         }
-        logDiag("start", {
-            maxBufferSize: this.#device.limits.maxBufferSize,
-            maxStorageBufferBindingSize: this.#device.limits.maxStorageBufferBindingSize,
-        })
 
         const dx = gridDimX
         const dy = gridDimY
@@ -690,6 +722,55 @@ export class ISOExport {
         const nx = Math.max(0, dx - 1)
         const ny = Math.max(0, dy - 1)
         const nz = Math.max(0, dz - 1)
+        const startTotalCubes = nx * ny * nz
+        const startTotalGridCells = dx * dy * dz
+        const startTotalU32sInFlags = Math.ceil(startTotalGridCells / 32)
+        // ISO_PASS1_CLASSIFY_WG_SIZE = 64 (matches classifyActiveCells_Pass1 @workgroup_size in iso.wgsl).
+        const ISO_CLASSIFY_WG_SIZE = 64
+        const startPass1WorkgroupCount = startTotalU32sInFlags
+        const startPass1Invocations = startTotalU32sInFlags * ISO_CLASSIFY_WG_SIZE
+        const startGpuSparseInvocations = Math.max(0, Math.ceil(startTotalCubes / 64) * 64)
+        const startEst = estimateIsoExportBufferBytes(dx, dy, dz)
+
+        const maxDispatchInvocations = clampIsoMaxDispatchInvocations(this.params.isoMaxDispatchInvocations)
+        const gpuBudgetBytes = clampIsoMaxGpuBytes(
+            this.params.isoMaxGpuBytes,
+            this.#device.limits.maxBufferSize,
+            this.#device.limits.maxStorageBufferBindingSize,
+        )
+
+        logDiag("start", {
+            grid: `${dx}x${dy}x${dz}`,
+            voxelSize,
+            totalCubes: startTotalCubes,
+            totalU32sInFlags: startTotalU32sInFlags,
+            pass1WorkgroupCount: startPass1WorkgroupCount,
+            pass1Invocations: startPass1Invocations,
+            gpuSparseInvocations: startGpuSparseInvocations,
+            denseActiveCellFlagsBytes: fmtBytes(startEst.activeCellFlags),
+            denseAllDualsBytes: fmtBytes(startEst.allDuals),
+            denseMeshVertsBytes: fmtBytes(startEst.meshVertices),
+            denseMeshIdxBytes: fmtBytes(startEst.meshIndices),
+            isoMaxGpuBytes: fmtBytes(gpuBudgetBytes),
+            isoMaxDispatchInvocations: maxDispatchInvocations,
+            maxBufferSize: this.#device.limits.maxBufferSize,
+            maxStorageBufferBindingSize: this.#device.limits.maxStorageBufferBindingSize,
+        })
+
+        // Pre-flight dispatch guard: classify Pass 1 walks every grid corner once (one
+        // invocation per `flagsWord` × workgroup size). When this product exceeds the
+        // operator-set cap we abort *before* submitting work — a runaway dispatch is the
+        // most likely cause of the GPU process getting TDR'd / killed and taking the
+        // browser's shared GPU process with it. The Pass-1-bricked path issues many small
+        // dispatches instead, so its worst single-dispatch invocation count is bounded by
+        // the chosen brick size.
+        if (startPass1Invocations > maxDispatchInvocations) {
+            throw new Error(
+                `ISO export: Pass 1 would dispatch ${startPass1Invocations.toLocaleString()} GPU invocations, `
+                + `which exceeds the configured isoMaxDispatchInvocations cap of ${maxDispatchInvocations.toLocaleString()}. `
+                + `Coarsen the voxel, tighten bounds, or raise the cap in dev tools (ISO export → "Max dispatch invocations").`,
+            )
+        }
 
         const nEdgeX = Math.max(0, dx - 1) * dy * dz
         const nEdgeY = dx * Math.max(0, dy - 1) * dz

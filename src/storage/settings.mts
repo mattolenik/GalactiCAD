@@ -157,6 +157,17 @@ export interface IsoExportSettings {
      * on each cell edge/face/cube boundary. Default 2.
      */
     isoQefOversample: number
+    /**
+     * Soft cap on total GPU buffer bytes for ISO sizing. Browser-reported `maxBufferSize` is a
+     * logical ceiling (often ~4 GiB) that can far exceed real VRAM; sizing against it has
+     * crashed Chromium's shared GPU process. Default 1 GiB.
+     */
+    isoMaxGpuBytes: number
+    /**
+     * Hard cap on per-dispatch GPU invocations. ISO Pass 1 touches every grid corner — for big
+     * grids the implied workgroup count TDRs the driver. Default 1e9.
+     */
+    isoMaxDispatchInvocations: number
 }
 
 export function defaultIsoExportSettings(): IsoExportSettings {
@@ -174,6 +185,11 @@ export function defaultIsoExportSettings(): IsoExportSettings {
         octreeRefineFraction: 0.28,
         isoCreaseByAnalyticNormal: true,
         isoQefOversample: 2,
+        // 1 GiB / 1e9 invocations — conservative; raise via dev-tools once a scene is known
+        // to fit. Browser `maxBufferSize` (often ~4 GiB) lies about actual VRAM, and Pass 1
+        // dispatches scale with grid corner count which can TDR the GPU on big grids.
+        isoMaxGpuBytes: 1 * 1024 * 1024 * 1024,
+        isoMaxDispatchInvocations: 1_000_000_000,
     }
 }
 
@@ -456,6 +472,20 @@ export class SettingsManager {
                     iso.isoQefOversample = isoDef.isoQefOversample
                 } else {
                     iso.isoQefOversample = Math.trunc(iso.isoQefOversample)
+                }
+                if (
+                    typeof iso.isoMaxGpuBytes !== "number"
+                    || !Number.isFinite(iso.isoMaxGpuBytes)
+                    || iso.isoMaxGpuBytes <= 0
+                ) {
+                    iso.isoMaxGpuBytes = isoDef.isoMaxGpuBytes
+                }
+                if (
+                    typeof iso.isoMaxDispatchInvocations !== "number"
+                    || !Number.isFinite(iso.isoMaxDispatchInvocations)
+                    || iso.isoMaxDispatchInvocations <= 0
+                ) {
+                    iso.isoMaxDispatchInvocations = isoDef.isoMaxDispatchInvocations
                 }
                 app.isoExport = iso
                 if (typeof app.devToolsEnabled !== "boolean") app.devToolsEnabled = false

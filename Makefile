@@ -48,7 +48,7 @@ start:
 	@if [[ -f "$(RUN_FILE)" ]]; then
 		port=$$(jq -r .port "$(RUN_FILE)")
 		pid=$$(jq -r .pid "$(RUN_FILE)")
-		if kill -0 $$pid; then
+		if kill -0 $$pid &> /dev/null; then
 			echo "Server running at http://localhost:$$port"
 			exit 0
 		fi
@@ -92,7 +92,7 @@ stop-all:
 restart: stop start
 
 .PHONY: restart-all
-restart-all: stop-all restart-all
+restart-all: stop-all start-all
 
 .PHONY: release
 release: export PRODUCTION=1

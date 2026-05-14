@@ -1,3 +1,4 @@
+MAKEFLAGS    += --no-print-directory --silent
 SHELL        := bash
 DIST         ?= dist
 SED          := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
@@ -80,7 +81,15 @@ start-all:
 stop:
 	@if [[ -f "$(RUN_FILE)" ]]; then
 		pid=$$(jq -r .pid "$(RUN_FILE)")
-		kill -TERM $$pid && rm -f "$(RUN_FILE)" || true
+		port=$$(jq -r .port "$(RUN_FILE)")
+		if kill -0 $$pid &> /dev/null; then
+			echo "Stopping server PID $$pid on port $$port"
+			kill -TERM $$pid && rm -f "$(RUN_FILE)" || true
+		else
+			echo "No server running with PID $$pid, skipping"
+		fi
+	else
+		echo "No server found at $(RUN_FILE), skipping"
 	fi
 
 .PHONY: stop-all

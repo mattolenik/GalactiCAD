@@ -11,9 +11,11 @@ import type { MeshData } from "./export/export.mjs"
  * Default world-space voxel edge length (mm) used by both MDC and SHREC mesh
  * extractors when the user has not set one explicitly. Half this value → 8×
  * more voxels → ~8× more time and memory; double this value → 8× cheaper but
- * blockier corners.
+ * blockier corners. Each exporter persists its own voxel size; this constant
+ * is the seed for both `DEFAULT_MDC_EXPORT_LEVERS.voxelSizeMm` and
+ * `DEFAULT_SHREC_TUNING.voxelSizeMm`.
  */
-export const DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM = 0.1
+export const DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM = 0.5
 
 /**
  * Selects the algorithm used by `handleRenderMesh` to extract a triangle mesh
@@ -124,6 +126,8 @@ export interface ShrecTuning {
      * explicit / inferred feature loci when the cell has one iso component.
      */
     featureConstrainedPlacement: boolean
+    /** Voxel edge length in world units (mm). SHREC's own value; independent of MDC. */
+    voxelSizeMm: number
 }
 
 export const DEFAULT_SHREC_TUNING: ShrecTuning = {
@@ -137,6 +141,7 @@ export const DEFAULT_SHREC_TUNING: ShrecTuning = {
     seamAgreementCosThreshold: 0.97,
     edgeFitEnabled: false,
     featureConstrainedPlacement: true,
+    voxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
 }
 
 /**
@@ -324,7 +329,7 @@ export interface MdcExportLevers {
 }
 
 export const DEFAULT_MDC_EXPORT_LEVERS: MdcExportLevers = {
-    voxelSizeMm: 0.1,
+    voxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
     isoValue: 0,
     creaseAngleDeg: 30,
     featureConstrainedPlacement: true,

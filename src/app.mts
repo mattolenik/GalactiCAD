@@ -1205,8 +1205,7 @@ class App {
             this.#setMeshViewerEnabled(enabled)
         }
 
-        devTools.syncVoxelSizeMmFromSettings(this.#settings.getGlobal().app.meshExportVoxelSizeMm)
-        devTools.useShrecExporter = this.#settings.getGlobal().app.useShrecExporter
+        devTools.exporterKind = this.#settings.getGlobal().app.exporterKind
         devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
         devTools.syncMdcLeversFromSettings(this.#settings.getGlobal().app.mdcExportLevers)
@@ -1219,10 +1218,9 @@ class App {
             if (!m) return
             this.#scheduleMeshUpdate(m.getValue())
         }
-        devTools.onUseShrecExporterChange = remeshIfMeshViewerOn
+        devTools.onExporterKindChange = remeshIfMeshViewerOn
         devTools.onShrecTuningChange = remeshIfMeshViewerOn
         devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
-        devTools.onVoxelSizeMmChange = remeshIfMeshViewerOn
         devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getDebugLogModules())
@@ -1566,13 +1564,16 @@ class App {
     }
 
     #meshRenderOptionsForExport(devTools: DevToolsPanel) {
+        const exporterKind = devTools.exporterKind
+        const shrecTuning = devTools.shrecTuning
+        const mdcExportLevers = this.#settings.getMdcExportLevers()
         return {
             simplifyOnExport: devTools.meshSimplifyOnExport,
-            voxelSizeMm: devTools.voxelSizeMm,
-            exporter: devTools.useShrecExporter ? "shrec" as const : "mdc" as const,
-            shrecTuning: devTools.shrecTuning,
+            voxelSizeMm: exporterKind === "shrec" ? shrecTuning.voxelSizeMm : mdcExportLevers.voxelSizeMm,
+            exporter: exporterKind,
+            shrecTuning,
             simplifyTuning: devTools.simplifyTuning,
-            mdcExportLevers: this.#settings.getMdcExportLevers(),
+            mdcExportLevers,
         }
     }
 

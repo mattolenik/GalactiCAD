@@ -9,10 +9,10 @@ import {
     DEVTOOLS_SECTION_LOGS,
 } from "../components/dev-tools-protocol.mjs"
 import {
-    DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
     DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_SHREC_TUNING,
     DEFAULT_SIMPLIFY_TUNING,
+    type ExporterKind,
     type MdcExportLevers,
     type ShrecTuning,
     type SimplifyTuning,
@@ -111,10 +111,8 @@ export interface GlobalSettings {
     }
     app: {
         devToolsEnabled: boolean
-        /** Voxel edge length (mm) for the mesh-export grid; applies to both MDC and SHREC. */
-        meshExportVoxelSizeMm: number
-        /** When true, mesh export uses the SHREC/MergeSharp pipeline; otherwise MDC. */
-        useShrecExporter: boolean
+        /** Which mesh extractor to use. */
+        exporterKind: ExporterKind
         /** Tuning knobs for the SHREC/MergeSharp pipeline. */
         shrecTuning: ShrecTuning
         /** Post-export mesh simplification (meshoptimizer); used when mesh simplify on export is enabled. */
@@ -235,8 +233,7 @@ function defaultGlobalSettings(): GlobalSettings {
         },
         app: {
             devToolsEnabled: false,
-            meshExportVoxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
-            useShrecExporter: false,
+            exporterKind: "mdc" as ExporterKind,
             shrecTuning: { ...DEFAULT_SHREC_TUNING },
             simplifyTuning: { ...DEFAULT_SIMPLIFY_TUNING },
             mdcExportLevers: { ...DEFAULT_MDC_EXPORT_LEVERS },
@@ -431,13 +428,9 @@ export class SettingsManager {
         this.#globalSave$.next()
     }
 
-    /** Clamped MDC export levers for mesh pipeline (Dev Tools). Voxel size follows `meshExportVoxelSizeMm`. */
+    /** Clamped MDC export levers for mesh pipeline (Dev Tools). */
     getMdcExportLevers(): MdcExportLevers {
-        const g = this.#globalSettings.app
-        return normalizeMdcExportLevers({
-            ...g.mdcExportLevers,
-            voxelSizeMm: g.meshExportVoxelSizeMm,
-        })
+        return normalizeMdcExportLevers(this.#globalSettings.app.mdcExportLevers)
     }
 
     /** Replace one dev tools section snapshot and debounce-persist global settings. */
@@ -561,23 +554,31 @@ export class SettingsManager {
                     devToolsSections[DEVTOOLS_SECTION_LOGS] = logSec
                 }
                 if (typeof rawApp.devToolsMdcExportExpanded === "boolean") {
-                    devToolsCollapseOpen[DEVTOOLS_COLLAPSE.appMeshExportMdc] = rawApp.devToolsMdcExportExpanded
+                    devToolsCollapseOpen[DEVTOOLS_COLLAPSE.panelMeshExportMdc] = rawApp.devToolsMdcExportExpanded
                 }
 
                 const diskRaw = rawApp.diskSyncIntervalSeconds
                 const themeRaw = rawApp.theme
 
-                let meshExportVoxelSizeMm = def.app.meshExportVoxelSizeMm
+                // Legacy: voxel size used to be a single shared value
+                // (`app.meshExportVoxelSizeMm`). When present in older saves
+                // and not yet split into the per-exporter levers, seed both
+                // exporters with it so existing values aren't lost.
+                let legacyVoxelSizeMm: number | undefined
                 if (
                     typeof rawApp.meshExportVoxelSizeMm === "number" &&
                     isFinite(rawApp.meshExportVoxelSizeMm) &&
                     rawApp.meshExportVoxelSizeMm > 0
                 ) {
-                    meshExportVoxelSizeMm = rawApp.meshExportVoxelSizeMm
+                    legacyVoxelSizeMm = rawApp.meshExportVoxelSizeMm
                 }
 
-                let useShrecExporter =
-                    typeof rawApp.useShrecExporter === "boolean" ? rawApp.useShrecExporter : def.app.useShrecExporter
+                let exporterKind: ExporterKind = def.app.exporterKind
+                if (rawApp.exporterKind === "mdc" || rawApp.exporterKind === "shrec") {
+                    exporterKind = rawApp.exporterKind as ExporterKind
+                } else if (typeof rawApp.useShrecExporter === "boolean") {
+                    exporterKind = rawApp.useShrecExporter ? "shrec" : "mdc"
+                }
 
                 let shrecTuning: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
                 {
@@ -610,6 +611,9 @@ export class SettingsManager {
                     if (typeof cur.featureConstrainedPlacement !== "boolean") {
                         cur.featureConstrainedPlacement = DEFAULT_SHREC_TUNING.featureConstrainedPlacement
                     }
+                    if (typeof cur.voxelSizeMm !== "number" || !isFinite(cur.voxelSizeMm) || cur.voxelSizeMm <= 0) {
+                        cur.voxelSizeMm = legacyVoxelSizeMm ?? DEFAULT_SHREC_TUNING.voxelSizeMm
+                    }
                     shrecTuning = cur
                 }
 
@@ -635,7 +639,20 @@ export class SettingsManager {
                     simplifyTuning = s
                 }
 
-                let mdcExportLevers = normalizeMdcExportLevers(rawApp.mdcExportLevers)
+                // Seed MDC voxel from legacy shared value when nothing better is persisted.
+                const mdcLeversRaw =
+                    rawApp.mdcExportLevers && typeof rawApp.mdcExportLevers === "object"
+                        ? (rawApp.mdcExportLevers as Record<string, unknown>)
+                        : {}
+                if (
+                    legacyVoxelSizeMm !== undefined &&
+                    (typeof mdcLeversRaw.voxelSizeMm !== "number" ||
+                        !isFinite(mdcLeversRaw.voxelSizeMm as number) ||
+                        (mdcLeversRaw.voxelSizeMm as number) <= 0)
+                ) {
+                    mdcLeversRaw.voxelSizeMm = legacyVoxelSizeMm
+                }
+                let mdcExportLevers = normalizeMdcExportLevers(mdcLeversRaw)
 
                 const editorDef = defaultEditorSettings()
                 const editor = { ...editorDef, ...(rawApp.editor as Partial<EditorSettings> | undefined) }
@@ -659,8 +676,7 @@ export class SettingsManager {
                 if (typeof diskSyncIntervalSeconds !== "number") diskSyncIntervalSeconds = 30
                 const app: GlobalSettings["app"] = {
                     devToolsEnabled: typeof rawApp.devToolsEnabled === "boolean" ? rawApp.devToolsEnabled : def.app.devToolsEnabled,
-                    meshExportVoxelSizeMm,
-                    useShrecExporter,
+                    exporterKind,
                     shrecTuning,
                     simplifyTuning,
                     mdcExportLevers,

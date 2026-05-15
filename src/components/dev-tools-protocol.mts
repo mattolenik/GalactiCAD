@@ -19,15 +19,18 @@ export const DEVTOOLS_SECTION_LOGS = "galacticad.logs"
 export const DEVTOOLS_COLLAPSE = {
     panelApp: "galacticad.collapse.panelApp",
     panelMeshExport: "galacticad.collapse.panelMeshExport",
-    panelMeshSimplify: "galacticad.collapse.panelMeshSimplify",
-    panelShrecExport: "galacticad.collapse.panelShrecExport",
+    /** Nested under panelMeshExport. */
+    panelMeshExportMdc: "galacticad.collapse.appMeshExportMdc",
+    /** Nested under panelMeshExport. */
+    panelMeshExportShrec: "galacticad.collapse.panelShrecExport",
+    /** Nested under panelMeshExport. */
+    panelMeshExportSimplify: "galacticad.collapse.panelMeshSimplify",
     panelRenderer: "galacticad.collapse.panelRenderer",
     panelLogs: "galacticad.collapse.panelLogs",
     panelBenchmark: "galacticad.collapse.panelBenchmark",
     panelReset: "galacticad.collapse.panelReset",
     appViewport: "galacticad.collapse.appViewport",
     appExport: "galacticad.collapse.appExport",
-    appMeshExportMdc: "galacticad.collapse.appMeshExportMdc",
     rendererPerformance: "galacticad.collapse.rendererPerformance",
 } as const
 
@@ -36,7 +39,9 @@ export type DevToolsCollapseId = (typeof DEVTOOLS_COLLAPSE)[keyof typeof DEVTOOL
 /** When a key is absent from storage, use this default (`true` = expanded). Only list exceptions. */
 export const DEFAULT_DEVTOOLS_COLLAPSE_OPEN: Partial<Record<DevToolsCollapseId, boolean>> = {
     [DEVTOOLS_COLLAPSE.panelReset]: false,
-    [DEVTOOLS_COLLAPSE.appMeshExportMdc]: false,
+    [DEVTOOLS_COLLAPSE.panelMeshExportMdc]: false,
+    [DEVTOOLS_COLLAPSE.panelMeshExportShrec]: false,
+    [DEVTOOLS_COLLAPSE.panelMeshExportSimplify]: false,
 }
 
 /** Defaults when `devToolsSections[DEVTOOLS_SECTION_APP]` is missing or partial. */

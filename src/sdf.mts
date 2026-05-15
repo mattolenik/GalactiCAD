@@ -1710,8 +1710,8 @@ export class SDFRenderer {
         const simplifyOnExport = typeof simplifyRaw === "boolean" ? simplifyRaw : false
         return {
             simplifyOnExport,
-            voxelSizeMm: app.meshExportVoxelSizeMm,
-            exporter: app.useShrecExporter ? "shrec" : "mdc",
+            voxelSizeMm: app.exporterKind === "shrec" ? app.shrecTuning.voxelSizeMm : app.mdcExportLevers.voxelSizeMm,
+            exporter: app.exporterKind,
             shrecTuning: app.shrecTuning,
             simplifyTuning: app.simplifyTuning,
             mdcExportLevers: app.mdcExportLevers,

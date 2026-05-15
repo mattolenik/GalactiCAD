@@ -9,6 +9,7 @@ import {
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
 import type {
+    ExporterKind,
     MdcExportLevers,
     RayMarchParams,
     ShrecTuning,
@@ -25,7 +26,7 @@ import {
 } from "./dev-tools-protocol.mjs"
 import { DevToolsAppSection } from "./dev-tools-app-section.mjs"
 import {
-    DevToolsMeshExportCoreSection,
+    DevToolsMdcExportSection,
     DevToolsMeshSimplifySection,
     DevToolsShrecExportSection,
 } from "./dev-tools-mesh-export-section.mjs"
@@ -46,9 +47,11 @@ export class DevToolsPanel extends HTMLElement {
     #settings: SettingsManager
     #tabs: DocumentTabs
     #appSection: DevToolsAppSection
-    #meshExportCoreSection: DevToolsMeshExportCoreSection
+    #mdcExportSection: DevToolsMdcExportSection
     #meshSimplifySection: DevToolsMeshSimplifySection
     #shrecExportSection: DevToolsShrecExportSection
+    #exporterKindSelect: HTMLSelectElement
+    #exporterKind: ExporterKind
     #rendererSection: DevToolsRendererSection
     #logsSection: DevToolsLogsSection
     #extraSectionHosts: HTMLDivElement[] = []
@@ -64,8 +67,7 @@ export class DevToolsPanel extends HTMLElement {
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
-    onVoxelSizeMmChange?: (mm: number) => void
-    onUseShrecExporterChange?: (enabled: boolean) => void
+    onExporterKindChange?: (kind: ExporterKind) => void
     onShrecTuningChange?: (tuning: ShrecTuning) => void
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMdcExportLeversChange?: () => void
@@ -142,20 +144,13 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.meshSimplifyOnExport = enabled
     }
 
-    get voxelSizeMm(): number {
-        return this.#meshExportCoreSection.voxelSizeMm
+    get exporterKind(): ExporterKind {
+        return this.#exporterKind
     }
 
-    set voxelSizeMm(mm: number) {
-        this.#meshExportCoreSection.voxelSizeMm = mm
-    }
-
-    get useShrecExporter(): boolean {
-        return this.#shrecExportSection.useShrecExporter
-    }
-
-    set useShrecExporter(enabled: boolean) {
-        this.#shrecExportSection.useShrecExporter = enabled
+    set exporterKind(kind: ExporterKind) {
+        this.#exporterKind = kind
+        this.#exporterKindSelect.value = kind
     }
 
     get shrecTuning(): ShrecTuning {
@@ -166,17 +161,12 @@ export class DevToolsPanel extends HTMLElement {
         return this.#meshSimplifySection.simplifyTuning
     }
 
-    syncVoxelSizeMmFromSettings(mm: number): void {
-        this.#meshExportCoreSection.syncVoxelSizeMmFromSettings(mm)
-    }
-
     syncSimplifyTuningFromSettings(tuning: SimplifyTuning): void {
         this.#meshSimplifySection.syncSimplifyTuningFromSettings(tuning)
-        this.#meshExportCoreSection.syncRenormalizeFromSimplifyTuning(tuning)
     }
 
     syncMdcLeversFromSettings(levers: MdcExportLevers): void {
-        this.#meshExportCoreSection.syncMdcLeversFromSettings(levers)
+        this.#mdcExportSection.syncMdcLeversFromSettings(levers)
     }
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
@@ -232,19 +222,32 @@ export class DevToolsPanel extends HTMLElement {
         this.#shadow.appendChild(style)
 
         this.#appSection = new DevToolsAppSection()
-        this.#meshExportCoreSection = new DevToolsMeshExportCoreSection()
+        this.#mdcExportSection = new DevToolsMdcExportSection()
         this.#meshSimplifySection = new DevToolsMeshSimplifySection()
         this.#shrecExportSection = new DevToolsShrecExportSection()
         this.#rendererSection = new DevToolsRendererSection()
         this.#logsSection = new DevToolsLogsSection()
 
-        this.#meshExportCoreSection.onVoxelSizeMmChange = v => this.onVoxelSizeMmChange?.(v)
-        this.#meshExportCoreSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
-        this.#meshExportCoreSection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
+        this.#exporterKind = settings.getGlobal().app.exporterKind
+        this.#exporterKindSelect = document.createElement("select")
+        for (const [value, label] of [["mdc", "MDC"], ["shrec", "SHREC"]] as const) {
+            const opt = document.createElement("option")
+            opt.value = value
+            opt.textContent = label
+            this.#exporterKindSelect.appendChild(opt)
+        }
+        this.#exporterKindSelect.value = this.#exporterKind
+        this.#exporterKindSelect.addEventListener("change", () => {
+            const kind = this.#exporterKindSelect.value as ExporterKind
+            this.#exporterKind = kind
+            settings.updateGlobal({ app: { exporterKind: kind } })
+            this.onExporterKindChange?.(kind)
+        })
+
+        this.#mdcExportSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
 
         this.#meshSimplifySection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
 
-        this.#shrecExportSection.onUseShrecExporterChange = v => this.onUseShrecExporterChange?.(v)
         this.#shrecExportSection.onShrecTuningChange = v => this.onShrecTuningChange?.(v)
 
         this.#rendererSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)
@@ -271,12 +274,32 @@ export class DevToolsPanel extends HTMLElement {
             for (const n of nodes) wrap.appendChild(n)
             return wrap
         }
+        const mkNested = (label: string, collapseId: string, ...nodes: Node[]) => {
+            const wrap = mkSection(label, collapseId, ...nodes)
+            wrap.setAttribute("nested", "")
+            return wrap
+        }
+
+        const exporterRow = document.createElement("div")
+        exporterRow.style.cssText = "display:flex;align-items:center;gap:6px;align-self:stretch;font-size:12px;font-family:system-ui,sans-serif"
+        const exporterLabel = document.createElement("span")
+        exporterLabel.textContent = "Mesher"
+        exporterLabel.style.cssText = "font-size:11px;font-weight:600;flex:0 0 86px"
+        this.#exporterKindSelect.style.cssText = "flex:1;min-width:0;font-size:11px;font-family:inherit"
+        exporterRow.append(exporterLabel, this.#exporterKindSelect)
+
+        const meshExportSection = mkSection(
+            "Mesh export",
+            DEVTOOLS_COLLAPSE.panelMeshExport,
+            exporterRow,
+            mkNested("MDC mesh export", DEVTOOLS_COLLAPSE.panelMeshExportMdc, this.#mdcExportSection),
+            mkNested("SHREC export", DEVTOOLS_COLLAPSE.panelMeshExportShrec, this.#shrecExportSection),
+            mkNested("Mesh Simplify", DEVTOOLS_COLLAPSE.panelMeshExportSimplify, this.#meshSimplifySection),
+        )
 
         this.#shadow.append(
             mkSection("App", DEVTOOLS_COLLAPSE.panelApp, this.#appSection),
-            mkSection("Mesh export", DEVTOOLS_COLLAPSE.panelMeshExport, this.#meshExportCoreSection),
-            mkSection("Mesh Simplify", DEVTOOLS_COLLAPSE.panelMeshSimplify, this.#meshSimplifySection),
-            mkSection("SHREC export", DEVTOOLS_COLLAPSE.panelShrecExport, this.#shrecExportSection),
+            meshExportSection,
             mkSection("Renderer", DEVTOOLS_COLLAPSE.panelRenderer, this.#rendererSection),
             mkSection("Logs", DEVTOOLS_COLLAPSE.panelLogs, this.#logsSection)
         )

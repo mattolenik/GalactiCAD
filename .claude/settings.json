@@ -12,7 +12,21 @@
       "WebFetch(domain:pptr.dev)",
       "Bash(node_modules/.bin/tsc *)",
       "Bash(npx tsc *)",
-      "Bash(scripts/agentcli *)"
+      "Bash(scripts/agentcli *)",
+      "Skill(bash-defensive-patterns)",
+      "Skill(bash-defensive-patterns:*)",
+      "Skill(devserver)",
+      "Skill(devserver:*)",
+      "Skill(sdf-mesh-diff)",
+      "Skill(sdf-mesh-diff:*)",
+      "Skill(typescript-advanced-types)",
+      "Skill(typescript-advanced-types:*)",
+      "Skill(typescript-expert)",
+      "Skill(typescript-expert:*)",
+      "Skill(web-components)",
+      "Skill(web-components:*)",
+      "Skill(webgpu)",
+      "Skill(webgpu:*)"
     ]
   }
 }

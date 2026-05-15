@@ -1,6 +1,6 @@
 ---
 name: sdf-mesh-diff
-description: "Image similarity comparison for SDF/mesh renders. Use `scripts/agentcli compare` (SSIM + pixel diff together — either alone is misleading), `agentcli triangle` (mesh vs SDF reference), or `agentcli regress` (batch compare). Falls back to `npx @blazediff/cli` for raw access. Similarity ≥99% near-perfect, ≥98% acceptable, ~95% closer, ~90% decent-with-artifacts, much lower indicates serious mesh problems."
+description: "Image similarity comparison for SDF/mesh renders. Use `scripts/agentcli compare` (SSIM + pixel diff together — either alone is misleading), `agentcli triangle` (mesh vs SDF reference), `agentcli ab` (two variant renders + compare), `agentcli iterate --against` (refresh + render + compare in the inner loop), or `agentcli regress` (batch compare across testcases). `compare --json` for machine-readable output; `--open` to launch the diff PNG in the system viewer. Falls back to `npx @blazediff/cli` for raw access. Similarity ≥99% near-perfect, ≥98% acceptable, ~95% closer, ~90% decent-with-artifacts, much lower indicates serious mesh problems."
 ---
 
 # SDF / mesh image similarity diff
@@ -35,7 +35,36 @@ Exit code: 0 if SSIM ≥ threshold (default 99%), 1 otherwise. Diff PNG is **alw
 
 ```sh
 scripts/agentcli compare a.png b.png --diff-png /tmp/mydiff.png --threshold 95
+scripts/agentcli compare a.png b.png --open           # open the diff PNG in the system viewer
+scripts/agentcli compare a.png b.png --json           # machine-readable record (same exit code semantics)
 ```
+
+The `--json` form prints a single JSON object: `{a, b, ssim, pixelDiff, pixelTotal, errorPct, diffPng, verdict, threshold}`. Useful for piping into scripts. Exit code still reflects the threshold verdict (0 ≥ threshold, 1 below) — don't assume `--json` is a pure-data mode.
+
+### Inner-loop compare against a baseline
+
+When you're iterating on a shader/host edit and want to refresh the agent, re-render, and check against a known-good baseline in one step:
+
+```sh
+scripts/agentcli iterate meshing/mdc/twisted-l-500 \
+    --against .agents/testimages/twisted-l-500-baseline-mesh.png \
+    --fail-below 99 --tag head
+```
+
+`iterate` does refresh → render → `compare` and exits nonzero if the result falls below `--fail-below`. Pair with `--set k.path=v` to test specific knob configurations without editing the testcase. Drop `--against` for refresh+render alone.
+
+### A/B variant compare (knob comparison)
+
+When you want to render the same scene with two different overrides and see exactly how much they diverge:
+
+```sh
+scripts/agentcli ab meshing/mdc/twisted-l-500 \
+    --a-set meshExport.mdcExportLevers.adaptiveEnabled=true  --a-tag adapt-on \
+    --b-set meshExport.mdcExportLevers.adaptiveEnabled=false --b-tag adapt-off
+# renders both, saves tagged PNGs, prints SSIM + diff PNG path + verdict
+```
+
+This is the cleanest way to validate "does enabling this knob actually change output?" — much shorter than two manual renders + a manual compare. The compare uses the same threshold mechanics as `compare`.
 
 ### "Did my change move closer to the SDF reference?"
 
@@ -48,6 +77,13 @@ scripts/agentcli triangle meshing/twisted-l-500 --tag post --baseline-tag baseli
 ```
 
 This is the comparison shape that catches "feels better visually but actually regressed". The `triangle` command renders both the SDF and the mesh fresh, then compares each tagged mesh to the SDF reference.
+
+`triangle` also accepts `--yaml PATH|-` and `--set k.path=v` like the other render commands, so you can compare mesh-vs-SDF for ephemeral scenes or specific knob configurations without saving a testcase:
+
+```sh
+cat /tmp/repro.yaml | scripts/agentcli triangle --yaml - --tag head \
+    --set meshExport.mdcExportLevers.adaptiveEnabled=false
+```
 
 ### Batch regression check across testcases
 
@@ -102,3 +138,27 @@ npx @blazediff/cli core-native a.png b.png diff.png
 2. **Compare** with `agentcli compare` (single pair) or `agentcli regress` (batch). Read both numbers; open the diff PNG.
 3. **Report** what changed and what the score implies. Cite both SSIM and pixel-diff together — never just one.
 4. **For triangle / "is the mesh faithful to the SDF" checks** use `agentcli triangle` instead of comparing two mesh PNGs.
+
+## Picking the right command
+
+| Goal | Command |
+|---|---|
+| Two existing PNGs, just compare | `agentcli compare a.png b.png` |
+| Same with machine-readable output | `agentcli compare a.png b.png --json` |
+| Same + auto-open diff PNG | `agentcli compare a.png b.png --open` |
+| Mesh-vs-SDF round-trip for a testcase | `agentcli triangle <tc> --tag head --baseline-tag baseline` |
+| Inner-loop check after a code edit | `agentcli iterate <tc> --against baseline.png --fail-below 99` |
+| Same scene, two knob configurations | `agentcli ab <tc> --a-set ... --b-set ...` |
+| Batch compare across many testcases | `agentcli regress <tc>... --baseline-tag B --post-tag P` |
+
+## Guidelines
+
+1. **Always cite both SSIM and pixel-diff together.** Either alone is misleading. A 96.99% SSIM regression with 0.05% pixel diff is structural noise, not a real change. Open the diff PNG.
+
+2. **Don't write a manual two-step compare when `iterate` or `ab` already does it.** Three lines of "refresh, render, compare" can almost always be one line — the wrapper handles exit codes, error propagation, and tmpfile cleanup that hand-rolled chains drop.
+
+3. **Use `--set` to test knob effects instead of editing testcase YAML.** The `--set meshExport.mdcExportLevers.knobName=value` syntax keeps the original testcase clean and avoids accidental commits of debug values.
+
+4. **Prefer `compare --json` for scripted analysis, default output for human inspection.** The JSON form preserves exit-code semantics (1 below threshold, 0 ≥ threshold), so don't assume it's pure data.
+
+5. **Don't use `npx @blazediff/cli` directly unless you need a flag the wrapper doesn't expose.** The wrapper handles blazediff's quirky exit-code semantics (`1` means "differ", not "error") and parses both metrics correctly.

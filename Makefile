@@ -33,19 +33,16 @@ setup:
 build: check
 	$(BUILD) $(BUILD_FLAGS)
 
-logs:
-	@tail -fn 50 $(LOG_FILE)
-
 .PHONY: test
-test: check
+test: setup check
 	$(TSX) --test
 
 .PHONY: check
-check: setup
+check:
 	$(TSC) --noEmit
 
-.PHONY: start
-start:
+.PHONY: _start
+_start:
 	@if [[ -f "$(RUN_FILE)" ]]; then
 		port=$$(jq -r .port "$(RUN_FILE)")
 		pid=$$(jq -r .pid "$(RUN_FILE)")
@@ -64,21 +61,38 @@ start:
 		if [[ -f "$(RUN_FILE)" ]]; then
 			port=$$(jq -r .port "$(RUN_FILE)")
 			echo ""
-			echo "Server running at http://localhost:$$port"
-			break
+			echo "Server running at http://localhost:$$port, logs at $(LOG_FILE)"
+			exit 0
 		fi
-		sleep 1
+		sleep 0.5
 		i=$$((i+1))
 	done
-	echo "View logs at $(LOG_FILE) (run: make logs$(if $(filter true,$(AGENT)), AGENT=true,))"
+	echo "Server never appeared at $(RUN_FILE)"
+	exit 1
 
-.PHONY: start-all
-start-all:
-	make start AGENT=false
-	make start AGENT=true SKIP_SETUP=true
+.PHONY: start-browser
+start-browser:
+	make _start AGENT=false
 
-.PHONY: stop
-stop:
+.PHONY: stop-browser
+stop-browser:
+	make _stop AGENT=false
+
+.PHONY: start-agent
+start-agent:
+	make _start AGENT=true
+
+.PHONY: stop-agent
+stop-agent:
+	make _stop AGENT=true
+
+.PHONY: start
+start:
+	make start-browser
+	make start-agent SKIP_SETUP=true
+
+.PHONY: _stop
+_stop:
 	@if [[ -f "$(RUN_FILE)" ]]; then
 		pid=$$(jq -r .pid "$(RUN_FILE)")
 		port=$$(jq -r .port "$(RUN_FILE)")
@@ -92,16 +106,17 @@ stop:
 		echo "No server found at $(RUN_FILE), skipping"
 	fi
 
-.PHONY: stop-all
-stop-all:
-	make stop AGENT=false
-	make stop AGENT=true
+.PHONY: stop
+stop: stop-browser stop-agent
 
 .PHONY: restart
 restart: stop start
 
-.PHONY: restart-all
-restart-all: stop-all start-all
+.PHONY: restart-browser
+restart-browser: stop-browser start-browser
+
+.PHONY: restart-agent
+restart-agent: stop-agent start-agent
 
 .PHONY: release
 release: export PRODUCTION=1

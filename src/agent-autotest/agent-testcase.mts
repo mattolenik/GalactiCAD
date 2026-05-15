@@ -9,7 +9,7 @@ export const AGENT_TESTCASE_SCHEMA_VERSION = 1 as const
 export interface AgentTestcaseMeshExport {
     simplifyOnExport: boolean
     voxelSizeMm: number
-    exporter: "mdc" | "shrec"
+    exporter: "mdc" | "shrec" | "flexicubes"
     shrecTuning: ShrecTuning
     simplifyTuning: SimplifyTuning
     mdcExportLevers: MdcExportLevers

@@ -17,6 +17,7 @@ import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shader
 import { DEFAULT_MDC_EXPORT_LEVERS, type MdcExportLevers } from "./render-worker-protocol.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
+import { FlexiCubesExport, type FlexiCubesParams } from "./export/flexicubes.mjs"
 import { ContourBuffer } from "./scene/contour-buffer.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
@@ -1075,7 +1076,34 @@ export class RenderWorkerCore {
             const sceneSDF_mid = scene.compileMid()
 
             let mesh
-            if (exporter === "shrec") {
+            if (exporter === "flexicubes") {
+                log("FlexiCubesExport").info(`handleRenderMesh: dispatching FlexiCubes`)
+                const fcCompiler = new ShaderCompiler(this.#device)
+                    .replace("insert", "sceneAuxFast", sceneAuxFast)
+                    .replace("insert", "sceneAux", sceneAux)
+                    .replace("insert", "sceneAuxMid", sceneAuxMid)
+                    .replace("insert", "sceneSDF", sceneSDF)
+                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
+                const fcShaderModule = fcCompiler.compile(sampleGridShader, "FlexiCubes Sample Grid")
+                const params: FlexiCubesParams = {
+                    gridDimX,
+                    gridDimY,
+                    gridDimZ,
+                    isoValue: 0.0,
+                    gridOffsetX: minX,
+                    gridOffsetY: minY,
+                    gridOffsetZ: minZ,
+                    voxelSize: voxelSizeMm,
+                }
+                const fc = new FlexiCubesExport(
+                    this.#helper,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.mdcSceneParams,
+                    params,
+                )
+                mesh = await fc.export(fcShaderModule)
+            } else if (exporter === "shrec") {
                 log("ShrecExport").info(
                     `handleRenderMesh: dispatching SHREC, incoming tuning=` +
                         `${shrecTuning ? JSON.stringify(shrecTuning) : "(undefined → defaults)"}`,

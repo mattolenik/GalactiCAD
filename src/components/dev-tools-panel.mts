@@ -230,7 +230,7 @@ export class DevToolsPanel extends HTMLElement {
 
         this.#exporterKind = settings.getGlobal().app.exporterKind
         this.#exporterKindSelect = document.createElement("select")
-        for (const [value, label] of [["mdc", "MDC"], ["shrec", "SHREC"]] as const) {
+        for (const [value, label] of [["mdc", "MDC"], ["shrec", "SHREC"], ["flexicubes", "FlexiCubes"]] as const) {
             const opt = document.createElement("option")
             opt.value = value
             opt.textContent = label

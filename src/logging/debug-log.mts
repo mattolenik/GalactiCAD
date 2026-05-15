@@ -29,6 +29,7 @@ export const DEBUG_LOG_MODULES = [
     "WelcomeScreen",
     "MdcExport",
     "ShrecExport",
+    "FlexiCubesExport",
     "Simplify",
     "Settings",
     "Sdf",
@@ -40,7 +41,7 @@ export type LogModule = (typeof DEBUG_LOG_MODULES)[number]
 
 export type DebugLogModulesState = Partial<Record<LogModule, boolean>>
 
-const enabled = Object.fromEntries(DEBUG_LOG_MODULES.map(m => [m, false])) as Record<LogModule, boolean>
+const enabled = Object.fromEntries(DEBUG_LOG_MODULES.map(m => [m, true])) as Record<LogModule, boolean>
 
 /** Preserve real console before optional dev mirror (avoids double-recording from log()). */
 const origConsole: Pick<typeof console, "debug" | "info" | "warn" | "error" | "log"> = {
@@ -56,10 +57,10 @@ let devLogPush: ((entry: DevLogEntry) => void) | undefined
 let devLogThreadLabel: string | undefined
 let devConsoleMirrorInstalled = false
 
-/** Apply persisted or in-memory flags (missing / not true → off). */
+/** Apply persisted or in-memory flags (missing → on, explicit false → off). */
 export function applyDebugLogModules(state: Partial<Record<string, boolean>> | undefined): void {
     for (const m of DEBUG_LOG_MODULES) {
-        enabled[m] = state?.[m] === true
+        enabled[m] = state?.[m] !== false
     }
 }
 
@@ -196,7 +197,7 @@ export function log(module: LogModule): {
 export function snapshotDebugLogModules(state: DebugLogModulesState | undefined): Record<LogModule, boolean> {
     const out = {} as Record<LogModule, boolean>
     for (const m of DEBUG_LOG_MODULES) {
-        out[m] = state?.[m] === true
+        out[m] = state?.[m] !== false
     }
     return out
 }

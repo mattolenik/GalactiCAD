@@ -27,7 +27,7 @@ export const DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM = 0.5
  *   stage runs dual contouring + MergeSharp vertex relocation (see
  *   `src/export/shrec.mts` and `src/shaders/sample_grid.wgsl`).
  */
-export type ExporterKind = "mdc" | "shrec"
+export type ExporterKind = "mdc" | "shrec" | "flexicubes"
 
 /**
  * Tuning knobs for the SHREC / MergeSharp exporter that the user may adjust

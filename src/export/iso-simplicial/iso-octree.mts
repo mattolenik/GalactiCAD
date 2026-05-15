@@ -16,11 +16,12 @@ import {
     computeDualVertexFace,
     encodeCubeHermitePlane,
     encodeEdgeHermitePlane,
+    encodeFeaturePlane,
     encodeFaceHermitePlane,
 } from "./dual-vertex-qef.mjs"
 import { cubeCornerIndex, cubeEdge2Orient, cubeEdge2Vert, cubeFace2Orient, cubeFace2Vert } from "./cube-tables.mjs"
 import { qefAccumulatePlane, zeroQefPacked } from "./qef-normal.mjs"
-import type { IsoSampleBatch } from "./iso-sample-batch.mjs"
+import { ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE, type IsoSampleBatch } from "./iso-sample-batch.mjs"
 
 /** One `vec4f` per logical slot: corners 8, edges 12, faces 6, cell body 1. */
 export interface IsoOctreeNode {
@@ -45,6 +46,12 @@ export type IsoOctreeBatchFn = (
  * Feature-driven subdivision predicate (Path I — explicit primitive features from `sceneSDF_mid`).
  * - `"off"`: existing gate `isbig || (signchange && badqef)`. No mid-feature GPU sampling.
  * - `"signchangeGated"`: `isbig || (signchange && (badqef || nearFeature))`.
+ *
+ * When mode is not `"off"`, mid-feature samples propagate from parent to children via inheritance:
+ * the root's 8 corners are sampled once, then each subdivision step samples the parent's 19
+ * midpoints (alongside the existing midSdf batch) and each child inherits 8 of those 27 grid
+ * points as its own corners. The signchangeGated gate then reads the inherited corner features
+ * instead of issuing a per-frontier GPU sample. See {@link BFSEntry.cornerFeature}.
  */
 export type IsoFeatureRefineMode = "off" | "signchangeGated"
 
@@ -54,6 +61,19 @@ export interface IsoFeatureRefineOptions {
     proximityFactor: number
     /** Packed `SDFResultMid` batch sampler (7 vec4 / sample). Required when `mode !== "off"`. */
     sampleMidFeature?: IsoOctreeBatchFn
+    /**
+     * When true, inject extra Hermite planes into the cube QEF normal equations using each
+     * corner's inherited `featurePoint`/`featureN1`/`featureN2`. Pulls the cube dual vertex
+     * toward feature primitives without a hard constraint. Requires `mode !== "off"` (otherwise
+     * `cornerFeature` is null and there's nothing to inject). Default `false`.
+     */
+    planeEnabled?: boolean
+    /**
+     * Distance gate for feature planes: skip a corner's planes when its `featureDist`
+     * (world units) exceeds `planeDistFactor * cellSize * worldScale`. Default `1.0` —
+     * only inject from corners whose nearest feature is inside or just outside the cell.
+     */
+    planeDistFactor?: number
 }
 
 export const DEFAULT_FEATURE_REFINE_OPTIONS: IsoFeatureRefineOptions = {
@@ -97,6 +117,18 @@ export interface QefWorkerPoolLike {
         oversampleQef: number
         dualVertexBorderFraction: number
         invWorldScale: number
+        /**
+         * Optional per-node packed `SDFResultMid` corner data (N × 8 × 28 floats). When provided
+         * together with the `featurePlane*` fields, the worker injects feature planes into the
+         * cube QEF for each node whose first u32 word (featureKind) is non-zero at any corner.
+         */
+        sharedCornerFeature?: SharedArrayBuffer
+        featurePlaneEnabled?: boolean
+        featurePlaneDistFactor?: number
+        rootMinX?: number
+        rootMinY?: number
+        rootMinZ?: number
+        worldScale?: number
     }): Promise<void>
 }
 
@@ -396,6 +428,7 @@ export function computeNodeQefResults(
     oversampleQef: number,
     dualVertexBorderFraction: number,
     invWorldScale: number,
+    cubeFeatureOpts?: CubeFeaturePlaneOptions,
 ): { qefError: number; nodePos: Float32Array; edges: Float32Array; faces: Float32Array; reEvalNorm: Float32Array } {
     void oversampleQef
     const v0: [number, number, number, number] = [verts[0]!, verts[1]!, verts[2]!, verts[3]!]
@@ -424,6 +457,9 @@ export function computeNodeQefResults(
             qefAccumulatePlane(encodeCubeHermitePlane(nx, ny, nz, px, py, pz, dN), packed)
             planeNorms4.push([nx, ny, nz, -1])
             planePts4.push([px, py, pz, dN])
+        }
+        if (cubeFeatureOpts) {
+            injectCubeFeaturePlanes(cubeFeatureOpts, cellSize, packed, planeNorms4, planePts4)
         }
         const { position, qefError: nodeQef } = computeDualVertexCube({
             cellMin, cellMax, qefPacked: packed, planeNorms4, planePts4,
@@ -526,6 +562,7 @@ function phase1SdfToReEvalNorm(
     sdfPhase1: Float32Array,
     C: IsoOctreeRuntimeConstants,
     invWorldScale: number,
+    cubeFeatureOpts?: CubeFeaturePlaneOptions,
 ): { qefError: number; reEvalNorm: Float32Array } {
     const v0 = readV4(node.verts, 0)
     const v7 = readV4(node.verts, 7)
@@ -550,6 +587,9 @@ function phase1SdfToReEvalNorm(
             qefAccumulatePlane(encodeCubeHermitePlane(nx, ny, nz, px, py, pz, dN), packed)
             planeNorms4.push([nx, ny, nz, -1])
             planePts4.push([px, py, pz, dN])
+        }
+        if (cubeFeatureOpts) {
+            injectCubeFeaturePlanes(cubeFeatureOpts, cellSize, packed, planeNorms4, planePts4)
         }
         const { position, qefError: nodeQef } = computeDualVertexCube({
             cellMin, cellMax, qefPacked: packed, planeNorms4, planePts4,
@@ -699,6 +739,11 @@ function normalizeFeatureRefine(opt: IsoFeatureRefineOptions | undefined): IsoFe
         mode: opt.mode,
         proximityFactor: opt.proximityFactor > 0 ? opt.proximityFactor : DEFAULT_FEATURE_REFINE_OPTIONS.proximityFactor,
         sampleMidFeature: opt.sampleMidFeature,
+        planeEnabled: opt.planeEnabled === true,
+        planeDistFactor:
+            typeof opt.planeDistFactor === "number" && Number.isFinite(opt.planeDistFactor) && opt.planeDistFactor > 0
+                ? opt.planeDistFactor
+                : 1.0,
     }
 }
 
@@ -708,12 +753,107 @@ function normalizeFeatureRefine(opt: IsoFeatureRefineOptions | undefined): IsoFe
  * Used by `nearFeature` checks during subdivision.
  */
 function readMidFeatureKindAndDist(midBuf: Float32Array, sampleIdx: number): { kind: number; dist: number } {
-    const base = sampleIdx * 28
+    const base = sampleIdx * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE
     const kindU = new Uint32Array(midBuf.buffer, midBuf.byteOffset + base * 4, 1)[0]!
     return { kind: kindU, dist: midBuf[base + 1]! }
 }
 
+/**
+ * Full geometric payload at a single corner sample of {@link BFSEntry.cornerFeature}.
+ * Decodes slot 0 (kind/dist, u32-bitcast for kind), slot 1.x (normal count, u32-bitcast),
+ * slot 2 (featurePoint, world space), slot 4 (featureN1, world unit normal), slot 5
+ * (featureN2, world unit normal — meaningful only when `normalCount >= 2`).
+ *
+ * Returned point/normals are in **world coordinates**. Callers that need them in the
+ * normalized `[0,1]³` cell frame should subtract `rootMin` and divide by `worldScale`.
+ */
+function readMidFeatureCornerPayload(midBuf: Float32Array, sampleIdx: number): {
+    kind: number
+    dist: number
+    normalCount: number
+    pointX: number; pointY: number; pointZ: number
+    n1x: number; n1y: number; n1z: number
+    n2x: number; n2y: number; n2z: number
+} {
+    const base = sampleIdx * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE
+    const u32 = new Uint32Array(midBuf.buffer, midBuf.byteOffset + base * 4, 5)
+    return {
+        kind: u32[0]!,
+        dist: midBuf[base + 1]!,
+        normalCount: u32[4]!,
+        pointX: midBuf[base + 8]!,
+        pointY: midBuf[base + 9]!,
+        pointZ: midBuf[base + 10]!,
+        n1x: midBuf[base + 16]!,
+        n1y: midBuf[base + 17]!,
+        n1z: midBuf[base + 18]!,
+        n2x: midBuf[base + 20]!,
+        n2y: midBuf[base + 21]!,
+        n2z: midBuf[base + 22]!,
+    }
+}
+
 const MID_FEATURE_NONE_KIND = 0
+
+/**
+ * Cube-QEF feature-plane injection options. Passed to {@link phase1SdfToReEvalNorm} and
+ * {@link computeNodeQefResults}. When provided + `cornerFeature` is non-null, each of the
+ * 8 corners contributes 1–2 extra Hermite planes through its inherited `featurePoint`
+ * (filtered by `featureDist < distFactor * cellSize * worldScale`).
+ *
+ * The added planes describe surfaces that are known to pass through the feature primitive:
+ * for a sharp edge feature, both adjacent face normals (`featureN1`, `featureN2`) emanate
+ * from the same `featurePoint`, and their inclusion in the QEF normal equations pulls the
+ * dual vertex toward the feature without a hard constraint.
+ */
+export interface CubeFeaturePlaneOptions {
+    /** Per-corner packed SDFResultMid (8 × 28 floats), as carried by {@link BFSEntry.cornerFeature}. */
+    cornerFeature: Float32Array
+    /** Skip planes whose `featureDist` exceeds `distFactor · cellSize · worldScale` (world units). */
+    distFactor: number
+    /** Root AABB origin (world space); used to convert `featurePoint` to normalized cell coords. */
+    rootMinX: number
+    rootMinY: number
+    rootMinZ: number
+    /** Root AABB edge length (world units); convert via `(p - rootMin) / worldScale`. */
+    worldScale: number
+}
+
+/**
+ * Accumulate 1–2 cube Hermite planes per corner into the cube QEF, using the corner's inherited
+ * `SDFResultMid`. Each plane passes through the world-space `featurePoint` (converted to the
+ * normalized cell frame) with `featureN1` (and, if `featureNormalCount >= 2`, `featureN2`).
+ * `dN = 0` because the feature primitive is on the modelled surface.
+ *
+ * Called from both {@link phase1SdfToReEvalNorm} (inline path) and {@link computeNodeQefResults}
+ * (worker-pool path) so the two QEFs stay bit-identical.
+ */
+function injectCubeFeaturePlanes(
+    opts: CubeFeaturePlaneOptions,
+    cellSize: number,
+    packed: Float64Array,
+    planeNorms4: [number, number, number, number][],
+    planePts4: [number, number, number, number][],
+): void {
+    const distThreshold = opts.distFactor * cellSize * opts.worldScale
+    const invWS = 1 / opts.worldScale
+    for (let c = 0; c < 8; c++) {
+        const f = readMidFeatureCornerPayload(opts.cornerFeature, c)
+        if (f.kind === MID_FEATURE_NONE_KIND) continue
+        if (f.dist > distThreshold) continue
+        const px = (f.pointX - opts.rootMinX) * invWS
+        const py = (f.pointY - opts.rootMinY) * invWS
+        const pz = (f.pointZ - opts.rootMinZ) * invWS
+        qefAccumulatePlane(encodeFeaturePlane(f.n1x, f.n1y, f.n1z, px, py, pz), packed)
+        planeNorms4.push([f.n1x, f.n1y, f.n1z, 0])
+        planePts4.push([px, py, pz, 0])
+        if (f.normalCount >= 2) {
+            qefAccumulatePlane(encodeFeaturePlane(f.n2x, f.n2y, f.n2z, px, py, pz), packed)
+            planeNorms4.push([f.n2x, f.n2y, f.n2z, 0])
+            planePts4.push([px, py, pz, 0])
+        }
+    }
+}
 
 function createEmptyNode(): IsoOctreeNode {
     return {
@@ -766,6 +906,13 @@ interface BFSEntry {
     node: IsoOctreeNode
     /** Inherited gradients at the 8 corners (24 floats). `null` only for the root — harvested from Phase 1 lattice. */
     gradCorners: Float32Array | null
+    /**
+     * Inherited packed `SDFResultMid` at the 8 corners (8 × 28 = 224 floats), or `null`
+     * when `featureRefine.mode === "off"`. Filled at root by a one-time 8-corner GPU sample
+     * (see "Feature corner seeding" in {@link buildOctreeBFS}), then inherited from parents
+     * during subdivision so the signchangeGated gate can fire without a per-frontier GPU call.
+     */
+    cornerFeature: Float32Array | null
 }
 
 /** Constant list of the 19 flat indices `(x*3+y)*3+z` where any of `x,y,z === 1` (3×3×3 grid midpoints). */
@@ -810,7 +957,10 @@ async function buildOctreeBFS(
     perf: IsoOctreeBuildPerf,
     qefWorkerPool: QefWorkerPoolLike | undefined,
 ): Promise<void> {
-    let frontier: BFSEntry[] = [{ node: root, gradCorners: null }]
+    // Root starts with `cornerFeature: null`; the in-loop "Feature corner seeding" block
+    // below issues a single mid-feature GPU batch on the first iteration to fill it.
+    // Descendants inherit from their parent and never re-sample.
+    let frontier: BFSEntry[] = [{ node: root, gradCorners: null, cornerFeature: null }]
     const invWorldScale = 1 / worldScale
     const minsize = 0.5 ** C.depthMax
     const maxsize = 0.5 ** C.depthMin
@@ -860,6 +1010,42 @@ async function buildOctreeBFS(
         }
         perf.otherCpuMs += nowMs() - tOther1
 
+        // ── Feature corner seeding (root only; children inherit via subdivision) ─
+        // Any entry whose `cornerFeature` is null at this point is unparented w.r.t.
+        // feature data — in practice only the root, but the loop is general. Issues one
+        // mid-feature batch for the union of all such entries' 8 corners.
+        if (featureRefine.mode !== "off") {
+            const seedIdx: number[] = []
+            for (let i = 0; i < N; i++) if (frontier[i]!.cornerFeature === null) seedIdx.push(i)
+            if (seedIdx.length > 0) {
+                const tFSeedOther0 = nowMs()
+                const seedPositions = new Float32Array(seedIdx.length * 8 * 3)
+                for (let si = 0; si < seedIdx.length; si++) {
+                    const entry = frontier[seedIdx[si]!]!
+                    const baseOff = si * 8 * 3
+                    for (let j = 0; j < 8; j++) {
+                        const nx = entry.node.verts[j * 4]!
+                        const ny = entry.node.verts[j * 4 + 1]!
+                        const nz = entry.node.verts[j * 4 + 2]!
+                        normToWorld(nx, ny, nz, rootMin, rootMax, seedPositions, baseOff + j * 3)
+                    }
+                }
+                perf.otherCpuMs += nowMs() - tFSeedOther0
+                const tFSeed0 = nowMs()
+                const seedBuf = await featureRefine.sampleMidFeature!(seedPositions, signal)
+                perf.nearFeatureSampleMs += nowMs() - tFSeed0
+                const tFSeedOther1 = nowMs()
+                const STRIDE = ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE
+                for (let si = 0; si < seedIdx.length; si++) {
+                    const entry = frontier[seedIdx[si]!]!
+                    const cf = new Float32Array(8 * STRIDE)
+                    cf.set(seedBuf.subarray(si * 8 * STRIDE, (si + 1) * 8 * STRIDE))
+                    entry.cornerFeature = cf
+                }
+                perf.otherCpuMs += nowMs() - tFSeedOther1
+            }
+        }
+
         // Compute per-node QEF + reEval positions (this is the hot CPU loop — 19 Jacobi solves / cell).
         const tQef0 = nowMs()
         const qefErrors = new Float64Array(N)
@@ -882,6 +1068,21 @@ async function buildOctreeBFS(
                 normPtsView.set(scratches[i]!.normPts, i * P1_STRIDE)
                 sdfView.set(sdfBig.subarray(i * P1_STRIDE, (i + 1) * P1_STRIDE), i * P1_STRIDE)
             }
+            // Pack per-node corner-feature data only when the feature-plane knob is on. Nodes
+            // whose `cornerFeature` is null land as all-zeros (featureKind=0 at every corner),
+            // which the worker skips naturally — no per-node "has-feature" flag needed.
+            const planeOn = featureRefine.planeEnabled === true && featureRefine.mode === "signchangeGated"
+            const CF_STRIDE = 8 * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE
+            const sharedCornerFeature: SharedArrayBuffer | undefined = planeOn
+                ? new SharedArrayBuffer(N * CF_STRIDE * 4)
+                : undefined
+            if (sharedCornerFeature) {
+                const cfView = new Float32Array(sharedCornerFeature)
+                for (let i = 0; i < N; i++) {
+                    const cf = frontier[i]!.cornerFeature
+                    if (cf) cfView.set(cf, i * CF_STRIDE)
+                }
+            }
             await qefWorkerPool.processBatch({
                 sharedVerts, sharedNormPts, sharedSdf, sharedOut,
                 nodeCount: N,
@@ -889,6 +1090,13 @@ async function buildOctreeBFS(
                 oversampleQef: C.oversampleQef,
                 dualVertexBorderFraction: C.dualVertexBorderFraction,
                 invWorldScale,
+                ...(sharedCornerFeature ? {
+                    sharedCornerFeature,
+                    featurePlaneEnabled: true,
+                    featurePlaneDistFactor: featureRefine.planeDistFactor ?? 1.0,
+                    rootMinX: rootMin[0], rootMinY: rootMin[1], rootMinZ: rootMin[2],
+                    worldScale,
+                } : {}),
             })
             for (let i = 0; i < N; i++) {
                 const o = i * QEF_OUT_STRIDE_LOCAL
@@ -903,9 +1111,20 @@ async function buildOctreeBFS(
                 qefErrors[i] = outView[o + 133]!
             }
         } else {
+            const planeOn = featureRefine.planeEnabled === true && featureRefine.mode === "signchangeGated"
+            const planeDistFactor = featureRefine.planeDistFactor ?? 1.0
             for (let i = 0; i < N; i++) {
                 const slice = sdfBig.subarray(i * t1 * 4, (i + 1) * t1 * 4)
-                const r = phase1SdfToReEvalNorm(frontier[i]!.node, scratches[i]!, slice, C, invWorldScale)
+                const cf = frontier[i]!.cornerFeature
+                const cubeFeatureOpts: CubeFeaturePlaneOptions | undefined = planeOn && cf
+                    ? {
+                        cornerFeature: cf,
+                        distFactor: planeDistFactor,
+                        rootMinX: rootMin[0], rootMinY: rootMin[1], rootMinZ: rootMin[2],
+                        worldScale,
+                    }
+                    : undefined
+                const r = phase1SdfToReEvalNorm(frontier[i]!.node, scratches[i]!, slice, C, invWorldScale, cubeFeatureOpts)
                 qefErrors[i] = r.qefError
                 reNorms[i] = r.reEvalNorm
             }
@@ -956,53 +1175,38 @@ async function buildOctreeBFS(
         }
         perf.otherCpuMs += nowMs() - tDecide0
 
-        // ── Optional batched nearFeature check ────────────────────────────────────
-        if (featureRefine.mode === "signchangeGated" && featureRefine.sampleMidFeature) {
-            const candidates: number[] = []
-            for (let i = 0; i < N; i++) if (decisions[i] === "needsFeature") candidates.push(i)
-            if (candidates.length > 0) {
-                const POINTS_PER_CELL = 9
-                const tNFOther0 = nowMs()
-                const positions = new Float32Array(candidates.length * POINTS_PER_CELL * 3)
-                for (let ci = 0; ci < candidates.length; ci++) {
-                    const entry = frontier[candidates[ci]!]!
-                    const baseOff = ci * POINTS_PER_CELL * 3
-                    for (let j = 0; j < 8; j++) {
-                        const nx = entry.node.verts[j * 4]!
-                        const ny = entry.node.verts[j * 4 + 1]!
-                        const nz = entry.node.verts[j * 4 + 2]!
-                        normToWorld(nx, ny, nz, rootMin, rootMax, positions, baseOff + j * 3)
-                    }
-                    const v0x = entry.node.verts[0]!, v0y = entry.node.verts[1]!, v0z = entry.node.verts[2]!
-                    const v7x = entry.node.verts[7 * 4]!, v7y = entry.node.verts[7 * 4 + 1]!, v7z = entry.node.verts[7 * 4 + 2]!
-                    normToWorld((v0x + v7x) * 0.5, (v0y + v7y) * 0.5, (v0z + v7z) * 0.5, rootMin, rootMax, positions, baseOff + 8 * 3)
+        // ── Resolve `needsFeature` from inherited corner samples (no GPU call) ─────
+        // The 8 corners of every frontier cell already carry packed `SDFResultMid` data —
+        // seeded at the root and inherited from parents at subdivision time. With the default
+        // `proximityFactor=2.0`, any in-cell feature point is within `√3/2·cellSize ≈ 0.87·cellSize`
+        // of *some* corner, so corner-only sampling covers the cell interior; a corner-derived
+        // sample anywhere within the cell or within `proximityFactor·cellSize` of any corner
+        // counts as "near".
+        if (featureRefine.mode === "signchangeGated") {
+            const tFD0 = nowMs()
+            for (let i = 0; i < N; i++) {
+                if (decisions[i] !== "needsFeature") continue
+                const entry = frontier[i]!
+                const cf = entry.cornerFeature
+                if (!cf) {
+                    // Defensive: bootstrap should have populated the root and every descendant inherits.
+                    decisions[i] = "no"
+                    continue
                 }
-                perf.otherCpuMs += nowMs() - tNFOther0
-                const tNF0 = nowMs()
-                const midBuf = await featureRefine.sampleMidFeature(positions, signal)
-                perf.nearFeatureSampleMs += nowMs() - tNF0
-                const tNFOther1 = nowMs()
-                for (let ci = 0; ci < candidates.length; ci++) {
-                    const i = candidates[ci]!
-                    const entry = frontier[i]!
-                    const v0 = readV4(entry.node.verts, 0)
-                    const v7 = readV4(entry.node.verts, 7)
-                    const cellSize = v7[0] - v0[0]
-                    const distThreshold = featureRefine.proximityFactor * cellSize * worldScale
-                    let near = false
-                    for (let j = 0; j < POINTS_PER_CELL; j++) {
-                        const { kind, dist } = readMidFeatureKindAndDist(midBuf, ci * POINTS_PER_CELL + j)
-                        if (kind !== MID_FEATURE_NONE_KIND && dist < distThreshold) { near = true; break }
-                    }
-                    decisions[i] = near ? "yes" : "no"
+                const v0 = readV4(entry.node.verts, 0)
+                const v7 = readV4(entry.node.verts, 7)
+                const cellSize = v7[0] - v0[0]
+                const distThreshold = featureRefine.proximityFactor * cellSize * worldScale
+                let near = false
+                for (let j = 0; j < 8; j++) {
+                    const { kind, dist } = readMidFeatureKindAndDist(cf, j)
+                    if (kind !== MID_FEATURE_NONE_KIND && dist < distThreshold) { near = true; break }
                 }
-                perf.otherCpuMs += nowMs() - tNFOther1
-            } else {
-                for (let i = 0; i < N; i++) if (decisions[i] === "needsFeature") decisions[i] = "no"
+                decisions[i] = near ? "yes" : "no"
             }
-        } else {
-            for (let i = 0; i < N; i++) if (decisions[i] === "needsFeature") decisions[i] = "no"
+            perf.otherCpuMs += nowMs() - tFD0
         }
+        // (mode === "off" never produces "needsFeature" decisions — nothing to resolve.)
 
         // ── Parent midSdf mega-batch (only for subdividers) ───────────────────────
         const subdividerIdx: number[] = []
@@ -1035,9 +1239,19 @@ async function buildOctreeBFS(
             }
         }
         perf.otherCpuMs += nowMs() - tTrilerp0
+        // Parent midSdf + (optional) mid-feature batch at the same 19 midpoints, dispatched
+        // concurrently — they don't share buffers and target different pipelines. The feature
+        // batch is what lets every child inherit its 8-corner `SDFResultMid` without sampling.
         const tMid0 = nowMs()
-        const sdfMidBig = await sample(bigMidWorld, signal)
-        perf.midSampleMs += nowMs() - tMid0
+        const wantChildFeature = featureRefine.mode === "signchangeGated" && featureRefine.sampleMidFeature !== undefined
+        const sdfMidPromise = sample(bigMidWorld, signal)
+        const midFeatPromise: Promise<Float32Array | null> = wantChildFeature
+            ? featureRefine.sampleMidFeature!(bigMidWorld, signal)
+            : Promise.resolve(null)
+        const [sdfMidBig, midFeatBig] = await Promise.all([sdfMidPromise, midFeatPromise])
+        const tMidElapsed = nowMs() - tMid0
+        perf.midSampleMs += tMidElapsed
+        if (wantChildFeature) perf.nearFeatureSampleMs += tMidElapsed
         const tChild0 = nowMs()
 
         // ── Construct children for each subdividing parent ────────────────────────
@@ -1050,12 +1264,26 @@ async function buildOctreeBFS(
             for (let mi = 0; mi < PARENT_MID_COUNT; mi++) {
                 p[PARENT_MID_INDICES[mi]! * 4 + 3] = sdfMidSlice[mi * 4 + 3]!
             }
+            // Slice of this parent's 19 mid-feature samples (28 floats each = 7 vec4).
+            // `null` when feature mode is "off" — children get `cornerFeature = null` too.
+            const midFeatSlice: Float32Array | null = midFeatBig
+                ? midFeatBig.subarray(
+                    si * PARENT_MID_COUNT * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE,
+                    (si + 1) * PARENT_MID_COUNT * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE,
+                )
+                : null
 
             for (let ci = 0; ci < 8; ci++) {
                 const child = createEmptyNode()
                 parentEntry.node.children[ci] = child
                 const gChild = new Float32Array(24)
                 const ib = indexBits(ci)
+                // Build child's 8-corner `SDFResultMid` payload by sourcing each corner from
+                // the parent's 27-point feature grid: parent corners (when px,py,pz all even)
+                // come from `parentEntry.cornerFeature`; midpoints come from `midFeatSlice`.
+                const childCornerFeature: Float32Array | null = midFeatSlice && parentEntry.cornerFeature
+                    ? new Float32Array(8 * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE)
+                    : null
                 for (let j = 0; j < 8; j++) {
                     const jb = indexBits(j)
                     const px = ib.x + jb.x
@@ -1067,8 +1295,29 @@ async function buildOctreeBFS(
                     gChild[j * 3] = g[0]!
                     gChild[j * 3 + 1] = g[1]!
                     gChild[j * 3 + 2] = g[2]!
+                    if (childCornerFeature) {
+                        const dstOff = j * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE
+                        if (px === 1 || py === 1 || pz === 1) {
+                            // Midpoint — sourced from this frontier's mid-feature batch.
+                            const mi = PARENT_MID_TO_BATCH.get(idxFlat)
+                            if (mi === undefined) throw new Error("iso-octree: missing midpoint feature index")
+                            const srcOff = mi * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE
+                            childCornerFeature.set(
+                                midFeatSlice!.subarray(srcOff, srcOff + ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE),
+                                dstOff,
+                            )
+                        } else {
+                            // Parent corner — sourced from the parent's inherited 8-corner feature payload.
+                            const parentCornerIdx = cubeCornerIndex((px >> 1) as 0 | 1, (py >> 1) as 0 | 1, (pz >> 1) as 0 | 1)
+                            const srcOff = parentCornerIdx * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE
+                            childCornerFeature.set(
+                                parentEntry.cornerFeature!.subarray(srcOff, srcOff + ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE),
+                                dstOff,
+                            )
+                        }
+                    }
                 }
-                nextFrontier.push({ node: child, gradCorners: gChild })
+                nextFrontier.push({ node: child, gradCorners: gChild, cornerFeature: childCornerFeature })
             }
         }
         perf.otherCpuMs += nowMs() - tChild0

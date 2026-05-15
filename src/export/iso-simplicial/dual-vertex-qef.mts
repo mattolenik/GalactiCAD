@@ -63,6 +63,17 @@ export interface ComputeDualVertexEdgeInput {
     borderFraction?: number
 }
 
+/** Feature plane `eqn = [nx,ny,nz,0,-(px nx+py ny+pz nz)]` — pure 3D constraint, V_w uncoupled. */
+export function encodeFeaturePlane(nx: number, ny: number, nz: number, px: number, py: number, pz: number): Float64Array {
+    const eqn = new Float64Array(5)
+    eqn[0] = nx
+    eqn[1] = ny
+    eqn[2] = nz
+    eqn[3] = 0
+    eqn[4] = -(px * nx + py * ny + pz * nz)
+    return eqn
+}
+
 /** Reference `vertNode` plane encoding: `eqn = [nx,ny,nz,-1, -(px nx+py ny+pz nz)+w]`. */
 export function encodeCubeHermitePlane(
     nx: number,

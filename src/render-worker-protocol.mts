@@ -50,6 +50,37 @@ export interface IsoSimplicialTuning {
      * iso-simplicial world cube. Omitted → {@link DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM}.
      */
     boundingBoxPaddingMm?: number
+    /**
+     * Feature-aware subdivision (Path I — explicit primitive features from `sceneSDF_mid`).
+     * - `"off"` (default): subdivision uses only `isbig`/`signchange`/`badqef`.
+     * - `"signchangeGated"`: additionally subdivide cells where `signchange && !badqef`
+     *   *and* any of the cell's 8 corners are within {@link featureRefineProximityFactor}
+     *   cell-widths of a feature primitive. Per-corner `SDFResultMid` data is sampled once
+     *   at the root and inherited through octree recursion — no per-cell GPU calls.
+     */
+    featureRefineMode?: "off" | "signchangeGated"
+    /**
+     * Proximity threshold for `featureRefineMode === "signchangeGated"`: a corner counts as
+     * "near a feature" when its sampled `featureDist < featureRefineProximityFactor * cellSize`.
+     * Default 2.0 — with the 8-corner inheritance scheme, ≥√3/2 ≈ 0.87 is enough to cover
+     * any feature point inside the cell interior; 2.0 also catches features within ~2 cell
+     * widths of the surface.
+     */
+    featureRefineProximityFactor?: number
+    /**
+     * When true (and `featureRefineMode !== "off"`), the cube-QEF normal equations are augmented
+     * with one or two extra Hermite planes per corner derived from the corner's inherited
+     * `SDFResultMid` (featurePoint + featureN1/N2). Pulls dual vertices toward sharp features
+     * (edges, corners) without a hard constraint — the QEF solve is unchanged, it just sees
+     * more equations. Default `false`.
+     */
+    featurePlaneEnabled?: boolean
+    /**
+     * Distance gate for `featurePlaneEnabled`: skip a corner's feature planes when its
+     * `featureDist` (world units) exceeds `featurePlaneDistFactor * cellSize * worldScale`.
+     * Default 1.0 — inject only when the feature is inside or just outside the cell.
+     */
+    featurePlaneDistFactor?: number
 }
 
 /** Default iso-simplicial tuning: all fields omitted → worker uses `IsoSimplicialConstants`. */

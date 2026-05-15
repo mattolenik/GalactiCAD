@@ -24,7 +24,9 @@ struct IsoSampleBatchUniforms {
     // `uniforms.voxelSize` (Lathe/Loft primitive epsilons). Set by the caller
     // (typically the finest iso-simplicial octree cell size).
     voxelSize: f32,
-    _pad1: u32,
+    // Row stride for 2D dispatch (dispatchX * workgroup_size). Sample index:
+    // i = gid.x + gid.y * dispatchWidth. Needed when sampleCount > 65535 * 256.
+    dispatchWidth: u32,
     _pad2: u32,
 }
 
@@ -88,7 +90,7 @@ fn sceneSDF_mid(p: vec3f) -> SDFResultMid {
 fn isoSampleBatch(@builtin(global_invocation_id) gid: vec3u) {
     if (atomicLoad(&cancelled) != 0u) { return; }
 
-    let i = gid.x;
+    let i = gid.x + gid.y * uniforms.dispatchWidth;
     if (i >= uniforms.sampleCount) { return; }
 
     let base = 3u * i;
@@ -101,7 +103,7 @@ fn isoSampleBatch(@builtin(global_invocation_id) gid: vec3u) {
 fn isoSampleBatchMid(@builtin(global_invocation_id) gid: vec3u) {
     if (atomicLoad(&cancelled) != 0u) { return; }
 
-    let i = gid.x;
+    let i = gid.x + gid.y * uniforms.dispatchWidth;
     if (i >= uniforms.sampleCount) { return; }
 
     let base = 3u * i;

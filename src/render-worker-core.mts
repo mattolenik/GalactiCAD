@@ -17,11 +17,13 @@ import isoSampleBatchShaderSource from "./shaders/iso_sample_batch.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
 import { MDCExport, type MDCParams } from "./export/mdc.mjs"
 import {
+    createIsoOctreeMidFeatureSampleFn,
     createIsoOctreeSampleFn,
     extractIsoSimplicialMesh,
     extractIsoSimplicialMeshAsync,
     IsoOctree,
     IsoSampleBatch,
+    type IsoFeatureRefineOptions,
 } from "./export/iso-simplicial/index.mjs"
 import { QefWorkerPool } from "./export/iso-simplicial/qef-worker-pool.mjs"
 import { IsoSimplicialConstants } from "./export/iso-simplicial/constants.mjs"
@@ -1230,11 +1232,34 @@ export class RenderWorkerCore {
                             { qefRelativeErrorRefineThreshold: isoT.qefRelativeErrorRefineThreshold }
                         :   {}),
                     }
+                    const featureRefineMode = isoT.featureRefineMode ?? "off"
+                    const featureRefine: IsoFeatureRefineOptions | undefined = featureRefineMode === "off"
+                        ? undefined
+                        : {
+                            mode: featureRefineMode,
+                            proximityFactor:
+                                typeof isoT.featureRefineProximityFactor === "number" &&
+                                Number.isFinite(isoT.featureRefineProximityFactor) &&
+                                isoT.featureRefineProximityFactor > 0
+                                    ? isoT.featureRefineProximityFactor
+                                    : 2.0,
+                            sampleMidFeature: createIsoOctreeMidFeatureSampleFn(
+                                isoBatch, isoSampleModule, isoBatchVoxelSize,
+                            ),
+                            planeEnabled: isoT.featurePlaneEnabled === true,
+                            planeDistFactor:
+                                typeof isoT.featurePlaneDistFactor === "number" &&
+                                Number.isFinite(isoT.featurePlaneDistFactor) &&
+                                isoT.featurePlaneDistFactor > 0
+                                    ? isoT.featurePlaneDistFactor
+                                    : 1.0,
+                        }
                     const tree = await IsoOctree.build({
                         sample: sampleFn,
                         bounds: { min: cube.min, max: cube.max },
                         constants: Object.keys(constOverrides).length > 0 ? constOverrides : undefined,
                         qefWorkerPool,
+                        featureRefine,
                     })
                     const tIsoOct = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
                     const worldB = {

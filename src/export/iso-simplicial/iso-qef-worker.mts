@@ -18,7 +18,8 @@
  */
 
 import { installWorkerDevLogBridge } from "../../logging/debug-log.mjs"
-import { computeNodeQefResults } from "./iso-octree.mjs"
+import { computeNodeQefResults, type CubeFeaturePlaneOptions } from "./iso-octree.mjs"
+import { ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE } from "./iso-sample-batch.mjs"
 
 installWorkerDevLogBridge("iso-qef-worker")
 
@@ -43,6 +44,14 @@ export interface QefWorkerRequest {
     oversampleQef: number
     dualVertexBorderFraction: number
     invWorldScale: number
+    /** Optional packed `SDFResultMid` corner data — N × 8 × 28 floats. */
+    sharedCornerFeature?: SharedArrayBuffer
+    featurePlaneEnabled?: boolean
+    featurePlaneDistFactor?: number
+    rootMinX?: number
+    rootMinY?: number
+    rootMinZ?: number
+    worldScale?: number
 }
 
 export interface QefWorkerResponse {
@@ -58,6 +67,17 @@ function handle(req: QefWorkerRequest): void {
     const out = new Float32Array(req.sharedOut)
     const VERTS_STRIDE = 32
     const PHASE1_STRIDE = req.totalPhase1 * 4
+    const CF_STRIDE = 8 * ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE
+
+    const cornerFeatureView: Float32Array | undefined =
+        req.featurePlaneEnabled && req.sharedCornerFeature
+            ? new Float32Array(req.sharedCornerFeature)
+            : undefined
+    const featurePlaneDistFactor = req.featurePlaneDistFactor ?? 1.0
+    const rootMinX = req.rootMinX ?? 0
+    const rootMinY = req.rootMinY ?? 0
+    const rootMinZ = req.rootMinZ ?? 0
+    const worldScale = req.worldScale ?? 1
 
     for (let i = req.startIdx; i < req.endIdx; i++) {
         const vertsSlice = verts.subarray(i * VERTS_STRIDE, (i + 1) * VERTS_STRIDE)
@@ -72,6 +92,16 @@ function handle(req: QefWorkerRequest): void {
             edgeSamples: req.edgeSamples,
             faceSamples: req.faceSamples,
         }
+        let cubeFeatureOpts: CubeFeaturePlaneOptions | undefined
+        if (cornerFeatureView) {
+            const cfSlice = cornerFeatureView.subarray(i * CF_STRIDE, (i + 1) * CF_STRIDE)
+            cubeFeatureOpts = {
+                cornerFeature: cfSlice,
+                distFactor: featurePlaneDistFactor,
+                rootMinX, rootMinY, rootMinZ,
+                worldScale,
+            }
+        }
         const r = computeNodeQefResults(
             vertsSlice,
             scratch,
@@ -79,6 +109,7 @@ function handle(req: QefWorkerRequest): void {
             req.oversampleQef,
             req.dualVertexBorderFraction,
             req.invWorldScale,
+            cubeFeatureOpts,
         )
         const o = i * QEF_OUT_STRIDE
         out[o] = r.nodePos[0]!

@@ -247,6 +247,28 @@ export function normalizeIsoSimplicialTuning(raw: unknown): IsoSimplicialTuning 
     if (typeof o.boundingBoxPaddingMm === "number" && Number.isFinite(o.boundingBoxPaddingMm) && o.boundingBoxPaddingMm >= 0 && o.boundingBoxPaddingMm <= 100) {
         out.boundingBoxPaddingMm = o.boundingBoxPaddingMm
     }
+    if (o.featureRefineMode === "off" || o.featureRefineMode === "signchangeGated") {
+        out.featureRefineMode = o.featureRefineMode
+    }
+    if (
+        typeof o.featureRefineProximityFactor === "number" &&
+        Number.isFinite(o.featureRefineProximityFactor) &&
+        o.featureRefineProximityFactor > 0 &&
+        o.featureRefineProximityFactor <= 16
+    ) {
+        out.featureRefineProximityFactor = o.featureRefineProximityFactor
+    }
+    if (typeof o.featurePlaneEnabled === "boolean") {
+        out.featurePlaneEnabled = o.featurePlaneEnabled
+    }
+    if (
+        typeof o.featurePlaneDistFactor === "number" &&
+        Number.isFinite(o.featurePlaneDistFactor) &&
+        o.featurePlaneDistFactor > 0 &&
+        o.featurePlaneDistFactor <= 16
+    ) {
+        out.featurePlaneDistFactor = o.featurePlaneDistFactor
+    }
     return out
 }
 

@@ -156,6 +156,7 @@ export class IsoSampleBatch {
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             })
             this.#bindGroup = undefined
+            this.#midBindGroup = undefined
         }
         return this.#positionsBuffer
     }
@@ -300,10 +301,16 @@ export class IsoSampleBatch {
         const cancellationBuffer = this.#ensureCancellationBuffer()
         this.#device.queue.writeBuffer(cancellationBuffer, 0, new Uint32Array([0]))
 
+        const wg = Math.ceil(sampleCount / 256)
+        const dispatchX = Math.min(wg, 65535)
+        const dispatchY = Math.ceil(wg / dispatchX)
+        const dispatchWidth = dispatchX * 256
+
         const uniformBuffer = this.#ensureUniformBuffer()
         const uniformData = new ArrayBuffer(ISO_SAMPLE_BATCH_UNIFORM_BYTES)
         new Uint32Array(uniformData, 0, 4).set([sampleCount >>> 0, 0, 0, 0])
         new Float32Array(uniformData, 4, 1).set([voxelSize])
+        new Uint32Array(uniformData, 8, 1).set([dispatchWidth >>> 0])
         this.#device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 
         const positionsBuffer = this.#ensurePositionBuffer(positionsBytes)
@@ -313,17 +320,12 @@ export class IsoSampleBatch {
         const stagingBuffer = this.#ensureStagingBuffer(outBytes)
         const bindGroup = this.#ensureBindGroup(pipeline, uniformBuffer, positionsBuffer, sdfBuffer, cancellationBuffer)
 
-        const wg = Math.ceil(sampleCount / 256)
-        if (wg > 65535) {
-            throw new Error(`IsoSampleBatch: workgroup count ${wg} exceeds 65535; split the batch.`)
-        }
-
         // One command encoder: compute pass + copy-to-staging, single submit.
         // Avoids the redundant `onSubmittedWorkDone` wait between dispatch and copy
         // that a separate `readBufferData` round would impose.
         const ce = this.#device.createCommandEncoder({ label: "iso_sample_batch" })
         const pass = this.#helper.beginComputePass(ce, pipeline, bindGroup)
-        pass.dispatchWorkgroups(wg)
+        pass.dispatchWorkgroups(dispatchX, dispatchY)
         pass.end()
         ce.copyBufferToBuffer(sdfBuffer, 0, stagingBuffer, 0, outBytes)
         this.#device.queue.submit([ce.finish()])
@@ -381,10 +383,16 @@ export class IsoSampleBatch {
         const cancellationBuffer = this.#ensureCancellationBuffer()
         this.#device.queue.writeBuffer(cancellationBuffer, 0, new Uint32Array([0]))
 
+        const wg = Math.ceil(sampleCount / 256)
+        const dispatchX = Math.min(wg, 65535)
+        const dispatchY = Math.ceil(wg / dispatchX)
+        const dispatchWidth = dispatchX * 256
+
         const uniformBuffer = this.#ensureUniformBuffer()
         const uniformData = new ArrayBuffer(ISO_SAMPLE_BATCH_UNIFORM_BYTES)
         new Uint32Array(uniformData, 0, 4).set([sampleCount >>> 0, 0, 0, 0])
         new Float32Array(uniformData, 4, 1).set([voxelSize])
+        new Uint32Array(uniformData, 8, 1).set([dispatchWidth >>> 0])
         this.#device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 
         const positionsBuffer = this.#ensurePositionBuffer(positionsBytes)
@@ -394,14 +402,9 @@ export class IsoSampleBatch {
         const midStagingBuffer = this.#ensureMidStagingBuffer(midOutBytes)
         const bindGroup = this.#ensureMidBindGroup(pipeline, uniformBuffer, positionsBuffer, midBuffer, cancellationBuffer)
 
-        const wg = Math.ceil(sampleCount / 256)
-        if (wg > 65535) {
-            throw new Error(`IsoSampleBatch.runMidFeature: workgroup count ${wg} exceeds 65535; split the batch.`)
-        }
-
         const ce = this.#device.createCommandEncoder({ label: "iso_sample_batch_mid" })
         const pass = this.#helper.beginComputePass(ce, pipeline, bindGroup)
-        pass.dispatchWorkgroups(wg)
+        pass.dispatchWorkgroups(dispatchX, dispatchY)
         pass.end()
         ce.copyBufferToBuffer(midBuffer, 0, midStagingBuffer, 0, midOutBytes)
         this.#device.queue.submit([ce.finish()])

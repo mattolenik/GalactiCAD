@@ -92,6 +92,10 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
     #exporterRadios: Record<ExporterKind, HTMLInputElement> = {} as Record<ExporterKind, HTMLInputElement>
     #isoCollapse: HTMLElement
     #isoPhase5Checkbox: HTMLInputElement
+    #isoFeatureRefineCheckbox: HTMLInputElement
+    #isoFeaturePlaneCheckbox: HTMLInputElement
+    #isoFeaturePlaneDistFactorRange: HTMLInputElement
+    #isoFeaturePlaneDistFactorValueEl: HTMLSpanElement
     #isoBoundsPadRange: HTMLInputElement
     #isoBoundsPadValueEl: HTMLSpanElement
     #isoDepthMinRange: HTMLInputElement
@@ -229,6 +233,55 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         this.#isoPhase5Checkbox.addEventListener("change", () => {
             this.#persistIsoTuning({ phase5Snap: this.#isoPhase5Checkbox.checked })
         })
+
+        this.#isoFeatureRefineCheckbox = addCheckbox(
+            this.#isoCollapse,
+            "Feature-aware refine (signchangeGated)",
+            (isoT.featureRefineMode ?? "off") === "signchangeGated",
+        )
+        this.#isoFeatureRefineCheckbox.addEventListener("change", () => {
+            this.#persistIsoTuning({
+                featureRefineMode: this.#isoFeatureRefineCheckbox.checked ? "signchangeGated" : "off",
+            })
+        })
+
+        this.#isoFeaturePlaneCheckbox = addCheckbox(
+            this.#isoCollapse,
+            "Feature planes in QEF",
+            isoT.featurePlaneEnabled === true,
+        )
+        this.#isoFeaturePlaneCheckbox.addEventListener("change", () => {
+            this.#persistIsoTuning({ featurePlaneEnabled: this.#isoFeaturePlaneCheckbox.checked })
+        })
+
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Feature plane dist factor"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0.1"
+            range.max = "4"
+            range.step = "0.1"
+            const dfInit = isoT.featurePlaneDistFactor ?? 1.0
+            range.value = String(dfInit)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = dfInit.toFixed(1)
+            range.addEventListener("input", () => {
+                let v = parseFloat(range.value)
+                if (!Number.isFinite(v)) v = 1.0
+                v = Math.max(0.1, Math.min(4, v))
+                valueEl.textContent = v.toFixed(1)
+                this.#persistIsoTuning({ featurePlaneDistFactor: v })
+            })
+            row.append(lab, range, valueEl)
+            this.#isoCollapse.appendChild(row)
+            this.#isoFeaturePlaneDistFactorRange = range
+            this.#isoFeaturePlaneDistFactorValueEl = valueEl
+        }
 
         {
             const row = document.createElement("div")
@@ -462,6 +515,11 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
 
     syncIsoSimplicialTuningFromSettings(tuning: IsoSimplicialTuning): void {
         this.#isoPhase5Checkbox.checked = tuning.phase5Snap ?? false
+        this.#isoFeatureRefineCheckbox.checked = (tuning.featureRefineMode ?? "off") === "signchangeGated"
+        this.#isoFeaturePlaneCheckbox.checked = tuning.featurePlaneEnabled === true
+        const dfSync = tuning.featurePlaneDistFactor ?? 1.0
+        this.#isoFeaturePlaneDistFactorRange.value = String(dfSync)
+        this.#isoFeaturePlaneDistFactorValueEl.textContent = dfSync.toFixed(1)
         const pad = tuning.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
         this.#isoBoundsPadRange.value = String(pad)
         this.#isoBoundsPadValueEl.textContent = pad.toFixed(1)

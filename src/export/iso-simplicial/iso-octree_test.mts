@@ -22,6 +22,38 @@ function mockMidFeatureConst(kind: number, dist: number): IsoOctreeBatchFn {
     }
 }
 
+/** Build a mock mid-feature sampler returning a full packed `SDFResultMid` at every position. */
+function mockMidFeatureFull(opts: {
+    kind: number
+    dist: number
+    normalCount: number
+    point: readonly [number, number, number]
+    n1: readonly [number, number, number]
+    n2: readonly [number, number, number]
+}): IsoOctreeBatchFn {
+    return positions => {
+        const n = positions.length / 3
+        const out = new Float32Array(n * 28)
+        const u = new Uint32Array(out.buffer)
+        for (let i = 0; i < n; i++) {
+            const base = i * 28
+            u[base + 0] = opts.kind
+            out[base + 1] = opts.dist
+            u[base + 4] = opts.normalCount
+            out[base + 8] = opts.point[0]
+            out[base + 9] = opts.point[1]
+            out[base + 10] = opts.point[2]
+            out[base + 16] = opts.n1[0]
+            out[base + 17] = opts.n1[1]
+            out[base + 18] = opts.n1[2]
+            out[base + 20] = opts.n2[0]
+            out[base + 21] = opts.n2[1]
+            out[base + 22] = opts.n2[2]
+        }
+        return Promise.resolve(out)
+    }
+}
+
 /** Constant-negative SDF: no sign change anywhere. */
 const mockSdfInside: IsoOctreeBatchFn = positions => {
     const n = positions.length / 3
@@ -286,4 +318,155 @@ test("featureRefine: mode != 'off' without sampleMidFeature throws", async () =>
         }),
         /sampleMidFeature/,
     )
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// Feature-plane QEF injection (Option B)
+//
+// `mockPlaneHalfZ` has all-(0,0,1) normals, so the cube QEF only constrains
+// V_z and V_w; V_x and V_y are underdetermined and border-clamped to
+// `dualVertexBorderFraction = 0.0625`. Feature planes use a pure-3D encoding
+// `[nx,ny,nz,0,-(n·p)]` (V_w coefficient 0), so they constrain V_x/V_y
+// directly without SDF coupling. With planes through (0.3, 0.3, 0.5) and
+// normals (1,0,0) and (0,1,0), the QEF gains independent X and Y constraints
+// that pin V_x = 0.3 and V_y = 0.3 exactly.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Bounds {0..1}, cellSize=1, worldScale=1 — keeps the distance-gate math obvious. */
+const UNIT_BOUNDS = { min: [0, 0, 0] as const, max: [1, 1, 1] as const }
+const DEPTH0_CONSTS = { depthMin: 0, depthMax: 0, qefRelativeErrorRefineThreshold: 1e30 }
+const NEAR_FEATURE = mockMidFeatureFull({
+    kind: MID_FEATURE_LINE,
+    dist: 0.6,
+    normalCount: 2,
+    point: [0.3, 0.3, 0.5],
+    n1: [1, 0, 0],
+    n2: [0, 1, 0],
+})
+/** Border fraction applied to unconstrained axes by `computeDualVertexCube`. */
+const BORDER = 0.0625
+
+test("featurePlane: disabled — x/y border-clamped (not pulled toward feature point)", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: NEAR_FEATURE,
+            planeEnabled: false,
+        },
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    // No feature planes → x/y underdetermined → border-clamped to BORDER (not near 0.3)
+    assert.ok(Math.abs(vx - 0.3) > 0.1, `x without feature planes must NOT pull toward 0.3, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) > 0.1, `y without feature planes must NOT pull toward 0.3, got ${vy}`)
+})
+
+test("featurePlane: enabled — vertex pulls toward featurePoint x/y", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: NEAR_FEATURE,
+            planeEnabled: true,
+            planeDistFactor: 2.0,
+        },
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    const vz = tree.root.node[2]!
+    // Feature planes pin V_x = 0.3, V_y = 0.3; lattice pins V_z near 0.25 (z=0.5 surface)
+    assert.ok(Math.abs(vx - 0.3) < 0.05, `x should pull toward 0.3, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) < 0.05, `y should pull toward 0.3, got ${vy}`)
+    assert.ok(vz > BORDER && vz < 1 - BORDER, `z should stay inside cell, got ${vz}`)
+})
+
+test("featurePlane: distance gate suppresses far-feature planes", async () => {
+    const farFeature = mockMidFeatureFull({
+        kind: MID_FEATURE_LINE,
+        dist: 5.0,
+        normalCount: 2,
+        point: [0.3, 0.3, 0.5],
+        n1: [1, 0, 0],
+        n2: [0, 1, 0],
+    })
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 16, // keep subdivision gate from firing
+            sampleMidFeature: farFeature,
+            planeEnabled: true,
+            planeDistFactor: 1.0, // threshold = 1.0 × 1 × 1 = 1; dist=5 → gated out
+        },
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    // Far feature must not inject planes → x/y remain border-clamped
+    assert.ok(Math.abs(vx - 0.3) > 0.1, `far feature must NOT pull x toward 0.3, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) > 0.1, `far feature must NOT pull y toward 0.3, got ${vy}`)
+})
+
+test("featurePlane: kind=NONE corners contribute no planes", async () => {
+    const noFeature = mockMidFeatureFull({
+        kind: MID_FEATURE_NONE,
+        dist: 0,
+        normalCount: 2,
+        point: [0.3, 0.3, 0.5],
+        n1: [1, 0, 0],
+        n2: [0, 1, 0],
+    })
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: noFeature,
+            planeEnabled: true,
+            planeDistFactor: 16,
+        },
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    // kind=NONE → injector skips → x/y remain border-clamped
+    assert.ok(Math.abs(vx - 0.3) > 0.1, `kind=NONE must NOT pull x toward 0.3, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) > 0.1, `kind=NONE must NOT pull y toward 0.3, got ${vy}`)
+})
+
+test("featurePlane: single-normal feature constrains its axis only", async () => {
+    const oneNormal = mockMidFeatureFull({
+        kind: MID_FEATURE_LINE,
+        dist: 0.6,
+        normalCount: 1,
+        point: [0.3, 0.3, 0.5],
+        n1: [1, 0, 0],
+        n2: [0, 1, 0], // ignored when normalCount=1
+    })
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: oneNormal,
+            planeEnabled: true,
+            planeDistFactor: 2.0,
+        },
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    // n1=(1,0,0) pins V_x = 0.3; n2 ignored (normalCount=1) → V_y border-clamped
+    assert.ok(Math.abs(vx - 0.3) < 0.05, `x constrained by n1=(1,0,0) toward 0.3, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) > 0.1, `y must NOT be pulled (n2 ignored), got ${vy}`)
 })

@@ -38,6 +38,14 @@ export interface QefBatchInputs {
     oversampleQef: number
     dualVertexBorderFraction: number
     invWorldScale: number
+    /** Optional per-node packed `SDFResultMid` corner data (N × 8 × 28 floats). */
+    sharedCornerFeature?: SharedArrayBuffer
+    featurePlaneEnabled?: boolean
+    featurePlaneDistFactor?: number
+    rootMinX?: number
+    rootMinY?: number
+    rootMinZ?: number
+    worldScale?: number
 }
 
 interface PendingBatch {
@@ -104,6 +112,13 @@ export class QefWorkerPool {
                     oversampleQef: inputs.oversampleQef,
                     dualVertexBorderFraction: inputs.dualVertexBorderFraction,
                     invWorldScale: inputs.invWorldScale,
+                    sharedCornerFeature: inputs.sharedCornerFeature,
+                    featurePlaneEnabled: inputs.featurePlaneEnabled,
+                    featurePlaneDistFactor: inputs.featurePlaneDistFactor,
+                    rootMinX: inputs.rootMinX,
+                    rootMinY: inputs.rootMinY,
+                    rootMinZ: inputs.rootMinZ,
+                    worldScale: inputs.worldScale,
                 }
                 this.#workers[wi]!.postMessage(req)
             }

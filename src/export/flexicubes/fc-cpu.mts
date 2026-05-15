@@ -296,16 +296,26 @@ export function flexiCubesCPU(
         const vd2 = edgeVdEntries[i + 2]!.vdId
         const vd3 = edgeVdEntries[i + 3]!.vdId
 
-        // Winding: match Python's flip_mask logic
-        // s_edges[:, 0] > 0 means v0 is outside (s > isoValue → not inside)
+        // Winding: for Z-outer scan order the 4 adjacent cubes arrive in
+        // row-major order in the plane ⊥ to the edge axis:
+        //   (da=0,db=0),(da=1,db=0),(da=0,db=1),(da=1,db=1)
+        // CCW in that plane is [0,1,3,2]; CW is [0,2,3,1].
+        // We want outward normals pointing from inside → outside.
+        //
+        // CUBE_EDGES defines v0c as the LOWER endpoint for x-edges (axis 0)
+        // and z-edges (axis 2), but as the UPPER-y endpoint for y-edges
+        // (axis 1, edges 8–11 use corner order (2,0),(3,1),(7,5),(6,4)).
+        // So crossing.v0Inside has inverted meaning for y-edges.
+        const edgeAxis = geid < numXEdges ? 0 : geid < numXEdges + numYEdges ? 1 : 2
         const crossing = edgeCrossings.get(geid)!
+        const lowerEndpointInside = edgeAxis === 1 ? !crossing.v0Inside : crossing.v0Inside
         let q0: number, q1: number, q2: number, q3: number
-        if (!crossing.v0Inside) {
-            // v0 outside → permute [0,1,3,2]
+        if (lowerEndpointInside) {
+            // lower endpoint inside → outward normal in edge direction → CCW → [0,1,3,2]
             q0 = vd0; q1 = vd1; q2 = vd3; q3 = vd2
         } else {
-            // v0 inside → permute [2,3,1,0]
-            q0 = vd2; q1 = vd3; q2 = vd1; q3 = vd0
+            // lower endpoint outside → outward normal against edge direction → CW → [0,2,3,1]
+            q0 = vd0; q1 = vd2; q2 = vd3; q3 = vd1
         }
 
         // quad_split_1: [0, 1, 2, 0, 2, 3]

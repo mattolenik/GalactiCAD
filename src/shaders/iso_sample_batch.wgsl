@@ -20,7 +20,10 @@
 
 struct IsoSampleBatchUniforms {
     sampleCount: u32,
-    _pad0: u32,
+    // Representative grid scale for inserted scene SDF code that references
+    // `uniforms.voxelSize` (Lathe/Loft primitive epsilons). Set by the caller
+    // (typically the finest iso-simplicial octree cell size).
+    voxelSize: f32,
     _pad1: u32,
     _pad2: u32,
 }

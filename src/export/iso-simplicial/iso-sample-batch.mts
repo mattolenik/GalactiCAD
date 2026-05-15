@@ -269,6 +269,7 @@ export class IsoSampleBatch {
     async run(
         isoSampleBatchShaderModule: GPUShaderModule,
         positions: Float32Array<ArrayBuffer>,
+        voxelSize: number,
         options?: { signal?: AbortSignal },
     ): Promise<IsoSampleBatchResult> {
         if (options?.signal?.aborted) {
@@ -302,6 +303,7 @@ export class IsoSampleBatch {
         const uniformBuffer = this.#ensureUniformBuffer()
         const uniformData = new ArrayBuffer(ISO_SAMPLE_BATCH_UNIFORM_BYTES)
         new Uint32Array(uniformData, 0, 4).set([sampleCount >>> 0, 0, 0, 0])
+        new Float32Array(uniformData, 4, 1).set([voxelSize])
         this.#device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 
         const positionsBuffer = this.#ensurePositionBuffer(positionsBytes)
@@ -348,6 +350,7 @@ export class IsoSampleBatch {
     async runMidFeature(
         isoSampleBatchShaderModule: GPUShaderModule,
         positions: Float32Array<ArrayBuffer>,
+        voxelSize: number,
         options?: { signal?: AbortSignal },
     ): Promise<IsoSampleBatchMidResult> {
         if (options?.signal?.aborted) {
@@ -381,6 +384,7 @@ export class IsoSampleBatch {
         const uniformBuffer = this.#ensureUniformBuffer()
         const uniformData = new ArrayBuffer(ISO_SAMPLE_BATCH_UNIFORM_BYTES)
         new Uint32Array(uniformData, 0, 4).set([sampleCount >>> 0, 0, 0, 0])
+        new Float32Array(uniformData, 4, 1).set([voxelSize])
         this.#device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 
         const positionsBuffer = this.#ensurePositionBuffer(positionsBytes)

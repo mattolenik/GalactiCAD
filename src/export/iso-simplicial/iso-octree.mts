@@ -242,15 +242,21 @@ function trilinearP8(verts: Float32Array, x: number, y: number, z: number, out: 
     w(1, 1, 1, x, y, z)
 }
 
-/** Adapter: {@link IsoSampleBatch.run} → {@link IsoOctreeBatchFn}. */
+/**
+ * Adapter: {@link IsoSampleBatch.run} → {@link IsoOctreeBatchFn}.
+ * `voxelSize` is a representative grid scale (mm) forwarded to the shader as
+ * `uniforms.voxelSize` for inserted scene-SDF code (Lathe/Loft epsilons).
+ */
 export function createIsoOctreeSampleFn(
     batch: IsoSampleBatch,
     isoSampleBatchShaderModule: GPUShaderModule,
+    voxelSize: number,
 ): IsoOctreeBatchFn {
     return async (positions, signal) => {
         const { sdf } = await batch.run(
             isoSampleBatchShaderModule,
             positions as Float32Array<ArrayBuffer>,
+            voxelSize,
             { signal },
         )
         return sdf
@@ -261,11 +267,13 @@ export function createIsoOctreeSampleFn(
 export function createIsoOctreeMidFeatureSampleFn(
     batch: IsoSampleBatch,
     isoSampleBatchShaderModule: GPUShaderModule,
+    voxelSize: number,
 ): IsoOctreeBatchFn {
     return async (positions, signal) => {
         const { midFeature } = await batch.runMidFeature(
             isoSampleBatchShaderModule,
             positions as Float32Array<ArrayBuffer>,
+            voxelSize,
             { signal },
         )
         return midFeature

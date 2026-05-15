@@ -1,6 +1,6 @@
 import yaml from "js-yaml"
 import type { CameraSettings, GlobalSettings } from "../storage/settings.mjs"
-import type { MdcExportLevers, ShrecTuning, SimplifyTuning } from "../render-worker-protocol.mjs"
+import type { IsoSimplicialTuning, MdcExportLevers, ShrecTuning, SimplifyTuning } from "../render-worker-protocol.mjs"
 import type { CanvasPreviewUvRect } from "../layout/editor-layout.mjs"
 
 export const AGENT_TESTCASE_SCHEMA_VERSION = 1 as const
@@ -9,10 +9,11 @@ export const AGENT_TESTCASE_SCHEMA_VERSION = 1 as const
 export interface AgentTestcaseMeshExport {
     simplifyOnExport: boolean
     voxelSizeMm: number
-    exporter: "mdc" | "shrec"
+    exporter: "mdc" | "shrec" | "isoSimplicial"
     shrecTuning: ShrecTuning
     simplifyTuning: SimplifyTuning
     mdcExportLevers: MdcExportLevers
+    isoSimplicialTuning?: IsoSimplicialTuning
 }
 
 /**

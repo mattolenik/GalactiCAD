@@ -1180,16 +1180,33 @@ export class RenderWorkerCore {
                 const hwCores = navAny?.hardwareConcurrency ?? 4
                 const qefWorkerCount = Math.max(1, Math.min(8, hwCores - 1))
                 let qefWorkerPool: QefWorkerPool | undefined
-                try {
-                    qefWorkerPool = new QefWorkerPool({ workerUrl: qefWorkerUrl, workerCount: qefWorkerCount })
-                } catch (e) {
-                    log("IsoSimplicialExport").warn("QefWorkerPool unavailable, falling back to inline QEF", e)
+                // QEF worker pool requires SharedArrayBuffer for zero-copy batch I/O; that needs
+                // cross-origin isolation (COOP+COEP). Skip pool construction entirely when SAB is
+                // missing so iso-simplicial falls back cleanly to inline QEF on this thread.
+                if (typeof SharedArrayBuffer === "undefined") {
+                    log("IsoSimplicialExport").warn(
+                        "SharedArrayBuffer unavailable (no cross-origin isolation); using inline QEF",
+                    )
                     qefWorkerPool = undefined
+                } else {
+                    try {
+                        qefWorkerPool = new QefWorkerPool({ workerUrl: qefWorkerUrl, workerCount: qefWorkerCount })
+                    } catch (e) {
+                        log("IsoSimplicialExport").warn("QefWorkerPool unavailable, falling back to inline QEF", e)
+                        qefWorkerPool = undefined
+                    }
                 }
                 try {
-                    const sampleFn = createIsoOctreeSampleFn(isoBatch, isoSampleModule)
                     const cube = worldBoundsCube()
                     const MIN_DEPTH_FLOOR = 3
+                    const effectiveDepthMax =
+                        typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ?
+                            Math.max(MIN_DEPTH_FLOOR, isoT.depthMax)
+                        :   IsoSimplicialConstants.depthMax
+                    // Representative scale for inserted scene SDF code that references
+                    // `uniforms.voxelSize` (Lathe/Loft epsilons): finest octree cell size.
+                    const isoBatchVoxelSize = (cube.max[0] - cube.min[0]) / Math.pow(2, effectiveDepthMax)
+                    const sampleFn = createIsoOctreeSampleFn(isoBatch, isoSampleModule, isoBatchVoxelSize)
                     const constOverrides = {
                         ...(typeof isoT.depthMin === "number" && Number.isFinite(isoT.depthMin) ?
                             { depthMin: Math.max(MIN_DEPTH_FLOOR, isoT.depthMin) }

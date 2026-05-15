@@ -118,10 +118,10 @@ test("IsoSampleBatch vs GridSampler (1×1×1) parity on sphere scene", async (t)
         -1, 9, 2,
     ])
 
-    const batchResult = await batcher.run(batchModule, points)
+    const batchResult = await batcher.run(batchModule, points, 1)
 
     const points2 = new Float32Array([0, 1, 2, 5, 5, 5])
-    const batchResult2 = await batcher.run(batchModule, points2)
+    const batchResult2 = await batcher.run(batchModule, points2, 1)
     assert.equal(batchResult2.sampleCount, 2)
 
     const tolD = 5e-4

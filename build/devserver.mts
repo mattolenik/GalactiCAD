@@ -590,7 +590,7 @@ const INJECTED_BRIDGE_SCRIPT = `
                     reconnectTimer = null;
                     connect();
                 }, reconnectDelayMs);
-                reconnectDelayMs = Math.min(Math.floor(reconnectDelayMs * 1.5), 8000);
+                reconnectDelayMs = Math.min(Math.floor(reconnectDelayMs * 1.5), 1000);
             }
             // Poll until the app finishes registering the agent render handler,
             // then send a "agentBridgeReady" message. The server waits for this

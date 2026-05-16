@@ -196,6 +196,9 @@ export function flexiCubesCPU(
     for (let i = 0; i < numSurfCubes; i++) cubeIdxToSurfPos.set(surfCubeIndices[i]!, i)
 
     const dualVerts: number[] = []  // [x0, y0, z0, x1, ...]
+    // Per-dual-vertex normalized surface normal (mean of contributing edge normals).
+    // Used by Pass E to pick the diagonal whose endpoints have more consistent normals.
+    const dualVertNormals: number[] = []  // [nx0, ny0, nz0, nx1, ...]
     let totalVd = 0
 
     for (let sci = 0; sci < numSurfCubes; sci++) {
@@ -215,6 +218,7 @@ export function flexiCubesCPU(
             const ata = sym3Zero()
             let atb0 = 0, atb1 = 0, atb2 = 0
             let mass0 = 0, mass1 = 0, mass2 = 0
+            let nsum0 = 0, nsum1 = 0, nsum2 = 0
             let count = 0
 
             for (let k = 0; k < 7; k++) {
@@ -233,6 +237,7 @@ export function flexiCubesCPU(
                 sym3AddOuter(ata, gx, gy, gz)
                 atb0 += dot * gx; atb1 += dot * gy; atb2 += dot * gz
                 mass0 += px; mass1 += py; mass2 += pz
+                nsum0 += gx; nsum1 += gy; nsum2 += gz
                 count++
             }
 
@@ -243,11 +248,18 @@ export function flexiCubesCPU(
                     oy + (cy + 0.5) * voxelSize,
                     oz + (cz + 0.5) * voxelSize,
                 )
+                dualVertNormals.push(0, 0, 0)
             } else {
                 mass0 /= count; mass1 /= count; mass2 /= count
                 const out: [number, number, number] = [mass0, mass1, mass2]
                 solveQef(ata, atb0, atb1, atb2, mass0, mass1, mass2, relCutoff, out)
                 dualVerts.push(out[0], out[1], out[2])
+                const nl = Math.hypot(nsum0, nsum1, nsum2)
+                if (nl > 1e-20) {
+                    dualVertNormals.push(nsum0 / nl, nsum1 / nl, nsum2 / nl)
+                } else {
+                    dualVertNormals.push(0, 0, 0)
+                }
             }
         }
         totalVd += numVd
@@ -317,8 +329,23 @@ export function flexiCubesCPU(
                 q0 = vd0; q1 = vd2; q2 = vd3; q3 = vd1
             }
 
-            // quad_split_1: [0, 1, 2, 0, 2, 3]
-            triangles.push(q0, q1, q2, q0, q2, q3)
+            // Pick the diagonal whose endpoints have more consistent normals
+            // (paper §4.3 "more consistent gradients"). We use the per-dual-vertex
+            // mean surface normal as a proxy for grad_func(vd).
+            const n0x = dualVertNormals[q0 * 3]!, n0y = dualVertNormals[q0 * 3 + 1]!, n0z = dualVertNormals[q0 * 3 + 2]!
+            const n1x = dualVertNormals[q1 * 3]!, n1y = dualVertNormals[q1 * 3 + 1]!, n1z = dualVertNormals[q1 * 3 + 2]!
+            const n2x = dualVertNormals[q2 * 3]!, n2y = dualVertNormals[q2 * 3 + 1]!, n2z = dualVertNormals[q2 * 3 + 2]!
+            const n3x = dualVertNormals[q3 * 3]!, n3y = dualVertNormals[q3 * 3 + 1]!, n3z = dualVertNormals[q3 * 3 + 2]!
+            const gamma02 = n0x * n2x + n0y * n2y + n0z * n2z
+            const gamma13 = n1x * n3x + n1y * n3y + n1z * n3z
+
+            if (gamma02 > gamma13) {
+                // quad_split_1: [0, 1, 2, 0, 2, 3] — diagonal q0-q2
+                triangles.push(q0, q1, q2, q0, q2, q3)
+            } else {
+                // quad_split_2: [0, 1, 3, 3, 1, 2] — diagonal q1-q3
+                triangles.push(q0, q1, q3, q3, q1, q2)
+            }
         }
         i = j
     }

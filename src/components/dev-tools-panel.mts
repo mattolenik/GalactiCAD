@@ -10,6 +10,7 @@ import {
 } from "../benchmark/benchmark.mjs"
 import type {
     ExporterKind,
+    FlexiCubesTuning,
     MdcExportLevers,
     RayMarchParams,
     ShrecTuning,
@@ -26,6 +27,7 @@ import {
 } from "./dev-tools-protocol.mjs"
 import { DevToolsAppSection } from "./dev-tools-app-section.mjs"
 import {
+    DevToolsFlexiCubesExportSection,
     DevToolsMdcExportSection,
     DevToolsMeshSimplifySection,
     DevToolsShrecExportSection,
@@ -50,6 +52,7 @@ export class DevToolsPanel extends HTMLElement {
     #mdcExportSection: DevToolsMdcExportSection
     #meshSimplifySection: DevToolsMeshSimplifySection
     #shrecExportSection: DevToolsShrecExportSection
+    #flexicubesExportSection: DevToolsFlexiCubesExportSection
     #exporterKindSelect: HTMLSelectElement
     #exporterKind: ExporterKind
     #rendererSection: DevToolsRendererSection
@@ -69,6 +72,7 @@ export class DevToolsPanel extends HTMLElement {
     onMeshSimplifyChange?: (enabled: boolean) => void
     onExporterKindChange?: (kind: ExporterKind) => void
     onShrecTuningChange?: (tuning: ShrecTuning) => void
+    onFlexiCubesTuningChange?: (tuning: FlexiCubesTuning) => void
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMdcExportLeversChange?: () => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
@@ -157,6 +161,10 @@ export class DevToolsPanel extends HTMLElement {
         return this.#shrecExportSection.shrecTuning
     }
 
+    get flexicubesTuning(): FlexiCubesTuning {
+        return this.#flexicubesExportSection.flexicubesTuning
+    }
+
     get simplifyTuning(): SimplifyTuning {
         return this.#meshSimplifySection.simplifyTuning
     }
@@ -171,6 +179,10 @@ export class DevToolsPanel extends HTMLElement {
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
         this.#shrecExportSection.syncShrecTuningFromSettings(tuning)
+    }
+
+    syncFlexiCubesTuningFromSettings(tuning: FlexiCubesTuning): void {
+        this.#flexicubesExportSection.syncFromSettings(tuning)
     }
 
     get visible(): boolean {
@@ -225,6 +237,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#mdcExportSection = new DevToolsMdcExportSection()
         this.#meshSimplifySection = new DevToolsMeshSimplifySection()
         this.#shrecExportSection = new DevToolsShrecExportSection()
+        this.#flexicubesExportSection = new DevToolsFlexiCubesExportSection()
         this.#rendererSection = new DevToolsRendererSection()
         this.#logsSection = new DevToolsLogsSection()
 
@@ -249,6 +262,8 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshSimplifySection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
 
         this.#shrecExportSection.onShrecTuningChange = v => this.onShrecTuningChange?.(v)
+
+        this.#flexicubesExportSection.onFlexiCubesTuningChange = v => this.onFlexiCubesTuningChange?.(v)
 
         this.#rendererSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)
         this.#rendererSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
@@ -294,6 +309,7 @@ export class DevToolsPanel extends HTMLElement {
             exporterRow,
             mkNested("MDC mesh export", DEVTOOLS_COLLAPSE.panelMeshExportMdc, this.#mdcExportSection),
             mkNested("SHREC export", DEVTOOLS_COLLAPSE.panelMeshExportShrec, this.#shrecExportSection),
+            mkNested("FlexiCubes export", DEVTOOLS_COLLAPSE.panelMeshExportFlexiCubes, this.#flexicubesExportSection),
             mkNested("Mesh Simplify", DEVTOOLS_COLLAPSE.panelMeshExportSimplify, this.#meshSimplifySection),
         )
 

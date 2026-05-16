@@ -145,6 +145,37 @@ export const DEFAULT_SHREC_TUNING: ShrecTuning = {
 }
 
 /**
+ * Tuning knobs for the FlexiCubes exporter. Subset of `FlexiCubesParams` in
+ * `src/export/flexicubes.mts`; grid-sizing fields stay computed in the worker.
+ * Non-ML mode only (QEF-based vertex placement from analytic SDF gradients).
+ */
+export interface FlexiCubesTuning {
+    /** Voxel edge length in world units (mm). FlexiCubes's own value; independent of MDC/SHREC. */
+    voxelSizeMm: number
+    /** Isosurface level of the SDF; 0 is the nominal surface. */
+    isoValue: number
+    /**
+     * Crease angle (degrees) for the post-extraction normal derivation /
+     * vertex split pass. Same semantics as SHREC/MDC: 180 disables splitting;
+     * < 0 skips the pass entirely. Default 30.
+     */
+    creaseAngleDeg: number
+    /**
+     * QEF singular-value cutoff as a fraction of the largest eigenvalue.
+     * Smaller → sharper features (more vertices snap toward planes); larger
+     * → smoother / more regularized vertex placement. Default 0.1.
+     */
+    qefRelCutoff: number
+}
+
+export const DEFAULT_FLEXICUBES_TUNING: FlexiCubesTuning = {
+    voxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
+    isoValue: 0,
+    creaseAngleDeg: 30,
+    qefRelCutoff: 0.1,
+}
+
+/**
  * Post-MDC meshoptimizer simplification (QEM). Used when mesh export runs the MDC
  * pipeline with simplification enabled; ignored for SHREC.
  */
@@ -372,6 +403,7 @@ export type MainToWorkerMessage =
           simplifyOnExport?: boolean
           exporter?: ExporterKind
           shrecTuning?: ShrecTuning
+          flexicubesTuning?: FlexiCubesTuning
           simplifyTuning?: SimplifyTuning
           voxelSizeMm?: number
           /** When set, overrides worker defaults for MDC export (Dev Tools). */

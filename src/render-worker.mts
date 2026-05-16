@@ -146,6 +146,7 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
                     msg.simplifyTuning,
                     msg.voxelSizeMm,
                     msg.mdcExportLevers,
+                    msg.flexicubesTuning,
                 )
             }
             break

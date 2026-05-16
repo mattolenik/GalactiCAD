@@ -26,7 +26,7 @@ import {
     type SceneBuildPipelineMs,
     type WorkerToMainMessage,
 } from "./render-worker-protocol.mjs"
-import type { EdgeHitData, ExporterKind, SelectedEdgePayload, ShrecTuning, SimplifyTuning } from "./render-worker-protocol.mjs"
+import type { EdgeHitData, ExporterKind, FlexiCubesTuning, SelectedEdgePayload, ShrecTuning, SimplifyTuning } from "./render-worker-protocol.mjs"
 import { PALETTE_SIZE, paletteToFloat32Array } from "./colorPalette.mjs"
 import { sha1Hash } from "./math.mjs"
 import { DEFAULT_SELECTION_STYLES, type SelectionStyles } from "./selectionStyles.mjs"
@@ -51,7 +51,7 @@ export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
 export { EdgeKind } from "./edge-kind.mjs"
 
-export type { SerializedNode, BuildTimingBreakdownMs, SceneBuildPipelineMs, ExporterKind, ShrecTuning, SimplifyTuning } from "./render-worker-protocol.mjs"
+export type { SerializedNode, BuildTimingBreakdownMs, SceneBuildPipelineMs, ExporterKind, FlexiCubesTuning, ShrecTuning, SimplifyTuning } from "./render-worker-protocol.mjs"
 
 function roundScenePerfMs(x: number): number {
     return Math.round(x * 100) / 100
@@ -169,6 +169,7 @@ export class SDFRenderer {
             simplifyOnExport?: boolean
             exporter?: ExporterKind
             shrecTuning?: ShrecTuning
+            flexicubesTuning?: FlexiCubesTuning
             simplifyTuning?: SimplifyTuning
             voxelSizeMm?: number
             mdcExportLevers?: MdcExportLevers
@@ -597,6 +598,7 @@ export class SDFRenderer {
                 simplifyOnExport: pending.simplifyOnExport,
                 exporter: pending.exporter,
                 shrecTuning: pending.shrecTuning,
+                flexicubesTuning: pending.flexicubesTuning,
                 voxelSizeMm: pending.voxelSizeMm,
                 simplifyTuning: pending.simplifyTuning,
                 mdcExportLevers: pending.mdcExportLevers,
@@ -1622,6 +1624,7 @@ export class SDFRenderer {
             simplifyOnExport?: boolean
             exporter?: ExporterKind
             shrecTuning?: ShrecTuning
+            flexicubesTuning?: FlexiCubesTuning
             simplifyTuning?: SimplifyTuning
             voxelSizeMm?: number
             mdcExportLevers?: MdcExportLevers
@@ -1634,6 +1637,7 @@ export class SDFRenderer {
         const simplifyOnExport = options?.simplifyOnExport ?? false
         const exporter = options?.exporter
         const shrecTuning = options?.shrecTuning
+        const flexicubesTuning = options?.flexicubesTuning
         const simplifyTuning = options?.simplifyTuning
         const voxelSizeMm = options?.voxelSizeMm
         const mdcExportLevers = options?.mdcExportLevers
@@ -1643,6 +1647,7 @@ export class SDFRenderer {
             simplifyOnExport,
             exporter,
             shrecTuning,
+            flexicubesTuning,
             simplifyTuning,
             voxelSizeMm,
             mdcExportLevers,
@@ -1697,6 +1702,7 @@ export class SDFRenderer {
         simplifyOnExport?: boolean
         exporter?: ExporterKind
         shrecTuning?: ShrecTuning
+        flexicubesTuning?: FlexiCubesTuning
         simplifyTuning?: SimplifyTuning
         voxelSizeMm?: number
         mdcExportLevers?: MdcExportLevers
@@ -1708,11 +1714,16 @@ export class SDFRenderer {
         }
         const simplifyRaw = appDev.meshSimplifyOnExport
         const simplifyOnExport = typeof simplifyRaw === "boolean" ? simplifyRaw : false
+        const voxelSizeMm =
+            app.exporterKind === "shrec" ? app.shrecTuning.voxelSizeMm
+            : app.exporterKind === "flexicubes" ? app.flexicubesTuning.voxelSizeMm
+            : app.mdcExportLevers.voxelSizeMm
         return {
             simplifyOnExport,
-            voxelSizeMm: app.exporterKind === "shrec" ? app.shrecTuning.voxelSizeMm : app.mdcExportLevers.voxelSizeMm,
+            voxelSizeMm,
             exporter: app.exporterKind,
             shrecTuning: app.shrecTuning,
+            flexicubesTuning: app.flexicubesTuning,
             simplifyTuning: app.simplifyTuning,
             mdcExportLevers: app.mdcExportLevers,
         }
@@ -1816,6 +1827,7 @@ export class SDFRenderer {
             simplifyOnExport?: boolean
             exporter?: ExporterKind
             shrecTuning?: ShrecTuning
+            flexicubesTuning?: FlexiCubesTuning
             simplifyTuning?: SimplifyTuning
             voxelSizeMm?: number
             mdcExportLevers?: MdcExportLevers

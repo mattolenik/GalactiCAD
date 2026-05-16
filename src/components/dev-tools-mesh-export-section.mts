@@ -1,9 +1,11 @@
 import type { Subscription } from "rxjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import {
+    DEFAULT_FLEXICUBES_TUNING,
     DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_SHREC_TUNING,
     DEFAULT_SIMPLIFY_TUNING,
+    type FlexiCubesTuning,
     type MdcExportLevers,
     type ShrecTuning,
     type SimplifyTuning,
@@ -656,14 +658,167 @@ export class DevToolsShrecExportSection extends HTMLElement {
     }
 }
 
+/** FlexiCubes exporter voxel size and tuning (persisted on `GlobalSettings.app.flexicubesTuning`). */
+export class DevToolsFlexiCubesExportSection extends HTMLElement {
+    #settings = SettingsManager.instance
+    #tuningState: FlexiCubesTuning = { ...DEFAULT_FLEXICUBES_TUNING }
+    #voxelSizeRange: HTMLInputElement
+    #voxelSizeValueEl: HTMLSpanElement
+    #isoValueRange: HTMLInputElement
+    #isoValueValueEl: HTMLSpanElement
+    #creaseRange: HTMLInputElement
+    #creaseValueEl: HTMLSpanElement
+    #qefCutoffRange: HTMLInputElement
+    #qefCutoffValueEl: HTMLSpanElement
+    #subscriptions: Subscription[] = []
+
+    onFlexiCubesTuningChange?: (tuning: FlexiCubesTuning) => void
+
+    get flexicubesTuning(): FlexiCubesTuning {
+        return { ...this.#tuningState }
+    }
+
+    constructor() {
+        super()
+        const shadow = this.attachShadow({ mode: "open" })
+        const style = document.createElement("style")
+        style.textContent = devToolsBaseShadowCss()
+        shadow.appendChild(style)
+
+        const g = this.#settings.getGlobal().app
+        this.#tuningState = { ...DEFAULT_FLEXICUBES_TUNING, ...g.flexicubesTuning }
+        const root = document.createElement("div")
+        root.className = "lighting-section"
+        shadow.appendChild(root)
+
+        const voxel = addVoxelSliderRow(root, this.#tuningState.voxelSizeMm, v => {
+            this.#tuningState = { ...this.#tuningState, voxelSizeMm: v }
+            this.#persist()
+        })
+        this.#voxelSizeRange = voxel.range
+        this.#voxelSizeValueEl = voxel.valueEl
+
+        const addRow = (
+            label: string,
+            min: number,
+            max: number,
+            step: number,
+            initial: number,
+            format: (v: number) => string,
+            onInput: (v: number) => void,
+        ): { range: HTMLInputElement; valueEl: HTMLSpanElement } => {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = label
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = String(min)
+            range.max = String(max)
+            range.step = String(step)
+            range.value = String(initial)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = format(initial)
+            range.addEventListener("input", () => {
+                const v = parseFloat(range.value)
+                valueEl.textContent = format(v)
+                onInput(v)
+            })
+            row.append(lab, range, valueEl)
+            root.appendChild(row)
+            return { range, valueEl }
+        }
+
+        const iso = addRow(
+            "Iso value",
+            -0.2,
+            0.2,
+            0.002,
+            this.#tuningState.isoValue,
+            v => v.toFixed(3),
+            v => {
+                this.#tuningState = { ...this.#tuningState, isoValue: v }
+                this.#persist()
+            },
+        )
+        this.#isoValueRange = iso.range
+        this.#isoValueValueEl = iso.valueEl
+
+        const crease = addRow(
+            "Crease (°)",
+            -1,
+            180,
+            1,
+            this.#tuningState.creaseAngleDeg,
+            v => `${Math.round(v)}°`,
+            v => {
+                this.#tuningState = { ...this.#tuningState, creaseAngleDeg: v }
+                this.#persist()
+            },
+        )
+        this.#creaseRange = crease.range
+        this.#creaseValueEl = crease.valueEl
+
+        const qef = addRow(
+            "QEF cutoff",
+            0.005,
+            0.5,
+            0.005,
+            this.#tuningState.qefRelCutoff,
+            v => v.toFixed(3),
+            v => {
+                this.#tuningState = { ...this.#tuningState, qefRelCutoff: v }
+                this.#persist()
+            },
+        )
+        this.#qefCutoffRange = qef.range
+        this.#qefCutoffValueEl = qef.valueEl
+
+        const defaultsBtn = document.createElement("button")
+        defaultsBtn.textContent = "FlexiCubes defaults"
+        defaultsBtn.addEventListener("click", () => {
+            this.syncFromSettings({ ...DEFAULT_FLEXICUBES_TUNING })
+            this.#persist()
+        })
+        root.appendChild(defaultsBtn)
+    }
+
+    syncFromSettings(tuning: FlexiCubesTuning): void {
+        this.#tuningState = { ...tuning }
+        this.#voxelSizeRange.value = String(tuning.voxelSizeMm)
+        this.#voxelSizeValueEl.textContent = formatVoxelSize(tuning.voxelSizeMm)
+        this.#isoValueRange.value = String(tuning.isoValue)
+        this.#isoValueValueEl.textContent = tuning.isoValue.toFixed(3)
+        this.#creaseRange.value = String(tuning.creaseAngleDeg)
+        this.#creaseValueEl.textContent = `${Math.round(tuning.creaseAngleDeg)}°`
+        this.#qefCutoffRange.value = String(tuning.qefRelCutoff)
+        this.#qefCutoffValueEl.textContent = tuning.qefRelCutoff.toFixed(3)
+    }
+
+    #persist(): void {
+        const next = { ...this.#tuningState }
+        this.#settings.updateGlobal({ app: { flexicubesTuning: next } })
+        this.onFlexiCubesTuningChange?.(next)
+    }
+
+    disconnectedCallback(): void {
+        for (const s of this.#subscriptions) s.unsubscribe()
+        this.#subscriptions = []
+    }
+}
+
 customElements.define("dev-tools-mdc-export-section", DevToolsMdcExportSection)
 customElements.define("dev-tools-mesh-simplify-section", DevToolsMeshSimplifySection)
 customElements.define("dev-tools-shrec-export-section", DevToolsShrecExportSection)
+customElements.define("dev-tools-flexicubes-export-section", DevToolsFlexiCubesExportSection)
 
 declare global {
     interface HTMLElementTagNameMap {
         "dev-tools-mdc-export-section": DevToolsMdcExportSection
         "dev-tools-mesh-simplify-section": DevToolsMeshSimplifySection
         "dev-tools-shrec-export-section": DevToolsShrecExportSection
+        "dev-tools-flexicubes-export-section": DevToolsFlexiCubesExportSection
     }
 }

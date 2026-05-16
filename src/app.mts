@@ -1207,10 +1207,11 @@ class App {
 
         devTools.exporterKind = this.#settings.getGlobal().app.exporterKind
         devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
+        devTools.syncFlexiCubesTuningFromSettings(this.#settings.getGlobal().app.flexicubesTuning)
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
         devTools.syncMdcLeversFromSettings(this.#settings.getGlobal().app.mdcExportLevers)
-        // Re-mesh live when the SHREC exporter toggle or its tuning knobs
-        // change, so the mesh viewer reflects edits immediately. The
+        // Re-mesh live when the exporter toggle or any tuning knob changes,
+        // so the mesh viewer reflects edits immediately. The
         // `#scheduleMeshUpdate` debounce avoids re-meshing per slider tick.
         const remeshIfMeshViewerOn = () => {
             if (!this.#meshViewerEnabled || !this.#mesh) return
@@ -1220,6 +1221,7 @@ class App {
         }
         devTools.onExporterKindChange = remeshIfMeshViewerOn
         devTools.onShrecTuningChange = remeshIfMeshViewerOn
+        devTools.onFlexiCubesTuningChange = remeshIfMeshViewerOn
         devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
         devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 
@@ -1566,12 +1568,18 @@ class App {
     #meshRenderOptionsForExport(devTools: DevToolsPanel) {
         const exporterKind = devTools.exporterKind
         const shrecTuning = devTools.shrecTuning
+        const flexicubesTuning = devTools.flexicubesTuning
         const mdcExportLevers = this.#settings.getMdcExportLevers()
+        const voxelSizeMm =
+            exporterKind === "shrec" ? shrecTuning.voxelSizeMm
+            : exporterKind === "flexicubes" ? flexicubesTuning.voxelSizeMm
+            : mdcExportLevers.voxelSizeMm
         return {
             simplifyOnExport: devTools.meshSimplifyOnExport,
-            voxelSizeMm: exporterKind === "shrec" ? shrecTuning.voxelSizeMm : mdcExportLevers.voxelSizeMm,
+            voxelSizeMm,
             exporter: exporterKind,
             shrecTuning,
+            flexicubesTuning,
             simplifyTuning: devTools.simplifyTuning,
             mdcExportLevers,
         }

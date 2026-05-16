@@ -9,10 +9,12 @@ import {
     DEVTOOLS_SECTION_LOGS,
 } from "../components/dev-tools-protocol.mjs"
 import {
+    DEFAULT_FLEXICUBES_TUNING,
     DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_SHREC_TUNING,
     DEFAULT_SIMPLIFY_TUNING,
     type ExporterKind,
+    type FlexiCubesTuning,
     type MdcExportLevers,
     type ShrecTuning,
     type SimplifyTuning,
@@ -115,6 +117,8 @@ export interface GlobalSettings {
         exporterKind: ExporterKind
         /** Tuning knobs for the SHREC/MergeSharp pipeline. */
         shrecTuning: ShrecTuning
+        /** Tuning knobs for the FlexiCubes (QEF) pipeline. */
+        flexicubesTuning: FlexiCubesTuning
         /** Post-export mesh simplification (meshoptimizer); used when mesh simplify on export is enabled. */
         simplifyTuning: SimplifyTuning
         /** Mesh export (MDC) tuning; merged with defaults and clamped on load. */
@@ -235,6 +239,7 @@ function defaultGlobalSettings(): GlobalSettings {
             devToolsEnabled: false,
             exporterKind: "mdc" as ExporterKind,
             shrecTuning: { ...DEFAULT_SHREC_TUNING },
+            flexicubesTuning: { ...DEFAULT_FLEXICUBES_TUNING },
             simplifyTuning: { ...DEFAULT_SIMPLIFY_TUNING },
             mdcExportLevers: { ...DEFAULT_MDC_EXPORT_LEVERS },
             diskSyncIntervalSeconds: 30,
@@ -574,7 +579,11 @@ export class SettingsManager {
                 }
 
                 let exporterKind: ExporterKind = def.app.exporterKind
-                if (rawApp.exporterKind === "mdc" || rawApp.exporterKind === "shrec") {
+                if (
+                    rawApp.exporterKind === "mdc" ||
+                    rawApp.exporterKind === "shrec" ||
+                    rawApp.exporterKind === "flexicubes"
+                ) {
                     exporterKind = rawApp.exporterKind as ExporterKind
                 } else if (typeof rawApp.useShrecExporter === "boolean") {
                     exporterKind = rawApp.useShrecExporter ? "shrec" : "mdc"
@@ -615,6 +624,30 @@ export class SettingsManager {
                         cur.voxelSizeMm = legacyVoxelSizeMm ?? DEFAULT_SHREC_TUNING.voxelSizeMm
                     }
                     shrecTuning = cur
+                }
+
+                let flexicubesTuning: FlexiCubesTuning = { ...DEFAULT_FLEXICUBES_TUNING }
+                {
+                    const t = rawApp.flexicubesTuning as Partial<FlexiCubesTuning> | undefined
+                    const cur = { ...DEFAULT_FLEXICUBES_TUNING, ...(t ?? {}) }
+                    if (typeof cur.voxelSizeMm !== "number" || !isFinite(cur.voxelSizeMm) || cur.voxelSizeMm <= 0) {
+                        cur.voxelSizeMm = legacyVoxelSizeMm ?? DEFAULT_FLEXICUBES_TUNING.voxelSizeMm
+                    }
+                    if (typeof cur.isoValue !== "number" || !isFinite(cur.isoValue)) {
+                        cur.isoValue = DEFAULT_FLEXICUBES_TUNING.isoValue
+                    }
+                    if (
+                        typeof cur.creaseAngleDeg !== "number" ||
+                        !isFinite(cur.creaseAngleDeg) ||
+                        cur.creaseAngleDeg < -1 ||
+                        cur.creaseAngleDeg > 180
+                    ) {
+                        cur.creaseAngleDeg = DEFAULT_FLEXICUBES_TUNING.creaseAngleDeg
+                    }
+                    if (typeof cur.qefRelCutoff !== "number" || !isFinite(cur.qefRelCutoff) || cur.qefRelCutoff < 0) {
+                        cur.qefRelCutoff = DEFAULT_FLEXICUBES_TUNING.qefRelCutoff
+                    }
+                    flexicubesTuning = cur
                 }
 
                 let simplifyTuning: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
@@ -678,6 +711,7 @@ export class SettingsManager {
                     devToolsEnabled: typeof rawApp.devToolsEnabled === "boolean" ? rawApp.devToolsEnabled : def.app.devToolsEnabled,
                     exporterKind,
                     shrecTuning,
+                    flexicubesTuning,
                     simplifyTuning,
                     mdcExportLevers,
                     diskSyncIntervalSeconds,

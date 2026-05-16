@@ -39,6 +39,7 @@ export async function runAgentRenderPipeline(renderer: SDFRenderer, req: AgentRe
         simplifyOnExport: req.meshExport.simplifyOnExport,
         exporter: req.meshExport.exporter,
         shrecTuning: req.meshExport.shrecTuning,
+        flexicubesTuning: req.meshExport.flexicubesTuning,
         simplifyTuning: req.meshExport.simplifyTuning,
         voxelSizeMm: req.meshExport.voxelSizeMm,
         mdcExportLevers: req.meshExport.mdcExportLevers,

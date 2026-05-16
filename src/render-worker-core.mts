@@ -45,6 +45,7 @@ import {
     DEFAULT_SIMPLIFY_TUNING,
     type BuildTimingBreakdownMs,
     type ExporterKind,
+    type FlexiCubesTuning,
     type MainToWorkerMessage,
     type PreviewShadingParams,
     type RayMarchParams,
@@ -1028,6 +1029,7 @@ export class RenderWorkerCore {
         simplifyTuning?: SimplifyTuning,
         voxelSizeMmFromCaller?: number,
         mdcExportLevers?: MdcExportLevers,
+        flexicubesTuning?: FlexiCubesTuning,
     ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
@@ -1048,7 +1050,9 @@ export class RenderWorkerCore {
             // exporter); fall back to the per-exporter tuning, then protocol
             // default.
             const exporterFallbackVoxel =
-                exporter === "shrec" ? shrecTuning?.voxelSizeMm : levers.voxelSizeMm
+                exporter === "shrec" ? shrecTuning?.voxelSizeMm
+                : exporter === "flexicubes" ? flexicubesTuning?.voxelSizeMm
+                : levers.voxelSizeMm
             const voxelSizeMm =
                 voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0 ? voxelSizeMmFromCaller
                 : exporterFallbackVoxel && exporterFallbackVoxel > 0 ? exporterFallbackVoxel
@@ -1077,7 +1081,10 @@ export class RenderWorkerCore {
 
             let mesh
             if (exporter === "flexicubes") {
-                log("FlexiCubesExport").info(`handleRenderMesh: dispatching FlexiCubes`)
+                log("FlexiCubesExport").info(
+                    `handleRenderMesh: dispatching FlexiCubes, incoming tuning=` +
+                        `${flexicubesTuning ? JSON.stringify(flexicubesTuning) : "(undefined → defaults)"}`,
+                )
                 const fcCompiler = new ShaderCompiler(this.#device)
                     .replace("insert", "sceneAuxFast", sceneAuxFast)
                     .replace("insert", "sceneAux", sceneAux)
@@ -1089,11 +1096,13 @@ export class RenderWorkerCore {
                     gridDimX,
                     gridDimY,
                     gridDimZ,
-                    isoValue: 0.0,
+                    isoValue: flexicubesTuning?.isoValue ?? 0.0,
                     gridOffsetX: minX,
                     gridOffsetY: minY,
                     gridOffsetZ: minZ,
                     voxelSize: voxelSizeMm,
+                    creaseAngleDeg: flexicubesTuning?.creaseAngleDeg,
+                    qefRelCutoff: flexicubesTuning?.qefRelCutoff,
                 }
                 const fc = new FlexiCubesExport(
                     this.#helper,

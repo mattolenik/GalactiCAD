@@ -24,6 +24,8 @@ export const DEVTOOLS_COLLAPSE = {
     /** Nested under panelMeshExport. */
     panelMeshExportShrec: "galacticad.collapse.panelShrecExport",
     /** Nested under panelMeshExport. */
+    panelMeshExportFlexiCubes: "galacticad.collapse.panelFlexiCubesExport",
+    /** Nested under panelMeshExport. */
     panelMeshExportSimplify: "galacticad.collapse.panelMeshSimplify",
     panelRenderer: "galacticad.collapse.panelRenderer",
     panelLogs: "galacticad.collapse.panelLogs",
@@ -41,6 +43,7 @@ export const DEFAULT_DEVTOOLS_COLLAPSE_OPEN: Partial<Record<DevToolsCollapseId, 
     [DEVTOOLS_COLLAPSE.panelReset]: false,
     [DEVTOOLS_COLLAPSE.panelMeshExportMdc]: false,
     [DEVTOOLS_COLLAPSE.panelMeshExportShrec]: false,
+    [DEVTOOLS_COLLAPSE.panelMeshExportFlexiCubes]: false,
     [DEVTOOLS_COLLAPSE.panelMeshExportSimplify]: false,
 }
 

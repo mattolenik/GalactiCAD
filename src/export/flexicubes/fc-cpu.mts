@@ -283,43 +283,44 @@ export function flexiCubesCPU(
     const triangles: number[] = []
     const n = edgeVdEntries.length
 
-    for (let i = 0; i < n; i += 4) {
-        if (i + 3 >= n) break
+    // Group entries by geid. With correct case IDs every interior surface edge
+    // shared by 4 surf-cubes produces exactly 4 entries; non-4 groups are
+    // dropped silently (and would indicate a table/logic bug).
+    let i = 0
+    while (i < n) {
         const geid = edgeVdEntries[i]!.geid
-        // Verify all 4 belong to same edge (should always be true after sort)
-        if (edgeVdEntries[i + 1]!.geid !== geid ||
-            edgeVdEntries[i + 2]!.geid !== geid ||
-            edgeVdEntries[i + 3]!.geid !== geid) continue
+        let j = i + 1
+        while (j < n && edgeVdEntries[j]!.geid === geid) j++
+        const groupLen = j - i
 
-        const vd0 = edgeVdEntries[i]!.vdId
-        const vd1 = edgeVdEntries[i + 1]!.vdId
-        const vd2 = edgeVdEntries[i + 2]!.vdId
-        const vd3 = edgeVdEntries[i + 3]!.vdId
+        if (groupLen === 4) {
+            const vd0 = edgeVdEntries[i]!.vdId
+            const vd1 = edgeVdEntries[i + 1]!.vdId
+            const vd2 = edgeVdEntries[i + 2]!.vdId
+            const vd3 = edgeVdEntries[i + 3]!.vdId
 
-        // Winding: for Z-outer scan order the 4 adjacent cubes arrive in
-        // row-major order in the plane ⊥ to the edge axis:
-        //   (da=0,db=0),(da=1,db=0),(da=0,db=1),(da=1,db=1)
-        // CCW in that plane is [0,1,3,2]; CW is [0,2,3,1].
-        // We want outward normals pointing from inside → outside.
-        //
-        // CUBE_EDGES defines v0c as the LOWER endpoint for x-edges (axis 0)
-        // and z-edges (axis 2), but as the UPPER-y endpoint for y-edges
-        // (axis 1, edges 8–11 use corner order (2,0),(3,1),(7,5),(6,4)).
-        // So crossing.v0Inside has inverted meaning for y-edges.
-        const edgeAxis = geid < numXEdges ? 0 : geid < numXEdges + numYEdges ? 1 : 2
-        const crossing = edgeCrossings.get(geid)!
-        const lowerEndpointInside = edgeAxis === 1 ? !crossing.v0Inside : crossing.v0Inside
-        let q0: number, q1: number, q2: number, q3: number
-        if (lowerEndpointInside) {
-            // lower endpoint inside → outward normal in edge direction → CCW → [0,1,3,2]
-            q0 = vd0; q1 = vd1; q2 = vd3; q3 = vd2
-        } else {
-            // lower endpoint outside → outward normal against edge direction → CW → [0,2,3,1]
-            q0 = vd0; q1 = vd2; q2 = vd3; q3 = vd1
+            // Winding: with z-major surf-cube iteration the 4 adjacent cubes
+            // arrive in row-major order in the plane ⊥ to the edge axis.
+            // Two effects flip the "outward" direction for y-edges and cancel:
+            //   1. CUBE_EDGES lists v0 as the UPPER-y endpoint for y-edges
+            //      (edges 8–11 are (2,0),(3,1),(7,5),(6,4)).
+            //   2. The perp plane axes for y-edges are (x,z), whose right-hand
+            //      rule gives −y, not +y, for the [0,1,3,2] winding.
+            // The two cancel out, so v0Inside maps uniformly:
+            //   v0Inside=true  → [0,1,3,2]
+            //   v0Inside=false → [0,2,3,1]
+            const crossing = edgeCrossings.get(geid)!
+            let q0: number, q1: number, q2: number, q3: number
+            if (crossing.v0Inside) {
+                q0 = vd0; q1 = vd1; q2 = vd3; q3 = vd2
+            } else {
+                q0 = vd0; q1 = vd2; q2 = vd3; q3 = vd1
+            }
+
+            // quad_split_1: [0, 1, 2, 0, 2, 3]
+            triangles.push(q0, q1, q2, q0, q2, q3)
         }
-
-        // quad_split_1: [0, 1, 2, 0, 2, 3]
-        triangles.push(q0, q1, q2, q0, q2, q3)
+        i = j
     }
 
     // ── Pack output ───────────────────────────────────────────────────────────

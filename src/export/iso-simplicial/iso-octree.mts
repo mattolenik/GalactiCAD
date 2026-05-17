@@ -1086,12 +1086,19 @@ const PARENT_MID_TO_BATCH: ReadonlyMap<number, number> = new Map(PARENT_MID_INDI
 /**
  * Breadth-first octree construction with frontier-level GPU batching.
  *
- * Each iteration consumes all nodes at the current depth and issues at most 4 GPU dispatches
- * (Phase 1 lattice, Phase 2 re-eval, optional `nearFeature` mid-feature sample, parent midSdf
- * for the subdividing subset), each containing the work of every node at that depth. The
- * recursive shape — `evalNode → evalEightChildren → evalNodeAfterReEval → recurse` — would
- * have issued at least 2 round-trips per parent-of-8 octant; BFS keeps the dispatch count
- * to O(tree depth) instead of O(subdividing parent count).
+ * Each iteration consumes all nodes at the current depth and issues at most 4 GPU dispatches,
+ * each containing the work of every node at that depth:
+ *  1. Phase 1 lattice (every cell).
+ *  2. Optional mid-feature seed (only entries whose `cornerFeature` is null — root only in
+ *     practice, since children inherit at subdivision time).
+ *  3. Phase 2 re-eval at chosen dual vertices.
+ *  4. Parent midSdf for subdividers + optional mid-feature for inheritance (dispatched
+ *     concurrently via `Promise.all`).
+ *
+ * The recursive reference shape — `evalNode → evalEightChildren → evalNodeAfterReEval → recurse`
+ * — would have issued at least 2 round-trips per parent-of-8 octant; BFS keeps the dispatch
+ * count to O(tree depth) instead of O(subdividing parent count). The `nearFeature` subdivision
+ * gate is resolved CPU-only from inherited corner features (no per-frontier GPU call).
  */
 const QEF_OUT_STRIDE_LOCAL = 134
 
@@ -1393,13 +1400,20 @@ async function buildOctreeBFS(
         // Parent midSdf + (optional) mid-feature batch at the same 19 midpoints, dispatched
         // concurrently — they don't share buffers and target different pipelines. The feature
         // batch is what lets every child inherit its 8-corner `SDFResultMid` without sampling.
+        // Mirror the seed pass predicate: any non-off feature mode produces and consumes
+        // `cornerFeature`, so we always want to sample midpoint features when a feature mode
+        // is active (regardless of which one). `normalizeFeatureRefine` guarantees that
+        // `sampleMidFeature` is set whenever `mode !== "off"`.
         const tMid0 = nowMs()
-        const wantChildFeature = featureRefine.mode === "signchangeGated" && featureRefine.sampleMidFeature !== undefined
+        const wantChildFeature = featureRefine.mode !== "off"
         const sdfMidPromise = sample(bigMidWorld, signal)
         const midFeatPromise: Promise<Float32Array | null> = wantChildFeature
             ? featureRefine.sampleMidFeature!(bigMidWorld, signal)
             : Promise.resolve(null)
         const [sdfMidBig, midFeatBig] = await Promise.all([sdfMidPromise, midFeatPromise])
+        // The two batches run concurrently; their wall time is shared, so attribute the
+        // elapsed time to whichever bucket the caller cares about — they don't sum
+        // separately (overlap is real, not double-counted work).
         const tMidElapsed = nowMs() - tMid0
         perf.midSampleMs += tMidElapsed
         if (wantChildFeature) perf.nearFeatureSampleMs += tMidElapsed

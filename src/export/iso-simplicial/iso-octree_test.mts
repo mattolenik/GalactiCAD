@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import { IsoSimplicialConstants } from "./constants.mjs"
+import { cubeEdge2Orient, cubeFace2Orient } from "./cube-tables.mjs"
 import { IsoOctree, isoOctreeChangesSign, isoOctreeIsOutside, type IsoOctreeBatchFn } from "./iso-octree.mjs"
 
 const MID_FEATURE_NONE = 0
@@ -469,4 +470,187 @@ test("featurePlane: single-normal feature constrains its axis only", async () =>
     // n1=(1,0,0) pins V_x = 0.3; n2 ignored (normalCount=1) → V_y border-clamped
     assert.ok(Math.abs(vx - 0.3) < 0.05, `x constrained by n1=(1,0,0) toward 0.3, got ${vx}`)
     assert.ok(Math.abs(vy - 0.3) > 0.1, `y must NOT be pulled (n2 ignored), got ${vy}`)
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// Feature-plane QEF injection: edge & face dual vertices
+//
+// `mockPlaneHalfZ` gradients are (0,0,1), so axis-aligned edges and faces are
+// underdetermined in the in-plane directions and border-clamp without feature
+// help. Feature planes with normals (1,0,0) and (0,1,0) through (0.3, 0.3, 0.5)
+// then constrain:
+//   – x-axis edges (orient=0) toward x = 0.3 via n1
+//   – y-axis edges (orient=1) toward y = 0.3 via n2
+//   – z-axis edges (orient=2) — both normals lie *along* the face containing
+//     the edge axis, so n[zi]=0 → skipped → remain border-clamped
+//   – faces toward whichever of (x=0.3, y=0.3) lies within their varying axes
+// ────────────────────────────────────────────────────────────────────────────
+
+test("featurePlane (edge): x-axis edges pull toward feature x, z-axis edges do not", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: NEAR_FEATURE,
+            planeEnabled: true,
+            planeDistFactor: 2.0,
+        },
+    })
+    for (let e = 0; e < 12; e++) {
+        const orient = cubeEdge2Orient[e]!
+        const ex = tree.root.edges[e * 4]!
+        const ey = tree.root.edges[e * 4 + 1]!
+        if (orient === 0) {
+            assert.ok(Math.abs(ex - 0.3) < 0.05, `x-axis edge ${e}: x should be near 0.3, got ${ex}`)
+        } else if (orient === 1) {
+            assert.ok(Math.abs(ey - 0.3) < 0.05, `y-axis edge ${e}: y should be near 0.3, got ${ey}`)
+        } else {
+            // z-axis edge: feature normals (1,0,0) and (0,1,0) have nXi=0 → injector skips them
+            assert.ok(Math.abs(ex - 0.3) > 0.1, `z-axis edge ${e}: x should NOT pull to 0.3, got ${ex}`)
+            assert.ok(Math.abs(ey - 0.3) > 0.1, `z-axis edge ${e}: y should NOT pull to 0.3, got ${ey}`)
+        }
+    }
+})
+
+test("featurePlane (edge): disabled — no edges pull toward feature", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: NEAR_FEATURE,
+            planeEnabled: false,
+        },
+    })
+    for (let e = 0; e < 12; e++) {
+        const orient = cubeEdge2Orient[e]!
+        const ex = tree.root.edges[e * 4]!
+        const ey = tree.root.edges[e * 4 + 1]!
+        if (orient === 0) {
+            assert.ok(Math.abs(ex - 0.3) > 0.1, `disabled: x-axis edge ${e} must NOT pull to 0.3, got ${ex}`)
+        } else if (orient === 1) {
+            assert.ok(Math.abs(ey - 0.3) > 0.1, `disabled: y-axis edge ${e} must NOT pull to 0.3, got ${ey}`)
+        }
+    }
+})
+
+test("featurePlane (edge): distance gate suppresses far features", async () => {
+    const farFeature = mockMidFeatureFull({
+        kind: MID_FEATURE_LINE,
+        dist: 5.0,
+        normalCount: 2,
+        point: [0.3, 0.3, 0.5],
+        n1: [1, 0, 0],
+        n2: [0, 1, 0],
+    })
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 16,
+            sampleMidFeature: farFeature,
+            planeEnabled: true,
+            planeDistFactor: 1.0, // threshold 1 < dist 5 → skipped
+        },
+    })
+    for (let e = 0; e < 12; e++) {
+        const orient = cubeEdge2Orient[e]!
+        const ex = tree.root.edges[e * 4]!
+        const ey = tree.root.edges[e * 4 + 1]!
+        if (orient === 0) assert.ok(Math.abs(ex - 0.3) > 0.1, `far feature: x-edge ${e} not pulled, got ${ex}`)
+        if (orient === 1) assert.ok(Math.abs(ey - 0.3) > 0.1, `far feature: y-edge ${e} not pulled, got ${ey}`)
+    }
+})
+
+test("featurePlane (face): in-face axes pull toward feature; out-of-face axis untouched", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: NEAR_FEATURE,
+            planeEnabled: true,
+            planeDistFactor: 2.0,
+        },
+    })
+    for (let f = 0; f < 6; f++) {
+        const orient = cubeFace2Orient[f]!
+        const fx = tree.root.faces[f * 4]!
+        const fy = tree.root.faces[f * 4 + 1]!
+        if (orient === 2) {
+            // z-fixed: both x and y vary; both normals contribute → pull toward (0.3, 0.3)
+            assert.ok(Math.abs(fx - 0.3) < 0.05, `z-face ${f}: x should be near 0.3, got ${fx}`)
+            assert.ok(Math.abs(fy - 0.3) < 0.05, `z-face ${f}: y should be near 0.3, got ${fy}`)
+        } else if (orient === 1) {
+            // y-fixed: x and z vary; only n1=(1,0,0) projects into the face → x pulled
+            assert.ok(Math.abs(fx - 0.3) < 0.05, `y-face ${f}: x should be near 0.3, got ${fx}`)
+        } else {
+            // x-fixed: y and z vary; only n2=(0,1,0) projects into the face → y pulled
+            assert.ok(Math.abs(fy - 0.3) < 0.05, `x-face ${f}: y should be near 0.3, got ${fy}`)
+        }
+    }
+})
+
+test("featurePlane (face): disabled — faces border-clamp, no feature pull", async () => {
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: NEAR_FEATURE,
+            planeEnabled: false,
+        },
+    })
+    for (let f = 0; f < 6; f++) {
+        const fx = tree.root.faces[f * 4]!
+        const fy = tree.root.faces[f * 4 + 1]!
+        assert.ok(Math.abs(fx - 0.3) > 0.05 || Math.abs(fy - 0.3) > 0.05, `disabled: face ${f} must not pull both axes`)
+    }
+})
+
+test("featurePlane (edge/face): normal parallel to edge axis → no constraint (no NaN)", async () => {
+    // Feature normal (0, 0, 1) is parallel to z-axis edges and perpendicular to x/y edges.
+    // For x and y edges: nXi = 0 → injector skips. For z edges: nXi = 1 but the edge sample
+    // gradients are also (0,0,1), so the constraint is consistent — no NaN expected anywhere.
+    const parallel = mockMidFeatureFull({
+        kind: MID_FEATURE_LINE,
+        dist: 0.6,
+        normalCount: 1,
+        point: [0.3, 0.3, 0.5],
+        n1: [0, 0, 1],
+        n2: [0, 0, 0],
+    })
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "signchangeGated",
+            proximityFactor: 2.0,
+            sampleMidFeature: parallel,
+            planeEnabled: true,
+            planeDistFactor: 2.0,
+        },
+    })
+    for (let e = 0; e < 12; e++) {
+        for (let k = 0; k < 4; k++) {
+            assert.ok(Number.isFinite(tree.root.edges[e * 4 + k]!), `edge ${e} slot ${k} not finite`)
+        }
+    }
+    for (let f = 0; f < 6; f++) {
+        for (let k = 0; k < 4; k++) {
+            assert.ok(Number.isFinite(tree.root.faces[f * 4 + k]!), `face ${f} slot ${k} not finite`)
+        }
+    }
 })

@@ -15,9 +15,11 @@ import {
     computeDualVertexEdge,
     computeDualVertexFace,
     encodeCubeHermitePlane,
+    encodeEdgeFeaturePlane,
     encodeEdgeHermitePlane,
-    encodeFeaturePlane,
+    encodeFaceFeaturePlane,
     encodeFaceHermitePlane,
+    encodeFeaturePlane,
 } from "./dual-vertex-qef.mjs"
 import { cubeCornerIndex, cubeEdge2Orient, cubeEdge2Vert, cubeFace2Orient, cubeFace2Vert } from "./cube-tables.mjs"
 import { qefAccumulatePlane, zeroQefPacked } from "./qef-normal.mjs"
@@ -497,6 +499,9 @@ export function computeNodeQefResults(
             planeNorms2.push([nXi, -1])
             planePts2.push([pXi, dN])
         }
+        if (cubeFeatureOpts) {
+            injectEdgeFeaturePlanes(cubeFeatureOpts, e, xi, yi, zi, ec0[yi]!, ec0[zi]!, cellSize, packed, planeNorms2, planePts2)
+        }
         const { position, qefError: edgeQef } = computeDualVertexEdge({
             xi, yi, zi, c0: ec0, c1: ec1, qefPacked: packed, planeNorms2, planePts2,
             cellSizeForBorder: cellSize, borderFraction: dualVertexBorderFraction,
@@ -533,6 +538,9 @@ export function computeNodeQefResults(
             qefAccumulatePlane(encodeFaceHermitePlane(nXi, nYi, px, py, dN), packed)
             planeNorms3.push([nXi, nYi, -1])
             planePts3.push([px, py, dN])
+        }
+        if (cubeFeatureOpts) {
+            injectFaceFeaturePlanes(cubeFeatureOpts, f, xi, yi, zi, fc0[zi]!, cellSize, packed, planeNorms3, planePts3)
         }
         const { position, qefError: faceQef } = computeDualVertexFace({
             c0: fc0, c2: fc2, xi, yi, zi, qefPacked: packed, planeNorms3, planePts3,
@@ -627,6 +635,9 @@ function phase1SdfToReEvalNorm(
             planeNorms2.push([nXi, -1])
             planePts2.push([pXi, dN])
         }
+        if (cubeFeatureOpts) {
+            injectEdgeFeaturePlanes(cubeFeatureOpts, e, xi, yi, zi, ec0[yi]!, ec0[zi]!, cellSize, packed, planeNorms2, planePts2)
+        }
         const { position, qefError: edgeQef } = computeDualVertexEdge({
             xi, yi, zi, c0: ec0, c1: ec1, qefPacked: packed, planeNorms2, planePts2,
             cellSizeForBorder: cellSize, borderFraction: C.dualVertexBorderFraction,
@@ -660,6 +671,9 @@ function phase1SdfToReEvalNorm(
             qefAccumulatePlane(encodeFaceHermitePlane(nXi, nYi, px, py, dN), packed)
             planeNorms3.push([nXi, nYi, -1])
             planePts3.push([px, py, dN])
+        }
+        if (cubeFeatureOpts) {
+            injectFaceFeaturePlanes(cubeFeatureOpts, f, xi, yi, zi, fc0[zi]!, cellSize, packed, planeNorms3, planePts3)
         }
         const { position, qefError: faceQef } = computeDualVertexFace({
             c0: fc0, c2: fc2, xi, yi, zi, qefPacked: packed, planeNorms3, planePts3,
@@ -852,6 +866,143 @@ function injectCubeFeaturePlanes(
             planeNorms4.push([f.n2x, f.n2y, f.n2z, 0])
             planePts4.push([px, py, pz, 0])
         }
+    }
+}
+
+/**
+ * Minimum |n[axis]| (or |n| projected onto the face plane) below which a feature plane is
+ * skipped — a plane parallel to the edge axis or face plane contributes no useful constraint
+ * and would amplify numerical noise through division.
+ */
+const FEATURE_PLANE_AXIS_EPS = 1e-4
+
+/**
+ * Project one corner's 1–2 feature normals onto an edge running along `xi`, fixed at
+ * `(yEdge, zEdge)` on the other two axes (normalized cell coords). Each projection yields
+ * an axis-only Hermite equation `n[xi] · (xi − xi_hit) = 0` that pulls the edge dual vertex
+ * toward the line `feature point + t · feature tangent`.
+ *
+ * Skips normals nearly parallel to the edge (small `|n[xi]|`), since those impose no
+ * constraint along the edge and would divide by a tiny number.
+ */
+function injectOneCornerFeatureOntoEdge(
+    f: ReturnType<typeof readMidFeatureCornerPayload>,
+    xi: 0 | 1 | 2, yi: 0 | 1 | 2, zi: 0 | 1 | 2,
+    yEdge: number, zEdge: number,
+    point: readonly [number, number, number],
+    packed: Float64Array,
+    planeNorms2: [number, number][],
+    planePts2: [number, number][],
+): void {
+    const tryNormal = (nx: number, ny: number, nz: number): void => {
+        const nAxis = xi === 0 ? nx : xi === 1 ? ny : nz
+        if (Math.abs(nAxis) < FEATURE_PLANE_AXIS_EPS) return
+        const nOff1 = yi === 0 ? nx : yi === 1 ? ny : nz
+        const nOff2 = zi === 0 ? nx : zi === 1 ? ny : nz
+        const xiHit = point[xi]! - (nOff1 * (yEdge - point[yi]!) + nOff2 * (zEdge - point[zi]!)) / nAxis
+        qefAccumulatePlane(encodeEdgeFeaturePlane(nAxis, xiHit), packed)
+        planeNorms2.push([nAxis, 0])
+        planePts2.push([xiHit, 0])
+    }
+    tryNormal(f.n1x, f.n1y, f.n1z)
+    if (f.normalCount >= 2) tryNormal(f.n2x, f.n2y, f.n2z)
+}
+
+/**
+ * Edge-QEF analogue of {@link injectCubeFeaturePlanes}. Adds 0–4 feature planes to the
+ * given edge's QEF (2 corners × up to 2 normals each), filtered by the same
+ * `featureDist < distFactor · cellSize · worldScale` gate. The edge's two corners are
+ * looked up via {@link cubeEdge2Vert}.
+ */
+function injectEdgeFeaturePlanes(
+    opts: CubeFeaturePlaneOptions,
+    e: number,
+    xi: 0 | 1 | 2, yi: 0 | 1 | 2, zi: 0 | 1 | 2,
+    yEdge: number, zEdge: number,
+    cellSize: number,
+    packed: Float64Array,
+    planeNorms2: [number, number][],
+    planePts2: [number, number][],
+): void {
+    const distThreshold = opts.distFactor * cellSize * opts.worldScale
+    const invWS = 1 / opts.worldScale
+    const corners = cubeEdge2Vert[e]!
+    for (let k = 0; k < 2; k++) {
+        const f = readMidFeatureCornerPayload(opts.cornerFeature, corners[k]!)
+        if (f.kind === MID_FEATURE_NONE_KIND) continue
+        if (f.dist > distThreshold) continue
+        const pNorm: [number, number, number] = [
+            (f.pointX - opts.rootMinX) * invWS,
+            (f.pointY - opts.rootMinY) * invWS,
+            (f.pointZ - opts.rootMinZ) * invWS,
+        ]
+        injectOneCornerFeatureOntoEdge(f, xi, yi, zi, yEdge, zEdge, pNorm, packed, planeNorms2, planePts2)
+    }
+}
+
+/**
+ * Project one corner's 1–2 feature normals onto a face fixed at `zi = zFace`, varying in
+ * `(xi, yi)`. Each projection yields a 2D Hermite equation `n[xi]·xi + n[yi]·yi = const`
+ * that pulls the face dual vertex toward the line where the feature plane intersects the
+ * face. Picks the orthogonal foot of the projected feature point as the plane's `(pXi, pYi)`
+ * — any point on the line would do; the foot keeps the encoded values bounded.
+ *
+ * Skips normals nearly parallel to the face plane (small `n[xi]² + n[yi]²`).
+ */
+function injectOneCornerFeatureOntoFace(
+    f: ReturnType<typeof readMidFeatureCornerPayload>,
+    xi: 0 | 1 | 2, yi: 0 | 1 | 2, zi: 0 | 1 | 2,
+    zFace: number,
+    point: readonly [number, number, number],
+    packed: Float64Array,
+    planeNorms3: [number, number, number][],
+    planePts3: [number, number, number][],
+): void {
+    const tryNormal = (nx: number, ny: number, nz: number): void => {
+        const nAxisX = xi === 0 ? nx : xi === 1 ? ny : nz
+        const nAxisY = yi === 0 ? nx : yi === 1 ? ny : nz
+        const nAxisZ = zi === 0 ? nx : zi === 1 ? ny : nz
+        const denom = nAxisX * nAxisX + nAxisY * nAxisY
+        if (denom < FEATURE_PLANE_AXIS_EPS * FEATURE_PLANE_AXIS_EPS) return
+        const t = -nAxisZ * (zFace - point[zi]!) / denom
+        const pXi = point[xi]! + nAxisX * t
+        const pYi = point[yi]! + nAxisY * t
+        qefAccumulatePlane(encodeFaceFeaturePlane(nAxisX, nAxisY, pXi, pYi), packed)
+        planeNorms3.push([nAxisX, nAxisY, 0])
+        planePts3.push([pXi, pYi, 0])
+    }
+    tryNormal(f.n1x, f.n1y, f.n1z)
+    if (f.normalCount >= 2) tryNormal(f.n2x, f.n2y, f.n2z)
+}
+
+/**
+ * Face-QEF analogue of {@link injectCubeFeaturePlanes}. Adds 0–8 feature planes to the
+ * given face's QEF (4 corners × up to 2 normals each). The face's four corners are looked
+ * up via {@link cubeFace2Vert}.
+ */
+function injectFaceFeaturePlanes(
+    opts: CubeFeaturePlaneOptions,
+    fIdx: number,
+    xi: 0 | 1 | 2, yi: 0 | 1 | 2, zi: 0 | 1 | 2,
+    zFace: number,
+    cellSize: number,
+    packed: Float64Array,
+    planeNorms3: [number, number, number][],
+    planePts3: [number, number, number][],
+): void {
+    const distThreshold = opts.distFactor * cellSize * opts.worldScale
+    const invWS = 1 / opts.worldScale
+    const corners = cubeFace2Vert[fIdx]!
+    for (let k = 0; k < 4; k++) {
+        const f = readMidFeatureCornerPayload(opts.cornerFeature, corners[k]!)
+        if (f.kind === MID_FEATURE_NONE_KIND) continue
+        if (f.dist > distThreshold) continue
+        const pNorm: [number, number, number] = [
+            (f.pointX - opts.rootMinX) * invWS,
+            (f.pointY - opts.rootMinY) * invWS,
+            (f.pointZ - opts.rootMinZ) * invWS,
+        ]
+        injectOneCornerFeatureOntoFace(f, xi, yi, zi, zFace, pNorm, packed, planeNorms3, planePts3)
     }
 }
 

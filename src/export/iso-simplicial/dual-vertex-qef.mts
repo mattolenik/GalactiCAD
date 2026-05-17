@@ -74,6 +74,34 @@ export function encodeFeaturePlane(nx: number, ny: number, nz: number, px: numbe
     return eqn
 }
 
+/**
+ * Face-local feature plane: `(n_xi, n_yi, 0)` + constant — length 4 (`QEFNormal<3>`).
+ * Same shape as {@link encodeFaceHermitePlane} but with V_w uncoupled (0 instead of −1)
+ * and no scalar offset (feature primitives lie on the modelled surface). Caller is
+ * responsible for projecting the 3D feature point into face-local `(pXi, pYi)`.
+ */
+export function encodeFaceFeaturePlane(nXi: number, nYi: number, pXi: number, pYi: number): Float64Array {
+    const eqn = new Float64Array(4)
+    eqn[0] = nXi
+    eqn[1] = nYi
+    eqn[2] = 0
+    eqn[3] = -(pXi * nXi + pYi * nYi)
+    return eqn
+}
+
+/**
+ * Edge-local feature plane: `(n_xi, 0)` + constant — length 3 (`QEFNormal<2>`).
+ * Same shape as {@link encodeEdgeHermitePlane} but with V_w uncoupled (0 instead of −1)
+ * and no scalar offset. Caller projects the 3D feature point onto the edge axis `xi`.
+ */
+export function encodeEdgeFeaturePlane(nXi: number, pXi: number): Float64Array {
+    const eqn = new Float64Array(3)
+    eqn[0] = nXi
+    eqn[1] = 0
+    eqn[2] = -pXi * nXi
+    return eqn
+}
+
 /** Reference `vertNode` plane encoding: `eqn = [nx,ny,nz,-1, -(px nx+py ny+pz nz)+w]`. */
 export function encodeCubeHermitePlane(
     nx: number,

@@ -1,6 +1,7 @@
 import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
 import { aabbScale, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
+import { FeatureGraphBuilder, mat4FromScale } from "../feature-graph-buffer.mjs"
 
 const MIN_ABS_SCALE = 1e-9
 
@@ -104,6 +105,15 @@ export class Scale extends UnaryOperator {
         const childBounds = this.arg.computeBounds()
         if (!childBounds) return null
         return aabbScale(childBounds, this.sx, this.sy, this.sz)
+    }
+
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        builder.pushAffine(mat4FromScale(this.sx, this.sy, this.sz))
+        try {
+            this.arg.accumulateFeatureGraph(builder)
+        } finally {
+            builder.pop()
+        }
     }
 }
 

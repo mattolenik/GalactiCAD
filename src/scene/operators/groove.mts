@@ -1,6 +1,7 @@
 import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Groove extends BinaryOperator {
     ra: number
@@ -11,6 +12,10 @@ export class Groove extends BinaryOperator {
         this.rb = rb
     }
     override getShapeType(): string { return "groove" }
+
+    /** V1: conservative no-op — Groove's feature-preservation semantics not yet analyzed. */
+    override accumulateFeatureGraph(_builder: FeatureGraphBuilder): void {}
+
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="6" x2="8" y2="6" stroke="currentColor" stroke-width="1.5"/>`
     }

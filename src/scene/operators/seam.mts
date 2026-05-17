@@ -1,6 +1,7 @@
 import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Seam extends BinaryOperator {
     seamRadius = 0
@@ -9,6 +10,10 @@ export class Seam extends BinaryOperator {
         this.seamRadius = radius
     }
     override getShapeType(): string { return "seam" }
+
+    /** V1: conservative no-op — Seam's feature-preservation semantics not yet analyzed. */
+    override accumulateFeatureGraph(_builder: FeatureGraphBuilder): void {}
+
     override getIndicatorSvg(): string {
         return `<circle cx="4" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="6" cy="6" r="1" fill="currentColor"/>`
     }

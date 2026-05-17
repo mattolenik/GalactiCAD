@@ -1,6 +1,7 @@
 import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Morph extends BinaryOperator {
     morphT = 0
@@ -9,6 +10,10 @@ export class Morph extends BinaryOperator {
         this.morphT = t
     }
     override getShapeType(): string { return "morph" }
+
+    /** V1: conservative no-op — Morph blends two SDFs, destroying sharp features mid-interpolation. */
+    override accumulateFeatureGraph(_builder: FeatureGraphBuilder): void {}
+
     override getIndicatorSvg(): string {
         return `<circle cx="3" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1"/><rect x="7" y="4" width="4" height="4" rx="0.5" fill="none" stroke="currentColor" stroke-width="1"/><line x1="5" y1="6" x2="7" y2="6" stroke="currentColor" stroke-width="1" stroke-dasharray="1,0.5"/>`
     }

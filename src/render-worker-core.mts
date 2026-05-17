@@ -29,6 +29,8 @@ import { QefWorkerPool } from "./export/iso-simplicial/qef-worker-pool.mjs"
 import { IsoSimplicialConstants } from "./export/iso-simplicial/constants.mjs"
 import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
 import { ContourBuffer } from "./scene/contour-buffer.mjs"
+import { FeatureGraphBuilder } from "./scene/feature-graph-buffer.mjs"
+import { FeatureGraphGpu } from "./feature-graph/feature-graph-gpu.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
@@ -152,6 +154,13 @@ export class RenderWorkerCore {
     #outlinePipeline!: GPURenderPipeline
     #outlineBindGroup!: GPUBindGroup | undefined
     #scene: SceneInfo | null = null
+    /**
+     * Feature-aware meshing scaffold. Phase A: extract + log only; phases C+
+     * dispatch GPU compute passes against this scene's SDF. Rebuilt at the tail
+     * of every `#doBuild` (both param-only and full) so slider drags refresh
+     * the graph without an explicit re-trigger.
+     */
+    #featureGraph = new FeatureGraphGpu()
     #sceneShader: GPUShaderModule | null = null
     #pipeline: GPURenderPipeline | null = null
     #beamPipeline: GPUComputePipeline | null = null
@@ -396,6 +405,7 @@ export class RenderWorkerCore {
             const tBuf0 = performance.now()
             this.#compiledPosY = newCompiledPosY
             this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
+            this.#rebuildFeatureGraph(scene)
             const tBuf1 = performance.now()
             const tSer0 = performance.now()
             const sceneNodes = serializeSceneNodes(scene, allNodes)
@@ -519,6 +529,7 @@ export class RenderWorkerCore {
         const tBuf0 = performance.now()
         this.#compiledPosY = newCompiledPosY
         this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
+        this.#rebuildFeatureGraph(scene)
         this.#beamBindGroupInvalid = true
         this.#sceneBindGroupInvalid = true
         const tBuf1 = performance.now()
@@ -551,6 +562,24 @@ export class RenderWorkerCore {
             paramOnly: false,
         }
         return { sceneNodes, compiledPosY: Array.from(this.#compiledPosY), timingMs }
+    }
+
+    /**
+     * Walk the scene tree, extract per-primitive feature-graph data, and hand
+     * it to the orchestrator. Runs at the tail of `#doBuild` for both
+     * param-only and full builds so parameter tweaks refresh the graph in step
+     * with the SDF. Throttle (200 ms debounce) and drag-pause live on the main
+     * thread — see `app.mts` `CONTENT_CHANGE_DEBOUNCE_MS` and `isPushPullActive`.
+     *
+     * Phase A: the orchestrator's `build()` only logs counts. No extractor has
+     * emitted yet, so the expected log is "0 verts, 0 edges, 0 loops, 1
+     * transform" (slot 0 is the implicit-root identity).
+     */
+    #rebuildFeatureGraph(scene: SceneInfo): void {
+        const builder = new FeatureGraphBuilder()
+        scene.root.accumulateFeatureGraph(builder)
+        const cpu = builder.finish()
+        this.#featureGraph.build(cpu, DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM)
     }
 
     /**

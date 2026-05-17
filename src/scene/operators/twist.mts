@@ -2,6 +2,7 @@ import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST 
 import { type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Twist extends UnaryOperator {
     override getShapeType(): string { return "twist" }
@@ -86,6 +87,19 @@ export class Twist extends UnaryOperator {
         const r = Math.sqrt(b.hx * b.hx + b.hz * b.hz)
         return { cx: b.cx, cy: b.cy, cz: b.cz, hx: r, hy: b.hy, hz: r }
     }
+
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        // V1: warps don't push a real affine — we just mark the subtree so
+        // emitters can skip emission. Revisit when per-warp `warpPoint`
+        // application lands and we can map local→world correctly under twist.
+        builder.pushNonAffine()
+        try {
+            this.arg.accumulateFeatureGraph(builder)
+        } finally {
+            builder.pop()
+        }
+    }
+
     constructor(public rate: number, arg: Node) {
         super(arg)
     }

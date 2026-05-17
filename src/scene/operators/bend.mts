@@ -2,6 +2,7 @@ import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST 
 import { aabbExpand, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Bend extends UnaryOperator {
     override getShapeType(): string { return "bend" }
@@ -86,6 +87,16 @@ export class Bend extends UnaryOperator {
         const r = Math.sqrt(b.hx * b.hx + b.hy * b.hy)
         return aabbExpand(b, r - Math.min(b.hx, b.hy))
     }
+
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        builder.pushNonAffine()
+        try {
+            this.arg.accumulateFeatureGraph(builder)
+        } finally {
+            builder.pop()
+        }
+    }
+
     constructor(public amount: number, arg: Node) {
         super(arg)
     }

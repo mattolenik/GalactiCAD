@@ -2,6 +2,7 @@ import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST 
 import type { AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Taper extends UnaryOperator {
     override getShapeType(): string { return "taper" }
@@ -94,6 +95,16 @@ export class Taper extends UnaryOperator {
         const maxScale = Math.max(1.0, Math.abs(this.ratio))
         return { cx: b.cx, cy: b.cy, cz: b.cz, hx: b.hx * maxScale, hy: b.hy, hz: b.hz * maxScale }
     }
+
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        builder.pushNonAffine()
+        try {
+            this.arg.accumulateFeatureGraph(builder)
+        } finally {
+            builder.pop()
+        }
+    }
+
     constructor(public ratio: number, public height: number, arg: Node) {
         super(arg)
     }

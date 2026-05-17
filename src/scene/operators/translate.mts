@@ -3,6 +3,7 @@ import { type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
+import { FeatureGraphBuilder, mat4FromTranslation } from "../feature-graph-buffer.mjs"
 
 /** Rigid translation: evaluate child at `p - delta` (same as primitives with `.shift`). */
 export class Translate extends UnaryOperator {
@@ -118,6 +119,15 @@ export class Translate extends UnaryOperator {
             hx: b.hx,
             hy: b.hy,
             hz: b.hz,
+        }
+    }
+
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        builder.pushAffine(mat4FromTranslation(this.dx, this.dy, this.dz))
+        try {
+            this.arg.accumulateFeatureGraph(builder)
+        } finally {
+            builder.pop()
         }
     }
 }

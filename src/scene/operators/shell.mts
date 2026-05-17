@@ -2,9 +2,14 @@ import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../bas
 import { aabbExpand, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Shell extends UnaryOperator {
     override getShapeType(): string { return "shell" }
+
+    /** V1: conservative no-op — Shell's feature-preservation semantics not yet analyzed. */
+    override accumulateFeatureGraph(_builder: FeatureGraphBuilder): void {}
+
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="0.5" stroke-dasharray="1,1"/>`
     }

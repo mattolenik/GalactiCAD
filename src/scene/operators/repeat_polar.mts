@@ -2,12 +2,21 @@ import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST 
 import type { AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 /** Polar domain repeat in the XZ plane around +Y (same convention as `pModPolar` in hg_sdf.wgsl). */
 export class RepeatPolar extends UnaryOperator {
     override getShapeType(): string {
         return "repeatPolar"
     }
+
+    /**
+     * V1: domain repetition is out of scope — a single local-space vertex maps
+     * to N world-space instances and we don't enumerate them yet. Drop child
+     * features under any repeat operator.
+     */
+    override accumulateFeatureGraph(_builder: FeatureGraphBuilder): void {}
+
     override getIndicatorSymbol(): string {
         return "↻"
     }

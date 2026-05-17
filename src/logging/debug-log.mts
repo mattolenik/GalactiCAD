@@ -33,6 +33,7 @@ export const DEBUG_LOG_MODULES = [
     "Simplify",
     "Settings",
     "Sdf",
+    "FeatureGraph",
     /** Reserved for optional verbose WGSL debug; `logWgsl()` is always-on for compile/pipeline errors. */
     "Wgsl",
 ] as const

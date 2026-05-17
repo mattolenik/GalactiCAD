@@ -3,6 +3,7 @@ import { aabbExpandVec, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Elongate extends UnaryOperator {
     hx: number
@@ -10,6 +11,10 @@ export class Elongate extends UnaryOperator {
     hz: number
 
     override getShapeType(): string { return "elongate" }
+
+    /** V1: conservative no-op — Elongate's feature-preservation semantics not yet analyzed. */
+    override accumulateFeatureGraph(_builder: FeatureGraphBuilder): void {}
+
     override getIndicatorSvg(): string {
         return `<line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.5"/><polygon points="0,6 3,4 3,8" fill="currentColor"/><polygon points="12,6 9,4 9,8" fill="currentColor"/>`
     }

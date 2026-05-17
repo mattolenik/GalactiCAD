@@ -3,6 +3,7 @@ import { aabbUnion, aabbExpand, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { bvhCenterWgsl, bvhHalfWgsl, f32Wgsl } from "../scene-params.mjs"
 import type { ContourBuffer } from "../contour-buffer.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 type UnionVariant = "ex" | "fast" | "mid"
 
@@ -84,6 +85,22 @@ export class Union extends Node {
         if (this.radius && this.radius > 0) return
         for (const child of this.children) {
             child.accumulateContours(builder)
+        }
+    }
+
+    /**
+     * Sharp union recurses into all children — features survive subject to the
+     * stage-4 survival test. Smooth/blended union (`radius > 0`) destroys
+     * features at the join, so we drop the entire subtree.
+     *
+     * Union is variadic and extends `Node` directly, so unlike `Subtract` /
+     * `Intersect` there is no `BinaryOperator` passthrough to inherit — we
+     * iterate `children` ourselves.
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        if (this.radius && this.radius > 0) return
+        for (const child of this.children) {
+            child.accumulateFeatureGraph(builder)
         }
     }
 

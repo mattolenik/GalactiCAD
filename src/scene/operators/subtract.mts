@@ -12,6 +12,7 @@ import type { AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 import type { ContourBuffer } from "../contour-buffer.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Subtract extends BinaryOperator {
     override getShapeType(): string {
@@ -62,6 +63,17 @@ export class Subtract extends BinaryOperator {
     override accumulateContours(builder: ContourBuffer): void {
         if (this.radius > 0) return
         super.accumulateContours(builder)
+    }
+
+    /**
+     * Sharp subtract recurses — lh contours survive on the result's outer
+     * surface, rh contours become the walls of the cut. Stage 4 (survival
+     * test) discards whichever portions ended up enclosed by the other
+     * operand. Smooth blend rounds the rim — drop both children's features.
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        if (this.radius > 0) return
+        super.accumulateFeatureGraph(builder)
     }
 
     private _diffEx(L: string, R: string): string {

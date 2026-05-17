@@ -3,6 +3,7 @@ import { aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { mat3x3Wgsl, packMat3ColumnMajorToPreviewOut } from "../scene-params.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
+import { FeatureGraphBuilder, mat4FromRotationFwd } from "../feature-graph-buffer.mjs"
 
 export class Rotate extends UnaryOperator {
     rx: number
@@ -143,6 +144,19 @@ export class Rotate extends UnaryOperator {
         if (!childBounds) return null
         const { fwd } = this.getWgslMatrices()
         return aabbRotate(childBounds, fwd)
+    }
+
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        // Same fwd rotation the SDF uses (row-major 3x3); embed as a 4x4
+        // column-major affine so the feature-graph transform stack composes
+        // with translate/scale uniformly.
+        const { fwd } = this.getWgslMatrices()
+        builder.pushAffine(mat4FromRotationFwd(fwd))
+        try {
+            this.arg.accumulateFeatureGraph(builder)
+        } finally {
+            builder.pop()
+        }
     }
 }
 

@@ -3,6 +3,7 @@ import type { PreviewParamsOut } from "./scene-params.mjs"
 import type { AABB } from "./aabb.mjs"
 import { aabbUnion } from "./aabb.mjs"
 import type { ContourBuffer } from "./contour-buffer.mjs"
+import type { FeatureGraphBuilder } from "./feature-graph-buffer.mjs"
 
 export type CompileResult = {
     funcName?: string
@@ -290,6 +291,29 @@ export class Node {
     accumulateContours(_builder: ContourBuffer): void {
         // Default: no contours. Overridden per-primitive and per-operator.
     }
+
+    /**
+     * Contribute this node's **explicit feature graph** (vertices, edges, cap
+     * loops, with classifications and source-face normals) into `builder`, in
+     * **local space**. The builder owns the transform stack: affine transforms
+     * (`Translate`, `Rotate`, `Scale`) push their 4x4 onto the stack before
+     * recursing; non-affine warps (`Twist`, `Bend`, `Taper`) push an
+     * `nonAffine` marker so emitters can skip emission in that subtree.
+     *
+     * Stages 2–5 of the feature-aware meshing pipeline consume the resulting
+     * snapshot (see [feature-graph-buffer.mts](./feature-graph-buffer.mts)).
+     * Distinct from {@link accumulateContours} — that path is SHREC-specific,
+     * world-space, and lossy in the dimensions a feature-aware mesher needs
+     * (no normals, no caps, no transform chain).
+     *
+     * Default is a no-op. Override on primitives that carry explicit features
+     * (Box, Extrude, etc.) and on operators that need to manage the transform
+     * stack or drop child features on smooth blends.
+     */
+    accumulateFeatureGraph(_builder: FeatureGraphBuilder): void {
+        // Default: nothing. Phase A leaves all primitives as no-op so the
+        // plumbing can be exercised end-to-end before any extractor lands.
+    }
 }
 
 export abstract class UnaryOperator extends Node {
@@ -324,6 +348,15 @@ export abstract class UnaryOperator extends Node {
      */
     override accumulateContours(builder: ContourBuffer): void {
         this.arg.accumulateContours(builder)
+    }
+    /**
+     * Default: pass through to the child. Transform operators (`Translate`,
+     * `Rotate`, `Scale`) override to push their 4x4 around the recurse; warps
+     * override to push a non-affine frame; feature-destroying operators
+     * (`Shell`, `Offset`, etc.) override to a no-op.
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        this.arg.accumulateFeatureGraph(builder)
     }
     constructor(public arg: Node) {
         super()
@@ -373,6 +406,16 @@ export abstract class BinaryOperator extends Node {
     override accumulateContours(builder: ContourBuffer): void {
         this.lh.accumulateContours(builder)
         this.rh.accumulateContours(builder)
+    }
+    /**
+     * Default: hard-CSG passthrough — propagate both children's features.
+     * Smooth/blend operators (`Subtract`, `Intersect` with `radius > 0`) drop
+     * child features at the join; `Engrave`, `Groove`, etc. override to a
+     * conservative no-op pending feature-preservation analysis.
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        this.lh.accumulateFeatureGraph(builder)
+        this.rh.accumulateFeatureGraph(builder)
     }
     constructor(public lh: Node, public rh: Node) {
         super()

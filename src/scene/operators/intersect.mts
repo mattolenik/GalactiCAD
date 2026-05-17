@@ -12,6 +12,7 @@ import { aabbIntersect, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 import type { ContourBuffer } from "../contour-buffer.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Intersect extends BinaryOperator {
     override getShapeType(): string {
@@ -57,6 +58,16 @@ export class Intersect extends BinaryOperator {
     override accumulateContours(builder: ContourBuffer): void {
         if (this.radius > 0) return
         super.accumulateContours(builder)
+    }
+
+    /**
+     * Sharp intersect recurses — each child's features survive only where the
+     * other operand contains them; stage 4 discards the rest. Smooth blend
+     * rounds the join — drop both children's features.
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        if (this.radius > 0) return
+        super.accumulateFeatureGraph(builder)
     }
 
     private _interEx(L: string, R: string): string {

@@ -1,6 +1,7 @@
 import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
+import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
 
 export class Pipe extends BinaryOperator {
     pipeRadius = 0
@@ -9,6 +10,10 @@ export class Pipe extends BinaryOperator {
         this.pipeRadius = radius
     }
     override getShapeType(): string { return "pipe" }
+
+    /** V1: conservative no-op — Pipe's feature-preservation semantics not yet analyzed. */
+    override accumulateFeatureGraph(_builder: FeatureGraphBuilder): void {}
+
     override getIndicatorSvg(): string {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="10" x2="10" y2="2" stroke="currentColor" stroke-width="1.5"/>`
     }

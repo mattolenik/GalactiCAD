@@ -1204,6 +1204,9 @@ class App {
         devTools.onMeshViewerChange = (enabled) => {
             this.#setMeshViewerEnabled(enabled)
         }
+        devTools.onMeshViewerOverlayChange = (settings) => {
+            this.#mesh?.applyMeshViewerSettings(settings)
+        }
 
         devTools.exporterKind = this.#settings.getGlobal().app.exporterKind
         devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)

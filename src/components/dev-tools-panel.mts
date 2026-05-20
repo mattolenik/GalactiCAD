@@ -24,7 +24,8 @@ import {
     type DevToolsPersistable,
     type JSONValue,
 } from "./dev-tools-protocol.mjs"
-import { DevToolsAppSection } from "./dev-tools-app-section.mjs"
+import { DevToolsAppSection, MESH_VIEWER_OVERLAY_CHANGE_EVENT } from "./dev-tools-app-section.mjs"
+import type { GlobalSettings } from "../storage/settings.mjs"
 import {
     DevToolsMdcExportSection,
     DevToolsMeshSimplifySection,
@@ -67,6 +68,7 @@ export class DevToolsPanel extends HTMLElement {
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
+    onMeshViewerOverlayChange?: (settings: GlobalSettings["meshViewer"]) => void
     onExporterKindChange?: (kind: ExporterKind) => void
     onShrecTuningChange?: (tuning: ShrecTuning) => void
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
@@ -144,6 +146,10 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.meshSimplifyOnExport = enabled
     }
 
+    get meshViewerSettings(): GlobalSettings["meshViewer"] {
+        return this.#appSection.currentMeshViewerSettings()
+    }
+
     get exporterKind(): ExporterKind {
         return this.#exporterKind
     }
@@ -194,13 +200,16 @@ export class DevToolsPanel extends HTMLElement {
             position: absolute;
             top: 12px;
             right: 10px;
+            bottom: 12px;
             z-index: 1;
             display: flex;
             flex-direction: column;
             align-items: flex-start;
             gap: 6px;
             box-sizing: border-box;
-            max-width: 20%;
+            max-width: 30%;
+            overflow-y: auto;
+            overscroll-behavior: contain;
             background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
@@ -265,6 +274,10 @@ export class DevToolsPanel extends HTMLElement {
         })
         this.#appSection.addEventListener("galacticad-mesh-simplify-change", () => {
             this.onMeshSimplifyChange?.(this.#appSection.meshSimplifyOnExport)
+        })
+        this.#appSection.addEventListener(MESH_VIEWER_OVERLAY_CHANGE_EVENT, (ev: Event) => {
+            const detail = (ev as CustomEvent<GlobalSettings["meshViewer"]>).detail
+            this.onMeshViewerOverlayChange?.(detail)
         })
 
         const mkSection = (label: string, collapseId: string, ...nodes: Node[]) => {

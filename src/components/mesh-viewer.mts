@@ -2,8 +2,7 @@ import { MESH_MDC_CELL_VERTEX_STRIDE, MESH_MDC_DEBUG_SAMPLE_STRIDE, MESH_MDC_QEF
 import { CameraController, DOLLY_REF } from "../controls/camera-controller.mjs"
 import { GPUHelper } from "../gpu/helper.mjs"
 import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
-import { SettingsManager } from "../storage/settings.mjs"
-import { __fg_color, __tone_2, __tone_accent } from "../style/style.mjs"
+import { SettingsManager, type GlobalSettings } from "../storage/settings.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f, vec4 } from "../vecmat/vector.mjs"
 
@@ -53,30 +52,21 @@ export class MeshViewer extends HTMLElement {
 
     #settings: SettingsManager
     #translucentFaces = false
-    #translucentCheckbox!: HTMLInputElement
     #viewCenter: Vec2f = vec2(0.5, 0.5)
     #wireframe = false
-    #wireframeCheckbox!: HTMLInputElement
     #debugOverlayCanvas: HTMLCanvasElement
     #debugOverlayCtx: CanvasRenderingContext2D | null
     #hoverCanvasPos: { x: number; y: number } | null = null
     #mdcDebug = false
-    #mdcDebugCheckbox!: HTMLInputElement
     /** Per-class feature glyph overlay toggles (MDC debug). */
     #mdcFeatureGlyphLine = false
     #mdcFeatureGlyphCorner = false
     #mdcFeatureGlyphSeam = false
     #mdcFeatureGlyphRing = false
-    #mdcFeatureGlyphLineCheckbox!: HTMLInputElement
-    #mdcFeatureGlyphCornerCheckbox!: HTMLInputElement
-    #mdcFeatureGlyphSeamCheckbox!: HTMLInputElement
-    #mdcFeatureGlyphRingCheckbox!: HTMLInputElement
     /** Per-cell-component vertex position overlay (MDC debug, post-mesh). */
     #mdcCellVerticesEnabled = false
-    #mdcCellVerticesCheckbox!: HTMLInputElement
     /** Per-(cell, component) QEF plane overlay (MDC debug, post-mesh). */
     #mdcQefPlanesEnabled = false
-    #mdcQefPlanesCheckbox!: HTMLInputElement
     #mdcDebugSamples: Float32Array<ArrayBuffer> = new Float32Array(0)
     #mdcDebugCellVertices: Float32Array<ArrayBuffer> = new Float32Array(0)
     #mdcDebugQefPlanes: Float32Array<ArrayBuffer> = new Float32Array(0)
@@ -120,10 +110,23 @@ export class MeshViewer extends HTMLElement {
 
         this.#settings = SettingsManager.instance
 
-        // Initialize state from attribute (if present in HTML); persisted prefs applied in
-        // `#loadViewerState()` after overlay checkboxes exist (see below).
-        this.#translucentFaces = (this.getAttribute("translucentFaces") ?? "").toLowerCase() === "true"
-        this.#wireframe = (this.getAttribute("wireframe") ?? "").toLowerCase() === "true"
+        // Initial state: HTML attribute wins (used by agent capture), otherwise persisted settings.
+        const attrTranslucent = this.getAttribute("translucentFaces")
+        const attrWireframe = this.getAttribute("wireframe")
+        const persisted = this.#settings.getGlobal().meshViewer
+        this.#translucentFaces = attrTranslucent !== null
+            ? attrTranslucent.toLowerCase() === "true"
+            : persisted.translucentFaces
+        this.#wireframe = attrWireframe !== null
+            ? attrWireframe.toLowerCase() === "true"
+            : persisted.wireframe
+        this.#mdcDebug = !!persisted.mdcDebugPoints
+        this.#mdcFeatureGlyphLine = !!persisted.featureGlyphs?.line
+        this.#mdcFeatureGlyphCorner = !!persisted.featureGlyphs?.corner
+        this.#mdcFeatureGlyphSeam = !!persisted.featureGlyphs?.seam
+        this.#mdcFeatureGlyphRing = !!persisted.featureGlyphs?.ring
+        this.#mdcCellVerticesEnabled = !!persisted.mdcCellVertices
+        this.#mdcQefPlanesEnabled = !!persisted.mdcQefPlanes
 
         const style = document.createElement("style")
         style.textContent = `
@@ -148,62 +151,6 @@ export class MeshViewer extends HTMLElement {
             pointer-events: none;
             z-index: 0;
         }
-        .overlay {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            pointer-events: auto;
-            z-index: 1;
-        }
-        .overlay > label {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 12px;
-            background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
-            color: rgb(from var(${__fg_color}) r g b / 0.85);
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
-            user-select: none;
-        }
-        .overlay-feature-glyphs {
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-            padding: 5px 8px 6px;
-            border-radius: 6px;
-            font-size: 12px;
-            background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
-            color: rgb(from var(${__fg_color}) r g b / 0.85);
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
-            user-select: none;
-        }
-        .overlay-feature-glyphs-title {
-            font-size: 11px;
-            opacity: 0.88;
-            padding: 0 2px 3px;
-        }
-        .overlay-feature-glyphs label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 1px 2px;
-            margin: 0;
-            border-radius: 0;
-            background: transparent;
-            color: inherit;
-            font-size: 12px;
-        }
-        .overlay input[type="checkbox"] {
-            accent-color: var(${__tone_accent});
-            font-size: 16px;
-        }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"
@@ -216,119 +163,9 @@ export class MeshViewer extends HTMLElement {
         this.#debugOverlayCtx = this.#debugOverlayCanvas.getContext("2d")
         shadow.append(style, this.canvas, this.#debugOverlayCanvas)
 
-        const overlay = document.createElement("div")
-        overlay.classList.add("overlay")
-        const label = document.createElement("label")
-        this.#translucentCheckbox = document.createElement("input")
-        this.#translucentCheckbox.type = "checkbox"
-        this.#translucentCheckbox.checked = this.#translucentFaces
-        const text = document.createElement("span")
-        text.textContent = "Translucent faces"
-        label.append(this.#translucentCheckbox, text)
-        overlay.append(label)
+        this.setAttribute("translucentFaces", this.#translucentFaces ? "true" : "false")
+        this.setAttribute("wireframe", this.#wireframe ? "true" : "false")
 
-        const wireLabel = document.createElement("label")
-        wireLabel.style.marginTop = "6px"
-        this.#wireframeCheckbox = document.createElement("input")
-        this.#wireframeCheckbox.type = "checkbox"
-        this.#wireframeCheckbox.checked = this.#wireframe
-        const wireText = document.createElement("span")
-        wireText.textContent = "Wireframe"
-        wireLabel.append(this.#wireframeCheckbox, wireText)
-        overlay.append(wireLabel)
-
-        const debugLabel = document.createElement("label")
-        this.#mdcDebugCheckbox = document.createElement("input")
-        this.#mdcDebugCheckbox.type = "checkbox"
-        this.#mdcDebugCheckbox.checked = this.#mdcDebug
-        const debugText = document.createElement("span")
-        debugText.textContent = "Debug points"
-        debugLabel.append(this.#mdcDebugCheckbox, debugText)
-        overlay.append(debugLabel)
-
-        const featureGlyphBox = document.createElement("div")
-        featureGlyphBox.className = "overlay-feature-glyphs"
-        const featureGlyphTitle = document.createElement("div")
-        featureGlyphTitle.className = "overlay-feature-glyphs-title"
-        featureGlyphTitle.textContent = "Feature glyphs"
-        featureGlyphBox.append(featureGlyphTitle)
-        const addFeatureGlyphRow = (text: string, checked: boolean, assign: (el: HTMLInputElement) => void) => {
-            const row = document.createElement("label")
-            const cb = document.createElement("input")
-            cb.type = "checkbox"
-            cb.checked = checked
-            assign(cb)
-            const span = document.createElement("span")
-            span.textContent = text
-            row.append(cb, span)
-            featureGlyphBox.append(row)
-        }
-        addFeatureGlyphRow("Line", this.#mdcFeatureGlyphLine, el => { this.#mdcFeatureGlyphLineCheckbox = el })
-        addFeatureGlyphRow("Corner", this.#mdcFeatureGlyphCorner, el => { this.#mdcFeatureGlyphCornerCheckbox = el })
-        addFeatureGlyphRow("Seam", this.#mdcFeatureGlyphSeam, el => { this.#mdcFeatureGlyphSeamCheckbox = el })
-        addFeatureGlyphRow("Ring", this.#mdcFeatureGlyphRing, el => { this.#mdcFeatureGlyphRingCheckbox = el })
-        overlay.append(featureGlyphBox)
-
-        // Per-cell QEF debug overlays (vertex positions, plane normals).
-        // Reuse the feature-glyph CSS classes for consistent styling.
-        const qefDebugBox = document.createElement("div")
-        qefDebugBox.className = "overlay-feature-glyphs"
-        const qefDebugTitle = document.createElement("div")
-        qefDebugTitle.className = "overlay-feature-glyphs-title"
-        qefDebugTitle.textContent = "QEF debug"
-        qefDebugBox.append(qefDebugTitle)
-        const addQefDebugRow = (text: string, checked: boolean, assign: (el: HTMLInputElement) => void) => {
-            const row = document.createElement("label")
-            const cb = document.createElement("input")
-            cb.type = "checkbox"
-            cb.checked = checked
-            assign(cb)
-            const span = document.createElement("span")
-            span.textContent = text
-            row.append(cb, span)
-            qefDebugBox.append(row)
-        }
-        addQefDebugRow("Cell vertices", this.#mdcCellVerticesEnabled, el => { this.#mdcCellVerticesCheckbox = el })
-        addQefDebugRow("QEF planes", this.#mdcQefPlanesEnabled, el => { this.#mdcQefPlanesCheckbox = el })
-        overlay.append(qefDebugBox)
-        shadow.appendChild(overlay)
-
-        this.#loadViewerState()
-
-        this.#translucentCheckbox.addEventListener("change", () => {
-            this.translucentFaces = this.#translucentCheckbox.checked
-        })
-        this.#wireframeCheckbox.addEventListener("change", () => {
-            this.wireframe = this.#wireframeCheckbox.checked
-        })
-        this.#mdcDebugCheckbox.addEventListener("change", () => {
-            this.#mdcDebug = this.#mdcDebugCheckbox.checked
-            this.#saveViewerState()
-        })
-        this.#mdcFeatureGlyphLineCheckbox.addEventListener("change", () => {
-            this.#mdcFeatureGlyphLine = this.#mdcFeatureGlyphLineCheckbox.checked
-            this.#saveViewerState()
-        })
-        this.#mdcFeatureGlyphCornerCheckbox.addEventListener("change", () => {
-            this.#mdcFeatureGlyphCorner = this.#mdcFeatureGlyphCornerCheckbox.checked
-            this.#saveViewerState()
-        })
-        this.#mdcFeatureGlyphSeamCheckbox.addEventListener("change", () => {
-            this.#mdcFeatureGlyphSeam = this.#mdcFeatureGlyphSeamCheckbox.checked
-            this.#saveViewerState()
-        })
-        this.#mdcFeatureGlyphRingCheckbox.addEventListener("change", () => {
-            this.#mdcFeatureGlyphRing = this.#mdcFeatureGlyphRingCheckbox.checked
-            this.#saveViewerState()
-        })
-        this.#mdcCellVerticesCheckbox.addEventListener("change", () => {
-            this.#mdcCellVerticesEnabled = this.#mdcCellVerticesCheckbox.checked
-            this.#saveViewerState()
-        })
-        this.#mdcQefPlanesCheckbox.addEventListener("change", () => {
-            this.#mdcQefPlanesEnabled = this.#mdcQefPlanesCheckbox.checked
-            this.#saveViewerState()
-        })
         this.canvas.addEventListener("pointermove", event => {
             const rect = this.canvas.getBoundingClientRect()
             const sx = rect.width > 0 ? this.canvas.width / rect.width : 1
@@ -1896,7 +1733,6 @@ export class MeshViewer extends HTMLElement {
         const next = !!enabled
         if (next === this.#translucentFaces) return
         this.#syncBool("translucentFaces", next)
-        this.#saveViewerState()
     }
 
     get wireframe(): boolean {
@@ -1907,16 +1743,13 @@ export class MeshViewer extends HTMLElement {
         const next = !!enabled
         if (next === this.#wireframe) return
         this.#syncBool("wireframe", next)
-        this.#saveViewerState()
     }
 
     #syncBool(name: "translucentFaces" | "wireframe", value: boolean) {
         if (name === "translucentFaces") {
             this.#translucentFaces = value
-            if (this.#translucentCheckbox) this.#translucentCheckbox.checked = value
         } else {
             this.#wireframe = value
-            if (this.#wireframeCheckbox) this.#wireframeCheckbox.checked = value
         }
         this.setAttribute(name, value ? "true" : "false")
     }
@@ -1933,43 +1766,21 @@ export class MeshViewer extends HTMLElement {
         }
     }
 
-    #saveViewerState(): void {
-        this.#settings.updateGlobal({
-            meshViewer: {
-                translucentFaces: this.#translucentFaces,
-                wireframe: this.#wireframe,
-                mdcDebugPoints: this.#mdcDebug,
-                featureGlyphs: {
-                    line: this.#mdcFeatureGlyphLine,
-                    corner: this.#mdcFeatureGlyphCorner,
-                    seam: this.#mdcFeatureGlyphSeam,
-                    ring: this.#mdcFeatureGlyphRing,
-                },
-                mdcCellVertices: this.#mdcCellVerticesEnabled,
-                mdcQefPlanes: this.#mdcQefPlanesEnabled,
-            },
-        })
-    }
-
-    #loadViewerState(): void {
-        const g = this.#settings.getGlobal().meshViewer
-        this.#syncBool("translucentFaces", g.translucentFaces)
-        this.#syncBool("wireframe", g.wireframe)
-        this.#mdcDebug = !!g.mdcDebugPoints
-        this.#mdcDebugCheckbox.checked = this.#mdcDebug
-        const fg = g.featureGlyphs ?? { line: false, corner: false, seam: false, ring: false }
-        this.#mdcFeatureGlyphLine = fg.line
-        this.#mdcFeatureGlyphLineCheckbox.checked = fg.line
-        this.#mdcFeatureGlyphCorner = fg.corner
-        this.#mdcFeatureGlyphCornerCheckbox.checked = fg.corner
-        this.#mdcFeatureGlyphSeam = fg.seam
-        this.#mdcFeatureGlyphSeamCheckbox.checked = fg.seam
-        this.#mdcFeatureGlyphRing = fg.ring
-        this.#mdcFeatureGlyphRingCheckbox.checked = fg.ring
-        this.#mdcCellVerticesEnabled = !!g.mdcCellVertices
-        this.#mdcCellVerticesCheckbox.checked = this.#mdcCellVerticesEnabled
-        this.#mdcQefPlanesEnabled = !!g.mdcQefPlanes
-        this.#mdcQefPlanesCheckbox.checked = this.#mdcQefPlanesEnabled
+    /**
+     * Apply full overlay/render state from external UI (dev tools). Does not persist;
+     * the caller is responsible for storing settings.
+     */
+    applyMeshViewerSettings(s: GlobalSettings["meshViewer"]): void {
+        if (s.translucentFaces !== this.#translucentFaces) this.#syncBool("translucentFaces", s.translucentFaces)
+        if (s.wireframe !== this.#wireframe) this.#syncBool("wireframe", s.wireframe)
+        this.#mdcDebug = !!s.mdcDebugPoints
+        const fg = s.featureGlyphs ?? { line: false, corner: false, seam: false, ring: false }
+        this.#mdcFeatureGlyphLine = !!fg.line
+        this.#mdcFeatureGlyphCorner = !!fg.corner
+        this.#mdcFeatureGlyphSeam = !!fg.seam
+        this.#mdcFeatureGlyphRing = !!fg.ring
+        this.#mdcCellVerticesEnabled = !!s.mdcCellVertices
+        this.#mdcQefPlanesEnabled = !!s.mdcQefPlanes
     }
 
     /**
@@ -1983,19 +1794,12 @@ export class MeshViewer extends HTMLElement {
         mdcQefPlanes?: boolean
     }): void {
         this.#mdcDebug = opts.mdcDebugPoints
-        this.#mdcDebugCheckbox.checked = opts.mdcDebugPoints
         this.#mdcFeatureGlyphLine = opts.featureGlyphs.line
-        this.#mdcFeatureGlyphLineCheckbox.checked = opts.featureGlyphs.line
         this.#mdcFeatureGlyphCorner = opts.featureGlyphs.corner
-        this.#mdcFeatureGlyphCornerCheckbox.checked = opts.featureGlyphs.corner
         this.#mdcFeatureGlyphSeam = opts.featureGlyphs.seam
-        this.#mdcFeatureGlyphSeamCheckbox.checked = opts.featureGlyphs.seam
         this.#mdcFeatureGlyphRing = opts.featureGlyphs.ring
-        this.#mdcFeatureGlyphRingCheckbox.checked = opts.featureGlyphs.ring
         this.#mdcCellVerticesEnabled = !!opts.mdcCellVertices
-        this.#mdcCellVerticesCheckbox.checked = !!opts.mdcCellVertices
         this.#mdcQefPlanesEnabled = !!opts.mdcQefPlanes
-        this.#mdcQefPlanesCheckbox.checked = !!opts.mdcQefPlanes
     }
 }
 

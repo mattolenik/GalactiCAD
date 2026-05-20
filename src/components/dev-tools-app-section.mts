@@ -1,6 +1,7 @@
 import { BehaviorSubject, skip } from "rxjs"
 import type { Subscription } from "rxjs"
 import { connectCheckbox } from "../binding/bind.mjs"
+import { SettingsManager, type GlobalSettings } from "../storage/settings.mjs"
 import {
     DEFAULT_APP_DEVTOOLS_STATE,
     DEVTOOLS_COLLAPSE,
@@ -16,12 +17,23 @@ function asBool(v: unknown, fallback: boolean): boolean {
     return typeof v === "boolean" ? v : fallback
 }
 
+export const MESH_VIEWER_OVERLAY_CHANGE_EVENT = "galacticad-mesh-viewer-overlay-change" as const
+
 export class DevToolsAppSection extends HTMLElement implements DevToolsPersistable {
     readonly devToolsSectionId = DEVTOOLS_SECTION_APP
     #applying = false
     #showFps$: BehaviorSubject<boolean>
     #meshViewer$: BehaviorSubject<boolean>
     #meshSimplify$: BehaviorSubject<boolean>
+    #translucentFaces$: BehaviorSubject<boolean>
+    #wireframe$: BehaviorSubject<boolean>
+    #mdcDebugPoints$: BehaviorSubject<boolean>
+    #fgLine$: BehaviorSubject<boolean>
+    #fgCorner$: BehaviorSubject<boolean>
+    #fgSeam$: BehaviorSubject<boolean>
+    #fgRing$: BehaviorSubject<boolean>
+    #mdcCellVertices$: BehaviorSubject<boolean>
+    #mdcQefPlanes$: BehaviorSubject<boolean>
     #subscriptions: Subscription[] = []
 
     get showFps(): boolean {
@@ -60,6 +72,17 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#meshViewer$ = new BehaviorSubject(asBool(d.meshViewerEnabled, false))
         this.#meshSimplify$ = new BehaviorSubject(asBool(d.meshSimplifyOnExport, false))
 
+        const mv = SettingsManager.instance.getGlobal().meshViewer
+        this.#translucentFaces$ = new BehaviorSubject(!!mv.translucentFaces)
+        this.#wireframe$ = new BehaviorSubject(!!mv.wireframe)
+        this.#mdcDebugPoints$ = new BehaviorSubject(!!mv.mdcDebugPoints)
+        this.#fgLine$ = new BehaviorSubject(!!mv.featureGlyphs?.line)
+        this.#fgCorner$ = new BehaviorSubject(!!mv.featureGlyphs?.corner)
+        this.#fgSeam$ = new BehaviorSubject(!!mv.featureGlyphs?.seam)
+        this.#fgRing$ = new BehaviorSubject(!!mv.featureGlyphs?.ring)
+        this.#mdcCellVertices$ = new BehaviorSubject(!!mv.mdcCellVertices)
+        this.#mdcQefPlanes$ = new BehaviorSubject(!!mv.mdcQefPlanes)
+
         const persist = () => {
             if (this.#applying) return
             dispatchDevToolsStateChange(this, this.devToolsSectionId)
@@ -84,6 +107,55 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             this.dispatchEvent(new CustomEvent("galacticad-show-fps-change", { bubbles: true, composed: true }))
         })
 
+        const translucentCb = this.#addCheckbox(viewportBox, "Translucent faces", this.#translucentFaces$.value)
+        this.#subscriptions.push(connectCheckbox(translucentCb, this.#translucentFaces$))
+        const wireframeCb = this.#addCheckbox(viewportBox, "Wireframe", this.#wireframe$.value)
+        this.#subscriptions.push(connectCheckbox(wireframeCb, this.#wireframe$))
+        const debugPointsCb = this.#addCheckbox(viewportBox, "Debug points", this.#mdcDebugPoints$.value)
+        this.#subscriptions.push(connectCheckbox(debugPointsCb, this.#mdcDebugPoints$))
+
+        const fgGroup = this.#addNestedGroup(viewportBox, "Feature glyphs")
+        const fgLineCb = this.#addCheckbox(fgGroup, "Line", this.#fgLine$.value)
+        this.#subscriptions.push(connectCheckbox(fgLineCb, this.#fgLine$))
+        const fgCornerCb = this.#addCheckbox(fgGroup, "Corner", this.#fgCorner$.value)
+        this.#subscriptions.push(connectCheckbox(fgCornerCb, this.#fgCorner$))
+        const fgSeamCb = this.#addCheckbox(fgGroup, "Seam", this.#fgSeam$.value)
+        this.#subscriptions.push(connectCheckbox(fgSeamCb, this.#fgSeam$))
+        const fgRingCb = this.#addCheckbox(fgGroup, "Ring", this.#fgRing$.value)
+        this.#subscriptions.push(connectCheckbox(fgRingCb, this.#fgRing$))
+
+        const qefGroup = this.#addNestedGroup(viewportBox, "QEF debug")
+        const cellVertsCb = this.#addCheckbox(qefGroup, "Cell vertices", this.#mdcCellVertices$.value)
+        this.#subscriptions.push(connectCheckbox(cellVertsCb, this.#mdcCellVertices$))
+        const qefPlanesCb = this.#addCheckbox(qefGroup, "QEF planes", this.#mdcQefPlanes$.value)
+        this.#subscriptions.push(connectCheckbox(qefPlanesCb, this.#mdcQefPlanes$))
+
+        const broadcastMeshViewerOverlay = () => {
+            if (this.#applying) return
+            const s = this.#currentMeshViewerSettings()
+            SettingsManager.instance.updateGlobal({ meshViewer: s })
+            this.dispatchEvent(
+                new CustomEvent<GlobalSettings["meshViewer"]>(MESH_VIEWER_OVERLAY_CHANGE_EVENT, {
+                    bubbles: true,
+                    composed: true,
+                    detail: s,
+                }),
+            )
+        }
+        for (const src$ of [
+            this.#translucentFaces$,
+            this.#wireframe$,
+            this.#mdcDebugPoints$,
+            this.#fgLine$,
+            this.#fgCorner$,
+            this.#fgSeam$,
+            this.#fgRing$,
+            this.#mdcCellVertices$,
+            this.#mdcQefPlanes$,
+        ]) {
+            this.#subscriptions.push(src$.pipe(skip(1)).subscribe(broadcastMeshViewerOverlay))
+        }
+
         const meshCb = this.#addCheckbox(exportBox, "Export preview", this.#meshViewer$.value)
         this.#subscriptions.push(connectCheckbox(meshCb, this.#meshViewer$))
         this.#meshViewer$.pipe(skip(1)).subscribe(() => {
@@ -98,6 +170,38 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             this.dispatchEvent(new CustomEvent("galacticad-mesh-simplify-change", { bubbles: true, composed: true }))
         })
 
+    }
+
+    /** Current mesh viewer overlay/render settings as reflected by the Viewport checkboxes. */
+    currentMeshViewerSettings(): GlobalSettings["meshViewer"] {
+        return this.#currentMeshViewerSettings()
+    }
+
+    #currentMeshViewerSettings(): GlobalSettings["meshViewer"] {
+        return {
+            translucentFaces: this.#translucentFaces$.value,
+            wireframe: this.#wireframe$.value,
+            mdcDebugPoints: this.#mdcDebugPoints$.value,
+            featureGlyphs: {
+                line: this.#fgLine$.value,
+                corner: this.#fgCorner$.value,
+                seam: this.#fgSeam$.value,
+                ring: this.#fgRing$.value,
+            },
+            mdcCellVertices: this.#mdcCellVertices$.value,
+            mdcQefPlanes: this.#mdcQefPlanes$.value,
+        }
+    }
+
+    #addNestedGroup(parent: ParentNode, label: string): HTMLDivElement {
+        const wrap = document.createElement("div")
+        wrap.style.cssText = "display:flex;flex-direction:column;gap:2px;margin:2px 0 2px 12px"
+        const title = document.createElement("div")
+        title.textContent = label
+        title.style.cssText = "font-size:11px;opacity:0.78"
+        wrap.append(title)
+        parent.appendChild(wrap)
+        return wrap
     }
 
     getDevToolsState(): Record<string, JSONValue> {

@@ -119,7 +119,7 @@ export class DevToolsMdcExportSection extends HTMLElement {
     #mdcFeatureConstrainedPlacementCheckbox: HTMLInputElement
     #voxelSizeMm$: BehaviorSubject<number>
     #meshExporter$: BehaviorSubject<ExporterKind>
-    #exporterRadios: Record<ExporterKind, HTMLInputElement> = {} as Record<ExporterKind, HTMLInputElement>
+    #exporterSelect!: HTMLSelectElement
     #isoCollapse: HTMLElement
     #isoPhase5Checkbox: HTMLInputElement
     #isoFeatureRefineCheckbox: HTMLInputElement
@@ -173,6 +173,46 @@ export class DevToolsMdcExportSection extends HTMLElement {
         const g = this.#settings.getGlobal().app
         this.#voxelSizeMm$ = new BehaviorSubject(g.meshExportVoxelSizeMm)
 
+        // Exporter selection — sits at the top of the Mesh export panel so
+        // it's clearly the parent-level choice (which exporter is used);
+        // exporter-specific knobs live in their own collapses below.
+        this.#meshExporter$ = new BehaviorSubject<ExporterKind>(g.meshExporter)
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Exporter"
+            const sel = document.createElement("select")
+            const EXPORTER_OPTIONS: ReadonlyArray<readonly [ExporterKind, string]> = [
+                ["mdc", "MDC"],
+                ["shrec", "SHREC"],
+                ["isoSimplicial", "Iso-simplicial"],
+            ]
+            for (const [val, label] of EXPORTER_OPTIONS) {
+                const o = document.createElement("option")
+                o.value = val
+                o.textContent = label
+                if (this.#meshExporter$.value === val) o.selected = true
+                sel.appendChild(o)
+            }
+            sel.addEventListener("change", () => {
+                this.#meshExporter$.next(sel.value as ExporterKind)
+            })
+            row.append(lab, sel)
+            shadow.appendChild(row)
+            this.#exporterSelect = sel
+        }
+        this.#subscriptions.push(
+            this.#meshExporter$.subscribe(v => {
+                if (this.#exporterSelect.value !== v) this.#exporterSelect.value = v
+                if (v !== this.#settings.getGlobal().app.meshExporter) {
+                    this.#settings.updateGlobal({ app: { meshExporter: v, useShrecExporter: v === "shrec" } })
+                    this.onMeshExporterChange?.(v)
+                }
+            })
+        )
+
         {
             const row = document.createElement("div")
             row.className = "shade-row"
@@ -202,50 +242,6 @@ export class DevToolsMdcExportSection extends HTMLElement {
             this.#voxelSizeMm$.pipe(skip(1)).subscribe(v => {
                 this.#settings.updateGlobal({ app: { meshExportVoxelSizeMm: v } })
                 this.onVoxelSizeMmChange?.(v)
-            })
-        )
-
-        this.#meshExporter$ = new BehaviorSubject<ExporterKind>(g.meshExporter)
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("span")
-            lab.className = "knob-label"
-            lab.textContent = "Exporter"
-            const box = document.createElement("div")
-            box.style.display = "flex"
-            box.style.flexDirection = "column"
-            box.style.alignItems = "flex-start"
-            box.style.gap = "2px"
-            const addExp = (value: ExporterKind, label: string) => {
-                const w = document.createElement("label")
-                const r = document.createElement("input")
-                r.type = "radio"
-                r.name = "galacticad-mesh-exporter"
-                r.value = value
-                r.checked = this.#meshExporter$.value === value
-                r.addEventListener("change", () => {
-                    if (r.checked) this.#meshExporter$.next(value)
-                })
-                w.append(r, document.createTextNode(` ${label}`))
-                box.appendChild(w)
-                this.#exporterRadios[value] = r
-            }
-            addExp("mdc", "MDC")
-            addExp("shrec", "SHREC")
-            addExp("isoSimplicial", "Iso")
-            row.append(lab, box)
-            shadow.appendChild(row)
-        }
-        this.#subscriptions.push(
-            this.#meshExporter$.subscribe(v => {
-                for (const k of ["mdc", "shrec", "isoSimplicial"] as const) {
-                    this.#exporterRadios[k]!.checked = k === v
-                }
-                if (v !== this.#settings.getGlobal().app.meshExporter) {
-                    this.#settings.updateGlobal({ app: { meshExporter: v, useShrecExporter: v === "shrec" } })
-                    this.onMeshExporterChange?.(v)
-                }
             })
         )
 

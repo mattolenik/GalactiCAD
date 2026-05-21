@@ -3,7 +3,11 @@ import { aabb, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { BOTTOM, TOP, type DirectionIndicator } from "../direction-indicator.mjs"
-import { Vec3, vec3 } from "../../vecmat/vector.mjs"
+import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
+import {
+    FG_FLAG_CREASE_ORIGINAL,
+    type FeatureGraphBuilder,
+} from "../feature-graph-buffer.mjs"
 
 export type { DirectionIndicator } from "../direction-indicator.mjs"
 
@@ -171,7 +175,77 @@ export class Cylinder extends Node {
         this.pos = vec3(v)
         return this
     }
+
+    /**
+     * Emit the two cap rings (cap-meets-side dihedral circles) as
+     * discretised polylines. Each ring is broken into {@link RING_SEGMENTS}
+     * short segments around the circle — enough resolution to look smooth
+     * on screen and to flow through stage 3 subdivision without further
+     * splitting in typical cell sizes.
+     *
+     * Each ring sample is a 2-way crease (cap face + cylindrical side
+     * surface). Ring samples are NOT corners — a circular ring has no 0D
+     * features. The cap face loop is emitted with the discretised ring
+     * vertices so downstream meshers see a planar cap.
+     *
+     * Skipped when:
+     *  - Under a non-affine ancestor (warp gate).
+     *  - That cap has a fillet or chamfer set — those round/bevel the ring
+     *    away, so no sharp dihedral is present. (Each cap checked
+     *    independently so a cylinder with only a top fillet still emits the
+     *    bottom ring.)
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        if (builder.hasNonAffineAncestor()) return
+        if (!(this.r > 0) || !(this.h > 0)) return
+
+        const cx = this.pos.x, cy = this.pos.y, cz = this.pos.z
+        const r = this.r, h = this.h
+        const topNormal = new Vec3f([0, 1, 0])
+        const botNormal = new Vec3f([0, -1, 0])
+
+        const emitTop = this.filletTop === 0 && this.chamferTop === 0
+        const emitBot = this.filletBottom === 0 && this.chamferBottom === 0
+        if (!emitTop && !emitBot) return
+
+        builder.beginNode(this.id)
+
+        const emitRing = (capY: number, capNormal: Vec3f, reverseLoop: boolean): void => {
+            const idx: number[] = new Array(RING_SEGMENTS)
+            for (let i = 0; i < RING_SEGMENTS; i++) {
+                const theta = (i / RING_SEGMENTS) * 2 * Math.PI
+                const ca = Math.cos(theta)
+                const sa = Math.sin(theta)
+                const sideNormal = new Vec3f([ca, 0, sa])
+                idx[i] = builder.emitVertex(
+                    new Vec3f([cx + r * ca, capY, cz + r * sa]),
+                    FG_FLAG_CREASE_ORIGINAL,
+                    [capNormal, sideNormal],
+                )
+            }
+            for (let i = 0; i < RING_SEGMENTS; i++) {
+                const next = (i + 1) % RING_SEGMENTS
+                builder.emitEdge(idx[i]!, idx[next]!, FG_FLAG_CREASE_ORIGINAL)
+            }
+            // Bottom loop reversed so winding agrees with the -Y outward normal.
+            const loopIdx = reverseLoop ? idx.slice().reverse() : idx
+            builder.emitLoop(loopIdx, capNormal, FG_FLAG_CREASE_ORIGINAL)
+        }
+
+        if (emitTop) emitRing(cy + h, topNormal, false)
+        if (emitBot) emitRing(cy - h, botNormal, true)
+
+        builder.endNode()
+    }
 }
+
+/**
+ * Ring discretisation resolution. 32 segments around a circle is visually
+ * smooth at typical zooms and is well above the stage-3 subdivision target
+ * for default cell sizes — so the ring won't be further subdivided into
+ * even smaller chords. Raise if very smooth rings are needed.
+ */
+const RING_SEGMENTS = 32
 
 function cylinderRadius(r: number): Cylinder {
     return new Cylinder(DEFAULT_POS, { r, h: 1 })

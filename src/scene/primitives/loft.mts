@@ -4,6 +4,15 @@ import type { PreviewParamsOut } from "../scene-params.mjs"
 import { capDragOrF32Wgsl, f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D, polygon2dWindingSign } from "./polygon2d.mjs"
+import {
+    FG_FLAG_CORNER,
+    FG_FLAG_CREASE_ORIGINAL,
+    type FeatureGraphBuilder,
+} from "../feature-graph-buffer.mjs"
+
+/** Match the WGSL mid-feature pass: only flag a polygon vertex as a corner when the turn is meaningful. */
+const LOFT_FG_FEATURE_DOT = 0.95
+const LOFT_FG_VERTEX_TURN_MIN = 1e-6
 
 /**
  * Lofts between two or more 2D SDF profiles along the Y axis.
@@ -504,6 +513,172 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
+    }
+
+    /**
+     * Emit feature-graph features for a loft:
+     *  - **Top + bottom caps** — analogous to Extrude. Each cap is a planar
+     *    polygon at `y = ±h` (with `pos` offset). Corner vertices have
+     *    `FG_FLAG_CORNER` for sharp polygon turns; cap edges always emitted;
+     *    cap loop on each.
+     *  - **Side feature edges**: when all profiles share the same vertex
+     *    count (the WGSL mid-feature pass's `sameTopology` constraint),
+     *    chain edges from each bottom corner k through each intermediate
+     *    profile vertex k up to the top corner k — but ONLY when that
+     *    polygon vertex is sharp in BOTH the bottom and top profile
+     *    (intermediate sharpness is approximated by linear interpolation;
+     *    we conservatively require the endpoints to be sharp).
+     *  - When profiles differ in vertex count, side edges are skipped
+     *    (the ruled-surface side features aren't well-defined per vertex).
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        if (builder.hasNonAffineAncestor()) return
+
+        const profiles = this.profiles
+        const M = profiles.length
+        if (M < 2) return
+
+        const bottomProf = profiles[0]!
+        const topProf = profiles[M - 1]!
+        const NBot = bottomProf.vertices.length
+        const NTop = topProf.vertices.length
+        if (NBot < 3 || NTop < 3) return
+
+        const sameTopology = profiles.every(p => p.vertices.length === NBot)
+
+        const px = this.pos.x, py = this.pos.y, pz = this.pos.z
+        const h = this.h
+        const yForProfile = (k: number): number => py + (-h + (k / (M - 1)) * 2 * h)
+
+        const topNormal = new Vec3f([0, 1, 0])
+        const botNormal = new Vec3f([0, -1, 0])
+
+        /** Compute per-edge outward 3D normals (in untwisted XZ) for a polygon. */
+        const edgeOutwardOf = (verts: ReadonlyArray<readonly [number, number]>): Vec3f[] => {
+            const N = verts.length
+            const windSign = polygon2dWindingSign(verts as [number, number][])
+            const out: Vec3f[] = []
+            for (let i = 0; i < N; i++) {
+                const [ax, az] = verts[i]!
+                const [bx, bz] = verts[(i + 1) % N]!
+                let dx = bx - ax, dz = bz - az
+                const len = Math.sqrt(dx * dx + dz * dz) || 1
+                dx /= len; dz /= len
+                out.push(new Vec3f([dz * windSign, 0, -dx * windSign]))
+            }
+            return out
+        }
+
+        /** Same sharpness predicate as Extrude / WGSL mid-feature. */
+        const isSharpAt = (
+            verts: ReadonlyArray<readonly [number, number]>,
+            k: number,
+            prevOut: Vec3f,
+            nextOut: Vec3f,
+        ): boolean => {
+            const N = verts.length
+            const [vx, vz] = verts[k]!
+            const [pvx, pvz] = verts[(k - 1 + N) % N]!
+            const [nvx, nvz] = verts[(k + 1) % N]!
+            let pdx = vx - pvx, pdz = vz - pvz
+            const pLen = Math.sqrt(pdx * pdx + pdz * pdz) || 1
+            pdx /= pLen; pdz /= pLen
+            let ndx = nvx - vx, ndz = nvz - vz
+            const nLen = Math.sqrt(ndx * ndx + ndz * ndz) || 1
+            ndx /= nLen; ndz /= nLen
+            const turn = Math.abs(pdx * ndz - pdz * ndx)
+            const dotN = prevOut.x * nextOut.x + prevOut.z * nextOut.z
+            return turn >= LOFT_FG_VERTEX_TURN_MIN && dotN < LOFT_FG_FEATURE_DOT
+        }
+
+        builder.beginNode(this.id)
+
+        const topOutward = edgeOutwardOf(topProf.vertices)
+        const botOutward = edgeOutwardOf(bottomProf.vertices)
+        const topY = yForProfile(M - 1)
+        const botY = yForProfile(0)
+
+        // Emit top corners.
+        const topIdx: number[] = new Array(NTop)
+        const topSharp: boolean[] = new Array(NTop)
+        for (let k = 0; k < NTop; k++) {
+            const [vx, vz] = topProf.vertices[k]!
+            const prevOut = topOutward[(k - 1 + NTop) % NTop]!
+            const nextOut = topOutward[k]!
+            const sharp = isSharpAt(topProf.vertices, k, prevOut, nextOut)
+            topSharp[k] = sharp
+            const flags = FG_FLAG_CREASE_ORIGINAL | (sharp ? FG_FLAG_CORNER : 0)
+            topIdx[k] = builder.emitVertex(
+                new Vec3f([vx + px, topY, vz + pz]),
+                flags,
+                [topNormal, prevOut, nextOut],
+            )
+        }
+
+        // Emit bottom corners.
+        const botIdx: number[] = new Array(NBot)
+        const botSharp: boolean[] = new Array(NBot)
+        for (let k = 0; k < NBot; k++) {
+            const [vx, vz] = bottomProf.vertices[k]!
+            const prevOut = botOutward[(k - 1 + NBot) % NBot]!
+            const nextOut = botOutward[k]!
+            const sharp = isSharpAt(bottomProf.vertices, k, prevOut, nextOut)
+            botSharp[k] = sharp
+            const flags = FG_FLAG_CREASE_ORIGINAL | (sharp ? FG_FLAG_CORNER : 0)
+            botIdx[k] = builder.emitVertex(
+                new Vec3f([vx + px, botY, vz + pz]),
+                flags,
+                [botNormal, prevOut, nextOut],
+            )
+        }
+
+        // Cap edges (cap-meets-side dihedral on each cap).
+        for (let k = 0; k < NTop; k++) {
+            builder.emitEdge(topIdx[k]!, topIdx[(k + 1) % NTop]!, FG_FLAG_CREASE_ORIGINAL)
+        }
+        for (let k = 0; k < NBot; k++) {
+            builder.emitEdge(botIdx[k]!, botIdx[(k + 1) % NBot]!, FG_FLAG_CREASE_ORIGINAL)
+        }
+
+        // Side edges (sameTopology only) — chain through intermediate
+        // profile vertices when M > 2 so the visible feature follows the
+        // ruled surface's per-profile samples, not a chord that may not
+        // pass through the actual surface feature for non-collinear stacks.
+        if (sameTopology) {
+            for (let k = 0; k < NBot; k++) {
+                if (!botSharp[k] || !topSharp[k]) continue
+
+                if (M === 2) {
+                    builder.emitEdge(botIdx[k]!, topIdx[k]!, FG_FLAG_CREASE_ORIGINAL)
+                    continue
+                }
+
+                let prev = botIdx[k]!
+                for (let pi = 1; pi < M - 1; pi++) {
+                    const profile = profiles[pi]!
+                    const [vx, vz] = profile.vertices[k]!
+                    const outwardPi = edgeOutwardOf(profile.vertices)
+                    const prevOutPi = outwardPi[(k - 1 + profile.vertices.length) % profile.vertices.length]!
+                    const nextOutPi = outwardPi[k]!
+                    const midIdx = builder.emitVertex(
+                        new Vec3f([vx + px, yForProfile(pi), vz + pz]),
+                        FG_FLAG_CREASE_ORIGINAL, // intermediate sample, not a corner
+                        [prevOutPi, nextOutPi],
+                    )
+                    builder.emitEdge(prev, midIdx, FG_FLAG_CREASE_ORIGINAL)
+                    prev = midIdx
+                }
+                builder.emitEdge(prev, topIdx[k]!, FG_FLAG_CREASE_ORIGINAL)
+            }
+        }
+
+        // Cap loops: top forward, bottom reversed (to match -Y normal).
+        builder.emitLoop(topIdx, topNormal, FG_FLAG_CREASE_ORIGINAL)
+        const botReversed: number[] = new Array(NBot)
+        for (let k = 0; k < NBot; k++) botReversed[k] = botIdx[NBot - 1 - k]!
+        builder.emitLoop(botReversed, botNormal, FG_FLAG_CREASE_ORIGINAL)
+
+        builder.endNode()
     }
 }
 

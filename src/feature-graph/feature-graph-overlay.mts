@@ -1,0 +1,309 @@
+/**
+ * FeatureGraph debug overlay — GPU pipeline + buffer management.
+ *
+ * Renders alive crease/corner edges from the latest FeatureGraph build as
+ * line primitives over the rendered scene. Decoupled from the main scene
+ * pipeline so it can be toggled on/off at runtime without recompiling
+ * shaders and so the overlay pass owns its own camera uniform (the existing
+ * preview camera struct has a much larger layout we don't need here).
+ *
+ * Buffer layout
+ * -------------
+ *  - **Vertex buffer**: stride 16 bytes per FG vertex (x, y, z, flags).
+ *    Includes *all* vertices so dead-feature rendering can be enabled later
+ *    by populating the index buffer with dead-edge endpoints too.
+ *  - **Index buffer**: pairs of `u32` per alive edge. Dead edges are simply
+ *    omitted, which causes the GPU to never reference any dead vertex
+ *    either — the vertex shader still pays the cost of transforming all
+ *    vertices, but with line-list input assembly only the indexed subset
+ *    actually fires the rasteriser.
+ *  - **Camera uniform**: 80 bytes — `mat4x4f transform` (64) + `vec2f res`
+ *    (8) + `f32 zoom` (4) + 4-byte pad. Same camera→world matrix the
+ *    preview ray-marcher uses, so the overlay aligns with the scene.
+ *
+ * Render integration
+ * ------------------
+ * The overlay runs in its own render pass on the canvas target with
+ * `loadOp: "load"` (preserves the outline pass output) and no depth
+ * attachment — features draw on top of geometry, intentionally, so the
+ * user can see surviving CSG-cut edges through the model.
+ */
+
+import type { GPUHelper } from "../gpu/helper.mjs"
+import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
+import overlayShaderSource from "../shaders/feature_graph_overlay.wgsl"
+import { FG_FLAG_ALIVE, type FeatureGraphCpu } from "../scene/feature-graph-buffer.mjs"
+import type { FeatureGraphWorldPositions } from "./feature-graph-stages.mjs"
+import { Mat4x4f } from "../vecmat/matrix.mjs"
+
+/** Stride in bytes for the vertex buffer (vec3<f32> position + u32 flags). */
+const VERTEX_STRIDE = 16
+
+/**
+ * Size in bytes of the overlay camera uniform struct. Layout (column-major,
+ * WGSL alignment):
+ *   - 0  : transform (mat4x4f) = inverse of `viewTransform`, 64 bytes
+ *   - 64 : origin (vec3f) = cameraPosition + (0, 0, rayDepth), 12 bytes
+ *   - 76 : _pad0 (f32), 4 bytes  →  vec4 alignment
+ *   - 80 : res (vec2f), 8 bytes
+ *   - 88 : zoom (f32), 4 bytes
+ *   - 92 : _pad1 (f32), 4 bytes  →  vec4 alignment
+ *   - 96 : viewCenter (vec2f), 8 bytes
+ *   - 104: _pad2 (vec2f), 8 bytes  →  struct size = 112 (16-aligned)
+ */
+const CAMERA_UNIFORM_BYTES = 112
+
+/**
+ * Same constant the preview ray-marcher uses to push ray origins back along
+ * the camera's local +Z so the SDF march has room to find intersections in
+ * front of the eye. Matches `PREVIEW_RAY_ORIGIN_DEPTH` in `camera-controller`
+ * + `mesh-viewer`.
+ */
+const PREVIEW_RAY_ORIGIN_DEPTH = 300
+
+export class FeatureGraphOverlay {
+    #helper: GPUHelper
+    #device: GPUDevice
+    #format: GPUTextureFormat
+    #shaderModule: GPUShaderModule
+    #pipeline!: GPURenderPipeline
+    #cameraBuffer: GPUBuffer
+    #vertexBuffer?: GPUBuffer
+    #vertexCapacity = 0
+    #indexBuffer?: GPUBuffer
+    #indexCapacity = 0
+    #bindGroup?: [number, GPUBindGroup]
+    /** Number of `u32` indices currently uploaded; `drawIndexed(indexCount)`. */
+    #indexCount = 0
+
+    constructor(helper: GPUHelper, format: GPUTextureFormat) {
+        this.#helper = helper
+        this.#device = helper.device
+        this.#format = format
+
+        this.#shaderModule = this.#device.createShaderModule({
+            label: "FeatureGraph Overlay",
+            code: overlayShaderSource,
+        })
+        scheduleShaderModuleCompilationLogging(
+            this.#shaderModule,
+            "FeatureGraph Overlay",
+            overlayShaderSource,
+        )
+
+        this.#cameraBuffer = this.#device.createBuffer({
+            label: "FeatureGraphOverlay.Camera",
+            size: CAMERA_UNIFORM_BYTES,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        })
+
+        this.#pipeline = this.#device.createRenderPipeline({
+            label: "FeatureGraph Overlay Pipeline",
+            layout: "auto",
+            vertex: {
+                module: this.#shaderModule,
+                entryPoint: "vertexMain",
+                buffers: [
+                    {
+                        arrayStride: VERTEX_STRIDE,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0, format: "float32x3" },
+                            { shaderLocation: 1, offset: 12, format: "uint32" },
+                        ],
+                    },
+                ],
+            },
+            fragment: {
+                module: this.#shaderModule,
+                entryPoint: "fragmentMain",
+                targets: [
+                    {
+                        format: this.#format,
+                        blend: {
+                            color: {
+                                srcFactor: "src-alpha",
+                                dstFactor: "one-minus-src-alpha",
+                                operation: "add",
+                            },
+                            alpha: {
+                                srcFactor: "one",
+                                dstFactor: "one-minus-src-alpha",
+                                operation: "add",
+                            },
+                        },
+                    },
+                ],
+            },
+            primitive: {
+                topology: "line-list",
+            },
+        })
+    }
+
+    /**
+     * Upload world positions + flags + alive-edge endpoints from the latest
+     * FeatureGraph build. Grow-on-demand pattern matching `IsoSampleBatch`.
+     * Call once per FG rebuild; the camera uniform is uploaded separately
+     * via {@link uploadCamera} on every render frame.
+     */
+    upload(cpu: FeatureGraphCpu, world: FeatureGraphWorldPositions): void {
+        if (cpu.vertexCount === 0) {
+            this.#indexCount = 0
+            return
+        }
+
+        // Vertex buffer: all vertices interleaved (pos × 3, flags × 1).
+        const vertexBytes = cpu.vertexCount * VERTEX_STRIDE
+        this.#ensureVertexBuffer(vertexBytes)
+        const vbCpu = new ArrayBuffer(vertexBytes)
+        const vbF32 = new Float32Array(vbCpu)
+        const vbU32 = new Uint32Array(vbCpu)
+        for (let i = 0; i < cpu.vertexCount; i++) {
+            vbF32[i * 4 + 0] = world.positions[i * 3 + 0]!
+            vbF32[i * 4 + 1] = world.positions[i * 3 + 1]!
+            vbF32[i * 4 + 2] = world.positions[i * 3 + 2]!
+            vbU32[i * 4 + 3] = cpu.vertexFlags[i] ?? 0
+        }
+        this.#device.queue.writeBuffer(this.#vertexBuffer!, 0, vbCpu)
+
+        // Index buffer: alive edges only. Dead edges drop out of the draw
+        // call (and their dead endpoints are never rasterised).
+        let aliveEdgeCount = 0
+        for (let e = 0; e < cpu.edgeCount; e++) {
+            if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) !== 0) aliveEdgeCount++
+        }
+
+        if (aliveEdgeCount === 0) {
+            this.#indexCount = 0
+            return
+        }
+
+        const indexBytes = aliveEdgeCount * 8 // 2 u32 per edge
+        this.#ensureIndexBuffer(indexBytes)
+        const ibCpu = new Uint32Array(aliveEdgeCount * 2)
+        let s = 0
+        for (let e = 0; e < cpu.edgeCount; e++) {
+            if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) === 0) continue
+            ibCpu[s * 2 + 0] = cpu.edgeEndpoints[e * 2]!
+            ibCpu[s * 2 + 1] = cpu.edgeEndpoints[e * 2 + 1]!
+            s++
+        }
+        this.#device.queue.writeBuffer(this.#indexBuffer!, 0, ibCpu)
+        this.#indexCount = aliveEdgeCount * 2
+    }
+
+    /**
+     * Push the per-frame camera uniform.
+     *
+     * @param viewTransform Camera controller's `viewTransform` (cam-to-world).
+     *   The overlay uploads its *inverse* so the vertex shader can project
+     *   world points directly. Matches `mesh-viewer`'s convention.
+     * @param cameraPosition World-space camera position (used to shift the
+     *   projection origin so geometry lines up with the SDF preview).
+     * @param resX Canvas width in pixels.
+     * @param resY Canvas height in pixels.
+     * @param zoom Orthographic half-extent along Y (= `orthoHalfFromDolly`).
+     * @param viewCenter UV-space center of the visible scene area (0–1);
+     *   defaults to `(0.5, 0.5)` for canvas-centered rendering.
+     */
+    uploadCamera(
+        viewTransform: Float32Array | ArrayBuffer,
+        cameraPosition: readonly [number, number, number],
+        resX: number,
+        resY: number,
+        zoom: number,
+        viewCenter: readonly [number, number] = [0.5, 0.5],
+    ): void {
+        // Invert on CPU: WGSL inversion is doable for rigid transforms but
+        // mesh-viewer's reference pattern keeps it CPU-side and matches the
+        // existing pivot-projection convention, so we do the same here.
+        const vt = viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform)
+        const inverse = new Mat4x4f(new Float32Array(vt)).inverse()
+
+        const buf = new ArrayBuffer(CAMERA_UNIFORM_BYTES)
+        const f32 = new Float32Array(buf)
+        // transform: bytes 0..63 (16 floats)
+        f32.set(inverse.data.subarray(0, 16), 0)
+        // origin: bytes 64..75 (3 floats), Z-shifted by PREVIEW_RAY_ORIGIN_DEPTH
+        f32[16] = cameraPosition[0]
+        f32[17] = cameraPosition[1]
+        f32[18] = cameraPosition[2] + PREVIEW_RAY_ORIGIN_DEPTH
+        f32[19] = 0 // _pad0
+        // res: bytes 80..87
+        f32[20] = resX
+        f32[21] = resY
+        // zoom: bytes 88..91
+        f32[22] = zoom
+        f32[23] = 0 // _pad1
+        // viewCenter: bytes 96..103
+        f32[24] = viewCenter[0]
+        f32[25] = viewCenter[1]
+        f32[26] = 0 // _pad2.x
+        f32[27] = 0 // _pad2.y
+        this.#device.queue.writeBuffer(this.#cameraBuffer, 0, buf)
+    }
+
+    /**
+     * Issue draw call into an open render pass. No-op when no alive edges
+     * have been uploaded. The caller is responsible for opening a render
+     * pass with the canvas target and `loadOp: "load"`.
+     */
+    render(pass: GPURenderPassEncoder): void {
+        if (this.#indexCount === 0 || !this.#vertexBuffer || !this.#indexBuffer) return
+        if (!this.#bindGroup) {
+            this.#bindGroup = this.#helper.createBindGroup(
+                0,
+                "FeatureGraphOverlay.BindGroup",
+                this.#pipeline,
+                [0, this.#cameraBuffer],
+            )
+        }
+        const [groupId, bindGroup] = this.#bindGroup
+        pass.setPipeline(this.#pipeline)
+        pass.setBindGroup(groupId, bindGroup)
+        pass.setVertexBuffer(0, this.#vertexBuffer)
+        pass.setIndexBuffer(this.#indexBuffer, "uint32")
+        pass.drawIndexed(this.#indexCount)
+    }
+
+    /** True if the overlay has alive features uploaded and ready to draw. */
+    get hasAliveFeatures(): boolean {
+        return this.#indexCount > 0
+    }
+
+    destroy(): void {
+        this.#cameraBuffer.destroy()
+        this.#vertexBuffer?.destroy()
+        this.#indexBuffer?.destroy()
+        this.#vertexBuffer = undefined
+        this.#indexBuffer = undefined
+        this.#vertexCapacity = 0
+        this.#indexCapacity = 0
+        this.#bindGroup = undefined
+        this.#indexCount = 0
+    }
+
+    #ensureVertexBuffer(minBytes: number): void {
+        if (this.#vertexBuffer && this.#vertexCapacity >= minBytes) return
+        this.#vertexBuffer?.destroy()
+        // Double-on-grow with a 4 KiB floor — identical pattern to
+        // `IsoSampleBatch.#ensurePositionBuffer`.
+        this.#vertexCapacity = Math.max(minBytes, this.#vertexCapacity * 2 || 4096)
+        this.#vertexBuffer = this.#device.createBuffer({
+            label: "FeatureGraphOverlay.Vertex",
+            size: this.#vertexCapacity,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        })
+    }
+
+    #ensureIndexBuffer(minBytes: number): void {
+        if (this.#indexBuffer && this.#indexCapacity >= minBytes) return
+        this.#indexBuffer?.destroy()
+        this.#indexCapacity = Math.max(minBytes, this.#indexCapacity * 2 || 4096)
+        this.#indexBuffer = this.#device.createBuffer({
+            label: "FeatureGraphOverlay.Index",
+            size: this.#indexCapacity,
+            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+        })
+    }
+}

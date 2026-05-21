@@ -30,7 +30,12 @@ import { IsoSimplicialConstants } from "./export/iso-simplicial/constants.mjs"
 import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
 import { ContourBuffer } from "./scene/contour-buffer.mjs"
 import { FeatureGraphBuilder } from "./scene/feature-graph-buffer.mjs"
-import { FeatureGraphGpu } from "./feature-graph/feature-graph-gpu.mjs"
+import {
+    FeatureGraphGpu,
+    type FeatureGraphBuildResult,
+} from "./feature-graph/feature-graph-gpu.mjs"
+import { featureGraphToContours } from "./feature-graph/feature-graph-to-contours.mjs"
+import { FeatureGraphOverlay } from "./feature-graph/feature-graph-overlay.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import {
@@ -155,12 +160,31 @@ export class RenderWorkerCore {
     #outlineBindGroup!: GPUBindGroup | undefined
     #scene: SceneInfo | null = null
     /**
-     * Feature-aware meshing scaffold. Phase A: extract + log only; phases C+
-     * dispatch GPU compute passes against this scene's SDF. Rebuilt at the tail
-     * of every `#doBuild` (both param-only and full) so slider drags refresh
-     * the graph without an explicit re-trigger.
+     * Feature-aware meshing scaffold. Phase A: extract + log; phase B: CPU
+     * transform; phase D: GPU survival test via {@link IsoSampleBatch} + CPU
+     * spatial index. Rebuilt at the tail of every `#doBuild` (both param-only
+     * and full) so slider drags refresh the graph without an explicit
+     * re-trigger.
      */
     #featureGraph = new FeatureGraphGpu()
+    /**
+     * Cached iso_sample_batch shader module — recompiled on full scene builds
+     * (when the SDF shader changes), reused on param-only rebuilds. Phase D
+     * stage 4 evaluates the scene SDF at feature-vertex world positions
+     * through this module.
+     */
+    #featureGraphIsoModule: GPUShaderModule | null = null
+    /**
+     * Lazy-constructed `IsoSampleBatch` shared by all FeatureGraph builds. The
+     * underlying buffers (`polygonVertices`, `faceSelection`, `mdcSceneParams`)
+     * are stable across builds, so one instance can be reused indefinitely;
+     * its pipeline cache rebinds when `#featureGraphIsoModule` changes.
+     */
+    #featureGraphIsoBatch: IsoSampleBatch | null = null
+    /** Lazy-constructed debug overlay pipeline; created on first frame. */
+    #featureGraphOverlay: FeatureGraphOverlay | null = null
+    /** Toggle for the debug overlay; default ON, updated by view settings. */
+    #featureGraphOverlayEnabled = true
     #sceneShader: GPUShaderModule | null = null
     #pipeline: GPURenderPipeline | null = null
     #beamPipeline: GPUComputePipeline | null = null
@@ -352,6 +376,11 @@ export class RenderWorkerCore {
         this.#bvhEnabled = enabled
     }
 
+    /** Toggle the FeatureGraph debug overlay. Renders alive crease/corner edges over the scene. */
+    setFeatureGraphOverlayEnabled(enabled: boolean): void {
+        this.#featureGraphOverlayEnabled = enabled
+    }
+
     cancelBuilds(): void {
         this.#buildGeneration++
     }
@@ -405,7 +434,7 @@ export class RenderWorkerCore {
             const tBuf0 = performance.now()
             this.#compiledPosY = newCompiledPosY
             this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
-            this.#rebuildFeatureGraph(scene)
+            await this.#buildFeatureGraph(scene, DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM)
             const tBuf1 = performance.now()
             const tSer0 = performance.now()
             const sceneNodes = serializeSceneNodes(scene, allNodes)
@@ -469,6 +498,30 @@ export class RenderWorkerCore {
         const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
         const tShaderMod1 = performance.now()
 
+        // Compile the iso_sample_batch module with the EXPORT-variant SDF so
+        // the FeatureGraph stage-4 survival pass can evaluate the scene SDF.
+        // The variables above (`sceneSDF` / `sceneAux*` / `sceneSDF_mid`) are
+        // the *preview* variants — they reference `previewParamsF32` etc.,
+        // which only exist in the preview shader's bind set. iso_sample_batch
+        // uses `mdcSceneParams` / `polygonVertices` (export bindings), so we
+        // need the export-variant emitters from `scene.compile()` /
+        // `compileAux()` / etc., matching {@link handleRenderMesh}.
+        const fgSceneAux = scene.compileAux()
+        const fgSceneAuxFast = scene.compileAuxFast()
+        const fgSceneAuxMid = scene.compileAuxMid()
+        const fgSceneSDF = scene.compile()
+        const fgSceneSDF_mid = scene.compileMid()
+        const featureGraphIsoCompiler = new ShaderCompiler(this.#device)
+            .replace("insert", "sceneAuxFast", fgSceneAuxFast)
+            .replace("insert", "sceneAux", fgSceneAux)
+            .replace("insert", "sceneAuxMid", fgSceneAuxMid)
+            .replace("insert", "sceneSDF", fgSceneSDF)
+            .replace("insert", "sceneSDF_mid", fgSceneSDF_mid)
+        this.#featureGraphIsoModule = featureGraphIsoCompiler.compile(
+            isoSampleBatchShaderSource,
+            "Iso sample batch (FG)",
+        )
+
         this.#buildGeneration++
         const generation = this.#buildGeneration
 
@@ -529,7 +582,7 @@ export class RenderWorkerCore {
         const tBuf0 = performance.now()
         this.#compiledPosY = newCompiledPosY
         this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
-        this.#rebuildFeatureGraph(scene)
+        await this.#buildFeatureGraph(scene, DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM)
         this.#beamBindGroupInvalid = true
         this.#sceneBindGroupInvalid = true
         const tBuf1 = performance.now()
@@ -565,21 +618,85 @@ export class RenderWorkerCore {
     }
 
     /**
-     * Walk the scene tree, extract per-primitive feature-graph data, and hand
-     * it to the orchestrator. Runs at the tail of `#doBuild` for both
-     * param-only and full builds so parameter tweaks refresh the graph in step
-     * with the SDF. Throttle (200 ms debounce) and drag-pause live on the main
-     * thread — see `app.mts` `CONTENT_CHANGE_DEBOUNCE_MS` and `isPushPullActive`.
+     * Open a render pass on the canvas target with `loadOp: "load"` (preserves
+     * the outline pass output) and draw the FeatureGraph debug overlay.
+     * No-op when the overlay is disabled, hasn't been uploaded yet, or has
+     * zero alive features.
      *
-     * Phase A: the orchestrator's `build()` only logs counts. No extractor has
-     * emitted yet, so the expected log is "0 verts, 0 edges, 0 loops, 1
-     * transform" (slot 0 is the implicit-root identity).
+     * Same command encoder as the caller's scene/outline passes — the entire
+     * frame still submits as a single command buffer.
      */
-    #rebuildFeatureGraph(scene: SceneInfo): void {
+    #renderFeatureGraphOverlay(
+        commandEncoder: GPUCommandEncoder,
+        target: GPUTextureView,
+        viewTransform: Float32Array | ArrayBuffer,
+        cameraPosition: readonly [number, number, number],
+        width: number,
+        height: number,
+        zoom: number,
+        viewCenter: readonly [number, number],
+    ): void {
+        if (!this.#featureGraphOverlayEnabled) return
+        const overlay = this.#featureGraphOverlay
+        if (!overlay || !overlay.hasAliveFeatures) return
+        overlay.uploadCamera(viewTransform, cameraPosition, width, height, zoom, viewCenter)
+        const pass = commandEncoder.beginRenderPass({
+            label: "FeatureGraph Overlay",
+            colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
+        })
+        overlay.render(pass)
+        pass.end()
+    }
+
+    /**
+     * Walk the scene tree, extract per-primitive feature-graph data, and run
+     * the FG pipeline (extract → transform → subdivide → survive → bin).
+     *
+     * Called from two places:
+     *  - `#doBuild` tail: at `DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM`, for
+     *    instrumentation/preview. Throttle (200 ms debounce) and drag-pause
+     *    live on the main thread — see `app.mts` `CONTENT_CHANGE_DEBOUNCE_MS`
+     *    and `isPushPullActive`.
+     *  - `handleRenderMesh` at the SHREC export branch: at the export's
+     *    actual `voxelSizeMm`, with the result fed into SHREC as
+     *    CSG-survival-aware snap features (Stage 6).
+     *
+     * Stage 4 runs the iso_sample_batch shader against the same `polygonVertices`
+     * / `mdcSceneParams` GPU buffers the export path uses. If the iso module
+     * hasn't been compiled yet (e.g. very first call before any full build
+     * completes), returns `null`.
+     */
+    async #buildFeatureGraph(
+        scene: SceneInfo,
+        cellSize: number,
+    ): Promise<FeatureGraphBuildResult | null> {
         const builder = new FeatureGraphBuilder()
         scene.root.accumulateFeatureGraph(builder)
         const cpu = builder.finish()
-        this.#featureGraph.build(cpu, DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM)
+        const isoModule = this.#featureGraphIsoModule
+        if (!isoModule) return null
+        if (!this.#featureGraphIsoBatch) {
+            this.#featureGraphIsoBatch = new IsoSampleBatch(
+                this.#helper,
+                this.#uniformBuffers.polygonVertices,
+                this.#uniformBuffers.faceSelection,
+                this.#uniformBuffers.mdcSceneParams,
+            )
+        }
+        const result = await this.#featureGraph.build(
+            cpu,
+            cellSize,
+            this.#featureGraphIsoBatch,
+            isoModule,
+        )
+        // Push the latest features into the debug overlay so the next render
+        // frame draws them. Lazy-init the overlay here — first build is the
+        // earliest we know the canvas format is settled.
+        if (!this.#featureGraphOverlay) {
+            this.#featureGraphOverlay = new FeatureGraphOverlay(this.#helper, this.#format)
+        }
+        this.#featureGraphOverlay.upload(result.cpu, result.worldPositions)
+        return result
     }
 
     /**
@@ -841,6 +958,17 @@ export class RenderWorkerCore {
         outlinePass.draw(4)
         outlinePass.end()
 
+        this.#renderFeatureGraphOverlay(
+            commandEncoder,
+            outlineTarget,
+            viewTransform,
+            cameraPosition,
+            outputTextureView ? sceneWidth : this.#fullWidth,
+            outputTextureView ? sceneHeight : this.#fullHeight,
+            orthoHalfFromDolly(msg.cameraState.dollyDistance),
+            viewCenter,
+        )
+
         this.#device.queue.submit([commandEncoder.finish()])
     }
 
@@ -1055,6 +1183,17 @@ export class RenderWorkerCore {
         outlinePass.draw(4)
         outlinePass.end()
 
+        this.#renderFeatureGraphOverlay(
+            commandEncoder,
+            outlineTarget,
+            viewTransform,
+            cameraPosition,
+            this.#fullWidth,
+            this.#fullHeight,
+            f32[b4 + L.O_ZOOM / 4]!,
+            viewCenter,
+        )
+
         this.#device.queue.submit([commandEncoder.finish()])
     }
 
@@ -1166,17 +1305,45 @@ export class RenderWorkerCore {
                         featureConstrainedPlacement: shrecTuning.featureConstrainedPlacement,
                     }),
                 }
-                // Walk the scene tree and collect each primitive's explicit
-                // contour features (box edges + corners, etc.). This is the
-                // CPU-side companion to the GPU-side SDF: SHREC's MergeSharp
-                // pass uses these as snap targets for crisp edges/corners
-                // that gradient-only QEF reconstruction can't produce.
-                // Empty / no-op when the scene contains only smooth
-                // primitives or when no primitive has implemented
-                // `accumulateContours` yet.
-                const contourBuilder = new ContourBuffer()
-                this.#scene!.root.accumulateContours(contourBuilder)
-                const contours = contourBuilder.finish()
+                // Build the SHREC snap-feature set. When the user-facing
+                // `featureGraphContours` toggle is on (default), feed from
+                // the FeatureGraph — CSG-survival-aware, smooth-blend-aware,
+                // so SHREC stops snapping to features that no longer exist
+                // on the iso-surface. When off, fall back to the legacy
+                // `accumulateContours` walk for regression comparison.
+                //
+                // Auto-fallback also kicks in if the FG build is
+                // unavailable (very first export before any full scene
+                // compile completes — shouldn't happen in normal flow).
+                const useFeatureGraphContours = shrecTuning?.featureGraphContours ?? true
+                let contours
+                if (useFeatureGraphContours) {
+                    const fgResult = await this.#buildFeatureGraph(this.#scene!, voxelSizeMm)
+                    if (fgResult) {
+                        contours = featureGraphToContours(fgResult.cpu, fgResult.worldPositions)
+                        log("ShrecExport").info(
+                            `handleRenderMesh: SHREC contours from FeatureGraph ` +
+                            `(alive verts=${fgResult.aliveVertexCount}/${fgResult.finalVertexCount}, ` +
+                            `alive edges=${fgResult.aliveEdgeCount}/${fgResult.finalEdgeCount})`,
+                        )
+                    } else {
+                        const contourBuilder = new ContourBuffer()
+                        this.#scene!.root.accumulateContours(contourBuilder)
+                        contours = contourBuilder.finish()
+                        log("ShrecExport").info(
+                            `handleRenderMesh: SHREC contours from legacy accumulateContours walk ` +
+                            `(FeatureGraph requested but unavailable)`,
+                        )
+                    }
+                } else {
+                    const contourBuilder = new ContourBuffer()
+                    this.#scene!.root.accumulateContours(contourBuilder)
+                    contours = contourBuilder.finish()
+                    log("ShrecExport").info(
+                        `handleRenderMesh: SHREC contours from legacy accumulateContours walk ` +
+                        `(featureGraphContours=false)`,
+                    )
+                }
 
                 const shrec = new ShrecExport(
                     this.#helper,

@@ -201,9 +201,9 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
                 box.appendChild(w)
                 this.#exporterRadios[value] = r
             }
-            addExp("mdc", "MDC (GPU dual contouring)")
-            addExp("shrec", "SHREC (MergeSharp)")
-            addExp("isoSimplicial", "Iso-simplicial (GPU samples + CPU octree/MT)")
+            addExp("mdc", "MDC")
+            addExp("shrec", "SHREC")
+            addExp("isoSimplicial", "Iso")
             row.append(lab, box)
             shadow.appendChild(row)
         }
@@ -733,6 +733,7 @@ export class DevToolsShrecExportSection extends HTMLElement {
     #shrecSeamAgreementRange: HTMLInputElement
     #shrecSeamAgreementValueEl: HTMLSpanElement
     #shrecEdgeFitCheckbox: HTMLInputElement
+    #shrecFeatureGraphContoursCheckbox: HTMLInputElement
     #subscriptions: Subscription[] = []
 
     onShrecTuningChange?: (tuning: ShrecTuning) => void
@@ -935,6 +936,23 @@ export class DevToolsShrecExportSection extends HTMLElement {
             this.#persistShrecTuning()
         })
 
+        // FeatureGraph contour feed (Stage 6). When on, SHREC's snap pass
+        // consumes CSG-survival-aware feature data from the FeatureGraph
+        // pipeline; when off, falls back to the legacy `accumulateContours`
+        // walk (primitive contours without CSG filtering).
+        this.#shrecFeatureGraphContoursCheckbox = addCheckbox(
+            root,
+            "FeatureGraph contours",
+            this.#shrecTuningState.featureGraphContours,
+        )
+        this.#shrecFeatureGraphContoursCheckbox.addEventListener("change", () => {
+            this.#shrecTuningState = {
+                ...this.#shrecTuningState,
+                featureGraphContours: this.#shrecFeatureGraphContoursCheckbox.checked,
+            }
+            this.#persistShrecTuning()
+        })
+
         const shrecDefaults = document.createElement("button")
         shrecDefaults.textContent = "SHREC defaults"
         shrecDefaults.addEventListener("click", () => {
@@ -961,6 +979,7 @@ export class DevToolsShrecExportSection extends HTMLElement {
         this.#shrecSeamAgreementRange.value = String(tuning.seamAgreementCosThreshold)
         this.#shrecSeamAgreementValueEl.textContent = formatShrecValue("seamAgreementCosThreshold", tuning.seamAgreementCosThreshold)
         this.#shrecEdgeFitCheckbox.checked = tuning.edgeFitEnabled
+        this.#shrecFeatureGraphContoursCheckbox.checked = tuning.featureGraphContours
     }
 
     #persistShrecTuning(): void {

@@ -3,8 +3,13 @@ import { aabb, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { capDragOrF32Wgsl, f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
-import { Polygon2D } from "./polygon2d.mjs"
+import { Polygon2D, polygon2dWindingSign } from "./polygon2d.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
+import {
+    FG_FLAG_CORNER,
+    FG_FLAG_CREASE_ORIGINAL,
+    type FeatureGraphBuilder,
+} from "../feature-graph-buffer.mjs"
 
 /**
  * MDC feature constraints should only be emitted for meaningful polygon turns.
@@ -554,6 +559,203 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
+    }
+
+    /**
+     * Emit feature-graph features for this extruded polygon:
+     *  - **Top/bottom corner vertices** at each polygon vertex (local position
+     *    bakes in `this.pos`). Marked {@link FG_FLAG_CORNER} only when the
+     *    polygon turn is sharp by the same `EXTRUDE_MDC_FEATURE_DOT` /
+     *    `EXTRUDE_MDC_VERTEX_TURN_MIN` thresholds the MDC mid-feature pass
+     *    uses — smooth polygon vertices are still emitted so cap edges have
+     *    valid endpoints, just without the corner flag. Each vertex carries
+     *    three source-face normals: cap (±Y) and the two adjacent side faces.
+     *  - **Vertical side edges** at sharp polygon vertices only — these are
+     *    where two side faces meet at a real dihedral. Under twist, these
+     *    become helices and are pre-subdivided into a chain at extraction
+     *    time so the visualised overlay traces the helix instead of cutting
+     *    a chord through it.
+     *  - **Cap edges** along each polygon segment, top and bottom — always
+     *    emitted. With twist, the top cap is the polygon rotated by the full
+     *    twist angle; its edges are still straight in 3D (it's a planar
+     *    polygon at `y = +h`).
+     *  - **Cap loops** for top (`+Y` normal) and bottom (`-Y`, reversed
+     *    winding).
+     *
+     * Skipped when under a non-affine ancestor (Twist/Bend/Taper operator) —
+     * those are deferred to a later pass that applies `warpPoint` per
+     * vertex. This extrude's own `.twist(deg)` is handled here directly via
+     * per-Y rotation.
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        if (builder.hasNonAffineAncestor()) return
+
+        const verts = this.child.vertices
+        const N = verts.length
+        // `Polygon2D` enforces N ≥ 3 at construction; this guard is just
+        // defensive in case the field is mutated post-construction.
+        if (N < 3) return
+
+        const windSign = polygon2dWindingSign(verts)
+        const px = this.pos.x, py = this.pos.y, pz = this.pos.z
+        const h = this.h
+        const twistRad = (this.twistDegrees * Math.PI) / 180
+        const hasTwist = this.twistDegrees !== 0
+
+        // Per-edge outward 3D normal in untwisted polygon space (side face
+        // `i` runs from polygon vertex `i` to `i+1`). For twisted extrudes
+        // these get rotated per height to produce the side normal at that
+        // y level.
+        const edgeOutwardLocal: Vec3f[] = []
+        for (let i = 0; i < N; i++) {
+            const [ax, az] = verts[i]!
+            const [bx, bz] = verts[(i + 1) % N]!
+            let dx = bx - ax, dz = bz - az
+            const len = Math.sqrt(dx * dx + dz * dz) || 1
+            dx /= len; dz /= len
+            edgeOutwardLocal.push(new Vec3f([dz * windSign, 0, -dx * windSign]))
+        }
+
+        const topNormal = new Vec3f([0, 1, 0])
+        const botNormal = new Vec3f([0, -1, 0])
+
+        /** Rotate a polygon (x, z) by `angle` around the extrude's Y axis. */
+        const rotXZ = (x: number, z: number, ca: number, sa: number): [number, number] => {
+            return [x * ca - z * sa, x * sa + z * ca]
+        }
+
+        /** Rotate a vec3 around Y by the (cos, sin) pair. */
+        const rotNormalY = (n: Vec3f, ca: number, sa: number): Vec3f => {
+            if (!hasTwist) return n
+            const [nx2, nz2] = rotXZ(n.x, n.z, ca, sa)
+            return new Vec3f([nx2, n.y, nz2])
+        }
+
+        /**
+         * Twist angle at a given y *offset from the extrude center* (i.e.
+         * `y_local` ∈ [-h, +h]). Linear ramp from 0 at the bottom to the
+         * full `twistRad` at the top, matching the WGSL `compileAuxMid`
+         * formula `angle = twist * (capY + h) / (2h)`.
+         */
+        const angleAt = (yLocal: number): number => {
+            if (!hasTwist || h <= 0) return 0
+            const t = (yLocal + h) / (2 * h)
+            return twistRad * t
+        }
+
+        builder.beginNode(this.id)
+
+        // Pass 1: emit top + bottom corner per polygon vertex, decide sharpness.
+        const topIdx: number[] = new Array(N)
+        const botIdx: number[] = new Array(N)
+        const sharpAt: boolean[] = new Array(N)
+
+        // Cached top-angle trig (constant across all top corners).
+        const caTop = Math.cos(angleAt(+h))
+        const saTop = Math.sin(angleAt(+h))
+
+        for (let k = 0; k < N; k++) {
+            const [vx, vz] = verts[k]!
+            const prevOutL = edgeOutwardLocal[(k - 1 + N) % N]!
+            const nextOutL = edgeOutwardLocal[k]!
+
+            // Polygon-turn sharpness — same predicate as the MDC mid-feature
+            // pass. Turn angle is invariant to twist (twist rotates all
+            // side surfaces together; the dihedral between adjacent sides
+            // doesn't change).
+            const [pvx, pvz] = verts[(k - 1 + N) % N]!
+            const [nvx, nvz] = verts[(k + 1) % N]!
+            let pdx = vx - pvx, pdz = vz - pvz
+            const pLen = Math.sqrt(pdx * pdx + pdz * pdz) || 1
+            pdx /= pLen; pdz /= pLen
+            let ndx = nvx - vx, ndz = nvz - vz
+            const nLen = Math.sqrt(ndx * ndx + ndz * ndz) || 1
+            ndx /= nLen; ndz /= nLen
+            const turn = Math.abs(pdx * ndz - pdz * ndx)
+            const dotN = prevOutL.x * nextOutL.x + prevOutL.z * nextOutL.z
+            const sharp = turn >= EXTRUDE_MDC_VERTEX_TURN_MIN && dotN < EXTRUDE_MDC_FEATURE_DOT
+            sharpAt[k] = sharp
+
+            // Bottom corner: untwisted (angle = 0).
+            const lxBot = vx + px, lzBot = vz + pz
+            // Top corner: polygon vertex rotated by the full twist angle.
+            const [twx, twz] = rotXZ(vx, vz, caTop, saTop)
+            const lxTop = twx + px, lzTop = twz + pz
+
+            const baseFlags = FG_FLAG_CREASE_ORIGINAL | (sharp ? FG_FLAG_CORNER : 0)
+            const prevOutTop = rotNormalY(prevOutL, caTop, saTop)
+            const nextOutTop = rotNormalY(nextOutL, caTop, saTop)
+
+            topIdx[k] = builder.emitVertex(
+                new Vec3f([lxTop, h + py, lzTop]),
+                baseFlags,
+                [topNormal, prevOutTop, nextOutTop],
+            )
+            botIdx[k] = builder.emitVertex(
+                new Vec3f([lxBot, -h + py, lzBot]),
+                baseFlags,
+                [botNormal, prevOutL, nextOutL],
+            )
+        }
+
+        // Pass 2: emit edges.
+        // Helical side-edge resolution: ~1 segment per 15° of twist (min 1
+        // = straight edge when untwisted). Cheap visual approximation; the
+        // stage-3 subdivision pass refines further by chord length.
+        const helixSegments = hasTwist ? Math.max(1, Math.ceil(Math.abs(this.twistDegrees) / 15)) : 1
+
+        for (let k = 0; k < N; k++) {
+            const kNext = (k + 1) % N
+            // Cap edges — straight in 3D space (each cap is a planar polygon
+            // at constant y; twist just rotates the top polygon as a whole).
+            builder.emitEdge(topIdx[k]!, topIdx[kNext]!, FG_FLAG_CREASE_ORIGINAL)
+            builder.emitEdge(botIdx[k]!, botIdx[kNext]!, FG_FLAG_CREASE_ORIGINAL)
+
+            // Side edge — only at sharp polygon vertices.
+            if (!sharpAt[k]) continue
+
+            if (helixSegments === 1) {
+                // Straight vertical edge (no twist).
+                builder.emitEdge(botIdx[k]!, topIdx[k]!, FG_FLAG_CREASE_ORIGINAL)
+                continue
+            }
+
+            // Helical chain: insert (helixSegments - 1) intermediate vertices
+            // along the helix, then connect them in sequence.
+            const [vxk, vzk] = verts[k]!
+            const prevOutL = edgeOutwardLocal[(k - 1 + N) % N]!
+            const nextOutL = edgeOutwardLocal[k]!
+            let prev = botIdx[k]!
+            for (let s = 1; s < helixSegments; s++) {
+                const tLocal = s / helixSegments
+                const yLocal = -h + tLocal * (2 * h)
+                const angle = angleAt(yLocal)
+                const ca = Math.cos(angle)
+                const sa = Math.sin(angle)
+                const [wx, wz] = rotXZ(vxk, vzk, ca, sa)
+                const midPos = new Vec3f([wx + px, yLocal + py, wz + pz])
+                const prevOutMid = rotNormalY(prevOutL, ca, sa)
+                const nextOutMid = rotNormalY(nextOutL, ca, sa)
+                // Intermediate samples along a crease — NOT corners.
+                const midIdx = builder.emitVertex(
+                    midPos,
+                    FG_FLAG_CREASE_ORIGINAL,
+                    [prevOutMid, nextOutMid],
+                )
+                builder.emitEdge(prev, midIdx, FG_FLAG_CREASE_ORIGINAL)
+                prev = midIdx
+            }
+            builder.emitEdge(prev, topIdx[k]!, FG_FLAG_CREASE_ORIGINAL)
+        }
+
+        // Cap loops — top winds CCW seen from +Y, bottom reversed so its
+        // winding agrees with the -Y outward normal.
+        builder.emitLoop(topIdx, topNormal, FG_FLAG_CREASE_ORIGINAL)
+        const botReversed: number[] = new Array(N)
+        for (let k = 0; k < N; k++) botReversed[k] = botIdx[N - 1 - k]!
+        builder.emitLoop(botReversed, botNormal, FG_FLAG_CREASE_ORIGINAL)
+
+        builder.endNode()
     }
 }
 

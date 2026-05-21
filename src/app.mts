@@ -1171,6 +1171,7 @@ class App {
         devTools.cameraOptimization = this.renderer.cameraOptimization
         devTools.beamOptimization = this.renderer.beamEnabled
         devTools.bvhOptimization = this.renderer.bvhEnabled
+        devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
         }
@@ -1180,6 +1181,9 @@ class App {
         devTools.onBvhOptimizationChange = (enabled) => {
             this.renderer.bvhEnabled = enabled
             void this.build()
+        }
+        devTools.onFeatureGraphOverlayChange = (enabled) => {
+            this.renderer.featureGraphOverlayEnabled = enabled
         }
         devTools.onRayMarchParamsChange = (params) => {
             this.renderer.setRayMarchParams(params)
@@ -1191,6 +1195,7 @@ class App {
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
             devTools.bvhOptimization = this.renderer.bvhEnabled
+            devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
         })
 
         const showFps = devTools.showFps
@@ -1255,6 +1260,7 @@ class App {
                     cameraOptimization: this.renderer.cameraOptimization,
                     beamOptimization: this.renderer.beamEnabled,
                     bvhOptimization: this.renderer.bvhEnabled,
+                    featureGraphOverlay: this.renderer.featureGraphOverlayEnabled,
                 },
             }
         }

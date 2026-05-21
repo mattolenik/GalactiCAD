@@ -191,6 +191,9 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "setBvhEnabled":
             if (core) core.setBvhEnabled(msg.enabled)
             break
+        case "setFeatureGraphOverlayEnabled":
+            if (core) core.setFeatureGraphOverlayEnabled(msg.enabled)
+            break
         case "setDebugLogModules":
             applyDebugLogModules(msg.modules)
             break

@@ -17,6 +17,8 @@ export class DevToolsRendererSection extends HTMLElement {
     #beamOptimization$: BehaviorSubject<boolean>
     #bvhOptCheckbox: HTMLInputElement
     #bvhOptimization$: BehaviorSubject<boolean>
+    #fgOverlayCheckbox: HTMLInputElement
+    #fgOverlay$: BehaviorSubject<boolean>
     #subscriptions: Subscription[] = []
 
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
@@ -24,6 +26,7 @@ export class DevToolsRendererSection extends HTMLElement {
     onCameraOptimizationChange?: (enabled: boolean) => void
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
+    onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
 
     constructor() {
@@ -36,6 +39,7 @@ export class DevToolsRendererSection extends HTMLElement {
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
+        this.#fgOverlay$ = new BehaviorSubject(true)
 
         const perfBox = document.createElement("dev-tools-collapse")
         perfBox.setAttribute("label", "Performance")
@@ -64,6 +68,17 @@ export class DevToolsRendererSection extends HTMLElement {
         this.#subscriptions.push(
             this.#bvhOptimization$.pipe(skip(1)).subscribe(v => {
                 this.onBvhOptimizationChange?.(v)
+            })
+        )
+
+        // FeatureGraph overlay sits at the top level of the Renderer section
+        // (not inside the Performance sub-collapse — it's a debug visualisation
+        // toggle, not a perf knob).
+        this.#fgOverlayCheckbox = this.#addCheckbox(shadow, "FeatureGraph overlay", this.#fgOverlay$.value)
+        this.#subscriptions.push(connectCheckbox(this.#fgOverlayCheckbox, this.#fgOverlay$))
+        this.#subscriptions.push(
+            this.#fgOverlay$.pipe(skip(1)).subscribe(v => {
+                this.onFeatureGraphOverlayChange?.(v)
             })
         )
 
@@ -120,6 +135,14 @@ export class DevToolsRendererSection extends HTMLElement {
 
     set bvhOptimization(enabled: boolean) {
         this.#bvhOptimization$.next(enabled)
+    }
+
+    get featureGraphOverlay(): boolean {
+        return this.#fgOverlay$.value
+    }
+
+    set featureGraphOverlay(enabled: boolean) {
+        this.#fgOverlay$.next(enabled)
     }
 
     #addCheckbox(parent: ParentNode, label: string, checked: boolean): HTMLInputElement {

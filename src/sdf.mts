@@ -144,6 +144,7 @@ export class SDFRenderer {
     #rayMarchParams: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #previewNormalShading = false
     #bvhEnabled = true
+    #featureGraphOverlayEnabled = true
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
     #viewCenter = vec2(0.5, 0.5)
@@ -389,6 +390,7 @@ export class SDFRenderer {
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
         this.#bvhEnabled = prev.bvhOptimization
+        this.#featureGraphOverlayEnabled = prev.featureGraphOverlay
         this.#selectionMode = global.preview.selectionMode
         this.previewSettingsLoaded$.next()
         this.#needsRender = true
@@ -401,6 +403,10 @@ export class SDFRenderer {
                 break
             case "ready":
                 this.#worker.postMessage({ type: "setBvhEnabled", enabled: this.#bvhEnabled })
+                this.#worker.postMessage({
+                    type: "setFeatureGraphOverlayEnabled",
+                    enabled: this.#featureGraphOverlayEnabled,
+                })
                 this.syncDebugLogModulesToWorker()
                 this.#readyResolve()
                 break
@@ -1413,6 +1419,17 @@ export class SDFRenderer {
     }
     get bvhEnabled(): boolean {
         return this.#bvhEnabled
+    }
+
+    set featureGraphOverlayEnabled(enabled: boolean) {
+        if (this.#featureGraphOverlayEnabled === enabled) return
+        this.#featureGraphOverlayEnabled = enabled
+        this.#settings.updatePreview("featureGraphOverlay", enabled)
+        this.#worker.postMessage({ type: "setFeatureGraphOverlayEnabled", enabled })
+        this.#needsRender = true
+    }
+    get featureGraphOverlayEnabled(): boolean {
+        return this.#featureGraphOverlayEnabled
     }
 
     setSelectionMode(mode: SelectionMode): void {

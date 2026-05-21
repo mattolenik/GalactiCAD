@@ -59,6 +59,7 @@ export class DevToolsPanel extends HTMLElement {
     onCameraOptimizationChange?: (enabled: boolean) => void
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
+    onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
@@ -115,6 +116,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set bvhOptimization(enabled: boolean) {
         this.#rendererSection.bvhOptimization = enabled
+    }
+
+    get featureGraphOverlay(): boolean {
+        return this.#rendererSection.featureGraphOverlay
+    }
+
+    set featureGraphOverlay(enabled: boolean) {
+        this.#rendererSection.featureGraphOverlay = enabled
     }
 
     get showFps(): boolean {
@@ -262,6 +271,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#rendererSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)
         this.#rendererSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
         this.#rendererSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
+        this.#rendererSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
         this.#rendererSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
 
         this.#logsSection.onDebugLogModulesChange = () => this.onDebugLogModulesChange?.()

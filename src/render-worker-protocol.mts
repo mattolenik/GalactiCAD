@@ -186,6 +186,19 @@ export interface ShrecTuning {
      * explicit / inferred feature loci when the cell has one iso component.
      */
     featureConstrainedPlacement: boolean
+    /**
+     * Feed SHREC's snap pass from the FeatureGraph instead of the legacy
+     * `accumulateContours` walk. The FG path is CSG-survival-aware and
+     * smooth-blend-aware — features cut away by a difference op or faded
+     * out by a smooth blend are absent from the snap set, so SHREC stops
+     * snapping to features that no longer exist on the iso-surface.
+     *
+     * When false: SHREC consumes the legacy `accumulateContours` walk
+     * (primitive contours without CSG filtering). Useful as a regression
+     * comparison or fallback if the FG path misbehaves on a particular
+     * scene. Default true.
+     */
+    featureGraphContours: boolean
 }
 
 export const DEFAULT_SHREC_TUNING: ShrecTuning = {
@@ -199,6 +212,7 @@ export const DEFAULT_SHREC_TUNING: ShrecTuning = {
     seamAgreementCosThreshold: 0.97,
     edgeFitEnabled: false,
     featureConstrainedPlacement: true,
+    featureGraphContours: true,
 }
 
 /**
@@ -452,6 +466,7 @@ export type MainToWorkerMessage =
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
     | { type: "pickObject"; clickUV: [number, number]; requestId: number }
     | { type: "setBvhEnabled"; enabled: boolean }
+    | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
 
 export interface RenderSelectionState {

@@ -4,6 +4,11 @@ import type { PreviewParamsOut } from "../scene-params.mjs"
 import { vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, Vec3f, vec3 } from "../../vecmat/vector.mjs"
 import type { ContourBuffer } from "../contour-buffer.mjs"
+import {
+    FG_FLAG_CORNER,
+    FG_FLAG_CREASE_ORIGINAL,
+    type FeatureGraphBuilder,
+} from "../feature-graph-buffer.mjs"
 
 export class Box extends Node {
     pos = vec3([0, 0, 0])
@@ -147,6 +152,98 @@ export class Box extends Node {
     @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
+    }
+
+    /**
+     * Emit the box's 8 corners, 12 edges, and 6 face loops with source-face
+     * normals. Corners are 3-way meetings (`FG_FLAG_CORNER`), edges are
+     * 2-way creases.
+     *
+     * Local-space convention: positions bake `this.pos` into the emitted
+     * coords (same as `Extrude.accumulateFeatureGraph`); the transform stack
+     * carries any enclosing `Translate`/`Rotate`/`Scale`. Non-affine
+     * ancestors short-circuit emission for v1 (matches the Extrude policy).
+     *
+     * Face loops use a winding consistent with their outward normal — the
+     * cross product of the first two consecutive edges agrees with the
+     * stored normal so downstream meshers that care about orientation get a
+     * coherent face.
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        if (builder.hasNonAffineAncestor()) return
+
+        const cx = this.pos.x, cy = this.pos.y, cz = this.pos.z
+        const hx = this.size.x, hy = this.size.y, hz = this.size.z
+
+        // Six face outward normals, indexed by face axis (0=X, 1=Y, 2=Z) and
+        // sign bit (0=negative, 1=positive). Reused for corners (3 per
+        // vertex) and edges (2 per crease).
+        const faceNormal = (axis: 0 | 1 | 2, signBit: 0 | 1): Vec3f => {
+            const s = signBit ? 1 : -1
+            if (axis === 0) return new Vec3f([s, 0, 0])
+            if (axis === 1) return new Vec3f([0, s, 0])
+            return new Vec3f([0, 0, s])
+        }
+
+        builder.beginNode(this.id)
+
+        // 8 corners. Index packs (z, y, x) bits — same convention as
+        // `accumulateContours`, kept identical so debug glyphs match across
+        // both paths.
+        const cornerIdx: number[] = new Array(8)
+        for (let i = 0; i < 8; i++) {
+            const xb = (i & 1) as 0 | 1
+            const yb = ((i >> 1) & 1) as 0 | 1
+            const zb = ((i >> 2) & 1) as 0 | 1
+            const px = cx + (xb ? hx : -hx)
+            const py = cy + (yb ? hy : -hy)
+            const pz = cz + (zb ? hz : -hz)
+            cornerIdx[i] = builder.emitVertex(
+                new Vec3f([px, py, pz]),
+                FG_FLAG_CREASE_ORIGINAL | FG_FLAG_CORNER,
+                [faceNormal(0, xb), faceNormal(1, yb), faceNormal(2, zb)],
+            )
+        }
+
+        // 12 edges. Each tuple is `[i, j, axis, signBitA, signBitB]` where
+        // `axis` is the edge's varying axis and `signBitA/B` are the sign
+        // bits of the two *perpendicular* axes (which determine the two
+        // adjacent face normals).
+        type EdgeSpec = readonly [number, number, 0 | 1 | 2, 0 | 1, 0 | 1]
+        const EDGES: ReadonlyArray<EdgeSpec> = [
+            // 4 x-edges (varies in X, perp = Y, Z)
+            [0, 1, 0, 0, 0], [2, 3, 0, 1, 0], [4, 5, 0, 0, 1], [6, 7, 0, 1, 1],
+            // 4 y-edges (varies in Y, perp = X, Z)
+            [0, 2, 1, 0, 0], [1, 3, 1, 1, 0], [4, 6, 1, 0, 1], [5, 7, 1, 1, 1],
+            // 4 z-edges (varies in Z, perp = X, Y)
+            [0, 4, 2, 0, 0], [1, 5, 2, 1, 0], [2, 6, 2, 0, 1], [3, 7, 2, 1, 1],
+        ]
+        for (const [i, j, axis] of EDGES) {
+            // For each edge, the two perp faces are the ones the edge sits
+            // on. We don't store edge-normals on the FGEdge struct itself —
+            // downstream classifiers read them from the endpoint vertices,
+            // which already carry the 3 incident face normals (with the
+            // edge's two perp faces being two of those three).
+            void axis
+            builder.emitEdge(cornerIdx[i]!, cornerIdx[j]!, FG_FLAG_CREASE_ORIGINAL)
+        }
+
+        // 6 face loops. Order chosen so `cross(edge0, edge1)` of the first
+        // two consecutive edges agrees with the stored outward normal.
+        const FACES: ReadonlyArray<readonly [readonly number[], Vec3f]> = [
+            [[1, 3, 7, 5], new Vec3f([+1, 0, 0])],  // +X
+            [[0, 4, 6, 2], new Vec3f([-1, 0, 0])],  // -X
+            [[2, 6, 7, 3], new Vec3f([0, +1, 0])],  // +Y
+            [[0, 1, 5, 4], new Vec3f([0, -1, 0])],  // -Y
+            [[4, 5, 7, 6], new Vec3f([0, 0, +1])],  // +Z
+            [[0, 2, 3, 1], new Vec3f([0, 0, -1])],  // -Z
+        ]
+        for (const [loop, normal] of FACES) {
+            const indices = loop.map(corner => cornerIdx[corner]!)
+            builder.emitLoop(indices, normal, FG_FLAG_CREASE_ORIGINAL)
+        }
+
+        builder.endNode()
     }
 }
 

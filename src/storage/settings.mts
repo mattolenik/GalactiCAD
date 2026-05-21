@@ -51,6 +51,8 @@ export interface PreviewSettings {
     cameraOptimization: boolean
     beamOptimization: boolean
     bvhOptimization: boolean
+    /** Draw the FeatureGraph debug overlay (alive crease/corner edges) over the scene. */
+    featureGraphOverlay: boolean
 }
 
 export interface LayoutSettings {
@@ -177,6 +179,7 @@ function defaultPreview(): PreviewSettings {
         cameraOptimization: true,
         beamOptimization: true,
         bvhOptimization: true,
+        featureGraphOverlay: true,
     }
 }
 
@@ -706,6 +709,9 @@ export class SettingsManager {
                     if (typeof cur.edgeFitEnabled !== "boolean") cur.edgeFitEnabled = DEFAULT_SHREC_TUNING.edgeFitEnabled
                     if (typeof cur.featureConstrainedPlacement !== "boolean") {
                         cur.featureConstrainedPlacement = DEFAULT_SHREC_TUNING.featureConstrainedPlacement
+                    }
+                    if (typeof cur.featureGraphContours !== "boolean") {
+                        cur.featureGraphContours = DEFAULT_SHREC_TUNING.featureGraphContours
                     }
                     shrecTuning = cur
                 }

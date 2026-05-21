@@ -4,6 +4,13 @@ import type { PreviewParamsOut } from "../scene-params.mjs"
 import { vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D, polygon2dWindingSign } from "./polygon2d.mjs"
+import {
+    FG_FLAG_CREASE_ORIGINAL,
+    type FeatureGraphBuilder,
+} from "../feature-graph-buffer.mjs"
+
+/** Ring discretisation resolution for revolved feature rings (same as Cylinder). */
+const LATHE_FG_RING_SEGMENTS = 32
 
 /** Profile-space ring radius below this is treated as an axis pole (corner), not a revolved ring. */
 const LATHE_AXIS_RING_R = 1e-6
@@ -398,6 +405,109 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     @fluent shift(v: Vec3): this {
         this.pos = vec3(v)
         return this
+    }
+
+    /**
+     * Emit one revolved feature ring per sharp profile vertex.
+     *
+     * A lathe's surface is the revolution of its 2D profile around the Y
+     * axis. Each profile edge becomes a ruled surface (cone/cylinder/disc
+     * frustum) in 3D. Where two adjacent profile edges meet at a non-
+     * collinear angle, their revolved surfaces meet at a circular crease
+     * — a feature ring at `y = pos.y + vertex.y` with radius `|vertex.r|`,
+     * centered on the Y axis through `pos`.
+     *
+     * Each ring is discretised into {@link LATHE_FG_RING_SEGMENTS} short
+     * line segments (32 per circle by default). Per-vertex source-face
+     * normals are the prev/next profile-edge outward normals revolved to
+     * each angular position (the 2D profile-space outward `(dy, -dr)·windSign`
+     * lifted into 3D at angle θ).
+     *
+     * Skipped cases:
+     *  - Non-affine ancestor (warp gate).
+     *  - Profile vertex on the Y axis (`r < LATHE_AXIS_RING_R`) — the ring
+     *    collapses to a point and isn't visualised here. (Cone apex /
+     *    sphere-pole 0D features could be added later as single-vertex
+     *    corners; v1 just skips.)
+     *  - Collinear / smooth profile turns — same `LATHE_MDC_FEATURE_DOT`
+     *    predicate as the WGSL mid-feature pass.
+     */
+    override accumulateFeatureGraph(builder: FeatureGraphBuilder): void {
+        if (builder.hasNonAffineAncestor()) return
+
+        const verts = this.child.vertices
+        const N = verts.length
+        if (N < 3) return
+
+        const windSign = polygon2dWindingSign(verts)
+        const px = this.pos.x, py = this.pos.y, pz = this.pos.z
+
+        // Per-edge outward in 2D profile (r, y) space. Same construction as
+        // Polygon2D's outward: `(dy, -dr) * windSign`. Stored as a flat array
+        // of `[n_r, n_y]` per profile edge (edge `i` runs from vertex `i` to
+        // `(i + 1) % N`).
+        const edgeOutR: number[] = new Array(N)
+        const edgeOutY: number[] = new Array(N)
+        for (let i = 0; i < N; i++) {
+            const [r1, y1] = verts[i]!
+            const [r2, y2] = verts[(i + 1) % N]!
+            let dr = r2 - r1, dy = y2 - y1
+            const len = Math.sqrt(dr * dr + dy * dy) || 1
+            dr /= len; dy /= len
+            edgeOutR[i] = dy * windSign
+            edgeOutY[i] = -dr * windSign
+        }
+
+        builder.beginNode(this.id)
+
+        for (let k = 0; k < N; k++) {
+            const [r, y] = verts[k]!
+            const rAbs = Math.abs(r)
+            // Skip axis-pole vertices — they degenerate to a single point.
+            if (rAbs < LATHE_AXIS_RING_R) continue
+
+            const prev = (k - 1 + N) % N
+            const next = k
+            const prevR = edgeOutR[prev]!
+            const prevY = edgeOutY[prev]!
+            const nextR = edgeOutR[next]!
+            const nextY = edgeOutY[next]!
+
+            // Sharpness — 2D dot of the prev vs next outward normals.
+            const dotN = prevR * nextR + prevY * nextY
+            if (dotN >= LATHE_MDC_FEATURE_DOT) continue
+
+            // Discretised ring around the Y axis at height `py + y`.
+            const ringY = py + y
+            const ringIdx: number[] = new Array(LATHE_FG_RING_SEGMENTS)
+            for (let i = 0; i < LATHE_FG_RING_SEGMENTS; i++) {
+                const theta = (i / LATHE_FG_RING_SEGMENTS) * 2 * Math.PI
+                const ca = Math.cos(theta)
+                const sa = Math.sin(theta)
+                // 3D position: profile (r, y) revolved to angle θ.
+                const x3 = px + r * ca
+                const z3 = pz + r * sa
+                // Revolve 2D outward (n_r, n_y) to 3D at angle θ:
+                // x = n_r * cosθ, y = n_y, z = n_r * sinθ.
+                const prevNormal3 = new Vec3f([prevR * ca, prevY, prevR * sa])
+                const nextNormal3 = new Vec3f([nextR * ca, nextY, nextR * sa])
+                ringIdx[i] = builder.emitVertex(
+                    new Vec3f([x3, ringY, z3]),
+                    FG_FLAG_CREASE_ORIGINAL,
+                    [prevNormal3, nextNormal3],
+                )
+            }
+            // Close the ring with edges.
+            for (let i = 0; i < LATHE_FG_RING_SEGMENTS; i++) {
+                const nextI = (i + 1) % LATHE_FG_RING_SEGMENTS
+                builder.emitEdge(ringIdx[i]!, ringIdx[nextI]!, FG_FLAG_CREASE_ORIGINAL)
+            }
+            // No cap loop — a feature ring isn't a planar cap face. Downstream
+            // meshers that want to know about ring-bounded regions can derive
+            // them from the ring's neighborhood structure later.
+        }
+
+        builder.endNode()
     }
 }
 

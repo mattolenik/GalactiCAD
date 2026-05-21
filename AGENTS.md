@@ -196,7 +196,22 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 Successful PNG responses set **`Content-Disposition`** (suggested filename **`<basename>-<mode>.png`**) and **`Access-Control-Expose-Headers: Content-Disposition`** so **`curl -OJ`** can save with the right name. **`400`** / **`503`** on failure return **plain text** (browser pipeline error vs no bridge / timeout). Server also mirrors successful PNGs under **`.agents/imagelog/`**.
 
-When an agent writes ad-hoc test images or other capture files into the repo (for example **`curl -o …`** instead of **`curl -OJ`** in the cwd), put them under **`.agents/testimages/`** (create the directory if needed). Do **not** drop PNGs or similar loose under **`.agents/`** root—that directory holds skills, scripts, and other agent tooling; **`testimages`** keeps disposable renders separate from **`imagelog`** (server-written) and the rest of **`.agents/`**.
+### Where to save files — **NEVER the repo root**
+
+**Hard rule:** agents **must not** create any new file at the top level of the galacticad repo. No PNGs, no YAMLs, no logs, no scratch text, no `.tmp.*`, no `output.png`, **nothing**. The repo root is for committed source and existing project files only. If your `curl -o` / `> file.txt` / `mktemp` defaults would land at the repo root, **change the path**.
+
+This rule has no exceptions. "Just for a moment" doesn't apply — even tmpfiles must go elsewhere.
+
+**Use one of these locations instead**, picked by purpose:
+
+- **`.agents/tmp/`** — scratch. Intermediate YAML, generated payloads, debug dumps, anything wipe-safe. **This is the default for ad-hoc work.** Create the directory if it doesn't exist (`mkdir -p .agents/tmp`).
+- **`.agents/testimages/`** — ad-hoc renders, composites, manual `curl -o` captures, screenshots being analyzed. (`agentcli render` / `triangle` / `sweep` default here.)
+- **`.testresults/`** — formal test outputs and baseline PNGs that other commands consume by path.
+- **`/tmp/…`** — outside the repo entirely. Fine for true ephemera (e.g. a YAML you'll pipe through one command and never touch again).
+
+**Hands off:**
+- `.agents/imagelog/` — the devserver writes here on successful renders. Read it, don't write to it.
+- `.agents/` itself (the directory, not its subdirectories) — holds skills and infrastructure; no loose files at this level either. Always nest into one of the subdirectories above.
 
 **Agent devserver:** **`make start AGENT=true`** ( **`AGENT=true`** ) writes **`.devserver.agent.run`** and spawn headless Chromium for the WebSocket bridge—this is what automated agents must use (see above).
 

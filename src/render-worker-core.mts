@@ -1230,11 +1230,14 @@ export class RenderWorkerCore {
                 return
             }
             const levers: MdcExportLevers = { ...DEFAULT_MDC_EXPORT_LEVERS, ...mdcExportLevers }
-            // Voxel size: caller-supplied value (from the Dev Tools slider) wins;
-            // otherwise fall back to MDC levers / protocol default.
+            // Voxel size: caller-supplied value wins (Dev Tools picks per
+            // exporter); fall back to the per-exporter tuning, then protocol
+            // default.
+            const exporterFallbackVoxel =
+                exporter === "shrec" ? shrecTuning?.voxelSizeMm : levers.voxelSizeMm
             const voxelSizeMm =
                 voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0 ? voxelSizeMmFromCaller
-                : levers.voxelSizeMm > 0 ? levers.voxelSizeMm
+                : exporterFallbackVoxel && exporterFallbackVoxel > 0 ? exporterFallbackVoxel
                 : DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
             const pad = 3.2
             const minX = bounds.min[0] - pad

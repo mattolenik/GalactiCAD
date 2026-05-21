@@ -521,13 +521,9 @@ export class SettingsManager {
         this.#globalSave$.next()
     }
 
-    /** Clamped MDC export levers for mesh pipeline (Dev Tools). Voxel size follows `meshExportVoxelSizeMm`. */
+    /** Clamped MDC export levers for mesh pipeline (Dev Tools). */
     getMdcExportLevers(): MdcExportLevers {
-        const g = this.#globalSettings.app
-        return normalizeMdcExportLevers({
-            ...g.mdcExportLevers,
-            voxelSizeMm: g.meshExportVoxelSizeMm,
-        })
+        return normalizeMdcExportLevers(this.#globalSettings.app.mdcExportLevers)
     }
 
     /** Replace one dev tools section snapshot and debounce-persist global settings. */
@@ -651,20 +647,26 @@ export class SettingsManager {
                     devToolsSections[DEVTOOLS_SECTION_LOGS] = logSec
                 }
                 if (typeof rawApp.devToolsMdcExportExpanded === "boolean") {
-                    devToolsCollapseOpen[DEVTOOLS_COLLAPSE.appMeshExportMdc] = rawApp.devToolsMdcExportExpanded
+                    devToolsCollapseOpen[DEVTOOLS_COLLAPSE.panelMeshExportMdc] = rawApp.devToolsMdcExportExpanded
                 }
 
                 const diskRaw = rawApp.diskSyncIntervalSeconds
                 const themeRaw = rawApp.theme
 
-                let meshExportVoxelSizeMm = def.app.meshExportVoxelSizeMm
+                // Legacy: voxel size used to be a single shared value
+                // (`app.meshExportVoxelSizeMm`). When present in older saves
+                // and not yet split into the per-exporter levers, seed both
+                // exporters with it so existing values aren't lost.
+                let legacyVoxelSizeMm: number | undefined
                 if (
                     typeof rawApp.meshExportVoxelSizeMm === "number" &&
                     isFinite(rawApp.meshExportVoxelSizeMm) &&
                     rawApp.meshExportVoxelSizeMm > 0
                 ) {
-                    meshExportVoxelSizeMm = rawApp.meshExportVoxelSizeMm
+                    legacyVoxelSizeMm = rawApp.meshExportVoxelSizeMm
                 }
+
+                const meshExportVoxelSizeMm = legacyVoxelSizeMm ?? def.app.meshExportVoxelSizeMm
 
                 let useShrecLegacy =
                     typeof rawApp.useShrecExporter === "boolean" ? rawApp.useShrecExporter : def.app.useShrecExporter
@@ -672,9 +674,11 @@ export class SettingsManager {
                 let meshExporter: ExporterKind =
                     rawApp.meshExporter === "mdc" || rawApp.meshExporter === "shrec" || rawApp.meshExporter === "isoSimplicial"
                         ? rawApp.meshExporter
-                        : useShrecLegacy
-                          ? "shrec"
-                          : "mdc"
+                        : rawApp.exporterKind === "mdc" || rawApp.exporterKind === "shrec" || rawApp.exporterKind === "isoSimplicial"
+                          ? rawApp.exporterKind
+                          : useShrecLegacy
+                            ? "shrec"
+                            : "mdc"
                 const useShrecExporter = meshExporter === "shrec"
 
                 const isoSimplicialTuning = normalizeIsoSimplicialTuning(rawApp.isoSimplicialTuning)
@@ -713,6 +717,9 @@ export class SettingsManager {
                     if (typeof cur.featureGraphContours !== "boolean") {
                         cur.featureGraphContours = DEFAULT_SHREC_TUNING.featureGraphContours
                     }
+                    if (typeof cur.voxelSizeMm !== "number" || !isFinite(cur.voxelSizeMm) || cur.voxelSizeMm <= 0) {
+                        cur.voxelSizeMm = legacyVoxelSizeMm ?? DEFAULT_SHREC_TUNING.voxelSizeMm
+                    }
                     shrecTuning = cur
                 }
 
@@ -738,7 +745,20 @@ export class SettingsManager {
                     simplifyTuning = s
                 }
 
-                let mdcExportLevers = normalizeMdcExportLevers(rawApp.mdcExportLevers)
+                // Seed MDC voxel from legacy shared value when nothing better is persisted.
+                const mdcLeversRaw =
+                    rawApp.mdcExportLevers && typeof rawApp.mdcExportLevers === "object"
+                        ? (rawApp.mdcExportLevers as Record<string, unknown>)
+                        : {}
+                if (
+                    legacyVoxelSizeMm !== undefined &&
+                    (typeof mdcLeversRaw.voxelSizeMm !== "number" ||
+                        !isFinite(mdcLeversRaw.voxelSizeMm as number) ||
+                        (mdcLeversRaw.voxelSizeMm as number) <= 0)
+                ) {
+                    mdcLeversRaw.voxelSizeMm = legacyVoxelSizeMm
+                }
+                let mdcExportLevers = normalizeMdcExportLevers(mdcLeversRaw)
 
                 const editorDef = defaultEditorSettings()
                 const editor = { ...editorDef, ...(rawApp.editor as Partial<EditorSettings> | undefined) }

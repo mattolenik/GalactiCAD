@@ -25,8 +25,13 @@ import {
     type DevToolsPersistable,
     type JSONValue,
 } from "./dev-tools-protocol.mjs"
-import { DevToolsAppSection } from "./dev-tools-app-section.mjs"
-import { DevToolsMeshExportCoreSection, DevToolsMeshSimplifySection, DevToolsShrecExportSection } from "./dev-tools-mesh-export-section.mjs"
+import { DevToolsAppSection, MESH_VIEWER_OVERLAY_CHANGE_EVENT } from "./dev-tools-app-section.mjs"
+import type { GlobalSettings } from "../storage/settings.mjs"
+import {
+    DevToolsMdcExportSection,
+    DevToolsMeshSimplifySection,
+    DevToolsShrecExportSection,
+} from "./dev-tools-mesh-export-section.mjs"
 import { DevToolsLogsSection } from "./dev-tools-logs-section.mjs"
 import { DevToolsRendererSection } from "./dev-tools-renderer-section.mjs"
 import "./dev-tools-collapse.mjs"
@@ -44,7 +49,7 @@ export class DevToolsPanel extends HTMLElement {
     #settings: SettingsManager
     #tabs: DocumentTabs
     #appSection: DevToolsAppSection
-    #meshExportCoreSection: DevToolsMeshExportCoreSection
+    #mdcExportSection: DevToolsMdcExportSection
     #meshSimplifySection: DevToolsMeshSimplifySection
     #shrecExportSection: DevToolsShrecExportSection
     #rendererSection: DevToolsRendererSection
@@ -66,6 +71,7 @@ export class DevToolsPanel extends HTMLElement {
     onVoxelSizeMmChange?: (mm: number) => void
     onMeshExporterChange?: (exporter: ExporterKind) => void
     onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
+    onMeshViewerOverlayChange?: (settings: GlobalSettings["meshViewer"]) => void
     onShrecTuningChange?: (tuning: ShrecTuning) => void
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMdcExportLeversChange?: () => void
@@ -150,24 +156,28 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.meshSimplifyOnExport = enabled
     }
 
-    get voxelSizeMm(): number {
-        return this.#meshExportCoreSection.voxelSizeMm
-    }
-
-    set voxelSizeMm(mm: number) {
-        this.#meshExportCoreSection.voxelSizeMm = mm
+    get meshViewerSettings(): GlobalSettings["meshViewer"] {
+        return this.#appSection.currentMeshViewerSettings()
     }
 
     get meshExporter(): ExporterKind {
-        return this.#meshExportCoreSection.meshExporter
+        return this.#mdcExportSection.meshExporter
     }
 
     set meshExporter(v: ExporterKind) {
-        this.#meshExportCoreSection.meshExporter = v
+        this.#mdcExportSection.meshExporter = v
+    }
+
+    get voxelSizeMm(): number {
+        return this.#mdcExportSection.voxelSizeMm
+    }
+
+    syncVoxelSizeMmFromSettings(mm: number): void {
+        this.#mdcExportSection.voxelSizeMm = mm
     }
 
     get isoSimplicialTuning(): IsoSimplicialTuning {
-        return this.#meshExportCoreSection.isoSimplicialTuning
+        return this.#mdcExportSection.isoSimplicialTuning
     }
 
     get shrecTuning(): ShrecTuning {
@@ -178,25 +188,20 @@ export class DevToolsPanel extends HTMLElement {
         return this.#meshSimplifySection.simplifyTuning
     }
 
-    syncVoxelSizeMmFromSettings(mm: number): void {
-        this.#meshExportCoreSection.syncVoxelSizeMmFromSettings(mm)
-    }
-
     syncSimplifyTuningFromSettings(tuning: SimplifyTuning): void {
         this.#meshSimplifySection.syncSimplifyTuningFromSettings(tuning)
-        this.#meshExportCoreSection.syncRenormalizeFromSimplifyTuning(tuning)
     }
 
     syncMdcLeversFromSettings(levers: MdcExportLevers): void {
-        this.#meshExportCoreSection.syncMdcLeversFromSettings(levers)
+        this.#mdcExportSection.syncMdcLeversFromSettings(levers)
     }
 
     syncMeshExporterFromSettings(exporter: ExporterKind): void {
-        this.#meshExportCoreSection.syncMeshExporterFromSettings(exporter)
+        this.#mdcExportSection.syncMeshExporterFromSettings(exporter)
     }
 
     syncIsoSimplicialTuningFromSettings(tuning: IsoSimplicialTuning): void {
-        this.#meshExportCoreSection.syncIsoSimplicialTuningFromSettings(tuning)
+        this.#mdcExportSection.syncIsoSimplicialTuningFromSettings(tuning)
     }
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
@@ -224,13 +229,16 @@ export class DevToolsPanel extends HTMLElement {
             position: absolute;
             top: 12px;
             right: 10px;
+            bottom: 12px;
             z-index: 1;
             display: flex;
             flex-direction: column;
             align-items: flex-start;
             gap: 6px;
             box-sizing: border-box;
-            max-width: 20%;
+            max-width: 30%;
+            overflow-y: auto;
+            overscroll-behavior: contain;
             background: color-mix(in srgb, var(${__tone_2}) 92%, transparent);
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
@@ -252,17 +260,17 @@ export class DevToolsPanel extends HTMLElement {
         this.#shadow.appendChild(style)
 
         this.#appSection = new DevToolsAppSection()
-        this.#meshExportCoreSection = new DevToolsMeshExportCoreSection()
+        this.#mdcExportSection = new DevToolsMdcExportSection()
         this.#meshSimplifySection = new DevToolsMeshSimplifySection()
         this.#shrecExportSection = new DevToolsShrecExportSection()
         this.#rendererSection = new DevToolsRendererSection()
         this.#logsSection = new DevToolsLogsSection()
 
-        this.#meshExportCoreSection.onVoxelSizeMmChange = v => this.onVoxelSizeMmChange?.(v)
-        this.#meshExportCoreSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
-        this.#meshExportCoreSection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
-        this.#meshExportCoreSection.onMeshExporterChange = v => this.onMeshExporterChange?.(v)
-        this.#meshExportCoreSection.onIsoSimplicialTuningChange = v => this.onIsoSimplicialTuningChange?.(v)
+        this.#mdcExportSection.onVoxelSizeMmChange = v => this.onVoxelSizeMmChange?.(v)
+        this.#mdcExportSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
+        this.#mdcExportSection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
+        this.#mdcExportSection.onMeshExporterChange = v => this.onMeshExporterChange?.(v)
+        this.#mdcExportSection.onIsoSimplicialTuningChange = v => this.onIsoSimplicialTuningChange?.(v)
 
         this.#meshSimplifySection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
 
@@ -285,6 +293,10 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.addEventListener("galacticad-mesh-simplify-change", () => {
             this.onMeshSimplifyChange?.(this.#appSection.meshSimplifyOnExport)
         })
+        this.#appSection.addEventListener(MESH_VIEWER_OVERLAY_CHANGE_EVENT, (ev: Event) => {
+            const detail = (ev as CustomEvent<GlobalSettings["meshViewer"]>).detail
+            this.onMeshViewerOverlayChange?.(detail)
+        })
 
         const mkSection = (label: string, collapseId: string, ...nodes: Node[]) => {
             const wrap = document.createElement("dev-tools-collapse")
@@ -293,12 +305,23 @@ export class DevToolsPanel extends HTMLElement {
             for (const n of nodes) wrap.appendChild(n)
             return wrap
         }
+        const mkNested = (label: string, collapseId: string, ...nodes: Node[]) => {
+            const wrap = mkSection(label, collapseId, ...nodes)
+            wrap.setAttribute("nested", "")
+            return wrap
+        }
+
+        const meshExportSection = mkSection(
+            "Mesh export",
+            DEVTOOLS_COLLAPSE.panelMeshExport,
+            mkNested("MDC mesh export", DEVTOOLS_COLLAPSE.panelMeshExportMdc, this.#mdcExportSection),
+            mkNested("SHREC export", DEVTOOLS_COLLAPSE.panelMeshExportShrec, this.#shrecExportSection),
+            mkNested("Mesh Simplify", DEVTOOLS_COLLAPSE.panelMeshExportSimplify, this.#meshSimplifySection),
+        )
 
         this.#shadow.append(
             mkSection("App", DEVTOOLS_COLLAPSE.panelApp, this.#appSection),
-            mkSection("Mesh export", DEVTOOLS_COLLAPSE.panelMeshExport, this.#meshExportCoreSection),
-            mkSection("Mesh Simplify", DEVTOOLS_COLLAPSE.panelMeshSimplify, this.#meshSimplifySection),
-            mkSection("SHREC export", DEVTOOLS_COLLAPSE.panelShrecExport, this.#shrecExportSection),
+            meshExportSection,
             mkSection("Renderer", DEVTOOLS_COLLAPSE.panelRenderer, this.#rendererSection),
             mkSection("Logs", DEVTOOLS_COLLAPSE.panelLogs, this.#logsSection),
         )

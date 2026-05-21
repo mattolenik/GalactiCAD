@@ -66,6 +66,21 @@ check_dependencies() {
     fi
 }
 
+# Process-wide tmpfile registry. Anything added here gets `rm -f`'d on EXIT
+# regardless of how the script terminates (success, die, set -e abort).
+# Use _register_tmp to track files so failure-path leaks don't accumulate
+# in $TMPDIR while we wait for the OS to clean them up.
+_TMPFILES=()
+_register_tmp() { _TMPFILES+=("$1"); }
+_cleanup_tmp() {
+    local f
+    for f in "${_TMPFILES[@]:-}"; do
+        [[ -n "$f" && -e "$f" ]] && rm -f -- "$f"
+    done
+    _TMPFILES=()
+}
+trap _cleanup_tmp EXIT
+
 # ============================================================================
 # Devserver lifecycle
 # ============================================================================
@@ -74,10 +89,14 @@ _run_file() {
     printf '%s/.devserver.agent.run\n' "$(_repo_root)"
 }
 
-_agent_status() {
-    # Echoes "running PID PORT" or "stopped". Never errors.
-    local rf
-    rf=$(_run_file)
+_interactive_run_file() {
+    printf '%s/.devserver.run\n' "$(_repo_root)"
+}
+
+# Generic status reader for a devserver run file. Echoes "running PID PORT"
+# or "stopped". Never errors.
+_status_of_run_file() {
+    local -r rf="$1"
     if [[ ! -f "$rf" ]]; then
         printf 'stopped\n'
         return 0
@@ -96,9 +115,23 @@ _agent_status() {
     fi
 }
 
+_agent_status() {
+    _status_of_run_file "$(_run_file)"
+}
+
+_interactive_status() {
+    _status_of_run_file "$(_interactive_run_file)"
+}
+
 agent_running() {
     local status
     status=$(_agent_status)
+    [[ "$status" == running* ]]
+}
+
+interactive_running() {
+    local status
+    status=$(_interactive_status)
     [[ "$status" == running* ]]
 }
 
@@ -120,6 +153,19 @@ _agent_port() {
     fi
     AGENT_PORT="${status##* }"
     printf '%s\n' "$AGENT_PORT"
+}
+
+# Resolve the interactive (human) devserver port. Never auto-starts —
+# the interactive server is the human's session and shouldn't be
+# launched from CLI side-effects.
+_interactive_port() {
+    if ! interactive_running; then
+        die 3 "interactive devserver not running (no $(  _interactive_run_file )). \
+Start with 'make start' or capture from --port agent instead."
+    fi
+    local status
+    status=$(_interactive_status)
+    printf '%s\n' "${status##* }"
 }
 
 # ============================================================================
@@ -192,6 +238,7 @@ _curl_get() {
     local -r outpath="$2"
     local tmpbody code bytes
     tmpbody=$(mktemp -t agentcli.body.XXXXXX)
+    _register_tmp "$tmpbody"
     code=$(curl --silent --show-error \
         --connect-timeout 10 --max-time 600 \
         --output "$tmpbody" --write-out '%{http_code}' \
@@ -219,6 +266,47 @@ _curl_post_empty() {
         --connect-timeout 10 --max-time 60 \
         -X POST -o /dev/null --write-out '%{http_code}' \
         "$url"
+}
+
+_curl_post_body() {
+    # Usage: _curl_post_body URL BODYFILE CONTENT_TYPE OUTPATH
+    # POSTs BODYFILE to URL. Same response handling as _curl_get:
+    # on 2xx → writes response body to OUTPATH, echoes "CODE BYTES".
+    # On non-2xx → writes response body to OUTPATH.error and returns 1.
+    local -r url="$1"
+    local -r bodyfile="$2"
+    local -r ctype="$3"
+    local -r outpath="$4"
+    local tmpbody code bytes
+    tmpbody=$(mktemp -t agentcli.body.XXXXXX)
+    _register_tmp "$tmpbody"
+    code=$(curl --silent --show-error \
+        --connect-timeout 10 --max-time 600 \
+        -X POST -H "Content-Type: ${ctype}" \
+        --data-binary @"$bodyfile" \
+        --output "$tmpbody" --write-out '%{http_code}' \
+        "$url" 2>&1) || {
+        local rc=$?
+        log_error "curl exited $rc for $url"
+        rm -f -- "$tmpbody"
+        return 1
+    }
+    if [[ "$code" != 2* ]]; then
+        local errpath="${outpath}.error"
+        mv -f -- "$tmpbody" "$errpath"
+        log_error "HTTP $code from $url (response body in $errpath)"
+        # Surface the first ~3 lines of the error body so the user doesn't
+        # have to `cat` it to see shader compile errors etc.
+        local head_err
+        head_err=$(head -n 5 "$errpath" 2>/dev/null | sed 's/^/    /')
+        if [[ -n "$head_err" ]]; then
+            printf '%s\n' "$head_err" >&2
+        fi
+        return 1
+    fi
+    mv -f -- "$tmpbody" "$outpath"
+    bytes=$(wc -c <"$outpath" | tr -d ' ')
+    printf '%s %s\n' "$code" "$bytes"
 }
 
 # ============================================================================
@@ -255,6 +343,150 @@ url_encode_qparam() {
         esac
     done
     printf '%s\n' "$out"
+}
+
+# ============================================================================
+# Validation + render-query helpers (shared across render/iterate/ab/mirror)
+# ============================================================================
+
+# Validate that $1 is "mesh" or "sdf"; die with `${2}: --mode must be ...`.
+_validate_mode() {
+    [[ "$1" == "mesh" || "$1" == "sdf" ]] \
+        || die 2 "${2}: --mode must be mesh or sdf"
+}
+
+# Convert a comma-separated `k1=v1,k2=v2,...` overlay string into URL
+# query fragments (`&k1=v1&k2=v2`). Empty input → empty output.
+#
+# NOTE: this helper is typically called from `$(...)` subshells, so it must
+# *return* a non-zero status on malformed input rather than calling `die`
+# (which would only kill the inner subshell and let the outer script
+# silently build a truncated URL). Callers should pair the call with
+# `|| die 2 "..."` to propagate the error.
+_overlay_to_query() {
+    local -r overlay="$1"
+    local -r cmd_name="${2:-render}"
+    [[ -z "$overlay" ]] && return 0
+    local out="" kv k v
+    local IFS_BAK="$IFS"
+    IFS=','
+    for kv in $overlay; do
+        [[ -z "$kv" ]] && continue
+        if [[ "$kv" != *=* ]]; then
+            IFS="$IFS_BAK"
+            log_error "${cmd_name}: --overlay expects name=val,... ; got '$kv'"
+            return 2
+        fi
+        k="${kv%%=*}"
+        v="${kv#*=}"
+        out+="&$(url_encode_qparam "$k")=$(url_encode_qparam "$v")"
+    done
+    IFS="$IFS_BAK"
+    printf '%s' "$out"
+}
+
+# Build the common `?mode=...&label=...&role=...[&viewportWidth=...][&...]`
+# query string used by both render endpoints. Caller appends the result
+# to the chosen base URL. Returns non-zero on overlay parse error
+# (see _overlay_to_query for the subshell-safety rationale).
+#
+# Args: mode stem tag width height overlay [cmd_name_for_errors]
+_render_query_string() {
+    local -r mode="$1" stem="$2" tag="$3"
+    local -r width="$4" height="$5" overlay="$6"
+    local -r cmd_name="${7:-render}"
+    local qs="?mode=${mode}"
+    qs+="&label=$(url_encode_qparam "${stem}-${tag}")"
+    qs+="&role=$(url_encode_qparam "$mode")"
+    [[ -n "$width" ]] && qs+="&viewportWidth=${width}"
+    [[ -n "$height" ]] && qs+="&viewportHeight=${height}"
+    local overlay_qs
+    overlay_qs=$(_overlay_to_query "$overlay" "$cmd_name") || return $?
+    qs+="$overlay_qs"
+    printf '%s' "$qs"
+}
+
+# True (exit 0) when $1 is strictly less than $2 as floating-point numbers.
+# Used as a "should we mark this CHANGED?" predicate by compare/regress.
+_below_threshold() {
+    awk -v s="$1" -v t="$2" 'BEGIN{ exit !(s + 0 < t + 0) }'
+}
+
+# ============================================================================
+# YAML body capture + override
+# ============================================================================
+
+# Read YAML from PATH ("-" means stdin) into a tmpfile, echo the tmpfile path.
+# The tmpfile is auto-registered for EXIT cleanup; callers can still `rm` it
+# earlier when convenient, but they don't have to.
+_yaml_into_tmp() {
+    local -r src="$1"
+    local tmp
+    tmp=$(mktemp -t agentcli.yaml.XXXXXX)
+    _register_tmp "$tmp"
+    if [[ "$src" == "-" ]]; then
+        cat >"$tmp"
+    else
+        [[ -f "$src" ]] || die 2 "yaml input not found: $src"
+        cp -- "$src" "$tmp"
+    fi
+    printf '%s\n' "$tmp"
+}
+
+# Apply zero or more `key.path=value` overrides to a YAML file IN PLACE.
+# Uses the project's local `js-yaml` (via `node`) for robust parsing.
+# Value parsing: bare integers/floats → numbers, `true`/`false` → bools,
+# `null` → null, otherwise string.
+_yaml_apply_overrides() {
+    local -r yamlfile="$1"
+    shift
+    if (( $# == 0 )); then
+        return 0
+    fi
+    local repo
+    repo=$(_repo_root)
+    # The project's local js-yaml package; we resolve via the package directory
+    # (so node's `require` uses the package's own `main` entry) rather than
+    # hardcoding an internal file path that can change across versions.
+    local jsyaml="${repo}/node_modules/js-yaml"
+    if [[ ! -f "${jsyaml}/package.json" ]]; then
+        die 3 "--set overrides require js-yaml in node_modules (not found at $jsyaml). Run 'npm install'."
+    fi
+    # Build a JSON array of override pairs and feed it through node.
+    local sets_json
+    sets_json=$(printf '%s\n' "$@" | jq -R -s 'split("\n") | map(select(length > 0))')
+    YAML_FILE="$yamlfile" SETS_JSON="$sets_json" JSYAML_PATH="$jsyaml" \
+        node -e '
+            const fs = require("fs");
+            const yaml = require(process.env.JSYAML_PATH);
+            const src = fs.readFileSync(process.env.YAML_FILE, "utf8");
+            const doc = yaml.load(src);
+            const sets = JSON.parse(process.env.SETS_JSON);
+            const coerce = (v) => {
+                if (v === "null") return null;
+                if (v === "true") return true;
+                if (v === "false") return false;
+                if (/^-?\d+$/.test(v)) return parseInt(v, 10);
+                if (/^-?(\d+\.\d*|\.\d+|\d+(\.\d*)?[eE][+-]?\d+)$/.test(v)) return parseFloat(v);
+                return v;
+            };
+            for (const expr of sets) {
+                const eq = expr.indexOf("=");
+                if (eq < 0) { console.error("--set expects key.path=value, got: " + expr); process.exit(2); }
+                const path = expr.slice(0, eq).split(".");
+                const value = coerce(expr.slice(eq + 1));
+                let node = doc;
+                for (let i = 0; i < path.length - 1; i++) {
+                    const k = path[i];
+                    if (node[k] === undefined || node[k] === null || typeof node[k] !== "object") {
+                        node[k] = {};
+                    }
+                    node = node[k];
+                }
+                node[path[path.length - 1]] = value;
+            }
+            fs.writeFileSync(process.env.YAML_FILE, yaml.dump(doc));
+        ' || die 2 "--set: js-yaml mutation failed"
 }
 
 # ============================================================================
@@ -357,6 +589,10 @@ ensure_outdir_for() {
 usage_render() {
     cat <<'EOF'
 Usage: agentcli render <testcase> [options]
+       agentcli render --yaml PATH|- [options]
+
+Render against the agent devserver. Pass a saved testcase by path/name,
+OR an ephemeral YAML body via --yaml (use "-" for stdin).
 
 Options:
     --mode mesh|sdf            Render mode (default: mesh)
@@ -365,18 +601,59 @@ Options:
     --width W                  Override viewportWidth
     --height H                 Override viewportHeight
     --overlay name=val,...     Mesh overlay flags passed verbatim as query params
+    --yaml PATH|-              Render an ephemeral YAML body (POST testcase-body).
+                               Mutually exclusive with the positional <testcase>.
+    --set key.path=value       Apply override to the YAML body before rendering.
+                               Repeatable. Coerces true/false/numbers from values.
+                               Works with both <testcase> and --yaml forms.
+                               Path is the full dotted path into the testcase
+                               schema, e.g.:
+                                 --set meshExport.mdcExportLevers.adaptiveEnabled=false
+                                 --set meshExport.voxelSizeMm=0.25
+                                 --set camera.dollyDistance=4.5
     -h, --help                 This help
 EOF
 }
 
+# Internal: POST a YAML body (already mutated if needed) to the agent and
+# save the resulting PNG. Echoes the same summary line as the GET path.
+_render_yaml_body() {
+    local -r yaml_tmp="$1"
+    local -r stem="$2"
+    local -r tag="$3"
+    local -r mode="$4"
+    local -r out="$5"
+    local -r width="$6"
+    local -r height="$7"
+    local -r overlay="$8"
+
+    ensure_outdir_for "$out"
+    local port url qs
+    port=$(_agent_port)
+    qs=$(_render_query_string "$mode" "$stem" "$tag" "$width" "$height" "$overlay" "render") \
+        || die 2 "render: failed to build query string"
+    url="http://localhost:${port}/_agent/render/testcase-body${qs}"
+
+    local result code bytes
+    # _curl_post_body already logs the HTTP code and surfaces the first few
+    # lines of the error body; just propagate the failure without a second
+    # log line.
+    result=$(_curl_post_body "$url" "$yaml_tmp" "application/x-yaml" "$out") || return 1
+    code="${result%% *}"
+    bytes="${result##* }"
+    printf '%s  %s  HTTP=%s  bytes=%s  saved=%s\n' "$stem" "$mode" "$code" "$bytes" "$out"
+}
+
 cmd_render() {
     local testcase=""
+    local yaml_arg=""
     local mode="mesh"
     local tag="latest"
     local out=""
     local width=""
     local height=""
     local overlay=""
+    local -a sets=()
 
     while (( $# > 0 )); do
         case "$1" in
@@ -386,6 +663,8 @@ cmd_render() {
             --width) width="$2"; shift 2 ;;
             --height) height="$2"; shift 2 ;;
             --overlay) overlay="$2"; shift 2 ;;
+            --yaml) yaml_arg="$2"; shift 2 ;;
+            --set) sets+=("$2"); shift 2 ;;
             -h|--help) usage_render; return 0 ;;
             -*) die 2 "render: unknown option: $1" ;;
             *)
@@ -398,54 +677,73 @@ cmd_render() {
                 ;;
         esac
     done
-    [[ -n "$testcase" ]] || { usage_render >&2; die 2 "render: <testcase> is required"; }
-    [[ "$mode" == "mesh" || "$mode" == "sdf" ]] || die 2 "render: --mode must be mesh or sdf"
+    _validate_mode "$mode" render
+    if [[ -n "$testcase" && -n "$yaml_arg" ]]; then
+        die 2 "render: --yaml and <testcase> are mutually exclusive"
+    fi
+    if [[ -z "$testcase" && -z "$yaml_arg" ]]; then
+        usage_render >&2
+        die 2 "render: <testcase> or --yaml is required"
+    fi
 
-    local rel stem
+    # --yaml / stdin path: ephemeral POST to /_agent/render/testcase-body.
+    if [[ -n "$yaml_arg" ]]; then
+        local yaml_tmp stem
+        yaml_tmp=$(_yaml_into_tmp "$yaml_arg")
+        if (( ${#sets[@]} > 0 )); then
+            _yaml_apply_overrides "$yaml_tmp" "${sets[@]}"
+        fi
+        if [[ "$yaml_arg" == "-" ]]; then
+            stem="inline"
+        else
+            stem=$(testcase_stem "$yaml_arg")
+            # When triangle / ab cache stdin into one of our own tmpfiles
+            # (agentcli.yaml.XXXXXX) and pass it through here, the
+            # tmpfile-derived stem leaks into the summary/label. Normalize.
+            [[ "$stem" == agentcli.yaml.* ]] && stem="inline"
+        fi
+        [[ -z "$out" ]] && out=$(_default_out_path "$stem" "$tag" "$mode")
+        _render_yaml_body "$yaml_tmp" "$stem" "$tag" "$mode" "$out" "$width" "$height" "$overlay"
+        return 0
+    fi
+
+    # Saved-testcase path. When --set is given, we read the file, mutate, and
+    # POST (instead of GETing the saved file unchanged).
+    local abs rel stem
     {
-        read -r _abs
+        read -r abs
         read -r rel
     } < <(resolve_testcase "$testcase")
     stem=$(testcase_stem "$rel")
+
+    if (( ${#sets[@]} > 0 )); then
+        local yaml_tmp
+        yaml_tmp=$(_yaml_into_tmp "$abs")
+        _yaml_apply_overrides "$yaml_tmp" "${sets[@]}"
+        [[ -z "$out" ]] && out=$(_default_out_path "$stem" "$tag" "$mode")
+        _render_yaml_body "$yaml_tmp" "$stem" "$tag" "$mode" "$out" "$width" "$height" "$overlay"
+        return 0
+    fi
 
     if [[ -z "$out" ]]; then
         out=$(_default_out_path "$stem" "$tag" "$mode")
     fi
     ensure_outdir_for "$out"
 
-    local port url
+    local port url qs enc_rel
     port=$(_agent_port)
-    local enc_rel
     enc_rel=$(url_encode_path "$rel")
-    url="http://localhost:${port}/_agent/render/testcase/${enc_rel}?mode=${mode}"
-    url+="&label=$(url_encode_qparam "${stem}-${tag}")"
-    url+="&role=$(url_encode_qparam "$mode")"
-    [[ -n "$width" ]] && url+="&viewportWidth=${width}"
-    [[ -n "$height" ]] && url+="&viewportHeight=${height}"
-    if [[ -n "$overlay" ]]; then
-        local IFS_BAK="$IFS"
-        IFS=','
-        local kv
-        for kv in $overlay; do
-            [[ -z "$kv" ]] && continue
-            # Validate shape "k=v" minimally.
-            if [[ "$kv" != *=* ]]; then
-                IFS="$IFS_BAK"
-                die 2 "render: --overlay expects name=val,... ; got '$kv'"
-            fi
-            local k="${kv%%=*}" v="${kv#*=}"
-            url+="&$(url_encode_qparam "$k")=$(url_encode_qparam "$v")"
-        done
-        IFS="$IFS_BAK"
-    fi
+    qs=$(_render_query_string "$mode" "$stem" "$tag" "$width" "$height" "$overlay" "render") \
+        || die 2 "render: failed to build query string"
+    url="http://localhost:${port}/_agent/render/testcase/${enc_rel}${qs}"
 
+    # _curl_get returns non-zero on any non-2xx and writes the error body to
+    # `${out}.error`; it already logged the HTTP code. Propagate failure
+    # without a second log line and without the unreachable HTTP-code recheck.
     local result code bytes
-    result=$(_curl_get "$url" "$out")
+    result=$(_curl_get "$url" "$out") || return 1
     code="${result%% *}"
     bytes="${result##* }"
-    if [[ "$code" != "200" ]]; then
-        die 1 "render: HTTP $code (response body in $out)"
-    fi
     printf '%s  %s  HTTP=%s  bytes=%s  saved=%s\n' "$stem" "$mode" "$code" "$bytes" "$out"
 }
 
@@ -512,6 +810,10 @@ Usage: agentcli compare <a.png> <b.png> [options]
 Options:
     --diff-png PATH            Where to write the diff PNG (default: tmpfile)
     --threshold PCT            SSIM pass threshold 0..100 (default: 99)
+    --open                     Open the diff PNG with the system viewer
+                               on completion (no-op when running headless)
+    --json                     Emit a single-line JSON record instead of
+                               the human-readable summary
     -h, --help                 This help
 
 Exit code 0 if SSIM >= threshold, 1 otherwise.
@@ -523,11 +825,15 @@ cmd_compare() {
     local b=""
     local diff_png=""
     local threshold="99"
+    local open_diff=0
+    local json_out=0
 
     while (( $# > 0 )); do
         case "$1" in
             --diff-png) diff_png="$2"; shift 2 ;;
             --threshold) threshold="$2"; shift 2 ;;
+            --open) open_diff=1; shift ;;
+            --json) json_out=1; shift ;;
             -h|--help) usage_compare; return 0 ;;
             -*) die 2 "compare: unknown option: $1" ;;
             *)
@@ -565,19 +871,39 @@ cmd_compare() {
     local verdict_text="UNCHANGED"
     local exit_code=0
     # Use awk for floating-point comparison — bash can't compare decimals natively.
-    if awk -v s="$ssim_pct" -v t="$threshold" 'BEGIN{ exit !(s + 0 < t + 0) }'; then
+    if _below_threshold "$ssim_pct" "$threshold"; then
         verdict_text="CHANGED"
         exit_code=1
     fi
 
-    printf 'ssim:        %s%%\n' "$ssim_pct"
-    if (( total_pixels > 0 )); then
-        printf 'pixel diff:  %s / %s  (%s%%)\n' "$diff_pixels" "$total_pixels" "$diff_err"
+    if (( json_out == 1 )); then
+        # Emit JSON. Use jq to ensure escaping is correct for paths.
+        jq -n \
+            --arg a "$a" --arg b "$b" --arg diff "$diff_png" \
+            --argjson ssim "$ssim_pct" --argjson pixels "$diff_pixels" \
+            --argjson total "$total_pixels" --argjson errPct "$diff_err" \
+            --arg verdict "$verdict_text" --argjson threshold "$threshold" \
+            '{a:$a, b:$b, ssim:$ssim, pixelDiff:$pixels, pixelTotal:$total, errorPct:$errPct, diffPng:$diff, verdict:$verdict, threshold:$threshold}'
     else
-        printf 'pixel diff:  %s  (%s%%)\n' "$diff_pixels" "$diff_err"
+        printf 'ssim:        %s%%\n' "$ssim_pct"
+        if (( total_pixels > 0 )); then
+            printf 'pixel diff:  %s / %s  (%s%%)\n' "$diff_pixels" "$total_pixels" "$diff_err"
+        else
+            printf 'pixel diff:  %s  (%s%%)\n' "$diff_pixels" "$diff_err"
+        fi
+        printf 'diff PNG:    %s\n' "$diff_png"
+        printf 'verdict:     %s   (threshold %s%%)\n' "$verdict_text" "$threshold"
     fi
-    printf 'diff PNG:    %s\n' "$diff_png"
-    printf 'verdict:     %s   (threshold %s%%)\n' "$verdict_text" "$threshold"
+
+    if (( open_diff == 1 )); then
+        if command -v open >/dev/null 2>&1; then
+            open -- "$diff_png" 2>/dev/null || true
+        elif command -v xdg-open >/dev/null 2>&1; then
+            xdg-open "$diff_png" 2>/dev/null || true
+        else
+            log_warn "compare: --open unsupported on this platform (no 'open' or 'xdg-open')"
+        fi
+    fi
 
     return $exit_code
 }
@@ -589,6 +915,7 @@ cmd_compare() {
 usage_triangle() {
     cat <<'EOF'
 Usage: agentcli triangle <testcase> [options]
+       agentcli triangle --yaml PATH|- [options]
 
 Renders both SDF and mesh for a testcase and reports the SSIM between
 them — i.e. how faithfully the mesh captures the SDF reference. Optionally
@@ -599,21 +926,31 @@ Options:
     --tag NAME                 Tag for the new mesh render (default: latest)
     --baseline-tag NAME        Tag of an existing mesh PNG to compare against
     --out-dir DIR              Directory to write PNGs into (default: .agents/testimages/)
+    --yaml PATH|-              Use an ephemeral YAML body (file or stdin)
+                               instead of a saved testcase. Mutually
+                               exclusive with the positional <testcase>.
+    --set key.path=value       Apply YAML override before rendering (both
+                               SDF and mesh sides get the same overrides).
+                               Repeatable.
     -h, --help                 This help
 EOF
 }
 
 cmd_triangle() {
     local testcase=""
+    local yaml_arg=""
     local tag="latest"
     local baseline_tag=""
     local outdir=""
+    local -a sets=()
 
     while (( $# > 0 )); do
         case "$1" in
             --tag) tag="$2"; shift 2 ;;
             --baseline-tag) baseline_tag="$2"; shift 2 ;;
             --out-dir) outdir="$2"; shift 2 ;;
+            --yaml) yaml_arg="$2"; shift 2 ;;
+            --set) sets+=("$2"); shift 2 ;;
             -h|--help) usage_triangle; return 0 ;;
             -*) die 2 "triangle: unknown option: $1" ;;
             *)
@@ -625,21 +962,58 @@ cmd_triangle() {
                 ;;
         esac
     done
-    [[ -n "$testcase" ]] || { usage_triangle >&2; die 2 "triangle: <testcase> is required"; }
+    if [[ -n "$testcase" && -n "$yaml_arg" ]]; then
+        die 2 "triangle: --yaml and <testcase> are mutually exclusive"
+    fi
+    [[ -n "$testcase" || -n "$yaml_arg" ]] || { usage_triangle >&2; die 2 "triangle: <testcase> or --yaml is required"; }
     [[ -z "$outdir" ]] && outdir=$(_default_outdir)
     mkdir -p "$outdir"
 
-    local rel stem
-    {
-        read -r _abs
-        read -r rel
-    } < <(resolve_testcase "$testcase")
-    stem=$(testcase_stem "$rel")
+    # Determine stem (used to name the SDF/mesh PNGs). For inline YAML from
+    # stdin we use the same "inline" convention as cmd_render.
+    local stem
+    if [[ -n "$yaml_arg" ]]; then
+        if [[ "$yaml_arg" == "-" ]]; then
+            stem="inline"
+        else
+            stem=$(testcase_stem "$yaml_arg")
+        fi
+    else
+        local _abs rel
+        {
+            read -r _abs
+            read -r rel
+        } < <(resolve_testcase "$testcase")
+        stem=$(testcase_stem "$rel")
+    fi
+
+    # If --yaml - was used, snapshot stdin once so we can render twice from
+    # the same source (sdf + mesh). For file paths we just pass the path
+    # through to cmd_render twice; it re-reads the file each time which is
+    # fine since it's not stdin.
+    local yaml_to_pass="$yaml_arg"
+    if [[ "$yaml_arg" == "-" ]]; then
+        yaml_to_pass=$(_yaml_into_tmp "-")
+    fi
 
     local sdf_png="$outdir/${stem}-${tag}-sdf.png"
     local mesh_png="$outdir/${stem}-${tag}-mesh.png"
-    ( cmd_render "$testcase" --mode sdf --tag "$tag" --out "$sdf_png" )
-    ( cmd_render "$testcase" --mode mesh --tag "$tag" --out "$mesh_png" )
+    local -a sdf_args=(--mode sdf --tag "$tag" --out "$sdf_png")
+    local -a mesh_args=(--mode mesh --tag "$tag" --out "$mesh_png")
+    local s
+    for s in "${sets[@]}"; do
+        sdf_args+=(--set "$s")
+        mesh_args+=(--set "$s")
+    done
+    if [[ -n "$yaml_to_pass" ]]; then
+        sdf_args+=(--yaml "$yaml_to_pass")
+        mesh_args+=(--yaml "$yaml_to_pass")
+    else
+        sdf_args+=("$testcase")
+        mesh_args+=("$testcase")
+    fi
+    ( cmd_render "${sdf_args[@]}" )
+    ( cmd_render "${mesh_args[@]}" )
 
     local post_pct
     post_pct=$(_ssim "$sdf_png" "$mesh_png") || return $?
@@ -734,7 +1108,7 @@ cmd_regress() {
             continue
         fi
         diff_pixels="${diff_result%% *}"
-        if awk -v s="$ssim_pct" -v t="$threshold" 'BEGIN{ exit !(s + 0 < t + 0) }'; then
+        if _below_threshold "$ssim_pct" "$threshold"; then
             verdict="CHANGED"
             changed=$((changed + 1))
         else
@@ -809,7 +1183,11 @@ cmd_server() {
             ;;
         -h|--help|"")
             usage_server
-            [[ -z "$sub" ]] && return 2
+            # No subcommand at all = usage error (exit 2); --help / -h is a
+            # success (exit 0) so help is scriptable in a "does it exist?"
+            # check loop.
+            if [[ -z "$sub" ]]; then return 2; fi
+            return 0
             ;;
         *)
             usage_server >&2
@@ -867,6 +1245,412 @@ cmd_logs() {
 }
 
 # ============================================================================
+# cmd: capture
+# ============================================================================
+
+usage_capture() {
+    cat <<'EOF'
+Usage: agentcli capture [options]
+
+Capture the active document + camera + meshExport state from a connected
+browser tab into testcase YAML (GET /_agent/capture-testcase). Defaults to
+the interactive (human) devserver since that's where users typically
+iterate; pass --port agent to capture from the headless render server.
+
+Options:
+    --output PATH       Write YAML to PATH (default: stdout)
+    --port WHICH        interactive (default) | agent
+    -h, --help          This help
+
+Exit code:
+    0 on capture (YAML written / printed)
+    3 if the chosen devserver isn't running or no browser tab is connected
+EOF
+}
+
+cmd_capture() {
+    local out=""
+    local which="interactive"
+    while (( $# > 0 )); do
+        case "$1" in
+            --output) out="$2"; shift 2 ;;
+            --port) which="$2"; shift 2 ;;
+            -h|--help) usage_capture; return 0 ;;
+            -*) die 2 "capture: unknown option: $1" ;;
+            *) die 2 "capture: unexpected argument: $1" ;;
+        esac
+    done
+    local port
+    case "$which" in
+        interactive) port=$(_interactive_port) ;;
+        agent)       port=$(_agent_port) ;;
+        *) die 2 "capture: --port must be 'interactive' or 'agent'" ;;
+    esac
+
+    local url tmp code bytes
+    url="http://localhost:${port}/_agent/capture-testcase"
+    tmp=$(mktemp -t agentcli.cap.XXXXXX)
+    _register_tmp "$tmp"
+    code=$(curl --silent --show-error \
+        --connect-timeout 10 --max-time 30 \
+        -o "$tmp" --write-out '%{http_code}' "$url" 2>&1) || {
+        local rc=$?
+        rm -f -- "$tmp"
+        die 3 "capture: curl exited $rc for $url"
+    }
+    if [[ "$code" != "200" ]]; then
+        local errhead
+        errhead=$(head -n 3 "$tmp" 2>/dev/null)
+        rm -f -- "$tmp"
+        die 3 "capture: HTTP $code from $url ($errhead). \
+Is the $which devserver running and is a browser tab open on an active document?"
+    fi
+    bytes=$(wc -c <"$tmp" | tr -d ' ')
+    if [[ -n "$out" ]]; then
+        ensure_outdir_for "$out"
+        mv -f -- "$tmp" "$out"
+        log_info "captured ${which} session → ${out} (${bytes} bytes)"
+    else
+        cat -- "$tmp"
+        rm -f -- "$tmp"
+    fi
+}
+
+# ============================================================================
+# cmd: mirror
+# ============================================================================
+
+usage_mirror() {
+    cat <<'EOF'
+Usage: agentcli mirror [options]
+
+Capture the current scene from the interactive (human) devserver and
+render it on the agent (headless) devserver in one step. Workflow B
+from the devserver skill: lets you replay exactly what the human sees
+with optional knob overrides applied.
+
+Options:
+    --mode mesh|sdf            Render mode (default: mesh)
+    --tag NAME                 Tag for the agent-side output PNG (default: mirrored)
+    --out PATH                 Override output path
+    --width W                  Override viewportWidth
+    --height H                 Override viewportHeight
+    --overlay name=val,...     Mesh overlay flags (forwarded to render)
+    --set key.path=value       Apply YAML override to the captured testcase
+                               before rendering. Repeatable.
+    --no-refresh               Skip the implicit /_refresh on the agent
+                               before rendering (default: refresh first)
+    --keep-yaml PATH           Save the captured + mutated YAML to PATH
+                               (useful for re-running without re-capturing)
+    -h, --help                 This help
+EOF
+}
+
+cmd_mirror() {
+    local mode="mesh"
+    local tag="mirrored"
+    local out=""
+    local width=""
+    local height=""
+    local overlay=""
+    local no_refresh=0
+    local keep_yaml=""
+    local -a sets=()
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --mode) mode="$2"; shift 2 ;;
+            --tag) tag="$2"; shift 2 ;;
+            --out) out="$2"; shift 2 ;;
+            --width) width="$2"; shift 2 ;;
+            --height) height="$2"; shift 2 ;;
+            --overlay) overlay="$2"; shift 2 ;;
+            --set) sets+=("$2"); shift 2 ;;
+            --no-refresh) no_refresh=1; shift ;;
+            --keep-yaml) keep_yaml="$2"; shift 2 ;;
+            -h|--help) usage_mirror; return 0 ;;
+            -*) die 2 "mirror: unknown option: $1" ;;
+            *) die 2 "mirror: unexpected argument: $1" ;;
+        esac
+    done
+    _validate_mode "$mode" mirror
+
+    # 1) Capture from interactive port.
+    local yaml_tmp
+    yaml_tmp=$(mktemp -t agentcli.mirror.XXXXXX)
+    _register_tmp "$yaml_tmp"
+    (   # subshell so cmd_capture's exit codes propagate cleanly
+        cmd_capture --output "$yaml_tmp"
+    ) || return 3
+
+    # 2) Apply --set overrides if any.
+    if (( ${#sets[@]} > 0 )); then
+        _yaml_apply_overrides "$yaml_tmp" "${sets[@]}"
+    fi
+
+    # 3) Optionally save the mutated YAML for re-use.
+    if [[ -n "$keep_yaml" ]]; then
+        ensure_outdir_for "$keep_yaml"
+        cp -- "$yaml_tmp" "$keep_yaml"
+        log_info "saved mirrored testcase → $keep_yaml"
+    fi
+
+    # 4) Refresh agent unless suppressed.
+    if (( no_refresh == 0 )); then
+        ( cmd_server refresh ) || log_warn "mirror: agent /_refresh failed (continuing)"
+    fi
+
+    # 5) Render on agent.
+    local stem="mirrored"
+    [[ -z "$out" ]] && out=$(_default_out_path "$stem" "$tag" "$mode")
+    _render_yaml_body "$yaml_tmp" "$stem" "$tag" "$mode" "$out" "$width" "$height" "$overlay"
+}
+
+# ============================================================================
+# cmd: iterate
+# ============================================================================
+
+usage_iterate() {
+    cat <<'EOF'
+Usage: agentcli iterate <testcase> [options]
+       agentcli iterate --yaml PATH|- [options]
+
+The inner-loop helper: refresh the agent tab (so source edits take
+effect), render the testcase, optionally compare against a baseline
+PNG, and exit nonzero when SSIM falls below the threshold. Designed
+for "edit code → run agentcli iterate → see result" cycles.
+
+Options:
+    --mode mesh|sdf            Render mode (default: mesh)
+    --tag NAME                 Tag for the new render (default: latest)
+    --against PATH             Compare the new render to this baseline PNG
+    --threshold PCT            SSIM pass threshold 0..100 (default: 99)
+    --no-refresh               Skip the implicit /_refresh
+    --yaml PATH|-              Ephemeral YAML body (mutex with <testcase>)
+    --set key.path=value       Override applied before rendering. Repeatable.
+    --overlay name=val,...     Mesh overlay flags
+    -h, --help                 This help
+
+Exit code:
+    0  render succeeded, and (if --against given) SSIM ≥ threshold
+    1  SSIM below threshold
+    other: render / capture errors
+EOF
+}
+
+cmd_iterate() {
+    local testcase=""
+    local yaml_arg=""
+    local mode="mesh"
+    local tag="latest"
+    local against=""
+    local threshold="99"
+    local overlay=""
+    local no_refresh=0
+    local -a sets=()
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --mode) mode="$2"; shift 2 ;;
+            --tag) tag="$2"; shift 2 ;;
+            --against) against="$2"; shift 2 ;;
+            --threshold) threshold="$2"; shift 2 ;;
+            --no-refresh) no_refresh=1; shift ;;
+            --yaml) yaml_arg="$2"; shift 2 ;;
+            --set) sets+=("$2"); shift 2 ;;
+            --overlay) overlay="$2"; shift 2 ;;
+            -h|--help) usage_iterate; return 0 ;;
+            -*) die 2 "iterate: unknown option: $1" ;;
+            *)
+                if [[ -z "$testcase" ]]; then
+                    testcase="$1"; shift
+                else
+                    die 2 "iterate: unexpected argument: $1"
+                fi
+                ;;
+        esac
+    done
+    if [[ -n "$testcase" && -n "$yaml_arg" ]]; then
+        die 2 "iterate: --yaml and <testcase> are mutually exclusive"
+    fi
+    if [[ -z "$testcase" && -z "$yaml_arg" ]]; then
+        usage_iterate >&2
+        die 2 "iterate: <testcase> or --yaml is required"
+    fi
+    _validate_mode "$mode" iterate
+
+    if (( no_refresh == 0 )); then
+        ( cmd_server refresh ) || log_warn "iterate: agent /_refresh failed (continuing)"
+    fi
+
+    # Build render command args.
+    local -a render_args=(--mode "$mode" --tag "$tag")
+    [[ -n "$overlay" ]] && render_args+=(--overlay "$overlay")
+    local s
+    for s in "${sets[@]}"; do render_args+=(--set "$s"); done
+
+    # Determine output path so we can pass it to compare. cmd_render
+    # auto-derives it; we mirror that logic so we know the path here.
+    local stem out
+    if [[ -n "$yaml_arg" ]]; then
+        if [[ "$yaml_arg" == "-" ]]; then
+            stem="inline"
+        else
+            stem=$(testcase_stem "$yaml_arg")
+        fi
+        render_args+=(--yaml "$yaml_arg")
+    else
+        local _abs rel
+        {
+            read -r _abs
+            read -r rel
+        } < <(resolve_testcase "$testcase")
+        stem=$(testcase_stem "$rel")
+        render_args+=("$testcase")
+    fi
+    out=$(_default_out_path "$stem" "$tag" "$mode")
+    render_args+=(--out "$out")
+
+    cmd_render "${render_args[@]}"
+
+    if [[ -z "$against" ]]; then
+        return 0
+    fi
+    if [[ ! -f "$against" ]]; then
+        die 2 "iterate: --against file not found: $against"
+    fi
+    cmd_compare "$against" "$out" --threshold "$threshold"
+}
+
+# ============================================================================
+# cmd: ab
+# ============================================================================
+
+usage_ab() {
+    cat <<'EOF'
+Usage: agentcli ab <testcase> [options]
+       agentcli ab --yaml PATH|- [options]
+
+A/B-render the same testcase twice with different overrides, then
+compare. Saves both PNGs (tagged) and prints SSIM + diff PNG path.
+
+Options:
+    --mode mesh|sdf            Render mode (default: mesh)
+    --a-tag NAME               Tag for variant A render (default: a)
+    --b-tag NAME               Tag for variant B render (default: b)
+    --a-set key.path=value     Override applied to variant A. Repeatable.
+    --b-set key.path=value     Override applied to variant B. Repeatable.
+    --threshold PCT            SSIM pass threshold (default: 99)
+    --no-refresh               Skip the implicit /_refresh before each render
+    --width W / --height H     Viewport overrides (applied to both variants)
+    --overlay name=val,...     Mesh overlay flags (applied to both variants)
+    -h, --help                 This help
+
+Exit code: same as compare (0 if A and B match within threshold, 1 if not).
+EOF
+}
+
+cmd_ab() {
+    local testcase=""
+    local yaml_arg=""
+    local mode="mesh"
+    local a_tag="a"
+    local b_tag="b"
+    local threshold="99"
+    local width=""
+    local height=""
+    local overlay=""
+    local no_refresh=0
+    local -a a_sets=()
+    local -a b_sets=()
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --mode) mode="$2"; shift 2 ;;
+            --a-tag) a_tag="$2"; shift 2 ;;
+            --b-tag) b_tag="$2"; shift 2 ;;
+            --a-set) a_sets+=("$2"); shift 2 ;;
+            --b-set) b_sets+=("$2"); shift 2 ;;
+            --threshold) threshold="$2"; shift 2 ;;
+            --no-refresh) no_refresh=1; shift ;;
+            --width) width="$2"; shift 2 ;;
+            --height) height="$2"; shift 2 ;;
+            --overlay) overlay="$2"; shift 2 ;;
+            --yaml) yaml_arg="$2"; shift 2 ;;
+            -h|--help) usage_ab; return 0 ;;
+            -*) die 2 "ab: unknown option: $1" ;;
+            *)
+                if [[ -z "$testcase" ]]; then
+                    testcase="$1"; shift
+                else
+                    die 2 "ab: unexpected argument: $1"
+                fi
+                ;;
+        esac
+    done
+    if [[ -n "$testcase" && -n "$yaml_arg" ]]; then
+        die 2 "ab: --yaml and <testcase> are mutually exclusive"
+    fi
+    if [[ -z "$testcase" && -z "$yaml_arg" ]]; then
+        usage_ab >&2
+        die 2 "ab: <testcase> or --yaml is required"
+    fi
+    _validate_mode "$mode" ab
+
+    if (( no_refresh == 0 )); then
+        ( cmd_server refresh ) || log_warn "ab: agent /_refresh failed (continuing)"
+    fi
+
+    # If invoked from stdin via --yaml -, snapshot once so we can render twice.
+    local yaml_persisted=""
+    if [[ "$yaml_arg" == "-" ]]; then
+        yaml_persisted=$(_yaml_into_tmp "-")
+        yaml_arg="$yaml_persisted"
+    fi
+
+    local stem
+    if [[ -n "$yaml_arg" ]]; then
+        stem=$(testcase_stem "$yaml_arg")
+        [[ -z "$stem" || "$stem" == agentcli* ]] && stem="inline"
+    else
+        local _abs rel
+        {
+            read -r _abs
+            read -r rel
+        } < <(resolve_testcase "$testcase")
+        stem=$(testcase_stem "$rel")
+    fi
+    local out_a out_b
+    out_a=$(_default_out_path "$stem" "$a_tag" "$mode")
+    out_b=$(_default_out_path "$stem" "$b_tag" "$mode")
+
+    # Helper to build & run a single side.
+    _ab_render_side() {
+        local -r side_tag="$1"
+        local -r side_out="$2"
+        shift 2
+        local -a side_args=(--mode "$mode" --tag "$side_tag" --out "$side_out")
+        [[ -n "$width" ]] && side_args+=(--width "$width")
+        [[ -n "$height" ]] && side_args+=(--height "$height")
+        [[ -n "$overlay" ]] && side_args+=(--overlay "$overlay")
+        local s
+        for s in "$@"; do side_args+=(--set "$s"); done
+        if [[ -n "$yaml_arg" ]]; then
+            side_args+=(--yaml "$yaml_arg")
+        else
+            side_args+=("$testcase")
+        fi
+        cmd_render "${side_args[@]}"
+    }
+
+    _ab_render_side "$a_tag" "$out_a" "${a_sets[@]}"
+    _ab_render_side "$b_tag" "$out_b" "${b_sets[@]}"
+    # yaml_persisted (if used) was registered by _yaml_into_tmp; EXIT trap cleans up.
+
+    cmd_compare "$out_a" "$out_b" --threshold "$threshold"
+}
+
+# ============================================================================
 # Top-level dispatch
 # ============================================================================
 
@@ -875,11 +1659,15 @@ usage() {
 Usage: $SCRIPT_NAME <command> [args]
 
 Commands:
-    render    <testcase> [options]                 Render one saved testcase
+    render    <testcase>|--yaml PATH [options]     Render one testcase (saved or ephemeral)
     sweep     <testcase>... [options]              Render multiple testcases
+    iterate   <testcase>|--yaml PATH [options]     Refresh + render + (optional) compare
+    ab        <testcase>|--yaml PATH [options]     A/B render with --set overrides
     compare   <a.png> <b.png> [options]            SSIM + pixel diff between two PNGs
     triangle  <testcase> [options]                 SDF + mesh render, report SSIM mesh-vs-sdf
     regress   <testcase>... [options]              Compare pre-rendered baseline vs post sets
+    capture   [options]                            Snapshot interactive scene as testcase YAML
+    mirror    [options]                            Capture interactive → render on agent
     server    <start|stop|restart|refresh|status>  Devserver lifecycle
     logs      [options]                            Pass-through to /_logs
 
@@ -899,9 +1687,13 @@ main() {
     case "$cmd" in
         render)   cmd_render   "$@" ;;
         sweep)    cmd_sweep    "$@" ;;
+        iterate)  cmd_iterate  "$@" ;;
+        ab)       cmd_ab       "$@" ;;
         compare)  cmd_compare  "$@" ;;
         triangle) cmd_triangle "$@" ;;
         regress)  cmd_regress  "$@" ;;
+        capture)  cmd_capture  "$@" ;;
+        mirror)   cmd_mirror   "$@" ;;
         server)   cmd_server   "$@" ;;
         logs)     cmd_logs     "$@" ;;
         -h|--help) usage; exit 0 ;;

@@ -1,11 +1,50 @@
 ---
 name: devserver
-description: "Use when reading runtime logs, dumping the active scene source, capturing an agent testcase from the live editor, or rendering SDF/mesh PNGs headlessly. Two devservers run side-by-side: interactive (`make start`, `.devserver.run`) for the human's tab, and agent (`make start AGENT=true`, `.devserver.agent.run`) for headless Chromium — agents default to the agent port, read it from the run file, and never launch Chromium themselves. Endpoints: `/_logs`, `/_sceneSource`, `/_refresh`, `/_agent/capture-testcase`, `/_agent/render` (POST JSON), `/_agent/render/testcase-body` (POST YAML), `/_agent/render/testcase/<path>` (GET saved testcase). Mirror the human's session by piping `/_agent/capture-testcase` from the interactive port into `/_agent/render/testcase-body` on the agent port."
+description: "Use when reading runtime logs, dumping the active scene source, capturing an agent testcase from the live editor, or rendering SDF/mesh PNGs headlessly. Two devservers run side-by-side: interactive (`make start`, `.devserver.run`) for the human's tab, and agent (`make start AGENT=true`, `.devserver.agent.run`) for headless Chromium. **Prefer `scripts/agentcli`** over raw curl for everything except niche cases — it wraps every endpoint with structured errors, auto-cleanup, and shared helpers (`render --yaml`, `capture`, `mirror`, `iterate`, `ab`, `compare`, `triangle`, `regress`, `logs`, `server`). Drop to curl only when agentcli has no subcommand (rare). Endpoints: `/_logs`, `/_sceneSource`, `/_refresh`, `/_agent/capture-testcase`, `/_agent/render` (POST JSON), `/_agent/render/testcase-body` (POST YAML), `/_agent/render/testcase/<path>` (GET saved testcase)."
 ---
 
 # Devserver HTTP / WebSocket bridge
 
 Runtime log signal, a plain-text dump of the active CAD document, and agent automation that talks to a connected browser tab (Chromium with WebGPU) over HTTP + WebSocket on the same port.
+
+## Use `scripts/agentcli` first
+
+`scripts/agentcli` wraps every devserver endpoint with structured errors, auto-cleanup, the `--set` YAML override syntax, and shared workflow helpers. **Default to it for every devserver interaction.** Drop to raw curl only when no subcommand fits (see "When to skip the wrapper" below).
+
+| Operation | agentcli command | Underlying HTTP |
+|---|---|---|
+| Render a saved testcase | `agentcli render <testcase>` | `GET /_agent/render/testcase/<path>` |
+| Render inline YAML (file or stdin) | `agentcli render --yaml PATH\|-` | `POST /_agent/render/testcase-body` |
+| Render with knob overrides | `agentcli render … --set k.path=v` (repeatable) | POST (mutated YAML) |
+| Render multiple testcases (batch) | `agentcli sweep <tc>... --tag NAME` | N × `GET /_agent/render/testcase/...` |
+| Snapshot the live editor session | `agentcli capture [--output PATH] [--port interactive\|agent]` | `GET /_agent/capture-testcase` |
+| Mirror human's scene to agent | `agentcli mirror [--set ...]` | capture + POST (one command) |
+| Inner loop after a code edit | `agentcli iterate <tc> [--against baseline.png] [--fail-below 99]` | refresh + render + compare |
+| A/B variant comparison | `agentcli ab <tc> --a-set ... --b-set ...` | two renders + compare |
+| SDF vs mesh round-trip | `agentcli triangle <tc> [--yaml] [--set]` | two renders + SSIM |
+| Single-pair compare | `agentcli compare a.png b.png [--json] [--open]` | local SSIM/pixel-diff |
+| Batch compare | `agentcli regress … --baseline-tag B --post-tag P` | pre-rendered SSIM/pixel-diff |
+| Read logs | `agentcli logs [--module M] [--level L] [--n N]` | `GET /_logs` |
+| Server lifecycle | `agentcli server start\|stop\|restart\|refresh\|status` | `POST /_refresh` + make |
+
+**Cross-cutting flags** supported by render / iterate / ab / mirror / triangle:
+
+- `--yaml PATH|-` — ephemeral YAML body instead of a saved testcase (`-` reads stdin).
+- `--set key.path=value` — mutate the YAML before rendering. Repeatable. Dotted full path (e.g. `meshExport.mdcExportLevers.adaptiveEnabled=false`). Coerces `true`/`false`/numbers/`null`; everything else is a string.
+- `--overlay name=val,…` — mesh overlay flags as comma-separated `k=v` pairs.
+- `--mode mesh|sdf` — defaults to mesh for the render-flavored commands.
+
+Exit codes: 0 success • 1 verdict failure (compare below threshold, regression) • 2 usage error • 3 devserver unreachable • 4 diff tool failure. The script auto-starts the agent devserver if needed (but never the interactive one — that's the human's session).
+
+### When to skip the wrapper
+
+Use raw curl only for things agentcli doesn't expose:
+
+- `GET /_sceneSource` — there's no `agentcli sceneSource`; one-off, low value to wrap.
+- `POST /_agent/render` with hand-built JSON — agentcli's render flows route through `testcase-body` (YAML); JSON POST is rarely needed because YAML achieves the same with less ceremony.
+- Highly custom query params that aren't `--mode/--width/--height/--overlay/--label/--role`.
+
+Everything else: use agentcli. The wrapper's value isn't just terseness — it's auto-cleanup, error-body surfacing on failures, `--set` mutation, and shared workflow chains that would be 3-5 lines of bash each time.
 
 ## Two devservers
 
@@ -21,7 +60,22 @@ Runtime log signal, a plain-text dump of the active CAD document, and agent auto
 
 **Do not launch Chromium / Chrome yourself.** `AGENT=true` starts headless Chromium for the bridge.
 
-**Disk paths for saved images:** server-owned imagelog lives at `.agents/imagelog/`. When you save PNGs yourself (`curl -o`, composites, copies), write under `.agents/testimages/` — never loose under `.agents/` root.
+### Disk paths — **NEVER write to the repo root**
+
+**Hard rule:** never create files at the top level of the repo. No `mktemp` defaults, no `curl -o output.png`, no `cat > /Users/matt/galacticad/scene.yaml` — **nothing** lands at the repo root. If the natural default for a tool would put a file there, change the path.
+
+This is non-negotiable. Even "I'll delete it in a second" tmpfiles must use one of the locations below.
+
+| Purpose | Where to save | Notes |
+|---|---|---|
+| **Scratch** — intermediate YAML, debug dumps, generated payloads | `.agents/tmp/` | **Default for ad-hoc work.** Create with `mkdir -p .agents/tmp` if missing; wipe-safe. |
+| **Ad-hoc renders** — composites, manual `curl -o`, screenshots being analyzed | `.agents/testimages/` | `agentcli render` / `triangle` / `sweep` save here by default. |
+| **Formal test outputs / baseline PNGs** consumed by path | `.testresults/` | Long-lived references other commands compare against. |
+| **True ephemera** that doesn't need to live in the repo | `/tmp/…` | OS-managed; outside the repo entirely. |
+
+**Hands off:**
+- `.agents/imagelog/` — devserver-owned; the server writes here on successful renders. Read it, don't write to it.
+- `.agents/` itself (the directory, not its subdirectories) — holds skills and infrastructure. Always nest into one of the subdirectories above; never drop a loose file directly under `.agents/`.
 
 ## When to use
 
@@ -132,46 +186,113 @@ Inline testcase YAML (same schema as `/_agent/capture-testcase`) without writing
 
 ## Workflows
 
-### A — Single (headless only)
+All workflows are stated in terms of `agentcli` first. The underlying HTTP is documented in the sections above for reference; you almost never have to call it directly.
 
-1. `make start AGENT=true` if `.devserver.agent.run` missing; read `port`.
-2. Optional: `GET /_agent/capture-testcase` to snapshot the headless session.
-3. Render via `GET /_agent/render/testcase/…`, `POST /_agent/render/testcase-body`, or `POST /_agent/render`. Save with `curl -OJ` (uses `Content-Disposition`) or read `.agents/imagelog/`. Custom save paths → `.agents/testimages/`. Omit viewport overrides for faithful replay.
-4. Optional: `GET /_logs` on the same port.
-
-### B — Mirror interactive → agent
-
-When the human runs `make start` and you want the same scene + camera + viewport + `meshExport` + overlay flags rendered headlessly:
-
-1. `user_port=$(jq -r .port .devserver.run)` — if missing, you can't capture their session.
-2. Capture: `GET http://localhost:${user_port}/_agent/capture-testcase` (full snapshot). Use `/_sceneSource` only if you need text-only (no camera / export / overlays).
-3. `make start AGENT=true` if `.devserver.agent.run` absent; `agent_port=$(jq -r .port .devserver.agent.run)`.
-4. Render: pipe YAML to `POST .../_agent/render/testcase-body?mode=sdf|mesh`. For stats / diagnostics first, hit `/_logs` on `agent_port` and only open the PNG when the task needs pixels.
-5. Iterate: `/_refresh` on `agent_port` after code changes, then re-capture (if user changed the doc) or re-POST.
+### A — Render a saved testcase
 
 ```bash
-user_port=$(jq -r .port .devserver.run)
-agent_port=$(jq -r .port .devserver.agent.run)
-curl -sS "http://localhost:${user_port}/_agent/capture-testcase" \
-  | curl -sS -X POST "http://localhost:${agent_port}/_agent/render/testcase-body?mode=mesh" \
-    -H "Content-Type: application/x-yaml" --data-binary @- -OJ
-
-curl -sS "http://localhost:${agent_port}/_logs?module=MdcExport&level=debug"
+scripts/agentcli render meshing/mdc/twisted-l-500 --tag baseline --mode mesh
+# meshing/mdc/twisted-l-500  mesh  HTTP=200  bytes=…  saved=.agents/testimages/twisted-l-500-baseline-mesh.png
 ```
 
-**Each HTTP server has its own WebSocket client.** Dev Tools log-module checkboxes are per browser profile — `/_logs` `debug`/`info`/`warn` follows what's enabled in **that** tab (use `user_port` for the human's toggle mix, `agent_port` for the headless render itself).
+- The agent devserver auto-starts if not running.
+- Output lands under `.agents/testimages/` with a derived filename. Use `--out PATH` to override.
+- Add `--overlay glyphLine=1,cellVertices=1` for mesh overlays (mesh mode only).
+- Add `--set meshExport.mdcExportLevers.adaptiveEnabled=false` (repeatable) to flip knobs without editing the testcase YAML.
 
-### Standard check (`/_logs` and optional `/_sceneSource`)
+### B — Mirror the human's session to agent
 
-1. Read `port` from `.devserver.agent.run` (agents) or `.devserver.run` (interactive). If missing for agents, start once and retry; otherwise stop.
-2. `curl http://localhost:${port}/_logs` with no `level`/`only` (default info threshold — errors, warnings, info; no debug spam).
-3. Optional: `curl -sS "http://localhost:${port}/_sceneSource"`. Empty body → confirm a tab is open on this devserver and a document tab is active.
-4. Add `/_logs` query params only when you have a reason; if results are empty/narrow, **broaden** before concluding no signal.
-5. Report relevant lines; note empty body explicitly.
+When the human is iterating in their browser and you want to replay their exact scene + camera + meshExport + overlay flags headlessly:
+
+```bash
+scripts/agentcli mirror --tag mirrored --mode mesh
+# captures from interactive devserver, refreshes agent, renders on agent
+```
+
+- Auto-captures `/_agent/capture-testcase` from the interactive port, refreshes the agent tab, then POSTs to `/_agent/render/testcase-body` on the agent port.
+- Pass `--set k.path=value` to override captured fields before rendering (e.g. `--set meshExport.mdcExportLevers.adaptiveEnabled=false`).
+- Pass `--keep-yaml /tmp/x.yaml` to save the captured (post-`--set`) YAML for later re-runs without re-capturing.
+- Fails with HTTP 503 if the human's browser tab is disconnected — open the app in the human's browser first.
+
+If you only need the captured YAML (no render): `agentcli capture --output /tmp/snap.yaml`.
+
+### C — Inner loop: edit code → re-render → check against baseline
+
+After every shader/host edit, the agent tab needs `/_refresh` before the next render uses the new code. `iterate` does that for you:
+
+```bash
+scripts/agentcli iterate meshing/mdc/twisted-l-500 \
+    --against .agents/testimages/twisted-l-500-baseline-mesh.png \
+    --fail-below 99 --tag head
+```
+
+- Refreshes agent tab → renders → SSIM-compares to the baseline → exits 1 if below threshold, 0 otherwise.
+- Drop `--against` for a refresh+render alone (no compare).
+- Works with `--yaml`/`--set`/`--overlay` like every other render-flavored command.
+
+### D — A/B knob comparison
+
+Render the same scene twice with different overrides and compare automatically:
+
+```bash
+scripts/agentcli ab meshing/mdc/twisted-l-500 \
+    --a-set meshExport.mdcExportLevers.adaptiveEnabled=true  --a-tag adapt-on \
+    --b-set meshExport.mdcExportLevers.adaptiveEnabled=false --b-tag adapt-off
+# saves both PNGs (tagged), prints SSIM + diff PNG path
+```
+
+- Both variants share the same `--width/--height/--overlay/--mode`; only the `--a-set` / `--b-set` overrides differ.
+- For stdin: `cat scene.yaml | agentcli ab --yaml - --a-set ... --b-set ...` (caches stdin once so both renders use the same source).
+
+### E — Inline YAML render (one-off scenes)
+
+For scenes that don't live in `test/testcases/` (regression repros, generated YAML, stdin pipes):
+
+```bash
+scripts/agentcli render --yaml /tmp/repro.yaml --tag repro
+cat scene.yaml | scripts/agentcli render --yaml - --tag from-stdin
+```
+
+POSTs to `/_agent/render/testcase-body`. The summary line uses `inline` as the stem when reading stdin.
+
+### F — Read logs + scene source
+
+```bash
+scripts/agentcli logs                      # default: info threshold from the agent tab
+scripts/agentcli logs --module MdcExport   # filter (must be enabled in DevTools for that tab)
+scripts/agentcli logs --level debug --n 200
+```
+
+- Empty output → no matches OR the requested module/level isn't enabled in that browser tab's DevTools. Broaden the filter before concluding "no signal".
+- Dev Tools log-module checkboxes are per browser profile. `/_logs` `debug`/`info`/`warn` reflects what's enabled in **that** tab — use the interactive port (`curl …/_logs`) for the human's mix, the agent port (`agentcli logs`) for the headless render itself.
+
+For raw scene text (no camera / export / overlays), no agentcli wrapper exists — drop to curl:
+```bash
+user_port=$(jq -r .port .devserver.run)
+curl -sS "http://localhost:${user_port}/_sceneSource"
+```
 
 ---
 
+## Guidelines
+
+1. **Reach for `scripts/agentcli` first.** It wraps every endpoint with structured error handling, tmpfile cleanup, the `--set` mutation syntax, and chained workflows. If you find yourself writing `curl ... /_agent/...`, check `agentcli --help` first — the wrapper almost certainly already does what you want with one line instead of three.
+
+2. **Don't chain raw curl calls when a single wrapper command exists.** Don't write `curl /_refresh && curl /_agent/render/... && agentcli compare` when `agentcli iterate --against` does the same thing with proper exit codes and error propagation.
+
+3. **Use `--set` instead of `sed`/`cp` for YAML mutation.** The `--set meshExport.mdcExportLevers.adaptiveEnabled=false` flow handles type coercion (`true`/`false`/numbers/`null`), creates missing intermediate keys, and lives at the right nesting level. Sed-based YAML editing on top-level keys is a footgun (creates duplicate keys instead of mutating the nested one).
+
+4. **Always use the agent port for renders / logs after edits.** The interactive devserver runs the human's session — `agentcli mirror` reads from it but writes nowhere. Render workflows live entirely on the agent port (which auto-starts).
+
+5. **Pair SSIM with pixel diff and the diff PNG.** `agentcli compare` reports all three; never quote a single number when judging visual change. See the `sdf-mesh-diff` skill.
+
+6. **Don't auto-start the interactive devserver.** It belongs to the human. If `agentcli capture` reports the interactive devserver isn't running, ask the human to `make start` (or capture from the agent if you really need the headless tab's state).
+
+7. **Never write to the repo root.** Not even tmpfiles. Use `.agents/tmp/` for scratch (default), `.agents/testimages/` for renders, `.testresults/` for baselines, or `/tmp/` for true ephemera. See the disk-paths table at the top of this skill.
+
+8. **`make build` / `make test` follow project rules; do not use `npm` / `npx` / `node` directly for builds.**
+
 ## Notes
 
-- `make build` / `make test` follow project rules; do not use `npm` / `npx` / `node` directly for builds.
 - Cross-reference: **AGENTS.md** (devserver overview, log query parameters, agent automation summary).
+- agentcli source: [scripts/agentcli](scripts/agentcli). All subcommands have `--help` with full option lists.

@@ -1,5 +1,5 @@
-import { BehaviorSubject, skip } from "rxjs"
-import type { Subscription } from "rxjs"
+import { BehaviorSubject, type Subscription } from "rxjs"
+import { skip } from "rxjs/operators"
 import { SettingsManager } from "../storage/settings.mjs"
 import {
     DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM,
@@ -32,6 +32,10 @@ const MDC_RANGE_KNOBS: {
     { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1 },
 ]
 
+const VOXEL_SLIDER_MIN = 0.02
+const VOXEL_SLIDER_MAX = 1.0
+const VOXEL_SLIDER_STEP = 0.01
+
 function formatVoxelSize(mm: number): string {
     if (mm < 0.1) return mm.toFixed(3)
     return mm.toFixed(2)
@@ -48,6 +52,7 @@ function formatShrecValue(key: keyof ShrecTuning, v: number | boolean): string {
         const deg = (Math.acos(Math.max(-1, Math.min(1, v))) * 180) / Math.PI
         return `${deg.toFixed(0)}°`
     }
+    if (key === "voxelSizeMm") return formatVoxelSize(v)
     return v.toFixed(2)
 }
 
@@ -73,13 +78,38 @@ function addCheckbox(parent: ParentNode, label: string, checked: boolean): HTMLI
     return cb
 }
 
-/**
- * Voxel size, MDC mesh export levers, and standalone renormalize-triangles toggle
- * (`SimplifyTuning.renormalizeTriangles`, persisted on `GlobalSettings.app`).
- */
-export class DevToolsMeshExportCoreSection extends HTMLElement {
+function addVoxelSliderRow(
+    parent: ParentNode,
+    initial: number,
+    onInput: (v: number) => void,
+): { range: HTMLInputElement; valueEl: HTMLSpanElement } {
+    const row = document.createElement("div")
+    row.className = "shade-row"
+    const lab = document.createElement("label")
+    lab.className = "knob-label"
+    lab.textContent = "Voxel (mm)"
+    const range = document.createElement("input")
+    range.type = "range"
+    range.min = String(VOXEL_SLIDER_MIN)
+    range.max = String(VOXEL_SLIDER_MAX)
+    range.step = String(VOXEL_SLIDER_STEP)
+    range.value = String(initial)
+    const valueEl = document.createElement("span")
+    valueEl.className = "shade-val"
+    valueEl.textContent = formatVoxelSize(initial)
+    range.addEventListener("input", () => {
+        const v = parseFloat(range.value)
+        valueEl.textContent = formatVoxelSize(v)
+        onInput(v)
+    })
+    row.append(lab, range, valueEl)
+    parent.appendChild(row)
+    return { range, valueEl }
+}
+
+/** MDC mesh export: voxel size + iso/crease/feature-constrained levers (persisted on `mdcExportLevers`). */
+export class DevToolsMdcExportSection extends HTMLElement {
     #settings = SettingsManager.instance
-    #voxelSizeMm$: BehaviorSubject<number>
     #voxelSizeRange: HTMLInputElement
     #voxelSizeValueEl: HTMLSpanElement
     #mdcRows = new Map<
@@ -87,7 +117,7 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         { range: HTMLInputElement; valueEl: HTMLSpanElement }
     >()
     #mdcFeatureConstrainedPlacementCheckbox: HTMLInputElement
-    #renormalizeTrianglesCheckbox: HTMLInputElement
+    #voxelSizeMm$: BehaviorSubject<number>
     #meshExporter$: BehaviorSubject<ExporterKind>
     #exporterRadios: Record<ExporterKind, HTMLInputElement> = {} as Record<ExporterKind, HTMLInputElement>
     #isoCollapse: HTMLElement
@@ -106,12 +136,12 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
     #isoOversampleQefValueEl: HTMLSpanElement
     #subscriptions: Subscription[] = []
 
-    onVoxelSizeMmChange?: (mm: number) => void
     onMdcExportLeversChange?: () => void
     /** Fired when renormalize toggle changes (full `SimplifyTuning` after merge). */
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMeshExporterChange?: (exporter: ExporterKind) => void
     onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
+    onVoxelSizeMmChange?: (mm: number) => void
 
     get voxelSizeMm(): number {
         return this.#voxelSizeMm$.value
@@ -402,12 +432,20 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
         const mdcCollapse = document.createElement("dev-tools-collapse")
         mdcCollapse.setAttribute("label", "MDC mesh export")
         mdcCollapse.setAttribute("nested", "")
-        mdcCollapse.setAttribute("collapse-id", DEVTOOLS_COLLAPSE.appMeshExportMdc)
+        mdcCollapse.setAttribute("collapse-id", DEVTOOLS_COLLAPSE.panelMeshExportMdc)
         shadow.appendChild(mdcCollapse)
 
         const mdcLevers = this.#settings.getMdcExportLevers()
+
+        const voxel = addVoxelSliderRow(shadow, mdcLevers.voxelSizeMm, v => {
+            this.#settings.updateGlobal({ app: { mdcExportLevers: { voxelSizeMm: v } } })
+            this.onMdcExportLeversChange?.()
+        })
+        this.#voxelSizeRange = voxel.range
+        this.#voxelSizeValueEl = voxel.valueEl
+
         this.#mdcFeatureConstrainedPlacementCheckbox = addCheckbox(
-            mdcCollapse,
+            shadow,
             "Feature-constrained vertices",
             mdcLevers.featureConstrainedPlacement
         )
@@ -447,7 +485,7 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
                 this.onMdcExportLeversChange?.()
             })
             row.append(lab, range, valueEl)
-            mdcCollapse.appendChild(row)
+            shadow.appendChild(row)
             this.#mdcRows.set(k.key, { range, valueEl })
         }
 
@@ -457,49 +495,22 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
             this.#settings.updateGlobal({
                 app: {
                     mdcExportLevers: {
+                        voxelSizeMm: DEFAULT_MDC_EXPORT_LEVERS.voxelSizeMm,
                         isoValue: DEFAULT_MDC_EXPORT_LEVERS.isoValue,
                         creaseAngleDeg: DEFAULT_MDC_EXPORT_LEVERS.creaseAngleDeg,
                         featureConstrainedPlacement: DEFAULT_MDC_EXPORT_LEVERS.featureConstrainedPlacement,
                     },
                 },
             })
-            const next = this.#settings.getGlobal().app.mdcExportLevers
-            this.#mdcFeatureConstrainedPlacementCheckbox.checked = next.featureConstrainedPlacement
-            for (const knob of MDC_RANGE_KNOBS) {
-                const row = this.#mdcRows.get(knob.key)
-                if (!row) continue
-                row.range.value = String(next[knob.key])
-                row.valueEl.textContent = formatMdcValue(knob.key, next[knob.key])
-            }
+            this.syncMdcLeversFromSettings(this.#settings.getMdcExportLevers())
             this.onMdcExportLeversChange?.()
         })
-        mdcCollapse.appendChild(mdcDefaults)
-
-        const st = g.simplifyTuning
-        this.#renormalizeTrianglesCheckbox = addCheckbox(
-            shadow,
-            "Renormalize triangles",
-            st.renormalizeTriangles
-        )
-        this.#renormalizeTrianglesCheckbox.addEventListener("change", () => {
-            const cur = this.#settings.getGlobal().app.simplifyTuning
-            const next: SimplifyTuning = { ...cur, renormalizeTriangles: this.#renormalizeTrianglesCheckbox.checked }
-            this.#settings.updateGlobal({ app: { simplifyTuning: next } })
-            this.onSimplifyTuningChange?.(next)
-        })
-    }
-
-    syncVoxelSizeMmFromSettings(mm: number): void {
-        this.#voxelSizeMm$.next(mm)
-        this.#voxelSizeRange.value = String(mm)
-        this.#voxelSizeValueEl.textContent = formatVoxelSize(mm)
-    }
-
-    syncRenormalizeFromSimplifyTuning(tuning: SimplifyTuning): void {
-        this.#renormalizeTrianglesCheckbox.checked = tuning.renormalizeTriangles
+        shadow.appendChild(mdcDefaults)
     }
 
     syncMdcLeversFromSettings(levers: MdcExportLevers): void {
+        this.#voxelSizeRange.value = String(levers.voxelSizeMm)
+        this.#voxelSizeValueEl.textContent = formatVoxelSize(levers.voxelSizeMm)
         this.#mdcFeatureConstrainedPlacementCheckbox.checked = levers.featureConstrainedPlacement
         for (const k of MDC_RANGE_KNOBS) {
             const row = this.#mdcRows.get(k.key)
@@ -548,8 +559,8 @@ export class DevToolsMeshExportCoreSection extends HTMLElement {
 }
 
 /**
- * Meshoptimizer / QEM simplification tuning (persisted in `SimplifyTuning`; renormalize lives on
- * {@link DevToolsMeshExportCoreSection}).
+ * Meshoptimizer / QEM simplification tuning, including the renormalize-triangles toggle
+ * (persisted on `SimplifyTuning`).
  */
 export class DevToolsMeshSimplifySection extends HTMLElement {
     #settings = SettingsManager.instance
@@ -561,12 +572,12 @@ export class DevToolsMeshSimplifySection extends HTMLElement {
     #simplifyNormalWeightRange: HTMLInputElement
     #simplifyNormalWeightValueEl: HTMLSpanElement
     #simplifyBoolCheckboxes: Map<SimplifyBoolKey, HTMLInputElement> = new Map()
+    #renormalizeTrianglesCheckbox: HTMLInputElement
 
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
 
     get simplifyTuning(): SimplifyTuning {
-        const r = this.#settings.getGlobal().app.simplifyTuning.renormalizeTriangles
-        return { ...this.#simplifyTuningState, renormalizeTriangles: r }
+        return { ...this.#simplifyTuningState }
     }
 
     constructor() {
@@ -682,11 +693,23 @@ export class DevToolsMeshSimplifySection extends HTMLElement {
             })
         }
 
+        this.#renormalizeTrianglesCheckbox = addCheckbox(
+            root,
+            "Renormalize triangles",
+            this.#simplifyTuningState.renormalizeTriangles
+        )
+        this.#renormalizeTrianglesCheckbox.addEventListener("change", () => {
+            this.#simplifyTuningState = {
+                ...this.#simplifyTuningState,
+                renormalizeTriangles: this.#renormalizeTrianglesCheckbox.checked,
+            }
+            this.#persistSimplifyTuning()
+        })
+
         const simplifyDefaults = document.createElement("button")
         simplifyDefaults.textContent = "Simplify defaults"
         simplifyDefaults.addEventListener("click", () => {
-            const keepRenorm = this.#settings.getGlobal().app.simplifyTuning.renormalizeTriangles
-            this.syncSimplifyTuningFromSettings({ ...DEFAULT_SIMPLIFY_TUNING, renormalizeTriangles: keepRenorm })
+            this.syncSimplifyTuningFromSettings({ ...DEFAULT_SIMPLIFY_TUNING })
             this.#persistSimplifyTuning()
         })
         root.appendChild(simplifyDefaults)
@@ -704,11 +727,11 @@ export class DevToolsMeshSimplifySection extends HTMLElement {
             const cb = this.#simplifyBoolCheckboxes.get(key)!
             cb.checked = tuning[key]
         }
+        this.#renormalizeTrianglesCheckbox.checked = tuning.renormalizeTriangles
     }
 
     #persistSimplifyTuning(): void {
-        const r = this.#settings.getGlobal().app.simplifyTuning.renormalizeTriangles
-        const next = { ...this.#simplifyTuningState, renormalizeTriangles: r }
+        const next = { ...this.#simplifyTuningState }
         this.#settings.updateGlobal({ app: { simplifyTuning: next } })
         this.onSimplifyTuningChange?.(next)
     }
@@ -718,6 +741,8 @@ export class DevToolsMeshSimplifySection extends HTMLElement {
 export class DevToolsShrecExportSection extends HTMLElement {
     #settings = SettingsManager.instance
     #shrecTuningState: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
+    #shrecVoxelSizeRange: HTMLInputElement
+    #shrecVoxelSizeValueEl: HTMLSpanElement
     #shrecMergeSharpCheckbox: HTMLInputElement
     #shrecRelCutoffRange: HTMLInputElement
     #shrecRelCutoffValueEl: HTMLSpanElement
@@ -755,6 +780,13 @@ export class DevToolsShrecExportSection extends HTMLElement {
         const root = document.createElement("div")
         root.className = "lighting-section"
         shadow.appendChild(root)
+
+        const voxel = addVoxelSliderRow(root, this.#shrecTuningState.voxelSizeMm, v => {
+            this.#shrecTuningState = { ...this.#shrecTuningState, voxelSizeMm: v }
+            this.#persistShrecTuning()
+        })
+        this.#shrecVoxelSizeRange = voxel.range
+        this.#shrecVoxelSizeValueEl = voxel.valueEl
 
         this.#shrecMergeSharpCheckbox = addCheckbox(root, "MergeSharp", this.#shrecTuningState.mergeSharpEnabled)
         this.#shrecMergeSharpCheckbox.addEventListener("change", () => {
@@ -964,6 +996,8 @@ export class DevToolsShrecExportSection extends HTMLElement {
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
         this.#shrecTuningState = { ...tuning }
+        this.#shrecVoxelSizeRange.value = String(tuning.voxelSizeMm)
+        this.#shrecVoxelSizeValueEl.textContent = formatVoxelSize(tuning.voxelSizeMm)
         this.#shrecMergeSharpCheckbox.checked = tuning.mergeSharpEnabled
         this.#shrecRelCutoffRange.value = String(tuning.mergeRelCutoff)
         this.#shrecRelCutoffValueEl.textContent = formatShrecValue("mergeRelCutoff", tuning.mergeRelCutoff)
@@ -994,13 +1028,13 @@ export class DevToolsShrecExportSection extends HTMLElement {
     }
 }
 
-customElements.define("dev-tools-mesh-export-core-section", DevToolsMeshExportCoreSection)
+customElements.define("dev-tools-mdc-export-section", DevToolsMdcExportSection)
 customElements.define("dev-tools-mesh-simplify-section", DevToolsMeshSimplifySection)
 customElements.define("dev-tools-shrec-export-section", DevToolsShrecExportSection)
 
 declare global {
     interface HTMLElementTagNameMap {
-        "dev-tools-mesh-export-core-section": DevToolsMeshExportCoreSection
+        "dev-tools-mdc-export-section": DevToolsMdcExportSection
         "dev-tools-mesh-simplify-section": DevToolsMeshSimplifySection
         "dev-tools-shrec-export-section": DevToolsShrecExportSection
     }

@@ -57,7 +57,7 @@ _start:
 	port=$$( [[ "$$AGENT" == true ]] && echo $${PORT:-7900} || echo $${PORT:-6900} )
 	PORT=$$port nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
 	i=0
-	while (( i < 20 )); do
+	while (( i < 60 )); do
 		if [[ -f "$(RUN_FILE)" ]]; then
 			port=$$(jq -r .port "$(RUN_FILE)")
 			echo ""

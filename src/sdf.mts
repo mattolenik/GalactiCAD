@@ -1736,6 +1736,7 @@ export class SDFRenderer {
         simplifyOnExport?: boolean
         exporter?: ExporterKind
         shrecTuning?: ShrecTuning
+        isoSimplicialTuning?: IsoSimplicialTuning
         simplifyTuning?: SimplifyTuning
         voxelSizeMm?: number
         mdcExportLevers?: MdcExportLevers
@@ -1750,8 +1751,9 @@ export class SDFRenderer {
         return {
             simplifyOnExport,
             voxelSizeMm: app.meshExportVoxelSizeMm,
-            exporter: app.useShrecExporter ? "shrec" : "mdc",
+            exporter: app.meshExporter,
             shrecTuning: app.shrecTuning,
+            isoSimplicialTuning: app.isoSimplicialTuning,
             simplifyTuning: app.simplifyTuning,
             mdcExportLevers: app.mdcExportLevers,
         }

@@ -1209,6 +1209,9 @@ class App {
         devTools.onMeshViewerChange = (enabled) => {
             this.#setMeshViewerEnabled(enabled)
         }
+        devTools.onMeshViewerOverlayChange = (settings) => {
+            this.#mesh?.applyMeshViewerSettings(settings)
+        }
 
         devTools.syncVoxelSizeMmFromSettings(this.#settings.getGlobal().app.meshExportVoxelSizeMm)
         devTools.syncMeshExporterFromSettings(this.#settings.getGlobal().app.meshExporter)
@@ -1229,7 +1232,6 @@ class App {
         devTools.onIsoSimplicialTuningChange = remeshIfMeshViewerOn
         devTools.onShrecTuningChange = remeshIfMeshViewerOn
         devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
-        devTools.onVoxelSizeMmChange = remeshIfMeshViewerOn
         devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getDebugLogModules())
@@ -1574,6 +1576,7 @@ class App {
     }
 
     #meshRenderOptionsForExport(devTools: DevToolsPanel) {
+        const mdcExportLevers = this.#settings.getMdcExportLevers()
         return {
             simplifyOnExport: devTools.meshSimplifyOnExport,
             voxelSizeMm: devTools.voxelSizeMm,
@@ -1581,7 +1584,7 @@ class App {
             shrecTuning: devTools.shrecTuning,
             isoSimplicialTuning: devTools.isoSimplicialTuning,
             simplifyTuning: devTools.simplifyTuning,
-            mdcExportLevers: this.#settings.getMdcExportLevers(),
+            mdcExportLevers,
         }
     }
 

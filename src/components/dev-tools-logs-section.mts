@@ -57,7 +57,7 @@ export class DevToolsLogsSection extends HTMLElement implements DevToolsPersista
         shadow.appendChild(debugLogGrid)
 
         for (const mod of DEBUG_LOG_MODULES) {
-            const cb = this.#addCheckbox(debugLogGrid, mod, false)
+            const cb = this.#addCheckbox(debugLogGrid, mod, true)
             this.#debugLogCheckboxes.set(mod, cb)
             cb.addEventListener("change", persist)
         }
@@ -77,7 +77,7 @@ export class DevToolsLogsSection extends HTMLElement implements DevToolsPersista
             const merged = mergeDebugLogModulesFromStorage(state)
             for (const mod of DEBUG_LOG_MODULES) {
                 const cb = this.#debugLogCheckboxes.get(mod)
-                if (cb) cb.checked = merged[mod] === true
+                if (cb) cb.checked = merged[mod] !== false
             }
         } finally {
             this.#applying = false

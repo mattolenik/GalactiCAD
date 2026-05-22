@@ -2,31 +2,39 @@
  * FeatureGraph → per-cell QEF Hermite plane injection (Phase IS-3/IS-4 of the
  * iso-simplicial × FG plan).
  *
- * The iso-simplicial exporter solves a QEF per octree cell to place the cell's
- * dual vertex. {@link injectCubeFgFeaturePlanes} adds extra Hermite planes
- * derived from the survival-aware FeatureGraph so the dual vertex is pulled
- * toward explicit primitive features (Box corners, crease dihedrals, …) rather
- * than approximated from SDF gradient samples alone.
+ * The iso-simplicial exporter solves a QEF per octree cell (one cube QEF, 12
+ * edge QEFs, 6 face QEFs) to place that cell's dual vertices. These functions
+ * add extra Hermite planes derived from the survival-aware FeatureGraph so the
+ * dual vertices are pulled toward explicit primitive features (Box corners,
+ * crease dihedrals, …) rather than approximated from SDF gradients alone.
  *
- * These are *soft* constraints: each plane is just another equation in the QEF
- * normal system. They compose additively with the GPU mid-feature planes the
- * existing `featurePlaneEnabled` path injects — neither replaces the other.
+ * The planes are *soft* constraints — each is just another equation in the QEF
+ * normal system; they compose additively with the GPU mid-feature planes the
+ * `featurePlaneEnabled` path injects.
+ *
+ * Two-step API:
+ *  1. {@link collectFgPlaneSources} — once per cell: gate the cell's queried
+ *     `FgCellFeatures`, dedup subdivided crease segments, and convert geometry
+ *     into a small list of {@link FgPlaneSource} (point + unit normals, in the
+ *     normalized cell frame).
+ *  2. {@link injectCubeFgFeaturePlanes} / {@link injectEdgeFgFeaturePlanes} /
+ *     {@link injectFaceFgFeaturePlanes} — feed those sources into the cube /
+ *     edge / face QEF respectively.
  *
  * Pure module — no octree / scene imports — so it runs unchanged on the main
  * thread and inside the QEF worker.
  *
  * Coordinate frames
  * -----------------
- * The cube QEF works in the root AABB's normalized `[0,1]³` frame. FG geometry
+ * The QEFs work in the root AABB's normalized `[0,1]³` frame. FG geometry
  * (`FgCellFeatures`) is world-space. Conversion: `pn = (p - rootMin) /
  * worldScale`. The root AABB is a cube, so the world→normalized map is a
- * uniform scale and unit normals stay unit (direction unchanged) — normals are
- * injected as-is.
+ * uniform scale and unit normals stay unit (direction unchanged).
  */
 
 import type { FgCellFeatures } from "../../feature-graph/feature-graph-cell-query.mjs"
 import { FG_CELL_NORMAL_BLOCK } from "../../feature-graph/feature-graph-cell-query.mjs"
-import { encodeFeaturePlane } from "./dual-vertex-qef.mjs"
+import { encodeEdgeFeaturePlane, encodeFaceFeaturePlane, encodeFeaturePlane } from "./dual-vertex-qef.mjs"
 import { qefAccumulatePlane } from "./qef-normal.mjs"
 
 /** World↔normalized conversion + distance-gate factor for FG plane injection. */
@@ -39,13 +47,34 @@ export interface FgPlaneInjectionContext {
     worldScale: number
     /**
      * Distance gate: skip an FG feature whose world-space distance to the cell
-     * AABB exceeds `distFactor * cellSize * worldScale`. Matches the existing
-     * GPU mid-feature `planeDistFactor` convention.
+     * AABB exceeds `distFactor * cellSize * worldScale`. Default 0 — inject a
+     * feature only into cells it passes through (a factor ≥ 1 pulls whole rings
+     * of flat-face cells onto feature edges, collapsing geometry).
      */
     distFactor: number
 }
 
-/** Euclidean distance from a point to an axis-aligned box (0 when inside). */
+/**
+ * One FG feature reduced to a QEF plane source: a point all the feature's
+ * Hermite planes pass through, plus its unit normals — already in the
+ * normalized cell frame. A corner contributes one source with up to 3 normals;
+ * a crease contributes one source with 2 normals (both its face normals).
+ */
+export interface FgPlaneSource {
+    /** Feature point, normalized `[0,1]³` root frame. */
+    px: number
+    py: number
+    pz: number
+    /** Number of unit normals (1..{@link FG_CELL_NORMAL_BLOCK}/3). */
+    normalCount: number
+    /** Flat unit normals, length `normalCount * 3`. */
+    normals: number[]
+}
+
+/** Minimum |n·axis| below which a projected feature plane imposes no useful constraint. */
+const FEATURE_PLANE_AXIS_EPS = 1e-4
+
+/** Euclidean distance from a point to an axis-aligned box (0 when inside / on the boundary). */
 export function pointAabbDistance(
     px: number, py: number, pz: number,
     minX: number, minY: number, minZ: number,
@@ -80,135 +109,11 @@ export function closestPointOnSegment(
     out[2] = az + ez * t
 }
 
-/**
- * Inject FG corner + crease Hermite planes into a cube QEF.
- *
- * - **Corner**: a 0D feature — emits one plane per source-face normal, all
- *   through the corner point. Their intersection is (approximately) the corner.
- * - **Crease**: a 1D feature — emits its two face planes. Each face plane
- *   contains the *entire* crease line (the crease is the planes' intersection),
- *   so the plane point may be any point on the segment; the closest point on
- *   the segment to the cell centre is used to keep encoded values bounded.
- *
- * Both are distance-gated against the cell's world AABB. The cell AABB is given
- * in the normalized `[0,1]³` frame; `ctx` carries the world conversion.
- *
- * @returns the number of planes accumulated.
- */
-export function injectCubeFgFeaturePlanes(
-    fg: FgCellFeatures,
-    ctx: FgPlaneInjectionContext,
-    cellMinX: number, cellMinY: number, cellMinZ: number,
-    cellMaxX: number, cellMaxY: number, cellMaxZ: number,
-    cellSize: number,
-    packed: Float64Array,
-    planeNorms4: [number, number, number, number][],
-    planePts4: [number, number, number, number][],
-): number {
-    if (fg.cornerCount === 0 && fg.creaseCount === 0) return 0
-
-    const ws = ctx.worldScale
-    const invWS = 1 / ws
-    const distThreshold = ctx.distFactor * cellSize * ws
-
-    // Cell AABB in world space.
-    const wMinX = ctx.rootMinX + cellMinX * ws
-    const wMinY = ctx.rootMinY + cellMinY * ws
-    const wMinZ = ctx.rootMinZ + cellMinZ * ws
-    const wMaxX = ctx.rootMinX + cellMaxX * ws
-    const wMaxY = ctx.rootMinY + cellMaxY * ws
-    const wMaxZ = ctx.rootMinZ + cellMaxZ * ws
-    const wCenterX = (wMinX + wMaxX) * 0.5
-    const wCenterY = (wMinY + wMaxY) * 0.5
-    const wCenterZ = (wMinZ + wMaxZ) * 0.5
-
-    let added = 0
-
-    const emit = (nx: number, ny: number, nz: number, pnx: number, pny: number, pnz: number): void => {
-        qefAccumulatePlane(encodeFeaturePlane(nx, ny, nz, pnx, pny, pnz), packed)
-        planeNorms4.push([nx, ny, nz, 0])
-        planePts4.push([pnx, pny, pnz, 0])
-        added++
-    }
-
-    // Corners.
-    for (let c = 0; c < fg.cornerCount; c++) {
-        const wx = fg.cornerPositions[c * 3 + 0]!
-        const wy = fg.cornerPositions[c * 3 + 1]!
-        const wz = fg.cornerPositions[c * 3 + 2]!
-        const d = pointAabbDistance(wx, wy, wz, wMinX, wMinY, wMinZ, wMaxX, wMaxY, wMaxZ)
-        if (d > distThreshold) continue
-        const pnx = (wx - ctx.rootMinX) * invWS
-        const pny = (wy - ctx.rootMinY) * invWS
-        const pnz = (wz - ctx.rootMinZ) * invWS
-        const nc = fg.cornerNormalCounts[c]!
-        const nBase = c * FG_CELL_NORMAL_BLOCK
-        for (let n = 0; n < nc; n++) {
-            emit(
-                fg.cornerNormals[nBase + n * 3 + 0]!,
-                fg.cornerNormals[nBase + n * 3 + 1]!,
-                fg.cornerNormals[nBase + n * 3 + 2]!,
-                pnx, pny, pnz,
-            )
-        }
-    }
-
-    // Creases.
-    //
-    // The FG subdivides every feature edge into short segments (≤ ½ voxel) for
-    // its SDF-survival pass. A cube cell overlaps a *variable* number of those
-    // segments, so emitting planes per-segment would weight one crease's
-    // constraint by its (per-cell-varying) segment count — adjacent cells get
-    // different weights and the dual vertices wobble → jagged feature edges.
-    //
-    // A crease is one feature *line* and must contribute its 2 face planes
-    // exactly once per cell. All segments of one original crease carry the same
-    // source-face normals (copied from endpoint A through subdivision), so we
-    // group segments by a quantized normal signature and emit one plane set per
-    // group, using the segment closest to the cell as the representative.
-    if (fg.creaseCount > 0) {
-        const cp: [number, number, number] = [0, 0, 0]
-        for (let e = 0; e < fg.creaseCount; e++) {
-            closestPointOnSegment(
-                wCenterX, wCenterY, wCenterZ,
-                fg.creaseSegments[e * 6 + 0]!, fg.creaseSegments[e * 6 + 1]!, fg.creaseSegments[e * 6 + 2]!,
-                fg.creaseSegments[e * 6 + 3]!, fg.creaseSegments[e * 6 + 4]!, fg.creaseSegments[e * 6 + 5]!,
-                cp,
-            )
-            const d = pointAabbDistance(cp[0], cp[1], cp[2], wMinX, wMinY, wMinZ, wMaxX, wMaxY, wMaxZ)
-            if (d > distThreshold) continue
-            const key = creaseNormalKey(fg, e)
-            const prev = creaseGroups.get(key)
-            if (prev === undefined || d < prev.dist) {
-                creaseGroups.set(key, { dist: d, index: e, cpx: cp[0], cpy: cp[1], cpz: cp[2] })
-            }
-        }
-        for (const g of creaseGroups.values()) {
-            const pnx = (g.cpx - ctx.rootMinX) * invWS
-            const pny = (g.cpy - ctx.rootMinY) * invWS
-            const pnz = (g.cpz - ctx.rootMinZ) * invWS
-            const nc = fg.creaseNormalCounts[g.index]!
-            const nBase = g.index * FG_CELL_NORMAL_BLOCK
-            for (let n = 0; n < nc; n++) {
-                emit(
-                    fg.creaseNormals[nBase + n * 3 + 0]!,
-                    fg.creaseNormals[nBase + n * 3 + 1]!,
-                    fg.creaseNormals[nBase + n * 3 + 2]!,
-                    pnx, pny, pnz,
-                )
-            }
-        }
-        creaseGroups.clear()
-    }
-
-    return added
-}
-
 /** Reusable crease-group accumulator — module-scoped to avoid a per-call Map alloc. */
 interface CreaseGroup {
     /** Distance from the cell to the closest segment of this crease. */
     dist: number
-    /** Representative crease (segment) index — its normals + closest point are used. */
+    /** Representative crease (segment) index. */
     index: number
     cpx: number
     cpy: number
@@ -232,4 +137,208 @@ function creaseNormalKey(fg: FgCellFeatures, e: number): string {
         key += `:${Math.round(fg.creaseNormals[nBase + i]! * CREASE_KEY_QUANT)}`
     }
     return key
+}
+
+/**
+ * Gate + dedup the cell's queried FG features into {@link FgPlaneSource}s.
+ * Call once per octree cell; feed the result to all of that cell's QEF
+ * injections (cube + 12 edges + 6 faces).
+ *
+ * - **Corners**: emitted if inside the gated cell AABB.
+ * - **Creases**: the FG subdivides each feature edge into many short segments;
+ *   emitting per-segment would over-weight the crease in proportion to its
+ *   (per-cell-varying) segment count → jagged feature edges. Segments are
+ *   grouped by a quantized source-face-normal signature so one original crease
+ *   contributes one source. Any point on a crease line lies in both its face
+ *   planes, so the representative point (closest segment to the cell centre)
+ *   does not affect the encoded planes.
+ *
+ * Cell AABB is given in the normalized `[0,1]³` frame; `ctx` carries the world
+ * conversion and the distance gate.
+ */
+export function collectFgPlaneSources(
+    fg: FgCellFeatures,
+    ctx: FgPlaneInjectionContext,
+    cellMinX: number, cellMinY: number, cellMinZ: number,
+    cellMaxX: number, cellMaxY: number, cellMaxZ: number,
+    cellSize: number,
+): FgPlaneSource[] {
+    const out: FgPlaneSource[] = []
+    if (fg.cornerCount === 0 && fg.creaseCount === 0) return out
+
+    const ws = ctx.worldScale
+    const invWS = 1 / ws
+    const distThreshold = ctx.distFactor * cellSize * ws
+
+    const wMinX = ctx.rootMinX + cellMinX * ws
+    const wMinY = ctx.rootMinY + cellMinY * ws
+    const wMinZ = ctx.rootMinZ + cellMinZ * ws
+    const wMaxX = ctx.rootMinX + cellMaxX * ws
+    const wMaxY = ctx.rootMinY + cellMaxY * ws
+    const wMaxZ = ctx.rootMinZ + cellMaxZ * ws
+
+    // Corners.
+    for (let c = 0; c < fg.cornerCount; c++) {
+        const wx = fg.cornerPositions[c * 3 + 0]!
+        const wy = fg.cornerPositions[c * 3 + 1]!
+        const wz = fg.cornerPositions[c * 3 + 2]!
+        if (pointAabbDistance(wx, wy, wz, wMinX, wMinY, wMinZ, wMaxX, wMaxY, wMaxZ) > distThreshold) continue
+        const nc = fg.cornerNormalCounts[c]!
+        const nBase = c * FG_CELL_NORMAL_BLOCK
+        const normals: number[] = []
+        for (let i = 0; i < nc * 3; i++) normals.push(fg.cornerNormals[nBase + i]!)
+        out.push({
+            px: (wx - ctx.rootMinX) * invWS,
+            py: (wy - ctx.rootMinY) * invWS,
+            pz: (wz - ctx.rootMinZ) * invWS,
+            normalCount: nc,
+            normals,
+        })
+    }
+
+    // Creases — grouped so subdivided segments of one crease emit one source.
+    if (fg.creaseCount > 0) {
+        const wCenterX = (wMinX + wMaxX) * 0.5
+        const wCenterY = (wMinY + wMaxY) * 0.5
+        const wCenterZ = (wMinZ + wMaxZ) * 0.5
+        const cp: [number, number, number] = [0, 0, 0]
+        for (let e = 0; e < fg.creaseCount; e++) {
+            closestPointOnSegment(
+                wCenterX, wCenterY, wCenterZ,
+                fg.creaseSegments[e * 6 + 0]!, fg.creaseSegments[e * 6 + 1]!, fg.creaseSegments[e * 6 + 2]!,
+                fg.creaseSegments[e * 6 + 3]!, fg.creaseSegments[e * 6 + 4]!, fg.creaseSegments[e * 6 + 5]!,
+                cp,
+            )
+            const d = pointAabbDistance(cp[0], cp[1], cp[2], wMinX, wMinY, wMinZ, wMaxX, wMaxY, wMaxZ)
+            if (d > distThreshold) continue
+            const key = creaseNormalKey(fg, e)
+            const prev = creaseGroups.get(key)
+            if (prev === undefined || d < prev.dist) {
+                creaseGroups.set(key, { dist: d, index: e, cpx: cp[0], cpy: cp[1], cpz: cp[2] })
+            }
+        }
+        for (const g of creaseGroups.values()) {
+            const nc = fg.creaseNormalCounts[g.index]!
+            const nBase = g.index * FG_CELL_NORMAL_BLOCK
+            const normals: number[] = []
+            for (let i = 0; i < nc * 3; i++) normals.push(fg.creaseNormals[nBase + i]!)
+            out.push({
+                px: (g.cpx - ctx.rootMinX) * invWS,
+                py: (g.cpy - ctx.rootMinY) * invWS,
+                pz: (g.cpz - ctx.rootMinZ) * invWS,
+                normalCount: nc,
+                normals,
+            })
+        }
+        creaseGroups.clear()
+    }
+
+    return out
+}
+
+/** Normal component along axis `a` (0=x, 1=y, 2=z). */
+function comp(normals: number[], base: number, a: 0 | 1 | 2): number {
+    return normals[base + a]!
+}
+
+/**
+ * Inject FG feature planes into a **cube** QEF (3D, unconstrained). Each source
+ * contributes one pure-3D Hermite plane per normal, all through the source
+ * point. `sources` come from {@link collectFgPlaneSources}.
+ *
+ * @returns the number of planes accumulated.
+ */
+export function injectCubeFgFeaturePlanes(
+    sources: readonly FgPlaneSource[],
+    packed: Float64Array,
+    planeNorms4: [number, number, number, number][],
+    planePts4: [number, number, number, number][],
+): number {
+    let added = 0
+    for (const s of sources) {
+        for (let k = 0; k < s.normalCount; k++) {
+            const b = k * 3
+            const nx = s.normals[b]!, ny = s.normals[b + 1]!, nz = s.normals[b + 2]!
+            qefAccumulatePlane(encodeFeaturePlane(nx, ny, nz, s.px, s.py, s.pz), packed)
+            planeNorms4.push([nx, ny, nz, 0])
+            planePts4.push([s.px, s.py, s.pz, 0])
+            added++
+        }
+    }
+    return added
+}
+
+/**
+ * Inject FG feature planes into an **edge** QEF (1D, constrained to cell-edge
+ * axis `xi`, fixed at `(yEdge, zEdge)` on the other two axes). Each normal is
+ * projected to the axis-only equation `n[xi] · (xi − xiHit) = 0`, where `xiHit`
+ * is where the feature plane crosses the edge line. Normals nearly parallel to
+ * the edge (small `|n[xi]|`) impose no constraint and are skipped.
+ *
+ * @returns the number of planes accumulated.
+ */
+export function injectEdgeFgFeaturePlanes(
+    sources: readonly FgPlaneSource[],
+    xi: 0 | 1 | 2, yi: 0 | 1 | 2, zi: 0 | 1 | 2,
+    yEdge: number, zEdge: number,
+    packed: Float64Array,
+    planeNorms2: [number, number][],
+    planePts2: [number, number][],
+): number {
+    let added = 0
+    for (const s of sources) {
+        const point = [s.px, s.py, s.pz] as const
+        for (let k = 0; k < s.normalCount; k++) {
+            const b = k * 3
+            const nAxis = comp(s.normals, b, xi)
+            if (Math.abs(nAxis) < FEATURE_PLANE_AXIS_EPS) continue
+            const nOff1 = comp(s.normals, b, yi)
+            const nOff2 = comp(s.normals, b, zi)
+            const xiHit = point[xi]! - (nOff1 * (yEdge - point[yi]!) + nOff2 * (zEdge - point[zi]!)) / nAxis
+            qefAccumulatePlane(encodeEdgeFeaturePlane(nAxis, xiHit), packed)
+            planeNorms2.push([nAxis, 0])
+            planePts2.push([xiHit, 0])
+            added++
+        }
+    }
+    return added
+}
+
+/**
+ * Inject FG feature planes into a **face** QEF (2D, constrained to the cell
+ * face `zi = zFace`, varying in `(xi, yi)`). Each normal is projected to the
+ * 2D equation `n[xi]·xi + n[yi]·yi = const` describing where the feature plane
+ * meets the face. Normals nearly parallel to the face plane (small
+ * `n[xi]² + n[yi]²`) impose no constraint and are skipped.
+ *
+ * @returns the number of planes accumulated.
+ */
+export function injectFaceFgFeaturePlanes(
+    sources: readonly FgPlaneSource[],
+    xi: 0 | 1 | 2, yi: 0 | 1 | 2, zi: 0 | 1 | 2,
+    zFace: number,
+    packed: Float64Array,
+    planeNorms3: [number, number, number][],
+    planePts3: [number, number, number][],
+): number {
+    let added = 0
+    for (const s of sources) {
+        const point = [s.px, s.py, s.pz] as const
+        for (let k = 0; k < s.normalCount; k++) {
+            const b = k * 3
+            const nAxisX = comp(s.normals, b, xi)
+            const nAxisY = comp(s.normals, b, yi)
+            const nAxisZ = comp(s.normals, b, zi)
+            const denom = nAxisX * nAxisX + nAxisY * nAxisY
+            if (denom < FEATURE_PLANE_AXIS_EPS * FEATURE_PLANE_AXIS_EPS) continue
+            const t = (-nAxisZ * (zFace - point[zi]!)) / denom
+            const pXi = point[xi]! + nAxisX * t
+            const pYi = point[yi]! + nAxisY * t
+            qefAccumulatePlane(encodeFaceFeaturePlane(nAxisX, nAxisY, pXi, pYi), packed)
+            planeNorms3.push([nAxisX, nAxisY, 0])
+            planePts3.push([pXi, pYi, 0])
+            added++
+        }
+    }
+    return added
 }

@@ -20,6 +20,7 @@
 import { installWorkerDevLogBridge } from "../../logging/debug-log.mjs"
 import { computeNodeQefResults, type CubeFeaturePlaneOptions } from "./iso-octree.mjs"
 import { ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE } from "./iso-sample-batch.mjs"
+import { unpackFgPlaneSourcesForCell } from "./iso-fg-shared-buffer.mjs"
 
 installWorkerDevLogBridge("iso-qef-worker")
 
@@ -52,6 +53,10 @@ export interface QefWorkerRequest {
     rootMinY?: number
     rootMinZ?: number
     worldScale?: number
+    /** Optional FeatureGraph plane-source sidecar — see `iso-fg-shared-buffer.mts`. */
+    sharedFgData?: SharedArrayBuffer
+    sharedFgOffsets?: SharedArrayBuffer
+    fgStrideFloats?: number
 }
 
 export interface QefWorkerResponse {
@@ -79,6 +84,14 @@ function handle(req: QefWorkerRequest): void {
     const rootMinZ = req.rootMinZ ?? 0
     const worldScale = req.worldScale ?? 1
 
+    // FeatureGraph plane-source sidecar — collected + gated on the main thread,
+    // so the worker only decodes its slice. Absent ⇒ FG injection off.
+    const fgDataView: Float32Array | undefined =
+        req.sharedFgData ? new Float32Array(req.sharedFgData) : undefined
+    const fgOffsetsView: Uint32Array | undefined =
+        req.sharedFgOffsets ? new Uint32Array(req.sharedFgOffsets) : undefined
+    const fgStrideFloats = req.fgStrideFloats ?? 0
+
     for (let i = req.startIdx; i < req.endIdx; i++) {
         const vertsSlice = verts.subarray(i * VERTS_STRIDE, (i + 1) * VERTS_STRIDE)
         const normPtsSlice = normPts.subarray(i * PHASE1_STRIDE, (i + 1) * PHASE1_STRIDE)
@@ -102,6 +115,10 @@ function handle(req: QefWorkerRequest): void {
                 worldScale,
             }
         }
+        const fgSources =
+            fgDataView && fgOffsetsView
+                ? unpackFgPlaneSourcesForCell(fgDataView, fgOffsetsView, i, fgStrideFloats)
+                : undefined
         const r = computeNodeQefResults(
             vertsSlice,
             scratch,
@@ -110,6 +127,7 @@ function handle(req: QefWorkerRequest): void {
             req.dualVertexBorderFraction,
             req.invWorldScale,
             cubeFeatureOpts,
+            fgSources,
         )
         const o = i * QEF_OUT_STRIDE
         out[o] = r.nodePos[0]!

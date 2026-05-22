@@ -32,9 +32,14 @@ import {
     type FgCellFeatures,
 } from "../../feature-graph/feature-graph-cell-query.mjs"
 import {
+    collectFgPlaneSources,
     injectCubeFgFeaturePlanes,
+    injectEdgeFgFeaturePlanes,
+    injectFaceFgFeaturePlanes,
     type FgPlaneInjectionContext,
+    type FgPlaneSource,
 } from "./iso-fg-feature-planes.mjs"
+import { packFgPlaneSources } from "./iso-fg-shared-buffer.mjs"
 
 /** One `vec4f` per logical slot: corners 8, edges 12, faces 6, cell body 1. */
 export interface IsoOctreeNode {
@@ -166,6 +171,14 @@ export interface QefWorkerPoolLike {
         rootMinY?: number
         rootMinZ?: number
         worldScale?: number
+        /**
+         * Optional FeatureGraph plane-source sidecar. `sharedFgData` is a packed
+         * `Float32Array` of per-cell {@link FgPlaneSource} records; `sharedFgOffsets`
+         * a `Uint32Array(N+1)` prefix sum; `fgStrideFloats` the per-batch record stride.
+         */
+        sharedFgData?: SharedArrayBuffer
+        sharedFgOffsets?: SharedArrayBuffer
+        fgStrideFloats?: number
     }): Promise<void>
 }
 
@@ -466,6 +479,7 @@ export function computeNodeQefResults(
     dualVertexBorderFraction: number,
     invWorldScale: number,
     cubeFeatureOpts?: CubeFeaturePlaneOptions,
+    fgSources?: readonly FgPlaneSource[],
 ): { qefError: number; nodePos: Float32Array; edges: Float32Array; faces: Float32Array; reEvalNorm: Float32Array } {
     void oversampleQef
     const v0: [number, number, number, number] = [verts[0]!, verts[1]!, verts[2]!, verts[3]!]
@@ -497,6 +511,9 @@ export function computeNodeQefResults(
         }
         if (cubeFeatureOpts) {
             injectCubeFeaturePlanes(cubeFeatureOpts, cellSize, packed, planeNorms4, planePts4)
+        }
+        if (fgSources && fgSources.length > 0) {
+            injectCubeFgFeaturePlanes(fgSources, packed, planeNorms4, planePts4)
         }
         const { position, qefError: nodeQef } = computeDualVertexCube({
             cellMin, cellMax, qefPacked: packed, planeNorms4, planePts4,
@@ -536,6 +553,9 @@ export function computeNodeQefResults(
         }
         if (cubeFeatureOpts) {
             injectEdgeFeaturePlanes(cubeFeatureOpts, e, xi, yi, zi, ec0[yi]!, ec0[zi]!, cellSize, packed, planeNorms2, planePts2)
+        }
+        if (fgSources && fgSources.length > 0) {
+            injectEdgeFgFeaturePlanes(fgSources, xi, yi, zi, ec0[yi]!, ec0[zi]!, packed, planeNorms2, planePts2)
         }
         const { position, qefError: edgeQef } = computeDualVertexEdge({
             xi, yi, zi, c0: ec0, c1: ec1, qefPacked: packed, planeNorms2, planePts2,
@@ -577,6 +597,9 @@ export function computeNodeQefResults(
         if (cubeFeatureOpts) {
             injectFaceFeaturePlanes(cubeFeatureOpts, f, xi, yi, zi, fc0[zi]!, cellSize, packed, planeNorms3, planePts3)
         }
+        if (fgSources && fgSources.length > 0) {
+            injectFaceFgFeaturePlanes(fgSources, xi, yi, zi, fc0[zi]!, packed, planeNorms3, planePts3)
+        }
         const { position, qefError: faceQef } = computeDualVertexFace({
             c0: fc0, c2: fc2, xi, yi, zi, qefPacked: packed, planeNorms3, planePts3,
             cellSizeForBorder: cellSize, borderFraction: dualVertexBorderFraction,
@@ -606,7 +629,7 @@ function phase1SdfToReEvalNorm(
     C: IsoOctreeRuntimeConstants,
     invWorldScale: number,
     cubeFeatureOpts?: CubeFeaturePlaneOptions,
-    fgCubeOpts?: FgCubeFeatureOpts,
+    fgSources?: readonly FgPlaneSource[],
 ): { qefError: number; reEvalNorm: Float32Array } {
     const v0 = readV4(node.verts, 0)
     const v7 = readV4(node.verts, 7)
@@ -635,12 +658,8 @@ function phase1SdfToReEvalNorm(
         if (cubeFeatureOpts) {
             injectCubeFeaturePlanes(cubeFeatureOpts, cellSize, packed, planeNorms4, planePts4)
         }
-        if (fgCubeOpts) {
-            injectCubeFgFeaturePlanes(
-                fgCubeOpts.features, fgCubeOpts.ctx,
-                cellMin[0], cellMin[1], cellMin[2], cellMax[0], cellMax[1], cellMax[2],
-                cellSize, packed, planeNorms4, planePts4,
-            )
+        if (fgSources && fgSources.length > 0) {
+            injectCubeFgFeaturePlanes(fgSources, packed, planeNorms4, planePts4)
         }
         const { position, qefError: nodeQef } = computeDualVertexCube({
             cellMin, cellMax, qefPacked: packed, planeNorms4, planePts4,
@@ -681,6 +700,9 @@ function phase1SdfToReEvalNorm(
         if (cubeFeatureOpts) {
             injectEdgeFeaturePlanes(cubeFeatureOpts, e, xi, yi, zi, ec0[yi]!, ec0[zi]!, cellSize, packed, planeNorms2, planePts2)
         }
+        if (fgSources && fgSources.length > 0) {
+            injectEdgeFgFeaturePlanes(fgSources, xi, yi, zi, ec0[yi]!, ec0[zi]!, packed, planeNorms2, planePts2)
+        }
         const { position, qefError: edgeQef } = computeDualVertexEdge({
             xi, yi, zi, c0: ec0, c1: ec1, qefPacked: packed, planeNorms2, planePts2,
             cellSizeForBorder: cellSize, borderFraction: C.dualVertexBorderFraction,
@@ -717,6 +739,9 @@ function phase1SdfToReEvalNorm(
         }
         if (cubeFeatureOpts) {
             injectFaceFeaturePlanes(cubeFeatureOpts, f, xi, yi, zi, fc0[zi]!, cellSize, packed, planeNorms3, planePts3)
+        }
+        if (fgSources && fgSources.length > 0) {
+            injectFaceFgFeaturePlanes(fgSources, xi, yi, zi, fc0[zi]!, packed, planeNorms3, planePts3)
         }
         const { position, qefError: faceQef } = computeDualVertexFace({
             c0: fc0, c2: fc2, xi, yi, zi, qefPacked: packed, planeNorms3, planePts3,
@@ -776,11 +801,7 @@ export class IsoOctree {
         // midSdf + optional nearFeature) regardless of how wide the tree is at that depth,
         // collapsing the original recursive structure's per-cell round-trip cost.
         const tWall0 = nowMs()
-        // Phase IS-3 temporary: FG-plane injection runs inline only — the worker
-        // pool doesn't yet carry the per-cell FG sidecar buffer. Force inline QEF
-        // whenever FG planes are enabled. Removed in Phase IS-5.
-        const qefWorkerPool = featureRefine.fgPlaneEnabled === true ? undefined : params.qefWorkerPool
-        await buildOctreeBFS(root, rootMin, rootMax, worldScale, C, sample, signal, counter, featureRefine, perf, qefWorkerPool)
+        await buildOctreeBFS(root, rootMin, rootMax, worldScale, C, sample, signal, counter, featureRefine, perf, params.qefWorkerPool)
         perf.totalWallMs = nowMs() - tWall0
 
         return new IsoOctree(root, counter.n, perf)
@@ -896,18 +917,6 @@ export interface CubeFeaturePlaneOptions {
     rootMinZ: number
     /** Root AABB edge length (world units); convert via `(p - rootMin) / worldScale`. */
     worldScale: number
-}
-
-/**
- * Per-cell FeatureGraph planes for the cube QEF. Carries the cell's queried
- * {@link FgCellFeatures} (corners + creases, world space) plus the world↔
- * normalized conversion context. When passed to {@link phase1SdfToReEvalNorm}
- * / {@link computeNodeQefResults}, FG-derived Hermite planes are injected into
- * the cube QEF alongside the SDF and GPU-mid-feature planes.
- */
-export interface FgCubeFeatureOpts {
-    features: FgCellFeatures
-    ctx: FgPlaneInjectionContext
 }
 
 /**
@@ -1285,6 +1294,46 @@ async function buildOctreeBFS(
         const tQef0 = nowMs()
         const qefErrors = new Float64Array(N)
         const reNorms: Float32Array[] = new Array(N)
+
+        // FeatureGraph plane sources — collected once per cell on this thread
+        // (the distance gate + crease dedup run here, not per QEF path). Both
+        // the inline and the worker QEF paths consume the result; the worker
+        // path packs it into the shared FG sidecar. `null` ⇒ FG injection off.
+        const fgOn =
+            featureRefine.fgPlaneEnabled === true &&
+            featureRefine.featureGraphCpu !== undefined &&
+            featureRefine.featureGraphWorldPositions !== undefined &&
+            featureRefine.featureGraphSpatialIndex !== undefined
+        let perCellFgSources: (readonly FgPlaneSource[])[] | null = null
+        if (fgOn) {
+            const fgDistFactor = featureRefine.fgPlaneDistFactor ?? 0
+            const fgCtx: FgPlaneInjectionContext = {
+                rootMinX: rootMin[0], rootMinY: rootMin[1], rootMinZ: rootMin[2],
+                worldScale, distFactor: fgDistFactor,
+            }
+            perCellFgSources = new Array(N)
+            for (let i = 0; i < N; i++) {
+                const verts = frontier[i]!.node.verts
+                const cMinX = verts[0]!, cMinY = verts[1]!, cMinZ = verts[2]!
+                const cMaxX = verts[7 * 4]!, cMaxY = verts[7 * 4 + 1]!, cMaxZ = verts[7 * 4 + 2]!
+                const cellSizeNorm = cMaxX - cMinX
+                // Cell normalized AABB → world AABB; query the FG padded by the
+                // gate distance so the per-feature gate in collect has headroom.
+                const pad = fgDistFactor * cellSizeNorm * worldScale
+                const features = queryFeatureGraphForCell(
+                    featureRefine.featureGraphSpatialIndex!,
+                    featureRefine.featureGraphCpu!,
+                    featureRefine.featureGraphWorldPositions!,
+                    rootMin[0] + cMinX * worldScale, rootMin[1] + cMinY * worldScale, rootMin[2] + cMinZ * worldScale,
+                    rootMin[0] + cMaxX * worldScale, rootMin[1] + cMaxY * worldScale, rootMin[2] + cMaxZ * worldScale,
+                    pad,
+                )
+                perCellFgSources[i] = collectFgPlaneSources(
+                    features, fgCtx, cMinX, cMinY, cMinZ, cMaxX, cMaxY, cMaxZ, cellSizeNorm,
+                )
+            }
+        }
+
         if (qefWorkerPool && N >= qefWorkerPool.workerCount) {
             // Worker-pool path: pack inputs into SharedArrayBuffers (zero-copy across workers),
             // dispatch, then unpack the per-node results back into the node.
@@ -1318,6 +1367,8 @@ async function buildOctreeBFS(
                     if (cf) cfView.set(cf, i * CF_STRIDE)
                 }
             }
+            // Pack the FeatureGraph sidecar (per-cell collected plane sources).
+            const fgPacked = perCellFgSources ? packFgPlaneSources(perCellFgSources) : null
             await qefWorkerPool.processBatch({
                 sharedVerts, sharedNormPts, sharedSdf, sharedOut,
                 nodeCount: N,
@@ -1331,6 +1382,11 @@ async function buildOctreeBFS(
                     featurePlaneDistFactor: featureRefine.planeDistFactor ?? 1.0,
                     rootMinX: rootMin[0], rootMinY: rootMin[1], rootMinZ: rootMin[2],
                     worldScale,
+                } : {}),
+                ...(fgPacked && fgPacked.data && fgPacked.offsets ? {
+                    sharedFgData: fgPacked.data,
+                    sharedFgOffsets: fgPacked.offsets,
+                    fgStrideFloats: fgPacked.strideFloats,
                 } : {}),
             })
             for (let i = 0; i < N; i++) {
@@ -1348,17 +1404,6 @@ async function buildOctreeBFS(
         } else {
             const planeOn = featureRefine.planeEnabled === true && featureRefine.mode === "signchangeGated"
             const planeDistFactor = featureRefine.planeDistFactor ?? 1.0
-            // FG-plane injection (Phase IS-3): independent of `planeOn` — the FG
-            // path consumes the survival-aware FeatureGraph, not GPU midSdf.
-            const fgOn =
-                featureRefine.fgPlaneEnabled === true &&
-                featureRefine.featureGraphCpu !== undefined &&
-                featureRefine.featureGraphWorldPositions !== undefined &&
-                featureRefine.featureGraphSpatialIndex !== undefined
-            const fgDistFactor = featureRefine.fgPlaneDistFactor ?? 0
-            const fgCtx: FgPlaneInjectionContext | undefined = fgOn
-                ? { rootMinX: rootMin[0], rootMinY: rootMin[1], rootMinZ: rootMin[2], worldScale, distFactor: fgDistFactor }
-                : undefined
             for (let i = 0; i < N; i++) {
                 const slice = sdfBig.subarray(i * t1 * 4, (i + 1) * t1 * 4)
                 const cf = frontier[i]!.cornerFeature
@@ -1370,31 +1415,9 @@ async function buildOctreeBFS(
                         worldScale,
                     }
                     : undefined
-                let fgCubeOpts: FgCubeFeatureOpts | undefined
-                if (fgOn && fgCtx) {
-                    const verts = frontier[i]!.node.verts
-                    // Cell normalized AABB → world AABB; query the FG, padded by
-                    // the gate distance so the injection's precise gate has headroom.
-                    const cellSizeNorm = verts[7 * 4]! - verts[0]!
-                    const wMinX = rootMin[0] + verts[0]! * worldScale
-                    const wMinY = rootMin[1] + verts[1]! * worldScale
-                    const wMinZ = rootMin[2] + verts[2]! * worldScale
-                    const wMaxX = rootMin[0] + verts[7 * 4]! * worldScale
-                    const wMaxY = rootMin[1] + verts[7 * 4 + 1]! * worldScale
-                    const wMaxZ = rootMin[2] + verts[7 * 4 + 2]! * worldScale
-                    const pad = fgDistFactor * cellSizeNorm * worldScale
-                    const features = queryFeatureGraphForCell(
-                        featureRefine.featureGraphSpatialIndex!,
-                        featureRefine.featureGraphCpu!,
-                        featureRefine.featureGraphWorldPositions!,
-                        wMinX, wMinY, wMinZ, wMaxX, wMaxY, wMaxZ, pad,
-                    )
-                    if (features.cornerCount > 0 || features.creaseCount > 0) {
-                        fgCubeOpts = { features, ctx: fgCtx }
-                    }
-                }
                 const r = phase1SdfToReEvalNorm(
-                    frontier[i]!.node, scratches[i]!, slice, C, invWorldScale, cubeFeatureOpts, fgCubeOpts,
+                    frontier[i]!.node, scratches[i]!, slice, C, invWorldScale, cubeFeatureOpts,
+                    perCellFgSources ? perCellFgSources[i] : undefined,
                 )
                 qefErrors[i] = r.qefError
                 reNorms[i] = r.reEvalNorm

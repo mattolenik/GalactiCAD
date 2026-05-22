@@ -3,7 +3,15 @@ import test from "node:test"
 
 import { IsoSimplicialConstants } from "./constants.mjs"
 import { cubeEdge2Orient, cubeFace2Orient } from "./cube-tables.mjs"
-import { IsoOctree, isoOctreeChangesSign, isoOctreeIsOutside, type IsoOctreeBatchFn } from "./iso-octree.mjs"
+import {
+    IsoOctree,
+    computeNodeQefResults,
+    isoOctreeChangesSign,
+    isoOctreeIsOutside,
+    type IsoOctreeBatchFn,
+    type QefWorkerPoolLike,
+} from "./iso-octree.mjs"
+import { unpackFgPlaneSourcesForCell } from "./iso-fg-shared-buffer.mjs"
 import {
     FeatureGraphBuilder,
     FG_FLAG_CORNER,
@@ -791,4 +799,225 @@ test("featureGraphPlane: FG crease edge pulls cube dual vertex toward the crease
     const vy = tree.root.node[1]!
     assert.ok(Math.abs(vx - 0.3) < 0.05, `x should pull toward crease 0.3, got ${vx}`)
     assert.ok(Math.abs(vy - 0.3) < 0.05, `y should pull toward crease 0.3, got ${vy}`)
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// FeatureGraph-plane QEF injection: edge & face dual vertices (Phase IS-4)
+//
+// Same projection mechanism as the GPU mid-feature edge/face tests above. An FG
+// corner at (0.3,0.3,0.5) with normals (1,0,0) and (0,1,0) projects:
+//   – onto x-axis edges → x = 0.3 (via n1); y-axis edges → y = 0.3 (via n2)
+//   – z-axis edges: both normals have n[zi]=0 → skipped
+//   – onto faces toward whichever of (x=0.3, y=0.3) lies within their axes
+// ────────────────────────────────────────────────────────────────────────────
+
+test("featureGraphPlane (edge): x/y-axis edges pull toward FG corner, z-axis edges do not", async () => {
+    const fg = fgWithCorner([0.3, 0.3, 0.5], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, ...fg },
+    })
+    for (let e = 0; e < 12; e++) {
+        const orient = cubeEdge2Orient[e]!
+        const ex = tree.root.edges[e * 4]!
+        const ey = tree.root.edges[e * 4 + 1]!
+        if (orient === 0) {
+            assert.ok(Math.abs(ex - 0.3) < 0.05, `x-axis edge ${e}: x near 0.3, got ${ex}`)
+        } else if (orient === 1) {
+            assert.ok(Math.abs(ey - 0.3) < 0.05, `y-axis edge ${e}: y near 0.3, got ${ey}`)
+        } else {
+            assert.ok(Math.abs(ex - 0.3) > 0.1, `z-axis edge ${e}: x NOT pulled, got ${ex}`)
+            assert.ok(Math.abs(ey - 0.3) > 0.1, `z-axis edge ${e}: y NOT pulled, got ${ey}`)
+        }
+    }
+})
+
+test("featureGraphPlane (edge): disabled — no edges pull toward the FG corner", async () => {
+    const fg = fgWithCorner([0.3, 0.3, 0.5], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: false, ...fg },
+    })
+    for (let e = 0; e < 12; e++) {
+        const orient = cubeEdge2Orient[e]!
+        const ex = tree.root.edges[e * 4]!
+        const ey = tree.root.edges[e * 4 + 1]!
+        if (orient === 0) assert.ok(Math.abs(ex - 0.3) > 0.1, `disabled: x-edge ${e} not pulled, got ${ex}`)
+        if (orient === 1) assert.ok(Math.abs(ey - 0.3) > 0.1, `disabled: y-edge ${e} not pulled, got ${ey}`)
+    }
+})
+
+test("featureGraphPlane (face): in-face axes pull toward FG corner; out-of-face axis untouched", async () => {
+    const fg = fgWithCorner([0.3, 0.3, 0.5], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, ...fg },
+    })
+    for (let f = 0; f < 6; f++) {
+        const orient = cubeFace2Orient[f]!
+        const fx = tree.root.faces[f * 4]!
+        const fy = tree.root.faces[f * 4 + 1]!
+        if (orient === 2) {
+            assert.ok(Math.abs(fx - 0.3) < 0.05, `z-face ${f}: x near 0.3, got ${fx}`)
+            assert.ok(Math.abs(fy - 0.3) < 0.05, `z-face ${f}: y near 0.3, got ${fy}`)
+        } else if (orient === 1) {
+            assert.ok(Math.abs(fx - 0.3) < 0.05, `y-face ${f}: x near 0.3, got ${fx}`)
+        } else {
+            assert.ok(Math.abs(fy - 0.3) < 0.05, `x-face ${f}: y near 0.3, got ${fy}`)
+        }
+    }
+})
+
+test("featureGraphPlane (edge): FG crease pulls edge dual vertices along the crease", async () => {
+    // A crease running in z at (x,y)=(0.3,0.3) with the two face normals. Its
+    // planes project onto x/y-axis edges toward x=0.3 / y=0.3.
+    const fg = fgWithCrease([0.3, 0.3, 0.1], [0.3, 0.3, 0.9], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, ...fg },
+    })
+    for (let e = 0; e < 12; e++) {
+        const orient = cubeEdge2Orient[e]!
+        const ex = tree.root.edges[e * 4]!
+        const ey = tree.root.edges[e * 4 + 1]!
+        if (orient === 0) assert.ok(Math.abs(ex - 0.3) < 0.05, `x-axis edge ${e}: x near 0.3, got ${ex}`)
+        if (orient === 1) assert.ok(Math.abs(ey - 0.3) < 0.05, `y-axis edge ${e}: y near 0.3, got ${ey}`)
+    }
+})
+
+test("featureGraphPlane (edge/face): distance gate suppresses a far FG corner", async () => {
+    const fg = fgWithCorner([20, 20, 20], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 1.0, ...fg },
+    })
+    for (let e = 0; e < 12; e++) {
+        for (let k = 0; k < 4; k++) assert.ok(Number.isFinite(tree.root.edges[e * 4 + k]!), `edge ${e}[${k}] finite`)
+    }
+    for (let f = 0; f < 6; f++) {
+        const fx = tree.root.faces[f * 4]!
+        const fy = tree.root.faces[f * 4 + 1]!
+        assert.ok(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1, `face ${f} dual vertex stays in cell`)
+    }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// FeatureGraph-plane QEF injection: worker-pool path (Phase IS-5)
+//
+// `mockQefPool` runs `computeNodeQefResults` synchronously, decoding the FG
+// sidecar exactly as the real QEF worker does. With workerCount 1 every
+// frontier (N ≥ 1) takes the worker-pool path, so building with this pool
+// exercises packFgPlaneSources → sidecar → unpackFgPlaneSourcesForCell →
+// computeNodeQefResults FG injection.
+// ────────────────────────────────────────────────────────────────────────────
+
+const QEF_OUT_STRIDE_TEST = 134
+
+/** Synchronous stand-in for `QefWorkerPool` — mirrors the real worker's decode. */
+const mockQefPool: QefWorkerPoolLike = {
+    workerCount: 1,
+    processBatch(inputs) {
+        const VERTS_STRIDE = 32
+        const P1 = inputs.scratchProto.totalPhase1 * 4
+        const verts = new Float32Array(inputs.sharedVerts)
+        const normPts = new Float32Array(inputs.sharedNormPts)
+        const sdf = new Float32Array(inputs.sharedSdf)
+        const out = new Float32Array(inputs.sharedOut)
+        const fgData = inputs.sharedFgData ? new Float32Array(inputs.sharedFgData) : undefined
+        const fgOffsets = inputs.sharedFgOffsets ? new Uint32Array(inputs.sharedFgOffsets) : undefined
+        for (let i = 0; i < inputs.nodeCount; i++) {
+            const scratch = {
+                normPts: normPts.subarray(i * P1, (i + 1) * P1),
+                edgeOffs: inputs.scratchProto.edgeOffs,
+                faceOffs: inputs.scratchProto.faceOffs,
+                totalPhase1: inputs.scratchProto.totalPhase1,
+                nodeCount: inputs.scratchProto.nodeCount,
+                edgeSamples: inputs.scratchProto.edgeSamples,
+                faceSamples: inputs.scratchProto.faceSamples,
+            }
+            const fgSources = fgData && fgOffsets
+                ? unpackFgPlaneSourcesForCell(fgData, fgOffsets, i, inputs.fgStrideFloats ?? 0)
+                : undefined
+            const r = computeNodeQefResults(
+                verts.subarray(i * VERTS_STRIDE, (i + 1) * VERTS_STRIDE),
+                scratch,
+                sdf.subarray(i * P1, (i + 1) * P1),
+                inputs.oversampleQef,
+                inputs.dualVertexBorderFraction,
+                inputs.invWorldScale,
+                undefined,
+                fgSources,
+            )
+            const o = i * QEF_OUT_STRIDE_TEST
+            out[o] = r.nodePos[0]!
+            out[o + 1] = r.nodePos[1]!
+            out[o + 2] = r.nodePos[2]!
+            out[o + 3] = r.nodePos[3]!
+            out.set(r.edges, o + 4)
+            out.set(r.faces, o + 52)
+            out.set(r.reEvalNorm, o + 76)
+            out[o + 133] = r.qefError
+        }
+        return Promise.resolve()
+    },
+}
+
+test("featureGraphPlane: worker-pool path pulls cube dual vertex toward FG corner", async () => {
+    const fg = fgWithCorner([0.3, 0.3, 0.5], [[1, 0, 0], [0, 1, 0]])
+    const refine = { mode: "off" as const, proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, ...fg }
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: refine,
+        qefWorkerPool: mockQefPool,
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    assert.ok(Math.abs(vx - 0.3) < 0.05, `worker path: x pulls toward 0.3, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) < 0.05, `worker path: y pulls toward 0.3, got ${vy}`)
+})
+
+test("featureGraphPlane: worker-pool path matches the inline path", async () => {
+    const fg = fgWithCorner([0.35, 0.6, 0.5], [[1, 0, 0], [0, 1, 0]])
+    const refine = { mode: "off" as const, proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, ...fg }
+    const inline = await IsoOctree.build({
+        sample: mockPlaneHalfZ, bounds: UNIT_BOUNDS, constants: DEPTH0_CONSTS, featureRefine: refine,
+    })
+    const worker = await IsoOctree.build({
+        sample: mockPlaneHalfZ, bounds: UNIT_BOUNDS, constants: DEPTH0_CONSTS, featureRefine: refine,
+        qefWorkerPool: mockQefPool,
+    })
+    // Identical up to the FG sidecar's Float32 packing of plane-source points.
+    for (let k = 0; k < 3; k++) {
+        assert.ok(
+            Math.abs(worker.root.node[k]! - inline.root.node[k]!) < 1e-3,
+            `node[${k}]: worker ${worker.root.node[k]} ≈ inline ${inline.root.node[k]}`,
+        )
+    }
+})
+
+test("featureGraphPlane: worker-pool path with FG disabled leaves the dual vertex unconstrained", async () => {
+    const fg = fgWithCorner([0.3, 0.3, 0.5], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: false, ...fg },
+        qefWorkerPool: mockQefPool,
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    assert.ok(Math.abs(vx - 0.3) > 0.1, `disabled: x not pulled, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) > 0.1, `disabled: y not pulled, got ${vy}`)
 })

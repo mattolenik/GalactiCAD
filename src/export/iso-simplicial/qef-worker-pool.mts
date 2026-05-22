@@ -46,6 +46,10 @@ export interface QefBatchInputs {
     rootMinY?: number
     rootMinZ?: number
     worldScale?: number
+    /** Optional FeatureGraph plane-source sidecar — see `iso-fg-shared-buffer.mts`. */
+    sharedFgData?: SharedArrayBuffer
+    sharedFgOffsets?: SharedArrayBuffer
+    fgStrideFloats?: number
 }
 
 interface PendingBatch {
@@ -119,6 +123,9 @@ export class QefWorkerPool {
                     rootMinY: inputs.rootMinY,
                     rootMinZ: inputs.rootMinZ,
                     worldScale: inputs.worldScale,
+                    sharedFgData: inputs.sharedFgData,
+                    sharedFgOffsets: inputs.sharedFgOffsets,
+                    fgStrideFloats: inputs.fgStrideFloats,
                 }
                 this.#workers[wi]!.postMessage(req)
             }

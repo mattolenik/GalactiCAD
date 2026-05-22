@@ -274,12 +274,12 @@ function readHttpBody(req: http.IncomingMessage): Promise<string> {
     })
 }
 
-/** Pipeline / request failures reported by the browser use 400; bridge unavailable / timeout uses 503. */
+/** Pipeline / request failures reported by the browser use 400; bridge unavailable */
 function agentRenderErrorHttpStatus(out: { pngBase64?: string; error?: string } | null): number {
     if (out != null && typeof out.error === "string" && out.error.length > 0) {
         return 400
     }
-    return 503
+    return 500
 }
 
 /** Wait until the HTTP response body is fully flushed (avoids curl/client write errors on short reads). */

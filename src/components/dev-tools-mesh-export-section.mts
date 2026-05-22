@@ -287,18 +287,18 @@ export class DevToolsIsoSimplicialSection extends HTMLElement {
             lab.textContent = "FeatureGraph plane dist factor"
             const range = document.createElement("input")
             range.type = "range"
-            range.min = "0.1"
+            range.min = "0"
             range.max = "4"
             range.step = "0.1"
-            const dfInit = isoT.featureGraphPlaneDistFactor ?? 1.0
+            const dfInit = isoT.featureGraphPlaneDistFactor ?? 0
             range.value = String(dfInit)
             const valueEl = document.createElement("span")
             valueEl.className = "shade-val"
             valueEl.textContent = dfInit.toFixed(1)
             range.addEventListener("input", () => {
                 let v = parseFloat(range.value)
-                if (!Number.isFinite(v)) v = 1.0
-                v = Math.max(0.1, Math.min(4, v))
+                if (!Number.isFinite(v)) v = 0
+                v = Math.max(0, Math.min(4, v))
                 valueEl.textContent = v.toFixed(1)
                 this.#persistIsoTuning({ featureGraphPlaneDistFactor: v })
             })
@@ -433,7 +433,7 @@ export class DevToolsIsoSimplicialSection extends HTMLElement {
         this.#isoFeaturePlaneDistFactorRange.value = String(dfSync)
         this.#isoFeaturePlaneDistFactorValueEl.textContent = dfSync.toFixed(1)
         this.#isoFgPlaneCheckbox.checked = tuning.featureGraphPlanesEnabled === true
-        const fgDfSync = tuning.featureGraphPlaneDistFactor ?? 1.0
+        const fgDfSync = tuning.featureGraphPlaneDistFactor ?? 0
         this.#isoFgPlaneDistFactorRange.value = String(fgDfSync)
         this.#isoFgPlaneDistFactorValueEl.textContent = fgDfSync.toFixed(1)
         const pad = tuning.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM

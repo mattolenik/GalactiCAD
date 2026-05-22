@@ -35,26 +35,90 @@ export interface FeatureGraphWorldPositions {
 // ---------------------------------------------------------------------------
 
 /**
+ * Per-transform cofactor matrix of the upper-left 3×3, packed stride-9
+ * (row-major). The cofactor matrix equals `(M⁻¹)ᵀ` up to the scalar `det(M)`,
+ * so multiplying a local normal by it and renormalising yields the correct
+ * world-space normal even under non-uniform scale. The determinant is
+ * discarded by the renormalise step. Slot `t` corresponds to `transforms[t]`.
+ */
+function buildNormalCofactors(cpu: FeatureGraphCpu): Float32Array {
+    const out = new Float32Array(cpu.transformCount * 9)
+    const m = cpu.transforms
+    for (let t = 0; t < cpu.transformCount; t++) {
+        const b = t * 16
+        // Upper-left 3×3, rows a..i (column-major mat4 layout).
+        const a = m[b + 0]!, bb = m[b + 4]!, c = m[b + 8]!
+        const d = m[b + 1]!, e = m[b + 5]!, f = m[b + 9]!
+        const g = m[b + 2]!, h = m[b + 6]!, i = m[b + 10]!
+        const o = t * 9
+        out[o + 0] = e * i - f * h
+        out[o + 1] = -(d * i - f * g)
+        out[o + 2] = d * h - e * g
+        out[o + 3] = -(bb * i - c * h)
+        out[o + 4] = a * i - c * g
+        out[o + 5] = -(a * h - bb * g)
+        out[o + 6] = bb * f - c * e
+        out[o + 7] = -(a * f - c * d)
+        out[o + 8] = a * e - bb * d
+    }
+    return out
+}
+
+/**
  * For each vertex, multiply its local position by the column-major 4x4 the
- * transform stack interned at emission time. Vertices that emitted under a
- * non-affine ancestor get the {@link FG_FLAG_NON_AFFINE_ANCESTOR} bit OR'd in
- * here (the builder already sets it at emit-time, but we re-confirm so the
- * GPU promotion path with a separate stage-2 compute pass produces an
- * identical result).
+ * transform stack interned at emission time, and rotate its source-face
+ * normals into world space (in place on `cpu.vertexNormals`) via the
+ * transform's cofactor matrix so normals stay correct under rotation and
+ * non-uniform scale. Baking the normals here — before subdivision — means the
+ * stage-3 / stage-4b normal-copy steps inherit world-space normals directly
+ * (subdivided/bisected vertices carry `transformIdx = 0`, so a later transform
+ * pass would otherwise mis-apply identity to parent-local normals).
+ *
+ * Vertices that emitted under a non-affine ancestor get the
+ * {@link FG_FLAG_NON_AFFINE_ANCESTOR} bit OR'd in here (the builder already
+ * sets it at emit-time, but we re-confirm so the GPU promotion path with a
+ * separate stage-2 compute pass produces an identical result).
  */
 export function applyTransformsCpu(cpu: FeatureGraphCpu): FeatureGraphWorldPositions {
     const out = new Float32Array(cpu.vertexCount * 3)
+    const cof = buildNormalCofactors(cpu)
     for (let i = 0; i < cpu.vertexCount; i++) {
         const lx = cpu.vertexPositions[i * 3 + 0]!
         const ly = cpu.vertexPositions[i * 3 + 1]!
         const lz = cpu.vertexPositions[i * 3 + 2]!
-        const t = cpu.vertexTransformIdx[i]! * 16
+        const tIdx = cpu.vertexTransformIdx[i]!
+        const t = tIdx * 16
         const m = cpu.transforms
         out[i * 3 + 0] = m[t + 0]! * lx + m[t + 4]! * ly + m[t + 8]! * lz + m[t + 12]!
         out[i * 3 + 1] = m[t + 1]! * lx + m[t + 5]! * ly + m[t + 9]! * lz + m[t + 13]!
         out[i * 3 + 2] = m[t + 2]! * lx + m[t + 6]! * ly + m[t + 10]! * lz + m[t + 14]!
 
-        const transformFlags = cpu.transformFlags[cpu.vertexTransformIdx[i]!] ?? 0
+        // Rotate the vertex's source-face normals into world space.
+        const co = tIdx * 9
+        const c0 = cof[co + 0]!, c1 = cof[co + 1]!, c2 = cof[co + 2]!
+        const c3 = cof[co + 3]!, c4 = cof[co + 4]!, c5 = cof[co + 5]!
+        const c6 = cof[co + 6]!, c7 = cof[co + 7]!, c8 = cof[co + 8]!
+        const nc = cpu.vertexNormalCount[i]!
+        const nBase = i * 3 * FG_MAX_NORMALS_PER_VERTEX
+        for (let n = 0; n < nc; n++) {
+            const nb = nBase + n * 3
+            const nx = cpu.vertexNormals[nb + 0]!
+            const ny = cpu.vertexNormals[nb + 1]!
+            const nz = cpu.vertexNormals[nb + 2]!
+            let wx = c0 * nx + c1 * ny + c2 * nz
+            let wy = c3 * nx + c4 * ny + c5 * nz
+            let wz = c6 * nx + c7 * ny + c8 * nz
+            const len = Math.sqrt(wx * wx + wy * wy + wz * wz)
+            if (len > 1e-12) {
+                const inv = 1 / len
+                wx *= inv; wy *= inv; wz *= inv
+            }
+            cpu.vertexNormals[nb + 0] = wx
+            cpu.vertexNormals[nb + 1] = wy
+            cpu.vertexNormals[nb + 2] = wz
+        }
+
+        const transformFlags = cpu.transformFlags[tIdx] ?? 0
         if ((transformFlags & FG_FLAG_NON_AFFINE_ANCESTOR) !== 0) {
             cpu.vertexFlags[i] = (cpu.vertexFlags[i] ?? 0) | FG_FLAG_NON_AFFINE_ANCESTOR
         }

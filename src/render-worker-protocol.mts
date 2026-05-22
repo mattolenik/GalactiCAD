@@ -94,8 +94,9 @@ export interface IsoSimplicialTuning {
     /**
      * Distance gate for `featureGraphPlanesEnabled`: skip an FG corner/crease when its
      * distance to the cell (world units) exceeds `featureGraphPlaneDistFactor * cellSize *
-     * worldScale`. Same semantics as {@link featurePlaneDistFactor} but applied to the
-     * FG-derived planes. Default 1.0.
+     * worldScale`. Default 0 — inject an FG feature only into cells it passes through.
+     * Raising it widens the influence, but a factor ≥ 1 pulls whole rings of flat-face
+     * cells onto feature edges (collapsed geometry), so keep it small.
      */
     featureGraphPlaneDistFactor?: number
 }

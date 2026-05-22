@@ -278,7 +278,7 @@ export function normalizeIsoSimplicialTuning(raw: unknown): IsoSimplicialTuning 
     if (
         typeof o.featureGraphPlaneDistFactor === "number" &&
         Number.isFinite(o.featureGraphPlaneDistFactor) &&
-        o.featureGraphPlaneDistFactor > 0 &&
+        o.featureGraphPlaneDistFactor >= 0 &&
         o.featureGraphPlaneDistFactor <= 16
     ) {
         out.featureGraphPlaneDistFactor = o.featureGraphPlaneDistFactor

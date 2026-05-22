@@ -70,7 +70,11 @@ export interface FeatureGraphCpu {
     vertexFlags: Uint32Array
     /** Number of source-face normals stored for this vertex (0..{@link FG_MAX_NORMALS_PER_VERTEX}). */
     vertexNormalCount: Uint32Array
-    /** Packed normals, stride `3 * FG_MAX_NORMALS_PER_VERTEX` floats; unused slots are zero. */
+    /**
+     * Packed source-face normals, stride `3 * FG_MAX_NORMALS_PER_VERTEX` floats;
+     * unused slots are zero. Local-space as emitted by the builder; rotated to
+     * world space in place by stage 2 (`applyTransformsCpu`).
+     */
     vertexNormals: Float32Array
     /** Index into {@link transforms} for this vertex. */
     vertexTransformIdx: Uint32Array

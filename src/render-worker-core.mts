@@ -1449,9 +1449,9 @@ export class RenderWorkerCore {
                             fgPlaneDistFactor:
                                 typeof isoT.featureGraphPlaneDistFactor === "number" &&
                                 Number.isFinite(isoT.featureGraphPlaneDistFactor) &&
-                                isoT.featureGraphPlaneDistFactor > 0
+                                isoT.featureGraphPlaneDistFactor >= 0
                                     ? isoT.featureGraphPlaneDistFactor
-                                    : 1.0,
+                                    : 0,
                             featureGraphCpu: fgResult.cpu,
                             featureGraphWorldPositions: fgResult.worldPositions,
                             featureGraphSpatialIndex: fgResult.spatialIndex,

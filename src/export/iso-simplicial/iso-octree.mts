@@ -27,6 +27,14 @@ import { ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE, type IsoSampleBatch } from "./i
 import type { FeatureGraphCpu } from "../../scene/feature-graph-buffer.mjs"
 import type { FeatureGraphWorldPositions } from "../../feature-graph/feature-graph-stages.mjs"
 import type { FeatureGraphSpatialIndex } from "../../feature-graph/feature-graph-spatial-index.mjs"
+import {
+    queryFeatureGraphForCell,
+    type FgCellFeatures,
+} from "../../feature-graph/feature-graph-cell-query.mjs"
+import {
+    injectCubeFgFeaturePlanes,
+    type FgPlaneInjectionContext,
+} from "./iso-fg-feature-planes.mjs"
 
 /** One `vec4f` per logical slot: corners 8, edges 12, faces 6, cell body 1. */
 export interface IsoOctreeNode {
@@ -598,6 +606,7 @@ function phase1SdfToReEvalNorm(
     C: IsoOctreeRuntimeConstants,
     invWorldScale: number,
     cubeFeatureOpts?: CubeFeaturePlaneOptions,
+    fgCubeOpts?: FgCubeFeatureOpts,
 ): { qefError: number; reEvalNorm: Float32Array } {
     const v0 = readV4(node.verts, 0)
     const v7 = readV4(node.verts, 7)
@@ -625,6 +634,13 @@ function phase1SdfToReEvalNorm(
         }
         if (cubeFeatureOpts) {
             injectCubeFeaturePlanes(cubeFeatureOpts, cellSize, packed, planeNorms4, planePts4)
+        }
+        if (fgCubeOpts) {
+            injectCubeFgFeaturePlanes(
+                fgCubeOpts.features, fgCubeOpts.ctx,
+                cellMin[0], cellMin[1], cellMin[2], cellMax[0], cellMax[1], cellMax[2],
+                cellSize, packed, planeNorms4, planePts4,
+            )
         }
         const { position, qefError: nodeQef } = computeDualVertexCube({
             cellMin, cellMax, qefPacked: packed, planeNorms4, planePts4,
@@ -760,7 +776,11 @@ export class IsoOctree {
         // midSdf + optional nearFeature) regardless of how wide the tree is at that depth,
         // collapsing the original recursive structure's per-cell round-trip cost.
         const tWall0 = nowMs()
-        await buildOctreeBFS(root, rootMin, rootMax, worldScale, C, sample, signal, counter, featureRefine, perf, params.qefWorkerPool)
+        // Phase IS-3 temporary: FG-plane injection runs inline only — the worker
+        // pool doesn't yet carry the per-cell FG sidecar buffer. Force inline QEF
+        // whenever FG planes are enabled. Removed in Phase IS-5.
+        const qefWorkerPool = featureRefine.fgPlaneEnabled === true ? undefined : params.qefWorkerPool
+        await buildOctreeBFS(root, rootMin, rootMax, worldScale, C, sample, signal, counter, featureRefine, perf, qefWorkerPool)
         perf.totalWallMs = nowMs() - tWall0
 
         return new IsoOctree(root, counter.n, perf)
@@ -777,10 +797,14 @@ function normalizeFeatureRefine(opt: IsoFeatureRefineOptions | undefined): IsoFe
     const fgFields: Partial<IsoFeatureRefineOptions> = {}
     if (opt?.fgPlaneEnabled === true && opt.featureGraphCpu && opt.featureGraphWorldPositions && opt.featureGraphSpatialIndex) {
         fgFields.fgPlaneEnabled = true
+        // Default 0: inject an FG feature only into cells it passes through.
+        // A positive factor widens the gate to `factor` cell-widths — useful
+        // for softer/wider influence, but ≥1 pulls whole rings of flat-face
+        // cells onto feature edges, so 0 is the safe default.
         fgFields.fgPlaneDistFactor =
-            typeof opt.fgPlaneDistFactor === "number" && Number.isFinite(opt.fgPlaneDistFactor) && opt.fgPlaneDistFactor > 0
+            typeof opt.fgPlaneDistFactor === "number" && Number.isFinite(opt.fgPlaneDistFactor) && opt.fgPlaneDistFactor >= 0
                 ? opt.fgPlaneDistFactor
-                : 1.0
+                : 0
         fgFields.featureGraphCpu = opt.featureGraphCpu
         fgFields.featureGraphWorldPositions = opt.featureGraphWorldPositions
         fgFields.featureGraphSpatialIndex = opt.featureGraphSpatialIndex
@@ -872,6 +896,18 @@ export interface CubeFeaturePlaneOptions {
     rootMinZ: number
     /** Root AABB edge length (world units); convert via `(p - rootMin) / worldScale`. */
     worldScale: number
+}
+
+/**
+ * Per-cell FeatureGraph planes for the cube QEF. Carries the cell's queried
+ * {@link FgCellFeatures} (corners + creases, world space) plus the world↔
+ * normalized conversion context. When passed to {@link phase1SdfToReEvalNorm}
+ * / {@link computeNodeQefResults}, FG-derived Hermite planes are injected into
+ * the cube QEF alongside the SDF and GPU-mid-feature planes.
+ */
+export interface FgCubeFeatureOpts {
+    features: FgCellFeatures
+    ctx: FgPlaneInjectionContext
 }
 
 /**
@@ -1312,6 +1348,17 @@ async function buildOctreeBFS(
         } else {
             const planeOn = featureRefine.planeEnabled === true && featureRefine.mode === "signchangeGated"
             const planeDistFactor = featureRefine.planeDistFactor ?? 1.0
+            // FG-plane injection (Phase IS-3): independent of `planeOn` — the FG
+            // path consumes the survival-aware FeatureGraph, not GPU midSdf.
+            const fgOn =
+                featureRefine.fgPlaneEnabled === true &&
+                featureRefine.featureGraphCpu !== undefined &&
+                featureRefine.featureGraphWorldPositions !== undefined &&
+                featureRefine.featureGraphSpatialIndex !== undefined
+            const fgDistFactor = featureRefine.fgPlaneDistFactor ?? 0
+            const fgCtx: FgPlaneInjectionContext | undefined = fgOn
+                ? { rootMinX: rootMin[0], rootMinY: rootMin[1], rootMinZ: rootMin[2], worldScale, distFactor: fgDistFactor }
+                : undefined
             for (let i = 0; i < N; i++) {
                 const slice = sdfBig.subarray(i * t1 * 4, (i + 1) * t1 * 4)
                 const cf = frontier[i]!.cornerFeature
@@ -1323,7 +1370,32 @@ async function buildOctreeBFS(
                         worldScale,
                     }
                     : undefined
-                const r = phase1SdfToReEvalNorm(frontier[i]!.node, scratches[i]!, slice, C, invWorldScale, cubeFeatureOpts)
+                let fgCubeOpts: FgCubeFeatureOpts | undefined
+                if (fgOn && fgCtx) {
+                    const verts = frontier[i]!.node.verts
+                    // Cell normalized AABB → world AABB; query the FG, padded by
+                    // the gate distance so the injection's precise gate has headroom.
+                    const cellSizeNorm = verts[7 * 4]! - verts[0]!
+                    const wMinX = rootMin[0] + verts[0]! * worldScale
+                    const wMinY = rootMin[1] + verts[1]! * worldScale
+                    const wMinZ = rootMin[2] + verts[2]! * worldScale
+                    const wMaxX = rootMin[0] + verts[7 * 4]! * worldScale
+                    const wMaxY = rootMin[1] + verts[7 * 4 + 1]! * worldScale
+                    const wMaxZ = rootMin[2] + verts[7 * 4 + 2]! * worldScale
+                    const pad = fgDistFactor * cellSizeNorm * worldScale
+                    const features = queryFeatureGraphForCell(
+                        featureRefine.featureGraphSpatialIndex!,
+                        featureRefine.featureGraphCpu!,
+                        featureRefine.featureGraphWorldPositions!,
+                        wMinX, wMinY, wMinZ, wMaxX, wMaxY, wMaxZ, pad,
+                    )
+                    if (features.cornerCount > 0 || features.creaseCount > 0) {
+                        fgCubeOpts = { features, ctx: fgCtx }
+                    }
+                }
+                const r = phase1SdfToReEvalNorm(
+                    frontier[i]!.node, scratches[i]!, slice, C, invWorldScale, cubeFeatureOpts, fgCubeOpts,
+                )
                 qefErrors[i] = r.qefError
                 reNorms[i] = r.reEvalNorm
             }

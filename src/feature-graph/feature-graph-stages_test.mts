@@ -11,6 +11,8 @@ import {
 } from "./feature-graph-stages.mjs"
 import {
     FeatureGraphBuilder,
+    mat4FromScale,
+    mat4FromTranslation,
 } from "../scene/feature-graph-buffer.mjs"
 import { Vec3f } from "../vecmat/vector.mjs"
 
@@ -166,4 +168,52 @@ test("bisectMixedEdgesCpu: both endpoints dead → edge unchanged (cascade handl
     // Edge stays alive at this stage (the orchestrator's cascade pass clears
     // the flag for both-dead edges after bisection).
     assert.ok((next.cpu.edgeFlags[e]! & FG_FLAG_ALIVE) !== 0)
+})
+
+test("applyTransformsCpu: identity transform leaves normals unchanged", () => {
+    const builder = new FeatureGraphBuilder()
+    builder.beginNode(0)
+    builder.emitVertex(new Vec3f([1, 2, 3]), FG_FLAG_CORNER, [
+        new Vec3f([1, 0, 0]),
+        new Vec3f([0, 1, 0]),
+        new Vec3f([0, 0, 1]),
+    ])
+    builder.endNode()
+    const cpu = builder.finish()
+    applyTransformsCpu(cpu)
+    assert.deepEqual([...cpu.vertexNormals.slice(0, 9)], [1, 0, 0, 0, 1, 0, 0, 0, 1])
+})
+
+test("applyTransformsCpu: translation does not rotate normals", () => {
+    const builder = new FeatureGraphBuilder()
+    builder.pushAffine(mat4FromTranslation(10, 20, 30))
+    builder.beginNode(0)
+    builder.emitVertex(new Vec3f([0, 0, 0]), FG_FLAG_CORNER, [new Vec3f([0, 1, 0])])
+    builder.endNode()
+    builder.pop()
+    const cpu = builder.finish()
+    const world = applyTransformsCpu(cpu)
+    assert.deepEqual([...world.positions], [10, 20, 30])
+    assert.deepEqual([...cpu.vertexNormals.slice(0, 3)], [0, 1, 0])
+})
+
+test("applyTransformsCpu: non-uniform scale rotates normals by the inverse-transpose", () => {
+    // Under scale (2,1,1) a surface with local normal (1,1,0)/√2 — local plane
+    // x+y=const — maps to world plane X/2+Y=const ⇒ X+2Y=const, world normal
+    // ∝ (1,2,0). The cofactor-matrix path must reproduce that (normalised).
+    const s = 1 / Math.SQRT2
+    const builder = new FeatureGraphBuilder()
+    builder.pushAffine(mat4FromScale(2, 1, 1))
+    builder.beginNode(0)
+    builder.emitVertex(new Vec3f([3, 5, 0]), FG_FLAG_CORNER, [new Vec3f([s, s, 0])])
+    builder.endNode()
+    builder.pop()
+    const cpu = builder.finish()
+    const world = applyTransformsCpu(cpu)
+    assert.deepEqual([...world.positions], [6, 5, 0])
+    const inv5 = 1 / Math.sqrt(5)
+    const nx = cpu.vertexNormals[0]!, ny = cpu.vertexNormals[1]!, nz = cpu.vertexNormals[2]!
+    assert.ok(Math.abs(nx - inv5) < 1e-6, `nx ${nx} ≈ 1/√5`)
+    assert.ok(Math.abs(ny - 2 * inv5) < 1e-6, `ny ${ny} ≈ 2/√5`)
+    assert.equal(nz, 0)
 })

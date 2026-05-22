@@ -4,6 +4,14 @@ import test from "node:test"
 import { IsoSimplicialConstants } from "./constants.mjs"
 import { cubeEdge2Orient, cubeFace2Orient } from "./cube-tables.mjs"
 import { IsoOctree, isoOctreeChangesSign, isoOctreeIsOutside, type IsoOctreeBatchFn } from "./iso-octree.mjs"
+import {
+    FeatureGraphBuilder,
+    FG_FLAG_CORNER,
+    FG_FLAG_CREASE_ORIGINAL,
+} from "../../scene/feature-graph-buffer.mjs"
+import { Vec3f } from "../../vecmat/vector.mjs"
+import { applyTransforms } from "../../feature-graph/feature-graph-gpu.mjs"
+import { FeatureGraphSpatialIndex } from "../../feature-graph/feature-graph-spatial-index.mjs"
 
 const MID_FEATURE_NONE = 0
 const MID_FEATURE_LINE = 1
@@ -653,4 +661,134 @@ test("featurePlane (edge/face): normal parallel to edge axis → no constraint (
             assert.ok(Number.isFinite(tree.root.faces[f * 4 + k]!), `face ${f} slot ${k} not finite`)
         }
     }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// FeatureGraph-plane QEF injection (Phase IS-3 — cube QEF, soft mode)
+//
+// Same mechanism as the GPU mid-feature `featurePlane` tests above, but the
+// planes are sourced from a hand-built FeatureGraph instead of `sampleMidFeature`.
+// `mockPlaneHalfZ` leaves V_x/V_y underdetermined; an FG corner at (0.3,0.3,0.5)
+// with normals (1,0,0) and (0,1,0) pins V_x = V_y = 0.3.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Build a one-corner FeatureGraph + spatial index for the iso-simplicial FG path. */
+function fgWithCorner(
+    pos: readonly [number, number, number],
+    normals: ReadonlyArray<readonly [number, number, number]>,
+    indexCellSize = 0.5,
+) {
+    const builder = new FeatureGraphBuilder()
+    builder.beginNode(0)
+    builder.emitVertex(new Vec3f([pos[0], pos[1], pos[2]]), FG_FLAG_CORNER, normals.map(n => new Vec3f([n[0], n[1], n[2]])))
+    builder.endNode()
+    const cpu = builder.finish()
+    const world = applyTransforms(cpu)
+    const index = FeatureGraphSpatialIndex.build(cpu, world, indexCellSize)
+    return { featureGraphCpu: cpu, featureGraphWorldPositions: world, featureGraphSpatialIndex: index }
+}
+
+/** Build a one-crease-edge FeatureGraph + spatial index. */
+function fgWithCrease(
+    a: readonly [number, number, number],
+    b: readonly [number, number, number],
+    normals: ReadonlyArray<readonly [number, number, number]>,
+    indexCellSize = 0.5,
+) {
+    const builder = new FeatureGraphBuilder()
+    builder.beginNode(0)
+    const ns = normals.map(n => new Vec3f([n[0], n[1], n[2]]))
+    const va = builder.emitVertex(new Vec3f([a[0], a[1], a[2]]), FG_FLAG_CREASE_ORIGINAL, ns)
+    const vb = builder.emitVertex(new Vec3f([b[0], b[1], b[2]]), FG_FLAG_CREASE_ORIGINAL, ns)
+    builder.emitEdge(va, vb, FG_FLAG_CREASE_ORIGINAL)
+    builder.endNode()
+    const cpu = builder.finish()
+    const world = applyTransforms(cpu)
+    const index = FeatureGraphSpatialIndex.build(cpu, world, indexCellSize)
+    return { featureGraphCpu: cpu, featureGraphWorldPositions: world, featureGraphSpatialIndex: index }
+}
+
+test("featureGraphPlane: enabled — cube dual vertex pulls toward FG corner x/y", async () => {
+    const fg = fgWithCorner([0.3, 0.3, 0.5], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "off",
+            proximityFactor: 2.0,
+            fgPlaneEnabled: true,
+            fgPlaneDistFactor: 2.0,
+            ...fg,
+        },
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    const vz = tree.root.node[2]!
+    assert.ok(Math.abs(vx - 0.3) < 0.05, `x should pull toward FG corner 0.3, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) < 0.05, `y should pull toward FG corner 0.3, got ${vy}`)
+    assert.ok(vz > BORDER && vz < 1 - BORDER, `z should stay inside cell, got ${vz}`)
+})
+
+test("featureGraphPlane: disabled — x/y border-clamped (no FG pull)", async () => {
+    const fg = fgWithCorner([0.3, 0.3, 0.5], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "off",
+            proximityFactor: 2.0,
+            fgPlaneEnabled: false,
+            ...fg,
+        },
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    assert.ok(Math.abs(vx - 0.3) > 0.1, `disabled: x must NOT pull to 0.3, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) > 0.1, `disabled: y must NOT pull to 0.3, got ${vy}`)
+})
+
+test("featureGraphPlane: distance gate suppresses far FG corner", async () => {
+    // Corner well outside the unit cell; tight gate → no planes injected.
+    const fg = fgWithCorner([20, 20, 20], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "off",
+            proximityFactor: 2.0,
+            fgPlaneEnabled: true,
+            fgPlaneDistFactor: 1.0, // threshold = 1·1·1 = 1; corner ~33 away → gated
+            ...fg,
+        },
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    assert.ok(Math.abs(vx - 20) > 1, `far FG corner must NOT pull x, got ${vx}`)
+    assert.ok(vx >= 0 && vx <= 1, `x stays in cell, got ${vx}`)
+    assert.ok(vy >= 0 && vy <= 1, `y stays in cell, got ${vy}`)
+})
+
+test("featureGraphPlane: FG crease edge pulls cube dual vertex toward the crease", async () => {
+    // A short crease segment near (0.3,0.3,*) with the two face normals (1,0,0)
+    // and (0,1,0) — its closest point to the cell centre pins V_x = V_y = 0.3.
+    const fg = fgWithCrease([0.3, 0.3, 0.4], [0.3, 0.3, 0.6], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: {
+            mode: "off",
+            proximityFactor: 2.0,
+            fgPlaneEnabled: true,
+            fgPlaneDistFactor: 2.0,
+            ...fg,
+        },
+    })
+    const vx = tree.root.node[0]!
+    const vy = tree.root.node[1]!
+    assert.ok(Math.abs(vx - 0.3) < 0.05, `x should pull toward crease 0.3, got ${vx}`)
+    assert.ok(Math.abs(vy - 0.3) < 0.05, `y should pull toward crease 0.3, got ${vy}`)
 })

@@ -272,6 +272,17 @@ export function normalizeIsoSimplicialTuning(raw: unknown): IsoSimplicialTuning 
     ) {
         out.featurePlaneDistFactor = o.featurePlaneDistFactor
     }
+    if (typeof o.featureGraphPlanesEnabled === "boolean") {
+        out.featureGraphPlanesEnabled = o.featureGraphPlanesEnabled
+    }
+    if (
+        typeof o.featureGraphPlaneDistFactor === "number" &&
+        Number.isFinite(o.featureGraphPlaneDistFactor) &&
+        o.featureGraphPlaneDistFactor > 0 &&
+        o.featureGraphPlaneDistFactor <= 16
+    ) {
+        out.featureGraphPlaneDistFactor = o.featureGraphPlaneDistFactor
+    }
     return out
 }
 

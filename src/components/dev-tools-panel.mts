@@ -28,12 +28,13 @@ import {
 import { DevToolsAppSection, MESH_VIEWER_OVERLAY_CHANGE_EVENT } from "./dev-tools-app-section.mjs"
 import type { GlobalSettings } from "../storage/settings.mjs"
 import {
+    DevToolsExporterSelect,
+    DevToolsIsoSimplicialSection,
     DevToolsMdcExportSection,
     DevToolsMeshSimplifySection,
     DevToolsShrecExportSection,
 } from "./dev-tools-mesh-export-section.mjs"
 import { DevToolsLogsSection } from "./dev-tools-logs-section.mjs"
-import { DevToolsRendererSection } from "./dev-tools-renderer-section.mjs"
 import "./dev-tools-collapse.mjs"
 import { serializeAgentTestcaseYaml, type AgentTestcase } from "../agent-autotest/agent-testcase.mjs"
 
@@ -49,10 +50,11 @@ export class DevToolsPanel extends HTMLElement {
     #settings: SettingsManager
     #tabs: DocumentTabs
     #appSection: DevToolsAppSection
+    #exporterSelect: DevToolsExporterSelect
     #mdcExportSection: DevToolsMdcExportSection
+    #isoSimplicialSection: DevToolsIsoSimplicialSection
     #meshSimplifySection: DevToolsMeshSimplifySection
     #shrecExportSection: DevToolsShrecExportSection
-    #rendererSection: DevToolsRendererSection
     #logsSection: DevToolsLogsSection
     #extraSectionHosts: HTMLDivElement[] = []
     #debounceTimers = new Map<string, number>()
@@ -92,44 +94,40 @@ export class DevToolsPanel extends HTMLElement {
         return this.#appSection
     }
 
-    get rendererSection(): DevToolsRendererSection {
-        return this.#rendererSection
-    }
-
     get logsSection(): DevToolsLogsSection {
         return this.#logsSection
     }
 
     get cameraOptimization(): boolean {
-        return this.#rendererSection.cameraOptimization
+        return this.#appSection.cameraOptimization
     }
 
     set cameraOptimization(enabled: boolean) {
-        this.#rendererSection.cameraOptimization = enabled
+        this.#appSection.cameraOptimization = enabled
     }
 
     get beamOptimization(): boolean {
-        return this.#rendererSection.beamOptimization
+        return this.#appSection.beamOptimization
     }
 
     set beamOptimization(enabled: boolean) {
-        this.#rendererSection.beamOptimization = enabled
+        this.#appSection.beamOptimization = enabled
     }
 
     get bvhOptimization(): boolean {
-        return this.#rendererSection.bvhOptimization
+        return this.#appSection.bvhOptimization
     }
 
     set bvhOptimization(enabled: boolean) {
-        this.#rendererSection.bvhOptimization = enabled
+        this.#appSection.bvhOptimization = enabled
     }
 
     get featureGraphOverlay(): boolean {
-        return this.#rendererSection.featureGraphOverlay
+        return this.#appSection.featureGraphOverlay
     }
 
     set featureGraphOverlay(enabled: boolean) {
-        this.#rendererSection.featureGraphOverlay = enabled
+        this.#appSection.featureGraphOverlay = enabled
     }
 
     get showFps(): boolean {
@@ -161,11 +159,11 @@ export class DevToolsPanel extends HTMLElement {
     }
 
     get meshExporter(): ExporterKind {
-        return this.#mdcExportSection.meshExporter
+        return this.#exporterSelect.meshExporter
     }
 
     set meshExporter(v: ExporterKind) {
-        this.#mdcExportSection.meshExporter = v
+        this.#exporterSelect.meshExporter = v
     }
 
     get voxelSizeMm(): number {
@@ -177,7 +175,7 @@ export class DevToolsPanel extends HTMLElement {
     }
 
     get isoSimplicialTuning(): IsoSimplicialTuning {
-        return this.#mdcExportSection.isoSimplicialTuning
+        return this.#isoSimplicialSection.isoSimplicialTuning
     }
 
     get shrecTuning(): ShrecTuning {
@@ -197,11 +195,11 @@ export class DevToolsPanel extends HTMLElement {
     }
 
     syncMeshExporterFromSettings(exporter: ExporterKind): void {
-        this.#mdcExportSection.syncMeshExporterFromSettings(exporter)
+        this.#exporterSelect.syncMeshExporterFromSettings(exporter)
     }
 
     syncIsoSimplicialTuningFromSettings(tuning: IsoSimplicialTuning): void {
-        this.#mdcExportSection.syncIsoSimplicialTuningFromSettings(tuning)
+        this.#isoSimplicialSection.syncIsoSimplicialTuningFromSettings(tuning)
     }
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
@@ -260,27 +258,29 @@ export class DevToolsPanel extends HTMLElement {
         this.#shadow.appendChild(style)
 
         this.#appSection = new DevToolsAppSection()
+        this.#exporterSelect = new DevToolsExporterSelect()
         this.#mdcExportSection = new DevToolsMdcExportSection()
+        this.#isoSimplicialSection = new DevToolsIsoSimplicialSection()
         this.#meshSimplifySection = new DevToolsMeshSimplifySection()
         this.#shrecExportSection = new DevToolsShrecExportSection()
-        this.#rendererSection = new DevToolsRendererSection()
         this.#logsSection = new DevToolsLogsSection()
+
+        this.#exporterSelect.onMeshExporterChange = v => this.onMeshExporterChange?.(v)
+        this.#isoSimplicialSection.onIsoSimplicialTuningChange = v => this.onIsoSimplicialTuningChange?.(v)
 
         this.#mdcExportSection.onVoxelSizeMmChange = v => this.onVoxelSizeMmChange?.(v)
         this.#mdcExportSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
         this.#mdcExportSection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
-        this.#mdcExportSection.onMeshExporterChange = v => this.onMeshExporterChange?.(v)
-        this.#mdcExportSection.onIsoSimplicialTuningChange = v => this.onIsoSimplicialTuningChange?.(v)
 
         this.#meshSimplifySection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
 
         this.#shrecExportSection.onShrecTuningChange = v => this.onShrecTuningChange?.(v)
 
-        this.#rendererSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)
-        this.#rendererSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
-        this.#rendererSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
-        this.#rendererSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
-        this.#rendererSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
+        this.#appSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)
+        this.#appSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
+        this.#appSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
+        this.#appSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
+        this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
 
         this.#logsSection.onDebugLogModulesChange = () => this.onDebugLogModulesChange?.()
 
@@ -314,15 +314,16 @@ export class DevToolsPanel extends HTMLElement {
         const meshExportSection = mkSection(
             "Mesh export",
             DEVTOOLS_COLLAPSE.panelMeshExport,
+            this.#exporterSelect,
             mkNested("MDC mesh export", DEVTOOLS_COLLAPSE.panelMeshExportMdc, this.#mdcExportSection),
             mkNested("SHREC export", DEVTOOLS_COLLAPSE.panelMeshExportShrec, this.#shrecExportSection),
+            mkNested("Iso-simplicial", DEVTOOLS_COLLAPSE.panelMeshExportIso, this.#isoSimplicialSection),
             mkNested("Mesh Simplify", DEVTOOLS_COLLAPSE.panelMeshExportSimplify, this.#meshSimplifySection),
         )
 
         this.#shadow.append(
             mkSection("App", DEVTOOLS_COLLAPSE.panelApp, this.#appSection),
             meshExportSection,
-            mkSection("Renderer", DEVTOOLS_COLLAPSE.panelRenderer, this.#rendererSection),
             mkSection("Logs", DEVTOOLS_COLLAPSE.panelLogs, this.#logsSection),
         )
 

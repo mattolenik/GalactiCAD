@@ -13,7 +13,6 @@ import {
     type ShrecTuning,
     type SimplifyTuning,
 } from "../render-worker-protocol.mjs"
-import { DEVTOOLS_COLLAPSE } from "./dev-tools-protocol.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
 import { IsoSimplicialConstants } from "../export/iso-simplicial/constants.mjs"
 import "./dev-tools-collapse.mjs"
@@ -107,49 +106,18 @@ function addVoxelSliderRow(
     return { range, valueEl }
 }
 
-/** MDC mesh export: voxel size + iso/crease/feature-constrained levers (persisted on `mdcExportLevers`). */
-export class DevToolsMdcExportSection extends HTMLElement {
+/**
+ * Exporter dropdown — sits at the top of the parent "Mesh export" panel so it's
+ * clearly the parent-level choice (which exporter runs); exporter-specific knobs
+ * live in their own sibling collapses below.
+ */
+export class DevToolsExporterSelect extends HTMLElement {
     #settings = SettingsManager.instance
-    #voxelSizeRange: HTMLInputElement
-    #voxelSizeValueEl: HTMLSpanElement
-    #mdcRows = new Map<
-        (typeof MDC_RANGE_KNOBS)[number]["key"],
-        { range: HTMLInputElement; valueEl: HTMLSpanElement }
-    >()
-    #mdcFeatureConstrainedPlacementCheckbox: HTMLInputElement
-    #voxelSizeMm$: BehaviorSubject<number>
     #meshExporter$: BehaviorSubject<ExporterKind>
-    #exporterSelect!: HTMLSelectElement
-    #isoCollapse: HTMLElement
-    #isoPhase5Checkbox: HTMLInputElement
-    #isoFeatureRefineCheckbox: HTMLInputElement
-    #isoFeaturePlaneCheckbox: HTMLInputElement
-    #isoFeaturePlaneDistFactorRange: HTMLInputElement
-    #isoFeaturePlaneDistFactorValueEl: HTMLSpanElement
-    #isoBoundsPadRange: HTMLInputElement
-    #isoBoundsPadValueEl: HTMLSpanElement
-    #isoDepthMinRange: HTMLInputElement
-    #isoDepthMinValueEl: HTMLSpanElement
-    #isoDepthMaxRange: HTMLInputElement
-    #isoDepthMaxValueEl: HTMLSpanElement
-    #isoOversampleQefRange: HTMLInputElement
-    #isoOversampleQefValueEl: HTMLSpanElement
+    #exporterSelect: HTMLSelectElement
     #subscriptions: Subscription[] = []
 
-    onMdcExportLeversChange?: () => void
-    /** Fired when renormalize toggle changes (full `SimplifyTuning` after merge). */
-    onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMeshExporterChange?: (exporter: ExporterKind) => void
-    onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
-    onVoxelSizeMmChange?: (mm: number) => void
-
-    get voxelSizeMm(): number {
-        return this.#voxelSizeMm$.value
-    }
-
-    set voxelSizeMm(mm: number) {
-        this.#voxelSizeMm$.next(mm)
-    }
 
     get meshExporter(): ExporterKind {
         return this.#meshExporter$.value
@@ -158,6 +126,86 @@ export class DevToolsMdcExportSection extends HTMLElement {
     set meshExporter(v: ExporterKind) {
         this.#meshExporter$.next(v)
     }
+
+    constructor() {
+        super()
+        const shadow = this.attachShadow({ mode: "open" })
+        const style = document.createElement("style")
+        style.textContent = devToolsBaseShadowCss()
+        shadow.appendChild(style)
+
+        const g = this.#settings.getGlobal().app
+        this.#meshExporter$ = new BehaviorSubject<ExporterKind>(g.meshExporter)
+
+        const row = document.createElement("div")
+        row.className = "shade-row"
+        const lab = document.createElement("label")
+        lab.className = "knob-label"
+        lab.textContent = "Exporter"
+        const sel = document.createElement("select")
+        const EXPORTER_OPTIONS: ReadonlyArray<readonly [ExporterKind, string]> = [
+            ["mdc", "MDC"],
+            ["shrec", "SHREC"],
+            ["isoSimplicial", "Iso-simplicial"],
+        ]
+        for (const [val, label] of EXPORTER_OPTIONS) {
+            const o = document.createElement("option")
+            o.value = val
+            o.textContent = label
+            if (this.#meshExporter$.value === val) o.selected = true
+            sel.appendChild(o)
+        }
+        sel.addEventListener("change", () => {
+            this.#meshExporter$.next(sel.value as ExporterKind)
+        })
+        row.append(lab, sel)
+        shadow.appendChild(row)
+        this.#exporterSelect = sel
+
+        this.#subscriptions.push(
+            this.#meshExporter$.subscribe(v => {
+                if (this.#exporterSelect.value !== v) this.#exporterSelect.value = v
+                if (v !== this.#settings.getGlobal().app.meshExporter) {
+                    this.#settings.updateGlobal({ app: { meshExporter: v, useShrecExporter: v === "shrec" } })
+                    this.onMeshExporterChange?.(v)
+                }
+            })
+        )
+    }
+
+    syncMeshExporterFromSettings(exporter: ExporterKind): void {
+        this.#meshExporter$.next(exporter)
+    }
+
+    disconnectedCallback(): void {
+        for (const s of this.#subscriptions) s.unsubscribe()
+        this.#subscriptions = []
+    }
+}
+
+customElements.define("dev-tools-exporter-select", DevToolsExporterSelect)
+
+/** Iso-simplicial exporter tuning (persisted on `app.isoSimplicialTuning`). */
+export class DevToolsIsoSimplicialSection extends HTMLElement {
+    #settings = SettingsManager.instance
+    #isoPhase5Checkbox: HTMLInputElement
+    #isoFeatureRefineCheckbox: HTMLInputElement
+    #isoFeaturePlaneCheckbox: HTMLInputElement
+    #isoFeaturePlaneDistFactorRange: HTMLInputElement
+    #isoFeaturePlaneDistFactorValueEl: HTMLSpanElement
+    #isoFgPlaneCheckbox: HTMLInputElement
+    #isoFgPlaneDistFactorRange: HTMLInputElement
+    #isoFgPlaneDistFactorValueEl: HTMLSpanElement
+    #isoBoundsPadRange: HTMLInputElement
+    #isoBoundsPadValueEl: HTMLSpanElement
+    #isoDepthMinRange: HTMLInputElement
+    #isoDepthMinValueEl: HTMLSpanElement
+    #isoDepthMaxRange: HTMLInputElement
+    #isoDepthMaxValueEl: HTMLSpanElement
+    #isoOversampleQefRange: HTMLInputElement
+    #isoOversampleQefValueEl: HTMLSpanElement
+
+    onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
 
     get isoSimplicialTuning(): IsoSimplicialTuning {
         return { ...this.#settings.getGlobal().app.isoSimplicialTuning }
@@ -170,48 +218,283 @@ export class DevToolsMdcExportSection extends HTMLElement {
         style.textContent = devToolsBaseShadowCss()
         shadow.appendChild(style)
 
-        const g = this.#settings.getGlobal().app
-        this.#voxelSizeMm$ = new BehaviorSubject(g.meshExportVoxelSizeMm)
+        const isoT = this.#settings.getGlobal().app.isoSimplicialTuning
+        const depthMinDisp = isoT.depthMin ?? IsoSimplicialConstants.depthMin
+        const depthMaxDisp = isoT.depthMax ?? IsoSimplicialConstants.depthMax
+        const oversampleQefDisp = isoT.oversampleQef ?? IsoSimplicialConstants.oversampleQef
+        const isoPadDisp = isoT.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
 
-        // Exporter selection — sits at the top of the Mesh export panel so
-        // it's clearly the parent-level choice (which exporter is used);
-        // exporter-specific knobs live in their own collapses below.
-        this.#meshExporter$ = new BehaviorSubject<ExporterKind>(g.meshExporter)
+        this.#isoPhase5Checkbox = addCheckbox(shadow, "Phase 5 GPU edge snap", isoT.phase5Snap ?? false)
+        this.#isoPhase5Checkbox.addEventListener("change", () => {
+            this.#persistIsoTuning({ phase5Snap: this.#isoPhase5Checkbox.checked })
+        })
+
+        this.#isoFeatureRefineCheckbox = addCheckbox(
+            shadow,
+            "Feature-aware refine (signchangeGated)",
+            (isoT.featureRefineMode ?? "off") === "signchangeGated",
+        )
+        this.#isoFeatureRefineCheckbox.addEventListener("change", () => {
+            this.#persistIsoTuning({
+                featureRefineMode: this.#isoFeatureRefineCheckbox.checked ? "signchangeGated" : "off",
+            })
+        })
+
+        this.#isoFeaturePlaneCheckbox = addCheckbox(shadow, "SDF feature planes", isoT.featurePlaneEnabled === true)
+        this.#isoFeaturePlaneCheckbox.addEventListener("change", () => {
+            this.#persistIsoTuning({ featurePlaneEnabled: this.#isoFeaturePlaneCheckbox.checked })
+        })
+
         {
             const row = document.createElement("div")
             row.className = "shade-row"
             const lab = document.createElement("label")
             lab.className = "knob-label"
-            lab.textContent = "Exporter"
-            const sel = document.createElement("select")
-            const EXPORTER_OPTIONS: ReadonlyArray<readonly [ExporterKind, string]> = [
-                ["mdc", "MDC"],
-                ["shrec", "SHREC"],
-                ["isoSimplicial", "Iso-simplicial"],
-            ]
-            for (const [val, label] of EXPORTER_OPTIONS) {
-                const o = document.createElement("option")
-                o.value = val
-                o.textContent = label
-                if (this.#meshExporter$.value === val) o.selected = true
-                sel.appendChild(o)
-            }
-            sel.addEventListener("change", () => {
-                this.#meshExporter$.next(sel.value as ExporterKind)
+            lab.textContent = "SDF feature plane dist factor"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0.1"
+            range.max = "4"
+            range.step = "0.1"
+            const dfInit = isoT.featurePlaneDistFactor ?? 1.0
+            range.value = String(dfInit)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = dfInit.toFixed(1)
+            range.addEventListener("input", () => {
+                let v = parseFloat(range.value)
+                if (!Number.isFinite(v)) v = 1.0
+                v = Math.max(0.1, Math.min(4, v))
+                valueEl.textContent = v.toFixed(1)
+                this.#persistIsoTuning({ featurePlaneDistFactor: v })
             })
-            row.append(lab, sel)
+            row.append(lab, range, valueEl)
             shadow.appendChild(row)
-            this.#exporterSelect = sel
+            this.#isoFeaturePlaneDistFactorRange = range
+            this.#isoFeaturePlaneDistFactorValueEl = valueEl
         }
-        this.#subscriptions.push(
-            this.#meshExporter$.subscribe(v => {
-                if (this.#exporterSelect.value !== v) this.#exporterSelect.value = v
-                if (v !== this.#settings.getGlobal().app.meshExporter) {
-                    this.#settings.updateGlobal({ app: { meshExporter: v, useShrecExporter: v === "shrec" } })
-                    this.onMeshExporterChange?.(v)
-                }
+
+        this.#isoFgPlaneCheckbox = addCheckbox(shadow, "FeatureGraph planes", isoT.featureGraphPlanesEnabled === true)
+        this.#isoFgPlaneCheckbox.addEventListener("change", () => {
+            this.#persistIsoTuning({ featureGraphPlanesEnabled: this.#isoFgPlaneCheckbox.checked })
+        })
+
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "FeatureGraph plane dist factor"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0.1"
+            range.max = "4"
+            range.step = "0.1"
+            const dfInit = isoT.featureGraphPlaneDistFactor ?? 1.0
+            range.value = String(dfInit)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = dfInit.toFixed(1)
+            range.addEventListener("input", () => {
+                let v = parseFloat(range.value)
+                if (!Number.isFinite(v)) v = 1.0
+                v = Math.max(0.1, Math.min(4, v))
+                valueEl.textContent = v.toFixed(1)
+                this.#persistIsoTuning({ featureGraphPlaneDistFactor: v })
             })
-        )
+            row.append(lab, range, valueEl)
+            shadow.appendChild(row)
+            this.#isoFgPlaneDistFactorRange = range
+            this.#isoFgPlaneDistFactorValueEl = valueEl
+        }
+
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Bounds padding (mm)"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "0"
+            range.max = "20"
+            range.step = "0.1"
+            range.value = String(isoPadDisp)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = isoPadDisp.toFixed(1)
+            range.addEventListener("input", () => {
+                let v = parseFloat(range.value)
+                if (!Number.isFinite(v)) v = 0
+                v = Math.max(0, Math.min(20, v))
+                valueEl.textContent = v.toFixed(1)
+                this.#persistIsoTuning({ boundingBoxPaddingMm: v })
+            })
+            row.append(lab, range, valueEl)
+            shadow.appendChild(row)
+            this.#isoBoundsPadRange = range
+            this.#isoBoundsPadValueEl = valueEl
+        }
+
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Octree depth min"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "3"
+            range.max = "12"
+            range.step = "1"
+            range.value = String(depthMinDisp)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = String(depthMinDisp)
+            range.addEventListener("input", () => {
+                const v = parseInt(range.value, 10)
+                valueEl.textContent = String(v)
+                this.#persistIsoTuning({ depthMin: v })
+            })
+            row.append(lab, range, valueEl)
+            shadow.appendChild(row)
+            this.#isoDepthMinRange = range
+            this.#isoDepthMinValueEl = valueEl
+        }
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Octree depth max"
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "3"
+            range.max = "14"
+            range.step = "1"
+            range.value = String(depthMaxDisp)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = String(depthMaxDisp)
+            range.addEventListener("input", () => {
+                const v = parseInt(range.value, 10)
+                valueEl.textContent = String(v)
+                this.#persistIsoTuning({ depthMax: v })
+            })
+            row.append(lab, range, valueEl)
+            shadow.appendChild(row)
+            this.#isoDepthMaxRange = range
+            this.#isoDepthMaxValueEl = valueEl
+        }
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "QEF Hermite oversample"
+            lab.title =
+                "Denser internal/edge/face sample lattices for Hermite+QEF (higher = more sceneSDF work per cell, often sharper)."
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = "1"
+            range.max = "8"
+            range.step = "1"
+            range.value = String(oversampleQefDisp)
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = String(oversampleQefDisp)
+            range.addEventListener("input", () => {
+                let v = parseInt(range.value, 10)
+                if (!Number.isFinite(v)) v = IsoSimplicialConstants.oversampleQef
+                v = Math.max(1, Math.min(8, Math.round(v)))
+                valueEl.textContent = String(v)
+                this.#persistIsoTuning({ oversampleQef: v })
+            })
+            row.append(lab, range, valueEl)
+            shadow.appendChild(row)
+            this.#isoOversampleQefRange = range
+            this.#isoOversampleQefValueEl = valueEl
+        }
+        const isoDefaults = document.createElement("button")
+        isoDefaults.textContent = "Iso defaults"
+        isoDefaults.addEventListener("click", () => {
+            this.#settings.updateGlobal({ app: { isoSimplicialTuning: { ...DEFAULT_ISO_SIMPLICIAL_TUNING } } })
+            this.syncIsoSimplicialTuningFromSettings(this.#settings.getGlobal().app.isoSimplicialTuning)
+            this.onIsoSimplicialTuningChange?.(this.#settings.getGlobal().app.isoSimplicialTuning)
+        })
+        shadow.appendChild(isoDefaults)
+    }
+
+    syncIsoSimplicialTuningFromSettings(tuning: IsoSimplicialTuning): void {
+        this.#isoPhase5Checkbox.checked = tuning.phase5Snap ?? false
+        this.#isoFeatureRefineCheckbox.checked = (tuning.featureRefineMode ?? "off") === "signchangeGated"
+        this.#isoFeaturePlaneCheckbox.checked = tuning.featurePlaneEnabled === true
+        const dfSync = tuning.featurePlaneDistFactor ?? 1.0
+        this.#isoFeaturePlaneDistFactorRange.value = String(dfSync)
+        this.#isoFeaturePlaneDistFactorValueEl.textContent = dfSync.toFixed(1)
+        this.#isoFgPlaneCheckbox.checked = tuning.featureGraphPlanesEnabled === true
+        const fgDfSync = tuning.featureGraphPlaneDistFactor ?? 1.0
+        this.#isoFgPlaneDistFactorRange.value = String(fgDfSync)
+        this.#isoFgPlaneDistFactorValueEl.textContent = fgDfSync.toFixed(1)
+        const pad = tuning.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
+        this.#isoBoundsPadRange.value = String(pad)
+        this.#isoBoundsPadValueEl.textContent = pad.toFixed(1)
+        const dmin = tuning.depthMin ?? IsoSimplicialConstants.depthMin
+        const dmax = tuning.depthMax ?? IsoSimplicialConstants.depthMax
+        this.#isoDepthMinRange.value = String(dmin)
+        this.#isoDepthMinValueEl.textContent = String(dmin)
+        this.#isoDepthMaxRange.value = String(dmax)
+        this.#isoDepthMaxValueEl.textContent = String(dmax)
+        const oq = tuning.oversampleQef ?? IsoSimplicialConstants.oversampleQef
+        this.#isoOversampleQefRange.value = String(oq)
+        this.#isoOversampleQefValueEl.textContent = String(oq)
+    }
+
+    #persistIsoTuning(patch: Partial<IsoSimplicialTuning>): void {
+        const cur = this.#settings.getGlobal().app.isoSimplicialTuning
+        const next: IsoSimplicialTuning = { ...cur, ...patch }
+        this.#settings.updateGlobal({ app: { isoSimplicialTuning: next } })
+        this.onIsoSimplicialTuningChange?.(next)
+    }
+}
+
+customElements.define("dev-tools-iso-simplicial-section", DevToolsIsoSimplicialSection)
+
+/** MDC mesh export: voxel size + iso/crease/feature-constrained levers (persisted on `mdcExportLevers`). */
+export class DevToolsMdcExportSection extends HTMLElement {
+    #settings = SettingsManager.instance
+    #voxelSizeRange: HTMLInputElement
+    #voxelSizeValueEl: HTMLSpanElement
+    #mdcRows = new Map<
+        (typeof MDC_RANGE_KNOBS)[number]["key"],
+        { range: HTMLInputElement; valueEl: HTMLSpanElement }
+    >()
+    #mdcFeatureConstrainedPlacementCheckbox: HTMLInputElement
+    #voxelSizeMm$: BehaviorSubject<number>
+    #subscriptions: Subscription[] = []
+
+    onMdcExportLeversChange?: () => void
+    /** Fired when renormalize toggle changes (full `SimplifyTuning` after merge). */
+    onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
+    onVoxelSizeMmChange?: (mm: number) => void
+
+    get voxelSizeMm(): number {
+        return this.#voxelSizeMm$.value
+    }
+
+    set voxelSizeMm(mm: number) {
+        this.#voxelSizeMm$.next(mm)
+    }
+
+    constructor() {
+        super()
+        const shadow = this.attachShadow({ mode: "open" })
+        const style = document.createElement("style")
+        style.textContent = devToolsBaseShadowCss()
+        shadow.appendChild(style)
+
+        const g = this.#settings.getGlobal().app
+        this.#voxelSizeMm$ = new BehaviorSubject(g.meshExportVoxelSizeMm)
 
         {
             const row = document.createElement("div")
@@ -244,192 +527,6 @@ export class DevToolsMdcExportSection extends HTMLElement {
                 this.onVoxelSizeMmChange?.(v)
             })
         )
-
-        const isoT = g.isoSimplicialTuning
-        const depthMinDisp = isoT.depthMin ?? IsoSimplicialConstants.depthMin
-        const depthMaxDisp = isoT.depthMax ?? IsoSimplicialConstants.depthMax
-        const oversampleQefDisp = isoT.oversampleQef ?? IsoSimplicialConstants.oversampleQef
-        const isoPadDisp = isoT.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
-        this.#isoCollapse = document.createElement("dev-tools-collapse")
-        this.#isoCollapse.setAttribute("label", "Iso-simplicial")
-        this.#isoCollapse.setAttribute("nested", "")
-        shadow.appendChild(this.#isoCollapse)
-
-        this.#isoPhase5Checkbox = addCheckbox(this.#isoCollapse, "Phase 5 GPU edge snap", isoT.phase5Snap ?? false)
-        this.#isoPhase5Checkbox.addEventListener("change", () => {
-            this.#persistIsoTuning({ phase5Snap: this.#isoPhase5Checkbox.checked })
-        })
-
-        this.#isoFeatureRefineCheckbox = addCheckbox(
-            this.#isoCollapse,
-            "Feature-aware refine (signchangeGated)",
-            (isoT.featureRefineMode ?? "off") === "signchangeGated",
-        )
-        this.#isoFeatureRefineCheckbox.addEventListener("change", () => {
-            this.#persistIsoTuning({
-                featureRefineMode: this.#isoFeatureRefineCheckbox.checked ? "signchangeGated" : "off",
-            })
-        })
-
-        this.#isoFeaturePlaneCheckbox = addCheckbox(
-            this.#isoCollapse,
-            "Feature planes in QEF",
-            isoT.featurePlaneEnabled === true,
-        )
-        this.#isoFeaturePlaneCheckbox.addEventListener("change", () => {
-            this.#persistIsoTuning({ featurePlaneEnabled: this.#isoFeaturePlaneCheckbox.checked })
-        })
-
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Feature plane dist factor"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0.1"
-            range.max = "4"
-            range.step = "0.1"
-            const dfInit = isoT.featurePlaneDistFactor ?? 1.0
-            range.value = String(dfInit)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = dfInit.toFixed(1)
-            range.addEventListener("input", () => {
-                let v = parseFloat(range.value)
-                if (!Number.isFinite(v)) v = 1.0
-                v = Math.max(0.1, Math.min(4, v))
-                valueEl.textContent = v.toFixed(1)
-                this.#persistIsoTuning({ featurePlaneDistFactor: v })
-            })
-            row.append(lab, range, valueEl)
-            this.#isoCollapse.appendChild(row)
-            this.#isoFeaturePlaneDistFactorRange = range
-            this.#isoFeaturePlaneDistFactorValueEl = valueEl
-        }
-
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Bounds padding (mm)"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0"
-            range.max = "20"
-            range.step = "0.1"
-            range.value = String(isoPadDisp)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = isoPadDisp.toFixed(1)
-            range.addEventListener("input", () => {
-                let v = parseFloat(range.value)
-                if (!Number.isFinite(v)) v = 0
-                v = Math.max(0, Math.min(20, v))
-                valueEl.textContent = v.toFixed(1)
-                this.#persistIsoTuning({ boundingBoxPaddingMm: v })
-            })
-            row.append(lab, range, valueEl)
-            this.#isoCollapse.appendChild(row)
-            this.#isoBoundsPadRange = range
-            this.#isoBoundsPadValueEl = valueEl
-        }
-
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Octree depth min"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "3"
-            range.max = "12"
-            range.step = "1"
-            range.value = String(depthMinDisp)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = String(depthMinDisp)
-            range.addEventListener("input", () => {
-                const v = parseInt(range.value, 10)
-                valueEl.textContent = String(v)
-                this.#persistIsoTuning({ depthMin: v })
-            })
-            row.append(lab, range, valueEl)
-            this.#isoCollapse.appendChild(row)
-            this.#isoDepthMinRange = range
-            this.#isoDepthMinValueEl = valueEl
-        }
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Octree depth max"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "3"
-            range.max = "14"
-            range.step = "1"
-            range.value = String(depthMaxDisp)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = String(depthMaxDisp)
-            range.addEventListener("input", () => {
-                const v = parseInt(range.value, 10)
-                valueEl.textContent = String(v)
-                this.#persistIsoTuning({ depthMax: v })
-            })
-            row.append(lab, range, valueEl)
-            this.#isoCollapse.appendChild(row)
-            this.#isoDepthMaxRange = range
-            this.#isoDepthMaxValueEl = valueEl
-        }
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "QEF Hermite oversample"
-            lab.title =
-                "Denser internal/edge/face sample lattices for Hermite+QEF (higher = more sceneSDF work per cell, often sharper)."
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "1"
-            range.max = "8"
-            range.step = "1"
-            range.value = String(oversampleQefDisp)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = String(oversampleQefDisp)
-            range.addEventListener("input", () => {
-                let v = parseInt(range.value, 10)
-                if (!Number.isFinite(v)) v = IsoSimplicialConstants.oversampleQef
-                v = Math.max(1, Math.min(8, Math.round(v)))
-                valueEl.textContent = String(v)
-                this.#persistIsoTuning({ oversampleQef: v })
-            })
-            row.append(lab, range, valueEl)
-            this.#isoCollapse.appendChild(row)
-            this.#isoOversampleQefRange = range
-            this.#isoOversampleQefValueEl = valueEl
-        }
-        const isoDefaults = document.createElement("button")
-        isoDefaults.textContent = "Iso defaults"
-        isoDefaults.addEventListener("click", () => {
-            this.#settings.updateGlobal({ app: { isoSimplicialTuning: { ...DEFAULT_ISO_SIMPLICIAL_TUNING } } })
-            this.syncIsoSimplicialTuningFromSettings(this.#settings.getGlobal().app.isoSimplicialTuning)
-            this.onIsoSimplicialTuningChange?.(this.#settings.getGlobal().app.isoSimplicialTuning)
-        })
-        this.#isoCollapse.appendChild(isoDefaults)
-
-        const mdcCollapse = document.createElement("dev-tools-collapse")
-        mdcCollapse.setAttribute("label", "MDC mesh export")
-        mdcCollapse.setAttribute("nested", "")
-        mdcCollapse.setAttribute("collapse-id", DEVTOOLS_COLLAPSE.panelMeshExportMdc)
-        shadow.appendChild(mdcCollapse)
 
         const mdcLevers = this.#settings.getMdcExportLevers()
 
@@ -514,38 +611,6 @@ export class DevToolsMdcExportSection extends HTMLElement {
             row.range.value = String(levers[k.key])
             row.valueEl.textContent = formatMdcValue(k.key, levers[k.key])
         }
-    }
-
-    syncMeshExporterFromSettings(exporter: ExporterKind): void {
-        this.#meshExporter$.next(exporter)
-    }
-
-    syncIsoSimplicialTuningFromSettings(tuning: IsoSimplicialTuning): void {
-        this.#isoPhase5Checkbox.checked = tuning.phase5Snap ?? false
-        this.#isoFeatureRefineCheckbox.checked = (tuning.featureRefineMode ?? "off") === "signchangeGated"
-        this.#isoFeaturePlaneCheckbox.checked = tuning.featurePlaneEnabled === true
-        const dfSync = tuning.featurePlaneDistFactor ?? 1.0
-        this.#isoFeaturePlaneDistFactorRange.value = String(dfSync)
-        this.#isoFeaturePlaneDistFactorValueEl.textContent = dfSync.toFixed(1)
-        const pad = tuning.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
-        this.#isoBoundsPadRange.value = String(pad)
-        this.#isoBoundsPadValueEl.textContent = pad.toFixed(1)
-        const dmin = tuning.depthMin ?? IsoSimplicialConstants.depthMin
-        const dmax = tuning.depthMax ?? IsoSimplicialConstants.depthMax
-        this.#isoDepthMinRange.value = String(dmin)
-        this.#isoDepthMinValueEl.textContent = String(dmin)
-        this.#isoDepthMaxRange.value = String(dmax)
-        this.#isoDepthMaxValueEl.textContent = String(dmax)
-        const oq = tuning.oversampleQef ?? IsoSimplicialConstants.oversampleQef
-        this.#isoOversampleQefRange.value = String(oq)
-        this.#isoOversampleQefValueEl.textContent = String(oq)
-    }
-
-    #persistIsoTuning(patch: Partial<IsoSimplicialTuning>): void {
-        const cur = this.#settings.getGlobal().app.isoSimplicialTuning
-        const next: IsoSimplicialTuning = { ...cur, ...patch }
-        this.#settings.updateGlobal({ app: { isoSimplicialTuning: next } })
-        this.onIsoSimplicialTuningChange?.(next)
     }
 
     disconnectedCallback(): void {

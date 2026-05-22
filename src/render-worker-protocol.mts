@@ -83,6 +83,21 @@ export interface IsoSimplicialTuning {
      * Default 1.0 — inject only when the feature is inside or just outside the cell.
      */
     featurePlaneDistFactor?: number
+    /**
+     * Inject FeatureGraph corners + creases as additional Hermite planes in the per-cell
+     * QEF (cube / edge / face). Independent of `featurePlaneEnabled`: that path samples
+     * `SDFResultMid` on the GPU; this path consumes the survival-aware FeatureGraph
+     * (`src/feature-graph/`) built per export. Composes with the GPU mid-feature planes
+     * when both are enabled. Default `false`.
+     */
+    featureGraphPlanesEnabled?: boolean
+    /**
+     * Distance gate for `featureGraphPlanesEnabled`: skip an FG corner/crease when its
+     * distance to the cell (world units) exceeds `featureGraphPlaneDistFactor * cellSize *
+     * worldScale`. Same semantics as {@link featurePlaneDistFactor} but applied to the
+     * FG-derived planes. Default 1.0.
+     */
+    featureGraphPlaneDistFactor?: number
 }
 
 /** Default iso-simplicial tuning: all fields omitted → worker uses `IsoSimplicialConstants`. */

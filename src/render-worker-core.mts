@@ -1432,8 +1432,33 @@ export class RenderWorkerCore {
                         :   {}),
                     }
                     const featureRefineMode = isoT.featureRefineMode ?? "off"
+                    // FG plumbing: build the FeatureGraph at the iso-simplicial finest-cell
+                    // size (NOT `voxelSizeMm`, which is the SHREC grid size). The spatial
+                    // index's cell granularity then matches the deepest octree cells, so
+                    // per-cell FG queries return tight results. Only do this when the user
+                    // has enabled FG-plane injection — building the FG is a few async GPU
+                    // dispatches we don't want to pay when the flag is off.
+                    const fgEnabled = isoT.featureGraphPlanesEnabled === true
+                    const fgResult = fgEnabled ? await this.#buildFeatureGraph(this.#scene!, isoBatchVoxelSize) : null
+                    const fgPlaneFields: Pick<
+                        IsoFeatureRefineOptions,
+                        "fgPlaneEnabled" | "fgPlaneDistFactor" | "featureGraphCpu" | "featureGraphWorldPositions" | "featureGraphSpatialIndex"
+                    > = fgEnabled && fgResult
+                        ? {
+                            fgPlaneEnabled: true,
+                            fgPlaneDistFactor:
+                                typeof isoT.featureGraphPlaneDistFactor === "number" &&
+                                Number.isFinite(isoT.featureGraphPlaneDistFactor) &&
+                                isoT.featureGraphPlaneDistFactor > 0
+                                    ? isoT.featureGraphPlaneDistFactor
+                                    : 1.0,
+                            featureGraphCpu: fgResult.cpu,
+                            featureGraphWorldPositions: fgResult.worldPositions,
+                            featureGraphSpatialIndex: fgResult.spatialIndex,
+                        }
+                        : {}
                     const featureRefine: IsoFeatureRefineOptions | undefined = featureRefineMode === "off"
-                        ? undefined
+                        ? (fgEnabled && fgResult ? { mode: "off", proximityFactor: 2.0, ...fgPlaneFields } : undefined)
                         : {
                             mode: featureRefineMode,
                             proximityFactor:
@@ -1452,6 +1477,7 @@ export class RenderWorkerCore {
                                 isoT.featurePlaneDistFactor > 0
                                     ? isoT.featurePlaneDistFactor
                                     : 1.0,
+                            ...fgPlaneFields,
                         }
                     const tree = await IsoOctree.build({
                         sample: sampleFn,

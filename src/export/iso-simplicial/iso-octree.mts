@@ -24,6 +24,9 @@ import {
 import { cubeCornerIndex, cubeEdge2Orient, cubeEdge2Vert, cubeFace2Orient, cubeFace2Vert } from "./cube-tables.mjs"
 import { qefAccumulatePlane, zeroQefPacked } from "./qef-normal.mjs"
 import { ISO_SAMPLE_BATCH_MID_FLOATS_PER_SAMPLE, type IsoSampleBatch } from "./iso-sample-batch.mjs"
+import type { FeatureGraphCpu } from "../../scene/feature-graph-buffer.mjs"
+import type { FeatureGraphWorldPositions } from "../../feature-graph/feature-graph-stages.mjs"
+import type { FeatureGraphSpatialIndex } from "../../feature-graph/feature-graph-spatial-index.mjs"
 
 /** One `vec4f` per logical slot: corners 8, edges 12, faces 6, cell body 1. */
 export interface IsoOctreeNode {
@@ -76,6 +79,30 @@ export interface IsoFeatureRefineOptions {
      * only inject from corners whose nearest feature is inside or just outside the cell.
      */
     planeDistFactor?: number
+    /**
+     * When true, inject FG-derived Hermite planes into the per-cell QEF (cube / edge / face)
+     * for each FG corner / crease that the per-cell spatial-index query returns within
+     * {@link fgPlaneDistFactor} cells of the cell. Independent of {@link planeEnabled};
+     * composes additively with it when both are on. Requires {@link featureGraphCpu},
+     * {@link featureGraphWorldPositions}, and {@link featureGraphSpatialIndex} to be set —
+     * otherwise this is a no-op even when `true`. Default `false`.
+     */
+    fgPlaneEnabled?: boolean
+    /**
+     * Distance gate for FG-derived planes: skip an FG feature whose distance to the cell
+     * exceeds `fgPlaneDistFactor * cellSize * worldScale`. Default `1.0`.
+     */
+    fgPlaneDistFactor?: number
+    /**
+     * Final CPU snapshot of the FeatureGraph (post-bisection, includes alive flags).
+     * Source of FG corner / crease positions, flags, and normals. Required when
+     * {@link fgPlaneEnabled} is true.
+     */
+    featureGraphCpu?: FeatureGraphCpu
+    /** World positions for {@link featureGraphCpu}'s vertices. Required when {@link fgPlaneEnabled}. */
+    featureGraphWorldPositions?: FeatureGraphWorldPositions
+    /** Per-cell spatial index over {@link featureGraphCpu}. Required when {@link fgPlaneEnabled}. */
+    featureGraphSpatialIndex?: FeatureGraphSpatialIndex
 }
 
 export const DEFAULT_FEATURE_REFINE_OPTIONS: IsoFeatureRefineOptions = {
@@ -745,7 +772,20 @@ function nowMs(): number {
 }
 
 function normalizeFeatureRefine(opt: IsoFeatureRefineOptions | undefined): IsoFeatureRefineOptions {
-    if (!opt || opt.mode === "off") return { ...DEFAULT_FEATURE_REFINE_OPTIONS }
+    // FG-plane injection is independent of the GPU mid-feature refine `mode`: the FG path can
+    // run on its own when the caller only wants survival-aware Hermite planes (no GPU midSdf).
+    const fgFields: Partial<IsoFeatureRefineOptions> = {}
+    if (opt?.fgPlaneEnabled === true && opt.featureGraphCpu && opt.featureGraphWorldPositions && opt.featureGraphSpatialIndex) {
+        fgFields.fgPlaneEnabled = true
+        fgFields.fgPlaneDistFactor =
+            typeof opt.fgPlaneDistFactor === "number" && Number.isFinite(opt.fgPlaneDistFactor) && opt.fgPlaneDistFactor > 0
+                ? opt.fgPlaneDistFactor
+                : 1.0
+        fgFields.featureGraphCpu = opt.featureGraphCpu
+        fgFields.featureGraphWorldPositions = opt.featureGraphWorldPositions
+        fgFields.featureGraphSpatialIndex = opt.featureGraphSpatialIndex
+    }
+    if (!opt || opt.mode === "off") return { ...DEFAULT_FEATURE_REFINE_OPTIONS, ...fgFields }
     if (!opt.sampleMidFeature) {
         throw new Error("IsoOctree.build: featureRefine.mode != 'off' requires sampleMidFeature")
     }
@@ -758,6 +798,7 @@ function normalizeFeatureRefine(opt: IsoFeatureRefineOptions | undefined): IsoFe
             typeof opt.planeDistFactor === "number" && Number.isFinite(opt.planeDistFactor) && opt.planeDistFactor > 0
                 ? opt.planeDistFactor
                 : 1.0,
+        ...fgFields,
     }
 }
 

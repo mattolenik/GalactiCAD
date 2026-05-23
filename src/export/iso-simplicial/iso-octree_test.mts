@@ -817,7 +817,10 @@ test("featureGraphPlane (edge): x/y-axis edges pull toward FG corner, z-axis edg
         sample: mockPlaneHalfZ,
         bounds: UNIT_BOUNDS,
         constants: DEPTH0_CONSTS,
-        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, ...fg },
+        featureRefine: {
+            mode: "off", proximityFactor: 2.0,
+            fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, fgEdgeFacePlanes: true, ...fg,
+        },
     })
     for (let e = 0; e < 12; e++) {
         const orient = cubeEdge2Orient[e]!
@@ -857,7 +860,10 @@ test("featureGraphPlane (face): in-face axes pull toward FG corner; out-of-face 
         sample: mockPlaneHalfZ,
         bounds: UNIT_BOUNDS,
         constants: DEPTH0_CONSTS,
-        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, ...fg },
+        featureRefine: {
+            mode: "off", proximityFactor: 2.0,
+            fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, fgEdgeFacePlanes: true, ...fg,
+        },
     })
     for (let f = 0; f < 6; f++) {
         const orient = cubeFace2Orient[f]!
@@ -882,7 +888,10 @@ test("featureGraphPlane (edge): FG crease pulls edge dual vertices along the cre
         sample: mockPlaneHalfZ,
         bounds: UNIT_BOUNDS,
         constants: DEPTH0_CONSTS,
-        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, ...fg },
+        featureRefine: {
+            mode: "off", proximityFactor: 2.0,
+            fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, fgEdgeFacePlanes: true, ...fg,
+        },
     })
     for (let e = 0; e < 12; e++) {
         const orient = cubeEdge2Orient[e]!
@@ -890,6 +899,27 @@ test("featureGraphPlane (edge): FG crease pulls edge dual vertices along the cre
         const ey = tree.root.edges[e * 4 + 1]!
         if (orient === 0) assert.ok(Math.abs(ex - 0.3) < 0.05, `x-axis edge ${e}: x near 0.3, got ${ex}`)
         if (orient === 1) assert.ok(Math.abs(ey - 0.3) < 0.05, `y-axis edge ${e}: y near 0.3, got ${ey}`)
+    }
+})
+
+test("featureGraphPlane (edge): default (fgEdgeFacePlanes off) leaves edge dual vertices unconstrained", async () => {
+    // Cube-only is the default — edges must NOT pull toward the FG corner.
+    const fg = fgWithCorner([0.3, 0.3, 0.5], [[1, 0, 0], [0, 1, 0]])
+    const tree = await IsoOctree.build({
+        sample: mockPlaneHalfZ,
+        bounds: UNIT_BOUNDS,
+        constants: DEPTH0_CONSTS,
+        featureRefine: { mode: "off", proximityFactor: 2.0, fgPlaneEnabled: true, fgPlaneDistFactor: 2.0, ...fg },
+    })
+    // Cube vertex still snaps (cube injection is unconditional)…
+    assert.ok(Math.abs(tree.root.node[0]! - 0.3) < 0.05, "cube x still pulls")
+    // …but edges stay border-clamped (no edge/face FG injection by default).
+    for (let e = 0; e < 12; e++) {
+        const orient = cubeEdge2Orient[e]!
+        const ex = tree.root.edges[e * 4]!
+        const ey = tree.root.edges[e * 4 + 1]!
+        if (orient === 0) assert.ok(Math.abs(ex - 0.3) > 0.1, `default: x-edge ${e} not pulled, got ${ex}`)
+        if (orient === 1) assert.ok(Math.abs(ey - 0.3) > 0.1, `default: y-edge ${e} not pulled, got ${ey}`)
     }
 })
 

@@ -50,6 +50,8 @@ export interface QefBatchInputs {
     sharedFgData?: SharedArrayBuffer
     sharedFgOffsets?: SharedArrayBuffer
     fgStrideFloats?: number
+    /** When true, FG planes also feed the edge + face QEFs (not just the cube QEF). */
+    fgEdgeFacePlanes?: boolean
 }
 
 interface PendingBatch {
@@ -126,6 +128,7 @@ export class QefWorkerPool {
                     sharedFgData: inputs.sharedFgData,
                     sharedFgOffsets: inputs.sharedFgOffsets,
                     fgStrideFloats: inputs.fgStrideFloats,
+                    fgEdgeFacePlanes: inputs.fgEdgeFacePlanes,
                 }
                 this.#workers[wi]!.postMessage(req)
             }

@@ -283,6 +283,9 @@ export function normalizeIsoSimplicialTuning(raw: unknown): IsoSimplicialTuning 
     ) {
         out.featureGraphPlaneDistFactor = o.featureGraphPlaneDistFactor
     }
+    if (typeof o.featureGraphEdgeFacePlanes === "boolean") {
+        out.featureGraphEdgeFacePlanes = o.featureGraphEdgeFacePlanes
+    }
     return out
 }
 

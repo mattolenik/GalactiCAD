@@ -196,6 +196,7 @@ export class DevToolsIsoSimplicialSection extends HTMLElement {
     #isoFgPlaneCheckbox: HTMLInputElement
     #isoFgPlaneDistFactorRange: HTMLInputElement
     #isoFgPlaneDistFactorValueEl: HTMLSpanElement
+    #isoFgEdgeFaceCheckbox: HTMLInputElement
     #isoBoundsPadRange: HTMLInputElement
     #isoBoundsPadValueEl: HTMLSpanElement
     #isoDepthMinRange: HTMLInputElement
@@ -307,6 +308,15 @@ export class DevToolsIsoSimplicialSection extends HTMLElement {
             this.#isoFgPlaneDistFactorRange = range
             this.#isoFgPlaneDistFactorValueEl = valueEl
         }
+
+        this.#isoFgEdgeFaceCheckbox = addCheckbox(
+            shadow,
+            "FG planes in edge/face QEF",
+            isoT.featureGraphEdgeFacePlanes === true,
+        )
+        this.#isoFgEdgeFaceCheckbox.addEventListener("change", () => {
+            this.#persistIsoTuning({ featureGraphEdgeFacePlanes: this.#isoFgEdgeFaceCheckbox.checked })
+        })
 
         {
             const row = document.createElement("div")
@@ -436,6 +446,7 @@ export class DevToolsIsoSimplicialSection extends HTMLElement {
         const fgDfSync = tuning.featureGraphPlaneDistFactor ?? 0
         this.#isoFgPlaneDistFactorRange.value = String(fgDfSync)
         this.#isoFgPlaneDistFactorValueEl.textContent = fgDfSync.toFixed(1)
+        this.#isoFgEdgeFaceCheckbox.checked = tuning.featureGraphEdgeFacePlanes === true
         const pad = tuning.boundingBoxPaddingMm ?? DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM
         this.#isoBoundsPadRange.value = String(pad)
         this.#isoBoundsPadValueEl.textContent = pad.toFixed(1)

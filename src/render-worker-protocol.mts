@@ -99,6 +99,18 @@ export interface IsoSimplicialTuning {
      * cells onto feature edges (collapsed geometry), so keep it small.
      */
     featureGraphPlaneDistFactor?: number
+    /**
+     * When true (and `featureGraphPlanesEnabled`), also inject FG planes into the
+     * sub-dimensional **edge** and **face** QEFs — not just the cube QEF. Default false.
+     *
+     * The cube QEF is 3D and a feature's planes correctly intersect at its crease/corner,
+     * so cube injection is mispull-free. The edge/face QEFs are sub-dimensional: a feature
+     * gated into the cell is projected onto *every* cell-edge / face, including ones the
+     * feature does not cross, where the cross-face plane is an extrapolated mispull. At a
+     * concave feature that mispull dents sub-vertices inward (a "subtracted slice"). Leave
+     * off unless A/B testing shows it helps a specific model.
+     */
+    featureGraphEdgeFacePlanes?: boolean
 }
 
 /** Default iso-simplicial tuning: all fields omitted → worker uses `IsoSimplicialConstants`. */

@@ -1442,7 +1442,7 @@ export class RenderWorkerCore {
                     const fgResult = fgEnabled ? await this.#buildFeatureGraph(this.#scene!, isoBatchVoxelSize) : null
                     const fgPlaneFields: Pick<
                         IsoFeatureRefineOptions,
-                        "fgPlaneEnabled" | "fgPlaneDistFactor" | "featureGraphCpu" | "featureGraphWorldPositions" | "featureGraphSpatialIndex"
+                        "fgPlaneEnabled" | "fgPlaneDistFactor" | "fgEdgeFacePlanes" | "featureGraphCpu" | "featureGraphWorldPositions" | "featureGraphSpatialIndex"
                     > = fgEnabled && fgResult
                         ? {
                             fgPlaneEnabled: true,
@@ -1452,6 +1452,7 @@ export class RenderWorkerCore {
                                 isoT.featureGraphPlaneDistFactor >= 0
                                     ? isoT.featureGraphPlaneDistFactor
                                     : 0,
+                            fgEdgeFacePlanes: isoT.featureGraphEdgeFacePlanes === true,
                             featureGraphCpu: fgResult.cpu,
                             featureGraphWorldPositions: fgResult.worldPositions,
                             featureGraphSpatialIndex: fgResult.spatialIndex,

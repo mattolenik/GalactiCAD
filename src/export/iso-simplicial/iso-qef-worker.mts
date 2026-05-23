@@ -57,6 +57,8 @@ export interface QefWorkerRequest {
     sharedFgData?: SharedArrayBuffer
     sharedFgOffsets?: SharedArrayBuffer
     fgStrideFloats?: number
+    /** When true, FG planes also feed the edge + face QEFs (not just the cube QEF). */
+    fgEdgeFacePlanes?: boolean
 }
 
 export interface QefWorkerResponse {
@@ -128,6 +130,7 @@ function handle(req: QefWorkerRequest): void {
             req.invWorldScale,
             cubeFeatureOpts,
             fgSources,
+            req.fgEdgeFacePlanes,
         )
         const o = i * QEF_OUT_STRIDE
         out[o] = r.nodePos[0]!

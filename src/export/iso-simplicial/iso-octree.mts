@@ -107,6 +107,12 @@ export interface IsoFeatureRefineOptions {
      */
     fgPlaneDistFactor?: number
     /**
+     * When true, FG planes are also injected into the edge + face QEFs (not just the cube
+     * QEF). Default `false` — edge/face injection mispulls sub-elements the feature does
+     * not cross. See {@link IsoSimplicialTuning.featureGraphEdgeFacePlanes}.
+     */
+    fgEdgeFacePlanes?: boolean
+    /**
      * Final CPU snapshot of the FeatureGraph (post-bisection, includes alive flags).
      * Source of FG corner / crease positions, flags, and normals. Required when
      * {@link fgPlaneEnabled} is true.
@@ -179,6 +185,7 @@ export interface QefWorkerPoolLike {
         sharedFgData?: SharedArrayBuffer
         sharedFgOffsets?: SharedArrayBuffer
         fgStrideFloats?: number
+        fgEdgeFacePlanes?: boolean
     }): Promise<void>
 }
 
@@ -480,6 +487,7 @@ export function computeNodeQefResults(
     invWorldScale: number,
     cubeFeatureOpts?: CubeFeaturePlaneOptions,
     fgSources?: readonly FgPlaneSource[],
+    fgEdgeFace?: boolean,
 ): { qefError: number; nodePos: Float32Array; edges: Float32Array; faces: Float32Array; reEvalNorm: Float32Array } {
     void oversampleQef
     const v0: [number, number, number, number] = [verts[0]!, verts[1]!, verts[2]!, verts[3]!]
@@ -554,7 +562,7 @@ export function computeNodeQefResults(
         if (cubeFeatureOpts) {
             injectEdgeFeaturePlanes(cubeFeatureOpts, e, xi, yi, zi, ec0[yi]!, ec0[zi]!, cellSize, packed, planeNorms2, planePts2)
         }
-        if (fgSources && fgSources.length > 0) {
+        if (fgEdgeFace && fgSources && fgSources.length > 0) {
             injectEdgeFgFeaturePlanes(fgSources, xi, yi, zi, ec0[yi]!, ec0[zi]!, packed, planeNorms2, planePts2)
         }
         const { position, qefError: edgeQef } = computeDualVertexEdge({
@@ -597,7 +605,7 @@ export function computeNodeQefResults(
         if (cubeFeatureOpts) {
             injectFaceFeaturePlanes(cubeFeatureOpts, f, xi, yi, zi, fc0[zi]!, cellSize, packed, planeNorms3, planePts3)
         }
-        if (fgSources && fgSources.length > 0) {
+        if (fgEdgeFace && fgSources && fgSources.length > 0) {
             injectFaceFgFeaturePlanes(fgSources, xi, yi, zi, fc0[zi]!, packed, planeNorms3, planePts3)
         }
         const { position, qefError: faceQef } = computeDualVertexFace({
@@ -630,6 +638,7 @@ function phase1SdfToReEvalNorm(
     invWorldScale: number,
     cubeFeatureOpts?: CubeFeaturePlaneOptions,
     fgSources?: readonly FgPlaneSource[],
+    fgEdgeFace?: boolean,
 ): { qefError: number; reEvalNorm: Float32Array } {
     const v0 = readV4(node.verts, 0)
     const v7 = readV4(node.verts, 7)
@@ -700,7 +709,7 @@ function phase1SdfToReEvalNorm(
         if (cubeFeatureOpts) {
             injectEdgeFeaturePlanes(cubeFeatureOpts, e, xi, yi, zi, ec0[yi]!, ec0[zi]!, cellSize, packed, planeNorms2, planePts2)
         }
-        if (fgSources && fgSources.length > 0) {
+        if (fgEdgeFace && fgSources && fgSources.length > 0) {
             injectEdgeFgFeaturePlanes(fgSources, xi, yi, zi, ec0[yi]!, ec0[zi]!, packed, planeNorms2, planePts2)
         }
         const { position, qefError: edgeQef } = computeDualVertexEdge({
@@ -740,7 +749,7 @@ function phase1SdfToReEvalNorm(
         if (cubeFeatureOpts) {
             injectFaceFeaturePlanes(cubeFeatureOpts, f, xi, yi, zi, fc0[zi]!, cellSize, packed, planeNorms3, planePts3)
         }
-        if (fgSources && fgSources.length > 0) {
+        if (fgEdgeFace && fgSources && fgSources.length > 0) {
             injectFaceFgFeaturePlanes(fgSources, xi, yi, zi, fc0[zi]!, packed, planeNorms3, planePts3)
         }
         const { position, qefError: faceQef } = computeDualVertexFace({
@@ -826,6 +835,7 @@ function normalizeFeatureRefine(opt: IsoFeatureRefineOptions | undefined): IsoFe
             typeof opt.fgPlaneDistFactor === "number" && Number.isFinite(opt.fgPlaneDistFactor) && opt.fgPlaneDistFactor >= 0
                 ? opt.fgPlaneDistFactor
                 : 0
+        fgFields.fgEdgeFacePlanes = opt.fgEdgeFacePlanes === true
         fgFields.featureGraphCpu = opt.featureGraphCpu
         fgFields.featureGraphWorldPositions = opt.featureGraphWorldPositions
         fgFields.featureGraphSpatialIndex = opt.featureGraphSpatialIndex
@@ -1387,6 +1397,7 @@ async function buildOctreeBFS(
                     sharedFgData: fgPacked.data,
                     sharedFgOffsets: fgPacked.offsets,
                     fgStrideFloats: fgPacked.strideFloats,
+                    fgEdgeFacePlanes: featureRefine.fgEdgeFacePlanes === true,
                 } : {}),
             })
             for (let i = 0; i < N; i++) {
@@ -1418,6 +1429,7 @@ async function buildOctreeBFS(
                 const r = phase1SdfToReEvalNorm(
                     frontier[i]!.node, scratches[i]!, slice, C, invWorldScale, cubeFeatureOpts,
                     perCellFgSources ? perCellFgSources[i] : undefined,
+                    featureRefine.fgEdgeFacePlanes === true,
                 )
                 qefErrors[i] = r.qefError
                 reNorms[i] = r.reEvalNorm

@@ -1,0 +1,45 @@
+appId: app.galacticad
+productName: GalactiCAD
+
+# Repo's `build/` dir is electron-builder's default `buildResources` location;
+# it picks up build/icon.icns, build/icon.ico, build/icon.png automatically.
+# Contents of build/ are NOT bundled into the app — only used as resources.
+
+directories:
+  output: release
+
+# Include only what the runtime needs. dist/ is the built web app;
+# electron/ is the main + preload. node_modules is pruned to production by
+# default, but the app itself has no runtime node deps so the bundle stays
+# small either way.
+files:
+  - "electron/**"
+  - "dist/**"
+  - "package.json"
+
+asar: true
+
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  # Unsigned, ad-hoc.
+  identity: null
+
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+
+linux:
+  category: Graphics
+  target:
+    - target: AppImage
+      arch: [x64, arm64]
+    - target: deb
+      arch: [x64, arm64]

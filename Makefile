@@ -125,6 +125,21 @@ restart-agent: stop-agent start-agent
 release: export PRODUCTION=1
 release: build test
 
+# Run the packaged desktop shell against the current dist/. Builds first so a
+# stale or missing dist/ doesn't load an empty window.
+# Unset ELECTRON_RUN_AS_NODE — when set (some sandbox/CI harnesses inherit it)
+# the Electron binary runs as plain Node and the API never loads.
+.PHONY: electron-dev
+electron-dev: build
+	unset ELECTRON_RUN_AS_NODE; node_modules/.bin/electron .
+
+# Produce installers/archives in release/. Forces a PRODUCTION dist build so
+# the bundled app is minified and ships without source maps.
+.PHONY: electron-pack
+electron-pack: export PRODUCTION=1
+electron-pack: build
+	unset ELECTRON_RUN_AS_NODE; node_modules/.bin/electron-builder
+
 .PHONY: clean
 clean: stop kill-agent-browsers
 	rm -rf $(DIST)

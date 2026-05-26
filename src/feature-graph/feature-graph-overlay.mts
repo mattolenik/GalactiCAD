@@ -75,6 +75,21 @@ export class FeatureGraphOverlay {
     #bindGroup?: [number, GPUBindGroup]
     /** Number of `u32` indices currently uploaded; `drawIndexed(indexCount)`. */
     #indexCount = 0
+    /**
+     * Persistent staging for the camera uniform payload. Filled in-place each
+     * upload to avoid the per-frame `new ArrayBuffer(112)` + `new Float32Array(...)`
+     * churn. Compared against `#cameraInputCache` to short-circuit the matrix
+     * inversion + GPU writeBuffer when the camera state hasn't changed.
+     */
+    #cameraStaging = new ArrayBuffer(CAMERA_UNIFORM_BYTES)
+    #cameraStagingF32 = new Float32Array(this.#cameraStaging)
+    /**
+     * Cache of the *inputs* (viewTransform[16] + cameraPosition[3] + res[2] +
+     * zoom[1] + viewCenter[2] = 24 floats). Cheap to compare and lets us skip
+     * the matrix inverse entirely when the camera hasn't moved.
+     */
+    #cameraInputCache = new Float32Array(24)
+    #cameraInputValid = false
 
     constructor(helper: GPUHelper, format: GPUTextureFormat) {
         this.#helper = helper
@@ -214,14 +229,47 @@ export class FeatureGraphOverlay {
         zoom: number,
         viewCenter: readonly [number, number] = [0.5, 0.5],
     ): void {
+        const vt = viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform)
+
+        // Compare against cached inputs — matrix inversion + writeBuffer only
+        // run when the camera actually moved. Steady-state SDF preview frames
+        // re-upload unchanged camera state every frame, so this short-circuit
+        // saves a Mat4x4f inverse + a 112-byte GPU upload per frame.
+        const cache = this.#cameraInputCache
+        if (this.#cameraInputValid) {
+            let same = true
+            for (let i = 0; i < 16; i++) {
+                if (cache[i] !== vt[i]) { same = false; break }
+            }
+            if (
+                same &&
+                cache[16] === cameraPosition[0] &&
+                cache[17] === cameraPosition[1] &&
+                cache[18] === cameraPosition[2] &&
+                cache[19] === resX &&
+                cache[20] === resY &&
+                cache[21] === zoom &&
+                cache[22] === viewCenter[0] &&
+                cache[23] === viewCenter[1]
+            ) return
+        }
+        for (let i = 0; i < 16; i++) cache[i] = vt[i]!
+        cache[16] = cameraPosition[0]
+        cache[17] = cameraPosition[1]
+        cache[18] = cameraPosition[2]
+        cache[19] = resX
+        cache[20] = resY
+        cache[21] = zoom
+        cache[22] = viewCenter[0]
+        cache[23] = viewCenter[1]
+        this.#cameraInputValid = true
+
         // Invert on CPU: WGSL inversion is doable for rigid transforms but
         // mesh-viewer's reference pattern keeps it CPU-side and matches the
         // existing pivot-projection convention, so we do the same here.
-        const vt = viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform)
         const inverse = new Mat4x4f(new Float32Array(vt)).inverse()
 
-        const buf = new ArrayBuffer(CAMERA_UNIFORM_BYTES)
-        const f32 = new Float32Array(buf)
+        const f32 = this.#cameraStagingF32
         // transform: bytes 0..63 (16 floats)
         f32.set(inverse.data.subarray(0, 16), 0)
         // origin: bytes 64..75 (3 floats), Z-shifted by PREVIEW_RAY_ORIGIN_DEPTH
@@ -240,7 +288,7 @@ export class FeatureGraphOverlay {
         f32[25] = viewCenter[1]
         f32[26] = 0 // _pad2.x
         f32[27] = 0 // _pad2.y
-        this.#device.queue.writeBuffer(this.#cameraBuffer, 0, buf)
+        this.#device.queue.writeBuffer(this.#cameraBuffer, 0, this.#cameraStaging)
     }
 
     /**

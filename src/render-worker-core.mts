@@ -162,18 +162,23 @@ export class RenderWorkerCore {
     /**
      * Feature-aware meshing scaffold. Phase A: extract + log; phase B: CPU
      * transform; phase D: GPU survival test via {@link IsoSampleBatch} + CPU
-     * spatial index. Rebuilt at the tail of every `#doBuild` (both param-only
-     * and full) so slider drags refresh the graph without an explicit
-     * re-trigger.
+     * spatial index. Refreshed in the background by `#kickFeatureGraphBuild`
+     * after every `#doBuild` completes — only when the overlay is enabled,
+     * and only the latest kick wins (older kicks are superseded via
+     * `#fgGeneration`) so slider-drag floods don't queue stale builds.
      */
     #featureGraph = new FeatureGraphGpu()
     /**
-     * Cached iso_sample_batch shader module — recompiled on full scene builds
-     * (when the SDF shader changes), reused on param-only rebuilds. Phase D
-     * stage 4 evaluates the scene SDF at feature-vertex world positions
-     * through this module.
+     * Cached iso_sample_batch shader module — compiled lazily by
+     * `#ensureFeatureGraphIsoModule` the first time the FeatureGraph or
+     * `handleRenderMesh` needs it, then reused until the scene's structural
+     * fingerprint changes. Stays null when nothing has asked for it, which
+     * keeps overlay-disabled sessions from paying a second WGSL codegen
+     * pass on every structural rebuild.
      */
     #featureGraphIsoModule: GPUShaderModule | null = null
+    /** Structural fingerprint the cached `#featureGraphIsoModule` was compiled against; null when stale. */
+    #builtIsoModuleFingerprint: string | null = null
     /**
      * Lazy-constructed `IsoSampleBatch` shared by all FeatureGraph builds. The
      * underlying buffers (`polygonVertices`, `faceSelection`, `mdcSceneParams`)
@@ -185,6 +190,14 @@ export class RenderWorkerCore {
     #featureGraphOverlay: FeatureGraphOverlay | null = null
     /** Toggle for the debug overlay; default ON, updated by view settings. */
     #featureGraphOverlayEnabled = true
+    /**
+     * Serializes background FeatureGraph builds kicked off from `#doBuild`
+     * (the build path no longer awaits them). Each kick chains onto the
+     * previous, and a generation counter lets newer kicks supersede older
+     * ones queued behind the chain.
+     */
+    #fgBuildLock: Promise<void> = Promise.resolve()
+    #fgGeneration = 0
     #sceneShader: GPUShaderModule | null = null
     #pipeline: GPURenderPipeline | null = null
     #beamPipeline: GPUComputePipeline | null = null
@@ -378,11 +391,20 @@ export class RenderWorkerCore {
 
     /** Toggle the FeatureGraph debug overlay. Renders alive crease/corner edges over the scene. */
     setFeatureGraphOverlayEnabled(enabled: boolean): void {
+        const wasEnabled = this.#featureGraphOverlayEnabled
         this.#featureGraphOverlayEnabled = enabled
+        // Enabling mid-session: lazily kick a build against the current scene
+        // so the overlay populates without waiting for the next source edit.
+        if (!wasEnabled && enabled && this.#scene && this.#builtStructuralFingerprint) {
+            this.#kickFeatureGraphBuild(this.#scene, this.#builtStructuralFingerprint)
+        }
     }
 
     cancelBuilds(): void {
         this.#buildGeneration++
+        // Supersede any in-flight background FG build too — its upload is
+        // gated on `#fgGeneration` matching, so newer kicks always win.
+        this.#fgGeneration++
     }
 
     async #doBuild(body: string): Promise<
@@ -434,7 +456,11 @@ export class RenderWorkerCore {
             const tBuf0 = performance.now()
             this.#compiledPosY = newCompiledPosY
             this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
-            await this.#buildFeatureGraph(scene, DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM)
+            // FG build runs in the background after buildComplete is posted —
+            // it stalls on a GPU readback (mapAsync) that used to add tens of
+            // ms to every slider-tick. The overlay refreshes a frame or two
+            // late, which is fine for a debug overlay.
+            this.#kickFeatureGraphBuild(scene, fingerprint)
             const tBuf1 = performance.now()
             const tSer0 = performance.now()
             const sceneNodes = serializeSceneNodes(scene, allNodes)
@@ -498,29 +524,13 @@ export class RenderWorkerCore {
         const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
         const tShaderMod1 = performance.now()
 
-        // Compile the iso_sample_batch module with the EXPORT-variant SDF so
-        // the FeatureGraph stage-4 survival pass can evaluate the scene SDF.
-        // The variables above (`sceneSDF` / `sceneAux*` / `sceneSDF_mid`) are
-        // the *preview* variants — they reference `previewParamsF32` etc.,
-        // which only exist in the preview shader's bind set. iso_sample_batch
-        // uses `mdcSceneParams` / `polygonVertices` (export bindings), so we
-        // need the export-variant emitters from `scene.compile()` /
-        // `compileAux()` / etc., matching {@link handleRenderMesh}.
-        const fgSceneAux = scene.compileAux()
-        const fgSceneAuxFast = scene.compileAuxFast()
-        const fgSceneAuxMid = scene.compileAuxMid()
-        const fgSceneSDF = scene.compile()
-        const fgSceneSDF_mid = scene.compileMid()
-        const featureGraphIsoCompiler = new ShaderCompiler(this.#device)
-            .replace("insert", "sceneAuxFast", fgSceneAuxFast)
-            .replace("insert", "sceneAux", fgSceneAux)
-            .replace("insert", "sceneAuxMid", fgSceneAuxMid)
-            .replace("insert", "sceneSDF", fgSceneSDF)
-            .replace("insert", "sceneSDF_mid", fgSceneSDF_mid)
-        this.#featureGraphIsoModule = featureGraphIsoCompiler.compile(
-            isoSampleBatchShaderSource,
-            "Iso sample batch (FG)",
-        )
+        // Iso_sample_batch module compile is deferred — `#ensureFeatureGraphIsoModule`
+        // produces it on demand from the FG kick or from `handleRenderMesh`. It
+        // duplicates `scene.compileAux*()` / `compile()` / `compileMid()` against
+        // the export bind set, so building it inline doubled the WGSL codegen
+        // cost of every structural rebuild even when the overlay was off.
+        this.#featureGraphIsoModule = null
+        this.#builtIsoModuleFingerprint = null
 
         this.#buildGeneration++
         const generation = this.#buildGeneration
@@ -582,9 +592,11 @@ export class RenderWorkerCore {
         const tBuf0 = performance.now()
         this.#compiledPosY = newCompiledPosY
         this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
-        await this.#buildFeatureGraph(scene, DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM)
         this.#beamBindGroupInvalid = true
         this.#sceneBindGroupInvalid = true
+        // FG build runs in the background after buildComplete is posted; see
+        // the param-only branch for the rationale.
+        this.#kickFeatureGraphBuild(scene, fingerprint)
         const tBuf1 = performance.now()
         log("RenderWorker").debug("scene build full buffer upload (ms)", { gpuBuffers: roundMs(tBuf1 - tBuf0) })
 
@@ -669,10 +681,12 @@ export class RenderWorkerCore {
     async #buildFeatureGraph(
         scene: SceneInfo,
         cellSize: number,
+        generation?: number,
     ): Promise<FeatureGraphBuildResult | null> {
         const builder = new FeatureGraphBuilder()
         scene.root.accumulateFeatureGraph(builder)
         const cpu = builder.finish()
+        this.#ensureFeatureGraphIsoModule(scene)
         const isoModule = this.#featureGraphIsoModule
         if (!isoModule) return null
         if (!this.#featureGraphIsoBatch) {
@@ -689,6 +703,11 @@ export class RenderWorkerCore {
             this.#featureGraphIsoBatch,
             isoModule,
         )
+        // Background kicks pass a generation; if a newer kick (or
+        // `cancelBuilds`) bumped `#fgGeneration` during our await, skip the
+        // overlay upload so we don't clobber whatever the newer build will
+        // produce.
+        if (generation !== undefined && generation !== this.#fgGeneration) return null
         // Push the latest features into the debug overlay so the next render
         // frame draws them. Lazy-init the overlay here — first build is the
         // earliest we know the canvas format is settled.
@@ -697,6 +716,78 @@ export class RenderWorkerCore {
         }
         this.#featureGraphOverlay.upload(result.cpu, result.worldPositions)
         return result
+    }
+
+    /**
+     * Compile `iso_sample_batch.wgsl` with the EXPORT-variant `sceneSDF` /
+     * `sceneAux*` emitters so the FeatureGraph stage-4 survival pass (and
+     * `handleRenderMesh`'s FG plumbing) can evaluate the scene SDF. The
+     * preview shader injects the *preview* variants (which reference
+     * `previewParamsF32` etc.); iso_sample_batch uses the export bind set
+     * (`mdcSceneParams` / `polygonVertices`), so it needs its own module.
+     *
+     * Cached against `#builtStructuralFingerprint` — recompiled only when
+     * the scene structure changes. Deferred out of `#doBuild` so structural
+     * rebuilds don't pay double WGSL codegen + `createShaderModule` when the
+     * overlay is disabled and nothing actually consumes the module.
+     */
+    #ensureFeatureGraphIsoModule(scene: SceneInfo): void {
+        if (
+            this.#featureGraphIsoModule &&
+            this.#builtIsoModuleFingerprint === this.#builtStructuralFingerprint
+        ) {
+            return
+        }
+        const fgSceneAux = scene.compileAux()
+        const fgSceneAuxFast = scene.compileAuxFast()
+        const fgSceneAuxMid = scene.compileAuxMid()
+        const fgSceneSDF = scene.compile()
+        const fgSceneSDF_mid = scene.compileMid()
+        const featureGraphIsoCompiler = new ShaderCompiler(this.#device)
+            .replace("insert", "sceneAuxFast", fgSceneAuxFast)
+            .replace("insert", "sceneAux", fgSceneAux)
+            .replace("insert", "sceneAuxMid", fgSceneAuxMid)
+            .replace("insert", "sceneSDF", fgSceneSDF)
+            .replace("insert", "sceneSDF_mid", fgSceneSDF_mid)
+        this.#featureGraphIsoModule = featureGraphIsoCompiler.compile(
+            isoSampleBatchShaderSource,
+            "Iso sample batch (FG)",
+        )
+        // `IsoSampleBatch.#ensurePipeline` detects the module change and
+        // invalidates its cached pipeline + bind group on next run() — no
+        // need to destroy the batch instance here.
+        this.#builtIsoModuleFingerprint = this.#builtStructuralFingerprint
+    }
+
+    /**
+     * Schedule a background FeatureGraph build for the latest scene. No-op
+     * when the overlay is disabled. Kicks chain through `#fgBuildLock` so we
+     * never run two builds against the same `IsoSampleBatch` concurrently;
+     * the generation counter lets newer kicks supersede older ones that are
+     * still queued.
+     */
+    #kickFeatureGraphBuild(scene: SceneInfo, fingerprint: string): void {
+        if (!this.#featureGraphOverlayEnabled) return
+        this.#fgGeneration++
+        const gen = this.#fgGeneration
+        const prev = this.#fgBuildLock
+        this.#fgBuildLock = (async () => {
+            await prev
+            // Skip stale kicks queued behind a newer one — only the latest
+            // kick should pay for the GPU compute + readback round-trip.
+            if (gen !== this.#fgGeneration) return
+            if (!this.#featureGraphOverlayEnabled) return
+            // If a structural rebuild landed since the kick was scheduled
+            // (`fingerprint` no longer matches what's compiled), let the
+            // newer kick take it — bail rather than build against a stale
+            // scene shape.
+            if (this.#builtStructuralFingerprint !== fingerprint) return
+            try {
+                await this.#buildFeatureGraph(scene, DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM, gen)
+            } catch (err) {
+                log("RenderWorker").debug("background feature-graph build failed", err)
+            }
+        })()
     }
 
     /**

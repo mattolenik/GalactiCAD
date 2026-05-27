@@ -28,7 +28,12 @@
       "Skill(webgpu)",
       "Skill(webgpu:*)",
       "Bash(curl *)",
-      "Bash(npx tsx *)"
+      "Bash(npx tsx *)",
+      "Bash(sed *)",
+      "Bash(gsed *)",
+      "Bash(grep *)",
+      "Bash(egrep *)",
+      "Bash(awk *)"
     ]
   }
 }

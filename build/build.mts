@@ -72,7 +72,7 @@ const WatchOptions = {
         "AGENTS.md",
         "node_modules",
         "assets",
-        /.devserver.*/,
+        /\.devserver.*/,
         Options.outDir,
     ],
     causesRebuild: [/^build\//, /\.lock$/, /tsconfig\.json$/, /package\.json$/],

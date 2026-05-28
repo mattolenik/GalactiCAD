@@ -92,18 +92,22 @@ const SELECTED_EDGE_SIZE = 80
 const SELECTED_EDGES_COUNT = 16
 const SELECTED_EDGES_TOTAL = SELECTED_EDGES_HEADER + SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE
 
+/**
+ * Module-level zero buffers reused for the `writeBuffer` reset writes in
+ * `handleClick` / `handleHover` / `handleDoubleClick` / `handlePickObject` /
+ * `handlePickPos`. Each click/hover event used to allocate fresh small
+ * ArrayBuffers (`new Uint32Array([0])`, `new Float32Array(4).buffer`,
+ * `new ArrayBuffer(320)`); sharing read-only zero buffers avoids the alloc
+ * churn — the contents are never mutated, just handed to `writeBuffer` which
+ * copies into the GPU staging.
+ */
+const ZERO_U32 = new Uint32Array(1)
+const ZERO_VEC4 = new ArrayBuffer(16)
+const ZERO_EDGE_HITS = new ArrayBuffer(EDGE_HITS_SIZE)
+
 function float32SubarrayEqual(a: Float32Array, b: Float32Array, len: number): boolean {
     for (let i = 0; i < len; i++) {
         if (a[i] !== b[i]) return false
-    }
-    return true
-}
-
-function arrayBufferPrefixEqual(cache: ArrayBuffer, src: ArrayBuffer, byteLen: number): boolean {
-    const ca = new Uint8Array(cache, 0, byteLen)
-    const sb = new Uint8Array(src, 0, byteLen)
-    for (let i = 0; i < byteLen; i++) {
-        if (ca[i] !== sb[i]) return false
     }
     return true
 }
@@ -122,9 +126,16 @@ class UniformBuffers {
     clickedHitPos!: GPUBuffer
     clickedNormal!: GPUBuffer
     faceSelection!: GPUBuffer
-    /** Flat f32 layout from `packSceneParams` (bounds pass). */
+    /**
+     * Flat f32 layout from `packSceneParams`. Bound at slot 6 in `bounds.wgsl`
+     * (preview/exit-bounds compute) and slot 30 in `mdc.wgsl` / `sample_grid.wgsl`
+     * / `iso_sample_batch.wgsl` (export + FG sampling). Same data either way,
+     * so {@link boundsSceneParams} and {@link mdcSceneParams} alias one
+     * `GPUBuffer` — eliminates a duplicate ~32–128KB allocation + a redundant
+     * `writeBuffer` on every param-only build.
+     */
     boundsSceneParams!: GPUBuffer
-    /** Same layout as `boundsSceneParams`; MDC export pass. */
+    /** Alias of {@link boundsSceneParams}; see that field for details. */
     mdcSceneParams!: GPUBuffer
     previewParamsF32!: GPUBuffer
     previewParamsVec2!: GPUBuffer
@@ -248,6 +259,17 @@ export class RenderWorkerCore {
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #hoveredEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #cameraStagingBuf = new ArrayBuffer(256)
+    /**
+     * Cache of the 43 input scalars passed to `#uploadCameraIfDirty`
+     * (viewTransform[16] + cameraPosition[3] + width/height[2] + zoom[1] +
+     * viewCenter[2] + previewShading[14] + previewNormalShading[1] +
+     * pivotWorld[3] + hidePivotCursor[1]). Compared per-frame to short-circuit
+     * the matrix inverse + 4 light-dir transforms + pivot projection when
+     * nothing actually changed — the steady-state idle case while the user
+     * isn't moving the camera.
+     */
+    #cameraInputCache = new Float32Array(43)
+    #cameraInputValid = false
     #rayMarchParamsBuf = new ArrayBuffer(32)
     #rayMarchParamsI32 = new Int32Array(this.#rayMarchParamsBuf)
     #rayMarchParamsF32 = new Float32Array(this.#rayMarchParamsBuf)
@@ -270,7 +292,8 @@ export class RenderWorkerCore {
     /** Pre-allocated dedup caches (param-only); `-1` length = never uploaded. */
     #lastSceneParamUpload = new Float32Array(SCENE_PARAMS_F32_CAPACITY)
     #lastSceneParamLen = -1
-    #lastPolygonVertexUpload = new ArrayBuffer(POLYGON_VERTEX_BUFFER_SIZE)
+    #lastPolygonVertexUpload = new Float32Array(POLYGON_VERTEX_BUFFER_SIZE / Float32Array.BYTES_PER_ELEMENT)
+    /** Length in *f32 elements* of the most recently uploaded polygon payload, or `-1` if never. */
     #lastPolygonVertexLen = -1
     #lastPreviewF32Upload = new Float32Array(PREVIEW_UNIFORM_F32_COUNT)
     #lastPreviewF32Len = -1
@@ -435,8 +458,13 @@ export class RenderWorkerCore {
             this.#sceneShader !== null
 
         const tPoly0 = performance.now()
-        const polygonVertexData =
-            scene.totalPolygonVertices > 0 ? (scene.getPolygonVertexData().buffer.slice(0) as ArrayBuffer) : new ArrayBuffer(0)
+        // `getPolygonVertexData()` allocates a fresh Float32Array on every call
+        // and nothing else holds a reference, so the previous `.buffer.slice(0)`
+        // was a defensive copy with no real owner to defend against. Pass the
+        // Float32Array through to `writeBuffer` directly — it accepts any
+        // BufferSource.
+        const polygonVertexData: Float32Array | null =
+            scene.totalPolygonVertices > 0 ? scene.getPolygonVertexData() : null
         const tPoly1 = performance.now()
         const newCompiledPosY = new Map<number, number>()
         for (const node of allNodes) {
@@ -796,22 +824,22 @@ export class RenderWorkerCore {
      */
     #uploadBuildBuffers(
         scene: SceneInfo,
-        polygonVertexData: ArrayBuffer,
+        polygonVertexData: Float32Array | null,
         sceneParamUpload: Float32Array,
         p: PreviewParamsOut,
         dedup: boolean,
     ): void {
         const q = this.#device.queue
-        if (scene.totalPolygonVertices > 0) {
-            const polyLen = polygonVertexData.byteLength
+        if (polygonVertexData && scene.totalPolygonVertices > 0) {
+            const polyLen = polygonVertexData.length
             if (
                 !dedup ||
                 this.#lastPolygonVertexLen !== polyLen ||
-                !arrayBufferPrefixEqual(this.#lastPolygonVertexUpload, polygonVertexData, polyLen)
+                !float32SubarrayEqual(this.#lastPolygonVertexUpload, polygonVertexData, polyLen)
             ) {
                 q.writeBuffer(this.#uniformBuffers.polygonVertices, 0, polygonVertexData as BufferSource)
                 if (dedup) {
-                    new Uint8Array(this.#lastPolygonVertexUpload, 0, polyLen).set(new Uint8Array(polygonVertexData))
+                    this.#lastPolygonVertexUpload.set(polygonVertexData)
                     this.#lastPolygonVertexLen = polyLen
                 }
             }
@@ -821,8 +849,9 @@ export class RenderWorkerCore {
 
         const spLen = sceneParamUpload.length
         if (!dedup || this.#lastSceneParamLen !== spLen || !float32SubarrayEqual(this.#lastSceneParamUpload, sceneParamUpload, spLen)) {
+            // `boundsSceneParams` and `mdcSceneParams` alias the same GPUBuffer
+            // — one upload feeds both binding sites.
             q.writeBuffer(this.#uniformBuffers.boundsSceneParams, 0, sceneParamUpload as BufferSource)
-            q.writeBuffer(this.#uniformBuffers.mdcSceneParams, 0, sceneParamUpload as BufferSource)
             if (dedup) {
                 this.#lastSceneParamUpload.set(sceneParamUpload)
                 this.#lastSceneParamLen = spLen
@@ -2338,16 +2367,17 @@ export class RenderWorkerCore {
             label: "faceSelection",
         })
 
-        ub.boundsSceneParams = this.#device.createBuffer({
+        // One buffer, two field aliases — bound at @binding(6) by bounds.wgsl
+        // and @binding(30) by mdc.wgsl / sample_grid.wgsl / iso_sample_batch.wgsl
+        // through their own bind groups, but the underlying GPU resource and
+        // its contents are identical.
+        const sceneParamsBuffer = this.#device.createBuffer({
             size: SCENE_PARAMS_BYTE_SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            label: "boundsSceneParams",
+            label: "sceneParams",
         })
-        ub.mdcSceneParams = this.#device.createBuffer({
-            size: SCENE_PARAMS_BYTE_SIZE,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            label: "mdcSceneParams",
-        })
+        ub.boundsSceneParams = sceneParamsBuffer
+        ub.mdcSceneParams = sceneParamsBuffer
         ub.previewParamsF32 = this.#device.createBuffer({
             size: PREVIEW_PARAMS_F32_BYTE_SIZE,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -2538,10 +2568,10 @@ export class RenderWorkerCore {
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return
         this.#writeClickState(clickUV, true, false)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, new Float32Array(4).buffer)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, new Float32Array(4).buffer)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(320))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, ZERO_U32)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, ZERO_VEC4)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, ZERO_VEC4)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, ZERO_EDGE_HITS)
 
         if (sab) this.#renderFromSAB(sab)
         else this.render(this.#lastRenderMsg!)
@@ -2568,7 +2598,7 @@ export class RenderWorkerCore {
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return
         this.#writeClickState(clickUV, false, true, clickUV)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, new ArrayBuffer(320))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, ZERO_EDGE_HITS)
 
         if (sab) {
             this.#renderFromSAB(sab)
@@ -2640,7 +2670,7 @@ export class RenderWorkerCore {
             return
         }
         this.#writeClickState(clickUV, false, true, clickUV)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, new ArrayBuffer(320))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, ZERO_EDGE_HITS)
         if (sab) this.#renderFromSAB(sab)
         else this.render(this.#lastRenderMsg!)
         const { hoveredObjectId } = await this.#readHoverResult()
@@ -2651,10 +2681,10 @@ export class RenderWorkerCore {
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return
         this.#writeClickState(clickUV, true, false)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, new Float32Array(4).buffer)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, new Float32Array(4).buffer)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(320))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, ZERO_U32)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, ZERO_VEC4)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, ZERO_VEC4)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, ZERO_EDGE_HITS)
 
         if (sab) this.#renderFromSAB(sab)
         else this.render(this.#lastRenderMsg!)
@@ -2679,10 +2709,10 @@ export class RenderWorkerCore {
             return
         }
         this.#writeClickState(clickUV, true, false)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, new Uint32Array([0]))
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, new Float32Array(4).buffer)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, new Float32Array(4).buffer)
-        this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, new ArrayBuffer(320))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, ZERO_U32)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, ZERO_VEC4)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, ZERO_VEC4)
+        this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, ZERO_EDGE_HITS)
         if (sab) this.#renderFromSAB(sab)
         else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
@@ -2751,7 +2781,83 @@ export class RenderWorkerCore {
         pivotWorld: [number, number, number],
         hidePivotCursor: boolean,
     ): void {
-        this.#camTransform.data.set(viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform))
+        const vt = viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform)
+        // Input-equality short-circuit. Inputs are cheap to compare; the work
+        // we skip on a match (matrix inverse + 4 light-dir transforms + pivot
+        // projection + 256-byte staging build + memcmp + GPU upload) is not.
+        // Steady-state idle frames (no camera motion, no shading change) reach
+        // this path and exit before doing any real work.
+        const cache = this.#cameraInputCache
+        const ps = previewShading
+        const normShade = previewNormalShading ? 1 : 0
+        const hidePivot = hidePivotCursor ? 1 : 0
+        if (this.#cameraInputValid) {
+            let same = true
+            for (let i = 0; i < 16; i++) {
+                if (cache[i] !== vt[i]) { same = false; break }
+            }
+            if (
+                same &&
+                cache[16] === cameraPosition[0] &&
+                cache[17] === cameraPosition[1] &&
+                cache[18] === cameraPosition[2] &&
+                cache[19] === sceneWidth &&
+                cache[20] === sceneHeight &&
+                cache[21] === zoom &&
+                cache[22] === viewCenter[0] &&
+                cache[23] === viewCenter[1] &&
+                cache[24] === ps.ambient &&
+                cache[25] === ps.diffuseWrap &&
+                cache[26] === ps.keyWeight &&
+                cache[27] === ps.fillWeight &&
+                cache[28] === ps.rimWeight &&
+                cache[29] === ps.backWeight &&
+                cache[30] === ps.specIntensity &&
+                cache[31] === ps.specShininess &&
+                cache[32] === ps.fresnelPower &&
+                cache[33] === ps.fresnelIntensity &&
+                cache[34] === ps.aoStrength &&
+                cache[35] === ps.aoRadius &&
+                cache[36] === ps.aoSteps &&
+                cache[37] === ps.aoBias &&
+                cache[38] === normShade &&
+                cache[39] === pivotWorld[0] &&
+                cache[40] === pivotWorld[1] &&
+                cache[41] === pivotWorld[2] &&
+                cache[42] === hidePivot
+            ) return
+        }
+        for (let i = 0; i < 16; i++) cache[i] = vt[i]!
+        cache[16] = cameraPosition[0]
+        cache[17] = cameraPosition[1]
+        cache[18] = cameraPosition[2]
+        cache[19] = sceneWidth
+        cache[20] = sceneHeight
+        cache[21] = zoom
+        cache[22] = viewCenter[0]
+        cache[23] = viewCenter[1]
+        cache[24] = ps.ambient
+        cache[25] = ps.diffuseWrap
+        cache[26] = ps.keyWeight
+        cache[27] = ps.fillWeight
+        cache[28] = ps.rimWeight
+        cache[29] = ps.backWeight
+        cache[30] = ps.specIntensity
+        cache[31] = ps.specShininess
+        cache[32] = ps.fresnelPower
+        cache[33] = ps.fresnelIntensity
+        cache[34] = ps.aoStrength
+        cache[35] = ps.aoRadius
+        cache[36] = ps.aoSteps
+        cache[37] = ps.aoBias
+        cache[38] = normShade
+        cache[39] = pivotWorld[0]
+        cache[40] = pivotWorld[1]
+        cache[41] = pivotWorld[2]
+        cache[42] = hidePivot
+        this.#cameraInputValid = true
+
+        this.#camTransform.data.set(vt)
         const invCam = this.#camTransform.inverse()
         const pCam = invCam.transformPoint(vec3(pivotWorld[0], pivotWorld[1], pivotWorld[2]))
         const aspectRt = sceneHeight > 0 ? sceneWidth / sceneHeight : 1
@@ -2780,8 +2886,7 @@ export class RenderWorkerCore {
         ld[11] = 0
         const staging = new Uint8Array(this.#cameraStagingBuf)
         const f32 = new Float32Array(this.#cameraStagingBuf)
-        const viewF32 = viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform)
-        staging.set(new Uint8Array(viewF32.buffer, viewF32.byteOffset, 64), 0)
+        staging.set(new Uint8Array(vt.buffer, vt.byteOffset, 64), 0)
         f32[16] = cameraPosition[0]
         f32[17] = cameraPosition[1]
         f32[18] = cameraPosition[2]
@@ -2810,7 +2915,6 @@ export class RenderWorkerCore {
         f32[41] = v4.y
         f32[42] = v4.z
         f32[43] = 0
-        const ps = previewShading
         f32[44] = ps.ambient
         f32[45] = ps.diffuseWrap
         f32[46] = ps.keyWeight

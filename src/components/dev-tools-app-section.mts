@@ -39,6 +39,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #beamOptimization$: BehaviorSubject<boolean>
     #bvhOptimization$: BehaviorSubject<boolean>
     #fgOverlay$: BehaviorSubject<boolean>
+    #stepHeatmap$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #subscriptions: Subscription[] = []
 
@@ -46,6 +47,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
+    onStepHeatmapChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
 
     get showFps(): boolean {
@@ -86,6 +88,14 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
 
     set featureGraphOverlay(enabled: boolean) {
         this.#fgOverlay$.next(enabled)
+    }
+
+    get stepHeatmap(): boolean {
+        return this.#stepHeatmap$.value
+    }
+
+    set stepHeatmap(enabled: boolean) {
+        this.#stepHeatmap$.next(enabled)
     }
 
     get meshViewer(): boolean {
@@ -131,6 +141,9 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
         this.#fgOverlay$ = new BehaviorSubject(true)
+        // Debug-only; not persisted across sessions. Defaults off so the user
+        // gets normal shading on startup.
+        this.#stepHeatmap$ = new BehaviorSubject(false)
 
         const persist = () => {
             if (this.#applying) return
@@ -185,6 +198,12 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#subscriptions.push(connectCheckbox(bvhOptCb, this.#bvhOptimization$))
         this.#subscriptions.push(
             this.#bvhOptimization$.pipe(skip(1)).subscribe(v => this.onBvhOptimizationChange?.(v)),
+        )
+
+        const stepHeatmapCb = this.#addCheckbox(perfBox, "Step heatmap", this.#stepHeatmap$.value)
+        this.#subscriptions.push(connectCheckbox(stepHeatmapCb, this.#stepHeatmap$))
+        this.#subscriptions.push(
+            this.#stepHeatmap$.pipe(skip(1)).subscribe(v => this.onStepHeatmapChange?.(v)),
         )
 
         const rayMarchKnobs: { key: keyof RayMarchParams; label: string; min: number; max: number; step: number }[] = [

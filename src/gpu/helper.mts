@@ -27,8 +27,19 @@ export class GPUHelper {
             return undefined
         }
 
+        // Opt into `timestamp-query` when the adapter exposes it so the
+        // render core can measure per-pass GPU time. Chrome requires the
+        // browser flag `chrome://flags → "Unsafe WebGPU"` (or launching with
+        // `--enable-unsafe-webgpu`) to expose this feature; otherwise the
+        // adapter simply omits it and we silently skip profiling.
+        const optionalFeatures: GPUFeatureName[] = []
+        if (adapter.features.has("timestamp-query")) {
+            optionalFeatures.push("timestamp-query")
+        }
+
         const device = await adapter.requestDevice({
             label: "gpuHelperDevice",
+            requiredFeatures: optionalFeatures,
             requiredLimits: {
                 maxStorageBuffersPerShaderStage: adapter.limits.maxStorageBuffersPerShaderStage,
                 maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
@@ -38,6 +49,11 @@ export class GPUHelper {
         })
         installWebGpuDeviceLogging(device)
         return new GPUHelper(device)
+    }
+
+    /** Whether the device was created with `timestamp-query` enabled. */
+    get hasTimestampQuery(): boolean {
+        return this.device.features.has("timestamp-query")
     }
 
     createBuffer(label: string, size: number, usage: GPUBufferUsageFlags, mappedAtCreation?: boolean) {

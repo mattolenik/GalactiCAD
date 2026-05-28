@@ -67,6 +67,7 @@ export class DevToolsPanel extends HTMLElement {
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
+    onStepHeatmapChange?: (enabled: boolean) => void
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
@@ -128,6 +129,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set featureGraphOverlay(enabled: boolean) {
         this.#appSection.featureGraphOverlay = enabled
+    }
+
+    get stepHeatmap(): boolean {
+        return this.#appSection.stepHeatmap
+    }
+
+    set stepHeatmap(enabled: boolean) {
+        this.#appSection.stepHeatmap = enabled
     }
 
     get showFps(): boolean {
@@ -280,6 +289,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
         this.#appSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
         this.#appSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
+        this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)
         this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
 
         this.#logsSection.onDebugLogModulesChange = () => this.onDebugLogModulesChange?.()

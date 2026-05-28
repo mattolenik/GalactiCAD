@@ -1172,6 +1172,7 @@ class App {
         devTools.beamOptimization = this.renderer.beamEnabled
         devTools.bvhOptimization = this.renderer.bvhEnabled
         devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
+        devTools.stepHeatmap = this.renderer.stepHeatmapEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
         }
@@ -1184,6 +1185,9 @@ class App {
         }
         devTools.onFeatureGraphOverlayChange = (enabled) => {
             this.renderer.featureGraphOverlayEnabled = enabled
+        }
+        devTools.onStepHeatmapChange = (enabled) => {
+            this.renderer.stepHeatmapEnabled = enabled
         }
         devTools.onRayMarchParamsChange = (params) => {
             this.renderer.setRayMarchParams(params)

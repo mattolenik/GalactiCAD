@@ -105,6 +105,19 @@ const ZERO_U32 = new Uint32Array(1)
 const ZERO_VEC4 = new ArrayBuffer(16)
 const ZERO_EDGE_HITS = new ArrayBuffer(EDGE_HITS_SIZE)
 
+/**
+ * Pass names recognised by the per-pass GPU timestamp profiler. Order is the
+ * encoding order in {@link RenderWorkerCore.render} / `#renderFromSAB` and is
+ * the canonical layout for `#timestampFilledPasses` and `#passTimeAverages`.
+ */
+type ProfiledPassName = "beam" | "scene" | "outline" | "overlay"
+/** Max pass-time pairs per frame — sized to {@link ProfiledPassName}. */
+const TIMESTAMP_MAX_PAIRS = 4
+const TIMESTAMP_QUERY_COUNT = TIMESTAMP_MAX_PAIRS * 2
+const TIMESTAMP_BYTES = TIMESTAMP_QUERY_COUNT * 8
+/** Round to 2 decimal places for log output; avoids logging long fractional ms. */
+const roundMs2 = (x: number): number => Math.round(x * 100) / 100
+
 function float32SubarrayEqual(a: Float32Array, b: Float32Array, len: number): boolean {
     for (let i = 0; i < len; i++) {
         if (a[i] !== b[i]) return false
@@ -201,6 +214,13 @@ export class RenderWorkerCore {
     #featureGraphOverlay: FeatureGraphOverlay | null = null
     /** Toggle for the debug overlay; default ON, updated by view settings. */
     #featureGraphOverlayEnabled = true
+    /**
+     * When true, the preview shader replaces shaded color with a per-pixel
+     * `sceneSDF_fast` step-count heatmap (blue → green → yellow → red,
+     * normalised against `rayMarchParams.maxSteps`). Pixel-level cost
+     * visualisation, complement to the per-pass timestamp profiler.
+     */
+    #stepHeatmapEnabled = false
     /**
      * Serializes background FeatureGraph builds kicked off from `#doBuild`
      * (the build path no longer awaits them). Each kick chains onto the
@@ -303,6 +323,33 @@ export class RenderWorkerCore {
     #lastPreviewVec3Len = -1
     #lastPreviewMat3Upload = new Float32Array(PREVIEW_UNIFORM_MAT3_COUNT * PREVIEW_MAT3_PACK_FLOATS)
     #lastPreviewMat3Len = -1
+    /**
+     * Per-pass GPU profiling. Null when the device wasn't created with
+     * `timestamp-query` (e.g. Chrome without `--enable-unsafe-webgpu`); in
+     * that case `render()` simply omits `timestampWrites` from pass
+     * descriptors and the four `AveragedBuffer`s stay empty.
+     *
+     * Layout: up to 4 pairs of timestamps (beam, scene, outline, overlay)
+     * × 8 bytes each = 64 bytes. `#timestampFilledPasses` records which
+     * passes actually wrote a pair this frame — overlay (and beam, when
+     * disabled) may skip, in which case its slot stays empty for that frame.
+     */
+    #timestampQuerySet: GPUQuerySet | null = null
+    #timestampResolveBuffer: GPUBuffer | null = null
+    #timestampStagingBuffer: GPUBuffer | null = null
+    /** True between submit and `mapAsync` resolution. Skips profiling for frames that arrive while we're still reading the previous one back. */
+    #timestampBusy = false
+    /** Names of the passes whose timestamp pairs were written this frame, in encode order. */
+    #timestampFilledPasses: ProfiledPassName[] = []
+    /** Rolling pass-time averages in milliseconds. Empty when timestamp-query unavailable. */
+    #passTimeAverages: Record<ProfiledPassName, AveragedBuffer> = {
+        beam: new AveragedBuffer(30),
+        scene: new AveragedBuffer(30),
+        outline: new AveragedBuffer(30),
+        overlay: new AveragedBuffer(30),
+    }
+    /** Frames since last profiling log. Reported every ~60 frames to avoid console spam. */
+    #passTimeLogFrames = 0
     /** Persistent MAP_READ staging for click/hover (no per-interaction alloc). */
     #clickIdReadback!: GPUBuffer
     #edgeHitReadback!: GPUBuffer
@@ -384,6 +431,29 @@ export class RenderWorkerCore {
             DEFAULT_SELECTION_STYLES.edge.epsilon,
         )
         this.#writeEdgesToBuffer(this.#uniformBuffers.hoveredEdge, [], 6.0, 0.02)
+
+        // Allocate per-pass GPU timestamp infrastructure when the device
+        // exposes `timestamp-query`. One staging buffer + busy flag: frames
+        // arriving while a readback is still in flight render without
+        // profiling, so the sampler self-throttles instead of stalling the
+        // render loop on `mapAsync`.
+        if (this.#helper.hasTimestampQuery) {
+            this.#timestampQuerySet = this.#device.createQuerySet({
+                label: "RenderPassTimestamps",
+                type: "timestamp",
+                count: TIMESTAMP_QUERY_COUNT,
+            })
+            this.#timestampResolveBuffer = this.#device.createBuffer({
+                label: "RenderPassTimestamps.Resolve",
+                size: TIMESTAMP_BYTES,
+                usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
+            })
+            this.#timestampStagingBuffer = this.#device.createBuffer({
+                label: "RenderPassTimestamps.Staging",
+                size: TIMESTAMP_BYTES,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            })
+        }
     }
 
     async build(
@@ -410,6 +480,17 @@ export class RenderWorkerCore {
 
     setBvhEnabled(enabled: boolean): void {
         this.#bvhEnabled = enabled
+    }
+
+    /**
+     * Toggle the per-pixel `sceneSDF_fast` step-count heatmap in the preview
+     * shader. Picked up on the next render frame; no immediate re-render is
+     * triggered (the user typically toggles and then interacts, which kicks
+     * a render naturally — matching the {@link setFeatureGraphOverlayEnabled}
+     * convention).
+     */
+    setStepHeatmapEnabled(enabled: boolean): void {
+        this.#stepHeatmapEnabled = enabled
     }
 
     /** Toggle the FeatureGraph debug overlay. Renders alive crease/corner edges over the scene. */
@@ -683,9 +764,108 @@ export class RenderWorkerCore {
         const pass = commandEncoder.beginRenderPass({
             label: "FeatureGraph Overlay",
             colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
+            timestampWrites: this.#timestampWritesFor("overlay"),
         })
         overlay.render(pass)
         pass.end()
+    }
+
+    /** Reset per-frame profiling state; called at the top of `render()` / `#renderFromSAB`. */
+    #beginFrameProfiling(): void {
+        this.#timestampFilledPasses.length = 0
+    }
+
+    /**
+     * Allocate the next pair of timestamp query slots for `name` and return a
+     * `timestampWrites` descriptor (assignable to both
+     * `GPURenderPassDescriptor.timestampWrites` and
+     * `GPUComputePassDescriptor.timestampWrites`). Returns `undefined` when
+     * timestamp-query is unavailable, the previous frame's readback is still
+     * in flight, or we've already used all {@link TIMESTAMP_MAX_PAIRS} pairs
+     * — callers spread it unconditionally and WebGPU treats `undefined` as
+     * "no timestamps written."
+     */
+    #timestampWritesFor(name: ProfiledPassName): GPURenderPassTimestampWrites | undefined {
+        const querySet = this.#timestampQuerySet
+        if (!querySet) return undefined
+        if (this.#timestampBusy) return undefined
+        const pairIdx = this.#timestampFilledPasses.length
+        if (pairIdx >= TIMESTAMP_MAX_PAIRS) return undefined
+        this.#timestampFilledPasses.push(name)
+        return {
+            querySet,
+            beginningOfPassWriteIndex: pairIdx * 2,
+            endOfPassWriteIndex: pairIdx * 2 + 1,
+        }
+    }
+
+    /**
+     * Encode `resolveQuerySet` + `copyBufferToBuffer` for any timestamps
+     * written this frame, then mark the staging buffer busy. Returns the
+     * snapshot of which passes filled their slots (in order) so the async
+     * drain knows what to attribute the deltas to.
+     */
+    #endFrameProfiling(encoder: GPUCommandEncoder): ProfiledPassName[] {
+        const n = this.#timestampFilledPasses.length
+        if (n === 0) return []
+        const querySet = this.#timestampQuerySet
+        const resolve = this.#timestampResolveBuffer
+        const staging = this.#timestampStagingBuffer
+        if (!querySet || !resolve || !staging) return []
+        encoder.resolveQuerySet(querySet, 0, n * 2, resolve, 0)
+        encoder.copyBufferToBuffer(resolve, 0, staging, 0, n * 2 * 8)
+        this.#timestampBusy = true
+        // Snapshot — `#timestampFilledPasses` will be reset on the next frame
+        // while the drain is still awaiting `mapAsync`.
+        return this.#timestampFilledPasses.slice()
+    }
+
+    /**
+     * Async map + parse for the timestamps written by the most recent frame.
+     * Fire-and-forget: callers `void` this; it self-clears `#timestampBusy`
+     * on completion or error so the next render that arrives after the GPU
+     * finishes will re-profile.
+     */
+    async #drainTimestampReadback(filled: ProfiledPassName[]): Promise<void> {
+        const staging = this.#timestampStagingBuffer
+        if (!staging || filled.length === 0) {
+            this.#timestampBusy = false
+            return
+        }
+        const byteLen = filled.length * 2 * 8
+        try {
+            await staging.mapAsync(GPUMapMode.READ, 0, byteLen)
+        } catch (err) {
+            log("RenderWorker").debug("timestamp readback mapAsync failed", err)
+            this.#timestampBusy = false
+            return
+        }
+        try {
+            const bi = new BigInt64Array(staging.getMappedRange(0, byteLen).slice(0))
+            for (let i = 0; i < filled.length; i++) {
+                const t0 = bi[i * 2]!
+                const t1 = bi[i * 2 + 1]!
+                const ns = Number(t1 - t0)
+                // Timestamps are unordered across queues only when the GPU
+                // reorders work; for pass-pair writes inside one encoder we
+                // expect t1 >= t0. Guard anyway against driver weirdness.
+                if (ns >= 0) this.#passTimeAverages[filled[i]!].update(ns / 1_000_000)
+            }
+        } finally {
+            staging.unmap()
+            this.#timestampBusy = false
+        }
+        this.#passTimeLogFrames++
+        if (this.#passTimeLogFrames >= 60) {
+            this.#passTimeLogFrames = 0
+            const avg = this.#passTimeAverages
+            log("RenderWorker").debug("gpu pass times (avg ms, 30-frame window)", {
+                beam: roundMs2(avg.beam.average),
+                scene: roundMs2(avg.scene.average),
+                outline: roundMs2(avg.outline.average),
+                overlay: roundMs2(avg.overlay.average),
+            })
+        }
     }
 
     /**
@@ -976,7 +1156,7 @@ export class RenderWorkerCore {
         )
 
         this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
-        this.#viewSettingsBuf[1] = 0 // unused (was refinementSteps)
+        this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // matches `debugHeatmap` in preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
@@ -1029,6 +1209,7 @@ export class RenderWorkerCore {
         const canvasTexture = outputTextureView ? null : this.#context.getCurrentTexture()
         const outlineTarget = outputTextureView ?? canvasTexture!.createView()
         const commandEncoder = this.#device.createCommandEncoder()
+        this.#beginFrameProfiling()
 
         if (viewSettings.beamEnabled && this.#beamPipeline) {
             if (this.#beamBindGroupInvalid) {
@@ -1052,7 +1233,10 @@ export class RenderWorkerCore {
             const BEAM_TILE_SIZE = 8
             const tilesX = Math.ceil(sceneWidth / BEAM_TILE_SIZE)
             const tilesY = Math.ceil(sceneHeight / BEAM_TILE_SIZE)
-            const beamPass = commandEncoder.beginComputePass({ label: "Beam Pre-Pass" })
+            const beamPass = commandEncoder.beginComputePass({
+                label: "Beam Pre-Pass",
+                timestampWrites: this.#timestampWritesFor("beam"),
+            })
             beamPass.setPipeline(this.#beamPipeline)
             beamPass.setBindGroup(0, this.#beamBindGroup!)
             beamPass.dispatchWorkgroups(Math.ceil(tilesX / 8), Math.ceil(tilesY / 8))
@@ -1064,6 +1248,7 @@ export class RenderWorkerCore {
                 { view: this.#colorTextureView, loadOp: "clear", storeOp: "store" },
                 { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xffffffff, g: 0, b: 0, a: 0 } },
             ],
+            timestampWrites: this.#timestampWritesFor("scene"),
         })
         scenePass.setPipeline(this.#pipeline)
         scenePass.setBindGroup(0, this.#bindGroup!)
@@ -1072,6 +1257,7 @@ export class RenderWorkerCore {
 
         const outlinePass = commandEncoder.beginRenderPass({
             colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
+            timestampWrites: this.#timestampWritesFor("outline"),
         })
         outlinePass.setPipeline(this.#outlinePipeline)
         outlinePass.setBindGroup(0, this.#outlineBindGroup!)
@@ -1089,7 +1275,9 @@ export class RenderWorkerCore {
             viewCenter,
         )
 
+        const filledSnap = this.#endFrameProfiling(commandEncoder)
         this.#device.queue.submit([commandEncoder.finish()])
+        if (filledSnap.length > 0) void this.#drainTimestampReadback(filledSnap)
     }
 
     /**
@@ -1185,7 +1373,7 @@ export class RenderWorkerCore {
         )
 
         this.#viewSettingsBuf[0] = packed & 1 ? 1 : 0
-        this.#viewSettingsBuf[1] = 0
+        this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // debugHeatmap; see preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
@@ -1254,6 +1442,7 @@ export class RenderWorkerCore {
         const canvasTexture = this.#context.getCurrentTexture()
         const outlineTarget = canvasTexture.createView()
         const commandEncoder = this.#device.createCommandEncoder()
+        this.#beginFrameProfiling()
 
         if (beamEnabled && this.#beamPipeline) {
             if (this.#beamBindGroupInvalid) {
@@ -1277,7 +1466,10 @@ export class RenderWorkerCore {
             const BEAM_TILE_SIZE = 8
             const tilesX = Math.ceil(sceneWidth / BEAM_TILE_SIZE)
             const tilesY = Math.ceil(sceneHeight / BEAM_TILE_SIZE)
-            const beamPass = commandEncoder.beginComputePass({ label: "Beam Pre-Pass" })
+            const beamPass = commandEncoder.beginComputePass({
+                label: "Beam Pre-Pass",
+                timestampWrites: this.#timestampWritesFor("beam"),
+            })
             beamPass.setPipeline(this.#beamPipeline)
             beamPass.setBindGroup(0, this.#beamBindGroup!)
             beamPass.dispatchWorkgroups(Math.ceil(tilesX / 8), Math.ceil(tilesY / 8))
@@ -1289,6 +1481,7 @@ export class RenderWorkerCore {
                 { view: this.#colorTextureView, loadOp: "clear", storeOp: "store" },
                 { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xffffffff, g: 0, b: 0, a: 0 } },
             ],
+            timestampWrites: this.#timestampWritesFor("scene"),
         })
         scenePass.setPipeline(this.#pipeline)
         scenePass.setBindGroup(0, this.#bindGroup!)
@@ -1297,6 +1490,7 @@ export class RenderWorkerCore {
 
         const outlinePass = commandEncoder.beginRenderPass({
             colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
+            timestampWrites: this.#timestampWritesFor("outline"),
         })
         outlinePass.setPipeline(this.#outlinePipeline)
         outlinePass.setBindGroup(0, this.#outlineBindGroup!)
@@ -1314,7 +1508,9 @@ export class RenderWorkerCore {
             viewCenter,
         )
 
+        const filledSnap = this.#endFrameProfiling(commandEncoder)
         this.#device.queue.submit([commandEncoder.finish()])
+        if (filledSnap.length > 0) void this.#drainTimestampReadback(filledSnap)
     }
 
     async #renderFrameAndWait(): Promise<void> {

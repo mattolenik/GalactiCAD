@@ -500,6 +500,7 @@ export type MainToWorkerMessage =
     | { type: "pickObject"; clickUV: [number, number]; requestId: number }
     | { type: "setBvhEnabled"; enabled: boolean }
     | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
+    | { type: "setStepHeatmapEnabled"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
 
 export interface RenderSelectionState {

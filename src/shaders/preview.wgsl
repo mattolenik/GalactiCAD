@@ -69,7 +69,7 @@ const SELECTION_MODE_FACE: u32 = 3u;
 const SELECTION_MODE_AUTO: u32 = 4u;
 struct ViewSettings {
     xrayMode: u32,       // 0 = normal, 1 = xray/translucent
-    _pad: u32,           // unused (was refinementSteps)
+    debugHeatmap: u32,   // 0 = normal shading, 1 = render per-pixel sceneSDF_fast call count as a turbo-like color ramp
     beamEnabled: u32,    // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
     selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=auto
 }
@@ -517,12 +517,16 @@ fn sceneSDF_fast(p: vec3f) -> FastSDFResult {
 
 // Narrow the ray parameter so the full sceneSDF sample is not stuck at the first
 // in-band fast sample (important when t_start is shared per 8x8 beam tile).
-fn refineRayHit(origin: vec3f, dir: vec3f, tLo: f32, tHi: f32) -> f32 {
+// `stepCount` accumulates `sceneSDF_fast` invocations for the debug heatmap;
+// the cost (one ALU op per loop iter) is negligible vs. an SDF eval, so it
+// runs unconditionally rather than behind a uniform branch.
+fn refineRayHit(origin: vec3f, dir: vec3f, tLo: f32, tHi: f32, stepCount: ptr<function, u32>) -> f32 {
     var lo = tLo;
     var hi = tHi;
     for (var r: i32 = 0; r < rayMarchParams.hitRefineSteps; r = r + 1) {
         let mid = 0.5 * (lo + hi);
         let dm = sceneSDF_fast(origin + mid * dir).d;
+        *stepCount = *stepCount + 1u;
         if (dm < SURF_DIST) {
             hi = mid;
         } else {
@@ -535,16 +539,17 @@ fn refineRayHit(origin: vec3f, dir: vec3f, tLo: f32, tHi: f32) -> f32 {
 // Raymarch: returns HitData (slim post-hit struct) rather than the full SDFResult.
 // The full SDFResult is only alive transiently inside this function while
 // projecting to HitData; it does not persist into fragmentMain's register file.
-fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
+fn raymarch(origin: vec3f, dir: vec3f, t_start: f32, stepCount: ptr<function, u32>) -> HitData {
     var t: f32 = t_start;
     var tLastOutside: f32 = -1.0;
     for (var i: i32 = 0; i < rayMarchParams.maxSteps; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: distance + gradMag + safeStepMul
+        *stepCount = *stepCount + 1u;
         let step = sr.d * sr.safeStepMul;
         if (sr.d < SURF_DIST) {
             let tLo = select(0.0, tLastOutside, tLastOutside >= 0.0);
-            let tHit = refineRayHit(origin, dir, tLo, t);
+            let tHit = refineRayHit(origin, dir, tLo, t, stepCount);
             return toHitData(tHit, sceneSDF(origin + tHit * dir));
         }
         tLastOutside = t;
@@ -558,10 +563,11 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32) -> HitData {
 
 // Relax t toward the ray–surface crossing. Beam pre-pass uses one t_start per tile, so raw
 // hit.t can jump at 8px tile edges; ambient occlusion samples are sensitive and show seams.
-fn refineHitAlongRay(origin: vec3f, dir: vec3f, t0: f32) -> f32 {
+fn refineHitAlongRay(origin: vec3f, dir: vec3f, t0: f32, stepCount: ptr<function, u32>) -> f32 {
     var t = t0;
     for (var k: i32 = 0; k < 6; k = k + 1) {
         let sr = sceneSDF_fast(origin + t * dir);
+        *stepCount = *stepCount + 1u;
         t = t + sr.d * sr.safeStepMul;
         if (abs(sr.d) < SURF_DIST * 0.5) {
             break;
@@ -572,12 +578,13 @@ fn refineHitAlongRay(origin: vec3f, dir: vec3f, t0: f32) -> f32 {
 
 // Refine a sign change bracket along the ray. lo must be inside (d < 0),
 // hi must be outside (d >= 0).
-fn bisectSurfaceCrossing(origin: vec3f, dir: vec3f, tInside: f32, tOutside: f32) -> f32 {
+fn bisectSurfaceCrossing(origin: vec3f, dir: vec3f, tInside: f32, tOutside: f32, stepCount: ptr<function, u32>) -> f32 {
     var lo = tInside;
     var hi = tOutside;
     for (var k: i32 = 0; k < 6; k = k + 1) {
         let mid = 0.5 * (lo + hi);
         let d = sceneSDF_fast(origin + mid * dir).d;
+        *stepCount = *stepCount + 1u;
         if (d < 0.0) {
             lo = mid;
         } else {
@@ -616,7 +623,7 @@ fn specularAndFresnelRim(n: vec3f, viewDir: vec3f) -> vec3f {
 }
 
 // Contact AO along analytical normal; sceneSDF_fast only. Returns multiplier in [0,1] for diffuse (1 = no darkening).
-fn sdfAmbientOcclusion(worldPos: vec3f, n: vec3f) -> f32 {
+fn sdfAmbientOcclusion(worldPos: vec3f, n: vec3f, stepCount: ptr<function, u32>) -> f32 {
     let cfg = camera.previewShade3;
     let strength = cfg.x;
     if (strength <= 0.0) {
@@ -630,6 +637,7 @@ fn sdfAmbientOcclusion(worldPos: vec3f, n: vec3f) -> f32 {
     for (var i: i32 = 1; i <= nSteps; i = i + 1) {
         let h = radius * f32(i) / f32(nSteps);
         let d = sceneSDF_fast(p0 + n * h).d;
+        *stepCount = *stepCount + 1u;
         sum = sum + clamp((h - d) / h, 0.0, 1.0);
     }
     let occ = sum / f32(nSteps);
@@ -694,7 +702,7 @@ fn maybeBlendPivotOnto(base: vec4f, pixelCoord: vec2f, pivotPx: vec2f) -> vec4f 
 
 // Raymarch from inside the surface to find the exit point. Returns HitData; the
 // full SDFResult is only transiently alive during the toHitData() projection.
-fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
+fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32, stepCount: ptr<function, u32>) -> HitData {
     let eps = max(SURF_DIST * 4.0, 1e-3);
     var t: f32 = startT + eps;  // Start just inside the entry surface
     var tInside = startT;
@@ -702,11 +710,12 @@ fn raymarchFromInside(origin: vec3f, dir: vec3f, startT: f32) -> HitData {
     for (var i: i32 = 0; i < rayMarchParams.maxSteps; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: distance + gradMag + safeStepMul
+        *stepCount = *stepCount + 1u;
         let step = max(abs(sr.d) * sr.safeStepMul, eps);
 
         // Found an exit surface (going from inside to outside)
         if (sr.d > SURF_DIST) {
-            let tExit = bisectSurfaceCrossing(origin, dir, tInside, t);
+            let tExit = bisectSurfaceCrossing(origin, dir, tInside, t, stepCount);
             return toHitData(tExit, sceneSDF(origin + tExit * dir));
         }
         if (sr.d >= 0.0) {
@@ -764,7 +773,9 @@ fn hitNormalToRgb(nScene: vec3f) -> vec3f {
 // flipNormal: true if hitting surface from inside (back surface).
 // viewDir: direction from hit toward camera (unit), for specular / fresnel.
 // worldPos: hit position in scene space (for ambient occlusion samples).
-fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f) -> ShadeResult {
+// stepCount: cumulative sceneSDF_fast counter; passed to AO so the heatmap
+//   covers AO-dominated pixels (typical near contact zones / fillets).
+fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, stepCount: ptr<function, u32>) -> ShadeResult {
     let normal = select(hit.n, -hit.n, flipNormal);
     if (camera.previewShade2.z > 0.5) {
         let nrm = hitNormalToRgb(normal);
@@ -798,7 +809,7 @@ fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f) -> 
 
     let diffuse = lightingDiffuse(normal);
     let specRim = specularAndFresnelRim(normal, viewDir);
-    let ao = sdfAmbientOcclusion(worldPos, aoNormal);
+    let ao = sdfAmbientOcclusion(worldPos, aoNormal, stepCount);
 
     // Color and selection: only do second lookups when blending is active
     let color1 = colorPalette[hit.id & 31u];
@@ -832,6 +843,22 @@ fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f) -> 
     let selectedColor = shadedColor * selectionStyles.faceDarken + selectionStyles.faceTint;
     let color = shadedColor * (1.0 - selBlend) + selectedColor * selBlend;
     return ShadeResult(color, selBlend);
+}
+
+// Debug heatmap: map cumulative `sceneSDF_fast` calls per pixel to a coarse
+// blue → green → yellow → red ramp. `rayMarchParams.maxSteps` is the natural
+// upper reference — a pixel that exhausts its primary raymarch loop reaches
+// the green/yellow band; AO and refinement push it higher. Pixels that go
+// well over `maxSteps` saturate to red and indicate genuinely pathological
+// cost (silhouettes, deep grazing rays, dense AO halos).
+fn heatmapOverlay(base: vec4f, stepCount: u32) -> vec4f {
+    if (viewSettings.debugHeatmap == 0u) { return base; }
+    let t = f32(stepCount) / max(f32(rayMarchParams.maxSteps), 1.0);
+    let c = clamp(t, 0.0, 1.5);
+    let r = clamp(2.0 * (c - 0.5), 0.0, 1.0);
+    let g = clamp(2.0 * c, 0.0, 1.0) - clamp(2.0 * (c - 1.0), 0.0, 1.0);
+    let b = clamp(1.0 - 2.0 * c, 0.0, 1.0);
+    return vec4f(r, g, b, 1.0);
 }
 
 // Apply dotted grid overlay on face-selected surfaces (screen-space dot pattern).
@@ -897,17 +924,23 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
         t_start = textureLoad(tStartTex, tileCoord, 0).x;
     }
 
+    // Cumulative `sceneSDF_fast` call counter — drives the debug heatmap.
+    // Plumbed through raymarch/AO/refinement so the count covers everything
+    // a typical pixel pays for. Single u32 in VGPR; the per-call increment
+    // is negligible next to an SDF eval.
+    var stepCount: u32 = 0u;
+
     // Both raymarch calls return HitData (13 scalars) rather than the full
     // SDFResult (17 scalars).  The full SDFResult only exists transiently inside
     // those functions; it is projected to HitData before returning, so it never
     // enters fragmentMain's register file.
-    let hit = raymarch(transformedOrigin, transformedDir, t_start);
+    let hit = raymarch(transformedOrigin, transformedDir, t_start, &stepCount);
     let hitPos = transformedOrigin + transformedDir * hit.t;
     // Refined position for AO only — keeps original HitData (IDs, normal, seam)
     // untouched so coplanar union faces don't flicker.
     var aoPos = hitPos;
     if (hit.t > 0.0 && camera.previewShade3.x > 0.0) {
-        let tRef = refineHitAlongRay(transformedOrigin, transformedDir, hit.t);
+        let tRef = refineHitAlongRay(transformedOrigin, transformedDir, hit.t, &stepCount);
         aoPos = transformedOrigin + transformedDir * tRef;
     }
 
@@ -918,7 +951,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
     var backAoPos = vec3f(0.0);
     var useBack = false;
     if (viewSettings.xrayMode > 0u && hit.t > 0.0) {
-        backHit = raymarchFromInside(transformedOrigin, transformedDir, hit.t);
+        backHit = raymarchFromInside(transformedOrigin, transformedDir, hit.t, &stepCount);
         if (backHit.t > 0.0) {
             useBack = true;
             backAoPos = transformedOrigin + transformedDir * backHit.t;
@@ -927,7 +960,8 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
                     transformedOrigin,
                     transformedDir,
                     hit.t + max(SURF_DIST * 4.0, 1e-3),
-                    backHit.t
+                    backHit.t,
+                    &stepCount,
                 );
                 backAoPos = transformedOrigin + transformedDir * tb;
             }
@@ -1005,7 +1039,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
     }
 
     if (hit.t > 0.0) {
-        var frontResult = shadeHit(hit, false, viewDir, aoPos);
+        var frontResult = shadeHit(hit, false, viewDir, aoPos, &stepCount);
         var shadedColor = frontResult.color;
         if (frontResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
             shadedColor = applyFaceDottedPattern(shadedColor, pixelCoord);
@@ -1015,7 +1049,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {
             if (backHit.t > 0.0) {
-                var backResult = shadeHit(backHit, true, viewDir, backAoPos);
+                var backResult = shadeHit(backHit, true, viewDir, backAoPos, &stepCount);
                 var backColor = backResult.color;
                 if (backResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
                     backColor = applyFaceDottedPattern(backColor, pixelCoord);
@@ -1025,24 +1059,24 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
                 let frontAlpha = 0.4;
                 let composited = shadedColor * frontAlpha + backColor * (1.0 - frontAlpha);
                 return FragmentOutput(
-                    maybeBlendPivotOnto(vec4f(composited, 1.0), pixelCoord, pivotPx),
+                    maybeBlendPivotOnto(heatmapOverlay(vec4f(composited, 1.0), stepCount), pixelCoord, pivotPx),
                     vec4<u32>(hit.id, 0u, 0u, 0u),
                 );
             } else {
                 let alpha = 0.6;
                 return FragmentOutput(
-                    maybeBlendPivotOnto(vec4f(shadedColor * alpha, alpha), pixelCoord, pivotPx),
+                    maybeBlendPivotOnto(heatmapOverlay(vec4f(shadedColor * alpha, alpha), stepCount), pixelCoord, pivotPx),
                     vec4<u32>(hit.id, 0u, 0u, 0u),
                 );
             }
         }
         return FragmentOutput(
-            maybeBlendPivotOnto(vec4f(shadedColor, 1.0), pixelCoord, pivotPx),
+            maybeBlendPivotOnto(heatmapOverlay(vec4f(shadedColor, 1.0), stepCount), pixelCoord, pivotPx),
             vec4<u32>(hit.id, 0u, 0u, 0u),
         );
     } else {
         return FragmentOutput(
-            maybeBlendPivotOnto(vec4f(0.0, 0.0, 0.0, 0.0), pixelCoord, pivotPx),
+            maybeBlendPivotOnto(heatmapOverlay(vec4f(0.0, 0.0, 0.0, 0.0), stepCount), pixelCoord, pivotPx),
             vec4<u32>(0xFFFFFFFFu, 0u, 0u, 0u),
         );
     }

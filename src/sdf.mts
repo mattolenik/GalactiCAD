@@ -145,6 +145,7 @@ export class SDFRenderer {
     #previewNormalShading = false
     #bvhEnabled = true
     #featureGraphOverlayEnabled = true
+    #stepHeatmapEnabled = false
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
     #viewCenter = vec2(0.5, 0.5)
@@ -1430,6 +1431,22 @@ export class SDFRenderer {
     }
     get featureGraphOverlayEnabled(): boolean {
         return this.#featureGraphOverlayEnabled
+    }
+
+    /**
+     * Per-pixel SDF step-count heatmap. Replaces the shaded preview output
+     * with a coloured ramp keyed on cumulative `sceneSDF_fast` calls per
+     * pixel — diagnostic complement to the per-pass GPU timestamp profiler.
+     * Not persisted to settings (debug-only).
+     */
+    set stepHeatmapEnabled(enabled: boolean) {
+        if (this.#stepHeatmapEnabled === enabled) return
+        this.#stepHeatmapEnabled = enabled
+        this.#worker.postMessage({ type: "setStepHeatmapEnabled", enabled })
+        this.#needsRender = true
+    }
+    get stepHeatmapEnabled(): boolean {
+        return this.#stepHeatmapEnabled
     }
 
     setSelectionMode(mode: SelectionMode): void {

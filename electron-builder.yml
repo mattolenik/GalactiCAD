@@ -26,8 +26,19 @@ mac:
       arch: [arm64, x64]
     - target: zip
       arch: [arm64, x64]
-  # Unsigned, ad-hoc.
-  identity: null
+  # Sign with the Developer ID Application cert in the login keychain.
+  # Hardened runtime + entitlements are required for notarization; the same
+  # entitlements must be inherited by Electron's helper apps or the renderer
+  # will be killed for using JIT.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarize via @electron/notarize using credentials from env:
+  #   APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
+  # (or APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER for CI).
+  # Skip signing + notarization locally with CSC_IDENTITY_AUTO_DISCOVERY=false.
+  notarize: true
 
 win:
   target:

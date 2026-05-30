@@ -1155,12 +1155,16 @@ cmd_server() {
                 log_info "agent devserver already running ($s)"
                 return 0
             fi
-            ( cd -- "$(_repo_root)" && make start AGENT=true )
-            # Run file is created by `make start`; nothing else to wait for —
+            # Use the AGENT-only targets, NOT `make start AGENT=true`: the
+            # top-level `start`/`stop` targets ignore AGENT and operate on BOTH
+            # devservers, which would tear down the human's interactive session
+            # as a side effect of an agent-only command.
+            ( cd -- "$(_repo_root)" && make start-agent )
+            # Run file is created by `make start-agent`; nothing else to wait for —
             # subsequent commands that hit the server will block as needed.
             ;;
         stop)
-            ( cd -- "$(_repo_root)" && make stop AGENT=true )
+            ( cd -- "$(_repo_root)" && make stop-agent )
             ;;
         restart)
             cmd_server stop || true
@@ -1204,21 +1208,38 @@ usage_logs() {
     cat <<'EOF'
 Usage: agentcli logs [options]
 
+Reads runtime logs from a devserver's /_logs endpoint. By default it
+targets the agent devserver (.devserver.agent.run), auto-starting it if
+needed. Pass --browser to read from the interactive/human devserver
+(.devserver.run) instead; that server is never auto-started.
+
+Defaults to ALL levels (debug+) so every enabled dev-tools module shows
+up — most module output is emitted at debug level, which a narrower
+threshold would silently drop. Pass --level to narrow (e.g. --level warn
+for warnings+errors only).
+
 Options:
+    --agent       Read from the agent devserver (default)
+    --browser     Read from the interactive (human) devserver
     --module M    Comma-separated module filter passed to /_logs
-    --level L     Level filter (debug|info|warn|error)
+    --level L     Level threshold (debug|info|warn|error); default debug (all)
     --n N         Limit number of returned lines
     -h, --help    This help
 EOF
 }
 
 cmd_logs() {
-    local module="" level="" n=""
+    # Default level=debug ⇒ all levels. The server's own default is the info
+    # threshold, which hides debug — but module logs (log("X").debug(...)) are
+    # mostly debug, so that default makes an enabled module look empty.
+    local module="" level="debug" n="" target="agent"
     while (( $# > 0 )); do
         case "$1" in
             --module) module="$2"; shift 2 ;;
             --level) level="$2"; shift 2 ;;
             --n) n="$2"; shift 2 ;;
+            --agent) target="agent"; shift ;;
+            --browser) target="browser"; shift ;;
             -h|--help) usage_logs; return 0 ;;
             -*) die 2 "logs: unknown option: $1" ;;
             *) die 2 "logs: unexpected argument: $1" ;;
@@ -1226,22 +1247,50 @@ cmd_logs() {
     done
 
     local port url qs="" sep="?"
-    port=$(_agent_port)
+    case "$target" in
+        agent)   port=$(_agent_port) ;;
+        browser) port=$(_interactive_port) ;;
+        *)       die 2 "logs: unknown target: $target" ;;
+    esac
     if [[ -n "$module" ]]; then qs+="${sep}module=$(url_encode_qparam "$module")"; sep="&"; fi
     if [[ -n "$level" ]];  then qs+="${sep}level=$(url_encode_qparam "$level")";   sep="&"; fi
     if [[ -n "$n" ]];      then qs+="${sep}n=$(url_encode_qparam "$n")";           sep="&"; fi
     url="http://localhost:${port}/_logs${qs}"
 
-    local body bytes
-    body=$(curl --silent --show-error --fail \
+    # Capture body AND status code in one request (no --fail; we handle 503
+    # specially). `--write-out '\n%{http_code}'` appends a newline + code that
+    # we split off the tail.
+    local resp code body
+    resp=$(curl --silent --show-error \
         --connect-timeout 10 --max-time 30 \
+        --write-out '\n%{http_code}' \
         "$url") || die 3 "logs: HTTP request failed for $url"
-    bytes=${#body}
-    if (( bytes == 0 )); then
-        printf '(no matching entries — module may be disabled in dev tools)\n' >&2
-        return 0
-    fi
-    printf '%s\n' "$body"
+    code="${resp##*$'\n'}"
+    body="${resp%$'\n'*}"
+
+    case "$code" in
+        200)
+            if (( ${#body} == 0 )); then
+                # A connected tab returned an empty buffer: genuinely no entries,
+                # or the module/level filter matched nothing. NOT a connectivity
+                # problem (that's 503, handled below).
+                printf '(0 log entries from the %s devserver on :%s — buffer empty, or the module/level filter matched nothing)\n' \
+                    "$target" "$port" >&2
+                return 0
+            fi
+            printf '%s\n' "$body"
+            ;;
+        503)
+            # No browser tab is connected to this devserver's bridge (or the RPC
+            # timed out). For --browser, the human's tab must be open on the
+            # interactive port; for --agent, the headless tab should auto-attach.
+            die 3 "logs: no browser tab connected to the $target devserver on :$port. \
+Open/refresh a tab on http://localhost:$port (--browser), or restart with 'agentcli server restart' (--agent), then retry."
+            ;;
+        *)
+            die 3 "logs: HTTP $code from $url"
+            ;;
+    esac
 }
 
 # ============================================================================
@@ -1669,7 +1718,7 @@ Commands:
     capture   [options]                            Snapshot interactive scene as testcase YAML
     mirror    [options]                            Capture interactive → render on agent
     server    <start|stop|restart|refresh|status>  Devserver lifecycle
-    logs      [options]                            Pass-through to /_logs
+    logs      [--agent|--browser] [options]        Read /_logs from agent or browser devserver
 
 Run '$SCRIPT_NAME <command> --help' for command-specific options.
 

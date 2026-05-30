@@ -24,7 +24,7 @@ Runtime log signal, a plain-text dump of the active CAD document, and agent auto
 | SDF vs mesh round-trip | `agentcli triangle <tc> [--yaml] [--set]` | two renders + SSIM |
 | Single-pair compare | `agentcli compare a.png b.png [--json] [--open]` | local SSIM/pixel-diff |
 | Batch compare | `agentcli regress … --baseline-tag B --post-tag P` | pre-rendered SSIM/pixel-diff |
-| Read logs | `agentcli logs [--module M] [--level L] [--n N]` | `GET /_logs` |
+| Read logs | `agentcli logs [--agent\|--browser] [--module M] [--level L] [--n N]` | `GET /_logs` |
 | Server lifecycle | `agentcli server start\|stop\|restart\|refresh\|status` | `POST /_refresh` + make |
 
 **Cross-cutting flags** supported by render / iterate / ab / mirror / triangle:
@@ -83,7 +83,7 @@ This is non-negotiable. Even "I'll delete it in a second" tmpfiles must use one 
 - **Scene source (`/_sceneSource`):** dump the active editor tab's full Monaco buffer (unsaved edits included).
 - **Agent automation:** fetch a testcase YAML from the live editor, or render a PNG from a saved testcase file (GET), inline YAML (POST testcase-body), or inline JSON (POST). Each success also mirrors into `.agents/imagelog/`.
 
-Use the **interactive** port to read what the human sees (`/_sceneSource`, `/_agent/capture-testcase`). Use the **agent** port for `/_agent/render*` and for `/_logs` after those headless renders — the interactive tab does not execute agent render RPCs.
+Use the **interactive** port to read what the human sees (`/_sceneSource`, `/_agent/capture-testcase`, and `/_logs` via `agentcli logs --browser`). Use the **agent** port for `/_agent/render*` and for `/_logs` after those headless renders (`agentcli logs --agent`, the default) — the interactive tab does not execute agent render RPCs.
 
 ## Bridge behavior (single tab)
 
@@ -112,11 +112,12 @@ curl -sS "http://localhost:${port}/_sceneSource" -o scene-dump.js
 
 - Response: plain text, one buffer line per line — full lines as stored (`[timestamp] [level] [Module] [thread] message`), unmodified.
 - **Module toggles vs errors:** `log("Module").error` always goes to console + ring buffer regardless of Dev Tools checkboxes. `debug` / `info` / `warn` from `log("Module")` only appear when that module is enabled. `?module=…` still filters by entry's `module` field — errors from other modules are omitted when a non-empty `module` list is used.
-- **200 + empty body** when no matches, no connected browser, or bridge timeout.
-- Query params (`level`, `only`, `module`, `n`) documented in **AGENTS.md**. Default check uses no params (info threshold; no debug spam):
+- **200 + empty body** when a connected tab returns an empty buffer (no matches / module or level filter matched nothing). **503** on no connected browser or bridge timeout (so callers can tell "no tab" apart from "0 entries").
+- Query params (`level`, `only`, `module`, `n`) documented in **AGENTS.md**. Raw curl with no params uses the info threshold (drops `debug`, no spam). Prefer **`scripts/agentcli logs`**: it selects the devserver with **`--agent`** (default, `.devserver.agent.run`) or **`--browser`** (`.devserver.run`), and defaults to **all levels (debug+)** so enabled modules aren't dropped.
 
 ```bash
-curl -sS "http://localhost:${port}/_logs"
+curl -sS "http://localhost:${port}/_logs"          # raw: info threshold
+scripts/agentcli logs --browser                     # human tab, all levels
 ```
 
 ---
@@ -258,13 +259,16 @@ POSTs to `/_agent/render/testcase-body`. The summary line uses `inline` as the s
 ### F — Read logs + scene source
 
 ```bash
-scripts/agentcli logs                      # default: info threshold from the agent tab
+scripts/agentcli logs                      # default: ALL levels (debug+) from the agent tab
+scripts/agentcli logs --browser            # read from the interactive (human) devserver instead
 scripts/agentcli logs --module MdcExport   # filter (must be enabled in DevTools for that tab)
-scripts/agentcli logs --level debug --n 200
+scripts/agentcli logs --level warn --n 200 # narrow to warnings+errors
 ```
 
-- Empty output → no matches OR the requested module/level isn't enabled in that browser tab's DevTools. Broaden the filter before concluding "no signal".
-- Dev Tools log-module checkboxes are per browser profile. `/_logs` `debug`/`info`/`warn` reflects what's enabled in **that** tab — use the interactive port (`curl …/_logs`) for the human's mix, the agent port (`agentcli logs`) for the headless render itself.
+- `--agent` (default) reads from the agent devserver (`.devserver.agent.run`), auto-starting it if needed. `--browser` reads from the interactive/human devserver (`.devserver.run`); that server is never auto-started, so `logs --browser` errors if `make start` isn't running.
+- **`agentcli logs` defaults to all levels (debug+)**, unlike a raw `curl …/_logs` which uses the server's info threshold and silently drops `debug`. Module output (`log("X").debug(...)`) is mostly debug, so the info threshold makes an enabled module look empty. Pass `--level warn` etc. to narrow.
+- Empty output is **ambiguous**: it can mean no entries, the requested module/level isn't enabled in that tab's DevTools, OR **no browser tab is connected to that devserver** (same as a timeout). If `/_sceneSource` is also empty for that port, no tab is connected — open/refresh a tab before concluding "no signal".
+- Dev Tools log-module checkboxes are per browser profile. `/_logs` reflects what's enabled in **that** tab — use `agentcli logs --browser` for the human's mix, `agentcli logs --agent` (the default) for the headless render itself.
 
 For raw scene text (no camera / export / overlays), no agentcli wrapper exists — drop to curl:
 ```bash
@@ -282,7 +286,7 @@ curl -sS "http://localhost:${user_port}/_sceneSource"
 
 3. **Use `--set` instead of `sed`/`cp` for YAML mutation.** The `--set meshExport.mdcExportLevers.adaptiveEnabled=false` flow handles type coercion (`true`/`false`/numbers/`null`), creates missing intermediate keys, and lives at the right nesting level. Sed-based YAML editing on top-level keys is a footgun (creates duplicate keys instead of mutating the nested one).
 
-4. **Always use the agent port for renders / logs after edits.** The interactive devserver runs the human's session — `agentcli mirror` reads from it but writes nowhere. Render workflows live entirely on the agent port (which auto-starts).
+4. **Use the agent port for renders / logs after your own edits.** The interactive devserver runs the human's session — `agentcli mirror` reads from it but writes nowhere. Render workflows live entirely on the agent port (which auto-starts), and `agentcli logs` defaults to it. Reach for `agentcli logs --browser` only when you specifically need what the human's tab is emitting.
 
 5. **Pair SSIM with pixel diff and the diff PNG.** `agentcli compare` reports all three; never quote a single number when judging visual change. See the `sdf-mesh-diff` skill.
 

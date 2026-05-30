@@ -787,9 +787,17 @@ function createHttpServer(
             }
             const query = parseLogQuery(url)
             const lines = await bridge.requestConsoleLogs(query)
-            const text = lines ? lines.join("\n") : ""
+            // `null` means the bridge had no tab to ask (no client connected) or
+            // the RPC timed out — distinct from a connected tab returning an
+            // empty buffer (`[]` → empty 200). Report it as 503 like `/_refresh`
+            // so callers can tell "no browser" apart from "0 matching entries".
+            if (lines === null) {
+                res.writeHead(503, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                res.end("no browser tab connected to this devserver's bridge (or the log request timed out)\n")
+                return
+            }
             res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
-            res.end(text)
+            res.end(lines.join("\n"))
             return
         }
 

@@ -1,4 +1,3 @@
-import { execSync } from "child_process"
 import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
@@ -241,19 +240,17 @@ async function main() {
                 change$.next({ event, path })
             },
             async (event, eventPath) => {
-                if (!process.execve) {
-                    throw new Error("rebuild only supported on Node v23.11.0 or higher")
-                }
-                // const tsxPath = process.env.TSX ?? "./node_modules/.bin/tsx"
-                log(`REBUILD triggered by ${event}: ${eventPath}`)
-                const makePath = execSync("which make", { encoding: "utf8" }).trim()
-                const args = [makePath, "serve"]
-                log(`Restarting build with ${args.join(" ")}`)
-                process.execve(makePath, args, process.env)
-                // log(`Cleaning ${Options.outDir}`)
-                // await rm(Options.outDir, { recursive: true, force: true })
-                // const args = [tsxPath, "--disable-warning=ExperimentalWarning"].concat(process.argv.slice(1))
-                // process.execve(tsxPath, args, process.env)
+                // A build-system file changed (WatchOptions.causesRebuild: build/**,
+                // lockfiles, tsconfig, package.json), so the running build/serve code is
+                // stale. We deliberately do NOT auto-restart here. The interactive and agent
+                // watchers are separate processes sharing one dist/ dir, so two concurrent
+                // rebuilds race on the monaco copy in static-bundler (ENOENT unlinking
+                // dist/vs/editor/editor.main.js); a failed rebuild then exits the process and
+                // drops the server, surfacing as ERR_CONNECTION_REFUSED in the browser.
+                // Instead, keep serving the current build and tell the human to restart so the
+                // change applies cleanly. (This previously re-exec'd `make serve`, a target
+                // removed in caac0e7, which silently killed the watcher on any build/** edit.)
+                log(`⚠️  build-system file changed (${event}: ${eventPath}) — run 'make restart' to apply; keeping current server up`)
             },
         )
     }

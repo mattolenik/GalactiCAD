@@ -1472,7 +1472,10 @@ export class SDFRenderer {
     }
 
     set outlineThickness(px: number) {
-        this.#outlineThickness = Math.max(1, Math.min(8, Math.round(px)))
+        // Capped at 4 to match the shader-side ceiling in outline.wgsl.
+        // The outline pass scans (2t+1)² neighbour ID loads per pixel, so a
+        // thickness of 8 cost 4× more per-pixel work than the new max of 4.
+        this.#outlineThickness = Math.max(1, Math.min(4, Math.round(px)))
         this.#needsRender = true
     }
     get outlineThickness(): number {

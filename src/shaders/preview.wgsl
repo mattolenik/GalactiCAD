@@ -936,6 +936,21 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
     // enters fragmentMain's register file.
     let hit = raymarch(transformedOrigin, transformedDir, t_start, &stepCount);
     let hitPos = transformedOrigin + transformedDir * hit.t;
+
+    // Inline selection boundary outline (replaces the old fullscreen outline
+    // post-process pass). `selFloat` is the binary "is the pixel's hit on a
+    // selected object?" indicator — 0 for unselected hits and misses, 1 for
+    // selected hits. `fwidth(selFloat)` is non-zero at any 2x2 quad boundary
+    // where the indicator changes (silhouettes between selected and
+    // unselected pixels), giving a 1-pixel antialiased outline at no extra
+    // pass cost. `hitDataMiss` returns id=0 and `selectedObjectIds[0]` is
+    // always 0, so the lookup is safe on misses. The `fwidth` must be in
+    // uniform control flow, which is why it lives here, before any of the
+    // hit-vs-miss branches below.
+    let selFloat = select(0.0, f32(selectedObjectIds[hit.id] != 0u), hit.t > 0.0);
+    let selBoundary = fwidth(selFloat);
+    let outlineMask = clamp(selBoundary * 1.5, 0.0, 1.0);
+    let outlineColor = selectionStyles.edgeColor;
     // Refined position for AO only — keeps original HitData (IDs, normal, seam)
     // untouched so coplanar union faces don't flicker.
     var aoPos = hitPos;
@@ -1045,6 +1060,11 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
             shadedColor = applyFaceDottedPattern(shadedColor, pixelCoord);
         }
         shadedColor = applySelectedEdgeHighlight(shadedColor, hitPos, hit, wppu);
+        // Apply the inline selection outline at boundary pixels. Written as
+        // an explicit lerp because Tint refuses the `mix(vec3, vec3, …)`
+        // overload here (rejects both the scalar-third-arg and the all-vec
+        // forms with "expected f32 got vec3<f32>" — Dawn version issue).
+        shadedColor = shadedColor * (1.0 - outlineMask) + outlineColor * outlineMask;
 
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {
@@ -1075,8 +1095,13 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
             vec4<u32>(hit.id, 0u, 0u, 0u),
         );
     } else {
+        // Miss pixel — normally fully transparent. At selection boundaries
+        // (silhouette of a selected object meeting the background) the
+        // outline mask is non-zero, so we draw the outline color with the
+        // mask as alpha so it composites correctly onto the canvas.
+        let missColor = vec4f(outlineColor * outlineMask, outlineMask);
         return FragmentOutput(
-            maybeBlendPivotOnto(heatmapOverlay(vec4f(0.0, 0.0, 0.0, 0.0), stepCount), pixelCoord, pivotPx),
+            maybeBlendPivotOnto(heatmapOverlay(missColor, stepCount), pixelCoord, pivotPx),
             vec4<u32>(0xFFFFFFFFu, 0u, 0u, 0u),
         );
     }

@@ -378,6 +378,11 @@ export class RenderWorkerCore {
             device: this.#device,
             format: this.#format,
             alphaMode: "premultiplied",
+            // RENDER_ATTACHMENT for the FG overlay pass + the (now-fallback)
+            // outline blit pass; COPY_DST for the copyTextureToTexture fast
+            // path that replaces the outline pass when the scene-color
+            // texture is already at canvas resolution (no halfres in effect).
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
         })
 
         this.#createBuffers()
@@ -1099,8 +1104,10 @@ export class RenderWorkerCore {
     resize(fullWidth: number, fullHeight: number): void {
         this.#fullWidth = Math.max(0, fullWidth)
         this.#fullHeight = Math.max(0, fullHeight)
-        this.#canvas.width = Math.max(1, fullWidth)
-        this.#canvas.height = Math.max(1, fullHeight)
+        // Don't size the canvas drawing buffer here anymore — `#renderFromSAB`
+        // and `render()` set it to the current scene render resolution each
+        // frame (via `#resizeCanvasIfNeeded`) so the browser CSS handles
+        // halfres → display upsample for free.
     }
 
     render(
@@ -1163,6 +1170,10 @@ export class RenderWorkerCore {
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
 
+        // Selection rendering moved inline into the SDF scene shader
+        // (`fragmentMain` + `shadeHit` in preview.wgsl). The post-process
+        // pass is now a pure blit; outline-mode upload is preserved for
+        // protocol compatibility but the shader ignores it.
         this.#outlineU32[0] = viewSettings.outlineMode
         this.#outlineThicknessF32[0] = viewSettings.outlineThickness
         this.#outlineColorF32.set(viewSettings.outlineColor)
@@ -1206,6 +1217,13 @@ export class RenderWorkerCore {
         )
         this.#writeEdgesToBufferIfDirty(this.#uniformBuffers.hoveredEdge, selectionState.hoveredEdges, 6.0, 0.02, this.#hoveredEdgesCache)
 
+        // For canvas renders, size the OffscreenCanvas drawing buffer to
+        // the scene render resolution and let the browser CSS scale up to
+        // display. See `#resizeCanvasIfNeeded` for full rationale. For
+        // off-screen renders (`outputTextureView` provided by the caller),
+        // the target is fixed and we don't touch the canvas — the legacy
+        // intermediate-texture + outline-blit path handles it.
+        if (!outputTextureView) this.#resizeCanvasIfNeeded(sceneWidth, sceneHeight)
         const canvasTexture = outputTextureView ? null : this.#context.getCurrentTexture()
         const outlineTarget = outputTextureView ?? canvasTexture!.createView()
         const commandEncoder = this.#device.createCommandEncoder()
@@ -1243,9 +1261,16 @@ export class RenderWorkerCore {
             beamPass.end()
         }
 
+        // For canvas renders the scene-color attachment is the canvas
+        // swapchain itself (sized to sceneWidth × sceneHeight via the
+        // resize above); no outline post-process pass runs. For
+        // outputTextureView renders we keep the old `#colorTextureView`
+        // intermediate so the legacy outline blit can copy into the
+        // caller-supplied target.
+        const sceneColorView = outputTextureView ? this.#colorTextureView : outlineTarget
         const scenePass = commandEncoder.beginRenderPass({
             colorAttachments: [
-                { view: this.#colorTextureView, loadOp: "clear", storeOp: "store" },
+                { view: sceneColorView, loadOp: "clear", storeOp: "store" },
                 { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xffffffff, g: 0, b: 0, a: 0 } },
             ],
             timestampWrites: this.#timestampWritesFor("scene"),
@@ -1255,22 +1280,34 @@ export class RenderWorkerCore {
         scenePass.draw(4)
         scenePass.end()
 
-        const outlinePass = commandEncoder.beginRenderPass({
-            colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
-            timestampWrites: this.#timestampWritesFor("outline"),
-        })
-        outlinePass.setPipeline(this.#outlinePipeline)
-        outlinePass.setBindGroup(0, this.#outlineBindGroup!)
-        outlinePass.draw(4)
-        outlinePass.end()
+        // outputTextureView path retains the blit pass to copy the
+        // intermediate `#colorTexture` into the caller's target (which may
+        // be a different size / format than the canvas swapchain). For
+        // canvas renders the scene already wrote directly to the
+        // swapchain, so the outline pass is unconditionally skipped.
+        if (outputTextureView) {
+            const outlinePass = commandEncoder.beginRenderPass({
+                colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
+                timestampWrites: this.#timestampWritesFor("outline"),
+            })
+            outlinePass.setPipeline(this.#outlinePipeline)
+            outlinePass.setBindGroup(0, this.#outlineBindGroup!)
+            outlinePass.draw(4)
+            outlinePass.end()
+        }
 
+        // Both render targets (canvas-direct and outputTextureView) are at
+        // scene resolution by this point, so the overlay's camera uniform
+        // takes sceneWidth/sceneHeight unconditionally — the old
+        // `#fullWidth` branch dated back to when the outline pass owned
+        // the canvas-resolution upsample.
         this.#renderFeatureGraphOverlay(
             commandEncoder,
             outlineTarget,
             viewTransform,
             cameraPosition,
-            outputTextureView ? sceneWidth : this.#fullWidth,
-            outputTextureView ? sceneHeight : this.#fullHeight,
+            sceneWidth,
+            sceneHeight,
             orthoHalfFromDolly(msg.cameraState.dollyDistance),
             viewCenter,
         )
@@ -1387,6 +1424,11 @@ export class RenderWorkerCore {
             rayOriginDepth: new Float32Array(buffer, rmBase + 20, 1)[0],
         })
 
+        // Selection rendering moved inline into the SDF scene shader
+        // (`fragmentMain` + `shadeHit` in preview.wgsl): boundary outline via
+        // `fwidth(selFloat)` plus the existing object tint. The post-process
+        // pass is now a pure blit; outline-mode upload is preserved for
+        // protocol compatibility but the shader ignores it.
         this.#outlineU32[0] = (packed >> 5) & 3
         this.#outlineThicknessF32[0] = u32[b4 + L.O_OUTLINE_THICKNESS / 4]
         this.#outlineColorF32[0] = f32[b4 + L.O_OUTLINE_COLOR / 4]
@@ -1439,6 +1481,15 @@ export class RenderWorkerCore {
             this.#hoveredEdgesCache,
         )
 
+        // Resize the OffscreenCanvas drawing buffer to the scene render size
+        // and render directly into the swapchain. The DOM canvas keeps its
+        // CSS pixel size, so the browser compositor bilinear-upscales the
+        // drawing buffer back into the visible canvas box — i.e. the same
+        // halfres → fullres upsample the outline blit pass used to perform
+        // at 35 ms a frame, now done outside the GPU command queue. The
+        // outline pass is gone; the FG overlay still draws on top with
+        // loadOp: "load".
+        this.#resizeCanvasIfNeeded(sceneWidth, sceneHeight)
         const canvasTexture = this.#context.getCurrentTexture()
         const outlineTarget = canvasTexture.createView()
         const commandEncoder = this.#device.createCommandEncoder()
@@ -1476,9 +1527,15 @@ export class RenderWorkerCore {
             beamPass.end()
         }
 
+        // Scene pipeline has two color targets (color + objectId). Color
+        // goes straight to the canvas swapchain (which is sized to match
+        // sceneWidth × sceneHeight via `#resizeCanvasIfNeeded` above); the
+        // r32uint object-ID attachment still writes to `#idTexture` even
+        // though nothing reads it anymore — kept around to avoid a pipeline
+        // change. A follow-up can drop it.
         const scenePass = commandEncoder.beginRenderPass({
             colorAttachments: [
-                { view: this.#colorTextureView, loadOp: "clear", storeOp: "store" },
+                { view: outlineTarget, loadOp: "clear", storeOp: "store" },
                 { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xffffffff, g: 0, b: 0, a: 0 } },
             ],
             timestampWrites: this.#timestampWritesFor("scene"),
@@ -1488,22 +1545,13 @@ export class RenderWorkerCore {
         scenePass.draw(4)
         scenePass.end()
 
-        const outlinePass = commandEncoder.beginRenderPass({
-            colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
-            timestampWrites: this.#timestampWritesFor("outline"),
-        })
-        outlinePass.setPipeline(this.#outlinePipeline)
-        outlinePass.setBindGroup(0, this.#outlineBindGroup!)
-        outlinePass.draw(4)
-        outlinePass.end()
-
         this.#renderFeatureGraphOverlay(
             commandEncoder,
             outlineTarget,
             viewTransform,
             cameraPosition,
-            this.#fullWidth,
-            this.#fullHeight,
+            sceneWidth,
+            sceneHeight,
             f32[b4 + L.O_ZOOM / 4]!,
             viewCenter,
         )
@@ -2376,7 +2424,13 @@ export class RenderWorkerCore {
                 label: "Preview Color",
                 size: [w, h],
                 format: this.#format,
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+                // COPY_SRC lets the canvas-resolution fast path
+                // (`copyTextureToTexture` straight into the swapchain) skip
+                // the outline blit pass entirely when scene size == canvas size.
+                usage:
+                    GPUTextureUsage.RENDER_ATTACHMENT |
+                    GPUTextureUsage.TEXTURE_BINDING |
+                    GPUTextureUsage.COPY_SRC,
             })
             this.#idTexture = this.#device.createTexture({
                 label: "Object ID",
@@ -2405,7 +2459,8 @@ export class RenderWorkerCore {
                     { binding: 0, resource: this.#colorTextureView },
                     { binding: 1, resource: this.#idTextureView },
                     { binding: 2, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
-                    { binding: 3, resource: { buffer: this.#uniformBuffers.outlineSettings } },
+                    // binding 3 (outlineSettings) dropped — the post-process
+                    // pass no longer reads any per-frame outline parameters.
                     { binding: 4, resource: this.#colorSampler },
                 ],
             })
@@ -3170,6 +3225,22 @@ export class RenderWorkerCore {
         const staging = new Uint8Array(this.#sabStagingBuf, 0, byteLength)
         staging.set(new Uint8Array(sab, sabOffset, byteLength))
         return this.#writeBufferIfDirty(gpuBuffer, this.#sabStagingBuf, 0, byteLength, cache)
+    }
+
+    /**
+     * Resize the OffscreenCanvas drawing buffer to the current scene render
+     * resolution. The DOM canvas keeps its CSS size; the browser bilinear-
+     * scales the drawing buffer into that CSS box at composite time, which
+     * is the same upsample the outline blit pass used to do — but free,
+     * because it lives outside the GPU command queue.
+     *
+     * Only triggers an actual size change when the requested dimensions
+     * differ from the canvas's current drawing buffer, so steady-state
+     * frames pay zero overhead.
+     */
+    #resizeCanvasIfNeeded(targetWidth: number, targetHeight: number): void {
+        if (this.#canvas.width !== targetWidth) this.#canvas.width = Math.max(1, targetWidth)
+        if (this.#canvas.height !== targetHeight) this.#canvas.height = Math.max(1, targetHeight)
     }
 
     /** Compare src view with cache; if different, write to GPU and update cache. Returns true if wrote. */

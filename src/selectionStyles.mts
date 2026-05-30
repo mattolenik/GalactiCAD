@@ -8,7 +8,11 @@ import type { EffectiveTheme } from "./style/theme.mjs"
 export const DEFAULT_SELECTION_STYLES = {
     outline: {
         mode: "solid" as const,
-        thickness: 2,
+        // 3 px is the new default; capped at 4 by both the setter and the shader.
+        // The cap exists because the outline pass scans a filled-circle stencil
+        // of (2t+1)² neighbour ID loads per pixel, so larger radii are quadratically
+        // more expensive for little visual gain.
+        thickness: 3,
         color: [0.9, 0.9, 0.9] as [number, number, number],
         dashSpacing: 10,
         dashLength: 5,

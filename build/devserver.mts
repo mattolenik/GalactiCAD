@@ -18,8 +18,13 @@ import {
     type AgentTestcase,
 } from "../src/agent-autotest/agent-testcase.mjs"
 
-/** True when `AGENT` is set to a non-empty value (agent devserver: headless Chrome, no watch auto-reload, …). */
-export const AGENT_MODE = !!process.env.AGENT
+/**
+ * True only in the agent devserver (headless Chrome, no watch auto-reload, agent log file).
+ * Must be an exact `"true"` check: the Makefile starts the INTERACTIVE server with
+ * `AGENT=false` in the env, and `!!"false"` is truthy — which would make the interactive
+ * server skip browser reloads and spawn a phantom headless browser on its own port.
+ */
+export const AGENT_MODE = process.env.AGENT === "true"
 
 /** Cache dir for `@puppeteer/browsers` install (see `setup` in Makefile). */
 const PUPPETEER_BROWSERS_DIR = ".browsers"
@@ -302,7 +307,6 @@ function endHttpResponseWithBuffer(
         })
     })
 }
-
 async function respondAgentRenderPng(
     bridge: BrowserBridge,
     repoRoot: string,
@@ -386,6 +390,7 @@ const INJECTED_BRIDGE_SCRIPT = `
             var intentionalClose = false;
             var reconnectDelayMs = 300;
             var reconnectTimer = null;
+            var hadOpenConnection = false;
             function trySend(socket, payload) {
                 try {
                     if (socket && socket.readyState === 1) {
@@ -617,6 +622,17 @@ const INJECTED_BRIDGE_SCRIPT = `
                 socket.addEventListener("message", onMessage);
                 socket.addEventListener("open", function () {
                     reconnectDelayMs = 300;
+                    if (hadOpenConnection) {
+                        // We had a live connection that dropped and just reconnected — the
+                        // devserver restarted (e.g. a build/** edit re-exec'd it), so the bundle
+                        // this page is running may be stale. Reload to pick up the new code.
+                        // Server-initiated reloads use the 'reload' message + intentionalClose
+                        // path (page reloads directly), so this only fires for an unexpected
+                        // drop+recover such as a restart.
+                        window.location.reload();
+                        return;
+                    }
+                    hadOpenConnection = true;
                     notifyWhenReady(socket);
                 });
                 socket.addEventListener("close", function () {
@@ -725,7 +741,18 @@ export class DevServer {
                 proc?.kill("SIGKILL")
             }
         }
-        // Drop sockets first so the close callbacks (which only fire when all connections drain) actually fire.
+        // Force-close WebSocket clients first. `wsServer.close()` stops listening but leaves
+        // existing client connections open, and `httpServer.closeAllConnections()` doesn't
+        // cover upgraded WS sockets — so the browser's persistent bridge socket would keep
+        // `httpServer.close()` from ever completing. That made a build/** re-exec hang in
+        // shutdown() until the user manually refreshed the tab to drop the socket.
+        for (const client of this.wsServer.clients) {
+            try {
+                client.terminate()
+            } catch {
+                /* already gone */
+            }
+        }
         this.httpServer.closeAllConnections()
         await Promise.all([
             new Promise<void>(resolve => this.wsServer.close(() => resolve())),
@@ -1119,7 +1146,10 @@ function listenWithPortRetry(
                         err("WebSocket error: ", error)
                     })
                     ws.on("message", (data: Buffer | ArrayBuffer | Buffer[]) => {
-                        bridge.handleClientMessage(data)
+                        bridge.handleClientMessage(data, ws)
+                    })
+                    ws.on("close", () => {
+                        bridge.notifyClientClosed(ws)
                     })
                     bridge.notifyClientConnected()
                 })

@@ -39,7 +39,6 @@ const Static = {
     [`${VS_DIR}/language/typescript`]: "/vs/language/",
     "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
 }
-
 const Options = {
     entryPoints: [
         "./src/app.mts",
@@ -74,7 +73,11 @@ const WatchOptions = {
         /\.devserver.*/,
         Options.outDir,
     ],
-    causesRebuild: [/^build\//, /\.lock$/, /tsconfig\.json$/, /package\.json$/],
+    // Only build-tooling changes (the build script, devserver, esbuild plugins) require a
+    // full process restart via re-exec — they're imported once at startup and can't be
+    // hot-swapped. Everything else (app source, lockfiles, tsconfig, package.json) goes
+    // through a normal esbuild rebuild + browser reload.
+    causesRebuild: [/^build\//],
 }
 
 /** Relative paths matching these globs still run `build()` but skip WebSocket live reload. */
@@ -234,23 +237,48 @@ async function main() {
                 server?.reload()
             }
         })
+        // Guards onRebuild against re-entrancy: chokidar can emit several events for one
+        // save, and onRebuild is NOT debounced, so without this two concurrent shutdown()
+        // calls race and hang the process before it ever re-execs. Never reset — execve
+        // replaces the process image, so the flag dies with it.
+        let restarting = false
         let watcher = watch(
             ".",
             async (event, path) => {
                 change$.next({ event, path })
             },
             async (event, eventPath) => {
-                // A build-system file changed (WatchOptions.causesRebuild: build/**,
-                // lockfiles, tsconfig, package.json), so the running build/serve code is
-                // stale. We deliberately do NOT auto-restart here. The interactive and agent
-                // watchers are separate processes sharing one dist/ dir, so two concurrent
-                // rebuilds race on the monaco copy in static-bundler (ENOENT unlinking
-                // dist/vs/editor/editor.main.js); a failed rebuild then exits the process and
-                // drops the server, surfacing as ERR_CONNECTION_REFUSED in the browser.
-                // Instead, keep serving the current build and tell the human to restart so the
-                // change applies cleanly. (This previously re-exec'd `make serve`, a target
-                // removed in caac0e7, which silently killed the watcher on any build/** edit.)
-                log(`⚠️  build-system file changed (${event}: ${eventPath}) — run 'make restart' to apply; keeping current server up`)
+                if (restarting) return
+                restarting = true
+                if (!process.execve) {
+                    throw new Error("rebuild only supported on Node v23.11.0 or higher")
+                }
+                // A file under build/ changed (WatchOptions.causesRebuild). esbuild plugins
+                // and the devserver are imported once at startup, so only a process restart
+                // applies the change.
+                // Shut the server down cleanly (release the listen socket + remove the run
+                // file), then re-exec THIS process from its own argv + execArgv, inheriting
+                // process.env so PORT / RUN_FILE / AGENT etc. carry over and it rebinds the
+                // same port. (This previously re-exec'd `make serve`, a target that was
+                // removed — so any build/** edit killed the watcher instead of restarting.)
+                log(`REBUILD triggered by ${event}: ${eventPath} — restarting devserver`)
+                if (server) {
+                    try {
+                        await server.shutdown()
+                    } catch (e) {
+                        err(e)
+                    }
+                    server = null
+                }
+                try {
+                    await fs.unlink(RUN_FILE)
+                } catch {
+                    // No run file to clear. execve preserves our PID, so a leftover run file
+                    // would make the re-exec'd checkRunFile() think a server is already up.
+                }
+                const args = [process.execPath, ...process.execArgv, ...process.argv.slice(1)]
+                log(`Re-exec: ${args.join(" ")}`)
+                process.execve(process.execPath, args, process.env)
             },
         )
     }

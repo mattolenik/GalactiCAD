@@ -1,4 +1,4 @@
-import type { WebSocketServer } from "ws"
+import type { WebSocket, WebSocketServer } from "ws"
 
 /** Server → browser: reload the page. */
 export type DevServerReloadMessage = { type: "reload" }
@@ -93,9 +93,24 @@ const WS_OPEN = 1
 /**
  * Request/response RPC must target a single tab. Broadcasting to every client races
  * multiple handlers and "first response wins" can be an error from the wrong tab.
+ *
+ * Prefer `preferred` — the socket of the tab whose app most recently sent
+ * `agentBridgeReady`. After a browser-initiated reload the fresh socket is appended
+ * AFTER any lingering/other connection in `wss.clients`, so blindly taking the first
+ * open socket can keep targeting a stale or blank tab (a server `/_refresh` dodges this
+ * only because it reloads every tab at once). Falls back to the first open client.
  */
-function sendPayloadToFirstOpenClient(wss: WebSocketServer, payload: string): boolean {
+function sendPayloadToFirstOpenClient(wss: WebSocketServer, payload: string, preferred: WebSocket | null): boolean {
+    if (preferred && preferred.readyState === WS_OPEN) {
+        try {
+            preferred.send(payload)
+            return true
+        } catch {
+            /* preferred went stale; fall through to scan */
+        }
+    }
     for (const client of wss.clients) {
+        if (client === preferred) continue
         if (client.readyState !== WS_OPEN) continue
         try {
             client.send(payload)
@@ -133,6 +148,8 @@ export class BrowserBridge {
     private connectionEpoch = 0
     /** Resolvers waiting for the next post-reload connection. Resolved by `notifyClientConnected`. */
     private readonly pendingReloadAwaits: Array<() => void> = []
+    /** Socket of the tab that most recently sent `agentBridgeReady` (app fully initialized). Preferred RPC target so a browser reload re-points to the live tab instead of a stale connection. Cleared on its disconnect. */
+    private lastReadyClient: WebSocket | null = null
 
     setWsServer(wsServer: WebSocketServer) {
         this.wsServer = wsServer
@@ -224,7 +241,7 @@ export class BrowserBridge {
                 ...(query.modules != null && query.modules.length > 0 ? { modules: query.modules } : {}),
             }
             const payload = JSON.stringify(msg)
-            if (!sendPayloadToFirstOpenClient(wss, payload)) {
+            if (!sendPayloadToFirstOpenClient(wss, payload, this.lastReadyClient)) {
                 clearTimeout(timeout)
                 this.pending.delete(id)
                 resolve(null)
@@ -255,7 +272,7 @@ export class BrowserBridge {
             this.pendingSceneSource.set(id, { resolve: finish })
             const msg: DevServerGetActiveSceneSourceMessage = { type: "getActiveSceneSource", id }
             const payload = JSON.stringify(msg)
-            if (!sendPayloadToFirstOpenClient(wss, payload)) {
+            if (!sendPayloadToFirstOpenClient(wss, payload, this.lastReadyClient)) {
                 clearTimeout(timeout)
                 this.pendingSceneSource.delete(id)
                 resolve(null)
@@ -287,7 +304,7 @@ export class BrowserBridge {
             this.pendingAgentTestcase.set(id, { resolve: finish })
             const msg: DevServerExportAgentTestcaseMessage = { type: "exportAgentTestcase", id }
             const payload = JSON.stringify(msg)
-            if (!sendPayloadToFirstOpenClient(wss, payload)) {
+            if (!sendPayloadToFirstOpenClient(wss, payload, this.lastReadyClient)) {
                 clearTimeout(timeout)
                 this.pendingAgentTestcase.delete(id)
                 resolve(null)
@@ -319,7 +336,7 @@ export class BrowserBridge {
                 this.pendingAgentRender.set(id, { resolve: finish })
                 const msg: DevServerAgentRenderMessage = { type: "agentRender", id, payload }
                 const wire = JSON.stringify(msg)
-                if (!sendPayloadToFirstOpenClient(wss, wire)) {
+                if (!sendPayloadToFirstOpenClient(wss, wire, this.lastReadyClient)) {
                     clearTimeout(timeout)
                     this.pendingAgentRender.delete(id)
                     resolve(null)
@@ -334,7 +351,12 @@ export class BrowserBridge {
         return out
     }
 
-    handleClientMessage(raw: Buffer | ArrayBuffer | Buffer[]) {
+    /** Called by the devserver's WS `close` handler. Forget a disconnected preferred client so the next RPC falls back cleanly. */
+    notifyClientClosed(socket: WebSocket) {
+        if (this.lastReadyClient === socket) this.lastReadyClient = null
+    }
+
+    handleClientMessage(raw: Buffer | ArrayBuffer | Buffer[], socket?: WebSocket) {
         let data: string
         if (typeof raw === "string") data = raw
         else if (Buffer.isBuffer(raw)) data = raw.toString("utf8")
@@ -391,6 +413,10 @@ export class BrowserBridge {
             return
         }
         if (msg.type === "agentBridgeReady") {
+            // This tab's app just finished initializing — make it the preferred
+            // RPC target so logs/scene/render hit the live tab, not a stale or
+            // blank connection that happens to be earlier in wss.clients.
+            if (socket) this.lastReadyClient = socket
             this.notifyAgentBridgeReady()
             return
         }

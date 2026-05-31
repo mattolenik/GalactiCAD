@@ -21,7 +21,9 @@ test("IsoSimplicialConstants matches reference main.cpp defaults", () => {
     assert.equal(IsoSimplicialConstants.dualVertexBorderFraction, 1 / 16)
     assert.equal(IsoSimplicialConstants.depthMin, 4)
     assert.equal(IsoSimplicialConstants.depthMax, 7)
-    assert.equal(IsoSimplicialConstants.findRootDepth, 0)
+    // Intentional override of reference default (main.cpp FIND_ROOT_DEPTH = 0);
+    // bumped to 2 in fce8db4 alongside the QEF eigenvalue threshold change.
+    assert.equal(IsoSimplicialConstants.findRootDepth, 2)
     assert.equal(IsoSimplicialConstants.qefRelativeErrorRefineThreshold, 1e-3)
 })
 

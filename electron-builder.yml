@@ -1,20 +1,25 @@
 appId: app.galacticad
 productName: GalactiCAD
 
-# Repo's `build/` dir is electron-builder's default `buildResources` location;
-# it picks up build/icon.icns, build/icon.ico, build/icon.png automatically.
-# Contents of build/ are NOT bundled into the app — only used as resources.
-
+# Everything generated/used by electron-builder lives under dist/:
+#   dist/build    — buildResources (icons rendered from src/assets/gicon.svg
+#                   by `make icons`)
+#   dist/release  — packaged installers/archives
+# Source-only electron files (main.mjs, preload.cjs, entitlements.plist) stay
+# in electron/.
 directories:
-  output: release
+  buildResources: dist/build
+  output: dist/release
 
-# Include only what the runtime needs. dist/ is the built web app;
-# electron/ is the main + preload. node_modules is pruned to production by
-# default, but the app itself has no runtime node deps so the bundle stays
-# small either way.
+# Include only what the runtime needs:
+#   dist/site  — the built web app loaded over app://galacticad
+#   electron/  — main + preload + entitlements
+# node_modules is pruned to production by default, but the app itself has no
+# runtime node deps so the bundle stays small either way. dist/build and
+# dist/release are deliberately excluded.
 files:
   - "electron/**"
-  - "dist/**"
+  - "dist/site/**"
   - "package.json"
 
 asar: true
@@ -32,8 +37,8 @@ mac:
   # will be killed for using JIT.
   hardenedRuntime: true
   gatekeeperAssess: false
-  entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.plist
+  entitlements: electron/entitlements.mac.plist
+  entitlementsInherit: electron/entitlements.mac.plist
   # Notarize via @electron/notarize using credentials from env:
   #   APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
   # (or APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER for CI).

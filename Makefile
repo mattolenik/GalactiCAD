@@ -1,6 +1,11 @@
 MAKEFLAGS    += --no-print-directory --silent
 SHELL        := bash
-DIST         ?= dist
+# All generated output lives under ./dist:
+#   dist/site     — web build (esbuild output, also what's deployed)
+#   dist/build    — electron-builder buildResources (generated icons)
+#   dist/release  — electron-builder packaged installers/archives
+DIST_ROOT    ?= dist
+DIST         ?= $(DIST_ROOT)/site
 SED          := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
 export TSX   ?= node_modules/.bin/tsx
 export TSC   ?= node_modules/.bin/tsc
@@ -125,20 +130,52 @@ restart-agent: stop-agent start-agent
 release: export PRODUCTION=1
 release: build test
 
-# Run the packaged desktop shell against the current dist/. Builds first so a
-# stale or missing dist/ doesn't load an empty window.
+# Run the packaged desktop shell against the current dist/site/. Builds first
+# so a stale or missing dist/site/ doesn't load an empty window.
 # Unset ELECTRON_RUN_AS_NODE — when set (some sandbox/CI harnesses inherit it)
 # the Electron binary runs as plain Node and the API never loads.
 .PHONY: electron-dev
 electron-dev: build
 	unset ELECTRON_RUN_AS_NODE; node_modules/.bin/electron .
 
-# Produce installers/archives in release/. Forces a PRODUCTION dist build so
-# the bundled app is minified and ships without source maps.
+# Produce installers/archives in dist/release/. Forces a PRODUCTION dist build
+# so the bundled app is minified and ships without source maps. Generates the
+# platform icons into dist/build/ first.
 .PHONY: electron-pack
 electron-pack: export PRODUCTION=1
-electron-pack: build
+electron-pack: build icons
 	unset ELECTRON_RUN_AS_NODE; node_modules/.bin/electron-builder
+
+# Render src/assets/gicon.svg into the platform icon files electron-builder
+# auto-picks from buildResources (set to dist/build in electron-builder.yml).
+# Requires rsvg-convert + iconutil (macOS) + ImageMagick (`magick`).
+.PHONY: icons
+icons: $(DIST_ROOT)/build/icon.icns $(DIST_ROOT)/build/icon.ico $(DIST_ROOT)/build/icon.png
+
+ICON_SVG := src/assets/gicon.svg
+
+$(DIST_ROOT)/build/icon.icns: $(ICON_SVG)
+	@mkdir -p $(DIST_ROOT)/build
+	tmp=$$(mktemp -d)/icon.iconset; mkdir -p "$$tmp"
+	for spec in "16 icon_16x16.png" "32 icon_16x16@2x.png" "32 icon_32x32.png" "64 icon_32x32@2x.png" \
+	            "128 icon_128x128.png" "256 icon_128x128@2x.png" "256 icon_256x256.png" "512 icon_256x256@2x.png" \
+	            "512 icon_512x512.png" "1024 icon_512x512@2x.png"; do \
+	    size=$${spec% *}; name=$${spec#* }; \
+	    rsvg-convert -w "$$size" -h "$$size" $(ICON_SVG) -o "$$tmp/$$name"; \
+	done
+	iconutil -c icns "$$tmp" -o $(DIST_ROOT)/build/icon.icns
+
+$(DIST_ROOT)/build/icon.png: $(ICON_SVG)
+	@mkdir -p $(DIST_ROOT)/build
+	rsvg-convert -w 1024 -h 1024 $(ICON_SVG) -o $(DIST_ROOT)/build/icon.png
+
+$(DIST_ROOT)/build/icon.ico: $(ICON_SVG)
+	@mkdir -p $(DIST_ROOT)/build
+	tmp=$$(mktemp -d); \
+	for s in 16 24 32 48 64 128 256; do \
+	    rsvg-convert -w "$$s" -h "$$s" $(ICON_SVG) -o "$$tmp/$$s.png"; \
+	done; \
+	magick "$$tmp"/16.png "$$tmp"/24.png "$$tmp"/32.png "$$tmp"/48.png "$$tmp"/64.png "$$tmp"/128.png "$$tmp"/256.png $(DIST_ROOT)/build/icon.ico
 
 .PHONY: clean
 clean: stop kill-agent-browsers

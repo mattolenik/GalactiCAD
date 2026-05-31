@@ -39,6 +39,13 @@ const Static = {
     [`${VS_DIR}/language/typescript`]: "/vs/language/",
     "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
 }
+// All generated output lives under ./dist:
+//   ./dist/site     — web build (this esbuild output, also what's deployed
+//                     to the static host)
+//   ./dist/build    — electron-builder buildResources (generated icons)
+//   ./dist/release  — electron-builder packaged installers/archives
+const DIST_ROOT = "./dist"
+
 const Options = {
     entryPoints: [
         "./src/app.mts",
@@ -55,7 +62,7 @@ const Options = {
         staticBundler(Static, log),
         monacoEditorPlugin({ urlPrefix: "/editor" }),
     ],
-    outDir: "./dist",
+    outDir: `${DIST_ROOT}/site`,
     isProd: IS_PROD,
 }
 
@@ -71,7 +78,9 @@ const WatchOptions = {
         "node_modules",
         "assets",
         /\.devserver.*/,
-        Options.outDir,
+        // Ignore all of dist/ — site rebuilds, electron-builder buildResources,
+        // and release artifacts should never trigger a watch rebuild.
+        DIST_ROOT,
     ],
     // Only build-tooling changes (the build script, devserver, esbuild plugins) require a
     // full process restart via re-exec — they're imported once at startup and can't be

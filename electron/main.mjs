@@ -21,9 +21,10 @@ const SCHEME = "app"
 const HOST = "galacticad"
 const ORIGIN = `${SCHEME}://${HOST}`
 
-// electron/ sits next to dist/ in the repo. When packaged, both live inside
-// the asar at app.asar/electron/ and app.asar/dist/, so the same join works.
-const DIST = path.resolve(__dirname, "..", "dist")
+// electron/ sits next to dist/site/ in the repo. When packaged, both live
+// inside the asar at app.asar/electron/ and app.asar/dist/site/, so the same
+// join works in both contexts.
+const DIST = path.resolve(__dirname, "..", "dist", "site")
 
 // Must be called before app.whenReady() — privileges are baked at startup.
 protocol.registerSchemesAsPrivileged([

@@ -1,5 +1,4 @@
 dist/
-release/
 *.code-workspace
 
 .DS_Store

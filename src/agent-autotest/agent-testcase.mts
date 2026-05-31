@@ -102,6 +102,9 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
             flexicubesTuning: { ...(input.meshExport.flexicubesTuning ?? DEFAULT_FLEXICUBES_TUNING) },
             simplifyTuning: { ...input.meshExport.simplifyTuning },
             mdcExportLevers: { ...input.meshExport.mdcExportLevers },
+            ...(input.meshExport.isoSimplicialTuning !== undefined
+                ? { isoSimplicialTuning: { ...input.meshExport.isoSimplicialTuning } }
+                : {}),
         },
         ...(input.meshOverlay !== undefined
             ? {
@@ -258,6 +261,9 @@ export function mergeAgentRenderRequest(
             flexicubesTuning: { ...(testcase.meshExport.flexicubesTuning ?? DEFAULT_FLEXICUBES_TUNING) },
             simplifyTuning: { ...testcase.meshExport.simplifyTuning },
             mdcExportLevers: { ...testcase.meshExport.mdcExportLevers },
+            ...(testcase.meshExport.isoSimplicialTuning !== undefined
+                ? { isoSimplicialTuning: { ...testcase.meshExport.isoSimplicialTuning } }
+                : {}),
         },
         ...(() => {
             const meshOverlay =

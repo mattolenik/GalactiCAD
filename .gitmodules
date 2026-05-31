@@ -1,3 +1,6 @@
 [submodule "docs/reference_impl/isosurf"]
 	path = docs/reference_impl/isosurf
 	url = https://github.com/mattolenik/isosurf.git
+[submodule "docs/reference_impl/flexicubes"]
+	path = docs/reference_impl/flexicubes
+	url = https://github.com/nv-tlabs/FlexiCubes.git

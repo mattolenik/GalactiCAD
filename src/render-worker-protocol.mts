@@ -28,8 +28,11 @@ export const DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM = 0.5
  *   `src/export/shrec.mts` and `src/shaders/sample_grid.wgsl`).
  * - `"isoSimplicial"`: GPU batched `sceneSDF` samples for Hermite data, CPU
  *   adaptive octree plus Marching Tetrahedra (`src/export/iso-simplicial/`).
+ * - `"flexicubes"`: GPU samples (scalar, gradient) on a uniform grid, then a
+ *   CPU stage runs the FlexiCubes dual extraction with QEF vertex placement
+ *   (`src/export/flexicubes.mts`).
  */
-export type ExporterKind = "mdc" | "shrec" | "isoSimplicial"
+export type ExporterKind = "mdc" | "shrec" | "isoSimplicial" | "flexicubes"
 
 /**
  * Optional overrides for iso-simplicial export (`IsoSimplicialConstants` in
@@ -246,6 +249,37 @@ export const DEFAULT_SHREC_TUNING: ShrecTuning = {
     featureConstrainedPlacement: true,
     featureGraphContours: true,
     voxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
+}
+
+/**
+ * Tuning knobs for the FlexiCubes exporter. Subset of `FlexiCubesParams` in
+ * `src/export/flexicubes.mts`; grid-sizing fields stay computed in the worker.
+ * Non-ML mode only (QEF-based vertex placement from analytic SDF gradients).
+ */
+export interface FlexiCubesTuning {
+    /** Voxel edge length in world units (mm). FlexiCubes's own value; independent of MDC/SHREC. */
+    voxelSizeMm: number
+    /** Isosurface level of the SDF; 0 is the nominal surface. */
+    isoValue: number
+    /**
+     * Crease angle (degrees) for the post-extraction normal derivation /
+     * vertex split pass. Same semantics as SHREC/MDC: 180 disables splitting;
+     * < 0 skips the pass entirely. Default 30.
+     */
+    creaseAngleDeg: number
+    /**
+     * QEF singular-value cutoff as a fraction of the largest eigenvalue.
+     * Smaller → sharper features (more vertices snap toward planes); larger
+     * → smoother / more regularized vertex placement. Default 0.1.
+     */
+    qefRelCutoff: number
+}
+
+export const DEFAULT_FLEXICUBES_TUNING: FlexiCubesTuning = {
+    voxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
+    isoValue: 0,
+    creaseAngleDeg: 30,
+    qefRelCutoff: 0.1,
 }
 
 /**
@@ -477,6 +511,7 @@ export type MainToWorkerMessage =
           exporter?: ExporterKind
           shrecTuning?: ShrecTuning
           isoSimplicialTuning?: IsoSimplicialTuning
+          flexicubesTuning?: FlexiCubesTuning
           simplifyTuning?: SimplifyTuning
           voxelSizeMm?: number
           /** When set, overrides worker defaults for MDC export (Dev Tools). */
@@ -569,9 +604,9 @@ export const DEFAULT_RAY_MARCH_PARAMS: RayMarchParams = {
     maxStepsMoving: 100,
     maxDist: 600,
     maxBeamSteps: 200,
-    maxBeamStepsMoving: 60,
-    hitRefineSteps: 6,
-    hitRefineStepsMoving: 2,
+    maxBeamStepsMoving: 200,
+    hitRefineSteps: 16,
+    hitRefineStepsMoving: 4,
     rayOriginDepth: 300,
 }
 

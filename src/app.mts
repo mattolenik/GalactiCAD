@@ -1221,10 +1221,11 @@ class App {
         devTools.syncMeshExporterFromSettings(this.#settings.getGlobal().app.meshExporter)
         devTools.syncIsoSimplicialTuningFromSettings(this.#settings.getGlobal().app.isoSimplicialTuning)
         devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
+        devTools.syncFlexiCubesTuningFromSettings(this.#settings.getGlobal().app.flexicubesTuning)
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
         devTools.syncMdcLeversFromSettings(this.#settings.getGlobal().app.mdcExportLevers)
-        // Re-mesh live when the mesh exporter or exporter tuning knobs
-        // change, so the mesh viewer reflects edits immediately. The
+        // Re-mesh live when the mesh exporter or any exporter tuning knob
+        // changes, so the mesh viewer reflects edits immediately. The
         // `#scheduleMeshUpdate` debounce avoids re-meshing per slider tick.
         const remeshIfMeshViewerOn = () => {
             if (!this.#meshViewerEnabled || !this.#mesh) return
@@ -1235,6 +1236,7 @@ class App {
         devTools.onMeshExporterChange = remeshIfMeshViewerOn
         devTools.onIsoSimplicialTuningChange = remeshIfMeshViewerOn
         devTools.onShrecTuningChange = remeshIfMeshViewerOn
+        devTools.onFlexiCubesTuningChange = remeshIfMeshViewerOn
         devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
         devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 
@@ -1587,6 +1589,7 @@ class App {
             exporter: devTools.meshExporter,
             shrecTuning: devTools.shrecTuning,
             isoSimplicialTuning: devTools.isoSimplicialTuning,
+            flexicubesTuning: devTools.flexicubesTuning,
             simplifyTuning: devTools.simplifyTuning,
             mdcExportLevers,
         }

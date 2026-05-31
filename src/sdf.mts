@@ -31,6 +31,7 @@ import type {
     EdgeHitData,
     ExporterKind,
     IsoSimplicialTuning,
+    FlexiCubesTuning,
     SelectedEdgePayload,
     ShrecTuning,
     SimplifyTuning,
@@ -66,6 +67,7 @@ export type {
     SceneBuildPipelineMs,
     ExporterKind,
     IsoSimplicialTuning,
+    FlexiCubesTuning,
     ShrecTuning,
     SimplifyTuning,
 } from "./render-worker-protocol.mjs"
@@ -189,6 +191,7 @@ export class SDFRenderer {
             exporter?: ExporterKind
             shrecTuning?: ShrecTuning
             isoSimplicialTuning?: IsoSimplicialTuning
+            flexicubesTuning?: FlexiCubesTuning
             simplifyTuning?: SimplifyTuning
             voxelSizeMm?: number
             mdcExportLevers?: MdcExportLevers
@@ -625,6 +628,7 @@ export class SDFRenderer {
                 exporter: pending.exporter,
                 shrecTuning: pending.shrecTuning,
                 isoSimplicialTuning: pending.isoSimplicialTuning,
+                flexicubesTuning: pending.flexicubesTuning,
                 voxelSizeMm: pending.voxelSizeMm,
                 simplifyTuning: pending.simplifyTuning,
                 mdcExportLevers: pending.mdcExportLevers,
@@ -1744,6 +1748,7 @@ export class SDFRenderer {
             exporter?: ExporterKind
             shrecTuning?: ShrecTuning
             isoSimplicialTuning?: IsoSimplicialTuning
+            flexicubesTuning?: FlexiCubesTuning
             simplifyTuning?: SimplifyTuning
             voxelSizeMm?: number
             mdcExportLevers?: MdcExportLevers
@@ -1757,6 +1762,7 @@ export class SDFRenderer {
         const exporter = options?.exporter
         const shrecTuning = options?.shrecTuning
         const isoSimplicialTuning = options?.isoSimplicialTuning
+        const flexicubesTuning = options?.flexicubesTuning
         const simplifyTuning = options?.simplifyTuning
         const voxelSizeMm = options?.voxelSizeMm
         const mdcExportLevers = options?.mdcExportLevers
@@ -1767,6 +1773,7 @@ export class SDFRenderer {
             exporter,
             shrecTuning,
             isoSimplicialTuning,
+            flexicubesTuning,
             simplifyTuning,
             voxelSizeMm,
             mdcExportLevers,
@@ -1822,6 +1829,7 @@ export class SDFRenderer {
         exporter?: ExporterKind
         shrecTuning?: ShrecTuning
         isoSimplicialTuning?: IsoSimplicialTuning
+        flexicubesTuning?: FlexiCubesTuning
         simplifyTuning?: SimplifyTuning
         voxelSizeMm?: number
         mdcExportLevers?: MdcExportLevers
@@ -1839,6 +1847,7 @@ export class SDFRenderer {
             exporter: app.meshExporter,
             shrecTuning: app.shrecTuning,
             isoSimplicialTuning: app.isoSimplicialTuning,
+            flexicubesTuning: app.flexicubesTuning,
             simplifyTuning: app.simplifyTuning,
             mdcExportLevers: app.mdcExportLevers,
         }
@@ -1942,6 +1951,8 @@ export class SDFRenderer {
             simplifyOnExport?: boolean
             exporter?: ExporterKind
             shrecTuning?: ShrecTuning
+            isoSimplicialTuning?: IsoSimplicialTuning
+            flexicubesTuning?: FlexiCubesTuning
             simplifyTuning?: SimplifyTuning
             voxelSizeMm?: number
             mdcExportLevers?: MdcExportLevers

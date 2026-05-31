@@ -1,6 +1,13 @@
 import yaml from "js-yaml"
 import type { CameraSettings, GlobalSettings } from "../storage/settings.mjs"
-import type { IsoSimplicialTuning, MdcExportLevers, ShrecTuning, SimplifyTuning } from "../render-worker-protocol.mjs"
+import {
+    DEFAULT_FLEXICUBES_TUNING,
+    type FlexiCubesTuning,
+    type IsoSimplicialTuning,
+    type MdcExportLevers,
+    type ShrecTuning,
+    type SimplifyTuning,
+} from "../render-worker-protocol.mjs"
 import type { CanvasPreviewUvRect } from "../layout/editor-layout.mjs"
 
 export const AGENT_TESTCASE_SCHEMA_VERSION = 1 as const
@@ -9,8 +16,9 @@ export const AGENT_TESTCASE_SCHEMA_VERSION = 1 as const
 export interface AgentTestcaseMeshExport {
     simplifyOnExport: boolean
     voxelSizeMm: number
-    exporter: "mdc" | "shrec" | "isoSimplicial"
+    exporter: "mdc" | "shrec" | "isoSimplicial" | "flexicubes"
     shrecTuning: ShrecTuning
+    flexicubesTuning?: FlexiCubesTuning
     simplifyTuning: SimplifyTuning
     mdcExportLevers: MdcExportLevers
     isoSimplicialTuning?: IsoSimplicialTuning
@@ -91,6 +99,7 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
             voxelSizeMm: input.meshExport.voxelSizeMm,
             exporter: input.meshExport.exporter,
             shrecTuning: { ...input.meshExport.shrecTuning },
+            flexicubesTuning: { ...(input.meshExport.flexicubesTuning ?? DEFAULT_FLEXICUBES_TUNING) },
             simplifyTuning: { ...input.meshExport.simplifyTuning },
             mdcExportLevers: { ...input.meshExport.mdcExportLevers },
         },
@@ -246,6 +255,7 @@ export function mergeAgentRenderRequest(
             voxelSizeMm: testcase.meshExport.voxelSizeMm,
             exporter: testcase.meshExport.exporter,
             shrecTuning: { ...testcase.meshExport.shrecTuning },
+            flexicubesTuning: { ...(testcase.meshExport.flexicubesTuning ?? DEFAULT_FLEXICUBES_TUNING) },
             simplifyTuning: { ...testcase.meshExport.simplifyTuning },
             mdcExportLevers: { ...testcase.meshExport.mdcExportLevers },
         },

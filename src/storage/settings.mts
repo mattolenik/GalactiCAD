@@ -11,11 +11,13 @@ import {
 import {
     DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
     DEFAULT_ISO_SIMPLICIAL_TUNING,
+    DEFAULT_FLEXICUBES_TUNING,
     DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_SHREC_TUNING,
     DEFAULT_SIMPLIFY_TUNING,
     type ExporterKind,
     type IsoSimplicialTuning,
+    type FlexiCubesTuning,
     type MdcExportLevers,
     type ShrecTuning,
     type SimplifyTuning,
@@ -129,6 +131,8 @@ export interface GlobalSettings {
         shrecTuning: ShrecTuning
         /** Optional overrides for iso-simplicial octree / extract (Dev Tools). */
         isoSimplicialTuning: IsoSimplicialTuning
+        /** Tuning knobs for the FlexiCubes (QEF) pipeline. */
+        flexicubesTuning: FlexiCubesTuning
         /** Post-export mesh simplification (meshoptimizer); used when mesh simplify on export is enabled. */
         simplifyTuning: SimplifyTuning
         /** Mesh export (MDC) tuning; merged with defaults and clamped on load. */
@@ -327,6 +331,7 @@ function defaultGlobalSettings(): GlobalSettings {
             useShrecExporter: false,
             shrecTuning: { ...DEFAULT_SHREC_TUNING },
             isoSimplicialTuning: { ...DEFAULT_ISO_SIMPLICIAL_TUNING },
+            flexicubesTuning: { ...DEFAULT_FLEXICUBES_TUNING },
             simplifyTuning: { ...DEFAULT_SIMPLIFY_TUNING },
             mdcExportLevers: { ...DEFAULT_MDC_EXPORT_LEVERS },
             diskSyncIntervalSeconds: 30,
@@ -682,13 +687,16 @@ export class SettingsManager {
 
                 const meshExportVoxelSizeMm = legacyVoxelSizeMm ?? def.app.meshExportVoxelSizeMm
 
+                const isValidExporter = (v: unknown): v is ExporterKind =>
+                    v === "mdc" || v === "shrec" || v === "isoSimplicial" || v === "flexicubes"
+
                 let useShrecLegacy =
                     typeof rawApp.useShrecExporter === "boolean" ? rawApp.useShrecExporter : def.app.useShrecExporter
 
                 let meshExporter: ExporterKind =
-                    rawApp.meshExporter === "mdc" || rawApp.meshExporter === "shrec" || rawApp.meshExporter === "isoSimplicial"
+                    isValidExporter(rawApp.meshExporter)
                         ? rawApp.meshExporter
-                        : rawApp.exporterKind === "mdc" || rawApp.exporterKind === "shrec" || rawApp.exporterKind === "isoSimplicial"
+                        : isValidExporter(rawApp.exporterKind)
                           ? rawApp.exporterKind
                           : useShrecLegacy
                             ? "shrec"
@@ -735,6 +743,30 @@ export class SettingsManager {
                         cur.voxelSizeMm = legacyVoxelSizeMm ?? DEFAULT_SHREC_TUNING.voxelSizeMm
                     }
                     shrecTuning = cur
+                }
+
+                let flexicubesTuning: FlexiCubesTuning = { ...DEFAULT_FLEXICUBES_TUNING }
+                {
+                    const t = rawApp.flexicubesTuning as Partial<FlexiCubesTuning> | undefined
+                    const cur = { ...DEFAULT_FLEXICUBES_TUNING, ...(t ?? {}) }
+                    if (typeof cur.voxelSizeMm !== "number" || !isFinite(cur.voxelSizeMm) || cur.voxelSizeMm <= 0) {
+                        cur.voxelSizeMm = legacyVoxelSizeMm ?? DEFAULT_FLEXICUBES_TUNING.voxelSizeMm
+                    }
+                    if (typeof cur.isoValue !== "number" || !isFinite(cur.isoValue)) {
+                        cur.isoValue = DEFAULT_FLEXICUBES_TUNING.isoValue
+                    }
+                    if (
+                        typeof cur.creaseAngleDeg !== "number" ||
+                        !isFinite(cur.creaseAngleDeg) ||
+                        cur.creaseAngleDeg < -1 ||
+                        cur.creaseAngleDeg > 180
+                    ) {
+                        cur.creaseAngleDeg = DEFAULT_FLEXICUBES_TUNING.creaseAngleDeg
+                    }
+                    if (typeof cur.qefRelCutoff !== "number" || !isFinite(cur.qefRelCutoff) || cur.qefRelCutoff < 0) {
+                        cur.qefRelCutoff = DEFAULT_FLEXICUBES_TUNING.qefRelCutoff
+                    }
+                    flexicubesTuning = cur
                 }
 
                 let simplifyTuning: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
@@ -801,6 +833,7 @@ export class SettingsManager {
                     useShrecExporter,
                     shrecTuning,
                     isoSimplicialTuning,
+                    flexicubesTuning,
                     simplifyTuning,
                     mdcExportLevers,
                     diskSyncIntervalSeconds,

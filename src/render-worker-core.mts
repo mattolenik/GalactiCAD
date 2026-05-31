@@ -28,6 +28,7 @@ import {
 import { QefWorkerPool } from "./export/iso-simplicial/qef-worker-pool.mjs"
 import { IsoSimplicialConstants } from "./export/iso-simplicial/constants.mjs"
 import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
+import { FlexiCubesExport, type FlexiCubesParams } from "./export/flexicubes.mjs"
 import { ContourBuffer } from "./scene/contour-buffer.mjs"
 import { FeatureGraphBuilder } from "./scene/feature-graph-buffer.mjs"
 import {
@@ -66,6 +67,7 @@ import {
     type BuildTimingBreakdownMs,
     type ExporterKind,
     type IsoSimplicialTuning,
+    type FlexiCubesTuning,
     type MainToWorkerMessage,
     type MdcExportLevers,
     type PreviewShadingParams,
@@ -1632,6 +1634,7 @@ export class RenderWorkerCore {
         voxelSizeMmFromCaller?: number,
         mdcExportLevers?: MdcExportLevers,
         isoSimplicialTuning?: IsoSimplicialTuning,
+        flexicubesTuning?: FlexiCubesTuning,
     ): Promise<void> {
         try {
             if (!this.#scene || this.#builtBody !== body) {
@@ -1652,7 +1655,9 @@ export class RenderWorkerCore {
             // exporter); fall back to the per-exporter tuning, then protocol
             // default.
             const exporterFallbackVoxel =
-                exporter === "shrec" ? shrecTuning?.voxelSizeMm : levers.voxelSizeMm
+                exporter === "shrec" ? shrecTuning?.voxelSizeMm
+                : exporter === "flexicubes" ? flexicubesTuning?.voxelSizeMm
+                : levers.voxelSizeMm
             const voxelSizeMm =
                 voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0 ? voxelSizeMmFromCaller
                 : exporterFallbackVoxel && exporterFallbackVoxel > 0 ? exporterFallbackVoxel
@@ -1691,7 +1696,39 @@ export class RenderWorkerCore {
             }
 
             let mesh
-            if (exporter === "shrec") {
+            if (exporter === "flexicubes") {
+                log("FlexiCubesExport").info(
+                    `handleRenderMesh: dispatching FlexiCubes, incoming tuning=` +
+                        `${flexicubesTuning ? JSON.stringify(flexicubesTuning) : "(undefined → defaults)"}`,
+                )
+                const fcCompiler = new ShaderCompiler(this.#device)
+                    .replace("insert", "sceneAuxFast", sceneAuxFast)
+                    .replace("insert", "sceneAux", sceneAux)
+                    .replace("insert", "sceneAuxMid", sceneAuxMid)
+                    .replace("insert", "sceneSDF", sceneSDF)
+                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
+                const fcShaderModule = fcCompiler.compile(sampleGridShader, "FlexiCubes Sample Grid")
+                const params: FlexiCubesParams = {
+                    gridDimX,
+                    gridDimY,
+                    gridDimZ,
+                    isoValue: flexicubesTuning?.isoValue ?? 0.0,
+                    gridOffsetX: minX,
+                    gridOffsetY: minY,
+                    gridOffsetZ: minZ,
+                    voxelSize: voxelSizeMm,
+                    creaseAngleDeg: flexicubesTuning?.creaseAngleDeg,
+                    qefRelCutoff: flexicubesTuning?.qefRelCutoff,
+                }
+                const fc = new FlexiCubesExport(
+                    this.#helper,
+                    this.#uniformBuffers.polygonVertices,
+                    this.#uniformBuffers.faceSelection,
+                    this.#uniformBuffers.mdcSceneParams,
+                    params,
+                )
+                mesh = await fc.export(fcShaderModule)
+            } else if (exporter === "shrec") {
                 log("ShrecExport").info(
                     `handleRenderMesh: dispatching SHREC, incoming tuning=` +
                         `${shrecTuning ? JSON.stringify(shrecTuning) : "(undefined → defaults)"}`,

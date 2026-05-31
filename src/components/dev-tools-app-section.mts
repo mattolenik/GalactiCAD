@@ -267,7 +267,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
 
         const translucentCb = this.#addCheckbox(exportBox, "Translucent faces", this.#translucentFaces$.value)
         this.#subscriptions.push(connectCheckbox(translucentCb, this.#translucentFaces$))
-        const wireframeCb = this.#addCheckbox(exportBox, "Wireframe", this.#wireframe$.value)
+        const wireframeCb = this.#addCheckbox(exportBox, "Wireframe overlay", this.#wireframe$.value)
         this.#subscriptions.push(connectCheckbox(wireframeCb, this.#wireframe$))
         const debugPointsCb = this.#addCheckbox(exportBox, "Debug points", this.#mdcDebugPoints$.value)
         this.#subscriptions.push(connectCheckbox(debugPointsCb, this.#mdcDebugPoints$))

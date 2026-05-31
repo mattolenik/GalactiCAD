@@ -54,6 +54,8 @@ export class MeshViewer extends HTMLElement {
     #translucentFaces = false
     #viewCenter: Vec2f = vec2(0.5, 0.5)
     #wireframe = false
+    /** Edge-overlay line color (RGB). Near-white in dark mode, near-black in light mode. */
+    #wireframeColor: [number, number, number] = [0.95, 0.95, 0.98]
     #debugOverlayCanvas: HTMLCanvasElement
     #debugOverlayCtx: CanvasRenderingContext2D | null
     #hoverCanvasPos: { x: number; y: number } | null = null
@@ -302,7 +304,8 @@ export class MeshViewer extends HTMLElement {
 
         this.#uniformBuffer = this.#device.createBuffer({
             label: "meshViewer.camera",
-            size: 176,
+            // 160: viewCenter (vec2f), 176: lineColor (vec4f, 16-byte aligned) => 192 total.
+            size: 192,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         })
 
@@ -378,7 +381,7 @@ export class MeshViewer extends HTMLElement {
         })
 
         this.#pipelineWireframe = this.#device.createRenderPipeline({
-            label: "MeshViewer Pipeline (wireframe)",
+            label: "MeshViewer Pipeline (wireframe overlay)",
             layout: this.#pipelineLayout,
             vertex: {
                 module: this.#shaderModuleWireframe,
@@ -403,10 +406,13 @@ export class MeshViewer extends HTMLElement {
                 frontFace: "ccw",
                 cullMode: "none",
             },
+            // Overlay edges share vertices with surface triangles, so their depth matches the
+            // surface exactly along each edge. "less-equal" lets coincident visible edges win while
+            // the surface still occludes edges on the far side. No depth write: edges are decoration.
             depthStencil: {
                 format: "depth24plus",
-                depthWriteEnabled: true,
-                depthCompare: "less",
+                depthWriteEnabled: false,
+                depthCompare: "less-equal",
             },
         })
 
@@ -794,48 +800,24 @@ export class MeshViewer extends HTMLElement {
         const camToScene = this.#controls.viewTransform
         this.#device.queue.writeBuffer(this.#uniformBuffer, 96, camToScene.data as BufferSource)
         this.#device.queue.writeBuffer(this.#uniformBuffer, 160, this.#viewCenter.data as BufferSource)
+        const [lr, lg, lb] = this.#wireframeColor
+        this.#device.queue.writeBuffer(this.#uniformBuffer, 176, new Float32Array([lr, lg, lb, 1]))
 
         this.#rebuildMdcOverlayFrameData(sceneToCamera, meshCameraOrigin)
         const mdcOverlayGeo = this.#mdcOverlayLineVertCount > 0 || this.#mdcOverlayTriVertCount > 0
 
         const commandEncoder = this.#device.createCommandEncoder()
-        // Wireframe mode overrides face rendering.
-        if (this.#wireframe) {
-            const renderPass = commandEncoder.beginRenderPass({
-                colorAttachments: [
-                    {
-                        view: this.#context.getCurrentTexture().createView(),
-                        loadOp: "clear",
-                        storeOp: "store",
-                        clearValue: { r: 0, g: 0, b: 0, a: 0 },
-                    },
-                ],
-                depthStencilAttachment: this.#depthTexture
-                    ? {
-                        view: this.#depthTexture.createView(),
-                        depthClearValue: 1.0,
-                        depthLoadOp: "clear",
-                        depthStoreOp: "store",
-                    }
-                    : undefined,
-            })
-            renderPass.setPipeline(this.#pipelineWireframe)
-            renderPass.setBindGroup(0, this.#bindGroup)
-            if (this.#vertexBuffer && this.#edgeIndexBuffer && this.#edgeIndexCount > 0) {
-                renderPass.setVertexBuffer(0, this.#vertexBuffer)
-                renderPass.setIndexBuffer(this.#edgeIndexBuffer, "uint32")
-                renderPass.drawIndexed(this.#edgeIndexCount)
-            }
-            this.#encodeMdcOverlayDraws(renderPass)
-            renderPass.end()
-        } else if (this.#translucentFaces) {
+        // Base shaded render (opaque or translucent). When #wireframe is set, an edge overlay
+        // pass is appended afterward to draw lines on top of the shaded surface.
+        if (this.#translucentFaces) {
             if (!this.#oitAccumTexture || !this.#oitRevealTexture || !this.#compositeBindGroup) {
                 this.#recreateAttachments()
             }
 
-            // When MDC debug geometry is shown, prime the shared depth texture with the opaque mesh
-            // so glyphs / QEF markers depth-test against the surface after the OIT composite.
-            if (mdcOverlayGeo && this.#depthTexture) {
+            // When MDC debug geometry or the wireframe overlay is shown, prime the shared depth
+            // texture with the opaque mesh so glyphs / QEF markers / edges depth-test against the
+            // surface after the OIT composite (OIT itself does not write the shared depth buffer).
+            if ((mdcOverlayGeo || this.#wireframe) && this.#depthTexture) {
                 const depthPre = commandEncoder.beginRenderPass({
                     colorAttachments: [
                         {
@@ -956,6 +938,33 @@ export class MeshViewer extends HTMLElement {
             this.#encodeMdcOverlayDraws(renderPass)
             renderPass.end()
         }
+
+        // Wireframe overlay: draw mesh edges on top of the shaded surface. The base pass left the
+        // surface depth in #depthTexture (opaque pass, or the OIT depth-prime above), so the edge
+        // pass depth-tests (less-equal) and only visible edges show through.
+        if (this.#wireframe && this.#depthTexture && this.#vertexBuffer && this.#edgeIndexBuffer && this.#edgeIndexCount > 0) {
+            const overlayPass = commandEncoder.beginRenderPass({
+                colorAttachments: [
+                    {
+                        view: this.#context.getCurrentTexture().createView(),
+                        loadOp: "load",
+                        storeOp: "store",
+                    },
+                ],
+                depthStencilAttachment: {
+                    view: this.#depthTexture.createView(),
+                    depthLoadOp: "load",
+                    depthStoreOp: "store",
+                },
+            })
+            overlayPass.setPipeline(this.#pipelineWireframe)
+            overlayPass.setBindGroup(0, this.#bindGroup)
+            overlayPass.setVertexBuffer(0, this.#vertexBuffer)
+            overlayPass.setIndexBuffer(this.#edgeIndexBuffer, "uint32")
+            overlayPass.drawIndexed(this.#edgeIndexCount)
+            overlayPass.end()
+        }
+
         this.#device.queue.submit([commandEncoder.finish()])
         this.#drawMdcDebugOverlay(sceneToCamera, meshCameraOrigin)
 
@@ -963,7 +972,8 @@ export class MeshViewer extends HTMLElement {
     }
 
     /**
-     * Renders one frame (opaque normal RGB when wireframe/translucent are off) and reads pixels for automation.
+     * Renders one frame (normal RGB surface, plus the edge overlay / translucent faces when enabled)
+     * and reads pixels for automation.
      */
     async captureFrameToImageData(): Promise<ImageData> {
         await this.ready()
@@ -1792,6 +1802,14 @@ export class MeshViewer extends HTMLElement {
         this.#syncBool("wireframe", next)
     }
 
+    /**
+     * Set the edge-overlay line color from the effective theme: near-white on dark,
+     * near-black on light. Picked up on the next render frame (continuous rAF loop).
+     */
+    setEffectiveTheme(theme: "light" | "dark"): void {
+        this.#wireframeColor = theme === "light" ? [0.05, 0.05, 0.05] : [0.95, 0.95, 0.98]
+    }
+
     #syncBool(name: "translucentFaces" | "wireframe", value: boolean) {
         if (name === "translucentFaces") {
             this.#translucentFaces = value
@@ -1911,6 +1929,7 @@ struct Camera {
     zoom: f32,
     camToScene: mat4x4f,
     viewCenter: vec2f,
+    lineColor: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -2021,15 +2040,11 @@ fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> OitOu
 const MESH_SHADER_WIREFRAME = /* wgsl */ `
 ${MESH_SHADER_COMMON}
 
+// Edge overlay: a solid theme-driven line color drawn over the shaded surface. Depth testing
+// (less-equal) handles occlusion, so no front/back facing distinction is needed here.
 @fragment
 fn fragmentMain(v: VertexOut) -> @location(0) vec4f {
-    // Note: line primitives don't have true front/back faces. We use a flat per-edge hint (wireFront)
-    // so an edge doesn't flip mid-segment as the interpolated normal changes.
-    let isFront = v.wireFront != 0u;
-    let frontColor = vec3f(0.95, 0.95, 0.98);
-    let backColor = frontColor * 0.35;
-    let c = select(backColor, frontColor, isFront);
-    return vec4f(c, 0.9);
+    return vec4f(camera.lineColor.rgb, 1.0);
 }
 `
 

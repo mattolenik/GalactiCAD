@@ -862,6 +862,7 @@ class App {
         this.#updateColorIndicators()
         if (this.renderer) this.#updateEditorHighlighting()
         this.#preview?.setThemeMode(this.#settings.getGlobal().app.theme)
+        this.#mesh?.setEffectiveTheme(effective)
     }
 
     #cycleTheme(): void {
@@ -1700,6 +1701,7 @@ class App {
             // Add element to viewports (flexbox will distribute space automatically)
             this.#viewports.appendChild(meshViewer)
             this.#mesh = meshViewer
+            meshViewer.setEffectiveTheme(this.#effectiveTheme)
 
             // Wait for layout to settle before setting up camera sync
             requestAnimationFrame(() => {

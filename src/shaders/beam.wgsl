@@ -44,8 +44,8 @@ struct Camera {
     previewShade1: vec4f,
     previewShade2: vec4f,
     previewShade3: vec4f,
-    pivotPx: vec2f,
-    pivotCursorFlags: vec2f,
+    // Pivot cursor fields used to live here; now a DOM overlay.
+    // TS-side camera buffer still writes the bytes for layout compatibility.
 };
 
 @group(0) @binding(1) var<uniform> camera: Camera;
@@ -80,8 +80,6 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     _ = previewParamsVec3[0];
     _ = previewParamsMat3[0];
     _ = previewCapParamDrag[0];
-    _ = camera.pivotPx.x;
-    _ = camera.pivotCursorFlags.x;
 
     // Output texture is at tile resolution: ceil(W/TILE_SIZE) x ceil(H/TILE_SIZE)
     let outDims = textureDimensions(tStartOut);

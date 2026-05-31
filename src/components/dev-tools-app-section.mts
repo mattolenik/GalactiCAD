@@ -208,9 +208,16 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
 
         const rayMarchKnobs: { key: keyof RayMarchParams; label: string; min: number; max: number; step: number }[] = [
             { key: "maxSteps", label: "Max steps", min: 50, max: 2000, step: 50 },
+            // *Moving variants — substituted for their stationary
+            // counterparts during active camera motion. Lower bounds + finer
+            // steps since the motion budget is tighter and the visual
+            // tolerance is higher (halfres / motion blur masks artefacts).
+            { key: "maxStepsMoving", label: "Max steps (moving)", min: 20, max: 2000, step: 20 },
             { key: "maxDist", label: "Max dist", min: 50, max: 2000, step: 50 },
             { key: "maxBeamSteps", label: "Beam steps", min: 20, max: 1000, step: 20 },
+            { key: "maxBeamStepsMoving", label: "Beam steps (moving)", min: 10, max: 1000, step: 10 },
             { key: "hitRefineSteps", label: "Hit refine", min: 1, max: 64, step: 1 },
+            { key: "hitRefineStepsMoving", label: "Hit refine (moving)", min: 0, max: 64, step: 1 },
             { key: "rayOriginDepth", label: "Ray origin Z", min: 50, max: 1000, step: 10 },
         ]
         for (const k of rayMarchKnobs) {

@@ -85,9 +85,23 @@ export class CameraController {
         return this.#hasDragged
     }
 
-    /** True when the user is actively moving (dragging with movement, or zooming). Used for half-res optimization. */
+    /**
+     * True from the moment the user begins a drag (pointerdown) or zoom —
+     * not waiting for `#hasDragged` to flip on the 2-pixel threshold.
+     *
+     * Used for halfres + reduced ray-march quality during motion. The old
+     * gating (`isDragging && hasDragged`) produced a perceptible "stuck"
+     * latency at drag-start: any full-quality render already in flight
+     * had to finish (~35 ms each on a typical GPU) plus the first few
+     * pixels of cursor movement happened at stationary quality, so motion
+     * mode didn't engage until ~70-100 ms after the user clicked.
+     *
+     * A quick press-release click now spends a frame or two in motion
+     * quality, which is imperceptible (and harmless — selection / picking
+     * uses a separate `forceFullResolution` pick-sync render).
+     */
     get isActivelyMoving(): boolean {
-        return (this.#isDragging && this.#hasDragged) || this.#zoomController.isZooming
+        return this.#isDragging || this.#zoomController.isZooming
     }
 
     #last = new Vec2f()

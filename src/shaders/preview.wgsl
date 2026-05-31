@@ -36,10 +36,10 @@ struct Camera {
     previewShade2: vec4f,
     // x=aoStrength, y=aoRadius, z=aoSteps (rounded 1–8), w=aoBias
     previewShade3: vec4f,
-    /** Pivot projected to framebuffer pixels (`frag uv * camera.res`). Uploaded from CPU. */
-    pivotPx: vec2f,
-    /** .x = 1 draws pivot cursor at pivotPx; .x = 0 skips (off-screen capture). .y unused. */
-    pivotCursorFlags: vec2f,
+    // Pivot cursor used to live here as `pivotPx` + `pivotCursorFlags`
+    // (8 + 8 bytes). It's now a DOM overlay (`PreviewWindow.setPivotCursor`)
+    // so the slots are unused; the TS-side camera buffer still writes the
+    // bytes for layout compatibility but the shader doesn't read them.
 };
 
 @group(0) @binding(1) var<uniform> camera: Camera;
@@ -183,7 +183,6 @@ const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;  // Bottom cap when selected (distinct
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
-    @location(1) @interpolate(flat) pivotPx: vec2f,
 }
 
 // Oriented rectangle SDF in 2D (used by extrude mode for the bump rectangle).
@@ -651,7 +650,6 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     var output: VertexOutput;
     output.position = vec4f(pos[vertexIndex], 0.0, 1.0);
     output.uv = (pos[vertexIndex] + vec2f(1.0)) * 0.5;
-    output.pivotPx = camera.pivotPx;
     return output;
 }
 
@@ -661,45 +659,9 @@ fn computeRayOrigin(uv: vec2f, camPos: vec3f) -> vec3f {
     return camPos + vec3f(offsetX, offsetY, rayMarchParams.rayOriginDepth);
 }
 
-/** Blender-style 3D cursor: dashed red/white ring + cross (screen space). */
-fn pivotCursorRgba(pixelCoord: vec2f, pivotPx: vec2f) -> vec4f {
-    let d = pixelCoord - pivotPx;
-    let r = length(d);
-    let ang = atan2(d.y, d.x);
-    let tau = 6.28318530718;
-
-    let ringMask = smoothstep(1.45, 0.42, abs(r - 15.0)) + smoothstep(1.15, 0.38, abs(r - 8.5));
-    let ringMaskClamped = min(ringMask, 1.0);
-    let dash = fract((ang + 3.14159265) / tau * 14.0);
-    let ringRgb = select(vec3f(1.0, 1.0, 1.0), vec3f(0.9, 0.14, 0.11), dash < 0.5);
-
-    let arm = 13.0;
-    let tk = 1.05;
-    let horiz = smoothstep(tk, 0.28, abs(d.y)) * step(abs(d.x), arm);
-    let vert = smoothstep(tk, 0.28, abs(d.x)) * step(abs(d.y), arm);
-    let crossMask = max(horiz, vert);
-
-    let alpha = clamp(max(ringMaskClamped, crossMask), 0.0, 1.0);
-    if (alpha < 0.02) {
-        return vec4f(0.0, 0.0, 0.0, 0.0);
-    }
-    let rgb = ringRgb * ringMaskClamped * (1.0 - crossMask) + vec3f(0.94, 0.94, 0.96) * crossMask;
-    return vec4f(rgb, alpha);
-}
-
-fn blendPivotOnto(base: vec4f, pixelCoord: vec2f, pivotPx: vec2f) -> vec4f {
-    let c = pivotCursorRgba(pixelCoord, pivotPx);
-    let outA = c.a + base.a * (1.0 - c.a);
-    let outRgb = c.rgb * c.a + base.rgb * base.a * (1.0 - c.a);
-    return vec4f(outRgb / max(outA, 1e-6), outA);
-}
-
-fn maybeBlendPivotOnto(base: vec4f, pixelCoord: vec2f, pivotPx: vec2f) -> vec4f {
-    if (camera.pivotCursorFlags.x <= 0.5) {
-        return base;
-    }
-    return blendPivotOnto(base, pixelCoord, pivotPx);
-}
+// Pivot cursor (dashed red/white ring + crosshair) moved out of the
+// fragment shader — it's now a DOM overlay rendered by `PreviewWindow`.
+// Saved one screen-space SDF + dashed-ring evaluation per pixel per frame.
 
 // Raymarch from inside the surface to find the exit point. Returns HitData; the
 // full SDFResult is only transiently alive during the toHitData() projection.
@@ -880,7 +842,7 @@ fn applyFaceDottedPattern(color: vec3f, pixelCoord: vec2f) -> vec3f {
 }
 
 @fragment
-fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) pivotPx: vec2f) -> @location(0) vec4f {
+fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = polygonVertices[0];
     _ = clickedHitPos[0];
@@ -896,8 +858,6 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
     _ = hoverEdgeHits[0].kind;
     _ = hoveredEdge.count;
     _ = selectionStyles.faceDarken;
-    _ = camera.pivotPx.x;
-    _ = camera.pivotCursorFlags.x;
 
     let uv = fragCoord;
     let pixelCoord = uv * camera.res;
@@ -1079,20 +1039,20 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
                 backColor = applySelectedEdgeHighlight(backColor, backPos, backHit, wppu);
                 let frontAlpha = 0.4;
                 let composited = shadedColor * frontAlpha + backColor * (1.0 - frontAlpha);
-                return maybeBlendPivotOnto(heatmapOverlay(vec4f(composited, 1.0), stepCount), pixelCoord, pivotPx);
+                return heatmapOverlay(vec4f(composited, 1.0), stepCount);
             } else {
                 let alpha = 0.6;
-                return maybeBlendPivotOnto(heatmapOverlay(vec4f(shadedColor * alpha, alpha), stepCount), pixelCoord, pivotPx);
+                return heatmapOverlay(vec4f(shadedColor * alpha, alpha), stepCount);
             }
         }
-        return maybeBlendPivotOnto(heatmapOverlay(vec4f(shadedColor, 1.0), stepCount), pixelCoord, pivotPx);
+        return heatmapOverlay(vec4f(shadedColor, 1.0), stepCount);
     } else {
         // Miss pixel — normally fully transparent. At selection boundaries
         // (silhouette of a selected object meeting the background) the
         // outline mask is non-zero, so we draw the outline color with the
         // mask as alpha so it composites correctly onto the canvas.
         let missColor = vec4f(outlineColor * outlineMask, outlineMask);
-        return maybeBlendPivotOnto(heatmapOverlay(missColor, stepCount), pixelCoord, pivotPx);
+        return heatmapOverlay(missColor, stepCount);
     }
 }
 
@@ -1107,8 +1067,6 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     _ = previewParamsVec3[0];
     _ = previewParamsMat3[0];
     _ = previewCapParamDrag[0];
-    _ = camera.pivotPx.x;
-    _ = camera.pivotCursorFlags.x;
 
     let outDims = textureDimensions(tStartOut);
     if (gid.x >= outDims.x || gid.y >= outDims.y) {

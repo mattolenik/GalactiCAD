@@ -13,6 +13,7 @@ import { CameraController, DOLLY_REF } from "./controls/camera-controller.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
 import type { Vec2f, Vec3f } from "./vecmat/vector.mjs"
 import { vec2, vec3 } from "./vecmat/vector.mjs"
+import { Mat4x4f } from "./vecmat/matrix.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
 import type { MeshData } from "./export/export.mjs"
 import {
@@ -315,6 +316,7 @@ export class SDFRenderer {
             }),
             this.#controls.change$.subscribe(() => {
                 this.#needsRender = true
+                this.#updatePivotCursor()
             })
         )
 
@@ -332,6 +334,7 @@ export class SDFRenderer {
                     this.#devicePixelRatio = devicePixelRatio
                     this.#worker.postMessage({ type: "resize", fullWidth: w, fullHeight: h, devicePixelRatio })
                     this.#needsRender = true
+                    this.#updatePivotCursor()
                 }
             })
         })
@@ -1360,6 +1363,55 @@ export class SDFRenderer {
         this.#controls.setViewCenter(x, y)
         this.#preview.setSelectionInfoLeft(editorOffsetPx ?? 0)
         this.#needsRender = true
+        this.#updatePivotCursor()
+    }
+
+    /**
+     * Project the camera-controller's world-space pivot into CSS pixel
+     * coordinates of the canvas and update the DOM cursor overlay. Replaces
+     * the per-pixel WGSL pivot-cursor blend (see `preview.wgsl` history)
+     * with a much cheaper main-thread DOM positioning.
+     *
+     * Called on every camera change ({@link CameraController.change$}), on
+     * `setViewCenter`, and on canvas resize. Cheap — one mat4 inverse + a
+     * handful of FMAs + a CSS `transform` write per call, no per-frame work
+     * when the camera is idle.
+     */
+    #updatePivotCursor(): void {
+        const canvas = this.#preview.canvas
+        const cssW = canvas.clientWidth
+        const cssH = canvas.clientHeight
+        if (cssW <= 0 || cssH <= 0) {
+            this.#preview.setPivotCursor(0, 0, false)
+            return
+        }
+        const cam = this.#controls
+        const pv = cam.state.pivot
+        if (!pv) {
+            this.#preview.setPivotCursor(0, 0, false)
+            return
+        }
+        // Mirrors the projection the WGSL camera uniform used to carry —
+        // see the deleted block in `render-worker-core.mts#uploadCameraIfDirty`.
+        const invCam = new Mat4x4f(new Float32Array(cam.viewTransform.data)).inverse()
+        const pCam = invCam.transformPoint(vec3(pv.x, pv.y, pv.z))
+        const zoom = cam.zoom
+        if (zoom <= 0) {
+            this.#preview.setPivotCursor(0, 0, false)
+            return
+        }
+        const aspectRt = cssW / cssH
+        const uvAspX = ((pCam.x - cam.cameraPosition.x) / zoom) * 0.5 + 0.5
+        const uvAspY = ((pCam.y - cam.cameraPosition.y) / zoom) * 0.5 + 0.5
+        const uvPivotX = (uvAspX - 0.5) / aspectRt + this.#viewCenter.x
+        const uvPivotY = uvAspY - 0.5 + this.#viewCenter.y
+        const cssX = uvPivotX * cssW
+        // UV Y is bottom-up (clip-space convention); CSS Y is top-down.
+        const cssY = (1 - uvPivotY) * cssH
+        // Generous off-screen margin — the cursor SVG is 32×32, so positions
+        // up to 32 px outside still need a sliver visible.
+        const visible = cssX >= -32 && cssX <= cssW + 32 && cssY >= -32 && cssY <= cssH + 32
+        this.#preview.setPivotCursor(cssX, cssY, visible)
     }
 
     set xrayMode(enabled: boolean) {
@@ -1587,6 +1639,19 @@ export class SDFRenderer {
             this.#cameraOptimization &&
             this.#controls.isActivelyMoving
         p.resolutionScale = halfRes ? 0.5 : 1.0
+        // Quality reductions during active motion: ray-march cap, beam
+        // pre-pass cap, and hit-refinement iterations. Independent of the
+        // `cameraOptimization` (halfres) toggle — these are cheaper,
+        // visually-subtler forms of motion optimisation that are useful
+        // even when the user has halfres disabled. Still gated on
+        // `forceFullResolution` so the pick-sync render hits the full
+        // SDF quality.
+        const reduceQualityForMotion = !opts?.forceFullResolution && this.#controls.isActivelyMoving
+        if (reduceQualityForMotion) {
+            p.viewSettings.rayMarchParams.maxSteps = this.#rayMarchParams.maxStepsMoving
+            p.viewSettings.rayMarchParams.maxBeamSteps = this.#rayMarchParams.maxBeamStepsMoving
+            p.viewSettings.rayMarchParams.hitRefineSteps = this.#rayMarchParams.hitRefineStepsMoving
+        }
         return p
     }
 

@@ -104,6 +104,12 @@ const SELECTED_EDGES_TOTAL = SELECTED_EDGES_HEADER + SELECTED_EDGES_COUNT * SELE
 const ZERO_U32 = new Uint32Array(1)
 const ZERO_VEC4 = new ArrayBuffer(16)
 const ZERO_EDGE_HITS = new ArrayBuffer(EDGE_HITS_SIZE)
+/**
+ * Used as the dummy 1-float upload when the scene has zero scene-params
+ * (empty/default scene). Reused across builds — the GPU never reads more
+ * than the bound buffer's first byte and only when nothing else does.
+ */
+const EMPTY_F32_SINGLE = new Float32Array([0])
 
 /**
  * Pass names recognised by the per-pass GPU timestamp profiler. Order is the
@@ -274,15 +280,14 @@ export class RenderWorkerCore {
     #hoveredEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
     #cameraStagingBuf = new ArrayBuffer(256)
     /**
-     * Cache of the 43 input scalars passed to `#uploadCameraIfDirty`
+     * Cache of the 39 input scalars passed to `#uploadCameraIfDirty`
      * (viewTransform[16] + cameraPosition[3] + width/height[2] + zoom[1] +
-     * viewCenter[2] + previewShading[14] + previewNormalShading[1] +
-     * pivotWorld[3] + hidePivotCursor[1]). Compared per-frame to short-circuit
-     * the matrix inverse + 4 light-dir transforms + pivot projection when
-     * nothing actually changed — the steady-state idle case while the user
-     * isn't moving the camera.
+     * viewCenter[2] + previewShading[14] + previewNormalShading[1]).
+     * Compared per-frame to short-circuit the matrix inverse + 4 light-dir
+     * transforms when nothing actually changed — the steady-state idle case
+     * while the user isn't moving the camera.
      */
-    #cameraInputCache = new Float32Array(43)
+    #cameraInputCache = new Float32Array(39)
     #cameraInputValid = false
     #rayMarchParamsBuf = new ArrayBuffer(32)
     #rayMarchParamsI32 = new Int32Array(this.#rayMarchParamsBuf)
@@ -314,6 +319,20 @@ export class RenderWorkerCore {
     #previewVec2Shadow!: Float32Array
     #previewVec3Shadow!: Float32Array
     #previewMat3Shadow!: Float32Array
+    /**
+     * Reusable target struct handed to `scene.packPreviewParamsInto`. Always
+     * points at the four shadow arrays above so the pack call writes
+     * directly into the worker's CPU mirror — no per-build allocations and
+     * no follow-up `shadow.set(p.f32)` mirror copy.
+     */
+    #previewPackTarget!: PreviewParamsOut
+    /**
+     * Reusable scratch handed to `scene.packSceneParamsInto`. Sized for the
+     * worst case (`SCENE_PARAMS_F32_CAPACITY`) so the pack call never
+     * allocates. Distinct from `#lastSceneParamUpload` (the dedup cache) so
+     * we don't poison the cache mid-pack.
+     */
+    #sceneParamPackScratch = new Float32Array(SCENE_PARAMS_F32_CAPACITY)
     #lastSelectionMode = 0
     #builtBody: string | null = null
     /** Set after a successful full shader rebuild; used to skip compilation when `structuralFingerprint()` is unchanged. */
@@ -576,11 +595,24 @@ export class RenderWorkerCore {
             }
         }
         const tPackScene0 = performance.now()
-        const sceneParamData = scene.packSceneParams()
+        // Pack straight into the persistent dedup scratch (`#lastSceneParamUpload`-
+        // sized buffer) — drops the per-build `new Float32Array(used)`.
+        const sceneParamLen = scene.packSceneParamsInto(this.#sceneParamPackScratch)
         const tPackScene1 = performance.now()
-        const sceneParamUpload = sceneParamData.byteLength > 0 ? sceneParamData : new Float32Array([0])
+        const sceneParamUpload =
+            sceneParamLen > 0 ? this.#sceneParamPackScratch.subarray(0, sceneParamLen) : EMPTY_F32_SINGLE
         const tPackPrev0 = performance.now()
-        const previewPacked = scene.packPreviewParams()
+        // Pack preview banks straight into the shadow arrays (the worker's
+        // existing CPU mirror, kept at PREVIEW_UNIFORM_*_COUNT capacity).
+        // Eliminates 4 fresh `new Float32Array` calls per build *and* the
+        // follow-up `this.#previewF32Shadow.set(p.f32)` mirror copy.
+        const previewLens = scene.packPreviewParamsInto(this.#previewPackTarget)
+        const previewPacked: PreviewParamsOut = {
+            f32: this.#previewF32Shadow.subarray(0, previewLens.f32),
+            vec2: this.#previewVec2Shadow.subarray(0, previewLens.vec2),
+            vec3: this.#previewVec3Shadow.subarray(0, previewLens.vec3),
+            mat3: this.#previewMat3Shadow.subarray(0, previewLens.mat3),
+        }
         const tPackPreview = performance.now()
 
         if (paramOnly) {
@@ -1076,10 +1108,14 @@ export class RenderWorkerCore {
             }
         }
 
+        // Preview banks: `p.{f32,vec2,vec3,mat3}` are subarrays of the
+        // worker's `#preview*Shadow` arrays (scene.packPreviewParamsInto
+        // writes straight into them), so there's no shadow-mirror copy to
+        // make here. The dedup cache (`#lastPreview*Upload`) is still
+        // separate — that's the "what's currently on the GPU" mirror.
         if (p.f32.byteLength > 0) {
             const f32Len = p.f32.length
             if (!dedup || this.#lastPreviewF32Len !== f32Len || !float32SubarrayEqual(this.#lastPreviewF32Upload, p.f32, f32Len)) {
-                this.#previewF32Shadow.set(p.f32)
                 q.writeBuffer(this.#uniformBuffers.previewParamsF32, 0, p.f32 as BufferSource)
                 q.writeBuffer(this.#uniformBuffers.previewCapParamDrag, 0, p.f32 as BufferSource)
                 if (dedup) {
@@ -1094,7 +1130,6 @@ export class RenderWorkerCore {
         if (p.vec2.byteLength > 0) {
             const v2Len = p.vec2.length
             if (!dedup || this.#lastPreviewVec2Len !== v2Len || !float32SubarrayEqual(this.#lastPreviewVec2Upload, p.vec2, v2Len)) {
-                this.#previewVec2Shadow.set(p.vec2)
                 q.writeBuffer(this.#uniformBuffers.previewParamsVec2, 0, p.vec2 as BufferSource)
                 if (dedup) {
                     this.#lastPreviewVec2Upload.set(p.vec2)
@@ -1108,7 +1143,6 @@ export class RenderWorkerCore {
         if (p.vec3.byteLength > 0) {
             const v3Len = p.vec3.length
             if (!dedup || this.#lastPreviewVec3Len !== v3Len || !float32SubarrayEqual(this.#lastPreviewVec3Upload, p.vec3, v3Len)) {
-                this.#previewVec3Shadow.set(p.vec3)
                 q.writeBuffer(this.#uniformBuffers.previewParamsVec3, 0, p.vec3 as BufferSource)
                 if (dedup) {
                     this.#lastPreviewVec3Upload.set(p.vec3)
@@ -1122,7 +1156,6 @@ export class RenderWorkerCore {
         if (p.mat3.byteLength > 0) {
             const m3Len = p.mat3.length
             if (!dedup || this.#lastPreviewMat3Len !== m3Len || !float32SubarrayEqual(this.#lastPreviewMat3Upload, p.mat3, m3Len)) {
-                this.#previewMat3Shadow.set(p.mat3)
                 q.writeBuffer(this.#uniformBuffers.previewParamsMat3, 0, p.mat3 as BufferSource)
                 if (dedup) {
                     this.#lastPreviewMat3Upload.set(p.mat3)
@@ -1183,8 +1216,6 @@ export class RenderWorkerCore {
 
         this.#ensureRenderTextures(sceneWidth, sceneHeight)
 
-        const pv = msg.cameraState.pivot
-        const pivotW: [number, number, number] = pv ? [pv.x, pv.y, pv.z] : [0, 0, 0]
         this.#uploadCameraIfDirty(
             viewTransform,
             cameraPosition,
@@ -1194,8 +1225,6 @@ export class RenderWorkerCore {
             viewCenter,
             msg.viewSettings.previewShading ?? DEFAULT_PREVIEW_SHADING,
             msg.viewSettings.previewNormalShading,
-            pivotW,
-            msg.hidePivotCursor === true,
         )
 
         this.#viewSettingsBuf[0] = viewSettings.xrayMode ? 1 : 0
@@ -1434,11 +1463,6 @@ export class RenderWorkerCore {
             aoSteps: f32[psBase + 12],
             aoBias: f32[psBase + 13],
         }
-        const pivotW: [number, number, number] = [
-            f32[b4 + L.O_CAMERA_PIVOT / 4],
-            f32[b4 + L.O_CAMERA_PIVOT / 4 + 1],
-            f32[b4 + L.O_CAMERA_PIVOT / 4 + 2],
-        ]
         this.#uploadCameraIfDirty(
             viewTransform,
             cameraPosition,
@@ -1448,8 +1472,6 @@ export class RenderWorkerCore {
             viewCenter,
             previewShading,
             (packed & 128) !== 0,
-            pivotW,
-            false,
         )
 
         this.#viewSettingsBuf[0] = packed & 1 ? 1 : 0
@@ -1459,10 +1481,17 @@ export class RenderWorkerCore {
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         const rmBase = slotBase + L.O_RAY_MARCH_PARAMS
+        // SAB carries only the *effective* values for this frame — the main
+        // thread already substituted the *Moving variants when motion is
+        // active. The Moving fields are zeroed here purely to satisfy the
+        // `RayMarchParams` type; the worker doesn't read them.
         this.#uploadRayMarchParams({
             maxSteps: new Int32Array(buffer, rmBase, 1)[0],
+            maxStepsMoving: 0,
             maxBeamSteps: new Int32Array(buffer, rmBase + 4, 1)[0],
+            maxBeamStepsMoving: 0,
             hitRefineSteps: new Int32Array(buffer, rmBase + 8, 1)[0],
+            hitRefineStepsMoving: 0,
             maxDist: new Float32Array(buffer, rmBase + 16, 1)[0],
             rayOriginDepth: new Float32Array(buffer, rmBase + 20, 1)[0],
         })
@@ -2674,6 +2703,12 @@ export class RenderWorkerCore {
         this.#previewVec2Shadow = new Float32Array(PREVIEW_UNIFORM_VEC2_COUNT * 2)
         this.#previewVec3Shadow = new Float32Array(PREVIEW_UNIFORM_VEC3_COUNT * 4)
         this.#previewMat3Shadow = new Float32Array(PREVIEW_UNIFORM_MAT3_COUNT * PREVIEW_MAT3_PACK_FLOATS)
+        this.#previewPackTarget = {
+            f32: this.#previewF32Shadow,
+            vec2: this.#previewVec2Shadow,
+            vec3: this.#previewVec3Shadow,
+            mat3: this.#previewMat3Shadow,
+        }
 
         ub.edgeHit = this.#device.createBuffer({
             size: EDGE_HITS_SIZE,
@@ -2865,10 +2900,22 @@ export class RenderWorkerCore {
         this.#writeClickState(clickUV, false, true, clickUV)
         this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, ZERO_EDGE_HITS)
 
-        if (sab) {
-            this.#renderFromSAB(sab)
-        } else {
-            this.render(this.#lastRenderMsg!)
+        // The hover render only exists to atomically write `clickedObjectId`
+        // from the fragment shader at the cursor pixel. The picked ID
+        // doesn't depend on shading or surface precision, so we drop
+        // ray-march quality to a small fixed budget. On heavy scenes this
+        // turns ~100 ms hover renders into ~25 ms, which directly shrinks
+        // the "stuck at drag-start" latency (the GPU has to finish any
+        // in-flight hover render before motion-render commands execute).
+        this.#hoverPickQualityOverride = { maxSteps: 80, maxBeamSteps: 40, hitRefineSteps: 0 }
+        try {
+            if (sab) {
+                this.#renderFromSAB(sab)
+            } else {
+                this.render(this.#lastRenderMsg!)
+            }
+        } finally {
+            this.#hoverPickQualityOverride = null
         }
         const selectionMode =
             sab ?
@@ -3049,19 +3096,15 @@ export class RenderWorkerCore {
         viewCenter: [number, number],
         previewShading: PreviewShadingParams,
         previewNormalShading: boolean,
-        pivotWorld: [number, number, number],
-        hidePivotCursor: boolean,
     ): void {
         const vt = viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform)
         // Input-equality short-circuit. Inputs are cheap to compare; the work
-        // we skip on a match (matrix inverse + 4 light-dir transforms + pivot
-        // projection + 256-byte staging build + memcmp + GPU upload) is not.
-        // Steady-state idle frames (no camera motion, no shading change) reach
-        // this path and exit before doing any real work.
+        // we skip on a match (matrix inverse + 4 light-dir transforms +
+        // 256-byte staging build + memcmp + GPU upload) is not. Steady-state
+        // idle frames reach this path and exit before doing any real work.
         const cache = this.#cameraInputCache
         const ps = previewShading
         const normShade = previewNormalShading ? 1 : 0
-        const hidePivot = hidePivotCursor ? 1 : 0
         if (this.#cameraInputValid) {
             let same = true
             for (let i = 0; i < 16; i++) {
@@ -3091,11 +3134,7 @@ export class RenderWorkerCore {
                 cache[35] === ps.aoRadius &&
                 cache[36] === ps.aoSteps &&
                 cache[37] === ps.aoBias &&
-                cache[38] === normShade &&
-                cache[39] === pivotWorld[0] &&
-                cache[40] === pivotWorld[1] &&
-                cache[41] === pivotWorld[2] &&
-                cache[42] === hidePivot
+                cache[38] === normShade
             ) return
         }
         for (let i = 0; i < 16; i++) cache[i] = vt[i]!
@@ -3122,22 +3161,9 @@ export class RenderWorkerCore {
         cache[36] = ps.aoSteps
         cache[37] = ps.aoBias
         cache[38] = normShade
-        cache[39] = pivotWorld[0]
-        cache[40] = pivotWorld[1]
-        cache[41] = pivotWorld[2]
-        cache[42] = hidePivot
         this.#cameraInputValid = true
 
         this.#camTransform.data.set(vt)
-        const invCam = this.#camTransform.inverse()
-        const pCam = invCam.transformPoint(vec3(pivotWorld[0], pivotWorld[1], pivotWorld[2]))
-        const aspectRt = sceneHeight > 0 ? sceneWidth / sceneHeight : 1
-        const uvAspX = ((pCam.x - cameraPosition[0]) / zoom) * 0.5 + 0.5
-        const uvAspY = ((pCam.y - cameraPosition[1]) / zoom) * 0.5 + 0.5
-        const uvPivotX = (uvAspX - 0.5) / aspectRt + viewCenter[0]
-        const uvPivotY = uvAspY - 0.5 + viewCenter[1]
-        const pivotPxX = uvPivotX * sceneWidth
-        const pivotPxY = uvPivotY * sceneHeight
         const v1 = this.#camTransform.transformVector(vec3(0.5, 0.6, 1.0).normalize())
         const v2 = this.#camTransform.transformVector(vec3(-0.6, 0.3, 0.8).normalize())
         const v3 = this.#camTransform.transformVector(vec3(0.1, -0.5, 0.9).normalize())
@@ -3202,10 +3228,14 @@ export class RenderWorkerCore {
         f32[57] = ps.aoRadius
         f32[58] = ps.aoSteps
         f32[59] = ps.aoBias
-        f32[60] = pivotPxX
-        f32[61] = pivotPxY
-        // preview.wgsl `camera.pivotCursorFlags.x`: 1 = draw pivot cursor, 0 = skip (thumbnails / agent capture).
-        f32[62] = hidePivotCursor ? 0.0 : 1.0
+        // Slots 60-63 (formerly pivotPx + pivotCursorFlags) are dead now —
+        // pivot cursor is a DOM overlay; the shader Camera struct trims the
+        // fields. We leave the bytes zero to keep the 256-byte layout
+        // backwards-compatible with any caller that still references the
+        // slot offsets.
+        f32[60] = 0
+        f32[61] = 0
+        f32[62] = 0
         f32[63] = 0
         this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 256, this.#cameraCache)
     }
@@ -3263,11 +3293,23 @@ export class RenderWorkerCore {
         if (this.#canvas.height !== targetHeight) this.#canvas.height = Math.max(1, targetHeight)
     }
 
+    /**
+     * Temporary override applied by {@link handleHover} so its forced scene
+     * render uses cheap pick-only quality (cuts ~70-80% of fragment cost
+     * on heavy scenes). The picked object ID written by the fragment
+     * shader's atomic doesn't depend on surface precision, so we can
+     * strip maxSteps/maxBeamSteps/hitRefineSteps without affecting the
+     * pick result. Restored to `null` immediately after the render so
+     * the next interactive frame uses the real per-frame params from SAB.
+     */
+    #hoverPickQualityOverride: { maxSteps: number; maxBeamSteps: number; hitRefineSteps: number } | null = null
+
     /** Compare src view with cache; if different, write to GPU and update cache. Returns true if wrote. */
     #uploadRayMarchParams(params: RayMarchParams): void {
-        this.#rayMarchParamsI32[0] = params.maxSteps
-        this.#rayMarchParamsI32[1] = params.maxBeamSteps
-        this.#rayMarchParamsI32[2] = params.hitRefineSteps
+        const o = this.#hoverPickQualityOverride
+        this.#rayMarchParamsI32[0] = o ? o.maxSteps : params.maxSteps
+        this.#rayMarchParamsI32[1] = o ? o.maxBeamSteps : params.maxBeamSteps
+        this.#rayMarchParamsI32[2] = o ? o.hitRefineSteps : params.hitRefineSteps
         this.#rayMarchParamsI32[3] = 0
         this.#rayMarchParamsF32[4] = params.maxDist
         this.#rayMarchParamsF32[5] = params.rayOriginDepth

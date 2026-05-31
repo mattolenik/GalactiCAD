@@ -42,6 +42,8 @@ export class PreviewWindow extends HTMLElement {
     #themeBtn: HTMLButtonElement
     #framerateThreshold: number = 120
     #showFps: boolean = false
+    /** Blender-style 3D pivot cursor — was a per-pixel SDF in `preview.wgsl`; now a DOM overlay positioned via `setPivotCursor()`. */
+    #pivotCursor: HTMLDivElement
 
     onThemeCycle?: () => void
 
@@ -120,6 +122,19 @@ export class PreviewWindow extends HTMLElement {
         .theme-btn:active {
             background: rgb(from var(--fg-color, whitesmoke) r g b / 0.28);
         }
+        .pivot-cursor {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 32px;
+            height: 32px;
+            margin-left: -16px;
+            margin-top: -16px;
+            pointer-events: none;
+            z-index: 1;
+            will-change: transform;
+            visibility: hidden;
+        }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"
@@ -145,6 +160,36 @@ export class PreviewWindow extends HTMLElement {
         this.#selInfo = document.createElement("div")
         this.#selInfo.classList.add("sel-info")
         shadow.appendChild(this.#selInfo)
+
+        // Pivot cursor: dashed red/white ring + white crosshair. Matches the
+        // visual the old WGSL `pivotCursorRgba` produced; lives in the DOM
+        // so the SDF fragment shader doesn't pay a per-pixel screen-space
+        // SDF eval just to draw a UI overlay.
+        this.#pivotCursor = document.createElement("div")
+        this.#pivotCursor.classList.add("pivot-cursor")
+        this.#pivotCursor.innerHTML =
+            `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="display:block">` +
+            `<circle cx="16" cy="16" r="15" fill="none" stroke="#ffffff" stroke-width="2"/>` +
+            `<circle cx="16" cy="16" r="15" fill="none" stroke="#e6241c" stroke-width="2" stroke-dasharray="6.7 6.7"/>` +
+            `<line x1="3" y1="16" x2="29" y2="16" stroke="#f0f0f5" stroke-width="1.5"/>` +
+            `<line x1="16" y1="3" x2="16" y2="29" stroke="#f0f0f5" stroke-width="1.5"/>` +
+            `</svg>`
+        shadow.appendChild(this.#pivotCursor)
+    }
+
+    /**
+     * Position the pivot cursor (CSS pixels, relative to the canvas's top-
+     * left). Pass `visible: false` to hide it (off-screen, between-renders,
+     * etc.). Cheap — sets a CSS transform, no layout/paint beyond the cursor
+     * element itself.
+     */
+    setPivotCursor(x: number, y: number, visible: boolean): void {
+        if (!visible) {
+            this.#pivotCursor.style.visibility = "hidden"
+            return
+        }
+        this.#pivotCursor.style.visibility = "visible"
+        this.#pivotCursor.style.transform = `translate(${x}px, ${y}px)`
     }
 
     setThemeMode(mode: ThemeMode): void {

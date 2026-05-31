@@ -158,9 +158,16 @@ export class SceneInfo {
         return b
     }
 
-    /** Pack all node-owned floats into a dense array for GPU upload (registration / build order). */
-    packSceneParams(): Float32Array {
-        const out = new Float32Array(this.#sceneParamFloatUsed)
+    /**
+     * Pack scene params into a caller-supplied buffer (must be sized for at
+     * least `sceneParamFloatCount`). Returns the used prefix length so the
+     * caller can `.subarray(0, n)` for the GPU upload. Avoids the per-build
+     * `new Float32Array(used)` allocation in `packSceneParams()`.
+     */
+    packSceneParamsInto(out: Float32Array): number {
+        // Zero the used prefix so leftover bytes from a previous, larger
+        // build can't leak into slots a node doesn't write this round.
+        out.fill(0, 0, this.#sceneParamFloatUsed)
         for (const node of this.#allNodesSnapshot) {
             if (node.paramCount > 0) {
                 node.writeSceneParams(out.subarray(node.paramOffset, node.paramOffset + node.paramCount))
@@ -178,16 +185,40 @@ export class SceneInfo {
                 }
             }
         }
+        return this.#sceneParamFloatUsed
+    }
+
+    /** Allocating wrapper for callers that don't have a scratch buffer (tests, one-shot export paths). */
+    packSceneParams(): Float32Array {
+        const out = new Float32Array(this.#sceneParamFloatUsed)
+        this.packSceneParamsInto(out)
         return out
     }
 
-    /** Pack preview uniform banks (typed); separate from `packSceneParams` used by bounds/MDC. */
-    packPreviewParams(): import("./scene-params.mjs").PreviewParamsOut {
-        const f32 = new Float32Array(this.#previewF32Used)
-        const vec2 = new Float32Array(this.#previewVec2Used * 2)
-        const vec3 = new Float32Array(this.#previewVec3Used * 4)
-        const mat3 = new Float32Array(this.#previewMat3Used * PREVIEW_MAT3_PACK_FLOATS)
-        const out = { f32, vec2, vec3, mat3 }
+    /**
+     * Pack preview uniform banks into caller-supplied target buffers (each
+     * must be sized for the worst-case capacity — see
+     * `PREVIEW_UNIFORM_*_COUNT`). Returns the used prefix length per bank.
+     * Lets the worker pack straight into its persistent shadow arrays,
+     * eliminating both the per-build allocations and the follow-up
+     * `shadow.set(p.f32)` copy.
+     */
+    packPreviewParamsInto(out: import("./scene-params.mjs").PreviewParamsOut): {
+        f32: number
+        vec2: number
+        vec3: number
+        mat3: number
+    } {
+        const f32Used = this.#previewF32Used
+        const vec2Used = this.#previewVec2Used * 2
+        const vec3Used = this.#previewVec3Used * 4
+        const mat3Used = this.#previewMat3Used * PREVIEW_MAT3_PACK_FLOATS
+        // Zero only the prefixes we're about to write; capacity tails stay
+        // whatever they were (the GPU side only reads the prefix).
+        out.f32.fill(0, 0, f32Used)
+        out.vec2.fill(0, 0, vec2Used)
+        out.vec3.fill(0, 0, vec3Used)
+        out.mat3.fill(0, 0, mat3Used)
         for (const node of this.#allNodesSnapshot) {
             node.writePreviewParams(out)
         }
@@ -208,6 +239,18 @@ export class SceneInfo {
                 }
             }
         }
+        return { f32: f32Used, vec2: vec2Used, vec3: vec3Used, mat3: mat3Used }
+    }
+
+    /** Allocating wrapper, used by tests and any caller that doesn't manage scratch buffers. */
+    packPreviewParams(): import("./scene-params.mjs").PreviewParamsOut {
+        const out = {
+            f32: new Float32Array(this.#previewF32Used),
+            vec2: new Float32Array(this.#previewVec2Used * 2),
+            vec3: new Float32Array(this.#previewVec3Used * 4),
+            mat3: new Float32Array(this.#previewMat3Used * PREVIEW_MAT3_PACK_FLOATS),
+        }
+        this.packPreviewParamsInto(out)
         return out
     }
 

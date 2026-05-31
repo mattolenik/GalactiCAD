@@ -346,10 +346,17 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
             aoBias: f32[psB + 13],
         },
         previewNormalShading: (packed & 128) !== 0,
+        // SAB carries only the *effective* values for this frame — the main
+        // thread substitutes the *Moving variants when motion is active.
+        // The Moving fields are zeroed here purely to satisfy the
+        // `RayMarchParams` type.
         rayMarchParams: {
             maxSteps: new Int32Array(buffer, base + S_O_RAY_MARCH_PARAMS, 1)[0],
+            maxStepsMoving: 0,
             maxBeamSteps: new Int32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 4, 1)[0],
+            maxBeamStepsMoving: 0,
             hitRefineSteps: new Int32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 8, 1)[0],
+            hitRefineStepsMoving: 0,
             maxDist: new Float32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 16, 1)[0],
             rayOriginDepth: new Float32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 20, 1)[0],
         },

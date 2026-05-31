@@ -533,21 +533,45 @@ export interface RenderSelectionStyles {
 export interface RayMarchParams {
     /** Max ray march iterations (default 300). Higher = less chance of missing thin features. */
     maxSteps: number
+    /**
+     * Max ray march iterations used while the camera is actively moving
+     * (default 100). Substituted for `maxSteps` in the per-frame payload
+     * during drag/zoom — trades a small amount of surface precision for
+     * cheaper fragments, complementing (but independent of) halfres scaling.
+     */
+    maxStepsMoving: number
     /** Far clipping distance (default 600). */
     maxDist: number
     /** Max beam pre-pass iterations (default 200). */
     maxBeamSteps: number
+    /**
+     * Max beam pre-pass iterations used while the camera is actively moving
+     * (default 60). Same gating as `maxStepsMoving`. The beam is already
+     * cheap, but reducing its budget during motion cuts pre-pass cost
+     * roughly proportionally.
+     */
+    maxBeamStepsMoving: number
     /** Binary-search refinement iterations after a hit (default 6). Higher = sharper surface accuracy. */
     hitRefineSteps: number
+    /**
+     * Binary-search refinement iterations used while the camera is actively
+     * moving (default 2). Lower precision during motion is visually
+     * invisible (silhouettes are already smeared by motion / halfres),
+     * and each saved iteration is one `sceneSDF_fast` call per hit pixel.
+     */
+    hitRefineStepsMoving: number
     /** Camera z-offset for ray origin (default 300). */
     rayOriginDepth: number
 }
 
 export const DEFAULT_RAY_MARCH_PARAMS: RayMarchParams = {
     maxSteps: 300,
+    maxStepsMoving: 100,
     maxDist: 600,
     maxBeamSteps: 200,
+    maxBeamStepsMoving: 60,
     hitRefineSteps: 6,
+    hitRefineStepsMoving: 2,
     rayOriginDepth: 300,
 }
 

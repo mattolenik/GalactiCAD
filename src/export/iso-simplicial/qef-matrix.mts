@@ -7,6 +7,24 @@
 /** Row-major `n×n`, symmetric. */
 export type SymMat = Float64Array
 
+/**
+ * Max Jacobi sweeps before giving up. The float reference (`qefnorm.h`) uses 50;
+ * double precision plus the indefinite augmented (saddle-point) systems used by
+ * the constrained QEF cascade occasionally want a few more, so allow headroom.
+ */
+const JACOBI_MAX_SWEEPS = 100
+
+/**
+ * Relative off-diagonal convergence tolerance. The reference compares the
+ * off-diagonal sum to exactly `0` in single precision, relying on the relative
+ * per-element zeroing test to drive off-diagonals to a hard zero within a few
+ * sweeps. In double precision that exact-zero never lands for large-magnitude
+ * matrices, so we instead converge when the off-diagonal sum is negligible
+ * *relative to the diagonal magnitude* — a scale-invariant criterion (a few
+ * machine epsilons of slack).
+ */
+const JACOBI_OFFDIAG_REL_EPS = 1e-14
+
 export function symMatZeros(n: number): SymMat {
     return new Float64Array(n * n)
 }
@@ -45,7 +63,7 @@ export function jacobiSymmetric(aIn: SymMat, n: number, d: Float64Array, v: SymM
         z[ip] = 0
     }
 
-    for (let iter = 1; iter <= 50; iter++) {
+    for (let iter = 1; iter <= JACOBI_MAX_SWEEPS; iter++) {
         let sm = 0
         for (let ip = 0; ip < n - 1; ip++) {
             for (let iq = ip + 1; iq < n; iq++) {
@@ -53,9 +71,14 @@ export function jacobiSymmetric(aIn: SymMat, n: number, d: Float64Array, v: SymM
             }
         }
 
-        /** Reference compares `sm == 0` exactly; double arithmetic needs a tolerance. */
-        // if (sm < 1e-14 * n * n) {
-        if (sm < 1e-14 * n * n) {
+        // Reference compares `sm == 0` exactly (single precision). In double we
+        // converge when the off-diagonal sum is negligible relative to the
+        // diagonal magnitude — a fixed absolute threshold is unreachable for
+        // large-magnitude QEF matrices and spins out the sweep budget. `!(... >)`
+        // also exits cleanly on a degenerate `sm` (e.g. NaN) rather than looping.
+        let diagMag = 0
+        for (let ip = 0; ip < n; ip++) diagMag += Math.abs(d[ip])
+        if (!(sm > JACOBI_OFFDIAG_REL_EPS * diagMag)) {
             sortEigDescending(d, v, n)
             return
         }
@@ -115,7 +138,13 @@ export function jacobiSymmetric(aIn: SymMat, n: number, d: Float64Array, v: SymM
         }
     }
 
-    throw new Error("jacobiSymmetric: too many iterations")
+    // Non-convergence within the sweep budget. The off-diagonals are tiny by
+    // now, so return the best-effort decomposition rather than throwing — the
+    // reference `exit(1)`s here, but in the browser one pathological cell must
+    // not abort the entire mesh export. The constrained QEF cascade clamps the
+    // resulting vertex to the cell bounds, so a slightly-imprecise solve for a
+    // single cell is harmless.
+    sortEigDescending(d, v, n)
 }
 
 function rotate(

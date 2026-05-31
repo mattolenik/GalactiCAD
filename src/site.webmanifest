@@ -2,7 +2,7 @@
     "name": "GalactiCAD",
     "short_name": "GalactiCAD",
     "id": "https://galacticad.app",
-    "description": "A new kind of CAD with SDFs",
+    "description": "A new kind of user-friendly CAD-as-code",
     "categories": ["productivity", "engineering", "cad", "3d printing"],
     "icons": [
         {

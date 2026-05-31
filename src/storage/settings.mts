@@ -8,21 +8,31 @@ import {
     DEVTOOLS_SECTION_APP,
     DEVTOOLS_SECTION_LOGS,
 } from "../components/dev-tools-protocol.mjs"
-import {
-    DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
-    DEFAULT_ISO_SIMPLICIAL_TUNING,
-    DEFAULT_FLEXICUBES_TUNING,
-    DEFAULT_MDC_EXPORT_LEVERS,
-    DEFAULT_SHREC_TUNING,
-    DEFAULT_SIMPLIFY_TUNING,
-    type ExporterKind,
-    type IsoSimplicialTuning,
-    type FlexiCubesTuning,
-    type MdcExportLevers,
-    type ShrecTuning,
-    type SimplifyTuning,
-} from "../render-worker-protocol.mjs"
+import { DEFAULT_SIMPLIFY_TUNING, type SimplifyTuning } from "../render-worker-protocol.mjs"
+import { EXPORTER_KINDS, isValidExporter, type ExporterKind } from "../export/mesh-exporter.mjs"
+import { DEFAULT_MDC_TUNING, normalizeMdcTuning, type MdcTuning } from "../export/mdc-tuning.mjs"
+import { DEFAULT_SHREC_TUNING, normalizeShrecTuning, type ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
+import { DEFAULT_FLEXICUBES_TUNING, normalizeFlexiCubesTuning, type FlexiCubesTuning } from "../export/flexicubes/flexicubes-tuning.mjs"
+import { DEFAULT_ISO_SIMPLICIAL_TUNING, normalizeIsoSimplicialTuning, type IsoSimplicialTuning } from "../export/iso-simplicial/iso-tuning.mjs"
 import { db } from "./db.mjs"
+
+/** Per-exporter tuning normalizers, keyed by kind. */
+const EXPORTER_NORMALIZERS: Record<ExporterKind, (raw: unknown) => unknown> = {
+    mdc: normalizeMdcTuning,
+    shrec: normalizeShrecTuning,
+    isoSimplicial: normalizeIsoSimplicialTuning,
+    flexicubes: normalizeFlexiCubesTuning,
+}
+
+/** Fresh default tuning for every exporter (each a copy). */
+function defaultExporterTuning(): Record<ExporterKind, unknown> {
+    return {
+        mdc: { ...DEFAULT_MDC_TUNING },
+        shrec: { ...DEFAULT_SHREC_TUNING },
+        isoSimplicial: { ...DEFAULT_ISO_SIMPLICIAL_TUNING },
+        flexicubes: { ...DEFAULT_FLEXICUBES_TUNING },
+    }
+}
 
 /** Per-section JSON snapshots under `GlobalSettings.app.devToolsSections`. */
 export type DevToolsSectionsMap = Record<string, Record<string, unknown>>
@@ -118,25 +128,16 @@ export interface GlobalSettings {
     }
     app: {
         devToolsEnabled: boolean
-        /** Voxel edge length (mm) for the mesh-export grid; applies to MDC, SHREC, and iso-simplicial. */
-        meshExportVoxelSizeMm: number
-        /**
-         * Which mesh extraction pipeline Dev Tools / mesh viewer use.
-         * Legacy `useShrecExporter` is kept in sync on save for older builds (`meshExporter === "shrec"`).
-         */
+        /** Which mesh extraction pipeline Dev Tools / mesh viewer use. */
         meshExporter: ExporterKind
-        /** When true, mesh export uses the SHREC/MergeSharp pipeline (mirror of `meshExporter === "shrec"`). */
-        useShrecExporter: boolean
-        /** Tuning knobs for the SHREC/MergeSharp pipeline. */
-        shrecTuning: ShrecTuning
-        /** Optional overrides for iso-simplicial octree / extract (Dev Tools). */
-        isoSimplicialTuning: IsoSimplicialTuning
-        /** Tuning knobs for the FlexiCubes (QEF) pipeline. */
-        flexicubesTuning: FlexiCubesTuning
+        /**
+         * Per-exporter tuning, keyed by exporter kind. Each entry is normalized
+         * on load by that exporter's `normalizeTuning`. Voxel size lives here
+         * (per-exporter), not as a global. See `src/export/*-tuning.mts`.
+         */
+        exporterTuning: Record<ExporterKind, unknown>
         /** Post-export mesh simplification (meshoptimizer); used when mesh simplify on export is enabled. */
         simplifyTuning: SimplifyTuning
-        /** Mesh export (MDC) tuning; merged with defaults and clamped on load. */
-        mdcExportLevers: MdcExportLevers
         diskSyncIntervalSeconds: number
         theme: ThemeMode
         editor: EditorSettings
@@ -148,10 +149,9 @@ export interface GlobalSettings {
     layout: LayoutSettings
 }
 
-/** Partial global update; `app.mdcExportLevers` may be a partial merge. */
-export type AppSettingsPatch = Omit<Partial<GlobalSettings["app"]>, "mdcExportLevers" | "isoSimplicialTuning"> & {
-    mdcExportLevers?: Partial<MdcExportLevers>
-    isoSimplicialTuning?: Partial<IsoSimplicialTuning>
+/** Partial global update; `exporterTuning` may patch a subset of exporters, each a partial tuning. */
+export type AppSettingsPatch = Omit<Partial<GlobalSettings["app"]>, "exporterTuning"> & {
+    exporterTuning?: Partial<Record<ExporterKind, unknown>>
 }
 
 export type GlobalSettingsPatch = {
@@ -215,104 +215,6 @@ function defaultDocSettings(): DocumentSettings {
     return { camera: defaultCamera(), preview: defaultPreview(), cursorPosition: defaultCursorPosition(), selection: defaultSelection() }
 }
 
-function clampMdcNumber(v: unknown, lo: number, hi: number, fallback: number): number {
-    if (typeof v !== "number" || !Number.isFinite(v)) return fallback
-    return Math.min(hi, Math.max(lo, v))
-}
-
-/** Normalize persisted iso-simplicial overrides (depth clamps, finite checks). */
-export function normalizeIsoSimplicialTuning(raw: unknown): IsoSimplicialTuning {
-    const out: IsoSimplicialTuning = {}
-    if (!raw || typeof raw !== "object") return out
-    const o = raw as Record<string, unknown>
-    if (typeof o.phase5Snap === "boolean") out.phase5Snap = o.phase5Snap
-    const clampDepth = (v: unknown): number | undefined => {
-        if (typeof v !== "number" || !Number.isFinite(v)) return undefined
-        return Math.min(16, Math.max(1, Math.round(v)))
-    }
-    const dMin = clampDepth(o.depthMin)
-    const dMax = clampDepth(o.depthMax)
-    if (dMin !== undefined) out.depthMin = dMin
-    if (dMax !== undefined) out.depthMax = dMax
-    if (out.depthMin !== undefined && out.depthMax !== undefined && out.depthMin > out.depthMax) {
-        const t = out.depthMin
-        out.depthMin = out.depthMax
-        out.depthMax = t
-    }
-    if (typeof o.oversampleQef === "number" && Number.isFinite(o.oversampleQef) && o.oversampleQef >= 1 && o.oversampleQef <= 8) {
-        out.oversampleQef = Math.round(o.oversampleQef)
-    }
-    if (typeof o.dualVertexBorderFraction === "number" && Number.isFinite(o.dualVertexBorderFraction) && o.dualVertexBorderFraction > 0 && o.dualVertexBorderFraction <= 0.5) {
-        out.dualVertexBorderFraction = o.dualVertexBorderFraction
-    }
-    if (typeof o.findRootDepth === "number" && Number.isFinite(o.findRootDepth) && o.findRootDepth >= 0 && o.findRootDepth <= 24) {
-        out.findRootDepth = Math.round(o.findRootDepth)
-    }
-    if (typeof o.qefRelativeErrorRefineThreshold === "number" && Number.isFinite(o.qefRelativeErrorRefineThreshold) && o.qefRelativeErrorRefineThreshold > 0) {
-        out.qefRelativeErrorRefineThreshold = o.qefRelativeErrorRefineThreshold
-    }
-    if (typeof o.boundingBoxPaddingMm === "number" && Number.isFinite(o.boundingBoxPaddingMm) && o.boundingBoxPaddingMm >= 0 && o.boundingBoxPaddingMm <= 100) {
-        out.boundingBoxPaddingMm = o.boundingBoxPaddingMm
-    }
-    if (o.featureRefineMode === "off" || o.featureRefineMode === "signchangeGated") {
-        out.featureRefineMode = o.featureRefineMode
-    }
-    if (
-        typeof o.featureRefineProximityFactor === "number" &&
-        Number.isFinite(o.featureRefineProximityFactor) &&
-        o.featureRefineProximityFactor > 0 &&
-        o.featureRefineProximityFactor <= 16
-    ) {
-        out.featureRefineProximityFactor = o.featureRefineProximityFactor
-    }
-    if (typeof o.featurePlaneEnabled === "boolean") {
-        out.featurePlaneEnabled = o.featurePlaneEnabled
-    }
-    if (
-        typeof o.featurePlaneDistFactor === "number" &&
-        Number.isFinite(o.featurePlaneDistFactor) &&
-        o.featurePlaneDistFactor > 0 &&
-        o.featurePlaneDistFactor <= 16
-    ) {
-        out.featurePlaneDistFactor = o.featurePlaneDistFactor
-    }
-    if (typeof o.featureGraphPlanesEnabled === "boolean") {
-        out.featureGraphPlanesEnabled = o.featureGraphPlanesEnabled
-    }
-    if (
-        typeof o.featureGraphPlaneDistFactor === "number" &&
-        Number.isFinite(o.featureGraphPlaneDistFactor) &&
-        o.featureGraphPlaneDistFactor >= 0 &&
-        o.featureGraphPlaneDistFactor <= 16
-    ) {
-        out.featureGraphPlaneDistFactor = o.featureGraphPlaneDistFactor
-    }
-    if (typeof o.featureGraphEdgeFacePlanes === "boolean") {
-        out.featureGraphEdgeFacePlanes = o.featureGraphEdgeFacePlanes
-    }
-    return out
-}
-
-/** Normalize persisted MDC export levers (Dev Tools / mesh pipeline). */
-export function normalizeMdcExportLevers(raw: unknown): MdcExportLevers {
-    const d = DEFAULT_MDC_EXPORT_LEVERS
-    const o = raw && typeof raw === "object" ? (raw as Partial<MdcExportLevers>) : {}
-    return {
-        voxelSizeMm: clampMdcNumber(o.voxelSizeMm, 0.02, 1.0, d.voxelSizeMm),
-        isoValue: clampMdcNumber(o.isoValue, -0.5, 0.5, d.isoValue),
-        creaseAngleDeg: clampMdcNumber(o.creaseAngleDeg, -1, 180, d.creaseAngleDeg),
-        featureConstrainedPlacement: typeof o.featureConstrainedPlacement === "boolean"
-            ? o.featureConstrainedPlacement
-            : typeof (o as { hermiteEdgeRefine?: unknown }).hermiteEdgeRefine === "boolean"
-            ? (o as { hermiteEdgeRefine: boolean }).hermiteEdgeRefine
-            : d.featureConstrainedPlacement,
-        simplifyTargetRatio: clampMdcNumber(o.simplifyTargetRatio, 0.01, 1, d.simplifyTargetRatio),
-        simplifyTargetError: clampMdcNumber(o.simplifyTargetError, 0, 0.1, d.simplifyTargetError),
-        simplifyNormalWeight: clampMdcNumber(o.simplifyNormalWeight, 0, 8, d.simplifyNormalWeight),
-        simplifyRegularize: typeof o.simplifyRegularize === "boolean" ? o.simplifyRegularize : d.simplifyRegularize,
-    }
-}
-
 function defaultGlobalSettings(): GlobalSettings {
     return {
         preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
@@ -326,14 +228,9 @@ function defaultGlobalSettings(): GlobalSettings {
         },
         app: {
             devToolsEnabled: false,
-            meshExportVoxelSizeMm: DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
             meshExporter: "mdc",
-            useShrecExporter: false,
-            shrecTuning: { ...DEFAULT_SHREC_TUNING },
-            isoSimplicialTuning: { ...DEFAULT_ISO_SIMPLICIAL_TUNING },
-            flexicubesTuning: { ...DEFAULT_FLEXICUBES_TUNING },
+            exporterTuning: defaultExporterTuning(),
             simplifyTuning: { ...DEFAULT_SIMPLIFY_TUNING },
-            mdcExportLevers: { ...DEFAULT_MDC_EXPORT_LEVERS },
             diskSyncIntervalSeconds: 30,
             theme: "dark",
             editor: defaultEditorSettings(),
@@ -500,7 +397,7 @@ export class SettingsManager {
         return this.#globalSettings
     }
 
-    /** Update global settings with a partial patch (MDC levers deep-merged). */
+    /** Update global settings with a partial patch (`exporterTuning` deep-merged per kind). */
     updateGlobal(patch: GlobalSettingsPatch): void {
         if (patch.preview) Object.assign(this.#globalSettings.preview, patch.preview)
         if (patch.meshViewer) {
@@ -513,26 +410,22 @@ export class SettingsManager {
         if (patch.app) {
             const appPatch = patch.app
             const mergedApp: AppSettingsPatch = { ...appPatch }
-            if (appPatch.mdcExportLevers !== undefined) {
-                mergedApp.mdcExportLevers = normalizeMdcExportLevers({
-                    ...this.#globalSettings.app.mdcExportLevers,
-                    ...appPatch.mdcExportLevers,
-                })
-            }
-            if (appPatch.isoSimplicialTuning !== undefined) {
-                const incoming = appPatch.isoSimplicialTuning
-                // `{}` (e.g. Dev Tools “Iso defaults”) must replace stored overrides, not merge —
-                // merge would keep stale keys because `{ ...cur, ...{} } === cur`.
-                mergedApp.isoSimplicialTuning =
-                    Object.keys(incoming).length === 0
-                        ? normalizeIsoSimplicialTuning({})
-                        : normalizeIsoSimplicialTuning({
-                              ...this.#globalSettings.app.isoSimplicialTuning,
-                              ...incoming,
-                          })
-            }
-            if (appPatch.meshExporter !== undefined) {
-                mergedApp.useShrecExporter = appPatch.meshExporter === "shrec"
+            if (appPatch.exporterTuning !== undefined) {
+                const incomingAll = appPatch.exporterTuning
+                const merged: Record<ExporterKind, unknown> = { ...this.#globalSettings.app.exporterTuning }
+                for (const kind of EXPORTER_KINDS) {
+                    const incoming = incomingAll[kind]
+                    if (incoming === undefined) continue
+                    const normalize = EXPORTER_NORMALIZERS[kind]
+                    // An empty object (e.g. Dev Tools “Iso defaults”) replaces stored
+                    // overrides rather than merging — `{ ...cur, ...{} } === cur` would keep stale keys.
+                    const isEmpty =
+                        incoming !== null && typeof incoming === "object" && Object.keys(incoming).length === 0
+                    merged[kind] = isEmpty
+                        ? normalize({})
+                        : normalize({ ...(merged[kind] as object), ...(incoming as object) })
+                }
+                mergedApp.exporterTuning = merged
             }
             Object.assign(this.#globalSettings.app, mergedApp)
         }
@@ -540,9 +433,29 @@ export class SettingsManager {
         this.#globalSave$.next()
     }
 
-    /** Clamped MDC export levers for mesh pipeline (Dev Tools). */
-    getMdcExportLevers(): MdcExportLevers {
-        return normalizeMdcExportLevers(this.#globalSettings.app.mdcExportLevers)
+    /** Normalized tuning for one exporter (Dev Tools / mesh pipeline). */
+    getExporterTuning(kind: ExporterKind): unknown {
+        return EXPORTER_NORMALIZERS[kind](this.#globalSettings.app.exporterTuning[kind])
+    }
+
+    /** Normalized SHREC tuning. */
+    getShrecTuning(): ShrecTuning {
+        return normalizeShrecTuning(this.#globalSettings.app.exporterTuning.shrec)
+    }
+
+    /** Normalized FlexiCubes tuning. */
+    getFlexicubesTuning(): FlexiCubesTuning {
+        return normalizeFlexiCubesTuning(this.#globalSettings.app.exporterTuning.flexicubes)
+    }
+
+    /** Normalized iso-simplicial tuning. */
+    getIsoSimplicialTuning(): IsoSimplicialTuning {
+        return normalizeIsoSimplicialTuning(this.#globalSettings.app.exporterTuning.isoSimplicial)
+    }
+
+    /** Clamped MDC export tuning for mesh pipeline (Dev Tools). */
+    getMdcExportLevers(): MdcTuning {
+        return normalizeMdcTuning(this.#globalSettings.app.exporterTuning.mdc)
     }
 
     /** Replace one dev tools section snapshot and debounce-persist global settings. */
@@ -672,28 +585,18 @@ export class SettingsManager {
                 const diskRaw = rawApp.diskSyncIntervalSeconds
                 const themeRaw = rawApp.theme
 
-                // Legacy: voxel size used to be a single shared value
-                // (`app.meshExportVoxelSizeMm`). When present in older saves
-                // and not yet split into the per-exporter levers, seed both
-                // exporters with it so existing values aren't lost.
-                let legacyVoxelSizeMm: number | undefined
-                if (
+                // Voxel size used to be one global value (`app.meshExportVoxelSizeMm`)
+                // that overrode every per-exporter voxel. Migrate it into the grid
+                // exporters' own voxel so old saves keep their effective density.
+                const legacyVoxelSizeMm =
                     typeof rawApp.meshExportVoxelSizeMm === "number" &&
                     isFinite(rawApp.meshExportVoxelSizeMm) &&
                     rawApp.meshExportVoxelSizeMm > 0
-                ) {
-                    legacyVoxelSizeMm = rawApp.meshExportVoxelSizeMm
-                }
+                        ? rawApp.meshExportVoxelSizeMm
+                        : undefined
 
-                const meshExportVoxelSizeMm = legacyVoxelSizeMm ?? def.app.meshExportVoxelSizeMm
-
-                const isValidExporter = (v: unknown): v is ExporterKind =>
-                    v === "mdc" || v === "shrec" || v === "isoSimplicial" || v === "flexicubes"
-
-                let useShrecLegacy =
-                    typeof rawApp.useShrecExporter === "boolean" ? rawApp.useShrecExporter : def.app.useShrecExporter
-
-                let meshExporter: ExporterKind =
+                const useShrecLegacy = typeof rawApp.useShrecExporter === "boolean" ? rawApp.useShrecExporter : false
+                const meshExporter: ExporterKind =
                     isValidExporter(rawApp.meshExporter)
                         ? rawApp.meshExporter
                         : isValidExporter(rawApp.exporterKind)
@@ -701,76 +604,34 @@ export class SettingsManager {
                           : useShrecLegacy
                             ? "shrec"
                             : "mdc"
-                const useShrecExporter = meshExporter === "shrec"
 
-                const isoSimplicialTuning = normalizeIsoSimplicialTuning(rawApp.isoSimplicialTuning)
-
-                let shrecTuning: ShrecTuning = { ...DEFAULT_SHREC_TUNING }
-                {
-                    const t = rawApp.shrecTuning as Partial<ShrecTuning> | undefined
-                    const cur = { ...DEFAULT_SHREC_TUNING, ...(t ?? {}) }
-                    if (typeof cur.mergeSharpEnabled !== "boolean") cur.mergeSharpEnabled = DEFAULT_SHREC_TUNING.mergeSharpEnabled
-                    if (typeof cur.mergeRelCutoff !== "number" || !isFinite(cur.mergeRelCutoff)) cur.mergeRelCutoff = DEFAULT_SHREC_TUNING.mergeRelCutoff
-                    if (typeof cur.mergeMaxDisplacement !== "number" || !isFinite(cur.mergeMaxDisplacement) || cur.mergeMaxDisplacement < 0) {
-                        cur.mergeMaxDisplacement = DEFAULT_SHREC_TUNING.mergeMaxDisplacement
+                // Per-exporter tuning blob. Falls back to the old per-field names
+                // (`shrecTuning`, `mdcExportLevers`, …) for one-time migration, and
+                // seeds the grid exporters' voxel from the legacy global voxel.
+                const rawTuning =
+                    rawApp.exporterTuning && typeof rawApp.exporterTuning === "object"
+                        ? (rawApp.exporterTuning as Record<string, unknown>)
+                        : {}
+                const legacyRaw: Record<ExporterKind, unknown> = {
+                    mdc: rawApp.mdcExportLevers,
+                    shrec: rawApp.shrecTuning,
+                    isoSimplicial: rawApp.isoSimplicialTuning,
+                    flexicubes: rawApp.flexicubesTuning,
+                }
+                const exporterTuning = {} as Record<ExporterKind, unknown>
+                for (const kind of EXPORTER_KINDS) {
+                    let raw = rawTuning[kind] ?? legacyRaw[kind]
+                    if (legacyVoxelSizeMm !== undefined && kind !== "isoSimplicial") {
+                        const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {}
+                        const v = r.voxelSizeMm
+                        if (typeof v !== "number" || !isFinite(v) || v <= 0) {
+                            raw = { ...r, voxelSizeMm: legacyVoxelSizeMm }
+                        }
                     }
-                    if (typeof cur.creaseAngleDeg !== "number" || !isFinite(cur.creaseAngleDeg) || cur.creaseAngleDeg < -1 || cur.creaseAngleDeg > 180) {
-                        cur.creaseAngleDeg = DEFAULT_SHREC_TUNING.creaseAngleDeg
-                    }
-                    if (typeof cur.mergeGradientWeightPower !== "number" || !isFinite(cur.mergeGradientWeightPower) || cur.mergeGradientWeightPower < 0) {
-                        cur.mergeGradientWeightPower = DEFAULT_SHREC_TUNING.mergeGradientWeightPower
-                    }
-                    if (typeof cur.dedupRadiusVoxels !== "number" || !isFinite(cur.dedupRadiusVoxels) || cur.dedupRadiusVoxels < 0) {
-                        cur.dedupRadiusVoxels = DEFAULT_SHREC_TUNING.dedupRadiusVoxels
-                    }
-                    if (typeof cur.seamAwareEnabled !== "boolean") cur.seamAwareEnabled = DEFAULT_SHREC_TUNING.seamAwareEnabled
-                    if (
-                        typeof cur.seamAgreementCosThreshold !== "number" ||
-                        !isFinite(cur.seamAgreementCosThreshold) ||
-                        cur.seamAgreementCosThreshold < 0 ||
-                        cur.seamAgreementCosThreshold > 1
-                    ) {
-                        cur.seamAgreementCosThreshold = DEFAULT_SHREC_TUNING.seamAgreementCosThreshold
-                    }
-                    if (typeof cur.edgeFitEnabled !== "boolean") cur.edgeFitEnabled = DEFAULT_SHREC_TUNING.edgeFitEnabled
-                    if (typeof cur.featureConstrainedPlacement !== "boolean") {
-                        cur.featureConstrainedPlacement = DEFAULT_SHREC_TUNING.featureConstrainedPlacement
-                    }
-                    if (typeof cur.featureGraphContours !== "boolean") {
-                        cur.featureGraphContours = DEFAULT_SHREC_TUNING.featureGraphContours
-                    }
-                    if (typeof cur.voxelSizeMm !== "number" || !isFinite(cur.voxelSizeMm) || cur.voxelSizeMm <= 0) {
-                        cur.voxelSizeMm = legacyVoxelSizeMm ?? DEFAULT_SHREC_TUNING.voxelSizeMm
-                    }
-                    shrecTuning = cur
+                    exporterTuning[kind] = EXPORTER_NORMALIZERS[kind](raw)
                 }
 
-                let flexicubesTuning: FlexiCubesTuning = { ...DEFAULT_FLEXICUBES_TUNING }
-                {
-                    const t = rawApp.flexicubesTuning as Partial<FlexiCubesTuning> | undefined
-                    const cur = { ...DEFAULT_FLEXICUBES_TUNING, ...(t ?? {}) }
-                    if (typeof cur.voxelSizeMm !== "number" || !isFinite(cur.voxelSizeMm) || cur.voxelSizeMm <= 0) {
-                        cur.voxelSizeMm = legacyVoxelSizeMm ?? DEFAULT_FLEXICUBES_TUNING.voxelSizeMm
-                    }
-                    if (typeof cur.isoValue !== "number" || !isFinite(cur.isoValue)) {
-                        cur.isoValue = DEFAULT_FLEXICUBES_TUNING.isoValue
-                    }
-                    if (
-                        typeof cur.creaseAngleDeg !== "number" ||
-                        !isFinite(cur.creaseAngleDeg) ||
-                        cur.creaseAngleDeg < -1 ||
-                        cur.creaseAngleDeg > 180
-                    ) {
-                        cur.creaseAngleDeg = DEFAULT_FLEXICUBES_TUNING.creaseAngleDeg
-                    }
-                    if (typeof cur.qefRelCutoff !== "number" || !isFinite(cur.qefRelCutoff) || cur.qefRelCutoff < 0) {
-                        cur.qefRelCutoff = DEFAULT_FLEXICUBES_TUNING.qefRelCutoff
-                    }
-                    flexicubesTuning = cur
-                }
-
-                let simplifyTuning: SimplifyTuning = { ...DEFAULT_SIMPLIFY_TUNING }
-                {
+                const simplifyTuning: SimplifyTuning = (() => {
                     const st = rawApp.simplifyTuning as Partial<SimplifyTuning> | undefined
                     const s = { ...DEFAULT_SIMPLIFY_TUNING, ...(st ?? {}) }
                     const clamp01 = (x: number, d: number) =>
@@ -784,27 +645,10 @@ export class SettingsManager {
                     if (typeof s.errorAbsolute !== "boolean") s.errorAbsolute = DEFAULT_SIMPLIFY_TUNING.errorAbsolute
                     if (typeof s.prune !== "boolean") s.prune = DEFAULT_SIMPLIFY_TUNING.prune
                     if (typeof s.regularize !== "boolean") s.regularize = DEFAULT_SIMPLIFY_TUNING.regularize
-                    if (typeof s.renormalizeTriangles !== "boolean") {
-                        s.renormalizeTriangles = DEFAULT_SIMPLIFY_TUNING.renormalizeTriangles
-                    }
+                    if (typeof s.renormalizeTriangles !== "boolean") s.renormalizeTriangles = DEFAULT_SIMPLIFY_TUNING.renormalizeTriangles
                     s.normalWeight = clampNw(s.normalWeight, DEFAULT_SIMPLIFY_TUNING.normalWeight)
-                    simplifyTuning = s
-                }
-
-                // Seed MDC voxel from legacy shared value when nothing better is persisted.
-                const mdcLeversRaw =
-                    rawApp.mdcExportLevers && typeof rawApp.mdcExportLevers === "object"
-                        ? (rawApp.mdcExportLevers as Record<string, unknown>)
-                        : {}
-                if (
-                    legacyVoxelSizeMm !== undefined &&
-                    (typeof mdcLeversRaw.voxelSizeMm !== "number" ||
-                        !isFinite(mdcLeversRaw.voxelSizeMm as number) ||
-                        (mdcLeversRaw.voxelSizeMm as number) <= 0)
-                ) {
-                    mdcLeversRaw.voxelSizeMm = legacyVoxelSizeMm
-                }
-                let mdcExportLevers = normalizeMdcExportLevers(mdcLeversRaw)
+                    return s
+                })()
 
                 const editorDef = defaultEditorSettings()
                 const editor = { ...editorDef, ...(rawApp.editor as Partial<EditorSettings> | undefined) }
@@ -828,14 +672,9 @@ export class SettingsManager {
                 if (typeof diskSyncIntervalSeconds !== "number") diskSyncIntervalSeconds = 30
                 const app: GlobalSettings["app"] = {
                     devToolsEnabled: typeof rawApp.devToolsEnabled === "boolean" ? rawApp.devToolsEnabled : def.app.devToolsEnabled,
-                    meshExportVoxelSizeMm,
                     meshExporter,
-                    useShrecExporter,
-                    shrecTuning,
-                    isoSimplicialTuning,
-                    flexicubesTuning,
+                    exporterTuning,
                     simplifyTuning,
-                    mdcExportLevers,
                     diskSyncIntervalSeconds,
                     theme:
                         themeRaw === "light" || themeRaw === "dark" || themeRaw === "auto"

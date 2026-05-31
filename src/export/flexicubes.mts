@@ -5,6 +5,14 @@ import { splitCreaseVertices } from "./crease-split.mjs"
 import type { MeshData } from "./export.mjs"
 import type { ProgressCallback } from "./mdc.mjs"
 import { flexiCubesCPU } from "./flexicubes/fc-cpu.mjs"
+import sampleGridShader from "../shaders/sample_grid.wgsl"
+import type { MeshExporter } from "./mesh-exporter.mjs"
+import {
+    FLEXICUBES_DISPLAY_NAME,
+    DEFAULT_FLEXICUBES_TUNING,
+    normalizeFlexiCubesTuning,
+    type FlexiCubesTuning,
+} from "./flexicubes/flexicubes-tuning.mjs"
 
 export interface FlexiCubesParams {
     gridDimX: number
@@ -49,9 +57,18 @@ export class FlexiCubesExport {
         this.#params = params
     }
 
-    async export(sampleGridShaderModule: GPUShaderModule): Promise<MeshData> {
+    async export(sampleGridShaderModule: GPUShaderModule, signal?: AbortSignal): Promise<MeshData> {
         const p = this.#params
         const log = dbgLog("FlexiCubesExport")
+
+        const throwIfAborted = () => {
+            if (signal?.aborted) {
+                const e = new Error("FlexiCubes export aborted")
+                e.name = "AbortError"
+                throw e
+            }
+        }
+        throwIfAborted()
 
         log.info(`FlexiCubesExport: ${p.gridDimX}×${p.gridDimY}×${p.gridDimZ} voxelSize=${p.voxelSize}`)
         const t0 = performance.now()
@@ -65,6 +82,7 @@ export class FlexiCubesExport {
             gridOffsetY: p.gridOffsetY,
             gridOffsetZ: p.gridOffsetZ,
         })
+        throwIfAborted()
 
         const t1 = performance.now()
         log.info(`FlexiCubesExport: grid sampled in ${(t1 - t0).toFixed(1)}ms, running CPU meshing…`)
@@ -82,4 +100,35 @@ export class FlexiCubesExport {
 
         return mesh
     }
+}
+
+/**
+ * The FlexiCubes mesh exporter: GPU grid sampling + CPU FlexiCubes dual
+ * extraction (QEF mode). Sizes a uniform grid from `tuning.voxelSizeMm`.
+ * Cancellation is best-effort (checks `ctx.signal` around the single GPU
+ * dispatch).
+ */
+export const flexicubesExporter: MeshExporter<FlexiCubesTuning> = {
+    displayName: FLEXICUBES_DISPLAY_NAME,
+    defaultTuning: DEFAULT_FLEXICUBES_TUNING,
+    normalizeTuning: normalizeFlexiCubesTuning,
+    async run(ctx, tuning) {
+        const grid = ctx.computeUniformGrid(tuning.voxelSizeMm)
+        const params: FlexiCubesParams = {
+            ...grid,
+            isoValue: tuning.isoValue,
+            voxelSize: tuning.voxelSizeMm,
+            creaseAngleDeg: tuning.creaseAngleDeg,
+            qefRelCutoff: tuning.qefRelCutoff,
+        }
+        const module = ctx.makeSceneCompiler().compile(sampleGridShader, "FlexiCubes Sample Grid")
+        const fc = new FlexiCubesExport(
+            ctx.helper,
+            ctx.uniformBuffers.polygonVertices,
+            ctx.uniformBuffers.faceSelection,
+            ctx.uniformBuffers.mdcSceneParams,
+            params,
+        )
+        return fc.export(module, ctx.signal)
+    },
 }

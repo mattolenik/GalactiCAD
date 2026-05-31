@@ -10,7 +10,16 @@ import { splitCreaseVertices } from "./crease-split.mjs"
 import type { MeshData } from "./export.mjs"
 import type { ProgressCallback } from "./mdc.mjs"
 import { GridSampler, type GridSampleResult } from "./grid-sample.mjs"
-import type { ContourBufferView } from "../scene/contour-buffer.mjs"
+import { ContourBuffer, type ContourBufferView } from "../scene/contour-buffer.mjs"
+import sampleGridShader from "../shaders/sample_grid.wgsl"
+import { featureGraphToContours } from "../feature-graph/feature-graph-to-contours.mjs"
+import type { MeshExporter } from "./mesh-exporter.mjs"
+import {
+    SHREC_DISPLAY_NAME,
+    DEFAULT_SHREC_TUNING,
+    normalizeShrecTuning,
+    type ShrecTuning,
+} from "./shrec/shrec-tuning.mjs"
 
 /**
  * Parameters for SHREC / MergeSharp export.
@@ -531,4 +540,82 @@ export class ShrecExport {
             `inside=${inside} outside=${outside} sampled=${inside + outside} totalVoxels=${n}`,
         )
     }
+}
+
+/**
+ * The SHREC mesh exporter: GPU grid samples (scalar + gradient) then CPU dual
+ * contouring + MergeSharp vertex relocation. Sizes a uniform grid from
+ * `tuning.voxelSizeMm` and builds the snap-feature contours from either the
+ * survival-aware FeatureGraph (default) or the legacy `accumulateContours`
+ * walk. Honors `ctx.signal` via the export's `progressCallback.cancelled`.
+ */
+export const shrecExporter: MeshExporter<ShrecTuning> = {
+    displayName: SHREC_DISPLAY_NAME,
+    defaultTuning: DEFAULT_SHREC_TUNING,
+    normalizeTuning: normalizeShrecTuning,
+    async run(ctx, tuning) {
+        const voxelSizeMm = tuning.voxelSizeMm
+        const grid = ctx.computeUniformGrid(voxelSizeMm)
+        const params: ShrecParams = {
+            ...grid,
+            isoValue: 0.0,
+            voxelSize: voxelSizeMm,
+            mergeSharpEnabled: tuning.mergeSharpEnabled,
+            mergeRelCutoff: tuning.mergeRelCutoff,
+            mergeMaxDisplacement: tuning.mergeMaxDisplacement > 0 ? tuning.mergeMaxDisplacement : undefined,
+            creaseAngleDeg: tuning.creaseAngleDeg,
+            mergeGradientWeightPower: tuning.mergeGradientWeightPower,
+            // Tuning knob is in voxels; ShrecParams expects mm.
+            dedupRadius: tuning.dedupRadiusVoxels > 0 ? tuning.dedupRadiusVoxels * voxelSizeMm : undefined,
+            seamAwareEnabled: tuning.seamAwareEnabled,
+            seamAgreementCosThreshold: tuning.seamAgreementCosThreshold,
+            edgeFitEnabled: tuning.edgeFitEnabled,
+            featureConstrainedPlacement: tuning.featureConstrainedPlacement,
+        }
+        const sampleGridShaderModule = ctx.makeSceneCompiler().compile(sampleGridShader, "SHREC Sample Grid")
+
+        // Build the SHREC snap-feature set. When `featureGraphContours` is on
+        // (default), feed from the FeatureGraph — CSG-survival-aware and
+        // smooth-blend-aware. Otherwise fall back to the legacy
+        // `accumulateContours` walk (also the auto-fallback if the FG build is
+        // unavailable).
+        const accumulateLegacy = (): ContourBufferView => {
+            const contourBuilder = new ContourBuffer()
+            ctx.scene.root.accumulateContours(contourBuilder)
+            return contourBuilder.finish()
+        }
+        let contours: ContourBufferView
+        if (tuning.featureGraphContours) {
+            const fgResult = await ctx.buildFeatureGraph(ctx.scene, voxelSizeMm)
+            if (fgResult) {
+                contours = featureGraphToContours(fgResult.cpu, fgResult.worldPositions)
+                dbgLog("ShrecExport").info(
+                    `SHREC contours from FeatureGraph ` +
+                        `(alive verts=${fgResult.aliveVertexCount}/${fgResult.finalVertexCount}, ` +
+                        `alive edges=${fgResult.aliveEdgeCount}/${fgResult.finalEdgeCount})`,
+                )
+            } else {
+                contours = accumulateLegacy()
+                dbgLog("ShrecExport").info("SHREC contours from legacy accumulateContours walk (FeatureGraph unavailable)")
+            }
+        } else {
+            contours = accumulateLegacy()
+            dbgLog("ShrecExport").info("SHREC contours from legacy accumulateContours walk (featureGraphContours=false)")
+        }
+
+        const shrec = new ShrecExport(
+            ctx.helper,
+            params,
+            ctx.uniformBuffers.polygonVertices,
+            ctx.uniformBuffers.faceSelection,
+            ctx.uniformBuffers.mdcSceneParams,
+            contours,
+        )
+        return shrec.export(sampleGridShaderModule, {
+            updateProgress() {},
+            get cancelled() {
+                return ctx.signal.aborted
+            },
+        })
+    },
 }

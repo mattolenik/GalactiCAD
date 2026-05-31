@@ -27,6 +27,7 @@ export const DEBUG_LOG_MODULES = [
     "RenderWorker",
     "MonacoHighlighter",
     "WelcomeScreen",
+    "MeshExport",
     "MdcExport",
     "IsoSimplicialExport",
     "ShrecExport",

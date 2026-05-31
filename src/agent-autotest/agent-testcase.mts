@@ -1,13 +1,7 @@
 import yaml from "js-yaml"
 import type { CameraSettings, GlobalSettings } from "../storage/settings.mjs"
-import {
-    DEFAULT_FLEXICUBES_TUNING,
-    type FlexiCubesTuning,
-    type IsoSimplicialTuning,
-    type MdcExportLevers,
-    type ShrecTuning,
-    type SimplifyTuning,
-} from "../render-worker-protocol.mjs"
+import type { SimplifyTuning } from "../render-worker-protocol.mjs"
+import type { ExporterKind } from "../export/mesh-exporter.mjs"
 import type { CanvasPreviewUvRect } from "../layout/editor-layout.mjs"
 
 export const AGENT_TESTCASE_SCHEMA_VERSION = 1 as const
@@ -15,13 +9,10 @@ export const AGENT_TESTCASE_SCHEMA_VERSION = 1 as const
 /** Mesh / export knobs only (no visual preview toggles). Matches `renderMesh` options shape. */
 export interface AgentTestcaseMeshExport {
     simplifyOnExport: boolean
-    voxelSizeMm: number
-    exporter: "mdc" | "shrec" | "isoSimplicial" | "flexicubes"
-    shrecTuning: ShrecTuning
-    flexicubesTuning?: FlexiCubesTuning
+    exporter: ExporterKind
+    /** Per-exporter tuning keyed by kind; voxel size lives inside each exporter's tuning. */
+    exporterTuning: Partial<Record<ExporterKind, unknown>>
     simplifyTuning: SimplifyTuning
-    mdcExportLevers: MdcExportLevers
-    isoSimplicialTuning?: IsoSimplicialTuning
 }
 
 /**
@@ -96,15 +87,9 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
         ...(input.previewUvRect !== undefined ? { previewUvRect: { ...input.previewUvRect } } : {}),
         meshExport: {
             simplifyOnExport: input.meshExport.simplifyOnExport,
-            voxelSizeMm: input.meshExport.voxelSizeMm,
             exporter: input.meshExport.exporter,
-            shrecTuning: { ...input.meshExport.shrecTuning },
-            flexicubesTuning: { ...(input.meshExport.flexicubesTuning ?? DEFAULT_FLEXICUBES_TUNING) },
+            exporterTuning: { ...input.meshExport.exporterTuning },
             simplifyTuning: { ...input.meshExport.simplifyTuning },
-            mdcExportLevers: { ...input.meshExport.mdcExportLevers },
-            ...(input.meshExport.isoSimplicialTuning !== undefined
-                ? { isoSimplicialTuning: { ...input.meshExport.isoSimplicialTuning } }
-                : {}),
         },
         ...(input.meshOverlay !== undefined
             ? {
@@ -255,15 +240,9 @@ export function mergeAgentRenderRequest(
             : {}),
         meshExport: {
             simplifyOnExport: testcase.meshExport.simplifyOnExport,
-            voxelSizeMm: testcase.meshExport.voxelSizeMm,
             exporter: testcase.meshExport.exporter,
-            shrecTuning: { ...testcase.meshExport.shrecTuning },
-            flexicubesTuning: { ...(testcase.meshExport.flexicubesTuning ?? DEFAULT_FLEXICUBES_TUNING) },
+            exporterTuning: { ...testcase.meshExport.exporterTuning },
             simplifyTuning: { ...testcase.meshExport.simplifyTuning },
-            mdcExportLevers: { ...testcase.meshExport.mdcExportLevers },
-            ...(testcase.meshExport.isoSimplicialTuning !== undefined
-                ? { isoSimplicialTuning: { ...testcase.meshExport.isoSimplicialTuning } }
-                : {}),
         },
         ...(() => {
             const meshOverlay =

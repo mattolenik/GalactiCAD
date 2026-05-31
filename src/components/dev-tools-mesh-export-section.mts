@@ -1,20 +1,16 @@
 import { BehaviorSubject, type Subscription } from "rxjs"
-import { skip } from "rxjs/operators"
 import { SettingsManager } from "../storage/settings.mjs"
+import { DEFAULT_SIMPLIFY_TUNING, type SimplifyTuning } from "../render-worker-protocol.mjs"
+import { EXPORTER_KINDS, type ExporterKind } from "../export/mesh-exporter.mjs"
+import { DEFAULT_MDC_TUNING, MDC_DISPLAY_NAME, type MdcTuning } from "../export/mdc-tuning.mjs"
+import { DEFAULT_SHREC_TUNING, SHREC_DISPLAY_NAME, type ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
+import { DEFAULT_FLEXICUBES_TUNING, FLEXICUBES_DISPLAY_NAME, type FlexiCubesTuning } from "../export/flexicubes/flexicubes-tuning.mjs"
 import {
     DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM,
     DEFAULT_ISO_SIMPLICIAL_TUNING,
-    DEFAULT_FLEXICUBES_TUNING,
-    DEFAULT_MDC_EXPORT_LEVERS,
-    DEFAULT_SHREC_TUNING,
-    DEFAULT_SIMPLIFY_TUNING,
-    type ExporterKind,
+    ISO_SIMPLICIAL_DISPLAY_NAME,
     type IsoSimplicialTuning,
-    type FlexiCubesTuning,
-    type MdcExportLevers,
-    type ShrecTuning,
-    type SimplifyTuning,
-} from "../render-worker-protocol.mjs"
+} from "../export/iso-simplicial/iso-tuning.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
 import { IsoSimplicialConstants } from "../export/iso-simplicial/constants.mjs"
 import "./dev-tools-collapse.mjs"
@@ -23,7 +19,7 @@ import "./dev-tools-collapse.mjs"
 type SimplifyBoolKey = "lockBorder" | "sparse" | "errorAbsolute" | "prune" | "regularize"
 
 const MDC_RANGE_KNOBS: {
-    key: keyof Pick<MdcExportLevers, "isoValue" | "creaseAngleDeg">
+    key: keyof Pick<MdcTuning, "isoValue" | "creaseAngleDeg">
     label: string
     min: number
     max: number
@@ -145,12 +141,16 @@ export class DevToolsExporterSelect extends HTMLElement {
         lab.className = "knob-label"
         lab.textContent = "Exporter"
         const sel = document.createElement("select")
-        const EXPORTER_OPTIONS: ReadonlyArray<readonly [ExporterKind, string]> = [
-            ["mdc", "MDC"],
-            ["shrec", "SHREC"],
-            ["isoSimplicial", "Iso-simplicial"],
-            ["flexicubes", "FlexiCubes"],
-        ]
+        // Labels live with each exporter; the list is just the kind enumeration.
+        const DISPLAY_NAMES: Record<ExporterKind, string> = {
+            mdc: MDC_DISPLAY_NAME,
+            shrec: SHREC_DISPLAY_NAME,
+            isoSimplicial: ISO_SIMPLICIAL_DISPLAY_NAME,
+            flexicubes: FLEXICUBES_DISPLAY_NAME,
+        }
+        const EXPORTER_OPTIONS: ReadonlyArray<readonly [ExporterKind, string]> = EXPORTER_KINDS.map(
+            k => [k, DISPLAY_NAMES[k]] as const,
+        )
         for (const [val, label] of EXPORTER_OPTIONS) {
             const o = document.createElement("option")
             o.value = val
@@ -169,7 +169,7 @@ export class DevToolsExporterSelect extends HTMLElement {
             this.#meshExporter$.subscribe(v => {
                 if (this.#exporterSelect.value !== v) this.#exporterSelect.value = v
                 if (v !== this.#settings.getGlobal().app.meshExporter) {
-                    this.#settings.updateGlobal({ app: { meshExporter: v, useShrecExporter: v === "shrec" } })
+                    this.#settings.updateGlobal({ app: { meshExporter: v } })
                     this.onMeshExporterChange?.(v)
                 }
             })
@@ -188,7 +188,7 @@ export class DevToolsExporterSelect extends HTMLElement {
 
 customElements.define("dev-tools-exporter-select", DevToolsExporterSelect)
 
-/** Iso-simplicial exporter tuning (persisted on `app.isoSimplicialTuning`). */
+/** Iso-simplicial exporter tuning (persisted on `app.exporterTuning.isoSimplicial`). */
 export class DevToolsIsoSimplicialSection extends HTMLElement {
     #settings = SettingsManager.instance
     #isoPhase5Checkbox: HTMLInputElement
@@ -212,7 +212,7 @@ export class DevToolsIsoSimplicialSection extends HTMLElement {
     onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
 
     get isoSimplicialTuning(): IsoSimplicialTuning {
-        return { ...this.#settings.getGlobal().app.isoSimplicialTuning }
+        return { ...this.#settings.getIsoSimplicialTuning() }
     }
 
     constructor() {
@@ -222,7 +222,7 @@ export class DevToolsIsoSimplicialSection extends HTMLElement {
         style.textContent = devToolsBaseShadowCss()
         shadow.appendChild(style)
 
-        const isoT = this.#settings.getGlobal().app.isoSimplicialTuning
+        const isoT = this.#settings.getIsoSimplicialTuning()
         const depthMinDisp = isoT.depthMin ?? IsoSimplicialConstants.depthMin
         const depthMaxDisp = isoT.depthMax ?? IsoSimplicialConstants.depthMax
         const oversampleQefDisp = isoT.oversampleQef ?? IsoSimplicialConstants.oversampleQef
@@ -431,9 +431,9 @@ export class DevToolsIsoSimplicialSection extends HTMLElement {
         const isoDefaults = document.createElement("button")
         isoDefaults.textContent = "Iso defaults"
         isoDefaults.addEventListener("click", () => {
-            this.#settings.updateGlobal({ app: { isoSimplicialTuning: { ...DEFAULT_ISO_SIMPLICIAL_TUNING } } })
-            this.syncIsoSimplicialTuningFromSettings(this.#settings.getGlobal().app.isoSimplicialTuning)
-            this.onIsoSimplicialTuningChange?.(this.#settings.getGlobal().app.isoSimplicialTuning)
+            this.#settings.updateGlobal({ app: { exporterTuning: { isoSimplicial: { ...DEFAULT_ISO_SIMPLICIAL_TUNING } } } })
+            this.syncIsoSimplicialTuningFromSettings(this.#settings.getIsoSimplicialTuning())
+            this.onIsoSimplicialTuningChange?.(this.#settings.getIsoSimplicialTuning())
         })
         shadow.appendChild(isoDefaults)
     }
@@ -465,9 +465,9 @@ export class DevToolsIsoSimplicialSection extends HTMLElement {
     }
 
     #persistIsoTuning(patch: Partial<IsoSimplicialTuning>): void {
-        const cur = this.#settings.getGlobal().app.isoSimplicialTuning
+        const cur = this.#settings.getIsoSimplicialTuning()
         const next: IsoSimplicialTuning = { ...cur, ...patch }
-        this.#settings.updateGlobal({ app: { isoSimplicialTuning: next } })
+        this.#settings.updateGlobal({ app: { exporterTuning: { isoSimplicial: next } } })
         this.onIsoSimplicialTuningChange?.(next)
     }
 }
@@ -484,20 +484,15 @@ export class DevToolsMdcExportSection extends HTMLElement {
         { range: HTMLInputElement; valueEl: HTMLSpanElement }
     >()
     #mdcFeatureConstrainedPlacementCheckbox: HTMLInputElement
-    #voxelSizeMm$: BehaviorSubject<number>
     #subscriptions: Subscription[] = []
 
     onMdcExportLeversChange?: () => void
     /** Fired when renormalize toggle changes (full `SimplifyTuning` after merge). */
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
-    onVoxelSizeMmChange?: (mm: number) => void
 
-    get voxelSizeMm(): number {
-        return this.#voxelSizeMm$.value
-    }
-
-    set voxelSizeMm(mm: number) {
-        this.#voxelSizeMm$.next(mm)
+    /** The MDC tuning currently shown in this section. */
+    getTuning(): MdcTuning {
+        return this.#settings.getMdcExportLevers()
     }
 
     constructor() {
@@ -507,45 +502,10 @@ export class DevToolsMdcExportSection extends HTMLElement {
         style.textContent = devToolsBaseShadowCss()
         shadow.appendChild(style)
 
-        const g = this.#settings.getGlobal().app
-        this.#voxelSizeMm$ = new BehaviorSubject(g.meshExportVoxelSizeMm)
-
-        {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = "Voxel (mm)"
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = "0.02"
-            range.max = "0.5"
-            range.step = "0.01"
-            range.value = String(this.#voxelSizeMm$.value)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = formatVoxelSize(this.#voxelSizeMm$.value)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                this.#voxelSizeMm$.next(v)
-                valueEl.textContent = formatVoxelSize(v)
-            })
-            row.append(lab, range, valueEl)
-            shadow.appendChild(row)
-            this.#voxelSizeRange = range
-            this.#voxelSizeValueEl = valueEl
-        }
-        this.#subscriptions.push(
-            this.#voxelSizeMm$.pipe(skip(1)).subscribe(v => {
-                this.#settings.updateGlobal({ app: { meshExportVoxelSizeMm: v } })
-                this.onVoxelSizeMmChange?.(v)
-            })
-        )
-
         const mdcLevers = this.#settings.getMdcExportLevers()
 
         const voxel = addVoxelSliderRow(shadow, mdcLevers.voxelSizeMm, v => {
-            this.#settings.updateGlobal({ app: { mdcExportLevers: { voxelSizeMm: v } } })
+            this.#settings.updateGlobal({ app: { exporterTuning: { mdc: { voxelSizeMm: v } } } })
             this.onMdcExportLeversChange?.()
         })
         this.#voxelSizeRange = voxel.range
@@ -559,8 +519,8 @@ export class DevToolsMdcExportSection extends HTMLElement {
         this.#mdcFeatureConstrainedPlacementCheckbox.addEventListener("change", () => {
             this.#settings.updateGlobal({
                 app: {
-                    mdcExportLevers: {
-                        featureConstrainedPlacement: this.#mdcFeatureConstrainedPlacementCheckbox.checked,
+                    exporterTuning: {
+                        mdc: { featureConstrainedPlacement: this.#mdcFeatureConstrainedPlacementCheckbox.checked },
                     },
                 },
             })
@@ -586,7 +546,7 @@ export class DevToolsMdcExportSection extends HTMLElement {
                 if (!Number.isFinite(v)) v = k.min
                 v = Math.max(k.min, Math.min(k.max, v))
                 this.#settings.updateGlobal({
-                    app: { mdcExportLevers: { [k.key]: v } },
+                    app: { exporterTuning: { mdc: { [k.key]: v } } },
                 })
                 valueEl.textContent = formatMdcValue(k.key, v)
                 this.onMdcExportLeversChange?.()
@@ -601,11 +561,13 @@ export class DevToolsMdcExportSection extends HTMLElement {
         mdcDefaults.addEventListener("click", () => {
             this.#settings.updateGlobal({
                 app: {
-                    mdcExportLevers: {
-                        voxelSizeMm: DEFAULT_MDC_EXPORT_LEVERS.voxelSizeMm,
-                        isoValue: DEFAULT_MDC_EXPORT_LEVERS.isoValue,
-                        creaseAngleDeg: DEFAULT_MDC_EXPORT_LEVERS.creaseAngleDeg,
-                        featureConstrainedPlacement: DEFAULT_MDC_EXPORT_LEVERS.featureConstrainedPlacement,
+                    exporterTuning: {
+                        mdc: {
+                            voxelSizeMm: DEFAULT_MDC_TUNING.voxelSizeMm,
+                            isoValue: DEFAULT_MDC_TUNING.isoValue,
+                            creaseAngleDeg: DEFAULT_MDC_TUNING.creaseAngleDeg,
+                            featureConstrainedPlacement: DEFAULT_MDC_TUNING.featureConstrainedPlacement,
+                        },
                     },
                 },
             })
@@ -615,7 +577,7 @@ export class DevToolsMdcExportSection extends HTMLElement {
         shadow.appendChild(mdcDefaults)
     }
 
-    syncMdcLeversFromSettings(levers: MdcExportLevers): void {
+    syncMdcLeversFromSettings(levers: MdcTuning): void {
         this.#voxelSizeRange.value = String(levers.voxelSizeMm)
         this.#voxelSizeValueEl.textContent = formatVoxelSize(levers.voxelSizeMm)
         this.#mdcFeatureConstrainedPlacementCheckbox.checked = levers.featureConstrainedPlacement
@@ -849,9 +811,8 @@ export class DevToolsShrecExportSection extends HTMLElement {
         style.textContent = devToolsBaseShadowCss()
         shadow.appendChild(style)
 
-        const g = this.#settings.getGlobal().app
 
-        this.#shrecTuningState = { ...DEFAULT_SHREC_TUNING, ...g.shrecTuning }
+        this.#shrecTuningState = this.#settings.getShrecTuning()
         const root = document.createElement("div")
         root.className = "lighting-section"
         shadow.appendChild(root)
@@ -1093,7 +1054,7 @@ export class DevToolsShrecExportSection extends HTMLElement {
 
     #persistShrecTuning(): void {
         const next = { ...this.#shrecTuningState }
-        this.#settings.updateGlobal({ app: { shrecTuning: next } })
+        this.#settings.updateGlobal({ app: { exporterTuning: { shrec: next } } })
         this.onShrecTuningChange?.(next)
     }
 
@@ -1103,7 +1064,7 @@ export class DevToolsShrecExportSection extends HTMLElement {
     }
 }
 
-/** FlexiCubes exporter voxel size and tuning (persisted on `GlobalSettings.app.flexicubesTuning`). */
+/** FlexiCubes exporter voxel size and tuning (persisted on `app.exporterTuning.flexicubes`). */
 export class DevToolsFlexiCubesExportSection extends HTMLElement {
     #settings = SettingsManager.instance
     #tuningState: FlexiCubesTuning = { ...DEFAULT_FLEXICUBES_TUNING }
@@ -1130,8 +1091,7 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
         style.textContent = devToolsBaseShadowCss()
         shadow.appendChild(style)
 
-        const g = this.#settings.getGlobal().app
-        this.#tuningState = { ...DEFAULT_FLEXICUBES_TUNING, ...g.flexicubesTuning }
+        this.#tuningState = this.#settings.getFlexicubesTuning()
         const root = document.createElement("div")
         root.className = "lighting-section"
         shadow.appendChild(root)
@@ -1244,7 +1204,7 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
 
     #persist(): void {
         const next = { ...this.#tuningState }
-        this.#settings.updateGlobal({ app: { flexicubesTuning: next } })
+        this.#settings.updateGlobal({ app: { exporterTuning: { flexicubes: next } } })
         this.onFlexiCubesTuningChange?.(next)
     }
 

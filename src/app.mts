@@ -1221,13 +1221,12 @@ class App {
             this.#mesh?.applyMeshViewerSettings(settings)
         }
 
-        devTools.syncVoxelSizeMmFromSettings(this.#settings.getGlobal().app.meshExportVoxelSizeMm)
         devTools.syncMeshExporterFromSettings(this.#settings.getGlobal().app.meshExporter)
-        devTools.syncIsoSimplicialTuningFromSettings(this.#settings.getGlobal().app.isoSimplicialTuning)
-        devTools.syncShrecTuningFromSettings(this.#settings.getGlobal().app.shrecTuning)
-        devTools.syncFlexiCubesTuningFromSettings(this.#settings.getGlobal().app.flexicubesTuning)
+        devTools.syncIsoSimplicialTuningFromSettings(this.#settings.getIsoSimplicialTuning())
+        devTools.syncShrecTuningFromSettings(this.#settings.getShrecTuning())
+        devTools.syncFlexiCubesTuningFromSettings(this.#settings.getFlexicubesTuning())
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
-        devTools.syncMdcLeversFromSettings(this.#settings.getGlobal().app.mdcExportLevers)
+        devTools.syncMdcLeversFromSettings(this.#settings.getMdcExportLevers())
         // Re-mesh live when the mesh exporter or any exporter tuning knob
         // changes, so the mesh viewer reflects edits immediately. The
         // `#scheduleMeshUpdate` debounce avoids re-meshing per slider tick.
@@ -1586,16 +1585,11 @@ class App {
     }
 
     #meshRenderOptionsForExport(devTools: DevToolsPanel) {
-        const mdcExportLevers = this.#settings.getMdcExportLevers()
         return {
             simplifyOnExport: devTools.meshSimplifyOnExport,
-            voxelSizeMm: devTools.voxelSizeMm,
             exporter: devTools.meshExporter,
-            shrecTuning: devTools.shrecTuning,
-            isoSimplicialTuning: devTools.isoSimplicialTuning,
-            flexicubesTuning: devTools.flexicubesTuning,
+            exporterTuning: devTools.getAllExporterTuning(),
             simplifyTuning: devTools.simplifyTuning,
-            mdcExportLevers,
         }
     }
 

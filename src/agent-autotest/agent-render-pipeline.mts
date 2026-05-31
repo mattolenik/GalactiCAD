@@ -38,12 +38,8 @@ export async function runAgentRenderPipeline(renderer: SDFRenderer, req: AgentRe
     const meshOpts = {
         simplifyOnExport: req.meshExport.simplifyOnExport,
         exporter: req.meshExport.exporter,
-        shrecTuning: req.meshExport.shrecTuning,
-        isoSimplicialTuning: req.meshExport.isoSimplicialTuning,
-        flexicubesTuning: req.meshExport.flexicubesTuning,
+        exporterTuning: req.meshExport.exporterTuning,
         simplifyTuning: req.meshExport.simplifyTuning,
-        voxelSizeMm: req.meshExport.voxelSizeMm,
-        mdcExportLevers: req.meshExport.mdcExportLevers,
     }
     let img =
         req.mode === "sdf" ?

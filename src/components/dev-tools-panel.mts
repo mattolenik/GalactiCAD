@@ -8,15 +8,12 @@ import {
     formatBenchmarkResultsHtml,
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
-import type {
-    ExporterKind,
-    IsoSimplicialTuning,
-    FlexiCubesTuning,
-    MdcExportLevers,
-    RayMarchParams,
-    ShrecTuning,
-    SimplifyTuning,
-} from "../render-worker-protocol.mjs"
+import type { RayMarchParams, SimplifyTuning } from "../render-worker-protocol.mjs"
+import type { ExporterKind } from "../export/mesh-exporter.mjs"
+import type { MdcTuning } from "../export/mdc-tuning.mjs"
+import type { ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
+import type { FlexiCubesTuning } from "../export/flexicubes/flexicubes-tuning.mjs"
+import type { IsoSimplicialTuning } from "../export/iso-simplicial/iso-tuning.mjs"
 import { log, type DebugLogModulesState } from "../logging/debug-log.mjs"
 import {
     DEFAULT_APP_DEVTOOLS_STATE,
@@ -74,7 +71,6 @@ export class DevToolsPanel extends HTMLElement {
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
-    onVoxelSizeMmChange?: (mm: number) => void
     onMeshExporterChange?: (exporter: ExporterKind) => void
     onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
     onMeshViewerOverlayChange?: (settings: GlobalSettings["meshViewer"]) => void
@@ -179,12 +175,8 @@ export class DevToolsPanel extends HTMLElement {
         this.#exporterSelect.meshExporter = v
     }
 
-    get voxelSizeMm(): number {
-        return this.#mdcExportSection.voxelSizeMm
-    }
-
-    syncVoxelSizeMmFromSettings(mm: number): void {
-        this.#mdcExportSection.voxelSizeMm = mm
+    get mdcTuning(): MdcTuning {
+        return this.#mdcExportSection.getTuning()
     }
 
     get isoSimplicialTuning(): IsoSimplicialTuning {
@@ -197,6 +189,16 @@ export class DevToolsPanel extends HTMLElement {
 
     get flexicubesTuning(): FlexiCubesTuning {
         return this.#flexicubesExportSection.flexicubesTuning
+    }
+
+    /** Per-exporter tuning blob for the renderMesh message / agent testcase. */
+    getAllExporterTuning(): Record<ExporterKind, unknown> {
+        return {
+            mdc: this.mdcTuning,
+            shrec: this.shrecTuning,
+            isoSimplicial: this.isoSimplicialTuning,
+            flexicubes: this.flexicubesTuning,
+        }
     }
 
     /** Current ray-march params (restored from persisted dev-tools state on load). */
@@ -212,7 +214,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#meshSimplifySection.syncSimplifyTuningFromSettings(tuning)
     }
 
-    syncMdcLeversFromSettings(levers: MdcExportLevers): void {
+    syncMdcLeversFromSettings(levers: MdcTuning): void {
         this.#mdcExportSection.syncMdcLeversFromSettings(levers)
     }
 
@@ -296,7 +298,6 @@ export class DevToolsPanel extends HTMLElement {
         this.#isoSimplicialSection.onIsoSimplicialTuningChange = v => this.onIsoSimplicialTuningChange?.(v)
         this.#flexicubesExportSection.onFlexiCubesTuningChange = v => this.onFlexiCubesTuningChange?.(v)
 
-        this.#mdcExportSection.onVoxelSizeMmChange = v => this.onVoxelSizeMmChange?.(v)
         this.#mdcExportSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
         this.#mdcExportSection.onSimplifyTuningChange = v => this.onSimplifyTuningChange?.(v)
 

@@ -21,19 +21,15 @@ import {
     DEFAULT_RAY_MARCH_PARAMS,
     type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
-    type MdcExportLevers,
     type PreviewShadingParams,
     type RayMarchParams,
     type SceneBuildPipelineMs,
     type WorkerToMainMessage,
 } from "./render-worker-protocol.mjs"
+import type { ExporterKind } from "./export/mesh-exporter.mjs"
 import type {
     EdgeHitData,
-    ExporterKind,
-    IsoSimplicialTuning,
-    FlexiCubesTuning,
     SelectedEdgePayload,
-    ShrecTuning,
     SimplifyTuning,
 } from "./render-worker-protocol.mjs"
 import { PALETTE_SIZE, paletteToFloat32Array } from "./colorPalette.mjs"
@@ -65,12 +61,9 @@ export type {
     SerializedNode,
     BuildTimingBreakdownMs,
     SceneBuildPipelineMs,
-    ExporterKind,
-    IsoSimplicialTuning,
-    FlexiCubesTuning,
-    ShrecTuning,
     SimplifyTuning,
 } from "./render-worker-protocol.mjs"
+export type { ExporterKind } from "./export/mesh-exporter.mjs"
 
 function roundScenePerfMs(x: number): number {
     return Math.round(x * 100) / 100
@@ -189,12 +182,8 @@ export class SDFRenderer {
             height?: number
             simplifyOnExport?: boolean
             exporter?: ExporterKind
-            shrecTuning?: ShrecTuning
-            isoSimplicialTuning?: IsoSimplicialTuning
-            flexicubesTuning?: FlexiCubesTuning
+            exporterTuning?: Partial<Record<ExporterKind, unknown>>
             simplifyTuning?: SimplifyTuning
-            voxelSizeMm?: number
-            mdcExportLevers?: MdcExportLevers
             cameraState?: CameraState
             viewTransform?: Float32Array
             cameraPosition?: [number, number, number]
@@ -626,12 +615,8 @@ export class SDFRenderer {
                 documentName: pending.documentName,
                 simplifyOnExport: pending.simplifyOnExport,
                 exporter: pending.exporter,
-                shrecTuning: pending.shrecTuning,
-                isoSimplicialTuning: pending.isoSimplicialTuning,
-                flexicubesTuning: pending.flexicubesTuning,
-                voxelSizeMm: pending.voxelSizeMm,
+                exporterTuning: pending.exporterTuning,
                 simplifyTuning: pending.simplifyTuning,
-                mdcExportLevers: pending.mdcExportLevers,
             })
         } else if (pending.kind === "thumbnail") {
             if (requestId !== this.#latestThumbnailRequestId) {
@@ -1746,12 +1731,8 @@ export class SDFRenderer {
         options?: {
             simplifyOnExport?: boolean
             exporter?: ExporterKind
-            shrecTuning?: ShrecTuning
-            isoSimplicialTuning?: IsoSimplicialTuning
-            flexicubesTuning?: FlexiCubesTuning
+            exporterTuning?: Partial<Record<ExporterKind, unknown>>
             simplifyTuning?: SimplifyTuning
-            voxelSizeMm?: number
-            mdcExportLevers?: MdcExportLevers
             /** When true, `renderMeshResult` is not rejected if the active tab differs from `documentName` (agent automation). */
             agentAutomation?: boolean
         },
@@ -1760,23 +1741,15 @@ export class SDFRenderer {
         this.#latestRenderMeshRequestId = requestId
         const simplifyOnExport = options?.simplifyOnExport ?? false
         const exporter = options?.exporter
-        const shrecTuning = options?.shrecTuning
-        const isoSimplicialTuning = options?.isoSimplicialTuning
-        const flexicubesTuning = options?.flexicubesTuning
+        const exporterTuning = options?.exporterTuning
         const simplifyTuning = options?.simplifyTuning
-        const voxelSizeMm = options?.voxelSizeMm
-        const mdcExportLevers = options?.mdcExportLevers
         this.#pendingTranspile.set(requestId, {
             kind: "renderMesh",
             documentName,
             simplifyOnExport,
             exporter,
-            shrecTuning,
-            isoSimplicialTuning,
-            flexicubesTuning,
+            exporterTuning,
             simplifyTuning,
-            voxelSizeMm,
-            mdcExportLevers,
         })
         return new Promise<MeshData>((resolve, reject) => {
             this.#pendingRenderMesh.set(requestId, {
@@ -1827,12 +1800,8 @@ export class SDFRenderer {
     #thumbnailMeshExportOptions(): {
         simplifyOnExport?: boolean
         exporter?: ExporterKind
-        shrecTuning?: ShrecTuning
-        isoSimplicialTuning?: IsoSimplicialTuning
-        flexicubesTuning?: FlexiCubesTuning
+        exporterTuning?: Partial<Record<ExporterKind, unknown>>
         simplifyTuning?: SimplifyTuning
-        voxelSizeMm?: number
-        mdcExportLevers?: MdcExportLevers
     } {
         const app = this.#settings.getGlobal().app
         const appDev = {
@@ -1843,13 +1812,9 @@ export class SDFRenderer {
         const simplifyOnExport = typeof simplifyRaw === "boolean" ? simplifyRaw : false
         return {
             simplifyOnExport,
-            voxelSizeMm: app.meshExportVoxelSizeMm,
             exporter: app.meshExporter,
-            shrecTuning: app.shrecTuning,
-            isoSimplicialTuning: app.isoSimplicialTuning,
-            flexicubesTuning: app.flexicubesTuning,
+            exporterTuning: app.exporterTuning,
             simplifyTuning: app.simplifyTuning,
-            mdcExportLevers: app.mdcExportLevers,
         }
     }
 
@@ -1950,12 +1915,8 @@ export class SDFRenderer {
         meshOptions: {
             simplifyOnExport?: boolean
             exporter?: ExporterKind
-            shrecTuning?: ShrecTuning
-            isoSimplicialTuning?: IsoSimplicialTuning
-            flexicubesTuning?: FlexiCubesTuning
+            exporterTuning?: Partial<Record<ExporterKind, unknown>>
             simplifyTuning?: SimplifyTuning
-            voxelSizeMm?: number
-            mdcExportLevers?: MdcExportLevers
         },
         width = 1000,
         height = 1000,

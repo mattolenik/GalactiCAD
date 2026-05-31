@@ -11,25 +11,15 @@ import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
 import outlineShader from "./shaders/outline.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
-import mdcShader from "./shaders/mdc.wgsl"
-import sampleGridShader from "./shaders/sample_grid.wgsl"
 import isoSampleBatchShaderSource from "./shaders/iso_sample_batch.wgsl"
 import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shaders/shader.mjs"
-import { MDCExport, type MDCParams } from "./export/mdc.mjs"
+import { getExporter } from "./export/exporters.mjs"
 import {
-    createIsoOctreeMidFeatureSampleFn,
-    createIsoOctreeSampleFn,
-    extractIsoSimplicialMesh,
-    extractIsoSimplicialMeshAsync,
-    IsoOctree,
-    IsoSampleBatch,
-    type IsoFeatureRefineOptions,
-} from "./export/iso-simplicial/index.mjs"
-import { QefWorkerPool } from "./export/iso-simplicial/qef-worker-pool.mjs"
-import { IsoSimplicialConstants } from "./export/iso-simplicial/constants.mjs"
-import { ShrecExport, type ShrecParams } from "./export/shrec.mjs"
-import { FlexiCubesExport, type FlexiCubesParams } from "./export/flexicubes.mjs"
-import { ContourBuffer } from "./scene/contour-buffer.mjs"
+    DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
+    type ExporterKind,
+    type MeshExportContext,
+} from "./export/mesh-exporter.mjs"
+import { IsoSampleBatch } from "./export/iso-simplicial/index.mjs"
 import { FeatureGraphBuilder } from "./scene/feature-graph-buffer.mjs"
 import {
     FeatureGraphGpu,
@@ -57,24 +47,15 @@ import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
 import {
-    DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM,
-    DEFAULT_ISO_SIMPLICIAL_TUNING,
-    DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
-    DEFAULT_MDC_EXPORT_LEVERS,
     DEFAULT_PREVIEW_SHADING,
     DEFAULT_RAY_MARCH_PARAMS,
     DEFAULT_SIMPLIFY_TUNING,
     type BuildTimingBreakdownMs,
-    type ExporterKind,
-    type IsoSimplicialTuning,
-    type FlexiCubesTuning,
     type MainToWorkerMessage,
-    type MdcExportLevers,
     type PreviewShadingParams,
     type RayMarchParams,
     type RenderSelectionState,
     type SelectedEdgePayload,
-    type ShrecTuning,
     type SimplifyTuning,
 } from "./render-worker-protocol.mjs"
 import type { SelectionInfo } from "./components/preview-window.mjs"
@@ -190,6 +171,8 @@ export class RenderWorkerCore {
     #outlinePipeline!: GPURenderPipeline
     #outlineBindGroup!: GPUBindGroup | undefined
     #scene: SceneInfo | null = null
+    /** Aborts the in-flight mesh export when a newer `renderMesh` supersedes it. */
+    #meshExportAbort?: AbortController
     /**
      * Feature-aware meshing scaffold. Phase A: extract + log; phase B: CPU
      * transform; phase D: GPU survival test via {@link IsoSampleBatch} + CPU
@@ -1629,13 +1612,14 @@ export class RenderWorkerCore {
         documentName?: string,
         simplifyOnExport = false,
         exporter: ExporterKind = "mdc",
-        shrecTuning?: ShrecTuning,
+        exporterTuning?: Partial<Record<ExporterKind, unknown>>,
         simplifyTuning?: SimplifyTuning,
-        voxelSizeMmFromCaller?: number,
-        mdcExportLevers?: MdcExportLevers,
-        isoSimplicialTuning?: IsoSimplicialTuning,
-        flexicubesTuning?: FlexiCubesTuning,
     ): Promise<void> {
+        // Supersede any still-running export: aborting its signal lets the
+        // exporter bail out of GPU/CPU work instead of running to completion.
+        this.#meshExportAbort?.abort()
+        const abort = new AbortController()
+        this.#meshExportAbort = abort
         try {
             if (!this.#scene || this.#builtBody !== body) {
                 await this.build(body, undefined)
@@ -1650,18 +1634,6 @@ export class RenderWorkerCore {
                 })
                 return
             }
-            const levers: MdcExportLevers = { ...DEFAULT_MDC_EXPORT_LEVERS, ...mdcExportLevers }
-            // Voxel size: caller-supplied value wins (Dev Tools picks per
-            // exporter); fall back to the per-exporter tuning, then protocol
-            // default.
-            const exporterFallbackVoxel =
-                exporter === "shrec" ? shrecTuning?.voxelSizeMm
-                : exporter === "flexicubes" ? flexicubesTuning?.voxelSizeMm
-                : levers.voxelSizeMm
-            const voxelSizeMm =
-                voxelSizeMmFromCaller && voxelSizeMmFromCaller > 0 ? voxelSizeMmFromCaller
-                : exporterFallbackVoxel && exporterFallbackVoxel > 0 ? exporterFallbackVoxel
-                : DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM
             const pad = 3.2
             const minX = bounds.min[0] - pad
             const minY = bounds.min[1] - pad
@@ -1669,12 +1641,6 @@ export class RenderWorkerCore {
             const maxX = bounds.max[0] + pad
             const maxY = bounds.max[1] + pad
             const maxZ = bounds.max[2] + pad
-            const sizeX = Math.max(voxelSizeMm, maxX - minX)
-            const sizeY = Math.max(voxelSizeMm, maxY - minY)
-            const sizeZ = Math.max(voxelSizeMm, maxZ - minZ)
-            const gridDimX = Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1)
-            const gridDimY = Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1)
-            const gridDimZ = Math.max(2, Math.ceil(sizeZ / voxelSizeMm) + 1)
 
             const scene = this.#scene!
             const sceneAux = scene.compileAux()
@@ -1684,336 +1650,68 @@ export class RenderWorkerCore {
             const sceneSDF_fast = scene.compileFast()
             const sceneSDF_mid = scene.compileMid()
 
-            const worldBoundsCube = (): { min: [number, number, number]; max: [number, number, number] } => {
-                const cx = (minX + maxX) * 0.5
-                const cy = (minY + maxY) * 0.5
-                const cz = (minZ + maxZ) * 0.5
-                const half = Math.max(sizeX, sizeY, sizeZ) * 0.5
-                return {
-                    min: [cx - half, cy - half, cz - half],
-                    max: [cx + half, cy + half, cz + half],
-                }
+            // Build the shared context handed to every exporter. The exporter
+            // sizes its own grid (`computeUniformGrid`) or octree
+            // (`worldBoundsCube`) from its own tuning's voxel/depth.
+            const ctx: MeshExportContext = {
+                device: this.#device,
+                helper: this.#helper,
+                uniformBuffers: {
+                    polygonVertices: this.#uniformBuffers.polygonVertices,
+                    faceSelection: this.#uniformBuffers.faceSelection,
+                    mdcSceneParams: this.#uniformBuffers.mdcSceneParams,
+                },
+                scene,
+                bounds: { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
+                worldBoundsCube: () => {
+                    const cx = (minX + maxX) * 0.5
+                    const cy = (minY + maxY) * 0.5
+                    const cz = (minZ + maxZ) * 0.5
+                    const half = Math.max(maxX - minX, maxY - minY, maxZ - minZ) * 0.5
+                    return {
+                        min: [cx - half, cy - half, cz - half],
+                        max: [cx + half, cy + half, cz + half],
+                    }
+                },
+                computeUniformGrid: (voxelSizeMm: number) => {
+                    const sizeX = Math.max(voxelSizeMm, maxX - minX)
+                    const sizeY = Math.max(voxelSizeMm, maxY - minY)
+                    const sizeZ = Math.max(voxelSizeMm, maxZ - minZ)
+                    return {
+                        gridDimX: Math.max(2, Math.ceil(sizeX / voxelSizeMm) + 1),
+                        gridDimY: Math.max(2, Math.ceil(sizeY / voxelSizeMm) + 1),
+                        gridDimZ: Math.max(2, Math.ceil(sizeZ / voxelSizeMm) + 1),
+                        gridOffsetX: minX,
+                        gridOffsetY: minY,
+                        gridOffsetZ: minZ,
+                    }
+                },
+                buildFeatureGraph: (s, cellSize) => this.#buildFeatureGraph(s, cellSize),
+                makeSceneCompiler: () =>
+                    new ShaderCompiler(this.#device)
+                        .replace("insert", "sceneAuxFast", sceneAuxFast)
+                        .replace("insert", "sceneAux", sceneAux)
+                        .replace("insert", "sceneAuxMid", sceneAuxMid)
+                        .replace("insert", "sceneSDF_fast", sceneSDF_fast)
+                        .replace("insert", "sceneSDF", sceneSDF)
+                        .replace("insert", "sceneSDF_mid", sceneSDF_mid),
+                signal: abort.signal,
             }
 
+            const exp = getExporter(exporter)
+            const tuning = exp.normalizeTuning(exporterTuning?.[exporter])
+            log("MeshExport").info(`handleRenderMesh: dispatching ${exporter}, tuning=${JSON.stringify(tuning)}`)
             let mesh
-            if (exporter === "flexicubes") {
-                log("FlexiCubesExport").info(
-                    `handleRenderMesh: dispatching FlexiCubes, incoming tuning=` +
-                        `${flexicubesTuning ? JSON.stringify(flexicubesTuning) : "(undefined → defaults)"}`,
-                )
-                const fcCompiler = new ShaderCompiler(this.#device)
-                    .replace("insert", "sceneAuxFast", sceneAuxFast)
-                    .replace("insert", "sceneAux", sceneAux)
-                    .replace("insert", "sceneAuxMid", sceneAuxMid)
-                    .replace("insert", "sceneSDF", sceneSDF)
-                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-                const fcShaderModule = fcCompiler.compile(sampleGridShader, "FlexiCubes Sample Grid")
-                const params: FlexiCubesParams = {
-                    gridDimX,
-                    gridDimY,
-                    gridDimZ,
-                    isoValue: flexicubesTuning?.isoValue ?? 0.0,
-                    gridOffsetX: minX,
-                    gridOffsetY: minY,
-                    gridOffsetZ: minZ,
-                    voxelSize: voxelSizeMm,
-                    creaseAngleDeg: flexicubesTuning?.creaseAngleDeg,
-                    qefRelCutoff: flexicubesTuning?.qefRelCutoff,
+            try {
+                mesh = await exp.run(ctx, tuning)
+            } catch (err) {
+                // A newer export aborted this one — report it as superseded
+                // (empty result) rather than surfacing an error to the user.
+                if (abort.signal.aborted) {
+                    self.postMessage({ type: "renderMeshResult", requestId, documentName })
+                    return
                 }
-                const fc = new FlexiCubesExport(
-                    this.#helper,
-                    this.#uniformBuffers.polygonVertices,
-                    this.#uniformBuffers.faceSelection,
-                    this.#uniformBuffers.mdcSceneParams,
-                    params,
-                )
-                mesh = await fc.export(fcShaderModule)
-            } else if (exporter === "shrec") {
-                log("ShrecExport").info(
-                    `handleRenderMesh: dispatching SHREC, incoming tuning=` +
-                        `${shrecTuning ? JSON.stringify(shrecTuning) : "(undefined → defaults)"}`,
-                )
-                const shrecCompiler = new ShaderCompiler(this.#device)
-                    .replace("insert", "sceneAuxFast", sceneAuxFast)
-                    .replace("insert", "sceneAux", sceneAux)
-                    .replace("insert", "sceneAuxMid", sceneAuxMid)
-                    .replace("insert", "sceneSDF", sceneSDF)
-                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-                const sampleGridShaderModule = shrecCompiler.compile(sampleGridShader, "SHREC Sample Grid")
-                const params: ShrecParams = {
-                    gridDimX,
-                    gridDimY,
-                    gridDimZ,
-                    isoValue: 0.0,
-                    gridOffsetX: minX,
-                    gridOffsetY: minY,
-                    gridOffsetZ: minZ,
-                    voxelSize: voxelSizeMm,
-                    ...(shrecTuning && {
-                        mergeSharpEnabled: shrecTuning.mergeSharpEnabled,
-                        mergeRelCutoff: shrecTuning.mergeRelCutoff,
-                        mergeMaxDisplacement: shrecTuning.mergeMaxDisplacement > 0 ? shrecTuning.mergeMaxDisplacement : undefined,
-                        creaseAngleDeg: shrecTuning.creaseAngleDeg,
-                        mergeGradientWeightPower: shrecTuning.mergeGradientWeightPower,
-                        // Tuning knob is in voxels; ShrecParams expects mm.
-                        dedupRadius: shrecTuning.dedupRadiusVoxels > 0 ? shrecTuning.dedupRadiusVoxels * voxelSizeMm : undefined,
-                        seamAwareEnabled: shrecTuning.seamAwareEnabled,
-                        seamAgreementCosThreshold: shrecTuning.seamAgreementCosThreshold,
-                        edgeFitEnabled: shrecTuning.edgeFitEnabled,
-                        featureConstrainedPlacement: shrecTuning.featureConstrainedPlacement,
-                    }),
-                }
-                // Build the SHREC snap-feature set. When the user-facing
-                // `featureGraphContours` toggle is on (default), feed from
-                // the FeatureGraph — CSG-survival-aware, smooth-blend-aware,
-                // so SHREC stops snapping to features that no longer exist
-                // on the iso-surface. When off, fall back to the legacy
-                // `accumulateContours` walk for regression comparison.
-                //
-                // Auto-fallback also kicks in if the FG build is
-                // unavailable (very first export before any full scene
-                // compile completes — shouldn't happen in normal flow).
-                const useFeatureGraphContours = shrecTuning?.featureGraphContours ?? true
-                let contours
-                if (useFeatureGraphContours) {
-                    const fgResult = await this.#buildFeatureGraph(this.#scene!, voxelSizeMm)
-                    if (fgResult) {
-                        contours = featureGraphToContours(fgResult.cpu, fgResult.worldPositions)
-                        log("ShrecExport").info(
-                            `handleRenderMesh: SHREC contours from FeatureGraph ` +
-                            `(alive verts=${fgResult.aliveVertexCount}/${fgResult.finalVertexCount}, ` +
-                            `alive edges=${fgResult.aliveEdgeCount}/${fgResult.finalEdgeCount})`,
-                        )
-                    } else {
-                        const contourBuilder = new ContourBuffer()
-                        this.#scene!.root.accumulateContours(contourBuilder)
-                        contours = contourBuilder.finish()
-                        log("ShrecExport").info(
-                            `handleRenderMesh: SHREC contours from legacy accumulateContours walk ` +
-                            `(FeatureGraph requested but unavailable)`,
-                        )
-                    }
-                } else {
-                    const contourBuilder = new ContourBuffer()
-                    this.#scene!.root.accumulateContours(contourBuilder)
-                    contours = contourBuilder.finish()
-                    log("ShrecExport").info(
-                        `handleRenderMesh: SHREC contours from legacy accumulateContours walk ` +
-                        `(featureGraphContours=false)`,
-                    )
-                }
-
-                const shrec = new ShrecExport(
-                    this.#helper,
-                    params,
-                    this.#uniformBuffers.polygonVertices,
-                    this.#uniformBuffers.faceSelection,
-                    this.#uniformBuffers.mdcSceneParams,
-                    contours,
-                )
-                mesh = await shrec.export(sampleGridShaderModule)
-            } else if (exporter === "isoSimplicial") {
-                const isoT = { ...DEFAULT_ISO_SIMPLICIAL_TUNING, ...isoSimplicialTuning }
-                log("IsoSimplicialExport").info(`handleRenderMesh: dispatching iso-simplicial, tuning=${JSON.stringify(isoT)}`)
-                const tIso0 = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
-                const isoCompiler = new ShaderCompiler(this.#device)
-                    .replace("insert", "sceneAuxFast", sceneAuxFast)
-                    .replace("insert", "sceneAux", sceneAux)
-                    .replace("insert", "sceneAuxMid", sceneAuxMid)
-                    .replace("insert", "sceneSDF", sceneSDF)
-                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-                const isoSampleModule = isoCompiler.compile(isoSampleBatchShaderSource, "Iso sample batch")
-                const isoBatch = new IsoSampleBatch(
-                    this.#helper,
-                    this.#uniformBuffers.polygonVertices,
-                    this.#uniformBuffers.faceSelection,
-                    this.#uniformBuffers.mdcSceneParams,
-                )
-                // `import.meta.url` here resolves to the render-worker bundle (`/render-worker.js`),
-                // and the QEF worker is emitted at its source-tree path under dist.
-                const qefWorkerUrl = new URL("./export/iso-simplicial/iso-qef-worker.js", import.meta.url)
-                const navAny = (globalThis as { navigator?: { hardwareConcurrency?: number } }).navigator
-                const hwCores = navAny?.hardwareConcurrency ?? 4
-                const qefWorkerCount = Math.max(1, Math.min(8, hwCores - 1))
-                let qefWorkerPool: QefWorkerPool | undefined
-                // QEF worker pool requires SharedArrayBuffer for zero-copy batch I/O; that needs
-                // cross-origin isolation (COOP+COEP). Skip pool construction entirely when SAB is
-                // missing so iso-simplicial falls back cleanly to inline QEF on this thread.
-                if (typeof SharedArrayBuffer === "undefined") {
-                    log("IsoSimplicialExport").warn(
-                        "SharedArrayBuffer unavailable (no cross-origin isolation); using inline QEF",
-                    )
-                    qefWorkerPool = undefined
-                } else {
-                    try {
-                        qefWorkerPool = new QefWorkerPool({ workerUrl: qefWorkerUrl, workerCount: qefWorkerCount })
-                    } catch (e) {
-                        log("IsoSimplicialExport").warn("QefWorkerPool unavailable, falling back to inline QEF", e)
-                        qefWorkerPool = undefined
-                    }
-                }
-                try {
-                    const cube = worldBoundsCube()
-                    const MIN_DEPTH_FLOOR = 3
-                    const effectiveDepthMax =
-                        typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ?
-                            Math.max(MIN_DEPTH_FLOOR, isoT.depthMax)
-                        :   IsoSimplicialConstants.depthMax
-                    // Representative scale for inserted scene SDF code that references
-                    // `uniforms.voxelSize` (Lathe/Loft epsilons): finest octree cell size.
-                    const isoBatchVoxelSize = (cube.max[0] - cube.min[0]) / Math.pow(2, effectiveDepthMax)
-                    const sampleFn = createIsoOctreeSampleFn(isoBatch, isoSampleModule, isoBatchVoxelSize)
-                    const constOverrides = {
-                        ...(typeof isoT.depthMin === "number" && Number.isFinite(isoT.depthMin) ?
-                            { depthMin: Math.max(MIN_DEPTH_FLOOR, isoT.depthMin) }
-                        :   {}),
-                        ...(typeof isoT.depthMax === "number" && Number.isFinite(isoT.depthMax) ?
-                            { depthMax: Math.max(MIN_DEPTH_FLOOR, isoT.depthMax) }
-                        :   {}),
-                        ...(typeof isoT.oversampleQef === "number" && Number.isFinite(isoT.oversampleQef) ?
-                            { oversampleQef: isoT.oversampleQef }
-                        :   {}),
-                        ...(typeof isoT.dualVertexBorderFraction === "number" && Number.isFinite(isoT.dualVertexBorderFraction) ?
-                            { dualVertexBorderFraction: isoT.dualVertexBorderFraction }
-                        :   {}),
-                        ...(typeof isoT.findRootDepth === "number" && Number.isFinite(isoT.findRootDepth) ?
-                            { findRootDepth: isoT.findRootDepth }
-                        :   {}),
-                        ...((
-                            typeof isoT.qefRelativeErrorRefineThreshold === "number" &&
-                            Number.isFinite(isoT.qefRelativeErrorRefineThreshold)
-                        ) ?
-                            { qefRelativeErrorRefineThreshold: isoT.qefRelativeErrorRefineThreshold }
-                        :   {}),
-                    }
-                    const featureRefineMode = isoT.featureRefineMode ?? "off"
-                    // FG plumbing: build the FeatureGraph at the iso-simplicial finest-cell
-                    // size (NOT `voxelSizeMm`, which is the SHREC grid size). The spatial
-                    // index's cell granularity then matches the deepest octree cells, so
-                    // per-cell FG queries return tight results. Only do this when the user
-                    // has enabled FG-plane injection — building the FG is a few async GPU
-                    // dispatches we don't want to pay when the flag is off.
-                    const fgEnabled = isoT.featureGraphPlanesEnabled === true
-                    const fgResult = fgEnabled ? await this.#buildFeatureGraph(this.#scene!, isoBatchVoxelSize) : null
-                    const fgPlaneFields: Pick<
-                        IsoFeatureRefineOptions,
-                        "fgPlaneEnabled" | "fgPlaneDistFactor" | "fgEdgeFacePlanes" | "featureGraphCpu" | "featureGraphWorldPositions" | "featureGraphSpatialIndex"
-                    > = fgEnabled && fgResult
-                        ? {
-                            fgPlaneEnabled: true,
-                            fgPlaneDistFactor:
-                                typeof isoT.featureGraphPlaneDistFactor === "number" &&
-                                Number.isFinite(isoT.featureGraphPlaneDistFactor) &&
-                                isoT.featureGraphPlaneDistFactor >= 0
-                                    ? isoT.featureGraphPlaneDistFactor
-                                    : 0,
-                            fgEdgeFacePlanes: isoT.featureGraphEdgeFacePlanes === true,
-                            featureGraphCpu: fgResult.cpu,
-                            featureGraphWorldPositions: fgResult.worldPositions,
-                            featureGraphSpatialIndex: fgResult.spatialIndex,
-                        }
-                        : {}
-                    const featureRefine: IsoFeatureRefineOptions | undefined = featureRefineMode === "off"
-                        ? (fgEnabled && fgResult ? { mode: "off", proximityFactor: 2.0, ...fgPlaneFields } : undefined)
-                        : {
-                            mode: featureRefineMode,
-                            proximityFactor:
-                                typeof isoT.featureRefineProximityFactor === "number" &&
-                                Number.isFinite(isoT.featureRefineProximityFactor) &&
-                                isoT.featureRefineProximityFactor > 0
-                                    ? isoT.featureRefineProximityFactor
-                                    : 2.0,
-                            sampleMidFeature: createIsoOctreeMidFeatureSampleFn(
-                                isoBatch, isoSampleModule, isoBatchVoxelSize,
-                            ),
-                            planeEnabled: isoT.featurePlaneEnabled === true,
-                            planeDistFactor:
-                                typeof isoT.featurePlaneDistFactor === "number" &&
-                                Number.isFinite(isoT.featurePlaneDistFactor) &&
-                                isoT.featurePlaneDistFactor > 0
-                                    ? isoT.featurePlaneDistFactor
-                                    : 1.0,
-                            ...fgPlaneFields,
-                        }
-                    const tree = await IsoOctree.build({
-                        sample: sampleFn,
-                        bounds: { min: cube.min, max: cube.max },
-                        constants: Object.keys(constOverrides).length > 0 ? constOverrides : undefined,
-                        qefWorkerPool,
-                        featureRefine,
-                    })
-                    const tIsoOct = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
-                    const worldB = {
-                        min: cube.min as readonly [number, number, number],
-                        max: cube.max as readonly [number, number, number],
-                    }
-                    if (isoT.phase5Snap) {
-                        mesh = await extractIsoSimplicialMeshAsync(tree, {
-                            worldBounds: worldB,
-                            phase5: { enabled: true, sample: sampleFn },
-                        })
-                    } else {
-                        mesh = extractIsoSimplicialMesh(tree, { worldBounds: worldB })
-                    }
-                    const tIso1 = globalThis.performance?.now ? globalThis.performance.now() : Date.now()
-                    const r1 = (n: number) => Math.round(n * 10) / 10
-                    const bp = tree.buildPerf
-                    log("IsoSimplicialExport").info("iso-simplicial export complete", {
-                        treeCellCount: tree.treeCellCount,
-                        triCount: mesh.tris.length / 3,
-                        octreeMs: Math.round((tIsoOct - tIso0) * 1000) / 1000,
-                        totalMs: Math.round((tIso1 - tIso0) * 1000) / 1000,
-                        buildPerf: {
-                            frontiers: bp.frontierCount,
-                            cellsPerFrontier: bp.cellsPerFrontier,
-                            wallMs: r1(bp.totalWallMs),
-                            phase1GpuMs: r1(bp.phase1SampleMs),
-                            phase2GpuMs: r1(bp.phase2SampleMs),
-                            midGpuMs: r1(bp.midSampleMs),
-                            nearFeatureGpuMs: r1(bp.nearFeatureSampleMs),
-                            qefCpuMs: r1(bp.qefMs),
-                            otherCpuMs: r1(bp.otherCpuMs),
-                            extractMs: r1((tIso1 - tIsoOct)),
-                            qefWorkers: qefWorkerPool?.workerCount ?? 0,
-                        },
-                        boundsPaddingMm: pad,
-                        depthMin: constOverrides.depthMin ?? IsoSimplicialConstants.depthMin,
-                        depthMax: constOverrides.depthMax ?? IsoSimplicialConstants.depthMax,
-                        oversampleQef: constOverrides.oversampleQef ?? IsoSimplicialConstants.oversampleQef,
-                    })
-                } finally {
-                    isoBatch.destroy()
-                    qefWorkerPool?.destroy()
-                }
-            } else {
-                const params: MDCParams = {
-                    gridDimX,
-                    gridDimY,
-                    gridDimZ,
-                    isoValue: levers.isoValue,
-                    gridOffsetX: minX,
-                    gridOffsetY: minY,
-                    gridOffsetZ: minZ,
-                    voxelSize: voxelSizeMm,
-                    creaseAngleDeg: levers.creaseAngleDeg,
-                    featureConstrainedPlacement: levers.featureConstrainedPlacement,
-                }
-                const mdcCompiler = new ShaderCompiler(this.#device)
-                    .replace("insert", "sceneAuxFast", sceneAuxFast)
-                    .replace("insert", "sceneAux", sceneAux)
-                    .replace("insert", "sceneAuxMid", sceneAuxMid)
-                    .replace("insert", "sceneSDF_fast", sceneSDF_fast)
-                    .replace("insert", "sceneSDF", sceneSDF)
-                    .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-                const mdcShaderModule = mdcCompiler.compile(mdcShader, "MDC Export")
-                const mdc = new MDCExport(
-                    this.#helper,
-                    params,
-                    this.#uniformBuffers.polygonVertices,
-                    this.#uniformBuffers.faceSelection,
-                    this.#uniformBuffers.mdcSceneParams,
-                )
-                mesh = await mdc.export(mdcShaderModule)
+                throw err
             }
 
             // Unified mesh post-passes for **both** MDC and SHREC: optional QEM

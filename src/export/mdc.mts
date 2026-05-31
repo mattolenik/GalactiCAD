@@ -3,6 +3,9 @@ import { log as dbgLog } from "../logging/debug-log.mjs"
 import { MeshData } from "./export.mjs"
 import { splitCreaseVertices } from "./crease-split.mjs"
 import { exportStlAscii } from "./stl.mjs"
+import mdcShader from "../shaders/mdc.wgsl"
+import type { MeshExporter } from "./mesh-exporter.mjs"
+import { MDC_DISPLAY_NAME, DEFAULT_MDC_TUNING, normalizeMdcTuning, type MdcTuning } from "./mdc-tuning.mjs"
 
 /**
  * Represents a 3D vertex with position and normal.
@@ -1039,6 +1042,42 @@ export class MDCExport {
             logDiag("GPU cleanup (buffers destroyed, pass lists cleared)")
         }
     }
+}
+
+/**
+ * The MDC mesh exporter: Manifold Dual Contouring entirely on the GPU. Sizes a
+ * uniform grid from `tuning.voxelSizeMm`, compiles the MDC shader against the
+ * scene, and runs {@link MDCExport}. Honors `ctx.signal` via the export's
+ * cancellation buffer.
+ */
+export const mdcExporter: MeshExporter<MdcTuning> = {
+    displayName: MDC_DISPLAY_NAME,
+    defaultTuning: DEFAULT_MDC_TUNING,
+    normalizeTuning: normalizeMdcTuning,
+    async run(ctx, tuning) {
+        const grid = ctx.computeUniformGrid(tuning.voxelSizeMm)
+        const params: MDCParams = {
+            ...grid,
+            isoValue: tuning.isoValue,
+            voxelSize: tuning.voxelSizeMm,
+            creaseAngleDeg: tuning.creaseAngleDeg,
+            featureConstrainedPlacement: tuning.featureConstrainedPlacement,
+        }
+        const mdcShaderModule = ctx.makeSceneCompiler().compile(mdcShader, "MDC Export")
+        const mdc = new MDCExport(
+            ctx.helper,
+            params,
+            ctx.uniformBuffers.polygonVertices,
+            ctx.uniformBuffers.faceSelection,
+            ctx.uniformBuffers.mdcSceneParams,
+        )
+        return mdc.export(mdcShaderModule, {
+            updateProgress() {},
+            get cancelled() {
+                return ctx.signal.aborted
+            },
+        })
+    },
 }
 
 

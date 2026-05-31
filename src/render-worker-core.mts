@@ -2900,22 +2900,21 @@ export class RenderWorkerCore {
         this.#writeClickState(clickUV, false, true, clickUV)
         this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, ZERO_EDGE_HITS)
 
-        // The hover render only exists to atomically write `clickedObjectId`
-        // from the fragment shader at the cursor pixel. The picked ID
-        // doesn't depend on shading or surface precision, so we drop
-        // ray-march quality to a small fixed budget. On heavy scenes this
-        // turns ~100 ms hover renders into ~25 ms, which directly shrinks
-        // the "stuck at drag-start" latency (the GPU has to finish any
-        // in-flight hover render before motion-render commands execute).
-        this.#hoverPickQualityOverride = { maxSteps: 80, maxBeamSteps: 40, hitRefineSteps: 0 }
-        try {
-            if (sab) {
-                this.#renderFromSAB(sab)
-            } else {
-                this.render(this.#lastRenderMsg!)
-            }
-        } finally {
-            this.#hoverPickQualityOverride = null
+        // Hover renders share the canvas target with the normal preview
+        // path — so whatever quality this render uses is what the user
+        // sees on screen until the next main-thread-initiated render. An
+        // earlier attempt to drop ray-march quality here (to reduce the
+        // "stuck at drag-start" delay on heavy scenes) caused visible
+        // degradation while hovering, because the canvas was constantly
+        // being repainted at hover-quality between user actions.
+        //
+        // The right fix is a tiny compute-shader pick that doesn't write
+        // to the canvas. Until that lands, use the same quality the SAB
+        // carries for this frame — visible quality matches user settings.
+        if (sab) {
+            this.#renderFromSAB(sab)
+        } else {
+            this.render(this.#lastRenderMsg!)
         }
         const selectionMode =
             sab ?
@@ -3293,23 +3292,11 @@ export class RenderWorkerCore {
         if (this.#canvas.height !== targetHeight) this.#canvas.height = Math.max(1, targetHeight)
     }
 
-    /**
-     * Temporary override applied by {@link handleHover} so its forced scene
-     * render uses cheap pick-only quality (cuts ~70-80% of fragment cost
-     * on heavy scenes). The picked object ID written by the fragment
-     * shader's atomic doesn't depend on surface precision, so we can
-     * strip maxSteps/maxBeamSteps/hitRefineSteps without affecting the
-     * pick result. Restored to `null` immediately after the render so
-     * the next interactive frame uses the real per-frame params from SAB.
-     */
-    #hoverPickQualityOverride: { maxSteps: number; maxBeamSteps: number; hitRefineSteps: number } | null = null
-
     /** Compare src view with cache; if different, write to GPU and update cache. Returns true if wrote. */
     #uploadRayMarchParams(params: RayMarchParams): void {
-        const o = this.#hoverPickQualityOverride
-        this.#rayMarchParamsI32[0] = o ? o.maxSteps : params.maxSteps
-        this.#rayMarchParamsI32[1] = o ? o.maxBeamSteps : params.maxBeamSteps
-        this.#rayMarchParamsI32[2] = o ? o.hitRefineSteps : params.hitRefineSteps
+        this.#rayMarchParamsI32[0] = params.maxSteps
+        this.#rayMarchParamsI32[1] = params.maxBeamSteps
+        this.#rayMarchParamsI32[2] = params.hitRefineSteps
         this.#rayMarchParamsI32[3] = 0
         this.#rayMarchParamsF32[4] = params.maxDist
         this.#rayMarchParamsF32[5] = params.rayOriginDepth

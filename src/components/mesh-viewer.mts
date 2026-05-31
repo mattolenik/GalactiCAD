@@ -57,6 +57,10 @@ export class MeshViewer extends HTMLElement {
     #debugOverlayCanvas: HTMLCanvasElement
     #debugOverlayCtx: CanvasRenderingContext2D | null
     #hoverCanvasPos: { x: number; y: number } | null = null
+    /** Bottom-left mesh-export progress spinner (shown while a re-export is in flight). */
+    #exportSpinner!: HTMLDivElement
+    /** Visible region (excludes editor overlay); used to keep the spinner clear of the editor. */
+    #getInteractionRect?: () => DOMRect
     #mdcDebug = false
     /** Per-class feature glyph overlay toggles (MDC debug). */
     #mdcFeatureGlyphLine = false
@@ -97,6 +101,23 @@ export class MeshViewer extends HTMLElement {
     setViewCenter(x: number, y: number): void {
         this.#viewCenter = vec2(x, y)
         this.#controls.setViewCenter(x, y)
+    }
+
+    /**
+     * Show/hide the bottom-left mesh-export progress spinner. When showing,
+     * positions it at the left edge of the visible (non-editor) viewport so it
+     * clears the editor overlay.
+     */
+    setExportSpinning(visible: boolean): void {
+        if (visible) {
+            let left = 0
+            if (this.#getInteractionRect) {
+                const canvasRect = this.canvas.getBoundingClientRect()
+                left = Math.max(0, this.#getInteractionRect().left - canvasRect.left)
+            }
+            this.#exportSpinner.style.setProperty("--export-spinner-left", `${left}px`)
+        }
+        this.#exportSpinner.style.visibility = visible ? "visible" : "hidden"
     }
 
     /**
@@ -151,6 +172,21 @@ export class MeshViewer extends HTMLElement {
             pointer-events: none;
             z-index: 0;
         }
+        .export-spinner {
+            position: absolute;
+            bottom: 10px;
+            left: calc(10px + var(--export-spinner-left, 0px));
+            pointer-events: none;
+            z-index: 1;
+            visibility: hidden;
+        }
+        .export-spinner svg {
+            display: block;
+            animation: mesh-export-spin 0.8s linear infinite;
+        }
+        @keyframes mesh-export-spin {
+            to { transform: rotate(360deg); }
+        }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"
@@ -161,7 +197,18 @@ export class MeshViewer extends HTMLElement {
         this.#debugOverlayCanvas.style.width = "100%"
         this.#debugOverlayCanvas.style.height = "100%"
         this.#debugOverlayCtx = this.#debugOverlayCanvas.getContext("2d")
-        shadow.append(style, this.canvas, this.#debugOverlayCanvas)
+
+        // Mesh-export progress spinner: inline SVG ring with one rotating arc.
+        this.#getInteractionRect = getInteractionRect
+        this.#exportSpinner = document.createElement("div")
+        this.#exportSpinner.className = "export-spinner"
+        this.#exportSpinner.innerHTML =
+            `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">` +
+            `<circle cx="12" cy="12" r="9" fill="none" stroke="rgb(from var(--fg-color, whitesmoke) r g b / 0.2)" stroke-width="3"/>` +
+            `<path d="M12 3 a9 9 0 0 1 9 9" fill="none" stroke="rgb(from var(--fg-color, whitesmoke) r g b / 0.8)" stroke-width="3" stroke-linecap="round"/>` +
+            `</svg>`
+
+        shadow.append(style, this.canvas, this.#debugOverlayCanvas, this.#exportSpinner)
 
         this.setAttribute("translucentFaces", this.#translucentFaces ? "true" : "false")
         this.setAttribute("wireframe", this.#wireframe ? "true" : "false")

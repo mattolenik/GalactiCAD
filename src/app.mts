@@ -1657,6 +1657,7 @@ class App {
 
         const token = ++this.#meshUpdateToken
         this.#meshUpdateTimer = window.setTimeout(async () => {
+            this.#mesh?.setExportSpinning(true)
             try {
                 const documentName = this.#tabs.active
                 const options = this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools)
@@ -1670,6 +1671,10 @@ class App {
             } catch (err) {
                 // Mesh generation failing shouldn't break the live SDF preview.
                 debugLog("App").error("Mesh update failed:", err)
+            } finally {
+                // Only the latest request owns the spinner; a superseded export
+                // must not hide a spinner a newer in-flight export still needs.
+                if (token === this.#meshUpdateToken) this.#mesh?.setExportSpinning(false)
             }
         }, MESH_UPDATE_DEBOUNCE_MS)
     }

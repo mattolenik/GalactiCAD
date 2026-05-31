@@ -1192,6 +1192,10 @@ class App {
         devTools.onRayMarchParamsChange = (params) => {
             this.renderer.setRayMarchParams(params)
         }
+        // Push ray-march params restored from persisted dev-tools state into the
+        // renderer once, since #restoreRayMarchParams updates the inputs but does
+        // not fire onRayMarchParamsChange.
+        this.renderer.setRayMarchParams(devTools.rayMarchParams)
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
             previewNormalShadingToggle.checked = this.renderer.previewNormalShading

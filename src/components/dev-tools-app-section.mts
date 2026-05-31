@@ -41,6 +41,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #fgOverlay$: BehaviorSubject<boolean>
     #stepHeatmap$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
+    #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
     #subscriptions: Subscription[] = []
 
     onCameraOptimizationChange?: (enabled: boolean) => void
@@ -56,6 +57,10 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
 
     set showFps(v: boolean) {
         this.#showFps$.next(v)
+    }
+
+    get rayMarchParams(): RayMarchParams {
+        return { ...this.#rayMarchState }
     }
 
     get cameraOptimization(): boolean {
@@ -238,7 +243,9 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
                 if (!Number.isFinite(v)) return
                 ;(this.#rayMarchState[k.key] as number) = v
                 this.onRayMarchParamsChange?.({ ...this.#rayMarchState })
+                persist()
             })
+            this.#rayMarchInputs.set(k.key, input)
             row.append(lab, input)
             perfBox.appendChild(row)
         }
@@ -345,6 +352,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             showFps: this.#showFps$.value,
             meshViewerEnabled: this.#meshViewer$.value,
             meshSimplifyOnExport: this.#meshSimplify$.value,
+            rayMarchParams: { ...this.#rayMarchState },
         }
     }
 
@@ -355,8 +363,29 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             this.#showFps$.next(asBool(state.showFps, asBool(d.showFps, true)))
             this.#meshViewer$.next(asBool(state.meshViewerEnabled, asBool(d.meshViewerEnabled, false)))
             this.#meshSimplify$.next(asBool(state.meshSimplifyOnExport, asBool(d.meshSimplifyOnExport, false)))
+            this.#restoreRayMarchParams(state.rayMarchParams)
         } finally {
             this.#applying = false
+        }
+    }
+
+    /**
+     * Merge a persisted `rayMarchParams` snapshot into `#rayMarchState`, clamping
+     * each field to a finite number and falling back to the default when missing
+     * or invalid. Updates the visible inputs but does not fire
+     * `onRayMarchParamsChange` — the caller (app.mts) reads `rayMarchParams` after
+     * wiring and pushes it to the renderer once.
+     */
+    #restoreRayMarchParams(raw: JSONValue | undefined): void {
+        const incoming = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, JSONValue>) : {}
+        const next: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
+        for (const key of Object.keys(next) as (keyof RayMarchParams)[]) {
+            const v = incoming[key]
+            if (typeof v === "number" && Number.isFinite(v)) next[key] = v
+        }
+        this.#rayMarchState = next
+        for (const [key, input] of this.#rayMarchInputs) {
+            input.value = String(next[key])
         }
     }
 

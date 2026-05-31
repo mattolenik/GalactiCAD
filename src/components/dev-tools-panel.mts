@@ -199,6 +199,11 @@ export class DevToolsPanel extends HTMLElement {
         return this.#flexicubesExportSection.flexicubesTuning
     }
 
+    /** Current ray-march params (restored from persisted dev-tools state on load). */
+    get rayMarchParams(): RayMarchParams {
+        return this.#appSection.rayMarchParams
+    }
+
     get simplifyTuning(): SimplifyTuning {
         return this.#meshSimplifySection.simplifyTuning
     }

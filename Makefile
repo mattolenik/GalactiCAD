@@ -100,14 +100,16 @@ _stop:
 			echo "Stopping server PID $$pid on port $$port"
 			kill -TERM $$pid && rm -f "$(RUN_FILE)" || true
 		else
-			echo "No server running with PID $$pid, skipping"
+			echo "WARNING: No server running with PID $$pid, stale run file"
 		fi
-	else
-		echo "No server found at $(RUN_FILE), skipping"
 	fi
 
 .PHONY: stop
 stop: stop-browser stop-agent
+
+.PHONY: kill-agent-browsers
+kill-agent-browsers: stop-agent
+	pkill -f '$(PWD)/\.browsers' || true
 
 .PHONY: restart
 restart: stop start
@@ -123,7 +125,7 @@ release: export PRODUCTION=1
 release: build test
 
 .PHONY: clean
-clean: stop
+clean: stop kill-agent-browsers
 	rm -rf $(DIST)
 	rm -f .devserver*log
 

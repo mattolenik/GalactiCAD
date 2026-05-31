@@ -78,7 +78,7 @@ import {
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
 import { log, logWgsl } from "./logging/debug-log.mjs"
-import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset } from "./shared-render-buffer.mjs"
+import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset, SLOT_SIZE } from "./shared-render-buffer.mjs"
 
 if (!isoSampleBatchShaderSource.includes("fn isoSampleBatch") || !isoSampleBatchShaderSource.includes("fn isoSampleBatchMid")) {
     throw new Error("iso_sample_batch.wgsl failed to bundle for render worker")
@@ -133,7 +133,6 @@ class UniformBuffers {
     selectedObjectIds!: GPUBuffer
     colorPalette!: GPUBuffer
     viewSettings!: GPUBuffer
-    outlineSettings!: GPUBuffer
     selectionStyles!: GPUBuffer
     polygonVertices!: GPUBuffer
     clickedHitPos!: GPUBuffer
@@ -239,10 +238,8 @@ export class RenderWorkerCore {
     #buildLock: Promise<void> = Promise.resolve()
     #compiledPosY = new Map<number, number>()
     #colorTexture!: GPUTexture
-    #idTexture!: GPUTexture
     #tStartTexture!: GPUTexture
     #colorTextureView!: GPUTextureView
-    #idTextureView!: GPUTextureView
     #tStartTextureView!: GPUTextureView
     #bindGroup?: GPUBindGroup
     #beamBindGroup?: GPUBindGroup
@@ -257,11 +254,9 @@ export class RenderWorkerCore {
     #lightDirBuf = new Float32Array(12)
     #viewSettingsBuf = new Uint32Array(4)
     #selDataBuf = new Uint32Array(1024)
-    #outlineBuf = new ArrayBuffer(48)
-    #outlineU32 = new Uint32Array(this.#outlineBuf, 0, 1)
-    #outlineThicknessF32 = new Float32Array(this.#outlineBuf, 4, 1)
-    #outlineColorF32 = new Float32Array(this.#outlineBuf, 16, 3)
-    #outlineWidthF32 = new Float32Array(this.#outlineBuf, 28, 1)
+    // OutlineSettings CPU mirrors removed — selection rendering moved
+    // inline into preview.wgsl, so the post-process pass has no per-frame
+    // uniforms to upload.
     #selectionStylesBuf = new ArrayBuffer(80)
     #selectionStylesF32 = new Float32Array(this.#selectionStylesBuf)
     #edgeHeaderBuf = new ArrayBuffer(SELECTED_EDGES_HEADER)
@@ -273,7 +268,6 @@ export class RenderWorkerCore {
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
     #cameraCache = new ArrayBuffer(256)
     #viewSettingsCache = new ArrayBuffer(16)
-    #outlineCache = new ArrayBuffer(48)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
@@ -299,6 +293,22 @@ export class RenderWorkerCore {
     #sabStagingBuf = new ArrayBuffer(4096)
     #lastRenderMsg: Extract<MainToWorkerMessage, { type: "render" }> | null = null
     #lastSharedBuffer: SharedArrayBuffer | null = null
+    /**
+     * Hash (FNV-1a, u32) of the SAB slot bytes the worker most recently
+     * rendered from. `#renderFromSAB` short-circuits when the freshly
+     * published slot hashes to the same value AND `#forceNextRender` is
+     * unset — catches main-thread version bumps that didn't actually
+     * change any render-relevant state.
+     */
+    #lastRenderedSabHash = 0
+    /**
+     * Force the next frame to render even if its SAB hash matches the
+     * previous one. Set by async worker-side state changes that don't go
+     * through SAB (FeatureGraph overlay vertex/index upload; overlay/heatmap
+     * toggles; pipeline rebuild). Reset to `false` after each rendered frame.
+     * Starts `true` so the very first frame always renders.
+     */
+    #forceNextRender = true
     /** CPU mirrors for preview param banks: `#uploadBuildBuffers` syncs packed arrays into shadows and uploads used prefixes. */
     #previewF32Shadow!: Float32Array
     #previewVec2Shadow!: Float32Array
@@ -495,13 +505,20 @@ export class RenderWorkerCore {
      * convention).
      */
     setStepHeatmapEnabled(enabled: boolean): void {
+        if (this.#stepHeatmapEnabled === enabled) return
         this.#stepHeatmapEnabled = enabled
+        // Worker-internal state change — SAB hasn't moved, but the rendered
+        // output would differ, so the SAB-hash idle skip needs a one-shot
+        // override to actually pick this up on the next render kick.
+        this.#forceNextRender = true
     }
 
     /** Toggle the FeatureGraph debug overlay. Renders alive crease/corner edges over the scene. */
     setFeatureGraphOverlayEnabled(enabled: boolean): void {
         const wasEnabled = this.#featureGraphOverlayEnabled
+        if (wasEnabled === enabled) return
         this.#featureGraphOverlayEnabled = enabled
+        this.#forceNextRender = true
         // Enabling mid-session: lazily kick a build against the current scene
         // so the overlay populates without waiting for the next source edit.
         if (!wasEnabled && enabled && this.#scene && this.#builtStructuralFingerprint) {
@@ -570,6 +587,10 @@ export class RenderWorkerCore {
             const tBuf0 = performance.now()
             this.#compiledPosY = newCompiledPosY
             this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
+            // Param-only built: preview uniform banks were re-uploaded with
+            // new values, so the next render's pixels would differ even if
+            // the SAB hasn't bumped yet. Defeat the idle-skip hash gate.
+            this.#forceNextRender = true
             // FG build runs in the background after buildComplete is posted —
             // it stalls on a GPU readback (mapAsync) that used to add tens of
             // ms to every slider-tick. The overlay refreshes a frame or two
@@ -661,7 +682,12 @@ export class RenderWorkerCore {
                     fragment: {
                         module: nextShader,
                         entryPoint: "fragmentMain",
-                        targets: [{ format: this.#format }, { format: "r32uint" as GPUTextureFormat }],
+                        // Single target: the canvas swapchain. The previous
+                        // r32uint object-ID attachment fed the old outline
+                        // post-process pass which is gone; click picking
+                        // uses the `clickedObjectId` atomic written from
+                        // inside the fragment shader.
+                        targets: [{ format: this.#format }],
                     },
                     primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
                 }),
@@ -698,6 +724,9 @@ export class RenderWorkerCore {
         this.#beamPipeline = beamPipeline
         this.#sceneShader = nextShader
         this.#builtStructuralFingerprint = fingerprint
+        // New pipeline + uploaded buffers — defeat the SAB-hash idle skip so
+        // the next render actually picks up the freshly compiled shader.
+        this.#forceNextRender = true
 
         // Write GPU buffers only after the new pipeline is ready so the old pipeline
         // continues rendering with the correct drag-time preview cap slots (posYDelta != 0)
@@ -928,6 +957,10 @@ export class RenderWorkerCore {
             this.#featureGraphOverlay = new FeatureGraphOverlay(this.#helper, this.#format)
         }
         this.#featureGraphOverlay.upload(result.cpu, result.worldPositions)
+        // Worker-internal state change (vertex/index buffers were uploaded)
+        // — defeat the SAB-hash idle skip so the next render actually
+        // composites the new overlay geometry.
+        this.#forceNextRender = true
         return result
     }
 
@@ -1108,6 +1141,9 @@ export class RenderWorkerCore {
         // and `render()` set it to the current scene render resolution each
         // frame (via `#resizeCanvasIfNeeded`) so the browser CSS handles
         // halfres → display upsample for free.
+        // Resize changes the canvas/texture geometry, so the next render
+        // must actually fire even if the SAB hash hasn't moved yet.
+        this.#forceNextRender = true
     }
 
     render(
@@ -1170,20 +1206,9 @@ export class RenderWorkerCore {
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
 
-        // Selection rendering moved inline into the SDF scene shader
-        // (`fragmentMain` + `shadeHit` in preview.wgsl). The post-process
-        // pass is now a pure blit; outline-mode upload is preserved for
-        // protocol compatibility but the shader ignores it.
-        this.#outlineU32[0] = viewSettings.outlineMode
-        this.#outlineThicknessF32[0] = viewSettings.outlineThickness
-        this.#outlineColorF32.set(viewSettings.outlineColor)
-        this.#outlineWidthF32[0] = outputTextureView ? sceneWidth : this.#fullWidth
-        const outline = DEFAULT_SELECTION_STYLES.outline
-        new Float32Array(this.#outlineBuf, 32, 1)[0] = outline.dashSpacing
-        new Float32Array(this.#outlineBuf, 36, 1)[0] = outline.dashLength
-        new Float32Array(this.#outlineBuf, 40, 1)[0] = outline.dotSizeMin
-        new Float32Array(this.#outlineBuf, 44, 1)[0] = outline.dotSpacingMultiplier
-        this.#writeBufferViewIfDirty(this.#uniformBuffers.outlineSettings, new Uint8Array(this.#outlineBuf), this.#outlineCache)
+        // OutlineSettings upload removed — the outline shader is now a pure
+        // blit and reads none of these fields. Selection rendering lives
+        // inline in preview.wgsl.
 
         const ss = viewSettings.selectionStyles
         const def = DEFAULT_SELECTION_STYLES
@@ -1269,10 +1294,7 @@ export class RenderWorkerCore {
         // caller-supplied target.
         const sceneColorView = outputTextureView ? this.#colorTextureView : outlineTarget
         const scenePass = commandEncoder.beginRenderPass({
-            colorAttachments: [
-                { view: sceneColorView, loadOp: "clear", storeOp: "store" },
-                { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xffffffff, g: 0, b: 0, a: 0 } },
-            ],
+            colorAttachments: [{ view: sceneColorView, loadOp: "clear", storeOp: "store" }],
             timestampWrites: this.#timestampWritesFor("scene"),
         })
         scenePass.setPipeline(this.#pipeline)
@@ -1327,6 +1349,29 @@ export class RenderWorkerCore {
     }
 
     #renderFromSAB(buffer: SharedArrayBuffer): void {
+        const slot = getPublishedRenderSlot(buffer)
+        const slotBase = getSlotByteOffset(slot)
+
+        // Idle short-circuit: hash the active slot bytes and bail out when
+        // the result matches what we last rendered (and nothing forced a
+        // refresh). Catches the case where the SAB version was bumped but
+        // no render-relevant state actually changed. FNV-1a on u32 words —
+        // SLOT_SIZE / 4 ≈ 1745 iterations, well under 100 µs on typical
+        // hardware vs the 35 ms+ frame we're skipping.
+        const slotU32View = new Uint32Array(buffer, slotBase, SLOT_SIZE / 4)
+        let hash = 2166136261
+        for (let i = 0; i < slotU32View.length; i++) {
+            hash = Math.imul(hash ^ slotU32View[i]!, 16777619)
+        }
+        if (hash === this.#lastRenderedSabHash && !this.#forceNextRender) {
+            // Identical to last rendered frame — skip GPU work entirely.
+            // The swapchain texture still holds the previous frame's
+            // pixels, which is exactly what the user should see.
+            return
+        }
+        this.#lastRenderedSabHash = hash
+        this.#forceNextRender = false
+
         const now = performance.now()
         if (this.#lastRenderTime > 0) {
             const delta = now - this.#lastRenderTime
@@ -1344,8 +1389,6 @@ export class RenderWorkerCore {
         }
         this.#lastRenderTime = now
 
-        const slot = getPublishedRenderSlot(buffer)
-        const slotBase = getSlotByteOffset(slot)
         const L = SAB_LAYOUT
         const u32 = new Uint32Array(buffer)
         const f32 = new Float32Array(buffer)
@@ -1424,23 +1467,10 @@ export class RenderWorkerCore {
             rayOriginDepth: new Float32Array(buffer, rmBase + 20, 1)[0],
         })
 
-        // Selection rendering moved inline into the SDF scene shader
-        // (`fragmentMain` + `shadeHit` in preview.wgsl): boundary outline via
-        // `fwidth(selFloat)` plus the existing object tint. The post-process
-        // pass is now a pure blit; outline-mode upload is preserved for
-        // protocol compatibility but the shader ignores it.
-        this.#outlineU32[0] = (packed >> 5) & 3
-        this.#outlineThicknessF32[0] = u32[b4 + L.O_OUTLINE_THICKNESS / 4]
-        this.#outlineColorF32[0] = f32[b4 + L.O_OUTLINE_COLOR / 4]
-        this.#outlineColorF32[1] = f32[b4 + L.O_OUTLINE_COLOR / 4 + 1]
-        this.#outlineColorF32[2] = f32[b4 + L.O_OUTLINE_COLOR / 4 + 2]
-        this.#outlineWidthF32[0] = this.#fullWidth
-        const outline = DEFAULT_SELECTION_STYLES.outline
-        new Float32Array(this.#outlineBuf, 32, 1)[0] = outline.dashSpacing
-        new Float32Array(this.#outlineBuf, 36, 1)[0] = outline.dashLength
-        new Float32Array(this.#outlineBuf, 40, 1)[0] = outline.dotSizeMin
-        new Float32Array(this.#outlineBuf, 44, 1)[0] = outline.dotSpacingMultiplier
-        this.#writeBufferViewIfDirty(this.#uniformBuffers.outlineSettings, new Uint8Array(this.#outlineBuf), this.#outlineCache)
+        // OutlineSettings upload removed — the outline shader is now a pure
+        // blit and reads none of these fields. Selection rendering lives
+        // inline in preview.wgsl (boundary outline via `fwidth(selFloat)` +
+        // the existing object tint).
 
         const def = DEFAULT_SELECTION_STYLES
         const so = L.O_SELECTION_STYLES / 4
@@ -1527,17 +1557,12 @@ export class RenderWorkerCore {
             beamPass.end()
         }
 
-        // Scene pipeline has two color targets (color + objectId). Color
-        // goes straight to the canvas swapchain (which is sized to match
-        // sceneWidth × sceneHeight via `#resizeCanvasIfNeeded` above); the
-        // r32uint object-ID attachment still writes to `#idTexture` even
-        // though nothing reads it anymore — kept around to avoid a pipeline
-        // change. A follow-up can drop it.
+        // Single color target now: the canvas swapchain itself, sized to
+        // sceneWidth × sceneHeight via `#resizeCanvasIfNeeded` above. The
+        // r32uint object-ID texture is gone — click picking uses the
+        // `clickedObjectId` atomic written from inside the shader.
         const scenePass = commandEncoder.beginRenderPass({
-            colorAttachments: [
-                { view: outlineTarget, loadOp: "clear", storeOp: "store" },
-                { view: this.#idTextureView, loadOp: "clear", storeOp: "store", clearValue: { r: 0xffffffff, g: 0, b: 0, a: 0 } },
-            ],
+            colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
             timestampWrites: this.#timestampWritesFor("scene"),
         })
         scenePass.setPipeline(this.#pipeline)
@@ -2417,29 +2442,18 @@ export class RenderWorkerCore {
             this.#beamBindGroup = undefined
 
             if (this.#colorTexture) this.#colorTexture.destroy()
-            if (this.#idTexture) this.#idTexture.destroy()
             if (this.#tStartTexture) this.#tStartTexture.destroy()
 
+            // Kept only for the outputTextureView render path (thumbnails /
+            // agent capture). The canvas render path writes scene fragments
+            // straight to the swapchain and does not touch this texture.
             this.#colorTexture = this.#device.createTexture({
-                label: "Preview Color",
+                label: "Preview Color (outputTextureView only)",
                 size: [w, h],
                 format: this.#format,
-                // COPY_SRC lets the canvas-resolution fast path
-                // (`copyTextureToTexture` straight into the swapchain) skip
-                // the outline blit pass entirely when scene size == canvas size.
-                usage:
-                    GPUTextureUsage.RENDER_ATTACHMENT |
-                    GPUTextureUsage.TEXTURE_BINDING |
-                    GPUTextureUsage.COPY_SRC,
-            })
-            this.#idTexture = this.#device.createTexture({
-                label: "Object ID",
-                size: [w, h],
-                format: "r32uint",
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
             })
             this.#colorTextureView = this.#colorTexture.createView()
-            this.#idTextureView = this.#idTexture.createView()
 
             const BEAM_TILE_SIZE = 8
             const tilesX = Math.ceil(w / BEAM_TILE_SIZE)
@@ -2457,11 +2471,10 @@ export class RenderWorkerCore {
                 layout: this.#outlinePipeline.getBindGroupLayout(0),
                 entries: [
                     { binding: 0, resource: this.#colorTextureView },
-                    { binding: 1, resource: this.#idTextureView },
-                    { binding: 2, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
-                    // binding 3 (outlineSettings) dropped — the post-process
-                    // pass no longer reads any per-frame outline parameters.
-                    { binding: 4, resource: this.#colorSampler },
+                    // outline.wgsl is now a pure passthrough — no idTex /
+                    // selectedObjectIds / outlineSettings bindings; sampler
+                    // moved to binding 1 (was 4).
+                    { binding: 1, resource: this.#colorSampler },
                 ],
             })
 
@@ -2582,11 +2595,7 @@ export class RenderWorkerCore {
             label: "viewSettings",
         })
 
-        ub.outlineSettings = this.#device.createBuffer({
-            size: 48,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            label: "outlineSettings",
-        })
+        // OutlineSettings GPU buffer dropped — no shader binding reads it.
 
         ub.selectionStyles = this.#device.createBuffer({
             size: 80,
@@ -2725,6 +2734,11 @@ export class RenderWorkerCore {
         clickF32[4] = hoverUV?.[0] ?? 0
         clickF32[5] = hoverUV?.[1] ?? 0
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, clickData)
+        // clickState lives in a uniform buffer the shader reads every
+        // frame; without forcing here, the SAB-hash idle skip would
+        // silently drop the pick/hover render that the caller is about
+        // to issue, breaking click detection.
+        this.#forceNextRender = true
     }
 
     /** Read from a GPU buffer using the persistent readback buffer when available, else fresh allocation. */
@@ -3017,6 +3031,12 @@ export class RenderWorkerCore {
         if (msg.colorPalette) {
             this.#device.queue.writeBuffer(this.#uniformBuffers.colorPalette, 0, msg.colorPalette)
         }
+        // Any of these writes (face highlight, polygon vertex patch, cap
+        // drag, selectedObjectIds, color palette) changes what the next
+        // render would produce even without a SAB version bump. Defeat
+        // the idle-skip hash gate so the caller's subsequent
+        // `requestRender()` actually goes through.
+        this.#forceNextRender = true
     }
 
     /** Build full 256-byte camera uniform and upload if dirty. */

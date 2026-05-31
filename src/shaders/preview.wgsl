@@ -174,10 +174,11 @@ const FACE_HIGHLIGHT_TOP: u32 = 1023u;     // Top cap when selected
 const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;  // Bottom cap when selected (distinct from top)
 
 // Fragment output: color and object ID for MRT outline detection
-struct FragmentOutput {
-    @location(0) color: vec4f,
-    @location(1) objectId: vec4<u32>,
-}
+// FragmentOutput dropped — the previous `@location(1) objectId: vec4<u32>`
+// existed to feed the old outline post-process pass, which is gone. Click
+// picking uses the `clickedObjectId` atomic written from inside the shader,
+// not a read-back ID texture. Scene fragments now return a single vec4
+// color and write directly into the canvas swapchain.
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -879,7 +880,7 @@ fn applyFaceDottedPattern(color: vec3f, pixelCoord: vec2f) -> vec3f {
 }
 
 @fragment
-fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) pivotPx: vec2f) -> FragmentOutput {
+fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) pivotPx: vec2f) -> @location(0) vec4f {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
     _ = polygonVertices[0];
     _ = clickedHitPos[0];
@@ -1078,32 +1079,20 @@ fn fragmentMain(@location(0) fragCoord: vec2f, @location(1) @interpolate(flat) p
                 backColor = applySelectedEdgeHighlight(backColor, backPos, backHit, wppu);
                 let frontAlpha = 0.4;
                 let composited = shadedColor * frontAlpha + backColor * (1.0 - frontAlpha);
-                return FragmentOutput(
-                    maybeBlendPivotOnto(heatmapOverlay(vec4f(composited, 1.0), stepCount), pixelCoord, pivotPx),
-                    vec4<u32>(hit.id, 0u, 0u, 0u),
-                );
+                return maybeBlendPivotOnto(heatmapOverlay(vec4f(composited, 1.0), stepCount), pixelCoord, pivotPx);
             } else {
                 let alpha = 0.6;
-                return FragmentOutput(
-                    maybeBlendPivotOnto(heatmapOverlay(vec4f(shadedColor * alpha, alpha), stepCount), pixelCoord, pivotPx),
-                    vec4<u32>(hit.id, 0u, 0u, 0u),
-                );
+                return maybeBlendPivotOnto(heatmapOverlay(vec4f(shadedColor * alpha, alpha), stepCount), pixelCoord, pivotPx);
             }
         }
-        return FragmentOutput(
-            maybeBlendPivotOnto(heatmapOverlay(vec4f(shadedColor, 1.0), stepCount), pixelCoord, pivotPx),
-            vec4<u32>(hit.id, 0u, 0u, 0u),
-        );
+        return maybeBlendPivotOnto(heatmapOverlay(vec4f(shadedColor, 1.0), stepCount), pixelCoord, pivotPx);
     } else {
         // Miss pixel — normally fully transparent. At selection boundaries
         // (silhouette of a selected object meeting the background) the
         // outline mask is non-zero, so we draw the outline color with the
         // mask as alpha so it composites correctly onto the canvas.
         let missColor = vec4f(outlineColor * outlineMask, outlineMask);
-        return FragmentOutput(
-            maybeBlendPivotOnto(heatmapOverlay(missColor, stepCount), pixelCoord, pivotPx),
-            vec4<u32>(0xFFFFFFFFu, 0u, 0u, 0u),
-        );
+        return maybeBlendPivotOnto(heatmapOverlay(missColor, stepCount), pixelCoord, pivotPx);
     }
 }
 

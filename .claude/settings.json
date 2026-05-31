@@ -27,6 +27,7 @@
       "Skill(web-components:*)",
       "Skill(webgpu)",
       "Skill(webgpu:*)",
+      "Bash(cd *)",
       "Bash(curl *)",
       "Bash(ls *)",
       "Bash(npx tsx *)",

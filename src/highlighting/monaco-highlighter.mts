@@ -9,11 +9,6 @@ import { log } from "../logging/debug-log.mjs"
 import type { Vec3f } from "../vecmat/vector.mjs"
 import type { FluentMethodLocation } from "../parser/source-parser.mjs"
 
-/** Inverse RGB for contrast on colored backgrounds. Input/output in 0–255. */
-function invertRgb(r: number, g: number, b: number): [number, number, number] {
-    return [255 - r, 255 - g, 255 - b]
-}
-
 /**
  * Range to highlight in the editor (function name position)
  */
@@ -73,25 +68,24 @@ export class MonacoHighlighter {
      * Single class: rounded rect background (object color), text and icon in inverse color.
      */
     private generateIndicatorCss(className: string, svg: string, r: number, g: number, b: number): string {
-        const [invR, invG, invB] = invertRgb(r, g, b)
-        const bgRgb = `rgb(${r},${g},${b})`
-        const textRgb = `rgb(${invR},${invG},${invB})`
-        const svgWithColor = svg.replace(/currentColor/g, textRgb)
+        const colorRgb = `rgb(${r},${g},${b})`
+        const svgWithColor = svg.replace(/currentColor/g, colorRgb)
         const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">${svgWithColor}</svg>`
         const dataUri = `data:image/svg+xml,${encodeURIComponent(fullSvg)}`
         // Fira Code VF: small cardinal shadows add a touch of weight without heavy faux-bold.
         const subtleBoldShadow = [
-            `0.2px 0 0 ${textRgb}`,
-            `-0.2px 0 0 ${textRgb}`,
-            `0 0.2px 0 ${textRgb}`,
-            `0 -0.2px 0 ${textRgb}`,
+            `0.2px 0 0 ${colorRgb}`,
+            `-0.2px 0 0 ${colorRgb}`,
+            `0 0.2px 0 ${colorRgb}`,
+            `0 -0.2px 0 ${colorRgb}`,
         ].join(", ")
 
         return `.${className} {
-            background-color: ${bgRgb};
+            background-color: transparent;
+            border: 1px solid ${colorRgb};
             border-radius: 8px;
-            padding: 0 6px 0 4px;
-            color: ${textRgb} !important;
+            padding: 0 5px 0 3px;
+            color: ${colorRgb} !important;
             font-weight: 600 !important;
             text-shadow: ${subtleBoldShadow};
             -webkit-box-decoration-break: clone;

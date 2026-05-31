@@ -114,10 +114,12 @@ curl -sS "http://localhost:${port}/_sceneSource" -o scene-dump.js
 - **Module toggles vs errors:** `log("Module").error` always goes to console + ring buffer regardless of Dev Tools checkboxes. `debug` / `info` / `warn` from `log("Module")` only appear when that module is enabled. `?module=…` still filters by entry's `module` field — errors from other modules are omitted when a non-empty `module` list is used.
 - **200 + empty body** when a connected tab returns an empty buffer (no matches / module or level filter matched nothing). **503** on no connected browser or bridge timeout (so callers can tell "no tab" apart from "0 entries").
 - Query params (`level`, `only`, `module`, `n`) documented in **AGENTS.md**. Raw curl with no params uses the info threshold (drops `debug`, no spam). Prefer **`scripts/agentcli logs`**: it selects the devserver with **`--agent`** (default, `.devserver.agent.run`) or **`--browser`** (`.devserver.run`), and defaults to **all levels (debug+)** so enabled modules aren't dropped.
+- **Filter with `--module` / `--level`, not `grep`.** The buffer can be large; instead of `agentcli logs | grep MdcExport`, pass `--module MdcExport` (comma-separated log categories) and/or `--level warn` (raise the severity threshold). The filtering happens inside the browser's ring-buffer query — fewer bytes over the wire and no risk of `grep` matching the wrong bracketed token. Save `grep` for free-text inside a message body that the structured filters can't target.
 
 ```bash
 curl -sS "http://localhost:${port}/_logs"          # raw: info threshold
 scripts/agentcli logs --browser                     # human tab, all levels
+scripts/agentcli logs --module MdcExport --level warn  # category + severity, no grep
 ```
 
 ---
@@ -261,10 +263,11 @@ POSTs to `/_agent/render/testcase-body`. The summary line uses `inline` as the s
 ```bash
 scripts/agentcli logs                      # default: ALL levels (debug+) from the agent tab
 scripts/agentcli logs --browser            # read from the interactive (human) devserver instead
-scripts/agentcli logs --module MdcExport   # filter (must be enabled in DevTools for that tab)
-scripts/agentcli logs --level warn --n 200 # narrow to warnings+errors
+scripts/agentcli logs --module MdcExport   # filter by category (must be enabled in DevTools for that tab)
+scripts/agentcli logs --module App,RenderWorker --level warn --n 200  # categories + severity, no grep
 ```
 
+- **Filter at the source — don't dump-and-grep.** `--module` takes one or more log categories (comma-separated module names like `App`, `MdcExport`, `RenderWorker`, `Settings`) and `--level` raises the severity threshold (`debug|info|warn|error`); both are applied inside the browser ring-buffer query before the response is sent. Prefer `agentcli logs --module X --level warn` over `agentcli logs | grep X` — it's fewer bytes, won't accidentally match a timestamp/thread bracket, and respects per-level `--n` caps. Use `grep` only to search free text inside a message that no module/level filter can express.
 - `--agent` (default) reads from the agent devserver (`.devserver.agent.run`), auto-starting it if needed. `--browser` reads from the interactive/human devserver (`.devserver.run`); that server is never auto-started, so `logs --browser` errors if `make start` isn't running.
 - **`agentcli logs` defaults to all levels (debug+)**, unlike a raw `curl …/_logs` which uses the server's info threshold and silently drops `debug`. Module output (`log("X").debug(...)`) is mostly debug, so the info threshold makes an enabled module look empty. Pass `--level warn` etc. to narrow.
 - Empty output is **ambiguous**: it can mean no entries, the requested module/level isn't enabled in that tab's DevTools, OR **no browser tab is connected to that devserver** (same as a timeout). If `/_sceneSource` is also empty for that port, no tab is connected — open/refresh a tab before concluding "no signal".

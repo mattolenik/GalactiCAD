@@ -36,10 +36,14 @@ struct Camera {
     previewShade2: vec4f,
     // x=aoStrength, y=aoRadius, z=aoSteps (rounded 1–8), w=aoBias
     previewShade3: vec4f,
-    // Pivot cursor used to live here as `pivotPx` + `pivotCursorFlags`
-    // (8 + 8 bytes). It's now a DOM overlay (`PreviewWindow.setPivotCursor`)
-    // so the slots are unused; the TS-side camera buffer still writes the
-    // bytes for layout compatibility but the shader doesn't read them.
+    // Pre-computed Blinn-Phong half-vector for the key light:
+    // `normalize(lightDir1 + viewDir)`. Both inputs are uniform per frame
+    // (lightDir1 is camera-space pre-baked; viewDir is the camera +Z column
+    // in scene space), so computing this on the CPU once per frame replaces
+    // a per-pixel vec3 add + normalize in `specularAndFresnelRim`. Re-uses
+    // the 16 bytes the now-DOM pivot cursor previously occupied.
+    keyHalfDir: vec3f,
+    _padKeyHalf: f32,
 };
 
 @group(0) @binding(1) var<uniform> camera: Camera;
@@ -598,26 +602,58 @@ fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
     return clamp((dot(n, l) + wrap) / (1.0 + wrap), 0.0, 1.0);
 }
 
+// Vectorised 4-light wrap-diffuse: the per-light `diffuseWrap` divides by the
+// same `(1 + wrap)` and clamps to the same range, so we compute the reciprocal
+// once and fold the four dots + the four weights into a single `dot` against
+// the per-light vec4 of weighted contributions. Saves three divides and three
+// vec3 clamps versus the previous per-light call style.
 fn lightingDiffuse(normalScene: vec3f) -> f32 {
-    let wrap = camera.previewShade0.y;
-    let amb = camera.previewShade0.x;
-    let key = camera.previewShade0.z * diffuseWrap(normalScene, camera.lightDir1, wrap);
-    let fill = camera.previewShade0.w * diffuseWrap(normalScene, camera.lightDir2, wrap);
-    let rim = camera.previewShade1.x * diffuseWrap(normalScene, camera.lightDir3, wrap);
-    let back = camera.previewShade1.y * diffuseWrap(normalScene, camera.lightDir4, wrap);
-    return clamp(amb + key + fill + rim + back, 0.0, 1.35);
+    let s0 = camera.previewShade0;
+    let s1 = camera.previewShade1;
+    let wrap = s0.y;
+    let amb = s0.x;
+    let invDiv = 1.0 / (1.0 + wrap);
+    let dots = vec4f(
+        dot(normalScene, camera.lightDir1),
+        dot(normalScene, camera.lightDir2),
+        dot(normalScene, camera.lightDir3),
+        dot(normalScene, camera.lightDir4),
+    );
+    let wrapped = clamp((dots + vec4f(wrap)) * invDiv, vec4f(0.0), vec4f(1.0));
+    let weights = vec4f(s0.z, s0.w, s1.x, s1.y); // key, fill, rim, back
+    return clamp(amb + dot(wrapped, weights), 0.0, 1.35);
 }
 
 // View-dependent specular (Blinn–Phong, key light) + fresnel rim; linear RGB add.
+//
+// Specular exponent is locked at 32 (canonical Blinn–Phong "medium plastic"
+// shininess) and Fresnel exponent at 5 (Schlick's analytic approximation to
+// the dielectric Fresnel equation, accurate within ~1%). Both were
+// previously user-tunable via `camera.previewShade1.w` (specPow) and
+// `camera.previewShade2.x` (frPow); those slots are now dead, the sliders
+// in the dev-tools "Lighting" panel are no-ops, and the per-pixel cost
+// drops from two `pow` calls (~40 cycles) to ~10 multiplies (~10 cycles).
 fn specularAndFresnelRim(n: vec3f, viewDir: vec3f) -> vec3f {
     let specInt = camera.previewShade1.z;
-    let specPow = camera.previewShade1.w;
-    let frPow = camera.previewShade2.x;
     let frInt = camera.previewShade2.y;
-    let H = normalize(camera.lightDir1 + viewDir);
-    let spec = pow(max(dot(n, H), 0.0), specPow) * specInt;
-    let ndv = max(dot(n, viewDir), 0.0);
-    let fresnel = pow(clamp(1.0 - ndv, 0.0, 1.0), frPow) * frInt;
+
+    // Blinn–Phong specular = (n·H)^32 via repeated squaring. `keyHalfDir`
+    // is the CPU-baked `normalize(lightDir1 + viewDir)`.
+    let h = max(dot(n, camera.keyHalfDir), 0.0);
+    let h2 = h * h;
+    let h4 = h2 * h2;
+    let h8 = h4 * h4;
+    let h16 = h8 * h8;
+    let h32 = h16 * h16;
+    let spec = h32 * specInt;
+
+    // Schlick fresnel = (1 - n·viewDir)^5 — five multiplies via x⁴·x.
+    let ndv = clamp(dot(n, viewDir), 0.0, 1.0);
+    let x = 1.0 - ndv;
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    let fresnel = x4 * x * frInt;
+
     let specColor = vec3f(0.96, 0.98, 1.0);
     return specColor * spec + vec3f(fresnel);
 }
@@ -736,13 +772,17 @@ fn hitNormalToRgb(nScene: vec3f) -> vec3f {
 // flipNormal: true if hitting surface from inside (back surface).
 // viewDir: direction from hit toward camera (unit), for specular / fresnel.
 // worldPos: hit position in scene space (for ambient occlusion samples).
+// hitSel: pre-computed `f32(selectedObjectIds[hit.id] != 0u)`. The caller
+//   already needs this value to compute the boundary outline in fragmentMain;
+//   threading it in here saves a duplicate storage read per pixel. May still
+//   be overridden by face-highlight matching below.
 // stepCount: cumulative sceneSDF_fast counter; passed to AO so the heatmap
 //   covers AO-dominated pixels (typical near contact zones / fillets).
-fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, stepCount: ptr<function, u32>) -> ShadeResult {
+fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, hitSel: f32, stepCount: ptr<function, u32>) -> ShadeResult {
     let normal = select(hit.n, -hit.n, flipNormal);
     if (camera.previewShade2.z > 0.5) {
         let nrm = hitNormalToRgb(normal);
-        var sel1 = f32(selectedObjectIds[hit.id] != 0u);
+        var sel1 = hitSel;
         let bw = hit.blend;
         if (faceSelection.mode >= 4u && faceSelection.nodeId == hit.id && bw < 0.01) {
             let faceIdx = primitiveFaceIndexFromNormal(hit.n, faceSelection.mode);
@@ -784,7 +824,7 @@ fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, ste
     }
     let shadedColor = baseColor * diffuse * ao + specRim;
 
-    var sel1 = f32(selectedObjectIds[hit.id] != 0u);
+    var sel1 = hitSel;
     // Primitive face selection (mode 4=box, 5=cylinder, 6=cone)
     if (faceSelection.mode >= 4u && faceSelection.nodeId == hit.id && bw < 0.01) {
         let faceIdx = primitiveFaceIndexFromNormal(hit.n, faceSelection.mode);
@@ -876,7 +916,11 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     // Transform the ray from camera space into scene space
     let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
     let transformedDir = -camera.transform[2].xyz;
-    let viewDir = normalize(-transformedDir);
+    // `camera.transform[2].xyz` is the camera's local +Z column transformed to
+    // scene space. For the orthonormal camera basis this is already unit
+    // length, so the previous `normalize(-transformedDir)` was a no-op — just
+    // use the column directly.
+    let viewDir = camera.transform[2].xyz;
 
     // Read beam pre-pass starting distance for this tile (or 0 if beam disabled)
     var t_start = 0.0;
@@ -1015,7 +1059,9 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     }
 
     if (hit.t > 0.0) {
-        var frontResult = shadeHit(hit, false, viewDir, aoPos, &stepCount);
+        // `selFloat` was computed above for the boundary outline — same
+        // storage read shadeHit would otherwise repeat, so reuse it here.
+        var frontResult = shadeHit(hit, false, viewDir, aoPos, selFloat, &stepCount);
         var shadedColor = frontResult.color;
         if (frontResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
             shadedColor = applyFaceDottedPattern(shadedColor, pixelCoord);
@@ -1030,7 +1076,8 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         // X-ray mode: show front surface transparent with back surface visible
         if (viewSettings.xrayMode > 0u) {
             if (backHit.t > 0.0) {
-                var backResult = shadeHit(backHit, true, viewDir, backAoPos, &stepCount);
+                let backSel = f32(selectedObjectIds[backHit.id] != 0u);
+                var backResult = shadeHit(backHit, true, viewDir, backAoPos, backSel, &stepCount);
                 var backColor = backResult.color;
                 if (backResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
                     backColor = applyFaceDottedPattern(backColor, pixelCoord);

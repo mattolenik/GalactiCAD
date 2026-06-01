@@ -310,8 +310,13 @@ export interface PreviewShadingParams {
     rimWeight: number
     backWeight: number
     specIntensity: number
-    specShininess: number
-    fresnelPower: number
+    // (formerly `specShininess` and `fresnelPower`) The Blinn-Phong specular
+    // exponent is now hard-coded at 32 (canonical "medium plastic") and the
+    // Fresnel exponent at 5 (Schlick's analytic approximation), both via
+    // repeated-squaring in `specularAndFresnelRim` — eliminates two per-pixel
+    // `pow()` calls. The SAB / camera-staging slots that previously carried
+    // these values remain in the layout as dead bytes so downstream offsets
+    // don't shift, but nothing reads or writes them anymore.
     fresnelIntensity: number
     /** 0 = AO off; otherwise scales contact shadowing on diffuse only. */
     aoStrength: number
@@ -331,8 +336,6 @@ export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
     rimWeight: 0.18,
     backWeight: 0.12,
     specIntensity: 0.13,
-    specShininess: 246,
-    fresnelPower: 8,
     fresnelIntensity: 0.27,
     aoStrength: 0.34,
     aoRadius: 0.5,

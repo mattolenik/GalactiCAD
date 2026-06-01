@@ -1440,8 +1440,8 @@ export class RenderWorkerCore {
             rimWeight: f32[psBase + 4],
             backWeight: f32[psBase + 5],
             specIntensity: f32[psBase + 6],
-            specShininess: f32[psBase + 7],
-            fresnelPower: f32[psBase + 8],
+            // psBase + 7 / psBase + 8 are dead slots — shader hard-codes
+            // specular power 32 and Schlick Fresnel power 5.
             fresnelIntensity: f32[psBase + 9],
             aoStrength: f32[psBase + 10],
             aoRadius: f32[psBase + 11],
@@ -2861,8 +2861,9 @@ export class RenderWorkerCore {
                 cache[28] === ps.rimWeight &&
                 cache[29] === ps.backWeight &&
                 cache[30] === ps.specIntensity &&
-                cache[31] === ps.specShininess &&
-                cache[32] === ps.fresnelPower &&
+                // cache[31] / cache[32] are dead slots (formerly specShininess /
+                // fresnelPower) — kept in the layout so downstream slot indices
+                // don't shift; never read, never compared.
                 cache[33] === ps.fresnelIntensity &&
                 cache[34] === ps.aoStrength &&
                 cache[35] === ps.aoRadius &&
@@ -2887,8 +2888,7 @@ export class RenderWorkerCore {
         cache[28] = ps.rimWeight
         cache[29] = ps.backWeight
         cache[30] = ps.specIntensity
-        cache[31] = ps.specShininess
-        cache[32] = ps.fresnelPower
+        // cache[31] / cache[32] left as 0 — see comparison block above.
         cache[33] = ps.fresnelIntensity
         cache[34] = ps.aoStrength
         cache[35] = ps.aoRadius
@@ -2953,8 +2953,13 @@ export class RenderWorkerCore {
         f32[48] = ps.rimWeight
         f32[49] = ps.backWeight
         f32[50] = ps.specIntensity
-        f32[51] = ps.specShininess
-        f32[52] = ps.fresnelPower
+        // f32[51] / f32[52] map to `camera.previewShade1.w` /
+        // `camera.previewShade2.x` — formerly specShininess / fresnelPower.
+        // Shader hard-codes power 32 / Schlick power 5 in
+        // `specularAndFresnelRim` now; leave the slots at zero so the
+        // 256-byte Camera buffer layout stays stable.
+        f32[51] = 0
+        f32[52] = 0
         f32[53] = ps.fresnelIntensity
         f32[54] = previewNormalShading ? 1.0 : 0.0
         f32[55] = 0.0
@@ -2962,14 +2967,24 @@ export class RenderWorkerCore {
         f32[57] = ps.aoRadius
         f32[58] = ps.aoSteps
         f32[59] = ps.aoBias
-        // Slots 60-63 (formerly pivotPx + pivotCursorFlags) are dead now —
-        // pivot cursor is a DOM overlay; the shader Camera struct trims the
-        // fields. We leave the bytes zero to keep the 256-byte layout
-        // backwards-compatible with any caller that still references the
-        // slot offsets.
-        f32[60] = 0
-        f32[61] = 0
-        f32[62] = 0
+        // Slots 60-63 (formerly pivotPx + pivotCursorFlags) now carry the
+        // CPU-baked Blinn-Phong half-vector for the key light. Both
+        // `lightDir1` and the camera +Z column (viewDir in scene space)
+        // are uniform per frame, so computing
+        // `normalize(lightDir1 + viewDir)` here once replaces a per-pixel
+        // vec3 add + normalize in the fragment shader's
+        // `specularAndFresnelRim`.
+        const vdx = this.#camTransform.data[8]!
+        const vdy = this.#camTransform.data[9]!
+        const vdz = this.#camTransform.data[10]!
+        const hxRaw = v1.x + vdx
+        const hyRaw = v1.y + vdy
+        const hzRaw = v1.z + vdz
+        const hLenSq = hxRaw * hxRaw + hyRaw * hyRaw + hzRaw * hzRaw
+        const invH = hLenSq > 1e-20 ? 1 / Math.sqrt(hLenSq) : 0
+        f32[60] = hxRaw * invH
+        f32[61] = hyRaw * invH
+        f32[62] = hzRaw * invH
         f32[63] = 0
         this.#writeBufferIfDirty(this.#uniformBuffers.camera, this.#cameraStagingBuf, 0, 256, this.#cameraCache)
     }

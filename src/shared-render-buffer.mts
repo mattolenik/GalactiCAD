@@ -224,8 +224,9 @@ export function writeRenderPayloadSlot(
     f32[psB + 4] = ps.rimWeight
     f32[psB + 5] = ps.backWeight
     f32[psB + 6] = ps.specIntensity
-    f32[psB + 7] = ps.specShininess
-    f32[psB + 8] = ps.fresnelPower
+    // psB + 7 (formerly specShininess) and psB + 8 (formerly fresnelPower)
+    // are dead — the shader hard-codes power 32 / Schlick power 5 — but the
+    // slots stay in the layout so downstream offsets don't shift.
     f32[psB + 9] = ps.fresnelIntensity
     f32[psB + 10] = ps.aoStrength
     f32[psB + 11] = ps.aoRadius
@@ -337,8 +338,7 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
             rimWeight: f32[psB + 4],
             backWeight: f32[psB + 5],
             specIntensity: f32[psB + 6],
-            specShininess: f32[psB + 7],
-            fresnelPower: f32[psB + 8],
+            // psB + 7 / psB + 8 are now dead (see writer).
             fresnelIntensity: f32[psB + 9],
             aoStrength: f32[psB + 10],
             aoRadius: f32[psB + 11],

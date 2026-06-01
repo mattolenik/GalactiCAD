@@ -56,6 +56,13 @@ export class MeshViewer extends HTMLElement {
     #wireframe = false
     /** Edge-overlay line color (RGB). Near-white in dark mode, near-black in light mode. */
     #wireframeColor: [number, number, number] = [0.95, 0.95, 0.98]
+    /**
+     * When set, `update()` renders the color passes into this view instead of the canvas swap chain.
+     * Used by `captureFrameToImageData` to read pixels back via the GPU (`copyTextureToBuffer`) — the
+     * canvas-compositing path (`createImageBitmap`) yields blank frames for an offscreen canvas in
+     * headless Chromium (agent automation).
+     */
+    #captureTargetView: GPUTextureView | null = null
     #debugOverlayCanvas: HTMLCanvasElement
     #debugOverlayCtx: CanvasRenderingContext2D | null
     #hoverCanvasPos: { x: number; y: number } | null = null
@@ -385,7 +392,7 @@ export class MeshViewer extends HTMLElement {
             layout: this.#pipelineLayout,
             vertex: {
                 module: this.#shaderModuleWireframe,
-                entryPoint: "vertexMain",
+                entryPoint: "vertexWireframe",
                 buffers: [
                     {
                         arrayStride: 32,
@@ -821,7 +828,7 @@ export class MeshViewer extends HTMLElement {
                 const depthPre = commandEncoder.beginRenderPass({
                     colorAttachments: [
                         {
-                            view: this.#context.getCurrentTexture().createView(),
+                            view: this.#colorAttachmentView(),
                             loadOp: "clear",
                             storeOp: "store",
                             clearValue: { r: 0, g: 0, b: 0, a: 0 },
@@ -875,7 +882,7 @@ export class MeshViewer extends HTMLElement {
             const compositePass = commandEncoder.beginRenderPass({
                 colorAttachments: [
                     {
-                        view: this.#context.getCurrentTexture().createView(),
+                        view: this.#colorAttachmentView(),
                         loadOp: "clear",
                         storeOp: "store",
                         clearValue: { r: 0, g: 0, b: 0, a: 0 },
@@ -891,7 +898,7 @@ export class MeshViewer extends HTMLElement {
                 const overlayPass = commandEncoder.beginRenderPass({
                     colorAttachments: [
                         {
-                            view: this.#context.getCurrentTexture().createView(),
+                            view: this.#colorAttachmentView(),
                             loadOp: "load",
                             storeOp: "store",
                         },
@@ -910,7 +917,7 @@ export class MeshViewer extends HTMLElement {
             const renderPass = commandEncoder.beginRenderPass({
                 colorAttachments: [
                     {
-                        view: this.#context.getCurrentTexture().createView(),
+                        view: this.#colorAttachmentView(),
                         loadOp: "clear",
                         storeOp: "store",
                         clearValue: { r: 0, g: 0, b: 0, a: 0 },
@@ -946,7 +953,7 @@ export class MeshViewer extends HTMLElement {
             const overlayPass = commandEncoder.beginRenderPass({
                 colorAttachments: [
                     {
-                        view: this.#context.getCurrentTexture().createView(),
+                        view: this.#colorAttachmentView(),
                         loadOp: "load",
                         storeOp: "store",
                     },
@@ -974,34 +981,82 @@ export class MeshViewer extends HTMLElement {
     /**
      * Renders one frame (normal RGB surface, plus the edge overlay / translucent faces when enabled)
      * and reads pixels for automation.
+     *
+     * Renders into an offscreen texture we own and reads it back with `copyTextureToBuffer`, rather
+     * than snapshotting the canvas with `createImageBitmap`. An offscreen (`left:-9999px`) WebGPU
+     * canvas is never composited in headless Chromium, so `createImageBitmap(canvas)` returned a
+     * constant blank frame for agent automation; a GPU readback is deterministic and presentation-free.
      */
     async captureFrameToImageData(): Promise<ImageData> {
         await this.ready()
         if (!this.#device) {
             throw new Error("Mesh viewer GPU not ready")
         }
-        this.update(false)
-        await this.#device.queue.onSubmittedWorkDone()
-        // `onSubmittedWorkDone` confirms the GPU finished writing into the
-        // swap-chain texture, but the canvas only "presents" that texture
-        // at the next compositor tick. Without an rAF wait, an immediate
-        // `createImageBitmap(canvas)` may capture the previously-presented
-        // frame (blank on first capture, stale on subsequent captures) —
-        // observed as intermittent blank PNGs from `/_agent/render`,
-        // worst on slow renders where the main thread shifts the rAF
-        // boundary.
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-        const bitmap = await createImageBitmap(this.canvas)
+        const w = Math.max(1, this.canvas.width)
+        const h = Math.max(1, this.canvas.height)
+
+        const captureTexture = this.#device.createTexture({
+            label: "meshViewer.capture",
+            size: { width: w, height: h },
+            format: this.#format,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+        })
+        // copyTextureToBuffer requires bytesPerRow to be a multiple of 256.
+        const unpaddedBytesPerRow = w * 4
+        const bytesPerRow = Math.ceil(unpaddedBytesPerRow / 256) * 256
+
         try {
-            const oc = new OffscreenCanvas(this.canvas.width, this.canvas.height)
-            const ctx = oc.getContext("2d")
-            if (!ctx) {
-                throw new Error("2D context unavailable for mesh capture")
+            // Route update()'s color passes into the capture texture, render one frame, then detach
+            // immediately (synchronous) so a concurrent rAF loop can't target the texture mid-readback.
+            this.#captureTargetView = captureTexture.createView()
+            this.update(false)
+            this.#captureTargetView = null
+
+            const staging = this.#device.createBuffer({
+                label: "meshViewer.capture.staging",
+                size: bytesPerRow * h,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            })
+            try {
+                const ce = this.#device.createCommandEncoder()
+                ce.copyTextureToBuffer(
+                    { texture: captureTexture },
+                    { buffer: staging, bytesPerRow, rowsPerImage: h },
+                    { width: w, height: h },
+                )
+                this.#device.queue.submit([ce.finish()])
+                await staging.mapAsync(GPUMapMode.READ)
+                const padded = new Uint8Array(staging.getMappedRange())
+                // The preferred canvas format is typically bgra8unorm; ImageData wants RGBA. Repack
+                // tightly (drop per-row padding) and swizzle B<->R when the texture is BGRA.
+                const bgra = this.#format === "bgra8unorm"
+                const out = new Uint8ClampedArray(w * h * 4)
+                for (let y = 0; y < h; y++) {
+                    const srcRow = y * bytesPerRow
+                    const dstRow = y * w * 4
+                    for (let x = 0; x < w; x++) {
+                        const s = srcRow + x * 4
+                        const d = dstRow + x * 4
+                        if (bgra) {
+                            out[d] = padded[s + 2]!
+                            out[d + 1] = padded[s + 1]!
+                            out[d + 2] = padded[s]!
+                        } else {
+                            out[d] = padded[s]!
+                            out[d + 1] = padded[s + 1]!
+                            out[d + 2] = padded[s + 2]!
+                        }
+                        out[d + 3] = padded[s + 3]!
+                    }
+                }
+                staging.unmap()
+                return new ImageData(out, w, h)
+            } finally {
+                staging.destroy()
             }
-            ctx.drawImage(bitmap, 0, 0)
-            return ctx.getImageData(0, 0, this.canvas.width, this.canvas.height)
         } finally {
-            bitmap.close()
+            this.#captureTargetView = null
+            captureTexture.destroy()
         }
     }
 
@@ -1019,6 +1074,11 @@ export class MeshViewer extends HTMLElement {
         if (this.#device) {
             this.#recreateAttachments()
         }
+    }
+
+    /** Color attachment for render passes: the offscreen capture texture when capturing, else the canvas. */
+    #colorAttachmentView(): GPUTextureView {
+        return this.#captureTargetView ?? this.#context.getCurrentTexture().createView()
     }
 
     #clearDebugOverlay(): void {
@@ -1948,8 +2008,7 @@ struct VertexOut {
     @location(2) @interpolate(flat) wireFront: u32,
 };
 
-@vertex
-fn vertexMain(v: VertexIn) -> VertexOut {
+fn projectVertex(v: VertexIn) -> VertexOut {
     let aspect = camera.res.x / camera.res.y;
     // camera.transform is scene-space -> camera-space (uploaded as inverse of PreviewWindow camera.transform).
     let pCam = (camera.transform * vec4f(v.position, 1.0)).xyz;
@@ -1985,6 +2044,11 @@ fn vertexMain(v: VertexIn) -> VertexOut {
     let nCam = normalize((camera.transform * vec4f(v.normal, 0.0)).xyz);
     out.wireFront = select(0u, 1u, nCam.z <= 0.0);
     return out;
+}
+
+@vertex
+fn vertexMain(v: VertexIn) -> VertexOut {
+    return projectVertex(v);
 }
 
 // RGB from scene-space normal (diagnostic: interpolated vertex normals show seams when
@@ -2039,6 +2103,19 @@ fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> OitOu
 
 const MESH_SHADER_WIREFRAME = /* wgsl */ `
 ${MESH_SHADER_COMMON}
+
+// Edge lines share vertices with the surface triangles, but line vs triangle rasterization compute
+// depth slightly differently along a shared edge, so a plain less-equal test fails intermittently and
+// breaks each edge into dashes. Nudge edges a hair toward the camera (smaller NDC z = closer here) so
+// coincident edges win reliably. Tiny relative to feature spacing, so it never reveals hidden edges.
+const WIRE_DEPTH_BIAS = 2.0e-5;
+
+@vertex
+fn vertexWireframe(v: VertexIn) -> VertexOut {
+    var out = projectVertex(v);
+    out.position.z = max(out.position.z - WIRE_DEPTH_BIAS, 0.0);
+    return out;
+}
 
 // Edge overlay: a solid theme-driven line color drawn over the shaded surface. Depth testing
 // (less-equal) handles occlusion, so no front/back facing distinction is needed here.

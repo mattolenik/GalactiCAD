@@ -600,7 +600,10 @@ Options:
     --out PATH                 Override output path
     --width W                  Override viewportWidth
     --height H                 Override viewportHeight
-    --overlay name=val,...     Mesh overlay flags passed verbatim as query params
+    --overlay name=val,...     Mesh overlay flags passed verbatim as query params.
+                               Glyphs: debugPoints, glyphLine/Corner/Seam/Ring,
+                               cellVertices, qefPlanes. Wireframe overlay:
+                               wireframe=true[,theme=light|dark] (theme defaults to dark).
     --yaml PATH|-              Render an ephemeral YAML body (POST testcase-body).
                                Mutually exclusive with the positional <testcase>.
     --set key.path=value       Apply override to the YAML body before rendering.

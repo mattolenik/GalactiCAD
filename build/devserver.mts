@@ -178,13 +178,19 @@ function agentRenderQueryOverrides(url: URL): {
         const fgRing = flag("glyphRing") || flag("featureGlyphs.ring")
         const cellVerts = flag("cellVertices") || flag("mdcCellVertices")
         const qefPlanes = flag("qefPlanes") || flag("mdcQefPlanes")
-        const any = debugPoints || fgLine || fgCorner || fgSeam || fgRing || cellVerts || qefPlanes
+        const wireframe = flag("wireframe")
+        const themeQ = url.searchParams.get("theme")?.trim().toLowerCase()
+        const theme: "light" | "dark" | undefined = themeQ === "light" || themeQ === "dark" ? themeQ : undefined
+        const any =
+            debugPoints || fgLine || fgCorner || fgSeam || fgRing || cellVerts || qefPlanes || wireframe
         if (!any) return undefined
         return {
             mdcDebugPoints: debugPoints,
             featureGlyphs: { line: fgLine, corner: fgCorner, seam: fgSeam, ring: fgRing },
             mdcCellVertices: cellVerts,
             mdcQefPlanes: qefPlanes,
+            wireframe,
+            ...(theme !== undefined ? { theme } : {}),
         }
     })()
     return {

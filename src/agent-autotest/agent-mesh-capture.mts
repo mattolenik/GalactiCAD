@@ -53,7 +53,7 @@ export async function captureAgentMeshImageData(
     wrap.style.cssText = `position:fixed;left:-9999px;top:0;width:${w}px;height:${h}px;pointer-events:none`
     const mv = new MeshViewer(null, undefined)
     mv.setAttribute("data-skip-autostart", "")
-    mv.setAttribute("wireframe", "false")
+    mv.setAttribute("wireframe", overlay?.wireframe ? "true" : "false")
     mv.setAttribute("translucentFaces", "false")
     wrap.appendChild(mv)
     document.body.appendChild(wrap)
@@ -64,6 +64,8 @@ export async function captureAgentMeshImageData(
         mv.syncCameraResolutionFromCanvas()
         mv.controls.applyState(params.cameraState, { emit: false })
         mv.setViewCenter(params.viewCenter[0], params.viewCenter[1])
+        // Default to dark (matches MeshViewer's #wireframeColor default) when unspecified.
+        mv.setEffectiveTheme(overlay?.theme ?? "dark")
         if (overlay) {
             mv.applyThumbnailGlyphOverlay(resolveOverlayOptions(overlay))
         }

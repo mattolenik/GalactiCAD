@@ -97,6 +97,8 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
                       mdcDebugPoints: input.meshOverlay.mdcDebugPoints,
                       mdcCellVertices: input.meshOverlay.mdcCellVertices,
                       mdcQefPlanes: input.meshOverlay.mdcQefPlanes,
+                      wireframe: input.meshOverlay.wireframe,
+                      ...(input.meshOverlay.theme !== undefined ? { theme: input.meshOverlay.theme } : {}),
                       ...(input.meshOverlay.featureGlyphs !== undefined
                           ? { featureGlyphs: { ...input.meshOverlay.featureGlyphs } }
                           : {}),
@@ -197,6 +199,10 @@ export interface AgentMeshOverlay {
     mdcCellVertices?: boolean
     /** Per-(cell, component) QEF input plane normals (anchored at the cell mass / feature point). */
     mdcQefPlanes?: boolean
+    /** Draw mesh edges as a wireframe overlay on top of the shaded surface. */
+    wireframe?: boolean
+    /** Effective theme for the wireframe overlay line color (near-white on dark, near-black on light). Defaults to dark. */
+    theme?: "light" | "dark"
 }
 
 /** Single render request for WS / HTTP agent automation. */

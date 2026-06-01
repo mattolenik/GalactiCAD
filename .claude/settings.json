@@ -11,6 +11,7 @@
       "Bash(env)",
       "WebFetch(domain:pptr.dev)",
       "Bash(node_modules/.bin/tsc *)",
+      "Bash(node_modules/.bin/tsx *)",
       "Bash(npx tsc *)",
       "Bash(scripts/agentcli *)",
       "Skill(bash-defensive-patterns)",

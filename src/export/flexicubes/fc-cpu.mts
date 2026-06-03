@@ -75,6 +75,7 @@ export function flexiCubesCPU(
     relCutoff = 0.1,
     featureIndex?: ContourSpatialIndex | null,
     featureWeight = 4,
+    featureValidationTol = 0.75,
 ): { verts: Float32Array<ArrayBuffer>; tris: Uint32Array<ArrayBuffer> } {
     const [nx, ny, nz] = grid.dims
     const { scalar, gradient, voxelSize, gridOffset } = grid
@@ -297,7 +298,7 @@ export function flexiCubesCPU(
             const nf = collectCellFeatures(
                 featureIndex, grid, cx, cy, cz,
                 cMinX, cMinY, cMinZ, cMaxX, cMaxY, cMaxZ,
-                qx, qy, qz, featureScratch,
+                qx, qy, qz, featureScratch, featureValidationTol,
             )
             for (let fi = 0; fi < nf; fi++) {
                 const f = featureScratch.features[fi]!

@@ -35,6 +35,8 @@ export interface FlexiCubesParams {
     qefRelCutoff?: number
     /** Feature-vs-surface constraint strength when FeatureGraph constraints are active. Default 4. */
     featureWeight?: number
+    /** SDF-validation tolerance for accepting a feature, as a fraction of voxel size. Default 0.75. */
+    featureValidationTol?: number
 }
 
 /**
@@ -110,7 +112,7 @@ export class FlexiCubesExport {
         }
 
         const { verts: rawVerts, tris } = flexiCubesCPU(
-            grid, p.isoValue, p.qefRelCutoff ?? 0.1, featureIndex, p.featureWeight ?? 4,
+            grid, p.isoValue, p.qefRelCutoff ?? 0.1, featureIndex, p.featureWeight ?? 4, p.featureValidationTol ?? 0.75,
         )
 
         const t2 = performance.now()
@@ -145,6 +147,7 @@ export const flexicubesExporter: MeshExporter<FlexiCubesTuning> = {
             creaseAngleDeg: tuning.creaseAngleDeg,
             qefRelCutoff: tuning.qefRelCutoff,
             featureWeight: tuning.featureWeight,
+            featureValidationTol: tuning.featureValidationTol,
         }
         const module = ctx.makeSceneCompiler().compile(sampleGridShader, "FlexiCubes Sample Grid")
 

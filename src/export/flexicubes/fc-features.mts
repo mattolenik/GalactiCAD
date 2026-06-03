@@ -74,9 +74,11 @@ export function makeFeatureScratch(): FeatureScratch {
  * the returned count is how many entries are valid.
  *
  * `queryX/Y/Z` is the position used to project segments (typically the cube
- * center or a slot mass point). Validation tolerance matches SHREC's
- * `voxelSize · 0.75` — loose enough for trilinear interpolation error at a
- * sharp feature, tight enough to reject contours a CSG cut moved off-surface.
+ * center or a slot mass point). Validation tolerance is `voxelSize · tolFactor`
+ * — loose enough for trilinear interpolation error at a sharp feature, tight
+ * enough to reject contours a CSG cut moved off-surface. `tolFactor` defaults
+ * to SHREC's `0.75`; lower → fewer but more-confident snaps (rejects borderline
+ * / curved-crease pulls), higher → catches more at the risk of occasional drift.
  */
 export function collectCellFeatures(
     index: ContourSpatialIndex,
@@ -86,6 +88,7 @@ export function collectCellFeatures(
     cellMaxX: number, cellMaxY: number, cellMaxZ: number,
     queryX: number, queryY: number, queryZ: number,
     scratch: FeatureScratch,
+    tolFactor = 0.75,
 ): number {
     const refs = index.queryCell(cx, cy, cz)
     if (!refs || refs.length === 0) return 0
@@ -93,7 +96,7 @@ export function collectCellFeatures(
     const contours = index.contours
     const segments = contours.segments
     const points = contours.points
-    const tol = grid.voxelSize * 0.75
+    const tol = grid.voxelSize * tolFactor
     const eps = 1e-6
     const proj = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0 }
 

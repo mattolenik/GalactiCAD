@@ -1079,6 +1079,8 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
     #featureConstrainedCheckbox: HTMLInputElement
     #featureWeightRange: HTMLInputElement
     #featureWeightValueEl: HTMLSpanElement
+    #featureValidationTolRange: HTMLInputElement
+    #featureValidationTolValueEl: HTMLSpanElement
     #subscriptions: Subscription[] = []
 
     onFlexiCubesTuningChange?: (tuning: FlexiCubesTuning) => void
@@ -1212,6 +1214,21 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
         this.#featureWeightRange = featWeight.range
         this.#featureWeightValueEl = featWeight.valueEl
 
+        const featTol = addRow(
+            "Feature tol (×voxel)",
+            0,
+            2,
+            0.05,
+            this.#tuningState.featureValidationTol,
+            v => v.toFixed(2),
+            v => {
+                this.#tuningState = { ...this.#tuningState, featureValidationTol: v }
+                this.#persist()
+            },
+        )
+        this.#featureValidationTolRange = featTol.range
+        this.#featureValidationTolValueEl = featTol.valueEl
+
         const defaultsBtn = document.createElement("button")
         defaultsBtn.textContent = "FlexiCubes defaults"
         defaultsBtn.addEventListener("click", () => {
@@ -1234,6 +1251,8 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
         this.#featureConstrainedCheckbox.checked = tuning.featureConstrainedPlacement
         this.#featureWeightRange.value = String(tuning.featureWeight)
         this.#featureWeightValueEl.textContent = tuning.featureWeight.toFixed(1)
+        this.#featureValidationTolRange.value = String(tuning.featureValidationTol)
+        this.#featureValidationTolValueEl.textContent = tuning.featureValidationTol.toFixed(2)
     }
 
     #persist(): void {

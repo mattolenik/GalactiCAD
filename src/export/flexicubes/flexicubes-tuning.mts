@@ -24,6 +24,8 @@ export interface FlexiCubesTuning {
     featureConstrainedPlacement: boolean
     /** Feature-vs-surface constraint strength in the QEF (scale-invariant). Higher → harder features. Default 4. */
     featureWeight: number
+    /** SDF-validation tolerance for accepting a feature, as a fraction of voxel size. Lower → fewer/more-confident snaps; higher → catches more. Default 0.75. */
+    featureValidationTol: number
 }
 
 export const DEFAULT_FLEXICUBES_TUNING: FlexiCubesTuning = {
@@ -33,6 +35,7 @@ export const DEFAULT_FLEXICUBES_TUNING: FlexiCubesTuning = {
     qefRelCutoff: 0.1,
     featureConstrainedPlacement: true,
     featureWeight: 4,
+    featureValidationTol: 0.75,
 }
 
 /** Validate/clamp persisted FlexiCubes tuning into a full {@link FlexiCubesTuning}. */
@@ -55,6 +58,9 @@ export function normalizeFlexiCubesTuning(raw: unknown): FlexiCubesTuning {
     }
     if (typeof cur.featureWeight !== "number" || !isFinite(cur.featureWeight) || cur.featureWeight < 0 || cur.featureWeight > 64) {
         cur.featureWeight = d.featureWeight
+    }
+    if (typeof cur.featureValidationTol !== "number" || !isFinite(cur.featureValidationTol) || cur.featureValidationTol < 0 || cur.featureValidationTol > 2) {
+        cur.featureValidationTol = d.featureValidationTol
     }
     return cur
 }

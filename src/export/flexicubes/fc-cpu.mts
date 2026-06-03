@@ -231,6 +231,9 @@ export function flexiCubesCPU(
     const slotMass = new Float64Array(MAX_SLOTS * 3)
     const slotNsum = new Float64Array(MAX_SLOTS * 3)
     const slotCount = new Int32Array(MAX_SLOTS)
+    // Surface-only QEF trace per slot, captured before any feature injection so
+    // the scale-invariant weight is stable regardless of injection order.
+    const slotSurfTrace = new Float64Array(MAX_SLOTS)
     const featureScratch: FeatureScratch | null = featureIndex ? makeFeatureScratch() : null
 
     for (let sci = 0; sci < numSurfCubes; sci++) {
@@ -287,6 +290,7 @@ export function flexiCubesCPU(
             slotMass[slot * 3] = mass0; slotMass[slot * 3 + 1] = mass1; slotMass[slot * 3 + 2] = mass2
             slotNsum[slot * 3] = nsum0; slotNsum[slot * 3 + 1] = nsum1; slotNsum[slot * 3 + 2] = nsum2
             slotCount[slot] = count
+            slotSurfTrace[slot] = ata.a00 + ata.a11 + ata.a22
         }
 
         // ── Phase 2: inject FeatureGraph constraints (nearest slot) ───────────
@@ -313,11 +317,14 @@ export function flexiCubesCPU(
                 }
                 const ata = slotAta[bestSlot]!
                 const atb = slotAtb[bestSlot]!
-                // Scale-invariant weight: comparable-to-dominant over the unit
-                // surface planes regardless of crossing count. Higher
-                // `featureWeight` → harder features.
-                const trace = ata.a00 + ata.a11 + ata.a22
-                const w = featureWeight * (trace / 3 + 1e-6)
+                // Scale-invariant weight, taken from the surface-only QEF trace
+                // so it's comparable to the unit surface planes regardless of
+                // crossing count and stable vs feature-injection order. Corners
+                // need no separate (higher) weight: where a corner cell also
+                // carries its incident crease edges, those line constraints
+                // already pin the corner in all three axes (their (I−t⊗t) terms
+                // span R³), so a point pull is redundant — verified empirically.
+                const w = featureWeight * (slotSurfTrace[bestSlot]! / 3 + 1e-6)
                 if (f.kind === ContourKind.Point) {
                     addPointConstraint(ata, atb, w, f.x, f.y, f.z)
                 } else {

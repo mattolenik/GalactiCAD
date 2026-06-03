@@ -3,6 +3,15 @@ import {
     sym3Zero, sym3AddOuter, sym3Mul, sym3Eigen, sym3SolveTikhonov,
     type Sym3,
 } from "../shrec/svd3.mjs"
+import type { ContourSpatialIndex } from "../shrec/contour-snap.mjs"
+import { ContourKind } from "../../scene/contour-buffer.mjs"
+import {
+    type FeatureScratch,
+    makeFeatureScratch,
+    collectCellFeatures,
+    addPointConstraint,
+    addLineConstraint,
+} from "./fc-features.mjs"
 import { DMC_TABLE, NUM_VD_TABLE, CHECK_TABLE, CUBE_CORNERS, CUBE_EDGES, EDGE_CANONICAL } from "./fc-tables.mjs"
 
 /** Global edge ID encoding for a regular voxel grid.
@@ -64,6 +73,8 @@ export function flexiCubesCPU(
     grid: GridSampleResult,
     isoValue: number,
     relCutoff = 0.1,
+    featureIndex?: ContourSpatialIndex | null,
+    featureWeight = 4,
 ): { verts: Float32Array<ArrayBuffer>; tris: Uint32Array<ArrayBuffer> } {
     const [nx, ny, nz] = grid.dims
     const { scalar, gradient, voxelSize, gridOffset } = grid
@@ -201,6 +212,26 @@ export function flexiCubesCPU(
     const dualVertNormals: number[] = []  // [nx0, ny0, nz0, nx1, ...]
     let totalVd = 0
 
+    // Per-cube slot scratch. DMC emits at most 4 dual vertices per cube
+    // (DMC_TABLE stride is caseId*28 + slot*7 ⇒ 4 slots). We reuse these
+    // accumulators across cubes to avoid per-cube allocation. When
+    // `featureIndex` is present we run a three-phase pass per cube:
+    //   1. accumulate the surface plane-QEF for every slot,
+    //   2. inject FeatureGraph corner/crease constraints (nearest slot),
+    //   3. solve each slot and emit its dual vertex.
+    // Without features this collapses to the original per-slot solve.
+    const MAX_SLOTS = 4
+    const slotAta: Sym3[] = []
+    const slotAtb: [number, number, number][] = []
+    for (let i = 0; i < MAX_SLOTS; i++) {
+        slotAta.push(sym3Zero())
+        slotAtb.push([0, 0, 0])
+    }
+    const slotMass = new Float64Array(MAX_SLOTS * 3)
+    const slotNsum = new Float64Array(MAX_SLOTS * 3)
+    const slotCount = new Int32Array(MAX_SLOTS)
+    const featureScratch: FeatureScratch | null = featureIndex ? makeFeatureScratch() : null
+
     for (let sci = 0; sci < numSurfCubes; sci++) {
         const cubeIdx = surfCubeIndices[sci]!
         const caseId = caseIdGrid[cubeIdx]!
@@ -211,12 +242,15 @@ export function flexiCubesCPU(
         const cy = (rem / cnx) | 0
         const cx = rem - cy * cnx
 
+        // ── Phase 1: surface plane-QEF per slot ───────────────────────────────
         for (let slot = 0; slot < numVd; slot++) {
             const vdId = totalVd + slot
             const slotBase = caseId * 28 + slot * 7
 
-            const ata = sym3Zero()
-            let atb0 = 0, atb1 = 0, atb2 = 0
+            const ata = slotAta[slot]!
+            ata.a00 = 0; ata.a01 = 0; ata.a02 = 0; ata.a11 = 0; ata.a12 = 0; ata.a22 = 0
+            const atb = slotAtb[slot]!
+            atb[0] = 0; atb[1] = 0; atb[2] = 0
             let mass0 = 0, mass1 = 0, mass2 = 0
             let nsum0 = 0, nsum1 = 0, nsum2 = 0
             let count = 0
@@ -235,31 +269,83 @@ export function flexiCubesCPU(
                 const { px, py, pz, nx: gx, ny: gy, nz: gz } = crossing
                 const dot = gx * px + gy * py + gz * pz
                 sym3AddOuter(ata, gx, gy, gz)
-                atb0 += dot * gx; atb1 += dot * gy; atb2 += dot * gz
+                atb[0] += dot * gx; atb[1] += dot * gy; atb[2] += dot * gz
                 mass0 += px; mass1 += py; mass2 += pz
                 nsum0 += gx; nsum1 += gy; nsum2 += gz
                 count++
             }
 
-            if (count === 0) {
-                // Fall back to cube center
-                dualVerts.push(
-                    ox + (cx + 0.5) * voxelSize,
-                    oy + (cy + 0.5) * voxelSize,
-                    oz + (cz + 0.5) * voxelSize,
-                )
-                dualVertNormals.push(0, 0, 0)
-            } else {
+            if (count > 0) {
                 mass0 /= count; mass1 /= count; mass2 /= count
-                const out: [number, number, number] = [mass0, mass1, mass2]
-                solveQef(ata, atb0, atb1, atb2, mass0, mass1, mass2, relCutoff, out)
-                dualVerts.push(out[0], out[1], out[2])
-                const nl = Math.hypot(nsum0, nsum1, nsum2)
-                if (nl > 1e-20) {
-                    dualVertNormals.push(nsum0 / nl, nsum1 / nl, nsum2 / nl)
-                } else {
-                    dualVertNormals.push(0, 0, 0)
+            } else {
+                // No surface crossings: fall back target is the cube center.
+                mass0 = ox + (cx + 0.5) * voxelSize
+                mass1 = oy + (cy + 0.5) * voxelSize
+                mass2 = oz + (cz + 0.5) * voxelSize
+            }
+            slotMass[slot * 3] = mass0; slotMass[slot * 3 + 1] = mass1; slotMass[slot * 3 + 2] = mass2
+            slotNsum[slot * 3] = nsum0; slotNsum[slot * 3 + 1] = nsum1; slotNsum[slot * 3 + 2] = nsum2
+            slotCount[slot] = count
+        }
+
+        // ── Phase 2: inject FeatureGraph constraints (nearest slot) ───────────
+        if (featureIndex && featureScratch) {
+            const cMinX = ox + cx * voxelSize, cMinY = oy + cy * voxelSize, cMinZ = oz + cz * voxelSize
+            const cMaxX = cMinX + voxelSize, cMaxY = cMinY + voxelSize, cMaxZ = cMinZ + voxelSize
+            // Project crease segments against the cube center (slot-agnostic).
+            const qx = cMinX + 0.5 * voxelSize, qy = cMinY + 0.5 * voxelSize, qz = cMinZ + 0.5 * voxelSize
+            const nf = collectCellFeatures(
+                featureIndex, grid, cx, cy, cz,
+                cMinX, cMinY, cMinZ, cMaxX, cMaxY, cMaxZ,
+                qx, qy, qz, featureScratch,
+            )
+            for (let fi = 0; fi < nf; fi++) {
+                const f = featureScratch.features[fi]!
+                // Assign the feature to the slot whose mass point is nearest.
+                let bestSlot = 0, bestDsq = Infinity
+                for (let slot = 0; slot < numVd; slot++) {
+                    const dx = slotMass[slot * 3]! - f.x
+                    const dy = slotMass[slot * 3 + 1]! - f.y
+                    const dz = slotMass[slot * 3 + 2]! - f.z
+                    const dsq = dx * dx + dy * dy + dz * dz
+                    if (dsq < bestDsq) { bestDsq = dsq; bestSlot = slot }
                 }
+                const ata = slotAta[bestSlot]!
+                const atb = slotAtb[bestSlot]!
+                // Scale-invariant weight: comparable-to-dominant over the unit
+                // surface planes regardless of crossing count. Higher
+                // `featureWeight` → harder features.
+                const trace = ata.a00 + ata.a11 + ata.a22
+                const w = featureWeight * (trace / 3 + 1e-6)
+                if (f.kind === ContourKind.Point) {
+                    addPointConstraint(ata, atb, w, f.x, f.y, f.z)
+                } else {
+                    addLineConstraint(ata, atb, w, f.x, f.y, f.z, f.tx, f.ty, f.tz)
+                }
+            }
+        }
+
+        // ── Phase 3: solve each slot and emit its dual vertex ─────────────────
+        for (let slot = 0; slot < numVd; slot++) {
+            const m0 = slotMass[slot * 3]!, m1 = slotMass[slot * 3 + 1]!, m2 = slotMass[slot * 3 + 2]!
+            const ata = slotAta[slot]!
+            const hasConstraints = slotCount[slot]! > 0 || (ata.a00 + ata.a11 + ata.a22) > 0
+            if (!hasConstraints) {
+                // No surface crossings and no feature: keep the cube-center fallback.
+                dualVerts.push(m0, m1, m2)
+                dualVertNormals.push(0, 0, 0)
+                continue
+            }
+            const atb = slotAtb[slot]!
+            const out: [number, number, number] = [m0, m1, m2]
+            solveQef(ata, atb[0], atb[1], atb[2], m0, m1, m2, relCutoff, out)
+            dualVerts.push(out[0], out[1], out[2])
+            const n0 = slotNsum[slot * 3]!, n1 = slotNsum[slot * 3 + 1]!, n2 = slotNsum[slot * 3 + 2]!
+            const nl = Math.hypot(n0, n1, n2)
+            if (nl > 1e-20) {
+                dualVertNormals.push(n0 / nl, n1 / nl, n2 / nl)
+            } else {
+                dualVertNormals.push(0, 0, 0)
             }
         }
         totalVd += numVd

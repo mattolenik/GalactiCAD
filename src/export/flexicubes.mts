@@ -5,6 +5,9 @@ import { splitCreaseVertices } from "./crease-split.mjs"
 import type { MeshData } from "./export.mjs"
 import type { ProgressCallback } from "./mdc.mjs"
 import { flexiCubesCPU } from "./flexicubes/fc-cpu.mjs"
+import { ContourSpatialIndex } from "./shrec/contour-snap.mjs"
+import type { ContourBufferView } from "../scene/contour-buffer.mjs"
+import { featureGraphToContours } from "../feature-graph/feature-graph-to-contours.mjs"
 import sampleGridShader from "../shaders/sample_grid.wgsl"
 import type { MeshExporter } from "./mesh-exporter.mjs"
 import {
@@ -30,6 +33,8 @@ export interface FlexiCubesParams {
      * Smaller → sharper features. Default 0.1.
      */
     qefRelCutoff?: number
+    /** Feature-vs-surface constraint strength when FeatureGraph constraints are active. Default 4. */
+    featureWeight?: number
 }
 
 /**
@@ -44,6 +49,8 @@ export interface FlexiCubesParams {
 export class FlexiCubesExport {
     #sampler: GridSampler
     #params: FlexiCubesParams
+    /** Authoritative FeatureGraph corners/creases to fold into the QEF, or null. */
+    #contours: ContourBufferView | null
 
     constructor(
         helper: GPUHelper,
@@ -51,10 +58,12 @@ export class FlexiCubesExport {
         faceSelectionBuffer: GPUBuffer,
         mdcSceneParamsBuffer: GPUBuffer,
         params: FlexiCubesParams,
+        contours?: ContourBufferView | null,
         _progress?: ProgressCallback,
     ) {
         this.#sampler = new GridSampler(helper, polygonVerticesBuffer, faceSelectionBuffer, mdcSceneParamsBuffer)
         this.#params = params
+        this.#contours = contours && (contours.segmentCount + contours.pointCount) > 0 ? contours : null
     }
 
     async export(sampleGridShaderModule: GPUShaderModule, signal?: AbortSignal): Promise<MeshData> {
@@ -87,7 +96,22 @@ export class FlexiCubesExport {
         const t1 = performance.now()
         log.info(`FlexiCubesExport: grid sampled in ${(t1 - t0).toFixed(1)}ms, running CPU meshing…`)
 
-        const { verts: rawVerts, tris } = flexiCubesCPU(grid, p.isoValue, p.qefRelCutoff ?? 0.1)
+        // Build the per-cell feature index from the survival-aware FeatureGraph
+        // contours (same cube-cell convention as fc-cpu: cell origin =
+        // gridOffset + cellCoord · voxelSize).
+        const featureIndex = this.#contours
+            ? ContourSpatialIndex.build(this.#contours, grid.voxelSize, grid.gridOffset)
+            : null
+        if (featureIndex) {
+            log.info(
+                `FlexiCubesExport: feature constraints active ` +
+                    `(segments=${this.#contours!.segmentCount} points=${this.#contours!.pointCount} weight=${p.featureWeight ?? 4})`,
+            )
+        }
+
+        const { verts: rawVerts, tris } = flexiCubesCPU(
+            grid, p.isoValue, p.qefRelCutoff ?? 0.1, featureIndex, p.featureWeight ?? 4,
+        )
 
         const t2 = performance.now()
         log.info(`FlexiCubesExport: CPU meshing done in ${(t2 - t1).toFixed(1)}ms, ` +
@@ -120,14 +144,34 @@ export const flexicubesExporter: MeshExporter<FlexiCubesTuning> = {
             voxelSize: tuning.voxelSizeMm,
             creaseAngleDeg: tuning.creaseAngleDeg,
             qefRelCutoff: tuning.qefRelCutoff,
+            featureWeight: tuning.featureWeight,
         }
         const module = ctx.makeSceneCompiler().compile(sampleGridShader, "FlexiCubes Sample Grid")
+
+        // Fold authoritative corners/creases from the survival-aware
+        // FeatureGraph into the per-cell QEF (mirrors SHREC's contour wiring).
+        let contours: ContourBufferView | null = null
+        if (tuning.featureConstrainedPlacement) {
+            const fg = await ctx.buildFeatureGraph(ctx.scene, tuning.voxelSizeMm)
+            if (fg) {
+                contours = featureGraphToContours(fg.cpu, fg.worldPositions)
+                dbgLog("FlexiCubesExport").info(
+                    `FlexiCubes contours from FeatureGraph ` +
+                        `(alive verts=${fg.aliveVertexCount}/${fg.finalVertexCount}, ` +
+                        `alive edges=${fg.aliveEdgeCount}/${fg.finalEdgeCount})`,
+                )
+            } else {
+                dbgLog("FlexiCubesExport").info("FlexiCubes: FeatureGraph unavailable; no feature constraints")
+            }
+        }
+
         const fc = new FlexiCubesExport(
             ctx.helper,
             ctx.uniformBuffers.polygonVertices,
             ctx.uniformBuffers.faceSelection,
             ctx.uniformBuffers.mdcSceneParams,
             params,
+            contours,
         )
         return fc.export(module, ctx.signal)
     },

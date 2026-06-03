@@ -1076,6 +1076,9 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
     #creaseValueEl: HTMLSpanElement
     #qefCutoffRange: HTMLInputElement
     #qefCutoffValueEl: HTMLSpanElement
+    #featureConstrainedCheckbox: HTMLInputElement
+    #featureWeightRange: HTMLInputElement
+    #featureWeightValueEl: HTMLSpanElement
     #subscriptions: Subscription[] = []
 
     onFlexiCubesTuningChange?: (tuning: FlexiCubesTuning) => void
@@ -1181,6 +1184,34 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
         this.#qefCutoffRange = qef.range
         this.#qefCutoffValueEl = qef.valueEl
 
+        this.#featureConstrainedCheckbox = addCheckbox(
+            root,
+            "Feature-constrained vertices",
+            this.#tuningState.featureConstrainedPlacement,
+        )
+        this.#featureConstrainedCheckbox.addEventListener("change", () => {
+            this.#tuningState = {
+                ...this.#tuningState,
+                featureConstrainedPlacement: this.#featureConstrainedCheckbox.checked,
+            }
+            this.#persist()
+        })
+
+        const featWeight = addRow(
+            "Feature weight",
+            0,
+            64,
+            0.5,
+            this.#tuningState.featureWeight,
+            v => v.toFixed(1),
+            v => {
+                this.#tuningState = { ...this.#tuningState, featureWeight: v }
+                this.#persist()
+            },
+        )
+        this.#featureWeightRange = featWeight.range
+        this.#featureWeightValueEl = featWeight.valueEl
+
         const defaultsBtn = document.createElement("button")
         defaultsBtn.textContent = "FlexiCubes defaults"
         defaultsBtn.addEventListener("click", () => {
@@ -1200,6 +1231,9 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
         this.#creaseValueEl.textContent = `${Math.round(tuning.creaseAngleDeg)}°`
         this.#qefCutoffRange.value = String(tuning.qefRelCutoff)
         this.#qefCutoffValueEl.textContent = tuning.qefRelCutoff.toFixed(3)
+        this.#featureConstrainedCheckbox.checked = tuning.featureConstrainedPlacement
+        this.#featureWeightRange.value = String(tuning.featureWeight)
+        this.#featureWeightValueEl.textContent = tuning.featureWeight.toFixed(1)
     }
 
     #persist(): void {

@@ -20,6 +20,10 @@ export interface FlexiCubesTuning {
     creaseAngleDeg: number
     /** QEF singular-value cutoff as a fraction of the largest eigenvalue. Smaller → sharper features. Default 0.1. */
     qefRelCutoff: number
+    /** Fold authoritative FeatureGraph corners/creases into the per-cell QEF as extra constraints. Default true. */
+    featureConstrainedPlacement: boolean
+    /** Feature-vs-surface constraint strength in the QEF (scale-invariant). Higher → harder features. Default 4. */
+    featureWeight: number
 }
 
 export const DEFAULT_FLEXICUBES_TUNING: FlexiCubesTuning = {
@@ -27,6 +31,8 @@ export const DEFAULT_FLEXICUBES_TUNING: FlexiCubesTuning = {
     isoValue: 0,
     creaseAngleDeg: 30,
     qefRelCutoff: 0.1,
+    featureConstrainedPlacement: true,
+    featureWeight: 4,
 }
 
 /** Validate/clamp persisted FlexiCubes tuning into a full {@link FlexiCubesTuning}. */
@@ -43,6 +49,12 @@ export function normalizeFlexiCubesTuning(raw: unknown): FlexiCubesTuning {
     }
     if (typeof cur.qefRelCutoff !== "number" || !isFinite(cur.qefRelCutoff) || cur.qefRelCutoff < 0) {
         cur.qefRelCutoff = d.qefRelCutoff
+    }
+    if (typeof cur.featureConstrainedPlacement !== "boolean") {
+        cur.featureConstrainedPlacement = d.featureConstrainedPlacement
+    }
+    if (typeof cur.featureWeight !== "number" || !isFinite(cur.featureWeight) || cur.featureWeight < 0 || cur.featureWeight > 64) {
+        cur.featureWeight = d.featureWeight
     }
     return cur
 }

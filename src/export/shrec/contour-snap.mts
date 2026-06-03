@@ -221,7 +221,7 @@ export function makeSnapScratch(): SnapScratch {
  * Out-of-bounds samples return a large positive value (treated as "outside,
  * far from surface" → snap rejected).
  */
-function sampleScalarTrilinear(grid: GridSampleResult, x: number, y: number, z: number): number {
+export function sampleScalarTrilinear(grid: GridSampleResult, x: number, y: number, z: number): number {
     const [nx, ny, nz] = grid.dims
     const ox = grid.gridOffset[0], oy = grid.gridOffset[1], oz = grid.gridOffset[2]
     const inv = 1 / grid.voxelSize
@@ -307,7 +307,7 @@ export function sampleGradientTrilinear(
 }
 
 /** Project `(qx,qy,qz)` onto segment `[a, b]`, clamping `t` to `[0, 1]`. */
-function projectOntoSegment(
+export function projectOntoSegment(
     ax: number, ay: number, az: number,
     bx: number, by: number, bz: number,
     qx: number, qy: number, qz: number,

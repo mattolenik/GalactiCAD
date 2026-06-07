@@ -1,8 +1,10 @@
+import { execFile } from "node:child_process"
 import { writeSync } from "node:fs"
 import fs from "fs/promises"
 import http from "http"
 import path from "path"
 import { fileURLToPath } from "node:url"
+import { promisify } from "node:util"
 import { getInstalledBrowsers } from "@puppeteer/browsers"
 import puppeteer, { type Browser } from "puppeteer"
 import WebSocket, { WebSocketServer } from "ws"
@@ -682,7 +684,7 @@ export class DevServer {
             server,
             port: actualPort,
             wss,
-        } = await listenWithPortRetry(serveRoot, port, INJECTED_BRIDGE_SCRIPT, indexFileName, bridge, log, err)
+        } = await listen(serveRoot, port, INJECTED_BRIDGE_SCRIPT, indexFileName, bridge, log, err)
         const instance = new DevServer(serveRoot, actualPort, indexFileName, bridge)
         instance.httpServer = server
         instance.wsServer = wss
@@ -1123,7 +1125,46 @@ function createHttpServer(
     })
 }
 
-function listenWithPortRetry(
+const execFileAsync = promisify(execFile)
+
+/**
+ * Best-effort identification of the process(es) currently listening on `port`, so an
+ * EADDRINUSE failure can tell the user exactly what is holding it. Uses `lsof` (present on
+ * macOS/Linux) then `ps` for each PID. Returns indented `PID <pid>: <command line>` lines,
+ * or a fallback note if the holder can't be determined.
+ */
+async function describePortHolders(port: number): Promise<string> {
+    let pids: string[]
+    try {
+        const { stdout } = await execFileAsync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"])
+        pids = [...new Set(stdout.split("\n").map(s => s.trim()).filter(Boolean))]
+    } catch {
+        return "  (could not determine the holding process — is `lsof` installed?)"
+    }
+    if (pids.length === 0) {
+        return "  (no listening process found — the port may be held in another network namespace)"
+    }
+    const lines: string[] = []
+    for (const pid of pids) {
+        let cmd = "(unknown command)"
+        try {
+            const { stdout } = await execFileAsync("ps", ["-p", pid, "-o", "command="])
+            const c = stdout.trim()
+            if (c) cmd = c
+        } catch {
+            /* process vanished, or `ps` unavailable */
+        }
+        lines.push(`  PID ${pid}: ${cmd}`)
+    }
+    return lines.join("\n")
+}
+
+/**
+ * Bind the HTTP+WebSocket server on exactly `port`. Unlike the previous auto-incrementing
+ * behavior, a port conflict is fatal: we report which process holds the port (PID + command
+ * line) and reject, so worktree ports stay predictable. Override with the PORT env var.
+ */
+function listen(
     dir: string,
     port: number,
     clientScript: string,
@@ -1133,36 +1174,38 @@ function listenWithPortRetry(
     err = console.error,
 ): Promise<{ server: http.Server; port: number; wss: WebSocketServer }> {
     return new Promise((resolve, reject) => {
-        function tryPort(p: number) {
-            const server = createHttpServer(dir, clientScript, indexFileName, bridge, log, err)
-            const onError = (e: NodeJS.ErrnoException) => {
-                if (e.code === "EADDRINUSE") {
-                    log(`Port ${p} in use, trying ${p + 1}...`)
-                    server.close(() => tryPort(p + 1))
-                } else {
-                    reject(e)
-                }
-            }
-            server.once("error", onError)
-            server.listen(p, () => {
-                server.removeListener("error", onError)
-                log(`Serving at http://localhost:${p}`)
-                const wss = new WebSocketServer({ server }).on("connection", (ws: WebSocket) => {
-                    ws.on("error", (error: Error) => {
-                        err("WebSocket error: ", error)
-                    })
-                    ws.on("message", (data: Buffer | ArrayBuffer | Buffer[]) => {
-                        bridge.handleClientMessage(data, ws)
-                    })
-                    ws.on("close", () => {
-                        bridge.notifyClientClosed(ws)
-                    })
-                    bridge.notifyClientConnected()
+        const server = createHttpServer(dir, clientScript, indexFileName, bridge, log, err)
+        const onError = (e: NodeJS.ErrnoException) => {
+            if (e.code === "EADDRINUSE") {
+                void describePortHolders(port).then(holders => {
+                    err(
+                        `Port ${port} is already in use:\n${holders}\n` +
+                            "Stop that process, or set the PORT env var to run on a different port.",
+                    )
+                    server.close(() => reject(new Error(`port ${port} already in use`)))
                 })
-                bridge.setWsServer(wss)
-                resolve({ server, port: p, wss })
-            })
+            } else {
+                reject(e)
+            }
         }
-        tryPort(port)
+        server.once("error", onError)
+        server.listen(port, () => {
+            server.removeListener("error", onError)
+            log(`Serving at http://localhost:${port}`)
+            const wss = new WebSocketServer({ server }).on("connection", (ws: WebSocket) => {
+                ws.on("error", (error: Error) => {
+                    err("WebSocket error: ", error)
+                })
+                ws.on("message", (data: Buffer | ArrayBuffer | Buffer[]) => {
+                    bridge.handleClientMessage(data, ws)
+                })
+                ws.on("close", () => {
+                    bridge.notifyClientClosed(ws)
+                })
+                bridge.notifyClientConnected()
+            })
+            bridge.setWsServer(wss)
+            resolve({ server, port, wss })
+        })
     })
 }

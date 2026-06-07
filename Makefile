@@ -54,8 +54,9 @@ _start:
 	if [[ -z $$SKIP_SETUP ]]; then
 		make setup
 	fi
-	port=$$( [[ "$$AGENT" == true ]] && echo $${PORT:-7900} || echo $${PORT:-6900} )
-	PORT=$$port nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
+	# Port is chosen by build.mts from the project-folder suffix (base 6900/7900 + trailing
+	# number), erroring out if taken. A PORT set in the environment passes through and overrides.
+	nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
 	i=0
 	while (( i < 60 )); do
 		if [[ -f "$(RUN_FILE)" ]]; then

@@ -95,8 +95,21 @@ function shouldSuppressLiveReload(relativePath: string): boolean {
     })
 }
 
+/**
+ * The default dev-server port encodes the git-workspace suffix so parallel worktrees get
+ * stable, distinct, predictable ports. Base is 7900 (agent) / 6900 (interactive); a trailing
+ * number on the project-root folder name is added to it: `foo` / `foo0` → base+0, `foo1` →
+ * base+1, `foo2` → base+2, … Set the PORT env var to override this entirely.
+ */
+function defaultPort(): number {
+    const base = AGENT_MODE ? 7900 : 6900
+    const folder = nodePath.basename(process.cwd())
+    const suffix = folder.match(/(\d+)$/)
+    return base + (suffix ? parseInt(suffix[1], 10) : 0)
+}
+
 const ServerOptions = {
-    port: parseInt(process.env.PORT || (AGENT_MODE ? "7900" : "6900"), 10),
+    port: process.env.PORT ? parseInt(process.env.PORT, 10) : defaultPort(),
 }
 
 const RUN_FILE = process.env.RUN_FILE ?? ".devserver.run"
@@ -225,10 +238,17 @@ async function main() {
             void shutdown("SIGTERM")
         })
 
-        server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err, {
-            runFile: RUN_FILE,
-            pid: process.pid,
-        })
+        try {
+            server = await DevServer.create(Options.outDir, ServerOptions.port, "index.html", log, err, {
+                runFile: RUN_FILE,
+                pid: process.pid,
+            })
+        } catch (e) {
+            // The detailed "port in use" report (PID + command line) was already printed by the
+            // devserver; surface a concise reason and exit non-zero rather than crash with a stack.
+            err(e instanceof Error ? e.message : String(e))
+            process.exit(1)
+        }
         const change$ = new Subject<{ event: EventName; path: string }>()
         change$.pipe(debounceTime(300)).subscribe(async ({ event, path }) => {
             log(`Build triggered by ${event}: ${path}`)

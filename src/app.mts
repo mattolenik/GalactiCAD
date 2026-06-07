@@ -1610,6 +1610,16 @@ class App {
         const canvasRect = this.#preview.canvas.getBoundingClientRect()
         const visibleRegion = this.#getVisiblePreviewRect()
         const previewUvRect = canvasPreviewUvRect(canvasRect, visibleRegion)
+        // Full preview-canvas pixel size (CSS px). The shader frames the scene against the
+        // whole-canvas aspect (res.x/res.y) and shifts by viewCenter; the agent render
+        // reproduces this aspect and then crops to previewUvRect, so the agent's framing
+        // matches the visible (non-editor) region the user actually sees. When the mesh
+        // viewer is open #viewports stacks preview + mesh as equal flex cells, so this rect
+        // is already the top cell's (half-height) size — i.e. the squished aspect on screen.
+        // Capturing the full canvas (not the visible region) is required because previewUvRect
+        // is expressed relative to this canvas; the crop subtracts the editor afterward.
+        const viewportWidth = canvasRect.width > 0 ? Math.round(canvasRect.width) : undefined
+        const viewportHeight = canvasRect.height > 0 ? Math.round(canvasRect.height) : undefined
         return buildAgentTestcase({
             sourceUtf8: model.getValue(),
             camera: {
@@ -1622,6 +1632,8 @@ class App {
                     : {}),
             },
             viewCenter: [vc.x, vc.y],
+            viewportWidth,
+            viewportHeight,
             previewUvRect,
             meshExport: this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools),
             meshOverlay: agentMeshOverlayFromSettingsMeshViewer(this.#settings.getGlobal().meshViewer),

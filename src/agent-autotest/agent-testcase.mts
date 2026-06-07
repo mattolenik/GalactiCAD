@@ -25,8 +25,10 @@ export interface AgentTestcase {
     camera: CameraSettings
     viewCenter: [number, number]
     /**
-     * Optional render dimensions. When omitted, agent renders default to 1000×1000;
-     * values are clamped to [1, 2048] in the render pipeline.
+     * Full preview-canvas pixel size when captured. Drives the agent render's aspect
+     * ratio (res.x/res.y) so framing matches what the user saw before the previewUvRect
+     * crop. When omitted, agent renders default to {@link AGENT_RENDER_DEFAULT_DIM}²
+     * (square); values are clamped to [1, {@link AGENT_RENDER_MAX_DIM}] per dimension.
      */
     viewportWidth?: number
     viewportHeight?: number
@@ -211,7 +213,7 @@ export interface AgentRenderRequest {
     sourceBase64: string
     camera: CameraSettings
     viewCenter: [number, number]
-    /** Optional render dims; pipeline defaults to 1000×1000 and clamps to [1, 2048]. */
+    /** Optional render dims; pipeline defaults to AGENT_RENDER_DEFAULT_DIM² and clamps to [1, AGENT_RENDER_MAX_DIM]. */
     viewportWidth?: number
     viewportHeight?: number
     previewUvRect?: CanvasPreviewUvRect

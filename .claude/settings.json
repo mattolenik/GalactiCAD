@@ -37,7 +37,8 @@
       "Skill(web-components)",
       "Skill(webgpu:*)",
       "Skill(webgpu)",
-      "WebFetch(domain:pptr.dev)"
+      "WebFetch(domain:pptr.dev)",
+      "Bash(xargs *)"
     ]
   }
 }

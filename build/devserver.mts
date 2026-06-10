@@ -689,6 +689,15 @@ export class DevServer {
         instance.httpServer = server
         instance.wsServer = wss
 
+        // Write the run file as soon as the port is bound, BEFORE launching headless
+        // Chromium: the Makefile's _start polls for this file with a timeout, and a slow
+        // browser launch would otherwise leave a live server that _start believes failed —
+        // bound to the port but with no run file, so every retry hits "port in use".
+        if (options) {
+            const payload: RunFileData = { pid: options.pid, port: actualPort }
+            await fs.writeFile(options.runFile, JSON.stringify(payload, null, 2))
+        }
+
         if (AGENT_MODE && options) {
             const url = `http://127.0.0.1:${actualPort}/`
             try {
@@ -715,10 +724,6 @@ export class DevServer {
             }
         }
 
-        if (options) {
-            const payload: RunFileData = { pid: options.pid, port: actualPort }
-            await fs.writeFile(options.runFile, JSON.stringify(payload, null, 2))
-        }
         log(
             `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET|POST /_agent/render (JSON); POST /_agent/render/testcase-body (YAML); GET testcase: /_agent/render/testcase/<path>?mode=… (path resolved: cwd → test/testcases/ → absolute)`,
         )

@@ -12,6 +12,7 @@ import { mdcExporter } from "./mdc.mjs"
 import { shrecExporter } from "./shrec.mjs"
 import { flexicubesExporter } from "./flexicubes.mjs"
 import { isoSimplicialExporter } from "./iso-simplicial/iso-exporter.mjs"
+import { sfccExporter } from "./sfcc/sfcc-exporter.mjs"
 
 // Tuning types differ per exporter, so the map is heterogeneous; `any` here just
 // lets the four concrete `MeshExporter<T>` values share one record type. The
@@ -22,6 +23,7 @@ export const EXPORTERS: Record<ExporterKind, MeshExporter<any>> = {
     shrec: shrecExporter,
     isoSimplicial: isoSimplicialExporter,
     flexicubes: flexicubesExporter,
+    sfcc: sfccExporter,
 }
 
 /** Look up the exporter for a kind, falling back to MDC for unknown values. */

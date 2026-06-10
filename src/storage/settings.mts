@@ -14,6 +14,7 @@ import { DEFAULT_MDC_TUNING, normalizeMdcTuning, type MdcTuning } from "../expor
 import { DEFAULT_SHREC_TUNING, normalizeShrecTuning, type ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
 import { DEFAULT_FLEXICUBES_TUNING, normalizeFlexiCubesTuning, type FlexiCubesTuning } from "../export/flexicubes/flexicubes-tuning.mjs"
 import { DEFAULT_ISO_SIMPLICIAL_TUNING, normalizeIsoSimplicialTuning, type IsoSimplicialTuning } from "../export/iso-simplicial/iso-tuning.mjs"
+import { DEFAULT_SFCC_TUNING, normalizeSfccTuning, type SfccTuning } from "../export/sfcc/sfcc-tuning.mjs"
 import { db } from "./db.mjs"
 
 /** Per-exporter tuning normalizers, keyed by kind. */
@@ -22,6 +23,7 @@ const EXPORTER_NORMALIZERS: Record<ExporterKind, (raw: unknown) => unknown> = {
     shrec: normalizeShrecTuning,
     isoSimplicial: normalizeIsoSimplicialTuning,
     flexicubes: normalizeFlexiCubesTuning,
+    sfcc: normalizeSfccTuning,
 }
 
 /** Fresh default tuning for every exporter (each a copy). */
@@ -31,6 +33,7 @@ function defaultExporterTuning(): Record<ExporterKind, unknown> {
         shrec: { ...DEFAULT_SHREC_TUNING },
         isoSimplicial: { ...DEFAULT_ISO_SIMPLICIAL_TUNING },
         flexicubes: { ...DEFAULT_FLEXICUBES_TUNING },
+        sfcc: { ...DEFAULT_SFCC_TUNING },
     }
 }
 
@@ -453,6 +456,11 @@ export class SettingsManager {
         return normalizeIsoSimplicialTuning(this.#globalSettings.app.exporterTuning.isoSimplicial)
     }
 
+    /** Normalized SFCC tuning. */
+    getSfccTuning(): SfccTuning {
+        return normalizeSfccTuning(this.#globalSettings.app.exporterTuning.sfcc)
+    }
+
     /** Clamped MDC export tuning for mesh pipeline (Dev Tools). */
     getMdcExportLevers(): MdcTuning {
         return normalizeMdcTuning(this.#globalSettings.app.exporterTuning.mdc)
@@ -617,6 +625,7 @@ export class SettingsManager {
                     shrec: rawApp.shrecTuning,
                     isoSimplicial: rawApp.isoSimplicialTuning,
                     flexicubes: rawApp.flexicubesTuning,
+                    sfcc: undefined, // no legacy per-field name — SFCC postdates the tuning blob
                 }
                 const exporterTuning = {} as Record<ExporterKind, unknown>
                 for (const kind of EXPORTER_KINDS) {

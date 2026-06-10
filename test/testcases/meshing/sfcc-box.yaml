@@ -1,0 +1,31 @@
+schemaVersion: 1
+source: |-
+  return box(3, 2, 2.5)
+camera:
+  position:
+    - 0
+    - 0
+    - 1
+  translation:
+    - 0
+    - 0
+    - 0
+  dollyDistance: 14
+  rotation:
+    - 0.88
+    - 0.28
+    - 0.36
+    - 0.12
+  pivot:
+    - 0
+    - 0
+    - 0
+viewCenter:
+  - 0.5
+  - 0.5
+resolutionScale: 1
+viewportWidth: 1200
+viewportHeight: 900
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc

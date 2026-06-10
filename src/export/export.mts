@@ -55,10 +55,21 @@ export interface MeshMdcDebugData {
     stats: MeshMdcDebugStats
 }
 
+/** SFCC certification diagnostics (see src/export/sfcc/assemble.mts). */
+export interface MeshSfccDebugData {
+    /** Pipeline stats blob (cell/face counts, audits, fallback counters). */
+    stats: Record<string, number | number[]>
+    /** World AABBs of cells whose loops failed to close, 6 floats per box. */
+    failedCellBoxes: Float32Array<ArrayBuffer>
+    /** Feature polyline overlay (xyz pairs per segment), when debugOutput is on. */
+    featurePolylines?: Float32Array<ArrayBuffer>
+}
+
 export interface MeshData {
     verts: Float32Array<ArrayBuffer>
     tris: Uint32Array<ArrayBuffer>
     debug?: {
         mdc?: MeshMdcDebugData
+        sfcc?: MeshSfccDebugData
     }
 }

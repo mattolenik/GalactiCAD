@@ -1,0 +1,38 @@
+schemaVersion: 1
+source: |-
+  let plate = box(3, 1, 2.4)
+  let boss = cylinder.radius(1.2).height(1.6).shift([1.2, 1.2, 0])
+  let bump = sphere.radius(1.1).shift([-3, 1, -2.4])
+  let bore = cylinder.radius(0.55).height(4).shift([1.2, 0, 0])
+  let notch = box(0.8, 1.2, 0.8).shift([3, 1, 2.4])
+  let slot = box(0.5, 1.4, 2.4).shift([-1.6, 1.2, 0]).rotate([0, 25, 0])
+
+  return subtract(union(plate, boss, bump), bore, notch, slot)
+camera:
+  position:
+    - 0
+    - 0
+    - 1
+  translation:
+    - 0
+    - 0
+    - 0
+  dollyDistance: 16
+  rotation:
+    - 0.88
+    - 0.28
+    - 0.36
+    - 0.12
+  pivot:
+    - 0
+    - 0
+    - 0
+viewCenter:
+  - 0.5
+  - 0.5
+resolutionScale: 1
+viewportWidth: 1200
+viewportHeight: 900
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc

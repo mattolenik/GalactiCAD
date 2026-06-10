@@ -197,16 +197,22 @@ export function mat4FromScale(sx: number, sy: number, sz: number): Float32Array 
 }
 
 /**
- * Build a 4x4 rotation from a row-major 3x3 fwd matrix (as produced by
- * `Rotate.getWgslMatrices().fwd` — 9 floats laid out by row). Result is
- * column-major to match WGSL convention.
+ * Build a 4x4 world-from-local rotation from `Rotate.getWgslMatrices().fwd`.
+ *
+ * The WGSL side packs flat 9-float arrays as *columns* (`mat3x3Wgsl`), so the
+ * world-from-local rotation the GPU applies to normals is the flat `fwd`
+ * array's triplets read as columns. This function writes those triplets
+ * straight into the column-major 4x4 — NO transpose. (The previous version
+ * transposed here, which made FeatureGraph features rotate inversely to the
+ * GPU surface and get culled by the stage-4 survival test on rotated scenes;
+ * see the SFCC transform-bake regression test that pins the two paths
+ * together.)
  */
 export function mat4FromRotationFwd(fwd: ArrayLike<number>): Float32Array {
     const m = new Float32Array(16)
-    // fwd is row-major: [r00, r01, r02, r10, r11, r12, r20, r21, r22]
-    m[0] = fwd[0]!; m[1] = fwd[3]!; m[2] = fwd[6]!
-    m[4] = fwd[1]!; m[5] = fwd[4]!; m[6] = fwd[7]!
-    m[8] = fwd[2]!; m[9] = fwd[5]!; m[10] = fwd[8]!
+    m[0] = fwd[0]!; m[1] = fwd[1]!; m[2] = fwd[2]!
+    m[4] = fwd[3]!; m[5] = fwd[4]!; m[6] = fwd[5]!
+    m[8] = fwd[6]!; m[9] = fwd[7]!; m[10] = fwd[8]!
     m[15] = 1
     return m
 }

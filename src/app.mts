@@ -1226,6 +1226,7 @@ class App {
         devTools.syncIsoSimplicialTuningFromSettings(this.#settings.getIsoSimplicialTuning())
         devTools.syncShrecTuningFromSettings(this.#settings.getShrecTuning())
         devTools.syncFlexiCubesTuningFromSettings(this.#settings.getFlexicubesTuning())
+        devTools.syncSfccTuningFromSettings(this.#settings.getSfccTuning())
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
         devTools.syncMdcLeversFromSettings(this.#settings.getMdcExportLevers())
         // Re-mesh live when the mesh exporter or any exporter tuning knob
@@ -1241,6 +1242,7 @@ class App {
         devTools.onIsoSimplicialTuningChange = remeshIfMeshViewerOn
         devTools.onShrecTuningChange = remeshIfMeshViewerOn
         devTools.onFlexiCubesTuningChange = remeshIfMeshViewerOn
+        devTools.onSfccTuningChange = remeshIfMeshViewerOn
         devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
         devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 

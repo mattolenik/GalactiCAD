@@ -51,7 +51,15 @@ export class Rotate extends UnaryOperator {
         return buf
     }
 
-    private getWgslMatrices(): { fwd: number[]; inv: number[] } {
+    /**
+     * The two 3×3 matrices the WGSL side consumes, as flat row-major arrays.
+     * `mat3x3Wgsl` packs consecutive triplets as *columns*, so the WGSL-side
+     * matrices are the transposes of these flat arrays read row-major: the SDF
+     * evaluates the child at `transpose(inv)·p` (= world-to-local = `fwd` read
+     * row-major) and rotates normals by `transpose(fwd)` (= world-from-local).
+     * The SFCC CPU evaluator bakes the same convention (transform-bake.mts).
+     */
+    getWgslMatrices(): { fwd: number[]; inv: number[] } {
         const toRad = Math.PI / 180
         const cx = Math.cos(this.rx * toRad), sx = Math.sin(this.rx * toRad)
         const cy = Math.cos(this.ry * toRad), sy = Math.sin(this.ry * toRad)

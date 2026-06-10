@@ -11,6 +11,7 @@ import {
     ISO_SIMPLICIAL_DISPLAY_NAME,
     type IsoSimplicialTuning,
 } from "../export/iso-simplicial/iso-tuning.mjs"
+import { DEFAULT_SFCC_TUNING, SFCC_DISPLAY_NAME, SFCC_MAX_DEPTH, type SfccTuning } from "../export/sfcc/sfcc-tuning.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
 import { IsoSimplicialConstants } from "../export/iso-simplicial/constants.mjs"
 import "./dev-tools-collapse.mjs"
@@ -147,6 +148,7 @@ export class DevToolsExporterSelect extends HTMLElement {
             shrec: SHREC_DISPLAY_NAME,
             isoSimplicial: ISO_SIMPLICIAL_DISPLAY_NAME,
             flexicubes: FLEXICUBES_DISPLAY_NAME,
+            sfcc: SFCC_DISPLAY_NAME,
         }
         const EXPORTER_OPTIONS: ReadonlyArray<readonly [ExporterKind, string]> = EXPORTER_KINDS.map(
             k => [k, DISPLAY_NAMES[k]] as const,
@@ -1267,10 +1269,133 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
     }
 }
 
+/** Numeric SFCC knobs surfaced in Dev Tools (core subset; algorithm knobs land with the pipeline). */
+const SFCC_RANGE_KNOBS: {
+    key: "depthMin" | "depthMax" | "boundsPaddingMm" | "surfaceTolMm" | "curveChordTolMm" | "creaseAngleDeg"
+    label: string
+    min: number
+    max: number
+    step: number
+    int?: boolean
+}[] = [
+    { key: "depthMin", label: "Octree depth min", min: 1, max: SFCC_MAX_DEPTH, step: 1, int: true },
+    { key: "depthMax", label: "Octree depth max", min: 1, max: SFCC_MAX_DEPTH, step: 1, int: true },
+    { key: "boundsPaddingMm", label: "Bounds padding (mm)", min: 0, max: 20, step: 0.1 },
+    { key: "surfaceTolMm", label: "Surface tol (mm)", min: 0.001, max: 0.1, step: 0.001 },
+    { key: "curveChordTolMm", label: "Curve chord tol (mm)", min: 0.001, max: 0.5, step: 0.001 },
+    { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1, int: true },
+]
+
+const SFCC_BOOL_KNOBS: { key: "enforceEdgeBalance" | "checkVertexLinks" | "debugOutput"; label: string }[] = [
+    { key: "enforceEdgeBalance", label: "2:1 edge balance" },
+    { key: "checkVertexLinks", label: "Vertex-link audit" },
+    { key: "debugOutput", label: "Debug overlays" },
+]
+
+function formatSfccValue(knob: (typeof SFCC_RANGE_KNOBS)[number], v: number): string {
+    if (knob.int) return String(Math.round(v))
+    return knob.step < 0.01 ? v.toFixed(3) : v.toFixed(1)
+}
+
+/** SFCC exporter tuning (persisted on `app.exporterTuning.sfcc`). */
+export class DevToolsSfccSection extends HTMLElement {
+    #settings = SettingsManager.instance
+    #rows = new Map<(typeof SFCC_RANGE_KNOBS)[number]["key"], { range: HTMLInputElement; valueEl: HTMLSpanElement }>()
+    #checks = new Map<(typeof SFCC_BOOL_KNOBS)[number]["key"], HTMLInputElement>()
+    #throwOnFailureCheckbox: HTMLInputElement
+
+    onSfccTuningChange?: (tuning: SfccTuning) => void
+
+    get sfccTuning(): SfccTuning {
+        return { ...this.#settings.getSfccTuning() }
+    }
+
+    constructor() {
+        super()
+        const shadow = this.attachShadow({ mode: "open" })
+        const style = document.createElement("style")
+        style.textContent = devToolsBaseShadowCss()
+        shadow.appendChild(style)
+
+        const t = this.#settings.getSfccTuning()
+
+        for (const knob of SFCC_RANGE_KNOBS) {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = knob.label
+            const range = document.createElement("input")
+            range.type = "range"
+            range.min = String(knob.min)
+            range.max = String(knob.max)
+            range.step = String(knob.step)
+            range.value = String(t[knob.key])
+            const valueEl = document.createElement("span")
+            valueEl.className = "shade-val"
+            valueEl.textContent = formatSfccValue(knob, t[knob.key])
+            range.addEventListener("input", () => {
+                let v = parseFloat(range.value)
+                if (!Number.isFinite(v)) v = DEFAULT_SFCC_TUNING[knob.key]
+                v = Math.max(knob.min, Math.min(knob.max, v))
+                if (knob.int) v = Math.round(v)
+                valueEl.textContent = formatSfccValue(knob, v)
+                this.#persist({ [knob.key]: v })
+            })
+            row.append(lab, range, valueEl)
+            shadow.appendChild(row)
+            this.#rows.set(knob.key, { range, valueEl })
+        }
+
+        for (const knob of SFCC_BOOL_KNOBS) {
+            const cb = addCheckbox(shadow, knob.label, t[knob.key])
+            cb.addEventListener("change", () => {
+                this.#persist({ [knob.key]: cb.checked })
+            })
+            this.#checks.set(knob.key, cb)
+        }
+
+        this.#throwOnFailureCheckbox = addCheckbox(shadow, "Throw on certification failure", t.failurePolicy === "throw")
+        this.#throwOnFailureCheckbox.addEventListener("change", () => {
+            this.#persist({ failurePolicy: this.#throwOnFailureCheckbox.checked ? "throw" : "partial" })
+        })
+
+        const defaults = document.createElement("button")
+        defaults.textContent = "SFCC defaults"
+        defaults.addEventListener("click", () => {
+            this.#settings.updateGlobal({ app: { exporterTuning: { sfcc: {} } } })
+            this.syncFromSettings(this.#settings.getSfccTuning())
+            this.onSfccTuningChange?.(this.#settings.getSfccTuning())
+        })
+        shadow.appendChild(defaults)
+    }
+
+    syncFromSettings(tuning: SfccTuning): void {
+        for (const knob of SFCC_RANGE_KNOBS) {
+            const row = this.#rows.get(knob.key)
+            if (!row) continue
+            row.range.value = String(tuning[knob.key])
+            row.valueEl.textContent = formatSfccValue(knob, tuning[knob.key])
+        }
+        for (const knob of SFCC_BOOL_KNOBS) {
+            const cb = this.#checks.get(knob.key)
+            if (cb) cb.checked = tuning[knob.key]
+        }
+        this.#throwOnFailureCheckbox.checked = tuning.failurePolicy === "throw"
+    }
+
+    #persist(patch: Partial<SfccTuning>): void {
+        const next: SfccTuning = { ...this.#settings.getSfccTuning(), ...patch }
+        this.#settings.updateGlobal({ app: { exporterTuning: { sfcc: next } } })
+        this.onSfccTuningChange?.(next)
+    }
+}
+
 customElements.define("dev-tools-mdc-export-section", DevToolsMdcExportSection)
 customElements.define("dev-tools-mesh-simplify-section", DevToolsMeshSimplifySection)
 customElements.define("dev-tools-shrec-export-section", DevToolsShrecExportSection)
 customElements.define("dev-tools-flexicubes-export-section", DevToolsFlexiCubesExportSection)
+customElements.define("dev-tools-sfcc-section", DevToolsSfccSection)
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -1278,5 +1403,6 @@ declare global {
         "dev-tools-mesh-simplify-section": DevToolsMeshSimplifySection
         "dev-tools-shrec-export-section": DevToolsShrecExportSection
         "dev-tools-flexicubes-export-section": DevToolsFlexiCubesExportSection
+        "dev-tools-sfcc-section": DevToolsSfccSection
     }
 }

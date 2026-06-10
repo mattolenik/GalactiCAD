@@ -31,11 +31,13 @@ import type { MeshData } from "./export.mjs"
  *   Tetrahedra (`src/export/iso-simplicial/`).
  * - `"flexicubes"`: GPU grid samples + CPU FlexiCubes dual extraction
  *   (`src/export/flexicubes.mts`).
+ * - `"sfcc"`: CPU stratified feature-conforming contouring — symbolic CSG
+ *   features + certified primal octree meshing (`src/export/sfcc/`).
  */
-export type ExporterKind = "mdc" | "shrec" | "isoSimplicial" | "flexicubes"
+export type ExporterKind = "mdc" | "shrec" | "isoSimplicial" | "flexicubes" | "sfcc"
 
 /** All exporter kinds, in dropdown order. */
-export const EXPORTER_KINDS = ["mdc", "shrec", "isoSimplicial", "flexicubes"] as const satisfies readonly ExporterKind[]
+export const EXPORTER_KINDS = ["mdc", "shrec", "isoSimplicial", "flexicubes", "sfcc"] as const satisfies readonly ExporterKind[]
 
 /** Type guard for a persisted/incoming exporter kind. */
 export function isValidExporter(v: unknown): v is ExporterKind {

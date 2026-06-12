@@ -15,7 +15,7 @@
 
 import { applyPoint, invApplyPoint, rotateVector, type Similarity } from "./transform-bake.mjs"
 
-export type CarrierKind = "plane" | "cylinder" | "cone" | "sphere" | "twistedSide"
+export type CarrierKind = "plane" | "cylinder" | "cone" | "sphere" | "twistedSide" | "loftSide"
 
 export interface SfccStratum {
     /** Dense global stratum id (index into CpuSdfTree.strata). */
@@ -24,7 +24,7 @@ export interface SfccStratum {
     readonly ownerNodeId: number
     /** Index of the owning leaf in CpuSdfTree.leaves. */
     readonly leafIndex: number
-    /** Patch index within the primitive (box: 0..5 = +x,−x,+y,−y,+z,−z; cylinder: 0 side, 1 top, 2 bottom; cone: 0 mantle, 1 base; sphere: 0). */
+    /** Patch index within the primitive (box: 0..5 = +x,−x,+y,−y,+z,−z; cylinder: 0 side, 1 top, 2 bottom; cone: 0 mantle, 1 base; sphere: 0; lathe: non-axis profile edges in edge order). */
     readonly localIndex: number
     /** CSG orientation baked into f/normal. */
     readonly sign: 1 | -1
@@ -249,6 +249,110 @@ export function makeTwistedSideStratum(ident: StratumIdentity, prm: TwistedSideP
     return {
         ...ident,
         kind: "twistedSide",
+        f,
+        normal: (px, py, pz, out, off = 0) => {
+            invApplyPoint(prm.sim, px, py, pz, local)
+            evalLocal(local[0]!, local[1]!, local[2]!)
+            rotateVector(prm.sim, gradL[0]!, gradL[1]!, gradL[2]!, out, off)
+            const len = Math.hypot(out[off]!, out[off + 1]!, out[off + 2]!)
+            if (len > 1e-12) {
+                out[off] = (s * out[off]!) / len
+                out[off + 1] = (s * out[off + 1]!) / len
+                out[off + 2] = (s * out[off + 2]!) / len
+            } else {
+                out[off] = s
+                out[off + 1] = 0
+                out[off + 2] = 0
+            }
+        },
+        project: (px, py, pz, out, off = 0) => {
+            invApplyPoint(prm.sim, px, py, pz, local)
+            let lx = local[0]!
+            let ly = local[1]!
+            let lz = local[2]!
+            for (let it = 0; it < 8; it++) {
+                const g = evalLocal(lx, ly, lz)
+                const m2 = gradL[0]! * gradL[0]! + gradL[1]! * gradL[1]! + gradL[2]! * gradL[2]!
+                if (m2 < 1e-18) break
+                const k = g / m2
+                lx -= k * gradL[0]!
+                ly -= k * gradL[1]!
+                lz -= k * gradL[2]!
+                if (Math.abs(g) < 1e-12) break
+            }
+            applyPoint(prm.sim, lx, ly, lz, world)
+            out[off] = world[0]!
+            out[off + 1] = world[1]!
+            out[off + 2] = world[2]!
+        },
+    }
+}
+
+export interface LoftSideParams {
+    /** Leaf world-from-local similarity. */
+    sim: Similarity
+    /** Loft position in leaf-local coords (slab center posY). */
+    posX: number
+    posY: number
+    posZ: number
+    /** Segment bottom, in loft-local y (= −h + seg·segH), and segment height. */
+    segY0: number
+    segH: number
+    /** Edge supporting line at the segment's bottom profile: point + outward unit 2D normal. */
+    aX: number
+    aZ: number
+    aNx: number
+    aNz: number
+    /** Same at the segment's top profile. */
+    bX: number
+    bZ: number
+    bNx: number
+    bNz: number
+}
+
+/**
+ * Loft side carrier: the ruled sheet swept by linearly interpolating one
+ * polygon edge's supporting line between two profiles (a plane when the lines
+ * are parallel, a hyperbolic-paraboloid patch otherwise). The raw field
+ * g(p) = (1−s)·lA(p.xz) + s·lB(p.xz) with s = (y − segY0)/segH is smooth but
+ * not unit-gradient, so `f` returns the NORMALIZED field g/|∇g| (same zero
+ * set, first-order distance-like) — the twisted-extrude carrier convention.
+ *
+ * `s` is deliberately UNCLAMPED: when consecutive loft segments morph
+ * linearly their carriers are then one and the same analytic sheet, so smooth
+ * junctions present no normal kink to the octree's per-stratum
+ * normal-variation certificate (a clamped prism extension would).
+ */
+export function makeLoftSideStratum(ident: StratumIdentity, prm: LoftSideParams): SfccStratum {
+    const s = ident.sign
+    const local = new Float64Array(3)
+    const gradL = new Float64Array(3)
+    const world = new Float64Array(3)
+
+    /** Evaluate g and its LOCAL gradient at a leaf-local point; returns g. */
+    const evalLocal = (lx: number, ly: number, lz: number): number => {
+        const qx = lx - prm.posX
+        const qy = ly - prm.posY
+        const qz = lz - prm.posZ
+        const t = (qy - prm.segY0) / prm.segH
+        const lA = (qx - prm.aX) * prm.aNx + (qz - prm.aZ) * prm.aNz
+        const lB = (qx - prm.bX) * prm.bNx + (qz - prm.bZ) * prm.bNz
+        gradL[0] = (1 - t) * prm.aNx + t * prm.bNx
+        gradL[1] = (lB - lA) / prm.segH
+        gradL[2] = (1 - t) * prm.aNz + t * prm.bNz
+        return (1 - t) * lA + t * lB
+    }
+
+    const f = (px: number, py: number, pz: number): number => {
+        invApplyPoint(prm.sim, px, py, pz, local)
+        const g = evalLocal(local[0]!, local[1]!, local[2]!)
+        const m = Math.hypot(gradL[0]!, gradL[1]!, gradL[2]!)
+        return (s * prm.sim.s * g) / Math.max(m, 1e-12)
+    }
+
+    return {
+        ...ident,
+        kind: "loftSide",
         f,
         normal: (px, py, pz, out, off = 0) => {
             invApplyPoint(prm.sim, px, py, pz, local)

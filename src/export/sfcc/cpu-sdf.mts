@@ -11,17 +11,21 @@
  * f/normal/strata (downstream code never thinks about it again).
  *
  * Supported subset: Box, Sphere, Cylinder (fillet/chamfer = 0), Cone, Extrude
- * (straight-segment Polygon2D profiles, twist included); hard
- * Union/Subtract/Intersect (radius = 0); Translate / Rotate / uniform positive
- * Scale. Anything else throws {@link SfccUnsupportedError} listing every
- * offending node — no silent degradation: a primitive missing from the
- * certified pipeline would falsify every certificate downstream.
+ * (straight-segment Polygon2D profiles, twist included), Loft (same vertex
+ * count across profiles), Lathe (Polygon2D profile at r ≥ 0 revolved around
+ * the local Y axis); hard Union/Subtract/Intersect (radius = 0);
+ * Translate / Rotate / uniform positive Scale. Anything else throws
+ * {@link SfccUnsupportedError} listing every offending node — no silent
+ * degradation: a primitive missing from the certified pipeline would falsify
+ * every certificate downstream.
  *
- * Lipschitz: every leaf except the twisted extrude is an exact SDF (L = 1;
- * rigid transforms and the WGSL min-axis uniform-scale compensation preserve
- * it). Twisted extrudes exceed 1 by twistRate × radial distance and publish
- * {@link CpuSdfLeaf.localLipschitz}; `intervalOverBox` composes per-leaf
- * centered forms through the min/max tree, so certificates stay sound.
+ * Lipschitz: every leaf except the twisted extrude and the morphing loft is
+ * an exact SDF (L = 1; rigid transforms and the WGSL min-axis uniform-scale
+ * compensation preserve it). Twisted extrudes exceed 1 by twistRate × radial
+ * distance, morphing lofts by the profile-difference slope |dB − dA|/segH;
+ * both publish {@link CpuSdfLeaf.localLipschitz}; `intervalOverBox` composes
+ * per-leaf centered forms through the min/max tree, so certificates stay
+ * sound.
  */
 
 import type { Node } from "../../scene/base.mjs"
@@ -30,6 +34,8 @@ import { Sphere } from "../../scene/primitives/sphere.mjs"
 import { Cylinder } from "../../scene/primitives/cylinder.mjs"
 import { Cone } from "../../scene/primitives/cone.mjs"
 import { Extrude } from "../../scene/primitives/extrude.mjs"
+import { Loft } from "../../scene/primitives/loft.mjs"
+import { Lathe } from "../../scene/primitives/lathe.mjs"
 import { polygon2dWindingSign } from "../../scene/primitives/polygon2d.mjs"
 import { Union } from "../../scene/operators/union.mjs"
 import { Subtract } from "../../scene/operators/subtract.mjs"
@@ -57,12 +63,21 @@ import {
     cylinderNormal,
     extrudeDist,
     extrudeNormal,
+    LATHE_AXIS_R,
+    latheDist,
+    latheNormal,
+    latheProfileEdges,
+    loftDist,
+    loftNormal,
+    polygonDist2D,
     sphereDist,
     sphereNormal,
+    type Polygon2DResult,
 } from "./cpu-sdf-primitives.mjs"
 import {
     makeConeStratum,
     makeCylinderStratum,
+    makeLoftSideStratum,
     makePlaneStratum,
     makeSphereStratum,
     makeTwistedSideStratum,
@@ -522,6 +537,278 @@ function walk(state: CompileState, node: Node, sim: Similarity, neg: boolean): C
                                   return Math.sqrt(1 + k * rho * (k * rho))
                               }
                           },
+            },
+            sim,
+            neg,
+        )
+    }
+
+    if (node instanceof Loft) {
+        const px = node.pos.x
+        const py = node.pos.y
+        const pz = node.pos.z
+        const h = node.h
+        const profiles = node.profiles
+        const M = profiles.length
+        const N = profiles[0]!.vertices.length
+        if (!profiles.every(pr => pr.vertices.length === N)) {
+            return unsupported(
+                state,
+                node,
+                "loft profiles with differing vertex counts (per-edge ruled carriers need 1:1 correspondence — v2)",
+            )
+        }
+        const profs: Float64Array[] = []
+        const winds: Array<1 | -1> = []
+        let rMaxX = 0
+        let rMaxZ = 0
+        for (const pr of profiles) {
+            const arr = new Float64Array(N * 2)
+            for (let i = 0; i < N; i++) {
+                arr[i * 2] = pr.vertices[i]![0]
+                arr[i * 2 + 1] = pr.vertices[i]![1]
+                rMaxX = Math.max(rMaxX, Math.abs(arr[i * 2]!))
+                rMaxZ = Math.max(rMaxZ, Math.abs(arr[i * 2 + 1]!))
+            }
+            profs.push(arr)
+            winds.push(polygon2dWindingSign(pr.vertices))
+        }
+        const segH = (2 * h) / (M - 1)
+        let prismatic = true
+        for (let i = 1; i < M && prismatic; i++) {
+            for (let v = 0; v < N * 2; v++) {
+                if (profs[i]![v] !== profs[0]![v]) {
+                    prismatic = false
+                    break
+                }
+            }
+        }
+        return makeLeaf(
+            state,
+            {
+                node,
+                dist: (x, y, z) => loftDist(profs, winds, h, x, y, z),
+                normalLocal: (x, y, z, out) => loftNormal(profs, winds, h, x, y, z, out),
+                posX: px,
+                posY: py,
+                posZ: pz,
+                aabbLocal: [px, py, pz, rMaxX, h, rMaxZ],
+                buildStrata: (leafIndex, sign, s, firstId) => {
+                    const ownerNodeId = nodeIdOf(node)
+                    const out: SfccStratum[] = []
+                    for (let seg = 0; seg < M - 1; seg++) {
+                        const A = profs[seg]!
+                        const B = profs[seg + 1]!
+                        const wA = winds[seg]!
+                        const wB = winds[seg + 1]!
+                        for (let j = 0; j < N; j++) {
+                            const j1 = (j + 1) % N
+                            // True OUTWARD edge normals (the negation of the
+                            // extrude-carrier formula): loft face points lie on
+                            // neither profile's boundary, so trim's flank probes
+                            // see the true outward tree gradient there — the
+                            // carriers must be oriented to match (loftNormal
+                            // corrects the polygon boundary fallback likewise).
+                            const edge = (
+                                verts: Float64Array,
+                                wind: 1 | -1,
+                            ): [number, number, number, number] => {
+                                const v0x = verts[j * 2]!
+                                const v0z = verts[j * 2 + 1]!
+                                const ex = verts[j1 * 2]! - v0x
+                                const ez = verts[j1 * 2 + 1]! - v0z
+                                const eLen = Math.hypot(ex, ez)
+                                return [v0x, v0z, (-ez / eLen) * wind, (ex / eLen) * wind]
+                            }
+                            const [aX, aZ, aNx, aNz] = edge(A, wA)
+                            const [bX, bZ, bNx, bNz] = edge(B, wB)
+                            const li = seg * N + j
+                            const ident = { id: firstId + li, ownerNodeId, leafIndex, localIndex: li, sign }
+                            if (aNx === bNx && aNz === bNz && aX === bX && aZ === bZ) {
+                                // Identical supporting line at both profiles → exact plane.
+                                out.push(
+                                    worldPlane(ident, s, aNx, 0, aNz, -(aNx * (px + aX) + aNz * (pz + aZ))),
+                                )
+                            } else {
+                                out.push(
+                                    makeLoftSideStratum(ident, {
+                                        sim: s,
+                                        posX: px,
+                                        posY: py,
+                                        posZ: pz,
+                                        segY0: -h + seg * segH,
+                                        segH,
+                                        aX,
+                                        aZ,
+                                        aNx,
+                                        aNz,
+                                        bX,
+                                        bZ,
+                                        bNx,
+                                        bNz,
+                                    }),
+                                )
+                            }
+                        }
+                    }
+                    const capBase = (M - 1) * N
+                    out.push(
+                        worldPlane(
+                            { id: firstId + capBase, ownerNodeId, leafIndex, localIndex: capBase, sign },
+                            s,
+                            0,
+                            1,
+                            0,
+                            -(py + h),
+                        ),
+                        worldPlane(
+                            { id: firstId + capBase + 1, ownerNodeId, leafIndex, localIndex: capBase + 1, sign },
+                            s,
+                            0,
+                            -1,
+                            0,
+                            py - h,
+                        ),
+                    )
+                    return out
+                },
+                localLipschitz: prismatic
+                    ? undefined
+                    : s => {
+                          const scratch = new Float64Array(3)
+                          const pr: Polygon2DResult = { d: 0, gx: 0, gz: 0, edge: 0 }
+                          const dVals = new Float64Array(M)
+                          return (cx, cy, cz, r) => {
+                              invApplyPoint(s, cx, cy, cz, scratch)
+                              const rl = r / s.s
+                              const qx = scratch[0]! - px
+                              const qz = scratch[2]! - pz
+                              for (let i = 0; i < M; i++) {
+                                  polygonDist2D(profs[i]!, winds[i]!, qx, qz, pr)
+                                  dVals[i] = pr.d
+                              }
+                              // |d_{i+1} − d_i| over the ball: each dᵢ is 1-Lipschitz in
+                              // xz, so the center difference grows by at most 2·rl.
+                              let maxDiff = 0
+                              for (let i = 0; i < M - 1; i++) {
+                                  maxDiff = Math.max(maxDiff, Math.abs(dVals[i + 1]! - dVals[i]!))
+                              }
+                              const slope = (maxDiff + 2 * rl) / segH
+                              return Math.sqrt(1 + slope * slope)
+                          }
+                      },
+            },
+            sim,
+            neg,
+        )
+    }
+
+    if (node instanceof Lathe) {
+        const px = node.pos.x
+        const py = node.pos.y
+        const pz = node.pos.z
+        const polyVerts = node.child.vertices
+        for (const [r] of polyVerts) {
+            if (r < -LATHE_AXIS_R) {
+                return unsupported(
+                    state,
+                    node,
+                    `lathe profile vertex at negative radius (r = ${r}) — the profile must stay on one side of the revolution axis`,
+                )
+            }
+        }
+        const windSign = polygon2dWindingSign(polyVerts)
+        const edges = latheProfileEdges(polyVerts, windSign)
+        if (!edges.some(e => e.kind !== "none")) {
+            return unsupported(state, node, "degenerate lathe profile (every edge on the revolution axis)")
+        }
+        let maxR = 0
+        let minY = Infinity
+        let maxY = -Infinity
+        for (const [r, y] of polyVerts) {
+            maxR = Math.max(maxR, Math.abs(r))
+            minY = Math.min(minY, y)
+            maxY = Math.max(maxY, y)
+        }
+        return makeLeaf(
+            state,
+            {
+                node,
+                dist: (x, y, z) => latheDist(edges, x, y, z),
+                normalLocal: (x, y, z, out) => latheNormal(edges, x, y, z, out),
+                posX: px,
+                posY: py,
+                posZ: pz,
+                aabbLocal: [px, py + (minY + maxY) * 0.5, pz, maxR, (maxY - minY) * 0.5, maxR],
+                buildStrata: (leafIndex, sign, s, firstId) => {
+                    const ownerNodeId = nodeIdOf(node)
+                    const a = new Float64Array(3)
+                    applyPoint(s, px, py, pz, a)
+                    const u = new Float64Array(3)
+                    rotateVector(s, 0, 1, 0, u)
+                    const out: SfccStratum[] = []
+                    // One stratum per non-axis profile edge, in edge order (the
+                    // skip-order layout feature-set.mts re-derives via
+                    // latheProfileEdges). Each carrier is oriented so its
+                    // normal matches the edge's outward profile normal: the
+                    // natural cylinder/cone normal points away from the axis,
+                    // so edges whose outward points inward (bores, inner
+                    // chamfers) fold a flip into the stratum sign.
+                    for (const e of edges) {
+                        if (e.kind === "none") continue
+                        const ident = {
+                            id: firstId + out.length,
+                            ownerNodeId,
+                            leafIndex,
+                            localIndex: out.length,
+                            sign,
+                        }
+                        if (e.kind === "plane") {
+                            const ny3 = e.ny > 0 ? 1 : -1
+                            out.push(worldPlane(ident, s, 0, ny3, 0, -ny3 * (py + (e.y0 + e.y1) * 0.5)))
+                        } else if (e.kind === "cylinder") {
+                            const flip = e.nr > 0 ? 1 : -1
+                            out.push(
+                                makeCylinderStratum(
+                                    { ...ident, sign: (sign * flip) as 1 | -1 },
+                                    a[0]!,
+                                    a[1]!,
+                                    a[2]!,
+                                    u[0]!,
+                                    u[1]!,
+                                    u[2]!,
+                                    s.s * Math.abs((e.r0 + e.r1) * 0.5),
+                                ),
+                            )
+                        } else {
+                            // Cone: apex where the edge's supporting line meets
+                            // the axis; u points from the apex toward the edge
+                            // (t = height along u, ρ = L·sinα at distance L).
+                            const dr = e.r1 - e.r0
+                            const dy = e.y1 - e.y0
+                            const yApex = e.y0 - e.r0 * (dy / dr)
+                            const apex = new Float64Array(3)
+                            applyPoint(s, px, py + yApex, pz, apex)
+                            const uw = new Float64Array(3)
+                            rotateVector(s, 0, dy * dr > 0 ? 1 : -1, 0, uw)
+                            const flip = e.nr > 0 ? 1 : -1
+                            out.push(
+                                makeConeStratum(
+                                    { ...ident, sign: (sign * flip) as 1 | -1 },
+                                    apex[0]!,
+                                    apex[1]!,
+                                    apex[2]!,
+                                    uw[0]!,
+                                    uw[1]!,
+                                    uw[2]!,
+                                    Math.abs(dr) / e.len,
+                                    Math.abs(dy) / e.len,
+                                ),
+                            )
+                        }
+                    }
+                    return out
+                },
             },
             sim,
             neg,

@@ -313,6 +313,253 @@ export function extrudeNormal(
     }
 }
 
+// --- Loft: fLoft_*_field (loft.mts compileAuxFast) ----------------------------
+//
+// Prism-like: max(profile-mix distance, slab |y| − h). The profile field at
+// height y linearly interpolates the 2D polygon SDFs of the two bracketing
+// profiles; segment selection matches the WGSL (seg = t·(M−1),
+// si = min(⌊seg⌋, M−2), localT = seg − si). Sign-correct with the exact zero
+// set, but NOT 1-Lipschitz: ∂f/∂y = (dB − dA)/segH can exceed the unit xz
+// gradient — callers must use the leaf's local Lipschitz bound for
+// certificates (same contract as the twisted extrude).
+
+const POLY_SCRATCH_B: Polygon2DResult = { d: 0, gx: 0, gz: 0, edge: 0 }
+
+export function loftDist(
+    profs: ReadonlyArray<ArrayLike<number>>,
+    winds: ArrayLike<number>,
+    h: number,
+    px: number,
+    py: number,
+    pz: number,
+): number {
+    const M = profs.length
+    const t = Math.max(0, Math.min(1, (py + h) / (2 * h)))
+    const seg = t * (M - 1)
+    const si = Math.min(Math.floor(seg), M - 2)
+    const lt = seg - si
+    polygonDist2D(profs[si]!, winds[si]! as 1 | -1, px, pz, POLY_SCRATCH)
+    polygonDist2D(profs[si + 1]!, winds[si + 1]! as 1 | -1, px, pz, POLY_SCRATCH_B)
+    const dProfile = POLY_SCRATCH.d * (1 - lt) + POLY_SCRATCH_B.d * lt
+    return Math.max(dProfile, Math.abs(py) - h)
+}
+
+/**
+ * Analytic region-based loft normal: side → mixed 2D gradients plus the
+ * profile-morph y term ∂/∂y mix = (dB − dA)/segH (zero outside the slab where
+ * t clamps, matching the WGSL FD on the clamped profile field); cap → ±y.
+ */
+export function loftNormal(
+    profs: ReadonlyArray<ArrayLike<number>>,
+    winds: ArrayLike<number>,
+    h: number,
+    px: number,
+    py: number,
+    pz: number,
+    out: Float64Array,
+    off = 0,
+): void {
+    const M = profs.length
+    const tRaw = (py + h) / (2 * h)
+    const t = Math.max(0, Math.min(1, tRaw))
+    const seg = t * (M - 1)
+    const si = Math.min(Math.floor(seg), M - 2)
+    const lt = seg - si
+    polygonDist2D(profs[si]!, winds[si]! as 1 | -1, px, pz, POLY_SCRATCH)
+    polygonDist2D(profs[si + 1]!, winds[si + 1]! as 1 | -1, px, pz, POLY_SCRATCH_B)
+    const dProfile = POLY_SCRATCH.d * (1 - lt) + POLY_SCRATCH_B.d * lt
+    const dCap = Math.abs(py) - h
+    if (dProfile > dCap) {
+        // A loft face point generally lies on NEITHER profile's boundary, so
+        // the mixed gradient must be the true outward one. polygonDist2D
+        // returns exactly that off the boundary, but its exact-on-boundary
+        // fallback is the opposite orientation (the extrude carriers depend on
+        // it) — flip the fallback case (|d| < 1e-6 mirrors its trigger) so the
+        // loft leaf gradient is uniformly outward and agrees with the loft
+        // side carriers.
+        const sA = Math.abs(POLY_SCRATCH.d) < 1e-6 ? -1 : 1
+        const sB = Math.abs(POLY_SCRATCH_B.d) < 1e-6 ? -1 : 1
+        const gx = sA * POLY_SCRATCH.gx * (1 - lt) + sB * POLY_SCRATCH_B.gx * lt
+        const gz = sA * POLY_SCRATCH.gz * (1 - lt) + sB * POLY_SCRATCH_B.gz * lt
+        const gy =
+            tRaw > 0 && tRaw < 1 && Math.abs(h) > 1e-9
+                ? ((POLY_SCRATCH_B.d - POLY_SCRATCH.d) * (M - 1)) / (2 * h)
+                : 0
+        const len = Math.hypot(gx, gy, gz)
+        if (len > 1e-12) {
+            out[off] = gx / len
+            out[off + 1] = gy / len
+            out[off + 2] = gz / len
+        } else {
+            out[off] = 1
+            out[off + 1] = 0
+            out[off + 2] = 0
+        }
+    } else {
+        out[off] = 0
+        out[off + 1] = py >= 0 ? 1 : -1
+        out[off + 2] = 0
+    }
+}
+
+// --- Lathe: revolution of a Polygon2D profile around the local Y axis --------
+//
+// DELIBERATE DEVIATION from the shader (same spirit as the cylinder note
+// above): the WGSL lathe evaluates the 2D polygon SDF at the meridian point
+// q = (|p.xz|, y), so a profile edge lying ON the revolution axis (both
+// endpoints at r ≈ 0) reports d = 0 along the axis — but that edge is interior
+// to the revolved solid, not boundary, and a phantom f = 0 axis line breaks
+// SFCC's f = 0 ⟺ surface invariant. We therefore measure distance only to
+// NON-AXIS profile edges (the true revolved boundary) while keeping the full
+// closed polygon for the inside/outside parity test. For profiles with every
+// vertex at r ≥ 0 (enforced by the compiler) the nearest point of a revolved
+// edge to any query lies in the query's own meridian half-plane, so the
+// meridian distance IS the exact 3D distance: an exact SDF, globally
+// 1-Lipschitz, no localLipschitz bound needed.
+//
+// Normals use the meridian gradient lifted by the radial direction; exactly on
+// the boundary the closest-point vector vanishes and we fall back to the
+// closest edge's outward profile normal (the true gradient limit), matching
+// the polygonDist2D deviation note above.
+
+/** Profile-space |r| at or below which a vertex sits on the revolution axis. */
+export const LATHE_AXIS_R = 1e-6
+
+/** Relative direction epsilon: |dy| (resp. |dr|) ≤ this × edge length ⇒ plane (resp. cylinder). */
+const LATHE_EDGE_DIR_EPS = 1e-9
+
+export type LatheEdgeKind = "none" | "plane" | "cylinder" | "cone"
+
+export interface LatheProfileEdge {
+    /** "none" = degenerate or axis-lying (no revolved surface, skipped by strata/distance). */
+    readonly kind: LatheEdgeKind
+    /** Endpoints in (r, y) profile space (edge k runs vertex k → vertex k+1). */
+    readonly r0: number
+    readonly y0: number
+    readonly r1: number
+    readonly y1: number
+    readonly len: number
+    /** Unit outward profile normal of the revolved surface (true outward of the 2D region; 0 for "none"). */
+    readonly nr: number
+    readonly ny: number
+}
+
+/**
+ * Classify the profile edges of a lathe polygon and compute their outward
+ * normals. `windSign` is `polygon2dWindingSign(vertices)`; the outward normal
+ * is −windSign·(dy, −dr)/len, oriented out of the polygon interior regardless
+ * of authoring direction. Shared by the CPU evaluator (strata carriers) and
+ * the native-feature compiler (rings/poles) so the per-edge stratum layout
+ * never drifts between them.
+ */
+export function latheProfileEdges(vertices: [number, number][], windSign: 1 | -1): LatheProfileEdge[] {
+    const n = vertices.length
+    const out: LatheProfileEdge[] = []
+    for (let i = 0; i < n; i++) {
+        const [r0, y0] = vertices[i]!
+        const [r1, y1] = vertices[(i + 1) % n]!
+        const dr = r1 - r0
+        const dy = y1 - y0
+        const len = Math.hypot(dr, dy)
+        let kind: LatheEdgeKind
+        if (len < 1e-12 || (Math.abs(r0) <= LATHE_AXIS_R && Math.abs(r1) <= LATHE_AXIS_R)) {
+            kind = "none"
+        } else if (Math.abs(dy) <= LATHE_EDGE_DIR_EPS * len) {
+            kind = "plane"
+        } else if (Math.abs(dr) <= LATHE_EDGE_DIR_EPS * len) {
+            kind = "cylinder"
+        } else {
+            kind = "cone"
+        }
+        const nr = kind === "none" ? 0 : (-windSign * dy) / len
+        const ny = kind === "none" ? 0 : (windSign * dr) / len
+        out.push({ kind, r0, y0, r1, y1, len, nr, ny })
+    }
+    return out
+}
+
+interface LatheMeridianResult {
+    d: number
+    gr: number
+    gy: number
+}
+
+const LATHE_SCRATCH: LatheMeridianResult = { d: 0, gr: 0, gy: 0 }
+
+/**
+ * Signed meridian distance at q = (ρ, y): even-odd parity over the FULL
+ * polygon, distance over the non-"none" edges only (see header note).
+ */
+function latheMeridian(edges: LatheProfileEdge[], qr: number, qy: number, out: LatheMeridianResult): void {
+    let inside = false
+    let minD2 = Infinity
+    let closest = -1
+    let bx = 0
+    let by = 0
+    for (let i = 0; i < edges.length; i++) {
+        const e = edges[i]!
+        // Even-odd ray crossing (horizontal ray toward +r); ALL edges count —
+        // the region test needs the closed loop, axis edges included.
+        if (e.y0 > qy !== e.y1 > qy) {
+            const rCross = e.r0 + ((qy - e.y0) / (e.y1 - e.y0)) * (e.r1 - e.r0)
+            if (qr < rCross) inside = !inside
+        }
+        if (e.kind === "none") continue
+        const ex = e.r1 - e.r0
+        const ey = e.y1 - e.y0
+        const wx = qr - e.r0
+        const wy = qy - e.y0
+        const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (e.len * e.len)))
+        const dxv = wx - ex * t
+        const dyv = wy - ey * t
+        const d2 = dxv * dxv + dyv * dyv
+        if (d2 < minD2) {
+            minD2 = d2
+            closest = i
+            bx = dxv
+            by = dyv
+        }
+    }
+    const s = inside ? -1 : 1
+    out.d = s * Math.sqrt(minD2)
+    const bLen = Math.hypot(bx, by)
+    if (bLen >= 1e-6) {
+        out.gr = (s * bx) / bLen
+        out.gy = (s * by) / bLen
+    } else {
+        // On the boundary: the closest edge's outward normal (gradient limit).
+        out.gr = edges[closest]!.nr
+        out.gy = edges[closest]!.ny
+    }
+}
+
+export function latheDist(edges: LatheProfileEdge[], px: number, py: number, pz: number): number {
+    latheMeridian(edges, Math.hypot(px, pz), py, LATHE_SCRATCH)
+    return LATHE_SCRATCH.d
+}
+
+export function latheNormal(
+    edges: LatheProfileEdge[],
+    px: number,
+    py: number,
+    pz: number,
+    out: Float64Array,
+    off = 0,
+): void {
+    const rho = Math.hypot(px, pz)
+    latheMeridian(edges, rho, py, LATHE_SCRATCH)
+    let rdx = 1
+    let rdz = 0
+    if (rho > 1e-12) {
+        rdx = px / rho
+        rdz = pz / rho
+    }
+    // (gr·radDir, gy) is unit by construction (gr² + gy² = 1).
+    out[off] = LATHE_SCRATCH.gr * rdx
+    out[off + 1] = LATHE_SCRATCH.gy
+    out[off + 2] = LATHE_SCRATCH.gr * rdz
+}
+
 // --- Cone: fConeEx (hg_sdf.wgsl:777) -----------------------------------------
 //
 // Local frame: base disc on y = 0 with radius `radius`, apex at y = `height`.

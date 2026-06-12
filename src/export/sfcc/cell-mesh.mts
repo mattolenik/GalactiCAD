@@ -452,19 +452,34 @@ function meshEdgeCell(
     const side2 = [...chain2]
     for (let k = 0; k < interior.length; k++) side2.push(interior[k]!)
 
-    // Assign strata to sides via a representative non-pin chain vertex.
+    // Assign strata to sides by aggregate carrier-distance margin over ALL
+    // non-pin chain vertices. Per-chain representatives are fragile here:
+    // vertices near the crease lie on BOTH carriers (|f| ≈ 0 for each), so a
+    // single sample can tie or flip, and rejecting on disagreement chops the
+    // wedge — the residual chip source at extreme twist, where chains are
+    // only a few vertices long. There are exactly two possible assignments;
+    // score both and take the better — even a near-tie pick is strictly
+    // better than the fallback chop (fanFromStratumVertex already guards
+    // against a wrong-carrier projection).
     const sA = features.strata[curve.adjacentStrata[0]!]!
     const sB = features.strata[curve.adjacentStrata[1]!]!
-    const rep = (chain: number[]): number => chain[Math.floor(chain.length / 2)]!
-    const r1 = rep(chain1)
-    const d1A = Math.abs(sA.f(points.x(r1), points.y(r1), points.z(r1)))
-    const d1B = Math.abs(sB.f(points.x(r1), points.y(r1), points.z(r1)))
-    const r2 = rep(chain2)
-    const d2A = Math.abs(sA.f(points.x(r2), points.y(r2), points.z(r2)))
-    const d2B = Math.abs(sB.f(points.x(r2), points.y(r2), points.z(r2)))
-    const side1IsA = d1A <= d1B
-    const side2IsA = d2A < d2B
-    if (side1IsA === side2IsA) return false // both chains classify to one stratum — not a clean split
+    let score = 0
+    for (let idx = 1; idx < chain1.length - 1; idx++) {
+        const v = chain1[idx]!
+        const x = points.x(v)
+        const y = points.y(v)
+        const z = points.z(v)
+        score += Math.abs(sB.f(x, y, z)) - Math.abs(sA.f(x, y, z))
+    }
+    for (let idx = 1; idx < chain2.length - 1; idx++) {
+        const v = chain2[idx]!
+        const x = points.x(v)
+        const y = points.y(v)
+        const z = points.z(v)
+        score += Math.abs(sA.f(x, y, z)) - Math.abs(sB.f(x, y, z))
+    }
+    const side1IsA = score >= 0
+    const side2IsA = !side1IsA
 
     fanFromStratumVertex(side1, side1IsA ? sA : sB, cellBox, tree, points, opts, outTris)
     fanFromStratumVertex(side2, side2IsA ? sA : sB, cellBox, tree, points, opts, outTris)

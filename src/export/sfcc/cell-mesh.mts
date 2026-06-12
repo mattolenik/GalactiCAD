@@ -19,7 +19,7 @@
 
 import type { CpuSdfTree } from "./cpu-sdf.mjs"
 import type { SfccFeatureSet } from "./feature-set.mjs"
-import { cellAabb, faceAxes, packPoint, strideAtLevel } from "./lattice.mjs"
+import { cellAabb, faceAxes, packPoint, strideAtLevel, unpackPoint } from "./lattice.mjs"
 import type { SfccOctree, SfccCell } from "./octree.mjs"
 import type { FacePin, FaceRecord } from "./face-contour.mjs"
 import type { PointTable } from "./point-table.mjs"
@@ -209,6 +209,7 @@ export function meshAllCells(
         cellAabb(oct.lat, cell.level, cell.ix, cell.iy, cell.iz, box)
 
         const meshedLoops = new Set<number>()
+
         if (cell.featureCorner >= 0 && opts.features) {
             // Corner cells: every loop touching an incident-curve pin is fanned
             // from the EXACT corner point — arbitrary valence, no classification

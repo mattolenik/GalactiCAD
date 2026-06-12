@@ -62,8 +62,6 @@ export interface OctreeBuildOptions {
     signal?: AbortSignal
 }
 
-const SQRT3 = Math.sqrt(3)
-
 /** Face neighbors (6) and edge neighbors (12) as coordinate offsets. */
 const FACE_NEIGHBORS: ReadonlyArray<readonly [number, number, number]> = [
     [1, 0, 0],
@@ -115,8 +113,10 @@ export function buildOctree(tree: CpuSdfTree, lat: SfccLattice, opts: OctreeBuil
         const half = cellSizeAtLevel(lat, level) / 2
         const stride = strideAtLevel(lat, level)
         pointToWorld(lat, (ix + 0.5) * stride, (iy + 0.5) * stride, (iz + 0.5) * stride, scratch)
-        const fc = tree.f(scratch[0]!, scratch[1]!, scratch[2]!)
-        return Math.abs(fc) > SQRT3 * half
+        // Per-node interval bound (NOT a bare ±√3·half: twisted-extrude leaves
+        // are locally super-1-Lipschitz and compose through the CSG min/max).
+        const [lo, hi] = tree.intervalOverBox(scratch[0]!, scratch[1]!, scratch[2]!, half, half, half)
+        return lo > 0 || hi < 0
     }
 
     const makeLeaf = (level: number, ix: number, iy: number, iz: number): SfccCell => {

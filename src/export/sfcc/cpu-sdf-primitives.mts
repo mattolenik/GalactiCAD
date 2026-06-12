@@ -156,6 +156,163 @@ export function cylinderNormal(
     }
 }
 
+// --- Polygon2D: fPolygon2D_*_combined (extrude.mts/polygon2d.mts) ------------
+//
+// IQ's even-odd polygon SDF, ported verbatim: exact signed distance to a
+// closed polygon (negative inside regardless of winding), plus the gradient
+// (direction to/from the closest edge) and the closest edge index.
+//
+// DELIBERATE DEVIATION from the shader: exactly ON the boundary the
+// closest-point vector vanishes and the WGSL falls back to (1, 0) — GPU rays
+// never sit exactly on the surface, but SFCC probes do (they're projected
+// onto carriers). The fallback here is the closest edge's outward normal
+// (`windSign` orients it), which is the true gradient limit.
+
+export interface Polygon2DResult {
+    d: number
+    gx: number
+    gz: number
+    edge: number
+}
+
+export function polygonDist2D(
+    verts: ArrayLike<number>,
+    windSign: 1 | -1,
+    px: number,
+    pz: number,
+    out: Polygon2DResult,
+): void {
+    const n = verts.length / 2
+    let d = (px - verts[0]!) * (px - verts[0]!) + (pz - verts[1]!) * (pz - verts[1]!)
+    let s = 1
+    let minDist = Infinity
+    let closest = 0
+    let bx = 0
+    let bz = 0
+    let j = n - 1
+    for (let i = 0; i < n; i++) {
+        const vix = verts[i * 2]!
+        const viz = verts[i * 2 + 1]!
+        const vjx = verts[j * 2]!
+        const vjz = verts[j * 2 + 1]!
+        const ex = vjx - vix
+        const ez = vjz - viz
+        const wx = px - vix
+        const wz = pz - viz
+        const eLen2 = Math.max(ex * ex + ez * ez, 1e-12)
+        const t = Math.max(0, Math.min(1, (wx * ex + wz * ez) / eLen2))
+        const qx = wx - ex * t
+        const qz = wz - ez * t
+        const dd = qx * qx + qz * qz
+        d = Math.min(d, dd)
+        if (dd < minDist) {
+            minDist = dd
+            closest = j
+            bx = qx
+            bz = qz
+        }
+        const c0 = pz >= viz
+        const c1 = pz < vjz
+        const c2 = ex * wz > ez * wx
+        if ((c0 && c1 && c2) || (!c0 && !c1 && !c2)) s = -s
+        j = i
+    }
+    out.d = s * Math.sqrt(d)
+    const bLen = Math.hypot(bx, bz)
+    if (bLen >= 1e-6) {
+        out.gx = (s * bx) / bLen
+        out.gz = (s * bz) / bLen
+    } else {
+        // On the boundary: the closest edge's outward normal (see header note).
+        const k = closest
+        const k1 = (k + 1) % n
+        const ex = verts[k1 * 2]! - verts[k * 2]!
+        const ez = verts[k1 * 2 + 1]! - verts[k * 2 + 1]!
+        const eLen = Math.max(Math.hypot(ex, ez), 1e-12)
+        out.gx = (ez / eLen) * windSign
+        out.gz = (-ex / eLen) * windSign
+    }
+    out.edge = closest
+}
+
+// --- Extrude: fExtrude_*_Ex (extrude.mts compileAux) -------------------------
+//
+// Prism = max(2D polygon distance in the (possibly un-twisted) xz frame,
+// slab distance |y| − h). The twist path queries the polygon at
+// R(−angle(y))·(x, z) with angle = twist·clamp((y+h)/2h, 0, 1) — sign-correct
+// with the exact zero set, but NOT 1-Lipschitz (|∇f| grows with twist rate ×
+// radius); callers must use the leaf's local Lipschitz bound for certificates.
+
+const POLY_SCRATCH: Polygon2DResult = { d: 0, gx: 0, gz: 0, edge: 0 }
+
+export function extrudeDist(
+    verts: ArrayLike<number>,
+    windSign: 1 | -1,
+    h: number,
+    twistRad: number,
+    px: number,
+    py: number,
+    pz: number,
+): number {
+    let qx = px
+    let qz = pz
+    if (twistRad !== 0) {
+        const t = Math.max(0, Math.min(1, (py + h) / (2 * h)))
+        const angle = twistRad * t
+        const ca = Math.cos(angle)
+        const sa = Math.sin(angle)
+        qx = ca * px + sa * pz
+        qz = -sa * px + ca * pz
+    }
+    polygonDist2D(verts, windSign, qx, qz, POLY_SCRATCH)
+    return Math.max(POLY_SCRATCH.d, Math.abs(py) - h)
+}
+
+export function extrudeNormal(
+    verts: ArrayLike<number>,
+    windSign: 1 | -1,
+    h: number,
+    twistRad: number,
+    px: number,
+    py: number,
+    pz: number,
+    out: Float64Array,
+    off = 0,
+): void {
+    const t = Math.max(0, Math.min(1, (py + h) / (2 * h)))
+    const angle = twistRad * t
+    const ca = Math.cos(angle)
+    const sa = Math.sin(angle)
+    const qx = ca * px + sa * pz
+    const qz = -sa * px + ca * pz
+    polygonDist2D(verts, windSign, qx, qz, POLY_SCRATCH)
+    const dCap = Math.abs(py) - h
+    if (POLY_SCRATCH.d > dCap) {
+        // Side: rotate the 2D gradient back; the twist adds a y component
+        // (same formula as the WGSL twist path).
+        const gx = POLY_SCRATCH.gx
+        const gz = POLY_SCRATCH.gz
+        const k = Math.abs(h) > 1e-6 ? twistRad / (2 * h) : 0
+        const gy = k * (gx * qz - gz * qx)
+        const nx = ca * gx - sa * gz
+        const nz = sa * gx + ca * gz
+        const len = Math.hypot(nx, gy, nz)
+        if (len > 1e-12) {
+            out[off] = nx / len
+            out[off + 1] = gy / len
+            out[off + 2] = nz / len
+        } else {
+            out[off] = 1
+            out[off + 1] = 0
+            out[off + 2] = 0
+        }
+    } else {
+        out[off] = 0
+        out[off + 1] = py >= 0 ? 1 : -1
+        out[off + 2] = 0
+    }
+}
+
 // --- Cone: fConeEx (hg_sdf.wgsl:777) -----------------------------------------
 //
 // Local frame: base disc on y = 0 with radius `radius`, apex at y = `height`.

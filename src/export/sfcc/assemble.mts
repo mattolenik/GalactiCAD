@@ -63,6 +63,157 @@ export interface SfccWorldCube {
     size: number
 }
 
+/**
+ * Remove coincident triangle pairs with opposite winding: a surface lens
+ * contained in a cell interface gets triangulated identically by BOTH
+ * incident cells (one from each side) — a zero-volume pancake whose every
+ * edge is non-manifold. Each pancake pair contributes nothing geometrically;
+ * removing both members restores its edges to two uses.
+ */
+function dropCoincidentTrianglePairs(tris: number[]): number[] {
+    const byVerts = new Map<string, number[]>() // sorted vertex ids → tri offsets
+    for (let t = 0; t < tris.length; t += 3) {
+        const k = [tris[t]!, tris[t + 1]!, tris[t + 2]!].sort((a, b) => a - b).join(",")
+        let list = byVerts.get(k)
+        if (!list) {
+            list = []
+            byVerts.set(k, list)
+        }
+        list.push(t)
+    }
+    const drop = new Set<number>()
+    for (const list of byVerts.values()) {
+        if (list.length < 2) continue
+        // Pair opposite orientations greedily; identical orientations are left
+        // alone (they would be a different defect, not a pancake).
+        const orient = (t: number): boolean => {
+            // true iff (a,b,c) is an even permutation of the sorted order.
+            const a = tris[t]!
+            const b = tris[t + 1]!
+            const c = tris[t + 2]!
+            return (a < b && b < c) || (b < c && c < a) || (c < a && a < b)
+        }
+        const even: number[] = []
+        const odd: number[] = []
+        for (const t of list) (orient(t) ? even : odd).push(t)
+        const pairs = Math.min(even.length, odd.length)
+        for (let i = 0; i < pairs; i++) {
+            drop.add(even[i]!)
+            drop.add(odd[i]!)
+        }
+    }
+    if (drop.size === 0) return tris
+    const out: number[] = []
+    for (let t = 0; t < tris.length; t += 3) {
+        if (!drop.has(t)) out.push(tris[t]!, tris[t + 1]!, tris[t + 2]!)
+    }
+    return out
+}
+
+/**
+ * Remove debris components. Two classes, both artifacts of sub-sample feature
+ * recovery:
+ * - micro: AABB diagonal below `maxDiag` (a few max-depth cells);
+ * - feature-hugging tubes: small components (≤ `hugMaxVerts`) every vertex of
+ *   which lies within `hugDist` of a feature curve — closed ribbons wrapped
+ *   around crease lines whose connection to the main body is invisible at
+ *   sampling resolution. Legitimate small parts away from features are
+ *   untouched, and anything genuinely visible spans depthMin cells anyway.
+ */
+function dropDebrisComponents(
+    points: PointTable,
+    tris: number[],
+    maxDiag: number,
+    features: SfccFeatureSet,
+    hugDist: number,
+    hugMaxVerts: number,
+): number[] {
+    if (tris.length === 0) return tris
+    const parent = new Map<number, number>()
+    const find = (v: number): number => {
+        let r = parent.get(v) ?? v
+        if (r !== v) {
+            r = find(r)
+            parent.set(v, r)
+        }
+        return r
+    }
+    const union = (a: number, b: number): void => {
+        const ra = find(a)
+        const rb = find(b)
+        if (ra !== rb) parent.set(ra, rb)
+    }
+    for (let t = 0; t < tris.length; t += 3) {
+        union(tris[t]!, tris[t + 1]!)
+        union(tris[t + 1]!, tris[t + 2]!)
+    }
+    const bounds = new Map<number, Float64Array>()
+    const members = new Map<number, Set<number>>()
+    for (let t = 0; t < tris.length; t++) {
+        const v = tris[t]!
+        const root = find(v)
+        let b = bounds.get(root)
+        if (!b) {
+            b = new Float64Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity])
+            bounds.set(root, b)
+            members.set(root, new Set())
+        }
+        members.get(root)!.add(v)
+        const x = points.x(v)
+        const y = points.y(v)
+        const z = points.z(v)
+        if (x < b[0]!) b[0] = x
+        if (y < b[1]!) b[1] = y
+        if (z < b[2]!) b[2] = z
+        if (x > b[3]!) b[3] = x
+        if (y > b[4]!) b[4] = y
+        if (z > b[5]!) b[5] = z
+    }
+    // Never drop the dominant component.
+    let mainRoot = -1
+    let mainSize = -1
+    for (const [root, verts] of members) {
+        if (verts.size > mainSize) {
+            mainSize = verts.size
+            mainRoot = root
+        }
+    }
+    const drop = new Set<number>()
+    for (const [root, b] of bounds) {
+        if (root === mainRoot) continue
+        if (Math.hypot(b[3]! - b[0]!, b[4]! - b[1]!, b[5]! - b[2]!) < maxDiag) {
+            drop.add(root)
+            continue
+        }
+        const verts = members.get(root)!
+        if (verts.size > hugMaxVerts) continue
+        let hugging = true
+        for (const v of verts) {
+            const x = points.x(v)
+            const y = points.y(v)
+            const z = points.z(v)
+            let near = false
+            for (const cid of features.index.curvesInBox(x - hugDist, y - hugDist, z - hugDist, x + hugDist, y + hugDist, z + hugDist)) {
+                if (features.curves[cid]!.project(x, y, z).dist <= hugDist) {
+                    near = true
+                    break
+                }
+            }
+            if (!near) {
+                hugging = false
+                break
+            }
+        }
+        if (hugging) drop.add(root)
+    }
+    if (drop.size === 0) return tris
+    const out: number[] = []
+    for (let t = 0; t < tris.length; t += 3) {
+        if (!drop.has(find(tris[t]!))) out.push(tris[t]!, tris[t + 1]!, tris[t + 2]!)
+    }
+    return out
+}
+
 export function runSfccPipeline(
     tree: CpuSdfTree,
     cube: SfccWorldCube,
@@ -140,20 +291,33 @@ export function runSfccPipeline(
                 const probe = makeProbe(lat, tree, sampleAt, cell.level, cell.ix, cell.iy, cell.iz)
                 if (cls.corner >= 0) {
                     // Corner cells are exempt from the per-stratum smoothness
-                    // certificates: the corner IS the carrier singularity (cone
-                    // apex normals never converge), and the wedge fan around the
-                    // exact corner point needs no smooth-patch guarantees.
-                    if (!hasCornerSignChange(probe)) return true
+                    // certificates (the corner IS the carrier singularity) AND
+                    // from the sign-change gate: under twist, slim wedges at
+                    // lattice-aligned corners can miss every sample at every
+                    // level (the untwist displacement k·ρ·cell shears the
+                    // sample row coherently, beating the jitter) — splitting
+                    // would just degenerate the whole neighborhood. A corner
+                    // cell with no visible crossings meshes nothing: the wedge
+                    // tip is dropped at cell scale (closed mesh, reported via
+                    // featureCellFallbacks).
                     cell.featureCurve = cls.curve
                     cell.featureCorner = cls.corner
                     return false
                 }
                 // A feature in a cell whose corners don't see a sign change is
-                // invisible to face contouring — keep splitting.
-                if (cls.curve >= 0 && !hasCornerSignChange(probe)) return true
-                if (needsSplitSmooth(tree, probe, { normalVariationCos: tuning.normalVariationCos })) return true
+                // invisible to face contouring — keep splitting. Classify
+                // FIRST: at depthMax a true return cannot split (the cell is
+                // kept as a degenerate leaf), and an unclassified leaf meshes
+                // smooth, silently chopping the wedge at cell scale. The shear
+                // configuration is scale-self-similar (untwist displacement
+                // k·ρ·cell beats the jitter at every level), so without this
+                // the chips shrink with depth but never disappear; with the
+                // classification the pin + per-stratum recovery machinery
+                // meshes the wedge from analytic crossings alone.
                 cell.featureCurve = cls.curve
                 cell.featureCorner = cls.corner
+                if (cls.curve >= 0 && !hasCornerSignChange(probe)) return true
+                if (needsSplitSmooth(tree, probe, { normalVariationCos: tuning.normalVariationCos })) return true
                 return false
             },
             signal,
@@ -214,7 +378,21 @@ export function runSfccPipeline(
         for (const perAxis of faceResult.faces) faceCount += perAxis.size
     }
 
-    const mesh = points.buildMesh(cellResult.tris)
+    // Sub-resolution debris filter: recovered sliver arcs can close into tiny
+    // satellite blobs that are genuinely disconnected at sampling resolution
+    // (wedge fragments around feature lines whose connection to the main body
+    // is invisible). Drop vertex-connected components whose extent is below a
+    // few max-depth cells — geometry beneath export resolution by construction.
+    const filteredTris = dropDebrisComponents(
+        points,
+        dropCoincidentTrianglePairs(cellResult.tris),
+        lat.step * 4,
+        features,
+        lat.step * 2,
+        600,
+    )
+
+    const mesh = points.buildMesh(filteredTris)
     const manifold = checkManifold(mesh.tris, { checkVertexLinks: tuning.checkVertexLinks })
 
     const levelHistogram: number[] = []

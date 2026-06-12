@@ -16,13 +16,15 @@ import type { CpuSdfTree } from "./cpu-sdf.mjs"
 import type { SfccStratum } from "./strata.mjs"
 import type { ResolvedTolerances } from "./tolerances.mjs"
 import { applyPoint, rotateVector } from "./transform-bake.mjs"
-import { makeCircleCurve, makeSegmentCurve, type SfccFeatureCurve } from "./feature-curves.mjs"
+import { makeCircleCurve, makeSegmentCurve, makeTracedCurve, type SfccFeatureCurve } from "./feature-curves.mjs"
+import { carrierPairTangent, projectToCarrierPair } from "./newton.mjs"
 import { SfccSpatialIndex } from "./spatial-index.mjs"
 import { traceAllSeams, type SeamTraceDiagnostics } from "./seam-trace.mjs"
 import { trimAndWire } from "./trim.mjs"
 import { Box } from "../../scene/primitives/box.mjs"
 import { Cylinder } from "../../scene/primitives/cylinder.mjs"
 import { Cone } from "../../scene/primitives/cone.mjs"
+import { Extrude } from "../../scene/primitives/extrude.mjs"
 
 export interface SfccCorner {
     readonly id: number
@@ -148,6 +150,125 @@ export function compileNativeFeatures(tree: CpuSdfTree): SfccFeatureSet {
                         r,
                     ),
                 )
+            }
+        } else if (node instanceof Extrude) {
+            const px = node.pos.x
+            const py = node.pos.y
+            const pz = node.pos.z
+            const h = node.h
+            const twistRad = (node.twistDegrees * Math.PI) / 180
+            const polyVerts = node.child.vertices
+            const N = polyVerts.length
+            // Strata layout from the evaluator: sides 0..N−1, capTop N, capBottom N+1.
+            const sideStratum = (i: number) => leaf.strata[((i % N) + N) % N]!
+            const capTop = leaf.strata[N]!
+            const capBottom = leaf.strata[N + 1]!
+
+            /** World point of polygon vertex j at local height y (twist applied). */
+            const vertexAt = (j: number, y: number, out: Float64Array, off = 0): void => {
+                const t = Math.max(0, Math.min(1, (y + h) / (2 * h)))
+                const angle = twistRad * t
+                const ca = Math.cos(angle)
+                const sa = Math.sin(angle)
+                const vx = polyVerts[j]![0]
+                const vz = polyVerts[j]![1]
+                // Surface = base polygon rotated FORWARD by angle(y).
+                applyPoint(sim, px + ca * vx - sa * vz, py + y, pz + sa * vx + ca * vz, out, off)
+            }
+
+            const bottomCornerIds: number[] = []
+            const topCornerIds: number[] = []
+            for (let j = 0; j < N; j++) {
+                vertexAt(j, -h, p)
+                bottomCornerIds.push(corners.length)
+                corners.push({
+                    id: corners.length,
+                    x: p[0]!,
+                    y: p[1]!,
+                    z: p[2]!,
+                    strata: [sideStratum(j - 1).id, sideStratum(j).id, capBottom.id],
+                    curveEnds: [],
+                })
+                vertexAt(j, h, p)
+                topCornerIds.push(corners.length)
+                corners.push({
+                    id: corners.length,
+                    x: p[0]!,
+                    y: p[1]!,
+                    z: p[2]!,
+                    strata: [sideStratum(j - 1).id, sideStratum(j).id, capTop.id],
+                    curveEnds: [],
+                })
+            }
+
+            // Vertical edges: straight segments untwisted; helices (exactly the
+            // adjacent side carriers' intersection — traced-curve machinery with
+            // closed-form sampling) when twisted.
+            const q = new Float64Array(3)
+            for (let j = 0; j < N; j++) {
+                const sA = sideStratum(j - 1)
+                const sB = sideStratum(j)
+                const curveId = curves.length
+                let curve: SfccFeatureCurve
+                if (twistRad === 0) {
+                    vertexAt(j, -h, p)
+                    vertexAt(j, h, q)
+                    curve = makeSegmentCurve(curveId, leaf.nodeId, [sA.id, sB.id], p[0]!, p[1]!, p[2]!, q[0]!, q[1]!, q[2]!)
+                } else {
+                    const rho = Math.hypot(polyVerts[j]![0], polyVerts[j]![1])
+                    // Sample density from the helix's rotational chord error.
+                    const maxStep = 2 * Math.acos(Math.max(-1, Math.min(1, 1 - 0.005 / Math.max(rho, 1e-6))))
+                    const n = Math.max(8, Math.min(512, Math.ceil(Math.abs(twistRad) / Math.max(maxStep, 1e-4))))
+                    const samples = new Float64Array((n + 1) * 3)
+                    for (let i = 0; i <= n; i++) {
+                        vertexAt(j, -h + (2 * h * i) / n, samples, i * 3)
+                    }
+                    curve = makeTracedCurve(
+                        curveId,
+                        [sA.id, sB.id],
+                        samples,
+                        false,
+                        (x, y, z, out, off = 0) => projectToCarrierPair(sA, sB, x, y, z, 1e-10, 1e-3, 0.5, out, off),
+                        (x, y, z, out, off = 0) => {
+                            carrierPairTangent(sA, sB, x, y, z, out, off)
+                        },
+                    )
+                }
+                curve.cornerStart = bottomCornerIds[j]!
+                curve.cornerEnd = topCornerIds[j]!
+                corners[bottomCornerIds[j]!]!.curveEnds.push({ curveId, end: 0 })
+                corners[topCornerIds[j]!]!.curveEnds.push({ curveId, end: 1 })
+                curves.push(curve)
+            }
+
+            // Cap rim segments (the caps are flat — rim edges stay straight even
+            // when twisted, just rotated by the cap's twist angle).
+            for (let i = 0; i < N; i++) {
+                const j2 = (i + 1) % N
+                for (const [cap, yLoc, ids] of [
+                    [capBottom, -h, bottomCornerIds],
+                    [capTop, h, topCornerIds],
+                ] as const) {
+                    const curveId = curves.length
+                    vertexAt(i, yLoc, p)
+                    vertexAt(j2, yLoc, q)
+                    const rim = makeSegmentCurve(
+                        curveId,
+                        leaf.nodeId,
+                        [sideStratum(i).id, cap.id],
+                        p[0]!,
+                        p[1]!,
+                        p[2]!,
+                        q[0]!,
+                        q[1]!,
+                        q[2]!,
+                    )
+                    rim.cornerStart = ids[i]!
+                    rim.cornerEnd = ids[j2]!
+                    corners[ids[i]!]!.curveEnds.push({ curveId, end: 0 })
+                    corners[ids[j2]!]!.curveEnds.push({ curveId, end: 1 })
+                    curves.push(rim)
+                }
             }
         } else if (node instanceof Cone) {
             const r = node.r * sim.s

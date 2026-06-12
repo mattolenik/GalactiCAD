@@ -10,16 +10,18 @@
  * recursion, and pre-bakes difference orientation into every leaf's
  * f/normal/strata (downstream code never thinks about it again).
  *
- * v1 subset: Box, Sphere, Cylinder (fillet/chamfer = 0), Cone; hard
+ * Supported subset: Box, Sphere, Cylinder (fillet/chamfer = 0), Cone, Extrude
+ * (straight-segment Polygon2D profiles, twist included); hard
  * Union/Subtract/Intersect (radius = 0); Translate / Rotate / uniform positive
  * Scale. Anything else throws {@link SfccUnsupportedError} listing every
  * offending node — no silent degradation: a primitive missing from the
  * certified pipeline would falsify every certificate downstream.
  *
- * The whole tree is 1-Lipschitz (exact SDF leaves; rigid transforms preserve
- * L; uniform scale with the WGSL min-axis distance compensation preserves L;
- * min/max preserve L), so `intervalOverBox` uses the centered form
- * [f(c) ± ‖half‖₂].
+ * Lipschitz: every leaf except the twisted extrude is an exact SDF (L = 1;
+ * rigid transforms and the WGSL min-axis uniform-scale compensation preserve
+ * it). Twisted extrudes exceed 1 by twistRate × radial distance and publish
+ * {@link CpuSdfLeaf.localLipschitz}; `intervalOverBox` composes per-leaf
+ * centered forms through the min/max tree, so certificates stay sound.
  */
 
 import type { Node } from "../../scene/base.mjs"
@@ -27,6 +29,8 @@ import { Box } from "../../scene/primitives/box.mjs"
 import { Sphere } from "../../scene/primitives/sphere.mjs"
 import { Cylinder } from "../../scene/primitives/cylinder.mjs"
 import { Cone } from "../../scene/primitives/cone.mjs"
+import { Extrude } from "../../scene/primitives/extrude.mjs"
+import { polygon2dWindingSign } from "../../scene/primitives/polygon2d.mjs"
 import { Union } from "../../scene/operators/union.mjs"
 import { Subtract } from "../../scene/operators/subtract.mjs"
 import { Intersect } from "../../scene/operators/intersect.mjs"
@@ -51,6 +55,8 @@ import {
     coneNormal,
     cylinderDist,
     cylinderNormal,
+    extrudeDist,
+    extrudeNormal,
     sphereDist,
     sphereNormal,
 } from "./cpu-sdf-primitives.mjs"
@@ -59,6 +65,7 @@ import {
     makeCylinderStratum,
     makePlaneStratum,
     makeSphereStratum,
+    makeTwistedSideStratum,
     type SfccStratum,
 } from "./strata.mjs"
 
@@ -99,6 +106,12 @@ export interface CpuSdfLeaf {
     readonly strata: SfccStratum[]
     /** Conservative world AABB [minX,minY,minZ,maxX,maxY,maxZ] of the primitive surface. */
     readonly aabb: Float64Array
+    /**
+     * Bound on |∇f| over the world-space ball (center, radius). Absent = 1
+     * (exact SDF). Twisted extrudes exceed 1 by twistRate × radial distance —
+     * certificates must use this, never assume global 1-Lipschitz.
+     */
+    localLipschitz?(cx: number, cy: number, cz: number, r: number): number
 }
 
 export interface ActiveOwner {
@@ -197,6 +210,8 @@ interface LeafSpec {
     aabbLocal: [number, number, number, number, number, number]
     /** Build strata in world space (identity fields filled by the caller). */
     buildStrata(leafIndex: number, sign: 1 | -1, sim: Similarity, firstId: number): SfccStratum[]
+    /** Optional non-unit gradient bound (see CpuSdfLeaf.localLipschitz). */
+    localLipschitz?(sim: Similarity): (cx: number, cy: number, cz: number, r: number) => number
 }
 
 function makeLeaf(state: CompileState, spec: LeafSpec, sim: Similarity, neg: boolean): CsgNode {
@@ -230,6 +245,7 @@ function makeLeaf(state: CompileState, spec: LeafSpec, sim: Similarity, neg: boo
         normal,
         strata,
         aabb: worldAabbOfLocalBox(sim, acx, acy, acz, ahx, ahy, ahz),
+        localLipschitz: spec.localLipschitz?.(sim),
     }
     state.leaves.push(leaf)
     state.strata.push(...strata)
@@ -416,6 +432,102 @@ function walk(state: CompileState, node: Node, sim: Similarity, neg: boolean): C
         )
     }
 
+    if (node instanceof Extrude) {
+        const px = node.pos.x
+        const py = node.pos.y
+        const pz = node.pos.z
+        const h = node.h
+        const twistRad = (node.twistDegrees * Math.PI) / 180
+        const polyVerts = node.child.vertices
+        const N = polyVerts.length
+        const verts = new Float64Array(N * 2)
+        let rMax = 0
+        for (let i = 0; i < N; i++) {
+            verts[i * 2] = polyVerts[i]![0]
+            verts[i * 2 + 1] = polyVerts[i]![1]
+            rMax = Math.max(rMax, Math.hypot(polyVerts[i]![0], polyVerts[i]![1]))
+        }
+        const windSign = polygon2dWindingSign(polyVerts)
+        const k = Math.abs(h) > 1e-9 ? twistRad / (2 * h) : 0
+        return makeLeaf(
+            state,
+            {
+                node,
+                dist: (x, y, z) => extrudeDist(verts, windSign, h, twistRad, x, y, z),
+                normalLocal: (x, y, z, out) => extrudeNormal(verts, windSign, h, twistRad, x, y, z, out),
+                posX: px,
+                posY: py,
+                posZ: pz,
+                // The twist sweeps the polygon within its circumradius.
+                aabbLocal: [px, py, pz, rMax, h, rMax],
+                buildStrata: (leafIndex, sign, s, firstId) => {
+                    const ownerNodeId = nodeIdOf(node)
+                    const out: SfccStratum[] = []
+                    for (let i = 0; i < N; i++) {
+                        const v0x = verts[i * 2]!
+                        const v0z = verts[i * 2 + 1]!
+                        const v1x = verts[((i + 1) % N) * 2]!
+                        const v1z = verts[((i + 1) % N) * 2 + 1]!
+                        const ex = v1x - v0x
+                        const ez = v1z - v0z
+                        const eLen = Math.hypot(ex, ez)
+                        // Outward 2D normal (matches the WGSL face-selection math):
+                        // eNorm = (eTan.z, −eTan.x) · windSign.
+                        const nx2 = ((ez / eLen) * windSign) as number
+                        const nz2 = ((-ex / eLen) * windSign) as number
+                        const ident = { id: firstId + i, ownerNodeId, leafIndex, localIndex: i, sign }
+                        if (twistRad === 0) {
+                            out.push(
+                                worldPlane(ident, s, nx2, 0, nz2, -(nx2 * (px + v0x) + nz2 * (pz + v0z))),
+                            )
+                        } else {
+                            out.push(
+                                makeTwistedSideStratum(ident, {
+                                    sim: s,
+                                    posX: px,
+                                    posY: py,
+                                    posZ: pz,
+                                    h,
+                                    twistRad,
+                                    v0x,
+                                    v0z,
+                                    nx2,
+                                    nz2,
+                                }),
+                            )
+                        }
+                    }
+                    out.push(
+                        worldPlane({ id: firstId + N, ownerNodeId, leafIndex, localIndex: N, sign }, s, 0, 1, 0, -(py + h)),
+                        worldPlane(
+                            { id: firstId + N + 1, ownerNodeId, leafIndex, localIndex: N + 1, sign },
+                            s,
+                            0,
+                            -1,
+                            0,
+                            py - h,
+                        ),
+                    )
+                    return out
+                },
+                localLipschitz:
+                    twistRad === 0
+                        ? undefined
+                        : s => {
+                              const scratch = new Float64Array(3)
+                              return (cx, cy, cz, r) => {
+                                  invApplyPoint(s, cx, cy, cz, scratch)
+                                  const rl = r / s.s
+                                  const rho = Math.hypot(scratch[0]! - px, scratch[2]! - pz) + rl
+                                  return Math.sqrt(1 + k * rho * (k * rho))
+                              }
+                          },
+            },
+            sim,
+            neg,
+        )
+    }
+
     // --- transforms -----------------------------------------------------------
     if (node instanceof Translate) {
         return walk(state, node.arg, composeSimilarity(sim, similarityFromTranslation(node.dx, node.dy, node.dz)), neg)
@@ -480,6 +592,32 @@ function winnerLeaf(n: CsgNode, px: number, py: number, pz: number): { d: number
     return best!
 }
 
+/**
+ * Certified enclosure of f over the ball (center, r): per-leaf centered forms
+ * with each leaf's local Lipschitz bound, composed through the min/max tree by
+ * interval arithmetic. Sound for non-unit-gradient leaves (twisted extrudes).
+ */
+function intervalNode(n: CsgNode, cx: number, cy: number, cz: number, r: number): [number, number] {
+    if (n.op === "leaf") {
+        const fc = n.leaf.f(cx, cy, cz)
+        const L = n.leaf.localLipschitz ? n.leaf.localLipschitz(cx, cy, cz, r) : 1
+        return [fc - L * r, fc + L * r]
+    }
+    let lo = n.op === "min" ? Infinity : -Infinity
+    let hi = lo
+    for (const c of n.children) {
+        const [clo, chi] = intervalNode(c, cx, cy, cz, r)
+        if (n.op === "min") {
+            lo = Math.min(lo, clo)
+            hi = Math.min(hi, chi)
+        } else {
+            lo = Math.max(lo, clo)
+            hi = Math.max(hi, chi)
+        }
+    }
+    return [lo, hi]
+}
+
 function collectOwners(
     n: CsgNode,
     px: number,
@@ -523,8 +661,7 @@ export function compileCpuSdf(root: Node): CpuSdfTree {
         },
         intervalOverBox: (cx, cy, cz, hx, hy, hz) => {
             const r = Math.hypot(hx, hy, hz)
-            const fc = f(cx, cy, cz)
-            return [fc - r, fc + r]
+            return intervalNode(csg, cx, cy, cz, r)
         },
         leaves: state.leaves,
         strata: state.strata,

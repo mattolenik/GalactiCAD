@@ -13,7 +13,9 @@
  * All math f64 scalars / Float64Array — never Vec3f (f32-backed).
  */
 
-export type CarrierKind = "plane" | "cylinder" | "cone" | "sphere"
+import { applyPoint, invApplyPoint, rotateVector, type Similarity } from "./transform-bake.mjs"
+
+export type CarrierKind = "plane" | "cylinder" | "cone" | "sphere" | "twistedSide"
 
 export interface SfccStratum {
     /** Dense global stratum id (index into CpuSdfTree.strata). */
@@ -179,6 +181,109 @@ export function makeCylinderStratum(
                 out[off + 1] = ay + t * uy
                 out[off + 2] = az + t * uz
             }
+        },
+    }
+}
+
+
+export interface TwistedSideParams {
+    /** Leaf world-from-local similarity. */
+    sim: Similarity
+    /** Extrude position in leaf-local coords (twist axis at (posX, posZ), slab center posY). */
+    posX: number
+    posY: number
+    posZ: number
+    /** Slab half-height. */
+    h: number
+    /** Total twist (radians) over the slab. */
+    twistRad: number
+    /** Polygon edge start (coords relative to pos) and outward unit 2D normal. */
+    v0x: number
+    v0z: number
+    nx2: number
+    nz2: number
+}
+
+/**
+ * Twisted extrude side carrier: the ruled helicoidal sheet swept by one
+ * polygon edge's supporting line under the height-proportional twist. The raw
+ * field g(p) = (R(−angle(y))·(p.xz − axis) − v0)·n̂₂ is smooth but NOT
+ * unit-gradient (|∇g| grows with twist rate × tangential offset), so `f`
+ * returns the NORMALIZED field g/|∇g| — first-order distance-like with the
+ * same zero set — keeping the Newton machinery (seam tracing, pin refinement)
+ * well-scaled without special cases.
+ */
+export function makeTwistedSideStratum(ident: StratumIdentity, prm: TwistedSideParams): SfccStratum {
+    const s = ident.sign
+    const local = new Float64Array(3)
+    const gradL = new Float64Array(3)
+    const world = new Float64Array(3)
+
+    /** Evaluate g and its LOCAL gradient at a leaf-local point; returns g. */
+    const evalLocal = (lx: number, ly: number, lz: number): number => {
+        const qx = lx - prm.posX
+        const qy = ly - prm.posY
+        const qz = lz - prm.posZ
+        const tRaw = (qy + prm.h) / (2 * prm.h)
+        const t = Math.max(0, Math.min(1, tRaw))
+        const angle = prm.twistRad * t
+        const ca = Math.cos(angle)
+        const sa = Math.sin(angle)
+        const tw1 = ca * qx + sa * qz
+        const tw2 = -sa * qx + ca * qz
+        const g = (tw1 - prm.v0x) * prm.nx2 + (tw2 - prm.v0z) * prm.nz2
+        gradL[0] = prm.nx2 * ca - prm.nz2 * sa
+        gradL[2] = prm.nx2 * sa + prm.nz2 * ca
+        const k = tRaw > 0 && tRaw < 1 && Math.abs(prm.h) > 1e-9 ? prm.twistRad / (2 * prm.h) : 0
+        gradL[1] = k * (prm.nx2 * tw2 - prm.nz2 * tw1)
+        return g
+    }
+
+    const f = (px: number, py: number, pz: number): number => {
+        invApplyPoint(prm.sim, px, py, pz, local)
+        const g = evalLocal(local[0]!, local[1]!, local[2]!)
+        const m = Math.hypot(gradL[0]!, gradL[1]!, gradL[2]!)
+        return (s * prm.sim.s * g) / Math.max(m, 1e-12)
+    }
+
+    return {
+        ...ident,
+        kind: "twistedSide",
+        f,
+        normal: (px, py, pz, out, off = 0) => {
+            invApplyPoint(prm.sim, px, py, pz, local)
+            evalLocal(local[0]!, local[1]!, local[2]!)
+            rotateVector(prm.sim, gradL[0]!, gradL[1]!, gradL[2]!, out, off)
+            const len = Math.hypot(out[off]!, out[off + 1]!, out[off + 2]!)
+            if (len > 1e-12) {
+                out[off] = (s * out[off]!) / len
+                out[off + 1] = (s * out[off + 1]!) / len
+                out[off + 2] = (s * out[off + 2]!) / len
+            } else {
+                out[off] = s
+                out[off + 1] = 0
+                out[off + 2] = 0
+            }
+        },
+        project: (px, py, pz, out, off = 0) => {
+            invApplyPoint(prm.sim, px, py, pz, local)
+            let lx = local[0]!
+            let ly = local[1]!
+            let lz = local[2]!
+            for (let it = 0; it < 8; it++) {
+                const g = evalLocal(lx, ly, lz)
+                const m2 = gradL[0]! * gradL[0]! + gradL[1]! * gradL[1]! + gradL[2]! * gradL[2]!
+                if (m2 < 1e-18) break
+                const k = g / m2
+                lx -= k * gradL[0]!
+                ly -= k * gradL[1]!
+                lz -= k * gradL[2]!
+                if (Math.abs(g) < 1e-12) break
+            }
+            applyPoint(prm.sim, lx, ly, lz, world)
+            out[off] = world[0]!
+            out[off + 1] = world[1]!
+            out[off + 2] = world[2]!
         },
     }
 }

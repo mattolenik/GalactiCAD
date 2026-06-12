@@ -33,7 +33,17 @@ const tg = new Float64Array(3)
 const probe = new Float64Array(3)
 const proj = new Float64Array(3)
 
-/** One-sided flank survival: does the final surface ε off the curve consist of this stratum? */
+const flankGrad = new Float64Array(3)
+const flankNormal = new Float64Array(3)
+
+/**
+ * One-sided flank survival: does the final surface ε off the curve consist of
+ * this stratum? Test: project the probe onto the carrier; the full tree SDF
+ * must vanish there AND the surface normal must agree with the stratum's.
+ * (Normal agreement — not nearest-stratum identity — because carriers are
+ * unbounded: another patch's virtual supporting sheet can pass through any
+ * point of a real face and tie the distance race without being the surface.)
+ */
 function flankSurvives(
     tree: CpuSdfTree,
     stratum: SfccStratum,
@@ -51,26 +61,11 @@ function flankSurvives(
         probe[2] = z + sign * tol.probeDelta * dz
         stratum.project(probe[0]!, probe[1]!, probe[2]!, proj)
         if (Math.abs(tree.f(proj[0]!, proj[1]!, proj[2]!)) > tol.probeDelta * 0.2) continue
-        // The surviving surface there must actually BE this stratum.
-        const owners = tree.activeOwnersAt(proj[0]!, proj[1]!, proj[2]!, tol.probeDelta * 0.5)
-        let ok = false
-        for (const o of owners) {
-            if (o.leaf.index !== stratum.leafIndex) continue
-            let minAbs = Infinity
-            let best = -1
-            for (const st of o.leaf.strata) {
-                const a = Math.abs(st.f(proj[0]!, proj[1]!, proj[2]!))
-                if (a < minAbs) {
-                    minAbs = a
-                    best = st.id
-                }
-            }
-            if (best === stratum.id) {
-                ok = true
-                break
-            }
-        }
-        if (ok) return true
+        tree.grad(proj[0]!, proj[1]!, proj[2]!, flankGrad)
+        stratum.normal(proj[0]!, proj[1]!, proj[2]!, flankNormal)
+        const dot =
+            flankGrad[0]! * flankNormal[0]! + flankGrad[1]! * flankNormal[1]! + flankGrad[2]! * flankNormal[2]!
+        if (dot >= 0.9) return true
     }
     return false
 }

@@ -222,6 +222,10 @@ export type MainToWorkerMessage =
           cameraPosition: [number, number, number]
           viewCenter: [number, number]
       }
+    // Screenshot the *current* live preview: render the supplied payload (the main thread's current
+    // camera/view, forced to full resolution) of the already-built scene into an offscreen texture and
+    // read it back. Unlike `agentPreview` it does not rebuild from source — the result is the live frame.
+    | { type: "capturePreviewFrame"; requestId: number; payload: Extract<MainToWorkerMessage, { type: "render" }> }
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
     | { type: "pickObject"; clickUV: [number, number]; requestId: number }
     | { type: "setBvhEnabled"; enabled: boolean }

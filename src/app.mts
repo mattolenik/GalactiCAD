@@ -82,6 +82,7 @@ import {
 } from "./agent-autotest/agent-testcase.mjs"
 import { registerAgentTestcaseCapture } from "./agent-autotest/register-agent-testcase-capture.mjs"
 import { registerAgentRenderBridge } from "./agent-autotest/register-agent-render-bridge.mjs"
+import { registerScreenshotBridge } from "./agent-autotest/register-screenshot-bridge.mjs"
 
 connectMainThreadDevLogToBridge()
 debugLog("App").info(`GalactiCAD ${VERSION}`)
@@ -1290,6 +1291,22 @@ class App {
 
         registerAgentTestcaseCapture(() => this.#captureAgentTestcase())
         registerAgentRenderBridge(this.renderer)
+
+        // Literal-screenshot bridge: PNG of the on-screen viewable area (excludes the editor overlay),
+        // captured from the live frame — distinct from the testcase render path which rebuilds the scene.
+        const mainPanels = document.getElementById("main-panels")!
+        registerScreenshotBridge({
+            sdf: {
+                capture: () => this.renderer.capturePreviewImageData(),
+                canvasRect: () => this.#preview.canvas.getBoundingClientRect(),
+                visibleRegion: () => this.#getVisiblePreviewRect(),
+            },
+            mesh: {
+                capture: () => (this.#meshViewerEnabled && this.#mesh ? this.#mesh.captureFrameToImageData() : null),
+                canvasRect: () => this.#mesh?.canvas.getBoundingClientRect() ?? null,
+                visibleRegion: () => (this.#mesh ? visibleRegionForCanvas(this.#mesh.canvas, mainPanels) : null),
+            },
+        })
     }
 
     #wireEditorAndTabs() {

@@ -1907,6 +1907,26 @@ export class SDFRenderer {
         }
     }
 
+    /**
+     * Screenshot the *currently displayed* SDF preview frame (already-built scene, live camera/view) as
+     * pixels. Does NOT rebuild from source — the worker re-renders its last live frame into an offscreen
+     * texture and reads it back, so the result matches what's on screen. Used by the agent screenshot bridge.
+     */
+    async capturePreviewImageData(): Promise<ImageData> {
+        await this.#readyPromise
+        if (this.#fullWidth <= 0 || this.#fullHeight <= 0) {
+            throw new Error("preview not laid out yet")
+        }
+        // Snapshot the live camera/view at full resolution. Posting without a transfer list structured-
+        // clones the payload, so the worker gets a consistent snapshot and the main render loop keeps its arrays.
+        const payload = this.#buildRenderPayload(undefined, { forceFullResolution: true })
+        const requestId = ++this.#requestIdCounter
+        return await new Promise<ImageData>((resolve, reject) => {
+            this.#pendingThumbnail.set(requestId, { resolve, reject, skipDocumentGuard: true })
+            this.#worker.postMessage({ type: "capturePreviewFrame", requestId, payload })
+        })
+    }
+
     /** Mesh raster normal RGB (opaque), matching testcase camera; runs full CPU/GPU mesh extraction then capture. */
     async agentMeshPreviewPixels(
         src: string,

@@ -593,6 +593,31 @@ const INJECTED_BRIDGE_SCRIPT = `
                         });
                     return;
                 }
+                if (msg.type === "captureScreenshot" && typeof msg.id === "string") {
+                    var shot = globalThis.__galacticadCaptureScreenshot;
+                    if (typeof shot !== "function") {
+                        trySend(socket, JSON.stringify({ type: "screenshotResult", id: msg.id, error: "no handler" }));
+                        return;
+                    }
+                    Promise.resolve(shot(msg.viewport))
+                        .then(function (out) {
+                            var o = out || {};
+                            trySend(
+                                socket,
+                                JSON.stringify({
+                                    type: "screenshotResult",
+                                    id: msg.id,
+                                    pngBase64: o.pngBase64,
+                                    error: o.error,
+                                }),
+                            );
+                        })
+                        .catch(function (e) {
+                            var em = e && e.message ? e.message : String(e);
+                            trySend(socket, JSON.stringify({ type: "screenshotResult", id: msg.id, error: em }));
+                        });
+                    return;
+                }
                 void onGetConsoleLogs(msg, socket);
                 void onGetActiveSceneSource(msg, socket);
             }
@@ -725,7 +750,7 @@ export class DevServer {
         }
 
         log(
-            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET|POST /_agent/render (JSON); POST /_agent/render/testcase-body (YAML); GET testcase: /_agent/render/testcase/<path>?mode=… (path resolved: cwd → test/testcases/ → absolute)`,
+            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET /_agent/screenshot?viewport=sdf|mesh (live viewport PNG); GET|POST /_agent/render (JSON); POST /_agent/render/testcase-body (YAML); GET testcase: /_agent/render/testcase/<path>?mode=… (path resolved: cwd → test/testcases/ → absolute)`,
         )
         return instance
     }
@@ -919,6 +944,65 @@ function createHttpServer(
                 "Access-Control-Allow-Origin": "*",
             })
             res.end(yamlBody)
+            return
+        }
+
+        if (pathname === "/_agent/screenshot") {
+            if (req.method !== "GET") {
+                res.writeHead(405, { "content-type": "text/plain; charset=utf-8", Allow: "GET", "Access-Control-Allow-Origin": "*" })
+                res.end("method not allowed")
+                return
+            }
+            // Literal PNG of the on-screen viewable area of one viewport (visible region only — the editor
+            // overlay is cropped out). Captured from the live frame in the connected browser; this does NOT
+            // rebuild the scene from params (that's GET /_agent/render/testcase/...).
+            const viewportRaw = (url.searchParams.get("viewport") ?? "sdf").toLowerCase()
+            if (viewportRaw !== "sdf" && viewportRaw !== "mesh") {
+                res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                res.end(`invalid viewport '${viewportRaw}': expected 'sdf' or 'mesh'`)
+                return
+            }
+            const viewport = viewportRaw as "sdf" | "mesh"
+            const out = await bridge.requestScreenshot(viewport)
+            if (!out?.pngBase64) {
+                // A browser-reported error (e.g. mesh viewer disabled) is the caller's problem → 400;
+                // a null/empty result means no tab connected or the RPC timed out → 503 (like /_logs).
+                const hasErr = out != null && typeof out.error === "string" && out.error.length > 0
+                const errText = hasErr ? out!.error! : "no browser tab connected to this devserver's bridge (or the screenshot request timed out)"
+                res.writeHead(hasErr ? 400 : 503, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                res.end(errText)
+                return
+            }
+            let buf: Buffer
+            try {
+                buf = Buffer.from(out.pngBase64, "base64")
+            } catch {
+                res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                res.end("invalid PNG base64 from bridge")
+                return
+            }
+            if (buf.length === 0) {
+                res.writeHead(400, { "content-type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" })
+                res.end("empty PNG from bridge")
+                return
+            }
+            try {
+                await writeAgentImagelogPng(repoRoot, "screenshot", viewport, buf)
+            } catch (e) {
+                console.error(`writeAgentImagelogPng: ${e instanceof Error ? e.message : String(e)}`)
+            }
+            await endHttpResponseWithBuffer(
+                res,
+                200,
+                {
+                    "content-type": "image/png",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "Content-Disposition",
+                    "Content-Disposition": `attachment; filename="screenshot-${viewport}.png"`,
+                    "Content-Length": String(buf.length),
+                },
+                buf,
+            )
             return
         }
 

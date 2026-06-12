@@ -2204,6 +2204,92 @@ export class RenderWorkerCore {
         }
     }
 
+    /**
+     * Screenshot the *current* live SDF preview: render the supplied payload (the main thread's current
+     * camera/view of the already-built scene, forced to full resolution) into an offscreen texture and
+     * read it back. No rebuild from source — the pixels match what's on screen. Result is posted as
+     * `thumbnailResult` (reuses the main thread's `#pendingThumbnail` plumbing).
+     *
+     * The texture is sized to `cameraRes × resolutionScale`; the main thread passes full resolution, so
+     * the capture is a crisp full-size frame of the on-screen view (CSS upscales the live half-res buffer).
+     */
+    async handleCapturePreviewFrame(msg: Extract<MainToWorkerMessage, { type: "capturePreviewFrame" }>): Promise<void> {
+        const requestId = msg.requestId
+        try {
+            if (!this.#device) {
+                self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable", requestId })
+                return
+            }
+            if (!this.#pipeline) {
+                self.postMessage({ type: "thumbnailResult", error: "no preview frame to capture (scene not built yet)", requestId })
+                return
+            }
+            const render = msg.payload
+            const w = Math.max(1, Math.round(render.cameraRes[0] * render.resolutionScale))
+            const h = Math.max(1, Math.round(render.cameraRes[1] * render.resolutionScale))
+            let captureTexture: GPUTexture | undefined
+            let readbackBuffer: GPUBuffer | undefined
+            let readbackMapped = false
+            try {
+                captureTexture = this.#device.createTexture({
+                    label: "PreviewCaptureOutput",
+                    size: [w, h],
+                    format: this.#format,
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+                })
+                this.render(render, captureTexture.createView())
+                await this.#device.queue.onSubmittedWorkDone()
+                const bytesPerRow = Math.ceil((w * 4) / 256) * 256
+                readbackBuffer = this.#device.createBuffer({
+                    label: "PreviewCaptureReadback",
+                    size: bytesPerRow * h,
+                    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+                })
+                const encoder = this.#device.createCommandEncoder()
+                encoder.copyTextureToBuffer({ texture: captureTexture }, { buffer: readbackBuffer, bytesPerRow, rowsPerImage: h }, [w, h, 1])
+                this.#device.queue.submit([encoder.finish()])
+                await readbackBuffer.mapAsync(GPUMapMode.READ)
+                readbackMapped = true
+                const mapped = new Uint8Array(readbackBuffer.getMappedRange())
+                const imageData = new ImageData(w, h)
+                const isBgra = this.#format.includes("bgra")
+                for (let y = 0; y < h; y++) {
+                    const srcRow = y * bytesPerRow
+                    const dstRow = y * w * 4
+                    for (let x = 0; x < w; x++) {
+                        const srcOff = srcRow + x * 4
+                        const dstOff = dstRow + x * 4
+                        if (isBgra) {
+                            imageData.data[dstOff + 0] = mapped[srcOff + 2]
+                            imageData.data[dstOff + 1] = mapped[srcOff + 1]
+                            imageData.data[dstOff + 2] = mapped[srcOff + 0]
+                            imageData.data[dstOff + 3] = mapped[srcOff + 3]
+                        } else {
+                            imageData.data[dstOff + 0] = mapped[srcOff + 0]
+                            imageData.data[dstOff + 1] = mapped[srcOff + 1]
+                            imageData.data[dstOff + 2] = mapped[srcOff + 2]
+                            imageData.data[dstOff + 3] = mapped[srcOff + 3]
+                        }
+                    }
+                }
+                self.postMessage({ type: "thumbnailResult", imageData, requestId }, { transfer: [imageData.data.buffer] })
+            } finally {
+                if (readbackMapped) {
+                    try {
+                        readbackBuffer?.unmap()
+                    } catch {
+                        /* ignore */
+                    }
+                }
+                readbackBuffer?.destroy()
+                captureTexture?.destroy()
+            }
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId })
+        }
+    }
+
     #ensureRenderTextures(width: number, height: number): void {
         const w = Math.max(1, width)
         const h = Math.max(1, height)

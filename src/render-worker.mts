@@ -167,6 +167,13 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
                 self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready", requestId: msg.requestId })
             }
             break
+        case "capturePreviewFrame":
+            if (core) {
+                void core.handleCapturePreviewFrame(msg)
+            } else {
+                self.postMessage({ type: "thumbnailResult", error: "WebGPU not ready", requestId: msg.requestId })
+            }
+            break
         case "pickPos":
             if (core) {
                 flushPendingRender()

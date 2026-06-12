@@ -1,6 +1,7 @@
 import type { SDFRenderer } from "../sdf.mjs"
 import { base64ToUtf8, type AgentRenderRequest } from "./agent-testcase.mjs"
 import { cropImageDataToCanvasPreviewUvRect, isFullCanvasPreviewUvRect } from "./crop-agent-preview-image.mjs"
+import { imageDataToPngBase64 } from "./image-to-png.mjs"
 
 export const AGENT_RENDER_DEFAULT_DIM = 4096
 export const AGENT_RENDER_MAX_DIM = 8192
@@ -8,23 +9,6 @@ export const AGENT_RENDER_MAX_DIM = 8192
 function resolveDim(value: number | undefined): number {
     if (value === undefined || !Number.isFinite(value) || value <= 0) return AGENT_RENDER_DEFAULT_DIM
     return Math.max(1, Math.min(AGENT_RENDER_MAX_DIM, Math.round(value)))
-}
-
-async function imageDataToPngBase64(img: ImageData): Promise<string> {
-    const canvas = new OffscreenCanvas(img.width, img.height)
-    const ctx = canvas.getContext("2d")
-    if (!ctx) {
-        throw new Error("2D OffscreenCanvas unavailable")
-    }
-    ctx.putImageData(img, 0, 0)
-    const blob = await canvas.convertToBlob({ type: "image/png" })
-    const buf = new Uint8Array(await blob.arrayBuffer())
-    let binary = ""
-    const chunk = 8192
-    for (let i = 0; i < buf.length; i += chunk) {
-        binary += String.fromCharCode(...buf.subarray(i, Math.min(i + chunk, buf.length)))
-    }
-    return btoa(binary)
 }
 
 /** Run SDF normal-vector preview or mesh normal RGB capture; returns PNG as base64. */

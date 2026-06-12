@@ -1703,6 +1703,83 @@ cmd_ab() {
 }
 
 # ============================================================================
+# cmd: screenshot
+# ============================================================================
+
+usage_screenshot() {
+    cat <<'EOF'
+Usage: agentcli screenshot [options]
+
+Save a literal PNG of the on-screen viewable area of the SDF preview and/or
+mesh viewer from a connected browser tab (GET /_agent/screenshot). This grabs
+the live frame as displayed — the visible region only, with the Monaco editor
+overlay cropped out — rather than re-rendering the scene from captured params
+(that's `render`/`mirror`). Defaults to the interactive (human) devserver.
+
+Options:
+    --viewport WHICH    sdf | mesh | both (default: both)
+    --out PATH          Output file (single viewport only)
+    --out-dir DIR       Directory for screenshot-<viewport>.png (default: cwd)
+    --port WHICH        interactive (default) | agent
+    -h, --help          This help
+
+Exit code:
+    0 on success (PNG[s] written)
+    2 on usage error
+    1 if a capture fails (e.g. mesh viewer not enabled; see <out>.error)
+    3 if the chosen devserver isn't running or no browser tab is connected
+EOF
+}
+
+cmd_screenshot() {
+    local which_port="interactive" viewport="both" out="" outdir="."
+    while (( $# > 0 )); do
+        case "$1" in
+            --viewport) viewport="$2"; shift 2 ;;
+            --out)      out="$2"; shift 2 ;;
+            --out-dir)  outdir="$2"; shift 2 ;;
+            --port)     which_port="$2"; shift 2 ;;
+            -h|--help)  usage_screenshot; return 0 ;;
+            -*) die 2 "screenshot: unknown option: $1" ;;
+            *) die 2 "screenshot: unexpected argument: $1" ;;
+        esac
+    done
+
+    local -a vps=()
+    case "$viewport" in
+        sdf)  vps=(sdf) ;;
+        mesh) vps=(mesh) ;;
+        both) vps=(sdf mesh) ;;
+        *) die 2 "screenshot: --viewport must be 'sdf', 'mesh', or 'both'" ;;
+    esac
+    if [[ -n "$out" && "${#vps[@]}" -ne 1 ]]; then
+        die 2 "screenshot: --out requires a single --viewport (sdf or mesh); use --out-dir for both"
+    fi
+
+    local port
+    case "$which_port" in
+        interactive) port=$(_interactive_port) ;;
+        agent)       port=$(_agent_port) ;;
+        *) die 2 "screenshot: --port must be 'interactive' or 'agent'" ;;
+    esac
+
+    local vp target url result bytes rc=0
+    for vp in "${vps[@]}"; do
+        if [[ -n "$out" ]]; then target="$out"; else target="${outdir%/}/screenshot-${vp}.png"; fi
+        ensure_outdir_for "$target"
+        url="http://localhost:${port}/_agent/screenshot?viewport=${vp}"
+        if result=$(_curl_get "$url" "$target"); then
+            bytes="${result##* }"
+            log_info "screenshot ${vp} (${which_port}) → ${target} (${bytes} bytes)"
+        else
+            log_error "screenshot ${vp}: capture failed (see ${target}.error if present)"
+            rc=1
+        fi
+    done
+    return "$rc"
+}
+
+# ============================================================================
 # Top-level dispatch
 # ============================================================================
 
@@ -1719,6 +1796,7 @@ Commands:
     triangle  <testcase> [options]                 SDF + mesh render, report SSIM mesh-vs-sdf
     regress   <testcase>... [options]              Compare pre-rendered baseline vs post sets
     capture   [options]                            Snapshot interactive scene as testcase YAML
+    screenshot [options]                           Live PNG of on-screen SDF/mesh viewport(s)
     mirror    [options]                            Capture interactive → render on agent
     server    <start|stop|restart|refresh|status>  Devserver lifecycle
     logs      [--agent|--browser] [options]        Read /_logs from agent or browser devserver
@@ -1745,6 +1823,7 @@ main() {
         triangle) cmd_triangle "$@" ;;
         regress)  cmd_regress  "$@" ;;
         capture)  cmd_capture  "$@" ;;
+        screenshot) cmd_screenshot "$@" ;;
         mirror)   cmd_mirror   "$@" ;;
         server)   cmd_server   "$@" ;;
         logs)     cmd_logs     "$@" ;;

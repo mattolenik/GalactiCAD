@@ -67,12 +67,22 @@ export type DevServerAgentRenderMessage = {
     payload: Record<string, unknown>
 }
 
+/** Viewport to screenshot: the SDF preview or the mesh viewer. */
+export type DevServerScreenshotViewport = "sdf" | "mesh"
+
+/** Server → browser: capture a literal PNG of the on-screen viewable area of one viewport (injected script calls `__galacticadCaptureScreenshot`). */
+export type DevServerCaptureScreenshotMessage = { type: "captureScreenshot"; id: string; viewport: DevServerScreenshotViewport }
+
+/** Browser → server: PNG bytes as base64 from the live viewport (visible region only). */
+export type DevServerScreenshotResultMessage = { type: "screenshotResult"; id: string; pngBase64?: string; error?: string }
+
 export type DevServerToBrowserMessage =
     | DevServerReloadMessage
     | DevServerGetConsoleLogsMessage
     | DevServerGetActiveSceneSourceMessage
     | DevServerExportAgentTestcaseMessage
     | DevServerAgentRenderMessage
+    | DevServerCaptureScreenshotMessage
 export type DevServerFromBrowserMessage =
     | DevServerConsoleLogsResultMessage
     | DevServerConsoleLogsErrorMessage
@@ -81,11 +91,13 @@ export type DevServerFromBrowserMessage =
     | DevServerAgentTestcaseResultMessage
     | DevServerAgentTestcaseErrorMessage
     | DevServerAgentRenderResultMessage
+    | DevServerScreenshotResultMessage
     | DevServerAgentBridgeReadyMessage
 
 const DEFAULT_TIMEOUT_MS = 5000
 const AGENT_TESTCASE_TIMEOUT_MS = 60_000
 const AGENT_RENDER_TIMEOUT_MS = 120_000
+const SCREENSHOT_TIMEOUT_MS = 30_000
 
 /** `ws` WebSocket.OPEN — ready to send. */
 const WS_OPEN = 1
@@ -138,6 +150,10 @@ export class BrowserBridge {
     private readonly pendingSceneSource = new Map<string, { resolve: (v: string | null) => void }>()
     private readonly pendingAgentTestcase = new Map<string, { resolve: (v: Record<string, unknown> | null) => void }>()
     private readonly pendingAgentRender = new Map<
+        string,
+        { resolve: (v: { pngBase64?: string; error?: string } | null) => void }
+    >()
+    private readonly pendingScreenshot = new Map<
         string,
         { resolve: (v: { pngBase64?: string; error?: string } | null) => void }
     >()
@@ -351,6 +367,38 @@ export class BrowserBridge {
         return out
     }
 
+    /**
+     * Ask one connected browser tab for a literal PNG of a viewport's on-screen viewable area
+     * (visible region only, editor overlay excluded). Captured from the live frame — no scene rebuild.
+     * Requires `__galacticadCaptureScreenshot` on the app main thread. Returns `null` if no client / timeout.
+     */
+    requestScreenshot(viewport: DevServerScreenshotViewport, timeoutMs = SCREENSHOT_TIMEOUT_MS): Promise<{ pngBase64?: string; error?: string } | null> {
+        const wss = this.wsServer
+        if (!wss || wss.clients.size === 0) {
+            return Promise.resolve(null)
+        }
+        const id = `shot-${Date.now()}-${++this.seq}`
+        return new Promise(resolve => {
+            const timeout = setTimeout(() => {
+                this.pendingScreenshot.delete(id)
+                resolve(null)
+            }, timeoutMs)
+            const finish = (v: { pngBase64?: string; error?: string } | null) => {
+                clearTimeout(timeout)
+                this.pendingScreenshot.delete(id)
+                resolve(v)
+            }
+            this.pendingScreenshot.set(id, { resolve: finish })
+            const msg: DevServerCaptureScreenshotMessage = { type: "captureScreenshot", id, viewport }
+            const payload = JSON.stringify(msg)
+            if (!sendPayloadToFirstOpenClient(wss, payload, this.lastReadyClient)) {
+                clearTimeout(timeout)
+                this.pendingScreenshot.delete(id)
+                resolve(null)
+            }
+        })
+    }
+
     /** Called by the devserver's WS `close` handler. Forget a disconnected preferred client so the next RPC falls back cleanly. */
     notifyClientClosed(socket: WebSocket) {
         if (this.lastReadyClient === socket) this.lastReadyClient = null
@@ -407,6 +455,13 @@ export class BrowserBridge {
         }
         if (msg.type === "agentRenderResult" && typeof msg.id === "string") {
             const p = this.pendingAgentRender.get(msg.id)
+            if (p) {
+                p.resolve({ pngBase64: msg.pngBase64, error: msg.error })
+            }
+            return
+        }
+        if (msg.type === "screenshotResult" && typeof msg.id === "string") {
+            const p = this.pendingScreenshot.get(msg.id)
             if (p) {
                 p.resolve({ pngBase64: msg.pngBase64, error: msg.error })
             }

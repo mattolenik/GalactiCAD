@@ -40,5 +40,8 @@
       "WebFetch(domain:pptr.dev)",
       "Bash(xargs *)"
     ]
+  },
+  "attribution": {
+    "coAuthoredBy": false
   }
 }

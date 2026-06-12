@@ -294,7 +294,10 @@ export function meshAllCells(
             return
         }
         if (o.interiorVertexMode === "fan") {
-            for (let i = 1; i < m - 1; i++) outTris.push(loop[0]!, loop[i]!, loop[i + 1]!)
+            const k = bestFanApex(pts, loop)
+            for (let i = 1; i < m - 1; i++) {
+                outTris.push(loop[k]!, loop[(k + i) % m]!, loop[(k + i + 1) % m]!)
+            }
             return
         }
         // Interior vertex: loop average, optionally Newton-projected onto the surface.
@@ -361,10 +364,13 @@ export function meshAllCells(
                 !sameSheet
             ) {
                 // Projection failed to reach the surface (concave pockets,
-                // escaped cells, far-side landings): fan from a loop vertex
-                // instead — every loop vertex IS on the surface, so the
-                // max-|f| guarantee holds.
-                for (let i = 1; i < m - 1; i++) outTris.push(loop[0]!, loop[i]!, loop[i + 1]!)
+                // escaped cells, far-side landings): fan from the loop vertex
+                // with the best worst-ear quality — every loop vertex IS on
+                // the surface, so the max-|f| guarantee holds.
+                const k = bestFanApex(pts, loop)
+                for (let i = 1; i < m - 1; i++) {
+                    outTris.push(loop[k]!, loop[(k + i) % m]!, loop[(k + i + 1) % m]!)
+                }
                 return
             }
         }
@@ -374,6 +380,42 @@ export function meshAllCells(
             outTris.push(c, loop[i]!, loop[(i + 1) % m]!)
         }
     }
+}
+
+/**
+ * Fan apex choice: the loop vertex maximizing the worst ear quality
+ * (2·area/lmax² of each fan triangle). A fan from an arbitrary vertex mints
+ * near-degenerate ears whenever the loop contains collinear runs (multiple
+ * crossings along one face line) and the apex sits on the run — the source of
+ * micron-high, half-millimetre-long sliver chains in lattice face planes.
+ */
+function bestFanApex(pts: PointTable, loop: number[]): number {
+    const m = loop.length
+    const quality = (a: number, b: number, c: number): number => {
+        const ax = pts.x(a), ay = pts.y(a), az = pts.z(a)
+        const ux = pts.x(b) - ax, uy = pts.y(b) - ay, uz = pts.z(b) - az
+        const vx = pts.x(c) - ax, vy = pts.y(c) - ay, vz = pts.z(c) - az
+        const area2 = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx)
+        const e0 = Math.hypot(ux, uy, uz)
+        const e1 = Math.hypot(vx, vy, vz)
+        const e2 = Math.hypot(pts.x(c) - pts.x(b), pts.y(c) - pts.y(b), pts.z(c) - pts.z(b))
+        const lmax = Math.max(e0, e1, e2)
+        return lmax > 1e-20 ? area2 / (lmax * lmax) : 0
+    }
+    let bestK = 0
+    let bestQ = -1
+    for (let k = 0; k < m; k++) {
+        let worst = Infinity
+        for (let i = 1; i < m - 1 && worst > bestQ; i++) {
+            const q = quality(loop[k]!, loop[(k + i) % m]!, loop[(k + i + 1) % m]!)
+            if (q < worst) worst = q
+        }
+        if (worst > bestQ) {
+            bestQ = worst
+            bestK = k
+        }
+    }
+    return bestK
 }
 
 function dist2(pts: PointTable, a: number, b: number): number {
@@ -638,10 +680,11 @@ function fanFromStratumVertex(
     }
     if (!inBox(cellBox, px, py, pz, margin) || wrongPatch || Math.abs(tree.f(px, py, pz)) > opts.surfaceTol) {
         // The carrier projection left the cell or the actual surface: fan from
-        // a boundary vertex instead — boundary vertices are on the surface, so
-        // the max-|f| guarantee holds.
+        // the best-quality boundary vertex instead — boundary vertices are on
+        // the surface, so the max-|f| guarantee holds.
+        const kb = bestFanApex(points, boundary)
         for (let k = 1; k < m - 1; k++) {
-            outTris.push(boundary[0]!, boundary[k]!, boundary[k + 1]!)
+            outTris.push(boundary[kb]!, boundary[(kb + k) % m]!, boundary[(kb + k + 1) % m]!)
         }
         return
     }

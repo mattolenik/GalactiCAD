@@ -856,7 +856,13 @@ function splitMidpoint(
         const fv = tree.f(q[0]!, q[1]!, q[2]!)
         if (Math.abs(fv) <= rootTol) break
         tree.grad(q[0]!, q[1]!, q[2]!, grad)
-        grad[axis] = 0 // stay in the face plane
+        // Full 3D projection (deliberately NOT face-plane-constrained): the
+        // split midpoints of the SAME chord on different faces then converge
+        // to the SAME surface point, collapsing the sliver strip between the
+        // two arcs to zero width — combinatorially the arcs stay distinct
+        // (separate point ids), so the duplicate-segment non-manifold guard
+        // is unaffected. In-plane projection separated them along the
+        // surface, leaving visibly folded micro-strips along cell-edge lines.
         const g2 = grad[0]! * grad[0]! + grad[1]! * grad[1]! + grad[2]! * grad[2]!
         if (g2 < 1e-20) break
         const k = fv / g2

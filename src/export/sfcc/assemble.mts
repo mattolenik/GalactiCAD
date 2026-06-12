@@ -23,6 +23,7 @@ import { contourAllFaces } from "./face-contour.mjs"
 import { meshAllCells } from "./cell-mesh.mjs"
 import { PointTable } from "./point-table.mjs"
 import { checkManifold, type ManifoldReport } from "./manifold-check.mjs"
+import { flipSliverTriangles } from "./sliver-flip.mjs"
 
 export interface SfccStats {
     leaves: number
@@ -445,7 +446,11 @@ export function runSfccPipeline(
         600,
     )
 
-    const mesh = points.buildMesh(filteredTris)
+    // Long-thin slivers (no close vertex pairs — weld can't reach them):
+    // shape-improving flips across their longest edges.
+    const flipped = flipSliverTriangles(points, dropCoincidentTrianglePairs(filteredTris))
+
+    const mesh = points.buildMesh(flipped.tris)
     const manifold = checkManifold(mesh.tris, { checkVertexLinks: tuning.checkVertexLinks })
 
     const levelHistogram: number[] = []

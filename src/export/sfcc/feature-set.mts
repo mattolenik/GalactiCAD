@@ -232,6 +232,7 @@ export function compileNativeFeatures(tree: CpuSdfTree): SfccFeatureSet {
                         (x, y, z, out, off = 0) => {
                             carrierPairTangent(sA, sB, x, y, z, out, off)
                         },
+                        leaf.nodeId,
                     )
                 }
                 curve.cornerStart = bottomCornerIds[j]!
@@ -320,6 +321,9 @@ export function compileFeatureSet(
     tol: ResolvedTolerances,
 ): SfccFeatureSet & { seamDiagnostics: SeamTraceDiagnostics } {
     const native = compileNativeFeatures(tree)
+    // Provenance marker for the trim's crease gate: modeled curves are design
+    // intent and survive at any dihedral; only seams use minDihedralDeg.
+    for (const c of native.curves) c.native = true
     let nextId = native.curves.length
     const seams = traceAllSeams(tree, tol, () => nextId++)
     const raw = [...native.curves, ...seams.curves]

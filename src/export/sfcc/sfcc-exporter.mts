@@ -23,6 +23,7 @@ import {
 } from "./sfcc-tuning.mjs"
 import { compileCpuSdf } from "./cpu-sdf.mjs"
 import { runSfccPipeline } from "./assemble.mjs"
+import { log } from "../../logging/debug-log.mjs"
 
 async function runSfcc(ctx: MeshExportContext, tuning: SfccTuning): Promise<MeshData> {
     // S1a: compile the CPU evaluator (throws SfccUnsupportedError with the
@@ -49,6 +50,9 @@ async function runSfcc(ctx: MeshExportContext, tuning: SfccTuning): Promise<Mesh
             misorientedEdges: result.manifold.misorientedEdges,
         })
     }
+    // Always-on stats line: fallback/degenerate counts are quality signals
+    // (cell-scale chips) even when certification passes.
+    log("MeshExport").info("sfcc stats", { ...result.stats, euler: result.manifold.eulerPerComponent })
     const mesh = splitCreaseVertices(result.verts, result.tris, tuning.creaseAngleDeg)
     mesh.debug = {
         ...mesh.debug,

@@ -23,7 +23,10 @@ function assertBoxAcceptance(scene: Node, corners: Array<[number, number, number
     assert.ok(r.manifold.ok, JSON.stringify(r.manifold))
     assert.equal(r.manifold.components, 1)
     assert.deepEqual(r.manifold.eulerPerComponent, [2])
-    assert.equal(r.stats.cornerCells, 8, "8 corner cells")
+    // ≥: cells stuck multi-curve at depthMax may legitimately claim a nearby
+    // corner and fan from the same apex (exact for planar walls), adding to
+    // the count beyond the 8 cells that contain the corners themselves.
+    assert.ok(r.stats.cornerCells >= 8, `8+ corner cells (got ${r.stats.cornerCells})`)
     assert.ok(r.stats.edgeCells > 0)
 
     // Every analytic corner appears as a mesh vertex EXACTLY (≤1e-9 mm).

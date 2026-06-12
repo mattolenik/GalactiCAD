@@ -87,7 +87,12 @@ export function curvePointAlive(
     const sB = strata[curve.adjacentStrata[1]!]!
     sA.normal(x, y, z, nA)
     sB.normal(x, y, z, nB)
-    if (nA[0]! * nB[0]! + nA[1]! * nB[1]! + nA[2]! * nB[2]! > tol.minDihedralCos) return false
+    // Crease gate: native modeled curves (drawn polygon vertices, primitive
+    // rims) are design intent at any angle and only die when essentially
+    // tangent (nativeCreaseCos); the stricter minDihedralCos applies to
+    // boolean seams, where near-tangent surface pairs produce noise curves.
+    const creaseGate = curve.native ? tol.nativeCreaseCos : tol.minDihedralCos
+    if (nA[0]! * nB[0]! + nA[1]! * nB[1]! + nA[2]! * nB[2]! > creaseGate) return false
     curve.tangentAt(t, tg)
     // In-surface, ⊥-curve probe directions: w = n × tangent.
     const wAx = nA[1]! * tg[2]! - nA[2]! * tg[1]!

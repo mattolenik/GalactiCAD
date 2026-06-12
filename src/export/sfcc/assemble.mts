@@ -269,6 +269,7 @@ export function runSfccPipeline(
         return false
     }
 
+    const cornerClaimBox = new Float64Array(6)
     let oct!: SfccOctree
     let points!: PointTable
     let faceResult!: ReturnType<typeof contourAllFaces>
@@ -286,7 +287,57 @@ export function runSfccPipeline(
                     featureQueryInflate: tuning.featureQueryInflate,
                     tangentialEpsilon: tuning.tangentialEpsilon,
                 })
-                if (cls.split) return true
+                if (cls.split) {
+                    // Classify even though we demand a split: at depthMax the
+                    // cell CANNOT split, and an unclassified wedge cell
+                    // smooth-meshes its wedge-wrapping loop — the interior
+                    // fan then digs a multi-cell pit through the wedge (the
+                    // doubly-crossed-face configuration at near-horizontal
+                    // helix pitch: perFace > 1 ⇒ split:true with the curve id
+                    // attached). Below depthMax the assignment is discarded
+                    // with the split, so this is depthMax-only best effort.
+                    cell.featureCurve = cls.curve
+                    cell.featureCorner = cls.corner
+                    if (cell.level >= maxDepth && cls.corner < 0) {
+                        // Multi-curve cell that can never split apart: feature
+                        // curves CONVERGE at corners, so the ring of cells
+                        // around a corner cell can contain two curves at any
+                        // depth (measured: helix + rim one cell below a twisted
+                        // cap corner — meshing only one chops the other's wedge
+                        // by ~half a cell, the corner V-notch). If a nearby
+                        // corner exists, claim it: the corner fan tracks every
+                        // incident curve's wedge to within the chord sag of the
+                        // curve-to-apex distance (~1e-3 mm at one cell), since
+                        // the curves meet AT the apex. Fanning from an apex
+                        // slightly outside the cell is structurally fine —
+                        // boundary segments are consumed identically.
+                        const cellSize = (cube.size + 2 * pad) / (1 << cell.level)
+                        cellAabb(lat, cell.level, cell.ix, cell.iy, cell.iz, cornerClaimBox)
+                        const reach = cellSize * 1.25
+                        let bestCorner = -1
+                        let bestD = Infinity
+                        for (const cornerId of features.index.cornersInBox(
+                            cornerClaimBox[0]! - reach,
+                            cornerClaimBox[1]! - reach,
+                            cornerClaimBox[2]! - reach,
+                            cornerClaimBox[3]! + reach,
+                            cornerClaimBox[4]! + reach,
+                            cornerClaimBox[5]! + reach,
+                        )) {
+                            const c = features.corners[cornerId]!
+                            const dx = Math.max(cornerClaimBox[0]! - c.x, 0, c.x - cornerClaimBox[3]!)
+                            const dy = Math.max(cornerClaimBox[1]! - c.y, 0, c.y - cornerClaimBox[4]!)
+                            const dz = Math.max(cornerClaimBox[2]! - c.z, 0, c.z - cornerClaimBox[5]!)
+                            const d = Math.hypot(dx, dy, dz)
+                            if (d < bestD) {
+                                bestD = d
+                                bestCorner = cornerId
+                            }
+                        }
+                        if (bestCorner >= 0 && bestD <= reach) cell.featureCorner = bestCorner
+                    }
+                    return true
+                }
                 if (forcedSplit(cell)) return true
                 const probe = makeProbe(lat, tree, sampleAt, cell.level, cell.ix, cell.iy, cell.iz)
                 if (cls.corner >= 0) {
@@ -296,7 +347,9 @@ export function runSfccPipeline(
                     // lattice-aligned corners can miss every sample at every
                     // level (the untwist displacement k·ρ·cell shears the
                     // sample row coherently, beating the jitter) — splitting
-                    // would just degenerate the whole neighborhood. A corner
+                    // would just degenerate the whole neighborhood (cone apex:
+                    // the tip goes sub-sample and meshes nothing; measured as
+                    // lost corner cells when splitting to depthMax). A corner
                     // cell with no visible crossings meshes nothing: the wedge
                     // tip is dropped at cell scale (closed mesh, reported via
                     // featureCellFallbacks).

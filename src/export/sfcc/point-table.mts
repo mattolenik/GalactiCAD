@@ -85,6 +85,18 @@ export class PointTable {
         return this.#pos[id * 3 + 2]!
     }
 
+    nx(id: number): number {
+        return this.#normal[id * 3]!
+    }
+
+    ny(id: number): number {
+        return this.#normal[id * 3 + 1]!
+    }
+
+    nz(id: number): number {
+        return this.#normal[id * 3 + 2]!
+    }
+
     /** Overwrite a point's normal (used when a better analytic normal becomes known). */
     setNormal(id: number, nx: number, ny: number, nz: number): void {
         this.#normal[id * 3] = nx

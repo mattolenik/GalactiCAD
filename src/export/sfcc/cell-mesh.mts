@@ -335,10 +335,35 @@ export function meshAllCells(
                     break
                 }
             }
-            if (Math.abs(tree2.f(px, py, pz)) > o.surfaceTol) {
+            // Accept only a vertex that (1) reached the surface, (2) stayed in
+            // the cell — Newton from a centroid inside a thin slab can walk
+            // straight through it and converge on the slab's FAR side, which
+            // is genuine surface (passes the |f| check) but fans a multi-cell
+            // pit through the material — and (3) lies on the SAME sheet as
+            // the loop: gradient roughly along the loop's average normal (the
+            // far side of a slab faces the opposite way, dot ≈ −1).
+            let sameSheet = true
+            if (Math.abs(tree2.f(px, py, pz)) <= o.surfaceTol && inBox(cellBox, px, py, pz, margin)) {
+                let ax = 0
+                let ay = 0
+                let az = 0
+                for (const id of loop) {
+                    ax += pts.nx(id)
+                    ay += pts.ny(id)
+                    az += pts.nz(id)
+                }
+                tree2.grad(px, py, pz, g)
+                sameSheet = ax * g[0]! + ay * g[1]! + az * g[2]! > 0
+            }
+            if (
+                Math.abs(tree2.f(px, py, pz)) > o.surfaceTol ||
+                !inBox(cellBox, px, py, pz, margin) ||
+                !sameSheet
+            ) {
                 // Projection failed to reach the surface (concave pockets,
-                // escaped cells): fan from a loop vertex instead — every loop
-                // vertex IS on the surface, so the max-|f| guarantee holds.
+                // escaped cells, far-side landings): fan from a loop vertex
+                // instead — every loop vertex IS on the surface, so the
+                // max-|f| guarantee holds.
                 for (let i = 1; i < m - 1; i++) outTris.push(loop[0]!, loop[i]!, loop[i + 1]!)
                 return
             }
@@ -452,31 +477,38 @@ function meshEdgeCell(
     const side2 = [...chain2]
     for (let k = 0; k < interior.length; k++) side2.push(interior[k]!)
 
-    // Assign strata to sides by aggregate carrier-distance margin over ALL
-    // non-pin chain vertices. Per-chain representatives are fragile here:
-    // vertices near the crease lie on BOTH carriers (|f| ≈ 0 for each), so a
-    // single sample can tie or flip, and rejecting on disagreement chops the
-    // wedge — the residual chip source at extreme twist, where chains are
-    // only a few vertices long. There are exactly two possible assignments;
-    // score both and take the better — even a near-tie pick is strictly
-    // better than the fallback chop (fanFromStratumVertex already guards
-    // against a wrong-carrier projection).
+    // Assign strata to sides by aggregate NORMAL-AGREEMENT margin over ALL
+    // non-pin chain vertices: |dot(vertex normal, carrier normal)| is ≈1 on a
+    // vertex's own flank and ≤|cos dihedral| on the other. Carrier DISTANCE is
+    // the wrong discriminator under heavy twist — wrapped virtual branches of
+    // the other carrier pass arbitrarily close to a flank (measured: |sB.f| <
+    // |sA.f| at vertices ON flank A), and per-chain representatives tie at
+    // the crease. There are exactly two possible assignments; score both and
+    // take the better — never reject (the chop was the residual chip source,
+    // and a mis-pick is caught by fanFromStratumVertex's guards).
     const sA = features.strata[curve.adjacentStrata[0]!]!
     const sB = features.strata[curve.adjacentStrata[1]!]!
+    const n = new Float64Array(3)
+    const agree = (v: number, st: typeof sA): number => {
+        const x = points.x(v)
+        const y = points.y(v)
+        const z = points.z(v)
+        st.normal(x, y, z, n)
+        const vx = points.nx(v)
+        const vy = points.ny(v)
+        const vz = points.nz(v)
+        const vl = Math.hypot(vx, vy, vz)
+        if (vl < 1e-12) return 0
+        return Math.abs((vx * n[0]! + vy * n[1]! + vz * n[2]!) / vl)
+    }
     let score = 0
     for (let idx = 1; idx < chain1.length - 1; idx++) {
         const v = chain1[idx]!
-        const x = points.x(v)
-        const y = points.y(v)
-        const z = points.z(v)
-        score += Math.abs(sB.f(x, y, z)) - Math.abs(sA.f(x, y, z))
+        score += agree(v, sA) - agree(v, sB)
     }
     for (let idx = 1; idx < chain2.length - 1; idx++) {
         const v = chain2[idx]!
-        const x = points.x(v)
-        const y = points.y(v)
-        const z = points.z(v)
-        score += Math.abs(sA.f(x, y, z)) - Math.abs(sB.f(x, y, z))
+        score += agree(v, sB) - agree(v, sA)
     }
     const side1IsA = score >= 0
     const side2IsA = !side1IsA
@@ -589,7 +621,22 @@ function fanFromStratumVertex(
     const px = proj[0]!
     const py = proj[1]!
     const pz = proj[2]!
-    if (!inBox(cellBox, px, py, pz, margin) || Math.abs(tree.f(px, py, pz)) > opts.surfaceTol) {
+    // Guards: the projection must stay in the cell, land on the actual
+    // surface, AND land on the carrier's OWN patch of it — under heavy twist
+    // a wrapped virtual branch of the carrier can coincide with a different
+    // real wall (|tree.f| ≈ 0 there too), and fanning from that point digs a
+    // pit straight through the wedge. On the right patch the carrier normal
+    // and the tree gradient are parallel up to branch orientation (|dot| ≈ 1).
+    const n = new Float64Array(3)
+    const g = new Float64Array(3)
+    let wrongPatch = false
+    if (inBox(cellBox, px, py, pz, margin)) {
+        stratum.normal(px, py, pz, n)
+        tree.grad(px, py, pz, g)
+        const gl = Math.hypot(g[0]!, g[1]!, g[2]!)
+        wrongPatch = gl > 1e-12 && Math.abs(g[0]! * n[0]! + g[1]! * n[1]! + g[2]! * n[2]!) / gl < 0.8
+    }
+    if (!inBox(cellBox, px, py, pz, margin) || wrongPatch || Math.abs(tree.f(px, py, pz)) > opts.surfaceTol) {
         // The carrier projection left the cell or the actual surface: fan from
         // a boundary vertex instead — boundary vertices are on the surface, so
         // the max-|f| guarantee holds.
@@ -598,7 +645,6 @@ function fanFromStratumVertex(
         }
         return
     }
-    const n = new Float64Array(3)
     stratum.normal(px, py, pz, n)
     const c = points.add(px, py, pz, n[0]!, n[1]!, n[2]!)
     for (let k = 0; k < m; k++) {

@@ -37,6 +37,8 @@ export interface SfccFeatureCurve {
     readonly tMax: number
     /** Owning primitive's scene node id (−1 for boolean seams / unbuilt test scenes). */
     readonly ownerNodeId: number
+    /** Compiled from modeled primitive geometry (set by compileFeatureSet; boolean seams stay unset). */
+    native?: boolean
     /** Corner ids at the ends (open curves; −1 = free end). */
     cornerStart: number
     cornerEnd: number
@@ -280,6 +282,8 @@ export function makeTracedCurve(
     refine: (x: number, y: number, z: number, out: Float64Array, off?: number) => boolean,
     /** Unit tangent of the locus at a point (∇A×∇B normalized). */
     tangent: (x: number, y: number, z: number, out: Float64Array, off?: number) => void,
+    /** Owning primitive's node id for NATIVE traced curves (−1 = boolean seam). */
+    ownerNodeId = -1,
 ): SfccFeatureCurve {
     const n = samples.length / 3
     const tMax = n - 1
@@ -316,7 +320,7 @@ export function makeTracedCurve(
         paramWrap: closed ? tMax : undefined,
         tMin: 0,
         tMax,
-        ownerNodeId: -1,
+        ownerNodeId,
         cornerStart: -1,
         cornerEnd: -1,
         indexPolyline: samples,

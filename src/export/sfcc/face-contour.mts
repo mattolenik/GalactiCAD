@@ -153,12 +153,27 @@ function findRoot(
 
 /**
  * Compute (once, globally cached) the recovered per-stratum boundary crossings
- * of a sub-edge with no tree-f sign change. For each feature curve near the
- * edge, each adjacent stratum carrier with an endpoint sign change is
- * root-found along the edge; candidates survive only where the full tree SDF
- * also vanishes (a genuine surface point, not a virtual carrier crossing).
- * Odd candidate sets are dropped entirely — a missed sliver is better than
- * corrupting boundary parity.
+ * of a sub-edge with no tree-f sign change.
+ *
+ * Detection: each nearby stratum carrier is scanned for ALL roots along the
+ * sub-edge (multi-bracket subdivision — one carrier can legitimately cross
+ * twice, e.g. the cap under both wedges flanking a corner), weakly filtered to
+ * points where the full tree SDF also vanishes.
+ *
+ * Verification (parity-exact): candidates are sorted by t and each is kept iff
+ * the tree SDF actually changes sign between its neighboring gap midpoints —
+ * the ground-truth test for "this carrier root IS a surface crossing". Since
+ * the sub-edge endpoint samples agree in sign, the surviving set is even by
+ * construction, so boundary parity is safe for ANY survivor count. This is
+ * what makes corner zones recoverable: a sub-edge there can carry 3+ carrier
+ * candidates (two walls + cap), where the old exactly-2 gate dropped
+ * everything and the contour shortcut across the corner wedge (≈half-cell
+ * V-notch at the apex).
+ *
+ * Gating: 2 survivors must still form a wedge pair (distinct strata flanking a
+ * common curve, or both incident to a common corner) — unrelated stray pairs
+ * fabricate arcs. 4+ survivors are accepted as-is: each is stratum-tagged and
+ * the pairing passes (1:1 per-stratum, run rule, pin splice) route them.
  */
 function recoveredCrossingsFor(
     cacheKey: number,
@@ -188,73 +203,173 @@ function recoveredCrossingsFor(
         cache.set(cacheKey, out)
         return out
     }
-    const seen = new Set<number>()
+    const atT = (t: number, o: Float64Array): void => {
+        o[0] = aWorld[0]! + (bWorld[0]! - aWorld[0]!) * t
+        o[1] = aWorld[1]! + (bWorld[1]! - aWorld[1]!) * t
+        o[2] = aWorld[2]! + (bWorld[2]! - aWorld[2]!) * t
+    }
     const q = new Float64Array(3)
+
+    // --- detection: all carrier roots per nearby stratum ---
+    const SUBDIV = 8
+    const cand: Array<{ t: number; stratum: number; fAbs: number }> = []
+    const seen = new Set<number>()
     for (const cid of curveIds) {
-        const curve = features.curves[cid]!
-        for (const sid of curve.adjacentStrata) {
+        for (const sid of features.curves[cid]!.adjacentStrata) {
             if (seen.has(sid)) continue
             seen.add(sid)
             const st = features.strata[sid]!
-            const sa = st.f(aWorld[0]!, aWorld[1]!, aWorld[2]!)
-            const sb = st.f(bWorld[0]!, bWorld[1]!, bWorld[2]!)
-            if (sa < 0 === sb < 0) continue
-            // Bisect the smooth carrier along the edge.
-            let lo = 0
-            let hi = 1
-            let flo = sa
-            for (let i = 0; i < 50 && (hi - lo) * edgeLen > opts.rootTol; i++) {
-                const mid = (lo + hi) / 2
-                const fm = st.f(
-                    aWorld[0]! + (bWorld[0]! - aWorld[0]!) * mid,
-                    aWorld[1]! + (bWorld[1]! - aWorld[1]!) * mid,
-                    aWorld[2]! + (bWorld[2]! - aWorld[2]!) * mid,
-                )
-                if (fm < 0 === flo < 0) {
-                    lo = mid
-                    flo = fm
-                } else {
-                    hi = mid
+            let prevT = 0
+            atT(0, q)
+            let prevF = st.f(q[0]!, q[1]!, q[2]!)
+            for (let k = 1; k <= SUBDIV; k++) {
+                const tk = k / SUBDIV
+                atT(tk, q)
+                const fk = st.f(q[0]!, q[1]!, q[2]!)
+                if (prevF < 0 !== fk < 0) {
+                    // Bisect the carrier root in [prevT, tk].
+                    let lo = prevT
+                    let hi = tk
+                    let flo = prevF
+                    for (let i = 0; i < 50 && (hi - lo) * edgeLen > opts.rootTol; i++) {
+                        const mid = (lo + hi) / 2
+                        atT(mid, q)
+                        const fm = st.f(q[0]!, q[1]!, q[2]!)
+                        if (fm < 0 === flo < 0) {
+                            lo = mid
+                            flo = fm
+                        } else {
+                            hi = mid
+                        }
+                    }
+                    const t = (lo + hi) / 2
+                    atT(t, q)
+                    const fAbs = Math.abs(tree.f(q[0]!, q[1]!, q[2]!))
+                    if (fAbs <= opts.rootTol * 4) cand.push({ t, stratum: sid, fAbs })
                 }
+                prevT = tk
+                prevF = fk
             }
-            const t = (lo + hi) / 2
-            q[0] = aWorld[0]! + (bWorld[0]! - aWorld[0]!) * t
-            q[1] = aWorld[1]! + (bWorld[1]! - aWorld[1]!) * t
-            q[2] = aWorld[2]! + (bWorld[2]! - aWorld[2]!) * t
-            if (Math.abs(tree.f(q[0]!, q[1]!, q[2]!)) > opts.rootTol * 4) continue
-            const qx = q[0]!
-            const qy = q[1]!
-            const qz = q[2]!
-            const id = points.getOrCreateStr(`SC:${cacheKey}:${sid}`, o => {
-                o[0] = qx
-                o[1] = qy
-                o[2] = qz
-                tree.grad(qx, qy, qz, o, 3)
-            })
-            out.push({ id, t, stratum: sid })
         }
     }
-    // Gate to the canonical arc-through configuration: exactly TWO crossings
-    // on DISTINCT strata that flank a common curve's wedge (both strata
-    // adjacent to one nearby curve). Gating must be on the strata pair, not
-    // per-curve attribution: adjacent feature curves share side strata, so the
-    // `seen` dedup attributes a shared stratum's crossing to whichever curve
-    // iterates first — a one-curve count gate then rejects genuine pairs
-    // (measured: every zero-crossing pin face at twist 500°). Multi-crossing /
-    // partial sets (corner zones) still recover nothing — ad-hoc pairings
-    // there fabricate conflicting arcs (residual non-manifold edges).
-    let wedgePair = false
-    if (out.length === 2 && out[0]!.stratum !== out[1]!.stratum) {
+    if (cand.length === 0) {
+        cache.set(cacheKey, out)
+        return out
+    }
+    cand.sort((x, y) => x.t - y.t)
+    // Dedupe near-coincident candidates (two carriers rooting at the same
+    // point = the crease itself pierces the sub-edge); keep the better fit.
+    // AMBIGUOUS sets only: a sub-tolerance wedge pair is two legitimately
+    // near-coincident crossings — merging it leaves an odd singleton and the
+    // pair is lost (measured: fallback chips on sharp helical edges).
+    let dd = cand
+    if (cand.length > 2) {
+        dd = []
+        for (const c of cand) {
+            const last = dd[dd.length - 1]
+            if (last && (c.t - last.t) * edgeLen < opts.rootTol * 2) {
+                if (c.fAbs < last.fAbs) dd[dd.length - 1] = c
+                continue
+            }
+            dd.push(c)
+        }
+    }
+
+    // --- verification: ground-truth sign flips at gap midpoints ---
+    // Applied only to AMBIGUOUS sets (3+ candidates) to select the real even
+    // subset. Two-candidate sets keep the legacy un-verified acceptance: a
+    // sub-tolerance sliver's interior midpoint can sample outside (positions
+    // are only rootTol-accurate), and vetoing such pairs regresses cells that
+    // meshed fine for years (measured: fallback chips on sharp helical edges).
+    let survivors = dd
+    let gapInside: boolean[] | null = null
+    if (dd.length > 2) {
+        const ts = [0, ...dd.map(c => c.t), 1]
+        gapInside = []
+        for (let g = 0; g < ts.length - 1; g++) {
+            atT((ts[g]! + ts[g + 1]!) / 2, q)
+            gapInside.push(tree.f(q[0]!, q[1]!, q[2]!) < 0)
+        }
+        const gi = gapInside
+        survivors = dd.filter((_, i) => gi[i]! !== gi[i + 1]!)
+    }
+    // Parity defense: endpoint samples agree, so survivors must be even; an
+    // odd set means a real crossing escaped detection — drop everything
+    // rather than corrupt boundary parity.
+    if (survivors.length === 0 || survivors.length % 2 !== 0) {
+        cache.set(cacheKey, out)
+        return out
+    }
+
+    // Structural gate shared by the 2-case and the dips of larger sets: a
+    // crossing pair bounding a material dip must flank a common curve's wedge
+    // or share a common corner's strata — anything else is a stray pairing
+    // that fabricates arcs.
+    const isWedgePair = (sa: number, sb: number): boolean => {
+        if (sa === sb) return false
         for (const cid of curveIds) {
             const adj = features.curves[cid]!.adjacentStrata
-            if (adj.includes(out[0]!.stratum) && adj.includes(out[1]!.stratum)) {
-                wedgePair = true
-                break
+            if (adj.includes(sa) && adj.includes(sb)) return true
+        }
+        for (const cornerId of features.index.cornersInBox(
+            Math.min(aWorld[0]!, bWorld[0]!) - inflate,
+            Math.min(aWorld[1]!, bWorld[1]!) - inflate,
+            Math.min(aWorld[2]!, bWorld[2]!) - inflate,
+            Math.max(aWorld[0]!, bWorld[0]!) + inflate,
+            Math.max(aWorld[1]!, bWorld[1]!) + inflate,
+            Math.max(aWorld[2]!, bWorld[2]!) + inflate,
+        )) {
+            const st = features.corners[cornerId]!.strata
+            if (st.includes(sa) && st.includes(sb)) return true
+        }
+        return false
+    }
+    if (survivors.length > 2) {
+        // Each "dip" (gap whose inside-ness differs from the endpoints') is
+        // bounded by two consecutive survivors — require every dip to be a
+        // wedge pair. Unstructured 4+ sets measurably fabricate fallback
+        // cells and pits.
+        const endInside = gapInside![0]!
+        // Recompute gap structure over survivors only.
+        const sTs = [0, ...survivors.map(c => c.t), 1]
+        let ok = true
+        for (let g = 1; g < sTs.length - 2 && ok; g++) {
+            atT((sTs[g]! + sTs[g + 1]!) / 2, q)
+            const inside = tree.f(q[0]!, q[1]!, q[2]!) < 0
+            if (inside !== endInside) {
+                // dip bounded by survivors g−1 and g
+                if (!isWedgePair(survivors[g - 1]!.stratum, survivors[g]!.stratum)) ok = false
             }
         }
+        if (!ok) {
+            cache.set(cacheKey, out)
+            return out
+        }
     }
-    if (!wedgePair) out.length = 0
-    out.sort((x, y) => x.t - y.t)
+
+    // --- gating ---
+    if (survivors.length === 2 && !isWedgePair(survivors[0]!.stratum, survivors[1]!.stratum)) {
+        // The canonical arc-through pair must be a wedge pair (distinct
+        // strata flanking a common curve, or sharing a common corner —
+        // wall/wall and wall/cap slivers near an apex have no single
+        // flanking curve).
+        cache.set(cacheKey, out)
+        return out
+    }
+
+    for (const c of survivors) {
+        atT(c.t, q)
+        const qx = q[0]!
+        const qy = q[1]!
+        const qz = q[2]!
+        const id = points.getOrCreateStr(`SC:${cacheKey}:${c.stratum}:${c.t.toFixed(9)}`, o => {
+            o[0] = qx
+            o[1] = qy
+            o[2] = qz
+            tree.grad(qx, qy, qz, o, 3)
+        })
+        out.push({ id, t: c.t, stratum: c.stratum })
+    }
     cache.set(cacheKey, out)
     return out
 }
@@ -569,7 +684,11 @@ export function contourFace(
     // Pass 1 pairs only strata with exactly ONE tagged exit and ONE tagged
     // enter (the wedge-side configuration). Ambiguous groups (a wrapped
     // carrier crossing the face twice) defer to the run rule, which keeps the
-    // face-center sample as the oracle there.
+    // face-center sample as the oracle there. The chord between the pair must
+    // also stay on the surface: with multi-dip recovery, one carrier can
+    // legitimately cross the face at two SEPARATE slivers (e.g. the cap under
+    // both wedges flanking a corner) — pairing those connects through open
+    // air; the run rule handles them correctly instead.
     const tally = new Map<number, { enters: number[]; exits: number[] }>() // stratum → crossing indexes
     for (let i = 0; i < n; i++) {
         const s = nodeStratum.get(crossings[i]!.id)
@@ -578,10 +697,17 @@ export function contourFace(
         if (!t) tally.set(s, (t = { enters: [], exits: [] }))
         ;(crossings[i]!.enter ? t.enters : t.exits).push(i)
     }
+    const ext = len * lat.step
     for (const t of tally.values()) {
         if (t.enters.length === 1 && t.exits.length === 1) {
+            const ea = crossings[t.enters[0]!]!.id
+            const xa = crossings[t.exits[0]!]!.id
+            const mx = (points.x(ea) + points.x(xa)) / 2
+            const my = (points.y(ea) + points.y(xa)) / 2
+            const mz = (points.z(ea) + points.z(xa)) / 2
+            if (Math.abs(tree.f(mx, my, mz)) > ext * 0.05) continue
             matchedEnter.add(t.enters[0]!)
-            partnerOf.set(t.exits[0]!, crossings[t.enters[0]!]!.id)
+            partnerOf.set(t.exits[0]!, ea)
         }
     }
     for (let i = 0; i < n; i++) {
@@ -648,27 +774,44 @@ export function contourFace(
             const px = points.x(pin.pointId)
             const py = points.y(pin.pointId)
             const pz = points.z(pin.pointId)
-            let bestIdx = -1
-            let bestDist = Infinity
-            let bestCross = false
-            for (let i = 0; i < record.segments.length; i++) {
-                const s = record.segments[i]!
-                const sa = nodeStratum.get(s.a)
-                const sb = nodeStratum.get(s.b)
-                const cross =
-                    sa !== undefined && sb !== undefined && sa !== sb && adj.includes(sa) && adj.includes(sb)
-                if (bestCross && !cross) continue
-                const d = pointSegmentDist(points, px, py, pz, s.a, s.b)
-                if ((cross && !bestCross) || d < bestDist) {
-                    bestIdx = i
-                    bestDist = d
-                    bestCross = cross
+            // Host selection: skip near-degenerate segments first (recovered
+            // cap pairs where the wedge tip grazes a cell-edge line are
+            // micro-arcs coincident with the pin itself — a distance- or
+            // tag-based preference would pick them and strand the pin in a
+            // micro-loop, away from the wedge loop that carries the other
+            // pin). Among the remaining, prefer the segment crossing the
+            // pin's wedge (endpoint strata = the curve's two flanks), then
+            // the nearest.
+            const minLen = opts.rootTol * 8
+            for (const lengthFloor of [minLen, 0]) {
+                let bestIdx = -1
+                let bestDist = Infinity
+                let bestCross = false
+                for (let i = 0; i < record.segments.length; i++) {
+                    const s = record.segments[i]!
+                    const dx = points.x(s.b) - points.x(s.a)
+                    const dy = points.y(s.b) - points.y(s.a)
+                    const dz = points.z(s.b) - points.z(s.a)
+                    if (lengthFloor > 0 && dx * dx + dy * dy + dz * dz < lengthFloor * lengthFloor) continue
+                    const sa = nodeStratum.get(s.a)
+                    const sb = nodeStratum.get(s.b)
+                    const cross =
+                        sa !== undefined && sb !== undefined && sa !== sb && adj.includes(sa) && adj.includes(sb)
+                    if (bestCross && !cross) continue
+                    const d = pointSegmentDist(points, px, py, pz, s.a, s.b)
+                    if ((cross && !bestCross) || d < bestDist) {
+                        bestIdx = i
+                        bestDist = d
+                        bestCross = cross
+                    }
                 }
+                if (bestIdx < 0) continue // every segment below the floor — retry without it
+                const s = record.segments[bestIdx]!
+                record.segments.splice(bestIdx, 1, { a: s.a, b: pin.pointId }, { a: pin.pointId, b: s.b })
+                record.consumedFwd.push(0)
+                record.consumedRev.push(0)
+                break
             }
-            const s = record.segments[bestIdx]!
-            record.segments.splice(bestIdx, 1, { a: s.a, b: pin.pointId }, { a: pin.pointId, b: s.b })
-            record.consumedFwd.push(0)
-            record.consumedRev.push(0)
         }
     }
     return record
@@ -696,10 +839,18 @@ function splitMidpoint(
     bId: number,
     rootTol: number,
 ): number {
+    const mx = (points.x(aId) + points.x(bId)) / 2
+    const my = (points.y(aId) + points.y(bId)) / 2
+    const mz = (points.z(aId) + points.z(bId)) / 2
+    const segLen = Math.hypot(
+        points.x(bId) - points.x(aId),
+        points.y(bId) - points.y(aId),
+        points.z(bId) - points.z(aId),
+    )
     const q = new Float64Array(3)
-    q[0] = (points.x(aId) + points.x(bId)) / 2
-    q[1] = (points.y(aId) + points.y(bId)) / 2
-    q[2] = (points.z(aId) + points.z(bId)) / 2
+    q[0] = mx
+    q[1] = my
+    q[2] = mz
     const grad = new Float64Array(3)
     for (let it = 0; it < 6; it++) {
         const fv = tree.f(q[0]!, q[1]!, q[2]!)
@@ -712,6 +863,18 @@ function splitMidpoint(
         q[0] = q[0]! - k * grad[0]!
         q[1] = q[1]! - k * grad[1]!
         q[2] = q[2]! - k * grad[2]!
+    }
+    // Validate: near-degenerate in-plane gradients (surface ⟂ face) make the
+    // Newton step explode — an unvalidated result is a vertex floating off
+    // the surface that fans into protruding spikes. The true arc midpoint
+    // can't be farther from the chord midpoint than ~the chord itself; on
+    // drift or residual failure fall back to the plain average of the two
+    // on-surface endpoints (error bounded by the chord sag).
+    const drift = Math.hypot(q[0]! - mx, q[1]! - my, q[2]! - mz)
+    if (drift > segLen + rootTol * 8 || Math.abs(tree.f(q[0]!, q[1]!, q[2]!)) > rootTol * 8) {
+        q[0] = mx
+        q[1] = my
+        q[2] = mz
     }
     tree.grad(q[0]!, q[1]!, q[2]!, grad)
     return points.add(q[0]!, q[1]!, q[2]!, grad[0]!, grad[1]!, grad[2]!)

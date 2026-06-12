@@ -1641,6 +1641,13 @@ export class RenderWorkerCore {
             const maxX = bounds.max[0] + pad
             const maxY = bounds.max[1] + pad
             const maxZ = bounds.max[2] + pad
+            // Exact sampled bounds (pre-pad): exporter lattices derive from
+            // these, so reproducing an export run outside the browser needs
+            // them verbatim (GPU f32 sampling differs from analytic bounds).
+            log("MeshExport").info("scene bounds (sampled, pre-pad)", {
+                min: [bounds.min[0], bounds.min[1], bounds.min[2]],
+                max: [bounds.max[0], bounds.max[1], bounds.max[2]],
+            })
 
             const scene = this.#scene!
             const sceneAux = scene.compileAux()

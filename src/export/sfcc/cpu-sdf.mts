@@ -167,6 +167,16 @@ export interface CpuSdfTree {
      * |f|-as-distance heuristics (refine probes); NOT a certificate.
      */
     readonly gradBound: number
+    /**
+     * Blend radius of the lowest common CSG combiner of two leaves (indices
+     * into `leaves`); 0 when they meet at a hard min/max. A smooth combiner
+     * replaces the pair's intersection crease with a fillet: on the carrier-
+     * pair locus both fields are exactly 0, so the final surface sits
+     * |smin(0,0,r)| ≥ r/4 away (soft is the weakest mode, exactly r/4) and no
+     * seam between the pair can survive trim's on-surface gate once
+     * r > 4·surfaceTol.
+     */
+    blendRadiusBetween(a: number, b: number): number
     /** Certified enclosure of f over an axis-aligned box via the L=1 centered form. */
     intervalOverBox(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number): [number, number]
     readonly leaves: CpuSdfLeaf[]
@@ -1144,6 +1154,34 @@ function collectOwners(
 }
 
 /**
+ * Per-pair blend radius at the lowest common combiner (see
+ * {@link CpuSdfTree.blendRadiusBetween}): every cross-child leaf pair of a
+ * combiner has that combiner as its LCA, so one bottom-up pass fills the
+ * symmetric matrix. Hard combiners record 0.
+ */
+function buildBlendPairMap(root: CsgNode, leafCount: number): Float64Array {
+    const map = new Float64Array(leafCount * leafCount)
+    const visit = (n: CsgNode): number[] => {
+        if (n.op === "leaf") return [n.leaf.index]
+        const childSets = n.children.map(visit)
+        const r = n.op === "blend" ? n.r : 0
+        for (let i = 0; i < childSets.length; i++) {
+            for (let j = i + 1; j < childSets.length; j++) {
+                for (const a of childSets[i]!) {
+                    for (const b of childSets[j]!) {
+                        map[a * leafCount + b] = r
+                        map[b * leafCount + a] = r
+                    }
+                }
+            }
+        }
+        return childSets.flat()
+    }
+    visit(root)
+    return map
+}
+
+/**
  * Advisory |∇f| inflation over the leaves' own bounds (see
  * {@link CpuSdfTree.gradBound}): round/chamfer blends combine two operand
  * gradients with weight vectors of ℓ² norm ≤ √2 · max; soft is convex and
@@ -1168,12 +1206,14 @@ export function compileCpuSdf(root: Node): CpuSdfTree {
     if (csg === null) throw new SfccUnsupportedError([{ nodeId: nodeIdOf(root), shapeType: root.getShapeType(), reason: "empty scene" }])
 
     const f = (px: number, py: number, pz: number): number => evalNode(csg, px, py, pz)
+    const blendPairs = buildBlendPairMap(csg, state.leaves.length)
     return {
         f,
         grad: (px, py, pz, out, off = 0) => {
             gradNode(csg, px, py, pz, out, off)
         },
         gradBound: gradBoundOf(csg),
+        blendRadiusBetween: (a, b) => blendPairs[a * state.leaves.length + b] ?? 0,
         intervalOverBox: (cx, cy, cz, hx, hy, hz) => {
             const r = Math.hypot(hx, hy, hz)
             return intervalNode(csg, cx, cy, cz, r)

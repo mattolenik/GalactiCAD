@@ -293,3 +293,110 @@ test("sfcc pipeline: smooth subtract dent → certified manifold sphere, zero fe
     assert.deepEqual(r.manifold.eulerPerComponent, [2])
     assert.ok(maxAbsF(tree, r) <= TUNING.surfaceTolMm, `max |f| = ${maxAbsF(tree, r)}`)
 })
+
+test("blendRadiusBetween: lowest-common-combiner radius per leaf pair", () => {
+    const hard = compileCpuSdf(new Union([S1(), S2()]))
+    assert.equal(hard.blendRadiusBetween(0, 1), 0)
+    const smooth = compileCpuSdf(new Union([S1(), S2()], 0.8))
+    assert.equal(smooth.blendRadiusBetween(0, 1), 0.8)
+    assert.equal(smooth.blendRadiusBetween(1, 0), 0.8)
+    // Mixed nesting: (s1, s2) meet at the inner blend; either with the box
+    // meets at the hard outer union.
+    const mixed = compileCpuSdf(new Union([new Union([S1(), S2()], 0.5), new Box([0, -4, 0], [1, 1, 1])]))
+    const boxIdx = mixed.leaves.findIndex(l => l.shapeType === "box")
+    const sphereIdx = mixed.leaves.map((l, i) => (l.shapeType === "sphere" ? i : -1)).filter(i => i >= 0)
+    assert.equal(mixed.blendRadiusBetween(sphereIdx[0]!, sphereIdx[1]!), 0.5)
+    assert.equal(mixed.blendRadiusBetween(sphereIdx[0]!, boxIdx), 0)
+    assert.equal(mixed.blendRadiusBetween(sphereIdx[1]!, boxIdx), 0)
+})
+
+test("seam-trace skip: blended pairs are not traced; near-hard blends keep their seam", () => {
+    const tol = resolveTolerances(TUNING, Math.hypot(16, 16, 16))
+    // r = 0.8 ≫ 4·surfaceTol: the pair is skipped outright.
+    const smooth = compileFeatureSet(compileCpuSdf(new Union([S1(), S2()], 0.8)), tol)
+    assert.equal(smooth.seamDiagnostics.pairsConsidered, 0)
+    assert.equal(smooth.curves.length, 0)
+    // r = 2·surfaceTol < 4·surfaceTol: traced, and trim keeps it — the
+    // surface deviates only 0.41·r < surfaceTol from the hard seam, so the
+    // sharp curve is the better description within tolerance.
+    const nearHard = compileFeatureSet(
+        compileCpuSdf(new Union([S1(), S2()], 2 * TUNING.surfaceTolMm)),
+        tol,
+    )
+    assert.equal(nearHard.seamDiagnostics.pairsConsidered, 1)
+    assert.ok(nearHard.curves.length >= 1, "near-hard seam ring must survive")
+})
+
+test("sfcc pipeline: native crease fading into a union fillet → valence-1 fade corners, certified", () => {
+    // Sphere centered ON the box edge (2, 2, z): the edge's crease is exact
+    // away from the sphere, fades where the fillet takes over (|z| < 1.7),
+    // and trim ends the runs at the aliveness boundary — each fade endpoint
+    // becomes a valence-1 corner that the corner-fan path meshes.
+    const tree = compileCpuSdf(new Union([new Box([0, 0, 0], [2, 2, 2]), new Sphere([2, 2, 0], { r: 1.2 })], 0.5))
+    const tol = resolveTolerances(TUNING, Math.hypot(16, 16, 16))
+    const fs = compileFeatureSet(tree, tol)
+    const fadeCorners = fs.corners.filter(c => c.curveEnds.length === 1)
+    assert.equal(fadeCorners.length, 2, `expected 2 fade corners, got valences ${fs.corners.map(c => c.curveEnds.length)}`)
+    for (const c of fadeCorners) {
+        // Fade corners sit on the surface (at the aliveness boundary) on the
+        // box edge line, inside the blend influence zone.
+        assert.ok(Math.abs(tree.f(c.x, c.y, c.z)) <= tol.surfaceTol * 1.2)
+        assert.ok(Math.abs(c.x - 2) < 0.05 && Math.abs(c.y - 2) < 0.05 && Math.abs(c.z) < 1.75)
+    }
+
+    const r = runSfccPipeline(tree, BOUNDS, TUNING)
+    assert.equal(r.stats.failedCells, 0)
+    assert.equal(r.stats.featureCellFallbacks, 0)
+    assert.equal(r.stats.faceAuditFailures, 0)
+    assert.ok(r.manifold.ok, JSON.stringify(r.manifold))
+    assert.deepEqual(r.manifold.eulerPerComponent, [2])
+    // The fade corner itself sits AT |f| = surfaceTol by construction (the
+    // bisected aliveness boundary), so allow a small margin over surfaceTol.
+    assert.ok(maxAbsF(tree, r) <= TUNING.surfaceTolMm * 1.5, `max |f| = ${maxAbsF(tree, r)}`)
+    // Away from the blend the crease must stay exact: vertices ON the edge
+    // line at |z| > 1.75, short of the true box corner.
+    let onEdge = 0
+    for (let i = 0; i < r.verts.length; i += 8) {
+        if (
+            Math.abs(r.verts[i]! - 2) < 1e-9 &&
+            Math.abs(r.verts[i + 1]! - 2) < 1e-9 &&
+            Math.abs(r.verts[i + 2]!) > 1.75 &&
+            Math.abs(r.verts[i + 2]!) < 2 - 1e-9
+        ) {
+            onEdge++
+        }
+    }
+    assert.ok(onEdge >= 1, "sharp portion of the faded edge must keep exact on-edge vertices")
+})
+
+test("sfcc pipeline: native crease cut by a smooth-subtract scallop → certified, fade corners", () => {
+    // Sphere scallop excavated from the vertical edge (2, y, 2) with a round
+    // blend: the edge fades into the excavation fillet from both sides.
+    const tree = compileCpuSdf(
+        new Subtract(new Box([0, 0, 0], [2, 2, 2]), new Sphere([2, 0, 2], { r: 1 }), 0.4),
+    )
+    const tol = resolveTolerances(TUNING, Math.hypot(16, 16, 16))
+    const fs = compileFeatureSet(tree, tol)
+    assert.ok(
+        fs.corners.filter(c => c.curveEnds.length === 1).length >= 2,
+        `expected fade corners, got valences ${fs.corners.map(c => c.curveEnds.length)}`,
+    )
+
+    const r = runSfccPipeline(tree, BOUNDS, TUNING)
+    assert.equal(r.stats.failedCells, 0)
+    assert.equal(r.stats.faceAuditFailures, 0)
+    assert.ok(r.manifold.ok, JSON.stringify(r.manifold))
+    assert.deepEqual(r.manifold.eulerPerComponent, [2])
+    assert.ok(maxAbsF(tree, r) <= TUNING.surfaceTolMm * 1.5, `max |f| = ${maxAbsF(tree, r)}`)
+})
+
+test("sfcc pipeline: stairs-mode union → certified manifold (steps contour as smooth ridges, v1 envelope)", () => {
+    // Stairs zero sets have real creases the carrier model does not represent
+    // in v1; they mesh at lattice resolution on a certified closed manifold.
+    const tree = compileCpuSdf(new Union([S1(), S2()], 0.8, "stairs", 3))
+    const r = runSfccPipeline(tree, BOUNDS, TUNING)
+    assert.equal(r.stats.failedCells, 0)
+    assert.equal(r.stats.faceAuditFailures, 0)
+    assert.ok(r.manifold.ok, JSON.stringify(r.manifold))
+    assert.deepEqual(r.manifold.eulerPerComponent, [2])
+})

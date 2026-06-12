@@ -9,7 +9,10 @@
  * material cut away by booleans.
  *
  * Candidate pairs: any two leaves with overlapping (inflated) world AABBs —
- * in the min/max-folded CSG tree every leaf pair meets at some combiner.
+ * in the min/max-folded CSG tree every leaf pair meets at some combiner —
+ * except pairs whose lowest common combiner is a smooth blend with
+ * r > 4·surfaceTol (the fillet pulls the would-be seam off the surface;
+ * trim would kill every sample, so the skip is exactly equivalent).
  * Seeding: deterministic grid over the overlap box + min-norm Newton.
  * Guards: tangency bail (‖∇A×∇B‖ < sin θmin → diagnostic, never loops),
  * corrector-displacement cap, tangent-angle step control, closed-loop
@@ -306,6 +309,14 @@ export function traceAllSeams(
         for (let j = i + 1; j < leaves.length; j++) {
             const A = leaves[i]!
             const B = leaves[j]!
+            // Pairs meeting at a smooth combiner have their crease replaced by
+            // a fillet: on the carrier-pair locus the final surface sits
+            // ≥ r/4 away (see blendRadiusBetween), so for r > 4·surfaceTol
+            // trim would kill every sample — skipping is exactly equivalent
+            // and avoids tracing curves that only exist to be trimmed.
+            // Near-hard blends (r ≤ 4·surfaceTol) keep their seams: the sharp
+            // curve is the better description within tolerance.
+            if (tree.blendRadiusBetween(i, j) > tol.surfaceTol * 4) continue
             const margin = tol.probeDelta * 2
             let empty = false
             for (let a = 0; a < 3; a++) {

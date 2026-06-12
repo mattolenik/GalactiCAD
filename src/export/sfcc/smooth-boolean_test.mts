@@ -6,7 +6,7 @@ import { Union } from "../../scene/operators/union.mjs"
 import { Subtract } from "../../scene/operators/subtract.mjs"
 import { Intersect } from "../../scene/operators/intersect.mjs"
 import { compileCpuSdf, type CpuSdfTree } from "./cpu-sdf.mjs"
-import { smin, sminGradWeights, type SminMode } from "./cpu-sdf-primitives.mjs"
+import { smin, sminGradWeights } from "./cpu-sdf-primitives.mjs"
 import { compileFeatureSet } from "./feature-set.mjs"
 import { resolveTolerances } from "./tolerances.mjs"
 import { runSfccPipeline, type SfccPipelineResult } from "./assemble.mjs"
@@ -14,7 +14,7 @@ import { DEFAULT_SFCC_TUNING, type SfccTuning } from "./sfcc-tuning.mjs"
 
 const TUNING: SfccTuning = { ...DEFAULT_SFCC_TUNING, depthMin: 4, depthMax: 6, boundsPaddingMm: 0 }
 const BOUNDS = { minX: -8, minY: -8, minZ: -8, size: 16 }
-const MODES: SminMode[] = ["round", "soft", "chamfer", "stairs"]
+const MODES = ["round", "soft", "chamfer", "stairs"] as const
 
 /** Deterministic LCG (Date.now/Math.random are unavailable to workflows). */
 function makeRnd(seed: number): () => number {
@@ -294,20 +294,29 @@ test("sfcc pipeline: smooth subtract dent → certified manifold sphere, zero fe
     assert.ok(maxAbsF(tree, r) <= TUNING.surfaceTolMm, `max |f| = ${maxAbsF(tree, r)}`)
 })
 
-test("blendRadiusBetween: lowest-common-combiner radius per leaf pair", () => {
+test("blendSeamDisplacement: on-locus offset at the lowest common combiner", () => {
     const hard = compileCpuSdf(new Union([S1(), S2()]))
-    assert.equal(hard.blendRadiusBetween(0, 1), 0)
+    assert.equal(hard.blendSeamDisplacement(0, 1), 0)
+    // Round: |smin(0, 0, r)| = (√2 − 1)·r.
     const smooth = compileCpuSdf(new Union([S1(), S2()], 0.8))
-    assert.equal(smooth.blendRadiusBetween(0, 1), 0.8)
-    assert.equal(smooth.blendRadiusBetween(1, 0), 0.8)
+    assert.ok(Math.abs(smooth.blendSeamDisplacement(0, 1) - (Math.SQRT2 - 1) * 0.8) < 1e-12)
+    assert.equal(smooth.blendSeamDisplacement(1, 0), smooth.blendSeamDisplacement(0, 1))
     // Mixed nesting: (s1, s2) meet at the inner blend; either with the box
     // meets at the hard outer union.
     const mixed = compileCpuSdf(new Union([new Union([S1(), S2()], 0.5), new Box([0, -4, 0], [1, 1, 1])]))
     const boxIdx = mixed.leaves.findIndex(l => l.shapeType === "box")
     const sphereIdx = mixed.leaves.map((l, i) => (l.shapeType === "sphere" ? i : -1)).filter(i => i >= 0)
-    assert.equal(mixed.blendRadiusBetween(sphereIdx[0]!, sphereIdx[1]!), 0.5)
-    assert.equal(mixed.blendRadiusBetween(sphereIdx[0]!, boxIdx), 0)
-    assert.equal(mixed.blendRadiusBetween(sphereIdx[1]!, boxIdx), 0)
+    assert.ok(Math.abs(mixed.blendSeamDisplacement(sphereIdx[0]!, sphereIdx[1]!) - (Math.SQRT2 - 1) * 0.5) < 1e-12)
+    assert.equal(mixed.blendSeamDisplacement(sphereIdx[0]!, boxIdx), 0)
+    assert.equal(mixed.blendSeamDisplacement(sphereIdx[1]!, boxIdx), 0)
+    // Columns is mode/n-dependent — at n = 1 the bumps stay tangent to the
+    // locus (displacement 0: the seam survives and trim governs per-sample),
+    // while n ≥ 2 displaces. This is why the skip uses the exact on-locus
+    // value, not a radius threshold.
+    const c1 = compileCpuSdf(new Union([S1(), S2()], 0.8, "columns", 1))
+    assert.ok(Math.abs(c1.blendSeamDisplacement(0, 1)) < 1e-12)
+    const c3 = compileCpuSdf(new Union([S1(), S2()], 0.8, "columns", 3))
+    assert.ok(c3.blendSeamDisplacement(0, 1) > 0.2)
 })
 
 test("seam-trace skip: blended pairs are not traced; near-hard blends keep their seam", () => {
@@ -394,6 +403,143 @@ test("sfcc pipeline: stairs-mode union → certified manifold (steps contour as 
     // Stairs zero sets have real creases the carrier model does not represent
     // in v1; they mesh at lattice resolution on a certified closed manifold.
     const tree = compileCpuSdf(new Union([S1(), S2()], 0.8, "stairs", 3))
+    const r = runSfccPipeline(tree, BOUNDS, TUNING)
+    assert.equal(r.stats.failedCells, 0)
+    assert.equal(r.stats.faceAuditFailures, 0)
+    assert.ok(r.manifold.ok, JSON.stringify(r.manifold))
+    assert.deepEqual(r.manifold.eulerPerComponent, [2])
+})
+
+// --- columns mode -------------------------------------------------------------
+
+/** Verbatim test-side transcription of WGSL fOpUnionColumns. */
+function fUColumns(a: number, b: number, r: number, n: number): number {
+    if (a < r && b < r) {
+        const cr = (r * Math.SQRT2) / ((n - 1) * 2 + Math.SQRT2)
+        const mod = (x: number, y: number): number => x - y * Math.floor(x / y)
+        let px = (a + b) * Math.sqrt(0.5)
+        let py = (b - a) * Math.sqrt(0.5)
+        px = px - Math.sqrt(0.5) * r + cr * Math.SQRT2
+        if (mod(n, 2) !== 0) py += cr
+        const pyw = mod(py, cr * 2)
+        const dist = Math.hypot(px, pyw) - cr
+        return Math.min(Math.min(Math.min(dist, px), a), b)
+    }
+    return Math.min(a, b)
+}
+
+/** Verbatim test-side transcription of WGSL fOpDifferenceColumns. */
+function fDColumns(aIn: number, b: number, r: number, n: number): number {
+    const a = -aIn
+    const m = Math.min(a, b)
+    if (a < r && b < r) {
+        const cr = (r * Math.SQRT2) / ((n - 1) * 2 + Math.SQRT2)
+        const mod = (x: number, y: number): number => x - y * Math.floor(x / y)
+        let px = (a + b) * Math.sqrt(0.5)
+        let py = (b - a) * Math.sqrt(0.5)
+        py += cr
+        px = px - Math.sqrt(0.5) * r - cr * Math.SQRT2 * 0.5
+        if (mod(n, 2) !== 0) py += cr
+        const pyw = mod(py, cr * 2)
+        const res = Math.min(Math.max(-Math.hypot(px, pyw) + cr, px), a)
+        return -Math.min(res, b)
+    }
+    return -m
+}
+
+test("columns: compiled trees match the verbatim shader formulas (both families, both parities)", () => {
+    const f1 = leafF(S1())
+    const f2 = leafF(S2())
+    const box = (): Box => new Box([0, 0, 0], [3, 3, 3])
+    const fBox = leafF(box())
+    const pts = randPts(33333, 250, 10)
+    for (const n of [2, 3]) {
+        const union = compileCpuSdf(new Union([S1(), S2()], 0.8, "columns", n))
+        const subtract = compileCpuSdf(new Subtract(box(), S2(), 0.8, "columns", n))
+        const intersect = compileCpuSdf(new Intersect(box(), S2(), 0.8, "columns", n))
+        // A columns union as the subtrahend compiles under NEGATED parity.
+        const negUnion = compileCpuSdf(new Subtract(box(), new Union([S1(), S2()], 0.5, "columns", n)))
+        // A columns subtract under negated parity (subtrahend of a hard subtract).
+        const negDiff = compileCpuSdf(
+            new Subtract(new Box([0, 0, 0], [4, 4, 4]), new Subtract(box(), S2(), 0.8, "columns", n)),
+        )
+        const fBig = leafF(new Box([0, 0, 0], [4, 4, 4]))
+        for (const p of pts) {
+            assert.ok(Math.abs(union.f(...p) - fUColumns(f1(p), f2(p), 0.8, n)) < 1e-12, `union n=${n} at ${p}`)
+            assert.ok(Math.abs(subtract.f(...p) - fDColumns(fBox(p), f2(p), 0.8, n)) < 1e-12, `subtract n=${n} at ${p}`)
+            // fOpIntersectionColumns(a, b) = fOpDifferenceColumns(a, −b).
+            assert.ok(Math.abs(intersect.f(...p) - fDColumns(fBox(p), -f2(p), 0.8, n)) < 1e-12, `intersect n=${n} at ${p}`)
+            assert.ok(
+                Math.abs(negUnion.f(...p) - Math.max(fBox(p), -fUColumns(f1(p), f2(p), 0.5, n))) < 1e-12,
+                `negated union n=${n} at ${p}`,
+            )
+            assert.ok(
+                Math.abs(negDiff.f(...p) - Math.max(fBig(p), -fDColumns(fBox(p), f2(p), 0.8, n))) < 1e-12,
+                `negated subtract n=${n} at ${p}`,
+            )
+        }
+    }
+})
+
+test("columns: gradient weights match finite differences (both variants)", () => {
+    const rnd = makeRnd(97531)
+    const d = 1e-6
+    for (const mode of ["columns", "columnsI"] as const) {
+        let checked = 0
+        for (let k = 0; k < 2000 && checked < 150; k++) {
+            const a = (rnd() - 0.5) * 4
+            const b = (rnd() - 0.5) * 4
+            const r = 0.3 + rnd() * 1.2
+            const n = 2 + Math.floor(rnd() * 3)
+            const fd = (da: number, step: number): number =>
+                da === 0
+                    ? (smin(mode, a, b + step, r, n) - smin(mode, a, b - step, r, n)) / (2 * step)
+                    : (smin(mode, a + step, b, r, n) - smin(mode, a - step, b, r, n)) / (2 * step)
+            const pa = fd(1, d)
+            const pb = fd(0, d)
+            if (Math.abs(pa - fd(1, d * 8)) > 1e-4 || Math.abs(pb - fd(0, d * 8)) > 1e-4) continue
+            const [wa, wb] = sminGradWeights(mode, a, b, r, n)
+            const wl = Math.hypot(wa, wb)
+            const pl = Math.hypot(pa, pb)
+            if (pl < 1e-9 || wl < 1e-9) continue
+            const dot = (pa * wa + pb * wb) / (wl * pl)
+            assert.ok(dot > 0.9999, `${mode} weights ≠ FD at (${a}, ${b}, ${r}, ${n}): w=(${wa}, ${wb}) fd=(${pa}, ${pb})`)
+            checked++
+        }
+        assert.ok(checked >= 150, `${mode}: only ${checked} kink-free samples`)
+    }
+})
+
+test("columns: intervalOverBox containment (non-monotone — dedicated enclosure)", () => {
+    const trees = [
+        compileCpuSdf(new Union([S1(), S2()], 0.8, "columns", 3)),
+        compileCpuSdf(new Subtract(new Box([0, 0, 0], [2, 2, 2]), new Sphere([2, 0, 0], { r: 1.2 }), 0.5, "columns", 2)),
+        // 3-child nearest-pair columns (blanket enclosure path).
+        compileCpuSdf(new Union([S1(), S2(), new Sphere([0, 3, 0], { r: 1.5 })], 0.7, "columns", 2)),
+        // Negated columns blend (smax polarity through the interval path).
+        compileCpuSdf(new Subtract(new Box([0, 0, 0], [4, 4, 4]), new Union([S1(), S2()], 0.6, "columns", 3))),
+    ]
+    const rnd = makeRnd(13579)
+    for (const tree of trees) {
+        for (let k = 0; k < 150; k++) {
+            const cx = (rnd() - 0.5) * 9
+            const cy = (rnd() - 0.5) * 9
+            const cz = (rnd() - 0.5) * 9
+            const hx = rnd() * 0.8 + 0.01
+            const [lo, hi] = tree.intervalOverBox(cx, cy, cz, hx, hx, hx)
+            for (let m = 0; m < 8; m++) {
+                const v = tree.f(cx + (rnd() * 2 - 1) * hx, cy + (rnd() * 2 - 1) * hx, cz + (rnd() * 2 - 1) * hx)
+                assert.ok(v >= lo - 1e-9 && v <= hi + 1e-9, `f=${v} outside [${lo}, ${hi}]`)
+            }
+        }
+    }
+})
+
+test("sfcc pipeline: columns-mode union → certified manifold (bumps contour at lattice scale, v1 envelope)", () => {
+    // Column bump creases, like stairs steps, have no analytic carriers in
+    // v1: they contour as smooth geometry on a certified closed manifold.
+    const tree = compileCpuSdf(new Union([S1(), S2()], 0.8, "columns", 3))
+    assert.ok(Math.abs(tree.gradBound - Math.SQRT2) < 1e-12)
     const r = runSfccPipeline(tree, BOUNDS, TUNING)
     assert.equal(r.stats.failedCells, 0)
     assert.equal(r.stats.faceAuditFailures, 0)

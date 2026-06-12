@@ -702,27 +702,42 @@ export function coneNormal(
     out[off + 2] = nz
 }
 
-// --- Smooth booleans: fOpUnion{Round,Soft,Chamfer,Stairs} (hg_sdf.wgsl) ------
+// --- Smooth booleans: fOpUnion{Round,Soft,Chamfer,Stairs,Columns} (hg_sdf) ---
 //
 // f64 ports of the scalar hg_sdf blend operators, zero-set-exact against the
-// shader. Three properties the SFCC pipeline leans on (unit-tested in
+// shader. Properties the SFCC pipeline leans on (unit-tested in
 // smooth-boolean_test.mts):
-//   1. MONOTONE nondecreasing in both operands — interval certification can
-//      compose child enclosures through endpoints (round: the −|u| term has
-//      slope ∂|u|/∂a = −u.x/|u| ∈ [−1, 0]; soft: ∂f/∂a = h ∈ [0, 1];
-//      chamfer: min of affines with nonnegative coefficients; stairs: the
-//      ±1/2 triangle wave against the +1/2 linear term gives slope ∈ {0, 1}).
-//   2. NEGATION identity: smaxMode(a, b) = −sminMode(−a, −b) for every mode —
-//      the CSG walk's negation-parity fold absorbs smooth subtract/intersect
-//      exactly as it absorbs the hard ones.
-//   3. GRADIENT is a nonnegative combination of the operand gradients
-//      (sminGradWeights), so |∇f| ≤ √(La² + Lb²) for operand bounds La, Lb —
-//      see CpuSdfTree.gradBound.
+//   1. round/soft/chamfer/stairs are MONOTONE nondecreasing in both operands —
+//      interval certification composes child enclosures through endpoints
+//      (round: the −|u| term has slope ∂|u|/∂a = −u.x/|u| ∈ [−1, 0]; soft:
+//      ∂f/∂a = h ∈ [0, 1]; chamfer: min of affines with nonnegative
+//      coefficients; stairs: the ±1/2 triangle wave against the +1/2 linear
+//      term gives slope ∈ {0, 1}). The columns variants are NOT monotone (the
+//      column bumps oscillate along the seam) — sminColumnsInterval provides
+//      their enclosure instead.
+//   2. NEGATION identity: smaxMode(a, b) = −sminMode(−a, −b) for
+//      round/soft/chamfer/stairs — the CSG walk's negation-parity fold
+//      absorbs smooth subtract/intersect exactly as it absorbs hard ones.
+//      Columns VIOLATES the identity: the shader's fOpDifference/Intersection
+//      Columns are separate formulas (different lattice offsets), so the
+//      intersect family is its own mode, "columnsI", normalized to union
+//      polarity as smin("columnsI", x, y) = −fOpIntersectionColumns(−x, −y) —
+//      the generic sign fold then reproduces the shader exactly for both
+//      families at either parity.
+//   3. GRADIENT is a combination of the operand gradients (sminGradWeights;
+//      nonnegative weights except the columns circle branches), with
+//      ℓ²-norm ≤ √2 for unit operands — see CpuSdfTree.gradBound.
 //
-// `columns` is NOT ported (monotonicity unproven); the compiler keeps that
-// mode gated as unsupported.
+// Every mode's on-locus displacement (both operands exactly 0, i.e. ON a
+// would-be seam) is the constant smin(mode, 0, 0, r, n) — the basis of the
+// seam-trace skip (CpuSdfTree.blendSeamDisplacement).
 
-export type SminMode = "round" | "soft" | "chamfer" | "stairs"
+export type SminMode = "round" | "soft" | "chamfer" | "stairs" | "columns" | "columnsI"
+
+/** Column bump radius (hg_sdf): r·√2 / ((n−1)·2 + √2). */
+function columnRadius(r: number, n: number): number {
+    return (r * Math.SQRT2) / ((n - 1) * 2 + Math.SQRT2)
+}
 
 /** GLSL-style mod (result has the sign of `y`), matching the shader's modF. */
 function glslMod(x: number, y: number): number {
@@ -748,14 +763,46 @@ export function smin(mode: SminMode, a: number, b: number, r: number, n: number)
             const u = b - r
             return Math.min(Math.min(a, b), 0.5 * (u + a + Math.abs(glslMod(u - a + s, 2 * s) - s)))
         }
+        case "columns": {
+            // fOpUnionColumns, ported verbatim — including the shader's raw
+            // modF wrap (NOT the centered pMod1 of upstream hg_sdf): the WGSL
+            // is the zero-set ground truth, deviation and all.
+            if (a < r && b < r) {
+                const cr = columnRadius(r, n)
+                const px = (a + b) * Math.SQRT1_2 - Math.SQRT1_2 * r + cr * Math.SQRT2
+                let py = (b - a) * Math.SQRT1_2
+                if (glslMod(n, 2) !== 0) py += cr
+                const pyw = glslMod(py, cr * 2)
+                const dist = Math.hypot(px, pyw) - cr
+                return Math.min(Math.min(dist, px), Math.min(a, b))
+            }
+            return Math.min(a, b)
+        }
+        case "columnsI": {
+            // −fOpIntersectionColumns(−a, −b) = −fOpDifferenceColumns(−a, b):
+            // the Difference body negates its first operand back to `a`, so
+            // the internal rotated frame is (a, b) directly; note the offsets
+            // differ from the union variant (py + cr always; px − cr·√2/2).
+            if (a < r && b < r) {
+                const cr = columnRadius(r, n)
+                const px = (a + b) * Math.SQRT1_2 - Math.SQRT1_2 * r - cr * Math.SQRT2 * 0.5
+                let py = (b - a) * Math.SQRT1_2 + cr
+                if (glslMod(n, 2) !== 0) py += cr
+                const pyw = glslMod(py, cr * 2)
+                const g = Math.max(cr - Math.hypot(px, pyw), px)
+                return Math.min(Math.min(g, a), b)
+            }
+            return Math.min(a, b)
+        }
     }
 }
 
 /**
- * Direction weights (wa, wb ≥ 0, not both 0) such that
- * ∇smin ∥ wa·∇a + wb·∇b almost everywhere, winner convention at the
- * piecewise kinks. Callers normalize the combined vector, so only the ratio
- * matters (round returns the unnormalized u components).
+ * Direction weights (wa, wb) such that ∇smin ∥ wa·∇a + wb·∇b almost
+ * everywhere, winner convention at the piecewise kinks. Weights are
+ * nonnegative except on the columns circle branches (a bump's flank can face
+ * against an operand gradient). Callers normalize the combined vector, so
+ * only the ratio matters (round returns the unnormalized u components).
  */
 export function sminGradWeights(
     mode: SminMode,
@@ -783,5 +830,88 @@ export function sminGradWeights(
             if (Math.min(a, b) <= 0.5 * (u + a + Math.abs(w))) return a <= b ? [1, 0] : [0, 1]
             return w >= 0 ? [0, 1] : [1, 0]
         }
+        case "columns": {
+            if (a < r && b < r) {
+                const cr = columnRadius(r, n)
+                const px = (a + b) * Math.SQRT1_2 - Math.SQRT1_2 * r + cr * Math.SQRT2
+                let py = (b - a) * Math.SQRT1_2
+                if (glslMod(n, 2) !== 0) py += cr
+                const pyw = glslMod(py, cr * 2)
+                const dist = Math.hypot(px, pyw) - cr
+                const m = Math.min(Math.min(dist, px), Math.min(a, b))
+                if (m === a) return [1, 0]
+                if (m === b) return [0, 1]
+                if (m === px) return [1, 1]
+                // Circle branch: ∂len/∂a ∝ px − pyw, ∂len/∂b ∝ px + pyw.
+                return [px - pyw, px + pyw]
+            }
+            return a <= b ? [1, 0] : [0, 1]
+        }
+        case "columnsI": {
+            if (a < r && b < r) {
+                const cr = columnRadius(r, n)
+                const px = (a + b) * Math.SQRT1_2 - Math.SQRT1_2 * r - cr * Math.SQRT2 * 0.5
+                let py = (b - a) * Math.SQRT1_2 + cr
+                if (glslMod(n, 2) !== 0) py += cr
+                const pyw = glslMod(py, cr * 2)
+                const g = Math.max(cr - Math.hypot(px, pyw), px)
+                const m = Math.min(Math.min(g, a), b)
+                if (m === a) return [1, 0]
+                if (m === b) return [0, 1]
+                if (px >= cr - Math.hypot(px, pyw)) return [1, 1]
+                // Carved-circle branch: ∂(cr − len)/∂a ∝ pyw − px, ∂/∂b ∝ −(px + pyw).
+                return [pyw - px, -(px + pyw)]
+            }
+            return a <= b ? [1, 0] : [0, 1]
+        }
     }
+}
+
+/**
+ * Certified enclosure of the columns variants over an operand box
+ * [aLo, aHi] × [bLo, bHi] — they are NOT monotone (the bumps oscillate along
+ * the seam), so endpoint composition is unsound. Per-branch interval
+ * arithmetic instead: the wrapped offset spans [0, 2·cr), the rotated-axis
+ * term is monotone in a + b, and the in-band/out-of-band cases hull. Slack is
+ * bounded by the bump scale (~2·cr), so refinement stays geometry-driven.
+ */
+export function sminColumnsInterval(
+    mode: "columns" | "columnsI",
+    aLo: number,
+    aHi: number,
+    bLo: number,
+    bHi: number,
+    r: number,
+    n: number,
+): [number, number] {
+    let lo = Infinity
+    let hi = -Infinity
+    if (aHi >= r || bHi >= r) {
+        // Out-of-band contribution: plain min (conservatively unclipped).
+        lo = Math.min(aLo, bLo)
+        hi = Math.min(aHi, bHi)
+    }
+    if (aLo < r && bLo < r) {
+        const aH = Math.min(aHi, r)
+        const bH = Math.min(bHi, r)
+        const cr = columnRadius(r, n)
+        const pxOff = mode === "columns" ? cr * Math.SQRT2 : -cr * Math.SQRT2 * 0.5
+        const pxLo = (aLo + bLo) * Math.SQRT1_2 - Math.SQRT1_2 * r + pxOff
+        const pxHi = (aH + bH) * Math.SQRT1_2 - Math.SQRT1_2 * r + pxOff
+        // Wrapped offset ∈ [0, 2cr): |(px, pyw)| ranges over the box.
+        const lenLo = pxLo <= 0 && pxHi >= 0 ? 0 : Math.min(Math.abs(pxLo), Math.abs(pxHi))
+        const lenHi = Math.hypot(Math.max(Math.abs(pxLo), Math.abs(pxHi)), 2 * cr)
+        let cLo: number
+        let cHi: number
+        if (mode === "columns") {
+            cLo = Math.min(lenLo - cr, pxLo, aLo, bLo)
+            cHi = Math.min(lenHi - cr, pxHi, aH, bH)
+        } else {
+            cLo = Math.min(Math.max(cr - lenHi, pxLo), aLo, bLo)
+            cHi = Math.min(Math.max(cr - lenLo, pxHi), aH, bH)
+        }
+        lo = Math.min(lo, cLo)
+        hi = Math.max(hi, cHi)
+    }
+    return [lo, hi]
 }

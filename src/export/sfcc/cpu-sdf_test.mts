@@ -63,9 +63,7 @@ test("unsupported nodes are all collected with reasons", () => {
     const ok = new Sphere([0, 0, 0], { r: 1 })
     const torus = new Torus([0, 0, 0], { sr: 0.2, lr: 1 })
     const nonUniform = new Scale([1, 2, 1], new Sphere([0, 0, 0], { r: 1 }))
-    // columns is the one blend mode the CPU evaluator does not port.
-    const blended = new Union([ok, torus], 0.5, "columns")
-    const scene = new Union([blended, nonUniform])
+    const scene = new Union([ok, torus, nonUniform])
     let err: SfccUnsupportedError | null = null
     try {
         compileCpuSdf(scene)
@@ -74,8 +72,7 @@ test("unsupported nodes are all collected with reasons", () => {
     }
     assert.ok(err instanceof SfccUnsupportedError)
     const types = err.unsupported.map(u => u.shapeType).sort()
-    assert.deepEqual(types, ["scale", "union"])
-    assert.match(err.message, /blended union/)
+    assert.deepEqual(types, ["scale", "torus"])
     assert.match(err.message, /non-uniform scale/)
 })
 

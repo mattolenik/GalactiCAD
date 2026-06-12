@@ -73,6 +73,7 @@ import {
     outwardEdgeNormal2D,
     polygonDist2D,
     smin,
+    sminColumnsInterval,
     sminGradWeights,
     sphereDist,
     sphereNormal,
@@ -168,15 +169,15 @@ export interface CpuSdfTree {
      */
     readonly gradBound: number
     /**
-     * Blend radius of the lowest common CSG combiner of two leaves (indices
-     * into `leaves`); 0 when they meet at a hard min/max. A smooth combiner
-     * replaces the pair's intersection crease with a fillet: on the carrier-
-     * pair locus both fields are exactly 0, so the final surface sits
-     * |smin(0,0,r)| ≥ r/4 away (soft is the weakest mode, exactly r/4) and no
-     * seam between the pair can survive trim's on-surface gate once
-     * r > 4·surfaceTol.
+     * On-locus seam displacement at the lowest common CSG combiner of two
+     * leaves (indices into `leaves`); 0 when they meet at a hard min/max. On
+     * the pair's carrier-pair locus both fields are exactly 0, so the final
+     * surface sits a UNIFORM |smin(mode, 0, 0, r, n)| away — mode-dependent
+     * ((√2−1)·r for round, r/4 for soft, ~0.12·r for columns n=2, 0 for
+     * columns n=1). A seam can survive trim's on-surface gate only when this
+     * displacement is ≤ surfaceTol.
      */
-    blendRadiusBetween(a: number, b: number): number
+    blendSeamDisplacement(a: number, b: number): number
     /** Certified enclosure of f over an axis-aligned box via the L=1 centered form. */
     intervalOverBox(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number): [number, number]
     readonly leaves: CpuSdfLeaf[]
@@ -872,47 +873,41 @@ function walk(state: CompileState, node: Node, sim: Similarity, neg: boolean): C
     }
 
     // --- booleans (folded to min/max via negation parity; smooth blends fold
-    // identically because smaxMode(a,b) = −sminMode(−a,−b) for every mode) ----
+    // through the same parity because smaxMode(a,b) = −sminMode(−a,−b) — the
+    // identity holds natively for round/soft/chamfer/stairs, and columns gets
+    // a per-family mode so the fold reproduces the shader's separate
+    // fOpDifference/IntersectionColumns formulas) ------------------------------
     if (node instanceof Union) {
         const r = node.radius ?? 0
-        const mode = r > 0 ? blendModeOf(node.mode) : null
-        if (r > 0 && mode === null) {
-            return unsupported(state, node, `blended union mode "${node.mode}" not in the SFCC v1 subset`)
-        }
         const children = node.children.map(c => walk(state, c, sim, neg)).filter((c): c is CsgNode => c !== null)
         if (children.length === 0) return null
         if (children.length === 1) return children[0]!
-        if (r > 0 && mode !== null) {
+        if (r > 0) {
+            const mode = blendModeOf(node.mode, "union")
             return { op: "blend", kind: neg ? "smax" : "smin", mode, r, n: node.n ?? 4, children }
         }
         return { op: neg ? "max" : "min", children }
     }
     if (node instanceof Subtract) {
-        const mode = node.radius > 0 ? blendModeOf(node.mode) : null
-        if (node.radius > 0 && mode === null) {
-            return unsupported(state, node, `blended subtract mode "${node.mode}" not in the SFCC v1 subset`)
-        }
         const lh = walk(state, node.lh, sim, neg)
         const rh = walk(state, node.rh, sim, !neg)
         const children = [lh, rh].filter((c): c is CsgNode => c !== null)
         if (children.length === 0) return null
         if (children.length === 1) return children[0]!
-        if (node.radius > 0 && mode !== null) {
+        if (node.radius > 0) {
+            const mode = blendModeOf(node.mode, "intersect")
             return { op: "blend", kind: neg ? "smin" : "smax", mode, r: node.radius, n: node.n ?? 4, children }
         }
         return { op: neg ? "min" : "max", children }
     }
     if (node instanceof Intersect) {
-        const mode = node.radius > 0 ? blendModeOf(node.mode) : null
-        if (node.radius > 0 && mode === null) {
-            return unsupported(state, node, `blended intersect mode "${node.mode}" not in the SFCC v1 subset`)
-        }
         const lh = walk(state, node.lh, sim, neg)
         const rh = walk(state, node.rh, sim, neg)
         const children = [lh, rh].filter((c): c is CsgNode => c !== null)
         if (children.length === 0) return null
         if (children.length === 1) return children[0]!
-        if (node.radius > 0 && mode !== null) {
+        if (node.radius > 0) {
+            const mode = blendModeOf(node.mode, "intersect")
             return { op: "blend", kind: neg ? "smin" : "smax", mode, r: node.radius, n: node.n ?? 4, children }
         }
         return { op: neg ? "min" : "max", children }
@@ -923,17 +918,23 @@ function walk(state: CompileState, node: Node, sim: Similarity, neg: boolean): C
 
 type BlendCsg = Extract<CsgNode, { op: "blend" }>
 
-/** Scene blend mode → CPU SminMode; null = not ported (columns). */
-function blendModeOf(mode: string | undefined): SminMode | null {
+/**
+ * Scene blend mode → CPU SminMode. Columns splits by family (the shader's
+ * Difference/Intersection columns are distinct formulas, see primitives);
+ * anything unrecognized falls back to Round exactly like the shader's switch,
+ * and "soft" exists only on unions (the intersect-family switches lack the
+ * case and fall through to Round).
+ */
+function blendModeOf(mode: string | undefined, family: "union" | "intersect"): SminMode {
     switch (mode) {
         case "columns":
-            return null
+            return family === "union" ? "columns" : "columnsI"
         case "soft":
+            return family === "union" ? "soft" : "round"
         case "chamfer":
         case "stairs":
             return mode
         default:
-            // The shader's blend switch falls back to Round for anything else.
             return "round"
     }
 }
@@ -1097,9 +1098,32 @@ function intervalNode(n: CsgNode, cx: number, cy: number, cz: number, r: number)
             los.push(clo)
             his.push(chi)
         }
-        // Every blend mode is monotone nondecreasing in each operand, and the
-        // nearest-pair selection switches continuously at ties, so blending
-        // the endpoint vectors encloses the blend over the ball.
+        if (n.mode === "columns" || n.mode === "columnsI") {
+            // Columns is NOT monotone (the bumps oscillate along the seam) —
+            // endpoint composition is unsound. Per-branch enclosure instead,
+            // in union polarity (sgn swaps interval ends).
+            const sgn = n.kind === "smax" ? -1 : 1
+            const tLos = los.map((lo, i) => (sgn === 1 ? lo : -his[i]!))
+            const tHis = his.map((hi, i) => (sgn === 1 ? hi : -los[i]!))
+            let ulo: number
+            let uhi: number
+            if (n.children.length === 2) {
+                ;[ulo, uhi] = sminColumnsInterval(n.mode, tLos[0]!, tHis[0]!, tLos[1]!, tHis[1]!, n.r, n.n)
+            } else {
+                // Nearest-pair over 3+ children (union family only —
+                // subtract/intersect are binary): blanket enclosure. f ≤ the
+                // smallest operand; f ≥ min(operands, bump floor −cr, axis
+                // term √2·min(t, 0) − r/√2).
+                const tLo = Math.min(...tLos)
+                const cr = (n.r * Math.SQRT2) / ((n.n - 1) * 2 + Math.SQRT2)
+                ulo = Math.min(tLo, Math.SQRT2 * Math.min(tLo, 0) - Math.SQRT1_2 * n.r, -cr)
+                uhi = Math.min(...tHis)
+            }
+            return sgn === 1 ? [ulo, uhi] : [-uhi, -ulo]
+        }
+        // round/soft/chamfer/stairs are monotone nondecreasing in each
+        // operand, and the nearest-pair selection switches continuously at
+        // ties, so blending the endpoint vectors encloses the blend.
         return [blendValueOf(n, los), blendValueOf(n, his)]
     }
     let lo = n.op === "min" ? Infinity : -Infinity
@@ -1154,23 +1178,25 @@ function collectOwners(
 }
 
 /**
- * Per-pair blend radius at the lowest common combiner (see
- * {@link CpuSdfTree.blendRadiusBetween}): every cross-child leaf pair of a
+ * Per-pair on-locus seam displacement at the lowest common combiner (see
+ * {@link CpuSdfTree.blendSeamDisplacement}): every cross-child leaf pair of a
  * combiner has that combiner as its LCA, so one bottom-up pass fills the
- * symmetric matrix. Hard combiners record 0.
+ * symmetric matrix. Hard combiners record 0; blends record
+ * |smin(mode, 0, 0, r, n)| — the exact, uniform offset of the final surface
+ * from the pair's carrier-pair locus (negation parity preserves |·|).
  */
-function buildBlendPairMap(root: CsgNode, leafCount: number): Float64Array {
+function buildSeamDisplacementMap(root: CsgNode, leafCount: number): Float64Array {
     const map = new Float64Array(leafCount * leafCount)
     const visit = (n: CsgNode): number[] => {
         if (n.op === "leaf") return [n.leaf.index]
         const childSets = n.children.map(visit)
-        const r = n.op === "blend" ? n.r : 0
+        const disp = n.op === "blend" ? Math.abs(smin(n.mode, 0, 0, n.r, n.n)) : 0
         for (let i = 0; i < childSets.length; i++) {
             for (let j = i + 1; j < childSets.length; j++) {
                 for (const a of childSets[i]!) {
                     for (const b of childSets[j]!) {
-                        map[a * leafCount + b] = r
-                        map[b * leafCount + a] = r
+                        map[a * leafCount + b] = disp
+                        map[b * leafCount + a] = disp
                     }
                 }
             }
@@ -1183,15 +1209,16 @@ function buildBlendPairMap(root: CsgNode, leafCount: number): Float64Array {
 
 /**
  * Advisory |∇f| inflation over the leaves' own bounds (see
- * {@link CpuSdfTree.gradBound}): round/chamfer blends combine two operand
- * gradients with weight vectors of ℓ² norm ≤ √2 · max; soft is convex and
+ * {@link CpuSdfTree.gradBound}): round/chamfer/columns blends combine two
+ * operand gradients with weight vectors of ℓ² norm ≤ √2 · max (the columns
+ * circle branches are unit-norm in the operand plane); soft is convex and
  * stairs selects a single operand, so neither inflates.
  */
 function gradBoundOf(n: CsgNode): number {
     if (n.op === "leaf") return 1
     let m = 1
     for (const c of n.children) m = Math.max(m, gradBoundOf(c))
-    if (n.op === "blend" && (n.mode === "round" || n.mode === "chamfer")) m *= Math.SQRT2
+    if (n.op === "blend" && n.mode !== "soft" && n.mode !== "stairs") m *= Math.SQRT2
     return m
 }
 
@@ -1206,14 +1233,14 @@ export function compileCpuSdf(root: Node): CpuSdfTree {
     if (csg === null) throw new SfccUnsupportedError([{ nodeId: nodeIdOf(root), shapeType: root.getShapeType(), reason: "empty scene" }])
 
     const f = (px: number, py: number, pz: number): number => evalNode(csg, px, py, pz)
-    const blendPairs = buildBlendPairMap(csg, state.leaves.length)
+    const seamDisp = buildSeamDisplacementMap(csg, state.leaves.length)
     return {
         f,
         grad: (px, py, pz, out, off = 0) => {
             gradNode(csg, px, py, pz, out, off)
         },
         gradBound: gradBoundOf(csg),
-        blendRadiusBetween: (a, b) => blendPairs[a * state.leaves.length + b] ?? 0,
+        blendSeamDisplacement: (a, b) => seamDisp[a * state.leaves.length + b] ?? 0,
         intervalOverBox: (cx, cy, cz, hx, hy, hz) => {
             const r = Math.hypot(hx, hy, hz)
             return intervalNode(csg, cx, cy, cz, r)

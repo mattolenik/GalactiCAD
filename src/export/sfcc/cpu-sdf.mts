@@ -13,7 +13,8 @@
  * Supported subset: Box, Sphere, Cylinder (fillet/chamfer = 0), Cone, Extrude
  * (straight-segment Polygon2D profiles, twist included), Loft (same vertex
  * count across profiles), Lathe (Polygon2D profile at r ≥ 0 revolved around
- * the local Y axis); hard Union/Subtract/Intersect (radius = 0);
+ * the local Y axis); Union/Subtract/Intersect both hard (radius = 0) and
+ * smooth (radius > 0, modes round/soft/chamfer/stairs — `columns` is gated);
  * Translate / Rotate / uniform positive Scale. Anything else throws
  * {@link SfccUnsupportedError} listing every offending node — no silent
  * degradation: a primitive missing from the certified pipeline would falsify
@@ -71,9 +72,12 @@ import {
     loftNormal,
     outwardEdgeNormal2D,
     polygonDist2D,
+    smin,
+    sminGradWeights,
     sphereDist,
     sphereNormal,
     type Polygon2DResult,
+    type SminMode,
 } from "./cpu-sdf-primitives.mjs"
 import {
     makeConeStratum,
@@ -143,10 +147,26 @@ export interface ActiveStratum {
 }
 
 export interface CpuSdfTree {
-    /** Signed distance of the full tree (~exact SDF, 1-Lipschitz, negative inside). */
+    /**
+     * Signed field of the full tree (negative inside, f = 0 ⟺ surface).
+     * ~exact SDF away from smooth-boolean blend bands; inside a blend band it
+     * stays sign-correct and distance-like but |∇f| can reach `gradBound`
+     * (and approach 0 between opposing surfaces) — certificates must come
+     * from `intervalOverBox`, never from |f| alone.
+     */
     f(px: number, py: number, pz: number): number
-    /** One-sided unit gradient (the winning leaf's analytic normal); writes into `out` at `off`. */
+    /**
+     * One-sided unit gradient: the winning leaf's analytic normal, blended
+     * with the smooth-boolean weights inside blend bands; writes into `out`
+     * at `off`.
+     */
     grad(px: number, py: number, pz: number, out: Float64Array, off?: number): void
+    /**
+     * Advisory bound on |∇f| relative to the leaves' own bounds: 1 for hard
+     * trees, √2 per round/chamfer blend nesting level. Used to deflate
+     * |f|-as-distance heuristics (refine probes); NOT a certificate.
+     */
+    readonly gradBound: number
     /** Certified enclosure of f over an axis-aligned box via the L=1 centered form. */
     intervalOverBox(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number): [number, number]
     readonly leaves: CpuSdfLeaf[]
@@ -172,6 +192,20 @@ export interface CpuSdfTree {
 type CsgNode =
     | { readonly op: "leaf"; readonly leaf: CpuSdfLeaf }
     | { readonly op: "min" | "max"; readonly children: CsgNode[] }
+    | {
+          /**
+           * Smooth boolean (hg_sdf): the NEAREST TWO children (by the
+           * polarity-transformed field, matching the shader's nearest-pair
+           * fold for 3+ children) blended by `mode`. `kind` is the polarity
+           * after negation folding: "smin" where the hard op would be "min".
+           */
+          readonly op: "blend"
+          readonly kind: "smin" | "smax"
+          readonly mode: SminMode
+          readonly r: number
+          readonly n: number
+          readonly children: CsgNode[]
+      }
 
 interface CompileState {
     unsupported: SfccUnsupportedNode[]
@@ -827,35 +861,123 @@ function walk(state: CompileState, node: Node, sim: Similarity, neg: boolean): C
         return walk(state, node.arg, composeSimilarity(sim, similarityFromUniformScale(node.sx)), neg)
     }
 
-    // --- booleans (folded to min/max via negation parity) ----------------------
+    // --- booleans (folded to min/max via negation parity; smooth blends fold
+    // identically because smaxMode(a,b) = −sminMode(−a,−b) for every mode) ----
     if (node instanceof Union) {
-        if ((node.radius ?? 0) > 0) return unsupported(state, node, "blended union (radius > 0)")
+        const r = node.radius ?? 0
+        const mode = r > 0 ? blendModeOf(node.mode) : null
+        if (r > 0 && mode === null) {
+            return unsupported(state, node, `blended union mode "${node.mode}" not in the SFCC v1 subset`)
+        }
         const children = node.children.map(c => walk(state, c, sim, neg)).filter((c): c is CsgNode => c !== null)
         if (children.length === 0) return null
+        if (children.length === 1) return children[0]!
+        if (r > 0 && mode !== null) {
+            return { op: "blend", kind: neg ? "smax" : "smin", mode, r, n: node.n ?? 4, children }
+        }
         return { op: neg ? "max" : "min", children }
     }
     if (node instanceof Subtract) {
-        if (node.radius > 0) return unsupported(state, node, "blended subtract (radius > 0)")
+        const mode = node.radius > 0 ? blendModeOf(node.mode) : null
+        if (node.radius > 0 && mode === null) {
+            return unsupported(state, node, `blended subtract mode "${node.mode}" not in the SFCC v1 subset`)
+        }
         const lh = walk(state, node.lh, sim, neg)
         const rh = walk(state, node.rh, sim, !neg)
         const children = [lh, rh].filter((c): c is CsgNode => c !== null)
         if (children.length === 0) return null
+        if (children.length === 1) return children[0]!
+        if (node.radius > 0 && mode !== null) {
+            return { op: "blend", kind: neg ? "smin" : "smax", mode, r: node.radius, n: node.n ?? 4, children }
+        }
         return { op: neg ? "min" : "max", children }
     }
     if (node instanceof Intersect) {
-        if (node.radius > 0) return unsupported(state, node, "blended intersect (radius > 0)")
+        const mode = node.radius > 0 ? blendModeOf(node.mode) : null
+        if (node.radius > 0 && mode === null) {
+            return unsupported(state, node, `blended intersect mode "${node.mode}" not in the SFCC v1 subset`)
+        }
         const lh = walk(state, node.lh, sim, neg)
         const rh = walk(state, node.rh, sim, neg)
         const children = [lh, rh].filter((c): c is CsgNode => c !== null)
         if (children.length === 0) return null
+        if (children.length === 1) return children[0]!
+        if (node.radius > 0 && mode !== null) {
+            return { op: "blend", kind: neg ? "smin" : "smax", mode, r: node.radius, n: node.n ?? 4, children }
+        }
         return { op: neg ? "min" : "max", children }
     }
 
     return unsupported(state, node, "shape type not in the SFCC v1 subset")
 }
 
+type BlendCsg = Extract<CsgNode, { op: "blend" }>
+
+/** Scene blend mode → CPU SminMode; null = not ported (columns). */
+function blendModeOf(mode: string | undefined): SminMode | null {
+    switch (mode) {
+        case "columns":
+            return null
+        case "soft":
+        case "chamfer":
+        case "stairs":
+            return mode
+        default:
+            // The shader's blend switch falls back to Round for anything else.
+            return "round"
+    }
+}
+
+/**
+ * Blend output from per-child field values. Binary blends keep operand order
+ * (the shader's fold path); 3+ children use the shader's nearest-pair fold
+ * (bestA = smallest transformed field, strict-< first-encounter ties).
+ */
+function blendValueOf(n: BlendCsg, ds: ArrayLike<number>): number {
+    const sgn = n.kind === "smax" ? -1 : 1
+    let va: number
+    let vb: number
+    if (ds.length === 2) {
+        va = sgn * ds[0]!
+        vb = sgn * ds[1]!
+    } else {
+        va = Infinity
+        vb = Infinity
+        for (let i = 0; i < ds.length; i++) {
+            const v = sgn * ds[i]!
+            if (v < va) {
+                vb = va
+                va = v
+            } else if (v < vb) {
+                vb = v
+            }
+        }
+    }
+    return sgn * smin(n.mode, va, vb, n.r, n.n)
+}
+
 function evalNode(n: CsgNode, px: number, py: number, pz: number): number {
     if (n.op === "leaf") return n.leaf.f(px, py, pz)
+    if (n.op === "blend") {
+        const sgn = n.kind === "smax" ? -1 : 1
+        if (n.children.length === 2) {
+            const va = sgn * evalNode(n.children[0]!, px, py, pz)
+            const vb = sgn * evalNode(n.children[1]!, px, py, pz)
+            return sgn * smin(n.mode, va, vb, n.r, n.n)
+        }
+        let va = Infinity
+        let vb = Infinity
+        for (const c of n.children) {
+            const v = sgn * evalNode(c, px, py, pz)
+            if (v < va) {
+                vb = va
+                va = v
+            } else if (v < vb) {
+                vb = v
+            }
+        }
+        return sgn * smin(n.mode, va, vb, n.r, n.n)
+    }
     let best = n.op === "min" ? Infinity : -Infinity
     for (const c of n.children) {
         const d = evalNode(c, px, py, pz)
@@ -864,14 +986,86 @@ function evalNode(n: CsgNode, px: number, py: number, pz: number): number {
     return best
 }
 
-function winnerLeaf(n: CsgNode, px: number, py: number, pz: number): { d: number; leaf: CpuSdfLeaf } {
-    if (n.op === "leaf") return { d: n.leaf.f(px, py, pz), leaf: n.leaf }
-    let best: { d: number; leaf: CpuSdfLeaf } | null = null
-    for (const c of n.children) {
-        const w = winnerLeaf(c, px, py, pz)
-        if (best === null || (n.op === "min" ? w.d < best.d : w.d > best.d)) best = w
+/**
+ * Evaluate f and its unit gradient direction: hard combiners route to the
+ * winning child (one-sided, the existing convention); blend combiners mix the
+ * active pair's gradients with the analytic smin weights and renormalize.
+ */
+function gradNode(n: CsgNode, px: number, py: number, pz: number, out: Float64Array, off: number): number {
+    if (n.op === "leaf") {
+        n.leaf.normal(px, py, pz, out, off)
+        return n.leaf.f(px, py, pz)
     }
-    return best!
+    if (n.op === "blend") {
+        const sgn = n.kind === "smax" ? -1 : 1
+        let ia = 0
+        let ib = 1
+        let va: number
+        let vb: number
+        if (n.children.length === 2) {
+            va = sgn * evalNode(n.children[0]!, px, py, pz)
+            vb = sgn * evalNode(n.children[1]!, px, py, pz)
+        } else {
+            ia = -1
+            ib = -1
+            va = Infinity
+            vb = Infinity
+            for (let i = 0; i < n.children.length; i++) {
+                const v = sgn * evalNode(n.children[i]!, px, py, pz)
+                if (v < va) {
+                    ib = ia
+                    vb = va
+                    ia = i
+                    va = v
+                } else if (v < vb) {
+                    ib = i
+                    vb = v
+                }
+            }
+        }
+        const value = sgn * smin(n.mode, va, vb, n.r, n.n)
+        const [wa, wb] = sminGradWeights(n.mode, va, vb, n.r, n.n)
+        if (wb === 0) {
+            gradNode(n.children[ia]!, px, py, pz, out, off)
+            return value
+        }
+        if (wa === 0) {
+            gradNode(n.children[ib]!, px, py, pz, out, off)
+            return value
+        }
+        const ga = new Float64Array(3)
+        const gb = new Float64Array(3)
+        gradNode(n.children[ia]!, px, py, pz, ga, 0)
+        gradNode(n.children[ib]!, px, py, pz, gb, 0)
+        const gx = wa * ga[0]! + wb * gb[0]!
+        const gy = wa * ga[1]! + wb * gb[1]!
+        const gz = wa * ga[2]! + wb * gb[2]!
+        const len = Math.hypot(gx, gy, gz)
+        if (len > 1e-12) {
+            out[off] = gx / len
+            out[off + 1] = gy / len
+            out[off + 2] = gz / len
+        } else {
+            // Opposing operand gradients cancelled (thin-wall blend midzone):
+            // fall back to the dominant operand's direction.
+            const g = wa >= wb ? ga : gb
+            out[off] = g[0]!
+            out[off + 1] = g[1]!
+            out[off + 2] = g[2]!
+        }
+        return value
+    }
+    let bi = 0
+    let best = n.op === "min" ? Infinity : -Infinity
+    for (let i = 0; i < n.children.length; i++) {
+        const d = evalNode(n.children[i]!, px, py, pz)
+        if (n.op === "min" ? d < best : d > best) {
+            best = d
+            bi = i
+        }
+    }
+    gradNode(n.children[bi]!, px, py, pz, out, off)
+    return best
 }
 
 /**
@@ -884,6 +1078,19 @@ function intervalNode(n: CsgNode, cx: number, cy: number, cz: number, r: number)
         const fc = n.leaf.f(cx, cy, cz)
         const L = n.leaf.localLipschitz ? n.leaf.localLipschitz(cx, cy, cz, r) : 1
         return [fc - L * r, fc + L * r]
+    }
+    if (n.op === "blend") {
+        const los: number[] = []
+        const his: number[] = []
+        for (const c of n.children) {
+            const [clo, chi] = intervalNode(c, cx, cy, cz, r)
+            los.push(clo)
+            his.push(chi)
+        }
+        // Every blend mode is monotone nondecreasing in each operand, and the
+        // nearest-pair selection switches continuously at ties, so blending
+        // the endpoint vectors encloses the blend over the ball.
+        return [blendValueOf(n, los), blendValueOf(n, his)]
     }
     let lo = n.op === "min" ? Infinity : -Infinity
     let hi = lo
@@ -914,6 +1121,18 @@ function collectOwners(
         return d
     }
     const ds = n.children.map(c => evalNode(c, px, py, pz))
+    if (n.op === "blend") {
+        // A child owns the point iff its own field is within tol of the
+        // blended output: outside the blend band that recovers the hard
+        // winner; ON the blend surface itself no child matches (the fillet
+        // lies on no carrier) and the owner set is empty — by design, blend
+        // surfaces are featureless smooth regions.
+        const value = blendValueOf(n, ds)
+        for (let i = 0; i < n.children.length; i++) {
+            if (Math.abs(ds[i]! - value) <= tol) collectOwners(n.children[i]!, px, py, pz, tol, out)
+        }
+        return value
+    }
     let best = n.op === "min" ? Infinity : -Infinity
     for (const d of ds) {
         if (n.op === "min" ? d < best : d > best) best = d
@@ -922,6 +1141,20 @@ function collectOwners(
         if (Math.abs(ds[i]! - best) <= tol) collectOwners(n.children[i]!, px, py, pz, tol, out)
     }
     return best
+}
+
+/**
+ * Advisory |∇f| inflation over the leaves' own bounds (see
+ * {@link CpuSdfTree.gradBound}): round/chamfer blends combine two operand
+ * gradients with weight vectors of ℓ² norm ≤ √2 · max; soft is convex and
+ * stairs selects a single operand, so neither inflates.
+ */
+function gradBoundOf(n: CsgNode): number {
+    if (n.op === "leaf") return 1
+    let m = 1
+    for (const c of n.children) m = Math.max(m, gradBoundOf(c))
+    if (n.op === "blend" && (n.mode === "round" || n.mode === "chamfer")) m *= Math.SQRT2
+    return m
 }
 
 /**
@@ -938,9 +1171,9 @@ export function compileCpuSdf(root: Node): CpuSdfTree {
     return {
         f,
         grad: (px, py, pz, out, off = 0) => {
-            const w = winnerLeaf(csg, px, py, pz)
-            w.leaf.normal(px, py, pz, out, off)
+            gradNode(csg, px, py, pz, out, off)
         },
+        gradBound: gradBoundOf(csg),
         intervalOverBox: (cx, cy, cz, hx, hy, hz) => {
             const r = Math.hypot(hx, hy, hz)
             return intervalNode(csg, cx, cy, cz, r)

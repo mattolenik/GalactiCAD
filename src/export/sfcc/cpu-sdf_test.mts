@@ -63,7 +63,8 @@ test("unsupported nodes are all collected with reasons", () => {
     const ok = new Sphere([0, 0, 0], { r: 1 })
     const torus = new Torus([0, 0, 0], { sr: 0.2, lr: 1 })
     const nonUniform = new Scale([1, 2, 1], new Sphere([0, 0, 0], { r: 1 }))
-    const blended = new Union([ok, torus], 0.5)
+    // columns is the one blend mode the CPU evaluator does not port.
+    const blended = new Union([ok, torus], 0.5, "columns")
     const scene = new Union([blended, nonUniform])
     let err: SfccUnsupportedError | null = null
     try {

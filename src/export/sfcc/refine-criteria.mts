@@ -86,7 +86,10 @@ export function hasCornerSignChange(probe: RefineProbe): boolean {
 export function activeStrata(tree: CpuSdfTree, probe: RefineProbe): SfccStratum[] {
     const out: SfccStratum[] = []
     const seen = new Set<number>()
-    const reach = Math.sqrt(3) * probe.cellSize
+    // dist ≥ |f|/L: with smooth-boolean blends in the tree the field can be
+    // steeper than unit (tree.gradBound), so the skip radius inflates to keep
+    // "no surface within √3·cell" sound. Hard trees: gradBound = 1, unchanged.
+    const reach = Math.sqrt(3) * probe.cellSize * tree.gradBound
     for (let i = 0; i < 9; i++) {
         if (Math.abs(probe.f[i]!) >= reach) continue
         const x = probe.pts[i * 3]!

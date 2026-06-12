@@ -701,3 +701,87 @@ export function coneNormal(
     out[off + 1] = ny
     out[off + 2] = nz
 }
+
+// --- Smooth booleans: fOpUnion{Round,Soft,Chamfer,Stairs} (hg_sdf.wgsl) ------
+//
+// f64 ports of the scalar hg_sdf blend operators, zero-set-exact against the
+// shader. Three properties the SFCC pipeline leans on (unit-tested in
+// smooth-boolean_test.mts):
+//   1. MONOTONE nondecreasing in both operands — interval certification can
+//      compose child enclosures through endpoints (round: the −|u| term has
+//      slope ∂|u|/∂a = −u.x/|u| ∈ [−1, 0]; soft: ∂f/∂a = h ∈ [0, 1];
+//      chamfer: min of affines with nonnegative coefficients; stairs: the
+//      ±1/2 triangle wave against the +1/2 linear term gives slope ∈ {0, 1}).
+//   2. NEGATION identity: smaxMode(a, b) = −sminMode(−a, −b) for every mode —
+//      the CSG walk's negation-parity fold absorbs smooth subtract/intersect
+//      exactly as it absorbs the hard ones.
+//   3. GRADIENT is a nonnegative combination of the operand gradients
+//      (sminGradWeights), so |∇f| ≤ √(La² + Lb²) for operand bounds La, Lb —
+//      see CpuSdfTree.gradBound.
+//
+// `columns` is NOT ported (monotonicity unproven); the compiler keeps that
+// mode gated as unsupported.
+
+export type SminMode = "round" | "soft" | "chamfer" | "stairs"
+
+/** GLSL-style mod (result has the sign of `y`), matching the shader's modF. */
+function glslMod(x: number, y: number): number {
+    return x - y * Math.floor(x / y)
+}
+
+/** Smooth minimum of two SDF values; `n` is the step count (stairs only). */
+export function smin(mode: SminMode, a: number, b: number, r: number, n: number): number {
+    switch (mode) {
+        case "round": {
+            const ux = Math.max(r - a, 0)
+            const uy = Math.max(r - b, 0)
+            return Math.max(r, Math.min(a, b)) - Math.hypot(ux, uy)
+        }
+        case "soft": {
+            const e = Math.max(r - Math.abs(a - b), 0)
+            return Math.min(a, b) - (e * e * 0.25) / r
+        }
+        case "chamfer":
+            return Math.min(Math.min(a, b), (a - r + b) * Math.SQRT1_2)
+        case "stairs": {
+            const s = r / n
+            const u = b - r
+            return Math.min(Math.min(a, b), 0.5 * (u + a + Math.abs(glslMod(u - a + s, 2 * s) - s)))
+        }
+    }
+}
+
+/**
+ * Direction weights (wa, wb ≥ 0, not both 0) such that
+ * ∇smin ∥ wa·∇a + wb·∇b almost everywhere, winner convention at the
+ * piecewise kinks. Callers normalize the combined vector, so only the ratio
+ * matters (round returns the unnormalized u components).
+ */
+export function sminGradWeights(
+    mode: SminMode,
+    a: number,
+    b: number,
+    r: number,
+    n: number,
+): [number, number] {
+    switch (mode) {
+        case "round":
+            if (a < r && b < r) return [r - a, r - b]
+            return a <= b ? [1, 0] : [0, 1]
+        case "soft": {
+            const h = Math.max(0, Math.min(1, 0.5 + (0.5 * (b - a)) / r))
+            return [h, 1 - h]
+        }
+        case "chamfer": {
+            if ((a - r + b) * Math.SQRT1_2 < Math.min(a, b)) return [1, 1]
+            return a <= b ? [1, 0] : [0, 1]
+        }
+        case "stairs": {
+            const s = r / n
+            const u = b - r
+            const w = glslMod(u - a + s, 2 * s) - s
+            if (Math.min(a, b) <= 0.5 * (u + a + Math.abs(w))) return a <= b ? [1, 0] : [0, 1]
+            return w >= 0 ? [0, 1] : [1, 0]
+        }
+    }
+}

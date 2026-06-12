@@ -156,6 +156,23 @@ export function cylinderNormal(
     }
 }
 
+/**
+ * True OUTWARD unit normal of a polygon edge with tangent (ex, ez), in the
+ * polygon's own 2D plane. `windSign` is `polygon2dWindingSign(vertices)`; the
+ * result points out of the polygon interior regardless of winding.
+ *
+ * NOTE: the WGSL face-selection formula `(eTan.z, −eTan.x)·windSign` is the
+ * NEGATION of this (inward — the shader's shoelace convention makes windSign
+ * −1 for CCW). It is self-consistent inside the shader but must not leak into
+ * SFCC: strata normals are outward of the final solid by contract
+ * (strata.mts), and trim's dihedral gate compares normals across leaves.
+ * Every SFCC profile-edge normal goes through this one helper.
+ */
+export function outwardEdgeNormal2D(ex: number, ez: number, windSign: 1 | -1): [number, number] {
+    const eLen = Math.max(Math.hypot(ex, ez), 1e-12)
+    return [(-ez / eLen) * windSign, (ex / eLen) * windSign]
+}
+
 // --- Polygon2D: fPolygon2D_*_combined (extrude.mts/polygon2d.mts) ------------
 //
 // IQ's even-odd polygon SDF, ported verbatim: exact signed distance to a
@@ -165,8 +182,9 @@ export function cylinderNormal(
 // DELIBERATE DEVIATION from the shader: exactly ON the boundary the
 // closest-point vector vanishes and the WGSL falls back to (1, 0) — GPU rays
 // never sit exactly on the surface, but SFCC probes do (they're projected
-// onto carriers). The fallback here is the closest edge's outward normal
-// (`windSign` orients it), which is the true gradient limit.
+// onto carriers). The fallback here is the closest edge's true OUTWARD
+// normal, the limit of the off-boundary gradient s·b/|b| — so the gradient
+// is continuous across the boundary.
 
 export interface Polygon2DResult {
     d: number
@@ -228,9 +246,9 @@ export function polygonDist2D(
         const k1 = (k + 1) % n
         const ex = verts[k1 * 2]! - verts[k * 2]!
         const ez = verts[k1 * 2 + 1]! - verts[k * 2 + 1]!
-        const eLen = Math.max(Math.hypot(ex, ez), 1e-12)
-        out.gx = (ez / eLen) * windSign
-        out.gz = (-ex / eLen) * windSign
+        const [gx, gz] = outwardEdgeNormal2D(ex, ez, windSign)
+        out.gx = gx
+        out.gz = gz
     }
     out.edge = closest
 }
@@ -370,17 +388,11 @@ export function loftNormal(
     const dProfile = POLY_SCRATCH.d * (1 - lt) + POLY_SCRATCH_B.d * lt
     const dCap = Math.abs(py) - h
     if (dProfile > dCap) {
-        // A loft face point generally lies on NEITHER profile's boundary, so
-        // the mixed gradient must be the true outward one. polygonDist2D
-        // returns exactly that off the boundary, but its exact-on-boundary
-        // fallback is the opposite orientation (the extrude carriers depend on
-        // it) — flip the fallback case (|d| < 1e-6 mirrors its trigger) so the
-        // loft leaf gradient is uniformly outward and agrees with the loft
-        // side carriers.
-        const sA = Math.abs(POLY_SCRATCH.d) < 1e-6 ? -1 : 1
-        const sB = Math.abs(POLY_SCRATCH_B.d) < 1e-6 ? -1 : 1
-        const gx = sA * POLY_SCRATCH.gx * (1 - lt) + sB * POLY_SCRATCH_B.gx * lt
-        const gz = sA * POLY_SCRATCH.gz * (1 - lt) + sB * POLY_SCRATCH_B.gz * lt
+        // A loft face point generally lies on NEITHER profile's boundary;
+        // polygonDist2D's gradient is uniformly outward (including its
+        // exact-on-boundary fallback), so the mix needs no orientation fixup.
+        const gx = POLY_SCRATCH.gx * (1 - lt) + POLY_SCRATCH_B.gx * lt
+        const gz = POLY_SCRATCH.gz * (1 - lt) + POLY_SCRATCH_B.gz * lt
         const gy =
             tRaw > 0 && tRaw < 1 && Math.abs(h) > 1e-9
                 ? ((POLY_SCRATCH_B.d - POLY_SCRATCH.d) * (M - 1)) / (2 * h)
@@ -446,11 +458,10 @@ export interface LatheProfileEdge {
 
 /**
  * Classify the profile edges of a lathe polygon and compute their outward
- * normals. `windSign` is `polygon2dWindingSign(vertices)`; the outward normal
- * is −windSign·(dy, −dr)/len, oriented out of the polygon interior regardless
- * of authoring direction. Shared by the CPU evaluator (strata carriers) and
- * the native-feature compiler (rings/poles) so the per-edge stratum layout
- * never drifts between them.
+ * normals (`outwardEdgeNormal2D` in the (r, y) plane, out of the polygon
+ * interior regardless of authoring direction). Shared by the CPU evaluator
+ * (strata carriers) and the native-feature compiler (rings/poles) so the
+ * per-edge stratum layout never drifts between them.
  */
 export function latheProfileEdges(vertices: [number, number][], windSign: 1 | -1): LatheProfileEdge[] {
     const n = vertices.length
@@ -471,8 +482,7 @@ export function latheProfileEdges(vertices: [number, number][], windSign: 1 | -1
         } else {
             kind = "cone"
         }
-        const nr = kind === "none" ? 0 : (-windSign * dy) / len
-        const ny = kind === "none" ? 0 : (windSign * dr) / len
+        const [nr, ny] = kind === "none" ? [0, 0] : outwardEdgeNormal2D(dr, dy, windSign)
         out.push({ kind, r0, y0, r1, y1, len, nr, ny })
     }
     return out

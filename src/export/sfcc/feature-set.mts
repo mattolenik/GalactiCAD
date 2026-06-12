@@ -24,7 +24,13 @@ import type { SfccStratum } from "./strata.mjs"
 import type { ResolvedTolerances } from "./tolerances.mjs"
 import { applyPoint, rotateVector } from "./transform-bake.mjs"
 import { makeCircleCurve, makeSegmentCurve, makeTracedCurve, type SfccFeatureCurve } from "./feature-curves.mjs"
-import { LATHE_AXIS_R, latheProfileEdges, polygonDist2D, type Polygon2DResult } from "./cpu-sdf-primitives.mjs"
+import {
+    LATHE_AXIS_R,
+    latheProfileEdges,
+    outwardEdgeNormal2D,
+    polygonDist2D,
+    type Polygon2DResult,
+} from "./cpu-sdf-primitives.mjs"
 import { carrierPairTangent, projectToCarrierPair } from "./newton.mjs"
 import { SfccSpatialIndex } from "./spatial-index.mjs"
 import { traceAllSeams, type SeamTraceDiagnostics } from "./seam-trace.mjs"
@@ -312,8 +318,7 @@ export function compileNativeFeatures(tree: CpuSdfTree): SfccFeatureSet {
                 const [bx, bz] = vs[(k + 1) % N]!
                 const ex = bx - ax
                 const ez = bz - az
-                const eLen = Math.hypot(ex, ez)
-                return [(-ez / eLen) * winds[pi]!, (ex / eLen) * winds[pi]!]
+                return outwardEdgeNormal2D(ex, ez, winds[pi]!)
             }
 
             // Corners at every profile vertex. Cap corners carry the two

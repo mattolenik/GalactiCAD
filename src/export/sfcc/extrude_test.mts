@@ -6,6 +6,8 @@ import { Cylinder } from "../../scene/primitives/cylinder.mjs"
 import { Subtract } from "../../scene/operators/subtract.mjs"
 import { Rotate } from "../../scene/operators/rotate.mjs"
 import { compileCpuSdf, type CpuSdfTree } from "./cpu-sdf.mjs"
+import { compileFeatureSet } from "./feature-set.mjs"
+import { resolveTolerances } from "./tolerances.mjs"
 import { runSfccPipeline, type SfccPipelineResult } from "./assemble.mjs"
 import { DEFAULT_SFCC_TUNING, type SfccTuning } from "./sfcc-tuning.mjs"
 
@@ -63,6 +65,47 @@ test("cpu evaluator: extrude distance/normal parity and interval containment", (
         for (let m = 0; m < 8; m++) {
             const v = twisted.f(cx + (rnd() * 2 - 1) * hx, cy + (rnd() * 2 - 1) * hx, cz + (rnd() * 2 - 1) * hx)
             assert.ok(v >= lo - 1e-9 && v <= hi + 1e-9, `f=${v} outside [${lo}, ${hi}]`)
+        }
+    }
+})
+
+test("orientation contract: strata normals and on-surface gradients are OUTWARD of the solid", () => {
+    // Pins the bug class where extrude carriers copied the WGSL face-selection
+    // formula (inward, self-consistent only inside the shader): every stratum
+    // normal must agree with the true outward direction, and the leaf gradient
+    // must be continuous across the boundary (the exact-on-surface fallback
+    // must match the off-surface limit). Probes one point per L side wall plus
+    // the caps, all away from edges.
+    const tree = compileCpuSdf(new Extrude(new Polygon2D(L_VERTS), { h: 2 }))
+    const features = compileFeatureSet(tree, resolveTolerances(DEFAULT_SFCC_TUNING, 4))
+    const probes: Array<{ p: [number, number, number]; out: [number, number, number] }> = [
+        { p: [0.5, 0.3, -2], out: [0, 0, -1] }, // z=−2 wall
+        { p: [2, 0.3, -1], out: [1, 0, 0] }, // x=+2 wall
+        { p: [1, 0.3, 0], out: [0, 0, 1] }, // notch z=0 wall
+        { p: [0, 0.3, 1], out: [1, 0, 0] }, // notch x=0 wall
+        { p: [-1, 0.3, 2], out: [0, 0, 1] }, // z=+2 wall
+        { p: [-2, 0.3, 0], out: [-1, 0, 0] }, // x=−2 wall
+        { p: [-1, 2, -1], out: [0, 1, 0] }, // top cap
+        { p: [-1, -2, -1], out: [0, -1, 0] }, // bottom cap
+    ]
+    const g = new Float64Array(3)
+    const n = new Float64Array(3)
+    for (const { p, out } of probes) {
+        assert.ok(Math.abs(tree.f(...p)) < 1e-12, `probe ${p} not on surface`)
+        tree.grad(...p, g)
+        const gDot = g[0]! * out[0] + g[1]! * out[1] + g[2]! * out[2]
+        assert.ok(gDot > 0.999, `on-surface grad at ${p} not outward: (${g.join(", ")})`)
+        for (const st of features.strata) {
+            if (Math.abs(st.f(...p)) > 1e-9) continue
+            st.normal(...p, n)
+            const nDot = n[0]! * out[0] + n[1]! * out[1] + n[2]! * out[2]
+            // Only the strata whose face this is must agree; other carriers
+            // passing through (unbounded supporting sheets) are perpendicular
+            // here, never anti-parallel.
+            assert.ok(nDot > -0.5, `stratum#${st.id} (${st.kind}) at ${p} anti-outward: (${n.join(", ")})`)
+            if (Math.abs(nDot) > 0.5) {
+                assert.ok(nDot > 0.999, `stratum#${st.id} (${st.kind}) at ${p} not outward: (${n.join(", ")})`)
+            }
         }
     }
 })

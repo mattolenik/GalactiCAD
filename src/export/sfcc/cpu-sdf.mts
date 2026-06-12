@@ -69,6 +69,7 @@ import {
     latheProfileEdges,
     loftDist,
     loftNormal,
+    outwardEdgeNormal2D,
     polygonDist2D,
     sphereDist,
     sphereNormal,
@@ -485,11 +486,11 @@ function walk(state: CompileState, node: Node, sim: Similarity, neg: boolean): C
                         const v1z = verts[((i + 1) % N) * 2 + 1]!
                         const ex = v1x - v0x
                         const ez = v1z - v0z
-                        const eLen = Math.hypot(ex, ez)
-                        // Outward 2D normal (matches the WGSL face-selection math):
-                        // eNorm = (eTan.z, −eTan.x) · windSign.
-                        const nx2 = ((ez / eLen) * windSign) as number
-                        const nz2 = ((-ex / eLen) * windSign) as number
+                        // True OUTWARD 2D normal. The WGSL face-selection
+                        // formula (eTan.z, −eTan.x)·windSign is inward and
+                        // self-consistent only inside the shader — see
+                        // outwardEdgeNormal2D.
+                        const [nx2, nz2] = outwardEdgeNormal2D(ex, ez, windSign)
                         const ident = { id: firstId + i, ownerNodeId, leafIndex, localIndex: i, sign }
                         if (twistRad === 0) {
                             out.push(
@@ -603,12 +604,6 @@ function walk(state: CompileState, node: Node, sim: Similarity, neg: boolean): C
                         const wB = winds[seg + 1]!
                         for (let j = 0; j < N; j++) {
                             const j1 = (j + 1) % N
-                            // True OUTWARD edge normals (the negation of the
-                            // extrude-carrier formula): loft face points lie on
-                            // neither profile's boundary, so trim's flank probes
-                            // see the true outward tree gradient there — the
-                            // carriers must be oriented to match (loftNormal
-                            // corrects the polygon boundary fallback likewise).
                             const edge = (
                                 verts: Float64Array,
                                 wind: 1 | -1,
@@ -617,8 +612,8 @@ function walk(state: CompileState, node: Node, sim: Similarity, neg: boolean): C
                                 const v0z = verts[j * 2 + 1]!
                                 const ex = verts[j1 * 2]! - v0x
                                 const ez = verts[j1 * 2 + 1]! - v0z
-                                const eLen = Math.hypot(ex, ez)
-                                return [v0x, v0z, (-ez / eLen) * wind, (ex / eLen) * wind]
+                                const [nx, nz] = outwardEdgeNormal2D(ex, ez, wind)
+                                return [v0x, v0z, nx, nz]
                             }
                             const [aX, aZ, aNx, aNz] = edge(A, wA)
                             const [bX, bZ, bNx, bNz] = edge(B, wB)

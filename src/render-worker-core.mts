@@ -1746,10 +1746,13 @@ export class RenderWorkerCore {
                     })
                 }
                 if (s.renormalizeTriangles) {
-                    log("Simplify").info(`Mesh normal recompute: exporter=${exporter} renormalizeTriangles=true`)
-                    const { renormalizeTriangleNormals } = await import("./export/crease-split.mjs")
-                    const renorm = renormalizeTriangleNormals(mesh.verts, mesh.tris)
-                    mesh = { verts: renorm.verts, tris: renorm.tris, debug: mesh.debug }
+                    // Flat face normals: these meshes are geometry-inspection
+                    // artifacts — the normal view should show each facet's
+                    // true orientation, not smoothing-group averages.
+                    log("Simplify").info(`Mesh flat face normals: exporter=${exporter} renormalizeTriangles=true`)
+                    const { flatFaceNormals } = await import("./export/crease-split.mjs")
+                    const flat = flatFaceNormals(mesh.verts, mesh.tris)
+                    mesh = { verts: flat.verts, tris: flat.tris, debug: mesh.debug }
                 }
             }
 

@@ -14,7 +14,7 @@
 
 import type { MeshExportContext, MeshExporter } from "../mesh-exporter.mjs"
 import type { MeshData } from "../export.mjs"
-import { splitCreaseVertices } from "../crease-split.mjs"
+import { flatFaceNormals } from "../crease-split.mjs"
 import {
     DEFAULT_SFCC_TUNING,
     normalizeSfccTuning,
@@ -53,7 +53,9 @@ async function runSfcc(ctx: MeshExportContext, tuning: SfccTuning): Promise<Mesh
     // Always-on stats line: fallback/degenerate counts are quality signals
     // (cell-scale chips) even when certification passes.
     log("MeshExport").info("sfcc stats", { ...result.stats, euler: result.manifold.eulerPerComponent })
-    const mesh = splitCreaseVertices(result.verts, result.tris, tuning.creaseAngleDeg)
+    // Flat face normals: SFCC meshes are geometry artifacts — every facet
+    // shows its true orientation (no smoothing groups, no crease heuristics).
+    const mesh = flatFaceNormals(result.verts, result.tris)
     mesh.debug = {
         ...mesh.debug,
         sfcc: {

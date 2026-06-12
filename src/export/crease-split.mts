@@ -58,6 +58,49 @@ export function renormalizeTriangleNormals(
     return splitCreaseVertices(verts, tris, 180)
 }
 
+/**
+ * Flat shading: one output vertex per triangle corner, every corner carrying
+ * the triangle's own geometric (face) normal — no smoothing groups, no
+ * averaging, no crease heuristics. The normal-color view then shows the TRUE
+ * orientation of every facet, which is what a geometry-inspection mesh wants;
+ * sliver/fold facets render exactly as misaligned as they really are.
+ * Zero-area triangles (no defined direction) keep their first corner's input
+ * normal. Vertex count triples; positions are unchanged.
+ */
+export function flatFaceNormals(
+    verts: Float32Array<ArrayBuffer>,
+    tris: Uint32Array<ArrayBuffer>,
+): MeshData {
+    const S = VERTEX_STRIDE_F32
+    const triCount = (tris.length / 3) | 0
+    const outV = new Float32Array(triCount * 3 * S)
+    const outT = new Uint32Array(triCount * 3)
+    for (let t = 0; t < triCount; t++) {
+        const b0 = tris[t * 3]! * S, b1 = tris[t * 3 + 1]! * S, b2 = tris[t * 3 + 2]! * S
+        const ax = verts[b1]! - verts[b0]!, ay = verts[b1 + 1]! - verts[b0 + 1]!, az = verts[b1 + 2]! - verts[b0 + 2]!
+        const bx = verts[b2]! - verts[b0]!, by = verts[b2 + 1]! - verts[b0 + 1]!, bz = verts[b2 + 2]! - verts[b0 + 2]!
+        let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx
+        const l = Math.hypot(nx, ny, nz)
+        if (l > 1e-20) {
+            nx /= l; ny /= l; nz /= l
+        } else {
+            nx = verts[b0 + 4]!; ny = verts[b0 + 5]!; nz = verts[b0 + 6]!
+        }
+        for (let c = 0; c < 3; c++) {
+            const sb = tris[t * 3 + c]! * S
+            const db = (t * 3 + c) * S
+            outV[db] = verts[sb]!
+            outV[db + 1] = verts[sb + 1]!
+            outV[db + 2] = verts[sb + 2]!
+            outV[db + 4] = nx
+            outV[db + 5] = ny
+            outV[db + 6] = nz
+            outT[t * 3 + c] = t * 3 + c
+        }
+    }
+    return { verts: outV, tris: outT }
+}
+
 export function splitCreaseVertices(
     verts: Float32Array<ArrayBuffer>,
     tris: Uint32Array<ArrayBuffer>,

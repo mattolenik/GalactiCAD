@@ -209,6 +209,47 @@ export function treeNormalVariationOk(tree: CpuSdfTree, probe: RefineProbe, minC
     return true
 }
 
+/**
+ * (iii-d, mixed-cell variant) blend curvature for cells that ALSO carry an
+ * analytic stratum — restricted to "blend-band" probe points (zero analytic
+ * owners). A rounded-over edge that fillets between two primitive faces sits
+ * within those faces' stratum reach, so its cells take the per-stratum path
+ * where the planar carriers certify flat and the fillet curvature is invisible
+ * (the residual facets at fillet CORNERS, where several rounded edges meet).
+ * Reading ∇f over only the zero-owner probes catches that curvature while
+ * leaving flats, stratum-backed primitives, and hard creases (≥1 owner)
+ * untouched — verified inert (0%) on a sphere and a hard crease. Needs ≥2
+ * band probes to measure a cone; fewer ⇒ ok (the cell barely grazes the band).
+ */
+export function treeBlendBandNormalVariationOk(tree: CpuSdfTree, probe: RefineProbe, minCos: number): boolean {
+    const reach = Math.sqrt(3) * probe.cellSize * tree.gradBound
+    const ns = new Float64Array(27)
+    const g = new Float64Array(3)
+    let k = 0
+    for (let i = 0; i < 9; i++) {
+        if (Math.abs(probe.f[i]!) >= reach) continue
+        const x = probe.pts[i * 3]!
+        const y = probe.pts[i * 3 + 1]!
+        const z = probe.pts[i * 3 + 2]!
+        if (tree.activeOwnersAt(x, y, z, 0).length > 0) continue // analytic owner ⇒ not a blend-band point
+        tree.grad(x, y, z, g)
+        const l = Math.hypot(g[0]!, g[1]!, g[2]!)
+        if (l < 1e-12) continue
+        ns[k * 3] = g[0]! / l
+        ns[k * 3 + 1] = g[1]! / l
+        ns[k * 3 + 2] = g[2]! / l
+        k++
+    }
+    for (let i = 0; i < k; i++) {
+        for (let j = i + 1; j < k; j++) {
+            const dot =
+                ns[i * 3]! * ns[j * 3]! + ns[i * 3 + 1]! * ns[j * 3 + 1]! + ns[i * 3 + 2]! * ns[j * 3 + 2]!
+            if (dot < minCos) return false
+        }
+    }
+    return true
+}
+
 export interface SmoothCriteriaOptions {
     normalVariationCos: number
     /** Curvature threshold for featureless blend regions; ≥1 disables (iii-d). */
@@ -226,6 +267,17 @@ export function needsSplitSmooth(tree: CpuSdfTree, probe: RefineProbe, opts: Smo
     for (const st of strata) {
         if (!stratumNormalVariationOk(st, probe, opts.normalVariationCos)) return true
         if (!stratumEdgeCrossingsOk(st, probe)) return true
+    }
+    // Mixed cell: a stratum is active, but the cell may also straddle a blend
+    // band (a rounded edge filleting into this stratum's face). Certify that
+    // band's ∇f curvature too — gated to trees that actually contain a blend so
+    // hard/primitive-only geometry stays zero-cost (no owner lookups).
+    if (
+        tree.hasBlend &&
+        opts.blendNormalVariationCos < 1 &&
+        !treeBlendBandNormalVariationOk(tree, probe, opts.blendNormalVariationCos)
+    ) {
+        return true
     }
     return false
 }

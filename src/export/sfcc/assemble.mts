@@ -371,7 +371,16 @@ export function runSfccPipeline(
                 cell.featureCurve = cls.curve
                 cell.featureCorner = cls.corner
                 if (cls.curve >= 0 && !hasCornerSignChange(probe)) return true
-                if (needsSplitSmooth(tree, probe, { normalVariationCos: tuning.normalVariationCos })) return true
+                if (
+                    needsSplitSmooth(tree, probe, {
+                        normalVariationCos: Math.cos((tuning.normalVariationDeg * Math.PI) / 180),
+                        blendNormalVariationCos: tuning.blendCurvatureRefine
+                            ? Math.cos((tuning.blendCurvatureDeg * Math.PI) / 180)
+                            : 1, // ≥1 disables (iii-d)
+                    })
+                ) {
+                    return true
+                }
                 return false
             },
             signal,

@@ -171,14 +171,59 @@ export function stratumEdgeCrossingsOk(stratum: SfccStratum, probe: RefineProbe)
     return true
 }
 
+/**
+ * (iii-d) blend-region curvature: max pairwise deviation of the TREE's own
+ * surface normal (∇f) over near-surface probe points, against `minCos`.
+ *
+ * Smooth-boolean blends (fillets, the rounded-over edges) are featureless
+ * bulges with ZERO stratum owners by design, so the per-stratum certificate
+ * (iii-b) is blind to them: the fillet meshes at depthMin resolution no matter
+ * how tightly it curves, and a coarse cell's diagonal chord sags into the
+ * convex surface — the "diamond" facet pattern. Reading ∇f directly certifies
+ * the blend's curvature and refines it like any smooth patch. Only used where
+ * activeStrata is empty (the blend band); elsewhere ∇f would jump across a
+ * crease between two strata and over-refine it.
+ */
+export function treeNormalVariationOk(tree: CpuSdfTree, probe: RefineProbe, minCos: number): boolean {
+    const reach = Math.sqrt(3) * probe.cellSize * tree.gradBound
+    const ns = new Float64Array(27)
+    const g = new Float64Array(3)
+    let k = 0
+    for (let i = 0; i < 9; i++) {
+        if (Math.abs(probe.f[i]!) >= reach) continue
+        tree.grad(probe.pts[i * 3]!, probe.pts[i * 3 + 1]!, probe.pts[i * 3 + 2]!, g)
+        const l = Math.hypot(g[0]!, g[1]!, g[2]!)
+        if (l < 1e-12) continue
+        ns[k * 3] = g[0]! / l
+        ns[k * 3 + 1] = g[1]! / l
+        ns[k * 3 + 2] = g[2]! / l
+        k++
+    }
+    for (let i = 0; i < k; i++) {
+        for (let j = i + 1; j < k; j++) {
+            const dot =
+                ns[i * 3]! * ns[j * 3]! + ns[i * 3 + 1]! * ns[j * 3 + 1]! + ns[i * 3 + 2]! * ns[j * 3 + 2]!
+            if (dot < minCos) return false
+        }
+    }
+    return true
+}
+
 export interface SmoothCriteriaOptions {
     normalVariationCos: number
+    /** Curvature threshold for featureless blend regions; ≥1 disables (iii-d). */
+    blendNormalVariationCos: number
 }
 
 /** Combined P3 criteria: returns true when the cell needs splitting. */
 export function needsSplitSmooth(tree: CpuSdfTree, probe: RefineProbe, opts: SmoothCriteriaOptions): boolean {
     if (!hasCornerSignChange(probe)) return false // inactive cell — see (iii-a) note above
-    for (const st of activeStrata(tree, probe)) {
+    const strata = activeStrata(tree, probe)
+    if (strata.length === 0) {
+        // Blend region (no analytic carrier): certify the tree surface directly.
+        return opts.blendNormalVariationCos < 1 && !treeNormalVariationOk(tree, probe, opts.blendNormalVariationCos)
+    }
+    for (const st of strata) {
         if (!stratumNormalVariationOk(st, probe, opts.normalVariationCos)) return true
         if (!stratumEdgeCrossingsOk(st, probe)) return true
     }

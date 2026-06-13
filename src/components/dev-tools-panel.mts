@@ -71,6 +71,7 @@ export class DevToolsPanel extends HTMLElement {
     onBvhOptimizationChange?: (enabled: boolean) => void
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
+    onSilhouetteAaChange?: (enabled: boolean) => void
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
@@ -142,6 +143,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set stepHeatmap(enabled: boolean) {
         this.#appSection.stepHeatmap = enabled
+    }
+
+    get silhouetteAa(): boolean {
+        return this.#appSection.silhouetteAa
+    }
+
+    set silhouetteAa(enabled: boolean) {
+        this.#appSection.silhouetteAa = enabled
     }
 
     get showFps(): boolean {
@@ -331,6 +340,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
         this.#appSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
         this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)
+        this.#appSection.onSilhouetteAaChange = v => this.onSilhouetteAaChange?.(v)
         this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
         this.#appSection.onUpscaleParamsChange = p => this.onUpscaleParamsChange?.(p)
 

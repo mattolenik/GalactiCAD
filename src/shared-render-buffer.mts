@@ -20,12 +20,12 @@ import {
 
 /** Encode {@link UpscaleMode} as the u32 stored in the SAB / read by the worker. */
 export function upscaleModeToInt(mode: UpscaleMode): number {
-    return mode === "easu-rcas" ? 2 : mode === "easu" ? 1 : 0
+    return mode === "easu-fxaa" ? 3 : mode === "easu-rcas" ? 2 : mode === "easu" ? 1 : 0
 }
 
 /** Inverse of {@link upscaleModeToInt}. */
 export function upscaleModeFromInt(v: number): UpscaleMode {
-    return v === 2 ? "easu-rcas" : v === 1 ? "easu" : "off"
+    return v === 3 ? "easu-fxaa" : v === 2 ? "easu-rcas" : v === 1 ? "easu" : "off"
 }
 import type { MainToWorkerMessage } from "./render-worker-protocol.mjs"
 

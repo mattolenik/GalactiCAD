@@ -46,6 +46,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #bvhOptimization$: BehaviorSubject<boolean>
     #fgOverlay$: BehaviorSubject<boolean>
     #stepHeatmap$: BehaviorSubject<boolean>
+    #silhouetteAa$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
     #upscaleState: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
@@ -60,6 +61,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onBvhOptimizationChange?: (enabled: boolean) => void
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
+    onSilhouetteAaChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
 
@@ -119,6 +121,14 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#stepHeatmap$.next(enabled)
     }
 
+    get silhouetteAa(): boolean {
+        return this.#silhouetteAa$.value
+    }
+
+    set silhouetteAa(enabled: boolean) {
+        this.#silhouetteAa$.next(enabled)
+    }
+
     get meshViewer(): boolean {
         return this.#meshViewer$.value
     }
@@ -165,6 +175,8 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         // Debug-only; not persisted across sessions. Defaults off so the user
         // gets normal shading on startup.
         this.#stepHeatmap$ = new BehaviorSubject(false)
+        // Quality feature, default on; pushed from the renderer on load (app.mts).
+        this.#silhouetteAa$ = new BehaviorSubject(true)
 
         const persist = () => {
             if (this.#applying) return
@@ -238,6 +250,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
                 { value: "off", label: "Bilinear" },
                 { value: "easu", label: "EASU" },
                 { value: "easu-rcas", label: "EASU+RCAS" },
+                { value: "easu-fxaa", label: "EASU+FXAA" },
             ],
             this.#upscaleState.mode,
         )
@@ -273,6 +286,12 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#subscriptions.push(connectCheckbox(stepHeatmapCb, this.#stepHeatmap$))
         this.#subscriptions.push(
             this.#stepHeatmap$.pipe(skip(1)).subscribe(v => this.onStepHeatmapChange?.(v)),
+        )
+
+        const silhouetteAaCb = this.#addCheckbox(perfBox, "Silhouette AA", this.#silhouetteAa$.value)
+        this.#subscriptions.push(connectCheckbox(silhouetteAaCb, this.#silhouetteAa$))
+        this.#subscriptions.push(
+            this.#silhouetteAa$.pipe(skip(1)).subscribe(v => this.onSilhouetteAaChange?.(v)),
         )
 
         const rayMarchKnobs: { key: keyof RayMarchParams; label: string; min: number; max: number; step: number }[] = [
@@ -465,7 +484,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         const incoming = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, JSONValue>) : {}
         const next: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
         if (typeof incoming.renderScale === "number" && Number.isFinite(incoming.renderScale)) next.renderScale = incoming.renderScale
-        if (incoming.mode === "off" || incoming.mode === "easu" || incoming.mode === "easu-rcas") next.mode = incoming.mode
+        if (incoming.mode === "off" || incoming.mode === "easu" || incoming.mode === "easu-rcas" || incoming.mode === "easu-fxaa") next.mode = incoming.mode
         if (typeof incoming.sharpness === "number" && Number.isFinite(incoming.sharpness)) next.sharpness = incoming.sharpness
         this.#upscaleState = next
         if (this.#upscaleScaleSelect) this.#upscaleScaleSelect.value = String(next.renderScale)

@@ -145,6 +145,7 @@ export class SDFRenderer {
     #bvhEnabled = true
     #featureGraphOverlayEnabled = true
     #stepHeatmapEnabled = false
+    #silhouetteAaEnabled = true
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
     #viewCenter = vec2(0.5, 0.5)
@@ -1505,6 +1506,16 @@ export class SDFRenderer {
     }
     get stepHeatmapEnabled(): boolean {
         return this.#stepHeatmapEnabled
+    }
+
+    set silhouetteAaEnabled(enabled: boolean) {
+        if (this.#silhouetteAaEnabled === enabled) return
+        this.#silhouetteAaEnabled = enabled
+        this.#worker.postMessage({ type: "setSilhouetteAaEnabled", enabled })
+        this.#needsRender = true
+    }
+    get silhouetteAaEnabled(): boolean {
+        return this.#silhouetteAaEnabled
     }
 
     setSelectionMode(mode: SelectionMode): void {

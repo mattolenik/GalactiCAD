@@ -1175,6 +1175,7 @@ class App {
         devTools.bvhOptimization = this.renderer.bvhEnabled
         devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
         devTools.stepHeatmap = this.renderer.stepHeatmapEnabled
+        devTools.silhouetteAa = this.renderer.silhouetteAaEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
         }
@@ -1190,6 +1191,9 @@ class App {
         }
         devTools.onStepHeatmapChange = (enabled) => {
             this.renderer.stepHeatmapEnabled = enabled
+        }
+        devTools.onSilhouetteAaChange = (enabled) => {
+            this.renderer.silhouetteAaEnabled = enabled
         }
         devTools.onRayMarchParamsChange = (params) => {
             this.renderer.setRayMarchParams(params)

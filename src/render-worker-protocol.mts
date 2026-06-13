@@ -231,6 +231,7 @@ export type MainToWorkerMessage =
     | { type: "setBvhEnabled"; enabled: boolean }
     | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
     | { type: "setStepHeatmapEnabled"; enabled: boolean }
+    | { type: "setSilhouetteAaEnabled"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
 
 export interface RenderSelectionState {
@@ -312,8 +313,11 @@ export const DEFAULT_RAY_MARCH_PARAMS: RayMarchParams = {
  *  - `easu`  — AMD FSR1 Edge-Adaptive Spatial Upsampling (edge-directed,
  *              much crisper than bilinear), no sharpen pass.
  *  - `easu-rcas` — EASU followed by RCAS (Robust Contrast-Adaptive Sharpening).
+ *  - `easu-fxaa` — EASU followed by FXAA (luma post-process AA). Alternative to
+ *              RCAS: FXAA *smooths* residual edges (creases + silhouettes) where
+ *              RCAS *sharpens*, so they are mutually exclusive.
  */
-export type UpscaleMode = "off" | "easu" | "easu-rcas"
+export type UpscaleMode = "off" | "easu" | "easu-rcas" | "easu-fxaa"
 
 /**
  * Spatial-upscale (FSR1) tunables, adjustable from dev tools. Only takes effect

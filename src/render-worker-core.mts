@@ -9,6 +9,9 @@ import { PALETTE_SIZE, DEFAULT_PALETTE, paletteToFloat32Array } from "./colorPal
 import { orthoHalfFromDolly } from "./controls/camera-controller.mjs"
 import { DEFAULT_SELECTION_STYLES } from "./selectionStyles.mjs"
 import outlineShader from "./shaders/outline.wgsl"
+import easuShader from "./shaders/easu.wgsl"
+import rcasShader from "./shaders/rcas.wgsl"
+import fxaaShader from "./shaders/fxaa.wgsl"
 import previewShader from "./shaders/preview.wgsl"
 import boundsShader from "./shaders/bounds.wgsl"
 import isoSampleBatchShaderSource from "./shaders/iso_sample_batch.wgsl"
@@ -99,9 +102,9 @@ const EMPTY_F32_SINGLE = new Float32Array([0])
  * encoding order in {@link RenderWorkerCore.render} / `#renderFromSAB` and is
  * the canonical layout for `#timestampFilledPasses` and `#passTimeAverages`.
  */
-type ProfiledPassName = "beam" | "scene" | "outline" | "overlay"
+type ProfiledPassName = "beam" | "scene" | "easu" | "rcas" | "fxaa" | "outline" | "overlay"
 /** Max pass-time pairs per frame — sized to {@link ProfiledPassName}. */
-const TIMESTAMP_MAX_PAIRS = 4
+const TIMESTAMP_MAX_PAIRS = 6
 const TIMESTAMP_QUERY_COUNT = TIMESTAMP_MAX_PAIRS * 2
 const TIMESTAMP_BYTES = TIMESTAMP_QUERY_COUNT * 8
 /** Round to 2 decimal places for log output; avoids logging long fractional ms. */
@@ -149,6 +152,10 @@ class UniformBuffers {
     selectedEdges!: GPUBuffer
     hoverEdgeHit!: GPUBuffer
     hoveredEdge!: GPUBuffer
+    /** FSR1 EASU constants (con0..con3, 4x vec4<u32> = 64 bytes). */
+    easuConst!: GPUBuffer
+    /** FSR1 RCAS constant (sharpness = exp2(-stops)). */
+    rcasConst!: GPUBuffer
 }
 
 class ExportBuffers {
@@ -170,6 +177,31 @@ export class RenderWorkerCore {
     #outlineShaderModule!: GPUShaderModule
     #outlinePipeline!: GPURenderPipeline
     #outlineBindGroup!: GPUBindGroup | undefined
+    // FSR1 spatial upscale (EASU + optional RCAS). Pipelines built once in
+    // init(); bind groups + the full-res EASU output texture are (re)created in
+    // `#ensureUpscaleTextures` when the scene/display size changes.
+    #easuShaderModule!: GPUShaderModule
+    #rcasShaderModule!: GPUShaderModule
+    #fxaaShaderModule!: GPUShaderModule
+    #easuPipeline!: GPURenderPipeline
+    #rcasPipeline!: GPURenderPipeline
+    #fxaaPipeline!: GPURenderPipeline
+    #easuBindGroup: GPUBindGroup | undefined
+    #rcasBindGroup: GPUBindGroup | undefined
+    #fxaaBindGroup: GPUBindGroup | undefined
+    #easuOutTexture: GPUTexture | undefined
+    #easuOutView: GPUTextureView | undefined
+    #easuOutWidth = 0
+    #easuOutHeight = 0
+    // EASU constants staging (16 f32 = con0..con3 bit-cast into the buffer).
+    #easuConstBuf = new ArrayBuffer(64)
+    #easuConstF32 = new Float32Array(this.#easuConstBuf)
+    /** Key (`inW,inH,outW,outH`) the uploaded EASU constants were computed for. */
+    #lastEasuKey = ""
+    #rcasConstBuf = new ArrayBuffer(16)
+    #rcasConstF32 = new Float32Array(this.#rcasConstBuf)
+    /** Last uploaded RCAS `exp2(-sharpness)` value; NaN forces first upload. */
+    #lastRcasSharp = Number.NaN
     #scene: SceneInfo | null = null
     /** Aborts the in-flight mesh export when a newer `renderMesh` supersedes it. */
     #meshExportAbort?: AbortController
@@ -211,6 +243,8 @@ export class RenderWorkerCore {
      * visualisation, complement to the per-pass timestamp profiler.
      */
     #stepHeatmapEnabled = false
+    /** Analytic silhouette antialiasing (cheap SDF edge coverage). Default on. */
+    #silhouetteAaEnabled = true
     /**
      * Serializes background FeatureGraph builds kicked off from `#doBuild`
      * (the build path no longer awaits them). Each kick chains onto the
@@ -243,7 +277,7 @@ export class RenderWorkerCore {
     #fpsFrameCount = 0
     #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
-    #viewSettingsBuf = new Uint32Array(4)
+    #viewSettingsBuf = new Uint32Array(5)
     #selDataBuf = new Uint32Array(1024)
     // OutlineSettings CPU mirrors removed — selection rendering moved
     // inline into preview.wgsl, so the post-process pass has no per-frame
@@ -258,7 +292,7 @@ export class RenderWorkerCore {
     #camTransform = new Mat4x4f(new Float32Array(16))
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
     #cameraCache = new ArrayBuffer(256)
-    #viewSettingsCache = new ArrayBuffer(16)
+    #viewSettingsCache = new ArrayBuffer(20)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
@@ -359,6 +393,9 @@ export class RenderWorkerCore {
     #passTimeAverages: Record<ProfiledPassName, AveragedBuffer> = {
         beam: new AveragedBuffer(30),
         scene: new AveragedBuffer(30),
+        easu: new AveragedBuffer(30),
+        rcas: new AveragedBuffer(30),
+        fxaa: new AveragedBuffer(30),
         outline: new AveragedBuffer(30),
         overlay: new AveragedBuffer(30),
     }
@@ -432,6 +469,53 @@ export class RenderWorkerCore {
         } catch (err) {
             const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
             logWgsl("error", `Outline post-process pipeline creation failed: ${text}`)
+            throw err
+        }
+
+        // FSR1 spatial upscale pipelines (EASU then optional RCAS). Both are
+        // full-screen fragment passes writing the canvas `#format`, mirroring
+        // the outline blit. Bind groups are created lazily in
+        // `#ensureUpscaleTextures` once the scene/display sizes are known.
+        this.#easuShaderModule = this.#device.createShaderModule({ label: "FSR1 EASU", code: easuShader })
+        scheduleShaderModuleCompilationLogging(this.#easuShaderModule, "FSR1 EASU", easuShader)
+        this.#rcasShaderModule = this.#device.createShaderModule({ label: "FSR1 RCAS", code: rcasShader })
+        scheduleShaderModuleCompilationLogging(this.#rcasShaderModule, "FSR1 RCAS", rcasShader)
+        try {
+            this.#easuPipeline = this.#device.createRenderPipeline({
+                label: "FSR1 EASU Pipeline",
+                layout: "auto",
+                vertex: { module: this.#easuShaderModule, entryPoint: "vertexMain" },
+                fragment: { module: this.#easuShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
+                primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+            })
+            this.#rcasPipeline = this.#device.createRenderPipeline({
+                label: "FSR1 RCAS Pipeline",
+                layout: "auto",
+                vertex: { module: this.#rcasShaderModule, entryPoint: "vertexMain" },
+                fragment: { module: this.#rcasShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
+                primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+            })
+        } catch (err) {
+            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
+            logWgsl("error", `FSR1 upscale pipeline creation failed: ${text}`)
+            throw err
+        }
+
+        // FXAA post-process (luma-driven edge smoothing), alternative final pass
+        // to RCAS. Same full-screen fragment shape as EASU/RCAS.
+        this.#fxaaShaderModule = this.#device.createShaderModule({ label: "FXAA", code: fxaaShader })
+        scheduleShaderModuleCompilationLogging(this.#fxaaShaderModule, "FXAA", fxaaShader)
+        try {
+            this.#fxaaPipeline = this.#device.createRenderPipeline({
+                label: "FXAA Pipeline",
+                layout: "auto",
+                vertex: { module: this.#fxaaShaderModule, entryPoint: "vertexMain" },
+                fragment: { module: this.#fxaaShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
+                primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+            })
+        } catch (err) {
+            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
+            logWgsl("error", `FXAA pipeline creation failed: ${text}`)
             throw err
         }
 
@@ -514,6 +598,12 @@ export class RenderWorkerCore {
         // Worker-internal state change — SAB hasn't moved, but the rendered
         // output would differ, so the SAB-hash idle skip needs a one-shot
         // override to actually pick this up on the next render kick.
+        this.#forceNextRender = true
+    }
+
+    setSilhouetteAaEnabled(enabled: boolean): void {
+        if (this.#silhouetteAaEnabled === enabled) return
+        this.#silhouetteAaEnabled = enabled
         this.#forceNextRender = true
     }
 
@@ -913,6 +1003,9 @@ export class RenderWorkerCore {
             log("RenderWorker").debug("gpu pass times (avg ms, 30-frame window)", {
                 beam: roundMs2(avg.beam.average),
                 scene: roundMs2(avg.scene.average),
+                easu: roundMs2(avg.easu.average),
+                rcas: roundMs2(avg.rcas.average),
+                fxaa: roundMs2(avg.fxaa.average),
                 outline: roundMs2(avg.outline.average),
                 overlay: roundMs2(avg.overlay.average),
             })
@@ -1216,6 +1309,7 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // matches `debugHeatmap` in preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
+        this.#viewSettingsBuf[4] = this.#silhouetteAaEnabled ? 1 : 0
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
@@ -1256,15 +1350,32 @@ export class RenderWorkerCore {
         )
         this.#writeEdgesToBufferIfDirty(this.#uniformBuffers.hoveredEdge, selectionState.hoveredEdges, 6.0, 0.02, this.#hoveredEdgesCache)
 
-        // For canvas renders, size the OffscreenCanvas drawing buffer to
-        // the scene render resolution and let the browser CSS scale up to
-        // display. See `#resizeCanvasIfNeeded` for full rationale. For
-        // off-screen renders (`outputTextureView` provided by the caller),
-        // the target is fixed and we don't touch the canvas — the legacy
-        // intermediate-texture + outline-blit path handles it.
-        if (!outputTextureView) this.#resizeCanvasIfNeeded(sceneWidth, sceneHeight)
+        // FSR1 spatial upscale (mirrors `#renderFromSAB`). Engages only on
+        // reduced-res frames with a non-"off" mode. The `outputTextureView`
+        // path supports it too so captures can A/B EASU headlessly; otherwise
+        // off-screen renders keep the legacy intermediate + bilinear blit.
+        const up = viewSettings.upscaleParams
+        const fsrEnabled = (up?.mode ?? "off") !== "off" && resolutionScale < 1.0
+        const fsrRcas = fsrEnabled && up?.mode === "easu-rcas"
+        const fsrFxaa = fsrEnabled && up?.mode === "easu-fxaa"
+        // FXAA ("easu-fxaa") also applies on full-res frames (still / 100%): the
+        // scene renders into the full-res intermediate and FXAA composites it.
+        const wantFxaa = up?.mode === "easu-fxaa"
+        const fullResFxaa = wantFxaa && !fsrEnabled
+        const fullW = Math.max(1, Math.round(cameraRes[0]))
+        const fullH = Math.max(1, Math.round(cameraRes[1]))
+
+        // For canvas renders, size the OffscreenCanvas drawing buffer: full
+        // display res when upscaling or applying full-res FXAA (a post pass
+        // resolves into the swapchain), else the scene render resolution with a
+        // free browser CSS upscale. Off-screen (`outputTextureView`) leaves the
+        // canvas untouched.
+        if (!outputTextureView) {
+            this.#resizeCanvasIfNeeded(fsrEnabled || wantFxaa ? fullW : sceneWidth, fsrEnabled || wantFxaa ? fullH : sceneHeight)
+        }
+        if (fullResFxaa) this.#ensureUpscaleTextures(fullW, fullH, false, true)
         const canvasTexture = outputTextureView ? null : this.#context.getCurrentTexture()
-        const outlineTarget = outputTextureView ?? canvasTexture!.createView()
+        const finalTarget = outputTextureView ?? canvasTexture!.createView()
         const commandEncoder = this.#device.createCommandEncoder()
         this.#beginFrameProfiling()
 
@@ -1300,13 +1411,13 @@ export class RenderWorkerCore {
             beamPass.end()
         }
 
-        // For canvas renders the scene-color attachment is the canvas
-        // swapchain itself (sized to sceneWidth × sceneHeight via the
-        // resize above); no outline post-process pass runs. For
-        // outputTextureView renders we keep the old `#colorTextureView`
-        // intermediate so the legacy outline blit can copy into the
-        // caller-supplied target.
-        const sceneColorView = outputTextureView ? this.#colorTextureView : outlineTarget
+        // Scene-color attachment: reduced-res `#colorTextureView` when upscaling
+        // (FSR) or doing the legacy off-screen bilinear blit; full-res
+        // `#easuOutView` when applying full-res FXAA; otherwise the canvas
+        // swapchain directly.
+        const offscreenBlit = !!outputTextureView && !fullResFxaa
+        const sceneColorView =
+            fsrEnabled || offscreenBlit ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : finalTarget
         const scenePass = commandEncoder.beginRenderPass({
             colorAttachments: [{ view: sceneColorView, loadOp: "clear", storeOp: "store" }],
             timestampWrites: this.#timestampWritesFor("scene"),
@@ -1316,14 +1427,17 @@ export class RenderWorkerCore {
         scenePass.draw(4)
         scenePass.end()
 
-        // outputTextureView path retains the blit pass to copy the
-        // intermediate `#colorTexture` into the caller's target (which may
-        // be a different size / format than the canvas swapchain). For
-        // canvas renders the scene already wrote directly to the
-        // swapchain, so the outline pass is unconditionally skipped.
-        if (outputTextureView) {
+        if (fsrEnabled) {
+            // EASU(+RCAS or +FXAA) resolves the reduced-res scene into the final target.
+            this.#encodeUpscale(commandEncoder, finalTarget, sceneWidth, sceneHeight, fullW, fullH, fsrRcas, fsrFxaa, up?.sharpness ?? 0)
+        } else if (fullResFxaa) {
+            // Full-res native frame: FXAA the scene intermediate into the target.
+            this.#encodeFxaaPass(commandEncoder, finalTarget)
+        } else if (outputTextureView) {
+            // Legacy bilinear blit of the intermediate into the caller's target
+            // (which may differ in size / format from the canvas swapchain).
             const outlinePass = commandEncoder.beginRenderPass({
-                colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
+                colorAttachments: [{ view: finalTarget, loadOp: "clear", storeOp: "store" }],
                 timestampWrites: this.#timestampWritesFor("outline"),
             })
             outlinePass.setPipeline(this.#outlinePipeline)
@@ -1332,18 +1446,17 @@ export class RenderWorkerCore {
             outlinePass.end()
         }
 
-        // Both render targets (canvas-direct and outputTextureView) are at
-        // scene resolution by this point, so the overlay's camera uniform
-        // takes sceneWidth/sceneHeight unconditionally — the old
-        // `#fullWidth` branch dated back to when the outline pass owned
-        // the canvas-resolution upsample.
+        // Overlay: at full display res when upscaling or full-res FXAA (crisp
+        // lines), else at the scene resolution the target currently holds.
+        const overlayW = fsrEnabled || fullResFxaa ? fullW : sceneWidth
+        const overlayH = fsrEnabled || fullResFxaa ? fullH : sceneHeight
         this.#renderFeatureGraphOverlay(
             commandEncoder,
-            outlineTarget,
+            finalTarget,
             viewTransform,
             cameraPosition,
-            sceneWidth,
-            sceneHeight,
+            overlayW,
+            overlayH,
             orthoHalfFromDolly(msg.cameraState.dollyDistance),
             viewCenter,
         )
@@ -1414,6 +1527,23 @@ export class RenderWorkerCore {
         const sceneWidth = Math.max(1, Math.round(cameraRes0 * resolutionScale))
         const sceneHeight = Math.max(1, Math.round(cameraRes1 * resolutionScale))
 
+        // FSR1 spatial upscale engages only on reduced-res frames. At scale 1.0
+        // (still camera) or mode "off" it stays disabled and we keep the legacy
+        // browser-bilinear stretch path below.
+        const upscaleMode = u32[b4 + L.O_UPSCALE_MODE / 4]
+        const upscaleSharpness = f32[b4 + L.O_UPSCALE_SHARPNESS / 4]
+        const fsrEnabled = upscaleMode !== 0 && resolutionScale < 1.0
+        const fsrRcas = fsrEnabled && upscaleMode === 2
+        const fsrFxaa = fsrEnabled && upscaleMode === 3
+        // FXAA (mode "easu-fxaa") also runs on full-res frames — after EASU
+        // during motion, or directly on the native scene when not upscaling
+        // (still camera / 100% render scale). `fullOutput` = the frame ends up
+        // at full display resolution (so the canvas is sized full and a final
+        // post pass composites into it).
+        const wantFxaa = upscaleMode === 3
+        const fullResFxaa = wantFxaa && !fsrEnabled
+        const fullOutput = fsrEnabled || wantFxaa
+
         if (!this.#pipeline) return
         if (sceneWidth === 0 || sceneHeight === 0) return
         if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return
@@ -1463,6 +1593,7 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // debugHeatmap; see preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
+        this.#viewSettingsBuf[4] = this.#silhouetteAaEnabled ? 1 : 0
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         const rmBase = slotBase + L.O_RAY_MARCH_PARAMS
@@ -1525,17 +1656,25 @@ export class RenderWorkerCore {
             this.#hoveredEdgesCache,
         )
 
-        // Resize the OffscreenCanvas drawing buffer to the scene render size
-        // and render directly into the swapchain. The DOM canvas keeps its
-        // CSS pixel size, so the browser compositor bilinear-upscales the
-        // drawing buffer back into the visible canvas box — i.e. the same
-        // halfres → fullres upsample the outline blit pass used to perform
-        // at 35 ms a frame, now done outside the GPU command queue. The
-        // outline pass is gone; the FG overlay still draws on top with
-        // loadOp: "load".
-        this.#resizeCanvasIfNeeded(sceneWidth, sceneHeight)
+        // Canvas sizing:
+        //  - FSR path: the canvas stays at full display resolution; the scene
+        //    renders into the reduced-res `#colorTexture` and EASU/RCAS upscale
+        //    it into the swapchain.
+        //  - Legacy path: size the drawing buffer to the scene render size and
+        //    render directly into the swapchain; the DOM canvas keeps its CSS
+        //    size so the browser compositor bilinear-upscales it for free. (At
+        //    scale 1.0 the scene size already equals the full size, so this is
+        //    a no-op native-resolution render.)
+        if (fullOutput) {
+            this.#resizeCanvasIfNeeded(this.#fullWidth, this.#fullHeight)
+        } else {
+            this.#resizeCanvasIfNeeded(sceneWidth, sceneHeight)
+        }
+        // Full-res FXAA renders the scene into the sampleable full-res
+        // intermediate (`#easuOutView`) so the FXAA pass can read it.
+        if (fullResFxaa) this.#ensureUpscaleTextures(this.#fullWidth, this.#fullHeight, false, true)
         const canvasTexture = this.#context.getCurrentTexture()
-        const outlineTarget = canvasTexture.createView()
+        const canvasView = canvasTexture.createView()
         const commandEncoder = this.#device.createCommandEncoder()
         this.#beginFrameProfiling()
 
@@ -1571,12 +1710,13 @@ export class RenderWorkerCore {
             beamPass.end()
         }
 
-        // Single color target now: the canvas swapchain itself, sized to
-        // sceneWidth × sceneHeight via `#resizeCanvasIfNeeded` above. The
-        // r32uint object-ID texture is gone — click picking uses the
-        // `clickedObjectId` atomic written from inside the shader.
+        // Scene target: the reduced-res `#colorTexture` when upscaling; the
+        // full-res `#easuOutView` intermediate when applying full-res FXAA; else
+        // the canvas swapchain directly. The r32uint object-ID texture is gone —
+        // click picking uses the `clickedObjectId` atomic written in the shader.
+        const sceneTarget = fsrEnabled ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : canvasView
         const scenePass = commandEncoder.beginRenderPass({
-            colorAttachments: [{ view: outlineTarget, loadOp: "clear", storeOp: "store" }],
+            colorAttachments: [{ view: sceneTarget, loadOp: "clear", storeOp: "store" }],
             timestampWrites: this.#timestampWritesFor("scene"),
         })
         scenePass.setPipeline(this.#pipeline)
@@ -1584,13 +1724,24 @@ export class RenderWorkerCore {
         scenePass.draw(4)
         scenePass.end()
 
+        if (fsrEnabled) {
+            this.#encodeUpscale(commandEncoder, canvasView, sceneWidth, sceneHeight, this.#fullWidth, this.#fullHeight, fsrRcas, fsrFxaa, upscaleSharpness)
+        } else if (fullResFxaa) {
+            this.#encodeFxaaPass(commandEncoder, canvasView)
+        }
+
+        // Overlay draws on top with loadOp "load". At full output resolution
+        // (upscaling or full-res FXAA) it renders crisp at display res; else at
+        // the reduced scene/canvas resolution.
+        const overlayW = fullOutput ? this.#fullWidth : sceneWidth
+        const overlayH = fullOutput ? this.#fullHeight : sceneHeight
         this.#renderFeatureGraphOverlay(
             commandEncoder,
-            outlineTarget,
+            canvasView,
             viewTransform,
             cameraPosition,
-            sceneWidth,
-            sceneHeight,
+            overlayW,
+            overlayH,
             f32[b4 + L.O_ZOOM / 4]!,
             viewCenter,
         )
@@ -2300,6 +2451,8 @@ export class RenderWorkerCore {
             // Bind groups: no destroy(); clear refs before attaching new textures.
             this.#outlineBindGroup = undefined
             this.#beamBindGroup = undefined
+            // EASU samples `#colorTextureView`, which is recreated below.
+            this.#easuBindGroup = undefined
 
             if (this.#colorTexture) this.#colorTexture.destroy()
             if (this.#tStartTexture) this.#tStartTexture.destroy()
@@ -2395,6 +2548,183 @@ export class RenderWorkerCore {
         }
     }
 
+    /**
+     * Ensure the FSR1 upscale resources exist for the current sizes:
+     *  - the full-res intermediate texture (when a second pass — RCAS or FXAA —
+     *    follows EASU; without one, EASU writes straight to the final target),
+     *  - the EASU bind group (source = the reduced-res `#colorTextureView`),
+     *  - the RCAS / FXAA bind group (source = the full-res EASU output).
+     * The EASU bind group is nulled by `#ensureRenderTextures` when the scene
+     * texture is recreated; the RCAS/FXAA bind groups are nulled here when the
+     * full-res intermediate is reallocated. RCAS and FXAA are mutually
+     * exclusive, so they share the one intermediate texture.
+     */
+    #ensureUpscaleTextures(fullW: number, fullH: number, needRcas: boolean, needFxaa: boolean): void {
+        const needIntermediate = needRcas || needFxaa
+        if (needIntermediate && (!this.#easuOutTexture || fullW !== this.#easuOutWidth || fullH !== this.#easuOutHeight)) {
+            this.#easuOutTexture?.destroy()
+            this.#easuOutTexture = this.#device.createTexture({
+                label: "EASU Output (full-res)",
+                size: [Math.max(1, fullW), Math.max(1, fullH)],
+                format: this.#format,
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            })
+            this.#easuOutView = this.#easuOutTexture.createView()
+            this.#easuOutWidth = fullW
+            this.#easuOutHeight = fullH
+            this.#rcasBindGroup = undefined
+            this.#fxaaBindGroup = undefined
+        }
+
+        if (!this.#easuBindGroup) {
+            this.#easuBindGroup = this.#device.createBindGroup({
+                label: "easuUpscale",
+                layout: this.#easuPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.#colorTextureView },
+                    { binding: 1, resource: this.#colorSampler },
+                    { binding: 2, resource: { buffer: this.#uniformBuffers.easuConst } },
+                ],
+            })
+        }
+
+        if (needRcas && !this.#rcasBindGroup) {
+            this.#rcasBindGroup = this.#device.createBindGroup({
+                label: "rcasSharpen",
+                layout: this.#rcasPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.#easuOutView! },
+                    { binding: 1, resource: { buffer: this.#uniformBuffers.rcasConst } },
+                ],
+            })
+        }
+
+        if (needFxaa && !this.#fxaaBindGroup) {
+            this.#fxaaBindGroup = this.#device.createBindGroup({
+                label: "fxaa",
+                layout: this.#fxaaPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.#easuOutView! },
+                    { binding: 1, resource: this.#colorSampler },
+                ],
+            })
+        }
+    }
+
+    /**
+     * Compute the EASU con0..con3 constants (port of `ffxFsrPopulateEasuConstants`)
+     * for the given reduced-res input and full-res output, and upload them. The
+     * shader reads each vec4 as `bitcast<vec4f>(vec4<u32>)`, so writing the raw
+     * f32 bit patterns here is exactly equivalent to the reference's
+     * `ffxAsUInt32(float)`. Skips the upload when sizes are unchanged.
+     */
+    #updateEasuConstants(inW: number, inH: number, outW: number, outH: number): void {
+        const key = `${inW},${inH},${outW},${outH}`
+        if (key === this.#lastEasuKey) return
+        this.#lastEasuKey = key
+        const f = this.#easuConstF32
+        const rOutX = 1 / outW
+        const rOutY = 1 / outH
+        const rInX = 1 / inW
+        const rInY = 1 / inH
+        // con0: output integer position -> input pixel position.
+        f[0] = inW * rOutX
+        f[1] = inH * rOutY
+        f[2] = 0.5 * inW * rOutX - 0.5
+        f[3] = 0.5 * inH * rOutY - 0.5
+        // con1: viewport pixel -> normalized, plus first gather offset.
+        f[4] = rInX
+        f[5] = rInY
+        f[6] = rInX
+        f[7] = -rInY
+        // con2 / con3: remaining gather-center offsets.
+        f[8] = -rInX
+        f[9] = 2 * rInY
+        f[10] = rInX
+        f[11] = 2 * rInY
+        f[12] = 0
+        f[13] = 4 * rInY
+        f[14] = 0
+        f[15] = 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.easuConst, 0, this.#easuConstBuf)
+    }
+
+    /** Upload the RCAS sharpness constant (`exp2(-sharpness)`); skips if unchanged. */
+    #updateRcasConstants(sharpness: number): void {
+        const sharp = Math.pow(2, -sharpness)
+        if (sharp === this.#lastRcasSharp) return
+        this.#lastRcasSharp = sharp
+        this.#rcasConstF32[0] = sharp
+        this.#device.queue.writeBuffer(this.#uniformBuffers.rcasConst, 0, this.#rcasConstBuf)
+    }
+
+    /**
+     * Encode the FSR1 upscale chain. The scene must already be rendered into the
+     * reduced-res `#colorTextureView`. EASU resolves it to full resolution; an
+     * optional second pass — RCAS (sharpen) or FXAA (smooth), mutually exclusive
+     * — then runs EASU's full-res intermediate into `finalTarget`. With neither,
+     * EASU writes `finalTarget` directly.
+     */
+    #encodeUpscale(
+        encoder: GPUCommandEncoder,
+        finalTarget: GPUTextureView,
+        sceneW: number,
+        sceneH: number,
+        fullW: number,
+        fullH: number,
+        needRcas: boolean,
+        needFxaa: boolean,
+        sharpness: number,
+    ): void {
+        this.#ensureUpscaleTextures(fullW, fullH, needRcas, needFxaa)
+        this.#updateEasuConstants(sceneW, sceneH, fullW, fullH)
+
+        const easuTarget = needRcas || needFxaa ? this.#easuOutView! : finalTarget
+        const easuPass = encoder.beginRenderPass({
+            label: "EASU Upscale",
+            colorAttachments: [{ view: easuTarget, loadOp: "clear", storeOp: "store" }],
+            timestampWrites: this.#timestampWritesFor("easu"),
+        })
+        easuPass.setPipeline(this.#easuPipeline)
+        easuPass.setBindGroup(0, this.#easuBindGroup!)
+        easuPass.draw(4)
+        easuPass.end()
+
+        if (needRcas) {
+            this.#updateRcasConstants(sharpness)
+            const rcasPass = encoder.beginRenderPass({
+                label: "RCAS Sharpen",
+                colorAttachments: [{ view: finalTarget, loadOp: "clear", storeOp: "store" }],
+                timestampWrites: this.#timestampWritesFor("rcas"),
+            })
+            rcasPass.setPipeline(this.#rcasPipeline)
+            rcasPass.setBindGroup(0, this.#rcasBindGroup!)
+            rcasPass.draw(4)
+            rcasPass.end()
+        } else if (needFxaa) {
+            this.#encodeFxaaPass(encoder, finalTarget)
+        }
+    }
+
+    /**
+     * FXAA post-process pass: reads `#easuOutView` (the full-res color written by
+     * EASU during motion, or by the scene directly for a full-res frame) and
+     * writes `dst`. Callers must have ensured the FXAA resources via
+     * `#ensureUpscaleTextures(..., needFxaa = true)` and rendered into
+     * `#easuOutView` first.
+     */
+    #encodeFxaaPass(encoder: GPUCommandEncoder, dst: GPUTextureView): void {
+        const pass = encoder.beginRenderPass({
+            label: "FXAA",
+            colorAttachments: [{ view: dst, loadOp: "clear", storeOp: "store" }],
+            timestampWrites: this.#timestampWritesFor("fxaa"),
+        })
+        pass.setPipeline(this.#fxaaPipeline)
+        pass.setBindGroup(0, this.#fxaaBindGroup!)
+        pass.draw(4)
+        pass.end()
+    }
+
     #createBuffers(): void {
         const ub = this.#uniformBuffers
         ub.scene = this.#device.createBuffer({
@@ -2450,9 +2780,21 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(ub.colorPalette, 0, alignedData)
 
         ub.viewSettings = this.#device.createBuffer({
-            size: 16,
+            size: 32, // 5 u32 (20B) rounded up for uniform binding
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "viewSettings",
+        })
+
+        ub.easuConst = this.#device.createBuffer({
+            size: 64,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "easuConst",
+        })
+
+        ub.rcasConst = this.#device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            label: "rcasConst",
         })
 
         // OutlineSettings GPU buffer dropped — no shader binding reads it.

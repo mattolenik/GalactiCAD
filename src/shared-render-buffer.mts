@@ -11,10 +11,22 @@ import { dollyFromOrthoHalf, orthoHalfFromDolly, type CameraState } from "./cont
 import {
     DEFAULT_PREVIEW_SHADING,
     DEFAULT_RAY_MARCH_PARAMS,
+    DEFAULT_UPSCALE_PARAMS,
     type RenderSelectionState,
     type RenderViewSettings,
     type SelectedEdgePayload,
+    type UpscaleMode,
 } from "./render-worker-protocol.mjs"
+
+/** Encode {@link UpscaleMode} as the u32 stored in the SAB / read by the worker. */
+export function upscaleModeToInt(mode: UpscaleMode): number {
+    return mode === "easu-fxaa" ? 3 : mode === "easu-rcas" ? 2 : mode === "easu" ? 1 : 0
+}
+
+/** Inverse of {@link upscaleModeToInt}. */
+export function upscaleModeFromInt(v: number): UpscaleMode {
+    return v === 3 ? "easu-fxaa" : v === 2 ? "easu-rcas" : v === 1 ? "easu" : "off"
+}
 import type { MainToWorkerMessage } from "./render-worker-protocol.mjs"
 
 /** FPS scale factor: stored as fps * FPS_SCALE for integer storage */
@@ -63,13 +75,18 @@ const S_O_HOVERED_EDGES_DATA = 5664
 const S_O_HOVERED_OBJECT_ID = 6944
 // Ray march quality params: 5 values packed as [maxSteps, maxBeamSteps, hitRefineSteps, _pad, maxDist, rayOriginDepth, _pad, _pad]
 const S_O_RAY_MARCH_PARAMS = 6948
+// FSR1 spatial-upscale params (consumed on the reduced-res motion frames).
+// `resolutionScale` above already carries the render scale; these add the
+// upsampling filter selection + sharpness.
+const S_O_UPSCALE_MODE = 6980 // u32: 0 = off (bilinear), 1 = EASU, 2 = EASU+RCAS
+const S_O_UPSCALE_SHARPNESS = 6984 // f32: RCAS sharpness in stops (0 = max sharp)
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16
 const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 
 /** Size of one payload slot in bytes */
-export const SLOT_SIZE = 6980
+export const SLOT_SIZE = 6988
 
 /** Total buffer size in bytes */
 export const SHARED_RENDER_BUFFER_SIZE = HEADER_SIZE + 2 * SLOT_SIZE
@@ -126,6 +143,8 @@ export const SAB_LAYOUT = {
     O_HOVERED_EDGES_HEADER: S_O_HOVERED_EDGES_HEADER,
     O_RESOLUTION_SCALE: S_O_RESOLUTION_SCALE,
     O_RAY_MARCH_PARAMS: S_O_RAY_MARCH_PARAMS,
+    O_UPSCALE_MODE: S_O_UPSCALE_MODE,
+    O_UPSCALE_SHARPNESS: S_O_UPSCALE_SHARPNESS,
     SELECTED_OBJECT_IDS_SIZE,
     SELECTED_EDGES_TOTAL: EDGES_HEADER_SIZE + EDGES_DATA_SIZE,
 } as const
@@ -243,6 +262,10 @@ export function writeRenderPayloadSlot(
     rmF32[0] = rm.maxDist
     rmF32[1] = rm.rayOriginDepth
 
+    const up = payload.viewSettings.upscaleParams ?? DEFAULT_UPSCALE_PARAMS
+    u32[b4 + S_O_UPSCALE_MODE / 4] = upscaleModeToInt(up.mode)
+    f32[b4 + S_O_UPSCALE_SHARPNESS / 4] = up.sharpness
+
     const sel = payload.selectionState
     const selIds = new Uint32Array(buffer, base + S_O_SELECTED_OBJECT_IDS, 1024)
     selIds.fill(0)
@@ -359,6 +382,11 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
             hitRefineStepsMoving: 0,
             maxDist: new Float32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 16, 1)[0],
             rayOriginDepth: new Float32Array(buffer, base + S_O_RAY_MARCH_PARAMS + 20, 1)[0],
+        },
+        upscaleParams: {
+            renderScale: f32[b4 + S_O_RESOLUTION_SCALE / 4],
+            mode: upscaleModeFromInt(u32[b4 + S_O_UPSCALE_MODE / 4]),
+            sharpness: f32[b4 + S_O_UPSCALE_SHARPNESS / 4],
         },
     }
 

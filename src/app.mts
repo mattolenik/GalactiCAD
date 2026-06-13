@@ -1175,6 +1175,7 @@ class App {
         devTools.bvhOptimization = this.renderer.bvhEnabled
         devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
         devTools.stepHeatmap = this.renderer.stepHeatmapEnabled
+        devTools.silhouetteAa = this.renderer.silhouetteAaEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
         }
@@ -1191,6 +1192,9 @@ class App {
         devTools.onStepHeatmapChange = (enabled) => {
             this.renderer.stepHeatmapEnabled = enabled
         }
+        devTools.onSilhouetteAaChange = (enabled) => {
+            this.renderer.silhouetteAaEnabled = enabled
+        }
         devTools.onRayMarchParamsChange = (params) => {
             this.renderer.setRayMarchParams(params)
         }
@@ -1198,6 +1202,11 @@ class App {
         // renderer once, since #restoreRayMarchParams updates the inputs but does
         // not fire onRayMarchParamsChange.
         this.renderer.setRayMarchParams(devTools.rayMarchParams)
+        devTools.onUpscaleParamsChange = (params) => {
+            this.renderer.setUpscaleParams(params)
+        }
+        // Same one-shot push for the FSR1 upscale params (restored, not emitted).
+        this.renderer.setUpscaleParams(devTools.upscaleParams)
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
             previewNormalShadingToggle.checked = this.renderer.previewNormalShading

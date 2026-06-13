@@ -19,11 +19,13 @@ import type { MeshData } from "./export/export.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
     DEFAULT_RAY_MARCH_PARAMS,
+    DEFAULT_UPSCALE_PARAMS,
     type BuildTimingBreakdownMs,
     type MainToWorkerMessage,
     type PreviewShadingParams,
     type RayMarchParams,
     type SceneBuildPipelineMs,
+    type UpscaleParams,
     type WorkerToMainMessage,
 } from "./render-worker-protocol.mjs"
 import type { ExporterKind } from "./export/mesh-exporter.mjs"
@@ -138,10 +140,12 @@ export class SDFRenderer {
     #beamEnabled = false
     #previewShading: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
     #rayMarchParams: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
+    #upscaleParams: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
     #previewNormalShading = false
     #bvhEnabled = true
     #featureGraphOverlayEnabled = true
     #stepHeatmapEnabled = false
+    #silhouetteAaEnabled = true
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
     #viewCenter = vec2(0.5, 0.5)
@@ -1441,6 +1445,20 @@ export class SDFRenderer {
         this.#needsRender = true
     }
 
+    get upscaleParams(): UpscaleParams {
+        return { ...this.#upscaleParams }
+    }
+
+    /**
+     * Dev tools: FSR1 spatial-upscale settings (render scale during motion +
+     * upsample mode + sharpness). Persistence lives in the dev-tools section
+     * snapshot (same as ray-march params); not stored here.
+     */
+    setUpscaleParams(params: UpscaleParams): void {
+        this.#upscaleParams = { ...params }
+        this.#needsRender = true
+    }
+
     get previewNormalShading(): boolean {
         return this.#previewNormalShading
     }
@@ -1488,6 +1506,16 @@ export class SDFRenderer {
     }
     get stepHeatmapEnabled(): boolean {
         return this.#stepHeatmapEnabled
+    }
+
+    set silhouetteAaEnabled(enabled: boolean) {
+        if (this.#silhouetteAaEnabled === enabled) return
+        this.#silhouetteAaEnabled = enabled
+        this.#worker.postMessage({ type: "setSilhouetteAaEnabled", enabled })
+        this.#needsRender = true
+    }
+    get silhouetteAaEnabled(): boolean {
+        return this.#silhouetteAaEnabled
     }
 
     setSelectionMode(mode: SelectionMode): void {
@@ -1621,13 +1649,16 @@ export class SDFRenderer {
         p.viewSettings.previewShading = { ...this.#previewShading }
         p.viewSettings.previewNormalShading = this.#previewNormalShading
         p.viewSettings.rayMarchParams = { ...this.#rayMarchParams }
+        p.viewSettings.upscaleParams = { ...this.#upscaleParams }
         p.viewCenter[0] = this.#viewCenter.x
         p.viewCenter[1] = this.#viewCenter.y
-        const halfRes =
+        const reduceRes =
             !opts?.forceFullResolution &&
             this.#cameraOptimization &&
             this.#controls.isActivelyMoving
-        p.resolutionScale = halfRes ? 0.5 : 1.0
+        // The reduced-res factor is the dev-tools render-scale knob; the worker
+        // then upscales it (FSR1 EASU/RCAS, or browser-bilinear when mode "off").
+        p.resolutionScale = reduceRes ? this.#upscaleParams.renderScale : 1.0
         // Quality reductions during active motion: ray-march cap, beam
         // pre-pass cap, and hit-refinement iterations. Independent of the
         // `cameraOptimization` (halfres) toggle — these are cheaper,
@@ -1660,8 +1691,8 @@ export class SDFRenderer {
 
     #update(time: number): void {
         if (this.#started) requestAnimationFrame((t: number) => this.#update(t))
-        // Re-render when camera stops moving so we transition from half-res to full-res
-        const resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? 0.5 : 1.0
+        // Re-render when camera stops moving so we transition from reduced-res to full-res
+        const resolutionScale = this.#cameraOptimization && this.#controls.isActivelyMoving ? this.#upscaleParams.renderScale : 1.0
         if (resolutionScale !== this.#lastRenderedResolutionScale) this.#needsRender = true
 
         // Motion transition: clear hover when movement starts, defer replay until after settled frame is published

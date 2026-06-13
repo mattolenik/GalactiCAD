@@ -4,3 +4,6 @@
 [submodule "docs/reference_impl/flexicubes"]
 	path = docs/reference_impl/flexicubes
 	url = https://github.com/nv-tlabs/FlexiCubes.git
+[submodule "docs/reference_impl/fidelityfx-sdk"]
+	path = docs/reference_impl/fidelityfx-sdk
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK.git

@@ -57,6 +57,8 @@ export const DEFAULT_APP_DEVTOOLS_STATE: Record<string, JSONValue> = {
     showFps: true,
     meshViewerEnabled: false,
     meshSimplifyOnExport: false,
+    // FSR1 spatial upscale (see DEFAULT_UPSCALE_PARAMS in render-worker-protocol).
+    upscaleParams: { renderScale: 0.5, mode: "easu-rcas", sharpness: 0.2 },
 }
 
 export interface DevToolsPersistable extends HTMLElement {

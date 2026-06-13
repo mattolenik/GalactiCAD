@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, unaryDistanceIsoResult } from "../base.mjs"
 import { aabbExpand, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
@@ -36,40 +36,21 @@ export class Offset extends UnaryOperator {
         const funcName = `Offset${this.id}`
         const varName = decapitalize(funcName)
         const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-
-        if (childResult.prelude) {
-            const accVar = childResult.varName!
-            const prelude = childResult.prelude + `${accVar} = sdfOffsetEx(${accVar}, ${amt});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfOffsetEx(${childResult.text}, ${amt})` }
+        return unaryDistanceIsoResult(this, funcName, varName, childResult, c => `sdfOffsetEx(${c}, ${amt})`, "selectSDF")
     }
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
         const funcName = `Offset${this.id}`
         const varName = `${decapitalize(funcName)}_f`
         const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-
-        if (childResult.prelude) {
-            const accVar = childResult.varName!
-            const prelude = childResult.prelude + `${accVar} = sdfOffsetFast(${accVar}, ${amt});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfOffsetFast(${childResult.text}, ${amt})` }
+        return unaryDistanceIsoResult(this, funcName, varName, childResult, c => `sdfOffsetFast(${c}, ${amt})`, "selectFast")
     }
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
         const funcName = `Offset${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        if (childResult.prelude) {
-            const accVar = childResult.varName!
-            const prelude = childResult.prelude + `${accVar} = sdfOffsetMid(${accVar}, p, ${amt});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-        return { funcName, varName, text: `sdfOffsetMid(${childResult.text}, p, ${amt})` }
+        return unaryDistanceIsoResult(this, funcName, varName, childResult, c => `sdfOffsetMid(${c}, p, ${amt})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

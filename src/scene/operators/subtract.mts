@@ -1,9 +1,8 @@
 import {
     BinaryOperator,
+    binaryIsoCompileResult,
     CompileResult,
-    binaryOpCompileResult,
     fluent,
-    mergeChildPreludes,
     Node,
     type BlendMode,
     type IntersectionType,
@@ -118,17 +117,15 @@ export class Subtract extends BinaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
-        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return binaryOpCompileResult(varName, this._diffEx(lText, rText), prelude)
+        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => this._diffEx(l, r), "selectSDF")
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
-        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return binaryOpCompileResult(varName, this._diffFast(lText, rText), prelude)
+        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => this._diffFast(l, r), "selectFast")
     }
 
     protected override computeBoundsCore(): AABB | null {
@@ -137,9 +134,8 @@ export class Subtract extends BinaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
-        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return binaryOpCompileResult(varName, this._diffMid(lText, rText), prelude)
+        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => this._diffMid(l, r), "selectMid")
     }
 
     override appendStructuralFingerprint(parts: string[]): void {

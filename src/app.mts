@@ -45,6 +45,7 @@ import cameraViewBottomIcon from "./assets/camera-view-bottom.svg"
 import toolbarCameraViewsIcon from "./assets/toolbar-camera-views.svg"
 import toolbarXrayIcon from "./assets/toolbar-xray.svg"
 import toolbarPreviewNormalIcon from "./assets/toolbar-preview-normal.svg"
+import toolbarIsolateIcon from "./assets/toolbar-isolate.svg"
 import toolbarFullscreenEnterIcon from "./assets/toolbar-fullscreen-enter.svg"
 import toolbarFullscreenExitIcon from "./assets/toolbar-fullscreen-exit.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
@@ -155,10 +156,15 @@ class App {
     #toolbarRefs!: {
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton
         previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton
+        isolateToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
         exportBtn: import("./components/toolbar.mjs").ToolbarButton
         devTools: DevToolsPanel
     }
+    /** Most-recently-isolated node id (session only); re-isolated when the toggle is turned on off a shape. */
+    #lastIsolatedNodeId = 0
+    /** Editor context key gating the "View Isolated" menu item (true when the caret is over an isolatable symbol). */
+    #overIsolatableKey?: monaco.editor.IContextKey<boolean>
 
     async build() {
         let src = ""
@@ -204,6 +210,17 @@ class App {
 
             // Update color indicators for all matched shapes
             this.#updateColorIndicators()
+
+            // Auto-clear isolation if its target no longer exists (a structural edit
+            // renumbered/removed it). Parameter-only edits keep node ids stable.
+            if (this.renderer.isolateNodeId !== 0 && !this.#sceneNodeMap.has(this.renderer.isolateNodeId)) {
+                this.#applyIsolation(0)
+            }
+            // Refresh the "over isolatable" context key against the rebuilt source map.
+            const isoPos = this.editor.getPosition()
+            this.#overIsolatableKey?.set(
+                isoPos ? this.#findIsolatableNodeIdAtPosition(isoPos.lineNumber, isoPos.column) !== null : false,
+            )
 
             this.renderer.startLoop()
             this.#scheduleMeshUpdate(src)
@@ -305,6 +322,45 @@ class App {
      */
     #findNodeIdAtPosition(line: number, column: number): number | null {
         return findInnermostAtPosition(this.#sourceLocationMap.entries(), line, column)
+    }
+
+    /**
+     * Find the isolatable scene node at an editor position: the innermost node whose
+     * colored decorator word contains the caret. Excludes `skipColorIndicator` spans
+     * (fluent methods like `.rotate(…)`), so variables, fluent methods, and whitespace
+     * return null — only actual geometry (primitives/operators) is isolatable.
+     */
+    #findIsolatableNodeIdAtPosition(line: number, column: number): number | null {
+        const entries = [...this.#sourceLocationMap.entries()].filter(([, loc]) => !loc.skipColorIndicator)
+        return findInnermostAtPosition(entries, line, column)
+    }
+
+    /**
+     * Resolve the node the Isolate toggle should target, in priority order:
+     *   1. the object currently selected (outlined) in the 3D preview,
+     *   2. the isolatable symbol under the editor caret,
+     *   3. the most-recently-isolated node (if it still exists).
+     * Returns 0 when nothing applies. Never moves the editor caret/selection.
+     */
+    #resolveIsolationTarget(): number {
+        const selected = this.renderer.selectedObjectIds.find(id => this.#sceneNodeMap.has(id))
+        if (selected) return selected
+        const pos = this.editor.getPosition()
+        const atCursor = pos ? this.#findIsolatableNodeIdAtPosition(pos.lineNumber, pos.column) : null
+        if (atCursor) return atCursor
+        if (this.#lastIsolatedNodeId && this.#sceneNodeMap.has(this.#lastIsolatedNodeId)) return this.#lastIsolatedNodeId
+        return 0
+    }
+
+    /**
+     * Apply "View Isolated": render only `nodeId`'s subtree (0 = full scene). Pure
+     * render-time state on the renderer — no rebuild. Never moves the editor caret.
+     */
+    #applyIsolation(nodeId: number): void {
+        this.renderer.isolateNodeId = nodeId
+        this.#toolbarRefs.isolateToggle.checked = nodeId !== 0
+        if (nodeId !== 0) this.#lastIsolatedNodeId = nodeId
+        this.renderer.requestRender()
     }
 
     /**
@@ -599,13 +655,13 @@ class App {
         await this.#restoreOrShowWelcome()
         this.renderer?.dispose()
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect, () => this.#tabs.active)
-        const { xrayCheckbox, previewNormalShadingToggle, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
+        const { xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
         try {
             await this.renderer
                 .ready()
             this.renderer.setSelectionStyles(getSelectionStylesForTheme(this.#effectiveTheme))
             this.renderer.setShapePalette(getShapePalette(this.#effectiveTheme))
-            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, previewNormalShadingToggle, selectionModeRadio)
+            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio)
             this.#updateViewCenter?.()
             if (isInitial) {
                 this.#wireEditorAndTabs()
@@ -726,6 +782,28 @@ class App {
                 const pos = ed.getPosition()
                 if (!pos) return
                 this.#tryOpenPolygonEditor(pos.lineNumber, pos.column)
+            },
+        })
+
+        // "View Isolated": shown only when the caret is over an isolatable symbol.
+        // Right-click moves the caret first, so the context key is fresh when the menu opens.
+        this.#overIsolatableKey = this.editor.createContextKey<boolean>("galacticad.overIsolatable", false)
+        this.editor.onDidChangeCursorPosition((e) => {
+            this.#overIsolatableKey?.set(
+                this.#findIsolatableNodeIdAtPosition(e.position.lineNumber, e.position.column) !== null,
+            )
+        })
+        this.editor.addAction({
+            id: "galacticad.viewIsolated",
+            label: "View Isolated",
+            contextMenuGroupId: "0_shapes",
+            contextMenuOrder: 0.5,
+            precondition: "galacticad.overIsolatable",
+            run: (ed) => {
+                const pos = ed.getPosition()
+                if (!pos) return
+                const id = this.#findIsolatableNodeIdAtPosition(pos.lineNumber, pos.column)
+                if (id) this.#applyIsolation(id)
             },
         })
 
@@ -899,6 +977,11 @@ class App {
             "Toggle normal shading",
             false
         )
+        const isolateToggle = toolbar.addToggleButton(
+            toolbarIsolateIcon,
+            "Isolate view: show only the shape under the cursor and its children",
+            false
+        )
         toolbar.addSeparator()
         const selectionModeRadio = toolbar.addRadioGroup(
             [
@@ -931,7 +1014,7 @@ class App {
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)
         this.#viewports.appendChild(devTools)
 
-        return { xrayCheckbox, previewNormalShadingToggle, selectionModeRadio, exportBtn, devTools }
+        return { xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, exportBtn, devTools }
     }
 
     #setupLayoutObservers(editorContainer: HTMLDivElement) {
@@ -997,6 +1080,7 @@ class App {
         devTools: DevToolsPanel,
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton,
         previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
+        isolateToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
     ) {
         preview.setThemeMode(this.#settings.getGlobal().app.theme)
@@ -1163,6 +1247,23 @@ class App {
         previewNormalShadingToggle.checked = this.renderer.previewNormalShading
         previewNormalShadingToggle.onChange = (enabled) => {
             this.renderer.previewNormalShading = enabled
+        }
+
+        // Isolation is render-time state on a fresh renderer; reset the toggle each (re)wire.
+        isolateToggle.checked = false
+        this.renderer.isolateNodeId = 0
+        isolateToggle.onChange = (enabled) => {
+            if (!enabled) {
+                this.#applyIsolation(0)
+                return
+            }
+            const target = this.#resolveIsolationTarget()
+            if (target) {
+                this.#applyIsolation(target)
+            } else {
+                // Nothing selected/under the caret and no prior target: leave the toggle off.
+                isolateToggle.checked = false
+            }
         }
 
         selectionModeRadio.value = this.renderer.selectionMode

@@ -1,5 +1,6 @@
 import { Vec3 } from "../vecmat/vector.mjs"
 import type { PreviewParamsOut } from "./scene-params.mjs"
+import { compileParamMode } from "./scene-params.mjs"
 import type { AABB } from "./aabb.mjs"
 import { aabbUnion } from "./aabb.mjs"
 import type { ContourBuffer } from "./contour-buffer.mjs"
@@ -459,6 +460,138 @@ export function binaryOpCompileResult(
         }
     }
     return { varName, text: expr, prelude: undefined }
+}
+
+// ---------------------------------------------------------------------------
+// Isolate-view ("View Isolated") pass-through codegen.
+//
+// The preview SDF carries scaffolding so that, at render time, the `isolateId`
+// uniform (a node id; 0 = off) can render just that node's subtree. Each
+// operator branchlessly chooses between its normal result and passing through
+// the child subtree that contains the isolate target. Walking up from the
+// isolated node, every ancestor forwards its on-path child, so the function
+// returns exactly the isolated node's own SDF.
+//
+// Subtree membership is a compile-time-constant range check on the uniform:
+// ids are assigned pre-order DFS, so a subtree rooted at id k with n nodes
+// occupies [k, k+n-1]. Conditions are emitted ONLY in preview-mode compiles —
+// the storage/export shaders have no `viewSettings` binding.
+// ---------------------------------------------------------------------------
+
+export type IsoSelectFn = "selectSDF" | "selectFast" | "selectMid"
+
+/** True when the current compile pass should emit isolate pass-through scaffolding. */
+export function isoCompileEnabled(): boolean {
+    return compileParamMode === "preview"
+}
+
+/** Preview-only WGSL bool: is the isolate target inside `node`'s subtree? */
+export function isoCondWgsl(node: Node): string {
+    const lo = node.id
+    const hi = node.id + node.getAllDescendantIds().length - 1 // contiguous pre-order ids
+    return `(viewSettings.isolateId >= ${lo}u && viewSettings.isolateId <= ${hi}u)`
+}
+
+/**
+ * Build the final CompileResult for a binary operator, injecting isolate
+ * pass-through in preview mode. `combine(l, r)` builds the normal op expression
+ * from two child expression strings; `selectFn` is the variant's SDFResult
+ * selector. Children are materialized into `let`s first so each is referenced
+ * once, avoiding exponential expansion with tree depth.
+ */
+export function binaryIsoCompileResult(
+    op: BinaryOperator,
+    varName: string,
+    lhResult: CompileResult,
+    rhResult: CompileResult,
+    combine: (l: string, r: string) => string,
+    selectFn: IsoSelectFn,
+): CompileResult {
+    const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
+    if (!isoCompileEnabled()) {
+        return binaryOpCompileResult(varName, combine(lText, rText), prelude)
+    }
+    let pre = prelude ?? ""
+    const lVar = lhResult.prelude ? lText : `${varName}_il`
+    const rVar = rhResult.prelude ? rText : `${varName}_ir`
+    if (!lhResult.prelude) pre += `let ${lVar} = ${lText};\n`
+    if (!rhResult.prelude) pre += `let ${rVar} = ${rText};\n`
+    let expr = combine(lVar, rVar)
+    expr = `${selectFn}(${expr}, ${lVar}, ${isoCondWgsl(op.lh)})`
+    expr = `${selectFn}(${expr}, ${rVar}, ${isoCondWgsl(op.rh)})`
+    return binaryOpCompileResult(varName, expr, pre || undefined)
+}
+
+/**
+ * Final CompileResult for a unary distance-modifier (shell/offset) that wraps
+ * its child's distance via `wrap(childExpr)`. Preview pass-through (target
+ * inside the child subtree): return the child unmodified.
+ */
+export function unaryDistanceIsoResult(
+    op: UnaryOperator,
+    funcName: string,
+    varName: string,
+    childResult: CompileResult,
+    wrap: (childExpr: string) => string,
+    selectFn: IsoSelectFn,
+): CompileResult {
+    const cond = isoCompileEnabled() ? isoCondWgsl(op.arg) : null
+    if (childResult.prelude) {
+        const accVar = childResult.varName!
+        const wrapped = wrap(accVar)
+        const assign = cond ? `${selectFn}(${wrapped}, ${accVar}, ${cond})` : wrapped
+        return { funcName, varName: accVar, text: accVar, prelude: childResult.prelude + `${accVar} = ${assign};\n` }
+    }
+    if (!cond) {
+        return { funcName, varName, text: wrap(childResult.text!) }
+    }
+    const cVar = `${varName}_ic`
+    // `var` (not `let`): a parent wrapper op may mutate this result var in place.
+    const prelude = `let ${cVar} = ${childResult.text};\nvar ${varName} = ${selectFn}(${wrap(cVar)}, ${cVar}, ${cond});\n`
+    return { funcName, varName, text: varName, prelude }
+}
+
+/**
+ * Final CompileResult for a coordinate-warp unary operator. Normal behavior:
+ * evaluate the child at `warpedP` (the WGSL the child's `p` is substituted with)
+ * then apply `wrapResult` to the child's result. Preview pass-through (target
+ * inside the child subtree): evaluate the child at the ORIGINAL `p` and skip the
+ * wrapper. `wrapResult` is the identity for translate/elongate (no post wrapper).
+ */
+export function warpIsoResult(
+    op: UnaryOperator,
+    funcName: string,
+    varName: string,
+    childResult: CompileResult,
+    warpedP: string,
+    wrapResult: (childExpr: string) => string,
+    selectFn: IsoSelectFn,
+): CompileResult {
+    const cond = isoCompileEnabled() ? isoCondWgsl(op.arg) : null
+    const pVar = `pIso${op.id}`
+    const subP = cond ? pVar : `(${warpedP})`
+    const sub = (s: string) => s.replace(/\bp\b/g, subP)
+    const pDecl = cond ? `let ${pVar} = select(${warpedP}, p, ${cond});\n` : ""
+    if (childResult.prelude) {
+        const accVar = childResult.varName!
+        const childPre = sub(childResult.prelude)
+        const wrapped = wrapResult(accVar)
+        let tail = ""
+        if (wrapped !== accVar) {
+            tail = `${accVar} = ${cond ? `${selectFn}(${wrapped}, ${accVar}, ${cond})` : wrapped};\n`
+        }
+        return { funcName, varName: accVar, text: accVar, prelude: pDecl + childPre + tail }
+    }
+    const childAt = sub(childResult.text!)
+    if (!cond) {
+        return { funcName, varName, text: wrapResult(childAt) }
+    }
+    const cVar = `${varName}_ic`
+    const wrapped = wrapResult(cVar)
+    const resultExpr = wrapped === cVar ? cVar : `${selectFn}(${wrapped}, ${cVar}, ${cond})`
+    // `var` (not `let`): a parent wrapper op may mutate this result var in place.
+    const prelude = `${pDecl}let ${cVar} = ${childAt};\nvar ${varName} = ${resultExpr};\n`
+    return { funcName, varName, text: varName, prelude }
 }
 
 /** Default position when pos is omitted from primitive/operator options. */

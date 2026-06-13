@@ -265,7 +265,7 @@ export class RenderWorkerCore {
     #fpsFrameCount = 0
     #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
-    #viewSettingsBuf = new Uint32Array(4)
+    #viewSettingsBuf = new Uint32Array(5)
     #selDataBuf = new Uint32Array(1024)
     // OutlineSettings CPU mirrors removed — selection rendering moved
     // inline into preview.wgsl, so the post-process pass has no per-frame
@@ -280,7 +280,7 @@ export class RenderWorkerCore {
     #camTransform = new Mat4x4f(new Float32Array(16))
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
     #cameraCache = new ArrayBuffer(256)
-    #viewSettingsCache = new ArrayBuffer(16)
+    #viewSettingsCache = new ArrayBuffer(20)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
@@ -1279,6 +1279,7 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // matches `debugHeatmap` in preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
+        this.#viewSettingsBuf[4] = viewSettings.isolateId
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
@@ -1354,6 +1355,9 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                        // viewSettings (binding 6): the fast SDF now reads viewSettings.isolateId for
+                        // isolate-view pass-through, so the beam pre-pass shader statically references it.
+                        { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                         { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
@@ -1559,6 +1563,7 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // debugHeatmap; see preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
+        this.#viewSettingsBuf[4] = u32[b4 + L.O_ISOLATE_ID / 4]
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         const rmBase = slotBase + L.O_RAY_MARCH_PARAMS
@@ -1650,6 +1655,9 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                        // viewSettings (binding 6): the fast SDF now reads viewSettings.isolateId for
+                        // isolate-view pass-through, so the beam pre-pass shader statically references it.
+                        { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                         { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
@@ -2095,6 +2103,7 @@ export class RenderWorkerCore {
                 viewSettings: {
                     xrayMode: false,
                     beamEnabled: false,
+                    isolateId: 0,
                     selectionMode: 0,
                     outlineMode: 0,
                     outlineThickness: 1,
@@ -2228,6 +2237,7 @@ export class RenderWorkerCore {
                 viewSettings: {
                     xrayMode: false,
                     beamEnabled: false,
+                    isolateId: msg.isolateId ?? 0,
                     selectionMode: 0,
                     outlineMode: 0,
                     outlineThickness: 1,
@@ -2462,6 +2472,9 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                        // viewSettings (binding 6): the fast SDF now reads viewSettings.isolateId for
+                        // isolate-view pass-through, so the beam pre-pass shader statically references it.
+                        { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                         { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
@@ -2708,7 +2721,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(ub.colorPalette, 0, alignedData)
 
         ub.viewSettings = this.#device.createBuffer({
-            size: 16,
+            size: 32, // 5 u32 (20 B) rounded up to 16-byte alignment
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "viewSettings",
         })

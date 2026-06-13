@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
+import { BinaryOperator, binaryIsoCompileResult, CompileResult, fluent, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
@@ -44,32 +44,29 @@ export class Tongue extends BinaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
-        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
         const o = this.paramOffset
         const ra = f32Wgsl(o, this.previewF32Slot)
         const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        return binaryOpCompileResult(varName, `fOpTongueEx(${lText}, ${rText}, ${ra}, ${rb})`, prelude)
+        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => `fOpTongueEx(${l}, ${r}, ${ra}, ${rb})`, "selectSDF")
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
-        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
         const o = this.paramOffset
         const ra = f32Wgsl(o, this.previewF32Slot)
         const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        return binaryOpCompileResult(varName, `fOpTongueFast(${lText}, ${rText}, ${ra}, ${rb})`, prelude)
+        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => `fOpTongueFast(${l}, ${r}, ${ra}, ${rb})`, "selectFast")
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
-        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `tongue_${lhResult.varName}__${rhResult.varName}`
         const o = this.paramOffset
         const ra = f32Wgsl(o, this.previewF32Slot)
         const rb = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        return binaryOpCompileResult(varName, `fOpTongueMid(${lText}, ${rText}, ${ra}, ${rb})`, prelude)
+        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => `fOpTongueMid(${l}, ${r}, ${ra}, ${rb})`, "selectMid")
     }
 }
 

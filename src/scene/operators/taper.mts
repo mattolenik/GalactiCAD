@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST, warpIsoResult } from "../base.mjs"
 import type { AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
@@ -35,58 +35,27 @@ export class Taper extends UnaryOperator {
 
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
-        const childText = childResult.text!
         const o = this.paramOffset
         const ratio = f32Wgsl(o, this.previewF32Slot)
         const height = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
         const funcName = `Taper${this.id}`
-        const varName = decapitalize(funcName)
-
-        if (childResult.prelude) {
-            const taperedPrelude = childResult.prelude.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
-            const accVar = childResult.varName!
-            const prelude = taperedPrelude + `${accVar} = sdfTaperNormal(${accVar}, p, ${ratio}, ${height});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfTaperNormal(${taperedChild}, p, ${ratio}, ${height})` }
+        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `taperPoint(p, ${ratio}, ${height})`, c => `sdfTaperNormal(${c}, p, ${ratio}, ${height})`, "selectSDF")
     }
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
-        const childText = childResult.text!
         const o = this.paramOffset
         const ratio = f32Wgsl(o, this.previewF32Slot)
         const height = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
         const funcName = `Taper${this.id}`
-        const varName = `${decapitalize(funcName)}_f`
-
-        if (childResult.prelude) {
-            const taperedPrelude = childResult.prelude.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
-            const accVar = childResult.varName!
-            const prelude = taperedPrelude + `${accVar} = sdfTaperFast(${accVar}, p, ${ratio}, ${height});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfTaperFast(${taperedChild}, p, ${ratio}, ${height})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_f`, childResult, `taperPoint(p, ${ratio}, ${height})`, c => `sdfTaperFast(${c}, p, ${ratio}, ${height})`, "selectFast")
     }
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
-        const childText = childResult.text!
         const o = this.paramOffset
         const ratio = f32Wgsl(o, this.previewF32Slot)
         const height = f32Wgsl(o + 1, this.previewF32Slot + 1)
-        const taperedChild = childText.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
         const funcName = `Taper${this.id}`
-        const varName = `${decapitalize(funcName)}_m`
-        if (childResult.prelude) {
-            const taperedPrelude = childResult.prelude.replace(/\bp\b/g, `taperPoint(p, ${ratio}, ${height})`)
-            const accVar = childResult.varName!
-            const prelude = taperedPrelude + `${accVar} = sdfTaperNormalMid(${accVar}, p, ${ratio}, ${height});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-        return { funcName, varName, text: `sdfTaperNormalMid(${taperedChild}, p, ${ratio}, ${height})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `taperPoint(p, ${ratio}, ${height})`, c => `sdfTaperNormalMid(${c}, p, ${ratio}, ${height})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

@@ -78,13 +78,16 @@ const S_O_RAY_MARCH_PARAMS = 6948
 // FSR1 spatial-upscale mode (consumed on the reduced-res motion frames + the
 // full-res FXAA path). `resolutionScale` above already carries the render scale.
 const S_O_UPSCALE_MODE = 6980 // u32: 0 = off (bilinear), 1 = EASU, 2 = EASU+FXAA
+// Isolate-view target node id (u32; 0 = full scene). A dedicated slot since the id
+// range (thousands) doesn't fit the packed view-settings bitfield.
+const S_O_ISOLATE_ID = 6984
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16
 const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 
 /** Size of one payload slot in bytes */
-export const SLOT_SIZE = 6984
+export const SLOT_SIZE = 6988
 
 /** Total buffer size in bytes */
 export const SHARED_RENDER_BUFFER_SIZE = HEADER_SIZE + 2 * SLOT_SIZE
@@ -142,6 +145,7 @@ export const SAB_LAYOUT = {
     O_RESOLUTION_SCALE: S_O_RESOLUTION_SCALE,
     O_RAY_MARCH_PARAMS: S_O_RAY_MARCH_PARAMS,
     O_UPSCALE_MODE: S_O_UPSCALE_MODE,
+    O_ISOLATE_ID: S_O_ISOLATE_ID,
     SELECTED_OBJECT_IDS_SIZE,
     SELECTED_EDGES_TOTAL: EDGES_HEADER_SIZE + EDGES_DATA_SIZE,
 } as const
@@ -224,6 +228,7 @@ export function writeRenderPayloadSlot(
         (vs.outlineMode << 5) |
         (vs.previewNormalShading ? 128 : 0)
     u32[b4 + S_O_VIEW_SETTINGS / 4] = packed
+    u32[b4 + S_O_ISOLATE_ID / 4] = vs.isolateId
     u32[b4 + S_O_OUTLINE_THICKNESS / 4] = vs.outlineThickness
     f32.set(vs.outlineColor, base / 4 + S_O_OUTLINE_COLOR / 4)
     const ss = vs.selectionStyles
@@ -336,6 +341,7 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
     const viewSettings: RenderViewSettings = {
         xrayMode: (packed & 1) !== 0,
         beamEnabled: (packed & 2) !== 0,
+        isolateId: u32[b4 + S_O_ISOLATE_ID / 4],
         selectionMode: (packed >> 2) & 7,
         outlineMode: (packed >> 5) & 3,
         outlineThickness: u32[b4 + S_O_OUTLINE_THICKNESS / 4],

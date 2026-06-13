@@ -1,4 +1,4 @@
-import { BinaryOperator, CompileResult, binaryOpCompileResult, fluent, mergeChildPreludes, Node } from "../base.mjs"
+import { BinaryOperator, binaryIsoCompileResult, CompileResult, fluent, Node } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
 import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
@@ -39,26 +39,23 @@ export class Seam extends BinaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
-        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
         const sr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return binaryOpCompileResult(varName, `sdfSeamEx(${lText}, ${rText}, ${sr})`, prelude)
+        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => `sdfSeamEx(${l}, ${r}, ${sr})`, "selectSDF")
     }
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
-        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
         const sr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return binaryOpCompileResult(varName, `sdfSeamFast(${lText}, ${rText}, ${sr})`, prelude)
+        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => `sdfSeamFast(${l}, ${r}, ${sr})`, "selectFast")
     }
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
-        const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
         const varName = `seam_${lhResult.varName}__${rhResult.varName}`
         const sr = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        return binaryOpCompileResult(varName, `sdfSeamMid(${lText}, ${rText}, ${sr})`, prelude)
+        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => `sdfSeamMid(${l}, ${r}, ${sr})`, "selectMid")
     }
 }
 

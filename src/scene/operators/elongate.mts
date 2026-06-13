@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, warpIsoResult } from "../base.mjs"
 import { aabbExpandVec, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { vec3Wgsl } from "../scene-params.mjs"
@@ -44,48 +44,21 @@ export class Elongate extends UnaryOperator {
 
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
-        const childText = childResult.text!
         const h = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
-        const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
         const funcName = `Elongate${this.id}`
-        const varName = decapitalize(funcName)
-
-        if (childResult.prelude) {
-            const elongatedPrelude = childResult.prelude.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
-            return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: elongatedPrelude }
-        }
-
-        return { funcName, varName, text: elongatedChild }
+        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `elongatePoint(p, ${h})`, c => c, "selectSDF")
     }
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
-        const childText = childResult.text!
         const h = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
-        const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
         const funcName = `Elongate${this.id}`
-        const varName = `${decapitalize(funcName)}_f`
-
-        if (childResult.prelude) {
-            const elongatedPrelude = childResult.prelude.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
-            return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: elongatedPrelude }
-        }
-
-        return { funcName, varName, text: elongatedChild }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_f`, childResult, `elongatePoint(p, ${h})`, c => c, "selectFast")
     }
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
-        const childText = childResult.text!
         const h = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
-        const elongatedChild = childText.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
         const funcName = `Elongate${this.id}`
-        const varName = `${decapitalize(funcName)}_m`
-        if (childResult.prelude) {
-            const elongatedPrelude = childResult.prelude.replace(/\bp\b/g, `elongatePoint(p, ${h})`)
-            const accVar = childResult.varName!
-            const prelude = elongatedPrelude + `${accVar} = sdfMidStripFeatures(${accVar});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-        return { funcName, varName, text: `sdfMidStripFeatures(${elongatedChild})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `elongatePoint(p, ${h})`, c => `sdfMidStripFeatures(${c})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

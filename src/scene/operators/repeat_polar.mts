@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST, warpIsoResult } from "../base.mjs"
 import type { AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
@@ -48,54 +48,23 @@ export class RepeatPolar extends UnaryOperator {
 
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
-        const childText = childResult.text!
         const rep = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const warped = childText.replace(/\bp\b/g, `repeatPolarXZPoint(p, ${rep})`)
         const funcName = `RepeatPolar${this.id}`
-        const varName = decapitalize(funcName)
-
-        if (childResult.prelude) {
-            const warpedPrelude = childResult.prelude.replace(/\bp\b/g, `repeatPolarXZPoint(p, ${rep})`)
-            const accVar = childResult.varName!
-            const prelude = warpedPrelude + `${accVar} = sdfRepeatPolarXZNormal(${accVar}, p, ${rep});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfRepeatPolarXZNormal(${warped}, p, ${rep})` }
+        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `repeatPolarXZPoint(p, ${rep})`, c => `sdfRepeatPolarXZNormal(${c}, p, ${rep})`, "selectSDF")
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
-        const childText = childResult.text!
         const rep = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const warped = childText.replace(/\bp\b/g, `repeatPolarXZPoint(p, ${rep})`)
         const funcName = `RepeatPolar${this.id}`
-        const varName = `${decapitalize(funcName)}_f`
-
-        if (childResult.prelude) {
-            const warpedPrelude = childResult.prelude.replace(/\bp\b/g, `repeatPolarXZPoint(p, ${rep})`)
-            const accVar = childResult.varName!
-            const prelude = warpedPrelude + `${accVar} = sdfRepeatPolarXZFast(${accVar}, p, ${rep});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfRepeatPolarXZFast(${warped}, p, ${rep})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_f`, childResult, `repeatPolarXZPoint(p, ${rep})`, c => `sdfRepeatPolarXZFast(${c}, p, ${rep})`, "selectFast")
     }
 
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
-        const childText = childResult.text!
         const rep = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const warped = childText.replace(/\bp\b/g, `repeatPolarXZPoint(p, ${rep})`)
         const funcName = `RepeatPolar${this.id}`
-        const varName = `${decapitalize(funcName)}_m`
-        if (childResult.prelude) {
-            const warpedPrelude = childResult.prelude.replace(/\bp\b/g, `repeatPolarXZPoint(p, ${rep})`)
-            const accVar = childResult.varName!
-            const prelude = warpedPrelude + `${accVar} = sdfRepeatPolarXZNormalMid(${accVar}, p, ${rep});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-        return { funcName, varName, text: `sdfRepeatPolarXZNormalMid(${warped}, p, ${rep})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `repeatPolarXZPoint(p, ${rep})`, c => `sdfRepeatPolarXZNormalMid(${c}, p, ${rep})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

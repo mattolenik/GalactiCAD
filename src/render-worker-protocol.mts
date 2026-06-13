@@ -217,6 +217,8 @@ export type MainToWorkerMessage =
           height: number
           requestId?: number
           documentName?: string
+          /** Isolate-view target node id for headless verification (0 = full scene). */
+          isolateId?: number
           cameraState: CameraState
           viewTransform: Float32Array
           cameraPosition: [number, number, number]
@@ -384,6 +386,8 @@ export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
 export interface RenderViewSettings {
     xrayMode: boolean
     beamEnabled: boolean
+    /** Isolate-view target node id. 0 = no isolation (render full scene). */
+    isolateId: number
     selectionMode: number
     outlineMode: number
     outlineThickness: number

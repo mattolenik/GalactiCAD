@@ -76,6 +76,7 @@ struct ViewSettings {
     debugHeatmap: u32,   // 0 = normal shading, 1 = render per-pixel sceneSDF_fast call count as a turbo-like color ramp
     beamEnabled: u32,    // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
     selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=auto
+    isolateId: u32,      // 0 = no isolation; else render only this node id's subtree (pass-through select per operator)
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 

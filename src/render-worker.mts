@@ -201,9 +201,6 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "setStepHeatmapEnabled":
             if (core) core.setStepHeatmapEnabled(msg.enabled)
             break
-        case "setSilhouetteAaEnabled":
-            if (core) core.setSilhouetteAaEnabled(msg.enabled)
-            break
         case "setDebugLogModules":
             applyDebugLogModules(msg.modules)
             break

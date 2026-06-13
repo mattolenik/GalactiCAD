@@ -231,7 +231,6 @@ export type MainToWorkerMessage =
     | { type: "setBvhEnabled"; enabled: boolean }
     | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
     | { type: "setStepHeatmapEnabled"; enabled: boolean }
-    | { type: "setSilhouetteAaEnabled"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
 
 export interface RenderSelectionState {

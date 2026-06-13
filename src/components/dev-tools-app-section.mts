@@ -46,7 +46,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #bvhOptimization$: BehaviorSubject<boolean>
     #fgOverlay$: BehaviorSubject<boolean>
     #stepHeatmap$: BehaviorSubject<boolean>
-    #silhouetteAa$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
     #upscaleState: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
@@ -61,7 +60,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onBvhOptimizationChange?: (enabled: boolean) => void
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
-    onSilhouetteAaChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
 
@@ -121,14 +119,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#stepHeatmap$.next(enabled)
     }
 
-    get silhouetteAa(): boolean {
-        return this.#silhouetteAa$.value
-    }
-
-    set silhouetteAa(enabled: boolean) {
-        this.#silhouetteAa$.next(enabled)
-    }
-
     get meshViewer(): boolean {
         return this.#meshViewer$.value
     }
@@ -175,8 +165,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         // Debug-only; not persisted across sessions. Defaults off so the user
         // gets normal shading on startup.
         this.#stepHeatmap$ = new BehaviorSubject(false)
-        // Quality feature, default on; pushed from the renderer on load (app.mts).
-        this.#silhouetteAa$ = new BehaviorSubject(true)
 
         const persist = () => {
             if (this.#applying) return
@@ -286,12 +274,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#subscriptions.push(connectCheckbox(stepHeatmapCb, this.#stepHeatmap$))
         this.#subscriptions.push(
             this.#stepHeatmap$.pipe(skip(1)).subscribe(v => this.onStepHeatmapChange?.(v)),
-        )
-
-        const silhouetteAaCb = this.#addCheckbox(perfBox, "Silhouette AA", this.#silhouetteAa$.value)
-        this.#subscriptions.push(connectCheckbox(silhouetteAaCb, this.#silhouetteAa$))
-        this.#subscriptions.push(
-            this.#silhouetteAa$.pipe(skip(1)).subscribe(v => this.onSilhouetteAaChange?.(v)),
         )
 
         const rayMarchKnobs: { key: keyof RayMarchParams; label: string; min: number; max: number; step: number }[] = [

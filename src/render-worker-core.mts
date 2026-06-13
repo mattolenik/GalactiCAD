@@ -243,8 +243,6 @@ export class RenderWorkerCore {
      * visualisation, complement to the per-pass timestamp profiler.
      */
     #stepHeatmapEnabled = false
-    /** Analytic silhouette antialiasing (cheap SDF edge coverage). Default on. */
-    #silhouetteAaEnabled = true
     /**
      * Serializes background FeatureGraph builds kicked off from `#doBuild`
      * (the build path no longer awaits them). Each kick chains onto the
@@ -277,7 +275,7 @@ export class RenderWorkerCore {
     #fpsFrameCount = 0
     #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
-    #viewSettingsBuf = new Uint32Array(5)
+    #viewSettingsBuf = new Uint32Array(4)
     #selDataBuf = new Uint32Array(1024)
     // OutlineSettings CPU mirrors removed — selection rendering moved
     // inline into preview.wgsl, so the post-process pass has no per-frame
@@ -292,7 +290,7 @@ export class RenderWorkerCore {
     #camTransform = new Mat4x4f(new Float32Array(16))
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
     #cameraCache = new ArrayBuffer(256)
-    #viewSettingsCache = new ArrayBuffer(20)
+    #viewSettingsCache = new ArrayBuffer(16)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
@@ -598,12 +596,6 @@ export class RenderWorkerCore {
         // Worker-internal state change — SAB hasn't moved, but the rendered
         // output would differ, so the SAB-hash idle skip needs a one-shot
         // override to actually pick this up on the next render kick.
-        this.#forceNextRender = true
-    }
-
-    setSilhouetteAaEnabled(enabled: boolean): void {
-        if (this.#silhouetteAaEnabled === enabled) return
-        this.#silhouetteAaEnabled = enabled
         this.#forceNextRender = true
     }
 
@@ -1309,7 +1301,6 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // matches `debugHeatmap` in preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
-        this.#viewSettingsBuf[4] = this.#silhouetteAaEnabled ? 1 : 0
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
@@ -1593,7 +1584,6 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // debugHeatmap; see preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
-        this.#viewSettingsBuf[4] = this.#silhouetteAaEnabled ? 1 : 0
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         const rmBase = slotBase + L.O_RAY_MARCH_PARAMS
@@ -2780,7 +2770,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(ub.colorPalette, 0, alignedData)
 
         ub.viewSettings = this.#device.createBuffer({
-            size: 32, // 5 u32 (20B) rounded up for uniform binding
+            size: 16,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "viewSettings",
         })

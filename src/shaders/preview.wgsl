@@ -76,7 +76,6 @@ struct ViewSettings {
     debugHeatmap: u32,   // 0 = normal shading, 1 = render per-pixel sceneSDF_fast call count as a turbo-like color ramp
     beamEnabled: u32,    // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
     selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=auto
-    silhouetteAa: u32,   // 1 = analytic silhouette antialiasing (coverage from SDF closest-approach)
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
@@ -544,24 +543,13 @@ fn refineRayHit(origin: vec3f, dir: vec3f, tLo: f32, tHi: f32, stepCount: ptr<fu
 // Raymarch: returns HitData (slim post-hit struct) rather than the full SDFResult.
 // The full SDFResult is only alive transiently inside this function while
 // projecting to HitData; it does not persist into fragmentMain's register file.
-// `minD`/`tMin` report the ray's closest approach to the surface (smallest SDF
-// value seen, and the `t` where it occurred). For a miss this is the analytic
-// distance from the pixel to the silhouette — used for cheap edge antialiasing
-// (see fragmentMain). For a hit they are unused. Tracking costs one min() per
-// step, negligible next to the SDF evaluation already done each step.
-fn raymarch(origin: vec3f, dir: vec3f, t_start: f32, stepCount: ptr<function, u32>, minD: ptr<function, f32>, tMin: ptr<function, f32>) -> HitData {
+fn raymarch(origin: vec3f, dir: vec3f, t_start: f32, stepCount: ptr<function, u32>) -> HitData {
     var t: f32 = t_start;
     var tLastOutside: f32 = -1.0;
-    *minD = 1e30;
-    *tMin = t_start;
     for (var i: i32 = 0; i < rayMarchParams.maxSteps; i = i + 1) {
         let p = origin + t * dir;
         let sr = sceneSDF_fast(p);  // Fast: distance + gradMag + safeStepMul
         *stepCount = *stepCount + 1u;
-        if (sr.d < *minD) {
-            *minD = sr.d;
-            *tMin = t;
-        }
         let step = sr.d * sr.safeStepMul;
         if (sr.d < SURF_DIST) {
             let tLo = select(0.0, tLastOutside, tLastOutside >= 0.0);
@@ -951,9 +939,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     // SDFResult (17 scalars).  The full SDFResult only exists transiently inside
     // those functions; it is projected to HitData before returning, so it never
     // enters fragmentMain's register file.
-    var minD: f32 = 1e30;
-    var tMin: f32 = 0.0;
-    let hit = raymarch(transformedOrigin, transformedDir, t_start, &stepCount, &minD, &tMin);
+    let hit = raymarch(transformedOrigin, transformedDir, t_start, &stepCount);
     let hitPos = transformedOrigin + transformedDir * hit.t;
 
     // Inline selection boundary outline (replaces the old fullscreen outline
@@ -1108,34 +1094,12 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         }
         return heatmapOverlay(vec4f(shadedColor, 1.0), stepCount);
     } else {
-        // Miss pixel — normally fully transparent. Two things can give it
-        // partial coverage, composited premultiplied "over" the background:
-        //   1. Analytic silhouette AA: the ray missed but passed within ~1px of
-        //      a surface (minD small). `minD / wppu` is the pixel's distance to
-        //      the silhouette; convert to coverage and shade the grazing point
-        //      so the edge fades with the object's own color (not a black
-        //      fringe). Costs one extra full SDF + shade, only for the thin
-        //      silhouette band, so it does not scale with the (reduced) area.
-        //   2. Selection outline at selected-object silhouettes (outlineMask).
-        var missRGB = vec3f(0.0);
-        var missA = 0.0;
-        if (viewSettings.silhouetteAa != 0u) {
-            let edgePx = minD / wppu;
-            // Geometric outer coverage: ~0.5 at the silhouette, 0 by ~0.5px out.
-            let coverage = clamp(0.5 - edgePx, 0.0, 1.0);
-            if (coverage > 0.0) {
-                let pGraze = transformedOrigin + transformedDir * tMin;
-                let grazeHit = toHitData(tMin, sceneSDF(pGraze));
-                let grazeSel = f32(selectedObjectIds[grazeHit.id] != 0u);
-                let grazeShade = shadeHit(grazeHit, false, viewDir, pGraze, grazeSel, &stepCount);
-                missRGB = grazeShade.color * coverage; // premultiplied
-                missA = coverage;
-            }
-        }
-        // Selection outline over the (possibly AA'd) silhouette.
-        missRGB = missRGB * (1.0 - outlineMask) + outlineColor * outlineMask;
-        missA = missA * (1.0 - outlineMask) + outlineMask;
-        return heatmapOverlay(vec4f(missRGB, missA), stepCount);
+        // Miss pixel — normally fully transparent. At selection boundaries
+        // (silhouette of a selected object meeting the background) the
+        // outline mask is non-zero, so we draw the outline color with the
+        // mask as alpha so it composites correctly onto the canvas.
+        let missColor = vec4f(outlineColor * outlineMask, outlineMask);
+        return heatmapOverlay(missColor, stepCount);
     }
 }
 

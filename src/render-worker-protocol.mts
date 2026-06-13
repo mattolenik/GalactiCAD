@@ -310,19 +310,18 @@ export const DEFAULT_RAY_MARCH_PARAMS: RayMarchParams = {
  *  - `off`   — no spatial filter; the reduced-res canvas is stretched by the
  *              browser compositor (bilinear). The legacy behavior.
  *  - `easu`  — AMD FSR1 Edge-Adaptive Spatial Upsampling (edge-directed,
- *              much crisper than bilinear), no sharpen pass.
- *  - `easu-rcas` — EASU followed by RCAS (Robust Contrast-Adaptive Sharpening).
- *  - `easu-fxaa` — EASU followed by FXAA (luma post-process AA). Alternative to
- *              RCAS: FXAA *smooths* residual edges (creases + silhouettes) where
- *              RCAS *sharpens*, so they are mutually exclusive.
+ *              much crisper than bilinear), no post pass.
+ *  - `easu-fxaa` — EASU followed by FXAA (luma post-process antialiasing). FXAA
+ *              also runs on full-res frames (still camera / 100% scale), where it
+ *              smooths all edge types (creases + silhouettes).
  */
-export type UpscaleMode = "off" | "easu" | "easu-rcas" | "easu-fxaa"
+export type UpscaleMode = "off" | "easu" | "easu-fxaa"
 
 /**
  * Spatial-upscale (FSR1) tunables, adjustable from dev tools. Only takes effect
  * on the reduced-resolution frames produced while the camera is actively moving
  * (gated by the "Camera halfres" toggle); a still camera always renders at full
- * native resolution where these are a no-op.
+ * native resolution where these are a no-op (except FXAA, which also runs full-res).
  */
 export interface UpscaleParams {
     /**
@@ -333,17 +332,11 @@ export interface UpscaleParams {
     renderScale: number
     /** Upsampling filter. `off` keeps the old browser-bilinear stretch. */
     mode: UpscaleMode
-    /**
-     * RCAS sharpness in "stops": 0 = maximum sharpening, higher = softer
-     * (each stop halves the effect). Only used when `mode === "easu-rcas"`.
-     */
-    sharpness: number
 }
 
 export const DEFAULT_UPSCALE_PARAMS: UpscaleParams = {
     renderScale: 0.5,
-    mode: "easu-rcas",
-    sharpness: 0.2,
+    mode: "easu",
 }
 
 /** Preview fragment shading (SDF raymarch); tunable from dev tools. */
@@ -401,9 +394,9 @@ export interface RenderViewSettings {
     previewNormalShading: boolean
     rayMarchParams?: RayMarchParams
     /**
-     * FSR1 spatial upscale tunables. The worker consumes `mode` + `sharpness`
-     * here; the effective render scale for the frame is carried separately by
-     * the top-level `resolutionScale` (set from `renderScale` during motion).
+     * FSR1 spatial upscale tunables. The worker consumes `mode` here; the
+     * effective render scale for the frame is carried separately by the
+     * top-level `resolutionScale` (set from `renderScale` during motion).
      */
     upscaleParams?: UpscaleParams
 }

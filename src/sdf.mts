@@ -1450,8 +1450,8 @@ export class SDFRenderer {
 
     /**
      * Dev tools: FSR1 spatial-upscale settings (render scale during motion +
-     * upsample mode + sharpness). Persistence lives in the dev-tools section
-     * snapshot (same as ray-march params); not stored here.
+     * upsample mode). Persistence lives in the dev-tools section snapshot (same
+     * as ray-march params); not stored here.
      */
     setUpscaleParams(params: UpscaleParams): void {
         this.#upscaleParams = { ...params }
@@ -1646,7 +1646,7 @@ export class SDFRenderer {
             this.#cameraOptimization &&
             this.#controls.isActivelyMoving
         // The reduced-res factor is the dev-tools render-scale knob; the worker
-        // then upscales it (FSR1 EASU/RCAS, or browser-bilinear when mode "off").
+        // then upscales it (FSR1 EASU, +FXAA, or browser-bilinear when mode "off").
         p.resolutionScale = reduceRes ? this.#upscaleParams.renderScale : 1.0
         // Quality reductions during active motion: ray-march cap, beam
         // pre-pass cap, and hit-refinement iterations. Independent of the

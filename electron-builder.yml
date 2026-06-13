@@ -39,11 +39,19 @@ mac:
   gatekeeperAssess: false
   entitlements: electron/entitlements.mac.plist
   entitlementsInherit: electron/entitlements.mac.plist
-  # Notarize via @electron/notarize using credentials from env:
-  #   APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
-  # (or APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER for CI).
+  # Notarization is handled by the afterSign hook (electron/notarize.cjs),
+  # which calls @electron/notarize with a keychain-stored credential profile
+  # instead of env-var Apple ID + app-specific password. One-time setup:
+  #   xcrun notarytool store-credentials galacticad-notarytool \
+  #       --apple-id ... --team-id ... --password ...
+  # The hook also fetches and prints the notary log (Apple recommends always
+  # inspecting it). The afterAllArtifactBuild hook additionally staples the
+  # .dmg containers themselves so Gatekeeper can validate them offline.
   # Skip signing + notarization locally with CSC_IDENTITY_AUTO_DISCOVERY=false.
-  notarize: true
+  notarize: false
+
+afterSign: electron/notarize.cjs
+afterAllArtifactBuild: electron/staple-dmg.cjs
 
 win:
   target:

@@ -141,6 +141,16 @@ electron-dev: build
 # Produce installers/archives in dist/release/. Forces a PRODUCTION dist build
 # so the bundled app is minified and ships without source maps. Generates the
 # platform icons into dist/build/ first.
+#
+# macOS signing + notarization is wired through electron-builder hooks
+# (electron/notarize.cjs + electron/staple-dmg.cjs) using a notarytool
+# keychain credential profile. One-time setup:
+#   xcrun notarytool store-credentials galacticad-notarytool \
+#       --apple-id "<your-apple-id>" \
+#       --team-id  "<your-team-id>" \
+#       --password "<app-specific-password>"
+# Override the profile name with NOTARYTOOL_PROFILE=… if you used another.
+# Skip signing + notarization with CSC_IDENTITY_AUTO_DISCOVERY=false.
 .PHONY: electron-pack
 electron-pack: export PRODUCTION=1
 electron-pack: build icons

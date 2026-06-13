@@ -128,7 +128,7 @@ restart-agent: stop-agent start-agent
 
 .PHONY: release
 release: export PRODUCTION=1
-release: build test
+release: build test electron-pack electron-verify
 
 # Run the packaged desktop shell against the current dist/site/. Builds first
 # so a stale or missing dist/site/ doesn't load an empty window.
@@ -154,7 +154,61 @@ electron-dev: build
 .PHONY: electron-pack
 electron-pack: export PRODUCTION=1
 electron-pack: build icons
-	unset ELECTRON_RUN_AS_NODE; node_modules/.bin/electron-builder
+	@unset ELECTRON_RUN_AS_NODE
+	# Start from a clean release dir — electron-builder writes alongside
+	# existing files rather than pruning, so artifacts from a previous version
+	# would otherwise linger (and fail electron-verify).
+	rm -rf $(DIST_ROOT)/release
+	# Version the artifacts from the latest reachable v* git tag (strip the
+	# leading "v"), overriding package.json's placeholder 0.0.0 via
+	# extraMetadata so the working tree stays clean. Falls back to the
+	# package.json version when no v* tag is reachable.
+	tag=$$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null) || true
+	ver=$${tag#v}
+	if [[ -n $$ver ]]; then
+		echo "[electron-pack] version $$ver (from tag $$tag)"
+		node_modules/.bin/electron-builder -c.extraMetadata.version="$$ver"
+	else
+		echo "[electron-pack] no v* tag reachable; using package.json version"
+		node_modules/.bin/electron-builder
+	fi
+
+# Verify the packaged macOS artifacts in dist/release/: every .app is accepted
+# by Gatekeeper as a Notarized Developer ID, and every .dmg has a notarization
+# ticket stapled (so Gatekeeper validates it offline). Globs by name so it
+# tracks the current version/arch automatically. No-op off macOS (the tools are
+# macOS-only) or when signing was skipped via CSC_IDENTITY_AUTO_DISCOVERY=false.
+.PHONY: electron-verify
+electron-verify:
+	@if [[ $$(uname) != Darwin ]]; then
+		echo "[electron-verify] not macOS; .app/.dmg checks are macOS-only, skipping"
+		exit 0
+	fi
+	if [[ $$CSC_IDENTITY_AUTO_DISCOVERY == false ]]; then
+		echo "[electron-verify] CSC_IDENTITY_AUTO_DISCOVERY=false; unsigned build, skipping"
+		exit 0
+	fi
+	shopt -s nullglob
+	apps=($(DIST_ROOT)/release/mac*/*.app)
+	dmgs=($(DIST_ROOT)/release/*.dmg)
+	if (( $${#apps[@]} + $${#dmgs[@]} == 0 )); then
+		echo "[electron-verify] no .app/.dmg under $(DIST_ROOT)/release/ — run 'make electron-pack' first"
+		exit 1
+	fi
+	rc=0
+	for app in "$${apps[@]}"; do
+		echo "[electron-verify] spctl --assess $$app"
+		spctl -a -vvv -t execute "$$app" || rc=1
+	done
+	for dmg in "$${dmgs[@]}"; do
+		echo "[electron-verify] stapler validate $$dmg"
+		xcrun stapler validate "$$dmg" || rc=1
+	done
+	if (( rc != 0 )); then
+		echo "[electron-verify] FAILED — artifacts not properly signed/notarized/stapled (see above)"
+		exit 1
+	fi
+	echo "[electron-verify] OK — all .app accepted by Gatekeeper, all .dmg stapled"
 
 # Render src/assets/gicon.svg into the platform icon files electron-builder
 # auto-picks from buildResources (set to dist/build in electron-builder.yml).

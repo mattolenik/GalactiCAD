@@ -1,5 +1,6 @@
 {
     "name": "galacticad",
+    "productName": "GalactiCAD",
     "description": "New hybrid CAD-as-code, driven by SDFs and built for FDM printing",
     "version": "0.0.0",
     "homepage": "https://galacticad.app",

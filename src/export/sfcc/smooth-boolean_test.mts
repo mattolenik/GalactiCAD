@@ -279,6 +279,34 @@ test("sfcc pipeline: smooth union of overlapping spheres → certified manifold,
     assert.ok(maxAbsF(tree, r) <= TUNING.surfaceTolMm, `max |f| = ${maxAbsF(tree, r)}`)
 })
 
+test("blend-curvature refine: fillet refines by its own ∇f, stays certified; primitives untouched", () => {
+    // A smooth-union fillet is a featureless blend bulge (zero stratum owners),
+    // so the per-stratum curvature certificate is blind to it. The (iii-d)
+    // tree-normal certificate must refine it — more leaves over the fillet —
+    // without breaking closure, and must NOT engage where an analytic stratum
+    // already drives refinement (a plain sphere).
+    const fillet = compileCpuSdf(new Union([new Box([0, 0, 0], [3, 3, 3]), new Box([2, 2, 2], [3, 3, 3])], 1.2, "round"))
+    const off = runSfccPipeline(fillet, BOUNDS, { ...TUNING, blendCurvatureRefine: false })
+    const on = runSfccPipeline(fillet, BOUNDS, { ...TUNING, blendCurvatureRefine: true, blendCurvatureDeg: 20 })
+
+    assert.ok(on.stats.leaves > off.stats.leaves * 1.2, `fillet should refine: ${off.stats.leaves} → ${on.stats.leaves}`)
+    for (const r of [off, on]) {
+        assert.equal(r.stats.failedCells, 0)
+        assert.equal(r.stats.faceAuditFailures, 0)
+        assert.ok(r.manifold.ok, JSON.stringify(r.manifold))
+        // 1.5× margin: the boxes' native fade corners land at |f| ≈ surfaceTol
+        // by bisection (see project notes), independent of the blend refinement.
+        assert.ok(maxAbsF(fillet, r) <= TUNING.surfaceTolMm * 1.5, `max |f| = ${maxAbsF(fillet, r)}`)
+    }
+
+    // Regression: a plain sphere has a stratum, so the blend path is inert —
+    // identical output with the certificate on vs. off.
+    const sphere = compileCpuSdf(new Sphere([0, 0, 0], { r: 4 }))
+    const sOff = runSfccPipeline(sphere, BOUNDS, { ...TUNING, blendCurvatureRefine: false })
+    const sOn = runSfccPipeline(sphere, BOUNDS, { ...TUNING, blendCurvatureRefine: true, blendCurvatureDeg: 10 })
+    assert.equal(sOn.stats.leaves, sOff.stats.leaves, "blend path must not touch a stratum-backed sphere")
+})
+
 test("sfcc pipeline: smooth subtract dent → certified manifold sphere, zero feature curves", () => {
     const tree = compileCpuSdf(new Subtract(new Sphere([0, 0, 0], { r: 3 }), new Sphere([0, 0, 3], { r: 2 }), 0.6))
     const tol = resolveTolerances(TUNING, Math.hypot(16, 16, 16))

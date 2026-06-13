@@ -169,6 +169,12 @@ export interface CpuSdfTree {
      */
     readonly gradBound: number
     /**
+     * True when the CSG contains any smooth-boolean blend node. Lets refine
+     * criteria skip blend-only certificates (and their owner lookups) entirely
+     * on hard/primitive-only trees, keeping them byte-identical and zero-cost.
+     */
+    readonly hasBlend: boolean
+    /**
      * On-locus seam displacement at the lowest common CSG combiner of two
      * leaves (indices into `leaves`); 0 when they meet at a hard min/max. On
      * the pair's carrier-pair locus both fields are exactly 0, so the final
@@ -1222,6 +1228,14 @@ function gradBoundOf(n: CsgNode): number {
     return m
 }
 
+/** Whether the CSG contains any smooth-boolean blend node (any mode). */
+function hasBlendNode(n: CsgNode): boolean {
+    if (n.op === "leaf") return false
+    if (n.op === "blend") return true
+    for (const c of n.children) if (hasBlendNode(c)) return true
+    return false
+}
+
 /**
  * Compile the scene tree into the SFCC CPU evaluator. Throws
  * {@link SfccUnsupportedError} listing *all* unsupported nodes.
@@ -1240,6 +1254,7 @@ export function compileCpuSdf(root: Node): CpuSdfTree {
             gradNode(csg, px, py, pz, out, off)
         },
         gradBound: gradBoundOf(csg),
+        hasBlend: hasBlendNode(csg),
         blendSeamDisplacement: (a, b) => seamDisp[a * state.leaves.length + b] ?? 0,
         intervalOverBox: (cx, cy, cz, hx, hy, hz) => {
             const r = Math.hypot(hx, hy, hz)

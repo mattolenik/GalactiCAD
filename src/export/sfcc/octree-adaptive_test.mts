@@ -23,7 +23,7 @@ const TUNING: SfccTuning = {
     depthMin: 4,
     depthMax: 7,
     boundsPaddingMm: 0,
-    normalVariationCos: Math.cos((30 * Math.PI) / 180),
+    normalVariationDeg: 30,
 }
 
 test("adaptive build: mixed leaf levels, 2:1 face+edge balance holds", () => {
@@ -35,7 +35,8 @@ test("adaptive build: mixed leaf levels, 2:1 face+edge balance holds", () => {
         enforceEdgeBalance: true,
         needsSplit: (cell, sampleAt) =>
             needsSplitSmooth(tree, makeProbe(lat, tree, sampleAt, cell.level, cell.ix, cell.iy, cell.iz), {
-                normalVariationCos: TUNING.normalVariationCos,
+                normalVariationCos: Math.cos((TUNING.normalVariationDeg * Math.PI) / 180),
+                blendNormalVariationCos: Math.cos((TUNING.blendCurvatureDeg * Math.PI) / 180),
             }),
     })
     const levels = new Set(oct.leaves.map(c => c.level))

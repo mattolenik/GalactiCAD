@@ -23,8 +23,21 @@ export interface SfccTuning {
     enforceEdgeBalance: boolean
 
     // --- Refinement certificates -------------------------------------------
-    /** Per-stratum normal-variation certificate: min cos(angle) across cell samples. */
-    normalVariationCos: number
+    /**
+     * Max surface-normal variation (deg) across an analytic-stratum cell before
+     * it splits (lower = smoother primitives: sphere/cylinder/cone/extrude/
+     * lathe/loft). This — not `depthMax` — is what makes refinement adaptive on
+     * stratum-backed geometry: `depthMax` is only the ceiling a cell reaches
+     * once it keeps failing this test, so a loose value leaves smooth cells
+     * passing at `depthMin` and `depthMax` has no visible effect. Featureless
+     * blend bulges (fillets) have zero strata and are driven by
+     * `blendCurvatureDeg` instead, not this knob.
+     */
+    normalVariationDeg: number
+    /** Refine featureless smooth-blend regions (fillets) by their surface curvature. */
+    blendCurvatureRefine: boolean
+    /** Max surface-normal variation (deg) across a blend cell before it splits (anti-diamond on fillets). */
+    blendCurvatureDeg: number
     /** |tangent·faceNormal| below this counts as a tangential face crossing → split. */
     tangentialEpsilon: number
     /** Feature query AABB inflation, in fractions of the cell size. */
@@ -83,7 +96,9 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     boundsPaddingMm: 2.0,
     enforceEdgeBalance: true,
 
-    normalVariationCos: Math.cos((50 * Math.PI) / 180),
+    normalVariationDeg: 18,
+    blendCurvatureRefine: true,
+    blendCurvatureDeg: 18,
     tangentialEpsilon: 0.05,
     featureQueryInflate: 0.25,
 
@@ -135,7 +150,9 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
         boundsPaddingMm: num(o.boundsPaddingMm, d.boundsPaddingMm, 0, 100),
         enforceEdgeBalance: bool(o.enforceEdgeBalance, d.enforceEdgeBalance),
 
-        normalVariationCos: num(o.normalVariationCos, d.normalVariationCos, -1, 1),
+        normalVariationDeg: num(o.normalVariationDeg, d.normalVariationDeg, 5, 90),
+        blendCurvatureRefine: bool(o.blendCurvatureRefine, d.blendCurvatureRefine),
+        blendCurvatureDeg: num(o.blendCurvatureDeg, d.blendCurvatureDeg, 1, 90),
         tangentialEpsilon: num(o.tangentialEpsilon, d.tangentialEpsilon, 0, 1),
         featureQueryInflate: num(o.featureQueryInflate, d.featureQueryInflate, 0, 4),
 

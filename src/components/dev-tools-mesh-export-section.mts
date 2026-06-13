@@ -1271,7 +1271,15 @@ export class DevToolsFlexiCubesExportSection extends HTMLElement {
 
 /** Numeric SFCC knobs surfaced in Dev Tools (core subset; algorithm knobs land with the pipeline). */
 const SFCC_RANGE_KNOBS: {
-    key: "depthMin" | "depthMax" | "boundsPaddingMm" | "surfaceTolMm" | "curveChordTolMm" | "creaseAngleDeg"
+    key:
+        | "depthMin"
+        | "depthMax"
+        | "boundsPaddingMm"
+        | "surfaceTolMm"
+        | "curveChordTolMm"
+        | "creaseAngleDeg"
+        | "normalVariationDeg"
+        | "blendCurvatureDeg"
     label: string
     min: number
     max: number
@@ -1284,10 +1292,16 @@ const SFCC_RANGE_KNOBS: {
     { key: "surfaceTolMm", label: "Surface tol (mm)", min: 0.001, max: 0.1, step: 0.001 },
     { key: "curveChordTolMm", label: "Curve chord tol (mm)", min: 0.001, max: 0.5, step: 0.001 },
     { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1, int: true },
+    { key: "normalVariationDeg", label: "Surface curvature °", min: 5, max: 90, step: 1, int: true },
+    { key: "blendCurvatureDeg", label: "Blend curvature °", min: 1, max: 90, step: 1, int: true },
 ]
 
-const SFCC_BOOL_KNOBS: { key: "enforceEdgeBalance" | "checkVertexLinks" | "debugOutput"; label: string }[] = [
+const SFCC_BOOL_KNOBS: {
+    key: "enforceEdgeBalance" | "blendCurvatureRefine" | "checkVertexLinks" | "debugOutput"
+    label: string
+}[] = [
     { key: "enforceEdgeBalance", label: "2:1 edge balance" },
+    { key: "blendCurvatureRefine", label: "Blend curvature refine" },
     { key: "checkVertexLinks", label: "Vertex-link audit" },
     { key: "debugOutput", label: "Debug overlays" },
 ]

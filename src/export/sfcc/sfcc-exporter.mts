@@ -14,7 +14,6 @@
 
 import type { MeshExportContext, MeshExporter } from "../mesh-exporter.mjs"
 import type { MeshData } from "../export.mjs"
-import { flatFaceNormals } from "../crease-split.mjs"
 import {
     DEFAULT_SFCC_TUNING,
     normalizeSfccTuning,
@@ -53,11 +52,15 @@ async function runSfcc(ctx: MeshExportContext, tuning: SfccTuning): Promise<Mesh
     // Always-on stats line: fallback/degenerate counts are quality signals
     // (cell-scale chips) even when certification passes.
     log("MeshExport").info("sfcc stats", { ...result.stats, euler: result.manifold.eulerPerComponent })
-    // Flat face normals: SFCC meshes are geometry artifacts — every facet
-    // shows its true orientation (no smoothing groups, no crease heuristics).
-    const mesh = flatFaceNormals(result.verts, result.tris)
+    // Return the INDEXED mesh (shared PointTable vertices), NOT a pre-exploded
+    // flat-normal soup. The unified render-worker post-pass needs welded
+    // topology to simplify — meshoptimizer can't collapse an unwelded soup
+    // (every edge reads as a border) — so exploding here silently disabled
+    // mesh simplification for SFCC. The post-pass already applies flat face
+    // normals afterward (renormalizeTriangles, default on), so the default
+    // (no-simplify) appearance is unchanged; enabling simplify now works.
+    const mesh: MeshData = { verts: result.verts, tris: result.tris }
     mesh.debug = {
-        ...mesh.debug,
         sfcc: {
             stats: { ...result.stats } as Record<string, number | number[]>,
             failedCellBoxes: result.failedCellBoxes,

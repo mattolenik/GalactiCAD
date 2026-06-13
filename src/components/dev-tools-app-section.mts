@@ -2,7 +2,13 @@ import { BehaviorSubject, skip } from "rxjs"
 import type { Subscription } from "rxjs"
 import { connectCheckbox } from "../binding/bind.mjs"
 import { SettingsManager, type GlobalSettings } from "../storage/settings.mjs"
-import { DEFAULT_RAY_MARCH_PARAMS, type RayMarchParams } from "../render-worker-protocol.mjs"
+import {
+    DEFAULT_RAY_MARCH_PARAMS,
+    DEFAULT_UPSCALE_PARAMS,
+    type RayMarchParams,
+    type UpscaleMode,
+    type UpscaleParams,
+} from "../render-worker-protocol.mjs"
 import {
     DEFAULT_APP_DEVTOOLS_STATE,
     DEVTOOLS_COLLAPSE,
@@ -42,6 +48,11 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #stepHeatmap$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
+    #upscaleState: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
+    #upscaleScaleSelect?: HTMLSelectElement
+    #upscaleModeSelect?: HTMLSelectElement
+    #sharpnessRange?: HTMLInputElement
+    #sharpnessValueEl?: HTMLSpanElement
     #subscriptions: Subscription[] = []
 
     onCameraOptimizationChange?: (enabled: boolean) => void
@@ -50,6 +61,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
+    onUpscaleParamsChange?: (params: UpscaleParams) => void
 
     get showFps(): boolean {
         return this.#showFps$.value
@@ -61,6 +73,10 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
 
     get rayMarchParams(): RayMarchParams {
         return { ...this.#rayMarchState }
+    }
+
+    get upscaleParams(): UpscaleParams {
+        return { ...this.#upscaleState }
     }
 
     get cameraOptimization(): boolean {
@@ -192,6 +208,54 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#subscriptions.push(
             this.#cameraOptimization$.pipe(skip(1)).subscribe(v => this.onCameraOptimizationChange?.(v)),
         )
+
+        // --- FSR1 spatial upscale (applies to the reduced-res motion frames
+        // gated by "Camera halfres"; a still camera always renders full-res). ---
+        const emitUpscale = () => {
+            this.onUpscaleParamsChange?.({ ...this.#upscaleState })
+            persist()
+        }
+        this.#upscaleScaleSelect = this.#addSelect(
+            perfBox,
+            "Render scale",
+            [
+                { value: "0.5", label: "50%" },
+                { value: "0.67", label: "67%" },
+                { value: "0.75", label: "75%" },
+                { value: "1", label: "100%" },
+            ],
+            String(this.#upscaleState.renderScale),
+        )
+        this.#upscaleScaleSelect.addEventListener("change", () => {
+            const v = parseFloat(this.#upscaleScaleSelect!.value)
+            if (Number.isFinite(v)) this.#upscaleState.renderScale = v
+            emitUpscale()
+        })
+        this.#upscaleModeSelect = this.#addSelect(
+            perfBox,
+            "Upscaler",
+            [
+                { value: "off", label: "Bilinear" },
+                { value: "easu", label: "EASU" },
+                { value: "easu-rcas", label: "EASU+RCAS" },
+            ],
+            this.#upscaleState.mode,
+        )
+        this.#upscaleModeSelect.addEventListener("change", () => {
+            this.#upscaleState.mode = this.#upscaleModeSelect!.value as UpscaleMode
+            this.#updateSharpnessEnabled()
+            emitUpscale()
+        })
+        const sharp = this.#addSlider(perfBox, "Sharpness", 0, 2, 0.05, this.#upscaleState.sharpness)
+        this.#sharpnessRange = sharp.range
+        this.#sharpnessValueEl = sharp.valueEl
+        sharp.range.addEventListener("input", () => {
+            const v = parseFloat(sharp.range.value)
+            if (Number.isFinite(v)) this.#upscaleState.sharpness = v
+            sharp.valueEl.textContent = sharp.range.value
+            emitUpscale()
+        })
+        this.#updateSharpnessEnabled()
 
         const beamOptCb = this.#addCheckbox(perfBox, "Beam render", this.#beamOptimization$.value)
         this.#subscriptions.push(connectCheckbox(beamOptCb, this.#beamOptimization$))
@@ -353,6 +417,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             meshViewerEnabled: this.#meshViewer$.value,
             meshSimplifyOnExport: this.#meshSimplify$.value,
             rayMarchParams: { ...this.#rayMarchState },
+            upscaleParams: { ...this.#upscaleState },
         }
     }
 
@@ -364,6 +429,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             this.#meshViewer$.next(asBool(state.meshViewerEnabled, asBool(d.meshViewerEnabled, false)))
             this.#meshSimplify$.next(asBool(state.meshSimplifyOnExport, asBool(d.meshSimplifyOnExport, false)))
             this.#restoreRayMarchParams(state.rayMarchParams)
+            this.#restoreUpscaleParams(state.upscaleParams)
         } finally {
             this.#applying = false
         }
@@ -389,6 +455,26 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         }
     }
 
+    /**
+     * Merge a persisted `upscaleParams` snapshot into `#upscaleState`, clamping
+     * to valid values and falling back to defaults. Updates the visible controls
+     * but does not fire `onUpscaleParamsChange` — app.mts reads `upscaleParams`
+     * after wiring and pushes it to the renderer once.
+     */
+    #restoreUpscaleParams(raw: JSONValue | undefined): void {
+        const incoming = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, JSONValue>) : {}
+        const next: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
+        if (typeof incoming.renderScale === "number" && Number.isFinite(incoming.renderScale)) next.renderScale = incoming.renderScale
+        if (incoming.mode === "off" || incoming.mode === "easu" || incoming.mode === "easu-rcas") next.mode = incoming.mode
+        if (typeof incoming.sharpness === "number" && Number.isFinite(incoming.sharpness)) next.sharpness = incoming.sharpness
+        this.#upscaleState = next
+        if (this.#upscaleScaleSelect) this.#upscaleScaleSelect.value = String(next.renderScale)
+        if (this.#upscaleModeSelect) this.#upscaleModeSelect.value = next.mode
+        if (this.#sharpnessRange) this.#sharpnessRange.value = String(next.sharpness)
+        if (this.#sharpnessValueEl) this.#sharpnessValueEl.textContent = String(next.sharpness)
+        this.#updateSharpnessEnabled()
+    }
+
     disconnectedCallback(): void {
         for (const s of this.#subscriptions) s.unsubscribe()
         this.#subscriptions = []
@@ -402,6 +488,66 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         el.append(cb, label)
         parent.appendChild(el)
         return cb
+    }
+
+    #addSelect(
+        parent: ParentNode,
+        label: string,
+        options: { value: string; label: string }[],
+        value: string,
+    ): HTMLSelectElement {
+        const row = document.createElement("div")
+        row.className = "shade-row"
+        const lab = document.createElement("label")
+        lab.className = "knob-label"
+        lab.textContent = label
+        const sel = document.createElement("select")
+        sel.style.cssText = "width:84px;font-size:11px;"
+        for (const o of options) {
+            const opt = document.createElement("option")
+            opt.value = o.value
+            opt.textContent = o.label
+            sel.appendChild(opt)
+        }
+        sel.value = value
+        row.append(lab, sel)
+        parent.appendChild(row)
+        return sel
+    }
+
+    #addSlider(
+        parent: ParentNode,
+        label: string,
+        min: number,
+        max: number,
+        step: number,
+        value: number,
+    ): { range: HTMLInputElement; valueEl: HTMLSpanElement } {
+        const row = document.createElement("div")
+        row.className = "shade-row"
+        const lab = document.createElement("label")
+        lab.className = "knob-label"
+        lab.textContent = label
+        const range = document.createElement("input")
+        range.type = "range"
+        range.min = String(min)
+        range.max = String(max)
+        range.step = String(step)
+        range.value = String(value)
+        range.style.cssText = "width:60px;"
+        const valueEl = document.createElement("span")
+        valueEl.textContent = String(value)
+        valueEl.style.cssText = "font-size:11px;width:28px;text-align:right;opacity:0.8;"
+        row.append(lab, range, valueEl)
+        parent.appendChild(row)
+        return { range, valueEl }
+    }
+
+    /** Grey out / disable the sharpness slider unless RCAS is the active mode. */
+    #updateSharpnessEnabled(): void {
+        const enabled = this.#upscaleState.mode === "easu-rcas"
+        if (this.#sharpnessRange) this.#sharpnessRange.disabled = !enabled
+        if (this.#sharpnessValueEl) this.#sharpnessValueEl.style.opacity = enabled ? "0.8" : "0.4"
     }
 }
 

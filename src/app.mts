@@ -1198,6 +1198,11 @@ class App {
         // renderer once, since #restoreRayMarchParams updates the inputs but does
         // not fire onRayMarchParamsChange.
         this.renderer.setRayMarchParams(devTools.rayMarchParams)
+        devTools.onUpscaleParamsChange = (params) => {
+            this.renderer.setUpscaleParams(params)
+        }
+        // Same one-shot push for the FSR1 upscale params (restored, not emitted).
+        this.renderer.setUpscaleParams(devTools.upscaleParams)
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
             previewNormalShadingToggle.checked = this.renderer.previewNormalShading

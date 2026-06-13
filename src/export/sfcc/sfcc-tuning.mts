@@ -23,7 +23,16 @@ export interface SfccTuning {
     enforceEdgeBalance: boolean
 
     // --- Refinement certificates -------------------------------------------
-    /** Max surface-normal variation (deg) across an analytic-stratum cell before it splits (lower = smoother primitives). */
+    /**
+     * Max surface-normal variation (deg) across an analytic-stratum cell before
+     * it splits (lower = smoother primitives: sphere/cylinder/cone/extrude/
+     * lathe/loft). This — not `depthMax` — is what makes refinement adaptive on
+     * stratum-backed geometry: `depthMax` is only the ceiling a cell reaches
+     * once it keeps failing this test, so a loose value leaves smooth cells
+     * passing at `depthMin` and `depthMax` has no visible effect. Featureless
+     * blend bulges (fillets) have zero strata and are driven by
+     * `blendCurvatureDeg` instead, not this knob.
+     */
     normalVariationDeg: number
     /** Refine featureless smooth-blend regions (fillets) by their surface curvature. */
     blendCurvatureRefine: boolean
@@ -87,7 +96,7 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     boundsPaddingMm: 2.0,
     enforceEdgeBalance: true,
 
-    normalVariationDeg: 50,
+    normalVariationDeg: 18,
     blendCurvatureRefine: true,
     blendCurvatureDeg: 18,
     tangentialEpsilon: 0.05,

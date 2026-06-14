@@ -137,8 +137,12 @@ interface FaceContourScratch {
     wb: Float64Array
 }
 
-/** Root-find the iso-crossing on a world segment with f0 < 0 ≤ f1 or f1 < 0 ≤ f0. */
-function findRoot(
+/**
+ * Root-find the iso-crossing on a world segment with f0 < 0 ≤ f1 or f1 < 0 ≤ f0.
+ * Exported for the edge-root determinism probe; call sites should use
+ * `canonicalEdgeRoot` so the result is independent of endpoint order.
+ */
+export function findRoot(
     tree: CpuSdfTree,
     ax: number,
     ay: number,
@@ -170,6 +174,39 @@ function findRoot(
     out[1] = ay + (by - ay) * t
     out[2] = az + (bz - az) * t
     tree.grad(out[0]!, out[1]!, out[2]!, out, 3)
+}
+
+/**
+ * Iso-crossing on an axis-aligned sub-edge, computed INDEPENDENTLY of the
+ * direction the caller discovered the edge: the endpoints are canonicalized to a
+ * fixed (lexicographically-least-first) order before root-finding, so a sub-edge
+ * shared by faces that walk it in opposite directions yields a BIT-IDENTICAL
+ * point and normal.
+ *
+ * This is what keeps the keyed point table (crossingKey) first-writer-wins
+ * correct under a PARALLEL meshing pass: the create closure becomes a pure
+ * function of the sub-edge key, so whichever thread wins the race stores the same
+ * value (see determinism_test / mesh-canonical; required for the Rust port's
+ * rayon weld). The edge is axis-aligned, so the lexicographically-least endpoint
+ * is exactly the lattice min corner that keys the point — keeping this
+ * canonicalization consistent with crossingKey().
+ */
+export function canonicalEdgeRoot(
+    tree: CpuSdfTree,
+    ax: number,
+    ay: number,
+    az: number,
+    bx: number,
+    by: number,
+    bz: number,
+    fa: number,
+    fb: number,
+    tol: number,
+    out: Float64Array,
+): void {
+    const bFirst = bx < ax || (bx === ax && (by < ay || (by === ay && bz < az)))
+    if (bFirst) findRoot(tree, bx, by, bz, ax, ay, az, fb, fa, tol, out)
+    else findRoot(tree, ax, ay, az, bx, by, bz, fa, fb, tol, out)
 }
 
 /**
@@ -576,7 +613,7 @@ export function contourFace(
                     pointToWorld(lat, p0[0]!, p0[1]!, p0[2]!, wa)
                     pointToWorld(lat, p1[0]!, p1[1]!, p1[2]!, wb)
                     const tR = opts.perf ? nowMs() : 0
-                    findRoot(tree, wa[0]!, wa[1]!, wa[2]!, wb[0]!, wb[1]!, wb[2]!, f0, f1, opts.rootTol, scratch)
+                    canonicalEdgeRoot(tree, wa[0]!, wa[1]!, wa[2]!, wb[0]!, wb[1]!, wb[2]!, f0, f1, opts.rootTol, scratch)
                     if (opts.perf) opts.perf.faceRootMs += nowMs() - tR
                     out.set(scratch)
                 })

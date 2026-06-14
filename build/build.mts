@@ -17,8 +17,10 @@ const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigat
 
 const IS_PROD = !!process.env.PRODUCTION
 
-const VS_DIR = `node_modules/monaco-editor/${IS_PROD ? "min" : "dev"}/vs`
-
+// Monaco is consumed purely as ESM: the editor is bundled into app.js and its CSS
+// into app.css (loaded via <link> in index.html), and the editor/ts workers are
+// pre-bundled to /editor/ by monacoEditorPlugin. The legacy AMD `min/vs` distribution
+// is therefore not shipped — only app.css was ever applied at runtime anyway.
 const Static = {
     "src/index.html": "/",
     "src/index.css": "/",
@@ -26,17 +28,6 @@ const Static = {
     "src/_headers": "/",
     "src/assets/*": "/assets",
     "src/scene/samples/*.gcad": "/assets/samples/",
-    [`${VS_DIR}/assets/ts.worker*.js`]: "/vs/assets/",
-    [`${VS_DIR}/assets/editor`]: "/vs/assets/",
-    [`${VS_DIR}/typescript*.js`]: "/vs/",
-    [`${VS_DIR}/tsMode*.js`]: "/vs/",
-    [`${VS_DIR}/nls*.js`]: "/vs/",
-    [`${VS_DIR}/wgsl*.js`]: "/vs/",
-    [`${VS_DIR}/monaco*.js`]: "/vs/",
-    [`${VS_DIR}/worker*.js`]: "/vs/",
-    [`${VS_DIR}/loader*.js`]: "/vs/",
-    [`${VS_DIR}/editor*`]: "/vs/",
-    [`${VS_DIR}/language/typescript`]: "/vs/language/",
     "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
 }
 // All generated output lives under ./dist:

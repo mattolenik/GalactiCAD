@@ -45,8 +45,10 @@ export interface AgentTestcase {
     meshOverlay?: AgentMeshOverlay
     /** Active document tab name when captured, if any. */
     documentName?: string
-    /** Isolate-view target node id for headless verification of View Isolated (0/omitted = full scene). */
-    isolateId?: number
+    /** Isolate-view target node ids for headless verification of View Isolated (omitted/empty = full scene). */
+    isolatedIds?: number[]
+    /** Object ids to render as selected, for headless verification of the selection pattern. */
+    selectedObjectIds?: number[]
 }
 
 export interface BuildAgentTestcaseInput {
@@ -223,8 +225,10 @@ export interface AgentRenderRequest {
     documentName?: string
     /** Mesh-viewer debug glyph overlays (only consulted when `mode === "mesh"`). */
     meshOverlay?: AgentMeshOverlay
-    /** Isolate-view target node id (0/omitted = full scene). `mode: "sdf"` only. */
-    isolateId?: number
+    /** Isolate-view target node ids (omitted/empty = full scene). `mode: "sdf"` only. */
+    isolatedIds?: number[]
+    /** Object ids to render as selected, for verifying the selection pattern. `mode: "sdf"` only. */
+    selectedObjectIds?: number[]
 }
 
 /** Merge saved testcase YAML (in-memory `AgentTestcase`) with optional overrides (GET query / POST body). */
@@ -261,6 +265,9 @@ export function mergeAgentRenderRequest(
                 overrides.meshOverlay !== undefined ? overrides.meshOverlay : testcase.meshOverlay
             return meshOverlay !== undefined ? { meshOverlay } : {}
         })(),
-        ...(testcase.isolateId !== undefined ? { isolateId: testcase.isolateId } : {}),
+        ...(testcase.isolatedIds !== undefined ? { isolatedIds: [...testcase.isolatedIds] } : {}),
+        ...(testcase.selectedObjectIds !== undefined
+            ? { selectedObjectIds: [...testcase.selectedObjectIds] }
+            : {}),
     }
 }

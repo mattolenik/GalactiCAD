@@ -137,7 +137,7 @@ export class SDFRenderer {
     #needsRender = true
     #started = false
     #xrayMode = false
-    #isolateNodeId = 0
+    #isolatedIds: number[] = []
     #beamEnabled = false
     #previewShading: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
     #rayMarchParams: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
@@ -192,7 +192,8 @@ export class SDFRenderer {
             viewTransform?: Float32Array
             cameraPosition?: [number, number, number]
             viewCenter?: [number, number]
-            isolateId?: number
+            isolatedIds?: number[]
+            selectedObjectIds?: number[]
         }
     >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
@@ -237,7 +238,7 @@ export class SDFRenderer {
             viewSettings: {
                 xrayMode: false,
                 beamEnabled: false,
-                isolateId: 0,
+                isolatedIds: [],
                 selectionMode: 0,
                 outlineMode: 0,
                 outlineThickness: 1,
@@ -659,7 +660,8 @@ export class SDFRenderer {
                 viewTransform: vt,
                 cameraPosition: cp,
                 viewCenter: vc,
-                isolateId: pending.isolateId ?? 0,
+                isolatedIds: pending.isolatedIds ?? [],
+                selectedObjectIds: pending.selectedObjectIds ?? [],
             })
         }
     }
@@ -1424,13 +1426,14 @@ export class SDFRenderer {
      * subtree should be rendered alone. Pure render-time state — no rebuild; the
      * compiled preview SDF carries the pass-through scaffolding for any id.
      */
-    set isolateNodeId(id: number) {
-        if (this.#isolateNodeId === id) return
-        this.#isolateNodeId = id
+    set isolatedIds(ids: number[]) {
+        const next = [...ids]
+        if (this.#isolatedIds.length === next.length && this.#isolatedIds.every((v, i) => v === next[i])) return
+        this.#isolatedIds = next
         this.#needsRender = true
     }
-    get isolateNodeId(): number {
-        return this.#isolateNodeId
+    get isolatedIds(): number[] {
+        return this.#isolatedIds
     }
 
     set beamEnabled(enabled: boolean) {
@@ -1648,7 +1651,7 @@ export class SDFRenderer {
         p.selectionState.hoveredEdges = this.#hoveredEdges
         p.viewSettings.xrayMode = this.#xrayMode
         p.viewSettings.beamEnabled = this.#beamEnabled
-        p.viewSettings.isolateId = this.#isolateNodeId
+        p.viewSettings.isolatedIds = this.#isolatedIds
         p.viewSettings.selectionMode = { object: 0, seam: 1, edge: 2, face: 3, auto: 4 }[this.#selectionMode]
         p.viewSettings.outlineMode = { none: 0, solid: 1, dashed: 2, dotted: 3 }[this.#outlineMode]
         p.viewSettings.outlineThickness = this.#outlineThickness
@@ -1919,7 +1922,8 @@ export class SDFRenderer {
         width = 1000,
         height = 1000,
         documentName?: string,
-        isolateId = 0,
+        isolatedIds: number[] = [],
+        selectedObjectIds: number[] = [],
     ): Promise<ImageData> {
         await this.#readyPromise
         const trimmed = src.trim()
@@ -1937,7 +1941,8 @@ export class SDFRenderer {
                 viewTransform: params.viewTransform,
                 cameraPosition: params.cameraPosition,
                 viewCenter: params.viewCenter,
-                isolateId,
+                isolatedIds,
+                selectedObjectIds,
             })
             return await new Promise<ImageData>((resolve, reject) => {
                 this.#pendingThumbnail.set(requestId, { resolve, reject, skipDocumentGuard: true })

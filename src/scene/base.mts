@@ -465,12 +465,12 @@ export function binaryOpCompileResult(
 // ---------------------------------------------------------------------------
 // Isolate-view ("View Isolated") pass-through codegen.
 //
-// The preview SDF carries scaffolding so that, at render time, the `isolateId`
-// uniform (a node id; 0 = off) can render just that node's subtree. Each
-// operator branchlessly chooses between its normal result and passing through
-// the child subtree that contains the isolate target. Walking up from the
-// isolated node, every ancestor forwards its on-path child, so the function
-// returns exactly the isolated node's own SDF.
+// The preview SDF carries scaffolding so that, at render time, the isolated-node
+// set (`viewSettings.isolatedCount`/`isolatedIds`; empty = off) can render just
+// those nodes' subtrees. Each operator branchlessly keeps the child branch(es)
+// whose subtree contains an isolated node (CSG: keep both → normal combine, keep
+// one → that branch; union: blends together every kept child). Ancestors forward
+// kept children, so the function returns the union of the isolated subtrees.
 //
 // Subtree membership is a compile-time-constant range check on the uniform:
 // ids are assigned pre-order DFS, so a subtree rooted at id k with n nodes
@@ -485,11 +485,13 @@ export function isoCompileEnabled(): boolean {
     return compileParamMode === "preview"
 }
 
-/** Preview-only WGSL bool: is the isolate target inside `node`'s subtree? */
+/** Preview-only WGSL bool: does `node`'s subtree contain ANY isolated node?
+ * (Multi-select View Isolated: ids are pre-order DFS so a subtree is a
+ * contiguous range; `isoHasSel` ORs over all isolated ids.) */
 export function isoCondWgsl(node: Node): string {
     const lo = node.id
     const hi = node.id + node.getAllDescendantIds().length - 1 // contiguous pre-order ids
-    return `(viewSettings.isolateId >= ${lo}u && viewSettings.isolateId <= ${hi}u)`
+    return `isoHasSel(${lo}u, ${hi}u)`
 }
 
 /**
@@ -516,9 +518,17 @@ export function binaryIsoCompileResult(
     const rVar = rhResult.prelude ? rText : `${varName}_ir`
     if (!lhResult.prelude) pre += `let ${lVar} = ${lText};\n`
     if (!rhResult.prelude) pre += `let ${rVar} = ${rText};\n`
+    // Multi-select: keep a child only when it (and not the other) holds the
+    // isolated selection. Both kept (or neither) → normal combine, so isolating
+    // both children of a CSG op shows the real boolean, while isolating one
+    // shows just that branch.
+    const kL = `${varName}_kl`
+    const kR = `${varName}_kr`
+    pre += `let ${kL} = ${isoCondWgsl(op.lh)};\n`
+    pre += `let ${kR} = ${isoCondWgsl(op.rh)};\n`
     let expr = combine(lVar, rVar)
-    expr = `${selectFn}(${expr}, ${lVar}, ${isoCondWgsl(op.lh)})`
-    expr = `${selectFn}(${expr}, ${rVar}, ${isoCondWgsl(op.rh)})`
+    expr = `${selectFn}(${expr}, ${lVar}, (${kL} && !${kR}))`
+    expr = `${selectFn}(${expr}, ${rVar}, (${kR} && !${kL}))`
     return binaryOpCompileResult(varName, expr, pre || undefined)
 }
 

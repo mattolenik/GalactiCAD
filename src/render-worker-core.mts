@@ -265,7 +265,8 @@ export class RenderWorkerCore {
     #fpsFrameCount = 0
     #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
-    #viewSettingsBuf = new Uint32Array(5)
+    // [0..4]=xray,heatmap,beam,selMode,isolatedCount; [5..7]=pad; [8..23]=isolatedIds (16).
+    #viewSettingsBuf = new Uint32Array(24)
     #selDataBuf = new Uint32Array(1024)
     // OutlineSettings CPU mirrors removed — selection rendering moved
     // inline into preview.wgsl, so the post-process pass has no per-frame
@@ -280,7 +281,7 @@ export class RenderWorkerCore {
     #camTransform = new Mat4x4f(new Float32Array(16))
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
     #cameraCache = new ArrayBuffer(256)
-    #viewSettingsCache = new ArrayBuffer(20)
+    #viewSettingsCache = new ArrayBuffer(96)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
@@ -1279,7 +1280,7 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // matches `debugHeatmap` in preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
-        this.#viewSettingsBuf[4] = viewSettings.isolateId
+        this.#packIsolatedIds(viewSettings.isolatedIds)
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
@@ -1355,8 +1356,8 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
-                        // viewSettings (binding 6): the fast SDF now reads viewSettings.isolateId for
-                        // isolate-view pass-through, so the beam pre-pass shader statically references it.
+                        // viewSettings (binding 6): the fast SDF reads viewSettings (isolatedCount/isolatedIds) for
+                        // isolate-view pass-through, so the beam pre-pass statically references binding 6.
                         { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
@@ -1447,7 +1448,24 @@ export class RenderWorkerCore {
         this.#renderFromSAB(buffer)
     }
 
-    #renderFromSAB(buffer: SharedArrayBuffer): void {
+    /** Pack the isolated node ids into the viewSettings mirror: count at [4],
+     * the ids at [8..23] (matching the shader's `isolatedCount`/`isolatedIds`). */
+    #packIsolatedIds(ids: readonly number[]): void {
+        const n = Math.min(ids.length, 16)
+        this.#viewSettingsBuf[4] = n
+        for (let i = 0; i < 16; i++) {
+            this.#viewSettingsBuf[8 + i] = i < n ? ids[i]! : 0
+        }
+    }
+
+    // `pickClickUV` triggers the fast-pick path: the scene is rendered into a
+    // tiny scissored region of the offscreen `#colorTexture` (just enough to
+    // cover the clicked pixel and write the `clickedObjectId`/edge atomics),
+    // skipping the full-frame raymarch, the canvas, and the post/overlay passes.
+    // It leaves the canvas frame untouched, so the idle hash / `forceNextRender`
+    // bookkeeping is left alone (the next real render still repaints the canvas
+    // with the new selection).
+    #renderFromSAB(buffer: SharedArrayBuffer, pickClickUV?: [number, number]): void {
         const slot = getPublishedRenderSlot(buffer)
         const slotBase = getSlotByteOffset(slot)
 
@@ -1456,23 +1474,26 @@ export class RenderWorkerCore {
         // refresh). Catches the case where the SAB version was bumped but
         // no render-relevant state actually changed. FNV-1a on u32 words —
         // SLOT_SIZE / 4 ≈ 1745 iterations, well under 100 µs on typical
-        // hardware vs the 35 ms+ frame we're skipping.
+        // hardware vs the 35 ms+ frame we're skipping. Picks always proceed
+        // (and don't consume the bookkeeping — they don't touch the canvas).
         const slotU32View = new Uint32Array(buffer, slotBase, SLOT_SIZE / 4)
         let hash = 2166136261
         for (let i = 0; i < slotU32View.length; i++) {
             hash = Math.imul(hash ^ slotU32View[i]!, 16777619)
         }
-        if (hash === this.#lastRenderedSabHash && !this.#forceNextRender) {
-            // Identical to last rendered frame — skip GPU work entirely.
-            // The swapchain texture still holds the previous frame's
-            // pixels, which is exactly what the user should see.
-            return
+        if (!pickClickUV) {
+            if (hash === this.#lastRenderedSabHash && !this.#forceNextRender) {
+                // Identical to last rendered frame — skip GPU work entirely.
+                // The swapchain texture still holds the previous frame's
+                // pixels, which is exactly what the user should see.
+                return
+            }
+            this.#lastRenderedSabHash = hash
+            this.#forceNextRender = false
         }
-        this.#lastRenderedSabHash = hash
-        this.#forceNextRender = false
 
         const now = performance.now()
-        if (this.#lastRenderTime > 0) {
+        if (!pickClickUV && this.#lastRenderTime > 0) {
             const delta = now - this.#lastRenderTime
             if (delta > 0) {
                 this.#framerate.update(1000 / delta)
@@ -1563,7 +1584,12 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // debugHeatmap; see preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
-        this.#viewSettingsBuf[4] = u32[b4 + L.O_ISOLATE_ID / 4]
+        const isoN = u32[b4 + L.O_ISOLATED_COUNT / 4]
+        this.#viewSettingsBuf[4] = isoN
+        const isoBase = b4 + L.O_ISOLATED_IDS / 4
+        for (let i = 0; i < 16; i++) {
+            this.#viewSettingsBuf[8 + i] = i < isoN ? u32[isoBase + i]! : 0
+        }
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         const rmBase = slotBase + L.O_RAY_MARCH_PARAMS
@@ -1626,6 +1652,35 @@ export class RenderWorkerCore {
             this.#hoveredEdgesCache,
         )
 
+        // Fast pick: uniforms are now current, so render just a few pixels
+        // around the click into the offscreen `#colorTexture` to populate the
+        // pick atomics, then bail — no full raymarch, no canvas, no post passes.
+        // The shader reads `tStartTex` from the previous full frame (the camera
+        // is static when picking), so the result matches a full render.
+        if (pickClickUV) {
+            const w = this.#renderTextureWidth
+            const h = this.#renderTextureHeight
+            const R = 3
+            const cx = Math.round(pickClickUV[0] * w)
+            const cy = Math.round((1 - pickClickUV[1]) * h)
+            const x = Math.max(0, Math.min(w - 1, cx - R))
+            const y = Math.max(0, Math.min(h - 1, cy - R))
+            const sw = Math.min(2 * R + 1, w - x)
+            const sh = Math.min(2 * R + 1, h - y)
+            const enc = this.#device.createCommandEncoder({ label: "pick" })
+            const pass = enc.beginRenderPass({
+                label: "pick",
+                colorAttachments: [{ view: this.#colorTextureView, loadOp: "clear", storeOp: "store" }],
+            })
+            pass.setPipeline(this.#pipeline)
+            pass.setBindGroup(0, this.#bindGroup!)
+            pass.setScissorRect(x, y, sw, sh)
+            pass.draw(4)
+            pass.end()
+            this.#device.queue.submit([enc.finish()])
+            return
+        }
+
         // Canvas sizing:
         //  - FSR path: the canvas stays at full display resolution; the scene
         //    renders into the reduced-res `#colorTexture` and EASU (+FXAA)
@@ -1655,8 +1710,8 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
-                        // viewSettings (binding 6): the fast SDF now reads viewSettings.isolateId for
-                        // isolate-view pass-through, so the beam pre-pass shader statically references it.
+                        // viewSettings (binding 6): the fast SDF reads viewSettings (isolatedCount/isolatedIds) for
+                        // isolate-view pass-through, so the beam pre-pass statically references binding 6.
                         { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
@@ -2103,7 +2158,7 @@ export class RenderWorkerCore {
                 viewSettings: {
                     xrayMode: false,
                     beamEnabled: false,
-                    isolateId: 0,
+                    isolatedIds: [],
                     selectionMode: 0,
                     outlineMode: 0,
                     outlineThickness: 1,
@@ -2229,7 +2284,7 @@ export class RenderWorkerCore {
                 cameraPosition: msg.cameraPosition,
                 cameraRes: [tw, th],
                 selectionState: {
-                    selectedObjectIds: [],
+                    selectedObjectIds: msg.selectedObjectIds ?? [],
                     selectedEdges: [],
                     hoveredObjectId: 0,
                     hoveredEdges: [],
@@ -2237,7 +2292,7 @@ export class RenderWorkerCore {
                 viewSettings: {
                     xrayMode: false,
                     beamEnabled: false,
-                    isolateId: msg.isolateId ?? 0,
+                    isolatedIds: msg.isolatedIds ?? [],
                     selectionMode: 0,
                     outlineMode: 0,
                     outlineThickness: 1,
@@ -2472,8 +2527,8 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
-                        // viewSettings (binding 6): the fast SDF now reads viewSettings.isolateId for
-                        // isolate-view pass-through, so the beam pre-pass shader statically references it.
+                        // viewSettings (binding 6): the fast SDF reads viewSettings (isolatedCount/isolatedIds) for
+                        // isolate-view pass-through, so the beam pre-pass statically references binding 6.
                         { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
@@ -2721,7 +2776,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(ub.colorPalette, 0, alignedData)
 
         ub.viewSettings = this.#device.createBuffer({
-            size: 32, // 5 u32 (20 B) rounded up to 16-byte alignment
+            size: 96, // 5 u32 + pad to 32, then isolatedIds array<vec4u,4> (64 B) → 96
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "viewSettings",
         })
@@ -2981,7 +3036,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, ZERO_VEC4)
         this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, ZERO_EDGE_HITS)
 
-        if (sab) this.#renderFromSAB(sab)
+        if (sab) this.#renderFromSAB(sab, clickUV)
         else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
         self.postMessage({
@@ -3016,11 +3071,14 @@ export class RenderWorkerCore {
         // degradation while hovering, because the canvas was constantly
         // being repainted at hover-quality between user actions.
         //
-        // The right fix is a tiny compute-shader pick that doesn't write
-        // to the canvas. Until that lands, use the same quality the SAB
-        // carries for this frame — visible quality matches user settings.
+        // Fast pick: scissored offscreen render of a few pixels around the
+        // hover point — no full raymarch, no canvas repaint. The hover
+        // highlight itself is drawn by the next main-thread-initiated render
+        // (the hovered id rides the SAB), so there's at most a ~1-frame lag,
+        // and the readback no longer stalls behind a full-frame raymarch (which
+        // is what made hover-flood selection feel slow).
         if (sab) {
-            this.#renderFromSAB(sab)
+            this.#renderFromSAB(sab, clickUV)
         } else {
             this.render(this.#lastRenderMsg!)
         }
@@ -3090,7 +3148,7 @@ export class RenderWorkerCore {
         }
         this.#writeClickState(clickUV, false, true, clickUV)
         this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, ZERO_EDGE_HITS)
-        if (sab) this.#renderFromSAB(sab)
+        if (sab) this.#renderFromSAB(sab, clickUV)
         else this.render(this.#lastRenderMsg!)
         const { hoveredObjectId } = await this.#readHoverResult()
         self.postMessage({ type: "pickObjectResult", objectId: hoveredObjectId, requestId })
@@ -3105,7 +3163,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, ZERO_VEC4)
         this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, ZERO_EDGE_HITS)
 
-        if (sab) this.#renderFromSAB(sab)
+        if (sab) this.#renderFromSAB(sab, clickUV)
         else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
         if (result.clickedId !== 0) {
@@ -3132,7 +3190,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, ZERO_VEC4)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, ZERO_VEC4)
         this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, ZERO_EDGE_HITS)
-        if (sab) this.#renderFromSAB(sab)
+        if (sab) this.#renderFromSAB(sab, clickUV)
         else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
         // hitPos[3] is the ray travel distance t; 0 means no hit

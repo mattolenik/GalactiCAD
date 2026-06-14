@@ -162,7 +162,7 @@ class App {
         devTools: DevToolsPanel
     }
     /** Most-recently-isolated node id (session only); re-isolated when the toggle is turned on off a shape. */
-    #lastIsolatedNodeId = 0
+    #lastIsolatedIds: number[] = []
     /** Editor context key gating the "View Isolated" menu item (true when the caret is over an isolatable symbol). */
     #overIsolatableKey?: monaco.editor.IContextKey<boolean>
 
@@ -211,10 +211,12 @@ class App {
             // Update color indicators for all matched shapes
             this.#updateColorIndicators()
 
-            // Auto-clear isolation if its target no longer exists (a structural edit
-            // renumbered/removed it). Parameter-only edits keep node ids stable.
-            if (this.renderer.isolateNodeId !== 0 && !this.#sceneNodeMap.has(this.renderer.isolateNodeId)) {
-                this.#applyIsolation(0)
+            // Drop isolated ids that no longer exist (a structural edit
+            // renumbered/removed them); keep the survivors. Parameter-only edits
+            // keep node ids stable, so isolation persists across those.
+            if (this.renderer.isolatedIds.length > 0) {
+                const survivors = this.renderer.isolatedIds.filter(id => this.#sceneNodeMap.has(id))
+                if (survivors.length !== this.renderer.isolatedIds.length) this.#applyIsolation(survivors)
             }
             // Refresh the "over isolatable" context key against the rebuilt source map.
             const isoPos = this.editor.getPosition()
@@ -342,24 +344,26 @@ class App {
      *   3. the most-recently-isolated node (if it still exists).
      * Returns 0 when nothing applies. Never moves the editor caret/selection.
      */
-    #resolveIsolationTarget(): number {
-        const selected = this.renderer.selectedObjectIds.find(id => this.#sceneNodeMap.has(id))
-        if (selected) return selected
+    #resolveIsolationTarget(): number[] {
+        // Priority: the whole 3D-preview selection (multi-select), else the
+        // isolatable symbol under the caret, else the last isolated survivors.
+        const selected = this.renderer.selectedObjectIds.filter(id => this.#sceneNodeMap.has(id))
+        if (selected.length > 0) return selected
         const pos = this.editor.getPosition()
         const atCursor = pos ? this.#findIsolatableNodeIdAtPosition(pos.lineNumber, pos.column) : null
-        if (atCursor) return atCursor
-        if (this.#lastIsolatedNodeId && this.#sceneNodeMap.has(this.#lastIsolatedNodeId)) return this.#lastIsolatedNodeId
-        return 0
+        if (atCursor) return [atCursor]
+        const survivors = this.#lastIsolatedIds.filter(id => this.#sceneNodeMap.has(id))
+        return survivors
     }
 
     /**
-     * Apply "View Isolated": render only `nodeId`'s subtree (0 = full scene). Pure
+     * Apply "View Isolated": render only `ids`' subtrees (empty = full scene). Pure
      * render-time state on the renderer — no rebuild. Never moves the editor caret.
      */
-    #applyIsolation(nodeId: number): void {
-        this.renderer.isolateNodeId = nodeId
-        this.#toolbarRefs.isolateToggle.checked = nodeId !== 0
-        if (nodeId !== 0) this.#lastIsolatedNodeId = nodeId
+    #applyIsolation(ids: number[]): void {
+        this.renderer.isolatedIds = ids
+        this.#toolbarRefs.isolateToggle.checked = ids.length > 0
+        if (ids.length > 0) this.#lastIsolatedIds = ids
         this.renderer.requestRender()
     }
 
@@ -803,7 +807,7 @@ class App {
                 const pos = ed.getPosition()
                 if (!pos) return
                 const id = this.#findIsolatableNodeIdAtPosition(pos.lineNumber, pos.column)
-                if (id) this.#applyIsolation(id)
+                if (id) this.#applyIsolation([id])
             },
         })
 
@@ -1251,14 +1255,14 @@ class App {
 
         // Isolation is render-time state on a fresh renderer; reset the toggle each (re)wire.
         isolateToggle.checked = false
-        this.renderer.isolateNodeId = 0
+        this.renderer.isolatedIds = []
         isolateToggle.onChange = (enabled) => {
             if (!enabled) {
-                this.#applyIsolation(0)
+                this.#applyIsolation([])
                 return
             }
             const target = this.#resolveIsolationTarget()
-            if (target) {
+            if (target.length > 0) {
                 this.#applyIsolation(target)
             } else {
                 // Nothing selected/under the caret and no prior target: leave the toggle off.

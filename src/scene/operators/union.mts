@@ -236,12 +236,12 @@ export class Union extends Node {
         return kind === "fast" ? "selectFast" : kind === "mid" ? "selectMid" : "selectSDF"
     }
 
-    /** Preview-only WGSL bool: is the isolate target inside *some* child's subtree (i.e. an ancestor pass-through applies)? */
+    /** Preview-only WGSL bool: does ANY child's subtree contain an isolated node (i.e. an ancestor pass-through applies)? */
     private _isoAnyChildCond(): string {
         const lo = this.id + 1
         const hi = this.id + this.getAllDescendantIds().length - 1
         if (hi < lo) return "false"
-        return `(viewSettings.isolateId >= ${lo}u && viewSettings.isolateId <= ${hi}u)`
+        return `isoHasSel(${lo}u, ${hi}u)`
     }
 
     private _compileFold(kind: UnionVariant, indentLevel: number): CompileResult {
@@ -271,7 +271,7 @@ export class Union extends Node {
                     threshold,
                     `var ${cVar} = ${childResult.text!};\n` +
                     `${accVar} = ${this._blendExpr(kind, accVar, cVar)};\n` +
-                    `if (${onPath}) { ${isoVar} = ${cVar}; }\n`,
+                    `if (${onPath}) { ${isoVar} = ${this._blendExpr(kind, isoVar, cVar)}; }\n`,
                     onPath,
                 )
             } else {
@@ -323,7 +323,7 @@ export class Union extends Node {
                 `} else if (${childVar}.${distField} < ${bestB}.${distField}) {\n` +
                 `    ${bestB} = ${childVar};\n` +
                 `}\n` +
-                (onPath ? `if (${onPath}) { ${isoVar} = ${childVar}; }\n` : ""),
+                (onPath ? `if (${onPath}) { ${isoVar} = ${this._blendExpr(kind, isoVar, childVar)}; }\n` : ""),
                 onPath,
             )
         }

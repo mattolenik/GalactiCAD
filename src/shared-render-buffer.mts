@@ -78,16 +78,19 @@ const S_O_RAY_MARCH_PARAMS = 6948
 // FSR1 spatial-upscale mode (consumed on the reduced-res motion frames + the
 // full-res FXAA path). `resolutionScale` above already carries the render scale.
 const S_O_UPSCALE_MODE = 6980 // u32: 0 = off (bilinear), 1 = EASU, 2 = EASU+FXAA
-// Isolate-view target node id (u32; 0 = full scene). A dedicated slot since the id
-// range (thousands) doesn't fit the packed view-settings bitfield.
-const S_O_ISOLATE_ID = 6984
+// Isolate-view ("View Isolated") node ids — multi-select. `isolatedCount` is how
+// many of the `ISOLATED_IDS_MAX` id slots are populated (0 = full scene). A
+// dedicated region since the ids (thousands) don't fit the packed view bitfield.
+const S_O_ISOLATED_COUNT = 6984
+const ISOLATED_IDS_MAX = 16
+const S_O_ISOLATED_IDS = 6988 // 16 u32 = 64 bytes → 6988..7052
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16
 const EDGES_DATA_SIZE = SELECTED_EDGES_COUNT * SELECTED_EDGE_SIZE // 1280
 
 /** Size of one payload slot in bytes */
-export const SLOT_SIZE = 6988
+export const SLOT_SIZE = 7052
 
 /** Total buffer size in bytes */
 export const SHARED_RENDER_BUFFER_SIZE = HEADER_SIZE + 2 * SLOT_SIZE
@@ -145,7 +148,9 @@ export const SAB_LAYOUT = {
     O_RESOLUTION_SCALE: S_O_RESOLUTION_SCALE,
     O_RAY_MARCH_PARAMS: S_O_RAY_MARCH_PARAMS,
     O_UPSCALE_MODE: S_O_UPSCALE_MODE,
-    O_ISOLATE_ID: S_O_ISOLATE_ID,
+    O_ISOLATED_COUNT: S_O_ISOLATED_COUNT,
+    O_ISOLATED_IDS: S_O_ISOLATED_IDS,
+    ISOLATED_IDS_MAX,
     SELECTED_OBJECT_IDS_SIZE,
     SELECTED_EDGES_TOTAL: EDGES_HEADER_SIZE + EDGES_DATA_SIZE,
 } as const
@@ -228,7 +233,13 @@ export function writeRenderPayloadSlot(
         (vs.outlineMode << 5) |
         (vs.previewNormalShading ? 128 : 0)
     u32[b4 + S_O_VIEW_SETTINGS / 4] = packed
-    u32[b4 + S_O_ISOLATE_ID / 4] = vs.isolateId
+    const isoIds = vs.isolatedIds ?? []
+    const isoN = Math.min(isoIds.length, ISOLATED_IDS_MAX)
+    u32[b4 + S_O_ISOLATED_COUNT / 4] = isoN
+    const isoBase = b4 + S_O_ISOLATED_IDS / 4
+    for (let i = 0; i < ISOLATED_IDS_MAX; i++) {
+        u32[isoBase + i] = i < isoN ? isoIds[i]! : 0
+    }
     u32[b4 + S_O_OUTLINE_THICKNESS / 4] = vs.outlineThickness
     f32.set(vs.outlineColor, base / 4 + S_O_OUTLINE_COLOR / 4)
     const ss = vs.selectionStyles
@@ -338,10 +349,15 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
 
     const packed = u32[b4 + S_O_VIEW_SETTINGS / 4]
     const psB = b4 + S_O_PREVIEW_SHADING / 4
+    const isoN = u32[b4 + S_O_ISOLATED_COUNT / 4]!
+    const isolatedIds: number[] = []
+    for (let i = 0; i < isoN && i < ISOLATED_IDS_MAX; i++) {
+        isolatedIds.push(u32[b4 + S_O_ISOLATED_IDS / 4 + i]!)
+    }
     const viewSettings: RenderViewSettings = {
         xrayMode: (packed & 1) !== 0,
         beamEnabled: (packed & 2) !== 0,
-        isolateId: u32[b4 + S_O_ISOLATE_ID / 4],
+        isolatedIds,
         selectionMode: (packed >> 2) & 7,
         outlineMode: (packed >> 5) & 3,
         outlineThickness: u32[b4 + S_O_OUTLINE_THICKNESS / 4],

@@ -249,6 +249,12 @@ export class Toolbar extends HTMLElement {
                 display: block;
                 flex-shrink: 0;
             }
+            /* Larger toolbar icons on desktop only (mobile is <= 600px per app convention). */
+            @media (min-width: 601px) {
+                button.icon-btn svg {
+                    transform: scale(1.25);
+                }
+            }
             .separator {
                 width: 1px;
                 height: calc(var(${__toolbar_height}) - 12px);

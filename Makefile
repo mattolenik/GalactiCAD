@@ -1,4 +1,4 @@
-MAKEFLAGS    += --no-print-directory --silent
+MAKEFLAGS    += --no-print-directory
 SHELL        := bash
 # All generated output lives under ./dist:
 #   dist/site     — web build (esbuild output, also what's deployed)
@@ -12,6 +12,7 @@ export TSC   ?= node_modules/.bin/tsc
 BUILD        := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 BROWSERS_CLI := npx @puppeteer/browsers
 BROWSERS_DIR := .browsers
+VERSION      := $(shell scripts/version)
 
 ifeq ($(AGENT),true)
 export RUN_FILE := .devserver.agent.run
@@ -154,24 +155,8 @@ electron-dev: build
 .PHONY: electron-pack
 electron-pack: export PRODUCTION=1
 electron-pack: build icons
-	@unset ELECTRON_RUN_AS_NODE
-	# Start from a clean release dir — electron-builder writes alongside
-	# existing files rather than pruning, so artifacts from a previous version
-	# would otherwise linger (and fail electron-verify).
-	rm -rf $(DIST_ROOT)/release
-	# Version the artifacts from the latest reachable v* git tag (strip the
-	# leading "v"), overriding package.json's placeholder 0.0.0 via
-	# extraMetadata so the working tree stays clean. Falls back to the
-	# package.json version when no v* tag is reachable.
-	tag=$$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null) || true
-	ver=$${tag#v}
-	if [[ -n $$ver ]]; then
-		echo "[electron-pack] version $$ver (from tag $$tag)"
-		node_modules/.bin/electron-builder -c.extraMetadata.version="$$ver"
-	else
-		echo "[electron-pack] no v* tag reachable; using package.json version"
-		node_modules/.bin/electron-builder
-	fi
+	unset ELECTRON_RUN_AS_NODE
+	node_modules/.bin/electron-builder -c.extraMetadata.version="$(VERSION)"
 
 # Verify the packaged macOS artifacts in dist/release/: every .app is accepted
 # by Gatekeeper as a Notarized Developer ID, and every .dmg has a notarization

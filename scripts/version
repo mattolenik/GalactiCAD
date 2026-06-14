@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tag="$(git tag -l --points-at "$(git describe --always)")"
+if [[ -n $tag ]]; then
+    echo "$tag"
+    exit 0
+fi
+
+hash="$(git describe --always --dirty)"
+if [[ -n $hash ]]; then
+    echo "v0.0.0-$hash"
+    exit 0
+fi
+
+echo "v0.0.0-dev"

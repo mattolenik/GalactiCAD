@@ -190,6 +190,7 @@ function recoveredCrossingsFor(
     const hit = cache.get(cacheKey)
     if (hit !== undefined) return hit
 
+    if (opts.perf) opts.perf.recoverCalls++
     const features = opts.features!
     const edgeLen = Math.hypot(bWorld[0]! - aWorld[0]!, bWorld[1]! - aWorld[1]!, bWorld[2]! - aWorld[2]!)
     const inflate = edgeLen * 2
@@ -225,10 +226,12 @@ function recoveredCrossingsFor(
             let prevT = 0
             atT(0, q)
             let prevF = st.f(q[0]!, q[1]!, q[2]!)
+            if (opts.perf) opts.perf.recoverScanEvals++
             for (let k = 1; k <= SUBDIV; k++) {
                 const tk = k / SUBDIV
                 atT(tk, q)
                 const fk = st.f(q[0]!, q[1]!, q[2]!)
+                if (opts.perf) opts.perf.recoverScanEvals++
                 if (prevF < 0 !== fk < 0) {
                     // Bisect the carrier root in [prevT, tk].
                     let lo = prevT
@@ -238,6 +241,7 @@ function recoveredCrossingsFor(
                         const mid = (lo + hi) / 2
                         atT(mid, q)
                         const fm = st.f(q[0]!, q[1]!, q[2]!)
+                        if (opts.perf) opts.perf.recoverBisectEvals++
                         if (fm < 0 === flo < 0) {
                             lo = mid
                             flo = fm

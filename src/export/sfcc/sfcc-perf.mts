@@ -59,6 +59,12 @@ export interface FaceContourPerf {
     faceRecoverMs: number
     /** `axisPlaneCrossings` feature pinning (post-cache: mostly cache hits). */
     facePinMs: number
+    /** `recoveredCrossingsFor` cache-MISS invocations (the sub-edges that actually run detection). */
+    recoverCalls: number
+    /** `st.f` evals in the SUBDIV=8 detection SCAN (per stratum, runs even with no crossing). */
+    recoverScanEvals: number
+    /** `st.f` evals in the per-bracket 50-iter carrier BISECTION (only on sign-change brackets). */
+    recoverBisectEvals: number
 }
 
 export interface SfccPerf extends OctreeSamplePerf, ClassifyPerf, FaceContourPerf {
@@ -116,6 +122,9 @@ export function createSfccPerf(): SfccPerf {
         faceRootMs: 0,
         faceRecoverMs: 0,
         facePinMs: 0,
+        recoverCalls: 0,
+        recoverScanEvals: 0,
+        recoverBisectEvals: 0,
         fCalls: 0,
         gradCalls: 0,
         intervalCalls: 0,

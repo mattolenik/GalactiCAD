@@ -504,6 +504,12 @@ export function contourFace(
     const wa = new Float64Array(3)
     const wb = new Float64Array(3)
 
+    // faceWalkMs = the boundary walk MINUS the root/recover/tag kernels timed
+    // inside it (snapshot-and-subtract → disjoint from those buckets).
+    const tWalk = opts.perf ? nowMs() : 0
+    const walkRootBefore = opts.perf ? opts.perf.faceRootMs : 0
+    const walkRecoverBefore = opts.perf ? opts.perf.faceRecoverMs : 0
+    const walkTagBefore = opts.perf ? opts.perf.faceTagMs : 0
     let walkIndex = -1
     for (const walk of walks) {
         walkIndex++
@@ -559,7 +565,9 @@ export function contourFace(
                 if (opts.features && opts.stratumTags) {
                     pointToWorld(lat, p0[0]!, p0[1]!, p0[2]!, wa)
                     pointToWorld(lat, p1[0]!, p1[1]!, p1[2]!, wb)
+                    const tTag = opts.perf ? nowMs() : 0
                     const tag = stratumTagFor(id, wa, wb, tree, points, opts)
+                    if (opts.perf) opts.perf.faceTagMs += nowMs() - tTag
                     if (tag >= 0) nodeStratum.set(id, tag)
                 }
             } else if (opts.features && opts.recovered) {
@@ -591,6 +599,15 @@ export function contourFace(
         }
     }
 
+    if (opts.perf) {
+        opts.perf.faceWalkMs +=
+            nowMs() -
+            tWalk -
+            (opts.perf.faceRootMs - walkRootBefore) -
+            (opts.perf.faceRecoverMs - walkRecoverBefore) -
+            (opts.perf.faceTagMs - walkTagBefore)
+    }
+
     // Extract crossings with enter/exit tags by walking the cyclic node list.
     const crossings: Array<{ id: number; enter: boolean }> = []
     let state = nodes.length > 0 ? nodes[0]!.inside : false
@@ -607,6 +624,10 @@ export function contourFace(
 
     // --- Feature pinning: exact curve–face crossings (computed once, shared) ---
     if (opts.features) {
+        // facePinQueryMs = the pin block MINUS axisPlaneCrossings (facePinMs):
+        // the curvesInBox query + in-rect filter + averaged-normal getOrCreateStr.
+        const tPinBlock = opts.perf ? nowMs() : 0
+        const pinFacePinBefore = opts.perf ? opts.perf.facePinMs : 0
         const minW = new Float64Array(3)
         pointToWorld(lat, gx, gy, gz, minW)
         const ext = len * lat.step
@@ -665,8 +686,14 @@ export function contourFace(
                 record.pins.push({ pointId: pid, curveId, t: cr.t })
             }
         }
+        if (opts.perf) {
+            opts.perf.facePinQueryMs += nowMs() - tPinBlock - (opts.perf.facePinMs - pinFacePinBefore)
+        }
     }
 
+    // facePairMs = everything from here to the return: pin-route, two-pass
+    // pairing (tally + run rule + collinear split), and pin-anchored splice.
+    const tPair = opts.perf ? nowMs() : 0
     // Route through pinned feature points: the certified case is one pin with
     // one boundary inside-run (exit → pin → enter, a single kinked arc).
     if (record.pins.length === 1 && crossings.length === 2) {
@@ -676,13 +703,17 @@ export function contourFace(
         record.segments.push({ a: exit.id, b: pin.pointId }, { a: pin.pointId, b: enter.id })
         record.consumedFwd.push(0, 0)
         record.consumedRev.push(0, 0)
+        if (opts.perf) opts.perf.facePairMs += nowMs() - tPair
         return record
     }
     // Pins in any other configuration aren't certified yet (corner faces land
     // in P5) — fall through to the featureless pairing, which keeps the mesh
     // closed; callers see the pins and count the fallback.
 
-    if (crossings.length === 0) return record
+    if (crossings.length === 0) {
+        if (opts.perf) opts.perf.facePairMs += nowMs() - tPair
+        return record
+    }
 
     // Pair exits with enters. With one inside run the rules coincide; with two
     // runs (the classic ambiguous face) the face-center sample decides; more
@@ -841,6 +872,7 @@ export function contourFace(
             }
         }
     }
+    if (opts.perf) opts.perf.facePairMs += nowMs() - tPair
     return record
 }
 
@@ -966,6 +998,7 @@ export function contourAllFaces(
     // surface arcs onto one mesh edge (3+ triangle uses ⇒ non-manifold). Can
     // arise when recovered sliver arcs on different faces share both
     // endpoints. Split EVERY occurrence with its own face-owned midpoint.
+    const tDedup = opts.perf ? nowMs() : 0
     const EDGE_BASE = 0x8000000
     const pairOwners = new Map<number, Array<{ rec: FaceRecord; idx: number }>>()
     for (const perAxis of faces) {
@@ -994,6 +1027,7 @@ export function contourAllFaces(
             rec.consumedRev.push(0)
         }
     }
+    if (opts.perf) opts.perf.faceDedupMs += nowMs() - tDedup
 
     return { faces, multiRunFaces, boundaryViolations, keyCollisions }
 }

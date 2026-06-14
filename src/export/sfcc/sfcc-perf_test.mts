@@ -35,7 +35,8 @@ test("profile on: perf buckets + counts populate, sub-buckets are consistent", (
     for (const k of ["featureCompileMs", "octreeBuildMs", "faceContourMs", "cellMeshMs", "assembleMs", "totalMs",
         "intervalMs", "sampleMs", "classifyMs", "smoothCritMs",
         "classifyIndexMs", "classifyCrossingsMs", "classifyStratumMs",
-        "faceRootMs", "faceRecoverMs", "facePinMs"] as const) {
+        "faceRootMs", "faceRecoverMs", "facePinMs",
+        "faceWalkMs", "faceTagMs", "facePinQueryMs", "facePairMs", "faceDedupMs"] as const) {
         assert.ok(p[k] >= 0, `${k}=${p[k]}`)
     }
     const phaseSum = p.featureCompileMs + p.octreeBuildMs + p.faceContourMs + p.cellMeshMs + p.assembleMs
@@ -45,9 +46,15 @@ test("profile on: perf buckets + counts populate, sub-buckets are consistent", (
     // classify sub-buckets are charged inside classifyMs (remainder = glue/branching).
     assert.ok(p.classifyIndexMs + p.classifyCrossingsMs + p.classifyStratumMs <= p.classifyMs + 5,
         `classify subbuckets ${p.classifyIndexMs + p.classifyCrossingsMs + p.classifyStratumMs} > classifyMs ${p.classifyMs}`)
-    // faceContour sub-buckets are charged inside faceContourMs (remainder = boundary walk + pairing).
-    assert.ok(p.faceRootMs + p.faceRecoverMs + p.facePinMs <= p.faceContourMs + 5,
-        `face subbuckets ${p.faceRootMs + p.faceRecoverMs + p.facePinMs} > faceContourMs ${p.faceContourMs}`)
+    // faceContour sub-buckets are DISJOINT and charged inside faceContourMs
+    // (walk/pinQuery subtract the root/recover/tag/pin kernels nested in them;
+    // remainder = the contourAllFaces enumeration glue). They must sum to ≤ the
+    // phase total.
+    const faceSub =
+        p.faceRootMs + p.faceRecoverMs + p.facePinMs +
+        p.faceWalkMs + p.faceTagMs + p.facePinQueryMs + p.facePairMs + p.faceDedupMs
+    assert.ok(faceSub <= p.faceContourMs + 5,
+        `face subbuckets ${faceSub} > faceContourMs ${p.faceContourMs}`)
 })
 
 test("profile on vs off: identical mesh (instrumentation is inert)", () => {

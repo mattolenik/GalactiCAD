@@ -59,6 +59,16 @@ export interface FaceContourPerf {
     faceRecoverMs: number
     /** `axisPlaneCrossings` feature pinning (post-cache: mostly cache hits). */
     facePinMs: number
+    /** Boundary walk: `sampleAt` / interior discovery / node building, EXCLUDING the root/recover/tag kernels (subtracted out — disjoint). */
+    faceWalkMs: number
+    /** `stratumTagFor` — per-visible-crossing `curvesInBox` query + per-stratum carrier sign/normal flank test. */
+    faceTagMs: number
+    /** Pin-block overhead EXCLUDING `axisPlaneCrossings` (facePinMs): the `curvesInBox` query + in-rect filter + averaged-normal `getOrCreateStr`. */
+    facePinQueryMs: number
+    /** Two-pass pairing (stratum tally + run rule + collinear split) + pin-anchored splice — the matching that builds `record.segments`. */
+    facePairMs: number
+    /** Global duplicate-segment repair in `contourAllFaces` (cross-face dedup walk + per-collision `splitMidpoint`). */
+    faceDedupMs: number
     /** `recoveredCrossingsFor` cache-MISS invocations (the sub-edges that actually run detection). */
     recoverCalls: number
     /** `st.f` evals in the SUBDIV=8 detection SCAN (per stratum, runs even with no crossing). */
@@ -136,6 +146,11 @@ export function createSfccPerf(): SfccPerf {
         faceRootMs: 0,
         faceRecoverMs: 0,
         facePinMs: 0,
+        faceWalkMs: 0,
+        faceTagMs: 0,
+        facePinQueryMs: 0,
+        facePairMs: 0,
+        faceDedupMs: 0,
         recoverCalls: 0,
         recoverScanEvals: 0,
         recoverBisectEvals: 0,

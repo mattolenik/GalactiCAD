@@ -33,13 +33,17 @@ test("profile on: perf buckets + counts populate, sub-buckets are consistent", (
     // Every wall-time bucket is non-negative and the disjoint phases don't
     // exceed the whole (timer jitter slack only).
     for (const k of ["featureCompileMs", "octreeBuildMs", "faceContourMs", "cellMeshMs", "assembleMs", "totalMs",
-        "intervalMs", "sampleMs", "classifyMs", "smoothCritMs"] as const) {
+        "intervalMs", "sampleMs", "classifyMs", "smoothCritMs",
+        "classifyIndexMs", "classifyCrossingsMs", "classifyStratumMs"] as const) {
         assert.ok(p[k] >= 0, `${k}=${p[k]}`)
     }
     const phaseSum = p.featureCompileMs + p.octreeBuildMs + p.faceContourMs + p.cellMeshMs + p.assembleMs
     assert.ok(phaseSum <= p.totalMs + 5, `phaseSum ${phaseSum} > totalMs ${p.totalMs}`)
     // Octree sub-buckets are charged inside the octree-build phase.
     assert.ok(p.intervalMs + p.sampleMs + p.classifyMs + p.smoothCritMs <= p.octreeBuildMs + 5)
+    // classify sub-buckets are charged inside classifyMs (remainder = glue/branching).
+    assert.ok(p.classifyIndexMs + p.classifyCrossingsMs + p.classifyStratumMs <= p.classifyMs + 5,
+        `classify subbuckets ${p.classifyIndexMs + p.classifyCrossingsMs + p.classifyStratumMs} > classifyMs ${p.classifyMs}`)
 })
 
 test("profile on vs off: identical mesh (instrumentation is inert)", () => {

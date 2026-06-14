@@ -32,7 +32,22 @@ export interface OctreeSamplePerf {
     sampleEvals: number
 }
 
-export interface SfccPerf extends OctreeSamplePerf {
+/**
+ * `classifyCellFeatures` sub-buckets, written from inside refine-criteria.mts.
+ * Narrow slice of {@link SfccPerf} so refine-criteria needn't import the full
+ * type. The three should roughly sum to `classifyMs`; the remainder is glue
+ * (AABB build, in-box predicates, branching, the total==0 containment probe).
+ */
+export interface ClassifyPerf {
+    /** `features.index.cornersInBox` + `curvesInBox` — hash-grid spatial queries. */
+    classifyIndexMs: number
+    /** `curve.axisPlaneCrossings` — O(polyline) walk + per-crossing bisection + alloc. */
+    classifyCrossingsMs: number
+    /** Pin-visibility certificate — per-adjacent-stratum 4-corner `st.f` sign tests. */
+    classifyStratumMs: number
+}
+
+export interface SfccPerf extends OctreeSamplePerf, ClassifyPerf {
     // --- phase wall times (ms), summed across re-refine rounds ---------------
     /** S1: `compileFeatureSet` (analytic strata + trimmed feature curves/corners). */
     featureCompileMs: number
@@ -52,6 +67,7 @@ export interface SfccPerf extends OctreeSamplePerf {
     classifyMs: number
     /** `makeProbe` center eval + `needsSplitSmooth` (activeStrata / grad / per-stratum carriers). */
     smoothCritMs: number
+    // classify sub-buckets (classifyIndexMs / classifyCrossingsMs / classifyStratumMs) come from ClassifyPerf.
 
     // --- call counts across ALL phases (via the counting wrapper) -----------
     /** Total `tree.f` calls (build memo-misses + center evals + meshing root-finding + feature compile). */
@@ -80,6 +96,9 @@ export function createSfccPerf(): SfccPerf {
         totalMs: 0,
         classifyMs: 0,
         smoothCritMs: 0,
+        classifyIndexMs: 0,
+        classifyCrossingsMs: 0,
+        classifyStratumMs: 0,
         fCalls: 0,
         gradCalls: 0,
         intervalCalls: 0,

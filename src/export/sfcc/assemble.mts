@@ -310,7 +310,7 @@ export function runSfccPipeline(
             needsSplit: (cell, sampleAt) => {
                 // Feature criteria (i)/(ii) first; on pass they classify the cell.
                 const tCls = perf ? nowMs() : 0
-                const cls = classifyCellFeatures(features, lat, cell.level, cell.ix, cell.iy, cell.iz, featureCriteriaOpts)
+                const cls = classifyCellFeatures(features, lat, cell.level, cell.ix, cell.iy, cell.iz, featureCriteriaOpts, perf)
                 if (perf) perf.classifyMs += nowMs() - tCls
                 if (cls.split) {
                     // Classify even though we demand a split: at depthMax the

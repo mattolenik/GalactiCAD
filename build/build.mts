@@ -139,6 +139,10 @@ async function build() {
             bundle: true,
             entryPoints: Options.entryPoints,
             minify: Options.isProd,
+            // Prod: strip console/debugger calls and drop esbuild's per-file license-comment
+            // blocks. Both are no-ops in dev (where we keep logging + sourcemaps).
+            drop: Options.isProd ? (["console", "debugger"] as ("console" | "debugger")[]) : [],
+            legalComments: "none",
             outdir: Options.outDir,
             platform: "browser",
             format: "esm",

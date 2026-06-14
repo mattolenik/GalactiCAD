@@ -24,7 +24,7 @@ endif
 SHELL := bash
 .ONESHELL:
 
-default: build test
+default: setup build test
 
 .PHONY: setup
 setup:
@@ -128,7 +128,7 @@ restart-agent: stop-agent start-agent
 
 .PHONY: release
 release: export PRODUCTION=1
-release: build test electron-pack electron-verify
+release: setup build test electron-pack electron-verify
 
 # Run the packaged desktop shell against the current dist/site/. Builds first
 # so a stale or missing dist/site/ doesn't load an empty window.

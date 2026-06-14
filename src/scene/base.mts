@@ -491,7 +491,11 @@ export function isoCompileEnabled(): boolean {
 export function isoCondWgsl(node: Node): string {
     const lo = node.id
     const hi = node.id + node.getAllDescendantIds().length - 1 // contiguous pre-order ids
-    return `isoHasSel(${lo}u, ${hi}u)`
+    // Short-circuit on the (coherent, hoistable) count check so the NOT-isolating
+    // case — the overwhelming norm — never calls `isoHasSel` at all. This keeps the
+    // per-operator iso scaffolding to one uniform compare when off; without it the
+    // function call per operator per SDF eval per raymarch step tanks frame rate.
+    return `(viewSettings.isolatedCount != 0u && isoHasSel(${lo}u, ${hi}u))`
 }
 
 /**

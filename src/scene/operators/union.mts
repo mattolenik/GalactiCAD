@@ -241,7 +241,9 @@ export class Union extends Node {
         const lo = this.id + 1
         const hi = this.id + this.getAllDescendantIds().length - 1
         if (hi < lo) return "false"
-        return `isoHasSel(${lo}u, ${hi}u)`
+        // Short-circuit on the coherent count check (see base.mts isoCondWgsl):
+        // never call isoHasSel when nothing is isolated.
+        return `(viewSettings.isolatedCount != 0u && isoHasSel(${lo}u, ${hi}u))`
     }
 
     private _compileFold(kind: UnionVariant, indentLevel: number): CompileResult {

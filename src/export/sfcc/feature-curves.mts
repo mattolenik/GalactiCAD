@@ -370,17 +370,35 @@ export function makeTracedCurve(
                 const b = (axis === 0 ? sx(i + 1) : axis === 1 ? sy(i + 1) : sz(i + 1)) - coord
                 if (a === 0 && b === 0) continue
                 if (a < 0 === b < 0 && a !== 0) continue
-                // Bisect on the exact curve for the crossing parameter.
-                let lo = i
-                let hi = i + 1
-                for (let k = 0; k < 40; k++) {
-                    const mid = (lo + hi) / 2
-                    pointAt(mid, p)
-                    const v = p[axis]! - coord
-                    if (v < 0 === a < 0 && v !== 0) lo = mid
-                    else hi = mid
+                // Illinois (bracket-preserving regula-falsi) on the exact curve:
+                // same one `pointAt` (→ projectToCarrierPair) per step as bisection,
+                // but superlinear, so it reaches the crossing in ~8 evals instead of
+                // a fixed 40 — `pointAt`'s Newton re-projection is the dominant SFCC
+                // refinement cost (classifyCellFeatures ≈ axisPlaneCrossings). The
+                // [i,i+1] sign-change bracket is maintained every step, so it lands
+                // on the same root the bisection did, to the same ~1e-11 tolerance.
+                let x0 = i
+                let x1 = i + 1
+                let f0 = a
+                let f1 = b
+                let t = x1
+                for (let k = 0; k < 50; k++) {
+                    const x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0)
+                    pointAt(x2, p)
+                    const f2 = p[axis]! - coord
+                    t = x2
+                    if (f2 === 0 || Math.abs(f2) < 1e-11 || Math.abs(x1 - x0) < 1e-11) break
+                    if (f2 < 0 === f1 < 0) {
+                        // f2 shares f1's sign → root stays in [x0, x2]; keep x0, halve f0 (Illinois).
+                        f0 *= 0.5
+                    } else {
+                        // sign change between x1 and x2 → bracket shrinks to [x1, x2].
+                        x0 = x1
+                        f0 = f1
+                    }
+                    x1 = x2
+                    f1 = f2
                 }
-                const t = (lo + hi) / 2
                 pointAt(t, p)
                 tangent(p[0]!, p[1]!, p[2]!, tg)
                 out.push({ t, x: p[0]!, y: p[1]!, z: p[2]!, tangentialDot: Math.abs(tg[axis]!) })

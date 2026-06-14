@@ -25,6 +25,8 @@ function asBool(v: unknown, fallback: boolean): boolean {
 }
 
 export const MESH_VIEWER_OVERLAY_CHANGE_EVENT = "galacticad-mesh-viewer-overlay-change" as const
+/** Fired when the shared "render normals" lighting mode is toggled from the dev-tools panel. */
+export const RENDER_NORMALS_CHANGE_EVENT = "galacticad-render-normals-change" as const
 
 export class DevToolsAppSection extends HTMLElement implements DevToolsPersistable {
     readonly devToolsSectionId = DEVTOOLS_SECTION_APP
@@ -34,6 +36,13 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #meshSimplify$: BehaviorSubject<boolean>
     #translucentFaces$: BehaviorSubject<boolean>
     #wireframe$: BehaviorSubject<boolean>
+    /**
+     * Shared "render normals" lighting mode. Mirrors `preview.previewNormalShading`
+     * (the single source of truth, also driven by the toolbar normal icon) rather
+     * than living in the mesh-viewer overlay settings group — so it stays in sync
+     * with the SDF preview.
+     */
+    #renderNormals$: BehaviorSubject<boolean>
     #mdcDebugPoints$: BehaviorSubject<boolean>
     #fgLine$: BehaviorSubject<boolean>
     #fgCorner$: BehaviorSubject<boolean>
@@ -60,6 +69,20 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onStepHeatmapChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
+
+    get renderNormals(): boolean {
+        return this.#renderNormals$.value
+    }
+
+    /** Sync the checkbox from the shared mode (toolbar / settings load) without re-dispatching. */
+    set renderNormals(enabled: boolean) {
+        this.#applying = true
+        try {
+            this.#renderNormals$.next(!!enabled)
+        } finally {
+            this.#applying = false
+        }
+    }
 
     get showFps(): boolean {
         return this.#showFps$.value
@@ -148,6 +171,9 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         const mv = SettingsManager.instance.getGlobal().meshViewer
         this.#translucentFaces$ = new BehaviorSubject(!!mv.translucentFaces)
         this.#wireframe$ = new BehaviorSubject(!!mv.wireframe)
+        this.#renderNormals$ = new BehaviorSubject(
+            !!SettingsManager.instance.getPreview().previewNormalShading,
+        )
         this.#mdcDebugPoints$ = new BehaviorSubject(!!mv.mdcDebugPoints)
         this.#fgLine$ = new BehaviorSubject(!!mv.featureGlyphs?.line)
         this.#fgCorner$ = new BehaviorSubject(!!mv.featureGlyphs?.corner)
@@ -315,6 +341,25 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             persist()
             this.dispatchEvent(new CustomEvent("galacticad-mesh-simplify-change", { bubbles: true, composed: true }))
         })
+
+        // Shared lighting mode: regular lighting (default) vs render normals. Kept
+        // in sync with the SDF preview / toolbar normal icon via the app, so this
+        // checkbox dispatches its own event rather than joining the mesh-viewer
+        // overlay broadcast below.
+        const renderNormalsCb = this.#addCheckbox(exportBox, "Render normals", this.#renderNormals$.value)
+        this.#subscriptions.push(connectCheckbox(renderNormalsCb, this.#renderNormals$))
+        this.#subscriptions.push(
+            this.#renderNormals$.pipe(skip(1)).subscribe(() => {
+                if (this.#applying) return
+                this.dispatchEvent(
+                    new CustomEvent<boolean>(RENDER_NORMALS_CHANGE_EVENT, {
+                        bubbles: true,
+                        composed: true,
+                        detail: this.#renderNormals$.value,
+                    }),
+                )
+            }),
+        )
 
         const translucentCb = this.#addCheckbox(exportBox, "Translucent faces", this.#translucentFaces$.value)
         this.#subscriptions.push(connectCheckbox(translucentCb, this.#translucentFaces$))

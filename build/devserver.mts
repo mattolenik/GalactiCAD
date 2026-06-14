@@ -223,10 +223,15 @@ function agentRenderQueryOverrides(url: URL): {
         const cellVerts = flag("cellVertices") || flag("mdcCellVertices")
         const qefPlanes = flag("qefPlanes") || flag("mdcQefPlanes")
         const wireframe = flag("wireframe")
+        // Tri-state: absent => fall through to the agent mesh-capture default
+        // (normals, matching the agent SDF capture); present forces the mode.
+        const renderNormals: boolean | undefined =
+            url.searchParams.get("renderNormals") === null ? undefined : flag("renderNormals")
         const themeQ = url.searchParams.get("theme")?.trim().toLowerCase()
         const theme: "light" | "dark" | undefined = themeQ === "light" || themeQ === "dark" ? themeQ : undefined
         const any =
-            debugPoints || fgLine || fgCorner || fgSeam || fgRing || cellVerts || qefPlanes || wireframe
+            debugPoints || fgLine || fgCorner || fgSeam || fgRing || cellVerts || qefPlanes || wireframe ||
+            renderNormals !== undefined
         if (!any) return undefined
         return {
             mdcDebugPoints: debugPoints,
@@ -234,6 +239,7 @@ function agentRenderQueryOverrides(url: URL): {
             mdcCellVertices: cellVerts,
             mdcQefPlanes: qefPlanes,
             wireframe,
+            ...(renderNormals !== undefined ? { renderNormals } : {}),
             ...(theme !== undefined ? { theme } : {}),
         }
     })()

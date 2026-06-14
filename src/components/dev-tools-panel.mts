@@ -24,7 +24,7 @@ import {
     type DevToolsPersistable,
     type JSONValue,
 } from "./dev-tools-protocol.mjs"
-import { DevToolsAppSection, MESH_VIEWER_OVERLAY_CHANGE_EVENT } from "./dev-tools-app-section.mjs"
+import { DevToolsAppSection, MESH_VIEWER_OVERLAY_CHANGE_EVENT, RENDER_NORMALS_CHANGE_EVENT } from "./dev-tools-app-section.mjs"
 import type { GlobalSettings } from "../storage/settings.mjs"
 import {
     DevToolsExporterSelect,
@@ -77,6 +77,8 @@ export class DevToolsPanel extends HTMLElement {
     onMeshExporterChange?: (exporter: ExporterKind) => void
     onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
     onMeshViewerOverlayChange?: (settings: GlobalSettings["meshViewer"]) => void
+    /** Shared "render normals" lighting mode toggled from the mesh-export dev-tools panel. */
+    onRenderNormalsChange?: (enabled: boolean) => void
     onShrecTuningChange?: (tuning: ShrecTuning) => void
     onFlexiCubesTuningChange?: (tuning: FlexiCubesTuning) => void
     onSfccTuningChange?: (tuning: SfccTuning) => void
@@ -134,6 +136,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set featureGraphOverlay(enabled: boolean) {
         this.#appSection.featureGraphOverlay = enabled
+    }
+
+    get renderNormals(): boolean {
+        return this.#appSection.renderNormals
+    }
+
+    set renderNormals(enabled: boolean) {
+        this.#appSection.renderNormals = enabled
     }
 
     get stepHeatmap(): boolean {
@@ -348,6 +358,9 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.addEventListener(MESH_VIEWER_OVERLAY_CHANGE_EVENT, (ev: Event) => {
             const detail = (ev as CustomEvent<GlobalSettings["meshViewer"]>).detail
             this.onMeshViewerOverlayChange?.(detail)
+        })
+        this.#appSection.addEventListener(RENDER_NORMALS_CHANGE_EVENT, (ev: Event) => {
+            this.onRenderNormalsChange?.((ev as CustomEvent<boolean>).detail)
         })
 
         const mkSection = (label: string, collapseId: string, ...nodes: Node[]) => {

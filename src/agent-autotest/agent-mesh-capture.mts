@@ -55,6 +55,7 @@ export async function captureAgentMeshImageData(
     mv.setAttribute("data-skip-autostart", "")
     mv.setAttribute("wireframe", overlay?.wireframe ? "true" : "false")
     mv.setAttribute("translucentFaces", "false")
+    mv.renderNormals = !!overlay?.renderNormals
     wrap.appendChild(mv)
     document.body.appendChild(wrap)
     try {

@@ -1248,9 +1248,22 @@ class App {
             this.renderer.xrayMode = enabled
         }
 
+        // Shared "render normals" mode: the toolbar icon, the SDF preview, the mesh
+        // viewer, and the dev-tools "Render normals" checkbox all reflect
+        // `renderer.previewNormalShading` (the single source of truth). Default is
+        // regular lighting (false).
         previewNormalShadingToggle.checked = this.renderer.previewNormalShading
+        devTools.renderNormals = this.renderer.previewNormalShading
+        if (this.#mesh) this.#mesh.renderNormals = this.renderer.previewNormalShading
         previewNormalShadingToggle.onChange = (enabled) => {
             this.renderer.previewNormalShading = enabled
+            if (this.#mesh) this.#mesh.renderNormals = enabled
+            devTools.renderNormals = enabled
+        }
+        devTools.onRenderNormalsChange = (enabled) => {
+            this.renderer.previewNormalShading = enabled
+            if (this.#mesh) this.#mesh.renderNormals = enabled
+            previewNormalShadingToggle.checked = enabled
         }
 
         // Isolation is render-time state on a fresh renderer; reset the toggle each (re)wire.
@@ -1311,6 +1324,8 @@ class App {
         this.renderer.previewSettingsLoaded$.subscribe(() => {
             xrayCheckbox.checked = this.renderer.xrayMode
             previewNormalShadingToggle.checked = this.renderer.previewNormalShading
+            devTools.renderNormals = this.renderer.previewNormalShading
+            if (this.#mesh) this.#mesh.renderNormals = this.renderer.previewNormalShading
             selectionModeRadio.value = this.renderer.selectionMode
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
@@ -1843,6 +1858,8 @@ class App {
             this.#viewports.appendChild(meshViewer)
             this.#mesh = meshViewer
             meshViewer.setEffectiveTheme(this.#effectiveTheme)
+            // Adopt the shared render-normals mode (toolbar normal icon / SDF preview).
+            meshViewer.renderNormals = this.renderer.previewNormalShading
 
             // Wait for layout to settle before setting up camera sync
             requestAnimationFrame(() => {

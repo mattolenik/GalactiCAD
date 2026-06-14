@@ -1990,7 +1990,15 @@ export class SDFRenderer {
         overlay?: AgentMeshOverlay,
     ): Promise<ImageData> {
         const mesh = await this.renderMesh(src, documentName, { ...meshOptions, agentAutomation: true })
-        return captureAgentMeshImageData(mesh, camera, viewCenter, width, height, overlay)
+        // Agent SDF captures hard-code normal-vector shading (see worker
+        // `handleAgentPreview`), so default the mesh capture to normals too — keeps
+        // mesh/SDF agent renders comparable (e.g. `triangle`). An explicit
+        // overlay.renderNormals (`--overlay renderNormals=false`) still wins for a lit capture.
+        const effectiveOverlay: AgentMeshOverlay = {
+            ...overlay,
+            renderNormals: overlay?.renderNormals ?? true,
+        }
+        return captureAgentMeshImageData(mesh, camera, viewCenter, width, height, effectiveOverlay)
     }
 
     async #getCachedThumbnail(cacheKey: string): Promise<ImageData | null> {

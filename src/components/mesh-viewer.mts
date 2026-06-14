@@ -54,6 +54,13 @@ export class MeshViewer extends HTMLElement {
     #translucentFaces = false
     #viewCenter: Vec2f = vec2(0.5, 0.5)
     #wireframe = false
+    /**
+     * Render mode shared with the SDF preview's `previewNormalShading`: false =
+     * regular lighting (matches SDF lit appearance), true = scene-space normal RGB.
+     * Driven by the app from the single shared toggle (toolbar normal icon /
+     * dev-tools lighting option); picked up on the next continuous-rAF frame.
+     */
+    #renderNormals = false
     /** Edge-overlay line color (RGB). Near-white in dark mode, near-black in light mode. */
     #wireframeColor: [number, number, number] = [0.95, 0.95, 0.98]
     /**
@@ -806,7 +813,12 @@ export class MeshViewer extends HTMLElement {
         // Provide camera-space -> scene-space so lighting can move with the camera (matching PreviewWindow).
         const camToScene = this.#controls.viewTransform
         this.#device.queue.writeBuffer(this.#uniformBuffer, 96, camToScene.data as BufferSource)
-        this.#device.queue.writeBuffer(this.#uniformBuffer, 160, this.#viewCenter.data as BufferSource)
+        // 160: viewCenter (vec2f), 168: shadeMode (f32), 172: pad. One 16-byte write.
+        this.#device.queue.writeBuffer(
+            this.#uniformBuffer,
+            160,
+            new Float32Array([this.#viewCenter.x, this.#viewCenter.y, this.#renderNormals ? 1 : 0, 0]),
+        )
         const [lr, lg, lb] = this.#wireframeColor
         this.#device.queue.writeBuffer(this.#uniformBuffer, 176, new Float32Array([lr, lg, lb, 1]))
 
@@ -1862,6 +1874,20 @@ export class MeshViewer extends HTMLElement {
         this.#syncBool("wireframe", next)
     }
 
+    get renderNormals(): boolean {
+        return this.#renderNormals
+    }
+
+    /**
+     * Toggle scene-space normal RGB vs regular lighting. The continuous render
+     * loop reflects the change on the next frame, so no explicit re-render is
+     * needed. Not persisted here — the shared `preview.previewNormalShading`
+     * setting is the single source of truth (app drives this from it).
+     */
+    set renderNormals(enabled: boolean) {
+        this.#renderNormals = !!enabled
+    }
+
     /**
      * Set the edge-overlay line color from the effective theme: near-white on dark,
      * near-black on light. Picked up on the next render frame (continuous rAF loop).
@@ -1989,8 +2015,34 @@ struct Camera {
     zoom: f32,
     camToScene: mat4x4f,
     viewCenter: vec2f,
+    // 0 = regular lighting (matches SDF preview lit mode), 1 = render normals (RGB).
+    shadeMode: f32,
+    _pad0: f32,
     lineColor: vec4f,
 };
+
+// Regular lighting that mirrors preview.wgsl's lit mode: a 4-light wrap-diffuse
+// (wrap = 0) + Blinn-Phong specular (exponent 32) + Schlick fresnel rim, using
+// the DEFAULT_PREVIEW_SHADING weights and the same camera-space light
+// directions transformed to scene space via camToScene. SDF ambient occlusion
+// is field-specific (no analytic SDF here), so it's omitted (ao = 1). The mesh
+// carries no per-object id, so a single neutral clay albedo stands in for the
+// SDF's per-shape palette color.
+const MESH_AMBIENT = 0.1;
+const MESH_KEY_WEIGHT = 0.62;
+const MESH_FILL_WEIGHT = 0.16;
+const MESH_RIM_WEIGHT = 0.18;
+const MESH_BACK_WEIGHT = 0.12;
+const MESH_SPEC_INTENSITY = 0.13;
+const MESH_FRESNEL_INTENSITY = 0.27;
+const MESH_BASE_COLOR = vec3f(0.82, 0.82, 0.85);
+
+// Camera-space light direction -> unit scene-space direction. Matches the CPU
+// camTransform.transformVector(dir) the render worker uses for the SDF preview
+// (camToScene is camera->scene, the rotation preserves length).
+fn meshLightDir(camDir: vec3f) -> vec3f {
+    return normalize((camera.camToScene * vec4f(camDir, 0.0)).xyz);
+}
 
 @group(0) @binding(0) var<uniform> camera: Camera;
 
@@ -2058,6 +2110,44 @@ fn normalToRgb(nScene: vec3f) -> vec3f {
     let n = select(vec3f(0.0, 0.0, 1.0), nScene * inverseSqrt(len2), len2 > 1e-20);
     return n * 0.5 + 0.5;
 }
+
+// Regular lit shading matching preview.wgsl (see constants above).
+fn shadeMeshLit(nScene: vec3f) -> vec3f {
+    let len2 = dot(nScene, nScene);
+    let n = select(vec3f(0.0, 0.0, 1.0), nScene * inverseSqrt(len2), len2 > 1e-20);
+
+    let l1 = meshLightDir(vec3f(0.5, 0.6, 1.0));   // key
+    let l2 = meshLightDir(vec3f(-0.6, 0.3, 0.8));  // fill
+    let l3 = meshLightDir(vec3f(0.1, -0.5, 0.9));  // rim
+    let l4 = meshLightDir(vec3f(-0.2, 0.2, 1.0));  // back
+    // Ortho camera: direction toward the viewer is the camera +Z axis in scene space.
+    let viewDir = meshLightDir(vec3f(0.0, 0.0, 1.0));
+
+    // 4-light wrap diffuse (diffuseWrap = 0, so wrap folds out to a plain clamp).
+    let dots = vec4f(dot(n, l1), dot(n, l2), dot(n, l3), dot(n, l4));
+    let wrapped = clamp(dots, vec4f(0.0), vec4f(1.0));
+    let weights = vec4f(MESH_KEY_WEIGHT, MESH_FILL_WEIGHT, MESH_RIM_WEIGHT, MESH_BACK_WEIGHT);
+    let diffuse = clamp(MESH_AMBIENT + dot(wrapped, weights), 0.0, 1.35);
+
+    // Blinn-Phong specular = (n·H)^32 via repeated squaring; key light only.
+    let h = max(dot(n, normalize(l1 + viewDir)), 0.0);
+    let h2 = h * h;
+    let h4 = h2 * h2;
+    let h8 = h4 * h4;
+    let h16 = h8 * h8;
+    let h32 = h16 * h16;
+    let spec = h32 * MESH_SPEC_INTENSITY;
+
+    // Schlick fresnel = (1 - n·viewDir)^5.
+    let ndv = clamp(dot(n, viewDir), 0.0, 1.0);
+    let x = 1.0 - ndv;
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    let fresnel = x4 * x * MESH_FRESNEL_INTENSITY;
+
+    let specRim = vec3f(0.96, 0.98, 1.0) * spec + vec3f(fresnel);
+    return MESH_BASE_COLOR * diffuse + specRim;
+}
 `
 
 const MESH_SHADER_OPAQUE = /* wgsl */ `
@@ -2069,7 +2159,10 @@ fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> @loca
     if (!frontFacing) {
         n = -n;
     }
-    return vec4f(normalToRgb(n), 1.0);
+    if (camera.shadeMode > 0.5) {
+        return vec4f(normalToRgb(n), 1.0);
+    }
+    return vec4f(shadeMeshLit(n), 1.0);
 }
 `
 
@@ -2090,7 +2183,10 @@ fn fragmentMain(v: VertexOut, @builtin(front_facing) frontFacing: bool) -> OitOu
     if (!frontFacing) {
         n = -n;
     }
-    let c = normalToRgb(n);
+    var c = shadeMeshLit(n);
+    if (camera.shadeMode > 0.5) {
+        c = normalToRgb(n);
+    }
 
     let a = 0.35;
     var out: OitOut;

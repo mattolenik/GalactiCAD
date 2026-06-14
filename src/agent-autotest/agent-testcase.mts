@@ -104,6 +104,9 @@ export function buildAgentTestcase(input: BuildAgentTestcaseInput): AgentTestcas
                       mdcCellVertices: input.meshOverlay.mdcCellVertices,
                       mdcQefPlanes: input.meshOverlay.mdcQefPlanes,
                       wireframe: input.meshOverlay.wireframe,
+                      ...(input.meshOverlay.renderNormals !== undefined
+                          ? { renderNormals: input.meshOverlay.renderNormals }
+                          : {}),
                       ...(input.meshOverlay.theme !== undefined ? { theme: input.meshOverlay.theme } : {}),
                       ...(input.meshOverlay.featureGlyphs !== undefined
                           ? { featureGlyphs: { ...input.meshOverlay.featureGlyphs } }
@@ -209,6 +212,12 @@ export interface AgentMeshOverlay {
     wireframe?: boolean
     /** Effective theme for the wireframe overlay line color (near-white on dark, near-black on light). Defaults to dark. */
     theme?: "light" | "dark"
+    /**
+     * Render scene-space normal RGB instead of regular lighting. Mirrors the SDF
+     * preview's `previewNormalShading`; defaults to the renderer's current mode so
+     * agent mesh and SDF captures stay in the same shading mode (e.g. for `triangle`).
+     */
+    renderNormals?: boolean
 }
 
 /** Single render request for WS / HTTP agent automation. */

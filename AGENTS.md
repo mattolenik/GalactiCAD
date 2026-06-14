@@ -12,6 +12,16 @@ code for rendering the SDF scene, which will then be injected into the shader co
 
 The **iso-simplicial** exporter (Dev Tools → Mesh export → Exporter) evaluates the scene SDF only on the GPU via batched WGSL samples (`iso_sample_batch.wgsl`); TypeScript builds an adaptive octree and extracts triangles with Marching Tetrahedra on the CPU (`src/export/iso-simplicial/`). It is an alternative to MDC and SHREC for triangle mesh export from the same scene build and `mdcSceneParams` bindings.
 
+## Skills first
+
+This repo ships agent **skills** under `.agents/skills/`. They are the source of truth for their topics and are kept up to date — consult the relevant skill instead of relying on workflow advice duplicated in this file:
+
+- **`devserver`** — runtime logs, scene-source dumps, capturing testcases from the live editor, and headless SDF/mesh PNG renders. Covers the interactive vs agent devservers, `scripts/agentcli`, every HTTP endpoint (`/_logs`, `/_sceneSource`, `/_agent/*`), and the disk-path rules.
+- **`sdf-mesh-diff`** — image similarity (SSIM + pixel diff) for comparing SDF vs mesh renders and catching regressions (`agentcli compare` / `triangle` / `ab` / `iterate` / `regress`).
+- **`webgpu`**, **`typescript-expert`**, **`typescript-advanced-types`**, **`web-components`**, **`bash-defensive-patterns`** — language/platform guidance.
+
+When a task touches one of these areas, read the skill first.
+
 ## Notes on Rendering
 
 Rendering is done with ray marching in preview.wgsl and related files. Keep in mind all rendering is done manually with
@@ -175,59 +185,11 @@ See `.cursor/rules/build-commands.mdc` for build/test command rules.
 
 **Do not run build or lint commands on WGSL files directly.** WGSL files will be compiled with `make build` by the custom build logic. This means when making changes to WGSL files, you should run `make build` to validate them. If they don't compile, you will see the compiler error in `make build`. This custom build logic is what handles the `//:) include` directive, meaning this shader compiler output is indicative of what happens at runtime.
 
-### Devserver HTTP (logs, scene source, agent render)
+### Devserver, logs, rendering, and image diffing
 
-**Agents (Cursor/automation):** Run **`make start AGENT=true`** for a headless bridge (**`.devserver.agent.run`**). Use that **`port`** for **`/_agent/render`**, **`POST /_agent/render/testcase-body`**, and for **`/_logs`** after those runs. To **mirror a human’s interactive tab** ( **`make start`** — **`.devserver.run`** ), **`GET /_agent/capture-testcase`** (and optionally **`/_sceneSource`**) on the **interactive** port, then render on the **agent** port; see [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) (**Mirror interactive → agent**). Do **not** launch Chromium or Chrome yourself—the Makefile/devserver starts the headless browser the bridge needs.
+Use the **`devserver`** and **`sdf-mesh-diff`** skills — do not duplicate that workflow advice here. The `devserver` skill covers the interactive vs agent devservers, `scripts/agentcli`, every HTTP endpoint and its query parameters (`/_logs`, `/_sceneSource`, `/_agent/*`), capturing/mirroring testcases, and headless renders. The `sdf-mesh-diff` skill covers SSIM + pixel-diff comparison.
 
-**Interactive use:** When the watch devserver is running (`make start`, including inside a [Dev Container](.devcontainer/devcontainer.json) with the dev port forwarded per container config), the same HTTP port serves **`GET /_logs`**, **`GET /_sceneSource`**, and **agent automation** routes. **Read `<port>` from `.devserver.run`** (JSON `port` field); if that file is absent, that devserver is not running and there is **no** default port. The recorded port may differ from the configured default if the listen port was already in use.
-
-**WebSocket bridge:** log, scene-source, testcase capture, and render RPCs are delivered to the **first connected browser client** in OPEN state (not broadcast to every tab). Prefer a single connected tab for automation.
-
-- **`GET /_logs`** — `http://localhost:<port>/_logs` (query parameters below). **200** plain text (one buffer line per line); **200 + empty body** when a connected tab's buffer has no matching entries; **`503`** when no browser is connected or the bridge times out (so "no tab" is distinguishable from "0 entries"). Prefer **`scripts/agentcli logs`** (`--agent` default / `--browser`) over raw curl.
-- **`GET /_sceneSource`** — active editor tab’s scene source as `text/plain`. **200 with empty body** if no browser is connected, the bridge times out, the getter throws, or there is no active model (e.g. welcome-only). No query parameters.
-
-**Agent automation** (WebGPU in the browser; see [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) for curl examples and workflow):
-
-- **`GET /_agent/capture-testcase`** — returns **`application/x-yaml`**: current session as an agent testcase (`schemaVersion`, multiline **`source`**, camera, viewport, `meshExport`, optional **`meshOverlay`** when mesh-viewer debug toggles are on, optional fields). **`503`** if no browser / timeout / capture failure.
-- **`POST /_agent/render/testcase-body`** — **`POST`** with **raw testcase YAML** in the body (same schema as capture). Query params match **`GET /_agent/render/testcase/...`** (`mode`, viewport overrides, mesh-overlay flags). Use to **pipe** capture from **`.devserver.run`** into **`.devserver.agent.run`** (see skill).
-- **`GET /_agent/render/testcase/<relative>`** — `<relative>` is a path under **`./test/testcases/`** (e.g. `meshing/polygon-twisted.yaml`). Server reads YAML, builds **`AgentRenderRequest`** via **`mergeAgentRenderRequest`** (does **not** put testcase `documentName` on the wire payload, so replay is not tied to the active tab name). Query: optional **`mode=sdf|mesh`**, **`viewportWidth`**, **`viewportHeight`** (these two **override** YAML `viewportWidth` / `viewportHeight` when present—omit them for faithful testcase replay unless the user explicitly wants a different resolution), **`label`**, **`role`**, optional mesh-overlay flags (when any overlay flag is present it replaces a testcase-embedded **`meshOverlay`**). Wrong path (e.g. bare **`GET /_agent/render`**) → **400** with a short hint. Missing file → **404** with relative path and resolved path in the body.
-- **`POST /_agent/render`** — **only** at exactly **`/_agent/render`**. JSON body: **`AgentRenderRequest`** (`mode`, `camera`, `viewCenter`, `viewportWidth`, `viewportHeight`, `meshExport`, optional `previewUvRect`, optional `documentName`) plus optional **`label`**, **`role`**, **`testcase`** (relative under `test/testcases/` for suggested download basename only; stripped before dispatch).
-- **Agent testcase files (`./test/testcases/`):** Do **not** modify existing testcase YAML on your own (experiments, tuning, or “fixes” to make a render pass). Those files are shared fixtures; changing them breaks replay for everyone unless the user explicitly asked for that edit. If you need a different camera, `meshExport`, or scene body, **add a new YAML** under **`./test/testcases/`** with a new basename instead of overwriting an existing one.
-
-Successful PNG responses set **`Content-Disposition`** (suggested filename **`<basename>-<mode>.png`**) and **`Access-Control-Expose-Headers: Content-Disposition`** so **`curl -OJ`** can save with the right name. **`400`** / **`503`** on failure return **plain text** (browser pipeline error vs no bridge / timeout). Server also mirrors successful PNGs under **`.agents/imagelog/`**.
-
-### Where to save files — **NEVER the repo root**
-
-**Hard rule:** agents **must not** create any new file at the top level of the galacticad repo. No PNGs, no YAMLs, no logs, no scratch text, no `.tmp.*`, no `output.png`, **nothing**. The repo root is for committed source and existing project files only. If your `curl -o` / `> file.txt` / `mktemp` defaults would land at the repo root, **change the path**.
-
-This rule has no exceptions. "Just for a moment" doesn't apply — even tmpfiles must go elsewhere.
-
-**Use one of these locations instead**, picked by purpose:
-
-- **`.agents/tmp/`** — scratch. Intermediate YAML, generated payloads, debug dumps, anything wipe-safe. **This is the default for ad-hoc work.** Create the directory if it doesn't exist (`mkdir -p .agents/tmp`).
-- **`.agents/testimages/`** — ad-hoc renders, composites, manual `curl -o` captures, screenshots being analyzed. (`agentcli render` / `triangle` / `sweep` default here.)
-- **`.testresults/`** — formal test outputs and baseline PNGs that other commands consume by path.
-- **`/tmp/…`** — outside the repo entirely. Fine for true ephemera (e.g. a YAML you'll pipe through one command and never touch again).
-
-**Hands off:**
-- `.agents/imagelog/` — the devserver writes here on successful renders. Read it, don't write to it.
-- `.agents/` itself (the directory, not its subdirectories) — holds skills and infrastructure; no loose files at this level either. Always nest into one of the subdirectories above.
-
-**Agent devserver:** **`make start AGENT=true`** ( **`AGENT=true`** ) writes **`.devserver.agent.run`** and spawn headless Chromium for the WebSocket bridge—this is what automated agents must use (see above).
-
-- **Response format**: `text/plain; charset=utf-8`, one log line per line: the **exact** in-browser buffer lines (including `[timestamp] [level]` and the rest), newline-joined with no server-side rewriting. If no browser tab is connected, bridge times out, or nothing matches filters, response is **200 with empty body**.
-- **`level`**: optional single threshold among `error`, `warning`, `info`, `debug` (case-insensitive). Cumulative: `error` → errors only; `warning` → errors and warnings; `info` → errors, warnings, and info; `debug` → all four. Default when `level` is missing, empty, or not recognized: **`info`** (errors, warnings, and info—no debug). URL token `warning` maps to the internal warn bucket.
-- **`only`**: optional comma-separated **exact** buckets using the same tokens (`error`, `warning`, `info`, `debug`). If `only` is present and parses to at least one valid bucket, **only** those buckets are returned and `level` is ignored. If `only` is present but every token is invalid (or the value is empty), behavior falls back to the same default as missing `level` (**info** threshold). Legacy presence flags (`err`, `warn`, …) are not read; omit them.
-- **`n`**: optional integer cap per level bucket (default `20`, clamp `1..10000`), newest-first within each bucket, duplicate raw lines removed per bucket.
-- **`module`**: optional comma-separated names (e.g. `module=App,MdcExport,WelcomeScreen` or `module=Settings`). Missing/empty means all modules. Non-empty module filter restricts to module-tagged/module-attributed lines and excludes generic mirrored console noise. **`log("Module").error` lines still carry `module`** and are included only when that module matches the filter (or when `module` is omitted).
-- **What is captured**: the same pipeline as `src/logging/debug-log.mts`: **`log("Module").error` always**; other `log("Module")` levels when enabled in Dev Tools; plus mirrored **`console.*`** on the main thread and on **render** / **transpile** workers (forwarded to the main ring buffer), plus **`window` error** and **unhandledrejection** on the main thread. This is **best-effort** runtime signal; it does **not** replace `make build`.
-
-**Agent workflow**
-
-1. Prefer **`make build`** for compile-time WGSL and bundling errors after shader edits.
-2. For **`/_agent/render`** and **`/_logs`** after a headless render: ensure **`make start AGENT=true`** and **`.devserver.agent.run`**, then read **`port`** with **`jq -r .port .devserver.agent.run`**. To read the **interactive** editor ( **`make start`** ), use **`jq -r .port .devserver.run`** for **`/_sceneSource`** / **`/_agent/capture-testcase`**. For **`/_logs`**, prefer **`scripts/agentcli logs`** — it defaults to the **agent** devserver (**`--agent`**) and reads **`--browser`** from the interactive one (**`.devserver.run`**), each via its own run file, and defaults to **all levels (debug+)** so enabled modules aren't silently dropped. **Narrow server-side with the built-in filters rather than dumping everything and piping to `grep`:** `--module App,MdcExport` restricts to specific log categories (comma-separated module names) and `--level warn` raises the threshold (`debug|info|warn|error`), with `--n` capping lines per bucket. These run inside the browser's ring-buffer query, so they're cheaper and more precise than fetching the full buffer and filtering in the shell — reach for `grep` only to match on free-text *within* a message that the module/level filters can't express. If you drop to raw shell **`curl`**, the default response uses the **`level=info`** threshold (drops `debug`); add `level=debug` or `only=…` when you need module/debug output. A **`503`** means **no browser tab is connected** (or the bridge timed out); an empty **`200`** means the connected tab's buffer had no matching entries — `agentcli logs` reports these distinctly. Do **not** guess a port, do **not** launch a browser yourself.
-3. If **`.devserver.agent.run`** is still missing after **`make start AGENT=true`** (or you cannot start the devserver), **do not** invent a port; treat runtime HTTP checks as unavailable rather than failing the whole task unless the user asked specifically for a running browser.
-4. See [`.agents/skills/devserver/SKILL.md`](.agents/skills/devserver/SKILL.md) for curl examples, **mirror interactive → agent**, **`POST /_agent/render/testcase-body`**, and **`GET|POST /_refresh`** on the agent port after code changes.
+**Never create files at the repo root** — not even tmpfiles. Scratch goes in `.agents/tmp/` (default), ad-hoc renders in `.agents/testimages/`, baselines in `.testresults/`, true ephemera in `/tmp/`. See the `devserver` skill for the full disk-path table and the hands-off list.
 
 ## Documentation
 

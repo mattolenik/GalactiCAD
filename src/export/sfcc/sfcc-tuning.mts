@@ -74,6 +74,16 @@ export interface SfccTuning {
     projectMaxIters: number
     /** Featureless ambiguous face resolution: sample f at the face center, or refine instead. */
     ambiguityResolution: "centerSample" | "refine"
+    /**
+     * Lipschitz pre-cull for hidden-arc recovery: before the SUBDIV detection
+     * scan, one carrier eval at the sub-edge midpoint skips the whole scan when
+     * the carrier provably can't reach zero on the edge (|st.f(mid)| >
+     * halfLen·gradBound — the same Lipschitz bound the octree's certified-empty
+     * cull uses). Sound ⇒ byte-identical (only skips scans that find nothing);
+     * 96% of recovery scans find nothing on twisted scenes, so this is the main
+     * `recoveredCrossingsFor` lever. Off restores the exhaustive scan.
+     */
+    recoveryCull: boolean
 
     // --- Driver ---------------------------------------------------------------
     /** Max global re-runs with forced splits after S4 audit failures. */
@@ -125,6 +135,7 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     interiorVertexMode: "project",
     projectMaxIters: 8,
     ambiguityResolution: "centerSample",
+    recoveryCull: true,
 
     reRefineMaxRounds: 2,
     jitterRetries: 3,
@@ -186,6 +197,7 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
             o.ambiguityResolution === "centerSample" || o.ambiguityResolution === "refine"
                 ? o.ambiguityResolution
                 : d.ambiguityResolution,
+        recoveryCull: bool(o.recoveryCull, d.recoveryCull),
 
         reRefineMaxRounds: num(o.reRefineMaxRounds, d.reRefineMaxRounds, 0, 10, true),
         jitterRetries: num(o.jitterRetries, d.jitterRetries, 0, 10, true),

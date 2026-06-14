@@ -90,6 +90,8 @@ export interface FaceContourOptions {
     stratumTags?: Map<number, number>
     /** Opt-in profiling sub-buckets (findRoot / recovery / pinning), absent off the profile path. */
     perf?: FaceContourPerf
+    /** Lipschitz pre-cull in `recoveredCrossingsFor` (skip the SUBDIV scan when the carrier can't reach zero on the sub-edge). */
+    recoveryCull?: boolean
 }
 
 export interface RecoveredCrossing {
@@ -223,6 +225,17 @@ function recoveredCrossingsFor(
             if (seen.has(sid)) continue
             seen.add(sid)
             const st = features.strata[sid]!
+            // Lipschitz pre-cull: the farthest sub-edge point is halfLen from the
+            // midpoint, so |st.f(mid)| > halfLen·gradBound proves the carrier has
+            // no root anywhere on the edge (single OR double crossing) — skip its
+            // SUBDIV scan. gradBound is the same Lipschitz constant the octree's
+            // certified-empty cull trusts. Sound ⇒ byte-identical (only skips
+            // scans that would find nothing); one eval replaces ~9.
+            if (opts.recoveryCull) {
+                atT(0.5, q)
+                if (opts.perf) opts.perf.recoverScanEvals++
+                if (Math.abs(st.f(q[0]!, q[1]!, q[2]!)) > (edgeLen / 2) * tree.gradBound) continue
+            }
             let prevT = 0
             atT(0, q)
             let prevF = st.f(q[0]!, q[1]!, q[2]!)

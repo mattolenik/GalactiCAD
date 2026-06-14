@@ -909,8 +909,8 @@ fn applyFaceDottedPattern(color: vec3f, pixelCoord: vec2f) -> vec3f {
 fn applySelectionPattern(color: vec3f, pixelCoord: vec2f, sel: f32) -> vec3f {
     let scale = max(selectionStyles.resolutionScale, 0.25);
     let p = pixelCoord / scale;
-    let spacing = selectionStyles.faceDotSpacing * 1.6;            // hatch line spacing
-    let halfWidth = max(selectionStyles.faceDotRadius * 1.0, 0.75); // half line thickness
+    let spacing = selectionStyles.faceDotSpacing * 2.4;            // hatch line spacing
+    let halfWidth = max(selectionStyles.faceDotRadius * 1.4, 1.0); // half line thickness
     // Two perpendicular 45° line sets → cross-hatch. For each, distance (in the
     // diagonal coordinate) to the nearest line.
     let d1 = p.x + p.y;
@@ -928,10 +928,10 @@ fn applySelectionPattern(color: vec3f, pixelCoord: vec2f, sel: f32) -> vec3f {
     // edge-selection highlight keeps the full `edgeColor`.
     let ec = selectionStyles.edgeColor;
     let luma = dot(ec, vec3f(0.299, 0.587, 0.114));
-    let hatchColor = (ec * 0.45 + vec3f(luma) * 0.55) * 0.7;
+    let hatchColor = (ec * 0.45 + vec3f(luma) * 0.55) * 0.6;
     // Light tint toward the hatch color. Explicit lerp: Tint rejects
     // `mix(vec3, vec3, f32)` on this Dawn build.
-    let t = 0.22 * clamp(sel, 0.0, 1.0) * cover;
+    let t = 0.3 * clamp(sel, 0.0, 1.0) * cover;
     return color * (1.0 - t) + hatchColor * t;
 }
 

@@ -468,27 +468,38 @@ export function runSfccPipeline(
     } else {
         for (const perAxis of faceResult.faces) faceCount += perAxis.size
     }
+    if (perf) perf.assembleAuditMs += nowMs() - tAssemble
 
     // Sub-resolution debris filter: recovered sliver arcs can close into tiny
     // satellite blobs that are genuinely disconnected at sampling resolution
     // (wedge fragments around feature lines whose connection to the main body
     // is invisible). Drop vertex-connected components whose extent is below a
     // few max-depth cells — geometry beneath export resolution by construction.
-    const filteredTris = dropDebrisComponents(
-        points,
-        dropCoincidentTrianglePairs(cellResult.tris),
-        lat.step * 4,
-        features,
-        lat.step * 2,
-        600,
-    )
+    // (Sub-buckets hoist the two coincident-pair passes into named temps so the
+    // string-keyed pancake removal is timed apart from the union-find debris pass
+    // — same call order/args, so byte-identical.)
+    const tCoin1 = perf ? nowMs() : 0
+    const deduped1 = dropCoincidentTrianglePairs(cellResult.tris)
+    if (perf) perf.assembleCoincidentMs += nowMs() - tCoin1
+
+    const tDebris = perf ? nowMs() : 0
+    const filteredTris = dropDebrisComponents(points, deduped1, lat.step * 4, features, lat.step * 2, 600)
+    if (perf) perf.assembleDebrisMs += nowMs() - tDebris
 
     // Long-thin slivers (no close vertex pairs — weld can't reach them):
     // shape-improving flips across their longest edges.
-    const flipped = flipSliverTriangles(points, dropCoincidentTrianglePairs(filteredTris))
+    const tCoin2 = perf ? nowMs() : 0
+    const deduped2 = dropCoincidentTrianglePairs(filteredTris)
+    if (perf) perf.assembleCoincidentMs += nowMs() - tCoin2
 
+    const tSliver = perf ? nowMs() : 0
+    const flipped = flipSliverTriangles(points, deduped2)
+    if (perf) perf.assembleSliverMs += nowMs() - tSliver
+
+    const tManifold = perf ? nowMs() : 0
     const mesh = points.buildMesh(flipped.tris)
     const manifold = checkManifold(mesh.tris, { checkVertexLinks: tuning.checkVertexLinks })
+    if (perf) perf.assembleManifoldMs += nowMs() - tManifold
 
     const levelHistogram: number[] = []
     for (const cell of oct.leaves) {

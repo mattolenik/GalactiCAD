@@ -113,6 +113,19 @@ export interface SfccPerf extends OctreeSamplePerf, ClassifyPerf, FaceContourPer
     smoothCritMs: number
     // classify sub-buckets (classifyIndexMs / classifyCrossingsMs / classifyStratumMs) come from ClassifyPerf.
 
+    // --- assemble (S4) sub-buckets (ms) — written directly from assemble.mts;
+    //     sum to a large fraction of assembleMs (remainder = histogram + stats + overlays).
+    /** Face-segment consumption audit (the CMS closedness check over every face/segment). */
+    assembleAuditMs: number
+    /** `dropCoincidentTrianglePairs` — BOTH calls combined; sorted-vertex string-keyed pancake removal. */
+    assembleCoincidentMs: number
+    /** `dropDebrisComponents` — union-find + per-component bounds + feature-hug `curvesInBox`. */
+    assembleDebrisMs: number
+    /** `flipSliverTriangles` — long-thin sliver edge flips. */
+    assembleSliverMs: number
+    /** `points.buildMesh` weld + `checkManifold` edge audit. */
+    assembleManifoldMs: number
+
     // --- call counts across ALL phases (via the counting wrapper) -----------
     /** Total `tree.f` calls (build memo-misses + center evals + meshing root-finding + feature compile). */
     fCalls: number
@@ -140,6 +153,11 @@ export function createSfccPerf(): SfccPerf {
         totalMs: 0,
         classifyMs: 0,
         smoothCritMs: 0,
+        assembleAuditMs: 0,
+        assembleCoincidentMs: 0,
+        assembleDebrisMs: 0,
+        assembleSliverMs: 0,
+        assembleManifoldMs: 0,
         classifyIndexMs: 0,
         classifyCrossingsMs: 0,
         classifyStratumMs: 0,

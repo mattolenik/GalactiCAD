@@ -36,7 +36,8 @@ test("profile on: perf buckets + counts populate, sub-buckets are consistent", (
         "intervalMs", "sampleMs", "classifyMs", "smoothCritMs",
         "classifyIndexMs", "classifyCrossingsMs", "classifyStratumMs",
         "faceRootMs", "faceRecoverMs", "facePinMs",
-        "faceWalkMs", "faceTagMs", "facePinQueryMs", "facePairMs", "faceDedupMs"] as const) {
+        "faceWalkMs", "faceTagMs", "facePinQueryMs", "facePairMs", "faceDedupMs",
+        "assembleAuditMs", "assembleCoincidentMs", "assembleDebrisMs", "assembleSliverMs", "assembleManifoldMs"] as const) {
         assert.ok(p[k] >= 0, `${k}=${p[k]}`)
     }
     const phaseSum = p.featureCompileMs + p.octreeBuildMs + p.faceContourMs + p.cellMeshMs + p.assembleMs
@@ -55,6 +56,10 @@ test("profile on: perf buckets + counts populate, sub-buckets are consistent", (
         p.faceWalkMs + p.faceTagMs + p.facePinQueryMs + p.facePairMs + p.faceDedupMs
     assert.ok(faceSub <= p.faceContourMs + 5,
         `face subbuckets ${faceSub} > faceContourMs ${p.faceContourMs}`)
+    // assemble sub-buckets are charged inside assembleMs (remainder = histogram + stats + overlays).
+    const asmSub =
+        p.assembleAuditMs + p.assembleCoincidentMs + p.assembleDebrisMs + p.assembleSliverMs + p.assembleManifoldMs
+    assert.ok(asmSub <= p.assembleMs + 5, `assemble subbuckets ${asmSub} > assembleMs ${p.assembleMs}`)
 })
 
 test("profile on vs off: identical mesh (instrumentation is inert)", () => {

@@ -121,6 +121,22 @@ interface BoundaryNode {
     inside: boolean
 }
 
+/**
+ * Per-face scratch pooled across an entire contouring pass: the boundary walk
+ * builds these fresh on every one of ~tens-of-thousands of faces, so reusing
+ * one set (cleared per face) trades that allocation churn for a clear()/length=0.
+ * Safe because contouring is serial and each buffer is fully rewritten before
+ * read within a face — so the meshes are byte-identical.
+ */
+interface FaceContourScratch {
+    nodes: BoundaryNode[]
+    nodeSide: Map<number, number>
+    nodeStratum: Map<number, number>
+    scratch: Float64Array
+    wa: Float64Array
+    wb: Float64Array
+}
+
 /** Root-find the iso-crossing on a world segment with f0 < 0 ≤ f1 or f1 < 0 ≤ f0. */
 function findRoot(
     tree: CpuSdfTree,
@@ -469,6 +485,7 @@ export function contourFace(
     gz: number,
     len: number,
     opts: FaceContourOptions,
+    pool: FaceContourScratch,
 ): FaceRecord {
     const lat: SfccLattice = oct.lat
     const [u, v] = faceAxes(axis)
@@ -491,18 +508,21 @@ export function contourFace(
         return g
     }
 
-    const nodes: BoundaryNode[] = []
+    const nodes = pool.nodes
+    nodes.length = 0
     /** Crossing point id → face boundary side (walk index 0-3): segments whose
      * endpoints lie on the SAME side run along a cell-edge line shared by up
      * to four faces and must be split with a face-owned midpoint. */
-    const nodeSide = new Map<number, number>()
+    const nodeSide = pool.nodeSide
+    nodeSide.clear()
     /** Crossing point id → stratum id (stratum-tagged crossings pair per-stratum):
      * recovered crossings carry their carrier's id; visible crossings near a
      * feature curve are tagged via `stratumTagFor`. */
-    const nodeStratum = new Map<number, number>()
-    const scratch = new Float64Array(6)
-    const wa = new Float64Array(3)
-    const wb = new Float64Array(3)
+    const nodeStratum = pool.nodeStratum
+    nodeStratum.clear()
+    const scratch = pool.scratch
+    const wa = pool.wa
+    const wb = pool.wb
 
     // faceWalkMs = the boundary walk MINUS the root/recover/tag kernels timed
     // inside it (snapshot-and-subtract → disjoint from those buckets).
@@ -963,6 +983,16 @@ export function contourAllFaces(
     if (opts.features && !opts.recovered) opts = { ...opts, recovered: new Map() }
     if (opts.features && !opts.stratumTags) opts = { ...opts, stratumTags: new Map() }
 
+    // One pooled scratch set reused for every face (see FaceContourScratch).
+    const pool: FaceContourScratch = {
+        nodes: [],
+        nodeSide: new Map(),
+        nodeStratum: new Map(),
+        scratch: new Float64Array(6),
+        wa: new Float64Array(3),
+        wb: new Float64Array(3),
+    }
+
     let cellCounter = 0
     for (const cell of oct.leaves) {
         if ((cellCounter++ & 0xff) === 0 && signal?.aborted) throw new Error("sfcc: aborted")
@@ -984,7 +1014,7 @@ export function contourAllFaces(
                     if (existing.len !== stride) keyCollisions++
                     continue
                 }
-                const rec = contourFace(oct, tree, points, axis, g[0]!, g[1]!, g[2]!, stride, opts)
+                const rec = contourFace(oct, tree, points, axis, g[0]!, g[1]!, g[2]!, stride, opts, pool)
                 faces[axis]!.set(key, rec)
                 if (rec.segments.length >= 3) multiRunFaces++
                 const onRootBoundary = g[axis] === 0 || g[axis] === lat.res

@@ -7,9 +7,14 @@
 //! for the browser. Design: `docs/research/gcad-wasm-rust-port.md`.
 
 pub mod codegen;
+pub mod math;
+pub mod parity;
+pub mod primitives;
 pub mod scene;
 pub mod sdf;
 pub mod sfcc;
+pub mod tolerances;
+pub mod tuning;
 
 /// Crate version, surfaced across the WASM boundary as a build smoke test.
 pub fn version() -> &'static str {

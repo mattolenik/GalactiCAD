@@ -137,6 +137,7 @@ export class SDFRenderer {
     #needsRender = true
     #started = false
     #xrayMode = false
+    #isolatedIds: number[] = []
     #beamEnabled = false
     #previewShading: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
     #rayMarchParams: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
@@ -191,6 +192,8 @@ export class SDFRenderer {
             viewTransform?: Float32Array
             cameraPosition?: [number, number, number]
             viewCenter?: [number, number]
+            isolatedIds?: number[]
+            selectedObjectIds?: number[]
         }
     >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
@@ -656,6 +659,8 @@ export class SDFRenderer {
                 viewTransform: vt,
                 cameraPosition: cp,
                 viewCenter: vc,
+                isolatedIds: pending.isolatedIds ?? [],
+                selectedObjectIds: pending.selectedObjectIds ?? [],
             })
         }
     }
@@ -1415,6 +1420,23 @@ export class SDFRenderer {
         return this.#xrayMode
     }
 
+    /**
+     * Isolate-view target. 0 = off (full scene). Otherwise the scene node id whose
+     * subtree should be rendered alone. The worker RECOMPILES the preview SDF from
+     * the isolated subtree(s) as root (no DSL re-eval, no param re-upload) and
+     * re-renders — so this posts a `setIsolatedIds` message rather than flagging a
+     * render. Empty = full scene.
+     */
+    set isolatedIds(ids: number[]) {
+        const next = [...ids]
+        if (this.#isolatedIds.length === next.length && this.#isolatedIds.every((v, i) => v === next[i])) return
+        this.#isolatedIds = next
+        this.#worker.postMessage({ type: "setIsolatedIds", isolatedIds: next })
+    }
+    get isolatedIds(): number[] {
+        return this.#isolatedIds
+    }
+
     set beamEnabled(enabled: boolean) {
         this.#beamEnabled = enabled
         this.#settings.updatePreview("beamOptimization", enabled)
@@ -1900,6 +1922,8 @@ export class SDFRenderer {
         width = 1000,
         height = 1000,
         documentName?: string,
+        isolatedIds: number[] = [],
+        selectedObjectIds: number[] = [],
     ): Promise<ImageData> {
         await this.#readyPromise
         const trimmed = src.trim()
@@ -1917,6 +1941,8 @@ export class SDFRenderer {
                 viewTransform: params.viewTransform,
                 cameraPosition: params.cameraPosition,
                 viewCenter: params.viewCenter,
+                isolatedIds,
+                selectedObjectIds,
             })
             return await new Promise<ImageData>((resolve, reject) => {
                 this.#pendingThumbnail.set(requestId, { resolve, reject, skipDocumentGuard: true })

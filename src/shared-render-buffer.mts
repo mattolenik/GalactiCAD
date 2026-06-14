@@ -78,6 +78,9 @@ const S_O_RAY_MARCH_PARAMS = 6948
 // FSR1 spatial-upscale mode (consumed on the reduced-res motion frames + the
 // full-res FXAA path). `resolutionScale` above already carries the render scale.
 const S_O_UPSCALE_MODE = 6980 // u32: 0 = off (bilinear), 1 = EASU, 2 = EASU+FXAA
+// "View Isolated" no longer rides the SAB: isolation recompiles the preview SDF
+// from the isolated subtree(s) as root (see SceneInfo.isolationRoot), driven by a
+// `setIsolatedIds` message — not a per-frame render-state field.
 
 const SELECTED_OBJECT_IDS_SIZE = 1024 * 4 // 4096 bytes
 const EDGES_HEADER_SIZE = 16

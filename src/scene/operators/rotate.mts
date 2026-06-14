@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, warpIsoResult } from "../base.mjs"
 import { aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { mat3x3Wgsl, packMat3ColumnMajorToPreviewOut } from "../scene-params.mjs"
@@ -80,71 +80,28 @@ export class Rotate extends UnaryOperator {
 
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
-        const childText = childResult.text!
         const o = this.paramOffset
         const invMat = mat3x3Wgsl(o, this.previewMat3Slot)
         const fwdMat = mat3x3Wgsl(o + 9, this.previewMat3Slot + 1)
-
         const funcName = `Rotate${this.id}`
-        const varName = decapitalize(funcName)
-
-        if (childResult.prelude) {
-            const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
-            const accVar = childResult.varName!
-            const prelude = rotatedPrelude + `${accVar} = sdfRotateNormal(${accVar}, ${fwdMat});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
-        return {
-            funcName,
-            varName,
-            text: `sdfRotateNormal(${rotatedChildText}, ${fwdMat})`,
-        }
+        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `${invMat} * p`, c => `sdfRotateNormal(${c}, ${fwdMat})`, "selectSDF")
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
-        const childText = childResult.text!
         const invMat = mat3x3Wgsl(this.paramOffset, this.previewMat3Slot)
-
         const funcName = `Rotate${this.id}`
-        const varName = `${decapitalize(funcName)}_f`
-
-        if (childResult.prelude) {
-            const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
-            return { funcName, varName: childResult.varName!, text: childResult.varName!, prelude: rotatedPrelude }
-        }
-
-        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
-        return {
-            funcName,
-            varName,
-            text: rotatedChildText,
-        }
+        // Fast variant has no normal correction — pure domain rotation.
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_f`, childResult, `${invMat} * p`, c => c, "selectFast")
     }
 
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
-        const childText = childResult.text!
         const o = this.paramOffset
         const invMat = mat3x3Wgsl(o, this.previewMat3Slot)
         const fwdMat = mat3x3Wgsl(o + 9, this.previewMat3Slot + 1)
-        const rotatedChildText = childText.replace(/\bp\b/g, `(${invMat} * p)`)
-
         const funcName = `Rotate${this.id}`
-        const varName = `${decapitalize(funcName)}_m`
-        if (childResult.prelude) {
-            const rotatedPrelude = childResult.prelude.replace(/\bp\b/g, `(${invMat} * p)`)
-            const accVar = childResult.varName!
-            const prelude = rotatedPrelude + `${accVar} = sdfRotateNormalMid(${accVar}, ${fwdMat});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-        return {
-            funcName,
-            varName,
-            text: `sdfRotateNormalMid(${rotatedChildText}, ${fwdMat})`,
-        }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `${invMat} * p`, c => `sdfRotateNormalMid(${c}, ${fwdMat})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

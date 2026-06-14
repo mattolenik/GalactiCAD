@@ -17,9 +17,12 @@ let renderKickScheduled = false
 /** Pending resize to apply when init completes (avoids race where resize arrives before core exists). */
 let pendingResize: { fullWidth: number; fullHeight: number } | null = null
 
-/** Build serialization: only one build at a time; latest request wins. */
+/** Build serialization: only one build at a time; latest request wins. Isolate
+ * recompiles share this lock so they never race `#doBuild` (both swap pipelines). */
 let buildInProgress = false
 let pendingBuild: { body: string; documentName?: string | null; requestId?: number } | null = null
+/** Pending "View Isolated" recompile (the latest isolated-id set). */
+let pendingIsolate: number[] | null = null
 
 /** Pending render message for coalescing; used for benchmark/thumbnail which still send render via postMessage. */
 let pendingRender: Extract<MainToWorkerMessage, { type: "render" }> | null = null
@@ -195,6 +198,16 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "setBvhEnabled":
             if (core) core.setBvhEnabled(msg.enabled)
             break
+        case "setIsolatedIds":
+            if (core) {
+                // Update state synchronously so a build that runs before the
+                // recompile (queued below) already compiles the right root, then
+                // queue the recompile (serialized with builds).
+                core.setIsolatedIds(msg.isolatedIds)
+                pendingIsolate = msg.isolatedIds
+                runNextJob()
+            }
+            break
         case "setFeatureGraphOverlayEnabled":
             if (core) core.setFeatureGraphOverlayEnabled(msg.enabled)
             break
@@ -234,7 +247,7 @@ function enqueueBuild(body: string, documentName?: string | null, requestId?: nu
         self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: pendingBuild.requestId, documentName: pendingBuild.documentName ?? undefined, superseded: true })
     }
     pendingBuild = { body, documentName, requestId }
-    if (!buildInProgress) runNextBuild()
+    runNextJob()
 }
 
 function cancelBuilds(): void {
@@ -243,33 +256,55 @@ function cancelBuilds(): void {
         self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: pendingBuild.requestId, documentName: pendingBuild.documentName ?? undefined, superseded: true })
     }
     pendingBuild = null
+    pendingIsolate = null
 }
 
-async function runNextBuild(): Promise<void> {
-    const req = pendingBuild
-    pendingBuild = null
-    if (!req || !core) return
-    buildInProgress = true
-    try {
-        const result = await core.build(req.body, req.documentName)
-        if ("superseded" in result) {
-            self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: req.requestId, documentName: req.documentName ?? undefined, superseded: true })
-            return
+/** Drain the build/isolate job queue (one at a time). Builds take priority — a
+ * build re-applies the current isolation itself, so a queued recompile after it
+ * fast-paths to a re-render via recompileIsolation's already-built guard. */
+async function runNextJob(): Promise<void> {
+    if (buildInProgress || !core) return
+    if (pendingBuild) {
+        const req = pendingBuild
+        pendingBuild = null
+        buildInProgress = true
+        try {
+            const result = await core.build(req.body, req.documentName)
+            if ("superseded" in result) {
+                self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: req.requestId, documentName: req.documentName ?? undefined, superseded: true })
+            } else {
+                self.postMessage({
+                    type: "buildComplete",
+                    sceneNodes: result.sceneNodes,
+                    compiledPosY: result.compiledPosY,
+                    requestId: req.requestId,
+                    documentName: req.documentName ?? undefined,
+                    timingMs: result.timingMs,
+                })
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            log("RenderWorker").error("build failed:", err)
+            self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], error: msg, requestId: req.requestId, documentName: req.documentName ?? undefined })
+        } finally {
+            buildInProgress = false
+            runNextJob()
         }
-        self.postMessage({
-            type: "buildComplete",
-            sceneNodes: result.sceneNodes,
-            compiledPosY: result.compiledPosY,
-            requestId: req.requestId,
-            documentName: req.documentName ?? undefined,
-            timingMs: result.timingMs,
-        })
-    } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        log("RenderWorker").error("build failed:", err)
-        self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], error: msg, requestId: req.requestId, documentName: req.documentName ?? undefined })
-    } finally {
-        buildInProgress = false
-        if (pendingBuild) runNextBuild()
+        return
+    }
+    if (pendingIsolate !== null) {
+        const ids = pendingIsolate
+        pendingIsolate = null
+        buildInProgress = true
+        try {
+            await core.recompileIsolation(ids, sharedBuffer ?? undefined)
+            markSABVersionConsumed()
+        } catch (err) {
+            log("RenderWorker").error("isolate recompile failed:", err)
+        } finally {
+            buildInProgress = false
+            runNextJob()
+        }
+        return
     }
 }

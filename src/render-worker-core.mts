@@ -31,6 +31,7 @@ import { featureGraphToContours } from "./feature-graph/feature-graph-to-contour
 import { FeatureGraphOverlay } from "./feature-graph/feature-graph-overlay.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
+import type { Node } from "./scene/base.mjs"
 import {
     SCENE_PARAMS_BYTE_SIZE,
     SCENE_PARAMS_F32_CAPACITY,
@@ -111,6 +112,15 @@ const roundMs2 = (x: number): number => Math.round(x * 100) / 100
 
 function float32SubarrayEqual(a: Float32Array, b: Float32Array, len: number): boolean {
     for (let i = 0; i < len; i++) {
+        if (a[i] !== b[i]) return false
+    }
+    return true
+}
+
+/** Order-sensitive equality for isolate-id lists (small arrays). */
+function sameIdList(a: readonly number[], b: readonly number[]): boolean {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
         if (a[i] !== b[i]) return false
     }
     return true
@@ -265,6 +275,7 @@ export class RenderWorkerCore {
     #fpsFrameCount = 0
     #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
+    // [0..3]=xray,heatmap,beam,selMode (matches ViewSettings in preview.wgsl).
     #viewSettingsBuf = new Uint32Array(4)
     #selDataBuf = new Uint32Array(1024)
     // OutlineSettings CPU mirrors removed — selection rendering moved
@@ -344,6 +355,14 @@ export class RenderWorkerCore {
     #builtBody: string | null = null
     /** Set after a successful full shader rebuild; used to skip compilation when `structuralFingerprint()` is unchanged. */
     #builtStructuralFingerprint: string | null = null
+    /** "View Isolated" node ids (empty = full scene). The preview SDF is RECOMPILED
+     * from {@link SceneInfo.isolationRoot} when this changes — there is no render-time
+     * isolate scaffolding in the live shader. Drives the compile root in `#doBuild`. */
+    #isolatedIds: number[] = []
+    /** The `#isolatedIds` the current `#sceneShader` was compiled against — lets a
+     * param-only rebuild stay param-only when isolation is unchanged, and forces a
+     * full recompile (agent path) when it differs. */
+    #builtIsolatedIds: number[] = []
     #fpsVersion = 0
     /** Pre-allocated dedup caches (param-only); `-1` length = never uploaded. */
     #lastSceneParamUpload = new Float32Array(SCENE_PARAMS_F32_CAPACITY)
@@ -430,69 +449,49 @@ export class RenderWorkerCore {
             minFilter: "linear",
         })
 
-        this.#outlineShaderModule = this.#device.createShaderModule({
-            label: "Outline Post-Process",
-            code: outlineShader,
-        })
+        // Post-process pipelines (outline blit, FSR1 EASU, FXAA). Their pipelines
+        // are compiled CONCURRENTLY via createRenderPipelineAsync + Promise.all
+        // instead of three sequential synchronous createRenderPipeline calls, which
+        // blocked worker startup. None of these are needed for the first
+        // interactive frame, but awaiting here (in parallel) keeps the fields
+        // populated before any render runs, so no readiness guards are needed.
+        // Bind groups for EASU/FXAA are created lazily in `#ensureUpscaleTextures`.
+        this.#outlineShaderModule = this.#device.createShaderModule({ label: "Outline Post-Process", code: outlineShader })
         scheduleShaderModuleCompilationLogging(this.#outlineShaderModule, "Outline Post-Process", outlineShader)
-        try {
-            this.#outlinePipeline = this.#device.createRenderPipeline({
-                label: "Outline Pipeline",
-                layout: "auto",
-                vertex: {
-                    module: this.#outlineShaderModule,
-                    entryPoint: "vertexMain",
-                },
-                fragment: {
-                    module: this.#outlineShaderModule,
-                    entryPoint: "fragmentMain",
-                    targets: [{ format: this.#format }],
-                },
-                primitive: {
-                    topology: "triangle-strip",
-                    stripIndexFormat: "uint32",
-                },
-            })
-        } catch (err) {
-            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
-            logWgsl("error", `Outline post-process pipeline creation failed: ${text}`)
-            throw err
-        }
-
-        // FSR1 EASU upscale pipeline — a full-screen fragment pass writing the
-        // canvas `#format`, mirroring the outline blit. Bind groups are created
-        // lazily in `#ensureUpscaleTextures` once the scene/display sizes are known.
         this.#easuShaderModule = this.#device.createShaderModule({ label: "FSR1 EASU", code: easuShader })
         scheduleShaderModuleCompilationLogging(this.#easuShaderModule, "FSR1 EASU", easuShader)
-        try {
-            this.#easuPipeline = this.#device.createRenderPipeline({
-                label: "FSR1 EASU Pipeline",
-                layout: "auto",
-                vertex: { module: this.#easuShaderModule, entryPoint: "vertexMain" },
-                fragment: { module: this.#easuShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
-                primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
-            })
-        } catch (err) {
-            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
-            logWgsl("error", `FSR1 upscale pipeline creation failed: ${text}`)
-            throw err
-        }
-
-        // FXAA post-process (luma-driven edge smoothing), optional final pass
-        // after EASU / on full-res frames. Same full-screen fragment shape.
         this.#fxaaShaderModule = this.#device.createShaderModule({ label: "FXAA", code: fxaaShader })
         scheduleShaderModuleCompilationLogging(this.#fxaaShaderModule, "FXAA", fxaaShader)
         try {
-            this.#fxaaPipeline = this.#device.createRenderPipeline({
-                label: "FXAA Pipeline",
-                layout: "auto",
-                vertex: { module: this.#fxaaShaderModule, entryPoint: "vertexMain" },
-                fragment: { module: this.#fxaaShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
-                primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
-            })
+            const [outlinePipeline, easuPipeline, fxaaPipeline] = await Promise.all([
+                this.#device.createRenderPipelineAsync({
+                    label: "Outline Pipeline",
+                    layout: "auto",
+                    vertex: { module: this.#outlineShaderModule, entryPoint: "vertexMain" },
+                    fragment: { module: this.#outlineShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+                this.#device.createRenderPipelineAsync({
+                    label: "FSR1 EASU Pipeline",
+                    layout: "auto",
+                    vertex: { module: this.#easuShaderModule, entryPoint: "vertexMain" },
+                    fragment: { module: this.#easuShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+                this.#device.createRenderPipelineAsync({
+                    label: "FXAA Pipeline",
+                    layout: "auto",
+                    vertex: { module: this.#fxaaShaderModule, entryPoint: "vertexMain" },
+                    fragment: { module: this.#fxaaShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+            ])
+            this.#outlinePipeline = outlinePipeline
+            this.#easuPipeline = easuPipeline
+            this.#fxaaPipeline = fxaaPipeline
         } catch (err) {
             const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
-            logWgsl("error", `FXAA pipeline creation failed: ${text}`)
+            logWgsl("error", `Post-process pipeline creation failed: ${text}`)
             throw err
         }
 
@@ -598,6 +597,166 @@ export class RenderWorkerCore {
         this.#fgGeneration++
     }
 
+    /** Record the "View Isolated" selection. Pure state — the recompile + render
+     * is done by {@link recompileIsolation} (interactive) or the next `#doBuild`
+     * (agent / structural edit). Kept separate so the message handler can update
+     * state synchronously before either path runs. */
+    setIsolatedIds(ids: readonly number[]): void {
+        this.#isolatedIds = [...ids]
+    }
+
+    /**
+     * Compile the preview SDF (from `sdfRoot`) + aux/edge helpers into the
+     * Preview+Beam shader module and its render/beam pipelines. Shared by full
+     * builds (`#doBuild`) and isolate recompiles (`recompileIsolation`). Does NOT
+     * touch GPU param buffers — callers own buffer upload; the isolate root reuses
+     * the already-uploaded full-scene params. Bumps `#buildGeneration`; returns
+     * `{ superseded: true }` if a newer build/recompile started while the async
+     * pipelines were compiling.
+     */
+    async #buildScenePipelines(
+        scene: SceneInfo,
+        sdfRoot: Node,
+    ): Promise<
+        | {
+              pipeline: GPURenderPipeline
+              beamPipeline: GPUComputePipeline
+              shader: GPUShaderModule
+              t: {
+                  wgslSceneMs: number
+                  compileAuxPreviewMs: number
+                  compileAuxFastPreviewMs: number
+                  compileForPreviewMs: number
+                  compileFastForPreviewMs: number
+                  compileEdgeHelpersMs: number
+                  shaderModulesMs: number
+                  pipelinesMs: number
+              }
+          }
+        | { superseded: true }
+    > {
+        const tWgsl0 = performance.now()
+        const sceneAux = scene.compileAuxPreview()
+        const tAux = performance.now()
+        const sceneAuxFast = scene.compileAuxFastPreview()
+        const tAuxFast = performance.now()
+        // NOTE: the MID variant (sceneAuxMid/sceneSDF_mid) is NOT generated here —
+        // preview.wgsl has no `//:) insert sceneSDF_mid` marker and the preview/beam
+        // shader never references it. The mesh-export / feature-graph path compiles
+        // MID separately (see compileAuxMid()/compileMid()).
+        const sceneSDF = scene.compileForPreview(sdfRoot)
+        const tSdf = performance.now()
+        const sceneSDF_fast = scene.compileFastForPreview(sdfRoot)
+        const tSdfFast = performance.now()
+        const sceneEdgeHelpers = scene.compileEdgeHelpers()
+        const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
+        const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
+        const tWgsl1 = performance.now()
+
+        const shaderCompiler = new ShaderCompiler(this.#device)
+            .replace("insert", "sceneAuxFast", sceneAuxFast)
+            .replace("insert", "sceneAux", sceneAux)
+            .replace("insert", "sceneSDF_fast", sceneSDF_fast)
+            .replace("insert", "sceneSDF", sceneSDF)
+            .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
+            .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
+            .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
+
+        const tShaderMod0 = performance.now()
+        const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
+        const tShaderMod1 = performance.now()
+
+        // Iso_sample_batch module is deferred — `#ensureFeatureGraphIsoModule`
+        // produces it on demand. Invalidate it here: a new scene SDF was emitted.
+        this.#featureGraphIsoModule = null
+        this.#builtIsoModuleFingerprint = null
+
+        this.#buildGeneration++
+        const generation = this.#buildGeneration
+
+        const tPipeline0 = performance.now()
+        let pipeline: GPURenderPipeline
+        let beamPipeline: GPUComputePipeline
+        try {
+            ;[pipeline, beamPipeline] = await Promise.all([
+                this.#device.createRenderPipelineAsync({
+                    label: "Preview Pipeline",
+                    layout: "auto",
+                    vertex: { module: nextShader, entryPoint: "vertexMain" },
+                    fragment: {
+                        module: nextShader,
+                        entryPoint: "fragmentMain",
+                        // Single target: the canvas swapchain. Click picking uses
+                        // the `clickedObjectId` atomic written from the fragment shader.
+                        targets: [{ format: this.#format }],
+                    },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+                this.#device.createComputePipelineAsync({
+                    label: "Beam Pre-Pass Pipeline",
+                    layout: "auto",
+                    compute: { module: nextShader, entryPoint: "beamMarch" },
+                }),
+            ])
+        } catch (err) {
+            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
+            logWgsl("error", `Pipeline creation failed for Preview + Beam shader: ${text}`)
+            throw err
+        }
+        const tPipeline1 = performance.now()
+        if (generation !== this.#buildGeneration) {
+            return { superseded: true }
+        }
+        return {
+            pipeline,
+            beamPipeline,
+            shader: nextShader,
+            t: {
+                wgslSceneMs: roundMs2(tWgsl1 - tWgsl0),
+                compileAuxPreviewMs: roundMs2(tAux - tWgsl0),
+                compileAuxFastPreviewMs: roundMs2(tAuxFast - tAux),
+                compileForPreviewMs: roundMs2(tSdf - tAuxFast),
+                compileFastForPreviewMs: roundMs2(tSdfFast - tSdf),
+                compileEdgeHelpersMs: roundMs2(tWgsl1 - tSdfFast),
+                shaderModulesMs: roundMs2(tShaderMod1 - tShaderMod0),
+                pipelinesMs: roundMs2(tPipeline1 - tPipeline0),
+            },
+        }
+    }
+
+    /**
+     * "View Isolated" toggle/retarget (interactive path). Reuses the already-built
+     * `#scene` — no DSL re-eval, no tree rebuild, no param re-upload — and just
+     * recompiles the preview SDF from the chosen isolation root, swaps in the new
+     * pipelines, and re-renders the current SAB frame. Serialized with builds by
+     * the worker's job queue (see render-worker.mts), so it never races `#doBuild`.
+     */
+    async recompileIsolation(ids: readonly number[], sab?: SharedArrayBuffer): Promise<void> {
+        this.#isolatedIds = [...ids]
+        // No scene yet, or its body is mid-flight: the next `#doBuild` will apply
+        // `#isolatedIds` (it compiles from `scene.isolationRoot(this.#isolatedIds)`).
+        if (!this.#scene) return
+        // Already compiled for this isolation (e.g. a build that ran just before
+        // this queued recompile applied it) — skip the recompile, just re-render.
+        if (this.#pipeline && sameIdList(this.#builtIsolatedIds, this.#isolatedIds)) {
+            this.#forceNextRender = true
+            const buf0 = sab ?? this.#lastSharedBuffer
+            if (buf0) this.#renderFromSAB(buf0)
+            return
+        }
+        const built = await this.#buildScenePipelines(this.#scene, this.#scene.isolationRoot(this.#isolatedIds))
+        if ("superseded" in built) return
+        this.#pipeline = built.pipeline
+        this.#beamPipeline = built.beamPipeline
+        this.#sceneShader = built.shader
+        this.#builtIsolatedIds = [...this.#isolatedIds]
+        this.#beamBindGroupInvalid = true
+        this.#sceneBindGroupInvalid = true
+        this.#forceNextRender = true
+        const buf = sab ?? this.#lastSharedBuffer
+        if (buf) this.#renderFromSAB(buf)
+    }
+
     async #doBuild(body: string): Promise<
         | {
               sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]
@@ -623,7 +782,8 @@ export class RenderWorkerCore {
             fingerprint === this.#builtStructuralFingerprint &&
             this.#pipeline !== null &&
             this.#beamPipeline !== null &&
-            this.#sceneShader !== null
+            this.#sceneShader !== null &&
+            sameIdList(this.#isolatedIds, this.#builtIsolatedIds)
 
         const tPoly0 = performance.now()
         // `getPolygonVertexData()` allocates a fresh Float32Array on every call
@@ -704,96 +864,24 @@ export class RenderWorkerCore {
             return { sceneNodes, compiledPosY: Array.from(this.#compiledPosY), timingMs }
         }
 
-        const tWgsl0 = performance.now()
-        const sceneAux = scene.compileAuxPreview()
-        const tAux = performance.now()
-        const sceneAuxFast = scene.compileAuxFastPreview()
-        const tAuxFast = performance.now()
-        const sceneAuxMid = scene.compileAuxMidPreview()
-        const tAuxMid = performance.now()
-        const sceneSDF = scene.compileForPreview()
-        const tSdf = performance.now()
-        const sceneSDF_fast = scene.compileFastForPreview()
-        const tSdfFast = performance.now()
-        const sceneSDF_mid = scene.compileMidForPreview()
-        const tSdfMid = performance.now()
-        const sceneEdgeHelpers = scene.compileEdgeHelpers()
-        const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
-        const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
-        const tWgsl1 = performance.now()
-
-        const shaderCompiler = new ShaderCompiler(this.#device)
-            .replace("insert", "sceneAuxFast", sceneAuxFast)
-            .replace("insert", "sceneAux", sceneAux)
-            .replace("insert", "sceneAuxMid", sceneAuxMid)
-            .replace("insert", "sceneSDF_fast", sceneSDF_fast)
-            .replace("insert", "sceneSDF", sceneSDF)
-            .replace("insert", "sceneSDF_mid", sceneSDF_mid)
-            .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
-            .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
-            .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
-
-        const tShaderMod0 = performance.now()
-        const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
-        const tShaderMod1 = performance.now()
-
-        // Iso_sample_batch module compile is deferred — `#ensureFeatureGraphIsoModule`
-        // produces it on demand from the FG kick or from `handleRenderMesh`. It
-        // duplicates `scene.compileAux*()` / `compile()` / `compileMid()` against
-        // the export bind set, so building it inline doubled the WGSL codegen
-        // cost of every structural rebuild even when the overlay was off.
-        this.#featureGraphIsoModule = null
-        this.#builtIsoModuleFingerprint = null
-
-        this.#buildGeneration++
-        const generation = this.#buildGeneration
-
-        const tPipeline0 = performance.now()
-        let pipeline: GPURenderPipeline
-        let beamPipeline: GPUComputePipeline
-        try {
-            ;[pipeline, beamPipeline] = await Promise.all([
-                this.#device.createRenderPipelineAsync({
-                    label: "Preview Pipeline",
-                    layout: "auto",
-                    vertex: { module: nextShader, entryPoint: "vertexMain" },
-                    fragment: {
-                        module: nextShader,
-                        entryPoint: "fragmentMain",
-                        // Single target: the canvas swapchain. The previous
-                        // r32uint object-ID attachment fed the old outline
-                        // post-process pass which is gone; click picking
-                        // uses the `clickedObjectId` atomic written from
-                        // inside the fragment shader.
-                        targets: [{ format: this.#format }],
-                    },
-                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
-                }),
-                this.#device.createComputePipelineAsync({
-                    label: "Beam Pre-Pass Pipeline",
-                    layout: "auto",
-                    compute: { module: nextShader, entryPoint: "beamMarch" },
-                }),
-            ])
-        } catch (err) {
-            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
-            logWgsl("error", `Pipeline creation failed for Preview + Beam shader: ${text}`)
-            throw err
-        }
-        const tPipeline1 = performance.now()
-        if (generation !== this.#buildGeneration) {
+        // Compile the preview SDF from the isolation root (= full scene root when
+        // nothing is isolated) → shader module → pipelines. Shared with isolate
+        // recompiles via #buildScenePipelines.
+        const built = await this.#buildScenePipelines(scene, scene.isolationRoot(this.#isolatedIds))
+        if ("superseded" in built) {
             return { superseded: true } as { superseded: true }
         }
+        const { pipeline, beamPipeline, shader: nextShader, t } = built
 
         log("RenderWorker").debug("scene build full (ms)", {
             sceneConstruct: roundMs(tSceneConstruct - t0),
             fingerprint: roundMs(tFingerprint - tFp0),
             packScene: roundMs(tPackScene1 - tPackScene0),
             packPreview: roundMs(tPackPreview - tPackPrev0),
-            wgslScene: roundMs(tWgsl1 - tWgsl0),
-            shaderModules: roundMs(tShaderMod1 - tShaderMod0),
-            pipelines: roundMs(tPipeline1 - tPipeline0),
-            total: roundMs(tPipeline1 - t0),
+            wgslScene: t.wgslSceneMs,
+            shaderModules: t.shaderModulesMs,
+            pipelines: t.pipelinesMs,
+            total: roundMs(performance.now() - t0),
         })
 
         // WebGPU: only buffers, textures, and query sets have destroy(). Pipelines, shader modules,
@@ -802,6 +890,7 @@ export class RenderWorkerCore {
         this.#beamPipeline = beamPipeline
         this.#sceneShader = nextShader
         this.#builtStructuralFingerprint = fingerprint
+        this.#builtIsolatedIds = [...this.#isolatedIds]
         // New pipeline + uploaded buffers — defeat the SAB-hash idle skip so
         // the next render actually picks up the freshly compiled shader.
         this.#forceNextRender = true
@@ -833,16 +922,16 @@ export class RenderWorkerCore {
             packSceneMs: roundMs(tPackScene1 - tPackScene0),
             packPreviewMs: roundMs(tPackPreview - tPackPrev0),
             serializeNodesMs: roundMs(tSer1 - tSer0),
-            wgslSceneMs: roundMs(tWgsl1 - tWgsl0),
-            compileAuxPreviewMs: roundMs(tAux - tWgsl0),
-            compileAuxFastPreviewMs: roundMs(tAuxFast - tAux),
-            compileAuxMidPreviewMs: roundMs(tAuxMid - tAuxFast),
-            compileForPreviewMs: roundMs(tSdf - tAuxMid),
-            compileFastForPreviewMs: roundMs(tSdfFast - tSdf),
-            compileMidForPreviewMs: roundMs(tSdfMid - tSdfFast),
-            compileEdgeHelpersMs: roundMs(tWgsl1 - tSdfMid),
-            shaderModulesMs: roundMs(tShaderMod1 - tShaderMod0),
-            pipelinesMs: roundMs(tPipeline1 - tPipeline0),
+            wgslSceneMs: t.wgslSceneMs,
+            compileAuxPreviewMs: t.compileAuxPreviewMs,
+            compileAuxFastPreviewMs: t.compileAuxFastPreviewMs,
+            compileAuxMidPreviewMs: 0, // MID not generated in the preview build
+            compileForPreviewMs: t.compileForPreviewMs,
+            compileFastForPreviewMs: t.compileFastForPreviewMs,
+            compileMidForPreviewMs: 0, // MID not generated in the preview build
+            compileEdgeHelpersMs: t.compileEdgeHelpersMs,
+            shaderModulesMs: t.shaderModulesMs,
+            pipelinesMs: t.pipelinesMs,
             gpuBuffersMs: roundMs(tBuf1 - tBuf0),
             totalMs: roundMs(total),
             paramOnly: false,
@@ -1354,6 +1443,9 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                        // viewSettings (binding 6): the beam shader force-references it (`_ = viewSettings.selectionMode`)
+                        // so its auto bind-group layout keeps binding 6 even when the fast SDF doesn't read viewSettings.
+                        { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                         { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
@@ -1443,7 +1535,14 @@ export class RenderWorkerCore {
         this.#renderFromSAB(buffer)
     }
 
-    #renderFromSAB(buffer: SharedArrayBuffer): void {
+    // `pickClickUV` triggers the fast-pick path: the scene is rendered into a
+    // tiny scissored region of the offscreen `#colorTexture` (just enough to
+    // cover the clicked pixel and write the `clickedObjectId`/edge atomics),
+    // skipping the full-frame raymarch, the canvas, and the post/overlay passes.
+    // It leaves the canvas frame untouched, so the idle hash / `forceNextRender`
+    // bookkeeping is left alone (the next real render still repaints the canvas
+    // with the new selection).
+    #renderFromSAB(buffer: SharedArrayBuffer, pickClickUV?: [number, number]): void {
         const slot = getPublishedRenderSlot(buffer)
         const slotBase = getSlotByteOffset(slot)
 
@@ -1452,23 +1551,26 @@ export class RenderWorkerCore {
         // refresh). Catches the case where the SAB version was bumped but
         // no render-relevant state actually changed. FNV-1a on u32 words —
         // SLOT_SIZE / 4 ≈ 1745 iterations, well under 100 µs on typical
-        // hardware vs the 35 ms+ frame we're skipping.
+        // hardware vs the 35 ms+ frame we're skipping. Picks always proceed
+        // (and don't consume the bookkeeping — they don't touch the canvas).
         const slotU32View = new Uint32Array(buffer, slotBase, SLOT_SIZE / 4)
         let hash = 2166136261
         for (let i = 0; i < slotU32View.length; i++) {
             hash = Math.imul(hash ^ slotU32View[i]!, 16777619)
         }
-        if (hash === this.#lastRenderedSabHash && !this.#forceNextRender) {
-            // Identical to last rendered frame — skip GPU work entirely.
-            // The swapchain texture still holds the previous frame's
-            // pixels, which is exactly what the user should see.
-            return
+        if (!pickClickUV) {
+            if (hash === this.#lastRenderedSabHash && !this.#forceNextRender) {
+                // Identical to last rendered frame — skip GPU work entirely.
+                // The swapchain texture still holds the previous frame's
+                // pixels, which is exactly what the user should see.
+                return
+            }
+            this.#lastRenderedSabHash = hash
+            this.#forceNextRender = false
         }
-        this.#lastRenderedSabHash = hash
-        this.#forceNextRender = false
 
         const now = performance.now()
-        if (this.#lastRenderTime > 0) {
+        if (!pickClickUV && this.#lastRenderTime > 0) {
             const delta = now - this.#lastRenderTime
             if (delta > 0) {
                 this.#framerate.update(1000 / delta)
@@ -1621,6 +1723,35 @@ export class RenderWorkerCore {
             this.#hoveredEdgesCache,
         )
 
+        // Fast pick: uniforms are now current, so render just a few pixels
+        // around the click into the offscreen `#colorTexture` to populate the
+        // pick atomics, then bail — no full raymarch, no canvas, no post passes.
+        // The shader reads `tStartTex` from the previous full frame (the camera
+        // is static when picking), so the result matches a full render.
+        if (pickClickUV) {
+            const w = this.#renderTextureWidth
+            const h = this.#renderTextureHeight
+            const R = 3
+            const cx = Math.round(pickClickUV[0] * w)
+            const cy = Math.round((1 - pickClickUV[1]) * h)
+            const x = Math.max(0, Math.min(w - 1, cx - R))
+            const y = Math.max(0, Math.min(h - 1, cy - R))
+            const sw = Math.min(2 * R + 1, w - x)
+            const sh = Math.min(2 * R + 1, h - y)
+            const enc = this.#device.createCommandEncoder({ label: "pick" })
+            const pass = enc.beginRenderPass({
+                label: "pick",
+                colorAttachments: [{ view: this.#colorTextureView, loadOp: "clear", storeOp: "store" }],
+            })
+            pass.setPipeline(this.#pipeline)
+            pass.setBindGroup(0, this.#bindGroup!)
+            pass.setScissorRect(x, y, sw, sh)
+            pass.draw(4)
+            pass.end()
+            this.#device.queue.submit([enc.finish()])
+            return
+        }
+
         // Canvas sizing:
         //  - FSR path: the canvas stays at full display resolution; the scene
         //    renders into the reduced-res `#colorTexture` and EASU (+FXAA)
@@ -1650,6 +1781,9 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                        // viewSettings (binding 6): the beam shader force-references it (`_ = viewSettings.selectionMode`)
+                        // so its auto bind-group layout keeps binding 6 even when the fast SDF doesn't read viewSettings.
+                        { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                         { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
@@ -2206,13 +2340,19 @@ export class RenderWorkerCore {
         const requestId = msg.requestId
         const documentName = msg.documentName
         const previousBody = this.#builtBody
+        // Isolation is now a build-time root choice; apply it before building and
+        // restore it after, so this side-channel preview can't leak isolation into
+        // the live session's scene.
+        const previousIso = this.#isolatedIds
+        const wantIso = msg.isolatedIds ?? []
         let builtForThis = false
         try {
             if (!this.#device) {
                 self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable", requestId, documentName })
                 return
             }
-            if (!this.#scene || this.#builtBody !== body) {
+            this.setIsolatedIds(wantIso)
+            if (!this.#scene || this.#builtBody !== body || !sameIdList(this.#builtIsolatedIds, wantIso)) {
                 await this.build(body, undefined)
                 builtForThis = true
             }
@@ -2228,7 +2368,7 @@ export class RenderWorkerCore {
                 cameraPosition: msg.cameraPosition,
                 cameraRes: [tw, th],
                 selectionState: {
-                    selectedObjectIds: [],
+                    selectedObjectIds: msg.selectedObjectIds ?? [],
                     selectedEdges: [],
                     hoveredObjectId: 0,
                     hoveredEdges: [],
@@ -2318,7 +2458,10 @@ export class RenderWorkerCore {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId, documentName })
         } finally {
-            if (builtForThis && previousBody !== null && previousBody !== body && this.#builtBody === body) {
+            this.#isolatedIds = previousIso
+            const bodyChanged = previousBody !== null && previousBody !== body
+            const isoChanged = !sameIdList(this.#builtIsolatedIds, previousIso)
+            if (builtForThis && previousBody !== null && (bodyChanged || isoChanged) && this.#builtBody === body) {
                 try {
                     await this.build(previousBody, undefined)
                 } catch {
@@ -2470,6 +2613,9 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+                        // viewSettings (binding 6): the beam shader force-references it (`_ = viewSettings.selectionMode`)
+                        // so its auto bind-group layout keeps binding 6 even when the fast SDF doesn't read viewSettings.
+                        { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
                         { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
@@ -2716,7 +2862,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(ub.colorPalette, 0, alignedData)
 
         ub.viewSettings = this.#device.createBuffer({
-            size: 16,
+            size: 16, // 4 u32: xrayMode, debugHeatmap, beamEnabled, selectionMode
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "viewSettings",
         })
@@ -2976,7 +3122,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, ZERO_VEC4)
         this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, ZERO_EDGE_HITS)
 
-        if (sab) this.#renderFromSAB(sab)
+        if (sab) this.#renderFromSAB(sab, clickUV)
         else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
         self.postMessage({
@@ -3011,11 +3157,14 @@ export class RenderWorkerCore {
         // degradation while hovering, because the canvas was constantly
         // being repainted at hover-quality between user actions.
         //
-        // The right fix is a tiny compute-shader pick that doesn't write
-        // to the canvas. Until that lands, use the same quality the SAB
-        // carries for this frame — visible quality matches user settings.
+        // Fast pick: scissored offscreen render of a few pixels around the
+        // hover point — no full raymarch, no canvas repaint. The hover
+        // highlight itself is drawn by the next main-thread-initiated render
+        // (the hovered id rides the SAB), so there's at most a ~1-frame lag,
+        // and the readback no longer stalls behind a full-frame raymarch (which
+        // is what made hover-flood selection feel slow).
         if (sab) {
-            this.#renderFromSAB(sab)
+            this.#renderFromSAB(sab, clickUV)
         } else {
             this.render(this.#lastRenderMsg!)
         }
@@ -3085,7 +3234,7 @@ export class RenderWorkerCore {
         }
         this.#writeClickState(clickUV, false, true, clickUV)
         this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, ZERO_EDGE_HITS)
-        if (sab) this.#renderFromSAB(sab)
+        if (sab) this.#renderFromSAB(sab, clickUV)
         else this.render(this.#lastRenderMsg!)
         const { hoveredObjectId } = await this.#readHoverResult()
         self.postMessage({ type: "pickObjectResult", objectId: hoveredObjectId, requestId })
@@ -3100,7 +3249,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, ZERO_VEC4)
         this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, ZERO_EDGE_HITS)
 
-        if (sab) this.#renderFromSAB(sab)
+        if (sab) this.#renderFromSAB(sab, clickUV)
         else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
         if (result.clickedId !== 0) {
@@ -3127,7 +3276,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, ZERO_VEC4)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedNormal, 0, ZERO_VEC4)
         this.#device.queue.writeBuffer(this.#uniformBuffers.edgeHit, 0, ZERO_EDGE_HITS)
-        if (sab) this.#renderFromSAB(sab)
+        if (sab) this.#renderFromSAB(sab, clickUV)
         else this.render(this.#lastRenderMsg!)
         const result = await this.#readClickResult()
         // hitPos[3] is the ray travel distance t; 0 means no hit

@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, unaryDistanceIsoResult } from "../base.mjs"
 import { aabbExpand, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
@@ -36,40 +36,21 @@ export class Shell extends UnaryOperator {
         const funcName = `Shell${this.id}`
         const varName = decapitalize(funcName)
         const t = f32Wgsl(this.paramOffset, this.previewF32Slot)
-
-        if (childResult.prelude) {
-            const accVar = childResult.varName!
-            const prelude = childResult.prelude + `${accVar} = sdfShellEx(${accVar}, ${t});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfShellEx(${childResult.text}, ${t})` }
+        return unaryDistanceIsoResult(this, funcName, varName, childResult, c => `sdfShellEx(${c}, ${t})`, "selectSDF")
     }
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
         const funcName = `Shell${this.id}`
         const varName = `${decapitalize(funcName)}_f`
         const t = f32Wgsl(this.paramOffset, this.previewF32Slot)
-
-        if (childResult.prelude) {
-            const accVar = childResult.varName!
-            const prelude = childResult.prelude + `${accVar} = sdfShellFast(${accVar}, ${t});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfShellFast(${childResult.text}, ${t})` }
+        return unaryDistanceIsoResult(this, funcName, varName, childResult, c => `sdfShellFast(${c}, ${t})`, "selectFast")
     }
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
         const funcName = `Shell${this.id}`
         const varName = `${decapitalize(funcName)}_m`
         const t = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        if (childResult.prelude) {
-            const accVar = childResult.varName!
-            const prelude = childResult.prelude + `${accVar} = sdfShellMid(${accVar}, p, ${t});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-        return { funcName, varName, text: `sdfShellMid(${childResult.text}, p, ${t})` }
+        return unaryDistanceIsoResult(this, funcName, varName, childResult, c => `sdfShellMid(${c}, p, ${t})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

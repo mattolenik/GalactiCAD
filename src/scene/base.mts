@@ -1,5 +1,6 @@
 import { Vec3 } from "../vecmat/vector.mjs"
 import type { PreviewParamsOut } from "./scene-params.mjs"
+import { compileParamMode } from "./scene-params.mjs"
 import type { AABB } from "./aabb.mjs"
 import { aabbUnion } from "./aabb.mjs"
 import type { ContourBuffer } from "./contour-buffer.mjs"
@@ -459,6 +460,83 @@ export function binaryOpCompileResult(
         }
     }
     return { varName, text: expr, prelude: undefined }
+}
+
+// ---------------------------------------------------------------------------
+// Isolate-view ("View Isolated") operator result helpers.
+//
+// Isolation is implemented by RECOMPILING the preview SDF from the isolated
+// subtree(s) as root (see `SceneInfo.isolationRoot` + the worker's
+// `recompileIsolation`), NOT by carrying render-time pass-through scaffolding in
+// the live SDF. So these helpers emit the plain combine/wrap — no `viewSettings`
+// reads, no per-operator selects, nothing for the GPU to branch on. The `op` /
+// `selectFn` params are retained only so the ~22 operator call sites stay
+// unchanged; `IsoSelectFn` is likewise kept for those call sites' literal args.
+// ---------------------------------------------------------------------------
+
+export type IsoSelectFn = "selectSDF" | "selectFast" | "selectMid"
+
+/**
+ * Build the final CompileResult for a binary operator. `combine(l, r)` builds the
+ * op expression from two child expression strings (`op`/`selectFn` are retained
+ * for the call-site signature; isolation is handled by recompiling from root).
+ */
+export function binaryIsoCompileResult(
+    op: BinaryOperator,
+    varName: string,
+    lhResult: CompileResult,
+    rhResult: CompileResult,
+    combine: (l: string, r: string) => string,
+    selectFn: IsoSelectFn,
+): CompileResult {
+    const { prelude, lText, rText } = mergeChildPreludes(lhResult, rhResult)
+    return binaryOpCompileResult(varName, combine(lText, rText), prelude)
+}
+
+/**
+ * Final CompileResult for a unary distance-modifier (shell/offset) that wraps
+ * its child's distance via `wrap(childExpr)`.
+ */
+export function unaryDistanceIsoResult(
+    op: UnaryOperator,
+    funcName: string,
+    varName: string,
+    childResult: CompileResult,
+    wrap: (childExpr: string) => string,
+    selectFn: IsoSelectFn,
+): CompileResult {
+    if (childResult.prelude) {
+        const accVar = childResult.varName!
+        return { funcName, varName: accVar, text: accVar, prelude: childResult.prelude + `${accVar} = ${wrap(accVar)};\n` }
+    }
+    return { funcName, varName, text: wrap(childResult.text!) }
+}
+
+/**
+ * Final CompileResult for a coordinate-warp unary operator: evaluate the child at
+ * `warpedP` (substituted for the child's `p`) then apply `wrapResult` to the
+ * child's result. `wrapResult` is the identity for translate/elongate.
+ */
+export function warpIsoResult(
+    op: UnaryOperator,
+    funcName: string,
+    varName: string,
+    childResult: CompileResult,
+    warpedP: string,
+    wrapResult: (childExpr: string) => string,
+    selectFn: IsoSelectFn,
+): CompileResult {
+    const subP = `(${warpedP})`
+    const sub = (s: string) => s.replace(/\bp\b/g, subP)
+    if (childResult.prelude) {
+        const accVar = childResult.varName!
+        const childPre = sub(childResult.prelude)
+        const wrapped = wrapResult(accVar)
+        const tail = wrapped !== accVar ? `${accVar} = ${wrapped};\n` : ""
+        return { funcName, varName: accVar, text: accVar, prelude: childPre + tail }
+    }
+    const childAt = sub(childResult.text!)
+    return { funcName, varName, text: wrapResult(childAt) }
 }
 
 /** Default position when pos is omitted from primitive/operator options. */

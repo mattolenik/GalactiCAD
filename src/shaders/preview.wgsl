@@ -71,6 +71,10 @@ const SELECTION_MODE_SEAM: u32 = 1u;
 const SELECTION_MODE_EDGE: u32 = 2u;
 const SELECTION_MODE_FACE: u32 = 3u;
 const SELECTION_MODE_AUTO: u32 = 4u;
+// "View Isolated" no longer rides this uniform: isolation recompiles the preview
+// SDF from the isolated subtree(s) as root (SceneInfo.isolationRoot +
+// RenderWorkerCore.recompileIsolation), so the live shader carries no isolate
+// scaffolding at all.
 struct ViewSettings {
     xrayMode: u32,       // 0 = normal, 1 = xray/translucent
     debugHeatmap: u32,   // 0 = normal shading, 1 = render per-pixel sceneSDF_fast call count as a turbo-like color ramp
@@ -881,6 +885,51 @@ fn applyFaceDottedPattern(color: vec3f, pixelCoord: vec2f) -> vec3f {
     return select(color, dotColor, inDot);
 }
 
+// Plain-selection surface overlay — a screen-space diagonal CROSS-HATCH in the
+// SELECTION COLOR, clearly distinct from the push/pull DOT dither so "selected"
+// and "push/pull active" read as related but different. Kept light (low tint) so
+// it reads as a subtle wash. `sel` confines it to the selected surface and fades
+// it through blend regions.
+fn applySelectionPattern(color: vec3f, pixelCoord: vec2f, sel: f32) -> vec3f {
+    let scale = max(selectionStyles.resolutionScale, 0.25);
+    let p = pixelCoord / scale;
+    let spacing = selectionStyles.faceDotSpacing * 2.4;            // hatch line spacing
+    let halfWidth = max(selectionStyles.faceDotRadius * 1.4, 1.0); // half line thickness
+    // Two perpendicular 45° line sets → cross-hatch. For each, distance (in the
+    // diagonal coordinate) to the nearest line.
+    let d1 = p.x + p.y;
+    let d2 = p.x - p.y;
+    let ph1 = d1 - floor(d1 / spacing) * spacing;
+    let ph2 = d2 - floor(d2 / spacing) * spacing;
+    let dist1 = min(ph1, spacing - ph1);
+    let dist2 = min(ph2, spacing - ph2);
+    // Anti-aliased coverage of either line set (smoothstep across ~1.4px).
+    let cover1 = 1.0 - smoothstep(halfWidth - 0.7, halfWidth + 0.7, dist1);
+    let cover2 = 1.0 - smoothstep(halfWidth - 0.7, halfWidth + 0.7, dist2);
+    let cover = max(cover1, cover2);
+    // Muted, dimmer hatch color: desaturate the selection color toward its luma
+    // (less yellow), then scale it down (dimmer). Scoped to this pattern so the
+    // edge-selection highlight keeps the full `edgeColor`.
+    let ec = selectionStyles.edgeColor;
+    let luma = dot(ec, vec3f(0.299, 0.587, 0.114));
+    let hatchColor = (ec * 0.45 + vec3f(luma) * 0.55) * 0.6;
+    // Light tint toward the hatch color. Explicit lerp: Tint rejects
+    // `mix(vec3, vec3, f32)` on this Dawn build.
+    let t = 0.3 * clamp(sel, 0.0, 1.0) * cover;
+    return color * (1.0 - t) + hatchColor * t;
+}
+
+// Dispatch the selected-surface overlay: push/pull mode keeps its darkened-dot
+// dither; plain selection uses the distinct selection-color pattern above. Both
+// are confined to the selected surface (sel > 0).
+fn applySelectionOverlay(color: vec3f, pixelCoord: vec2f, sel: f32) -> vec3f {
+    if (sel <= 0.0) { return color; }
+    if (faceSelection.pushPullActive != 0u) {
+        return applyFaceDottedPattern(color, pixelCoord);
+    }
+    return applySelectionPattern(color, pixelCoord, sel);
+}
+
 @fragment
 fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     // Force bindings into the bind group layout (auto-layout strips unused bindings)
@@ -942,20 +991,14 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     let hit = raymarch(transformedOrigin, transformedDir, t_start, &stepCount);
     let hitPos = transformedOrigin + transformedDir * hit.t;
 
-    // Inline selection boundary outline (replaces the old fullscreen outline
-    // post-process pass). `selFloat` is the binary "is the pixel's hit on a
-    // selected object?" indicator — 0 for unselected hits and misses, 1 for
-    // selected hits. `fwidth(selFloat)` is non-zero at any 2x2 quad boundary
-    // where the indicator changes (silhouettes between selected and
-    // unselected pixels), giving a 1-pixel antialiased outline at no extra
-    // pass cost. `hitDataMiss` returns id=0 and `selectedObjectIds[0]` is
-    // always 0, so the lookup is safe on misses. The `fwidth` must be in
-    // uniform control flow, which is why it lives here, before any of the
-    // hit-vs-miss branches below.
+    // Object-selection indicator. `selFloat` is the binary "is the pixel's hit
+    // on a selected object?" value — 0 for unselected hits and misses, 1 for
+    // selected hits. `hitDataMiss` returns id=0 and `selectedObjectIds[0]` is
+    // always 0, so the lookup is safe on misses. It feeds the per-surface face
+    // tint inside `shadeHit`; the selected-surface pattern overlay (a
+    // screen-space dot pattern in the selection color — see
+    // `applySelectionOverlay`) is applied to the shaded color below.
     let selFloat = select(0.0, f32(selectedObjectIds[hit.id] != 0u), hit.t > 0.0);
-    let selBoundary = fwidth(selFloat);
-    let outlineMask = clamp(selBoundary * 1.5, 0.0, 1.0);
-    let outlineColor = selectionStyles.edgeColor;
     // Refined position for AO only — keeps original HitData (IDs, normal, seam)
     // untouched so coplanar union faces don't flicker.
     var aoPos = hitPos;
@@ -1059,29 +1102,20 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     }
 
     if (hit.t > 0.0) {
-        // `selFloat` was computed above for the boundary outline — same
+        // `selFloat` was computed above as the selection indicator — same
         // storage read shadeHit would otherwise repeat, so reuse it here.
         var frontResult = shadeHit(hit, false, viewDir, aoPos, selFloat, &stepCount);
         var shadedColor = frontResult.color;
-        if (frontResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
-            shadedColor = applyFaceDottedPattern(shadedColor, pixelCoord);
-        }
+        shadedColor = applySelectionOverlay(shadedColor, pixelCoord, frontResult.faceSelected);
         shadedColor = applySelectedEdgeHighlight(shadedColor, hitPos, hit, wppu);
-        // Apply the inline selection outline at boundary pixels. Written as
-        // an explicit lerp because Tint refuses the `mix(vec3, vec3, …)`
-        // overload here (rejects both the scalar-third-arg and the all-vec
-        // forms with "expected f32 got vec3<f32>" — Dawn version issue).
-        shadedColor = shadedColor * (1.0 - outlineMask) + outlineColor * outlineMask;
 
-        // X-ray mode: show front surface transparent with back surface visible
+        // X-ray mode: front surface transparent over the visible back surface.
         if (viewSettings.xrayMode > 0u) {
             if (backHit.t > 0.0) {
                 let backSel = f32(selectedObjectIds[backHit.id] != 0u);
                 var backResult = shadeHit(backHit, true, viewDir, backAoPos, backSel, &stepCount);
                 var backColor = backResult.color;
-                if (backResult.faceSelected > 0.0 && faceSelection.pushPullActive != 0u) {
-                    backColor = applyFaceDottedPattern(backColor, pixelCoord);
-                }
+                backColor = applySelectionOverlay(backColor, pixelCoord, backResult.faceSelected);
                 let backPos = transformedOrigin + transformedDir * backHit.t;
                 backColor = applySelectedEdgeHighlight(backColor, backPos, backHit, wppu);
                 let frontAlpha = 0.4;
@@ -1092,14 +1126,11 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
                 return heatmapOverlay(vec4f(shadedColor * alpha, alpha), stepCount);
             }
         }
+
         return heatmapOverlay(vec4f(shadedColor, 1.0), stepCount);
     } else {
-        // Miss pixel — normally fully transparent. At selection boundaries
-        // (silhouette of a selected object meeting the background) the
-        // outline mask is non-zero, so we draw the outline color with the
-        // mask as alpha so it composites correctly onto the canvas.
-        let missColor = vec4f(outlineColor * outlineMask, outlineMask);
-        return heatmapOverlay(missColor, stepCount);
+        // Miss pixel — fully transparent.
+        return heatmapOverlay(vec4f(0.0), stepCount);
     }
 }
 
@@ -1114,6 +1145,11 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     _ = previewParamsVec3[0];
     _ = previewParamsMat3[0];
     _ = previewCapParamDrag[0];
+    // viewSettings (binding 6): the beam bind group always binds it, but the fast
+    // SDF often doesn't read viewSettings at all, which would strip binding 6 from
+    // the beam pipeline's auto layout → "binding index 6 not present" → invalid
+    // bind group. Force the static reference so binding 6 is always in the layout.
+    _ = viewSettings.selectionMode;
 
     let outDims = textureDimensions(tStartOut);
     if (gid.x >= outDims.x || gid.y >= outDims.y) {

@@ -217,6 +217,10 @@ export type MainToWorkerMessage =
           height: number
           requestId?: number
           documentName?: string
+          /** Isolate-view target node ids for headless verification (empty = full scene). */
+          isolatedIds?: number[]
+          /** Object ids to render as selected, for headless verification of the selection pattern. */
+          selectedObjectIds?: number[]
           cameraState: CameraState
           viewTransform: Float32Array
           cameraPosition: [number, number, number]
@@ -229,6 +233,9 @@ export type MainToWorkerMessage =
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
     | { type: "pickObject"; clickUV: [number, number]; requestId: number }
     | { type: "setBvhEnabled"; enabled: boolean }
+    // "View Isolated" toggle/retarget. The worker recompiles the preview SDF from
+    // the isolated subtree(s) as root (empty = full scene) — see recompileIsolation.
+    | { type: "setIsolatedIds"; isolatedIds: number[] }
     | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
     | { type: "setStepHeatmapEnabled"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }

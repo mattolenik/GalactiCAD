@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, warpIsoResult } from "../base.mjs"
 import { aabbScale, type AABB } from "../aabb.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 import { FeatureGraphBuilder, mat4FromScale } from "../feature-graph-buffer.mjs"
@@ -40,65 +40,22 @@ export class Scale extends UnaryOperator {
     override compile(indentLevel = 0): CompileResult {
         const svec = this.sVecWgsl()
         const childResult = this.arg.compile(indentLevel)
-        const childText = childResult.text!
         const funcName = `Scale${this.id}`
-        const varName = decapitalize(funcName)
-
-        if (childResult.prelude) {
-            const scaledPrelude = childResult.prelude.replace(/\bp\b/g, `(p / ${svec})`)
-            const accVar = childResult.varName!
-            const prelude = scaledPrelude + `${accVar} = sdfScaleNormal(${accVar}, ${svec});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        const scaledChildText = childText.replace(/\bp\b/g, `(p / ${svec})`)
-        return {
-            funcName,
-            varName,
-            text: `sdfScaleNormal(${scaledChildText}, ${svec})`,
-        }
+        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `p / ${svec}`, c => `sdfScaleNormal(${c}, ${svec})`, "selectSDF")
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const svec = this.sVecWgsl()
         const childResult = this.arg.compileFast(indentLevel)
-        const childText = childResult.text!
         const funcName = `Scale${this.id}`
-        const varName = `${decapitalize(funcName)}_f`
-
-        if (childResult.prelude) {
-            const scaledPrelude = childResult.prelude.replace(/\bp\b/g, `(p / ${svec})`)
-            const accVar = childResult.varName!
-            const prelude = scaledPrelude + `${accVar} = sdfScaleFast(${accVar}, ${svec});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        const scaledChildText = childText.replace(/\bp\b/g, `(p / ${svec})`)
-        return {
-            funcName,
-            varName,
-            text: `sdfScaleFast(${scaledChildText}, ${svec})`,
-        }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_f`, childResult, `p / ${svec}`, c => `sdfScaleFast(${c}, ${svec})`, "selectFast")
     }
 
     override compileMid(indentLevel = 0): CompileResult {
         const svec = this.sVecWgsl()
         const childResult = this.arg.compileMid(indentLevel)
-        const childText = childResult.text!
-        const scaledChildText = childText.replace(/\bp\b/g, `(p / ${svec})`)
         const funcName = `Scale${this.id}`
-        const varName = `${decapitalize(funcName)}_m`
-        if (childResult.prelude) {
-            const scaledPrelude = childResult.prelude.replace(/\bp\b/g, `(p / ${svec})`)
-            const accVar = childResult.varName!
-            const prelude = scaledPrelude + `${accVar} = sdfScaleNormalMid(${accVar}, ${svec});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-        return {
-            funcName,
-            varName,
-            text: `sdfScaleNormalMid(${scaledChildText}, ${svec})`,
-        }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `p / ${svec}`, c => `sdfScaleNormalMid(${c}, ${svec})`, "selectMid")
     }
 
     override computeBounds(): AABB | null {

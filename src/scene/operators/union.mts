@@ -237,10 +237,11 @@ export class Union extends Node {
         let prelude = `var ${accVar} = ${this._resultInit(kind)};\n`
 
         for (let i = 0; i < this.children.length; i++) {
+            const child = this.children[i]!
             const childResult = childResults[i]!
             const threshold = blendRadius > 0 ? `${accVar}.${distField} + ${blendExtra}` : `${accVar}.${distField}`
             prelude += this._emitChildBlock(
-                this.children[i]!,
+                child,
                 childResult,
                 threshold,
                 `${accVar} = ${this._blendExpr(kind, accVar, childResult.text!)};\n`,
@@ -263,12 +264,13 @@ export class Union extends Node {
             `var ${bestB} = ${this._resultInit(kind)};\n`
 
         for (let i = 0; i < this.children.length; i++) {
+            const child = this.children[i]!
             const childResult = childResults[i]!
             const childVar = `_u${this.id}_${kind}_child${i}`
             const threshold = blendRadius > 0 ? `${bestB}.${distField} + ${blendExtra}` : `${bestB}.${distField}`
             prelude += `var ${childVar} = ${this._resultInit(kind)};\n`
             prelude += this._emitChildBlock(
-                this.children[i]!,
+                child,
                 childResult,
                 threshold,
                 `${childVar} = ${childResult.text!};\n` +

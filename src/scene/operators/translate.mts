@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST, warpIsoResult } from "../base.mjs"
 import { type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { vec3Wgsl } from "../scene-params.mjs"
@@ -59,54 +59,23 @@ export class Translate extends UnaryOperator {
 
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
-        const childText = childResult.text!
         const d = this.deltaWgsl()
-        const shifted = childText.replace(/\bp\b/g, `(p - ${d})`)
         const funcName = `Translate${this.id}`
-        const varName = decapitalize(funcName)
-
-        if (childResult.prelude) {
-            const shiftedPrelude = childResult.prelude.replace(/\bp\b/g, `(p - ${d})`)
-            const accVar = childResult.varName!
-            return { funcName, varName: accVar, text: accVar, prelude: shiftedPrelude }
-        }
-
-        return { funcName, varName, text: shifted }
+        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `p - ${d}`, c => c, "selectSDF")
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
-        const childText = childResult.text!
         const d = this.deltaWgsl()
-        const shifted = childText.replace(/\bp\b/g, `(p - ${d})`)
         const funcName = `Translate${this.id}`
-        const varName = `${decapitalize(funcName)}_f`
-
-        if (childResult.prelude) {
-            const shiftedPrelude = childResult.prelude.replace(/\bp\b/g, `(p - ${d})`)
-            const accVar = childResult.varName!
-            return { funcName, varName: accVar, text: accVar, prelude: shiftedPrelude }
-        }
-
-        return { funcName, varName, text: shifted }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_f`, childResult, `p - ${d}`, c => c, "selectFast")
     }
 
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
-        const childText = childResult.text!
         const d = this.deltaWgsl()
-        const shifted = childText.replace(/\bp\b/g, `(p - ${d})`)
         const funcName = `Translate${this.id}`
-        const varName = `${decapitalize(funcName)}_m`
-
-        if (childResult.prelude) {
-            const shiftedPrelude = childResult.prelude.replace(/\bp\b/g, `(p - ${d})`)
-            const accVar = childResult.varName!
-            const prelude = shiftedPrelude + `${accVar} = sdfTranslateFeatureMid(${accVar}, p, ${d});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfTranslateFeatureMid(${shifted}, p, ${d})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `p - ${d}`, c => `sdfTranslateFeatureMid(${c}, p, ${d})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

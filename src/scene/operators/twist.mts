@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST, warpIsoResult } from "../base.mjs"
 import { type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
@@ -33,52 +33,21 @@ export class Twist extends UnaryOperator {
 
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
-        const childText = childResult.text!
         const rate = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
         const funcName = `Twist${this.id}`
-        const varName = decapitalize(funcName)
-
-        if (childResult.prelude) {
-            const twistedPrelude = childResult.prelude.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
-            const accVar = childResult.varName!
-            const prelude = twistedPrelude + `${accVar} = sdfTwistNormal(${accVar}, p, ${rate});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfTwistNormal(${twistedChild}, p, ${rate})` }
+        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `twistPoint(p, ${rate})`, c => `sdfTwistNormal(${c}, p, ${rate})`, "selectSDF")
     }
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
-        const childText = childResult.text!
         const rate = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
         const funcName = `Twist${this.id}`
-        const varName = `${decapitalize(funcName)}_f`
-
-        if (childResult.prelude) {
-            const twistedPrelude = childResult.prelude.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
-            const accVar = childResult.varName!
-            const prelude = twistedPrelude + `${accVar} = sdfTwistFast(${accVar}, p, ${rate});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfTwistFast(${twistedChild}, p, ${rate})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_f`, childResult, `twistPoint(p, ${rate})`, c => `sdfTwistFast(${c}, p, ${rate})`, "selectFast")
     }
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
-        const childText = childResult.text!
         const rate = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const twistedChild = childText.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
         const funcName = `Twist${this.id}`
-        const varName = `${decapitalize(funcName)}_m`
-        if (childResult.prelude) {
-            const twistedPrelude = childResult.prelude.replace(/\bp\b/g, `twistPoint(p, ${rate})`)
-            const accVar = childResult.varName!
-            const prelude = twistedPrelude + `${accVar} = sdfTwistNormalMid(${accVar}, p, ${rate});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-        return { funcName, varName, text: `sdfTwistNormalMid(${twistedChild}, p, ${rate})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `twistPoint(p, ${rate})`, c => `sdfTwistNormalMid(${c}, p, ${rate})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

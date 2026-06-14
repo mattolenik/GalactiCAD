@@ -1,4 +1,4 @@
-import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST } from "../base.mjs"
+import { CompileResult, decapitalize, fluent, Node, UnaryOperator, BVH_MIN_COST, warpIsoResult } from "../base.mjs"
 import { aabbExpand, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl } from "../scene-params.mjs"
@@ -33,52 +33,21 @@ export class Bend extends UnaryOperator {
 
     override compile(indentLevel = 0): CompileResult {
         const childResult = this.arg.compile(indentLevel)
-        const childText = childResult.text!
         const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
         const funcName = `Bend${this.id}`
-        const varName = decapitalize(funcName)
-
-        if (childResult.prelude) {
-            const bentPrelude = childResult.prelude.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
-            const accVar = childResult.varName!
-            const prelude = bentPrelude + `${accVar} = sdfBendNormal(${accVar}, p, ${amt});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfBendNormal(${bentChild}, p, ${amt})` }
+        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `bendPoint(p, ${amt})`, c => `sdfBendNormal(${c}, p, ${amt})`, "selectSDF")
     }
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
-        const childText = childResult.text!
         const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
         const funcName = `Bend${this.id}`
-        const varName = `${decapitalize(funcName)}_f`
-
-        if (childResult.prelude) {
-            const bentPrelude = childResult.prelude.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
-            const accVar = childResult.varName!
-            const prelude = bentPrelude + `${accVar} = sdfBendFast(${accVar}, p, ${amt});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-
-        return { funcName, varName, text: `sdfBendFast(${bentChild}, p, ${amt})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_f`, childResult, `bendPoint(p, ${amt})`, c => `sdfBendFast(${c}, p, ${amt})`, "selectFast")
     }
     override compileMid(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileMid(indentLevel)
-        const childText = childResult.text!
         const amt = f32Wgsl(this.paramOffset, this.previewF32Slot)
-        const bentChild = childText.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
         const funcName = `Bend${this.id}`
-        const varName = `${decapitalize(funcName)}_m`
-        if (childResult.prelude) {
-            const bentPrelude = childResult.prelude.replace(/\bp\b/g, `bendPoint(p, ${amt})`)
-            const accVar = childResult.varName!
-            const prelude = bentPrelude + `${accVar} = sdfBendNormalMid(${accVar}, p, ${amt});\n`
-            return { funcName, varName: accVar, text: accVar, prelude }
-        }
-        return { funcName, varName, text: `sdfBendNormalMid(${bentChild}, p, ${amt})` }
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `bendPoint(p, ${amt})`, c => `sdfBendNormalMid(${c}, p, ${amt})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

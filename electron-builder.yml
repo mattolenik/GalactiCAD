@@ -31,6 +31,15 @@ asar: true
 # affects download size — the installed app's asar is uncompressed either way.
 compression: maximum
 
+# Force the arch suffix into the .dmg name for EVERY arch. electron-builder
+# strips "-${arch}" for the default arch (x64) — but only while artifactName is
+# left at its default; setting artifactName explicitly marks the pattern
+# "user-forced" and the suffix is kept for all arches. Result:
+#   GalactiCAD-<version>-arm64.dmg  /  GalactiCAD-<version>-x64.dmg
+# Symmetric names let the Homebrew cask template a single URL by arch.
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
 mac:
   category: public.app-category.graphics-design
   target:

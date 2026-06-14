@@ -87,16 +87,28 @@ struct ViewSettings {
 
 // True when any isolated node id falls inside the (compile-time-constant) id
 // range [lo, hi] — i.e. this node's subtree contains an isolated node. Ids are
-// pre-order DFS so a subtree is a contiguous range. Loops over a UNIFORM count
-// and reads UNIFORM data (coherent — no non-uniform storage reads), so it stays
-// cheap and, when nothing is isolated, returns false after one comparison.
+// pre-order DFS so a subtree is a contiguous range. Reads UNIFORM data only.
+//
+// CRITICAL: this is FULLY UNROLLED with STATIC array indices and STATIC vector
+// components (no dynamic `for k < count` loop, no `[k>>2][k&3]` dynamic indexing).
+// A dynamic loop / dynamic vec-component index here makes the GPU compiler
+// pessimize the entire enclosing scene SDF (this is called per-operator in the
+// isolate pass-through selects) — which broke the beam pre-pass `t_start` cone
+// trace and left non-twisted shapes speckled even with nothing isolated. The
+// early-out keeps the not-isolating case (the norm) to a single uniform compare.
+fn isoSlot(v: vec4<u32>, base: u32, n: u32, lo: u32, hi: u32) -> bool {
+    return (base + 0u < n && v.x >= lo && v.x <= hi)
+        || (base + 1u < n && v.y >= lo && v.y <= hi)
+        || (base + 2u < n && v.z >= lo && v.z <= hi)
+        || (base + 3u < n && v.w >= lo && v.w <= hi);
+}
 fn isoHasSel(lo: u32, hi: u32) -> bool {
     let n = viewSettings.isolatedCount;
-    for (var k = 0u; k < n; k = k + 1u) {
-        let id = viewSettings.isolatedIds[k >> 2u][k & 3u];
-        if (id >= lo && id <= hi) { return true; }
-    }
-    return false;
+    if (n == 0u) { return false; }
+    return isoSlot(viewSettings.isolatedIds[0], 0u, n, lo, hi)
+        || isoSlot(viewSettings.isolatedIds[1], 4u, n, lo, hi)
+        || isoSlot(viewSettings.isolatedIds[2], 8u, n, lo, hi)
+        || isoSlot(viewSettings.isolatedIds[3], 12u, n, lo, hi);
 }
 
 // Beam optimization: low-res texture with per-tile starting-t from beam pre-pass

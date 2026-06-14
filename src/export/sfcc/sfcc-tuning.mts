@@ -88,6 +88,14 @@ export interface SfccTuning {
     checkVertexLinks: boolean
     /** Emit debug overlays (feature polylines, face segments, failed cells) in MeshData.debug. */
     debugOutput: boolean
+    /**
+     * Collect a build-time perf breakdown (phase wall-times + octree-refinement
+     * sub-buckets + SDF call counts) into `MeshData.debug.sfcc.perf` and the
+     * `sfcc perf` log line. Adds `performance.now()` overhead at O(cells) call
+     * sites, so absolute times are inflated — read the SPLIT, not the sum. Off →
+     * zero instrumentation, the export path is byte-identical.
+     */
+    profile: boolean
 }
 
 export const DEFAULT_SFCC_TUNING: SfccTuning = {
@@ -124,6 +132,7 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     creaseAngleDeg: 30,
     checkVertexLinks: false,
     debugOutput: false,
+    profile: false,
 }
 
 /** Hard ceiling on octree depth — lattice keys must stay exact in f64 (see lattice.mts). */
@@ -184,6 +193,7 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
         creaseAngleDeg: num(o.creaseAngleDeg, d.creaseAngleDeg, -1, 180),
         checkVertexLinks: bool(o.checkVertexLinks, d.checkVertexLinks),
         debugOutput: bool(o.debugOutput, d.debugOutput),
+        profile: bool(o.profile, d.profile),
     }
     if (out.depthMin > out.depthMax) {
         const t = out.depthMin

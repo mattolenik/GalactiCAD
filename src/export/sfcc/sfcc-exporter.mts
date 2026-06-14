@@ -52,6 +52,8 @@ async function runSfcc(ctx: MeshExportContext, tuning: SfccTuning): Promise<Mesh
     // Always-on stats line: fallback/degenerate counts are quality signals
     // (cell-scale chips) even when certification passes.
     log("MeshExport").info("sfcc stats", { ...result.stats, euler: result.manifold.eulerPerComponent })
+    // Perf breakdown (opt-in via tuning.profile): where deep refinement spent time.
+    if (result.perf) log("MeshExport").info("sfcc perf", result.perf)
     // Return the INDEXED mesh (shared PointTable vertices), NOT a pre-exploded
     // flat-normal soup. The unified render-worker post-pass needs welded
     // topology to simplify — meshoptimizer can't collapse an unwelded soup
@@ -65,6 +67,7 @@ async function runSfcc(ctx: MeshExportContext, tuning: SfccTuning): Promise<Mesh
             stats: { ...result.stats } as Record<string, number | number[]>,
             failedCellBoxes: result.failedCellBoxes,
             featurePolylines: result.featurePolylines,
+            perf: result.perf as Record<string, number> | undefined,
         },
     }
     return mesh

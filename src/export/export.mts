@@ -63,6 +63,8 @@ export interface MeshSfccDebugData {
     failedCellBoxes: Float32Array<ArrayBuffer>
     /** Feature polyline overlay (xyz pairs per segment), when debugOutput is on. */
     featurePolylines?: Float32Array<ArrayBuffer>
+    /** Build-time perf breakdown (phase/sub-bucket ms + SDF call counts), when tuning.profile is on. */
+    perf?: Record<string, number>
 }
 
 export interface MeshData {

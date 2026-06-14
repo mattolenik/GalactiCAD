@@ -15,6 +15,7 @@
  */
 
 import type { CpuSdfTree } from "./cpu-sdf.mjs"
+import { nowMs, type OctreeSamplePerf } from "./sfcc-perf.mjs"
 import {
     cellKey,
     cellSizeAtLevel,
@@ -60,6 +61,8 @@ export interface OctreeBuildOptions {
     /** Returns true when the leaf must split. Never called above depthMin. */
     needsSplit(cell: SfccCell, sampleAt: (gx: number, gy: number, gz: number) => number): boolean
     signal?: AbortSignal
+    /** Opt-in profiling accumulators (intervalOverBox / tree.f memo-miss times + count). */
+    perf?: OctreeSamplePerf
 }
 
 /** Face neighbors (6) and edge neighbors (12) as coordinate offsets. */
@@ -87,7 +90,7 @@ const EDGE_NEIGHBORS: ReadonlyArray<readonly [number, number, number]> = [
 ]
 
 export function buildOctree(tree: CpuSdfTree, lat: SfccLattice, opts: OctreeBuildOptions): SfccOctree {
-    const { depthMin, depthMax, signal } = opts
+    const { depthMin, depthMax, signal, perf } = opts
     if (depthMax > lat.maxDepth) throw new Error(`sfcc octree: depthMax ${depthMax} > lattice maxDepth ${lat.maxDepth}`)
 
     const samples = new Map<number, number>()
@@ -97,7 +100,14 @@ export function buildOctree(tree: CpuSdfTree, lat: SfccLattice, opts: OctreeBuil
         const hit = samples.get(key)
         if (hit !== undefined) return hit
         pointToWorld(lat, gx, gy, gz, scratch)
+        // Time only the memo MISS (the actual field eval — what a GPU batch would
+        // replace); hits are a map lookup and stay uncounted.
+        const t = perf ? nowMs() : 0
         const v = tree.f(scratch[0]!, scratch[1]!, scratch[2]!)
+        if (perf) {
+            perf.sampleMs += nowMs() - t
+            perf.sampleEvals++
+        }
         samples.set(key, v)
         return v
     }
@@ -115,7 +125,9 @@ export function buildOctree(tree: CpuSdfTree, lat: SfccLattice, opts: OctreeBuil
         pointToWorld(lat, (ix + 0.5) * stride, (iy + 0.5) * stride, (iz + 0.5) * stride, scratch)
         // Per-node interval bound (NOT a bare ±√3·half: twisted-extrude leaves
         // are locally super-1-Lipschitz and compose through the CSG min/max).
+        const t = perf ? nowMs() : 0
         const [lo, hi] = tree.intervalOverBox(scratch[0]!, scratch[1]!, scratch[2]!, half, half, half)
+        if (perf) perf.intervalMs += nowMs() - t
         return lo > 0 || hi < 0
     }
 

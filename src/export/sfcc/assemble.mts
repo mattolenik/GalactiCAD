@@ -75,9 +75,26 @@ export interface SfccWorldCube {
  * removing both members restores its edges to two uses.
  */
 function dropCoincidentTrianglePairs(tris: number[]): number[] {
-    const byVerts = new Map<string, number[]>() // sorted vertex ids → tri offsets
+    // Group triangles by their UNORDERED vertex triple. Key = the sorted triple
+    // packed into one f64 when ids are small enough to stay collision-free
+    // (base³ ≤ 2^53 ⇐ base ≤ 2^17), else a string fallback. The inline 3-sort
+    // avoids the per-triangle array alloc + comparator closure the old
+    // `[a,b,c].sort().join(",")` paid on every triangle (run twice per export).
+    // Grouping is identical to the sorted-join, and `tris` is never mutated, so
+    // the downstream orient()/pairing is byte-for-byte unchanged.
+    let maxId = 0
+    for (let t = 0; t < tris.length; t++) if (tris[t]! > maxId) maxId = tris[t]!
+    const base = maxId + 1
+    const packable = base <= 0x20000
+    const byVerts = new Map<number | string, number[]>() // sorted vertex triple → tri offsets
     for (let t = 0; t < tris.length; t += 3) {
-        const k = [tris[t]!, tris[t + 1]!, tris[t + 2]!].sort((a, b) => a - b).join(",")
+        let a = tris[t]!
+        let b = tris[t + 1]!
+        let c = tris[t + 2]!
+        if (a > b) { const s = a; a = b; b = s }
+        if (b > c) { const s = b; b = c; c = s }
+        if (a > b) { const s = a; a = b; b = s }
+        const k = packable ? (a * base + b) * base + c : `${a},${b},${c}`
         let list = byVerts.get(k)
         if (!list) {
             list = []

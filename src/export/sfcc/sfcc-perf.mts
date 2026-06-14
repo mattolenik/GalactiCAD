@@ -47,7 +47,21 @@ export interface ClassifyPerf {
     classifyStratumMs: number
 }
 
-export interface SfccPerf extends OctreeSamplePerf, ClassifyPerf {
+/**
+ * `contourAllFaces` sub-buckets, written from inside face-contour.mts. Narrow
+ * slice of {@link SfccPerf}. The three should roughly sum to a large fraction of
+ * `faceContourMs`; the remainder is the boundary walk + segment pairing.
+ */
+export interface FaceContourPerf {
+    /** `findRoot` — per-sub-edge iso-crossing 60-iter bisection on `tree.f` (deduped via the point table). */
+    faceRootMs: number
+    /** `recoveredCrossingsFor` — hidden-arc per-stratum carrier bisection near features (cached per sub-edge). */
+    faceRecoverMs: number
+    /** `axisPlaneCrossings` feature pinning (post-cache: mostly cache hits). */
+    facePinMs: number
+}
+
+export interface SfccPerf extends OctreeSamplePerf, ClassifyPerf, FaceContourPerf {
     // --- phase wall times (ms), summed across re-refine rounds ---------------
     /** S1: `compileFeatureSet` (analytic strata + trimmed feature curves/corners). */
     featureCompileMs: number
@@ -99,6 +113,9 @@ export function createSfccPerf(): SfccPerf {
         classifyIndexMs: 0,
         classifyCrossingsMs: 0,
         classifyStratumMs: 0,
+        faceRootMs: 0,
+        faceRecoverMs: 0,
+        facePinMs: 0,
         fCalls: 0,
         gradCalls: 0,
         intervalCalls: 0,

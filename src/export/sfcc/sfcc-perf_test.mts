@@ -34,7 +34,8 @@ test("profile on: perf buckets + counts populate, sub-buckets are consistent", (
     // exceed the whole (timer jitter slack only).
     for (const k of ["featureCompileMs", "octreeBuildMs", "faceContourMs", "cellMeshMs", "assembleMs", "totalMs",
         "intervalMs", "sampleMs", "classifyMs", "smoothCritMs",
-        "classifyIndexMs", "classifyCrossingsMs", "classifyStratumMs"] as const) {
+        "classifyIndexMs", "classifyCrossingsMs", "classifyStratumMs",
+        "faceRootMs", "faceRecoverMs", "facePinMs"] as const) {
         assert.ok(p[k] >= 0, `${k}=${p[k]}`)
     }
     const phaseSum = p.featureCompileMs + p.octreeBuildMs + p.faceContourMs + p.cellMeshMs + p.assembleMs
@@ -44,6 +45,9 @@ test("profile on: perf buckets + counts populate, sub-buckets are consistent", (
     // classify sub-buckets are charged inside classifyMs (remainder = glue/branching).
     assert.ok(p.classifyIndexMs + p.classifyCrossingsMs + p.classifyStratumMs <= p.classifyMs + 5,
         `classify subbuckets ${p.classifyIndexMs + p.classifyCrossingsMs + p.classifyStratumMs} > classifyMs ${p.classifyMs}`)
+    // faceContour sub-buckets are charged inside faceContourMs (remainder = boundary walk + pairing).
+    assert.ok(p.faceRootMs + p.faceRecoverMs + p.facePinMs <= p.faceContourMs + 5,
+        `face subbuckets ${p.faceRootMs + p.faceRecoverMs + p.facePinMs} > faceContourMs ${p.faceContourMs}`)
 })
 
 test("profile on vs off: identical mesh (instrumentation is inert)", () => {

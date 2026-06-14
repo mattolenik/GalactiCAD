@@ -20,6 +20,7 @@
 
 import type { CpuSdfTree } from "./cpu-sdf.mjs"
 import type { SfccFeatureSet } from "./feature-set.mjs"
+import { nowMs, type FaceContourPerf } from "./sfcc-perf.mjs"
 import {
     collectEdgeInteriorOffsets,
     faceAxes,
@@ -87,6 +88,8 @@ export interface FaceContourOptions {
      * into two loops, one per pin: the dominant fallback mode at twist 500°).
      */
     stratumTags?: Map<number, number>
+    /** Opt-in profiling sub-buckets (findRoot / recovery / pinning), absent off the profile path. */
+    perf?: FaceContourPerf
 }
 
 export interface RecoveredCrossing {
@@ -529,7 +532,9 @@ export function contourFace(
                 const id = points.getOrCreate(subKey, out => {
                     pointToWorld(lat, p0[0]!, p0[1]!, p0[2]!, wa)
                     pointToWorld(lat, p1[0]!, p1[1]!, p1[2]!, wb)
+                    const tR = opts.perf ? nowMs() : 0
                     findRoot(tree, wa[0]!, wa[1]!, wa[2]!, wb[0]!, wb[1]!, wb[2]!, f0, f1, opts.rootTol, scratch)
+                    if (opts.perf) opts.perf.faceRootMs += nowMs() - tR
                     out.set(scratch)
                 })
                 nodes.push({ crossing: id, inside: false })
@@ -546,7 +551,9 @@ export function contourFace(
                 const canonMax = walk.dir === 1 ? p1 : p0
                 pointToWorld(lat, canonMin[0]!, canonMin[1]!, canonMin[2]!, wa)
                 pointToWorld(lat, canonMax[0]!, canonMax[1]!, canonMax[2]!, wb)
+                const tRec = opts.perf ? nowMs() : 0
                 const rec = recoveredCrossingsFor(subKey, wa, wb, tree, points, opts)
+                if (opts.perf) opts.perf.faceRecoverMs += nowMs() - tRec
                 if (rec.length > 0) {
                     // Insert in walk order (cache is sorted by canonical +axis t).
                     if (walk.dir === 1) {
@@ -603,7 +610,10 @@ export function contourFace(
             qMax[2]! + eps,
         )) {
             const curve = opts.features.curves[curveId]!
-            for (const cr of curve.axisPlaneCrossings(axis, coord)) {
+            const tPin = opts.perf ? nowMs() : 0
+            const pinCrossings = curve.axisPlaneCrossings(axis, coord)
+            if (opts.perf) opts.perf.facePinMs += nowMs() - tPin
+            for (const cr of pinCrossings) {
                 const pos = [cr.x, cr.y, cr.z]
                 if (pos[u]! < minW[u]! || pos[u]! > maxU || pos[v]! < minW[v]! || pos[v]! > maxV) continue
                 const pid = points.getOrCreateStr(`F${axis}:${key}:${curveId}:${cr.t.toFixed(12)}`, out => {

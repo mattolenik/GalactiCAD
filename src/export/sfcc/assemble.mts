@@ -410,7 +410,7 @@ export function runSfccPipeline(
         points = new PointTable()
         const rootTol = Math.min(tuning.edgeRootTolFraction * lat.step, tuning.surfaceTolMm * 0.1)
         const tFace = perf ? nowMs() : 0
-        faceResult = contourAllFaces(oct, tree, points, { rootTol, features }, signal)
+        faceResult = contourAllFaces(oct, tree, points, { rootTol, features, perf }, signal)
         if (perf) perf.faceContourMs += nowMs() - tFace
         const tCell = perf ? nowMs() : 0
         cellResult = meshAllCells(

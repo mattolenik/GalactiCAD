@@ -1825,6 +1825,7 @@ export class RenderWorkerCore {
             const tuning = exp.normalizeTuning(exporterTuning?.[exporter])
             log("MeshExport").info(`handleRenderMesh: dispatching ${exporter}, tuning=${JSON.stringify(tuning)}`)
             let mesh
+            const tConvert0 = performance.now()
             try {
                 mesh = await exp.run(ctx, tuning)
             } catch (err) {
@@ -1836,6 +1837,13 @@ export class RenderWorkerCore {
                 }
                 throw err
             }
+            // Always-on mesh conversion timing, tagged with the algorithm — emitted
+            // for every exporter regardless of tuning/profile so each algorithm's
+            // core conversion cost is comparable from the logs alone.
+            log("MeshExport").info(
+                `mesh conversion: algorithm=${exporter} (${exp.displayName}) ` +
+                    `timeMs=${(performance.now() - tConvert0).toFixed(1)} tris=${mesh.tris.length / 3}`,
+            )
 
             // Unified mesh post-passes for **both** MDC and SHREC: optional QEM
             // simplification (when enabled and targetRatio < 1), then optional

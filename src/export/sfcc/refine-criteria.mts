@@ -27,6 +27,7 @@
 import type { CpuSdfTree } from "./cpu-sdf.mjs"
 import type { SfccStratum } from "./strata.mjs"
 import type { SfccFeatureSet } from "./feature-set.mjs"
+import { nowMs, type ClassifyPerf, type SmoothCritPerf } from "./sfcc-perf.mjs"
 import {
     CELL_EDGES,
     cellAabb,
@@ -83,7 +84,7 @@ export function hasCornerSignChange(probe: RefineProbe): boolean {
  * Strata active near this cell: for each probe point within √3·cellSize of
  * the surface, the winning leaf's closest patch. Deduplicated by stratum id.
  */
-export function activeStrata(tree: CpuSdfTree, probe: RefineProbe): SfccStratum[] {
+export function activeStrata(tree: CpuSdfTree, probe: RefineProbe, perf?: SmoothCritPerf): SfccStratum[] {
     const out: SfccStratum[] = []
     const seen = new Set<number>()
     // dist ≥ |f|/L: with smooth-boolean blends in the tree the field can be
@@ -98,6 +99,7 @@ export function activeStrata(tree: CpuSdfTree, probe: RefineProbe): SfccStratum[
         for (const owner of tree.activeOwnersAt(x, y, z, 0)) {
             let best: SfccStratum | null = null
             let bestAbs = Infinity
+            if (perf) perf.smoothCarrierEvals += owner.leaf.strata.length
             for (const st of owner.leaf.strata) {
                 const a = Math.abs(st.f(x, y, z))
                 if (a < bestAbs) {
@@ -257,17 +259,32 @@ export interface SmoothCriteriaOptions {
 }
 
 /** Combined P3 criteria: returns true when the cell needs splitting. */
-export function needsSplitSmooth(tree: CpuSdfTree, probe: RefineProbe, opts: SmoothCriteriaOptions): boolean {
+export function needsSplitSmooth(
+    tree: CpuSdfTree,
+    probe: RefineProbe,
+    opts: SmoothCriteriaOptions,
+    perf?: SmoothCritPerf,
+): boolean {
     if (!hasCornerSignChange(probe)) return false // inactive cell — see (iii-a) note above
-    const strata = activeStrata(tree, probe)
+    const tAS = perf ? nowMs() : 0
+    const strata = activeStrata(tree, probe, perf)
+    if (perf) perf.smoothActiveStrataMs += nowMs() - tAS
     if (strata.length === 0) {
         // Blend region (no analytic carrier): certify the tree surface directly.
         return opts.blendNormalVariationCos < 1 && !treeNormalVariationOk(tree, probe, opts.blendNormalVariationCos)
     }
+    const tCert = perf ? nowMs() : 0
     for (const st of strata) {
-        if (!stratumNormalVariationOk(st, probe, opts.normalVariationCos)) return true
-        if (!stratumEdgeCrossingsOk(st, probe)) return true
+        if (!stratumNormalVariationOk(st, probe, opts.normalVariationCos)) {
+            if (perf) perf.smoothStratumCertMs += nowMs() - tCert
+            return true
+        }
+        if (!stratumEdgeCrossingsOk(st, probe)) {
+            if (perf) perf.smoothStratumCertMs += nowMs() - tCert
+            return true
+        }
     }
+    if (perf) perf.smoothStratumCertMs += nowMs() - tCert
     // Mixed cell: a stratum is active, but the cell may also straddle a blend
     // band (a rounded edge filleting into this stratum's face). Certify that
     // band's ∇f curvature too — gated to trees that actually contain a blend so
@@ -317,6 +334,7 @@ export function classifyCellFeatures(
     iy: number,
     iz: number,
     opts: FeatureCriteriaOptions,
+    perf?: ClassifyPerf,
 ): FeatureCellClass {
     const box = new Float64Array(6)
     cellAabb(lat, level, ix, iy, iz, box)
@@ -333,7 +351,10 @@ export function classifyCellFeatures(
     // every feature curve touching the cell is incident to that corner; the
     // corner cell is then meshed as wedge fans around the exact corner point.
     let cornerInCell = -1
-    for (const cid of features.index.cornersInBox(b0, b1, b2, b3, b4, b5)) {
+    const tIdxC = perf ? nowMs() : 0
+    const cornerIds = features.index.cornersInBox(b0, b1, b2, b3, b4, b5)
+    if (perf) perf.classifyIndexMs += nowMs() - tIdxC
+    for (const cid of cornerIds) {
         const c = features.corners[cid]!
         if (
             c.x >= box[0]! &&
@@ -351,7 +372,10 @@ export function classifyCellFeatures(
         cornerInCell >= 0 ? new Set(features.corners[cornerInCell]!.curveEnds.map(e => e.curveId)) : null
 
     let throughCurve = -1
-    for (const curveId of features.index.curvesInBox(b0, b1, b2, b3, b4, b5)) {
+    const tIdxV = perf ? nowMs() : 0
+    const curveIds = features.index.curvesInBox(b0, b1, b2, b3, b4, b5)
+    if (perf) perf.classifyIndexMs += nowMs() - tIdxV
+    for (const curveId of curveIds) {
         const curve = features.curves[curveId]!
         let total = 0
         const crossingFaces: Array<[0 | 1 | 2, number]> = []
@@ -359,7 +383,10 @@ export function classifyCellFeatures(
             for (let side = 0; side <= 1; side++) {
                 const coord = box[axis + (side === 1 ? 3 : 0)]!
                 let perFace = 0
-                for (const cr of curve.axisPlaneCrossings(axis, coord)) {
+                const tX = perf ? nowMs() : 0
+                const crossings = curve.axisPlaneCrossings(axis, coord)
+                if (perf) perf.classifyCrossingsMs += nowMs() - tX
+                for (const cr of crossings) {
                     // In-rect test on the other two axes (closed interval).
                     const px = [cr.x, cr.y, cr.z]
                     let inside = true
@@ -388,7 +415,9 @@ export function classifyCellFeatures(
         // (an invisible even crossing) and the pin cannot be routed: split,
         // generic tangencies resolve at finer levels.
         if (total === 2) {
-            for (const [axis, coord] of crossingFaces) {
+            const tS = perf ? nowMs() : 0
+            let pinSplit = false
+            pin: for (const [axis, coord] of crossingFaces) {
                 for (const sid of curve.adjacentStrata) {
                     const st = features.strata[sid]!
                     let neg = false
@@ -404,9 +433,14 @@ export function classifyCellFeatures(
                             else pos = true
                         }
                     }
-                    if (!neg || !pos) return { split: true, curve: curveId, corner: -1 }
+                    if (!neg || !pos) {
+                        pinSplit = true
+                        break pin
+                    }
                 }
             }
+            if (perf) perf.classifyStratumMs += nowMs() - tS
+            if (pinSplit) return { split: true, curve: curveId, corner: -1 }
         }
         if (total === 0) {
             // No boundary crossings — is any part of the curve inside the cell?

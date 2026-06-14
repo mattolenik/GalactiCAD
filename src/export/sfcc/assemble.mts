@@ -24,6 +24,7 @@ import { meshAllCells } from "./cell-mesh.mjs"
 import { PointTable } from "./point-table.mjs"
 import { checkManifold, type ManifoldReport } from "./manifold-check.mjs"
 import { flipSliverTriangles } from "./sliver-flip.mjs"
+import { createSfccPerf, makeCountingTree, nowMs, type SfccPerf } from "./sfcc-perf.mjs"
 
 export interface SfccStats {
     leaves: number
@@ -55,6 +56,8 @@ export interface SfccPipelineResult {
     failedCellBoxes: Float32Array<ArrayBuffer>
     /** Feature polyline overlay segments (xyz pairs), when tuning.debugOutput. */
     featurePolylines?: Float32Array<ArrayBuffer>
+    /** Build-time perf breakdown, present only when tuning.profile is on. */
+    perf?: SfccPerf
 }
 
 export interface SfccWorldCube {
@@ -72,9 +75,26 @@ export interface SfccWorldCube {
  * removing both members restores its edges to two uses.
  */
 function dropCoincidentTrianglePairs(tris: number[]): number[] {
-    const byVerts = new Map<string, number[]>() // sorted vertex ids → tri offsets
+    // Group triangles by their UNORDERED vertex triple. Key = the sorted triple
+    // packed into one f64 when ids are small enough to stay collision-free
+    // (base³ ≤ 2^53 ⇐ base ≤ 2^17), else a string fallback. The inline 3-sort
+    // avoids the per-triangle array alloc + comparator closure the old
+    // `[a,b,c].sort().join(",")` paid on every triangle (run twice per export).
+    // Grouping is identical to the sorted-join, and `tris` is never mutated, so
+    // the downstream orient()/pairing is byte-for-byte unchanged.
+    let maxId = 0
+    for (let t = 0; t < tris.length; t++) if (tris[t]! > maxId) maxId = tris[t]!
+    const base = maxId + 1
+    const packable = base <= 0x20000
+    const byVerts = new Map<number | string, number[]>() // sorted vertex triple → tri offsets
     for (let t = 0; t < tris.length; t += 3) {
-        const k = [tris[t]!, tris[t + 1]!, tris[t + 2]!].sort((a, b) => a - b).join(",")
+        let a = tris[t]!
+        let b = tris[t + 1]!
+        let c = tris[t + 2]!
+        if (a > b) { const s = a; a = b; b = s }
+        if (b > c) { const s = b; b = c; c = s }
+        if (a > b) { const s = a; a = b; b = s }
+        const k = packable ? (a * base + b) * base + c : `${a},${b},${c}`
         let list = byVerts.get(k)
         if (!list) {
             list = []
@@ -216,11 +236,18 @@ function dropDebrisComponents(
 }
 
 export function runSfccPipeline(
-    tree: CpuSdfTree,
+    treeArg: CpuSdfTree,
     cube: SfccWorldCube,
     tuning: SfccTuning,
     signal?: AbortSignal,
 ): SfccPipelineResult {
+    // Opt-in profiling: wrap the tree so top-level f/grad/interval/owner calls
+    // are counted, and arm the phase/sub-bucket timers. Off → no wrapping, the
+    // timer reads below all short-circuit, default path stays as-is.
+    const perf = tuning.profile ? createSfccPerf() : undefined
+    const tStart = perf ? nowMs() : 0
+    const tree = perf ? makeCountingTree(treeArg, perf) : treeArg
+
     const pad = tuning.boundsPaddingMm
     // Lattice-degeneracy guard: axis-aligned CAD geometry at "nice" coordinates
     // lands exactly on lattice planes (sample signs, face rects, and pin
@@ -241,7 +268,9 @@ export function runSfccPipeline(
 
     const sceneDiag = Math.hypot(cube.size, cube.size, cube.size)
     const tolerances = resolveTolerances(tuning, sceneDiag)
+    const tFeat = perf ? nowMs() : 0
     const features: SfccFeatureSet = compileFeatureSet(tree, tolerances)
+    if (perf) perf.featureCompileMs += nowMs() - tFeat
 
     // Forced-split markers from prior rounds' failed/fallback cells: any leaf
     // containing such a center at ≤ the recorded level must split. The
@@ -277,17 +306,29 @@ export function runSfccPipeline(
     let cellResult!: ReturnType<typeof meshAllCells>
     let reRefineRounds = 0
     const maxDepth = Math.min(tuning.depthMax, lat.maxDepth)
+    // Loop-invariant criteria options (depend only on tuning): hoisted out of the
+    // per-cell needsSplit callback so it allocates nothing per cell.
+    const featureCriteriaOpts = {
+        featureQueryInflate: tuning.featureQueryInflate,
+        tangentialEpsilon: tuning.tangentialEpsilon,
+    }
+    const smoothCriteriaOpts = {
+        normalVariationCos: Math.cos((tuning.normalVariationDeg * Math.PI) / 180),
+        blendNormalVariationCos: tuning.blendCurvatureRefine
+            ? Math.cos((tuning.blendCurvatureDeg * Math.PI) / 180)
+            : 1, // ≥1 disables (iii-d)
+    }
     for (let round = 0; ; round++) {
+        const tOct = perf ? nowMs() : 0
         oct = buildOctree(tree, lat, {
             depthMin: tuning.depthMin,
             depthMax: maxDepth,
             enforceEdgeBalance: tuning.enforceEdgeBalance,
             needsSplit: (cell, sampleAt) => {
                 // Feature criteria (i)/(ii) first; on pass they classify the cell.
-                const cls = classifyCellFeatures(features, lat, cell.level, cell.ix, cell.iy, cell.iz, {
-                    featureQueryInflate: tuning.featureQueryInflate,
-                    tangentialEpsilon: tuning.tangentialEpsilon,
-                })
+                const tCls = perf ? nowMs() : 0
+                const cls = classifyCellFeatures(features, lat, cell.level, cell.ix, cell.iy, cell.iz, featureCriteriaOpts, perf)
+                if (perf) perf.classifyMs += nowMs() - tCls
                 if (cls.split) {
                     // Classify even though we demand a split: at depthMax the
                     // cell CANNOT split, and an unclassified wedge cell
@@ -340,7 +381,9 @@ export function runSfccPipeline(
                     return true
                 }
                 if (forcedSplit(cell)) return true
+                const tProbe = perf ? nowMs() : 0
                 const probe = makeProbe(lat, tree, sampleAt, cell.level, cell.ix, cell.iy, cell.iz)
+                if (perf) perf.smoothCritMs += nowMs() - tProbe
                 if (cls.corner >= 0) {
                     // Corner cells are exempt from the per-stratum smoothness
                     // certificates (the corner IS the carrier singularity) AND
@@ -371,23 +414,22 @@ export function runSfccPipeline(
                 cell.featureCurve = cls.curve
                 cell.featureCorner = cls.corner
                 if (cls.curve >= 0 && !hasCornerSignChange(probe)) return true
-                if (
-                    needsSplitSmooth(tree, probe, {
-                        normalVariationCos: Math.cos((tuning.normalVariationDeg * Math.PI) / 180),
-                        blendNormalVariationCos: tuning.blendCurvatureRefine
-                            ? Math.cos((tuning.blendCurvatureDeg * Math.PI) / 180)
-                            : 1, // ≥1 disables (iii-d)
-                    })
-                ) {
-                    return true
-                }
+                const tSmooth = perf ? nowMs() : 0
+                const needSmooth = needsSplitSmooth(tree, probe, smoothCriteriaOpts, perf)
+                if (perf) perf.smoothCritMs += nowMs() - tSmooth
+                if (needSmooth) return true
                 return false
             },
             signal,
+            perf,
         })
+        if (perf) perf.octreeBuildMs += nowMs() - tOct
         points = new PointTable()
         const rootTol = Math.min(tuning.edgeRootTolFraction * lat.step, tuning.surfaceTolMm * 0.1)
-        faceResult = contourAllFaces(oct, tree, points, { rootTol, features }, signal)
+        const tFace = perf ? nowMs() : 0
+        faceResult = contourAllFaces(oct, tree, points, { rootTol, features, perf, recoveryCull: tuning.recoveryCull }, signal)
+        if (perf) perf.faceContourMs += nowMs() - tFace
+        const tCell = perf ? nowMs() : 0
         cellResult = meshAllCells(
             oct,
             faceResult.faces,
@@ -403,6 +445,7 @@ export function runSfccPipeline(
             },
             signal,
         )
+        if (perf) perf.cellMeshMs += nowMs() - tCell
         // Failed cells (broken loops) re-refine every round; fallback cells
         // (invisible feature arcs) get ONE forced round — measurements show
         // the grazing-face sliver configuration recurs at finer levels, so
@@ -423,6 +466,8 @@ export function runSfccPipeline(
         }
     }
 
+    const tAssemble = perf ? nowMs() : 0
+
     // Face-segment audit: interior segments must be consumed once forward and
     // once reversed. (Faces adjacent to a failed cell legitimately miss a
     // consumption — those cells are already reported separately.)
@@ -440,27 +485,38 @@ export function runSfccPipeline(
     } else {
         for (const perAxis of faceResult.faces) faceCount += perAxis.size
     }
+    if (perf) perf.assembleAuditMs += nowMs() - tAssemble
 
     // Sub-resolution debris filter: recovered sliver arcs can close into tiny
     // satellite blobs that are genuinely disconnected at sampling resolution
     // (wedge fragments around feature lines whose connection to the main body
     // is invisible). Drop vertex-connected components whose extent is below a
     // few max-depth cells — geometry beneath export resolution by construction.
-    const filteredTris = dropDebrisComponents(
-        points,
-        dropCoincidentTrianglePairs(cellResult.tris),
-        lat.step * 4,
-        features,
-        lat.step * 2,
-        600,
-    )
+    // (Sub-buckets hoist the two coincident-pair passes into named temps so the
+    // string-keyed pancake removal is timed apart from the union-find debris pass
+    // — same call order/args, so byte-identical.)
+    const tCoin1 = perf ? nowMs() : 0
+    const deduped1 = dropCoincidentTrianglePairs(cellResult.tris)
+    if (perf) perf.assembleCoincidentMs += nowMs() - tCoin1
+
+    const tDebris = perf ? nowMs() : 0
+    const filteredTris = dropDebrisComponents(points, deduped1, lat.step * 4, features, lat.step * 2, 600)
+    if (perf) perf.assembleDebrisMs += nowMs() - tDebris
 
     // Long-thin slivers (no close vertex pairs — weld can't reach them):
     // shape-improving flips across their longest edges.
-    const flipped = flipSliverTriangles(points, dropCoincidentTrianglePairs(filteredTris))
+    const tCoin2 = perf ? nowMs() : 0
+    const deduped2 = dropCoincidentTrianglePairs(filteredTris)
+    if (perf) perf.assembleCoincidentMs += nowMs() - tCoin2
 
+    const tSliver = perf ? nowMs() : 0
+    const flipped = flipSliverTriangles(points, deduped2)
+    if (perf) perf.assembleSliverMs += nowMs() - tSliver
+
+    const tManifold = perf ? nowMs() : 0
     const mesh = points.buildMesh(flipped.tris)
     const manifold = checkManifold(mesh.tris, { checkVertexLinks: tuning.checkVertexLinks })
+    if (perf) perf.assembleManifoldMs += nowMs() - tManifold
 
     const levelHistogram: number[] = []
     for (const cell of oct.leaves) {
@@ -523,5 +579,11 @@ export function runSfccPipeline(
         featurePolylines = new Float32Array(segs)
     }
 
-    return { verts: mesh.verts, tris: mesh.tris, stats, manifold, ok, failedCellBoxes, featurePolylines }
+    if (perf) {
+        perf.assembleMs += nowMs() - tAssemble
+        perf.rounds = reRefineRounds
+        perf.totalMs = nowMs() - tStart
+    }
+
+    return { verts: mesh.verts, tris: mesh.tris, stats, manifold, ok, failedCellBoxes, featurePolylines, perf }
 }

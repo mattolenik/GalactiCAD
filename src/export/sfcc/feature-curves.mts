@@ -312,6 +312,16 @@ export function makeTracedCurve(
     }
 
     const p = new Float64Array(3)
+    // axisPlaneCrossings(axis, coord) is a pure function of the curve and the
+    // plane — NO cell dependence. The octree classifier and the face-contour
+    // pinner both query lattice-aligned face planes, and neighbor cells/faces
+    // share the exact same (axis, coord), so without a cache the full polyline
+    // scan + per-bracket Illinois re-projection (the dominant SFCC cost) reruns
+    // for every cell touching a shared plane. Memoize by (axis, coord): the
+    // returned arrays are iterated read-only by every caller, so sharing the
+    // instance is safe and the output is byte-identical. The map lives on the
+    // curve instance ⇒ naturally per-build (curves are rebuilt each export).
+    const planeCache = new Map<string, CurveFaceCrossing[]>()
     return {
         id,
         kind: "traced",
@@ -363,6 +373,9 @@ export function makeTracedCurve(
             return { t: bestT, dist: Math.hypot(px - p[0]!, py - p[1]!, pz - p[2]!) }
         },
         axisPlaneCrossings: (axis, coord) => {
+            const cacheKey = `${axis}:${coord}`
+            const cached = planeCache.get(cacheKey)
+            if (cached !== undefined) return cached
             const out: CurveFaceCrossing[] = []
             const tg = new Float64Array(3)
             for (let i = 0; i < n - 1; i++) {
@@ -370,21 +383,40 @@ export function makeTracedCurve(
                 const b = (axis === 0 ? sx(i + 1) : axis === 1 ? sy(i + 1) : sz(i + 1)) - coord
                 if (a === 0 && b === 0) continue
                 if (a < 0 === b < 0 && a !== 0) continue
-                // Bisect on the exact curve for the crossing parameter.
-                let lo = i
-                let hi = i + 1
-                for (let k = 0; k < 40; k++) {
-                    const mid = (lo + hi) / 2
-                    pointAt(mid, p)
-                    const v = p[axis]! - coord
-                    if (v < 0 === a < 0 && v !== 0) lo = mid
-                    else hi = mid
+                // Illinois (bracket-preserving regula-falsi) on the exact curve:
+                // same one `pointAt` (→ projectToCarrierPair) per step as bisection,
+                // but superlinear, so it reaches the crossing in ~8 evals instead of
+                // a fixed 40 — `pointAt`'s Newton re-projection is the dominant SFCC
+                // refinement cost (classifyCellFeatures ≈ axisPlaneCrossings). The
+                // [i,i+1] sign-change bracket is maintained every step, so it lands
+                // on the same root the bisection did, to the same ~1e-11 tolerance.
+                let x0 = i
+                let x1 = i + 1
+                let f0 = a
+                let f1 = b
+                let t = x1
+                for (let k = 0; k < 50; k++) {
+                    const x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0)
+                    pointAt(x2, p)
+                    const f2 = p[axis]! - coord
+                    t = x2
+                    if (f2 === 0 || Math.abs(f2) < 1e-11 || Math.abs(x1 - x0) < 1e-11) break
+                    if (f2 < 0 === f1 < 0) {
+                        // f2 shares f1's sign → root stays in [x0, x2]; keep x0, halve f0 (Illinois).
+                        f0 *= 0.5
+                    } else {
+                        // sign change between x1 and x2 → bracket shrinks to [x1, x2].
+                        x0 = x1
+                        f0 = f1
+                    }
+                    x1 = x2
+                    f1 = f2
                 }
-                const t = (lo + hi) / 2
                 pointAt(t, p)
                 tangent(p[0]!, p[1]!, p[2]!, tg)
                 out.push({ t, x: p[0]!, y: p[1]!, z: p[2]!, tangentialDot: Math.abs(tg[axis]!) })
             }
+            planeCache.set(cacheKey, out)
             return out
         },
         paramDistance: (t0, t1) => {

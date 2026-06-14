@@ -74,6 +74,16 @@ export interface SfccTuning {
     projectMaxIters: number
     /** Featureless ambiguous face resolution: sample f at the face center, or refine instead. */
     ambiguityResolution: "centerSample" | "refine"
+    /**
+     * Lipschitz pre-cull for hidden-arc recovery: before the SUBDIV detection
+     * scan, one carrier eval at the sub-edge midpoint skips the whole scan when
+     * the carrier provably can't reach zero on the edge (|st.f(mid)| >
+     * halfLen·gradBound — the same Lipschitz bound the octree's certified-empty
+     * cull uses). Sound ⇒ byte-identical (only skips scans that find nothing);
+     * 96% of recovery scans find nothing on twisted scenes, so this is the main
+     * `recoveredCrossingsFor` lever. Off restores the exhaustive scan.
+     */
+    recoveryCull: boolean
 
     // --- Driver ---------------------------------------------------------------
     /** Max global re-runs with forced splits after S4 audit failures. */
@@ -88,6 +98,14 @@ export interface SfccTuning {
     checkVertexLinks: boolean
     /** Emit debug overlays (feature polylines, face segments, failed cells) in MeshData.debug. */
     debugOutput: boolean
+    /**
+     * Collect a build-time perf breakdown (phase wall-times + octree-refinement
+     * sub-buckets + SDF call counts) into `MeshData.debug.sfcc.perf` and the
+     * `sfcc perf` log line. Adds `performance.now()` overhead at O(cells) call
+     * sites, so absolute times are inflated — read the SPLIT, not the sum. Off →
+     * zero instrumentation, the export path is byte-identical.
+     */
+    profile: boolean
 }
 
 export const DEFAULT_SFCC_TUNING: SfccTuning = {
@@ -117,6 +135,7 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     interiorVertexMode: "project",
     projectMaxIters: 8,
     ambiguityResolution: "centerSample",
+    recoveryCull: true,
 
     reRefineMaxRounds: 2,
     jitterRetries: 3,
@@ -124,6 +143,7 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     creaseAngleDeg: 30,
     checkVertexLinks: false,
     debugOutput: false,
+    profile: false,
 }
 
 /** Hard ceiling on octree depth — lattice keys must stay exact in f64 (see lattice.mts). */
@@ -177,6 +197,7 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
             o.ambiguityResolution === "centerSample" || o.ambiguityResolution === "refine"
                 ? o.ambiguityResolution
                 : d.ambiguityResolution,
+        recoveryCull: bool(o.recoveryCull, d.recoveryCull),
 
         reRefineMaxRounds: num(o.reRefineMaxRounds, d.reRefineMaxRounds, 0, 10, true),
         jitterRetries: num(o.jitterRetries, d.jitterRetries, 0, 10, true),
@@ -184,6 +205,7 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
         creaseAngleDeg: num(o.creaseAngleDeg, d.creaseAngleDeg, -1, 180),
         checkVertexLinks: bool(o.checkVertexLinks, d.checkVertexLinks),
         debugOutput: bool(o.debugOutput, d.debugOutput),
+        profile: bool(o.profile, d.profile),
     }
     if (out.depthMin > out.depthMax) {
         const t = out.depthMin

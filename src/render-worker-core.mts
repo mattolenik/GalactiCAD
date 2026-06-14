@@ -431,69 +431,49 @@ export class RenderWorkerCore {
             minFilter: "linear",
         })
 
-        this.#outlineShaderModule = this.#device.createShaderModule({
-            label: "Outline Post-Process",
-            code: outlineShader,
-        })
+        // Post-process pipelines (outline blit, FSR1 EASU, FXAA). Their pipelines
+        // are compiled CONCURRENTLY via createRenderPipelineAsync + Promise.all
+        // instead of three sequential synchronous createRenderPipeline calls, which
+        // blocked worker startup. None of these are needed for the first
+        // interactive frame, but awaiting here (in parallel) keeps the fields
+        // populated before any render runs, so no readiness guards are needed.
+        // Bind groups for EASU/FXAA are created lazily in `#ensureUpscaleTextures`.
+        this.#outlineShaderModule = this.#device.createShaderModule({ label: "Outline Post-Process", code: outlineShader })
         scheduleShaderModuleCompilationLogging(this.#outlineShaderModule, "Outline Post-Process", outlineShader)
-        try {
-            this.#outlinePipeline = this.#device.createRenderPipeline({
-                label: "Outline Pipeline",
-                layout: "auto",
-                vertex: {
-                    module: this.#outlineShaderModule,
-                    entryPoint: "vertexMain",
-                },
-                fragment: {
-                    module: this.#outlineShaderModule,
-                    entryPoint: "fragmentMain",
-                    targets: [{ format: this.#format }],
-                },
-                primitive: {
-                    topology: "triangle-strip",
-                    stripIndexFormat: "uint32",
-                },
-            })
-        } catch (err) {
-            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
-            logWgsl("error", `Outline post-process pipeline creation failed: ${text}`)
-            throw err
-        }
-
-        // FSR1 EASU upscale pipeline — a full-screen fragment pass writing the
-        // canvas `#format`, mirroring the outline blit. Bind groups are created
-        // lazily in `#ensureUpscaleTextures` once the scene/display sizes are known.
         this.#easuShaderModule = this.#device.createShaderModule({ label: "FSR1 EASU", code: easuShader })
         scheduleShaderModuleCompilationLogging(this.#easuShaderModule, "FSR1 EASU", easuShader)
-        try {
-            this.#easuPipeline = this.#device.createRenderPipeline({
-                label: "FSR1 EASU Pipeline",
-                layout: "auto",
-                vertex: { module: this.#easuShaderModule, entryPoint: "vertexMain" },
-                fragment: { module: this.#easuShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
-                primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
-            })
-        } catch (err) {
-            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
-            logWgsl("error", `FSR1 upscale pipeline creation failed: ${text}`)
-            throw err
-        }
-
-        // FXAA post-process (luma-driven edge smoothing), optional final pass
-        // after EASU / on full-res frames. Same full-screen fragment shape.
         this.#fxaaShaderModule = this.#device.createShaderModule({ label: "FXAA", code: fxaaShader })
         scheduleShaderModuleCompilationLogging(this.#fxaaShaderModule, "FXAA", fxaaShader)
         try {
-            this.#fxaaPipeline = this.#device.createRenderPipeline({
-                label: "FXAA Pipeline",
-                layout: "auto",
-                vertex: { module: this.#fxaaShaderModule, entryPoint: "vertexMain" },
-                fragment: { module: this.#fxaaShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
-                primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
-            })
+            const [outlinePipeline, easuPipeline, fxaaPipeline] = await Promise.all([
+                this.#device.createRenderPipelineAsync({
+                    label: "Outline Pipeline",
+                    layout: "auto",
+                    vertex: { module: this.#outlineShaderModule, entryPoint: "vertexMain" },
+                    fragment: { module: this.#outlineShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+                this.#device.createRenderPipelineAsync({
+                    label: "FSR1 EASU Pipeline",
+                    layout: "auto",
+                    vertex: { module: this.#easuShaderModule, entryPoint: "vertexMain" },
+                    fragment: { module: this.#easuShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+                this.#device.createRenderPipelineAsync({
+                    label: "FXAA Pipeline",
+                    layout: "auto",
+                    vertex: { module: this.#fxaaShaderModule, entryPoint: "vertexMain" },
+                    fragment: { module: this.#fxaaShaderModule, entryPoint: "fragmentMain", targets: [{ format: this.#format }] },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+            ])
+            this.#outlinePipeline = outlinePipeline
+            this.#easuPipeline = easuPipeline
+            this.#fxaaPipeline = fxaaPipeline
         } catch (err) {
             const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
-            logWgsl("error", `FXAA pipeline creation failed: ${text}`)
+            logWgsl("error", `Post-process pipeline creation failed: ${text}`)
             throw err
         }
 
@@ -710,14 +690,15 @@ export class RenderWorkerCore {
         const tAux = performance.now()
         const sceneAuxFast = scene.compileAuxFastPreview()
         const tAuxFast = performance.now()
-        const sceneAuxMid = scene.compileAuxMidPreview()
-        const tAuxMid = performance.now()
+        // NOTE: the MID variant (sceneAuxMid/sceneSDF_mid) is NOT generated here —
+        // preview.wgsl has no `//:) insert sceneSDF_mid` marker and the preview/beam
+        // shader never references it, so generating it was pure wasted codegen every
+        // structural rebuild. The mesh-export / feature-graph path compiles MID
+        // separately (see compileAuxMid()/compileMid() below).
         const sceneSDF = scene.compileForPreview()
         const tSdf = performance.now()
         const sceneSDF_fast = scene.compileFastForPreview()
         const tSdfFast = performance.now()
-        const sceneSDF_mid = scene.compileMidForPreview()
-        const tSdfMid = performance.now()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
         const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
         const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
@@ -726,10 +707,8 @@ export class RenderWorkerCore {
         const shaderCompiler = new ShaderCompiler(this.#device)
             .replace("insert", "sceneAuxFast", sceneAuxFast)
             .replace("insert", "sceneAux", sceneAux)
-            .replace("insert", "sceneAuxMid", sceneAuxMid)
             .replace("insert", "sceneSDF_fast", sceneSDF_fast)
             .replace("insert", "sceneSDF", sceneSDF)
-            .replace("insert", "sceneSDF_mid", sceneSDF_mid)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
             .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
             .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
@@ -837,11 +816,11 @@ export class RenderWorkerCore {
             wgslSceneMs: roundMs(tWgsl1 - tWgsl0),
             compileAuxPreviewMs: roundMs(tAux - tWgsl0),
             compileAuxFastPreviewMs: roundMs(tAuxFast - tAux),
-            compileAuxMidPreviewMs: roundMs(tAuxMid - tAuxFast),
-            compileForPreviewMs: roundMs(tSdf - tAuxMid),
+            compileAuxMidPreviewMs: 0, // MID not generated in the preview build
+            compileForPreviewMs: roundMs(tSdf - tAuxFast),
             compileFastForPreviewMs: roundMs(tSdfFast - tSdf),
-            compileMidForPreviewMs: roundMs(tSdfMid - tSdfFast),
-            compileEdgeHelpersMs: roundMs(tWgsl1 - tSdfMid),
+            compileMidForPreviewMs: 0, // MID not generated in the preview build
+            compileEdgeHelpersMs: roundMs(tWgsl1 - tSdfFast),
             shaderModulesMs: roundMs(tShaderMod1 - tShaderMod0),
             pipelinesMs: roundMs(tPipeline1 - tPipeline0),
             gpuBuffersMs: roundMs(tBuf1 - tBuf0),

@@ -3,4 +3,5 @@
 //! Per-primitive eval/normal and the `Primitive` trait land in M2.
 
 pub mod polygon2d;
+pub mod shapes;
 pub mod smin;

@@ -1,0 +1,12 @@
+[package]
+name = "gcad-wasm"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+# cdylib → the .wasm artifact; rlib → lets native tests/tools link this crate too.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gcad-kernel = { path = "../kernel" }
+wasm-bindgen = "0.2"

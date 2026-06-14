@@ -1,0 +1,8 @@
+# Native kernel build/test path: pinned stable (matches the installed 1.96.0).
+#
+# The threaded WASM build (wasm-bindgen-rayon) will instead require a pinned
+# *nightly* with `rust-src` + `-Zbuild-std` and `-Ctarget-feature=+atomics,
+# +bulk-memory`. Switch this channel (or use a second toolchain file under wasm/)
+# when that path lands — see docs/research/gcad-wasm-rust-port.md §1/§4.
+[toolchain]
+channel = "1.96.0"

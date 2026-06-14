@@ -1,0 +1,13 @@
+[package]
+name = "gcad-kernel"
+version.workspace = true
+edition.workspace = true
+
+# No external dependencies: the kernel stays native-buildable and offline-testable
+# so the TypeScript SFCC implementation can serve as a correctness oracle.
+[dependencies]
+
+# Added when porting begins:
+# [dev-dependencies]
+# proptest = "1"   # property tests for mesh invariants (χ, manifold, watertight)
+# insta = "1"      # snapshot tests for canonical mesh signatures

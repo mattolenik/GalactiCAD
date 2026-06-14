@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["kernel", "wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+# Release profile tuned for the WASM artifact (also used by native `--release`).
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

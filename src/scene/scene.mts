@@ -309,6 +309,32 @@ export class SceneInfo {
         return this.#allNodesSnapshot
     }
 
+    /**
+     * The root to compile the preview SDF from for "View Isolated". Empty ids →
+     * the full scene root. A single id → that node directly. Multiple ids → a
+     * temporary sharp Union wrapping the chosen subtrees, given this scene and a
+     * reserved non-colliding id. The temp union is NOT built — the wrapped nodes
+     * are already built, so their ids / param offsets / BVH slots are reused as-is
+     * (no param re-upload needed). Unknown ids are dropped; if none resolve, the
+     * full scene is returned. Isolating a node renders it in its LOCAL frame —
+     * ancestor warps are stripped because they are not part of the compile root.
+     */
+    isolationRoot(ids: readonly number[]): Node {
+        if (ids.length === 0) return this.root
+        const nodes: Node[] = []
+        for (const id of ids) {
+            const n = this.#nodes.get(id)
+            if (n) nodes.push(n)
+        }
+        if (nodes.length === 0) return this.root
+        if (nodes.length === 1) return nodes[0]!
+        const u = new Union(nodes)
+        u.scene = this
+        // Real ids are 1..N (pre-order), so N+1 can't collide with any `_u${id}` var.
+        u.id = this.#allNodesSnapshot.length + 1
+        return u
+    }
+
     getPolygonVertexData(): Float32Array {
         const data = new Float32Array(this.totalPolygonVertices * 2)
         for (const node of this.#nodes.values()) {
@@ -442,9 +468,11 @@ export class SceneInfo {
         return `\nreturn ${compiledResult.text};\n`
     }
 
-    compileForPreview(): string {
+    /** `root` defaults to the full scene root; pass an isolation root (see
+     * {@link isolationRoot}) to compile only that subtree for "View Isolated". */
+    compileForPreview(root: Node = this.root): string {
         setCompileParamMode("preview")
-        const compiledResult = this.root.compile(1)
+        const compiledResult = root.compile(1)
         if (compiledResult.prelude) {
             return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
         }
@@ -460,9 +488,9 @@ export class SceneInfo {
         return `\nreturn ${compiledResult.text};\n`
     }
 
-    compileFastForPreview(): string {
+    compileFastForPreview(root: Node = this.root): string {
         setCompileParamMode("preview")
-        const compiledResult = this.root.compileFast(1)
+        const compiledResult = root.compileFast(1)
         if (compiledResult.prelude) {
             return `\n${compiledResult.prelude}return ${compiledResult.varName};\n`
         }

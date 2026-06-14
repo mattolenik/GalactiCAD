@@ -71,45 +71,17 @@ const SELECTION_MODE_SEAM: u32 = 1u;
 const SELECTION_MODE_EDGE: u32 = 2u;
 const SELECTION_MODE_FACE: u32 = 3u;
 const SELECTION_MODE_AUTO: u32 = 4u;
-// Up to ISOLATE_MAX node ids can be isolated at once (multi-select View
-// Isolated). Stored packed 4-per-vec4 so the whole set rides the viewSettings
-// uniform (no extra binding). isolatedCount = 0 → isolation off.
-const ISOLATE_MAX: u32 = 16u;
+// "View Isolated" no longer rides this uniform: isolation recompiles the preview
+// SDF from the isolated subtree(s) as root (SceneInfo.isolationRoot +
+// RenderWorkerCore.recompileIsolation), so the live shader carries no isolate
+// scaffolding at all.
 struct ViewSettings {
     xrayMode: u32,       // 0 = normal, 1 = xray/translucent
     debugHeatmap: u32,   // 0 = normal shading, 1 = render per-pixel sceneSDF_fast call count as a turbo-like color ramp
     beamEnabled: u32,    // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
     selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=auto
-    isolatedCount: u32,  // number of isolated node ids (0 = no isolation)
-    isolatedIds: array<vec4<u32>, 4>, // the isolated node ids, packed 4 per vec4
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
-
-// True when any isolated node id falls inside the (compile-time-constant) id
-// range [lo, hi] — i.e. this node's subtree contains an isolated node. Ids are
-// pre-order DFS so a subtree is a contiguous range. Reads UNIFORM data only.
-//
-// CRITICAL: this is FULLY UNROLLED with STATIC array indices and STATIC vector
-// components (no dynamic `for k < count` loop, no `[k>>2][k&3]` dynamic indexing).
-// A dynamic loop / dynamic vec-component index here makes the GPU compiler
-// pessimize the entire enclosing scene SDF (this is called per-operator in the
-// isolate pass-through selects) — which broke the beam pre-pass `t_start` cone
-// trace and left non-twisted shapes speckled even with nothing isolated. The
-// early-out keeps the not-isolating case (the norm) to a single uniform compare.
-fn isoSlot(v: vec4<u32>, base: u32, n: u32, lo: u32, hi: u32) -> bool {
-    return (base + 0u < n && v.x >= lo && v.x <= hi)
-        || (base + 1u < n && v.y >= lo && v.y <= hi)
-        || (base + 2u < n && v.z >= lo && v.z <= hi)
-        || (base + 3u < n && v.w >= lo && v.w <= hi);
-}
-fn isoHasSel(lo: u32, hi: u32) -> bool {
-    let n = viewSettings.isolatedCount;
-    if (n == 0u) { return false; }
-    return isoSlot(viewSettings.isolatedIds[0], 0u, n, lo, hi)
-        || isoSlot(viewSettings.isolatedIds[1], 4u, n, lo, hi)
-        || isoSlot(viewSettings.isolatedIds[2], 8u, n, lo, hi)
-        || isoSlot(viewSettings.isolatedIds[3], 12u, n, lo, hi);
-}
 
 // Beam optimization: low-res texture with per-tile starting-t from beam pre-pass
 const BEAM_TILE_SIZE: i32 = 8;
@@ -1173,13 +1145,11 @@ fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {
     _ = previewParamsVec3[0];
     _ = previewParamsMat3[0];
     _ = previewCapParamDrag[0];
-    // viewSettings (binding 6): the beam bind group always binds it, but the
-    // fast SDF only references viewSettings (isolatedCount/isolatedIds) when
-    // isolate-view codegen emits the pass-through select. Scenes whose compiled
-    // SDF doesn't read it would otherwise have binding 6 stripped from the beam
-    // pipeline's auto layout → "binding index 6 not present" → invalid bind
-    // group. Force the static reference so binding 6 is always in the layout.
-    _ = viewSettings.isolatedCount;
+    // viewSettings (binding 6): the beam bind group always binds it, but the fast
+    // SDF often doesn't read viewSettings at all, which would strip binding 6 from
+    // the beam pipeline's auto layout → "binding index 6 not present" → invalid
+    // bind group. Force the static reference so binding 6 is always in the layout.
+    _ = viewSettings.selectionMode;
 
     let outDims = textureDimensions(tStartOut);
     if (gid.x >= outDims.x || gid.y >= outDims.y) {

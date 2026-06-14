@@ -1,4 +1,4 @@
-import { BVH_MIN_COST, CompileResult, fluent, isoCompileEnabled, isoCondWgsl, type IsoSelectFn, Node, type UnionType } from "../base.mjs"
+import { BVH_MIN_COST, CompileResult, fluent, Node, type UnionType } from "../base.mjs"
 import { aabbUnion, aabbExpand, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { bvhCenterWgsl, bvhHalfWgsl, f32Wgsl } from "../scene-params.mjs"
@@ -206,15 +206,12 @@ export class Union extends Node {
     /**
      * Emit the body to evaluate a child under an optional BVH guard. The body
      * must reference the child's compiled expression via childResult.text.
-     * `forceCond` (isolate mode) is OR'd into the guard so an on-path child is
-     * never culled — its subtree is the only thing rendered while isolated.
      */
     private _emitChildBlock(
         child: Node,
         childResult: CompileResult,
         threshold: string,
         body: string,
-        forceCond?: string | null,
     ): string {
         const childBounds = this._shouldBound(child) ? child.computeBounds() : null
         const block = (childResult.prelude ?? "") + body
@@ -228,22 +225,7 @@ export class Union extends Node {
         const center = bvhCenterWgsl(off, child.previewBvhVec3Slot)
         const half = bvhHalfWgsl(off, child.previewBvhVec3Slot)
         const innerCode = this._indent(block, 4)
-        const guard = forceCond ? `sdBound(p, ${center}, ${half}) < ${threshold} || ${forceCond}` : `sdBound(p, ${center}, ${half}) < ${threshold}`
-        return `if (${guard}) {\n${innerCode}}\n`
-    }
-
-    private _isoSelectFn(kind: UnionVariant): IsoSelectFn {
-        return kind === "fast" ? "selectFast" : kind === "mid" ? "selectMid" : "selectSDF"
-    }
-
-    /** Preview-only WGSL bool: does ANY child's subtree contain an isolated node (i.e. an ancestor pass-through applies)? */
-    private _isoAnyChildCond(): string {
-        const lo = this.id + 1
-        const hi = this.id + this.getAllDescendantIds().length - 1
-        if (hi < lo) return "false"
-        // Short-circuit on the coherent count check (see base.mts isoCondWgsl):
-        // never call isoHasSel when nothing is isolated.
-        return `(viewSettings.isolatedCount != 0u && isoHasSel(${lo}u, ${hi}u))`
+        return `if (sdBound(p, ${center}, ${half}) < ${threshold}) {\n${innerCode}}\n`
     }
 
     private _compileFold(kind: UnionVariant, indentLevel: number): CompileResult {
@@ -252,43 +234,20 @@ export class Union extends Node {
         const distField = this._distField(kind)
         const blendRadius = this.radius ?? 0
         const blendExtra = blendRadius > 0 ? f32Wgsl(this.paramOffset, this.previewF32Slot) : ""
-        const iso = isoCompileEnabled()
-        const isoVar = `${accVar}_iso`
         let prelude = `var ${accVar} = ${this._resultInit(kind)};\n`
-        if (iso) prelude += `var ${isoVar} = ${this._resultInit(kind)};\n`
 
         for (let i = 0; i < this.children.length; i++) {
             const child = this.children[i]!
             const childResult = childResults[i]!
             const threshold = blendRadius > 0 ? `${accVar}.${distField} + ${blendExtra}` : `${accVar}.${distField}`
-            if (iso) {
-                // Materialize the child once: blend it into acc normally AND capture it as the
-                // isolate result when it's on the path to the target. Force-eval the on-path child
-                // (|| onPath) so an isolated subtree is never BVH-culled.
-                const cVar = `${accVar}_c${i}`
-                const onPath = isoCondWgsl(child)
-                prelude += this._emitChildBlock(
-                    child,
-                    childResult,
-                    threshold,
-                    `var ${cVar} = ${childResult.text!};\n` +
-                    `${accVar} = ${this._blendExpr(kind, accVar, cVar)};\n` +
-                    `if (${onPath}) { ${isoVar} = ${this._blendExpr(kind, isoVar, cVar)}; }\n`,
-                    onPath,
-                )
-            } else {
-                prelude += this._emitChildBlock(
-                    child,
-                    childResult,
-                    threshold,
-                    `${accVar} = ${this._blendExpr(kind, accVar, childResult.text!)};\n`,
-                )
-            }
+            prelude += this._emitChildBlock(
+                child,
+                childResult,
+                threshold,
+                `${accVar} = ${this._blendExpr(kind, accVar, childResult.text!)};\n`,
+            )
         }
 
-        if (iso) {
-            prelude += `${accVar} = ${this._isoSelectFn(kind)}(${accVar}, ${isoVar}, ${this._isoAnyChildCond()});\n`
-        }
         return { prelude, varName: accVar, text: accVar }
     }
 
@@ -300,19 +259,15 @@ export class Union extends Node {
         const outVar = `_u${this.id}_${kind}`
         const blendRadius = this.radius ?? 0
         const blendExtra = blendRadius > 0 ? f32Wgsl(this.paramOffset, this.previewF32Slot) : ""
-        const iso = isoCompileEnabled()
-        const isoVar = `${outVar}_iso`
         let prelude =
             `var ${bestA} = ${this._resultInit(kind)};\n` +
             `var ${bestB} = ${this._resultInit(kind)};\n`
-        if (iso) prelude += `var ${isoVar} = ${this._resultInit(kind)};\n`
 
         for (let i = 0; i < this.children.length; i++) {
             const child = this.children[i]!
             const childResult = childResults[i]!
             const childVar = `_u${this.id}_${kind}_child${i}`
             const threshold = blendRadius > 0 ? `${bestB}.${distField} + ${blendExtra}` : `${bestB}.${distField}`
-            const onPath = iso ? isoCondWgsl(child) : null
             prelude += `var ${childVar} = ${this._resultInit(kind)};\n`
             prelude += this._emitChildBlock(
                 child,
@@ -324,16 +279,11 @@ export class Union extends Node {
                 `    ${bestA} = ${childVar};\n` +
                 `} else if (${childVar}.${distField} < ${bestB}.${distField}) {\n` +
                 `    ${bestB} = ${childVar};\n` +
-                `}\n` +
-                (onPath ? `if (${onPath}) { ${isoVar} = ${this._blendExpr(kind, isoVar, childVar)}; }\n` : ""),
-                onPath,
+                `}\n`,
             )
         }
 
         prelude += `var ${outVar} = ${this._blendExpr(kind, bestA, bestB)};\n`
-        if (iso) {
-            prelude += `${outVar} = ${this._isoSelectFn(kind)}(${outVar}, ${isoVar}, ${this._isoAnyChildCond()});\n`
-        }
         return { prelude, varName: outVar, text: outVar }
     }
 

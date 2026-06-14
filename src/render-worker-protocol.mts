@@ -233,6 +233,9 @@ export type MainToWorkerMessage =
     | { type: "pickPos"; clickUV: [number, number]; requestId: number }
     | { type: "pickObject"; clickUV: [number, number]; requestId: number }
     | { type: "setBvhEnabled"; enabled: boolean }
+    // "View Isolated" toggle/retarget. The worker recompiles the preview SDF from
+    // the isolated subtree(s) as root (empty = full scene) — see recompileIsolation.
+    | { type: "setIsolatedIds"; isolatedIds: number[] }
     | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
     | { type: "setStepHeatmapEnabled"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
@@ -388,8 +391,6 @@ export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
 export interface RenderViewSettings {
     xrayMode: boolean
     beamEnabled: boolean
-    /** Isolate-view target node ids (multi-select). Empty = no isolation (render full scene). */
-    isolatedIds: number[]
     selectionMode: number
     outlineMode: number
     outlineThickness: number

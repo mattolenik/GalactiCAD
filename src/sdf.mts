@@ -238,7 +238,6 @@ export class SDFRenderer {
             viewSettings: {
                 xrayMode: false,
                 beamEnabled: false,
-                isolatedIds: [],
                 selectionMode: 0,
                 outlineMode: 0,
                 outlineThickness: 1,
@@ -1423,14 +1422,16 @@ export class SDFRenderer {
 
     /**
      * Isolate-view target. 0 = off (full scene). Otherwise the scene node id whose
-     * subtree should be rendered alone. Pure render-time state — no rebuild; the
-     * compiled preview SDF carries the pass-through scaffolding for any id.
+     * subtree should be rendered alone. The worker RECOMPILES the preview SDF from
+     * the isolated subtree(s) as root (no DSL re-eval, no param re-upload) and
+     * re-renders — so this posts a `setIsolatedIds` message rather than flagging a
+     * render. Empty = full scene.
      */
     set isolatedIds(ids: number[]) {
         const next = [...ids]
         if (this.#isolatedIds.length === next.length && this.#isolatedIds.every((v, i) => v === next[i])) return
         this.#isolatedIds = next
-        this.#needsRender = true
+        this.#worker.postMessage({ type: "setIsolatedIds", isolatedIds: next })
     }
     get isolatedIds(): number[] {
         return this.#isolatedIds
@@ -1651,7 +1652,6 @@ export class SDFRenderer {
         p.selectionState.hoveredEdges = this.#hoveredEdges
         p.viewSettings.xrayMode = this.#xrayMode
         p.viewSettings.beamEnabled = this.#beamEnabled
-        p.viewSettings.isolatedIds = this.#isolatedIds
         p.viewSettings.selectionMode = { object: 0, seam: 1, edge: 2, face: 3, auto: 4 }[this.#selectionMode]
         p.viewSettings.outlineMode = { none: 0, solid: 1, dashed: 2, dotted: 3 }[this.#outlineMode]
         p.viewSettings.outlineThickness = this.#outlineThickness

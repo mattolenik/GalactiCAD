@@ -31,6 +31,7 @@ import { featureGraphToContours } from "./feature-graph/feature-graph-to-contour
 import { FeatureGraphOverlay } from "./feature-graph/feature-graph-overlay.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
+import type { Node } from "./scene/base.mjs"
 import {
     SCENE_PARAMS_BYTE_SIZE,
     SCENE_PARAMS_F32_CAPACITY,
@@ -111,6 +112,15 @@ const roundMs2 = (x: number): number => Math.round(x * 100) / 100
 
 function float32SubarrayEqual(a: Float32Array, b: Float32Array, len: number): boolean {
     for (let i = 0; i < len; i++) {
+        if (a[i] !== b[i]) return false
+    }
+    return true
+}
+
+/** Order-sensitive equality for isolate-id lists (small arrays). */
+function sameIdList(a: readonly number[], b: readonly number[]): boolean {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
         if (a[i] !== b[i]) return false
     }
     return true
@@ -265,8 +275,8 @@ export class RenderWorkerCore {
     #fpsFrameCount = 0
     #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
-    // [0..4]=xray,heatmap,beam,selMode,isolatedCount; [5..7]=pad; [8..23]=isolatedIds (16).
-    #viewSettingsBuf = new Uint32Array(24)
+    // [0..3]=xray,heatmap,beam,selMode (matches ViewSettings in preview.wgsl).
+    #viewSettingsBuf = new Uint32Array(4)
     #selDataBuf = new Uint32Array(1024)
     // OutlineSettings CPU mirrors removed — selection rendering moved
     // inline into preview.wgsl, so the post-process pass has no per-frame
@@ -281,7 +291,7 @@ export class RenderWorkerCore {
     #camTransform = new Mat4x4f(new Float32Array(16))
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
     #cameraCache = new ArrayBuffer(256)
-    #viewSettingsCache = new ArrayBuffer(96)
+    #viewSettingsCache = new ArrayBuffer(16)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
@@ -345,6 +355,14 @@ export class RenderWorkerCore {
     #builtBody: string | null = null
     /** Set after a successful full shader rebuild; used to skip compilation when `structuralFingerprint()` is unchanged. */
     #builtStructuralFingerprint: string | null = null
+    /** "View Isolated" node ids (empty = full scene). The preview SDF is RECOMPILED
+     * from {@link SceneInfo.isolationRoot} when this changes — there is no render-time
+     * isolate scaffolding in the live shader. Drives the compile root in `#doBuild`. */
+    #isolatedIds: number[] = []
+    /** The `#isolatedIds` the current `#sceneShader` was compiled against — lets a
+     * param-only rebuild stay param-only when isolation is unchanged, and forces a
+     * full recompile (agent path) when it differs. */
+    #builtIsolatedIds: number[] = []
     #fpsVersion = 0
     /** Pre-allocated dedup caches (param-only); `-1` length = never uploaded. */
     #lastSceneParamUpload = new Float32Array(SCENE_PARAMS_F32_CAPACITY)
@@ -579,6 +597,166 @@ export class RenderWorkerCore {
         this.#fgGeneration++
     }
 
+    /** Record the "View Isolated" selection. Pure state — the recompile + render
+     * is done by {@link recompileIsolation} (interactive) or the next `#doBuild`
+     * (agent / structural edit). Kept separate so the message handler can update
+     * state synchronously before either path runs. */
+    setIsolatedIds(ids: readonly number[]): void {
+        this.#isolatedIds = [...ids]
+    }
+
+    /**
+     * Compile the preview SDF (from `sdfRoot`) + aux/edge helpers into the
+     * Preview+Beam shader module and its render/beam pipelines. Shared by full
+     * builds (`#doBuild`) and isolate recompiles (`recompileIsolation`). Does NOT
+     * touch GPU param buffers — callers own buffer upload; the isolate root reuses
+     * the already-uploaded full-scene params. Bumps `#buildGeneration`; returns
+     * `{ superseded: true }` if a newer build/recompile started while the async
+     * pipelines were compiling.
+     */
+    async #buildScenePipelines(
+        scene: SceneInfo,
+        sdfRoot: Node,
+    ): Promise<
+        | {
+              pipeline: GPURenderPipeline
+              beamPipeline: GPUComputePipeline
+              shader: GPUShaderModule
+              t: {
+                  wgslSceneMs: number
+                  compileAuxPreviewMs: number
+                  compileAuxFastPreviewMs: number
+                  compileForPreviewMs: number
+                  compileFastForPreviewMs: number
+                  compileEdgeHelpersMs: number
+                  shaderModulesMs: number
+                  pipelinesMs: number
+              }
+          }
+        | { superseded: true }
+    > {
+        const tWgsl0 = performance.now()
+        const sceneAux = scene.compileAuxPreview()
+        const tAux = performance.now()
+        const sceneAuxFast = scene.compileAuxFastPreview()
+        const tAuxFast = performance.now()
+        // NOTE: the MID variant (sceneAuxMid/sceneSDF_mid) is NOT generated here —
+        // preview.wgsl has no `//:) insert sceneSDF_mid` marker and the preview/beam
+        // shader never references it. The mesh-export / feature-graph path compiles
+        // MID separately (see compileAuxMid()/compileMid()).
+        const sceneSDF = scene.compileForPreview(sdfRoot)
+        const tSdf = performance.now()
+        const sceneSDF_fast = scene.compileFastForPreview(sdfRoot)
+        const tSdfFast = performance.now()
+        const sceneEdgeHelpers = scene.compileEdgeHelpers()
+        const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
+        const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
+        const tWgsl1 = performance.now()
+
+        const shaderCompiler = new ShaderCompiler(this.#device)
+            .replace("insert", "sceneAuxFast", sceneAuxFast)
+            .replace("insert", "sceneAux", sceneAux)
+            .replace("insert", "sceneSDF_fast", sceneSDF_fast)
+            .replace("insert", "sceneSDF", sceneSDF)
+            .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
+            .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
+            .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
+
+        const tShaderMod0 = performance.now()
+        const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
+        const tShaderMod1 = performance.now()
+
+        // Iso_sample_batch module is deferred — `#ensureFeatureGraphIsoModule`
+        // produces it on demand. Invalidate it here: a new scene SDF was emitted.
+        this.#featureGraphIsoModule = null
+        this.#builtIsoModuleFingerprint = null
+
+        this.#buildGeneration++
+        const generation = this.#buildGeneration
+
+        const tPipeline0 = performance.now()
+        let pipeline: GPURenderPipeline
+        let beamPipeline: GPUComputePipeline
+        try {
+            ;[pipeline, beamPipeline] = await Promise.all([
+                this.#device.createRenderPipelineAsync({
+                    label: "Preview Pipeline",
+                    layout: "auto",
+                    vertex: { module: nextShader, entryPoint: "vertexMain" },
+                    fragment: {
+                        module: nextShader,
+                        entryPoint: "fragmentMain",
+                        // Single target: the canvas swapchain. Click picking uses
+                        // the `clickedObjectId` atomic written from the fragment shader.
+                        targets: [{ format: this.#format }],
+                    },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+                this.#device.createComputePipelineAsync({
+                    label: "Beam Pre-Pass Pipeline",
+                    layout: "auto",
+                    compute: { module: nextShader, entryPoint: "beamMarch" },
+                }),
+            ])
+        } catch (err) {
+            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
+            logWgsl("error", `Pipeline creation failed for Preview + Beam shader: ${text}`)
+            throw err
+        }
+        const tPipeline1 = performance.now()
+        if (generation !== this.#buildGeneration) {
+            return { superseded: true }
+        }
+        return {
+            pipeline,
+            beamPipeline,
+            shader: nextShader,
+            t: {
+                wgslSceneMs: roundMs2(tWgsl1 - tWgsl0),
+                compileAuxPreviewMs: roundMs2(tAux - tWgsl0),
+                compileAuxFastPreviewMs: roundMs2(tAuxFast - tAux),
+                compileForPreviewMs: roundMs2(tSdf - tAuxFast),
+                compileFastForPreviewMs: roundMs2(tSdfFast - tSdf),
+                compileEdgeHelpersMs: roundMs2(tWgsl1 - tSdfFast),
+                shaderModulesMs: roundMs2(tShaderMod1 - tShaderMod0),
+                pipelinesMs: roundMs2(tPipeline1 - tPipeline0),
+            },
+        }
+    }
+
+    /**
+     * "View Isolated" toggle/retarget (interactive path). Reuses the already-built
+     * `#scene` — no DSL re-eval, no tree rebuild, no param re-upload — and just
+     * recompiles the preview SDF from the chosen isolation root, swaps in the new
+     * pipelines, and re-renders the current SAB frame. Serialized with builds by
+     * the worker's job queue (see render-worker.mts), so it never races `#doBuild`.
+     */
+    async recompileIsolation(ids: readonly number[], sab?: SharedArrayBuffer): Promise<void> {
+        this.#isolatedIds = [...ids]
+        // No scene yet, or its body is mid-flight: the next `#doBuild` will apply
+        // `#isolatedIds` (it compiles from `scene.isolationRoot(this.#isolatedIds)`).
+        if (!this.#scene) return
+        // Already compiled for this isolation (e.g. a build that ran just before
+        // this queued recompile applied it) — skip the recompile, just re-render.
+        if (this.#pipeline && sameIdList(this.#builtIsolatedIds, this.#isolatedIds)) {
+            this.#forceNextRender = true
+            const buf0 = sab ?? this.#lastSharedBuffer
+            if (buf0) this.#renderFromSAB(buf0)
+            return
+        }
+        const built = await this.#buildScenePipelines(this.#scene, this.#scene.isolationRoot(this.#isolatedIds))
+        if ("superseded" in built) return
+        this.#pipeline = built.pipeline
+        this.#beamPipeline = built.beamPipeline
+        this.#sceneShader = built.shader
+        this.#builtIsolatedIds = [...this.#isolatedIds]
+        this.#beamBindGroupInvalid = true
+        this.#sceneBindGroupInvalid = true
+        this.#forceNextRender = true
+        const buf = sab ?? this.#lastSharedBuffer
+        if (buf) this.#renderFromSAB(buf)
+    }
+
     async #doBuild(body: string): Promise<
         | {
               sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]
@@ -604,7 +782,8 @@ export class RenderWorkerCore {
             fingerprint === this.#builtStructuralFingerprint &&
             this.#pipeline !== null &&
             this.#beamPipeline !== null &&
-            this.#sceneShader !== null
+            this.#sceneShader !== null &&
+            sameIdList(this.#isolatedIds, this.#builtIsolatedIds)
 
         const tPoly0 = performance.now()
         // `getPolygonVertexData()` allocates a fresh Float32Array on every call
@@ -685,95 +864,24 @@ export class RenderWorkerCore {
             return { sceneNodes, compiledPosY: Array.from(this.#compiledPosY), timingMs }
         }
 
-        const tWgsl0 = performance.now()
-        const sceneAux = scene.compileAuxPreview()
-        const tAux = performance.now()
-        const sceneAuxFast = scene.compileAuxFastPreview()
-        const tAuxFast = performance.now()
-        // NOTE: the MID variant (sceneAuxMid/sceneSDF_mid) is NOT generated here —
-        // preview.wgsl has no `//:) insert sceneSDF_mid` marker and the preview/beam
-        // shader never references it, so generating it was pure wasted codegen every
-        // structural rebuild. The mesh-export / feature-graph path compiles MID
-        // separately (see compileAuxMid()/compileMid() below).
-        const sceneSDF = scene.compileForPreview()
-        const tSdf = performance.now()
-        const sceneSDF_fast = scene.compileFastForPreview()
-        const tSdfFast = performance.now()
-        const sceneEdgeHelpers = scene.compileEdgeHelpers()
-        const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
-        const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
-        const tWgsl1 = performance.now()
-
-        const shaderCompiler = new ShaderCompiler(this.#device)
-            .replace("insert", "sceneAuxFast", sceneAuxFast)
-            .replace("insert", "sceneAux", sceneAux)
-            .replace("insert", "sceneSDF_fast", sceneSDF_fast)
-            .replace("insert", "sceneSDF", sceneSDF)
-            .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
-            .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
-            .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
-
-        const tShaderMod0 = performance.now()
-        const nextShader = shaderCompiler.compile(previewShader, "Preview + Beam")
-        const tShaderMod1 = performance.now()
-
-        // Iso_sample_batch module compile is deferred — `#ensureFeatureGraphIsoModule`
-        // produces it on demand from the FG kick or from `handleRenderMesh`. It
-        // duplicates `scene.compileAux*()` / `compile()` / `compileMid()` against
-        // the export bind set, so building it inline doubled the WGSL codegen
-        // cost of every structural rebuild even when the overlay was off.
-        this.#featureGraphIsoModule = null
-        this.#builtIsoModuleFingerprint = null
-
-        this.#buildGeneration++
-        const generation = this.#buildGeneration
-
-        const tPipeline0 = performance.now()
-        let pipeline: GPURenderPipeline
-        let beamPipeline: GPUComputePipeline
-        try {
-            ;[pipeline, beamPipeline] = await Promise.all([
-                this.#device.createRenderPipelineAsync({
-                    label: "Preview Pipeline",
-                    layout: "auto",
-                    vertex: { module: nextShader, entryPoint: "vertexMain" },
-                    fragment: {
-                        module: nextShader,
-                        entryPoint: "fragmentMain",
-                        // Single target: the canvas swapchain. The previous
-                        // r32uint object-ID attachment fed the old outline
-                        // post-process pass which is gone; click picking
-                        // uses the `clickedObjectId` atomic written from
-                        // inside the fragment shader.
-                        targets: [{ format: this.#format }],
-                    },
-                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
-                }),
-                this.#device.createComputePipelineAsync({
-                    label: "Beam Pre-Pass Pipeline",
-                    layout: "auto",
-                    compute: { module: nextShader, entryPoint: "beamMarch" },
-                }),
-            ])
-        } catch (err) {
-            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
-            logWgsl("error", `Pipeline creation failed for Preview + Beam shader: ${text}`)
-            throw err
-        }
-        const tPipeline1 = performance.now()
-        if (generation !== this.#buildGeneration) {
+        // Compile the preview SDF from the isolation root (= full scene root when
+        // nothing is isolated) → shader module → pipelines. Shared with isolate
+        // recompiles via #buildScenePipelines.
+        const built = await this.#buildScenePipelines(scene, scene.isolationRoot(this.#isolatedIds))
+        if ("superseded" in built) {
             return { superseded: true } as { superseded: true }
         }
+        const { pipeline, beamPipeline, shader: nextShader, t } = built
 
         log("RenderWorker").debug("scene build full (ms)", {
             sceneConstruct: roundMs(tSceneConstruct - t0),
             fingerprint: roundMs(tFingerprint - tFp0),
             packScene: roundMs(tPackScene1 - tPackScene0),
             packPreview: roundMs(tPackPreview - tPackPrev0),
-            wgslScene: roundMs(tWgsl1 - tWgsl0),
-            shaderModules: roundMs(tShaderMod1 - tShaderMod0),
-            pipelines: roundMs(tPipeline1 - tPipeline0),
-            total: roundMs(tPipeline1 - t0),
+            wgslScene: t.wgslSceneMs,
+            shaderModules: t.shaderModulesMs,
+            pipelines: t.pipelinesMs,
+            total: roundMs(performance.now() - t0),
         })
 
         // WebGPU: only buffers, textures, and query sets have destroy(). Pipelines, shader modules,
@@ -782,6 +890,7 @@ export class RenderWorkerCore {
         this.#beamPipeline = beamPipeline
         this.#sceneShader = nextShader
         this.#builtStructuralFingerprint = fingerprint
+        this.#builtIsolatedIds = [...this.#isolatedIds]
         // New pipeline + uploaded buffers — defeat the SAB-hash idle skip so
         // the next render actually picks up the freshly compiled shader.
         this.#forceNextRender = true
@@ -813,16 +922,16 @@ export class RenderWorkerCore {
             packSceneMs: roundMs(tPackScene1 - tPackScene0),
             packPreviewMs: roundMs(tPackPreview - tPackPrev0),
             serializeNodesMs: roundMs(tSer1 - tSer0),
-            wgslSceneMs: roundMs(tWgsl1 - tWgsl0),
-            compileAuxPreviewMs: roundMs(tAux - tWgsl0),
-            compileAuxFastPreviewMs: roundMs(tAuxFast - tAux),
+            wgslSceneMs: t.wgslSceneMs,
+            compileAuxPreviewMs: t.compileAuxPreviewMs,
+            compileAuxFastPreviewMs: t.compileAuxFastPreviewMs,
             compileAuxMidPreviewMs: 0, // MID not generated in the preview build
-            compileForPreviewMs: roundMs(tSdf - tAuxFast),
-            compileFastForPreviewMs: roundMs(tSdfFast - tSdf),
+            compileForPreviewMs: t.compileForPreviewMs,
+            compileFastForPreviewMs: t.compileFastForPreviewMs,
             compileMidForPreviewMs: 0, // MID not generated in the preview build
-            compileEdgeHelpersMs: roundMs(tWgsl1 - tSdfFast),
-            shaderModulesMs: roundMs(tShaderMod1 - tShaderMod0),
-            pipelinesMs: roundMs(tPipeline1 - tPipeline0),
+            compileEdgeHelpersMs: t.compileEdgeHelpersMs,
+            shaderModulesMs: t.shaderModulesMs,
+            pipelinesMs: t.pipelinesMs,
             gpuBuffersMs: roundMs(tBuf1 - tBuf0),
             totalMs: roundMs(total),
             paramOnly: false,
@@ -1259,7 +1368,6 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // matches `debugHeatmap` in preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
-        this.#packIsolatedIds(viewSettings.isolatedIds)
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
@@ -1335,8 +1443,8 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
-                        // viewSettings (binding 6): the fast SDF reads viewSettings (isolatedCount/isolatedIds) for
-                        // isolate-view pass-through, so the beam pre-pass statically references binding 6.
+                        // viewSettings (binding 6): the beam shader force-references it (`_ = viewSettings.selectionMode`)
+                        // so its auto bind-group layout keeps binding 6 even when the fast SDF doesn't read viewSettings.
                         { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
@@ -1425,16 +1533,6 @@ export class RenderWorkerCore {
     renderFromSharedBuffer(buffer: SharedArrayBuffer): void {
         this.#lastSharedBuffer = buffer
         this.#renderFromSAB(buffer)
-    }
-
-    /** Pack the isolated node ids into the viewSettings mirror: count at [4],
-     * the ids at [8..23] (matching the shader's `isolatedCount`/`isolatedIds`). */
-    #packIsolatedIds(ids: readonly number[]): void {
-        const n = Math.min(ids.length, 16)
-        this.#viewSettingsBuf[4] = n
-        for (let i = 0; i < 16; i++) {
-            this.#viewSettingsBuf[8 + i] = i < n ? ids[i]! : 0
-        }
     }
 
     // `pickClickUV` triggers the fast-pick path: the scene is rendered into a
@@ -1563,12 +1661,6 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // debugHeatmap; see preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
-        const isoN = u32[b4 + L.O_ISOLATED_COUNT / 4]
-        this.#viewSettingsBuf[4] = isoN
-        const isoBase = b4 + L.O_ISOLATED_IDS / 4
-        for (let i = 0; i < 16; i++) {
-            this.#viewSettingsBuf[8 + i] = i < isoN ? u32[isoBase + i]! : 0
-        }
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         const rmBase = slotBase + L.O_RAY_MARCH_PARAMS
@@ -1689,8 +1781,8 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
-                        // viewSettings (binding 6): the fast SDF reads viewSettings (isolatedCount/isolatedIds) for
-                        // isolate-view pass-through, so the beam pre-pass statically references binding 6.
+                        // viewSettings (binding 6): the beam shader force-references it (`_ = viewSettings.selectionMode`)
+                        // so its auto bind-group layout keeps binding 6 even when the fast SDF doesn't read viewSettings.
                         { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
@@ -2137,7 +2229,6 @@ export class RenderWorkerCore {
                 viewSettings: {
                     xrayMode: false,
                     beamEnabled: false,
-                    isolatedIds: [],
                     selectionMode: 0,
                     outlineMode: 0,
                     outlineThickness: 1,
@@ -2241,13 +2332,19 @@ export class RenderWorkerCore {
         const requestId = msg.requestId
         const documentName = msg.documentName
         const previousBody = this.#builtBody
+        // Isolation is now a build-time root choice; apply it before building and
+        // restore it after, so this side-channel preview can't leak isolation into
+        // the live session's scene.
+        const previousIso = this.#isolatedIds
+        const wantIso = msg.isolatedIds ?? []
         let builtForThis = false
         try {
             if (!this.#device) {
                 self.postMessage({ type: "thumbnailResult", error: "WebGPU device unavailable", requestId, documentName })
                 return
             }
-            if (!this.#scene || this.#builtBody !== body) {
+            this.setIsolatedIds(wantIso)
+            if (!this.#scene || this.#builtBody !== body || !sameIdList(this.#builtIsolatedIds, wantIso)) {
                 await this.build(body, undefined)
                 builtForThis = true
             }
@@ -2271,7 +2368,6 @@ export class RenderWorkerCore {
                 viewSettings: {
                     xrayMode: false,
                     beamEnabled: false,
-                    isolatedIds: msg.isolatedIds ?? [],
                     selectionMode: 0,
                     outlineMode: 0,
                     outlineThickness: 1,
@@ -2354,7 +2450,10 @@ export class RenderWorkerCore {
             const errorMsg = err instanceof Error ? err.message : String(err)
             self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId, documentName })
         } finally {
-            if (builtForThis && previousBody !== null && previousBody !== body && this.#builtBody === body) {
+            this.#isolatedIds = previousIso
+            const bodyChanged = previousBody !== null && previousBody !== body
+            const isoChanged = !sameIdList(this.#builtIsolatedIds, previousIso)
+            if (builtForThis && previousBody !== null && (bodyChanged || isoChanged) && this.#builtBody === body) {
                 try {
                     await this.build(previousBody, undefined)
                 } catch {
@@ -2506,8 +2605,8 @@ export class RenderWorkerCore {
                     layout: this.#beamPipeline.getBindGroupLayout(0),
                     entries: [
                         { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
-                        // viewSettings (binding 6): the fast SDF reads viewSettings (isolatedCount/isolatedIds) for
-                        // isolate-view pass-through, so the beam pre-pass statically references binding 6.
+                        // viewSettings (binding 6): the beam shader force-references it (`_ = viewSettings.selectionMode`)
+                        // so its auto bind-group layout keeps binding 6 even when the fast SDF doesn't read viewSettings.
                         { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
                         { binding: 8, resource: this.#tStartTextureView },
                         { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
@@ -2755,7 +2854,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(ub.colorPalette, 0, alignedData)
 
         ub.viewSettings = this.#device.createBuffer({
-            size: 96, // 5 u32 + pad to 32, then isolatedIds array<vec4u,4> (64 B) → 96
+            size: 16, // 4 u32: xrayMode, debugHeatmap, beamEnabled, selectionMode
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "viewSettings",
         })

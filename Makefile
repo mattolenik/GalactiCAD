@@ -260,3 +260,20 @@ fix-newlines:
 .PHONY: submodules
 submodules:
 	git submodule update --init --recursive --depth 1
+
+# --- gcad-wasm: Rust geometry kernel --------------------------------------
+# Parity fixtures are TS-oracle output (gitignored); rebuilt when the dumper or
+# the SFCC oracle sources change, or when missing (fresh checkout / CI). A stamp
+# tracks freshness since the dumper writes several .bin in one run.
+GCAD_ORACLE_SRC := $(filter-out %_test.mts,$(wildcard src/export/sfcc/*.mts))
+
+gcad-wasm/fixtures/.stamp: gcad-wasm/fixtures/dump.mts $(GCAD_ORACLE_SRC)
+	$(TSX) gcad-wasm/fixtures/dump.mts
+	touch $@
+
+.PHONY: gcad-fixtures
+gcad-fixtures: gcad-wasm/fixtures/.stamp
+
+.PHONY: gcad-test
+gcad-test: gcad-fixtures
+	cd gcad-wasm && cargo test

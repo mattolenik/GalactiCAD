@@ -1,6 +1,6 @@
 ---
 name: devserver
-description: "Use when reading runtime logs, dumping the active scene source, capturing an agent testcase from the live editor, or rendering SDF/mesh PNGs headlessly. Two devservers run side-by-side: interactive (`make start`, `.devserver.run`) for the human's tab, and agent (`make start AGENT=true`, `.devserver.agent.run`) for headless Chromium. **Prefer `scripts/agentcli`** over raw curl for everything except niche cases — it wraps every endpoint with structured errors, auto-cleanup, and shared helpers (`render --yaml`, `capture`, `mirror`, `iterate`, `ab`, `compare`, `triangle`, `regress`, `logs`, `server`). Drop to curl only when agentcli has no subcommand (rare). Endpoints: `/_logs`, `/_sceneSource`, `/_refresh`, `/_agent/capture-testcase`, `/_agent/render` (POST JSON), `/_agent/render/testcase-body` (POST YAML), `/_agent/render/testcase/<path>` (GET saved testcase)."
+description: "Use when reading runtime logs, dumping the active scene source, capturing an agent testcase from the live editor, or rendering SDF/mesh PNGs headlessly. Two devservers run side-by-side: interactive (`make start`, `.devserver.run`) for the human's tab, and agent (`make start-agent`, `.devserver.agent.run`) for headless Chromium. **Prefer `scripts/agentcli`** over raw curl for everything except niche cases — it wraps every endpoint with structured errors, auto-cleanup, and shared helpers (`render --yaml`, `capture`, `mirror`, `iterate`, `ab`, `compare`, `triangle`, `regress`, `logs`, `server`). Drop to curl only when agentcli has no subcommand (rare). Endpoints: `/_logs`, `/_sceneSource`, `/_refresh`, `/_agent/capture-testcase`, `/_agent/render` (POST JSON), `/_agent/render/testcase-body` (POST YAML), `/_agent/render/testcase/<path>` (GET saved testcase)."
 ---
 
 # Devserver HTTP / WebSocket bridge
@@ -50,15 +50,19 @@ Everything else: use agentcli. The wrapper's value isn't just terseness — it's
 
 | | Interactive (human) | Agent (headless) |
 |---|---|---|
-| Start | `make start` | `make start AGENT=true` |
+| Start | `make start` | `make start-agent` |
 | Run file | `.devserver.run` | `.devserver.agent.run` |
 | Logs | `make logs` | `make logs AGENT=true` |
-| Stop | `make stop` | `make stop AGENT=true` |
+| Stop | `make stop` | `make stop-agent` |
 | Browser | User's Chromium tab | Headless Chromium (auto-started) |
 
-**Agents default to `AGENT=true`.** Read `port` from the matching run file: `port=$(jq -r .port .devserver.agent.run)`. If the file is missing or `jq` fails, the server is not running — **do not guess a port**; start it (agents only) and retry once, otherwise stop.
+**`make start` is the human's interactive server only — it no longer starts the agent server.** Bring the headless agent server up on-demand with **`make start-agent`** (stop with `make stop-agent`). Do **not** use `make start AGENT=true`: its recipe hard-codes `AGENT=false`, so it silently starts the *interactive* server instead.
 
-**Do not launch Chromium / Chrome yourself.** `AGENT=true` starts headless Chromium for the bridge.
+**Never run the devserver manually** — no `node build/build.mts`, raw esbuild, or `make _start`. Use **`make start-agent`**, or just let `scripts/agentcli` auto-start the agent server for you (the `render`/`logs`/`capture` commands do this when `.devserver.agent.run` is missing).
+
+**Agents default to `AGENT=true`.** Read `port` from the matching run file: `port=$(jq -r .port .devserver.agent.run)`. If the file is missing or `jq` fails, the server is not running — **do not guess a port**; start it with `make start-agent` (agents only) and retry once, otherwise stop.
+
+**Do not launch Chromium / Chrome yourself.** `make start-agent` starts headless Chromium for the bridge.
 
 ### Disk paths — **NEVER write to the repo root**
 

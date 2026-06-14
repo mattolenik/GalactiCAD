@@ -86,7 +86,7 @@ stop-browser:
 
 .PHONY: start-agent
 start-agent:
-	make _start AGENT=true
+	make _start AGENT=true SKIP_SETUP=true
 
 .PHONY: stop-agent
 stop-agent:
@@ -95,7 +95,6 @@ stop-agent:
 .PHONY: start
 start:
 	make start-browser
-	make start-agent SKIP_SETUP=true
 
 .PHONY: _stop
 _stop:
@@ -115,6 +114,7 @@ stop: stop-browser stop-agent
 
 .PHONY: kill-agent-browsers
 kill-agent-browsers: stop-agent
+	jq -r '.browser_pids[]' < .devserver.agent.run | xargs kill -9 2> /dev/null || echo 'No dangling browser PIDs found in .devserver.agent.run'
 	pkill -f '$(PWD)/\.browsers' || true
 
 .PHONY: restart
@@ -244,12 +244,12 @@ $(DIST_ROOT)/build/icon.ico: $(ICON_SVG)
 .PHONY: clean
 clean: stop kill-agent-browsers
 	rm -rf $(DIST)
-	rm -f .devserver*log
 
 .PHONY: scrub
 scrub: clean
 	rm -rf $(BROWSERS_DIR)
 	rm -rf node_modules
+	rm -f .devserver*log
 
 .PHONY: fix-newlines
 fix-newlines:

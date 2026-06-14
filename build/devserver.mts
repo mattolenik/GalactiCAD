@@ -34,6 +34,48 @@ const PUPPETEER_BROWSERS_DIR = ".browsers"
 export interface RunFileData {
     pid: number
     port: number
+    /**
+     * PIDs of headless Chromium instances this (agent) devserver launched via puppeteer.
+     * SIGKILL'd on the next cold start so that a previous instance which exited uncleanly
+     * (SIGKILL/crash, never running `shutdown()`) doesn't leave orphan browsers on the GPU.
+     */
+    browser_pids?: number[]
+}
+
+/** Read `browser_pids` from an existing run file; returns [] if missing/unparseable. */
+async function readRunFileBrowserPids(runFile: string): Promise<number[]> {
+    try {
+        const data = JSON.parse(await fs.readFile(runFile, "utf8")) as RunFileData
+        return Array.isArray(data.browser_pids) ? data.browser_pids.filter(p => Number.isInteger(p)) : []
+    } catch {
+        return []
+    }
+}
+
+/** SIGKILL (kill -9) each PID; ignores already-exited PIDs (ESRCH) and any other per-PID failure. */
+function sigkillBrowserPids(pids: number[], log: (msg: unknown) => void): void {
+    for (const pid of pids) {
+        try {
+            process.kill(pid, "SIGKILL")
+            log(`agent mode: SIGKILL'd stale browser PID ${pid}`)
+        } catch {
+            /* already gone */
+        }
+    }
+}
+
+/** Read-modify-write: merge `pid` into the run file's `browser_pids`, preserving every other field. */
+async function addBrowserPidToRunFile(runFile: string, pid: number): Promise<void> {
+    let data: RunFileData
+    try {
+        data = JSON.parse(await fs.readFile(runFile, "utf8")) as RunFileData
+    } catch {
+        return
+    }
+    const pids = Array.isArray(data.browser_pids) ? data.browser_pids : []
+    if (!pids.includes(pid)) pids.push(pid)
+    data.browser_pids = pids
+    await fs.writeFile(runFile, JSON.stringify(data, null, 2))
 }
 
 async function resolveChromiumExecutable(): Promise<string | null> {
@@ -714,6 +756,14 @@ export class DevServer {
         instance.httpServer = server
         instance.wsServer = wss
 
+        // Cold start: reap orphan headless Chromium from a previous agent devserver that
+        // exited uncleanly (its browser_pids are still recorded in the leftover run file).
+        // On a clean re-exec build.mts already unlinked the run file after shutdown(), so this
+        // reads nothing and no-ops. Runs BEFORE the run file is overwritten below.
+        if (AGENT_MODE && options) {
+            sigkillBrowserPids(await readRunFileBrowserPids(options.runFile), log)
+        }
+
         // Write the run file as soon as the port is bound, BEFORE launching headless
         // Chromium: the Makefile's _start polls for this file with a timeout, and a slow
         // browser launch would otherwise leave a live server that _start believes failed —
@@ -740,6 +790,13 @@ export class DevServer {
                         args: ["--enable-unsafe-webgpu", "--window-size=8192,8192"],
                     })
                     instance.#agentBrowser = browser
+                    // Record the launched Chromium PID so the next cold start can SIGKILL it if
+                    // this devserver exits uncleanly. Done before page.goto so a navigation
+                    // failure still leaves the orphan tracked for cleanup.
+                    const browserPid = browser.process()?.pid
+                    if (browserPid != null) {
+                        await addBrowserPidToRunFile(options.runFile, browserPid)
+                    }
                     const page = await browser.newPage()
                     await page.goto(url)
                     log(`Agent headless Chromium → ${url}`)

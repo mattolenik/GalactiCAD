@@ -3,15 +3,8 @@ import type { Plugin } from "esbuild"
 
 /** Uses the tag pointing to this commit, if any, otherwise use the git hash from: git describe --always --dirty */
 async function getVersion(): Promise<string> {
-    const getTag = sh("git tag -l --points-at $(git describe --always)")
-    const getHash = sh("git describe --always --dirty")
-
-    var [tag] = await getTag
-    if (tag) return tag
-
-    var [hash] = await getHash
-    if (hash) return hash
-    return "dev"
+    let ver = await sh("scripts/version")
+    return ver[0]
 }
 
 async function sh(command: string): Promise<[stdout: string, stderr: string, exitCode: number]> {

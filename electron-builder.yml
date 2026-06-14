@@ -14,15 +14,22 @@ directories:
 # Include only what the runtime needs:
 #   dist/site  — the built web app loaded over app://galacticad
 #   electron/  — main + preload + entitlements
-# node_modules is pruned to production by default, but the app itself has no
-# runtime node deps so the bundle stays small either way. dist/build and
-# dist/release are deliberately excluded.
+# Every package.json "dependency" is BUILD-time only: esbuild bundles them all into
+# dist/site, and neither main.mjs nor preload.cjs require() anything outside node:/
+# electron. electron-builder otherwise copies ALL production dependencies into the
+# asar (~100MB of monaco-editor + typescript + rxjs that the runtime never loads),
+# so node_modules is excluded explicitly. dist/build and dist/release are excluded too.
 files:
   - "electron/**"
   - "dist/site/**"
   - "package.json"
+  - "!node_modules/**/*"
 
 asar: true
+
+# Squeeze the distributable installers (.dmg/.zip/.nsis/AppImage) harder. This only
+# affects download size — the installed app's asar is uncompressed either way.
+compression: maximum
 
 mac:
   category: public.app-category.graphics-design

@@ -398,7 +398,7 @@ export function runSfccPipeline(
                 cell.featureCorner = cls.corner
                 if (cls.curve >= 0 && !hasCornerSignChange(probe)) return true
                 const tSmooth = perf ? nowMs() : 0
-                const needSmooth = needsSplitSmooth(tree, probe, smoothCriteriaOpts)
+                const needSmooth = needsSplitSmooth(tree, probe, smoothCriteriaOpts, perf)
                 if (perf) perf.smoothCritMs += nowMs() - tSmooth
                 if (needSmooth) return true
                 return false

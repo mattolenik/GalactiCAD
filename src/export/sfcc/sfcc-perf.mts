@@ -67,7 +67,21 @@ export interface FaceContourPerf {
     recoverBisectEvals: number
 }
 
-export interface SfccPerf extends OctreeSamplePerf, ClassifyPerf, FaceContourPerf {
+/**
+ * `needsSplitSmooth` sub-buckets, written from inside refine-criteria.mts.
+ * Narrow slice of {@link SfccPerf}. activeStrata (owner queries) vs the
+ * per-stratum normal-variation / edge-crossing certificates.
+ */
+export interface SmoothCritPerf {
+    /** `activeStrata` — `tree.activeOwnersAt` at the 9 probe points + per-owner carrier scan. */
+    smoothActiveStrataMs: number
+    /** Per-stratum `stratumNormalVariationOk` + `stratumEdgeCrossingsOk` (st.normal / st.f). */
+    smoothStratumCertMs: number
+    /** `st.f` evals in activeStrata's per-owner closest-stratum scan (vs the `activeOwnersAt` lookup itself). */
+    smoothCarrierEvals: number
+}
+
+export interface SfccPerf extends OctreeSamplePerf, ClassifyPerf, FaceContourPerf, SmoothCritPerf {
     // --- phase wall times (ms), summed across re-refine rounds ---------------
     /** S1: `compileFeatureSet` (analytic strata + trimmed feature curves/corners). */
     featureCompileMs: number
@@ -125,6 +139,9 @@ export function createSfccPerf(): SfccPerf {
         recoverCalls: 0,
         recoverScanEvals: 0,
         recoverBisectEvals: 0,
+        smoothActiveStrataMs: 0,
+        smoothStratumCertMs: 0,
+        smoothCarrierEvals: 0,
         fCalls: 0,
         gradCalls: 0,
         intervalCalls: 0,

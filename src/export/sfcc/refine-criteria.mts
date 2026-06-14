@@ -27,7 +27,7 @@
 import type { CpuSdfTree } from "./cpu-sdf.mjs"
 import type { SfccStratum } from "./strata.mjs"
 import type { SfccFeatureSet } from "./feature-set.mjs"
-import { nowMs, type ClassifyPerf } from "./sfcc-perf.mjs"
+import { nowMs, type ClassifyPerf, type SmoothCritPerf } from "./sfcc-perf.mjs"
 import {
     CELL_EDGES,
     cellAabb,
@@ -84,7 +84,7 @@ export function hasCornerSignChange(probe: RefineProbe): boolean {
  * Strata active near this cell: for each probe point within √3·cellSize of
  * the surface, the winning leaf's closest patch. Deduplicated by stratum id.
  */
-export function activeStrata(tree: CpuSdfTree, probe: RefineProbe): SfccStratum[] {
+export function activeStrata(tree: CpuSdfTree, probe: RefineProbe, perf?: SmoothCritPerf): SfccStratum[] {
     const out: SfccStratum[] = []
     const seen = new Set<number>()
     // dist ≥ |f|/L: with smooth-boolean blends in the tree the field can be
@@ -99,6 +99,7 @@ export function activeStrata(tree: CpuSdfTree, probe: RefineProbe): SfccStratum[
         for (const owner of tree.activeOwnersAt(x, y, z, 0)) {
             let best: SfccStratum | null = null
             let bestAbs = Infinity
+            if (perf) perf.smoothCarrierEvals += owner.leaf.strata.length
             for (const st of owner.leaf.strata) {
                 const a = Math.abs(st.f(x, y, z))
                 if (a < bestAbs) {
@@ -258,17 +259,32 @@ export interface SmoothCriteriaOptions {
 }
 
 /** Combined P3 criteria: returns true when the cell needs splitting. */
-export function needsSplitSmooth(tree: CpuSdfTree, probe: RefineProbe, opts: SmoothCriteriaOptions): boolean {
+export function needsSplitSmooth(
+    tree: CpuSdfTree,
+    probe: RefineProbe,
+    opts: SmoothCriteriaOptions,
+    perf?: SmoothCritPerf,
+): boolean {
     if (!hasCornerSignChange(probe)) return false // inactive cell — see (iii-a) note above
-    const strata = activeStrata(tree, probe)
+    const tAS = perf ? nowMs() : 0
+    const strata = activeStrata(tree, probe, perf)
+    if (perf) perf.smoothActiveStrataMs += nowMs() - tAS
     if (strata.length === 0) {
         // Blend region (no analytic carrier): certify the tree surface directly.
         return opts.blendNormalVariationCos < 1 && !treeNormalVariationOk(tree, probe, opts.blendNormalVariationCos)
     }
+    const tCert = perf ? nowMs() : 0
     for (const st of strata) {
-        if (!stratumNormalVariationOk(st, probe, opts.normalVariationCos)) return true
-        if (!stratumEdgeCrossingsOk(st, probe)) return true
+        if (!stratumNormalVariationOk(st, probe, opts.normalVariationCos)) {
+            if (perf) perf.smoothStratumCertMs += nowMs() - tCert
+            return true
+        }
+        if (!stratumEdgeCrossingsOk(st, probe)) {
+            if (perf) perf.smoothStratumCertMs += nowMs() - tCert
+            return true
+        }
     }
+    if (perf) perf.smoothStratumCertMs += nowMs() - tCert
     // Mixed cell: a stratum is active, but the cell may also straddle a blend
     // band (a rounded edge filleting into this stratum's face). Certify that
     // band's ∇f curvature too — gated to trees that actually contain a blend so

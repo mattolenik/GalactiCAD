@@ -43,11 +43,11 @@ test: setup check
 	$(TSX) --test
 
 .PHONY: check
-check:
+check: gcad-wasm
 	$(TSC) --noEmit
 
 .PHONY: _start
-_start:
+_start: gcad-wasm
 	@if [[ -f "$(RUN_FILE)" ]]; then
 		port=$$(jq -r .port "$(RUN_FILE)")
 		pid=$$(jq -r .pid "$(RUN_FILE)")
@@ -277,3 +277,19 @@ gcad-fixtures: gcad-wasm/fixtures/.stamp
 .PHONY: gcad-test
 gcad-test: gcad-fixtures
 	cd gcad-wasm && cargo test
+
+# The wasm artifact (sfcc-rs exporter) is built from the Rust kernel by wasm-pack
+# and consumed by BOTH esbuild and tsc (src/export/sfcc-rs/wasm-loader.mts imports
+# the generated glue + .d.ts), so `check`/`build`/`_start` all depend on it. pkg/
+# is gitignored; the stamp rebuilds it whenever the Rust sources/manifests change,
+# or when missing (fresh checkout / CI). Requires wasm-pack + the
+# wasm32-unknown-unknown target.
+GCAD_WASM_SRC := $(shell find gcad-wasm/kernel/src gcad-wasm/wasm/src -name '*.rs' 2>/dev/null) \
+	gcad-wasm/kernel/Cargo.toml gcad-wasm/wasm/Cargo.toml gcad-wasm/Cargo.toml gcad-wasm/Cargo.lock
+
+gcad-wasm/wasm/pkg/.stamp: $(GCAD_WASM_SRC)
+	wasm-pack build gcad-wasm/wasm --target web
+	touch $@
+
+.PHONY: gcad-wasm
+gcad-wasm: gcad-wasm/wasm/pkg/.stamp

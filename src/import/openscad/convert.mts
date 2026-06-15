@@ -12,11 +12,12 @@
  * reported as diagnostics rather than failing the import.
  */
 
+import { Ctx } from "./context.mjs"
 import { type Diagnostic, Diagnostics } from "./diagnostics.mjs"
-import { type CodeFile, ParsingHelper } from "./parser-imports.mjs"
-import { evalStatements } from "./eval-geom.mjs"
 import { emitDocument } from "./emit.mjs"
-import { EMPTY, group } from "./geom-ir.mjs"
+import { evalStatements } from "./eval-geom.mjs"
+import { EMPTY, type GeomNode, group } from "./geom-ir.mjs"
+import { parseScad } from "./parse.mjs"
 import { Scope } from "./scope.mjs"
 
 export interface ConvertResult {
@@ -26,20 +27,48 @@ export interface ConvertResult {
     diagnostics: Diagnostic[]
 }
 
-export function convertOpenScadToGcad(scadSource: string, fileName = "import.scad"): ConvertResult {
+/**
+ * @param includeSources Pre-fetched `use`/`include` sources keyed by the filename as written
+ *   (gather them with gatherIncludeSources). Omit for single-file imports.
+ */
+export function convertOpenScadToGcad(
+    scadSource: string,
+    fileName = "import.scad",
+    includeSources?: Map<string, string>,
+): ConvertResult {
     const diag = new Diagnostics()
-    // Fabricate a CodeFile structurally so we never import the real class (it pulls fs/path,
-    // which breaks the browser bundle). The lexer only reads .code / .path / .filename.
-    const codeFile = { path: `/${fileName}`, code: scadSource, filename: fileName } as unknown as CodeFile
-    const [ast, errors] = ParsingHelper.parseFile(codeFile)
+    const [ast, errors] = parseScad(scadSource, fileName)
+    reportParseErrors(errors, fileName, diag, "error")
 
-    if (errors.hasErrors()) {
-        for (const e of errors.errors) {
-            const lineCol = e.codeLocation
-            diag.error(e.message, (lineCol?.line ?? -1) + 1, (lineCol?.col ?? -1) + 1)
+    let body: GeomNode = EMPTY
+    if (ast) {
+        const ctx = new Ctx(diag)
+        for (const [name, text] of includeSources ?? []) {
+            const [iast, ierrors] = parseScad(text, name)
+            if (iast) ctx.includes.set(name, iast)
+            reportParseErrors(ierrors, name, diag, "warn")
+        }
+        try {
+            body = group(evalStatements(ast.statements, new Scope(), ctx))
+        } catch (e) {
+            // Never crash the import: a runaway recursion / unexpected error becomes a diagnostic.
+            diag.error(`import aborted: ${e instanceof Error ? e.message : String(e)}`)
+            body = EMPTY
         }
     }
-
-    const body = ast ? group(evalStatements(ast.statements, new Scope(), diag)) : EMPTY
     return { dsl: emitDocument(body, diag.list), diagnostics: diag.list }
+}
+
+function reportParseErrors(
+    errors: ReturnType<typeof parseScad>[1],
+    fileName: string,
+    diag: Diagnostics,
+    severity: "error" | "warn",
+): void {
+    if (!errors.hasErrors()) return
+    for (const e of errors.errors) {
+        const at = e.codeLocation
+        const msg = fileName === "import.scad" ? e.message : `in ${fileName}: ${e.message}`
+        diag[severity](msg, (at?.line ?? -1) + 1, (at?.col ?? -1) + 1)
+    }
 }

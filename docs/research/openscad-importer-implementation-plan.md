@@ -350,6 +350,34 @@ pass golden compares.
 **new** voxel mesh-to-SDF gcad primitive; general `hull`/`minkowski`. Its own go/no-go — see
 feasibility §3.
 
+### 9.1 Coverage measurement (2026-06-15) — data-driven backlog
+
+Ran the scaffold over **431 real, license-clear `.scad` files** (MCAD LGPL-2.1 + NopSCADlib
+GPL-3.0; both BOSL2-free; no attribution-required models). **0 crashes** (robust). The corpus
+is *library code*, so it over-weights definitions/includes and under-weights standalone
+top-level geometry — but end-user models still hinge on the same include + module/function
+path, so the ranking holds. Ranked by impact (cause, not symptom):
+
+1. **`use`/`include` resolution — 667 occ / 331 files (77%).** Bigger than originally ranked:
+   library code is split across files, so unresolved includes cascade into everything else.
+   (Browser multi-file caveat — see §10.)
+2. **User-defined modules & functions — 208 module calls / 247 function calls (~70 files each).**
+   Confirms the planned top item; tightly coupled with (1) — a model `include`s a lib then calls it.
+3. **`undefined-variable` — 783 occ / 160 files.** Largest raw count but mostly a *downstream
+   symptom* of (1)+(2) plus `$`-special vars; implementing those collapses most of it — don't
+   target directly.
+4. **Fuller expression semantics — 237 occ, concentrated in 24 files.** Operators on operand
+   types we don't handle (vector/matrix math, string concat, `undef` propagation). Concentrated
+   → a contained, high-yield fix.
+5. **List comprehensions (23 / 8 files)** and **member/array lookup `.x`/`[i]` (11 / 5 files).**
+6. **Quick built-ins:** `is_undef` (18), `len` (5) — trivial table additions.
+7. **Built-in *modules* are effectively done** for this corpus (only stray `render`/`echo`/`let`).
+
+**Revised priority:** the gating pair is **`use`/`include` resolution + user modules/functions**
+(build together — coupled), then the contained expression-semantics fix (4), then
+comprehensions/lookup/builtins (5–6). This **promotes `use`/`include` from a deferred item into
+Phase 1**.
+
 ---
 
 ## 10. Risks & decisions
@@ -358,13 +386,16 @@ feasibility §3.
   bugs (every model rotated/oriented wrong). Mitigation: `rotate-cube` + `up-axis` oracle
   fixtures in Phase 1, before anything depends on rotation/orientation.
 - **Evaluator completeness vs the long tail** — the evaluator is the cost center; scope it to
-  the common subset (the §8 fixtures), let `Unsupported` + diagnostics absorb the rest. Run
-  the feasibility note's open **coverage measurement** (Thingiverse `.scad` sample) before
-  Phase 2 to confirm where to stop.
+  the common subset. **Coverage measurement done — see §9.1**; it ranks what to build next.
 - **`$fn` faceting disappears** (smooth SDF) — intended, but a surprise; emit a one-time
   diagnostic.
-- **`use`/`include` file resolution** in a browser file-picker context — multi-file imports
-  need user-granted access to siblings; Phase 1 treats missing includes as diagnostics.
+- **`use`/`include` resolution — now Phase 1 (per §9.1, 77% of files), and the key UX design
+  problem.** A browser file-picker hands back one file with no parent-directory access, but
+  `include <lib.scad>` needs siblings/libraries. Options to decide between: (a) **import a
+  folder** (reuse the app's existing `openFolder`/`loadFromFolder`) and resolve includes within
+  that tree — best for downloaded model+lib bundles; (b) **bundle common libraries** (MCAD,
+  etc.) so standard includes resolve without extra files; (c) prompt for the containing folder
+  when an unresolved include is hit. Until resolved, missing includes are diagnostics.
 - **Unsupported-node policy** — decided: comment-in-place + collected diagnostics, never
   silent. (Feasibility §5 open item, now resolved here.)
 - **openscad-parser maintenance** (~18★, last release Oct 2024) — MIT, vendor/fork if it

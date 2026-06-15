@@ -34,12 +34,16 @@ export {
 } from "openscad-parser/dist/ast/expressions.js"
 export {
     BlockStmt,
+    FunctionDeclarationStmt,
     IfElseStatement,
+    IncludeStmt,
+    ModuleDeclarationStmt,
     ModuleInstantiationStmt,
     type Statement,
     UseStmt,
 } from "openscad-parser/dist/ast/statements.js"
 export type { default as CodeFile } from "openscad-parser/dist/CodeFile.js"
+export type { default as ScadFile } from "openscad-parser/dist/ast/ScadFile.js"
 
 function interopDefault<T>(mod: T): T {
     const m = mod as { __esModule?: boolean; default?: unknown }

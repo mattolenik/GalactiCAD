@@ -207,17 +207,12 @@ pipeline) and deserves its own go/no-go.
 **Resolved:** *Architecture* — self-contained TS import (in-memory, produces a new `.gcad`
 doc). *Parser* — depend on `openscad-parser` (MIT); no parser of our own. *openscad-wasm* —
 kept only as a dev/test image-comparison oracle (no grammar/runtime role); never shipped.
+*Failure mode* — unsupported nodes are dropped + reported as `line:col` diagnostics, never
+silent. *Coverage measurement* — **done** (431 real files, MCAD + NopSCADlib); the gating pair
+is `use`/`include` resolution + user modules/functions. See the implementation plan §9.1.
 Remaining open items:
 
-1. **Failure mode for unsupported nodes.** Decide now: skip-with-warning, placeholder
-   bounding box, or hard-fail. A loud, specific diagnostic ("`minkowski` at line N
-   unsupported") beats silent wrong geometry.
-2. **Coverage data gap (de-risks the whole ROI).** Neither investigation produced hard
-   numbers on how often real `.scad` files need polyhedron/hull/minkowski vs. the Phase-1
-   core. A ~1-day measurement pass over a Thingiverse `.scad` sample (HuggingFace
-   `redcathode/thingiverse-openscad` dataset exists; OpenSCAD also ships
-   `statistics-scripts`) would quantify Phase-1 coverage before committing to Phases 2–3.
-3. **Phase-3 mesh-to-SDF method**, *if* pursued: offset-manifold signing (Xu–Barbic),
+1. **Phase-3 mesh-to-SDF method**, *if* pursued: offset-manifold signing (Xu–Barbic),
    winding-number BVH, or precomputed voxel/KTX 3D-texture — and the grid-resolution /
    memory budget that gives acceptable fidelity in gcad's runtime.
 

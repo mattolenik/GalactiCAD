@@ -67,7 +67,10 @@ import { initCadDocumentHighlights } from "./editor/cad-document-highlights.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad, openSingleScad } from "./fs/file-picker.mjs"
+import { createFolderIncludeResolver } from "./fs/scad-includes.mjs"
 import { convertOpenScadToGcad } from "./import/openscad/convert.mjs"
+import { gatherIncludeSources } from "./import/openscad/include-gather.mjs"
+import { findIncludeRefs, parseScad } from "./import/openscad/parse.mjs"
 import { clearRecentDocuments, db, getDoc, getRecentDocuments } from "./storage/db.mjs"
 import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mjs"
 import {
@@ -1567,7 +1570,17 @@ class App {
         }
         const result = await openSingleScad()
         if (!result) return
-        const { dsl, diagnostics } = convertOpenScadToGcad(result.content, result.name)
+        // If the model pulls in other files, gather them first (prompting for a folder as needed).
+        let includeSources = new Map<string, string>()
+        const [ast] = parseScad(result.content, result.name)
+        if (ast && findIncludeRefs(ast).length > 0) {
+            try {
+                includeSources = await gatherIncludeSources(result.content, createFolderIncludeResolver())
+            } catch {
+                // Folder selection cancelled / FS error — import what we have; the rest become diagnostics.
+            }
+        }
+        const { dsl, diagnostics } = convertOpenScadToGcad(result.content, result.name, includeSources)
         const suggestedName = result.name.replace(/\.scad$/i, "")
         await this.#tabs.newDocument(dsl, "typescript", suggestedName, { prompt: false })
         if (diagnostics.length > 0) {

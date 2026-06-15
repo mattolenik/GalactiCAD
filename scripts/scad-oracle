@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# scad-oracle — render a .scad in OpenSCAD and its gcad import side-by-side, for verifying
+# importer conventions (orientation, proportions). The two are independent renderers, so the
+# cameras only roughly match — inspect the PNGs by eye; SSIM alone is not a reliable verdict.
+# Requires native `openscad` + a running agent devserver (auto-started by agentcli).
+#   Usage: scripts/scad-oracle FIXTURE.scad [OUTDIR]
+set -euo pipefail
+scad="${1:?usage: scad-oracle FIXTURE.scad [OUTDIR]}"
+out="${2:-/tmp/scad-oracle}"
+root="$(cd "$(dirname "$0")/.." && pwd)"
+stem="$(basename "$scad" .scad)"
+mkdir -p "$out"
+
+# 1) OpenSCAD reference render (orthographic iso, auto-framed).
+openscad -o "$out/${stem}.scad.png" --projection=ortho --camera=0,0,0,55,0,25,0 \
+    --viewall --autocenter --imgsize=600,600 "$scad" >/dev/null 2>&1
+
+# 2) gcad import -> ephemeral testcase -> agent render.
+yaml="$out/${stem}.yaml"
+{
+    echo "schemaVersion: 1"
+    echo "source: |-"
+    "$root/node_modules/.bin/tsx" "$root/scripts/scad-to-gcad.mts" "$scad" 2>/dev/null | sed 's/^/  /'
+    echo "camera: { position: [0,0,1], translation: [0,0,0], dollyDistance: 80, rotation: [0.88,0.28,0.36,0.12], pivot: [0,0,0] }"
+    echo "viewCenter: [0.5, 0.5]"
+    echo "resolutionScale: 1"
+    echo "viewportWidth: 600"
+    echo "viewportHeight: 600"
+    echo "meshExport: { simplifyOnExport: false, exporter: sfcc }"
+} > "$yaml"
+"$root/scripts/agentcli" render --yaml "$yaml" --mode mesh --out "$out/${stem}.gcad.png" >/dev/null
+
+echo "OpenSCAD ref : $out/${stem}.scad.png"
+echo "gcad import  : $out/${stem}.gcad.png"

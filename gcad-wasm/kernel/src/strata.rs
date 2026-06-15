@@ -131,6 +131,52 @@ impl Stratum {
         }
     }
 
+    /// Closest point on the carrier surface (sign-independent geometric
+    /// projection). Port of `SfccStratum.project`.
+    pub fn project(&self, px: f64, py: f64, pz: f64) -> [f64; 3] {
+        match self.carrier {
+            Carrier::Plane { n, offset } => {
+                let d = n[0] * px + n[1] * py + n[2] * pz + offset;
+                [px - d * n[0], py - d * n[1], pz - d * n[2]]
+            }
+            Carrier::Sphere { c, r } => {
+                let dx = px - c[0];
+                let dy = py - c[1];
+                let dz = pz - c[2];
+                let len = hypot3(dx, dy, dz);
+                if len > 1e-30 {
+                    let k = r / len;
+                    [c[0] + dx * k, c[1] + dy * k, c[2] + dz * k]
+                } else {
+                    [c[0], c[1] + r, c[2]]
+                }
+            }
+            Carrier::Cylinder { a, u, r } => {
+                let (rx, ry, rz, t) = cyl_radial(a, u, px, py, pz);
+                let len = hypot3(rx, ry, rz);
+                if len > 1e-30 {
+                    let k = r / len;
+                    [a[0] + t * u[0] + rx * k, a[1] + t * u[1] + ry * k, a[2] + t * u[2] + rz * k]
+                } else {
+                    [a[0] + t * u[0] + r, a[1] + t * u[1], a[2] + t * u[2]]
+                }
+            }
+            Carrier::Cone { a, u, sin_a, cos_a } => {
+                let (rx, ry, rz, t, rho) = cone_decompose(a, u, px, py, pz);
+                let proj = rho * sin_a + t * cos_a;
+                if proj <= 0.0 || rho <= 1e-30 {
+                    // Apex (also stable exactly on the axis).
+                    [a[0], a[1], a[2]]
+                } else {
+                    let rho_star = proj * sin_a;
+                    let t_star = proj * cos_a;
+                    let inv = rho_star / rho;
+                    [a[0] + t_star * u[0] + rx * inv, a[1] + t_star * u[1] + ry * inv, a[2] + t_star * u[2] + rz * inv]
+                }
+            }
+        }
+    }
+
     /// Exact unit outward normal of the final solid on this patch.
     pub fn normal(&self, px: f64, py: f64, pz: f64) -> [f64; 3] {
         let s = self.sign;

@@ -17,8 +17,12 @@
 use crate::math::similarity::Similarity;
 use crate::sdf::{CsgNode, Leaf, Shape};
 use crate::sfcc::feature_curves::{make_circle_curve, make_segment_curve, FeatureCurve};
+use crate::sfcc::seam_trace::trace_all_seams;
 use crate::sfcc::spatial_index::SfccSpatialIndex;
+use crate::sfcc::tree::{build_tree, SfccTree};
+use crate::sfcc::trim::trim_and_wire;
 use crate::strata::{Stratum, StratumIdentity};
+use crate::tolerances::ResolvedTolerances;
 
 #[derive(Clone, Debug)]
 pub struct SfccCorner {
@@ -123,6 +127,19 @@ fn build_sphere_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64) 
     let [px, py, pz] = leaf.pos;
     let c = leaf.sim.apply_point(px, py, pz);
     vec![Stratum::sphere(sid(first_id, leaf_index, 0, leaf.sign), c[0], c[1], c[2], leaf.sim.s * r)]
+}
+
+/// Per-leaf strata for the M4a shape subset, dispatched by shape. Shared by
+/// `compile_native_features` and the seam tree view ([`crate::sfcc::tree`]) so
+/// stratum ids agree across both. Extrude/Loft/Lathe strata are M4c+.
+pub fn build_leaf_strata(leaf: &Leaf, leaf_index: usize, first_id: usize) -> Vec<Stratum> {
+    match leaf.shape {
+        Shape::Cuboid { half } => build_box_strata(leaf, leaf_index, first_id, half),
+        Shape::Sphere { r } => build_sphere_strata(leaf, leaf_index, first_id, r),
+        Shape::Cylinder { r, h } => build_cylinder_strata(leaf, leaf_index, first_id, r, h),
+        Shape::Cone { r, h } => build_cone_strata(leaf, leaf_index, first_id, r, h),
+        _ => Vec::new(),
+    }
 }
 
 pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
@@ -269,6 +286,55 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
     SfccFeatureSet { curves, corners, index, strata: all_strata }
 }
 
+/// Index cell-size heuristic: scene diagonal / 32. Mirrors `indexCellSize`.
+fn index_cell_size(tree: &SfccTree<'_>) -> f64 {
+    let mut diag = 1.0f64;
+    for lv in &tree.leaves {
+        let d = (lv.aabb[3] - lv.aabb[0]).hypot(lv.aabb[4] - lv.aabb[1]).hypot(lv.aabb[5] - lv.aabb[2]);
+        if d > diag {
+            diag = d;
+        }
+    }
+    diag / 32.0
+}
+
+/// Full S1 feature compilation: native curves + traced boolean seams, all
+/// CSG-trimmed, with corners derived from trim transitions and surviving native
+/// corners, and curves split/wired at them. Port of `compileFeatureSet`.
+pub fn compile_feature_set(
+    root: &CsgNode,
+    tol: &ResolvedTolerances,
+) -> (SfccFeatureSet, crate::sfcc::seam_trace::SeamTraceDiagnostics) {
+    let native = compile_native_features(root);
+    // Mark native curves so the trim crease gate uses nativeCreaseCos for them.
+    let mut native_curves = native.curves;
+    for c in &mut native_curves {
+        c.native = true;
+    }
+    let tree = build_tree(root, build_leaf_strata);
+
+    let mut next_id = native_curves.len();
+    let (seam_curves, diagnostics) = trace_all_seams(&tree, tol, &mut || {
+        let id = next_id;
+        next_id += 1;
+        id
+    });
+
+    let mut raw = native_curves;
+    raw.extend(seam_curves);
+    let trimmed = trim_and_wire(&tree, &raw, &native.corners, tol);
+
+    let mut index = SfccSpatialIndex::new(index_cell_size(&tree));
+    for c in &trimmed.curves {
+        index.insert_curve_polyline(c.id, &c.index_polyline);
+    }
+    for c in &trimmed.corners {
+        index.insert_corner(c.id, c.x, c.y, c.z);
+    }
+    let fs = SfccFeatureSet { curves: trimmed.curves, corners: trimmed.corners, index, strata: tree.strata };
+    (fs, diagnostics)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,5 +401,29 @@ mod tests {
         assert_eq!(fs.curves.len(), 0);
         assert_eq!(fs.corners.len(), 0);
         assert_eq!(fs.strata.len(), 1);
+    }
+
+    #[test]
+    fn box_minus_sphere_traces_three_seam_circles() {
+        // Subtract(Box([0,0,0],[10,10,10]), Sphere([5,5,5],6)): the carve sphere
+        // cuts the +x/+y/+z faces in three closed seam circles; the 12 box edges
+        // survive (sphere only carves near the +++ octant), 8 box corners stay.
+        let tree = crate::sdf::subtract(
+            leaf_at(Shape::Cuboid { half: [10.0, 10.0, 10.0] }, [0.0, 0.0, 0.0]),
+            leaf_at(Shape::Sphere { r: 6.0 }, [5.0, 5.0, 5.0]),
+        );
+        let tol = crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), 36.0);
+        let (fs, diag) = compile_feature_set(&tree, &tol);
+        let segs = fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Segment).count();
+        let traced = fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Traced).count();
+        assert_eq!(segs, 12, "12 surviving box edges");
+        assert_eq!(traced, 3, "3 traced seam circles (sphere ∩ +x/+y/+z faces)");
+        assert_eq!(fs.corners.len(), 8, "8 box corners survive");
+        assert!(diag.curves_traced >= 3, "tracer found the seam loops");
+        // The seam circles are closed loops on the sphere carrier (stratum 6).
+        for c in fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Traced) {
+            assert!(c.closed, "seam circle is a closed loop");
+            assert!(c.adjacent_strata.contains(&6), "seam adjacent to the sphere carrier");
+        }
     }
 }

@@ -7,6 +7,8 @@
 //!
 //! Parameterization: segments t ∈ [0,1]; circles θ ∈ [0,2π).
 
+use crate::sfcc::newton::{carrier_pair_tangent, project_to_carrier_pair};
+use crate::strata::Stratum;
 use std::f64::consts::PI;
 
 const TAU: f64 = 2.0 * PI;
@@ -28,6 +30,17 @@ pub struct CurveFaceCrossing {
     pub tangential_dot: f64,
 }
 
+/// Tolerances driving a traced curve's on-locus Newton re-projection. The TS
+/// seam tracer wires these into `makeTracedCurve`'s `refine` closure
+/// (`curveEps`, `minTangencySin`, `maxChordError*4`); carrying them on the geom
+/// keeps `point_at`'s refinement faithful without a global tolerance handle.
+#[derive(Clone, Copy, Debug)]
+pub struct TracedRefine {
+    pub curve_eps: f64,
+    pub min_cross: f64,
+    pub max_displacement: f64,
+}
+
 #[derive(Clone, Debug)]
 enum Geom {
     Segment {
@@ -43,6 +56,21 @@ enum Geom {
         r: f64,
         arc: bool,
     },
+    /// Numerically traced boolean-seam / twisted-helix polyline (boxed to keep
+    /// the enum small). Every sample is exactly on the carrier-pair locus;
+    /// interpolation between samples is re-projected by `refine`.
+    Traced(Box<TracedData>),
+}
+
+/// Payload of a [`Geom::Traced`]. `sa`/`sb` are the adjacent carriers (the
+/// `tangent`/`refine` callbacks in TS), stored by value (`Stratum: Copy`).
+#[derive(Clone, Debug)]
+struct TracedData {
+    samples: Vec<f64>,
+    n: usize,
+    sa: Stratum,
+    sb: Stratum,
+    refine: TracedRefine,
 }
 
 #[derive(Clone, Debug)]
@@ -68,6 +96,7 @@ impl FeatureCurve {
         match self.geom {
             Geom::Segment { .. } => CurveKind::Segment,
             Geom::Circle { .. } => CurveKind::Circle,
+            Geom::Traced(_) => CurveKind::Traced,
         }
     }
 
@@ -82,6 +111,35 @@ impl FeatureCurve {
                     c[2] + r * (co * e1[2] + si * e2[2]),
                 ]
             }
+            Geom::Traced(td) => {
+                let TracedData { samples, n, sa, sb, refine } = &**td;
+                let t_max = (*n - 1) as f64;
+                let mut tc = t;
+                if self.closed {
+                    tc %= t_max;
+                    if tc < 0.0 {
+                        tc += t_max;
+                    }
+                } else {
+                    tc = tc.clamp(0.0, t_max);
+                }
+                let i = (tc.floor() as usize).min(*n - 2);
+                let fr = tc - i as f64;
+                let (sx, sy, sz) = traced_sample(samples, i);
+                let (sx1, sy1, sz1) = traced_sample(samples, i + 1);
+                let lx = sx * (1.0 - fr) + sx1 * fr;
+                let ly = sy * (1.0 - fr) + sy1 * fr;
+                let lz = sz * (1.0 - fr) + sz1 * fr;
+                if fr == 0.0 || fr == 1.0 {
+                    return [lx, ly, lz];
+                }
+                match project_to_carrier_pair(
+                    sa, sb, lx, ly, lz, refine.curve_eps, refine.min_cross, refine.max_displacement,
+                ) {
+                    Some(q) => q,
+                    None => [lx, ly, lz],
+                }
+            }
         }
     }
 
@@ -91,6 +149,26 @@ impl FeatureCurve {
             Geom::Circle { e1, e2, .. } => {
                 let (co, si) = (t.cos(), t.sin());
                 [-si * e1[0] + co * e2[0], -si * e1[1] + co * e2[1], -si * e1[2] + co * e2[2]]
+            }
+            Geom::Traced(td) => {
+                let TracedData { samples, n, sa, sb, .. } = &**td;
+                let p = self.point_at(t);
+                let mut out = [0.0; 3];
+                carrier_pair_tangent(sa, sb, p[0], p[1], p[2], &mut out);
+                // Orient along increasing t (the tracer's direction may differ).
+                let t_max = (*n - 1) as f64;
+                let i = (t.floor().max(0.0).min(t_max - 1.0)) as usize;
+                let (sx, sy, sz) = traced_sample(samples, i);
+                let (sx1, sy1, sz1) = traced_sample(samples, i + 1);
+                let dx = sx1 - sx;
+                let dy = sy1 - sy;
+                let dz = sz1 - sz;
+                if out[0] * dx + out[1] * dy + out[2] * dz < 0.0 {
+                    out[0] = -out[0];
+                    out[1] = -out[1];
+                    out[2] = -out[2];
+                }
+                out
             }
         }
     }
@@ -108,14 +186,59 @@ impl FeatureCurve {
                 let v = [px - c[0], py - c[1], pz - c[2]];
                 let a1 = v[0] * e1[0] + v[1] * e1[1] + v[2] * e1[2];
                 let a2 = v[0] * e2[0] + v[1] * e2[1] + v[2] * e2[2];
-                let t = self.into_range(a2.atan2(a1));
+                let mut t = self.wrap_angle(a2.atan2(a1));
+                if let Geom::Circle { arc: true, .. } = self.geom {
+                    if t > self.t_max {
+                        // Outside the arc: clamp to the nearer endpoint (by angle).
+                        t = if t - self.t_max < self.t_min + TAU - t { self.t_max } else { self.t_min };
+                    }
+                }
                 let q = self.point_at(t);
                 (t, ((px - q[0]).powi(2) + (py - q[1]).powi(2) + (pz - q[2]).powi(2)).sqrt())
+            }
+            Geom::Traced(td) => {
+                let TracedData { samples, n, .. } = &**td;
+                // Nearest polyline segment, then chord projection.
+                let mut best_t = 0.0;
+                let mut best_d2 = f64::INFINITY;
+                for i in 0..(*n - 1) {
+                    let (ax, ay, az) = traced_sample(samples, i);
+                    let (bx, by, bz) = traced_sample(samples, i + 1);
+                    let dx = bx - ax;
+                    let dy = by - ay;
+                    let dz = bz - az;
+                    let l2 = dx * dx + dy * dy + dz * dz;
+                    let mut u = if l2 > 0.0 {
+                        ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / l2
+                    } else {
+                        0.0
+                    };
+                    u = u.clamp(0.0, 1.0);
+                    let qx = ax + dx * u;
+                    let qy = ay + dy * u;
+                    let qz = az + dz * u;
+                    let d2 = (px - qx).powi(2) + (py - qy).powi(2) + (pz - qz).powi(2);
+                    if d2 < best_d2 {
+                        best_d2 = d2;
+                        best_t = i as f64 + u;
+                    }
+                }
+                let q = self.point_at(best_t);
+                (best_t, ((px - q[0]).powi(2) + (py - q[1]).powi(2) + (pz - q[2]).powi(2)).sqrt())
             }
         }
     }
 
-    fn into_range(&self, th: f64) -> f64 {
+    /// For a traced curve, its adjacent carriers + on-locus refine tolerances
+    /// (used by trim's `remake_curve` to re-emit a sub-range). `None` otherwise.
+    pub fn traced_carriers(&self) -> Option<(Stratum, Stratum, TracedRefine)> {
+        match &self.geom {
+            Geom::Traced(td) => Some((td.sa, td.sb, td.refine)),
+            _ => None,
+        }
+    }
+
+    fn wrap_angle(&self, th: f64) -> f64 {
         let mut v = (th - self.t_min) % TAU;
         if v < 0.0 {
             v += TAU;
@@ -160,7 +283,7 @@ impl FeatureCurve {
                 let sols: &[f64] = if alpha == 0.0 { &[phi] } else { &[phi + alpha, phi - alpha] };
                 let mut out = Vec::new();
                 for &raw in sols {
-                    let th = self.into_range(raw);
+                    let th = self.wrap_angle(raw);
                     if *arc && th > self.t_max {
                         continue;
                     }
@@ -173,6 +296,50 @@ impl FeatureCurve {
                         z: c[2] + r * (co * e1[2] + si * e2[2]),
                         tangential_dot: tg[axis].abs(),
                     });
+                }
+                out
+            }
+            Geom::Traced(td) => {
+                let TracedData { samples, n, sa, sb, .. } = &**td;
+                let mut out = Vec::new();
+                for i in 0..(*n - 1) {
+                    let pi = traced_sample(samples, i);
+                    let pj = traced_sample(samples, i + 1);
+                    let a = pi.axis_component(axis) - coord;
+                    let b = pj.axis_component(axis) - coord;
+                    if a == 0.0 && b == 0.0 {
+                        continue;
+                    }
+                    if (a < 0.0) == (b < 0.0) && a != 0.0 {
+                        continue;
+                    }
+                    // Illinois (bracket-preserving regula-falsi) on the exact curve.
+                    let mut x0 = i as f64;
+                    let mut x1 = (i + 1) as f64;
+                    let mut f0 = a;
+                    let mut f1 = b;
+                    let mut t = x1;
+                    for _ in 0..50 {
+                        let x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0);
+                        let p = self.point_at(x2);
+                        let f2 = p[axis] - coord;
+                        t = x2;
+                        if f2 == 0.0 || f2.abs() < 1e-11 || (x1 - x0).abs() < 1e-11 {
+                            break;
+                        }
+                        if (f2 < 0.0) == (f1 < 0.0) {
+                            f0 *= 0.5;
+                        } else {
+                            x0 = x1;
+                            f0 = f1;
+                        }
+                        x1 = x2;
+                        f1 = f2;
+                    }
+                    let p = self.point_at(t);
+                    let mut tg = [0.0; 3];
+                    carrier_pair_tangent(sa, sb, p[0], p[1], p[2], &mut tg);
+                    out.push(CurveFaceCrossing { t, x: p[0], y: p[1], z: p[2], tangential_dot: tg[axis].abs() });
                 }
                 out
             }
@@ -189,6 +356,45 @@ impl FeatureCurve {
                 }
                 d * r
             }
+            Geom::Traced(td) => {
+                let TracedData { samples, n, .. } = &**td;
+                let t_max = (*n - 1) as f64;
+                let mut total = 0.0;
+                for i in 0..(*n - 1) {
+                    let (ax, ay, az) = traced_sample(samples, i);
+                    let (bx, by, bz) = traced_sample(samples, i + 1);
+                    total += ((bx - ax).powi(2) + (by - ay).powi(2) + (bz - az).powi(2)).sqrt();
+                }
+                let avg = total / (*n - 1) as f64;
+                let mut d = (t1 - t0).abs();
+                if self.closed {
+                    d %= t_max;
+                    if d > t_max / 2.0 {
+                        d = t_max - d;
+                    }
+                }
+                d * avg
+            }
+        }
+    }
+}
+
+/// xyz of traced sample `i`.
+#[inline]
+fn traced_sample(samples: &[f64], i: usize) -> (f64, f64, f64) {
+    (samples[i * 3], samples[i * 3 + 1], samples[i * 3 + 2])
+}
+
+trait Axis {
+    fn axis_component(&self, axis: usize) -> f64;
+}
+impl Axis for (f64, f64, f64) {
+    #[inline]
+    fn axis_component(&self, axis: usize) -> f64 {
+        match axis {
+            0 => self.0,
+            1 => self.1,
+            _ => self.2,
         }
     }
 }
@@ -283,6 +489,40 @@ pub fn make_circle_curve(
         corner_end: -1,
         index_polyline,
         geom: Geom::Circle { c: [cx, cy, cz], e1, e2, r, arc: arc.is_some() },
+    }
+}
+
+/// Numerically traced curve (boolean seams / twisted helices). A polyline of
+/// `samples` (xyz triplets), every one exactly on the carrier-pair locus, with
+/// on-locus Newton re-projection (`refine`) restoring exactness after lerp.
+/// Parameter = continuous polyline index t ∈ [0, n−1]; closed loops have
+/// `samples[0] ≅ samples[n−1]` and wrap at n−1. Port of `makeTracedCurve`.
+#[allow(clippy::too_many_arguments)]
+pub fn make_traced_curve(
+    id: usize,
+    adjacent_strata: [usize; 2],
+    samples: Vec<f64>,
+    closed: bool,
+    sa: Stratum,
+    sb: Stratum,
+    refine: TracedRefine,
+    owner_node_id: i64,
+) -> FeatureCurve {
+    let n = samples.len() / 3;
+    let t_max = (n - 1) as f64;
+    FeatureCurve {
+        id,
+        adjacent_strata,
+        closed,
+        param_wrap: if closed { Some(t_max) } else { None },
+        t_min: 0.0,
+        t_max,
+        owner_node_id,
+        native: false,
+        corner_start: -1,
+        corner_end: -1,
+        index_polyline: samples.clone(),
+        geom: Geom::Traced(Box::new(TracedData { samples, n, sa, sb, refine })),
     }
 }
 

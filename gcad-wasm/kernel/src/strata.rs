@@ -6,12 +6,15 @@
 //! M3a scope: the four exact, unit-gradient carriers consumed by the
 //! smooth-surface refinement certificates (`stratum_normal_variation_ok`,
 //! `stratum_edge_crossings_ok`). The non-unit-gradient ruled carriers
-//! (twistedSide / loftSide) and the full feature compilation (`feature-set`,
-//! seam tracing, corners) are deferred to M4.
+//! (twistedSide / loftSide) land in M4 (extrude/loft native features); they
+//! return the NORMALIZED field g/|∇g| (first-order distance-like, same zero
+//! set) so the Newton machinery stays well-scaled.
 //!
 //! `sign` bakes CSG orientation: −1 iff the owning primitive sits under an odd
 //! number of Subtract right-hand ancestors, so `f`/`normal` always describe the
 //! FINAL solid (outward normal, negative inside).
+
+use crate::math::similarity::Similarity;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CarrierKind {
@@ -19,6 +22,8 @@ pub enum CarrierKind {
     Sphere,
     Cylinder,
     Cone,
+    TwistedSide,
+    LoftSide,
 }
 
 /// A smooth analytic carrier patch. Identity fields mirror `SfccStratum`'s
@@ -50,6 +55,87 @@ enum Carrier {
     Cylinder { a: [f64; 3], u: [f64; 3], r: f64 },
     /// Mantle: apex `a`, unit axis `u` (apex→base), half-angle (sin_a, cos_a).
     Cone { a: [f64; 3], u: [f64; 3], sin_a: f64, cos_a: f64 },
+    /// Twisted-extrude side: ruled helicoidal sheet swept by one polygon edge's
+    /// supporting line under the height-proportional twist (params from the leaf).
+    TwistedSide(TwistedSideParams),
+    /// Loft side: ruled sheet swept by linearly interpolating one polygon edge's
+    /// supporting line between two profiles.
+    LoftSide(LoftSideParams),
+}
+
+/// Parameters of a twisted-extrude side carrier. Mirrors `TwistedSideParams`
+/// (`strata.mts`).
+#[derive(Clone, Copy, Debug)]
+pub struct TwistedSideParams {
+    pub sim: Similarity,
+    pub pos_x: f64,
+    pub pos_y: f64,
+    pub pos_z: f64,
+    pub h: f64,
+    pub twist_rad: f64,
+    pub v0x: f64,
+    pub v0z: f64,
+    pub nx2: f64,
+    pub nz2: f64,
+}
+
+/// Parameters of a loft side carrier. Mirrors `LoftSideParams` (`strata.mts`).
+#[derive(Clone, Copy, Debug)]
+pub struct LoftSideParams {
+    pub sim: Similarity,
+    pub pos_x: f64,
+    pub pos_y: f64,
+    pub pos_z: f64,
+    pub seg_y0: f64,
+    pub seg_h: f64,
+    pub a_x: f64,
+    pub a_z: f64,
+    pub a_nx: f64,
+    pub a_nz: f64,
+    pub b_x: f64,
+    pub b_z: f64,
+    pub b_nx: f64,
+    pub b_nz: f64,
+}
+
+/// Evaluate the twisted-side raw field g and its LOCAL gradient at a leaf-local
+/// point. Returns `(g, grad_local)`. Port of `evalLocal` in
+/// `makeTwistedSideStratum`.
+fn twisted_eval_local(prm: &TwistedSideParams, lx: f64, ly: f64, lz: f64) -> (f64, [f64; 3]) {
+    let qx = lx - prm.pos_x;
+    let qy = ly - prm.pos_y;
+    let qz = lz - prm.pos_z;
+    let t_raw = (qy + prm.h) / (2.0 * prm.h);
+    let t = t_raw.clamp(0.0, 1.0);
+    let angle = prm.twist_rad * t;
+    let ca = angle.cos();
+    let sa = angle.sin();
+    let tw1 = ca * qx + sa * qz;
+    let tw2 = -sa * qx + ca * qz;
+    let g = (tw1 - prm.v0x) * prm.nx2 + (tw2 - prm.v0z) * prm.nz2;
+    let mut grad = [0.0f64; 3];
+    grad[0] = prm.nx2 * ca - prm.nz2 * sa;
+    grad[2] = prm.nx2 * sa + prm.nz2 * ca;
+    let k = if t_raw > 0.0 && t_raw < 1.0 && prm.h.abs() > 1e-9 { prm.twist_rad / (2.0 * prm.h) } else { 0.0 };
+    grad[1] = k * (prm.nx2 * tw2 - prm.nz2 * tw1);
+    (g, grad)
+}
+
+/// Evaluate the loft-side raw field g and its LOCAL gradient. Returns
+/// `(g, grad_local)`. Port of `evalLocal` in `makeLoftSideStratum`.
+fn loft_eval_local(prm: &LoftSideParams, lx: f64, ly: f64, lz: f64) -> (f64, [f64; 3]) {
+    let qx = lx - prm.pos_x;
+    let qy = ly - prm.pos_y;
+    let qz = lz - prm.pos_z;
+    let t = (qy - prm.seg_y0) / prm.seg_h;
+    let l_a = (qx - prm.a_x) * prm.a_nx + (qz - prm.a_z) * prm.a_nz;
+    let l_b = (qx - prm.b_x) * prm.b_nx + (qz - prm.b_z) * prm.b_nz;
+    let grad = [
+        (1.0 - t) * prm.a_nx + t * prm.b_nx,
+        (l_b - l_a) / prm.seg_h,
+        (1.0 - t) * prm.a_nz + t * prm.b_nz,
+    ];
+    ((1.0 - t) * l_a + t * l_b, grad)
 }
 
 /// Shared identity for stratum construction (the TS `StratumIdentity`).
@@ -95,6 +181,14 @@ impl Stratum {
         )
     }
 
+    pub fn twisted_side(ident: StratumIdentity, prm: TwistedSideParams) -> Stratum {
+        Stratum::wrap(ident, CarrierKind::TwistedSide, Carrier::TwistedSide(prm))
+    }
+
+    pub fn loft_side(ident: StratumIdentity, prm: LoftSideParams) -> Stratum {
+        Stratum::wrap(ident, CarrierKind::LoftSide, Carrier::LoftSide(prm))
+    }
+
     fn wrap(ident: StratumIdentity, kind: CarrierKind, carrier: Carrier) -> Stratum {
         Stratum {
             id: ident.id,
@@ -127,6 +221,18 @@ impl Stratum {
                 } else {
                     s * (rho * cos_a - t * sin_a)
                 }
+            }
+            Carrier::TwistedSide(prm) => {
+                let l = prm.sim.inv_apply_point(px, py, pz);
+                let (g, grad) = twisted_eval_local(&prm, l[0], l[1], l[2]);
+                let m = hypot3(grad[0], grad[1], grad[2]);
+                s * prm.sim.s * g / m.max(1e-12)
+            }
+            Carrier::LoftSide(prm) => {
+                let l = prm.sim.inv_apply_point(px, py, pz);
+                let (g, grad) = loft_eval_local(&prm, l[0], l[1], l[2]);
+                let m = hypot3(grad[0], grad[1], grad[2]);
+                s * prm.sim.s * g / m.max(1e-12)
             }
         }
     }
@@ -173,6 +279,16 @@ impl Stratum {
                     let inv = rho_star / rho;
                     [a[0] + t_star * u[0] + rx * inv, a[1] + t_star * u[1] + ry * inv, a[2] + t_star * u[2] + rz * inv]
                 }
+            }
+            Carrier::TwistedSide(prm) => {
+                let l = prm.sim.inv_apply_point(px, py, pz);
+                let (lx, ly, lz) = ruled_project_local(&l, |x, y, z| twisted_eval_local(&prm, x, y, z));
+                prm.sim.apply_point(lx, ly, lz)
+            }
+            Carrier::LoftSide(prm) => {
+                let l = prm.sim.inv_apply_point(px, py, pz);
+                let (lx, ly, lz) = ruled_project_local(&l, |x, y, z| loft_eval_local(&prm, x, y, z));
+                prm.sim.apply_point(lx, ly, lz)
             }
         }
     }
@@ -227,7 +343,51 @@ impl Stratum {
                     [-s * u[0], -s * u[1], -s * u[2]]
                 }
             }
+            Carrier::TwistedSide(prm) => {
+                let l = prm.sim.inv_apply_point(px, py, pz);
+                let (_, grad) = twisted_eval_local(&prm, l[0], l[1], l[2]);
+                ruled_world_normal(&prm.sim, grad, s)
+            }
+            Carrier::LoftSide(prm) => {
+                let l = prm.sim.inv_apply_point(px, py, pz);
+                let (_, grad) = loft_eval_local(&prm, l[0], l[1], l[2]);
+                ruled_world_normal(&prm.sim, grad, s)
+            }
         }
+    }
+}
+
+/// Gradient-descent projection of a ruled carrier's NORMALIZED field onto its
+/// zero set, in leaf-local space (8 iterations, matching the TS `project`
+/// closures of `makeTwistedSideStratum`/`makeLoftSideStratum`).
+fn ruled_project_local(l: &[f64; 3], eval: impl Fn(f64, f64, f64) -> (f64, [f64; 3])) -> (f64, f64, f64) {
+    let (mut lx, mut ly, mut lz) = (l[0], l[1], l[2]);
+    for _ in 0..8 {
+        let (g, grad) = eval(lx, ly, lz);
+        let m2 = grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2];
+        if m2 < 1e-18 {
+            break;
+        }
+        let k = g / m2;
+        lx -= k * grad[0];
+        ly -= k * grad[1];
+        lz -= k * grad[2];
+        if g.abs() < 1e-12 {
+            break;
+        }
+    }
+    (lx, ly, lz)
+}
+
+/// Rotate a ruled carrier's LOCAL gradient to world, normalize, apply `sign`;
+/// degenerate gradient falls back to (s,0,0). Matches the TS ruled `normal`.
+fn ruled_world_normal(sim: &Similarity, grad_local: [f64; 3], s: f64) -> [f64; 3] {
+    let w = sim.rotate_vector(grad_local[0], grad_local[1], grad_local[2]);
+    let len = hypot3(w[0], w[1], w[2]);
+    if len > 1e-12 {
+        [s * w[0] / len, s * w[1] / len, s * w[2] / len]
+    } else {
+        [s, 0.0, 0.0]
     }
 }
 

@@ -85,7 +85,7 @@ fn world_aabb_of_local_box(leaf: &Leaf, c: [f64; 3], h: [f64; 3]) -> [f64; 6] {
 }
 
 /// The local-box `(center, half-extents)` for a leaf's AABB. Port of the
-/// per-primitive `aabbLocal` in `cpu-sdf.mts` for the M4a shape subset.
+/// per-primitive `aabbLocal` in `cpu-sdf.mts` over the full v1 shape subset.
 pub fn local_aabb_box(shape: &Shape, pos: [f64; 3]) -> ([f64; 3], [f64; 3]) {
     let [px, py, pz] = pos;
     match shape {
@@ -93,8 +93,37 @@ pub fn local_aabb_box(shape: &Shape, pos: [f64; 3]) -> ([f64; 3], [f64; 3]) {
         Shape::Sphere { r } => ([px, py, pz], [*r, *r, *r]),
         Shape::Cylinder { r, h } => ([px, py, pz], [*r, *h, *r]),
         Shape::Cone { r, h } => ([px, py + h * 0.5, pz], [*r, h * 0.5, *r]),
-        // Extrude/Loft/Lathe: deferred (their seam pipeline is M4c+).
-        _ => ([px, py, pz], [0.0, 0.0, 0.0]),
+        Shape::Extrude { verts, h, .. } => {
+            // Twist sweeps the polygon within its circumradius.
+            let mut r_max = 0.0f64;
+            for i in 0..(verts.len() / 2) {
+                r_max = r_max.max(verts[i * 2].hypot(verts[i * 2 + 1]));
+            }
+            ([px, py, pz], [r_max, *h, r_max])
+        }
+        Shape::Loft { profs, h, .. } => {
+            let mut r_max_x = 0.0f64;
+            let mut r_max_z = 0.0f64;
+            for pr in profs {
+                for i in 0..(pr.len() / 2) {
+                    r_max_x = r_max_x.max(pr[i * 2].abs());
+                    r_max_z = r_max_z.max(pr[i * 2 + 1].abs());
+                }
+            }
+            ([px, py, pz], [r_max_x, *h, r_max_z])
+        }
+        Shape::Lathe { edges } => {
+            let mut max_r = 0.0f64;
+            let mut min_y = f64::INFINITY;
+            let mut max_y = f64::NEG_INFINITY;
+            // Each edge runs vertex k → k+1; (r0,y0) covers every vertex over the loop.
+            for e in edges {
+                max_r = max_r.max(e.r0.abs());
+                min_y = min_y.min(e.y0);
+                max_y = max_y.max(e.y0);
+            }
+            ([px, py + (min_y + max_y) * 0.5, pz], [max_r, (max_y - min_y) * 0.5, max_r])
+        }
     }
 }
 

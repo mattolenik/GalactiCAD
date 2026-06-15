@@ -15,8 +15,12 @@
 //! the feature-aware refine/contour/cell-mesh honoring paths.
 
 use crate::math::similarity::Similarity;
+use crate::primitives::polygon2d::{outward_edge_normal_2d, polygon_dist_2d};
+use crate::primitives::shapes::{LatheEdgeKind, LatheProfileEdge, LATHE_AXIS_R};
 use crate::sdf::{CsgNode, Leaf, Shape};
-use crate::sfcc::feature_curves::{make_circle_curve, make_segment_curve, FeatureCurve};
+use crate::sfcc::feature_curves::{
+    make_circle_curve, make_segment_curve, make_traced_curve, FeatureCurve, TracedRefine,
+};
 use crate::sfcc::seam_trace::trace_all_seams;
 use crate::sfcc::spatial_index::SfccSpatialIndex;
 use crate::sfcc::tree::{build_tree, SfccTree};
@@ -96,6 +100,36 @@ fn sid(id: usize, leaf_index: usize, local_index: usize, sign: f64) -> StratumId
     StratumIdentity { id, owner_node_id: -1, leaf_index, local_index, sign }
 }
 
+/// On-locus refine tolerances for NATIVE traced curves (twisted-extrude helices,
+/// curved loft morphs). Mirrors the hardcoded `projectToCarrierPair(…, 1e-10,
+/// 1e-3, 0.5, …)` arguments in feature-set.mts's `makeTracedCurve` callbacks.
+fn traced_native_refine() -> TracedRefine {
+    TracedRefine { curve_eps: 1e-10, min_cross: 1e-3, max_displacement: 0.5 }
+}
+
+/// Grow `diag` by the leaf's world-AABB diagonal (the TS `compileNativeFeatures`
+/// derives its spatial-index cell size from `leaf.aabb` for every shape).
+fn track_leaf_diag(leaf: &Leaf, diag: &mut f64) {
+    let (c, half) = crate::sfcc::tree::local_aabb_box(&leaf.shape, leaf.pos);
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    for i in 0..8 {
+        let p = leaf.sim.apply_point(
+            c[0] + if i & 1 != 0 { half[0] } else { -half[0] },
+            c[1] + if i & 2 != 0 { half[1] } else { -half[1] },
+            c[2] + if i & 4 != 0 { half[2] } else { -half[2] },
+        );
+        for a in 0..3 {
+            lo[a] = lo[a].min(p[a]);
+            hi[a] = hi[a].max(p[a]);
+        }
+    }
+    let d = (hi[0] - lo[0]).hypot(hi[1] - lo[1]).hypot(hi[2] - lo[2]);
+    if d > *diag {
+        *diag = d;
+    }
+}
+
 /// Cylinder strata: [mantle, cap +y, cap −y] (local_index 0,1,2), matching the
 /// evaluator's `buildStrata` order in cpu-sdf.mts.
 fn build_cylinder_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64, h: f64) -> Vec<Stratum> {
@@ -122,6 +156,188 @@ fn build_cone_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64, h:
     ]
 }
 
+/// Lathe strata: one carrier per non-axis profile edge, in edge order (the
+/// skip-"none" layout `compile_native_features` re-derives via the edge list).
+/// Each carrier's normal matches the edge's outward profile normal — edges
+/// whose outward points toward the axis (bores) fold a flip into `sign`. Port
+/// of the Lathe `buildStrata` in cpu-sdf.mts.
+fn build_lathe_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, edges: &[LatheProfileEdge]) -> Vec<Stratum> {
+    let [px, py, pz] = leaf.pos;
+    let a = leaf.sim.apply_point(px, py, pz);
+    let u = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
+    let mut out: Vec<Stratum> = Vec::new();
+    for e in edges {
+        if e.kind == LatheEdgeKind::None {
+            continue;
+        }
+        let ident = sid(first_id + out.len(), leaf_index, out.len(), leaf.sign);
+        match e.kind {
+            LatheEdgeKind::Plane => {
+                let ny3 = if e.ny > 0.0 { 1.0 } else { -1.0 };
+                out.push(world_plane(ident, &leaf.sim, 0.0, ny3, 0.0, -ny3 * (py + (e.y0 + e.y1) * 0.5)));
+            }
+            LatheEdgeKind::Cylinder => {
+                let flip = if e.nr > 0.0 { 1.0 } else { -1.0 };
+                out.push(Stratum::cylinder(
+                    StratumIdentity { sign: leaf.sign * flip, ..ident },
+                    a[0],
+                    a[1],
+                    a[2],
+                    u[0],
+                    u[1],
+                    u[2],
+                    leaf.sim.s * ((e.r0 + e.r1) * 0.5).abs(),
+                ));
+            }
+            LatheEdgeKind::Cone => {
+                // Apex where the edge's supporting line meets the axis; uw points
+                // from the apex toward the edge.
+                let dr = e.r1 - e.r0;
+                let dy = e.y1 - e.y0;
+                let y_apex = e.y0 - e.r0 * (dy / dr);
+                let apex = leaf.sim.apply_point(px, py + y_apex, pz);
+                let uw = leaf.sim.rotate_vector(0.0, if dy * dr > 0.0 { 1.0 } else { -1.0 }, 0.0);
+                let flip = if e.nr > 0.0 { 1.0 } else { -1.0 };
+                out.push(Stratum::cone(
+                    StratumIdentity { sign: leaf.sign * flip, ..ident },
+                    apex[0],
+                    apex[1],
+                    apex[2],
+                    uw[0],
+                    uw[1],
+                    uw[2],
+                    dr.abs() / e.len,
+                    dy.abs() / e.len,
+                ));
+            }
+            LatheEdgeKind::None => unreachable!(),
+        }
+    }
+    out
+}
+
+/// Extrude strata: N side carriers (planes when untwisted, twisted-side ruled
+/// carriers otherwise) + cap +y + cap −y. Port of the Extrude `buildStrata`.
+fn build_extrude_strata(
+    leaf: &Leaf,
+    leaf_index: usize,
+    first_id: usize,
+    verts: &[f64],
+    wind: f64,
+    h: f64,
+    twist_rad: f64,
+) -> Vec<Stratum> {
+    let [px, py, pz] = leaf.pos;
+    let n = verts.len() / 2;
+    let mut out: Vec<Stratum> = Vec::with_capacity(n + 2);
+    for i in 0..n {
+        let v0x = verts[i * 2];
+        let v0z = verts[i * 2 + 1];
+        let v1x = verts[((i + 1) % n) * 2];
+        let v1z = verts[((i + 1) % n) * 2 + 1];
+        let [nx2, nz2] = outward_edge_normal_2d(v1x - v0x, v1z - v0z, wind);
+        let ident = sid(first_id + i, leaf_index, i, leaf.sign);
+        if twist_rad == 0.0 {
+            out.push(world_plane(ident, &leaf.sim, nx2, 0.0, nz2, -(nx2 * (px + v0x) + nz2 * (pz + v0z))));
+        } else {
+            out.push(Stratum::twisted_side(
+                ident,
+                crate::strata::TwistedSideParams {
+                    sim: leaf.sim,
+                    pos_x: px,
+                    pos_y: py,
+                    pos_z: pz,
+                    h,
+                    twist_rad,
+                    v0x,
+                    v0z,
+                    nx2,
+                    nz2,
+                },
+            ));
+        }
+    }
+    out.push(world_plane(sid(first_id + n, leaf_index, n, leaf.sign), &leaf.sim, 0.0, 1.0, 0.0, -(py + h)));
+    out.push(world_plane(sid(first_id + n + 1, leaf_index, n + 1, leaf.sign), &leaf.sim, 0.0, -1.0, 0.0, py - h));
+    out
+}
+
+/// Loft strata: per-segment per-edge side carriers (plane when both profiles
+/// share the supporting line, loft-side ruled carrier otherwise), laid out
+/// `side(seg,j) = seg·N + j`, then cap +y, cap −y. Port of the Loft `buildStrata`.
+fn build_loft_strata(
+    leaf: &Leaf,
+    leaf_index: usize,
+    first_id: usize,
+    profs: &[Vec<f64>],
+    winds: &[f64],
+    h: f64,
+) -> Vec<Stratum> {
+    let [px, py, pz] = leaf.pos;
+    let m = profs.len();
+    let n = profs[0].len() / 2;
+    let seg_h = (2.0 * h) / (m as f64 - 1.0);
+    let mut out: Vec<Stratum> = Vec::new();
+    // Edge supporting line (point + outward unit 2D normal) of profile `verts`,
+    // edge j: returns (v0x, v0z, nx, nz).
+    let edge = |verts: &[f64], wind: f64, j: usize| -> (f64, f64, f64, f64) {
+        let j1 = (j + 1) % n;
+        let v0x = verts[j * 2];
+        let v0z = verts[j * 2 + 1];
+        let [nx, nz] = outward_edge_normal_2d(verts[j1 * 2] - v0x, verts[j1 * 2 + 1] - v0z, wind);
+        (v0x, v0z, nx, nz)
+    };
+    for seg in 0..(m - 1) {
+        for j in 0..n {
+            let (a_x, a_z, a_nx, a_nz) = edge(&profs[seg], winds[seg], j);
+            let (b_x, b_z, b_nx, b_nz) = edge(&profs[seg + 1], winds[seg + 1], j);
+            let li = seg * n + j;
+            let ident = sid(first_id + li, leaf_index, li, leaf.sign);
+            if a_nx == b_nx && a_nz == b_nz && a_x == b_x && a_z == b_z {
+                out.push(world_plane(ident, &leaf.sim, a_nx, 0.0, a_nz, -(a_nx * (px + a_x) + a_nz * (pz + a_z))));
+            } else {
+                out.push(Stratum::loft_side(
+                    ident,
+                    crate::strata::LoftSideParams {
+                        sim: leaf.sim,
+                        pos_x: px,
+                        pos_y: py,
+                        pos_z: pz,
+                        seg_y0: -h + seg as f64 * seg_h,
+                        seg_h,
+                        a_x,
+                        a_z,
+                        a_nx,
+                        a_nz,
+                        b_x,
+                        b_z,
+                        b_nx,
+                        b_nz,
+                    },
+                ));
+            }
+        }
+    }
+    let cap_base = (m - 1) * n;
+    out.push(world_plane(
+        sid(first_id + cap_base, leaf_index, cap_base, leaf.sign),
+        &leaf.sim,
+        0.0,
+        1.0,
+        0.0,
+        -(py + h),
+    ));
+    out.push(world_plane(
+        sid(first_id + cap_base + 1, leaf_index, cap_base + 1, leaf.sign),
+        &leaf.sim,
+        0.0,
+        -1.0,
+        0.0,
+        py - h,
+    ));
+    out
+}
+
 /// Sphere stratum: a single sphere carrier (sphere has no native curves/corners).
 fn build_sphere_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64) -> Vec<Stratum> {
     let [px, py, pz] = leaf.pos;
@@ -133,12 +349,241 @@ fn build_sphere_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64) 
 /// `compile_native_features` and the seam tree view ([`crate::sfcc::tree`]) so
 /// stratum ids agree across both. Extrude/Loft/Lathe strata are M4c+.
 pub fn build_leaf_strata(leaf: &Leaf, leaf_index: usize, first_id: usize) -> Vec<Stratum> {
-    match leaf.shape {
-        Shape::Cuboid { half } => build_box_strata(leaf, leaf_index, first_id, half),
-        Shape::Sphere { r } => build_sphere_strata(leaf, leaf_index, first_id, r),
-        Shape::Cylinder { r, h } => build_cylinder_strata(leaf, leaf_index, first_id, r, h),
-        Shape::Cone { r, h } => build_cone_strata(leaf, leaf_index, first_id, r, h),
-        _ => Vec::new(),
+    match &leaf.shape {
+        Shape::Cuboid { half } => build_box_strata(leaf, leaf_index, first_id, *half),
+        Shape::Sphere { r } => build_sphere_strata(leaf, leaf_index, first_id, *r),
+        Shape::Cylinder { r, h } => build_cylinder_strata(leaf, leaf_index, first_id, *r, *h),
+        Shape::Cone { r, h } => build_cone_strata(leaf, leaf_index, first_id, *r, *h),
+        Shape::Extrude { verts, wind, h, twist_rad } => {
+            build_extrude_strata(leaf, leaf_index, first_id, verts, *wind, *h, *twist_rad)
+        }
+        Shape::Loft { profs, winds, h } => build_loft_strata(leaf, leaf_index, first_id, profs, winds, *h),
+        Shape::Lathe { edges } => build_lathe_strata(leaf, leaf_index, first_id, edges),
+    }
+}
+
+/// Native features of a Loft leaf: cap/junction corners, vertical morph curves
+/// (segments where the locus is straight, traced otherwise — both validity- and
+/// straightness-gated), junction creases, and cap rims. Port of the Loft branch
+/// of `compileNativeFeatures`. `strata` is the leaf's strata (global id =
+/// `first_id + local_index`).
+#[allow(clippy::too_many_arguments)]
+fn emit_loft_features(
+    leaf: &Leaf,
+    first_id: usize,
+    profs: &[Vec<f64>],
+    winds: &[f64],
+    h: f64,
+    strata: &[Stratum],
+    curves: &mut Vec<FeatureCurve>,
+    corners: &mut Vec<SfccCorner>,
+) {
+    let [px, py, pz] = leaf.pos;
+    let m = profs.len();
+    let n = profs[0].len() / 2;
+    let seg_h = (2.0 * h) / (m as f64 - 1.0);
+    let y_of = |pi: usize| -h + pi as f64 * seg_h;
+    let side_id = |seg: usize, j: i64| -> usize { first_id + seg * n + j.rem_euclid(n as i64) as usize };
+    let cap_top = first_id + (m - 1) * n;
+    let cap_bottom = first_id + (m - 1) * n + 1;
+    let vert_scale = {
+        let mut v = 1.0f64;
+        for pr in profs {
+            for c in 0..(pr.len() / 2) {
+                v = v.max(pr[c * 2].abs().max(pr[c * 2 + 1].abs()));
+            }
+        }
+        v
+    };
+    // True outward unit 2D normal of profile pi's edge e.
+    let edge_normal = |pi: usize, e: i64| -> [f64; 2] {
+        let vs = &profs[pi];
+        let k = e.rem_euclid(n as i64) as usize;
+        let ax = vs[k * 2];
+        let az = vs[k * 2 + 1];
+        let bx = vs[((k + 1) % n) * 2];
+        let bz = vs[((k + 1) % n) * 2 + 1];
+        outward_edge_normal_2d(bx - ax, bz - az, winds[pi])
+    };
+
+    // Corners at every profile vertex.
+    let mut corner_idx: Vec<Vec<usize>> = Vec::with_capacity(m);
+    for pi in 0..m {
+        let mut row = Vec::with_capacity(n);
+        for j in 0..n {
+            let vx = profs[pi][j * 2];
+            let vz = profs[pi][j * 2 + 1];
+            let p = leaf.sim.apply_point(px + vx, py + y_of(pi), pz + vz);
+            let strata_ids: Vec<usize> = if pi == 0 {
+                vec![side_id(0, j as i64 - 1), side_id(0, j as i64), cap_bottom]
+            } else if pi == m - 1 {
+                vec![side_id(m - 2, j as i64 - 1), side_id(m - 2, j as i64), cap_top]
+            } else {
+                vec![
+                    side_id(pi - 1, j as i64 - 1),
+                    side_id(pi - 1, j as i64),
+                    side_id(pi, j as i64 - 1),
+                    side_id(pi, j as i64),
+                ]
+            };
+            let id = corners.len();
+            corners.push(SfccCorner { id, x: p[0], y: p[1], z: p[2], strata: strata_ids, curve_ends: Vec::new() });
+            row.push(id);
+        }
+        corner_idx.push(row);
+    }
+
+    // Vertical morph curves: per segment per vertex j, the exact intersection of
+    // the two adjacent ruled side carriers (closed-form mixed-line crossing).
+    const SAMPLES: usize = 64;
+    for seg in 0..(m - 1) {
+        for j in 0..n {
+            let s_l = side_id(seg, j as i64 - 1);
+            let s_r = side_id(seg, j as i64);
+            let [n_alx, n_alz] = edge_normal(seg, j as i64 - 1);
+            let [n_arx, n_arz] = edge_normal(seg, j as i64);
+            let [n_blx, n_blz] = edge_normal(seg + 1, j as i64 - 1);
+            let [n_brx, n_brz] = edge_normal(seg + 1, j as i64);
+            let v_ax = profs[seg][j * 2];
+            let v_az = profs[seg][j * 2 + 1];
+            let v_bx = profs[seg + 1][j * 2];
+            let v_bz = profs[seg + 1][j * 2 + 1];
+            let c_al = n_alx * v_ax + n_alz * v_az;
+            let c_ar = n_arx * v_ax + n_arz * v_az;
+            let c_bl = n_blx * v_bx + n_blz * v_bz;
+            let c_br = n_brx * v_bx + n_brz * v_bz;
+            // Mixed-line crossing at height parameter t; None when degenerate.
+            let q2_at = |t: f64| -> Option<[f64; 2]> {
+                let m1x = (1.0 - t) * n_alx + t * n_blx;
+                let m1z = (1.0 - t) * n_alz + t * n_blz;
+                let m2x = (1.0 - t) * n_arx + t * n_brx;
+                let m2z = (1.0 - t) * n_arz + t * n_brz;
+                let c1 = (1.0 - t) * c_al + t * c_bl;
+                let c2 = (1.0 - t) * c_ar + t * c_br;
+                let det = m1x * m2z - m1z * m2x;
+                if det.abs() < 1e-3 * m1x.hypot(m1z) * m2x.hypot(m2z) {
+                    return None;
+                }
+                Some([(c1 * m2z - c2 * m1z) / det, (m1x * c2 - m2x * c1) / det])
+            };
+            let mut valid = true;
+            let mut samples = vec![0.0f64; (SAMPLES + 1) * 3];
+            for i in 0..=SAMPLES {
+                let t = i as f64 / SAMPLES as f64;
+                let pt = match q2_at(t) {
+                    Some(p) => p,
+                    None => {
+                        valid = false;
+                        break;
+                    }
+                };
+                // Carrier-model validity: the crossing must lie on the true
+                // profile-mix zero set.
+                let d_a = polygon_dist_2d(&profs[seg], winds[seg], pt[0], pt[1]).d;
+                let d_b = polygon_dist_2d(&profs[seg + 1], winds[seg + 1], pt[0], pt[1]).d;
+                if ((1.0 - t) * d_a + t * d_b).abs() > 1e-6 * vert_scale {
+                    valid = false;
+                    break;
+                }
+                let p = leaf.sim.apply_point(px + pt[0], py + y_of(seg) + t * seg_h, pz + pt[1]);
+                samples[i * 3] = p[0];
+                samples[i * 3 + 1] = p[1];
+                samples[i * 3 + 2] = p[2];
+            }
+            if !valid {
+                continue;
+            }
+            // Straightness: collapse to an exact segment when the locus is a line.
+            let ax = samples[0];
+            let ay = samples[1];
+            let az = samples[2];
+            let bx = samples[SAMPLES * 3];
+            let by = samples[SAMPLES * 3 + 1];
+            let bz = samples[SAMPLES * 3 + 2];
+            let chord = (bx - ax).hypot(by - ay).hypot(bz - az);
+            let mut max_dev = 0.0f64;
+            for i in 1..SAMPLES {
+                let t = i as f64 / SAMPLES as f64;
+                let dev = (samples[i * 3] - (ax + (bx - ax) * t))
+                    .hypot(samples[i * 3 + 1] - (ay + (by - ay) * t))
+                    .hypot(samples[i * 3 + 2] - (az + (bz - az) * t));
+                max_dev = max_dev.max(dev);
+            }
+            let curve_id = curves.len();
+            let mut curve = if max_dev < 1e-9 * chord.max(1.0) {
+                make_segment_curve(curve_id, -1, [s_l, s_r], ax, ay, az, bx, by, bz)
+            } else {
+                make_traced_curve(
+                    curve_id,
+                    [s_l, s_r],
+                    samples,
+                    false,
+                    strata[s_l - first_id],
+                    strata[s_r - first_id],
+                    traced_native_refine(),
+                    -1,
+                )
+            };
+            curve.native = true;
+            curve.corner_start = corner_idx[seg][j] as i64;
+            curve.corner_end = corner_idx[seg + 1][j] as i64;
+            corners[curve.corner_start as usize].curve_ends.push((curve_id, 0));
+            corners[curve.corner_end as usize].curve_ends.push((curve_id, 1));
+            curves.push(curve);
+        }
+    }
+
+    // Junction creases at intermediate profiles, where consecutive segments'
+    // carriers genuinely differ (normal kink).
+    for pi in 1..(m - 1) {
+        for j in 0..n {
+            let j2 = (j + 1) % n;
+            let s_below = side_id(pi - 1, j as i64);
+            let s_above = side_id(pi, j as i64);
+            let v0x = profs[pi][j * 2];
+            let v0z = profs[pi][j * 2 + 1];
+            let v1x = profs[pi][j2 * 2];
+            let v1z = profs[pi][j2 * 2 + 1];
+            let mid = leaf.sim.apply_point(px + (v0x + v1x) / 2.0, py + y_of(pi), pz + (v0z + v1z) / 2.0);
+            let nb = strata[s_below - first_id].normal(mid[0], mid[1], mid[2]);
+            let na = strata[s_above - first_id].normal(mid[0], mid[1], mid[2]);
+            let dot = nb[0] * na[0] + nb[1] * na[1] + nb[2] * na[2];
+            if dot > 1.0 - 1e-9 {
+                continue;
+            }
+            let curve_id = curves.len();
+            let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
+            let b = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
+            let mut crease =
+                make_segment_curve(curve_id, -1, [s_below, s_above], a[0], a[1], a[2], b[0], b[1], b[2]);
+            crease.native = true;
+            crease.corner_start = corner_idx[pi][j] as i64;
+            crease.corner_end = corner_idx[pi][j2] as i64;
+            corners[crease.corner_start as usize].curve_ends.push((curve_id, 0));
+            corners[crease.corner_end as usize].curve_ends.push((curve_id, 1));
+            curves.push(crease);
+        }
+    }
+
+    // Cap rim segments (caps are planar; rims are the end profiles' edges).
+    for j in 0..n {
+        let j2 = (j + 1) % n;
+        for &(cap, pi, seg) in &[(cap_bottom, 0usize, 0usize), (cap_top, m - 1, m - 2)] {
+            let v0x = profs[pi][j * 2];
+            let v0z = profs[pi][j * 2 + 1];
+            let v1x = profs[pi][j2 * 2];
+            let v1z = profs[pi][j2 * 2 + 1];
+            let curve_id = curves.len();
+            let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
+            let b = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
+            let mut rim = make_segment_curve(curve_id, -1, [side_id(seg, j as i64), cap], a[0], a[1], a[2], b[0], b[1], b[2]);
+            rim.native = true;
+            rim.corner_start = corner_idx[pi][j] as i64;
+            rim.corner_end = corner_idx[pi][j2] as i64;
+            corners[rim.corner_start as usize].curve_ends.push((curve_id, 0));
+            corners[rim.corner_end as usize].curve_ends.push((curve_id, 1));
+            curves.push(rim);
+        }
     }
 }
 
@@ -153,8 +598,9 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
 
     for (leaf_index, leaf) in leaves.iter().enumerate() {
         let first_id = all_strata.len();
-        match leaf.shape {
+        match &leaf.shape {
             Shape::Cuboid { half } => {
+                let half = *half;
                 let strata = build_box_strata(leaf, leaf_index, first_id, half);
                 let [cx, cy, cz] = leaf.pos;
                 let [hx, hy, hz] = half;
@@ -235,9 +681,10 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
             }
             Shape::Sphere { r } => {
                 // No native curves/corners; one sphere carrier for the stratum list.
-                all_strata.extend(build_sphere_strata(leaf, leaf_index, first_id, r));
+                all_strata.extend(build_sphere_strata(leaf, leaf_index, first_id, *r));
             }
             Shape::Cylinder { r, h } => {
+                let (r, h) = (*r, *h);
                 all_strata.extend(build_cylinder_strata(leaf, leaf_index, first_id, r, h));
                 let rr = r * leaf.sim.s;
                 let w = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
@@ -254,6 +701,7 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
                 }
             }
             Shape::Cone { r, h } => {
+                let (r, h) = (*r, *h);
                 all_strata.extend(build_cone_strata(leaf, leaf_index, first_id, r, h));
                 let rr = r * leaf.sim.s;
                 let w = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
@@ -270,9 +718,192 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
                 let kid = corners.len();
                 corners.push(SfccCorner { id: kid, x: apex[0], y: apex[1], z: apex[2], strata: vec![first_id], curve_ends: Vec::new() });
             }
-            // Lathe / Extrude / Loft: M4-remaining (traced curves / ruled carriers /
-            // newton). No strata built here yet — scenes with them are not handled.
-            _ => {}
+            Shape::Lathe { edges } => {
+                let strata = build_lathe_strata(leaf, leaf_index, first_id, edges);
+                track_leaf_diag(leaf, &mut diag);
+                let [px, py, pz] = leaf.pos;
+                let n = edges.len();
+                let w = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
+                // edgeStratum[k] = global id of edge k's stratum (None for "none").
+                let mut edge_stratum: Vec<Option<usize>> = Vec::with_capacity(n);
+                let mut cursor = first_id;
+                for e in edges {
+                    if e.kind == LatheEdgeKind::None {
+                        edge_stratum.push(None);
+                    } else {
+                        edge_stratum.push(Some(cursor));
+                        cursor += 1;
+                    }
+                }
+                for k in 0..n {
+                    let r = edges[k].r0;
+                    let y = edges[k].y0;
+                    let e_prev = &edges[(k + n - 1) % n];
+                    let e_next = &edges[k];
+                    let s_prev = edge_stratum[(k + n - 1) % n];
+                    let s_next = edge_stratum[k];
+                    let p = leaf.sim.apply_point(px, py + y, pz);
+                    if r.abs() <= LATHE_AXIS_R {
+                        // Axis pole: a cone-apex 0D corner when a revolved cone
+                        // touches the axis here.
+                        let mut strata_ids: Vec<usize> = Vec::new();
+                        if let (Some(s), LatheEdgeKind::Cone) = (s_prev, e_prev.kind) {
+                            strata_ids.push(s);
+                        }
+                        if let (Some(s), LatheEdgeKind::Cone) = (s_next, e_next.kind) {
+                            strata_ids.push(s);
+                        }
+                        if !strata_ids.is_empty() {
+                            if let (Some(s), true) = (s_prev, e_prev.kind != LatheEdgeKind::Cone) {
+                                strata_ids.push(s);
+                            }
+                            if let (Some(s), true) = (s_next, e_next.kind != LatheEdgeKind::Cone) {
+                                strata_ids.push(s);
+                            }
+                            let kid = corners.len();
+                            corners.push(SfccCorner { id: kid, x: p[0], y: p[1], z: p[2], strata: strata_ids, curve_ends: Vec::new() });
+                        }
+                        continue;
+                    }
+                    let (sp, sn) = match (s_prev, s_next) {
+                        (Some(a), Some(b)) => (a, b),
+                        _ => continue,
+                    };
+                    // Skip exactly-collinear turns (degenerate carrier pair).
+                    if e_prev.nr * e_next.nr + e_prev.ny * e_next.ny >= 1.0 - 1e-12 {
+                        continue;
+                    }
+                    let cid = curves.len();
+                    let mut curve = make_circle_curve(
+                        cid,
+                        -1,
+                        [sp, sn],
+                        p[0],
+                        p[1],
+                        p[2],
+                        w[0],
+                        w[1],
+                        w[2],
+                        leaf.sim.s * r.abs(),
+                        None,
+                    );
+                    curve.native = true;
+                    curves.push(curve);
+                }
+                all_strata.extend(strata);
+            }
+            Shape::Extrude { verts, wind, h, twist_rad } => {
+                let (wind, h, twist_rad) = (*wind, *h, *twist_rad);
+                let verts = verts.clone();
+                let strata = build_extrude_strata(leaf, leaf_index, first_id, &verts, wind, h, twist_rad);
+                track_leaf_diag(leaf, &mut diag);
+                let [px, py, pz] = leaf.pos;
+                let n = verts.len() / 2;
+                let side_id = |i: i64| -> usize { first_id + i.rem_euclid(n as i64) as usize };
+                let cap_top = first_id + n;
+                let cap_bottom = first_id + n + 1;
+                // Twist-applied world point of polygon vertex j at local height y.
+                let vertex_at = |j: usize, y: f64| -> [f64; 3] {
+                    let t = ((y + h) / (2.0 * h)).clamp(0.0, 1.0);
+                    let angle = twist_rad * t;
+                    let (ca, sa) = (angle.cos(), angle.sin());
+                    let vx = verts[j * 2];
+                    let vz = verts[j * 2 + 1];
+                    leaf.sim.apply_point(px + ca * vx - sa * vz, py + y, pz + sa * vx + ca * vz)
+                };
+                let mut bottom_corner_ids: Vec<usize> = Vec::with_capacity(n);
+                let mut top_corner_ids: Vec<usize> = Vec::with_capacity(n);
+                for j in 0..n {
+                    let pb = vertex_at(j, -h);
+                    let bid = corners.len();
+                    bottom_corner_ids.push(bid);
+                    corners.push(SfccCorner {
+                        id: bid,
+                        x: pb[0],
+                        y: pb[1],
+                        z: pb[2],
+                        strata: vec![side_id(j as i64 - 1), side_id(j as i64), cap_bottom],
+                        curve_ends: Vec::new(),
+                    });
+                    let pt = vertex_at(j, h);
+                    let tid = corners.len();
+                    top_corner_ids.push(tid);
+                    corners.push(SfccCorner {
+                        id: tid,
+                        x: pt[0],
+                        y: pt[1],
+                        z: pt[2],
+                        strata: vec![side_id(j as i64 - 1), side_id(j as i64), cap_top],
+                        curve_ends: Vec::new(),
+                    });
+                }
+                // Vertical edges: segments (untwisted) or traced helices.
+                for j in 0..n {
+                    let s_a = side_id(j as i64 - 1);
+                    let s_b = side_id(j as i64);
+                    let curve_id = curves.len();
+                    let mut curve = if twist_rad == 0.0 {
+                        let a = vertex_at(j, -h);
+                        let b = vertex_at(j, h);
+                        make_segment_curve(curve_id, -1, [s_a, s_b], a[0], a[1], a[2], b[0], b[1], b[2])
+                    } else {
+                        let rho = verts[j * 2].hypot(verts[j * 2 + 1]);
+                        let max_step = 2.0 * (1.0 - 0.005 / rho.max(1e-6)).clamp(-1.0, 1.0).acos();
+                        let nseg = ((twist_rad.abs() / max_step.max(1e-4)).ceil() as usize).clamp(8, 512);
+                        let mut samples = vec![0.0f64; (nseg + 1) * 3];
+                        for i in 0..=nseg {
+                            let p = vertex_at(j, -h + (2.0 * h * i as f64) / nseg as f64);
+                            samples[i * 3] = p[0];
+                            samples[i * 3 + 1] = p[1];
+                            samples[i * 3 + 2] = p[2];
+                        }
+                        make_traced_curve(
+                            curve_id,
+                            [s_a, s_b],
+                            samples,
+                            false,
+                            strata[s_a - first_id],
+                            strata[s_b - first_id],
+                            traced_native_refine(),
+                            -1,
+                        )
+                    };
+                    curve.native = true;
+                    curve.corner_start = bottom_corner_ids[j] as i64;
+                    curve.corner_end = top_corner_ids[j] as i64;
+                    corners[bottom_corner_ids[j]].curve_ends.push((curve_id, 0));
+                    corners[top_corner_ids[j]].curve_ends.push((curve_id, 1));
+                    curves.push(curve);
+                }
+                // Cap rim segments (flat caps → straight rims, rotated by the cap angle).
+                for i in 0..n {
+                    let j2 = (i + 1) % n;
+                    for &(cap, y_loc, top) in &[(cap_bottom, -h, false), (cap_top, h, true)] {
+                        let curve_id = curves.len();
+                        let a = vertex_at(i, y_loc);
+                        let b = vertex_at(j2, y_loc);
+                        let mut rim =
+                            make_segment_curve(curve_id, -1, [side_id(i as i64), cap], a[0], a[1], a[2], b[0], b[1], b[2]);
+                        rim.native = true;
+                        let ids = if top { &top_corner_ids } else { &bottom_corner_ids };
+                        rim.corner_start = ids[i] as i64;
+                        rim.corner_end = ids[j2] as i64;
+                        corners[ids[i]].curve_ends.push((curve_id, 0));
+                        corners[ids[j2]].curve_ends.push((curve_id, 1));
+                        curves.push(rim);
+                    }
+                }
+                all_strata.extend(strata);
+            }
+            Shape::Loft { profs, winds, h } => {
+                let h = *h;
+                let profs = profs.clone();
+                let winds = winds.clone();
+                let strata = build_loft_strata(leaf, leaf_index, first_id, &profs, &winds, h);
+                track_leaf_diag(leaf, &mut diag);
+                emit_loft_features(leaf, first_id, &profs, &winds, h, &strata, &mut curves, &mut corners);
+                all_strata.extend(strata);
+            }
         }
     }
 

@@ -17,6 +17,7 @@
 //! vertex pool. DEFERRED: face-contour (M3b), cell-mesh + assemble (M3c),
 //! feature classification / curves / corners (M4).
 
+pub mod face_contour;
 pub mod octree;
 pub mod point_table;
 pub mod refine_criteria;

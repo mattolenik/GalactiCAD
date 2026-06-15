@@ -1,6 +1,8 @@
 /target
 # wasm-pack / wasm-bindgen JS output
 pkg/
+# M6 threaded build (--features threads, -Zbuild-std); separate from the default pkg/
+pkg-threads/
 *.rs.bk
 # TS-oracle parity fixtures — rebuilt via `make gcad-fixtures` (see fixtures/dump.mts)
 fixtures/*.bin

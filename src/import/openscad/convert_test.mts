@@ -39,6 +39,12 @@ test("scalar rotate spins about Z", () => {
     assert.match(dslOf("rotate(45) cube(1);"), /rotate\(\[0, 0, 45\], /)
 })
 
+test("rotate Euler angles pass through unchanged (gcad shares OpenSCAD's convention)", () => {
+    // gcad's rotate matches OpenSCAD's (Rz·Ry·Rx); verified numerically + via the oracle's Z-up
+    // baseline. So a multi-axis rotate imports verbatim — no Euler re-mapping.
+    assert.match(dslOf("rotate([30,40,50]) cube([24,6,2], center=true);"), /rotate\(\[30, 40, 50\], box/)
+})
+
 test("difference → subtract(base, ...cutters)", () => {
     assert.match(dslOf("difference(){ cube(10, center=true); sphere(6); }"), /subtract\(box\(\[5, 5, 5\]\), sphere\.radius\(6\)\)/)
 })

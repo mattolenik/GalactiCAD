@@ -201,6 +201,9 @@ function evalModule(stmt: ModuleInstantiationStmt, scope: Scope, ctx: Ctx): Geom
                 ctx.diag.warn("rotate: axis-angle form (a, v) not yet supported", line, col)
                 return EMPTY
             }
+            // gcad's rotate uses the SAME convention as OpenSCAD (verified numerically + via the
+            // image oracle's Z-up baseline: gcad's SDF rotates by inv-row-major = Rz·Ry·Rx = M,
+            // matching OpenSCAD). So pass the Euler triple through unchanged.
             return wrap({ kind: "rotate", arg: euler ?? [0, 0, 0], child: EMPTY }, evalChildren(stmt, scope, ctx))
         }
         case "scale": {

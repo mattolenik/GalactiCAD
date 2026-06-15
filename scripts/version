@@ -4,14 +4,32 @@
 #
 set -euo pipefail
 
-hash="$(git describe --always --dirty)"
-tag="$(git tag -l --points-at "${hash%-dirty}")"
-if [[ -n $tag ]]; then
-    if [[ $hash == *"-dirty" ]]; then
-        echo "$tag-dirty"
+function version() {
+    hash="$(git describe --always --dirty)"
+    tag="$(git tag -l --points-at "${hash%-dirty}")"
+    if [[ -n $tag ]]; then
+        if [[ $hash == *"-dirty" ]]; then
+            echo "$tag-dirty"
+        else
+            echo "$tag"
+        fi
     else
-        echo "$tag"
+        echo "v0.0.0-$hash"
     fi
-else
-    echo "v0.0.0-$hash"
+}
+
+function is_releaseable() {
+    ver="$(version)"
+    if [[ $ver == *"-dirty" ]] || \
+    [[ $ver != "v"* ]] || \
+    [[ $ver == "v0.0.0"* ]]; then
+        exit 1
+    fi
+    exit 0
+}
+
+if [[ $1 == "--is-releaseable" ]]; then
+    is_releaseable
 fi
+
+version

@@ -3,11 +3,15 @@ name = "gcad-kernel"
 version.workspace = true
 edition.workspace = true
 
-# No external dependencies: the kernel stays native-buildable and offline-testable
-# so the TypeScript SFCC implementation can serve as a correctness oracle.
+# The pure-geometry kernel stays dependency-free by default (native-buildable,
+# offline-testable) so the TypeScript SFCC implementation is the correctness
+# oracle. The optional `serde` feature adds ONLY scene-bridge JSON ingestion
+# (M5 boundary input); it is off by default, so the parity suite and the geometry
+# core remain dep-free. serde/serde_json both build clean on wasm32.
 [dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
 
-# Added when porting begins:
-# [dev-dependencies]
-# proptest = "1"   # property tests for mesh invariants (χ, manifold, watertight)
-# insta = "1"      # snapshot tests for canonical mesh signatures
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json"]

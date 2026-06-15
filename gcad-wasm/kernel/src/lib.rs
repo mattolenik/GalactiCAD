@@ -11,6 +11,7 @@ pub mod math;
 pub mod parity;
 pub mod primitives;
 pub mod scene;
+pub mod scene_bridge;
 pub mod sdf;
 pub mod sfcc;
 pub mod strata;

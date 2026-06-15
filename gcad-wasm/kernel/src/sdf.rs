@@ -188,6 +188,35 @@ fn blend_value_of(kind: BlendKind, mode: SminMode, r: f64, n: f64, ds: &[f64]) -
     sgn * smin(mode, va, vb, r, n)
 }
 
+/// Interval enclosure of a blend node over its children's intervals (`los`/`his`).
+/// Factored out so both [`CsgNode::interval_over_ball`] and the Lever-1
+/// [`Pruned`] view share ONE implementation — the pruned interval cannot drift
+/// from the full tree's.
+fn blend_interval(kind: BlendKind, mode: SminMode, br: f64, n: f64, los: &[f64], his: &[f64]) -> (f64, f64) {
+    if mode == SminMode::Columns || mode == SminMode::ColumnsI {
+        let sgn = if kind == BlendKind::Smax { -1.0 } else { 1.0 };
+        let t_los: Vec<f64> = los.iter().enumerate().map(|(i, &lo)| if sgn == 1.0 { lo } else { -his[i] }).collect();
+        let t_his: Vec<f64> = his.iter().enumerate().map(|(i, &hi)| if sgn == 1.0 { hi } else { -los[i] }).collect();
+        let (ulo, uhi) = if los.len() == 2 {
+            let iv = smin_columns_interval(mode, t_los[0], t_his[0], t_los[1], t_his[1], br, n);
+            (iv[0], iv[1])
+        } else {
+            let t_lo = t_los.iter().cloned().fold(f64::INFINITY, f64::min);
+            let cr = (br * SQRT_2) / ((n - 1.0) * 2.0 + SQRT_2);
+            let ulo = t_lo.min(SQRT_2 * t_lo.min(0.0) - FRAC_1_SQRT_2 * br).min(-cr);
+            let uhi = t_his.iter().cloned().fold(f64::INFINITY, f64::min);
+            (ulo, uhi)
+        };
+        if sgn == 1.0 {
+            (ulo, uhi)
+        } else {
+            (-uhi, -ulo)
+        }
+    } else {
+        (blend_value_of(kind, mode, br, n, los), blend_value_of(kind, mode, br, n, his))
+    }
+}
+
 impl CsgNode {
     /// Signed field of the full tree (negative inside, f = 0 ⟺ surface).
     pub fn f(&self, p: [f64; 3]) -> f64 {
@@ -313,33 +342,7 @@ impl CsgNode {
                     los.push(clo);
                     his.push(chi);
                 }
-                if *mode == SminMode::Columns || *mode == SminMode::ColumnsI {
-                    let sgn = if *kind == BlendKind::Smax { -1.0 } else { 1.0 };
-                    let t_los: Vec<f64> =
-                        los.iter().enumerate().map(|(i, &lo)| if sgn == 1.0 { lo } else { -his[i] }).collect();
-                    let t_his: Vec<f64> =
-                        his.iter().enumerate().map(|(i, &hi)| if sgn == 1.0 { hi } else { -los[i] }).collect();
-                    let (ulo, uhi) = if children.len() == 2 {
-                        let iv = smin_columns_interval(*mode, t_los[0], t_his[0], t_los[1], t_his[1], *br, *n);
-                        (iv[0], iv[1])
-                    } else {
-                        let t_lo = t_los.iter().cloned().fold(f64::INFINITY, f64::min);
-                        let cr = (*br * SQRT_2) / ((*n - 1.0) * 2.0 + SQRT_2);
-                        let ulo = t_lo.min(SQRT_2 * t_lo.min(0.0) - FRAC_1_SQRT_2 * *br).min(-cr);
-                        let uhi = t_his.iter().cloned().fold(f64::INFINITY, f64::min);
-                        (ulo, uhi)
-                    };
-                    if sgn == 1.0 {
-                        (ulo, uhi)
-                    } else {
-                        (-uhi, -ulo)
-                    }
-                } else {
-                    (
-                        blend_value_of(*kind, *mode, *br, *n, &los),
-                        blend_value_of(*kind, *mode, *br, *n, &his),
-                    )
-                }
+                blend_interval(*kind, *mode, *br, *n, &los, &his)
             }
         }
     }
@@ -452,6 +455,198 @@ impl CsgNode {
                 for c in children.iter_mut() {
                     c.assign_leaf_indices_from(next);
                 }
+            }
+        }
+    }
+
+    /// Number of leaves in the (sub)tree. Used to gate Lever-1 pruning (small
+    /// trees skip it — the prune build can't be amortized).
+    pub fn leaf_count(&self) -> usize {
+        match self {
+            CsgNode::Leaf(_) => 1,
+            CsgNode::Min(ch) | CsgNode::Max(ch) => ch.iter().map(|c| c.leaf_count()).sum(),
+            CsgNode::Blend { children, .. } => children.iter().map(|c| c.leaf_count()).sum(),
+        }
+    }
+
+    /// Lever 1: a region-pruned [`Pruned`] view valid over the ball circumscribing
+    /// the box (center `c`, half-extents `half`) — structurally reduced to the
+    /// leaves/subtrees that can affect `f`/interval there, with EXACT `f` (for any
+    /// point in the ball) and EXACT interval (for that ball) vs the full tree.
+    /// Pure work-elimination, no precision change. Build once per region, reuse
+    /// across that region's many evals (root-finding, certificates).
+    pub fn prune_to_box(&self, c: [f64; 3], half: [f64; 3]) -> Pruned<'_> {
+        Pruned::wrap(self).prune_to_box(c, half)
+    }
+}
+
+/// A borrowed, region-pruned view of a [`CsgNode`] (Lever 1). Reports `f` and
+/// interval BIT-EXACT to the full tree for points within the prune ball, so any
+/// computation it feeds is unchanged. Cull rules (each interval-/f-exact because
+/// `interval_over_ball` is a certified enclosure — `f_k(p) ≤ hi_k`, `f_j(p) ≥ lo_j`
+/// for all `p` in the ball):
+///  - Min: drop child j when some sibling k has `hi_k < lo_j` (strictly smaller
+///    over the whole ball → j is never the min; the argmin-lo/argmin-hi survive).
+///  - Max: symmetric (`lo_k > hi_j`).
+///  - Blend: drop j only when ≥2 siblings strictly dominate it (`hi_k < lo_j`) —
+///    a child outside the smallest two can never enter the nearest-pair fold.
+///    Binary blends (the common case) are therefore never pruned.
+pub enum Pruned<'a> {
+    Leaf(&'a Leaf),
+    Min(Vec<Pruned<'a>>),
+    Max(Vec<Pruned<'a>>),
+    Blend { kind: BlendKind, mode: SminMode, r: f64, n: f64, children: Vec<Pruned<'a>> },
+}
+
+impl<'a> Pruned<'a> {
+    /// Wrap a full tree with no culling.
+    fn wrap(node: &'a CsgNode) -> Pruned<'a> {
+        match node {
+            CsgNode::Leaf(l) => Pruned::Leaf(l),
+            CsgNode::Min(ch) => Pruned::Min(ch.iter().map(Pruned::wrap).collect()),
+            CsgNode::Max(ch) => Pruned::Max(ch.iter().map(Pruned::wrap).collect()),
+            CsgNode::Blend { kind, mode, r, n, children } => Pruned::Blend {
+                kind: *kind,
+                mode: *mode,
+                r: *r,
+                n: *n,
+                children: children.iter().map(Pruned::wrap).collect(),
+            },
+        }
+    }
+
+    pub fn leaf_count(&self) -> usize {
+        match self {
+            Pruned::Leaf(_) => 1,
+            Pruned::Min(ch) | Pruned::Max(ch) => ch.iter().map(|c| c.leaf_count()).sum(),
+            Pruned::Blend { children, .. } => children.iter().map(|c| c.leaf_count()).sum(),
+        }
+    }
+
+    /// Signed field — same fold as [`CsgNode::f`], over the pruned children.
+    pub fn f(&self, p: [f64; 3]) -> f64 {
+        match self {
+            Pruned::Leaf(l) => l.f(p),
+            Pruned::Min(ch) => ch.iter().map(|c| c.f(p)).fold(f64::INFINITY, f64::min),
+            Pruned::Max(ch) => ch.iter().map(|c| c.f(p)).fold(f64::NEG_INFINITY, f64::max),
+            Pruned::Blend { kind, mode, r, n, children } => {
+                let sgn = if *kind == BlendKind::Smax { -1.0 } else { 1.0 };
+                let (mut va, mut vb) = (f64::INFINITY, f64::INFINITY);
+                if children.len() == 2 {
+                    va = sgn * children[0].f(p);
+                    vb = sgn * children[1].f(p);
+                } else {
+                    for c in children {
+                        let v = sgn * c.f(p);
+                        if v < va {
+                            vb = va;
+                            va = v;
+                        } else if v < vb {
+                            vb = v;
+                        }
+                    }
+                }
+                sgn * smin(*mode, va, vb, *r, *n)
+            }
+        }
+    }
+
+    /// Interval enclosure over the ball — same formula as
+    /// [`CsgNode::interval_over_ball`], over the pruned children.
+    pub fn interval_over_ball(&self, c: [f64; 3], r: f64) -> (f64, f64) {
+        match self {
+            Pruned::Leaf(l) => {
+                let fc = l.f(c);
+                let lip = l.local_lipschitz(c, r).unwrap_or(1.0);
+                (fc - lip * r, fc + lip * r)
+            }
+            Pruned::Min(ch) => {
+                let (mut lo, mut hi) = (f64::INFINITY, f64::INFINITY);
+                for x in ch {
+                    let (clo, chi) = x.interval_over_ball(c, r);
+                    lo = lo.min(clo);
+                    hi = hi.min(chi);
+                }
+                (lo, hi)
+            }
+            Pruned::Max(ch) => {
+                let (mut lo, mut hi) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+                for x in ch {
+                    let (clo, chi) = x.interval_over_ball(c, r);
+                    lo = lo.max(clo);
+                    hi = hi.max(chi);
+                }
+                (lo, hi)
+            }
+            Pruned::Blend { kind, mode, r: br, n, children } => {
+                let mut los = Vec::with_capacity(children.len());
+                let mut his = Vec::with_capacity(children.len());
+                for x in children {
+                    let (clo, chi) = x.interval_over_ball(c, r);
+                    los.push(clo);
+                    his.push(chi);
+                }
+                blend_interval(*kind, *mode, *br, *n, &los, &his)
+            }
+        }
+    }
+
+    pub fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
+        self.interval_over_ball(c, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt())
+    }
+
+    /// Refine to a (sub-)box, dropping children that cannot affect `f`/interval
+    /// over the box's circumscribing ball.
+    pub fn prune_to_box(&self, c: [f64; 3], half: [f64; 3]) -> Pruned<'a> {
+        self.prune_to_ball(c, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt())
+    }
+
+    fn prune_to_ball(&self, c: [f64; 3], r: f64) -> Pruned<'a> {
+        match self {
+            Pruned::Leaf(l) => Pruned::Leaf(l),
+            Pruned::Min(ch) => {
+                let iv: Vec<(f64, f64)> = ch.iter().map(|x| x.interval_over_ball(c, r)).collect();
+                let kept: Vec<Pruned<'a>> = ch
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| !iv.iter().enumerate().any(|(k, &(_, hk))| k != *j && hk < iv[*j].0))
+                    .map(|(_, x)| x.prune_to_ball(c, r))
+                    .collect();
+                // The argmin can never be dropped (strict rule), so `kept` is
+                // non-empty; the fallback is pure defense against FP ties.
+                Pruned::Min(if kept.is_empty() { ch.iter().map(|x| x.prune_to_ball(c, r)).collect() } else { kept })
+            }
+            Pruned::Max(ch) => {
+                let iv: Vec<(f64, f64)> = ch.iter().map(|x| x.interval_over_ball(c, r)).collect();
+                let kept: Vec<Pruned<'a>> = ch
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| !iv.iter().enumerate().any(|(k, &(lk, _))| k != *j && lk > iv[*j].1))
+                    .map(|(_, x)| x.prune_to_ball(c, r))
+                    .collect();
+                Pruned::Max(if kept.is_empty() { ch.iter().map(|x| x.prune_to_ball(c, r)).collect() } else { kept })
+            }
+            Pruned::Blend { kind, mode, r: br, n, children } => {
+                let iv: Vec<(f64, f64)> = children.iter().map(|x| x.interval_over_ball(c, r)).collect();
+                let kept: Vec<Pruned<'a>> = children
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| {
+                        // A child outside the smallest two can never enter the
+                        // nearest-pair fold (≥2 siblings strictly dominate it).
+                        iv.iter().enumerate().filter(|(k, &(_, hk))| *k != *j && hk < iv[*j].0).count() < 2
+                    })
+                    .map(|(_, x)| x.prune_to_ball(c, r))
+                    .collect();
+                // `blend_interval`/`blend_value_of` pick DIFFERENT (and, for
+                // columns/stairs, order-sensitive) formulas for exactly 2 children
+                // vs >2. Pruning must not flip that branch, so floor the kept count
+                // at min(orig, 3): the dropped children are non-extremal, so adding
+                // any back is still exact, and the >2 path stays the >2 path.
+                let min_keep = children.len().min(3);
+                let children =
+                    if kept.len() < min_keep { children.iter().map(|x| x.prune_to_ball(c, r)).collect() } else { kept };
+                Pruned::Blend { kind: *kind, mode: *mode, r: *br, n: *n, children }
             }
         }
     }

@@ -12,7 +12,7 @@ export TSC   ?= node_modules/.bin/tsc
 BUILD        := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 BROWSERS_CLI := npx @puppeteer/browsers
 BROWSERS_DIR := .browsers
-VERSION      := $(shell scripts/version)
+VERSION       = $(shell scripts/version)
 
 ifeq ($(AGENT),true)
 export RUN_FILE := .devserver.agent.run

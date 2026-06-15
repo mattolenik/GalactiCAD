@@ -28,7 +28,7 @@ function is_releaseable() {
     exit 0
 }
 
-if [[ $1 == "--is-releaseable" ]]; then
+if [[ ${1:-} == "--is-releaseable" ]]; then
     is_releaseable
 fi
 

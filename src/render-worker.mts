@@ -9,6 +9,25 @@ import { RenderWorkerCore } from "./render-worker-core.mjs"
 
 installWorkerDevLogBridge("render-worker")
 
+// M6b: nested-worker rayon smoke. Opt-in via `?sfccThreads=…` forwarded onto the
+// worker URL by the main thread (src/sdf.mts). It loads the THREADED pkg-threads/
+// artifact, spins up the rayon pool from INSIDE this worker, and runs par_smoke —
+// proving the day-1 nested-worker risk is retired. The default render path (flag
+// off) never touches this; the threaded artifact is only imported here.
+function maybeRunThreadsSmoke(): void {
+    let flag = false
+    try {
+        flag = new URL(self.location.href).searchParams.has("sfccThreads")
+    } catch {
+        /* no location (non-browser host) — skip. */
+    }
+    if (!flag) return
+    void import("./export/sfcc-rs/threads-smoke.mjs")
+        .then(({ runThreadsSmoke }) => runThreadsSmoke())
+        .catch(e => log("SfccThreads").error("smoke import failed", e instanceof Error ? e.message : String(e)))
+}
+maybeRunThreadsSmoke()
+
 let core: RenderWorkerCore | null = null
 let sharedBuffer: SharedArrayBuffer | null = null
 let lastRenderedVersion = 0

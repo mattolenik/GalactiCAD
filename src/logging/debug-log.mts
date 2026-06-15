@@ -32,6 +32,7 @@ export const DEBUG_LOG_MODULES = [
     "IsoSimplicialExport",
     "ShrecExport",
     "FlexiCubesExport",
+    "SfccThreads",
     "Simplify",
     "Settings",
     "Sdf",

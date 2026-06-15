@@ -1168,8 +1168,13 @@ function createHttpServer(
             let data = await fs.readFile(file)
             res.writeHead(200, {
                 "content-type": contentType[path.extname(file)] || defaultContentType,
+                // Cross-origin isolation → crossOriginIsolated === true →
+                // SharedArrayBuffer + wasm atomics (rayon thread pool, M6b).
                 "Cross-Origin-Opener-Policy": "same-origin",
-                "Cross-Origin-Embedder-Policy": "credentialless",
+                "Cross-Origin-Embedder-Policy": "require-corp",
+                // Same-origin assets are exempt; this lets any cross-origin
+                // sub-resource that opts in load under require-corp.
+                "Cross-Origin-Resource-Policy": "cross-origin",
             })
             if (path.extname(file) === ".html") {
                 let doc = data.toString()
@@ -1188,7 +1193,8 @@ function createHttpServer(
                 res.writeHead(404, {
                     "content-type": "text/plain",
                     "Cross-Origin-Opener-Policy": "same-origin",
-                    "Cross-Origin-Embedder-Policy": "credentialless",
+                    "Cross-Origin-Embedder-Policy": "require-corp",
+                    "Cross-Origin-Resource-Policy": "cross-origin",
                 })
                 res.end(`404 not found: ${pathname}`)
             } else {
@@ -1196,7 +1202,8 @@ function createHttpServer(
                 res.writeHead(500, {
                     "content-type": "text/plain",
                     "Cross-Origin-Opener-Policy": "same-origin",
-                    "Cross-Origin-Embedder-Policy": "credentialless",
+                    "Cross-Origin-Embedder-Policy": "require-corp",
+                    "Cross-Origin-Resource-Policy": "cross-origin",
                 })
                 res.end("500 unknown server error")
             }

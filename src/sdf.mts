@@ -275,6 +275,16 @@ export class SDFRenderer {
         })
 
         const workerUrl = new URL("./render-worker.js", import.meta.url)
+        // M6b: forward the `sfccThreads` flag from the page URL onto the worker URL
+        // so the render worker runs the nested-worker rayon smoke at startup. Inert
+        // unless the flag is present; the default render path is unaffected.
+        try {
+            if (typeof location !== "undefined" && new URLSearchParams(location.search).has("sfccThreads")) {
+                workerUrl.searchParams.set("sfccThreads", "1")
+            }
+        } catch {
+            /* no location — leave the worker URL untouched. */
+        }
         this.#worker = new Worker(workerUrl, { type: "module" })
         this.#worker.onmessage = (e: MessageEvent<WorkerToMainMessage>) => this.#handleWorkerMessage(e.data)
 

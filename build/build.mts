@@ -2,6 +2,7 @@ import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
 import fs from "fs/promises"
+import fsSync from "node:fs"
 import nodePath from "node:path"
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
@@ -46,6 +47,68 @@ const Static = {
 //   ./dist/release  — electron-builder packaged installers/archives
 const DIST_ROOT = "./dist"
 
+/**
+ * M6b threaded SFCC (rayon-in-wasm): wasm-bindgen-rayon's pool workers self-spawn
+ * via `new Worker(new URL("./workerHelpers.js", import.meta.url))`. esbuild inlines
+ * that snippet into the render-worker bundle but leaves the URL literal, so the
+ * standalone worker file must ALSO be emitted at the SITE ROOT (where the
+ * `import.meta.url`-relative resolution from `/render-worker.js` finds it).
+ *
+ * Built ONLY by `make gcad-wasm-threads` (opt-in nightly path) → `pkg-threads/`;
+ * the snippet dir carries a content hash, so glob for it. When `pkg-threads/` is
+ * absent (the default single-thread build) this returns null and nothing is
+ * emitted — the non-threaded output stays byte-identical. It's bundled in a
+ * SEPARATE esbuild call (not the main `entryPoints`) so the main build's outbase
+ * (and thus every other worker's output path) is untouched.
+ */
+function rayonWorkerHelpersEntry(): string | null {
+    const snippetsRoot = "./gcad-wasm/wasm/pkg-threads/snippets"
+    try {
+        for (const d of fsSync.readdirSync(snippetsRoot)) {
+            const helper = nodePath.join(snippetsRoot, d, "src", "workerHelpers.js")
+            if (fsSync.existsSync(helper)) return helper
+        }
+    } catch {
+        /* pkg-threads/ not built — single-thread default path only. */
+    }
+    return null
+}
+
+const PKG_THREADS_GLUE = "./gcad-wasm/wasm/pkg-threads/gcad_wasm.js"
+
+/**
+ * M6b: the threaded SFCC loader (`wasm-loader-threads.mts`) statically imports the
+ * `pkg-threads/` artifact, which only exists after the opt-in `make gcad-wasm-threads`
+ * nightly build. When it's ABSENT (a normal checkout / `make gcad-wasm`), esbuild
+ * can't resolve those imports and the WHOLE build fails — even though nothing on the
+ * default path runs the threaded code. This plugin redirects `wasm-loader-threads.mts`
+ * to a runtime-throwing stub when `pkg-threads/` is missing, so the default build is
+ * unaffected and the `?sfccThreads` flag path fails with a clear "build pkg-threads"
+ * error instead of a hard build break.
+ */
+function threadedLoaderStubPlugin(): esbuild.Plugin {
+    return {
+        name: "sfcc-threads-loader-stub",
+        setup(build) {
+            const haveThreads = fsSync.existsSync(PKG_THREADS_GLUE)
+            if (haveThreads) return // pkg-threads/ present → resolve the real loader normally.
+            build.onResolve({ filter: /wasm-loader-threads(\.mjs|\.mts)?$/ }, args => ({
+                path: args.path,
+                namespace: "sfcc-threads-stub",
+            }))
+            build.onLoad({ filter: /.*/, namespace: "sfcc-threads-stub" }, () => ({
+                contents:
+                    "const MSG = 'gcad-wasm threaded artifact (pkg-threads/) not built — run `make gcad-wasm-threads`';\n" +
+                    "export async function ensureThreadedWasmReady() { throw new Error(MSG) }\n" +
+                    "export function par_smoke() { throw new Error(MSG) }\n" +
+                    "export async function initThreadPool() { throw new Error(MSG) }\n" +
+                    "export function version() { throw new Error(MSG) }\n",
+                loader: "js",
+            }))
+        },
+    }
+}
+
 const Options = {
     entryPoints: [
         "./src/app.mts",
@@ -56,6 +119,7 @@ const Options = {
         "./src/export/iso-simplicial/iso-qef-worker.mts",
     ],
     plugins: [
+        threadedLoaderStubPlugin(),
         await wgslLoader(),
         await versionPlugin(),
         await fileListerPlugin(),
@@ -141,33 +205,49 @@ async function checkRunFile(): Promise<boolean> {
     }
 }
 
+const SharedEsbuildOptions = {
+    bundle: true,
+    minify: IS_PROD,
+    platform: "browser",
+    format: "esm",
+    mainFields: ["browser", "module", "main"],
+    assetNames: "assets/[name]-[hash]",
+    loader: {
+        ".css": "css",
+        ".ttf": "file",
+        ".woff": "file",
+        ".woff2": "file",
+        ".gcad": "text",
+        ".svg": "text",
+        // gcad-wasm SFCC kernel binary (sfcc-rs exporter): emit as a
+        // hashed asset; the import yields the served URL passed to init.
+        ".wasm": "file",
+    },
+    sourcemap: !IS_PROD,
+    target: "es2024",
+} as const satisfies Partial<esbuild.BuildOptions>
+
 async function build() {
     const startTime = performance.now()
     try {
         const results = await esbuild.build({
-            bundle: true,
+            ...SharedEsbuildOptions,
             entryPoints: Options.entryPoints,
-            minify: Options.isProd,
             outdir: Options.outDir,
-            platform: "browser",
-            format: "esm",
-            mainFields: ["browser", "module", "main"],
-            assetNames: "assets/[name]-[hash]",
-            loader: {
-                ".css": "css",
-                ".ttf": "file",
-                ".woff": "file",
-                ".woff2": "file",
-                ".gcad": "text",
-                ".svg": "text",
-                // gcad-wasm SFCC kernel binary (sfcc-rs exporter): emit as a
-                // hashed asset; the import yields the served URL passed to init.
-                ".wasm": "file",
-            },
             plugins: Options.plugins,
-            sourcemap: !Options.isProd,
-            target: "es2024",
         })
+        // M6b threaded SFCC: emit the rayon pool-worker self-spawn target
+        // (`workerHelpers.js`) at the site root in its own build call so the main
+        // build's outbase — and every other worker's output path — is untouched.
+        // No-op (and zero overhead) unless `pkg-threads/` has been built.
+        const rayonHelper = rayonWorkerHelpersEntry()
+        if (rayonHelper) {
+            await esbuild.build({
+                ...SharedEsbuildOptions,
+                entryPoints: { workerHelpers: rayonHelper },
+                outdir: Options.outDir,
+            })
+        }
         const elapsed = performance.now() - startTime
         log(`🌱🐢 ${elapsed.toFixed(2)}ms`)
         return results.errors.length === 0

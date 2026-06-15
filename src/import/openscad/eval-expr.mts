@@ -12,13 +12,20 @@
 import { type Args, parseArgs } from "./args.mjs"
 import type { Ctx } from "./context.mjs"
 import {
+    ArrayLookupExpr,
     type AssignmentNode,
     BinaryOpExpr,
     type Expression,
     FunctionCallExpr,
     GroupingExpr,
+    LcEachExpr,
+    LcForCExpr,
+    LcForExpr,
+    LcIfExpr,
+    LcLetExpr,
     LiteralExpr,
     LookupExpr,
+    MemberLookupExpr,
     RangeExpr,
     TernaryExpr,
     TokenType,
@@ -26,7 +33,7 @@ import {
     VectorExpr,
 } from "./parser-imports.mjs"
 import { Scope } from "./scope.mjs"
-import { asNumber, type Value, truthy, UNDEF, vec } from "./values.mjs"
+import { asNumber, rangeToNumbers, type Value, truthy, UNDEF, vec } from "./values.mjs"
 
 function loc(node: { span: { start: { line: number; col: number } } }): [number, number] {
     return [node.span.start.line + 1, node.span.start.col + 1]
@@ -116,7 +123,8 @@ export function evalExpr(expr: Expression, scope: Scope, ctx: Ctx): Value {
         return UNDEF // null === OpenSCAD undef
     }
     if (expr instanceof VectorExpr) {
-        return vec(expr.children.map(c => evalExpr(c, scope, ctx)))
+        // Children may be plain elements or list-comprehension nodes that expand to 0..n elements.
+        return vec(expr.children.flatMap(c => compElements(c, scope, ctx)))
     }
     if (expr instanceof RangeExpr) {
         const start = asNumber(evalExpr(expr.begin, scope, ctx)) ?? 0
@@ -133,6 +141,20 @@ export function evalExpr(expr: Expression, scope: Scope, ctx: Ctx): Value {
     }
     if (expr instanceof GroupingExpr) {
         return evalExpr(expr.inner, scope, ctx)
+    }
+    if (expr instanceof MemberLookupExpr) {
+        const base = evalExpr(expr.expr, scope, ctx)
+        const idx = MEMBER_INDEX[expr.member]
+        if (base.t === "vec" && idx !== undefined && idx < base.v.length) return base.v[idx]!
+        return UNDEF
+    }
+    if (expr instanceof ArrayLookupExpr) {
+        const base = evalExpr(expr.array, scope, ctx)
+        const i = asNumber(evalExpr(expr.index, scope, ctx))
+        if (i === undefined || !Number.isInteger(i) || i < 0) return UNDEF
+        if (base.t === "vec") return i < base.v.length ? base.v[i]! : UNDEF
+        if (base.t === "str") return i < base.v.length ? { t: "str", v: base.v[i]! } : UNDEF
+        return UNDEF
     }
     if (expr instanceof UnaryOpExpr) {
         const r = evalExpr(expr.right, scope, ctx)
@@ -374,6 +396,66 @@ function valueEquals(a: Value, b: Value): boolean {
     if (a.t === "vec" && b.t === "vec") return a.v.length === b.v.length && a.v.every((e, i) => valueEquals(e, b.v[i]!))
     if (a.t === "undef" && b.t === "undef") return true
     return false
+}
+
+const MEMBER_INDEX: Record<string, number> = { x: 0, y: 1, z: 2 }
+
+/** Iterate a range or list value into its elements (for `for` / list comprehensions). */
+function iterItems(v: Value): Value[] {
+    if (v.t === "range") return rangeToNumbers(v).map(n => ({ t: "num", v: n }))
+    if (v.t === "vec") return v.v
+    return []
+}
+
+/**
+ * Expand one vector-literal child into 0..n elements: a plain expression yields a single value;
+ * list-comprehension nodes (for / each / if / let / C-for) expand. See implementation plan §3.5.
+ */
+function compElements(expr: Expression, scope: Scope, ctx: Ctx): Value[] {
+    if (expr instanceof LcForExpr) return lcFor(expr.args, expr.expr, scope, ctx, 0)
+    if (expr instanceof LcEachExpr) {
+        const v = evalExpr(expr.expr, scope, ctx)
+        return v.t === "vec" ? v.v : v.t === "range" ? iterItems(v) : v.t === "undef" ? [] : [v]
+    }
+    if (expr instanceof LcIfExpr) {
+        if (truthy(evalExpr(expr.cond, scope, ctx))) return compElements(expr.ifExpr, scope, ctx)
+        return expr.elseExpr ? compElements(expr.elseExpr, scope, ctx) : []
+    }
+    if (expr instanceof LcLetExpr) {
+        const inner = scope.child()
+        for (const a of expr.args) if (a.value) inner.set(a.name, evalExpr(a.value, inner, ctx))
+        return compElements(expr.expr, inner, ctx)
+    }
+    if (expr instanceof LcForCExpr) return lcForC(expr, scope, ctx)
+    return [evalExpr(expr, scope, ctx)]
+}
+
+/** `for (a=.., b=..) body` — cartesian over the bindings, accumulating the body's elements. */
+function lcFor(args: AssignmentNode[], body: Expression, scope: Scope, ctx: Ctx, i: number): Value[] {
+    if (i >= args.length) return compElements(body, scope, ctx)
+    const a = args[i]
+    if (!a?.value) return []
+    const out: Value[] = []
+    for (const item of iterItems(evalExpr(a.value, scope, ctx))) {
+        const inner = scope.child()
+        inner.set(a.name, item)
+        out.push(...lcFor(args, body, inner, ctx, i + 1))
+    }
+    return out
+}
+
+/** C-style `for (init; cond; incr) body`, iteration-capped against runaway loops. */
+function lcForC(node: LcForCExpr, scope: Scope, ctx: Ctx): Value[] {
+    const sc = scope.child()
+    for (const a of node.args) if (a.value) sc.set(a.name, evalExpr(a.value, sc, ctx))
+    const out: Value[] = []
+    let guard = 0
+    while (truthy(evalExpr(node.cond, sc, ctx))) {
+        if (guard++ > 1_000_000) break
+        out.push(...compElements(node.expr, sc, ctx))
+        for (const a of node.incrArgs) if (a.value) sc.set(a.name, evalExpr(a.value, sc, ctx))
+    }
+    return out
 }
 
 // Re-export for callers that only want the shared Args type alongside bindArgs.

@@ -21,12 +21,19 @@ import TokenTypeDefault from "openscad-parser/dist/TokenType.js"
 import AssignmentNodeDefault from "openscad-parser/dist/ast/AssignmentNode.js"
 
 export {
+    ArrayLookupExpr,
     BinaryOpExpr,
     type Expression,
     FunctionCallExpr,
     GroupingExpr,
+    LcEachExpr,
+    LcForCExpr,
+    LcForExpr,
+    LcIfExpr,
+    LcLetExpr,
     LiteralExpr,
     LookupExpr,
+    MemberLookupExpr,
     RangeExpr,
     TernaryExpr,
     UnaryOpExpr,

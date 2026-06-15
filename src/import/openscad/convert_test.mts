@@ -198,3 +198,40 @@ test("expr: undef propagates through arithmetic without a diagnostic", () => {
     assert.equal(diagnostics.length, 0, JSON.stringify(diagnostics))
     assert.match(dsl, /sphere\.radius\(9\)/)
 })
+
+test("expr: member lookup (.x/.y/.z)", () => {
+    assert.match(dslOf("v=[1,2,3]; translate([v.x, v.y, v.z]) sphere(1);"), /translate\(\[1, 2, 3\], sphere\.radius\(1\)\)/)
+})
+
+test("expr: array index v[i]", () => {
+    assert.match(dslOf("v=[5,6,7]; sphere(v[1]);"), /sphere\.radius\(6\)/)
+})
+
+test("expr: out-of-range index is undef, graceful (no diagnostic)", () => {
+    const { dsl, diagnostics } = convertOpenScadToGcad("v=[1,2]; sphere(v[5]);")
+    assert.equal(diagnostics.length, 0, JSON.stringify(diagnostics))
+    assert.match(dsl, /sphere\.radius\(1\)/) // undef radius falls back to default 1
+})
+
+test("comprehension: for builds a list consumed by a statement-level for", () => {
+    const dsl = dslOf("for (x = [for (i=[0:3]) i*2]) translate([x,0,0]) cube(1);")
+    assert.equal((dsl.match(/box\(/g) ?? []).length, 4)
+    assert.match(dsl, /translate\(\[6, 0, 0\]/)
+})
+
+test("comprehension: each spreads a sublist", () => {
+    assert.match(dslOf("v = [each [1,2,3], 4]; sphere(v[3]);"), /sphere\.radius\(4\)/)
+})
+
+test("comprehension: if filters elements", () => {
+    assert.match(dslOf("cube(len([for (i=[0:4]) if (i % 2 == 0) i]));"), /box\(\[3, 3, 3\]\)/) // [0,2,4] → len 3
+})
+
+test("comprehension: let binds within the comprehension", () => {
+    assert.match(dslOf("v = [for (i=[0:1]) let(j = i + 10) j]; sphere(v[1]);"), /sphere\.radius\(11\)/)
+})
+
+test("comprehension: nested for is a cartesian product", () => {
+    // 3 × 2 = 6 elements
+    assert.match(dslOf("cube(len([for (i=[0:2], j=[0:1]) i]));"), /box\(\[6, 6, 6\]\)/)
+})

@@ -4,4 +4,5 @@ pkg/
 *.rs.bk
 # TS-oracle parity fixtures — rebuilt via `make gcad-fixtures` (see fixtures/dump.mts)
 fixtures/*.bin
+fixtures/*.txt
 fixtures/.stamp

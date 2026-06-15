@@ -21,9 +21,12 @@
 
 pub mod cell_mesh;
 pub mod face_contour;
+pub mod feature_curves;
+pub mod feature_set;
 pub mod manifold_check;
 pub mod octree;
 pub mod pipeline;
 pub mod point_table;
 pub mod refine_criteria;
 pub mod sliver_flip;
+pub mod spatial_index;

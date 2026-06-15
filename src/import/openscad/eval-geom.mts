@@ -13,7 +13,7 @@
 import { type Args, parseArgs } from "./args.mjs"
 import type { Ctx } from "./context.mjs"
 import { bindArgs, evalExpr } from "./eval-expr.mjs"
-import { EMPTY, type GeomNode, group, type Vec3 } from "./geom-ir.mjs"
+import { EMPTY, type GeomNode, group, type Vec2, type Vec3 } from "./geom-ir.mjs"
 import {
     AssignmentNode,
     BlockStmt,
@@ -48,16 +48,46 @@ function pickBool(args: Args, idx: number, name: string, scope: Scope, ctx: Ctx)
     return e ? truthy(evalExpr(e, scope, ctx)) : false
 }
 
-/** Read a vec3 argument; a scalar broadcasts to all three components. undefined if absent/unusable. */
-function pickVec3(args: Args, idx: number, name: string, scope: Scope, ctx: Ctx): Vec3 | undefined {
+/**
+ * Read a vec3 argument; a scalar broadcasts to all three components. A 2-vector pads its z with
+ * `pad` — 0 for translate (2D shift in-plane), 1 for scale (don't collapse z). undefined if unusable.
+ */
+function pickVec3(args: Args, idx: number, name: string, scope: Scope, ctx: Ctx, pad = 0): Vec3 | undefined {
     const e = pick(args, idx, name)
     if (!e) return undefined
     const v = evalExpr(e, scope, ctx)
     if (v.t === "num") return [v.v, v.v, v.v]
     const arr = asNumberArray(v)
     if (arr && arr.length >= 3) return [arr[0]!, arr[1]!, arr[2]!]
-    if (arr && arr.length === 2) return [arr[0]!, arr[1]!, 0]
+    if (arr && arr.length === 2) return [arr[0]!, arr[1]!, pad]
     return undefined
+}
+
+/** Convert a list-of-2-vectors Value into 2D points; null if it isn't one. */
+function toPoints(v: Value): Vec2[] | null {
+    if (v.t !== "vec") return null
+    const out: Vec2[] = []
+    for (const e of v.v) {
+        if (e.t !== "vec" || e.v.length < 2 || e.v[0]!.t !== "num" || e.v[1]!.t !== "num") return null
+        out.push([e.v[0]!.v, e.v[1]!.v])
+    }
+    return out
+}
+
+function squarePoints(size: Vec2, center: boolean): Vec2[] {
+    const [x, y] = size
+    return center
+        ? [[-x / 2, -y / 2], [x / 2, -y / 2], [x / 2, y / 2], [-x / 2, y / 2]]
+        : [[0, 0], [x, 0], [x, y], [0, y]]
+}
+
+function circlePoints(r: number, segments = 32): Vec2[] {
+    const pts: Vec2[] = []
+    for (let i = 0; i < segments; i++) {
+        const a = (2 * Math.PI * i) / segments
+        pts.push([r * Math.cos(a), r * Math.sin(a)])
+    }
+    return pts
 }
 
 /** Evaluate a list of statements: hoist declarations, bind assignments, then evaluate geometry. */
@@ -174,7 +204,7 @@ function evalModule(stmt: ModuleInstantiationStmt, scope: Scope, ctx: Ctx): Geom
             return wrap({ kind: "rotate", arg: euler ?? [0, 0, 0], child: EMPTY }, evalChildren(stmt, scope, ctx))
         }
         case "scale": {
-            const v = pickVec3(args, 0, "v", scope, ctx) ?? [1, 1, 1]
+            const v = pickVec3(args, 0, "v", scope, ctx, 1) ?? [1, 1, 1]
             return wrap({ kind: "scale", arg: v, child: EMPTY }, evalChildren(stmt, scope, ctx))
         }
         case "union":
@@ -198,12 +228,129 @@ function evalModule(stmt: ModuleInstantiationStmt, scope: Scope, ctx: Ctx): Geom
             return evalFor(stmt, scope, ctx)
         case "children":
             return evalChildrenRef(args, scope, ctx)
+        case "square": {
+            let size: Vec2 = [1, 1]
+            const sv = pick(args, 0, "size")
+            if (sv) {
+                const v = evalExpr(sv, scope, ctx)
+                if (v.t === "num") size = [v.v, v.v]
+                else {
+                    const a = asNumberArray(v)
+                    if (a && a.length >= 2) size = [a[0]!, a[1]!]
+                    else ctx.diag.warn("square: unsupported size argument", line, col)
+                }
+            }
+            return { kind: "square2d", size, center: pickBool(args, 1, "center", scope, ctx) }
+        }
+        case "circle": {
+            const d = pickNum(args, -1, "d", scope, ctx)
+            const r = d !== undefined ? d / 2 : pickNum(args, 0, "r", scope, ctx) ?? 1
+            return { kind: "circle2d", r }
+        }
+        case "polygon": {
+            const pe = pick(args, 0, "points")
+            const pts = pe ? toPoints(evalExpr(pe, scope, ctx)) : null
+            if (!pts) {
+                ctx.diag.warn("polygon: unsupported points argument", line, col)
+                return EMPTY
+            }
+            if (pick(args, 1, "paths")) ctx.diag.warn("polygon: paths/holes not yet supported (using outline)", line, col)
+            return { kind: "poly2d", points: pts }
+        }
+        case "linear_extrude": {
+            const h = pickNum(args, 0, "height", scope, ctx) ?? 1
+            const center = pickBool(args, -1, "center", scope, ctx)
+            const twist = pickNum(args, -1, "twist", scope, ctx) ?? 0
+            if (pick(args, -1, "scale")) ctx.diag.warn("linear_extrude: scale parameter not yet supported", line, col)
+            return lowerExtrude(group(evalChildren(stmt, scope, ctx)), h, center, twist, ctx, line, col)
+        }
+        case "rotate_extrude":
+            return lowerLathe(group(evalChildren(stmt, scope, ctx)), ctx, line, col)
+        case "offset":
+            ctx.diag.warn("offset (2D) not yet supported", line, col)
+            return group(evalChildren(stmt, scope, ctx)) // pass children through unmodified
         default: {
             const mod = scope.getModule(stmt.name)
             if (mod) return evalUserModule(mod, stmt, scope, ctx)
             ctx.diag.warn(`unsupported module '${stmt.name}()'`, line, col)
             return EMPTY
         }
+    }
+}
+
+/**
+ * Lower a `linear_extrude` subtree to 3D by distributing the extrude into its 2D leaves
+ * (valid for prisms, including twist). circle→cylinder and square→box (untwisted) are emitted as
+ * native primitives; transforms and CSG pass straight through as 3D. center/twist are honored.
+ */
+function lowerExtrude(node: GeomNode, h: number, center: boolean, twist: number, ctx: Ctx, line: number, col: number): GeomNode {
+    const zShift: Vec3 = center ? [0, 0, 0] : [0, 0, h / 2]
+    const recur = (n: GeomNode) => lowerExtrude(n, h, center, twist, ctx, line, col)
+    switch (node.kind) {
+        case "empty":
+            return EMPTY
+        case "circle2d": // rotationally symmetric → twist invisible → cylinder
+            return { kind: "cylinder", r: node.r, h, shift: zShift }
+        case "square2d": {
+            if (twist === 0) {
+                const [x, y] = node.size
+                const sx = node.center ? 0 : x / 2
+                const sy = node.center ? 0 : y / 2
+                return { kind: "box", size: [x, y, h], shift: [sx, sy, zShift[2]] }
+            }
+            return { kind: "extrude", profile: squarePoints(node.size, node.center), height: h / 2, twist, shift: zShift }
+        }
+        case "poly2d":
+            return { kind: "extrude", profile: node.points, height: h / 2, twist, shift: zShift }
+        case "translate":
+            return { kind: "translate", arg: node.arg, child: recur(node.child) }
+        case "rotate":
+            return { kind: "rotate", arg: node.arg, child: recur(node.child) }
+        case "scale":
+            return { kind: "scale", arg: node.arg, child: recur(node.child) }
+        case "union":
+            return group(node.children.map(recur))
+        case "subtract":
+        case "intersect": {
+            const kids = node.children.map(recur).filter(n => n.kind !== "empty")
+            if (kids.length === 0) return EMPTY
+            if (kids.length === 1) return kids[0]!
+            return { kind: node.kind, children: kids }
+        }
+        default:
+            ctx.diag.warn(`linear_extrude: child is a 3D shape (${node.kind}), expected 2D`, line, col)
+            return EMPTY
+    }
+}
+
+/**
+ * Lower a `rotate_extrude` subtree to a gcad lathe (profile x→radius, y→height). Handles a direct
+ * profile and a 2D translate (baked into the points); other transforms / CSG are diagnosed.
+ * NOTE: revolution-axis orientation interacts with the Z-up→Y-up root transform — confirm with
+ * the image oracle (same bucket as the rotate-convention check).
+ */
+function lowerLathe(node: GeomNode, ctx: Ctx, line: number, col: number): GeomNode {
+    switch (node.kind) {
+        case "empty":
+            return EMPTY
+        case "poly2d":
+            return { kind: "lathe", profile: node.points, shift: [0, 0, 0] }
+        case "square2d":
+            return { kind: "lathe", profile: squarePoints(node.size, node.center), shift: [0, 0, 0] }
+        case "circle2d":
+            return { kind: "lathe", profile: circlePoints(node.r), shift: [0, 0, 0] }
+        case "translate": {
+            const inner = lowerLathe(node.child, ctx, line, col)
+            if (inner.kind === "lathe") {
+                const [dx, dy] = [node.arg[0], node.arg[1]]
+                return { kind: "lathe", profile: inner.profile.map(([px, py]) => [px + dx, py + dy] as Vec2), shift: inner.shift }
+            }
+            ctx.diag.warn("rotate_extrude: unsupported transformed profile", line, col)
+            return EMPTY
+        }
+        default:
+            ctx.diag.warn(`rotate_extrude: unsupported child (${node.kind})`, line, col)
+            return EMPTY
     }
 }
 

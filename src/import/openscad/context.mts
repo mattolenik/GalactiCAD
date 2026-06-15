@@ -21,7 +21,11 @@ export class Ctx {
 
     constructor(
         readonly diag: Diagnostics,
-        /** Hard cap on recursion depth; exceeding it yields a diagnostic + empty result. */
-        readonly maxDepth = 1000,
+        /**
+         * Hard cap on user module/function recursion depth; exceeding it yields a diagnostic +
+         * empty result. Kept well under the JS call-stack limit (evaluation recurses natively, a
+         * few frames per level) so the clean named guard fires before a raw stack overflow.
+         */
+        readonly maxDepth = 400,
     ) {}
 }

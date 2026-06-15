@@ -3,24 +3,46 @@
  * idiom passes (Phase 2.5) rewrite it; the emitter turns it into gcad DSL text. Keeping it
  * explicit lets eval and emit be tested independently. See implementation plan §4.
  *
- * SCAFFOLD: covers the CSG core only (prims + affine transforms + booleans). 2D/extrude,
- * offset/shell, and an explicit Unsupported node come with later phases — for now an
- * unmappable construct is dropped to `empty` and recorded as a diagnostic.
+ * SCAFFOLD: covers the CSG core, 2D primitives + linear/rotate extrusion. offset/shell, and an
+ * explicit Unsupported node come with later phases — for now an unmappable construct is dropped
+ * to `empty` and recorded as a diagnostic.
+ *
+ * 2D nodes (circle2d/square2d/poly2d) only exist as children of linear_extrude/rotate_extrude;
+ * lowering replaces them with 3D solids. A 2D node that survives to emit is a bare-2D mistake.
  */
 
 export type Vec3 = [number, number, number]
+export type Vec2 = [number, number]
 
 export type GeomNode =
     | { kind: "sphere"; r: number; shift: Vec3 }
     | { kind: "box"; size: Vec3; shift: Vec3 }
     | { kind: "cylinder"; r: number; h: number; shift: Vec3 }
+    | { kind: "extrude"; profile: Vec2[]; height: number; twist: number; shift: Vec3 }
+    | { kind: "lathe"; profile: Vec2[]; shift: Vec3 }
     | { kind: "translate"; arg: Vec3; child: GeomNode }
     | { kind: "rotate"; arg: Vec3; child: GeomNode }
     | { kind: "scale"; arg: Vec3; child: GeomNode }
     | { kind: "union"; children: GeomNode[] }
     | { kind: "subtract"; children: GeomNode[] }
     | { kind: "intersect"; children: GeomNode[] }
+    | { kind: "circle2d"; r: number }
+    | { kind: "square2d"; size: Vec2; center: boolean }
+    | { kind: "poly2d"; points: Vec2[] }
     | { kind: "empty" }
+
+/** The 2D node kinds — valid only under an extrusion (lowered away before emit). */
+export function is2D(n: GeomNode): boolean {
+    return n.kind === "circle2d" || n.kind === "square2d" || n.kind === "poly2d"
+}
+
+/** Does the tree still contain an un-lowered 2D node (a bare 2D shape)? */
+export function containsBare2D(n: GeomNode): boolean {
+    if (is2D(n)) return true
+    if (n.kind === "translate" || n.kind === "rotate" || n.kind === "scale") return containsBare2D(n.child)
+    if (n.kind === "union" || n.kind === "subtract" || n.kind === "intersect") return n.children.some(containsBare2D)
+    return false
+}
 
 export const EMPTY: GeomNode = { kind: "empty" }
 

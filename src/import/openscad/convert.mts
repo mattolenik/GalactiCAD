@@ -16,7 +16,7 @@ import { Ctx } from "./context.mjs"
 import { type Diagnostic, Diagnostics } from "./diagnostics.mjs"
 import { emitDocument } from "./emit.mjs"
 import { evalStatements } from "./eval-geom.mjs"
-import { EMPTY, type GeomNode, group } from "./geom-ir.mjs"
+import { containsBare2D, EMPTY, type GeomNode, group } from "./geom-ir.mjs"
 import { parseScad } from "./parse.mjs"
 import { Scope } from "./scope.mjs"
 
@@ -50,9 +50,15 @@ export function convertOpenScadToGcad(
         }
         try {
             body = group(evalStatements(ast.statements, new Scope(), ctx))
+            if (containsBare2D(body)) diag.warn("2D geometry must be extruded (linear_extrude/rotate_extrude) to import")
         } catch (e) {
             // Never crash the import: a runaway recursion / unexpected error becomes a diagnostic.
-            diag.error(`import aborted: ${e instanceof Error ? e.message : String(e)}`)
+            const stackOverflow = e instanceof RangeError || (e instanceof Error && /call stack/i.test(e.message))
+            diag.error(
+                stackOverflow
+                    ? "recursion limit exceeded (model is too deeply recursive to import)"
+                    : `import aborted: ${e instanceof Error ? e.message : String(e)}`,
+            )
             body = EMPTY
         }
     }

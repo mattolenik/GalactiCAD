@@ -8,7 +8,7 @@
  */
 
 import type { Diagnostic } from "./diagnostics.mjs"
-import type { GeomNode, Vec3 } from "./geom-ir.mjs"
+import type { GeomNode, Vec2, Vec3 } from "./geom-ir.mjs"
 
 /**
  * OpenSCAD is Z-up, gcad is Y-up — wrap the whole import in this single root rotation
@@ -28,6 +28,10 @@ function fmtVec3(v: Vec3): string {
     return `[${fmtNum(v[0])}, ${fmtNum(v[1])}, ${fmtNum(v[2])}]`
 }
 
+function fmtPoly(points: Vec2[]): string {
+    return `polygon2d([${points.map(([x, y]) => `[${fmtNum(x)}, ${fmtNum(y)}]`).join(", ")}])`
+}
+
 function shiftSuffix(shift: Vec3): string {
     return shift[0] === 0 && shift[1] === 0 && shift[2] === 0 ? "" : `.shift(${fmtVec3(shift)})`
 }
@@ -41,6 +45,12 @@ export function emitNode(node: GeomNode): string {
             return `box(${fmtVec3(node.size)})${shiftSuffix(node.shift)}`
         case "cylinder":
             return `cylinder.radius(${fmtNum(node.r)}).height(${fmtNum(node.h)})${shiftSuffix(node.shift)}`
+        case "extrude": {
+            const twist = node.twist !== 0 ? `.twist(${fmtNum(node.twist)})` : ""
+            return `extrude.profile(${fmtPoly(node.profile)}).height(${fmtNum(node.height)})${twist}${shiftSuffix(node.shift)}`
+        }
+        case "lathe":
+            return `lathe.profile(${fmtPoly(node.profile)})${shiftSuffix(node.shift)}`
         case "translate":
             return `translate(${fmtVec3(node.arg)}, ${emitNode(node.child)})`
         case "rotate":
@@ -53,6 +63,10 @@ export function emitNode(node: GeomNode): string {
             return `subtract(${node.children.map(emitNode).join(", ")})`
         case "intersect":
             return `intersect(${node.children.map(emitNode).join(", ")})`
+        case "circle2d":
+        case "square2d":
+        case "poly2d":
+            return "box([0, 0, 0])" // bare 2D shape (not extruded) — flagged by convert's post-pass
         case "empty":
             return "box([0, 0, 0])" // placeholder; only reached for an empty import
     }

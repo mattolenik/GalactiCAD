@@ -235,3 +235,45 @@ test("comprehension: nested for is a cartesian product", () => {
     // 3 × 2 = 6 elements
     assert.match(dslOf("cube(len([for (i=[0:2], j=[0:1]) i]));"), /box\(\[6, 6, 6\]\)/)
 })
+
+test("linear_extrude circle → cylinder (idiom, not centered)", () => {
+    assert.match(dslOf("linear_extrude(10) circle(3);"), /cylinder\.radius\(3\)\.height\(10\)\.shift\(\[0, 0, 5\]\)/)
+})
+
+test("linear_extrude(center=true) → no z-shift", () => {
+    const dsl = dslOf("linear_extrude(10, center=true) circle(3);")
+    assert.match(dsl, /cylinder\.radius\(3\)\.height\(10\)/)
+    assert.doesNotMatch(dsl, /shift/)
+})
+
+test("linear_extrude square → box (idiom)", () => {
+    assert.match(dslOf("linear_extrude(4) square([2,3]);"), /box\(\[2, 3, 4\]\)\.shift\(\[1, 1.5, 2\]\)/)
+})
+
+test("linear_extrude polygon → extrude.profile", () => {
+    assert.match(
+        dslOf("linear_extrude(5) polygon([[0,0],[10,0],[5,8]]);"),
+        /extrude\.profile\(polygon2d\(\[\[0, 0\], \[10, 0\], \[5, 8\]\]\)\)\.height\(2\.5\)\.shift\(\[0, 0, 2\.5\]\)/,
+    )
+})
+
+test("linear_extrude twist on a square → extrude with .twist", () => {
+    assert.match(dslOf("linear_extrude(10, twist=90) square([2,2], center=true);"), /\.height\(5\)\.twist\(90\)/)
+})
+
+test("linear_extrude distributes over a 2D difference (ring)", () => {
+    assert.match(dslOf("linear_extrude(4) difference(){ circle(5); circle(3); }"), /subtract\(cylinder\.radius\(5\).*cylinder\.radius\(3\)/)
+})
+
+test("linear_extrude pushes through a 2D translate", () => {
+    assert.match(dslOf("linear_extrude(4) translate([2,0]) square(1);"), /translate\(\[2, 0, 0\], box\(\[1, 1, 4\]\)/)
+})
+
+test("rotate_extrude polygon → lathe.profile", () => {
+    assert.match(dslOf("rotate_extrude() polygon([[2,0],[4,0],[3,5]]);"), /lathe\.profile\(polygon2d\(\[\[2, 0\], \[4, 0\], \[3, 5\]\]\)\)/)
+})
+
+test("bare 2D geometry (no extrude) is flagged", () => {
+    const { diagnostics } = convertOpenScadToGcad("circle(5);")
+    assert.ok(diagnostics.some(d => /2D geometry must be extruded/.test(d.message)))
+})

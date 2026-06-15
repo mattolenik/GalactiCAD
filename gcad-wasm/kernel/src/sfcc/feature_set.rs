@@ -2,22 +2,21 @@
 //! (`src/export/sfcc/feature-set.mts`), recomputed analytically from the baked
 //! similarities.
 //!
-//! M4a slice: **box only** (12 segment edges + 8 valence-3 corners) — the
-//! all-segment case, the cleanest cross-impl parity gate. It establishes the
-//! full scaffold (curve types, spatial index, structs, per-shape strata builder,
-//! extraction dispatch, parity harness) that cylinder/cone/lathe/extrude/loft
-//! slot into next. DEFERRED to later M4 slices: cylinder/cone rim circles, lathe
-//! rings, extrude/loft (need traced curves + newton), boolean seams (seam-trace
-//! + trim), and the feature-aware refine/contour/cell-mesh paths.
+//! M4a: **box / cylinder / cone / sphere** native features + per-shape strata
+//! builders. Box = 12 segment edges + 8 valence-3 corners; cylinder = 2 rim
+//! circles; cone = base circle + apex corner; sphere = no curves, one carrier.
+//! Each leaf contributes its strata to the global `strata` list (matching the TS
+//! evaluator's per-leaf `buildStrata` order), so curve `adjacent_strata` indices
+//! line up with the TS tree. Strata CARRIER geometry (f/normal) is now
+//! parity-verified against TS (`tests/strata_parity.rs`), closing the earlier gap.
 //!
-//! NOTE: strata geometry is built via the standard similarity-of-a-plane
-//! transform; the box feature parity gate validates the extraction (curve/corner
-//! geometry + stratum-id wiring), not strata carrier geometry — that is exercised
-//! when M4b/M4c consume the strata.
+//! DEFERRED to later M4 slices: lathe rings + extrude/loft (traced curves, newton,
+//! twistedSide/loftSide ruled carriers), boolean seams (seam-trace + trim), and
+//! the feature-aware refine/contour/cell-mesh honoring paths.
 
 use crate::math::similarity::Similarity;
 use crate::sdf::{CsgNode, Leaf, Shape};
-use crate::sfcc::feature_curves::{make_segment_curve, FeatureCurve};
+use crate::sfcc::feature_curves::{make_circle_curve, make_segment_curve, FeatureCurve};
 use crate::sfcc::spatial_index::SfccSpatialIndex;
 use crate::strata::{Stratum, StratumIdentity};
 
@@ -87,6 +86,43 @@ fn build_box_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, half: [f64;
         mk(4, 0.0, 0.0, 1.0, -(pz + hz)),
         mk(5, 0.0, 0.0, -1.0, pz - hz),
     ]
+}
+
+fn sid(id: usize, leaf_index: usize, local_index: usize, sign: f64) -> StratumIdentity {
+    StratumIdentity { id, owner_node_id: -1, leaf_index, local_index, sign }
+}
+
+/// Cylinder strata: [mantle, cap +y, cap −y] (local_index 0,1,2), matching the
+/// evaluator's `buildStrata` order in cpu-sdf.mts.
+fn build_cylinder_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64, h: f64) -> Vec<Stratum> {
+    let [px, py, pz] = leaf.pos;
+    let a = leaf.sim.apply_point(px, py, pz);
+    let u = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
+    vec![
+        Stratum::cylinder(sid(first_id, leaf_index, 0, leaf.sign), a[0], a[1], a[2], u[0], u[1], u[2], leaf.sim.s * r),
+        world_plane(sid(first_id + 1, leaf_index, 1, leaf.sign), &leaf.sim, 0.0, 1.0, 0.0, -(py + h)),
+        world_plane(sid(first_id + 2, leaf_index, 2, leaf.sign), &leaf.sim, 0.0, -1.0, 0.0, py - h),
+    ]
+}
+
+/// Cone strata: [mantle, base plane] (local_index 0,1). Half-angle from L=hypot(h,r):
+/// sin = r/L, cos = h/L; apex at +h, axis `u` points apex→base (local −y).
+fn build_cone_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64, h: f64) -> Vec<Stratum> {
+    let [px, py, pz] = leaf.pos;
+    let apex = leaf.sim.apply_point(px, py + h, pz);
+    let u = leaf.sim.rotate_vector(0.0, -1.0, 0.0);
+    let l = h.hypot(r);
+    vec![
+        Stratum::cone(sid(first_id, leaf_index, 0, leaf.sign), apex[0], apex[1], apex[2], u[0], u[1], u[2], r / l, h / l),
+        world_plane(sid(first_id + 1, leaf_index, 1, leaf.sign), &leaf.sim, 0.0, -1.0, 0.0, py),
+    ]
+}
+
+/// Sphere stratum: a single sphere carrier (sphere has no native curves/corners).
+fn build_sphere_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64) -> Vec<Stratum> {
+    let [px, py, pz] = leaf.pos;
+    let c = leaf.sim.apply_point(px, py, pz);
+    vec![Stratum::sphere(sid(first_id, leaf_index, 0, leaf.sign), c[0], c[1], c[2], leaf.sim.s * r)]
 }
 
 pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
@@ -180,8 +216,45 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
                 }
                 all_strata.extend(strata);
             }
-            // Sphere: no native features (and no feature-relevant strata here).
-            // Cylinder / Cone / Lathe / Extrude / Loft: M4a-remaining.
+            Shape::Sphere { r } => {
+                // No native curves/corners; one sphere carrier for the stratum list.
+                all_strata.extend(build_sphere_strata(leaf, leaf_index, first_id, r));
+            }
+            Shape::Cylinder { r, h } => {
+                all_strata.extend(build_cylinder_strata(leaf, leaf_index, first_id, r, h));
+                let rr = r * leaf.sim.s;
+                let w = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
+                let [px, py, pz] = leaf.pos;
+                // Two rim circles: top (cap +y) then bottom (cap −y), each adjacent
+                // to [mantle, that cap]. Order matches the TS extraction.
+                for (side, local_y) in [(1usize, py + h), (2usize, py - h)] {
+                    let c = leaf.sim.apply_point(px, local_y, pz);
+                    let cid = curves.len();
+                    let mut curve =
+                        make_circle_curve(cid, -1, [first_id, first_id + side], c[0], c[1], c[2], w[0], w[1], w[2], rr, None);
+                    curve.native = true;
+                    curves.push(curve);
+                }
+            }
+            Shape::Cone { r, h } => {
+                all_strata.extend(build_cone_strata(leaf, leaf_index, first_id, r, h));
+                let rr = r * leaf.sim.s;
+                let w = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
+                let [px, py, pz] = leaf.pos;
+                // Base rim circle adjacent to [mantle, base].
+                let base = leaf.sim.apply_point(px, py, pz);
+                let cid = curves.len();
+                let mut curve =
+                    make_circle_curve(cid, -1, [first_id, first_id + 1], base[0], base[1], base[2], w[0], w[1], w[2], rr, None);
+                curve.native = true;
+                curves.push(curve);
+                // Apex: a 0D corner with only the mantle stratum incident.
+                let apex = leaf.sim.apply_point(px, py + h, pz);
+                let kid = corners.len();
+                corners.push(SfccCorner { id: kid, x: apex[0], y: apex[1], z: apex[2], strata: vec![first_id], curve_ends: Vec::new() });
+            }
+            // Lathe / Extrude / Loft: M4-remaining (traced curves / ruled carriers /
+            // newton). No strata built here yet — scenes with them are not handled.
             _ => {}
         }
     }
@@ -220,5 +293,47 @@ mod tests {
             assert_eq!(k.curve_ends.len(), 3);
             assert!((k.x.abs() - 1.0).abs() < 1e-12);
         }
+    }
+
+    #[test]
+    fn cylinder_has_2_rim_circles_3_strata() {
+        let tree = leaf_at(Shape::Cylinder { r: 4.0, h: 7.0 }, [0.0, 0.0, 0.0]);
+        let fs = compile_native_features(&tree);
+        assert_eq!(fs.curves.len(), 2);
+        assert_eq!(fs.corners.len(), 0);
+        assert_eq!(fs.strata.len(), 3);
+        for c in &fs.curves {
+            assert_eq!(c.kind(), crate::sfcc::feature_curves::CurveKind::Circle);
+            // Adjacent to the mantle (0) and one cap (1 or 2).
+            assert_eq!(c.adjacent_strata[0], 0);
+            assert!(c.adjacent_strata[1] == 1 || c.adjacent_strata[1] == 2);
+            // Closed circle of radius 4: a quarter turn moves √2·r.
+            let p0 = c.point_at(0.0);
+            assert!((p0[0].hypot(p0[2]) - 4.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn cone_has_base_circle_and_apex_corner() {
+        let tree = leaf_at(Shape::Cone { r: 3.0, h: 5.0 }, [0.0, 0.0, 0.0]);
+        let fs = compile_native_features(&tree);
+        assert_eq!(fs.curves.len(), 1);
+        assert_eq!(fs.corners.len(), 1);
+        assert_eq!(fs.strata.len(), 2);
+        assert_eq!(fs.curves[0].kind(), crate::sfcc::feature_curves::CurveKind::Circle);
+        assert_eq!(fs.curves[0].adjacent_strata, [0, 1]);
+        // Apex sits at +h, incident to the mantle only.
+        let apex = &fs.corners[0];
+        assert!((apex.y - 5.0).abs() < 1e-9);
+        assert_eq!(apex.strata, vec![0]);
+    }
+
+    #[test]
+    fn sphere_has_no_features_one_stratum() {
+        let tree = leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 0.0, 0.0]);
+        let fs = compile_native_features(&tree);
+        assert_eq!(fs.curves.len(), 0);
+        assert_eq!(fs.corners.len(), 0);
+        assert_eq!(fs.strata.len(), 1);
     }
 }

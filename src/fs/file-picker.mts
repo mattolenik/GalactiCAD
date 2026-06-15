@@ -30,6 +30,22 @@ export async function openSingleGcad(): Promise<GcadFileResult | null> {
     }
 }
 
+/** Open a single .scad (OpenSCAD) file for import. Returns handle and content, or null if cancelled. */
+export async function openSingleScad(): Promise<GcadFileResult | null> {
+    try {
+        const [handle] = await window.showOpenFilePicker({
+            types: [{ description: "OpenSCAD model", accept: { "text/plain": [".scad"] } }],
+            multiple: false,
+        })
+        const file = await handle.getFile()
+        const content = await file.text()
+        return { handle, content, name: file.name }
+    } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") return null
+        throw e
+    }
+}
+
 /** Open a directory. Returns handle or null if user cancels. */
 export async function openFolder(): Promise<FileSystemDirectoryHandle | null> {
     try {

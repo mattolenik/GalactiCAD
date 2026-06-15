@@ -8,5 +8,8 @@ edition.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-gcad-kernel = { path = "../kernel" }
+# The wasm boundary needs the kernel's JSON scene-bridge ingestion (serde feature).
+gcad-kernel = { path = "../kernel", features = ["serde"] }
 wasm-bindgen = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

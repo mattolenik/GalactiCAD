@@ -27,6 +27,8 @@ name = "gcad-wasm"
 version = "0.1.0"
 dependencies = [
  "gcad-kernel",
+ "serde",
+ "serde_json",
  "wasm-bindgen",
 ]
 

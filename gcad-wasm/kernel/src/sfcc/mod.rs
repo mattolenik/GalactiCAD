@@ -14,10 +14,16 @@
 //! M3a landed: the certified adaptive [`octree`] driver, the smooth-surface
 //! [`refine_criteria`] (empty cull + per-stratum normal-variation / edge-crossing
 //! certificates + blend-band curvature), and the integer-keyed [`point_table`]
-//! vertex pool. DEFERRED: face-contour (M3b), cell-mesh + assemble (M3c),
-//! feature classification / curves / corners (M4).
+//! vertex pool. M3b: [`face_contour`]. M3c: [`cell_mesh`], [`sliver_flip`],
+//! [`manifold_check`], and the smooth-only [`pipeline`] driver — the first full
+//! Rust mesh. DEFERRED: feature classification / curves / corners and the
+//! feature-aware refine/contour/cell-mesh paths (M4).
 
+pub mod cell_mesh;
 pub mod face_contour;
+pub mod manifold_check;
 pub mod octree;
+pub mod pipeline;
 pub mod point_table;
 pub mod refine_criteria;
+pub mod sliver_flip;

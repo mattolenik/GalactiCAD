@@ -315,6 +315,12 @@ where
             }
         }
     }
+    // `HashMap::values()` iterates in an unspecified (run-varying) order, but the
+    // leaf order seeds new point-table ids during cell meshing — so the order
+    // must be DETERMINISTIC for the double-run bit-identical guard. Sort by
+    // (level, min-corner key). The downstream mesh compare is order-insensitive,
+    // so this need not match the TS Map-insertion order — only be stable.
+    leaves.sort_unstable_by_key(|c| (c.level, c.key));
 
     SfccOctree {
         lat: *lat,

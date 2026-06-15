@@ -28,6 +28,15 @@ function fmtVec3(v: Vec3): string {
     return `[${fmtNum(v[0])}, ${fmtNum(v[1])}, ${fmtNum(v[2])}]`
 }
 
+/**
+ * gcad primitives take HALF-extents (box/cylinder/extrude sizes are half-sizes; verified in
+ * src/scene/primitives/{box,cylinder,extrude}.mts). GeomIR stores real full dimensions, so the
+ * emitter halves extents here. Positions (.shift) are NOT halved.
+ */
+function fmtHalfVec3(v: Vec3): string {
+    return `[${fmtNum(v[0] / 2)}, ${fmtNum(v[1] / 2)}, ${fmtNum(v[2] / 2)}]`
+}
+
 function fmtPoly(points: Vec2[]): string {
     return `polygon2d([${points.map(([x, y]) => `[${fmtNum(x)}, ${fmtNum(y)}]`).join(", ")}])`
 }
@@ -42,12 +51,12 @@ export function emitNode(node: GeomNode): string {
         case "sphere":
             return `sphere.radius(${fmtNum(node.r)})${shiftSuffix(node.shift)}`
         case "box":
-            return `box(${fmtVec3(node.size)})${shiftSuffix(node.shift)}`
+            return `box(${fmtHalfVec3(node.size)})${shiftSuffix(node.shift)}` // gcad box takes half-extents
         case "cylinder":
-            return `cylinder.radius(${fmtNum(node.r)}).height(${fmtNum(node.h)})${shiftSuffix(node.shift)}`
+            return `cylinder.radius(${fmtNum(node.r)}).height(${fmtNum(node.h / 2)})${shiftSuffix(node.shift)}` // half-height
         case "extrude": {
             const twist = node.twist !== 0 ? `.twist(${fmtNum(node.twist)})` : ""
-            return `extrude.profile(${fmtPoly(node.profile)}).height(${fmtNum(node.height)})${twist}${shiftSuffix(node.shift)}`
+            return `extrude.profile(${fmtPoly(node.profile)}).height(${fmtNum(node.height / 2)})${twist}${shiftSuffix(node.shift)}`
         }
         case "lathe":
             return `lathe.profile(${fmtPoly(node.profile)})${shiftSuffix(node.shift)}`

@@ -14,12 +14,12 @@ test("every import is wrapped in the Z-up→Y-up root transform", () => {
 })
 
 test("cube (corner origin) → box with half-size shift", () => {
-    assert.match(dslOf("cube([2,4,6]);"), /box\(\[2, 4, 6\]\)\.shift\(\[1, 2, 3\]\)/)
+    assert.match(dslOf("cube([2,4,6]);"), /box\(\[1, 2, 3\]\)\.shift\(\[1, 2, 3\]\)/) // gcad box = half-extents
 })
 
 test("cube(center=true) → centered box, no shift", () => {
     const dsl = dslOf("cube([2,2,2], center=true);")
-    assert.match(dsl, /box\(\[2, 2, 2\]\)/)
+    assert.match(dsl, /box\(\[1, 1, 1\]\)/) // half-extents
     assert.doesNotMatch(dsl, /\.shift/)
 })
 
@@ -28,7 +28,7 @@ test("sphere(d=) → radius is half the diameter", () => {
 })
 
 test("cylinder is centered onto gcad's centered primitive", () => {
-    assert.match(dslOf("cylinder(h=10, r=3);"), /cylinder\.radius\(3\)\.height\(10\)\.shift\(\[0, 0, 5\]\)/)
+    assert.match(dslOf("cylinder(h=10, r=3);"), /cylinder\.radius\(3\)\.height\(5\)\.shift\(\[0, 0, 5\]\)/) // half-height
 })
 
 test("translate wraps its child", () => {
@@ -40,7 +40,7 @@ test("scalar rotate spins about Z", () => {
 })
 
 test("difference → subtract(base, ...cutters)", () => {
-    assert.match(dslOf("difference(){ cube(10, center=true); sphere(6); }"), /subtract\(box\(\[10, 10, 10\]\), sphere\.radius\(6\)\)/)
+    assert.match(dslOf("difference(){ cube(10, center=true); sphere(6); }"), /subtract\(box\(\[5, 5, 5\]\), sphere\.radius\(6\)\)/)
 })
 
 test("union of multiple children", () => {
@@ -69,15 +69,15 @@ test("parse errors surface as diagnostics", () => {
 })
 
 test("user module: declaration + call with a passed parameter", () => {
-    assert.match(dslOf("module post(h){ cylinder(h=h, r=2); } post(10);"), /cylinder\.radius\(2\)\.height\(10\)/)
+    assert.match(dslOf("module post(h){ cylinder(h=h, r=2); } post(10);"), /cylinder\.radius\(2\)\.height\(5\)/)
 })
 
 test("user module: default parameter value", () => {
-    assert.match(dslOf("module b(s=4){ cube(s); } b();"), /box\(\[4, 4, 4\]\)\.shift\(\[2, 2, 2\]\)/)
+    assert.match(dslOf("module b(s=4){ cube(s); } b();"), /box\(\[2, 2, 2\]\)\.shift\(\[2, 2, 2\]\)/)
 })
 
 test("user module: named arguments bind by name regardless of order", () => {
-    assert.match(dslOf("module foo(a,b){ translate([a,0,0]) cube(b); } foo(b=2, a=4);"), /translate\(\[4, 0, 0\], box\(\[2, 2, 2\]\)/)
+    assert.match(dslOf("module foo(a,b){ translate([a,0,0]) cube(b); } foo(b=2, a=4);"), /translate\(\[4, 0, 0\], box\(\[1, 1, 1\]\)/)
 })
 
 test("user module: forward reference (call before definition)", () => {
@@ -121,7 +121,7 @@ test("include: brings the file's top-level variables", () => {
 test("use: brings definitions only, not the file's top-level geometry", () => {
     const lib = "module w(){ cube(2); } sphere(99);"
     const { dsl } = convertOpenScadToGcad("use <lib.scad>\n w();", "main.scad", new Map([["lib.scad", lib]]))
-    assert.match(dsl, /box\(\[2, 2, 2\]\)/)
+    assert.match(dsl, /box\(\[1, 1, 1\]\)/) // cube(2) → half-extents
     assert.doesNotMatch(dsl, /sphere\.radius\(99\)/)
 })
 
@@ -172,11 +172,11 @@ test("expr: matrix × vector", () => {
 })
 
 test("expr: len() of a list and a string", () => {
-    assert.match(dslOf("cube([len([1,2,3,4]), len(\"ab\"), 1]);"), /box\(\[4, 2, 1\]\)/)
+    assert.match(dslOf("cube([len([1,2,3,4]), len(\"ab\"), 1]);"), /box\(\[2, 1, 0.5\]\)/) // cube([4,2,1]) → half-extents
 })
 
 test("expr: concat() flattens one level", () => {
-    assert.match(dslOf("cube(concat([2,2],[2]));"), /box\(\[2, 2, 2\]\)\.shift\(\[1, 1, 1\]\)/)
+    assert.match(dslOf("cube(concat([2,2],[2]));"), /box\(\[1, 1, 1\]\)\.shift\(\[1, 1, 1\]\)/)
 })
 
 test("expr: norm() of a vector", () => {
@@ -184,7 +184,7 @@ test("expr: norm() of a vector", () => {
 })
 
 test("expr: min/max accept a single list argument", () => {
-    assert.match(dslOf("cube([max([1,5,2]), min(3,1,2), 1]);"), /box\(\[5, 1, 1\]\)/)
+    assert.match(dslOf("cube([max([1,5,2]), min(3,1,2), 1]);"), /box\(\[2.5, 0.5, 0.5\]\)/) // cube([5,1,1]) → half-extents
 })
 
 test("expr: is_undef on an undefined name does NOT emit an undefined-variable diagnostic", () => {
@@ -224,7 +224,7 @@ test("comprehension: each spreads a sublist", () => {
 })
 
 test("comprehension: if filters elements", () => {
-    assert.match(dslOf("cube(len([for (i=[0:4]) if (i % 2 == 0) i]));"), /box\(\[3, 3, 3\]\)/) // [0,2,4] → len 3
+    assert.match(dslOf("cube(len([for (i=[0:4]) if (i % 2 == 0) i]));"), /box\(\[1.5, 1.5, 1.5\]\)/) // [0,2,4] → len 3 → cube(3) → half
 })
 
 test("comprehension: let binds within the comprehension", () => {
@@ -233,21 +233,21 @@ test("comprehension: let binds within the comprehension", () => {
 
 test("comprehension: nested for is a cartesian product", () => {
     // 3 × 2 = 6 elements
-    assert.match(dslOf("cube(len([for (i=[0:2], j=[0:1]) i]));"), /box\(\[6, 6, 6\]\)/)
+    assert.match(dslOf("cube(len([for (i=[0:2], j=[0:1]) i]));"), /box\(\[3, 3, 3\]\)/) // len 6 → cube(6) → half
 })
 
 test("linear_extrude circle → cylinder (idiom, not centered)", () => {
-    assert.match(dslOf("linear_extrude(10) circle(3);"), /cylinder\.radius\(3\)\.height\(10\)\.shift\(\[0, 0, 5\]\)/)
+    assert.match(dslOf("linear_extrude(10) circle(3);"), /cylinder\.radius\(3\)\.height\(5\)\.shift\(\[0, 0, 5\]\)/)
 })
 
 test("linear_extrude(center=true) → no z-shift", () => {
     const dsl = dslOf("linear_extrude(10, center=true) circle(3);")
-    assert.match(dsl, /cylinder\.radius\(3\)\.height\(10\)/)
+    assert.match(dsl, /cylinder\.radius\(3\)\.height\(5\)/)
     assert.doesNotMatch(dsl, /shift/)
 })
 
 test("linear_extrude square → box (idiom)", () => {
-    assert.match(dslOf("linear_extrude(4) square([2,3]);"), /box\(\[2, 3, 4\]\)\.shift\(\[1, 1.5, 2\]\)/)
+    assert.match(dslOf("linear_extrude(4) square([2,3]);"), /box\(\[1, 1.5, 2\]\)\.shift\(\[1, 1.5, 2\]\)/)
 })
 
 test("linear_extrude polygon → extrude.profile", () => {
@@ -266,7 +266,7 @@ test("linear_extrude distributes over a 2D difference (ring)", () => {
 })
 
 test("linear_extrude pushes through a 2D translate", () => {
-    assert.match(dslOf("linear_extrude(4) translate([2,0]) square(1);"), /translate\(\[2, 0, 0\], box\(\[1, 1, 4\]\)/)
+    assert.match(dslOf("linear_extrude(4) translate([2,0]) square(1);"), /translate\(\[2, 0, 0\], box\(\[0.5, 0.5, 2\]\)/)
 })
 
 test("rotate_extrude polygon → lathe.profile", () => {

@@ -298,10 +298,10 @@ function lowerExtrude(node: GeomNode, h: number, center: boolean, twist: number,
                 const sy = node.center ? 0 : y / 2
                 return { kind: "box", size: [x, y, h], shift: [sx, sy, zShift[2]] }
             }
-            return { kind: "extrude", profile: squarePoints(node.size, node.center), height: h / 2, twist, shift: zShift }
+            return { kind: "extrude", profile: squarePoints(node.size, node.center), height: h, twist, shift: zShift }
         }
         case "poly2d":
-            return { kind: "extrude", profile: node.points, height: h / 2, twist, shift: zShift }
+            return { kind: "extrude", profile: node.points, height: h, twist, shift: zShift }
         case "translate":
             return { kind: "translate", arg: node.arg, child: recur(node.child) }
         case "rotate":

@@ -9,6 +9,9 @@
  *
  * 2D nodes (circle2d/square2d/poly2d) only exist as children of linear_extrude/rotate_extrude;
  * lowering replaces them with 3D solids. A 2D node that survives to emit is a bare-2D mistake.
+ *
+ * Dimensions here are REAL (full) OpenSCAD sizes/heights; the emitter applies gcad's half-extent
+ * convention (box/cylinder/extrude take half-sizes). `.shift` fields are real positions (not halved).
  */
 
 export type Vec3 = [number, number, number]

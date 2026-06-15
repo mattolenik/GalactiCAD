@@ -82,6 +82,48 @@ impl Leaf {
         let nw = self.sim.rotate_vector(nl[0], nl[1], nl[2]);
         [self.sign * nw[0], self.sign * nw[1], self.sign * nw[2]]
     }
+
+    /// Local Lipschitz bound of `f` over the ball (center `c`, radius `r`): 1 for
+    /// every exact-SDF leaf, but >1 for the twisted extrude and the morphing loft
+    /// (non-unit gradient). Port of `CpuSdfLeaf.localLipschitz` — the interval
+    /// composition must use this, never assume global 1-Lipschitz. Returns `None`
+    /// when the leaf is a plain 1-Lipschitz SDF.
+    pub fn local_lipschitz(&self, c: [f64; 3], r: f64) -> Option<f64> {
+        match &self.shape {
+            Shape::Extrude { twist_rad, h, .. } => {
+                if *twist_rad == 0.0 {
+                    return None;
+                }
+                let k = if h.abs() > 1e-9 { twist_rad / (2.0 * h) } else { 0.0 };
+                let l = self.sim.inv_apply_point(c[0], c[1], c[2]);
+                let rl = r / self.sim.s;
+                let rho = (l[0] - self.pos[0]).hypot(l[2] - self.pos[2]) + rl;
+                Some((1.0 + k * rho * (k * rho)).sqrt())
+            }
+            Shape::Loft { profs, winds, h } => {
+                // Prismatic lofts (all profiles identical) are 1-Lipschitz.
+                let prismatic = profs.iter().all(|p| p.iter().zip(profs[0].iter()).all(|(a, b)| a == b));
+                if prismatic {
+                    return None;
+                }
+                let m = profs.len();
+                let seg_h = (2.0 * h) / (m as f64 - 1.0);
+                let l = self.sim.inv_apply_point(c[0], c[1], c[2]);
+                let rl = r / self.sim.s;
+                let qx = l[0] - self.pos[0];
+                let qz = l[2] - self.pos[2];
+                let d_vals: Vec<f64> =
+                    (0..m).map(|i| crate::primitives::polygon2d::polygon_dist_2d(&profs[i], winds[i], qx, qz).d).collect();
+                let mut max_diff = 0.0f64;
+                for i in 0..(m - 1) {
+                    max_diff = max_diff.max((d_vals[i + 1] - d_vals[i]).abs());
+                }
+                let slope = (max_diff + 2.0 * rl) / seg_h;
+                Some((1.0 + slope * slope).sqrt())
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -240,7 +282,10 @@ impl CsgNode {
         match self {
             CsgNode::Leaf(l) => {
                 let fc = l.f(c);
-                (fc - r, fc + r)
+                // Non-unit-gradient leaves (twisted extrude / morphing loft) need
+                // their local Lipschitz bound; everything else is an exact SDF.
+                let lip = l.local_lipschitz(c, r).unwrap_or(1.0);
+                (fc - lip * r, fc + lip * r)
             }
             CsgNode::Min(ch) => {
                 let (mut lo, mut hi) = (f64::INFINITY, f64::INFINITY);

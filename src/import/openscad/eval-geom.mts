@@ -265,13 +265,18 @@ function evalModule(stmt: ModuleInstantiationStmt, scope: Scope, ctx: Ctx): Geom
             const center = pickBool(args, -1, "center", scope, ctx)
             const twist = pickNum(args, -1, "twist", scope, ctx) ?? 0
             if (pick(args, -1, "scale")) ctx.diag.warn("linear_extrude: scale parameter not yet supported", line, col)
-            return lowerExtrude(group(evalChildren(stmt, scope, ctx)), h, center, twist, ctx, line, col)
+            return lowerExtrude(group(evalChildren(stmt, scope, ctx)), h, center, twist)
         }
         case "rotate_extrude":
             return lowerLathe(group(evalChildren(stmt, scope, ctx)), ctx, line, col)
         case "offset":
             ctx.diag.warn("offset (2D) not yet supported", line, col)
             return group(evalChildren(stmt, scope, ctx)) // pass children through unmodified
+        case "text":
+            // text() is unsupported; substitute a 10×10×10 cube placeholder so the model isn't
+            // empty where text was. (A 3D stub, so it passes straight through linear_extrude.)
+            ctx.diag.warn("text() not supported — substituted a 10×10×10 cube placeholder", line, col)
+            return { kind: "box", size: [10, 10, 10], shift: [5, 5, 5] }
         default: {
             const mod = scope.getModule(stmt.name)
             if (mod) return evalUserModule(mod, stmt, scope, ctx)
@@ -286,9 +291,9 @@ function evalModule(stmt: ModuleInstantiationStmt, scope: Scope, ctx: Ctx): Geom
  * (valid for prisms, including twist). circle→cylinder and square→box (untwisted) are emitted as
  * native primitives; transforms and CSG pass straight through as 3D. center/twist are honored.
  */
-function lowerExtrude(node: GeomNode, h: number, center: boolean, twist: number, ctx: Ctx, line: number, col: number): GeomNode {
+function lowerExtrude(node: GeomNode, h: number, center: boolean, twist: number): GeomNode {
     const zShift: Vec3 = center ? [0, 0, 0] : [0, 0, h / 2]
-    const recur = (n: GeomNode) => lowerExtrude(n, h, center, twist, ctx, line, col)
+    const recur = (n: GeomNode) => lowerExtrude(n, h, center, twist)
     switch (node.kind) {
         case "empty":
             return EMPTY
@@ -321,8 +326,9 @@ function lowerExtrude(node: GeomNode, h: number, center: boolean, twist: number,
             return { kind: node.kind, children: kids }
         }
         default:
-            ctx.diag.warn(`linear_extrude: child is a 3D shape (${node.kind}), expected 2D`, line, col)
-            return EMPTY
+            // An already-3D solid under linear_extrude (e.g. the text() cube stub) can't be
+            // extruded — keep it as-is rather than dropping it.
+            return node
     }
 }
 

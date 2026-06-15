@@ -283,3 +283,14 @@ test("bare 2D geometry (no extrude) is flagged", () => {
     const { diagnostics } = convertOpenScadToGcad("circle(5);")
     assert.ok(diagnostics.some(d => /2D geometry must be extruded/.test(d.message)))
 })
+
+test("text() is stubbed as a 10×10×10 cube placeholder (with a diagnostic)", () => {
+    const { dsl, diagnostics } = convertOpenScadToGcad("text(\"hi\");")
+    assert.match(dsl, /box\(\[5, 5, 5\]\)\.shift\(\[5, 5, 5\]\)/) // cube([10,10,10]) → half-extents
+    assert.ok(diagnostics.some(d => /text\(\) not supported/.test(d.message)))
+})
+
+test("linear_extrude(text()) keeps the cube stub (not dropped by the extrude)", () => {
+    const { dsl } = convertOpenScadToGcad("linear_extrude(5) text(\"hi\");")
+    assert.match(dsl, /box\(\[5, 5, 5\]\)\.shift\(\[5, 5, 5\]\)/)
+})

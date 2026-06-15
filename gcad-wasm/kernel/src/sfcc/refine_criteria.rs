@@ -14,13 +14,19 @@
 //! - (iii-d) blend-region curvature: max pairwise deviation of the TREE's own
 //!   ∇f over near-surface (and, in the mixed-cell variant, zero-owner) probes.
 //!
-//! DEFERRED to M4: the feature criteria (i)/(ii), `classify_cell_features`,
-//! feature curves/corners.
+//! M4c-1 added the FEATURE criteria (i)/(ii) — [`classify_cell_features`]:
+//! at-most-one-curve-through + corner-claim (i), per-face transversal
+//! single-crossing (ii), and the pin-visibility certificate. The octree driver
+//! ([`crate::sfcc::octree::build_octree_feature_aware`]) splits on classify ∨
+//! smooth and stamps each leaf's `feature_curve` / `feature_corner`. DEFERRED to
+//! M4c-2: the face-contour / cell-mesh paths that consume those tags.
 
 use crate::math::grid::{
-    cell_center_world, cell_size_at_level, corner_offset, point_to_world, stride_at_level, SfccLattice, CELL_EDGES,
+    cell_aabb, cell_center_world, cell_size_at_level, corner_offset, point_to_world, stride_at_level, SfccLattice,
+    CELL_EDGES,
 };
 use crate::sdf::CsgNode;
+use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::strata::Stratum;
 use std::collections::HashSet;
 
@@ -280,4 +286,205 @@ pub fn needs_split_smooth(
         return true;
     }
     false
+}
+
+// ---------------------------------------------------------------------------
+// Feature criteria (i)/(ii) — design doc §3.2 S2. Port of `classifyCellFeatures`.
+// ---------------------------------------------------------------------------
+
+/// Feature-criteria options (loop-invariant; depend only on tuning).
+#[derive(Clone, Copy, Debug)]
+pub struct FeatureCriteriaOptions {
+    /// Cell AABB inflation, in fractions of the cell size, for index queries.
+    pub feature_query_inflate: f64,
+    /// |tangent·faceNormal| below this counts as tangential → split.
+    pub tangential_epsilon: f64,
+}
+
+/// Result of classifying a cell against the feature set. Port of `FeatureCellClass`.
+#[derive(Clone, Copy, Debug)]
+pub struct FeatureCellClass {
+    pub split: bool,
+    /// Curve passing through the cell (−1 = none). Valid when `!split`.
+    pub curve: i64,
+    /// Corner inside the cell (−1 = none).
+    pub corner: i64,
+}
+
+/// Classify a cell against the feature set:
+/// - (i) at most one curve passes through (entry/exit = exactly 2 boundary
+///   crossings); corners → split until corner cells land;
+/// - (ii) each curve crosses each face at most once, transversally; an in-cell
+///   curve portion with no boundary crossings (contained loop / endpoint
+///   inside) splits;
+/// - pin-visibility certificate over the pinned faces.
+///
+/// Port of `classifyCellFeatures` (`src/export/sfcc/refine-criteria.mts`). The
+/// `curvesInBox` set is sorted by id so the (order-independent) classification
+/// of a KEPT leaf is also deterministic across runs.
+pub fn classify_cell_features(
+    features: &SfccFeatureSet,
+    lat: &SfccLattice,
+    level: u32,
+    ix: i64,
+    iy: i64,
+    iz: i64,
+    opts: &FeatureCriteriaOptions,
+) -> FeatureCellClass {
+    let box_ = cell_aabb(lat, level, ix, iy, iz);
+    let size = cell_size_at_level(lat, level);
+    let inflate = opts.feature_query_inflate * size;
+    let qmin = [box_[0] - inflate, box_[1] - inflate, box_[2] - inflate];
+    let qmax = [box_[3] + inflate, box_[4] + inflate, box_[5] + inflate];
+
+    // Corner clause of (i): a cell containing exactly ONE corner passes iff every
+    // feature curve touching the cell is incident to that corner.
+    let mut corner_in_cell: i64 = -1;
+    let corner_ids = features.index.corners_in_box(qmin, qmax);
+    for cid in corner_ids {
+        let c = &features.corners[cid];
+        if c.x >= box_[0]
+            && c.x <= box_[3]
+            && c.y >= box_[1]
+            && c.y <= box_[4]
+            && c.z >= box_[2]
+            && c.z <= box_[5]
+        {
+            if corner_in_cell >= 0 {
+                return FeatureCellClass { split: true, curve: -1, corner: cid as i64 }; // two corners
+            }
+            corner_in_cell = cid as i64;
+        }
+    }
+    // The corner's incident curve-end ids, if a corner is in the cell.
+    let corner_curves: Option<HashSet<usize>> = if corner_in_cell >= 0 {
+        Some(features.corners[corner_in_cell as usize].curve_ends.iter().map(|e| e.0).collect())
+    } else {
+        None
+    };
+
+    let mut through_curve: i64 = -1;
+    let mut curve_ids = features.index.curves_in_box(qmin, qmax);
+    curve_ids.sort_unstable();
+    for curve_id in curve_ids {
+        let curve = &features.curves[curve_id];
+        let mut total = 0usize;
+        // Faces with exactly one crossing — collected as (axis, coord) for the pin
+        // certificate. At most 6 faces.
+        let mut crossing_faces: Vec<(usize, f64)> = Vec::new();
+        for axis in 0..3usize {
+            for side in 0..2usize {
+                let coord = box_[axis + if side == 1 { 3 } else { 0 }];
+                let mut per_face = 0usize;
+                let crossings = curve.axis_plane_crossings(axis, coord);
+                for cr in &crossings {
+                    // In-rect test on the other two axes (closed interval).
+                    let px = [cr.x, cr.y, cr.z];
+                    let mut inside = true;
+                    for a in 0..3usize {
+                        if a == axis {
+                            continue;
+                        }
+                        if px[a] < box_[a] || px[a] > box_[a + 3] {
+                            inside = false;
+                            break;
+                        }
+                    }
+                    if !inside {
+                        continue;
+                    }
+                    per_face += 1;
+                    if cr.tangential_dot < opts.tangential_epsilon {
+                        return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // tangential
+                    }
+                }
+                if per_face > 1 {
+                    return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // (ii)
+                }
+                if per_face == 1 {
+                    crossing_faces.push((axis, coord));
+                }
+                total += per_face;
+            }
+        }
+        // Pin-visibility certificate: on a pinned face, the surface arc through the
+        // pin must reach the face boundary on BOTH stratum sides — each adjacent
+        // stratum's carrier changes sign over the face corners. Otherwise the arc
+        // enters and exits through one boundary sub-edge (an invisible even
+        // crossing) and the pin cannot be routed: split.
+        if total == 2 {
+            let mut pin_split = false;
+            'pin: for &(axis, coord) in &crossing_faces {
+                for &sid in &curve.adjacent_strata {
+                    let st = &features.strata[sid];
+                    let mut neg = false;
+                    let mut pos = false;
+                    let (u, v) = if axis == 0 {
+                        (1usize, 2usize)
+                    } else if axis == 1 {
+                        (0usize, 2usize)
+                    } else {
+                        (0usize, 1usize)
+                    };
+                    for cu in 0..2usize {
+                        for cv in 0..2usize {
+                            let mut pt = [0.0f64; 3];
+                            pt[axis] = coord;
+                            pt[u] = box_[u + cu * 3];
+                            pt[v] = box_[v + cv * 3];
+                            if st.f(pt[0], pt[1], pt[2]) < 0.0 {
+                                neg = true;
+                            } else {
+                                pos = true;
+                            }
+                        }
+                    }
+                    if !neg || !pos {
+                        pin_split = true;
+                        break 'pin;
+                    }
+                }
+            }
+            if pin_split {
+                return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 };
+            }
+        }
+        if total == 0 {
+            // No boundary crossings — is any part of the curve inside the cell?
+            let cx = (box_[0] + box_[3]) / 2.0;
+            let cy = (box_[1] + box_[4]) / 2.0;
+            let cz = (box_[2] + box_[5]) / 2.0;
+            let (pr_t, _) = curve.project(cx, cy, cz);
+            let q = curve.point_at(pr_t);
+            let inside_cell = q[0] >= box_[0]
+                && q[0] <= box_[3]
+                && q[1] >= box_[1]
+                && q[1] <= box_[4]
+                && q[2] >= box_[2]
+                && q[2] <= box_[5];
+            if inside_cell {
+                return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // contained loop/segment
+            }
+            continue; // index false positive — curve does not touch the cell
+        }
+        if let Some(cc) = &corner_curves {
+            // Corner cell: every touching curve must be one of the corner's
+            // incident curves, entering once (its other end is the corner).
+            if !cc.contains(&curve_id) || total != 1 {
+                return FeatureCellClass { split: true, curve: curve_id as i64, corner: corner_in_cell };
+            }
+            continue;
+        }
+        if total != 2 {
+            return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // endpoint inside / multi-entry
+        }
+        if through_curve >= 0 {
+            return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // (i): two curves
+        }
+        through_curve = curve_id as i64;
+    }
+    if corner_in_cell >= 0 {
+        return FeatureCellClass { split: false, curve: -1, corner: corner_in_cell };
+    }
+    FeatureCellClass { split: false, curve: through_curve, corner: -1 }
 }

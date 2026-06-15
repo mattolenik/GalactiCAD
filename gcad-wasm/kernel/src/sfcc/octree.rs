@@ -15,13 +15,23 @@
 //! M3a notes: single-threaded; `HashMap`/`HashSet` cell storage (the
 //! deterministic-weld / rayon restructure is M6). The `needs_split` criteria
 //! callback is supplied by the caller — for M3a it is the smooth-only
-//! [`crate::sfcc::refine_criteria::needs_split_smooth`]; feature classification
-//! is M4.
+//! [`crate::sfcc::refine_criteria::needs_split_smooth`].
+//!
+//! M4c-1 added [`build_octree_feature_aware`]: the full feature-aware driver
+//! (classify ∨ smooth) that stamps each surviving leaf's `feature_curve` /
+//! `feature_corner`. The callback now takes `&mut SfccCell` so it can stamp tags
+//! exactly as the TS `needsSplit` mutates the live cell.
 
 use crate::math::grid::{
-    cell_center_world, cell_key, cell_size_at_level, pack_point, point_to_world, stride_at_level, SfccLattice,
+    cell_aabb, cell_center_world, cell_key, cell_size_at_level, pack_point, point_to_world, stride_at_level,
+    SfccLattice,
 };
 use crate::sdf::CsgNode;
+use crate::sfcc::feature_set::SfccFeatureSet;
+use crate::sfcc::refine_criteria::{
+    classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
+    SmoothCriteriaOptions,
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
@@ -36,10 +46,12 @@ pub struct SfccCell {
     pub key: i64,
     /// Criteria still failing at depth_max — meshed best-effort, reported.
     pub degenerate: bool,
-    /// Feature curve passing through this cell (−1 = none); set by the criteria
-    /// callback on pass. Unused in M3a (smooth-only), reserved for M4.
+    /// Feature curve passing through this cell (−1 = none); stamped by the
+    /// feature-aware driver ([`build_octree_feature_aware`]). Consumed by the
+    /// M4c-2 face-contour / cell-mesh paths.
     pub feature_curve: i64,
-    /// Feature corner inside this cell (−1 = none); reserved for M4.
+    /// Feature corner inside this cell (−1 = none); stamped by the feature-aware
+    /// driver. Consumed by the M4c-2 corner-cell meshing path.
     pub feature_corner: i64,
 }
 
@@ -255,15 +267,17 @@ impl<'a> Builder<'a> {
 
 /// Build the certified adaptive octree over `tree`. `needs_split(cell, sampler)`
 /// returns true when the leaf must split; it is never invoked above `depth_min`.
-/// Port of `buildOctree`.
+/// The callback receives `&mut SfccCell` so it can stamp `feature_curve` /
+/// `feature_corner` exactly as the TS `needsSplit` mutates the live cell — those
+/// tags persist on the surviving leaf. Port of `buildOctree`.
 pub fn build_octree<'a, F>(
     tree: &'a CsgNode,
     lat: &'a SfccLattice,
     opts: OctreeBuildOptions,
-    needs_split: F,
+    mut needs_split: F,
 ) -> SfccOctree<'a>
 where
-    F: Fn(&SfccCell, &Sampler<'a>) -> bool,
+    F: FnMut(&mut SfccCell, &Sampler<'a>) -> bool,
 {
     assert!(
         opts.depth_max <= lat.max_depth,
@@ -289,11 +303,18 @@ where
         // The cell may have been split by a balance ripple while queued (in
         // which case it's gone from the leaf map → skip). Matches the TS
         // identity guard `cellsByLevel[level].get(key) !== cell`.
-        let cell = match b.cells_by_level[level as usize].get(&key) {
+        let mut cell = match b.cells_by_level[level as usize].get(&key) {
             Some(&c) => c,
             None => continue,
         };
-        if !needs_split(&cell, &b.sampler) {
+        // The callback may stamp feature tags on `cell` (mirrors the TS callback
+        // mutating the live cell). Persist them back whether or not it splits.
+        let want_split = needs_split(&mut cell, &b.sampler);
+        if let Some(c) = b.cells_by_level[level as usize].get_mut(&key) {
+            c.feature_curve = cell.feature_curve;
+            c.feature_corner = cell.feature_corner;
+        }
+        if !want_split {
             continue;
         }
         if cell.level >= opts.depth_max {
@@ -339,8 +360,96 @@ pub fn build_uniform_octree<'a>(tree: &'a CsgNode, lat: &'a SfccLattice, leaf_de
         tree,
         lat,
         OctreeBuildOptions { depth_min: leaf_depth, depth_max: leaf_depth, enforce_edge_balance: true },
-        |_cell, _sampler| false,
+        |_cell: &mut SfccCell, _sampler| false,
     )
+}
+
+/// Build the certified adaptive octree with FEATURE-AWARE refinement: each leaf
+/// splits if `classify_cell_features` says split OR `needs_split_smooth` says
+/// split, and every surviving leaf is stamped with its `feature_curve` /
+/// `feature_corner` id (−1 if none). Port of `runSfccPipeline`'s `needsSplit`
+/// callback (round 0; the re-refine `forcedSplit` markers are empty there and
+/// land in a later slice). The octree is finer near feature edges/seams than the
+/// smooth-only [`build_octree`] driver — that extra refinement is the point.
+pub fn build_octree_feature_aware<'a>(
+    tree: &'a CsgNode,
+    lat: &'a SfccLattice,
+    opts: OctreeBuildOptions,
+    features: &SfccFeatureSet,
+    feature_opts: &FeatureCriteriaOptions,
+    smooth_opts: &SmoothCriteriaOptions,
+) -> SfccOctree<'a> {
+    // `maxDepth = min(depthMax, lat.maxDepth)` — the corner-claim is gated on it.
+    let max_depth = opts.depth_max.min(lat.max_depth);
+    // Tree-level advisories hoisted once (the callback is hot).
+    let grad_bound = tree.grad_bound();
+    let has_blend = tree.has_blend();
+
+    build_octree(tree, lat, opts, |cell, sampler| {
+        // Feature criteria (i)/(ii) first; on pass they classify the cell.
+        let cls = classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, feature_opts);
+        if cls.split {
+            // Classify even though we demand a split: at depthMax the cell CANNOT
+            // split, and an unclassified wedge cell smooth-meshes its wrapping
+            // loop. Below depthMax the assignment is discarded with the split.
+            cell.feature_curve = cls.curve;
+            cell.feature_corner = cls.corner;
+            if cell.level >= max_depth && cls.corner < 0 {
+                // Multi-curve cell that can never split apart: if a nearby corner
+                // exists, claim it (feature curves CONVERGE at corners). Fanning
+                // from an apex slightly outside the cell is structurally fine.
+                let claim = cell_aabb(lat, cell.level, cell.ix, cell.iy, cell.iz);
+                let cell_size = cell_size_at_level(lat, cell.level);
+                let reach = cell_size * 1.25;
+                let mut best_corner: i64 = -1;
+                let mut best_d = f64::INFINITY;
+                let qmin = [claim[0] - reach, claim[1] - reach, claim[2] - reach];
+                let qmax = [claim[3] + reach, claim[4] + reach, claim[5] + reach];
+                for corner_id in features.index.corners_in_box(qmin, qmax) {
+                    let c = &features.corners[corner_id];
+                    let dx = (claim[0] - c.x).max(0.0).max(c.x - claim[3]);
+                    let dy = (claim[1] - c.y).max(0.0).max(c.y - claim[4]);
+                    let dz = (claim[2] - c.z).max(0.0).max(c.z - claim[5]);
+                    let d = (dx * dx + dy * dy + dz * dz).sqrt();
+                    if d < best_d {
+                        best_d = d;
+                        best_corner = corner_id as i64;
+                    }
+                }
+                if best_corner >= 0 && best_d <= reach {
+                    cell.feature_corner = best_corner;
+                }
+            }
+            return true;
+        }
+        // (forcedSplit markers are empty at round 0 — omitted.)
+        let probe = make_probe(
+            lat,
+            tree,
+            |gx, gy, gz| sampler.sample_at(gx, gy, gz),
+            cell.level,
+            cell.ix,
+            cell.iy,
+            cell.iz,
+        );
+        if cls.corner >= 0 {
+            // Corner cells are exempt from the per-stratum smoothness certificates
+            // AND from the sign-change gate (the corner IS the carrier
+            // singularity). A corner cell with no visible crossings meshes nothing.
+            cell.feature_curve = cls.curve;
+            cell.feature_corner = cls.corner;
+            return false;
+        }
+        // A feature in a cell whose corners don't see a sign change is invisible to
+        // face contouring — keep splitting. Classify FIRST so depthMax leaves carry
+        // the tag for the pin + per-stratum recovery machinery.
+        cell.feature_curve = cls.curve;
+        cell.feature_corner = cls.corner;
+        if cls.curve >= 0 && !has_corner_sign_change(&probe) {
+            return true;
+        }
+        needs_split_smooth(tree, &probe, smooth_opts, grad_bound, has_blend)
+    })
 }
 
 #[cfg(test)]

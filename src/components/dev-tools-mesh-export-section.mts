@@ -149,6 +149,9 @@ export class DevToolsExporterSelect extends HTMLElement {
             isoSimplicial: ISO_SIMPLICIAL_DISPLAY_NAME,
             flexicubes: FLEXICUBES_DISPLAY_NAME,
             sfcc: SFCC_DISPLAY_NAME,
+            // sfcc-rs reuses the SfccTuning knobs; its display name is a literal
+            // here so main-thread code never imports the wasm-pulling exporter.
+            "sfcc-rs": "SFCC (Rust/WASM)",
         }
         const EXPORTER_OPTIONS: ReadonlyArray<readonly [ExporterKind, string]> = EXPORTER_KINDS.map(
             k => [k, DISPLAY_NAMES[k]] as const,

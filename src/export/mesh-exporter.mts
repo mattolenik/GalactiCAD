@@ -33,11 +33,14 @@ import type { MeshData } from "./export.mjs"
  *   (`src/export/flexicubes.mts`).
  * - `"sfcc"`: CPU stratified feature-conforming contouring — symbolic CSG
  *   features + certified primal octree meshing (`src/export/sfcc/`).
+ * - `"sfcc-rs"`: the same SFCC algorithm running in the gcad-wasm Rust kernel
+ *   across the WASM boundary (`src/export/sfcc-rs/`); sits alongside `"sfcc"`
+ *   for head-to-head comparison (M5).
  */
-export type ExporterKind = "mdc" | "shrec" | "isoSimplicial" | "flexicubes" | "sfcc"
+export type ExporterKind = "mdc" | "shrec" | "isoSimplicial" | "flexicubes" | "sfcc" | "sfcc-rs"
 
 /** All exporter kinds, in dropdown order. */
-export const EXPORTER_KINDS = ["mdc", "shrec", "isoSimplicial", "flexicubes", "sfcc"] as const satisfies readonly ExporterKind[]
+export const EXPORTER_KINDS = ["mdc", "shrec", "isoSimplicial", "flexicubes", "sfcc", "sfcc-rs"] as const satisfies readonly ExporterKind[]
 
 /** Type guard for a persisted/incoming exporter kind. */
 export function isValidExporter(v: unknown): v is ExporterKind {

@@ -208,6 +208,8 @@ export class DevToolsPanel extends HTMLElement {
             isoSimplicial: this.isoSimplicialTuning,
             flexicubes: this.flexicubesTuning,
             sfcc: this.sfccTuning,
+            // sfcc-rs reuses the SFCC tuning section (same knobs).
+            "sfcc-rs": this.sfccTuning,
         }
     }
 

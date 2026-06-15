@@ -160,6 +160,9 @@ async function build() {
                 ".woff2": "file",
                 ".gcad": "text",
                 ".svg": "text",
+                // gcad-wasm SFCC kernel binary (sfcc-rs exporter): emit as a
+                // hashed asset; the import yields the served URL passed to init.
+                ".wasm": "file",
             },
             plugins: Options.plugins,
             sourcemap: !Options.isProd,

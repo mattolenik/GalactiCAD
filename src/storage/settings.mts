@@ -24,6 +24,7 @@ const EXPORTER_NORMALIZERS: Record<ExporterKind, (raw: unknown) => unknown> = {
     isoSimplicial: normalizeIsoSimplicialTuning,
     flexicubes: normalizeFlexiCubesTuning,
     sfcc: normalizeSfccTuning,
+    "sfcc-rs": normalizeSfccTuning, // shares the SFCC tuning shape
 }
 
 /** Fresh default tuning for every exporter (each a copy). */
@@ -34,6 +35,7 @@ function defaultExporterTuning(): Record<ExporterKind, unknown> {
         isoSimplicial: { ...DEFAULT_ISO_SIMPLICIAL_TUNING },
         flexicubes: { ...DEFAULT_FLEXICUBES_TUNING },
         sfcc: { ...DEFAULT_SFCC_TUNING },
+        "sfcc-rs": { ...DEFAULT_SFCC_TUNING },
     }
 }
 
@@ -626,6 +628,7 @@ export class SettingsManager {
                     isoSimplicial: rawApp.isoSimplicialTuning,
                     flexicubes: rawApp.flexicubesTuning,
                     sfcc: undefined, // no legacy per-field name — SFCC postdates the tuning blob
+                    "sfcc-rs": undefined, // ditto — sfcc-rs is newer still
                 }
                 const exporterTuning = {} as Record<ExporterKind, unknown>
                 for (const kind of EXPORTER_KINDS) {

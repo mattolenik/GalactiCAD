@@ -13,6 +13,7 @@ pub mod primitives;
 pub mod scene;
 pub mod sdf;
 pub mod sfcc;
+pub mod strata;
 pub mod tolerances;
 pub mod tuning;
 

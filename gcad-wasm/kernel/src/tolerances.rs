@@ -61,6 +61,7 @@ mod tests {
             corner_merge_tol_diag_fraction: 1e-3,
             seed_cell_size_mm: 0.0,
             max_trace_steps: 5000,
+            ..SfccTuning::default()
         };
         let r = resolve_tolerances(&t, 200.0);
         assert_eq!(r.surface_tol, 0.02);

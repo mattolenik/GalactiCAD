@@ -12,6 +12,7 @@
 use crate::math::similarity::Similarity;
 use crate::primitives::shapes;
 use crate::primitives::smin::{smin, smin_columns_interval, smin_grad_weights, SminMode};
+use crate::strata::Stratum;
 use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -61,6 +62,13 @@ pub struct Leaf {
     pub sim: Similarity,
     pub pos: [f64; 3],
     pub shape: Shape,
+    /// Index of this leaf in the tree's flattened leaf list (assigned by the
+    /// CSG-aware owner query; 0 until then). Mirrors `CpuSdfLeaf.index`.
+    pub index: usize,
+    /// This leaf's smooth analytic patches (carriers). Empty until the scene
+    /// bridge / strata compilation attaches them; the M3a parity scenes build
+    /// them via [`leaf_with_strata`].
+    pub strata: Vec<Stratum>,
 }
 
 impl Leaf {
@@ -295,18 +303,140 @@ impl CsgNode {
     pub fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
         self.interval_over_ball(c, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt())
     }
+
+    /// CSG-aware winner set: the leaves whose surfaces can own the point — those
+    /// within `tol` of the winning value at every min/max combiner on their
+    /// path. Two owners ⇒ boolean seam, three+ ⇒ seam corner. Only meaningful
+    /// near the surface. Port of `collectOwners` (cpu-sdf.mts).
+    ///
+    /// ON a blend surface no child matches (the fillet lies on no carrier) and
+    /// the owner set is empty — by design, blend surfaces are featureless.
+    pub fn active_owners_at(&self, p: [f64; 3], tol: f64) -> Vec<ActiveOwner<'_>> {
+        let mut out = Vec::new();
+        self.collect_owners(p, tol, &mut out);
+        out
+    }
+
+    fn collect_owners<'a>(&'a self, p: [f64; 3], tol: f64, out: &mut Vec<ActiveOwner<'a>>) -> f64 {
+        match self {
+            CsgNode::Leaf(l) => {
+                let d = l.f(p);
+                out.push(ActiveOwner { leaf: l, d });
+                d
+            }
+            CsgNode::Min(ch) => {
+                let ds: Vec<f64> = ch.iter().map(|c| c.f(p)).collect();
+                let best = ds.iter().cloned().fold(f64::INFINITY, f64::min);
+                for (i, c) in ch.iter().enumerate() {
+                    if (ds[i] - best).abs() <= tol {
+                        c.collect_owners(p, tol, out);
+                    }
+                }
+                best
+            }
+            CsgNode::Max(ch) => {
+                let ds: Vec<f64> = ch.iter().map(|c| c.f(p)).collect();
+                let best = ds.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                for (i, c) in ch.iter().enumerate() {
+                    if (ds[i] - best).abs() <= tol {
+                        c.collect_owners(p, tol, out);
+                    }
+                }
+                best
+            }
+            CsgNode::Blend { kind, mode, r, n, children } => {
+                let ds: Vec<f64> = children.iter().map(|c| c.f(p)).collect();
+                let value = blend_value_of(*kind, *mode, *r, *n, &ds);
+                for (i, c) in children.iter().enumerate() {
+                    if (ds[i] - value).abs() <= tol {
+                        c.collect_owners(p, tol, out);
+                    }
+                }
+                value
+            }
+        }
+    }
+
+    /// Advisory bound on |∇f| relative to the leaves' own bounds: 1 for hard
+    /// trees, √2 per round/chamfer/columns blend nesting level (soft is convex,
+    /// stairs selects a single operand). Port of `gradBoundOf`.
+    pub fn grad_bound(&self) -> f64 {
+        match self {
+            CsgNode::Leaf(_) => 1.0,
+            CsgNode::Min(ch) | CsgNode::Max(ch) => ch.iter().map(|c| c.grad_bound()).fold(1.0, f64::max),
+            CsgNode::Blend { mode, children, .. } => {
+                let mut m = children.iter().map(|c| c.grad_bound()).fold(1.0, f64::max);
+                if *mode != SminMode::Soft && *mode != SminMode::Stairs {
+                    m *= SQRT_2;
+                }
+                m
+            }
+        }
+    }
+
+    /// True when the CSG contains any smooth-boolean blend node (any mode).
+    /// Port of `hasBlendNode`.
+    pub fn has_blend(&self) -> bool {
+        match self {
+            CsgNode::Leaf(_) => false,
+            CsgNode::Min(ch) | CsgNode::Max(ch) => ch.iter().any(|c| c.has_blend()),
+            CsgNode::Blend { .. } => true,
+        }
+    }
+
+    /// Assign dense leaf indices in a left-to-right traversal (mirrors the order
+    /// `compileCpuSdf`'s `walk` pushes leaves). Strata must already carry their
+    /// `leaf_index`; this only sets each `Leaf::index`.
+    pub fn assign_leaf_indices(&mut self) {
+        let mut next = 0usize;
+        self.assign_leaf_indices_from(&mut next);
+    }
+
+    fn assign_leaf_indices_from(&mut self, next: &mut usize) {
+        match self {
+            CsgNode::Leaf(l) => {
+                l.index = *next;
+                *next += 1;
+            }
+            CsgNode::Min(ch) | CsgNode::Max(ch) => {
+                for c in ch.iter_mut() {
+                    c.assign_leaf_indices_from(next);
+                }
+            }
+            CsgNode::Blend { children, .. } => {
+                for c in children.iter_mut() {
+                    c.assign_leaf_indices_from(next);
+                }
+            }
+        }
+    }
+}
+
+/// A leaf within `tol` of the winning value at every combiner on its path.
+/// Port of `ActiveOwner` (cpu-sdf.mts).
+#[derive(Clone, Copy, Debug)]
+pub struct ActiveOwner<'a> {
+    pub leaf: &'a Leaf,
+    /// The leaf's signed distance at the query point.
+    pub d: f64,
 }
 
 // --- Tree builder (mirrors the TS operator + negation semantics) -------------
 
-/// A leaf under a baked similarity at a local position.
+/// A leaf under a baked similarity at a local position (no strata attached).
 pub fn leaf(shape: Shape, sim: Similarity, pos: [f64; 3]) -> CsgNode {
-    CsgNode::Leaf(Leaf { sign: 1.0, sim, pos, shape })
+    CsgNode::Leaf(Leaf { sign: 1.0, sim, pos, shape, index: 0, strata: Vec::new() })
 }
 
 /// An untransformed leaf at a world position (identity similarity).
 pub fn leaf_at(shape: Shape, pos: [f64; 3]) -> CsgNode {
     leaf(shape, Similarity::identity(), pos)
+}
+
+/// A leaf with its smooth analytic strata attached. Used by the M3a octree
+/// parity scenes (the full scene-bridge strata compilation is M4).
+pub fn leaf_with_strata(shape: Shape, sim: Similarity, pos: [f64; 3], strata: Vec<Stratum>) -> CsgNode {
+    CsgNode::Leaf(Leaf { sign: 1.0, sim, pos, shape, index: 0, strata })
 }
 
 pub fn union(children: Vec<CsgNode>) -> CsgNode {
@@ -350,6 +480,12 @@ pub fn negate(node: CsgNode) -> CsgNode {
     match node {
         CsgNode::Leaf(mut l) => {
             l.sign = -l.sign;
+            // Negation parity is baked into the strata sign too, so each
+            // carrier keeps describing the FINAL solid (cpu-sdf.mts walks
+            // negation into `makeLeaf`'s `sign` before building strata).
+            for st in l.strata.iter_mut() {
+                st.sign = -st.sign;
+            }
             CsgNode::Leaf(l)
         }
         CsgNode::Min(ch) => CsgNode::Max(ch.into_iter().map(negate).collect()),

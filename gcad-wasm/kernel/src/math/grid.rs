@@ -174,6 +174,19 @@ fn collect_interior<F: Fn(i64) -> bool>(
     collect_interior(has_point, lat, axis, gx, gy, gz, mid, hi, out);
 }
 
+/// World position of a cell's center, matching the TS `pointToWorld(lat,
+/// (ix+0.5)*stride, …)` float order exactly (the dyadic products are exact in
+/// f64 so this is bit-identical to the oracle). Shared by the octree's
+/// certified-empty cull and the refine probe.
+pub fn cell_center_world(lat: &SfccLattice, level: u32, ix: i64, iy: i64, iz: i64) -> [f64; 3] {
+    let s = stride_at_level(lat, level) as f64;
+    [
+        lat.origin_x + (ix as f64 + 0.5) * s * lat.step,
+        lat.origin_y + (iy as f64 + 0.5) * s * lat.step,
+        lat.origin_z + (iz as f64 + 0.5) * s * lat.step,
+    ]
+}
+
 /// World-space AABB of a cell: [minX, minY, minZ, maxX, maxY, maxZ].
 pub fn cell_aabb(lat: &SfccLattice, level: u32, ix: i64, iy: i64, iz: i64) -> [f64; 6] {
     let size = cell_size_at_level(lat, level);

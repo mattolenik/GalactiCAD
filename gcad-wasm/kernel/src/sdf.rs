@@ -14,35 +14,47 @@ use crate::primitives::shapes;
 use crate::primitives::smin::{smin, smin_columns_interval, smin_grad_weights, SminMode};
 use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
     Sphere { r: f64 },
     Cuboid { half: [f64; 3] },
     Cylinder { r: f64, h: f64 },
     Cone { r: f64, h: f64 },
+    /// Prism over a flat 2D polygon `[x0,z0,…]`, optional twist (radians).
+    Extrude { verts: Vec<f64>, wind: f64, h: f64, twist_rad: f64 },
+    /// Linearly-morphed prism over M same-vertex-count profiles.
+    Loft { profs: Vec<Vec<f64>>, winds: Vec<f64>, h: f64 },
+    /// Revolution of a (r,y) profile (precompiled edges) around local Y.
+    Lathe { edges: Vec<shapes::LatheProfileEdge> },
 }
 
 impl Shape {
     fn dist(&self, x: f64, y: f64, z: f64) -> f64 {
-        match *self {
-            Shape::Sphere { r } => shapes::sphere_dist(x, y, z, r),
+        match self {
+            Shape::Sphere { r } => shapes::sphere_dist(x, y, z, *r),
             Shape::Cuboid { half } => shapes::box_dist(x, y, z, half[0], half[1], half[2]),
-            Shape::Cylinder { r, h } => shapes::cylinder_dist(x, y, z, r, h),
-            Shape::Cone { r, h } => shapes::cone_dist(x, y, z, r, h),
+            Shape::Cylinder { r, h } => shapes::cylinder_dist(x, y, z, *r, *h),
+            Shape::Cone { r, h } => shapes::cone_dist(x, y, z, *r, *h),
+            Shape::Extrude { verts, wind, h, twist_rad } => shapes::extrude_dist(verts, *wind, *h, *twist_rad, x, y, z),
+            Shape::Loft { profs, winds, h } => shapes::loft_dist(profs, winds, *h, x, y, z),
+            Shape::Lathe { edges } => shapes::lathe_dist(edges, x, y, z),
         }
     }
     fn normal(&self, x: f64, y: f64, z: f64) -> [f64; 3] {
-        match *self {
+        match self {
             Shape::Sphere { .. } => shapes::sphere_normal(x, y, z),
             Shape::Cuboid { half } => shapes::box_normal(x, y, z, half[0], half[1], half[2]),
-            Shape::Cylinder { r, h } => shapes::cylinder_normal(x, y, z, r, h),
-            Shape::Cone { r, h } => shapes::cone_normal(x, y, z, r, h),
+            Shape::Cylinder { r, h } => shapes::cylinder_normal(x, y, z, *r, *h),
+            Shape::Cone { r, h } => shapes::cone_normal(x, y, z, *r, *h),
+            Shape::Extrude { verts, wind, h, twist_rad } => shapes::extrude_normal(verts, *wind, *h, *twist_rad, x, y, z),
+            Shape::Loft { profs, winds, h } => shapes::loft_normal(profs, winds, *h, x, y, z),
+            Shape::Lathe { edges } => shapes::lathe_normal(edges, x, y, z),
         }
     }
 }
 
 /// A primitive leaf: `f = sign · s · shape((Rᵀ(p − t)/s) − pos)`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Leaf {
     /// −1 under an odd number of subtract right-hand ancestors.
     pub sign: f64,
@@ -470,5 +482,20 @@ mod tests {
                 assert!(v >= lo - 1e-9 && v <= hi + 1e-9, "columns f={v} outside [{lo},{hi}]");
             }
         }
+    }
+
+    #[test]
+    fn complex_shape_leaves_dispatch() {
+        let flat = vec![1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0];
+        let w = crate::primitives::polygon2d::winding_sign(&[[1.0, 1.0], [-1.0, 1.0], [-1.0, -1.0], [1.0, -1.0]]);
+        let ext = leaf_at(Shape::Extrude { verts: flat, wind: w, h: 2.0, twist_rad: 0.0 }, [0.0, 0.0, 0.0]);
+        assert!(ext.f([0.0, 0.0, 0.0]) < 0.0);
+        assert!(ext.f([3.0, 0.0, 0.0]) > 0.0);
+        // Lathe leaf under a translate: cylinder centered at (5,0,0).
+        let prof = [[0.0, -2.0], [1.0, -2.0], [1.0, 2.0], [0.0, 2.0]];
+        let edges = shapes::lathe_profile_edges(&prof, crate::primitives::polygon2d::winding_sign(&prof));
+        let lathe = leaf(Shape::Lathe { edges }, Similarity::from_translation(5.0, 0.0, 0.0), [0.0, 0.0, 0.0]);
+        assert!(lathe.f([5.0, 0.0, 0.0]) < 0.0);
+        assert!(lathe.f([8.0, 0.0, 0.0]) > 0.0);
     }
 }

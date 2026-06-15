@@ -235,7 +235,7 @@ fn run_parity(name: &str, tree: CsgNode) {
     );
 
     let mut points = PointTable::new();
-    let result = contour_all_faces(&oct, &tree, &mut points, &FaceContourOptions { root_tol: fix.root_tol });
+    let result = contour_all_faces(&oct, &tree, &mut points, &FaceContourOptions { root_tol: fix.root_tol, ..FaceContourOptions::default() });
 
     // Diagnostics counters must match exactly.
     assert_eq!(
@@ -338,7 +338,7 @@ fn contour_sphere_drift_is_sub_ulp_scale() {
         needs_split_smooth(&tree, &probe, &smooth_opts, grad_bound, has_blend)
     });
     let mut points = PointTable::new();
-    let result = contour_all_faces(&oct, &tree, &mut points, &FaceContourOptions { root_tol: fix.root_tol });
+    let result = contour_all_faces(&oct, &tree, &mut points, &FaceContourOptions { root_tol: fix.root_tol, ..FaceContourOptions::default() });
     let mut got: HashMap<(u32, i64), Vec<[f64;6]>> = HashMap::new();
     for (axis, per_axis) in result.faces.iter().enumerate() {
         for (&key, rec) in per_axis.iter() {

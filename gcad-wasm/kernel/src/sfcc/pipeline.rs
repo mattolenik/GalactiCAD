@@ -1,25 +1,33 @@
-//! S4 — the smooth-only pipeline driver + MeshData assembly. Port of the
-//! featureless paths of `runSfccPipeline` (`src/export/sfcc/assemble.mts`).
+//! S4 — the full pipeline driver + MeshData assembly. Port of `runSfccPipeline`
+//! (`src/export/sfcc/assemble.mts`).
 //!
-//! Runs octree → face contour → cell mesh → audits (coincident-pair drop,
-//! debris drop, sliver flip) → [`PointTable::build_mesh`], returning verts
-//! (stride-8 f32), tris, [`SfccStats`], and a [`ManifoldReport`].
+//! Runs feature-set compilation → feature-aware octree → feature-aware face
+//! contour → feature-aware cell mesh → audits (coincident-pair drop, debris drop,
+//! sliver flip) → [`PointTable::build_mesh`], returning verts (stride-8 f32),
+//! tris, [`SfccStats`], and a [`ManifoldReport`]. On featureless scenes (no
+//! curves/corners) every feature path is inert, so the output is byte-identical
+//! to the prior smooth-only driver.
 //!
-//! DEFERRED to M4 (the feature paths — absent on smooth scenes): feature-set
-//! compilation, the feature-aware refine criteria (i)/(ii) + corner-claim, the
-//! corner/edge-cell meshing, feature-hugging debris drop, and the forced-split
-//! re-refinement of fallback cells (only loop-broken `failed_cells` re-refine on
-//! the smooth path, and smooth scenes never produce any).
+//! M4c-2: the feature paths landed — feature-set compilation, the feature-aware
+//! refine criteria (i)/(ii) + corner-claim, corner/edge-cell meshing, the
+//! feature-hugging debris drop, and the forced-split re-refinement of failed +
+//! (round-0) fallback cells.
 
-use crate::math::grid::{make_lattice, SfccLattice};
+use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, SfccLattice};
 use crate::sdf::CsgNode;
 use crate::sfcc::cell_mesh::{mesh_all_cells, CellMeshOptions, CellMeshResult, InteriorVertexMode};
 use crate::sfcc::face_contour::{contour_all_faces, FaceContourOptions, FaceContourResult};
+use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
-use crate::sfcc::octree::{build_octree, OctreeBuildOptions, SfccOctree};
+use crate::sfcc::octree::{build_octree, OctreeBuildOptions, SfccCell, SfccOctree};
 use crate::sfcc::point_table::PointTable;
-use crate::sfcc::refine_criteria::{make_probe, needs_split_smooth, SmoothCriteriaOptions};
+use crate::sfcc::refine_criteria::{
+    classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
+    SmoothCriteriaOptions,
+};
 use crate::sfcc::sliver_flip::flip_sliver_triangles;
+use crate::tolerances::resolve_tolerances;
+use crate::tuning::SfccTuning;
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
@@ -49,6 +57,18 @@ pub struct PipelineTuning {
     pub project_max_iters: u32,
     pub re_refine_max_rounds: u32,
     pub check_vertex_links: bool,
+    // Feature-path knobs (M4c-2).
+    pub tangential_epsilon: f64,
+    pub feature_query_inflate: f64,
+    pub curve_chord_tol_mm: f64,
+    pub max_polyline_points_per_cell: usize,
+    pub recovery_cull: bool,
+    pub probe_delta_factor: f64,
+    pub min_dihedral_deg: f64,
+    pub min_tangency_angle_deg: f64,
+    pub corner_merge_tol_diag_fraction: f64,
+    pub seed_cell_size_mm: f64,
+    pub max_trace_steps: u32,
 }
 
 impl Default for PipelineTuning {
@@ -68,11 +88,22 @@ impl Default for PipelineTuning {
             project_max_iters: 8,
             re_refine_max_rounds: 2,
             check_vertex_links: false,
+            tangential_epsilon: 0.05,
+            feature_query_inflate: 0.25,
+            curve_chord_tol_mm: 0.02,
+            max_polyline_points_per_cell: 16,
+            recovery_cull: true,
+            probe_delta_factor: 10.0,
+            min_dihedral_deg: 15.0,
+            min_tangency_angle_deg: 2.0,
+            corner_merge_tol_diag_fraction: 1e-6,
+            seed_cell_size_mm: 0.0,
+            max_trace_steps: 20_000,
         }
     }
 }
 
-/// Pipeline statistics (smooth-only subset of `SfccStats`).
+/// Pipeline statistics (port of `SfccStats`, the consumed subset).
 pub struct SfccStats {
     pub leaves: usize,
     pub degenerate_cells: usize,
@@ -84,6 +115,10 @@ pub struct SfccStats {
     pub multi_run_faces: usize,
     pub boundary_violations: usize,
     pub face_audit_failures: usize,
+    pub feature_curves: usize,
+    pub edge_cells: usize,
+    pub corner_cells: usize,
+    pub feature_cell_fallbacks: usize,
     pub re_refine_rounds: u32,
 }
 
@@ -173,11 +208,18 @@ fn drop_coincident_triangle_pairs(tris: &[usize]) -> Vec<usize> {
     out
 }
 
-/// Drop debris components (SMOOTH path: the feature-hugging-tube class needs a
-/// feature set, absent here, so only the micro-extent class runs — components
-/// whose AABB diagonal is below `max_diag`, never the dominant one). Port of the
-/// smooth subset of `dropDebrisComponents`.
-fn drop_debris_components(points: &PointTable, tris: &[usize], max_diag: f64) -> Vec<usize> {
+/// Drop debris components. Two classes: micro (AABB diagonal below `max_diag`)
+/// and feature-hugging tubes (small components, ≤ `hug_max_verts`, every vertex
+/// within `hug_dist` of a feature curve). Never drops the dominant component.
+/// Port of `dropDebrisComponents`.
+fn drop_debris_components(
+    points: &PointTable,
+    tris: &[usize],
+    max_diag: f64,
+    features: &SfccFeatureSet,
+    hug_dist: f64,
+    hug_max_verts: usize,
+) -> Vec<usize> {
     if tris.is_empty() {
         return tris.to_vec();
     }
@@ -204,16 +246,13 @@ fn drop_debris_components(points: &PointTable, tris: &[usize], max_diag: f64) ->
         t += 3;
     }
     let mut bounds: HashMap<usize, [f64; 6]> = HashMap::new();
-    let mut members: HashMap<usize, usize> = HashMap::new();
-    let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let mut members: HashMap<usize, std::collections::HashSet<usize>> = HashMap::new();
     for &v in tris {
         let root = find(&mut parent, v);
         let b = bounds
             .entry(root)
             .or_insert([f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY]);
-        if seen.insert((root, v)) {
-            *members.entry(root).or_insert(0) += 1;
-        }
+        members.entry(root).or_default().insert(v);
         let x = points.x(v);
         let y = points.y(v);
         let z = points.z(v);
@@ -237,31 +276,59 @@ fn drop_debris_components(points: &PointTable, tris: &[usize], max_diag: f64) ->
         }
     }
     // Never drop the dominant component. Iterate roots in sorted order so the
-    // pick is deterministic run-to-run (the double-run bit-identical guard); on
-    // the smooth corpus there is one dominant component so the `>` tie-break is
-    // moot, but sorting removes any hash-order dependence.
+    // pick is deterministic run-to-run (the double-run bit-identical guard).
     let mut roots: Vec<usize> = members.keys().copied().collect();
     roots.sort_unstable();
     let mut main_root = usize::MAX;
-    let mut main_size = 0usize;
+    let mut main_size: i64 = -1;
     for root in &roots {
-        let size = members[root];
+        let size = members[root].len() as i64;
         if size > main_size {
             main_size = size;
             main_root = *root;
         }
     }
     let mut drop: std::collections::HashSet<usize> = std::collections::HashSet::new();
-    for (&root, b) in &bounds {
+    for &root in &roots {
         if root == main_root {
             continue;
         }
+        let b = &bounds[&root];
         if hypot3(b[3] - b[0], b[4] - b[1], b[5] - b[2]) < max_diag {
             drop.insert(root);
+            continue;
         }
-        // SMOOTH path: the feature-hugging-tube branch (features.index /
-        // curve.project) is M4. With no curves it never fires, so a non-micro
-        // off-body component is simply kept (smooth corpus has none).
+        let verts = &members[&root];
+        if verts.len() > hug_max_verts {
+            continue;
+        }
+        // Feature-hugging tube: every vertex within hug_dist of a feature curve.
+        // Iterate vertices in sorted order so the early-out is deterministic.
+        let mut vlist: Vec<usize> = verts.iter().copied().collect();
+        vlist.sort_unstable();
+        let mut hugging = true;
+        for &v in &vlist {
+            let x = points.x(v);
+            let y = points.y(v);
+            let z = points.z(v);
+            let mut near = false;
+            let qmin = [x - hug_dist, y - hug_dist, z - hug_dist];
+            let qmax = [x + hug_dist, y + hug_dist, z + hug_dist];
+            for cid in features.index.curves_in_box(qmin, qmax) {
+                let (_, dist) = features.curves[cid].project(x, y, z);
+                if dist <= hug_dist {
+                    near = true;
+                    break;
+                }
+            }
+            if !near {
+                hugging = false;
+                break;
+            }
+        }
+        if hugging {
+            drop.insert(root);
+        }
     }
     if drop.is_empty() {
         return tris.to_vec();
@@ -280,13 +347,26 @@ fn drop_debris_components(points: &PointTable, tris: &[usize], max_diag: f64) ->
     out
 }
 
-/// Run the smooth-only SFCC pipeline. Port of `runSfccPipeline` (featureless path).
+/// A forced-split marker from a prior round's failed / fallback cell: any leaf
+/// containing this point at ≤ `level` must split. Port of the TS `forced` array.
+#[derive(Clone, Copy)]
+struct ForcedMarker {
+    x: f64,
+    y: f64,
+    z: f64,
+    level: u32,
+}
+
+/// Run the full feature-aware SFCC pipeline. Port of `runSfccPipeline`. On a
+/// featureless scene (no curves/corners) every feature path is inert, so the
+/// output equals the prior smooth-only driver byte-for-byte.
 pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> SfccPipelineResult {
     let pad = tuning.bounds_padding_mm;
     // Lattice-degeneracy guard: offset the root cube by distinct irrational
     // fractions of a max-depth cell so rational geometry never coincides with
     // the dyadic lattice. Deterministic. (Same expression as the TS oracle.)
-    let step = (cube.size + 2.0 * pad) / ((1u64 << tuning.depth_max) as f64);
+    let total_size = cube.size + 2.0 * pad;
+    let step = total_size / ((1u64 << tuning.depth_max) as f64);
     let jx = (std::f64::consts::SQRT_2 - 1.0) * 0.25 * step;
     let jy = (3.0f64.sqrt() - 1.0) * 0.25 * step;
     let jz = (5.0f64.sqrt() - 2.0) * 0.25 * step;
@@ -295,8 +375,32 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
         cube.min_x - pad - jx,
         cube.min_y - pad - jy,
         cube.min_z - pad - jz,
-        cube.size + 2.0 * pad,
+        total_size,
     );
+
+    // Feature compilation (native curves + traced boolean seams, CSG-trimmed).
+    let scene_diag = hypot3(cube.size, cube.size, cube.size);
+    let sfcc_tuning = SfccTuning {
+        depth_min: tuning.depth_min,
+        depth_max: tuning.depth_max,
+        bounds_padding_mm: tuning.bounds_padding_mm,
+        enforce_edge_balance: tuning.enforce_edge_balance,
+        normal_variation_deg: tuning.normal_variation_deg,
+        blend_curvature_refine: tuning.blend_curvature_refine,
+        blend_curvature_deg: tuning.blend_curvature_deg,
+        tangential_epsilon: tuning.tangential_epsilon,
+        feature_query_inflate: tuning.feature_query_inflate,
+        surface_tol_mm: tuning.surface_tol_mm,
+        curve_chord_tol_mm: tuning.curve_chord_tol_mm,
+        probe_delta_factor: tuning.probe_delta_factor,
+        min_dihedral_deg: tuning.min_dihedral_deg,
+        min_tangency_angle_deg: tuning.min_tangency_angle_deg,
+        corner_merge_tol_diag_fraction: tuning.corner_merge_tol_diag_fraction,
+        seed_cell_size_mm: tuning.seed_cell_size_mm,
+        max_trace_steps: tuning.max_trace_steps,
+    };
+    let tol = resolve_tolerances(&sfcc_tuning, scene_diag);
+    let (features, _diag) = compile_feature_set(tree, &tol);
 
     let grad_bound = tree.grad_bound();
     let has_blend = tree.has_blend();
@@ -308,12 +412,38 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
             1.0 // ≥1 disables (iii-d)
         },
     };
+    let feature_opts = FeatureCriteriaOptions {
+        feature_query_inflate: tuning.feature_query_inflate,
+        tangential_epsilon: tuning.tangential_epsilon,
+    };
 
     let max_depth = tuning.depth_max.min(lat.max_depth);
 
-    // SMOOTH path: the forced-split markers from prior rounds' fallback cells are
-    // M4 (fallback cells are feature artifacts). Only loop-broken `failed_cells`
-    // re-refine here, and smooth scenes never produce any — so the loop runs once.
+    // Forced-split markers accumulate across re-refine rounds.
+    let mut forced: Vec<ForcedMarker> = Vec::new();
+    let forced_split = |forced: &[ForcedMarker], cell: &SfccCell| -> bool {
+        if forced.is_empty() {
+            return false;
+        }
+        let size = total_size / ((1u64 << cell.level) as f64);
+        let min_x = lat.origin_x + cell.ix as f64 * size;
+        let min_y = lat.origin_y + cell.iy as f64 * size;
+        let min_z = lat.origin_z + cell.iz as f64 * size;
+        for f in forced {
+            if cell.level <= f.level
+                && f.x >= min_x
+                && f.x <= min_x + size
+                && f.y >= min_y
+                && f.y <= min_y + size
+                && f.z >= min_z
+                && f.z <= min_z + size
+            {
+                return true;
+            }
+        }
+        false
+    };
+
     let mut oct: SfccOctree;
     let mut points: PointTable;
     let mut face_result: FaceContourResult;
@@ -321,6 +451,7 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
     let mut re_refine_rounds = 0u32;
     let mut round = 0u32;
     loop {
+        let forced_snapshot = forced.clone();
         oct = build_octree(
             tree,
             &lat,
@@ -329,7 +460,42 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
                 depth_max: max_depth,
                 enforce_edge_balance: tuning.enforce_edge_balance,
             },
+            // The full feature-aware needsSplit, mirroring runSfccPipeline.
             |cell, sampler| {
+                let cls = classify_cell_features(&features, &lat, cell.level, cell.ix, cell.iy, cell.iz, &feature_opts);
+                if cls.split {
+                    cell.feature_curve = cls.curve;
+                    cell.feature_corner = cls.corner;
+                    if cell.level >= max_depth && cls.corner < 0 {
+                        // Multi-curve cell that can never split apart: claim a
+                        // nearby corner if one exists (curves CONVERGE at corners).
+                        let claim = cell_aabb(&lat, cell.level, cell.ix, cell.iy, cell.iz);
+                        let cell_size = cell_size_at_level(&lat, cell.level);
+                        let reach = cell_size * 1.25;
+                        let mut best_corner: i64 = -1;
+                        let mut best_d = f64::INFINITY;
+                        let qmin = [claim[0] - reach, claim[1] - reach, claim[2] - reach];
+                        let qmax = [claim[3] + reach, claim[4] + reach, claim[5] + reach];
+                        for corner_id in features.index.corners_in_box(qmin, qmax) {
+                            let c = &features.corners[corner_id];
+                            let dx = (claim[0] - c.x).max(0.0).max(c.x - claim[3]);
+                            let dy = (claim[1] - c.y).max(0.0).max(c.y - claim[4]);
+                            let dz = (claim[2] - c.z).max(0.0).max(c.z - claim[5]);
+                            let d = (dx * dx + dy * dy + dz * dz).sqrt();
+                            if d < best_d {
+                                best_d = d;
+                                best_corner = corner_id as i64;
+                            }
+                        }
+                        if best_corner >= 0 && best_d <= reach {
+                            cell.feature_corner = best_corner;
+                        }
+                    }
+                    return true;
+                }
+                if forced_split(&forced_snapshot, cell) {
+                    return true;
+                }
                 let probe = make_probe(
                     &lat,
                     tree,
@@ -339,12 +505,28 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
                     cell.iy,
                     cell.iz,
                 );
+                if cls.corner >= 0 {
+                    // Corner cells exempt from per-stratum + sign-change gates.
+                    cell.feature_curve = cls.curve;
+                    cell.feature_corner = cls.corner;
+                    return false;
+                }
+                cell.feature_curve = cls.curve;
+                cell.feature_corner = cls.corner;
+                if cls.curve >= 0 && !has_corner_sign_change(&probe) {
+                    return true;
+                }
                 needs_split_smooth(tree, &probe, &smooth_opts, grad_bound, has_blend)
             },
         );
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
-        face_result = contour_all_faces(&oct, tree, &mut points, &FaceContourOptions { root_tol });
+        face_result = contour_all_faces(
+            &oct,
+            tree,
+            &mut points,
+            &FaceContourOptions { root_tol, features: Some(&features), recovery_cull: tuning.recovery_cull },
+        );
         cell_result = mesh_all_cells(
             &oct,
             &mut face_result.faces,
@@ -354,18 +536,38 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
                 surface_tol: tuning.surface_tol_mm,
                 interior_vertex_mode: tuning.interior_vertex_mode,
                 project_max_iters: tuning.project_max_iters,
+                curve_chord_tol: tuning.curve_chord_tol_mm,
+                max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
+                features: Some(&features),
             },
         );
-        // SMOOTH path: only loop-broken failed cells re-refine (fallback cells
-        // are M4). Soft cap on rounds; smooth scenes break here on round 0.
-        let suspects: usize = cell_result.failed_cells.iter().filter(|c| c.level < max_depth).count();
-        if round >= tuning.re_refine_max_rounds || suspects == 0 {
+        // Failed cells re-refine every round; fallback cells get ONE forced round.
+        let mut suspects: Vec<SfccCell> = Vec::new();
+        for c in &cell_result.failed_cells {
+            if c.level < max_depth {
+                suspects.push(*c);
+            }
+        }
+        if round == 0 {
+            for c in &cell_result.fallback_cells {
+                if c.level < max_depth {
+                    suspects.push(*c);
+                }
+            }
+        }
+        if round >= tuning.re_refine_max_rounds || suspects.is_empty() {
             break;
         }
         re_refine_rounds += 1;
-        // (Forced-split marker injection is M4; with no fallback path there is
-        // nothing to force here — a failed cell on a smooth scene would loop
-        // without progress, so cap via re_refine_max_rounds.)
+        for c in &suspects {
+            let size = total_size / ((1u64 << c.level) as f64);
+            forced.push(ForcedMarker {
+                x: lat.origin_x + (c.ix as f64 + 0.5) * size,
+                y: lat.origin_y + (c.iy as f64 + 0.5) * size,
+                z: lat.origin_z + (c.iz as f64 + 0.5) * size,
+                level: c.level,
+            });
+        }
         round += 1;
     }
 
@@ -393,7 +595,7 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
     // S4 cleanups (same call order/args as the oracle so winding/topology match):
     // coincident-pair drop → debris drop → coincident-pair drop → sliver flip.
     let deduped1 = drop_coincident_triangle_pairs(&cell_result.tris);
-    let filtered = drop_debris_components(&points, &deduped1, lat.step * 4.0);
+    let filtered = drop_debris_components(&points, &deduped1, lat.step * 4.0, &features, lat.step * 2.0, 600);
     let deduped2 = drop_coincident_triangle_pairs(&filtered);
     let (flipped, _flips) = flip_sliver_triangles(&points, &deduped2, 4);
 
@@ -411,6 +613,10 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
         multi_run_faces: face_result.multi_run_faces,
         boundary_violations: face_result.boundary_violations,
         face_audit_failures,
+        feature_curves: features.curves.len(),
+        edge_cells: cell_result.edge_cells,
+        corner_cells: cell_result.corner_cells,
+        feature_cell_fallbacks: cell_result.feature_cell_fallbacks,
         re_refine_rounds,
     };
     let ok = manifold.ok

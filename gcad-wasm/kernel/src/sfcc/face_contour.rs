@@ -1,5 +1,4 @@
-//! S3a — per-face contouring (SMOOTH path). Port of the featureless paths of
-//! `src/export/sfcc/face-contour.mts`.
+//! S3a — per-face contouring. Port of `src/export/sfcc/face-contour.mts`.
 //!
 //! Each canonical octree face is contoured exactly once (the CMS invariant): a
 //! CCW boundary walk in the face's (u, v) frame discovers edge iso-crossings on
@@ -18,15 +17,17 @@
 //! required for the keyed point table (`crossing_key`) to be first-writer-wins
 //! correct under a parallel meshing pass.
 //!
-//! DEFERRED to M4 (the feature paths — inert on smooth scenes, so omitted here):
-//! feature pins (`curve.axisPlaneCrossings` / `record.pins`), arc-endpoint
-//! recovery (`recoveredCrossingsFor`), stratum tagging (`stratumTagFor`), and the
-//! pin-route / pin-anchored-splice pairing branches.
+//! M4c-2 added the FEATURE paths (gated on `opts.features`, inert on smooth
+//! scenes): feature pins (`curve.axisPlaneCrossings` → `record.pins` with an
+//! averaged adjacent-strata normal), arc-endpoint recovery
+//! (`recoveredCrossingsFor`), stratum tagging (`stratumTagFor`), and the
+//! pin-route / per-stratum / pin-anchored-splice pairing branches.
 
 use crate::math::grid::{
     collect_edge_interior_offsets, face_axes, pack_point, point_to_world, stride_at_level, SfccLattice,
 };
 use crate::sdf::CsgNode;
+use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::sfcc::octree::SfccOctree;
 use crate::sfcc::point_table::{crossing_key, PointTable};
 use std::collections::HashMap;
@@ -38,6 +39,16 @@ pub struct FaceSegment {
     pub b: usize,
 }
 
+/// A pinned exact curve–face crossing routed through by `segments`.
+#[derive(Clone, Copy, Debug)]
+pub struct FacePin {
+    /// PointTable id of the exact curve–face crossing.
+    pub point_id: usize,
+    pub curve_id: usize,
+    /// Curve parameter at the crossing.
+    pub t: f64,
+}
+
 /// Per-face contour data, computed once per canonical octree face.
 pub struct FaceRecord {
     pub axis: usize,
@@ -46,16 +57,41 @@ pub struct FaceRecord {
     /// Face edge length in lattice units.
     pub len: i64,
     pub segments: Vec<FaceSegment>,
+    /// Pinned feature-curve crossings routed through by `segments`.
+    pub pins: Vec<FacePin>,
     /// Consumption counters for the S4 face audit (filled by cell meshing).
     pub consumed_fwd: Vec<u32>,
     pub consumed_rev: Vec<u32>,
 }
 
-/// Smooth-path face-contour options (the feature caches/profiling are M4).
+/// A recovered per-stratum boundary crossing of a sub-edge with no tree-f sign
+/// change. Port of `RecoveredCrossing`.
+#[derive(Clone, Copy, Debug)]
+pub struct RecoveredCrossing {
+    /// PointTable id.
+    pub id: usize,
+    /// Position along the canonical (+axis) direction of the sub-edge, t ∈ (0,1).
+    pub t: f64,
+    /// Stratum whose carrier vanishes here — recovered crossings pair per-stratum.
+    pub stratum: usize,
+}
+
+/// Face-contour options. The smooth path uses only `root_tol`; the feature paths
+/// activate when `features` is `Some`.
 #[derive(Clone, Copy)]
-pub struct FaceContourOptions {
+pub struct FaceContourOptions<'a> {
     /// Absolute world-space tolerance for edge root-finding.
     pub root_tol: f64,
+    /// Feature set for face pinning / recovery / tagging (None = smooth path).
+    pub features: Option<&'a SfccFeatureSet>,
+    /// Lipschitz pre-cull in `recovered_crossings_for`.
+    pub recovery_cull: bool,
+}
+
+impl Default for FaceContourOptions<'_> {
+    fn default() -> Self {
+        FaceContourOptions { root_tol: 0.0, features: None, recovery_cull: true }
+    }
 }
 
 /// Result of contouring all canonical faces.
@@ -80,6 +116,16 @@ struct BoundaryNode {
     crossing: i64,
     /// For sample nodes: whether f < 0.
     inside: bool,
+}
+
+/// Pass-wide feature caches shared across all faces (mirroring the TS `Map`s
+/// threaded through `FaceContourOptions.recovered` / `.stratumTags`). Built once
+/// in [`contour_all_faces`] when a feature set is present.
+struct FeatureCaches {
+    /// canonical sub-edge key (crossing_key) → recovered crossings.
+    recovered: HashMap<i64, Vec<RecoveredCrossing>>,
+    /// crossing point id → stratum id (−1 for none).
+    stratum_tags: HashMap<usize, i64>,
 }
 
 /// Root-find the iso-crossing on a world segment with f0 < 0 ≤ f1 or vice versa.
@@ -129,10 +175,7 @@ pub fn find_root(
 }
 
 /// Iso-crossing on an axis-aligned sub-edge, computed INDEPENDENTLY of the
-/// direction the caller discovered the edge: the endpoints are canonicalized to a
-/// fixed (lexicographically-least-first) order before root-finding, so a sub-edge
-/// shared by faces walking it in opposite directions yields a BIT-IDENTICAL point
-/// and normal. Port of `canonicalEdgeRoot`.
+/// direction the caller discovered the edge. Port of `canonicalEdgeRoot`.
 #[allow(clippy::too_many_arguments)]
 pub fn canonical_edge_root(
     tree: &CsgNode,
@@ -155,6 +198,290 @@ pub fn canonical_edge_root(
     }
 }
 
+/// Compute (once, cached) the recovered per-stratum boundary crossings of a
+/// sub-edge with no tree-f sign change. Port of `recoveredCrossingsFor`.
+#[allow(clippy::too_many_arguments)]
+fn recovered_crossings_for(
+    cache: &mut HashMap<i64, Vec<RecoveredCrossing>>,
+    cache_key: i64,
+    a_world: [f64; 3], // canonical sub-edge min endpoint (world)
+    b_world: [f64; 3], // canonical sub-edge max endpoint (world)
+    tree: &CsgNode,
+    points: &mut PointTable,
+    features: &SfccFeatureSet,
+    root_tol: f64,
+    recovery_cull: bool,
+) -> Vec<RecoveredCrossing> {
+    if let Some(hit) = cache.get(&cache_key) {
+        return hit.clone();
+    }
+
+    let edge_len = ((b_world[0] - a_world[0]).powi(2)
+        + (b_world[1] - a_world[1]).powi(2)
+        + (b_world[2] - a_world[2]).powi(2))
+    .sqrt();
+    let inflate = edge_len * 2.0;
+    let mut out: Vec<RecoveredCrossing> = Vec::new();
+    let qmin = [
+        a_world[0].min(b_world[0]) - inflate,
+        a_world[1].min(b_world[1]) - inflate,
+        a_world[2].min(b_world[2]) - inflate,
+    ];
+    let qmax = [
+        a_world[0].max(b_world[0]) + inflate,
+        a_world[1].max(b_world[1]) + inflate,
+        a_world[2].max(b_world[2]) + inflate,
+    ];
+    let curve_ids = features.index.curves_in_box(qmin, qmax);
+    if curve_ids.is_empty() {
+        cache.insert(cache_key, out.clone());
+        return out;
+    }
+    let at_t = |t: f64| -> [f64; 3] {
+        [
+            a_world[0] + (b_world[0] - a_world[0]) * t,
+            a_world[1] + (b_world[1] - a_world[1]) * t,
+            a_world[2] + (b_world[2] - a_world[2]) * t,
+        ]
+    };
+
+    // --- detection: all carrier roots per nearby stratum ---
+    const SUBDIV: usize = 8;
+    struct Cand {
+        t: f64,
+        stratum: usize,
+        f_abs: f64,
+    }
+    let mut cand: Vec<Cand> = Vec::new();
+    let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    let grad_bound = tree.grad_bound();
+    for cid in &curve_ids {
+        for &sid in &features.curves[*cid].adjacent_strata {
+            if !seen.insert(sid) {
+                continue;
+            }
+            let st = &features.strata[sid];
+            if recovery_cull {
+                let q = at_t(0.5);
+                if st.f(q[0], q[1], q[2]).abs() > (edge_len / 2.0) * grad_bound {
+                    continue;
+                }
+            }
+            let mut prev_t = 0.0;
+            let q0 = at_t(0.0);
+            let mut prev_f = st.f(q0[0], q0[1], q0[2]);
+            for k in 1..=SUBDIV {
+                let tk = k as f64 / SUBDIV as f64;
+                let qk = at_t(tk);
+                let fk = st.f(qk[0], qk[1], qk[2]);
+                if (prev_f < 0.0) != (fk < 0.0) {
+                    let mut lo = prev_t;
+                    let mut hi = tk;
+                    let mut flo = prev_f;
+                    let mut i = 0;
+                    while i < 50 && (hi - lo) * edge_len > root_tol {
+                        let mid = (lo + hi) / 2.0;
+                        let qm = at_t(mid);
+                        let fm = st.f(qm[0], qm[1], qm[2]);
+                        if (fm < 0.0) == (flo < 0.0) {
+                            lo = mid;
+                            flo = fm;
+                        } else {
+                            hi = mid;
+                        }
+                        i += 1;
+                    }
+                    let t = (lo + hi) / 2.0;
+                    let q = at_t(t);
+                    let f_abs = tree.f([q[0], q[1], q[2]]).abs();
+                    if f_abs <= root_tol * 4.0 {
+                        cand.push(Cand { t, stratum: sid, f_abs });
+                    }
+                }
+                prev_t = tk;
+                prev_f = fk;
+            }
+        }
+    }
+    if cand.is_empty() {
+        cache.insert(cache_key, out.clone());
+        return out;
+    }
+    cand.sort_by(|x, y| x.t.partial_cmp(&y.t).unwrap());
+    // Dedupe near-coincident candidates (AMBIGUOUS sets only).
+    let dd: Vec<Cand> = if cand.len() > 2 {
+        let mut dd: Vec<Cand> = Vec::new();
+        for c in cand {
+            if let Some(last) = dd.last() {
+                if (c.t - last.t) * edge_len < root_tol * 2.0 {
+                    if c.f_abs < last.f_abs {
+                        *dd.last_mut().unwrap() = c;
+                    }
+                    continue;
+                }
+            }
+            dd.push(c);
+        }
+        dd
+    } else {
+        cand
+    };
+
+    // --- verification: ground-truth sign flips at gap midpoints ---
+    let mut gap_inside: Option<Vec<bool>> = None;
+    let survivors: Vec<&Cand> = if dd.len() > 2 {
+        let mut ts: Vec<f64> = Vec::with_capacity(dd.len() + 2);
+        ts.push(0.0);
+        for c in &dd {
+            ts.push(c.t);
+        }
+        ts.push(1.0);
+        let mut gi: Vec<bool> = Vec::new();
+        for g in 0..ts.len() - 1 {
+            let q = at_t((ts[g] + ts[g + 1]) / 2.0);
+            gi.push(tree.f([q[0], q[1], q[2]]) < 0.0);
+        }
+        let s: Vec<&Cand> = dd.iter().enumerate().filter(|(i, _)| gi[*i] != gi[*i + 1]).map(|(_, c)| c).collect();
+        gap_inside = Some(gi);
+        s
+    } else {
+        dd.iter().collect()
+    };
+    // Parity defense: survivors must be even.
+    if survivors.is_empty() || !survivors.len().is_multiple_of(2) {
+        cache.insert(cache_key, out.clone());
+        return out;
+    }
+
+    // Structural gate: a crossing pair bounding a material dip must flank a
+    // common curve's wedge or share a common corner's strata.
+    let is_wedge_pair = |sa: usize, sb: usize| -> bool {
+        if sa == sb {
+            return false;
+        }
+        for cid in &curve_ids {
+            let adj = &features.curves[*cid].adjacent_strata;
+            if adj.contains(&sa) && adj.contains(&sb) {
+                return true;
+            }
+        }
+        for corner_id in features.index.corners_in_box(qmin, qmax) {
+            let st = &features.corners[corner_id].strata;
+            if st.contains(&sa) && st.contains(&sb) {
+                return true;
+            }
+        }
+        false
+    };
+    if survivors.len() > 2 {
+        let gi = gap_inside.as_ref().unwrap();
+        let end_inside = gi[0];
+        let mut s_ts: Vec<f64> = Vec::with_capacity(survivors.len() + 2);
+        s_ts.push(0.0);
+        for c in &survivors {
+            s_ts.push(c.t);
+        }
+        s_ts.push(1.0);
+        let mut ok = true;
+        let mut g = 1;
+        while g < s_ts.len().wrapping_sub(2) && ok {
+            let q = at_t((s_ts[g] + s_ts[g + 1]) / 2.0);
+            let inside = tree.f([q[0], q[1], q[2]]) < 0.0;
+            if inside != end_inside && !is_wedge_pair(survivors[g - 1].stratum, survivors[g].stratum) {
+                ok = false;
+            }
+            g += 1;
+        }
+        if !ok {
+            cache.insert(cache_key, out.clone());
+            return out;
+        }
+    }
+
+    // --- gating ---
+    if survivors.len() == 2 && !is_wedge_pair(survivors[0].stratum, survivors[1].stratum) {
+        cache.insert(cache_key, out.clone());
+        return out;
+    }
+
+    for c in &survivors {
+        let q = at_t(c.t);
+        let (qx, qy, qz) = (q[0], q[1], q[2]);
+        let key = format!("SC:{}:{}:{:.9}", cache_key, c.stratum, c.t);
+        let id = points.get_or_create_str(&key, || {
+            let (_, g) = tree.grad([qx, qy, qz]);
+            [qx, qy, qz, g[0], g[1], g[2]]
+        });
+        out.push(RecoveredCrossing { id, t: c.t, stratum: c.stratum });
+    }
+    cache.insert(cache_key, out.clone());
+    out
+}
+
+/// Stratum tag for a visible (tree-f) crossing. Port of `stratumTagFor`.
+#[allow(clippy::too_many_arguments)]
+fn stratum_tag_for(
+    cache: &mut HashMap<usize, i64>,
+    id: usize,
+    a_world: [f64; 3],
+    b_world: [f64; 3],
+    tree: &CsgNode,
+    points: &PointTable,
+    features: &SfccFeatureSet,
+    root_tol: f64,
+) -> i64 {
+    if let Some(&hit) = cache.get(&id) {
+        return hit;
+    }
+    let edge_len = ((b_world[0] - a_world[0]).powi(2)
+        + (b_world[1] - a_world[1]).powi(2)
+        + (b_world[2] - a_world[2]).powi(2))
+    .sqrt();
+    let inflate = edge_len * 2.0;
+    let qmin = [
+        a_world[0].min(b_world[0]) - inflate,
+        a_world[1].min(b_world[1]) - inflate,
+        a_world[2].min(b_world[2]) - inflate,
+    ];
+    let qmax = [
+        a_world[0].max(b_world[0]) + inflate,
+        a_world[1].max(b_world[1]) + inflate,
+        a_world[2].max(b_world[2]) + inflate,
+    ];
+    let curve_ids = features.index.curves_in_box(qmin, qmax);
+    let mut best: i64 = -1;
+    if !curve_ids.is_empty() {
+        let qx = points.x(id);
+        let qy = points.y(id);
+        let qz = points.z(id);
+        let (_, grad) = tree.grad([qx, qy, qz]);
+        let gl = (grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]).sqrt();
+        let tol = root_tol * 4.0;
+        let mut best_abs = f64::INFINITY;
+        let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        for cid in &curve_ids {
+            for &sid in &features.curves[*cid].adjacent_strata {
+                if !seen.insert(sid) {
+                    continue;
+                }
+                let st = &features.strata[sid];
+                let fv = st.f(qx, qy, qz).abs();
+                if fv > tol || fv >= best_abs {
+                    continue;
+                }
+                let n = st.normal(qx, qy, qz);
+                if gl > 1e-12 && (grad[0] * n[0] + grad[1] * n[1] + grad[2] * n[2]).abs() / gl < 0.9 {
+                    continue;
+                }
+                best = sid as i64;
+                best_abs = fv;
+            }
+        }
+    }
+    cache.insert(id, best);
+    best
+}
+
 /// One boundary edge of a face, in CCW walk order.
 struct Walk {
     du: i64,
@@ -163,11 +490,17 @@ struct Walk {
     dir: i64,
 }
 
+/// A crossing extracted from the cyclic walk: point id + whether it is an enter.
+#[derive(Clone, Copy)]
+struct Crossing {
+    id: usize,
+    enter: bool,
+}
+
 /// Contour one face. `(gx, gy, gz)` is the face min corner (lattice), `len` its
-/// edge length in lattice units. SMOOTH path only — feature pinning / recovery /
-/// stratum tagging are deferred to M4 and inert on featureless scenes.
+/// edge length in lattice units. Port of `contourFace`.
 #[allow(clippy::too_many_arguments)]
-pub fn contour_face(
+fn contour_face(
     oct: &SfccOctree,
     tree: &CsgNode,
     points: &mut PointTable,
@@ -177,13 +510,12 @@ pub fn contour_face(
     gz: i64,
     len: i64,
     opts: &FaceContourOptions,
+    caches: Option<&mut FeatureCaches>,
 ) -> FaceRecord {
     let lat: &SfccLattice = &oct.lat;
     let [u, v] = face_axes(axis);
     let key = pack_point(lat, gx, gy, gz);
 
-    // The 4 boundary edges in CCW walk order (viewed from +axis):
-    // +u at v=0 → +v at u=len → −u at v=len → −v at u=0.
     let walks = [
         Walk { du: 0, dv: 0, ax: u, dir: 1 },
         Walk { du: len, dv: 0, ax: v, dir: 1 },
@@ -199,19 +531,16 @@ pub fn contour_face(
     };
 
     let mut nodes: Vec<BoundaryNode> = Vec::new();
-    // Crossing point id → face boundary side (walk index 0-3): segments whose
-    // endpoints lie on the SAME side run along a shared cell-edge line and must
-    // be split with a face-owned midpoint.
+    // Crossing point id → face boundary side (walk index 0-3).
     let mut node_side: HashMap<usize, usize> = HashMap::new();
+    // Crossing point id → stratum id (stratum-tagged crossings pair per-stratum).
+    let mut node_stratum: HashMap<usize, usize> = HashMap::new();
     let mut scratch = [0.0f64; 6];
+    let mut caches = caches;
 
-    let mut walk_index: usize = 0;
-    for walk in &walks {
-        // Lattice point sequence along this boundary edge: start, interior
-        // (existing samples only), end-exclusive (next walk supplies it).
+    for (walk_index, walk) in walks.iter().enumerate() {
         let start = lattice_of(walk.du, walk.dv);
         let (sgx, sgy, sgz) = (start[0], start[1], start[2]);
-        // Min corner of the full edge along walk.ax for interior discovery:
         let mut edge_min = [sgx, sgy, sgz];
         if walk.dir == -1 {
             edge_min[walk.ax] -= len;
@@ -225,7 +554,6 @@ pub fn contour_face(
             edge_min[2],
             len,
         );
-        // Offsets along the walk direction, start-inclusive, end-exclusive.
         let mut offsets: Vec<i64> = vec![0];
         if walk.dir == 1 {
             for o in &interior {
@@ -248,7 +576,6 @@ pub fn contour_face(
             let f0 = oct.sample_at(p0[0], p0[1], p0[2]);
             let f1 = oct.sample_at(p1[0], p1[1], p1[2]);
             nodes.push(BoundaryNode { crossing: -1, inside: f0 < 0.0 });
-            // Canonical sub-edge key: min corner along the edge axis.
             let min_corner = if walk.dir == 1 { p0 } else { p1 };
             let sub_key = crossing_key(pack_point(lat, min_corner[0], min_corner[1], min_corner[2]), walk.ax);
             if (f0 < 0.0) != (f1 < 0.0) {
@@ -262,21 +589,59 @@ pub fn contour_face(
                 });
                 nodes.push(BoundaryNode { crossing: id as i64, inside: false });
                 node_side.insert(id, walk_index);
+                if let (Some(features), Some(c)) = (opts.features, caches.as_deref_mut()) {
+                    // Stratum-tag the visible crossing. Canonical sub-edge endpoints
+                    // (the curve query box).
+                    let wa = point_to_world(lat, p0[0], p0[1], p0[2]);
+                    let wb = point_to_world(lat, p1[0], p1[1], p1[2]);
+                    let tag = stratum_tag_for(&mut c.stratum_tags, id, wa, wb, tree, points, features, opts.root_tol);
+                    if tag >= 0 {
+                        node_stratum.insert(id, tag as usize);
+                    }
+                }
+            } else if let (Some(features), Some(c)) = (opts.features, caches.as_deref_mut()) {
+                // Sub-sample arc-endpoint recovery.
+                let canon_min = if walk.dir == 1 { p0 } else { p1 };
+                let canon_max = if walk.dir == 1 { p1 } else { p0 };
+                let wa = point_to_world(lat, canon_min[0], canon_min[1], canon_min[2]);
+                let wb = point_to_world(lat, canon_max[0], canon_max[1], canon_max[2]);
+                let rec = recovered_crossings_for(
+                    &mut c.recovered,
+                    sub_key,
+                    wa,
+                    wb,
+                    tree,
+                    points,
+                    features,
+                    opts.root_tol,
+                    opts.recovery_cull,
+                );
+                if !rec.is_empty() {
+                    if walk.dir == 1 {
+                        for r in &rec {
+                            nodes.push(BoundaryNode { crossing: r.id as i64, inside: false });
+                            node_side.insert(r.id, walk_index);
+                            node_stratum.insert(r.id, r.stratum);
+                        }
+                    } else {
+                        for r in rec.iter().rev() {
+                            nodes.push(BoundaryNode { crossing: r.id as i64, inside: false });
+                            node_side.insert(r.id, walk_index);
+                            node_stratum.insert(r.id, r.stratum);
+                        }
+                    }
+                }
             }
-            // SMOOTH path: the `opts.features && opts.stratumTags` tagging and the
-            // `opts.features && opts.recovered` arc-endpoint recovery branches are
-            // M4 — inert without a feature set, so omitted.
         }
-        walk_index += 1;
     }
 
     // Extract crossings with enter/exit tags by walking the cyclic node list.
-    let mut crossings: Vec<(usize, bool)> = Vec::new(); // (point id, enter)
+    let mut crossings: Vec<Crossing> = Vec::new();
     let mut state = if !nodes.is_empty() { nodes[0].inside } else { false };
     for n in &nodes {
         if n.crossing >= 0 {
             state = !state;
-            crossings.push((n.crossing as usize, state));
+            crossings.push(Crossing { id: n.crossing as usize, enter: state });
         } else {
             state = n.inside;
         }
@@ -287,47 +652,159 @@ pub fn contour_face(
         key,
         len,
         segments: Vec::new(),
+        pins: Vec::new(),
         consumed_fwd: Vec::new(),
         consumed_rev: Vec::new(),
     };
 
-    // SMOOTH path: feature pinning (record.pins) and the certified one-pin
-    // exit→pin→enter route are M4. record.pins is always empty here.
+    // --- Feature pinning: exact curve–face crossings (computed once, shared) ---
+    if let Some(features) = opts.features {
+        let min_w = point_to_world(lat, gx, gy, gz);
+        let ext = len as f64 * lat.step;
+        let max_u = min_w[u] + ext;
+        let max_v = min_w[v] + ext;
+        let coord = min_w[axis];
+        let eps = 1e-12 * lat.world_size;
+        let mut q_min = min_w;
+        let mut q_max = min_w;
+        q_max[u] = max_u;
+        q_max[v] = max_v;
+        let qmin = [q_min[0] - eps, q_min[1] - eps, q_min[2] - eps];
+        let qmax = [q_max[0] + eps, q_max[1] + eps, q_max[2] + eps];
+        // Match TS curvesInBox iteration: the set order is unspecified across
+        // engines but the resulting pin POINTS are keyed (so identity is
+        // order-independent), and record.pins order is reconstructed identically
+        // by both cells. Sorting by id makes the Rust run deterministic.
+        let mut curve_ids = features.index.curves_in_box(qmin, qmax);
+        curve_ids.sort_unstable();
+        for curve_id in curve_ids {
+            let curve = &features.curves[curve_id];
+            let pin_crossings = curve.axis_plane_crossings(axis, coord);
+            for cr in &pin_crossings {
+                let pos = [cr.x, cr.y, cr.z];
+                if pos[u] < min_w[u] || pos[u] > max_u || pos[v] < min_w[v] || pos[v] > max_v {
+                    continue;
+                }
+                let pkey = format!("F{}:{}:{}:{:.12}", axis, key, curve_id, cr.t);
+                let (crx, cry, crz) = (cr.x, cr.y, cr.z);
+                let sa = features.strata[curve.adjacent_strata[0]];
+                let sb = features.strata[curve.adjacent_strata[1]];
+                let pid = points.get_or_create_str(&pkey, || {
+                    let na = sa.normal(crx, cry, crz);
+                    let nb = sb.normal(crx, cry, crz);
+                    let mut nx = na[0] + nb[0];
+                    let mut ny = na[1] + nb[1];
+                    let mut nz = na[2] + nb[2];
+                    let nl = (nx * nx + ny * ny + nz * nz).sqrt();
+                    if nl > 1e-12 {
+                        nx /= nl;
+                        ny /= nl;
+                        nz /= nl;
+                    } else {
+                        nx = 0.0;
+                        ny = 1.0;
+                        nz = 0.0;
+                    }
+                    [crx, cry, crz, nx, ny, nz]
+                });
+                record.pins.push(FacePin { point_id: pid, curve_id, t: cr.t });
+            }
+        }
+        // suppress unused-mut warning on q_min when no pins (it is read above).
+        let _ = &mut q_min;
+    }
+
+    // Route through pinned feature points: the certified case is one pin with one
+    // boundary inside-run (exit → pin → enter, a single kinked arc).
+    if record.pins.len() == 1 && crossings.len() == 2 {
+        let pin = record.pins[0];
+        let exit = crossings.iter().find(|c| !c.enter).unwrap();
+        let enter = crossings.iter().find(|c| c.enter).unwrap();
+        record.segments.push(FaceSegment { a: exit.id, b: pin.point_id });
+        record.segments.push(FaceSegment { a: pin.point_id, b: enter.id });
+        record.consumed_fwd.push(0);
+        record.consumed_fwd.push(0);
+        record.consumed_rev.push(0);
+        record.consumed_rev.push(0);
+        return record;
+    }
 
     if crossings.is_empty() {
         return record;
     }
 
-    // Pair exits with enters. With one inside run the rules coincide; with two
-    // runs (the classic ambiguous face) the face-center sample decides; more
-    // runs follow the same rule (certificates refine these away later).
+    // Pair exits with enters.
     let runs = crossings.len() / 2;
     let mut center_inside = false;
     if runs >= 2 {
-        let cg = lattice_of(len / 2, len / 2);
-        let w = point_to_world(lat, cg[0], cg[1], cg[2]);
+        // Face center in world space. TS computes `latticeOf(len/2, len/2)` in
+        // FLOAT lattice coords (len/2 = 0.5 for a unit-length face), then
+        // `pointToWorld` interpolates — so the center must use the fractional
+        // half-step, NOT integer division (which would land on the min corner).
+        let half = len as f64 / 2.0;
+        let mut w = point_to_world(lat, gx, gy, gz);
+        w[u] += half * lat.step;
+        w[v] += half * lat.step;
         center_inside = tree.f([w[0], w[1], w[2]]) < 0.0;
     }
     let n = crossings.len();
 
-    // Pairing must be a PERFECT matching (every enter consumed exactly once).
-    // SMOOTH path: pass 1 (stratum-tagged per-stratum pairing) is inert because
-    // node_stratum is always empty — so only the run rule (pass 2) runs.
     let mut matched_enter = vec![false; n];
     let mut partner_of: HashMap<usize, usize> = HashMap::new(); // exit index → enter id
 
+    // Pass 1: stratum-tagged crossings pair PER-STRATUM (the wedge-side config).
+    if !node_stratum.is_empty() {
+        let mut tally: HashMap<usize, (Vec<usize>, Vec<usize>)> = HashMap::new();
+        for (i, c) in crossings.iter().enumerate() {
+            if let Some(&s) = node_stratum.get(&c.id) {
+                let e = tally.entry(s).or_insert_with(|| (Vec::new(), Vec::new()));
+                if c.enter {
+                    e.0.push(i);
+                } else {
+                    e.1.push(i);
+                }
+            }
+        }
+        let ext = len as f64 * lat.step;
+        // Iterate in deterministic stratum-id order (HashMap order is unspecified;
+        // the wedge-pair matching is independent per-stratum, but the matched set
+        // is shared so we fix the order for run-to-run determinism). Pairing each
+        // tally entry touches disjoint crossings, so the order does not change the
+        // result — only its run-to-run stability.
+        let mut strata: Vec<usize> = tally.keys().copied().collect();
+        strata.sort_unstable();
+        for s in strata {
+            let (enters, exits) = &tally[&s];
+            if enters.len() == 1 && exits.len() == 1 {
+                let ea = crossings[enters[0]].id;
+                let xa = crossings[exits[0]].id;
+                let mx = (points.x(ea) + points.x(xa)) / 2.0;
+                let my = (points.y(ea) + points.y(xa)) / 2.0;
+                let mz = (points.z(ea) + points.z(xa)) / 2.0;
+                if tree.f([mx, my, mz]).abs() > ext * 0.05 {
+                    continue;
+                }
+                matched_enter[enters[0]] = true;
+                partner_of.insert(exits[0], ea);
+            }
+        }
+    }
+
+    // Pass 2: everything else pairs by the run rule, over still-unmatched enters.
+    // (Index-coupled: `partner_of`/`matched_enter` are keyed by crossing index.)
+    #[allow(clippy::needless_range_loop)]
     for i in 0..n {
-        let (_, enter) = crossings[i];
-        if enter || partner_of.contains_key(&i) {
+        let c = crossings[i];
+        if c.enter || partner_of.contains_key(&i) {
             continue;
         }
         if runs < 2 || !center_inside {
             // Enter of this exit's own run = nearest unmatched enter BEFORE it.
             for k in 1..=n {
                 let j = (i + n - (k % n)) % n;
-                if crossings[j].1 && !matched_enter[j] {
+                if crossings[j].enter && !matched_enter[j] {
                     matched_enter[j] = true;
-                    partner_of.insert(i, crossings[j].0);
+                    partner_of.insert(i, crossings[j].id);
                     break;
                 }
             }
@@ -335,30 +812,29 @@ pub fn contour_face(
             // Center inside: connect across the face to the NEXT unmatched enter.
             for k in 1..=n {
                 let j = (i + k) % n;
-                if crossings[j].1 && !matched_enter[j] {
+                if crossings[j].enter && !matched_enter[j] {
                     matched_enter[j] = true;
-                    partner_of.insert(i, crossings[j].0);
+                    partner_of.insert(i, crossings[j].id);
                     break;
                 }
             }
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..n {
-        let (cid, enter) = crossings[i];
-        if enter {
+        let c = crossings[i];
+        if c.enter {
             continue;
         }
         let partner = partner_of.get(&i).copied();
-        // Collinear guard: when both endpoints lie on the SAME boundary side of
-        // the face (a sliver arc hugging it), the straight segment degenerates
-        // onto the shared cell-edge line — split it with a face-owned, surface-
-        // projected midpoint so each face's arc is geometrically distinct.
-        let se = node_side.get(&cid).copied();
+        // Collinear guard: both endpoints on the SAME boundary side → split with a
+        // face-owned, surface-projected midpoint.
+        let se = node_side.get(&c.id).copied();
         if let (Some(p), Some(s)) = (partner, se) {
             if Some(s) == node_side.get(&p).copied() {
-                let mid = split_midpoint(tree, points, cid, p, opts.root_tol);
-                record.segments.push(FaceSegment { a: cid, b: mid });
+                let mid = split_midpoint(tree, points, c.id, p, opts.root_tol);
+                record.segments.push(FaceSegment { a: c.id, b: mid });
                 record.segments.push(FaceSegment { a: mid, b: p });
                 record.consumed_fwd.push(0);
                 record.consumed_fwd.push(0);
@@ -367,21 +843,95 @@ pub fn contour_face(
                 continue;
             }
         }
-        // Faithful to TS: an unmatched exit (partner === undefined → −1) is
-        // impossible on a parity-clean even crossing set, but TS would push
-        // `{ a: c.id, b: -1 }`. Mirror that with a sentinel so behavior matches.
+        // Faithful to TS: an unmatched exit (partner undefined → −1) is impossible
+        // on a parity-clean even crossing set; mirror the sentinel so behavior
+        // matches.
         let b = partner.map(|x| x as i64).unwrap_or(-1);
-        record.segments.push(FaceSegment { a: cid, b: if b < 0 { usize::MAX } else { b as usize } });
+        record.segments.push(FaceSegment { a: c.id, b: if b < 0 { usize::MAX } else { b as usize } });
         record.consumed_fwd.push(0);
         record.consumed_rev.push(0);
     }
 
-    // SMOOTH path: pin-anchored splice (record.pins non-empty) is M4.
+    // Pin-anchored splice: a pin is a REAL point of surface ∩ face — the face's
+    // arc set must pass through it. Splice each unrouted pin into the segment that
+    // crosses its curve's wedge, else the segment nearest to the pin.
+    if !record.pins.is_empty() && !record.segments.is_empty() {
+        if let Some(features) = opts.features {
+            // Iterate pins in stored order (record.pins is reconstructed identically
+            // both runs because pin POINTS are keyed; the order here is the
+            // sorted-curve emission order).
+            let pins = record.pins.clone();
+            for pin in &pins {
+                if record.segments.iter().any(|s| s.a == pin.point_id || s.b == pin.point_id) {
+                    continue;
+                }
+                let adj = features.curves[pin.curve_id].adjacent_strata;
+                let px = points.x(pin.point_id);
+                let py = points.y(pin.point_id);
+                let pz = points.z(pin.point_id);
+                let min_len = opts.root_tol * 8.0;
+                for length_floor in [min_len, 0.0] {
+                    let mut best_idx: i64 = -1;
+                    let mut best_dist = f64::INFINITY;
+                    let mut best_cross = false;
+                    for (i, s) in record.segments.iter().enumerate() {
+                        let dx = points.x(s.b) - points.x(s.a);
+                        let dy = points.y(s.b) - points.y(s.a);
+                        let dz = points.z(s.b) - points.z(s.a);
+                        if length_floor > 0.0 && dx * dx + dy * dy + dz * dz < length_floor * length_floor {
+                            continue;
+                        }
+                        let sa = node_stratum.get(&s.a).copied();
+                        let sb = node_stratum.get(&s.b).copied();
+                        let cross = match (sa, sb) {
+                            (Some(sa), Some(sb)) => sa != sb && adj.contains(&sa) && adj.contains(&sb),
+                            _ => false,
+                        };
+                        if best_cross && !cross {
+                            continue;
+                        }
+                        let d = point_segment_dist(points, px, py, pz, s.a, s.b);
+                        if (cross && !best_cross) || d < best_dist {
+                            best_idx = i as i64;
+                            best_dist = d;
+                            best_cross = cross;
+                        }
+                    }
+                    if best_idx < 0 {
+                        continue; // every segment below the floor — retry without it
+                    }
+                    let bi = best_idx as usize;
+                    let s = record.segments[bi];
+                    record.segments[bi] = FaceSegment { a: s.a, b: pin.point_id };
+                    record.segments.insert(bi + 1, FaceSegment { a: pin.point_id, b: s.b });
+                    record.consumed_fwd.push(0);
+                    record.consumed_rev.push(0);
+                    break;
+                }
+            }
+        }
+    }
+
     record
 }
 
-// NOTE: `pointSegmentDist` from the TS is only used by the M4 pin-anchored
-// splice; it is deferred with the rest of the feature paths.
+/// Distance from a point to the segment between two PointTable points. Port of
+/// `pointSegmentDist`.
+fn point_segment_dist(points: &PointTable, px: f64, py: f64, pz: f64, a: usize, b: usize) -> f64 {
+    let ax = points.x(a);
+    let ay = points.y(a);
+    let az = points.z(a);
+    let dx = points.x(b) - ax;
+    let dy = points.y(b) - ay;
+    let dz = points.z(b) - az;
+    let len2 = dx * dx + dy * dy + dz * dz;
+    let t = if len2 > 0.0 {
+        (((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / len2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    ((px - (ax + t * dx)).powi(2) + (py - (ay + t * dy)).powi(2) + (pz - (az + t * dz)).powi(2)).sqrt()
+}
 
 /// Face-owned midpoint between two crossings, Newton-projected onto the surface.
 /// Port of `splitMidpoint` (the `axis` arg is unused in TS too — full 3D
@@ -410,8 +960,6 @@ fn split_midpoint(tree: &CsgNode, points: &mut PointTable, a_id: usize, b_id: us
         q[1] -= k * grad[1];
         q[2] -= k * grad[2];
     }
-    // Validate: a near-degenerate Newton step explodes — fall back to the chord
-    // midpoint (error bounded by chord sag) on drift or residual failure.
     let drift = ((q[0] - mx).powi(2) + (q[1] - my).powi(2) + (q[2] - mz).powi(2)).sqrt();
     if drift > seg_len + root_tol * 8.0 || tree.f(q).abs() > root_tol * 8.0 {
         q = [mx, my, mz];
@@ -421,7 +969,7 @@ fn split_midpoint(tree: &CsgNode, points: &mut PointTable, a_id: usize, b_id: us
 }
 
 /// Enumerate canonical faces of all leaves and contour each exactly once.
-/// Port of `contourAllFaces` (smooth path).
+/// Port of `contourAllFaces`.
 pub fn contour_all_faces(
     oct: &SfccOctree,
     tree: &CsgNode,
@@ -434,14 +982,16 @@ pub fn contour_all_faces(
     let mut boundary_violations = 0usize;
     let mut key_collisions = 0usize;
 
+    // Shared sub-edge recovery + stratum-tag caches for this contouring pass.
+    let mut caches = opts
+        .features
+        .map(|_| FeatureCaches { recovered: HashMap::new(), stratum_tags: HashMap::new() });
+
     for cell in &oct.leaves {
         let stride = stride_at_level(&lat, cell.level);
         let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
         for axis in 0..3usize {
             for side in 0..=1 {
-                // Faces are evaluated at the finer of the two incident levels: if
-                // the neighbor across this side is subdivided, its finer leaves
-                // enumerate the quarter faces instead.
                 let mut ncoord = [cell.ix, cell.iy, cell.iz];
                 ncoord[axis] += if side == 1 { 1 } else { -1 };
                 if oct.is_internal(cell.level as i64, ncoord[0], ncoord[1], ncoord[2]) {
@@ -458,7 +1008,18 @@ pub fn contour_all_faces(
                     }
                     continue;
                 }
-                let rec = contour_face(oct, tree, points, axis, g[0], g[1], g[2], stride, opts);
+                let rec = contour_face(
+                    oct,
+                    tree,
+                    points,
+                    axis,
+                    g[0],
+                    g[1],
+                    g[2],
+                    stride,
+                    opts,
+                    caches.as_mut(),
+                );
                 let seg_count = rec.segments.len();
                 let on_root_boundary = g[axis] == 0 || g[axis] == lat.res;
                 if on_root_boundary && seg_count > 0 {
@@ -473,35 +1034,29 @@ pub fn contour_all_faces(
     }
 
     // Global duplicate-segment repair: two faces must never emit the same
-    // undirected (a, b) segment — adjacent cells would collapse two distinct
-    // surface arcs onto one mesh edge (non-manifold). Split EVERY occurrence with
-    // its own face-owned midpoint. Port of the `pairOwners` dedup pass.
+    // undirected (a, b) segment. Split EVERY occurrence with its own face-owned
+    // midpoint. Port of the `pairOwners` dedup pass.
     const EDGE_BASE: i64 = 0x8000000;
-    let mut pair_owners: HashMap<i64, Vec<(usize, usize, usize)>> = HashMap::new(); // edge key → (axis, key, seg idx)
+    let mut pair_owners: HashMap<i64, Vec<(usize, i64, usize)>> = HashMap::new(); // edge key → (axis, face key, seg idx)
     for (axis, per_axis) in faces.iter().enumerate() {
         for (&fkey, rec) in per_axis.iter() {
             for (i, s) in rec.segments.iter().enumerate() {
                 let (a, b) = (s.a as i64, s.b as i64);
                 let k = if a < b { a * EDGE_BASE + b } else { b * EDGE_BASE + a };
-                pair_owners.entry(k).or_default().push((axis, fkey as usize, i));
+                pair_owners.entry(k).or_default().push((axis, fkey, i));
             }
         }
     }
-    // Collect entries needing a split. Keys are processed in a deterministic order
-    // (sorted) so split-vertex ids are assigned identically run-to-run; within a
-    // record split later indices first so stored indices stay valid.
     let mut dup_keys: Vec<i64> = pair_owners.iter().filter(|(_, v)| v.len() >= 2).map(|(&k, _)| k).collect();
     dup_keys.sort_unstable();
     for k in dup_keys {
         let mut list = pair_owners.remove(&k).unwrap();
         // Split later occurrences first so stored indices stay valid per record.
-        // TS sorts the whole list by descending idx; with multiple faces sharing
-        // a record this keeps per-record indices valid.
-        list.sort_by(|x, y| y.2.cmp(&x.2));
+        list.sort_by_key(|x| std::cmp::Reverse(x.2));
         for (axis, fkey, idx) in list {
-            let s = faces[axis].get(&(fkey as i64)).unwrap().segments[idx];
+            let s = faces[axis].get(&fkey).unwrap().segments[idx];
             let mid = split_midpoint(tree, points, s.a, s.b, opts.root_tol);
-            let rec = faces[axis].get_mut(&(fkey as i64)).unwrap();
+            let rec = faces[axis].get_mut(&fkey).unwrap();
             rec.segments[idx] = FaceSegment { a: s.a, b: mid };
             rec.segments.insert(idx + 1, FaceSegment { a: mid, b: s.b });
             rec.consumed_fwd.push(0);

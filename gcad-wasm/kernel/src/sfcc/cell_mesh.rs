@@ -1,5 +1,4 @@
-//! S3b — per-cell meshing (SMOOTH path). Port of the featureless paths of
-//! `src/export/sfcc/cell-mesh.mts`.
+//! S3b — per-cell meshing. Port of `src/export/sfcc/cell-mesh.mts`.
 //!
 //! Each leaf cell gathers its boundary face segments (the +axis-side cell
 //! consumes a face's segments as stored; the −axis-side cell reverses them),
@@ -12,17 +11,18 @@
 //! diagonal; larger loops fan from an interior vertex Newton-projected onto the
 //! surface (fallback: best-quality boundary-vertex fan).
 //!
-//! DEFERRED to M4 (the feature paths — inert on smooth scenes, so omitted here):
-//! corner-cell wedge fans (`cell.featureCorner`), edge-cell pin routing
-//! (`cell.featureCurve`, `meshEdgeCell`), and the analytic-curve polyline
-//! sampling. On a smooth scene `feature_curve`/`feature_corner` stay −1 so every
-//! loop takes the smooth disk path.
+//! M4c-2 added the FEATURE paths (gated on `opts.features`, inert on smooth
+//! scenes): corner-cell wedge fans (`cell.feature_corner`), edge-cell pin routing
+//! (`cell.feature_curve`, `mesh_edge_cell`), and analytic-curve polyline sampling.
 
 use crate::math::grid::{cell_aabb, face_axes, pack_point, stride_at_level, SfccLattice};
 use crate::sdf::CsgNode;
-use crate::sfcc::face_contour::FaceRecord;
+use crate::sfcc::feature_curves::{CurveKind, FeatureCurve};
+use crate::sfcc::feature_set::{SfccCorner, SfccFeatureSet};
+use crate::sfcc::face_contour::{FacePin, FaceRecord};
 use crate::sfcc::octree::{SfccCell, SfccOctree};
 use crate::sfcc::point_table::PointTable;
+use crate::strata::Stratum;
 use std::collections::HashMap;
 
 /// Interior-vertex placement for disk triangulation. Port of
@@ -34,13 +34,17 @@ pub enum InteriorVertexMode {
     Fan,
 }
 
-/// Smooth-path cell-meshing options (the feature/curve knobs are M4-only and
-/// inert here, so omitted).
+/// Cell-meshing options. The smooth path uses the first four; the feature path
+/// activates when `features` is `Some`.
 #[derive(Clone, Copy)]
-pub struct CellMeshOptions {
+pub struct CellMeshOptions<'a> {
     pub surface_tol: f64,
     pub interior_vertex_mode: InteriorVertexMode,
     pub project_max_iters: u32,
+    /// Max chord deviation (mm) of in-cell feature polylines.
+    pub curve_chord_tol: f64,
+    pub max_polyline_points_per_cell: usize,
+    pub features: Option<&'a SfccFeatureSet>,
 }
 
 /// Result of meshing all leaf cells.
@@ -50,6 +54,14 @@ pub struct CellMeshResult {
     pub failed_cells: Vec<SfccCell>,
     /// Cells that produced 2+ loops (legal, but certificate-noteworthy).
     pub multi_loop_cells: usize,
+    /// Cells meshed with an explicit feature-edge split.
+    pub edge_cells: usize,
+    /// Cells meshed as wedge fans around an exact corner point.
+    pub corner_cells: usize,
+    /// Feature cells that fell back to smooth meshing (kept closed; reported).
+    pub feature_cell_fallbacks: usize,
+    /// The fallback cells themselves — candidates for forced re-refinement.
+    pub fallback_cells: Vec<SfccCell>,
 }
 
 /// One gathered boundary segment of a cell, carrying provenance so consumption
@@ -66,7 +78,8 @@ struct Seg {
 }
 
 /// Push one record's segments into `out`, reversing endpoints on the −axis side.
-fn push_segments(rec: &FaceRecord, axis: usize, rev: bool, out: &mut Vec<Seg>) {
+/// Pins are pushed into `pins_out` (feature path only — empty on smooth scenes).
+fn push_segments(rec: &FaceRecord, axis: usize, rev: bool, out: &mut Vec<Seg>, pins_out: &mut Vec<FacePin>) {
     for (i, s) in rec.segments.iter().enumerate() {
         if rev {
             out.push(Seg { a: s.b, b: s.a, face: (axis, rec.key), idx: i, reversed: true });
@@ -74,17 +87,18 @@ fn push_segments(rec: &FaceRecord, axis: usize, rev: bool, out: &mut Vec<Seg>) {
             out.push(Seg { a: s.a, b: s.b, face: (axis, rec.key), idx: i, reversed: false });
         }
     }
+    pins_out.extend_from_slice(&rec.pins);
 }
 
 /// Gather the cell's boundary segments. Each side is either one face at the
 /// cell's own level, or — when the neighbor is one level finer (2:1 balance) —
-/// up to four quarter faces at level+1, unioned (segments reference global point
-/// ids). Port of `gatherSegments` (smooth path; `pins` are M4 → not gathered).
+/// up to four quarter faces at level+1, unioned. Port of `gatherSegments`.
 fn gather_segments(
     faces: &[HashMap<i64, FaceRecord>; 3],
     lat: &SfccLattice,
     cell: &SfccCell,
     out: &mut Vec<Seg>,
+    pins_out: &mut Vec<FacePin>,
 ) {
     let stride = stride_at_level(lat, cell.level);
     let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
@@ -95,20 +109,15 @@ fn gather_segments(
             if side == 1 {
                 g[axis] += stride;
             }
-            // side == 0: face is the cell's min-axis side ⇒ cell is on the
-            // face's +axis side ⇒ consume as stored. side == 1: reversed.
             let reversed = side == 1;
             let key = pack_point(lat, g[0], g[1], g[2]);
-            // Face keys are min-corner lattice points which COLLIDE across
-            // levels, so every lookup validates the record's size.
             if let Some(rec) = faces[axis].get(&key) {
                 if rec.len == stride {
-                    push_segments(rec, axis, reversed, out);
+                    push_segments(rec, axis, reversed, out, pins_out);
                     continue;
                 }
             }
-            // Neighbor is finer: consume the quarter faces (absent quarters
-            // border certified-empty regions and carry no segments).
+            // Neighbor is finer: consume the quarter faces.
             let half = stride / 2;
             if half < 1 {
                 continue;
@@ -121,7 +130,7 @@ fn gather_segments(
                     let qkey = pack_point(lat, q[0], q[1], q[2]);
                     if let Some(qrec) = faces[axis].get(&qkey) {
                         if qrec.len == half {
-                            push_segments(qrec, axis, reversed, out);
+                            push_segments(qrec, axis, reversed, out, pins_out);
                         }
                     }
                 }
@@ -130,8 +139,8 @@ fn gather_segments(
     }
 }
 
-/// Mesh every leaf cell into triangles (smooth path). Port of `meshAllCells`.
-/// Consumption is recorded back into the face records for the S4 face audit.
+/// Mesh every leaf cell into triangles. Port of `meshAllCells`. Consumption is
+/// recorded back into the face records for the S4 face audit.
 pub fn mesh_all_cells(
     oct: &SfccOctree,
     faces: &mut [HashMap<i64, FaceRecord>; 3],
@@ -143,12 +152,18 @@ pub fn mesh_all_cells(
     let mut tris: Vec<usize> = Vec::new();
     let mut failed_cells: Vec<SfccCell> = Vec::new();
     let mut multi_loop_cells = 0usize;
+    let mut edge_cells = 0usize;
+    let mut corner_cells = 0usize;
+    let mut feature_cell_fallbacks = 0usize;
+    let mut fallback_cells: Vec<SfccCell> = Vec::new();
 
     let mut segs: Vec<Seg> = Vec::new();
+    let mut pins: Vec<FacePin> = Vec::new();
 
     for cell in &oct.leaves {
         segs.clear();
-        gather_segments(faces, &lat, cell, &mut segs);
+        pins.clear();
+        gather_segments(faces, &lat, cell, &mut segs, &mut pins);
         if segs.is_empty() {
             continue;
         }
@@ -228,15 +243,91 @@ pub fn mesh_all_cells(
 
         let cbox = cell_aabb(&lat, cell.level, cell.ix, cell.iy, cell.iz);
 
-        // SMOOTH path: corner-cell / edge-cell feature meshing (cell.featureCorner
-        // / cell.featureCurve >= 0) is M4 — on a smooth scene both stay −1, so
-        // every loop takes the disk path below.
-        for loop_pts in &loops {
+        let mut meshed_loops: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+        if let (true, Some(features)) = (cell.feature_corner >= 0, opts.features) {
+            // Corner cells: every loop touching an incident-curve pin is fanned
+            // from the EXACT corner point — arbitrary valence. A valence-0 corner
+            // (cone apex) fans every loop.
+            let corner = &features.corners[cell.feature_corner as usize];
+            let incident: std::collections::HashSet<usize> = corner.curve_ends.iter().map(|e| e.0).collect();
+            let mut fanned = 0usize;
+            for (li, loop_pts) in loops.iter().enumerate() {
+                let has_pin = incident.is_empty()
+                    || pins.iter().any(|p| incident.contains(&p.curve_id) && loop_pts.contains(&p.point_id));
+                if !has_pin {
+                    continue;
+                }
+                let cid = corner_point_id(corner, features, points);
+                let m = loop_pts.len();
+                for k in 0..m {
+                    tris.push(cid);
+                    tris.push(loop_pts[k]);
+                    tris.push(loop_pts[(k + 1) % m]);
+                }
+                meshed_loops.insert(li);
+                fanned += 1;
+            }
+            if fanned > 0 {
+                corner_cells += 1;
+            } else {
+                feature_cell_fallbacks += 1;
+                fallback_cells.push(*cell);
+            }
+        } else if let (true, Some(features)) = (cell.feature_curve >= 0, opts.features) {
+            // Edge cells: split the loop containing the two pinned feature points
+            // and mesh each stratum side against the sampled analytic curve.
+            let mut my_pins: Vec<FacePin> = Vec::new();
+            for p in &pins {
+                if p.curve_id == cell.feature_curve as usize && !my_pins.iter().any(|q| q.point_id == p.point_id) {
+                    my_pins.push(*p);
+                }
+            }
+            if my_pins.len() == 2 {
+                let idx = loops.iter().position(|l| l.contains(&my_pins[0].point_id) && l.contains(&my_pins[1].point_id));
+                if let Some(idx) = idx {
+                    let did = mesh_edge_cell(
+                        &loops[idx],
+                        &my_pins[0],
+                        &my_pins[1],
+                        cell,
+                        &cbox,
+                        tree,
+                        points,
+                        opts,
+                        features,
+                        &mut tris,
+                    );
+                    if did {
+                        meshed_loops.insert(idx);
+                    }
+                }
+            }
+            if !meshed_loops.is_empty() {
+                edge_cells += 1;
+            } else {
+                feature_cell_fallbacks += 1;
+                fallback_cells.push(*cell);
+            }
+        }
+
+        for (li, loop_pts) in loops.iter().enumerate() {
+            if meshed_loops.contains(&li) {
+                continue;
+            }
             triangulate_loop(loop_pts, tree, points, &cbox, opts, &mut tris);
         }
     }
 
-    CellMeshResult { tris, failed_cells, multi_loop_cells }
+    CellMeshResult {
+        tris,
+        failed_cells,
+        multi_loop_cells,
+        edge_cells,
+        corner_cells,
+        feature_cell_fallbacks,
+        fallback_cells,
+    }
 }
 
 /// Triangulate one closed loop as a disk. Port of `triangulateLoop`.
@@ -315,10 +406,6 @@ fn triangulate_loop(
                 break;
             }
         }
-        // Accept only a vertex that (1) reached the surface, (2) stayed in the
-        // cell, and (3) lies on the SAME sheet as the loop (gradient roughly
-        // along the loop's average normal — the far side of a slab faces away,
-        // dot ≈ −1).
         let mut same_sheet = true;
         if tree.f([px, py, pz]).abs() <= o.surface_tol && in_box(cell_box, px, py, pz, margin) {
             let mut ax = 0.0;
@@ -333,8 +420,6 @@ fn triangulate_loop(
             same_sheet = ax * g[0] + ay * g[1] + az * g[2] > 0.0;
         }
         if tree.f([px, py, pz]).abs() > o.surface_tol || !in_box(cell_box, px, py, pz, margin) || !same_sheet {
-            // Projection failed: fan from the best worst-ear boundary vertex —
-            // every loop vertex IS on the surface, so the max-|f| guarantee holds.
             let k = best_fan_apex(points, loop_pts);
             for i in 1..m - 1 {
                 out_tris.extend_from_slice(&[loop_pts[k], loop_pts[(k + i) % m], loop_pts[(k + i + 1) % m]]);
@@ -401,6 +486,31 @@ fn dist2(pts: &PointTable, a: usize, b: usize) -> f64 {
     dx * dx + dy * dy + dz * dz
 }
 
+/// Shared, exact corner mesh vertex (keyed; averaged incident-strata normal).
+/// Port of `cornerPointId`.
+fn corner_point_id(corner: &SfccCorner, features: &SfccFeatureSet, points: &mut PointTable) -> usize {
+    let key = format!("corner:{}", corner.id);
+    let (cx, cy, cz) = (corner.x, corner.y, corner.z);
+    let strata_ids = corner.strata.clone();
+    points.get_or_create_str(&key, || {
+        let mut nx = 0.0;
+        let mut ny = 0.0;
+        let mut nz = 0.0;
+        for &sid in &strata_ids {
+            let n = features.strata[sid].normal(cx, cy, cz);
+            nx += n[0];
+            ny += n[1];
+            nz += n[2];
+        }
+        let nl = (nx * nx + ny * ny + nz * nz).sqrt();
+        if nl > 1e-12 {
+            [cx, cy, cz, nx / nl, ny / nl, nz / nl]
+        } else {
+            [cx, cy, cz, 0.0, 1.0, 0.0]
+        }
+    })
+}
+
 fn in_box(box6: &[f64; 6], x: f64, y: f64, z: f64, margin: f64) -> bool {
     x >= box6[0] - margin
         && x <= box6[3] + margin
@@ -410,7 +520,237 @@ fn in_box(box6: &[f64; 6], x: f64, y: f64, z: f64, margin: f64) -> bool {
         && z <= box6[5] + margin
 }
 
-/// `Math.hypot` for three components — matches TS `Math.hypot(x, y, z)` ordering.
+/// `Math.hypot` for three components.
 fn hypot3(x: f64, y: f64, z: f64) -> f64 {
     (x * x + y * y + z * z).sqrt()
+}
+
+/// Mesh an edge cell: split the loop at the curve's two pins into the two
+/// stratum chains, sample the analytic curve between the pins, and fan each side
+/// from an interior vertex projected onto that side's smooth carrier. Port of
+/// `meshEdgeCell`.
+#[allow(clippy::too_many_arguments)]
+fn mesh_edge_cell(
+    loop_pts: &[usize],
+    pin_a: &FacePin,
+    pin_b: &FacePin,
+    cell: &SfccCell,
+    cell_box: &[f64; 6],
+    tree: &CsgNode,
+    points: &mut PointTable,
+    opts: &CellMeshOptions,
+    features: &SfccFeatureSet,
+    out_tris: &mut Vec<usize>,
+) -> bool {
+    let curve = &features.curves[cell.feature_curve as usize];
+    let i = match loop_pts.iter().position(|&x| x == pin_a.point_id) {
+        Some(v) => v,
+        None => return false,
+    };
+    let j = match loop_pts.iter().position(|&x| x == pin_b.point_id) {
+        Some(v) => v,
+        None => return false,
+    };
+    if i == j {
+        return false;
+    }
+    let m = loop_pts.len();
+
+    // Chains inclusive of both pins, following loop order.
+    let mut chain1: Vec<usize> = Vec::new();
+    let mut k = i;
+    loop {
+        chain1.push(loop_pts[k]);
+        if k == j {
+            break;
+        }
+        k = (k + 1) % m;
+    }
+    let mut chain2: Vec<usize> = Vec::new();
+    let mut k = j;
+    loop {
+        chain2.push(loop_pts[k]);
+        if k == i {
+            break;
+        }
+        k = (k + 1) % m;
+    }
+    if chain1.len() < 3 || chain2.len() < 3 {
+        return false;
+    }
+
+    // Sample the in-cell arc from pin_a.t to pin_b.t (interior points only).
+    let interior = match sample_in_cell_arc(curve, pin_a.t, pin_b.t, cell_box, points, features, opts) {
+        Some(v) => v,
+        None => return false,
+    };
+
+    // side1 = chain1 (A→…→B) closed by the polyline B→A (reversed interior);
+    // side2 = chain2 (B→…→A) closed by the polyline A→B.
+    let mut side1 = chain1.clone();
+    side1.extend(interior.iter().rev().copied());
+    let mut side2 = chain2.clone();
+    side2.extend(interior.iter().copied());
+
+    // Assign strata to sides by aggregate NORMAL-AGREEMENT margin over all non-pin
+    // chain vertices. Score both assignments and take the better — never reject.
+    let sa = features.strata[curve.adjacent_strata[0]];
+    let sb = features.strata[curve.adjacent_strata[1]];
+    let agree = |pts: &PointTable, vid: usize, st: &Stratum| -> f64 {
+        let x = pts.x(vid);
+        let y = pts.y(vid);
+        let z = pts.z(vid);
+        let n = st.normal(x, y, z);
+        let vx = pts.nx(vid);
+        let vy = pts.ny(vid);
+        let vz = pts.nz(vid);
+        let vl = (vx * vx + vy * vy + vz * vz).sqrt();
+        if vl < 1e-12 {
+            return 0.0;
+        }
+        ((vx * n[0] + vy * n[1] + vz * n[2]) / vl).abs()
+    };
+    let mut score = 0.0f64;
+    for &vid in &chain1[1..chain1.len() - 1] {
+        score += agree(points, vid, &sa) - agree(points, vid, &sb);
+    }
+    for &vid in &chain2[1..chain2.len() - 1] {
+        score += agree(points, vid, &sb) - agree(points, vid, &sa);
+    }
+    let side1_is_a = score >= 0.0;
+    let side2_is_a = !side1_is_a;
+
+    let st1 = if side1_is_a { sa } else { sb };
+    let st2 = if side2_is_a { sa } else { sb };
+    fan_from_stratum_vertex(&side1, &st1, cell_box, tree, points, opts, out_tris);
+    fan_from_stratum_vertex(&side2, &st2, cell_box, tree, points, opts, out_tris);
+    true
+}
+
+/// Interior polyline points along the curve between two parameters, choosing the
+/// in-cell arc for closed curves. Returns point ids (exactly on the analytic
+/// curve), or None when no arc stays in the cell. Port of `sampleInCellArc`.
+fn sample_in_cell_arc(
+    curve: &FeatureCurve,
+    t_a: f64,
+    t_b: f64,
+    cell_box: &[f64; 6],
+    points: &mut PointTable,
+    features: &SfccFeatureSet,
+    opts: &CellMeshOptions,
+) -> Option<Vec<usize>> {
+    let margin = (cell_box[3] - cell_box[0]) * 0.25;
+    let delta: f64;
+    if let (true, Some(wrap)) = (curve.closed, curve.param_wrap) {
+        let fwd = ((t_b - t_a) % wrap + wrap) % wrap;
+        let candidates = [fwd, fwd - wrap]; // the two arcs between the pins
+        let mut chosen: Option<f64> = None;
+        for d in candidates {
+            let p = curve.point_at(t_a + d / 2.0);
+            if in_box(cell_box, p[0], p[1], p[2], margin) && (chosen.is_none() || d.abs() < chosen.unwrap().abs()) {
+                chosen = Some(d);
+            }
+        }
+        delta = chosen?;
+    } else {
+        delta = t_b - t_a;
+    }
+    let arc_len = {
+        let pd = curve.param_distance(t_a, t_a + delta);
+        if pd != 0.0 {
+            pd
+        } else {
+            delta.abs()
+        }
+    };
+    // Interior-point count from the chord tolerance (straight segments: none).
+    let mut n = 1usize;
+    match curve.kind() {
+        CurveKind::Circle => {
+            // chord error of arc dθ at radius r: r(1 − cos(dθ/2)) ≤ tol
+            let r = arc_len / if delta != 0.0 { delta.abs() } else { 1.0 };
+            let ratio = (1.0 - opts.curve_chord_tol / r.max(1e-9)).clamp(-1.0, 1.0);
+            let max_step = 2.0 * ratio.acos();
+            n = (delta.abs() / max_step.max(1e-6)).ceil().max(1.0) as usize;
+            n = n.min(opts.max_polyline_points_per_cell);
+        }
+        CurveKind::Traced => {
+            n = (delta.abs().ceil().max(1.0) as usize).min(opts.max_polyline_points_per_cell);
+            n = n.max(1);
+        }
+        CurveKind::Segment => {}
+    }
+    let sa = features.strata[curve.adjacent_strata[0]];
+    let sb = features.strata[curve.adjacent_strata[1]];
+    let mut ids: Vec<usize> = Vec::new();
+    for k in 1..n {
+        let t = t_a + (delta * k as f64) / n as f64;
+        let p = curve.point_at(t);
+        let na = sa.normal(p[0], p[1], p[2]);
+        let nb = sb.normal(p[0], p[1], p[2]);
+        let mut nx = na[0] + nb[0];
+        let mut ny = na[1] + nb[1];
+        let mut nz = na[2] + nb[2];
+        let nl = (nx * nx + ny * ny + nz * nz).sqrt();
+        if nl > 1e-12 {
+            nx /= nl;
+            ny /= nl;
+            nz /= nl;
+        } else {
+            nx = 0.0;
+            ny = 1.0;
+            nz = 0.0;
+        }
+        ids.push(points.add(p[0], p[1], p[2], nx, ny, nz));
+    }
+    Some(ids)
+}
+
+/// Fan a disk from an interior vertex projected onto the side's smooth carrier.
+/// Port of `fanFromStratumVertex`.
+fn fan_from_stratum_vertex(
+    boundary: &[usize],
+    stratum: &Stratum,
+    cell_box: &[f64; 6],
+    tree: &CsgNode,
+    points: &mut PointTable,
+    opts: &CellMeshOptions,
+    out_tris: &mut Vec<usize>,
+) {
+    let m = boundary.len();
+    let mut cx = 0.0;
+    let mut cy = 0.0;
+    let mut cz = 0.0;
+    for &id in boundary {
+        cx += points.x(id);
+        cy += points.y(id);
+        cz += points.z(id);
+    }
+    cx /= m as f64;
+    cy /= m as f64;
+    cz /= m as f64;
+    let proj = stratum.project(cx, cy, cz);
+    let margin = (cell_box[3] - cell_box[0]) * 0.1;
+    let px = proj[0];
+    let py = proj[1];
+    let pz = proj[2];
+    let mut wrong_patch = false;
+    if in_box(cell_box, px, py, pz, margin) {
+        let n = stratum.normal(px, py, pz);
+        let (_, g) = tree.grad([px, py, pz]);
+        let gl = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
+        wrong_patch = gl > 1e-12 && (g[0] * n[0] + g[1] * n[1] + g[2] * n[2]).abs() / gl < 0.8;
+    }
+    if !in_box(cell_box, px, py, pz, margin) || wrong_patch || tree.f([px, py, pz]).abs() > opts.surface_tol {
+        let kb = best_fan_apex(points, boundary);
+        for k in 1..m - 1 {
+            out_tris.extend_from_slice(&[boundary[kb], boundary[(kb + k) % m], boundary[(kb + k + 1) % m]]);
+        }
+        return;
+    }
+    let n = stratum.normal(px, py, pz);
+    let c = points.add(px, py, pz, n[0], n[1], n[2]);
+    for k in 0..m {
+        out_tris.extend_from_slice(&[c, boundary[k], boundary[(k + 1) % m]]);
+    }
 }

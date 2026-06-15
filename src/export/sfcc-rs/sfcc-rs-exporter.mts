@@ -18,8 +18,43 @@ import { log } from "../../logging/debug-log.mjs"
 
 export const SFCC_RS_DISPLAY_NAME = "SFCC (Rust/WASM)"
 
-async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<MeshData> {
+/**
+ * M6d: the `sfccThreads` flag (forwarded onto the render-worker URL by
+ * `src/sdf.mts`) routes the Rust SFCC export through the THREADED `pkg-threads/`
+ * artifact, whose `export_sfcc` runs the rayon-parallelized refine frontier
+ * (classifyCellFeatures). The mesh is byte-identical to the single-thread path
+ * (M6d determinism gate) — only the wall-clock changes. Default (flag off):
+ * single-thread `pkg/`, untouched. crossOriginIsolated must hold for the pool to
+ * spawn; if anything in the threaded path throws we fall back to single-thread.
+ */
+function threadsRequested(): boolean {
+    try {
+        return new URL(self.location.href).searchParams.has("sfccThreads")
+    } catch {
+        return false
+    }
+}
+
+/** Resolve the export entry: threaded (parallel refine) when the flag is on and
+ * cross-origin isolation is available, else the single-thread path. */
+async function resolveExportFn(): Promise<{ fn: typeof export_sfcc; threaded: boolean }> {
+    if (threadsRequested() && typeof crossOriginIsolated !== "undefined" && crossOriginIsolated) {
+        try {
+            const m = await import("./wasm-loader-threads.mjs")
+            await m.ensureThreadedWasmReady()
+            return { fn: m.export_sfcc as typeof export_sfcc, threaded: true }
+        } catch (e) {
+            log("MeshExport").warn("sfcc-rs threaded path unavailable; falling back to single-thread", {
+                error: e instanceof Error ? e.message : String(e),
+            })
+        }
+    }
     await ensureWasmReady()
+    return { fn: export_sfcc, threaded: false }
+}
+
+async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<MeshData> {
+    const { fn: exportFn, threaded } = await resolveExportFn()
 
     // Serialize the live scene to the boundary shape (throws on unsupported nodes,
     // mirroring SfccUnsupportedError — the Rust side rejects the same set).
@@ -28,7 +63,7 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
 
     const cube = ctx.worldBoundsCube()
     const t0 = performance.now()
-    const result = export_sfcc(
+    const result = exportFn(
         sceneJson,
         tuningJson,
         cube.min[0],
@@ -55,7 +90,12 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
     if (!ok) {
         console.warn("[sfcc-rs] certification failed", stats)
     }
-    log("MeshExport").info("sfcc-rs stats", { ...stats, exportMs: Math.round(elapsedMs) })
+    log("MeshExport").info("sfcc-rs stats", {
+        ...stats,
+        exportMs: Math.round(elapsedMs),
+        threaded,
+        threads: threaded && typeof navigator !== "undefined" ? navigator.hardwareConcurrency : 1,
+    })
 
     const mesh: MeshData = { verts, tris }
     mesh.debug = {

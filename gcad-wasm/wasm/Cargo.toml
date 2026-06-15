@@ -21,4 +21,8 @@ wasm-bindgen-rayon = { version = "1", optional = true }
 rayon = { version = "1", optional = true }
 
 [features]
-threads = ["dep:wasm-bindgen-rayon", "dep:rayon"]
+# M6d: the wasm `threads` feature ALSO enables the kernel's `threads` feature, so
+# the SFCC refine frontier (classifyCellFeatures) runs on rayon par_iter, not just
+# the par_smoke probe. wasm-bindgen-rayon supplies `initThreadPool` (the JS-awaited
+# pool spawn); rayon is the par_iter engine for both the kernel and par_smoke.
+threads = ["dep:wasm-bindgen-rayon", "dep:rayon", "gcad-kernel/threads"]

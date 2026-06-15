@@ -57,7 +57,16 @@ pub struct SfccCell {
 
 /// Shared corner-sample cache: every lattice corner's `tree.f` is evaluated at
 /// most once (interior mutability so the criteria callback and the octree share
-/// one map). The deterministic-weld restructure for rayon is M6.
+/// one map).
+///
+/// M6d: the refine WORKLIST is now round-batched, and within a round every
+/// frontier cell's 8 corners are already cached (each `make_leaf` samples them
+/// before the cell joins the worklist). The per-cell split DECISION therefore
+/// reads the cache without ever writing it — so the decision pass can run in
+/// parallel (rayon) over an immutable [`SampleView`] borrow (which IS `Sync`)
+/// instead of through this `RefCell` (which is NOT). Cache writes (`sample_at`)
+/// stay on the serial path: cell creation (`make_leaf` / `make_probe` corner
+/// reads) and the edge-interior walks in face-contour.
 pub struct Sampler<'a> {
     tree: &'a CsgNode,
     lat: &'a SfccLattice,
@@ -85,6 +94,68 @@ impl<'a> Sampler<'a> {
     pub fn has_sample_key(&self, key: i64) -> bool {
         self.samples.borrow().contains_key(&key)
     }
+}
+
+/// A READ-ONLY view of the sample cache over an immutable borrow — `Sync`, so it
+/// can be shared across the rayon par_iter in the round-batched decision pass.
+/// `make_probe` corner reads go through `sample_at`; in the decision pass every
+/// corner is already populated (cell creation cached them), so a missing key
+/// would be a bug — we fall back to a direct (un-cached) tree eval to stay safe.
+pub struct SampleView<'a> {
+    tree: &'a CsgNode,
+    lat: &'a SfccLattice,
+    samples: &'a HashMap<i64, f64>,
+}
+
+impl<'a> SampleView<'a> {
+    /// `f` at a lattice point — read from the pre-populated cache. The decision
+    /// pass never inserts (all frontier corners are cached at cell creation), so
+    /// this is a pure read. A cache miss falls back to a direct tree eval (a
+    /// missing corner would be a build-order bug, not a correctness one).
+    pub fn sample_at(&self, gx: i64, gy: i64, gz: i64) -> f64 {
+        let key = pack_point(self.lat, gx, gy, gz);
+        if let Some(&v) = self.samples.get(&key) {
+            return v;
+        }
+        let w = point_to_world(self.lat, gx, gy, gz);
+        self.tree.f([w[0], w[1], w[2]])
+    }
+}
+
+/// The per-cell split DECISION: split-or-not plus the feature tags the criteria
+/// classification stamps onto a kept (or to-be-meshed degenerate) leaf. Returned
+/// by the pure decision callback so the decision pass holds no `&mut SfccCell`
+/// and can run under rayon. The tags are persisted onto the live cell serially.
+#[derive(Clone, Copy, Debug)]
+pub struct CellDecision {
+    pub split: bool,
+    pub feature_curve: i64,
+    pub feature_corner: i64,
+}
+
+/// Decide every frontier cell — the parallelism site (the ~67% `classifyCellFeatures`
+/// hot path). `par_iter().map().collect()` preserves INDEX ORDER, so `decisions[i]`
+/// is the decision for `frontier[i]` regardless of which thread computed it; the
+/// apply phase then consumes them in that deterministic order. `decide` is pure
+/// (`Fn + Sync`), the `SampleView` is an immutable cache borrow (`Sync`), and the
+/// feature set behind the closure is immutable during refine — so this is
+/// data-race-free by construction. Falls back to a serial `iter()` when the
+/// `threads` feature is off (the default build stays single-threaded + stable).
+#[cfg(feature = "threads")]
+fn decide_frontier<F>(frontier: &[SfccCell], view: &SampleView<'_>, decide: &F) -> Vec<CellDecision>
+where
+    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync,
+{
+    use rayon::prelude::*;
+    frontier.par_iter().map(|cell| decide(cell, view)).collect()
+}
+
+#[cfg(not(feature = "threads"))]
+fn decide_frontier<F>(frontier: &[SfccCell], view: &SampleView<'_>, decide: &F) -> Vec<CellDecision>
+where
+    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision,
+{
+    frontier.iter().map(|cell| decide(cell, view)).collect()
 }
 
 /// Build options for the octree refinement driver.
@@ -265,19 +336,24 @@ impl<'a> Builder<'a> {
     }
 }
 
-/// Build the certified adaptive octree over `tree`. `needs_split(cell, sampler)`
-/// returns true when the leaf must split; it is never invoked above `depth_min`.
-/// The callback receives `&mut SfccCell` so it can stamp `feature_curve` /
-/// `feature_corner` exactly as the TS `needsSplit` mutates the live cell — those
-/// tags persist on the surviving leaf. Port of `buildOctree`.
+/// Build the certified adaptive octree over `tree`. `decide(cell, sampleView)`
+/// returns the [`CellDecision`] for one leaf: whether it must split + the feature
+/// tags to stamp. It is never invoked above `depth_min`, and it is a PURE READ
+/// over the immutable feature set + the pre-populated sample cache (every
+/// frontier cell's 8 corners are cached at creation), so the decision pass runs
+/// over a round's frontier in parallel under the `threads` feature (rayon
+/// `par_iter` + an order-preserving `collect`) — and serially otherwise. The
+/// FINAL leaf set is confluent (criteria are pure; the 2:1 balance is a fixpoint
+/// independent of worklist order), so parallel output == serial output. Port of
+/// `buildOctree`.
 pub fn build_octree<'a, F>(
     tree: &'a CsgNode,
     lat: &'a SfccLattice,
     opts: OctreeBuildOptions,
-    mut needs_split: F,
+    decide: F,
 ) -> SfccOctree<'a>
 where
-    F: FnMut(&mut SfccCell, &Sampler<'a>) -> bool,
+    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync,
 {
     assert!(
         opts.depth_max <= lat.max_depth,
@@ -298,32 +374,58 @@ where
     // --- initial descent to depth_min ---------------------------------------
     b.descend(0, 0, 0, 0, opts.depth_min);
 
-    // --- refinement worklist with balance ripple ----------------------------
-    while let Some((level, key)) = b.worklist.pop() {
-        // The cell may have been split by a balance ripple while queued (in
-        // which case it's gone from the leaf map → skip). Matches the TS
-        // identity guard `cellsByLevel[level].get(key) !== cell`.
-        let mut cell = match b.cells_by_level[level as usize].get(&key) {
-            Some(&c) => c,
-            None => continue,
+    // --- refinement worklist with balance ripple, ROUND-BATCHED -------------
+    // Each round: (1) snapshot the current frontier (cells still live as leaves),
+    // (2) DECIDE all of them — the parallel section (pure reads over the cache +
+    // feature set), (3) APPLY serially (stamp tags, split + balance-ripple). The
+    // ripple may split a cell earlier in the same round; the identity guard
+    // (cell gone from the leaf map ⇒ skip) handles that exactly as the serial
+    // pop()-loop did, and the rippled cell's children land in the next round.
+    while !b.worklist.is_empty() {
+        // Snapshot the frontier as live cells (skip any already rippled away).
+        let frontier: Vec<SfccCell> = std::mem::take(&mut b.worklist)
+            .into_iter()
+            .filter_map(|(level, key)| b.cells_by_level[level as usize].get(&key).copied())
+            .collect();
+        if frontier.is_empty() {
+            continue;
+        }
+
+        // (2) DECIDE — pure-read over an immutable cache borrow (Sync). The corner
+        // samples for every frontier cell are already in the cache (cell creation
+        // populated them), so no writes occur; `decide` only reads.
+        let decisions: Vec<CellDecision> = {
+            let samples = b.sampler.samples.borrow();
+            let view = SampleView { tree, lat, samples: &samples };
+            decide_frontier(&frontier, &view, &decide)
         };
-        // The callback may stamp feature tags on `cell` (mirrors the TS callback
-        // mutating the live cell). Persist them back whether or not it splits.
-        let want_split = needs_split(&mut cell, &b.sampler);
-        if let Some(c) = b.cells_by_level[level as usize].get_mut(&key) {
-            c.feature_curve = cell.feature_curve;
-            c.feature_corner = cell.feature_corner;
-        }
-        if !want_split {
-            continue;
-        }
-        if cell.level >= opts.depth_max {
-            if let Some(c) = b.cells_by_level[level as usize].get_mut(&key) {
-                c.degenerate = true;
+
+        // (3) APPLY serially, in frontier order (deterministic). Stamp the tags,
+        // then split (+ ripple) cells that still exist as leaves.
+        for (cell, dec) in frontier.iter().zip(decisions.iter()) {
+            let level = cell.level;
+            let key = cell.key;
+            // Skip cells a ripple already split out from under us this round.
+            if !b.cells_by_level[level as usize].contains_key(&key) {
+                continue;
             }
-            continue;
+            if let Some(c) = b.cells_by_level[level as usize].get_mut(&key) {
+                c.feature_curve = dec.feature_curve;
+                c.feature_corner = dec.feature_corner;
+            }
+            if !dec.split {
+                continue;
+            }
+            if cell.level >= opts.depth_max {
+                if let Some(c) = b.cells_by_level[level as usize].get_mut(&key) {
+                    c.degenerate = true;
+                }
+                continue;
+            }
+            // Re-read the (tag-stamped) live cell so split carries the tags.
+            let live = b.cells_by_level[level as usize][&key];
+            b.split(live);
         }
-        b.split(cell);
     }
 
     let mut leaves = Vec::new();
@@ -360,7 +462,7 @@ pub fn build_uniform_octree<'a>(tree: &'a CsgNode, lat: &'a SfccLattice, leaf_de
         tree,
         lat,
         OctreeBuildOptions { depth_min: leaf_depth, depth_max: leaf_depth, enforce_edge_balance: true },
-        |_cell: &mut SfccCell, _sampler| false,
+        |_cell: &SfccCell, _sampler: &SampleView<'_>| CellDecision { split: false, feature_curve: -1, feature_corner: -1 },
     )
 }
 
@@ -392,8 +494,7 @@ pub fn build_octree_feature_aware<'a>(
             // Classify even though we demand a split: at depthMax the cell CANNOT
             // split, and an unclassified wedge cell smooth-meshes its wrapping
             // loop. Below depthMax the assignment is discarded with the split.
-            cell.feature_curve = cls.curve;
-            cell.feature_corner = cls.corner;
+            let mut feature_corner = cls.corner;
             if cell.level >= max_depth && cls.corner < 0 {
                 // Multi-curve cell that can never split apart: if a nearby corner
                 // exists, claim it (feature curves CONVERGE at corners). Fanning
@@ -417,10 +518,10 @@ pub fn build_octree_feature_aware<'a>(
                     }
                 }
                 if best_corner >= 0 && best_d <= reach {
-                    cell.feature_corner = best_corner;
+                    feature_corner = best_corner;
                 }
             }
-            return true;
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner };
         }
         // (forcedSplit markers are empty at round 0 — omitted.)
         let probe = make_probe(
@@ -436,19 +537,16 @@ pub fn build_octree_feature_aware<'a>(
             // Corner cells are exempt from the per-stratum smoothness certificates
             // AND from the sign-change gate (the corner IS the carrier
             // singularity). A corner cell with no visible crossings meshes nothing.
-            cell.feature_curve = cls.curve;
-            cell.feature_corner = cls.corner;
-            return false;
+            return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
         }
         // A feature in a cell whose corners don't see a sign change is invisible to
         // face contouring — keep splitting. Classify FIRST so depthMax leaves carry
         // the tag for the pin + per-stratum recovery machinery.
-        cell.feature_curve = cls.curve;
-        cell.feature_corner = cls.corner;
         if cls.curve >= 0 && !has_corner_sign_change(&probe) {
-            return true;
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
         }
-        needs_split_smooth(tree, &probe, smooth_opts, grad_bound, has_blend)
+        let split = needs_split_smooth(tree, &probe, smooth_opts, grad_bound, has_blend);
+        CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
     })
 }
 
@@ -460,6 +558,11 @@ mod tests {
 
     fn sphere_tree() -> CsgNode {
         sdf::leaf_at(Shape::Sphere { r: 8.0 }, [0.0, 0.0, 0.0])
+    }
+
+    /// Wrap a bare split predicate in a (no-feature) `CellDecision` for the tests.
+    fn split_dec(split: bool) -> CellDecision {
+        CellDecision { split, feature_curve: -1, feature_corner: -1 }
     }
 
     #[test]
@@ -490,7 +593,7 @@ mod tests {
             OctreeBuildOptions { depth_min: 2, depth_max: 5, enforce_edge_balance: true },
             |cell, sampler| {
                 if cell.level >= 4 {
-                    return false;
+                    return split_dec(false);
                 }
                 let stride = stride_at_level(&lat, cell.level);
                 let mut neg = false;
@@ -507,7 +610,7 @@ mod tests {
                         pos = true;
                     }
                 }
-                neg && pos
+                split_dec(neg && pos)
             },
         );
         // Surface cells refined to level 4; interior/exterior stay coarse.
@@ -530,7 +633,7 @@ mod tests {
             OctreeBuildOptions { depth_min: 2, depth_max: 6, enforce_edge_balance: true },
             |cell, sampler| {
                 if cell.level >= 5 {
-                    return false;
+                    return split_dec(false);
                 }
                 let stride = stride_at_level(&lat, cell.level);
                 let mut neg = false;
@@ -547,7 +650,7 @@ mod tests {
                         pos = true;
                     }
                 }
-                neg && pos
+                split_dec(neg && pos)
             },
         );
         assert!(oct.leaves.iter().any(|c| c.level == 5), "shell refined to the ceiling");

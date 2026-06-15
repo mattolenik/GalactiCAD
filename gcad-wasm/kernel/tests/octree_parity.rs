@@ -7,7 +7,7 @@
 use gcad_kernel::math::grid::make_lattice;
 use gcad_kernel::math::similarity::Similarity;
 use gcad_kernel::sdf::{self, CsgNode, Shape};
-use gcad_kernel::sfcc::octree::{build_octree, OctreeBuildOptions};
+use gcad_kernel::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions};
 use gcad_kernel::sfcc::refine_criteria::{make_probe, needs_split_smooth, SmoothCriteriaOptions};
 use gcad_kernel::strata::{Stratum, StratumIdentity};
 use std::collections::BTreeSet;
@@ -138,7 +138,8 @@ fn run_parity(name: &str, tree: CsgNode) {
         },
         |cell, sampler| {
             let probe = make_probe(&lat, &tree, |gx, gy, gz| sampler.sample_at(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
-            needs_split_smooth(&tree, &probe, &opts, grad_bound, has_blend)
+            let split = needs_split_smooth(&tree, &probe, &opts, grad_bound, has_blend);
+            CellDecision { split, feature_curve: -1, feature_corner: -1 }
         },
     );
 

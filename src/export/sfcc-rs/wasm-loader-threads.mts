@@ -18,7 +18,7 @@
  * M6b smoke retires: these workers are created from INSIDE the render worker.
  */
 
-import init, { initThreadPool, par_smoke, version } from "../../../gcad-wasm/wasm/pkg-threads/gcad_wasm.js"
+import init, { export_sfcc, initThreadPool, par_smoke, version } from "../../../gcad-wasm/wasm/pkg-threads/gcad_wasm.js"
 import wasmUrl from "../../../gcad-wasm/wasm/pkg-threads/gcad_wasm_bg.wasm"
 
 let ready: Promise<void> | null = null
@@ -39,4 +39,9 @@ export async function ensureThreadedWasmReady(numThreads?: number): Promise<void
     return ready
 }
 
-export { initThreadPool, par_smoke, version }
+// `export_sfcc` here runs the rayon-PARALLELIZED refine frontier
+// (classifyCellFeatures) on the pool spawned by `ensureThreadedWasmReady`. The
+// mesh is byte-identical to the single-thread `pkg/` export (M6d determinism
+// gate); only the wall-clock differs. The M6d exporter routes to this when the
+// `sfccThreads` flag is on, falling back to the single-thread loader otherwise.
+export { export_sfcc, initThreadPool, par_smoke, version }

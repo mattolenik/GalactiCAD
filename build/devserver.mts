@@ -724,7 +724,11 @@ export class DevServer {
         }
 
         if (AGENT_MODE && options) {
-            const url = `http://127.0.0.1:${actualPort}/`
+            // Optional query string appended to the headless tab URL so page-load
+            // flags (e.g. `?sfccThreads=1` for the M6d rayon export path) can be
+            // exercised headlessly. Inert unless GCAD_AGENT_PAGE_QUERY is set.
+            const pageQuery = process.env.GCAD_AGENT_PAGE_QUERY?.trim()
+            const url = `http://127.0.0.1:${actualPort}/${pageQuery ? `?${pageQuery.replace(/^\?/, "")}` : ""}`
             try {
                 const executablePath = await resolveChromiumExecutable()
                 if (!executablePath) {
@@ -822,6 +826,7 @@ function createHttpServer(
         ".json": "application/json",
         ".png": "image/png",
         ".svg": "image/svg+xml",
+        ".wasm": "application/wasm",
     }
 
     const defaultContentType = "application/octet-stream"

@@ -101,6 +101,7 @@ function threadedLoaderStubPlugin(): esbuild.Plugin {
                     "const MSG = 'gcad-wasm threaded artifact (pkg-threads/) not built — run `make gcad-wasm-threads`';\n" +
                     "export async function ensureThreadedWasmReady() { throw new Error(MSG) }\n" +
                     "export function par_smoke() { throw new Error(MSG) }\n" +
+                    "export function export_sfcc() { throw new Error(MSG) }\n" +
                     "export async function initThreadPool() { throw new Error(MSG) }\n" +
                     "export function version() { throw new Error(MSG) }\n",
                 loader: "js",

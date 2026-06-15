@@ -19,7 +19,7 @@ use crate::sfcc::cell_mesh::{mesh_all_cells, CellMeshOptions, CellMeshResult, In
 use crate::sfcc::face_contour::{contour_all_faces, FaceContourOptions, FaceContourResult};
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
-use crate::sfcc::octree::{build_octree, OctreeBuildOptions, SfccCell, SfccOctree};
+use crate::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions, SfccCell, SfccOctree};
 use crate::sfcc::point_table::PointTable;
 use crate::sfcc::refine_criteria::{
     classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
@@ -460,12 +460,15 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
                 depth_max: max_depth,
                 enforce_edge_balance: tuning.enforce_edge_balance,
             },
-            // The full feature-aware needsSplit, mirroring runSfccPipeline.
+            // The full feature-aware needsSplit, mirroring runSfccPipeline. Pure
+            // read over the immutable feature set + the pre-populated sample cache,
+            // so the octree driver runs this DECISION over the round's frontier in
+            // parallel (rayon, `threads` feature) — the ~67% classifyCellFeatures
+            // hot path. Returns the split decision + the feature tags to stamp.
             |cell, sampler| {
                 let cls = classify_cell_features(&features, &lat, cell.level, cell.ix, cell.iy, cell.iz, &feature_opts);
                 if cls.split {
-                    cell.feature_curve = cls.curve;
-                    cell.feature_corner = cls.corner;
+                    let mut feature_corner = cls.corner;
                     if cell.level >= max_depth && cls.corner < 0 {
                         // Multi-curve cell that can never split apart: claim a
                         // nearby corner if one exists (curves CONVERGE at corners).
@@ -488,13 +491,16 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
                             }
                         }
                         if best_corner >= 0 && best_d <= reach {
-                            cell.feature_corner = best_corner;
+                            feature_corner = best_corner;
                         }
                     }
-                    return true;
+                    return CellDecision { split: true, feature_curve: cls.curve, feature_corner };
                 }
                 if forced_split(&forced_snapshot, cell) {
-                    return true;
+                    // Forced split discards the cell (tags unused below max_depth;
+                    // a degenerate forced cell at max_depth carried no cls tags in
+                    // the serial path either, so keep them unset).
+                    return CellDecision { split: true, feature_curve: -1, feature_corner: -1 };
                 }
                 let probe = make_probe(
                     &lat,
@@ -507,16 +513,13 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
                 );
                 if cls.corner >= 0 {
                     // Corner cells exempt from per-stratum + sign-change gates.
-                    cell.feature_curve = cls.curve;
-                    cell.feature_corner = cls.corner;
-                    return false;
+                    return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
                 }
-                cell.feature_curve = cls.curve;
-                cell.feature_corner = cls.corner;
                 if cls.curve >= 0 && !has_corner_sign_change(&probe) {
-                    return true;
+                    return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
                 }
-                needs_split_smooth(tree, &probe, &smooth_opts, grad_bound, has_blend)
+                let split = needs_split_smooth(tree, &probe, &smooth_opts, grad_bound, has_blend);
+                CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
             },
         );
         points = PointTable::new();

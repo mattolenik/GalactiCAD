@@ -12,6 +12,14 @@ edition.workspace = true
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 
+# M6d (rayon): parallelizes the SFCC refine-frontier decision pass
+# (classifyCellFeatures + smooth certs). OPT-IN via `--features threads`; the
+# default build stays dependency-free, single-threaded, and stable-toolchain. The
+# threaded WASM artifact additionally needs nightly + `-Zbuild-std` +
+# `+atomics,+bulk-memory` (see `make gcad-wasm-threads`).
+rayon = { version = "1", optional = true }
+
 [features]
 default = []
 serde = ["dep:serde", "dep:serde_json"]
+threads = ["dep:rayon"]

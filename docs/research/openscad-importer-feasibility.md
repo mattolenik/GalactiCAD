@@ -145,6 +145,13 @@ from the surface degrade. gcad's engine already lives with this; it is not impor
 (See Guardrails G2/G4: the boolean+transform set is *not* a trivial clean 1:1 — this
 asterisk is why.)
 
+**Coordinate system:** OpenSCAD is **Z-up**, gcad is **Y-up**, so the importer must convert
+(a plan to move gcad to Z-up codebase-wide was dropped — too complex, not needed). Handle it
+with **one root axis-conversion transform** — a −90° rotation about X (OpenSCAD +Z → gcad
++Y) wrapping the whole imported tree, leaving interior coordinates untouched. Confirm the
+exact sign/convention with the image oracle; per-axis ops (`rotate_extrude`→`lathe`) need
+their own axis reconciliation. See the implementation plan §5.1.
+
 ---
 
 ## 3. What's hard or impossible (a gradient, not a checklist)

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# Provides a version string for the repo's current state.
+#
 set -euo pipefail
 
 hash="$(git describe --always --dirty)"

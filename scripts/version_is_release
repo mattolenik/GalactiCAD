@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#
+# Simple heuristic test to see if the current tag/version is release ready.
+# Helps prevent accidental build and publish of something not intended for release.
+#
+set -euo pipefail
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+ver="$("$SCRIPT_DIR/version")"
+if [[ $ver == *"-dirty" ]] || \
+   [[ $ver != "v"* ]] || \
+   [[ $ver == "v0.0.0"* ]]; then
+    exit 1
+fi
+exit 0

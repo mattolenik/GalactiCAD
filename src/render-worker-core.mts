@@ -248,6 +248,8 @@ export class RenderWorkerCore {
      * against the SDF surface. Zero ⇒ no extra pass, identical to legacy behavior.
      */
     #featureGraphOcclusionMode = 0
+    /** Edge line width (framebuffer px) for the FeatureGraph overlay. */
+    #featureGraphLineWidth = 2
     /**
      * Lazily-built depth-only pipeline (preview shader's `depthOnlyMain` entry,
      * rgba32float target). Compiled from {@link #sceneShader} on first use of an
@@ -626,6 +628,13 @@ export class RenderWorkerCore {
         const next = occlusionModeToInt(mode)
         if (this.#featureGraphOcclusionMode === next) return
         this.#featureGraphOcclusionMode = next
+        this.#forceNextRender = true
+    }
+
+    /** Set the FeatureGraph overlay edge line width (framebuffer px). */
+    setFeatureGraphLineWidth(px: number): void {
+        if (this.#featureGraphLineWidth === px) return
+        this.#featureGraphLineWidth = px
         this.#forceNextRender = true
     }
 
@@ -1009,6 +1018,7 @@ export class RenderWorkerCore {
         // byte the legacy draw-on-top behavior with no extra pass.
         const depthView = this.#renderSceneDepthForOcclusion(commandEncoder, sceneWidth, sceneHeight)
         overlay.setDepthSource(depthView, depthView ? this.#featureGraphOcclusionMode : 0)
+        overlay.setLineWidth(this.#featureGraphLineWidth)
         overlay.uploadCamera(viewTransform, cameraPosition, width, height, zoom, viewCenter)
         const pass = commandEncoder.beginRenderPass({
             label: "FeatureGraph Overlay",

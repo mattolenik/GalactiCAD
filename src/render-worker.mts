@@ -214,6 +214,9 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "setFeatureGraphOcclusionMode":
             if (core) core.setFeatureGraphOcclusionMode(msg.mode)
             break
+        case "setFeatureGraphLineWidth":
+            if (core) core.setFeatureGraphLineWidth(msg.px)
+            break
         case "setStepHeatmapEnabled":
             if (core) core.setStepHeatmapEnabled(msg.enabled)
             break

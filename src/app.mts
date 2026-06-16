@@ -1297,6 +1297,7 @@ class App {
         devTools.bvhOptimization = this.renderer.bvhEnabled
         devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
         devTools.featureGraphOcclusion = this.renderer.featureGraphOcclusion
+        devTools.featureGraphLineWidth = this.renderer.featureGraphLineWidth
         devTools.stepHeatmap = this.renderer.stepHeatmapEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
@@ -1313,6 +1314,9 @@ class App {
         }
         devTools.onFeatureGraphOcclusionChange = (mode) => {
             this.renderer.featureGraphOcclusion = mode
+        }
+        devTools.onFeatureGraphLineWidthChange = (px) => {
+            this.renderer.featureGraphLineWidth = px
         }
         devTools.onStepHeatmapChange = (enabled) => {
             this.renderer.stepHeatmapEnabled = enabled
@@ -1340,6 +1344,7 @@ class App {
             devTools.bvhOptimization = this.renderer.bvhEnabled
             devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
             devTools.featureGraphOcclusion = this.renderer.featureGraphOcclusion
+            devTools.featureGraphLineWidth = this.renderer.featureGraphLineWidth
         })
 
         const showFps = devTools.showFps
@@ -1411,6 +1416,7 @@ class App {
                     bvhOptimization: this.renderer.bvhEnabled,
                     featureGraphOverlay: this.renderer.featureGraphOverlayEnabled,
                     featureGraphOcclusion: this.renderer.featureGraphOcclusion,
+                    featureGraphLineWidth: this.renderer.featureGraphLineWidth,
                 },
             }
         }

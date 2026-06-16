@@ -241,6 +241,7 @@ export type MainToWorkerMessage =
     | { type: "setIsolatedIds"; isolatedIds: number[] }
     | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
     | { type: "setFeatureGraphOcclusionMode"; mode: FeatureGraphOcclusionMode }
+    | { type: "setFeatureGraphLineWidth"; px: number }
     | { type: "setStepHeatmapEnabled"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
 

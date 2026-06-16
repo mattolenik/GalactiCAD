@@ -1,23 +1,27 @@
 /**
  * FeatureGraph debug overlay — GPU pipeline + buffer management.
  *
- * Renders alive crease/corner edges from the latest FeatureGraph build as
- * anti-aliased screen-space quads over the rendered scene. Decoupled from the
- * main scene pipeline so it can be toggled on/off at runtime without
- * recompiling shaders and so the overlay pass owns its own camera uniform (the
- * existing preview camera struct has a much larger layout we don't need here).
+ * Renders alive crease edges from the latest FeatureGraph build as anti-aliased
+ * screen-space quads, plus a marker disc at each explicit corner (0D feature)
+ * vertex, over the rendered scene. Decoupled from the main scene pipeline so it
+ * can be toggled on/off at runtime without recompiling shaders and so the
+ * overlay pass owns its own camera uniform (the existing preview camera struct
+ * has a much larger layout we don't need here).
  *
  * Buffer layout
  * -------------
- *  - **Instance buffer**: one record per *alive* edge, stride 32 bytes —
- *    endpoint A (vec3f) + endpoint B (vec3f) + flags (u32) + 4-byte pad. Dead
- *    edges are skipped entirely (no per-vertex transform cost). Each instance
- *    is drawn as a 6-vertex quad (`draw(6, edgeCount)`); the shader expands it
- *    in screen space to a pixel-width, anti-aliased line. `flags` is endpoint
- *    A's vertex flags, matching the old `line-list` provoking-vertex coloring.
+ *  - **Edge instance buffer**: one record per *alive* edge, stride 32 bytes —
+ *    endpoint A (vec3f) + endpoint B (vec3f) + flags (u32) + 4-byte pad. Drawn
+ *    as a 6-vertex quad (`draw(6, edgeCount)`); the shader expands it in screen
+ *    space to a pixel-width, anti-aliased line. `flags` is endpoint A's vertex
+ *    flags (crease lineage drives the edge color).
+ *  - **Corner instance buffer**: one record per *alive corner* vertex, stride
+ *    12 bytes (vec3f position). Drawn as a 6-vertex quad per corner; the shader
+ *    paints an AA disc. Plain (non-corner) polyline vertices get no marker.
  *  - **Camera uniform**: 112 bytes — see {@link CAMERA_UNIFORM_BYTES}. Same
  *    camera→world matrix the preview ray-marcher uses, so the overlay aligns
- *    with the scene.
+ *    with the scene. The edge + corner pipelines share one explicit bind-group
+ *    layout (camera uniform + scene-depth texture) and therefore one bind group.
  *
  * Render integration
  * ------------------
@@ -32,7 +36,7 @@
 import type { GPUHelper } from "../gpu/helper.mjs"
 import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
 import overlayShaderSource from "../shaders/feature_graph_overlay.wgsl"
-import { FG_FLAG_ALIVE, type FeatureGraphCpu } from "../scene/feature-graph-buffer.mjs"
+import { FG_FLAG_ALIVE, FG_FLAG_CORNER, type FeatureGraphCpu } from "../scene/feature-graph-buffer.mjs"
 import type { FeatureGraphWorldPositions } from "./feature-graph-stages.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
 
@@ -41,6 +45,12 @@ import { Mat4x4f } from "../vecmat/matrix.mjs"
  * endpoint B (vec3f, 12) + flags (u32, 4) + 4-byte pad = 32 (8 floats/edge).
  */
 const INSTANCE_STRIDE = 32
+
+/** Stride in bytes for the per-corner instance buffer: position (vec3f, 12). */
+const CORNER_STRIDE = 12
+
+/** Default edge line width in framebuffer pixels (dev-tools knob overrides). */
+const DEFAULT_LINE_WIDTH_PX = 2
 
 /**
  * Size in bytes of the overlay camera uniform struct. Layout (column-major,
@@ -53,7 +63,7 @@ const INSTANCE_STRIDE = 32
  *   - 92 : _pad1 (f32), 4 bytes  →  vec4 alignment
  *   - 96 : viewCenter (vec2f), 8 bytes
  *   - 104: occlusionMode (u32), 4 bytes  (0 = off, 1 = hard, 2 = dim)
- *   - 108: _pad2 (u32), 4 bytes  →  struct size = 112 (16-aligned)
+ *   - 108: lineWidthPx (f32), 4 bytes  →  struct size = 112 (16-aligned)
  */
 const CAMERA_UNIFORM_BYTES = 112
 
@@ -73,22 +83,44 @@ export function occlusionModeToInt(mode: FeatureGraphOcclusionMode): number {
  */
 const PREVIEW_RAY_ORIGIN_DEPTH = 300
 
+const OVERLAY_BLEND: GPUBlendState = {
+    color: {
+        srcFactor: "src-alpha",
+        dstFactor: "one-minus-src-alpha",
+        operation: "add",
+    },
+    alpha: {
+        srcFactor: "one",
+        dstFactor: "one-minus-src-alpha",
+        operation: "add",
+    },
+}
+
 export class FeatureGraphOverlay {
-    #helper: GPUHelper
     #device: GPUDevice
     #format: GPUTextureFormat
     #shaderModule: GPUShaderModule
-    #pipeline!: GPURenderPipeline
+    /** Edge pipeline (instanced screen-space line quads). */
+    #linePipeline!: GPURenderPipeline
+    /** Corner-marker pipeline (instanced AA discs). */
+    #pointPipeline!: GPURenderPipeline
+    /** Explicit bind-group layout shared by both pipelines. */
+    #bindGroupLayout: GPUBindGroupLayout
     #cameraBuffer: GPUBuffer
     #instanceBuffer?: GPUBuffer
     #instanceCapacity = 0
-    #bindGroup?: [number, GPUBindGroup]
+    #cornerBuffer?: GPUBuffer
+    #cornerCapacity = 0
+    /** Single bind group (camera uniform + scene-depth tex) shared by both pipelines. */
+    #bindGroup?: GPUBindGroup
     /** Number of alive-edge instances uploaded; `draw(6, edgeCount)`. */
     #edgeCount = 0
+    /** Number of alive-corner instances uploaded; `draw(6, cornerCount)`. */
+    #cornerCount = 0
     /**
      * 1×1 rgba32float placeholder bound at binding 1 whenever occlusion is off
      * (or no scene-depth texture has been supplied yet). The shader never reads
-     * it in that state, but `layout: "auto"` still requires a valid binding.
+     * it in that state, but the bind group still requires a valid binding.
      */
     #dummyDepthTexture: GPUTexture
     #dummyDepthView: GPUTextureView
@@ -96,6 +128,8 @@ export class FeatureGraphOverlay {
     #depthView: GPUTextureView
     /** Occlusion mode written into the camera uniform (0 off / 1 hard / 2 dim). */
     #occlusionMode = 0
+    /** Edge line width in framebuffer pixels, written into the camera uniform. */
+    #lineWidthPx = DEFAULT_LINE_WIDTH_PX
     /**
      * Persistent staging for the camera uniform payload. Filled in-place each
      * upload to avoid the per-frame `new ArrayBuffer(112)` + `new Float32Array(...)`
@@ -106,16 +140,16 @@ export class FeatureGraphOverlay {
     #cameraStagingF32 = new Float32Array(this.#cameraStaging)
     /**
      * Cache of the *inputs* (viewTransform[16] + cameraPosition[3] + res[2] +
-     * zoom[1] + viewCenter[2] = 24 floats). Cheap to compare and lets us skip
-     * the matrix inverse entirely when the camera hasn't moved.
+     * zoom[1] + viewCenter[2] + occlusionMode[1] + lineWidthPx[1] = 26 floats).
+     * Cheap to compare and lets us skip the matrix inverse + upload when nothing
+     * relevant changed.
      */
-    #cameraInputCache = new Float32Array(25)
+    #cameraInputCache = new Float32Array(26)
     #cameraInputValid = false
     /** Uint32 view of {@link #cameraStaging} for the integer occlusionMode slot. */
     #cameraStagingU32 = new Uint32Array(this.#cameraStaging)
 
     constructor(helper: GPUHelper, format: GPUTextureFormat) {
-        this.#helper = helper
         this.#device = helper.device
         this.#format = format
 
@@ -144,9 +178,33 @@ export class FeatureGraphOverlay {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         })
 
-        this.#pipeline = this.#device.createRenderPipeline({
-            label: "FeatureGraph Overlay Pipeline",
-            layout: "auto",
+        // Explicit layout shared by both pipelines so a single bind group binds
+        // to either (auto layouts produce distinct, non-interchangeable objects).
+        this.#bindGroupLayout = this.#device.createBindGroupLayout({
+            label: "FeatureGraphOverlay.BindGroupLayout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                    buffer: { type: "uniform" },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+                },
+            ],
+        })
+        const pipelineLayout = this.#device.createPipelineLayout({
+            label: "FeatureGraphOverlay.PipelineLayout",
+            bindGroupLayouts: [this.#bindGroupLayout],
+        })
+
+        const target: GPUColorTargetState = { format: this.#format, blend: OVERLAY_BLEND }
+
+        this.#linePipeline = this.#device.createRenderPipeline({
+            label: "FeatureGraph Overlay Line Pipeline",
+            layout: pipelineLayout,
             vertex: {
                 module: this.#shaderModule,
                 entryPoint: "vertexMain",
@@ -163,82 +221,95 @@ export class FeatureGraphOverlay {
                     },
                 ],
             },
-            fragment: {
+            fragment: { module: this.#shaderModule, entryPoint: "fragmentMain", targets: [target] },
+            // Two triangles per instance form the expanded line quad.
+            primitive: { topology: "triangle-list" },
+        })
+
+        this.#pointPipeline = this.#device.createRenderPipeline({
+            label: "FeatureGraph Overlay Corner Pipeline",
+            layout: pipelineLayout,
+            vertex: {
                 module: this.#shaderModule,
-                entryPoint: "fragmentMain",
-                targets: [
+                entryPoint: "pointVertexMain",
+                buffers: [
                     {
-                        format: this.#format,
-                        blend: {
-                            color: {
-                                srcFactor: "src-alpha",
-                                dstFactor: "one-minus-src-alpha",
-                                operation: "add",
-                            },
-                            alpha: {
-                                srcFactor: "one",
-                                dstFactor: "one-minus-src-alpha",
-                                operation: "add",
-                            },
-                        },
+                        // Per-corner instance: position (vec3f).
+                        arrayStride: CORNER_STRIDE,
+                        stepMode: "instance",
+                        attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }],
                     },
                 ],
             },
-            primitive: {
-                // Two triangles per instance form the expanded line quad.
-                topology: "triangle-list",
-            },
+            fragment: { module: this.#shaderModule, entryPoint: "pointFragmentMain", targets: [target] },
+            primitive: { topology: "triangle-list" },
         })
     }
 
     /**
-     * Upload one instance record per alive edge from the latest FeatureGraph
-     * build (endpoint A + endpoint B world positions + endpoint-A flags). Dead
-     * edges are skipped entirely. Grow-on-demand pattern matching
-     * `IsoSampleBatch`. Call once per FG rebuild; the camera uniform is
+     * Upload one instance per alive edge (endpoint A + endpoint B world
+     * positions + endpoint-A flags) and one instance per alive *corner* vertex.
+     * Dead edges and non-corner vertices are skipped. Grow-on-demand pattern
+     * matching `IsoSampleBatch`. Call once per FG rebuild; the camera uniform is
      * uploaded separately via {@link uploadCamera} on every render frame.
      */
     upload(cpu: FeatureGraphCpu, world: FeatureGraphWorldPositions): void {
-        if (cpu.vertexCount === 0) {
-            this.#edgeCount = 0
-            return
-        }
+        this.#edgeCount = 0
+        this.#cornerCount = 0
+        if (cpu.vertexCount === 0) return
 
+        // --- Edges: one instance per alive edge ---
         let aliveEdgeCount = 0
         for (let e = 0; e < cpu.edgeCount; e++) {
             if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) !== 0) aliveEdgeCount++
         }
-
-        if (aliveEdgeCount === 0) {
-            this.#edgeCount = 0
-            return
+        if (aliveEdgeCount > 0) {
+            const instanceBytes = aliveEdgeCount * INSTANCE_STRIDE
+            this.#ensureInstanceBuffer(instanceBytes)
+            const buf = new ArrayBuffer(instanceBytes)
+            const f32 = new Float32Array(buf)
+            const u32 = new Uint32Array(buf)
+            let s = 0
+            for (let e = 0; e < cpu.edgeCount; e++) {
+                if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) === 0) continue
+                const a = cpu.edgeEndpoints[e * 2]!
+                const b = cpu.edgeEndpoints[e * 2 + 1]!
+                const o = s * 8
+                f32[o + 0] = world.positions[a * 3 + 0]!
+                f32[o + 1] = world.positions[a * 3 + 1]!
+                f32[o + 2] = world.positions[a * 3 + 2]!
+                f32[o + 3] = world.positions[b * 3 + 0]!
+                f32[o + 4] = world.positions[b * 3 + 1]!
+                f32[o + 5] = world.positions[b * 3 + 2]!
+                // Endpoint A's crease flags drive the line color. Slot o+7 is pad.
+                u32[o + 6] = cpu.vertexFlags[a] ?? 0
+                s++
+            }
+            this.#device.queue.writeBuffer(this.#instanceBuffer!, 0, buf)
+            this.#edgeCount = aliveEdgeCount
         }
 
-        // Instance buffer: per alive edge, posA × 3, posB × 3, flags × 1, pad.
-        const instanceBytes = aliveEdgeCount * INSTANCE_STRIDE
-        this.#ensureInstanceBuffer(instanceBytes)
-        const buf = new ArrayBuffer(instanceBytes)
-        const f32 = new Float32Array(buf)
-        const u32 = new Uint32Array(buf)
-        let s = 0
-        for (let e = 0; e < cpu.edgeCount; e++) {
-            if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) === 0) continue
-            const a = cpu.edgeEndpoints[e * 2]!
-            const b = cpu.edgeEndpoints[e * 2 + 1]!
-            const o = s * 8
-            f32[o + 0] = world.positions[a * 3 + 0]!
-            f32[o + 1] = world.positions[a * 3 + 1]!
-            f32[o + 2] = world.positions[a * 3 + 2]!
-            f32[o + 3] = world.positions[b * 3 + 0]!
-            f32[o + 4] = world.positions[b * 3 + 1]!
-            f32[o + 5] = world.positions[b * 3 + 2]!
-            // Endpoint A's flags drive the line color (matches the old
-            // line-list provoking-vertex behavior). Slot o+7 is pad.
-            u32[o + 6] = cpu.vertexFlags[a] ?? 0
-            s++
+        // --- Corners: one marker per alive 0D-feature vertex ---
+        const cornerMask = FG_FLAG_ALIVE | FG_FLAG_CORNER
+        let cornerCount = 0
+        for (let i = 0; i < cpu.vertexCount; i++) {
+            if ((cpu.vertexFlags[i]! & cornerMask) === cornerMask) cornerCount++
         }
-        this.#device.queue.writeBuffer(this.#instanceBuffer!, 0, buf)
-        this.#edgeCount = aliveEdgeCount
+        if (cornerCount > 0) {
+            const cornerBytes = cornerCount * CORNER_STRIDE
+            this.#ensureCornerBuffer(cornerBytes)
+            const cbuf = new Float32Array(cornerCount * 3)
+            let c = 0
+            for (let i = 0; i < cpu.vertexCount; i++) {
+                if ((cpu.vertexFlags[i]! & cornerMask) !== cornerMask) continue
+                cbuf[c * 3 + 0] = world.positions[i * 3 + 0]!
+                cbuf[c * 3 + 1] = world.positions[i * 3 + 1]!
+                cbuf[c * 3 + 2] = world.positions[i * 3 + 2]!
+                c++
+            }
+            this.#device.queue.writeBuffer(this.#cornerBuffer!, 0, cbuf)
+            this.#cornerCount = cornerCount
+        }
     }
 
     /**
@@ -266,9 +337,7 @@ export class FeatureGraphOverlay {
         const vt = viewTransform instanceof Float32Array ? viewTransform : new Float32Array(viewTransform)
 
         // Compare against cached inputs — matrix inversion + writeBuffer only
-        // run when the camera actually moved. Steady-state SDF preview frames
-        // re-upload unchanged camera state every frame, so this short-circuit
-        // saves a Mat4x4f inverse + a 112-byte GPU upload per frame.
+        // run when the camera (or occlusion mode / line width) actually changed.
         const cache = this.#cameraInputCache
         if (this.#cameraInputValid) {
             let same = true
@@ -285,7 +354,8 @@ export class FeatureGraphOverlay {
                 cache[21] === zoom &&
                 cache[22] === viewCenter[0] &&
                 cache[23] === viewCenter[1] &&
-                cache[24] === this.#occlusionMode
+                cache[24] === this.#occlusionMode &&
+                cache[25] === this.#lineWidthPx
             ) return
         }
         for (let i = 0; i < 16; i++) cache[i] = vt[i]!
@@ -298,6 +368,7 @@ export class FeatureGraphOverlay {
         cache[22] = viewCenter[0]
         cache[23] = viewCenter[1]
         cache[24] = this.#occlusionMode
+        cache[25] = this.#lineWidthPx
         this.#cameraInputValid = true
 
         // Invert on CPU: WGSL inversion is doable for rigid transforms but
@@ -324,7 +395,8 @@ export class FeatureGraphOverlay {
         f32[25] = viewCenter[1]
         // occlusionMode (u32): bytes 104..107
         this.#cameraStagingU32[26] = this.#occlusionMode
-        f32[27] = 0 // _pad2
+        // lineWidthPx (f32): bytes 108..111
+        f32[27] = this.#lineWidthPx
         this.#device.queue.writeBuffer(this.#cameraBuffer, 0, this.#cameraStaging)
     }
 
@@ -332,7 +404,7 @@ export class FeatureGraphOverlay {
      * Set the scene-depth source + occlusion mode for the next render. Pass a
      * world-space hit-position texture view (rgba32float, xyz = hit position,
      * w = hit mask) from the SDF depth-only pass and a non-zero mode to enable
-     * depth ordering; pass `null` / mode 0 to draw lines on top as before.
+     * depth ordering; pass `null` / mode 0 to draw on top as before.
      *
      * Invalidates the cached bind group when the bound texture changes so the
      * next {@link render} rebinds it. The mode is folded into the camera
@@ -347,49 +419,59 @@ export class FeatureGraphOverlay {
         this.#occlusionMode = occlusionMode
     }
 
+    /** Set the edge line width (framebuffer pixels). Applied on next {@link uploadCamera}. */
+    setLineWidth(px: number): void {
+        this.#lineWidthPx = px
+    }
+
     /**
-     * Issue draw call into an open render pass. No-op when no alive edges
-     * have been uploaded. The caller is responsible for opening a render
-     * pass with the canvas target and `loadOp: "load"`.
+     * Issue draw calls into an open render pass: edges first, then corner
+     * markers on top. No-op when nothing has been uploaded. The caller is
+     * responsible for opening a render pass with the canvas target and
+     * `loadOp: "load"`.
      */
     render(pass: GPURenderPassEncoder): void {
-        if (this.#edgeCount === 0 || !this.#instanceBuffer) return
+        if (this.#edgeCount === 0 && this.#cornerCount === 0) return
         if (!this.#bindGroup) {
-            // Built directly (not via helper.createBindGroup) because binding 1
-            // is a texture view, not a buffer.
-            this.#bindGroup = [
-                0,
-                this.#device.createBindGroup({
-                    label: "FeatureGraphOverlay.BindGroup",
-                    layout: this.#pipeline.getBindGroupLayout(0),
-                    entries: [
-                        { binding: 0, resource: { buffer: this.#cameraBuffer } },
-                        { binding: 1, resource: this.#depthView },
-                    ],
-                }),
-            ]
+            this.#bindGroup = this.#device.createBindGroup({
+                label: "FeatureGraphOverlay.BindGroup",
+                layout: this.#bindGroupLayout,
+                entries: [
+                    { binding: 0, resource: { buffer: this.#cameraBuffer } },
+                    { binding: 1, resource: this.#depthView },
+                ],
+            })
         }
-        const [groupId, bindGroup] = this.#bindGroup
-        pass.setPipeline(this.#pipeline)
-        pass.setBindGroup(groupId, bindGroup)
-        pass.setVertexBuffer(0, this.#instanceBuffer)
-        // 6 vertices (2 triangles) per edge instance.
-        pass.draw(6, this.#edgeCount)
+        pass.setBindGroup(0, this.#bindGroup)
+        if (this.#edgeCount > 0 && this.#instanceBuffer) {
+            pass.setPipeline(this.#linePipeline)
+            pass.setVertexBuffer(0, this.#instanceBuffer)
+            pass.draw(6, this.#edgeCount) // 6 verts (2 triangles) per edge instance
+        }
+        if (this.#cornerCount > 0 && this.#cornerBuffer) {
+            pass.setPipeline(this.#pointPipeline)
+            pass.setVertexBuffer(0, this.#cornerBuffer)
+            pass.draw(6, this.#cornerCount) // 6 verts per corner-marker instance
+        }
     }
 
     /** True if the overlay has alive features uploaded and ready to draw. */
     get hasAliveFeatures(): boolean {
-        return this.#edgeCount > 0
+        return this.#edgeCount > 0 || this.#cornerCount > 0
     }
 
     destroy(): void {
         this.#cameraBuffer.destroy()
         this.#dummyDepthTexture.destroy()
         this.#instanceBuffer?.destroy()
+        this.#cornerBuffer?.destroy()
         this.#instanceBuffer = undefined
+        this.#cornerBuffer = undefined
         this.#instanceCapacity = 0
+        this.#cornerCapacity = 0
         this.#bindGroup = undefined
         this.#edgeCount = 0
+        this.#cornerCount = 0
     }
 
     #ensureInstanceBuffer(minBytes: number): void {
@@ -401,6 +483,17 @@ export class FeatureGraphOverlay {
         this.#instanceBuffer = this.#device.createBuffer({
             label: "FeatureGraphOverlay.Instance",
             size: this.#instanceCapacity,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        })
+    }
+
+    #ensureCornerBuffer(minBytes: number): void {
+        if (this.#cornerBuffer && this.#cornerCapacity >= minBytes) return
+        this.#cornerBuffer?.destroy()
+        this.#cornerCapacity = Math.max(minBytes, this.#cornerCapacity * 2 || 4096)
+        this.#cornerBuffer = this.#device.createBuffer({
+            label: "FeatureGraphOverlay.Corner",
+            size: this.#cornerCapacity,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         })
     }

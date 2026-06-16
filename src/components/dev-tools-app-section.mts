@@ -57,6 +57,8 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #fgOverlay$: BehaviorSubject<boolean>
     #fgOcclusion$: BehaviorSubject<FeatureGraphOcclusionMode>
     #fgOcclusionSelect?: HTMLSelectElement
+    #fgLineWidth$: BehaviorSubject<number>
+    #fgLineWidthInput?: HTMLInputElement
     #stepHeatmap$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
@@ -70,6 +72,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onBvhOptimizationChange?: (enabled: boolean) => void
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onFeatureGraphOcclusionChange?: (mode: FeatureGraphOcclusionMode) => void
+    onFeatureGraphLineWidthChange?: (px: number) => void
     onStepHeatmapChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
@@ -151,6 +154,21 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         }
     }
 
+    get featureGraphLineWidth(): number {
+        return this.#fgLineWidth$.value
+    }
+
+    /** Sync the input from the renderer/settings without re-dispatching. */
+    set featureGraphLineWidth(px: number) {
+        this.#applying = true
+        try {
+            this.#fgLineWidth$.next(px)
+            if (this.#fgLineWidthInput) this.#fgLineWidthInput.value = String(px)
+        } finally {
+            this.#applying = false
+        }
+    }
+
     get stepHeatmap(): boolean {
         return this.#stepHeatmap$.value
     }
@@ -206,6 +224,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#bvhOptimization$ = new BehaviorSubject(true)
         this.#fgOverlay$ = new BehaviorSubject(true)
         this.#fgOcclusion$ = new BehaviorSubject<FeatureGraphOcclusionMode>("off")
+        this.#fgLineWidth$ = new BehaviorSubject(2)
         // Debug-only; not persisted across sessions. Defaults off so the user
         // gets normal shading on startup.
         this.#stepHeatmap$ = new BehaviorSubject(false)
@@ -261,6 +280,36 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
                 if (!this.#applying) this.onFeatureGraphOcclusionChange?.(v)
             }),
         )
+
+        // Overlay edge line width (framebuffer px). Sibling of the two controls
+        // above, in the same viewport box.
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Overlay line width"
+            const input = document.createElement("input")
+            input.type = "number"
+            input.min = "0.5"
+            input.max = "8"
+            input.step = "0.5"
+            input.value = String(this.#fgLineWidth$.value)
+            input.style.cssText = "width:60px;font-size:11px;"
+            input.addEventListener("change", () => {
+                const v = parseFloat(input.value)
+                if (!Number.isFinite(v)) return
+                this.#fgLineWidth$.next(v)
+            })
+            this.#fgLineWidthInput = input
+            row.append(lab, input)
+            viewportBox.appendChild(row)
+            this.#subscriptions.push(
+                this.#fgLineWidth$.pipe(skip(1)).subscribe(v => {
+                    if (!this.#applying) this.onFeatureGraphLineWidthChange?.(v)
+                }),
+            )
+        }
 
         const perfBox = document.createElement("dev-tools-collapse")
         perfBox.setAttribute("label", "Performance")

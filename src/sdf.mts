@@ -147,6 +147,7 @@ export class SDFRenderer {
     #bvhEnabled = true
     #featureGraphOverlayEnabled = true
     #featureGraphOcclusion: FeatureGraphOcclusionMode = "off"
+    #featureGraphLineWidth = 2
     #stepHeatmapEnabled = false
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
@@ -396,6 +397,7 @@ export class SDFRenderer {
         this.#bvhEnabled = prev.bvhOptimization
         this.#featureGraphOverlayEnabled = prev.featureGraphOverlay
         this.#featureGraphOcclusion = prev.featureGraphOcclusion
+        this.#featureGraphLineWidth = prev.featureGraphLineWidth
         this.#selectionMode = global.preview.selectionMode
         this.previewSettingsLoaded$.next()
         this.#needsRender = true
@@ -415,6 +417,10 @@ export class SDFRenderer {
                 this.#worker.postMessage({
                     type: "setFeatureGraphOcclusionMode",
                     mode: this.#featureGraphOcclusion,
+                })
+                this.#worker.postMessage({
+                    type: "setFeatureGraphLineWidth",
+                    px: this.#featureGraphLineWidth,
                 })
                 this.syncDebugLogModulesToWorker()
                 this.#readyResolve()
@@ -1533,6 +1539,17 @@ export class SDFRenderer {
     }
     get featureGraphOcclusion(): FeatureGraphOcclusionMode {
         return this.#featureGraphOcclusion
+    }
+
+    set featureGraphLineWidth(px: number) {
+        if (this.#featureGraphLineWidth === px) return
+        this.#featureGraphLineWidth = px
+        this.#settings.updatePreview("featureGraphLineWidth", px)
+        this.#worker.postMessage({ type: "setFeatureGraphLineWidth", px })
+        this.#needsRender = true
+    }
+    get featureGraphLineWidth(): number {
+        return this.#featureGraphLineWidth
     }
 
     /**

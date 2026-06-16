@@ -73,6 +73,8 @@ export interface PreviewSettings {
      * top (legacy), "hard" hides edges behind the SDF surface, "dim" fades them.
      */
     featureGraphOcclusion: FeatureGraphOcclusionMode
+    /** Edge line width (framebuffer px) for the FeatureGraph overlay. */
+    featureGraphLineWidth: number
 }
 
 export interface LayoutSettings {
@@ -193,6 +195,7 @@ function defaultPreview(): PreviewSettings {
         bvhOptimization: true,
         featureGraphOverlay: true,
         featureGraphOcclusion: "off",
+        featureGraphLineWidth: 2,
     }
 }
 

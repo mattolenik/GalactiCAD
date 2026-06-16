@@ -71,6 +71,7 @@ export class DevToolsPanel extends HTMLElement {
     onBvhOptimizationChange?: (enabled: boolean) => void
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onFeatureGraphOcclusionChange?: (mode: FeatureGraphOcclusionMode) => void
+    onFeatureGraphLineWidthChange?: (px: number) => void
     onStepHeatmapChange?: (enabled: boolean) => void
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
@@ -145,6 +146,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set featureGraphOcclusion(mode: FeatureGraphOcclusionMode) {
         this.#appSection.featureGraphOcclusion = mode
+    }
+
+    get featureGraphLineWidth(): number {
+        return this.#appSection.featureGraphLineWidth
+    }
+
+    set featureGraphLineWidth(px: number) {
+        this.#appSection.featureGraphLineWidth = px
     }
 
     get renderNormals(): boolean {
@@ -350,6 +359,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
         this.#appSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
         this.#appSection.onFeatureGraphOcclusionChange = v => this.onFeatureGraphOcclusionChange?.(v)
+        this.#appSection.onFeatureGraphLineWidthChange = v => this.onFeatureGraphLineWidthChange?.(v)
         this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)
         this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
         this.#appSection.onUpscaleParamsChange = p => this.onUpscaleParamsChange?.(p)

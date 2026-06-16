@@ -8,7 +8,7 @@ import {
     formatBenchmarkResultsHtml,
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
-import type { RayMarchParams, SimplifyTuning, UpscaleParams } from "../render-worker-protocol.mjs"
+import type { FeatureGraphOcclusionMode, RayMarchParams, SimplifyTuning, UpscaleParams } from "../render-worker-protocol.mjs"
 import type { ExporterKind } from "../export/mesh-exporter.mjs"
 import type { MdcTuning } from "../export/mdc-tuning.mjs"
 import type { ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
@@ -70,6 +70,7 @@ export class DevToolsPanel extends HTMLElement {
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
+    onFeatureGraphOcclusionChange?: (mode: FeatureGraphOcclusionMode) => void
     onStepHeatmapChange?: (enabled: boolean) => void
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
@@ -136,6 +137,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set featureGraphOverlay(enabled: boolean) {
         this.#appSection.featureGraphOverlay = enabled
+    }
+
+    get featureGraphOcclusion(): FeatureGraphOcclusionMode {
+        return this.#appSection.featureGraphOcclusion
+    }
+
+    set featureGraphOcclusion(mode: FeatureGraphOcclusionMode) {
+        this.#appSection.featureGraphOcclusion = mode
     }
 
     get renderNormals(): boolean {
@@ -340,6 +349,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
         this.#appSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
         this.#appSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
+        this.#appSection.onFeatureGraphOcclusionChange = v => this.onFeatureGraphOcclusionChange?.(v)
         this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)
         this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
         this.#appSection.onUpscaleParamsChange = p => this.onUpscaleParamsChange?.(p)

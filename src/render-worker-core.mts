@@ -28,7 +28,11 @@ import {
     type FeatureGraphBuildResult,
 } from "./feature-graph/feature-graph-gpu.mjs"
 import { featureGraphToContours } from "./feature-graph/feature-graph-to-contours.mjs"
-import { FeatureGraphOverlay } from "./feature-graph/feature-graph-overlay.mjs"
+import {
+    FeatureGraphOverlay,
+    occlusionModeToInt,
+    type FeatureGraphOcclusionMode,
+} from "./feature-graph/feature-graph-overlay.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import type { Node } from "./scene/base.mjs"
@@ -236,6 +240,27 @@ export class RenderWorkerCore {
     #featureGraphOverlay: FeatureGraphOverlay | null = null
     /** Toggle for the debug overlay; default ON, updated by view settings. */
     #featureGraphOverlayEnabled = true
+    /**
+     * Overlay depth-occlusion mode: 0 = off (draw on top, the default), 1 =
+     * hard (hide occluded edges), 2 = dim (fade occluded edges). When non-zero
+     * the renderer runs an extra depth-only raymarch pass ({@link #depthPipeline})
+     * into {@link #sceneDepthTexture} so the overlay can depth-sort its lines
+     * against the SDF surface. Zero ⇒ no extra pass, identical to legacy behavior.
+     */
+    #featureGraphOcclusionMode = 0
+    /**
+     * Lazily-built depth-only pipeline (preview shader's `depthOnlyMain` entry,
+     * rgba32float target). Compiled from {@link #sceneShader} on first use of an
+     * occlusion mode and rebuilt whenever the scene shader changes — tracked via
+     * {@link #depthPipelineShader} so neither build path needs to invalidate it.
+     */
+    #depthPipeline: GPURenderPipeline | null = null
+    #depthPipelineShader: GPUShaderModule | null = null
+    #depthBindGroup: GPUBindGroup | null = null
+    #sceneDepthTexture?: GPUTexture
+    #sceneDepthTextureView?: GPUTextureView
+    #sceneDepthW = 0
+    #sceneDepthH = 0
     /**
      * When true, the preview shader replaces shaded color with a per-pixel
      * `sceneSDF_fast` step-count heatmap (blue → green → yellow → red,
@@ -588,6 +613,20 @@ export class RenderWorkerCore {
         if (!wasEnabled && enabled && this.#scene && this.#builtStructuralFingerprint) {
             this.#kickFeatureGraphBuild(this.#scene, this.#builtStructuralFingerprint)
         }
+    }
+
+    /**
+     * Set the FeatureGraph overlay's depth-occlusion mode. Off (default) draws
+     * lines on top as before; "hard" hides edges behind the SDF surface; "dim"
+     * fades them. Picked up on the next frame (no immediate re-render kick, same
+     * convention as {@link setFeatureGraphOverlayEnabled}); the depth pipeline +
+     * texture are allocated lazily on first non-off frame.
+     */
+    setFeatureGraphOcclusionMode(mode: FeatureGraphOcclusionMode): void {
+        const next = occlusionModeToInt(mode)
+        if (this.#featureGraphOcclusionMode === next) return
+        this.#featureGraphOcclusionMode = next
+        this.#forceNextRender = true
     }
 
     cancelBuilds(): void {
@@ -957,10 +996,19 @@ export class RenderWorkerCore {
         height: number,
         zoom: number,
         viewCenter: readonly [number, number],
+        sceneWidth: number,
+        sceneHeight: number,
     ): void {
         if (!this.#featureGraphOverlayEnabled) return
         const overlay = this.#featureGraphOverlay
         if (!overlay || !overlay.hasAliveFeatures) return
+        // Optional depth-occlusion: render the SDF surface depth into an
+        // rgba32float world-position texture, then hand it (+ the mode) to the
+        // overlay so it can hide/dim lines that sit behind the geometry. Returns
+        // null (→ mode 0) when occlusion is off, so the default path is byte-for-
+        // byte the legacy draw-on-top behavior with no extra pass.
+        const depthView = this.#renderSceneDepthForOcclusion(commandEncoder, sceneWidth, sceneHeight)
+        overlay.setDepthSource(depthView, depthView ? this.#featureGraphOcclusionMode : 0)
         overlay.uploadCamera(viewTransform, cameraPosition, width, height, zoom, viewCenter)
         const pass = commandEncoder.beginRenderPass({
             label: "FeatureGraph Overlay",
@@ -969,6 +1017,101 @@ export class RenderWorkerCore {
         })
         overlay.render(pass)
         pass.end()
+    }
+
+    /**
+     * Run the depth-only raymarch pass that feeds the overlay's occlusion modes.
+     * No-op (returns null) when occlusion is off; otherwise lazily builds the
+     * depth pipeline / texture / bind group and renders the SDF surface (world
+     * hit position + hit mask) at the scene render resolution. Caller has already
+     * confirmed the overlay is enabled with alive features.
+     */
+    #renderSceneDepthForOcclusion(
+        commandEncoder: GPUCommandEncoder,
+        sceneWidth: number,
+        sceneHeight: number,
+    ): GPUTextureView | null {
+        if (this.#featureGraphOcclusionMode === 0) return null
+        if (!this.#ensureDepthPipeline()) return null
+        const view = this.#ensureSceneDepthTexture(sceneWidth, sceneHeight)
+        const bindGroup = this.#ensureDepthBindGroup()
+        if (!bindGroup) return null
+        const pass = commandEncoder.beginRenderPass({
+            label: "FeatureGraph Depth",
+            colorAttachments: [
+                { view, loadOp: "clear", clearValue: { r: 0, g: 0, b: 0, a: 0 }, storeOp: "store" },
+            ],
+        })
+        pass.setPipeline(this.#depthPipeline!)
+        pass.setBindGroup(0, bindGroup)
+        pass.draw(4)
+        pass.end()
+        return view
+    }
+
+    /**
+     * Lazily compile {@link #depthPipeline} from the current scene shader's
+     * `depthOnlyMain` entry (rgba32float target). Returns false when no scene
+     * shader is built yet. Rebuilds whenever {@link #sceneShader} changes, so no
+     * build path needs to explicitly invalidate it.
+     */
+    #ensureDepthPipeline(): boolean {
+        if (this.#depthPipeline && this.#depthPipelineShader === this.#sceneShader) return true
+        if (!this.#sceneShader) return false
+        this.#depthPipeline = this.#device.createRenderPipeline({
+            label: "Preview Depth Pipeline",
+            layout: "auto",
+            vertex: { module: this.#sceneShader, entryPoint: "vertexMain" },
+            fragment: {
+                module: this.#sceneShader,
+                entryPoint: "depthOnlyMain",
+                // World-space hit position (xyz) + hit mask (w). Renderable but
+                // unfilterable/non-blendable, which is fine — we only write it.
+                targets: [{ format: "rgba32float" }],
+            },
+            primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+        })
+        this.#depthPipelineShader = this.#sceneShader
+        this.#depthBindGroup = null // new pipeline ⇒ new auto layout
+        return true
+    }
+
+    /** (Re)allocate the scene-depth texture at the scene render resolution. */
+    #ensureSceneDepthTexture(width: number, height: number): GPUTextureView {
+        const w = Math.max(1, width)
+        const h = Math.max(1, height)
+        if (this.#sceneDepthTextureView && this.#sceneDepthW === w && this.#sceneDepthH === h) {
+            return this.#sceneDepthTextureView
+        }
+        this.#sceneDepthTexture?.destroy()
+        this.#sceneDepthTexture = this.#device.createTexture({
+            label: "FeatureGraph Scene Depth",
+            size: [w, h],
+            format: "rgba32float",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        })
+        this.#sceneDepthTextureView = this.#sceneDepthTexture.createView()
+        this.#sceneDepthW = w
+        this.#sceneDepthH = h
+        return this.#sceneDepthTextureView
+    }
+
+    /**
+     * Build the depth pipeline's scene bind group, reusing the exact same entry
+     * set as the preview pipeline ({@link #sceneBindGroupEntries}). `depthOnlyMain`
+     * force-references the full binding set, so its auto layout matches the
+     * preview pipeline's and these entries bind cleanly. Invalidated together
+     * with the scene bind group (see {@link #ensureRenderTextures}).
+     */
+    #ensureDepthBindGroup(): GPUBindGroup | null {
+        if (this.#depthBindGroup) return this.#depthBindGroup
+        if (!this.#depthPipeline) return null
+        this.#depthBindGroup = this.#device.createBindGroup({
+            label: "scenePreviewDepth",
+            layout: this.#depthPipeline.getBindGroupLayout(0),
+            entries: this.#sceneBindGroupEntries(),
+        })
+        return this.#depthBindGroup
     }
 
     /** Reset per-frame profiling state; called at the top of `render()` / `#renderFromSAB`. */
@@ -1519,6 +1662,8 @@ export class RenderWorkerCore {
             overlayH,
             orthoHalfFromDolly(msg.cameraState.dollyDistance),
             viewCenter,
+            sceneWidth,
+            sceneHeight,
         )
 
         const filledSnap = this.#endFrameProfiling(commandEncoder)
@@ -1843,6 +1988,8 @@ export class RenderWorkerCore {
             overlayH,
             f32[b4 + L.O_ZOOM / 4]!,
             viewCenter,
+            sceneWidth,
+            sceneHeight,
         )
 
         const filledSnap = this.#endFrameProfiling(commandEncoder)
@@ -2638,33 +2785,47 @@ export class RenderWorkerCore {
             this.#bindGroup = this.#device.createBindGroup({
                 label: "scenePreview",
                 layout: this.#pipeline!.getBindGroupLayout(0),
-                entries: [
-                    { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
-                    { binding: 2, resource: { buffer: this.#uniformBuffers.clickState } },
-                    { binding: 3, resource: { buffer: this.#uniformBuffers.clickedObjectId } },
-                    { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
-                    { binding: 5, resource: { buffer: this.#uniformBuffers.colorPalette } },
-                    { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
-                    { binding: 7, resource: this.#tStartTextureView },
-                    { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
-                    { binding: 10, resource: { buffer: this.#uniformBuffers.clickedHitPos } },
-                    { binding: 11, resource: { buffer: this.#uniformBuffers.faceSelection } },
-                    { binding: 13, resource: { buffer: this.#uniformBuffers.edgeHit } },
-                    { binding: 14, resource: { buffer: this.#uniformBuffers.selectedEdges } },
-                    { binding: 15, resource: { buffer: this.#uniformBuffers.hoverEdgeHit } },
-                    { binding: 16, resource: { buffer: this.#uniformBuffers.hoveredEdge } },
-                    { binding: 17, resource: { buffer: this.#uniformBuffers.clickedNormal } },
-                    { binding: 18, resource: { buffer: this.#uniformBuffers.selectionStyles } },
-                    { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
-                    { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
-                    { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
-                    { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
-                    { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
-                    { binding: 25, resource: { buffer: this.#uniformBuffers.rayMarchParams } },
-                ],
+                entries: this.#sceneBindGroupEntries(),
             })
+            // The depth pipeline shares this binding set; rebuild its bind group
+            // too (binding 7 = tStartTextureView is recreated on resize, and the
+            // uniform buffers may have changed on a rebuild).
+            this.#depthBindGroup = null
             this.#sceneBindGroupInvalid = false
         }
+    }
+
+    /**
+     * Scene bind-group entries (group 0), shared by the preview pipeline and the
+     * depth pipeline — both reference an identical binding set, so a single entry
+     * list binds to either's auto layout. Kept as one source of truth so the two
+     * can't drift (drift would make the depth pipeline's bind group invalid).
+     */
+    #sceneBindGroupEntries(): GPUBindGroupEntry[] {
+        return [
+            { binding: 1, resource: { buffer: this.#uniformBuffers.camera } },
+            { binding: 2, resource: { buffer: this.#uniformBuffers.clickState } },
+            { binding: 3, resource: { buffer: this.#uniformBuffers.clickedObjectId } },
+            { binding: 4, resource: { buffer: this.#uniformBuffers.selectedObjectIds } },
+            { binding: 5, resource: { buffer: this.#uniformBuffers.colorPalette } },
+            { binding: 6, resource: { buffer: this.#uniformBuffers.viewSettings } },
+            { binding: 7, resource: this.#tStartTextureView },
+            { binding: 9, resource: { buffer: this.#uniformBuffers.polygonVertices } },
+            { binding: 10, resource: { buffer: this.#uniformBuffers.clickedHitPos } },
+            { binding: 11, resource: { buffer: this.#uniformBuffers.faceSelection } },
+            { binding: 13, resource: { buffer: this.#uniformBuffers.edgeHit } },
+            { binding: 14, resource: { buffer: this.#uniformBuffers.selectedEdges } },
+            { binding: 15, resource: { buffer: this.#uniformBuffers.hoverEdgeHit } },
+            { binding: 16, resource: { buffer: this.#uniformBuffers.hoveredEdge } },
+            { binding: 17, resource: { buffer: this.#uniformBuffers.clickedNormal } },
+            { binding: 18, resource: { buffer: this.#uniformBuffers.selectionStyles } },
+            { binding: 19, resource: { buffer: this.#uniformBuffers.previewParamsF32 } },
+            { binding: 20, resource: { buffer: this.#uniformBuffers.previewParamsVec2 } },
+            { binding: 21, resource: { buffer: this.#uniformBuffers.previewParamsVec3 } },
+            { binding: 23, resource: { buffer: this.#uniformBuffers.previewParamsMat3 } },
+            { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
+            { binding: 25, resource: { buffer: this.#uniformBuffers.rayMarchParams } },
+        ]
     }
 
     /**

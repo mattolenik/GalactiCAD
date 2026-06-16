@@ -8,7 +8,7 @@ import {
     DEVTOOLS_SECTION_APP,
     DEVTOOLS_SECTION_LOGS,
 } from "../components/dev-tools-protocol.mjs"
-import { DEFAULT_SIMPLIFY_TUNING, type SimplifyTuning } from "../render-worker-protocol.mjs"
+import { DEFAULT_SIMPLIFY_TUNING, type SimplifyTuning, type FeatureGraphOcclusionMode } from "../render-worker-protocol.mjs"
 import { EXPORTER_KINDS, isValidExporter, type ExporterKind } from "../export/mesh-exporter.mjs"
 import { DEFAULT_MDC_TUNING, normalizeMdcTuning, type MdcTuning } from "../export/mdc-tuning.mjs"
 import { DEFAULT_SHREC_TUNING, normalizeShrecTuning, type ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
@@ -68,6 +68,11 @@ export interface PreviewSettings {
     bvhOptimization: boolean
     /** Draw the FeatureGraph debug overlay (alive crease/corner edges) over the scene. */
     featureGraphOverlay: boolean
+    /**
+     * Depth-occlusion mode for the FeatureGraph overlay: "off" draws lines on
+     * top (legacy), "hard" hides edges behind the SDF surface, "dim" fades them.
+     */
+    featureGraphOcclusion: FeatureGraphOcclusionMode
 }
 
 export interface LayoutSettings {
@@ -187,6 +192,7 @@ function defaultPreview(): PreviewSettings {
         beamOptimization: true,
         bvhOptimization: true,
         featureGraphOverlay: true,
+        featureGraphOcclusion: "off",
     }
 }
 

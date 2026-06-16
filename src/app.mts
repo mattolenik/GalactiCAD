@@ -1296,6 +1296,7 @@ class App {
         devTools.beamOptimization = this.renderer.beamEnabled
         devTools.bvhOptimization = this.renderer.bvhEnabled
         devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
+        devTools.featureGraphOcclusion = this.renderer.featureGraphOcclusion
         devTools.stepHeatmap = this.renderer.stepHeatmapEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
@@ -1309,6 +1310,9 @@ class App {
         }
         devTools.onFeatureGraphOverlayChange = (enabled) => {
             this.renderer.featureGraphOverlayEnabled = enabled
+        }
+        devTools.onFeatureGraphOcclusionChange = (mode) => {
+            this.renderer.featureGraphOcclusion = mode
         }
         devTools.onStepHeatmapChange = (enabled) => {
             this.renderer.stepHeatmapEnabled = enabled
@@ -1335,6 +1339,7 @@ class App {
             devTools.beamOptimization = this.renderer.beamEnabled
             devTools.bvhOptimization = this.renderer.bvhEnabled
             devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
+            devTools.featureGraphOcclusion = this.renderer.featureGraphOcclusion
         })
 
         const showFps = devTools.showFps
@@ -1405,6 +1410,7 @@ class App {
                     beamOptimization: this.renderer.beamEnabled,
                     bvhOptimization: this.renderer.bvhEnabled,
                     featureGraphOverlay: this.renderer.featureGraphOverlayEnabled,
+                    featureGraphOcclusion: this.renderer.featureGraphOcclusion,
                 },
             }
         }

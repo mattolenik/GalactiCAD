@@ -25,8 +25,10 @@
  * ------------------
  * The overlay runs in its own render pass on the canvas target with
  * `loadOp: "load"` (preserves the outline pass output) and no depth
- * attachment — features draw on top of geometry, intentionally, so the
- * user can see surviving CSG-cut edges through the model.
+ * attachment. By default features draw on top of geometry so the user can see
+ * surviving CSG-cut edges through the model. The optional occlusion mode
+ * (off / hard / dim) re-introduces depth ordering by sampling a world-space
+ * hit-position texture from the SDF depth-only pass; see {@link setDepthSource}.
  */
 
 import type { GPUHelper } from "../gpu/helper.mjs"
@@ -49,9 +51,18 @@ const VERTEX_STRIDE = 16
  *   - 88 : zoom (f32), 4 bytes
  *   - 92 : _pad1 (f32), 4 bytes  →  vec4 alignment
  *   - 96 : viewCenter (vec2f), 8 bytes
- *   - 104: _pad2 (vec2f), 8 bytes  →  struct size = 112 (16-aligned)
+ *   - 104: occlusionMode (u32), 4 bytes  (0 = off, 1 = hard, 2 = dim)
+ *   - 108: _pad2 (u32), 4 bytes  →  struct size = 112 (16-aligned)
  */
 const CAMERA_UNIFORM_BYTES = 112
+
+/** FeatureGraph overlay depth-occlusion mode. */
+export type FeatureGraphOcclusionMode = "off" | "hard" | "dim"
+
+/** Numeric encoding of {@link FeatureGraphOcclusionMode} for the GPU uniform. */
+export function occlusionModeToInt(mode: FeatureGraphOcclusionMode): number {
+    return mode === "hard" ? 1 : mode === "dim" ? 2 : 0
+}
 
 /**
  * Same constant the preview ray-marcher uses to push ray origins back along
@@ -76,6 +87,17 @@ export class FeatureGraphOverlay {
     /** Number of `u32` indices currently uploaded; `drawIndexed(indexCount)`. */
     #indexCount = 0
     /**
+     * 1×1 rgba32float placeholder bound at binding 1 whenever occlusion is off
+     * (or no scene-depth texture has been supplied yet). The shader never reads
+     * it in that state, but `layout: "auto"` still requires a valid binding.
+     */
+    #dummyDepthTexture: GPUTexture
+    #dummyDepthView: GPUTextureView
+    /** Current scene-depth texture view bound at binding 1 (dummy when off). */
+    #depthView: GPUTextureView
+    /** Occlusion mode written into the camera uniform (0 off / 1 hard / 2 dim). */
+    #occlusionMode = 0
+    /**
      * Persistent staging for the camera uniform payload. Filled in-place each
      * upload to avoid the per-frame `new ArrayBuffer(112)` + `new Float32Array(...)`
      * churn. Compared against `#cameraInputCache` to short-circuit the matrix
@@ -88,13 +110,24 @@ export class FeatureGraphOverlay {
      * zoom[1] + viewCenter[2] = 24 floats). Cheap to compare and lets us skip
      * the matrix inverse entirely when the camera hasn't moved.
      */
-    #cameraInputCache = new Float32Array(24)
+    #cameraInputCache = new Float32Array(25)
     #cameraInputValid = false
+    /** Uint32 view of {@link #cameraStaging} for the integer occlusionMode slot. */
+    #cameraStagingU32 = new Uint32Array(this.#cameraStaging)
 
     constructor(helper: GPUHelper, format: GPUTextureFormat) {
         this.#helper = helper
         this.#device = helper.device
         this.#format = format
+
+        this.#dummyDepthTexture = this.#device.createTexture({
+            label: "FeatureGraphOverlay.DummyDepth",
+            size: [1, 1],
+            format: "rgba32float",
+            usage: GPUTextureUsage.TEXTURE_BINDING,
+        })
+        this.#dummyDepthView = this.#dummyDepthTexture.createView()
+        this.#depthView = this.#dummyDepthView
 
         this.#shaderModule = this.#device.createShaderModule({
             label: "FeatureGraph Overlay",
@@ -250,7 +283,8 @@ export class FeatureGraphOverlay {
                 cache[20] === resY &&
                 cache[21] === zoom &&
                 cache[22] === viewCenter[0] &&
-                cache[23] === viewCenter[1]
+                cache[23] === viewCenter[1] &&
+                cache[24] === this.#occlusionMode
             ) return
         }
         for (let i = 0; i < 16; i++) cache[i] = vt[i]!
@@ -262,6 +296,7 @@ export class FeatureGraphOverlay {
         cache[21] = zoom
         cache[22] = viewCenter[0]
         cache[23] = viewCenter[1]
+        cache[24] = this.#occlusionMode
         this.#cameraInputValid = true
 
         // Invert on CPU: WGSL inversion is doable for rigid transforms but
@@ -286,9 +321,29 @@ export class FeatureGraphOverlay {
         // viewCenter: bytes 96..103
         f32[24] = viewCenter[0]
         f32[25] = viewCenter[1]
-        f32[26] = 0 // _pad2.x
-        f32[27] = 0 // _pad2.y
+        // occlusionMode (u32): bytes 104..107
+        this.#cameraStagingU32[26] = this.#occlusionMode
+        f32[27] = 0 // _pad2
         this.#device.queue.writeBuffer(this.#cameraBuffer, 0, this.#cameraStaging)
+    }
+
+    /**
+     * Set the scene-depth source + occlusion mode for the next render. Pass a
+     * world-space hit-position texture view (rgba32float, xyz = hit position,
+     * w = hit mask) from the SDF depth-only pass and a non-zero mode to enable
+     * depth ordering; pass `null` / mode 0 to draw lines on top as before.
+     *
+     * Invalidates the cached bind group when the bound texture changes so the
+     * next {@link render} rebinds it. The mode is folded into the camera
+     * uniform on the next {@link uploadCamera}.
+     */
+    setDepthSource(view: GPUTextureView | null, occlusionMode: number): void {
+        const nextView = view ?? this.#dummyDepthView
+        if (nextView !== this.#depthView) {
+            this.#depthView = nextView
+            this.#bindGroup = undefined
+        }
+        this.#occlusionMode = occlusionMode
     }
 
     /**
@@ -299,12 +354,19 @@ export class FeatureGraphOverlay {
     render(pass: GPURenderPassEncoder): void {
         if (this.#indexCount === 0 || !this.#vertexBuffer || !this.#indexBuffer) return
         if (!this.#bindGroup) {
-            this.#bindGroup = this.#helper.createBindGroup(
+            // Built directly (not via helper.createBindGroup) because binding 1
+            // is a texture view, not a buffer.
+            this.#bindGroup = [
                 0,
-                "FeatureGraphOverlay.BindGroup",
-                this.#pipeline,
-                [0, this.#cameraBuffer],
-            )
+                this.#device.createBindGroup({
+                    label: "FeatureGraphOverlay.BindGroup",
+                    layout: this.#pipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: this.#cameraBuffer } },
+                        { binding: 1, resource: this.#depthView },
+                    ],
+                }),
+            ]
         }
         const [groupId, bindGroup] = this.#bindGroup
         pass.setPipeline(this.#pipeline)
@@ -321,6 +383,7 @@ export class FeatureGraphOverlay {
 
     destroy(): void {
         this.#cameraBuffer.destroy()
+        this.#dummyDepthTexture.destroy()
         this.#vertexBuffer?.destroy()
         this.#indexBuffer?.destroy()
         this.#vertexBuffer = undefined

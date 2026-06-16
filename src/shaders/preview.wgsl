@@ -1134,6 +1134,67 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     }
 }
 
+// Depth-only variant of the scene raymarch, used by the FeatureGraph overlay's
+// occlusion modes. Writes the WORLD-SPACE hit position (xyz) + a hit mask
+// (w: 1 on hit, 0 on miss) to an rgba32float target. The overlay re-projects
+// this world position through ITS OWN camera matrix to derive a depth that's
+// directly comparable to its line vertices — that sidesteps the fact that this
+// shader (camera→world) and the overlay (world→camera) use opposite transform
+// conventions, and keeps the comparison independent of `rayOriginDepth`.
+//
+// References the full scene bind-group set (via the `_ =` block, exactly like
+// `fragmentMain`) so its `layout: "auto"` bind-group layout is identical to the
+// preview pipeline's and the same scene bind group binds to both pipelines.
+// Only invoked when the overlay's occlusion mode is on (otherwise never run).
+@fragment
+fn depthOnlyMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
+    // Force the full scene binding set into the auto layout (see fragmentMain).
+    _ = clickState.enabled;
+    _ = atomicLoad(&clickedObjectId);
+    _ = selectedObjectIds[0];
+    _ = colorPalette[0];
+    _ = polygonVertices[0];
+    _ = clickedHitPos[0];
+    _ = clickedNormal[0];
+    _ = faceSelection.nodeId;
+    _ = edgeHits[0].kind;
+    _ = selectedEdges.count;
+    _ = hoverEdgeHits[0].kind;
+    _ = hoveredEdge.count;
+    _ = selectionStyles.faceDarken;
+    _ = previewParamsF32[0];
+    _ = previewParamsVec2[0];
+    _ = previewParamsVec3[0];
+    _ = previewParamsMat3[0];
+    _ = previewCapParamDrag[0];
+
+    let uv = fragCoord;
+    let aspect = camera.res.x / camera.res.y;
+    let uvAspect = vec2f(
+        (uv.x - camera.viewCenter.x) * aspect + 0.5,
+        uv.y - camera.viewCenter.y + 0.5
+    );
+    let rayOrigin = computeRayOrigin(uvAspect, camera.position);
+    let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
+    let transformedDir = -camera.transform[2].xyz;
+
+    var t_start = 0.0;
+    if (viewSettings.beamEnabled != 0u) {
+        let tileCoord = vec2i(uv * camera.res) / BEAM_TILE_SIZE;
+        t_start = textureLoad(tStartTex, tileCoord, 0).x;
+    }
+
+    var stepCount: u32 = 0u;
+    let hit = raymarch(transformedOrigin, transformedDir, t_start, &stepCount);
+    if (hit.t <= 0.0) {
+        // Miss → mask 0; the overlay treats this as "no surface" and never
+        // occludes lines that project onto empty space.
+        return vec4f(0.0);
+    }
+    let hitPos = transformedOrigin + transformedDir * hit.t;
+    return vec4f(hitPos, 1.0);
+}
+
 // Beam optimization compute: one march per tile; shares sceneSDF_fast / sceneAuxFast with preview (single shader module).
 @compute @workgroup_size(8, 8)
 fn beamMarch(@builtin(global_invocation_id) gid: vec3u) {

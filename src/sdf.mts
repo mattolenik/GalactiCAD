@@ -21,6 +21,7 @@ import {
     DEFAULT_RAY_MARCH_PARAMS,
     DEFAULT_UPSCALE_PARAMS,
     type BuildTimingBreakdownMs,
+    type FeatureGraphOcclusionMode,
     type MainToWorkerMessage,
     type PreviewShadingParams,
     type RayMarchParams,
@@ -145,6 +146,7 @@ export class SDFRenderer {
     #previewNormalShading = false
     #bvhEnabled = true
     #featureGraphOverlayEnabled = true
+    #featureGraphOcclusion: FeatureGraphOcclusionMode = "off"
     #stepHeatmapEnabled = false
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
@@ -393,6 +395,7 @@ export class SDFRenderer {
         this.#beamEnabled = prev.beamOptimization
         this.#bvhEnabled = prev.bvhOptimization
         this.#featureGraphOverlayEnabled = prev.featureGraphOverlay
+        this.#featureGraphOcclusion = prev.featureGraphOcclusion
         this.#selectionMode = global.preview.selectionMode
         this.previewSettingsLoaded$.next()
         this.#needsRender = true
@@ -408,6 +411,10 @@ export class SDFRenderer {
                 this.#worker.postMessage({
                     type: "setFeatureGraphOverlayEnabled",
                     enabled: this.#featureGraphOverlayEnabled,
+                })
+                this.#worker.postMessage({
+                    type: "setFeatureGraphOcclusionMode",
+                    mode: this.#featureGraphOcclusion,
                 })
                 this.syncDebugLogModulesToWorker()
                 this.#readyResolve()
@@ -1515,6 +1522,17 @@ export class SDFRenderer {
     }
     get featureGraphOverlayEnabled(): boolean {
         return this.#featureGraphOverlayEnabled
+    }
+
+    set featureGraphOcclusion(mode: FeatureGraphOcclusionMode) {
+        if (this.#featureGraphOcclusion === mode) return
+        this.#featureGraphOcclusion = mode
+        this.#settings.updatePreview("featureGraphOcclusion", mode)
+        this.#worker.postMessage({ type: "setFeatureGraphOcclusionMode", mode })
+        this.#needsRender = true
+    }
+    get featureGraphOcclusion(): FeatureGraphOcclusionMode {
+        return this.#featureGraphOcclusion
     }
 
     /**

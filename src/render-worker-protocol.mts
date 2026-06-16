@@ -10,6 +10,9 @@ import type { MeshData } from "./export/export.mjs"
 // `src/export/mesh-exporter.mts` + the `*-tuning.mts` files); the `renderMesh`
 // message carries them as an opaque `exporterTuning` blob keyed by kind.
 import type { ExporterKind } from "./export/mesh-exporter.mjs"
+import type { FeatureGraphOcclusionMode } from "./feature-graph/feature-graph-overlay.mjs"
+
+export type { FeatureGraphOcclusionMode }
 
 /**
  * Post-MDC meshoptimizer simplification (QEM). Used when mesh export runs the MDC
@@ -237,6 +240,7 @@ export type MainToWorkerMessage =
     // the isolated subtree(s) as root (empty = full scene) — see recompileIsolation.
     | { type: "setIsolatedIds"; isolatedIds: number[] }
     | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
+    | { type: "setFeatureGraphOcclusionMode"; mode: FeatureGraphOcclusionMode }
     | { type: "setStepHeatmapEnabled"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
 

@@ -5,6 +5,7 @@ import { SettingsManager, type GlobalSettings } from "../storage/settings.mjs"
 import {
     DEFAULT_RAY_MARCH_PARAMS,
     DEFAULT_UPSCALE_PARAMS,
+    type FeatureGraphOcclusionMode,
     type RayMarchParams,
     type UpscaleMode,
     type UpscaleParams,
@@ -54,6 +55,8 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #beamOptimization$: BehaviorSubject<boolean>
     #bvhOptimization$: BehaviorSubject<boolean>
     #fgOverlay$: BehaviorSubject<boolean>
+    #fgOcclusion$: BehaviorSubject<FeatureGraphOcclusionMode>
+    #fgOcclusionSelect?: HTMLSelectElement
     #stepHeatmap$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
@@ -66,6 +69,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
+    onFeatureGraphOcclusionChange?: (mode: FeatureGraphOcclusionMode) => void
     onStepHeatmapChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
@@ -132,6 +136,21 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#fgOverlay$.next(enabled)
     }
 
+    get featureGraphOcclusion(): FeatureGraphOcclusionMode {
+        return this.#fgOcclusion$.value
+    }
+
+    /** Sync the select from the renderer/settings without re-dispatching. */
+    set featureGraphOcclusion(mode: FeatureGraphOcclusionMode) {
+        this.#applying = true
+        try {
+            this.#fgOcclusion$.next(mode)
+            if (this.#fgOcclusionSelect) this.#fgOcclusionSelect.value = mode
+        } finally {
+            this.#applying = false
+        }
+    }
+
     get stepHeatmap(): boolean {
         return this.#stepHeatmap$.value
     }
@@ -186,6 +205,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
         this.#fgOverlay$ = new BehaviorSubject(true)
+        this.#fgOcclusion$ = new BehaviorSubject<FeatureGraphOcclusionMode>("off")
         // Debug-only; not persisted across sessions. Defaults off so the user
         // gets normal shading on startup.
         this.#stepHeatmap$ = new BehaviorSubject(false)
@@ -219,6 +239,27 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#subscriptions.push(connectCheckbox(fgOverlayCb, this.#fgOverlay$))
         this.#subscriptions.push(
             this.#fgOverlay$.pipe(skip(1)).subscribe(v => this.onFeatureGraphOverlayChange?.(v)),
+        )
+
+        // Depth-sort the overlay against the SDF surface: off (draw on top),
+        // hide-behind (hard occlude), or dim-behind (fade occluded edges).
+        this.#fgOcclusionSelect = this.#addSelect(
+            viewportBox,
+            "Overlay occlusion",
+            [
+                { value: "off", label: "Off (on top)" },
+                { value: "hard", label: "Hide behind" },
+                { value: "dim", label: "Dim behind" },
+            ],
+            this.#fgOcclusion$.value,
+        )
+        this.#fgOcclusionSelect.addEventListener("change", () => {
+            this.#fgOcclusion$.next(this.#fgOcclusionSelect!.value as FeatureGraphOcclusionMode)
+        })
+        this.#subscriptions.push(
+            this.#fgOcclusion$.pipe(skip(1)).subscribe(v => {
+                if (!this.#applying) this.onFeatureGraphOcclusionChange?.(v)
+            }),
         )
 
         const perfBox = document.createElement("dev-tools-collapse")

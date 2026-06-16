@@ -260,6 +260,44 @@ fn blend_interval(kind: BlendKind, mode: SminMode, br: f64, n: f64, los: &[f64],
     }
 }
 
+/// Stack-first scratch for per-child field values on the eval hot path. The CSG
+/// combiner folds (`collect_owners`, interval enclosure) used to `collect` a fresh
+/// `Vec<f64>` at EVERY Min/Max/Blend node — a heap allocation per combiner per
+/// query, and WASM's allocator makes that bite. Almost every combiner is binary or
+/// small-arity, so values go into a fixed inline array; only unusually wide
+/// combiners spill to the heap. The values and their order are identical to the old
+/// `Vec`, so every downstream fold/compare stays byte-identical.
+const CHILD_VALS_INLINE: usize = 8;
+
+enum ChildVals {
+    Inline { buf: [f64; CHILD_VALS_INLINE], len: usize },
+    Heap(Vec<f64>),
+}
+
+impl ChildVals {
+    /// Evaluate `n` child values in order (`f(0), f(1), …`) into inline-or-heap
+    /// storage — same eval order as the old `children.iter().map(..).collect()`.
+    #[inline]
+    fn eval(n: usize, mut f: impl FnMut(usize) -> f64) -> ChildVals {
+        if n <= CHILD_VALS_INLINE {
+            let mut buf = [0.0f64; CHILD_VALS_INLINE];
+            for (slot, i) in buf.iter_mut().zip(0..n) {
+                *slot = f(i);
+            }
+            ChildVals::Inline { buf, len: n }
+        } else {
+            ChildVals::Heap((0..n).map(f).collect())
+        }
+    }
+    #[inline]
+    fn as_slice(&self) -> &[f64] {
+        match self {
+            ChildVals::Inline { buf, len } => &buf[..*len],
+            ChildVals::Heap(v) => v.as_slice(),
+        }
+    }
+}
+
 impl CsgNode {
     /// Signed field of the full tree (negative inside, f = 0 ⟺ surface).
     pub fn f(&self, p: [f64; 3]) -> f64 {
@@ -378,14 +416,26 @@ impl CsgNode {
                 (lo, hi)
             }
             CsgNode::Blend { kind, mode, r: br, n, children } => {
-                let mut los = Vec::with_capacity(children.len());
-                let mut his = Vec::with_capacity(children.len());
-                for x in children {
-                    let (clo, chi) = x.interval_over_ball(c, r);
-                    los.push(clo);
-                    his.push(chi);
+                let m = children.len();
+                if m <= CHILD_VALS_INLINE {
+                    let mut los = [0.0f64; CHILD_VALS_INLINE];
+                    let mut his = [0.0f64; CHILD_VALS_INLINE];
+                    for (i, x) in children.iter().enumerate() {
+                        let (clo, chi) = x.interval_over_ball(c, r);
+                        los[i] = clo;
+                        his[i] = chi;
+                    }
+                    blend_interval(*kind, *mode, *br, *n, &los[..m], &his[..m])
+                } else {
+                    let mut los = Vec::with_capacity(m);
+                    let mut his = Vec::with_capacity(m);
+                    for x in children {
+                        let (clo, chi) = x.interval_over_ball(c, r);
+                        los.push(clo);
+                        his.push(chi);
+                    }
+                    blend_interval(*kind, *mode, *br, *n, &los, &his)
                 }
-                blend_interval(*kind, *mode, *br, *n, &los, &his)
             }
         }
     }
@@ -416,7 +466,8 @@ impl CsgNode {
                 d
             }
             CsgNode::Min(ch) => {
-                let ds: Vec<f64> = ch.iter().map(|c| c.f(p)).collect();
+                let ds = ChildVals::eval(ch.len(), |i| ch[i].f(p));
+                let ds = ds.as_slice();
                 let best = ds.iter().cloned().fold(f64::INFINITY, f64::min);
                 for (i, c) in ch.iter().enumerate() {
                     if (ds[i] - best).abs() <= tol {
@@ -426,7 +477,8 @@ impl CsgNode {
                 best
             }
             CsgNode::Max(ch) => {
-                let ds: Vec<f64> = ch.iter().map(|c| c.f(p)).collect();
+                let ds = ChildVals::eval(ch.len(), |i| ch[i].f(p));
+                let ds = ds.as_slice();
                 let best = ds.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
                 for (i, c) in ch.iter().enumerate() {
                     if (ds[i] - best).abs() <= tol {
@@ -436,8 +488,9 @@ impl CsgNode {
                 best
             }
             CsgNode::Blend { kind, mode, r, n, children } => {
-                let ds: Vec<f64> = children.iter().map(|c| c.f(p)).collect();
-                let value = blend_value_of(*kind, *mode, *r, *n, &ds);
+                let ds = ChildVals::eval(children.len(), |i| children[i].f(p));
+                let ds = ds.as_slice();
+                let value = blend_value_of(*kind, *mode, *r, *n, ds);
                 for (i, c) in children.iter().enumerate() {
                     if (ds[i] - value).abs() <= tol {
                         c.collect_owners(p, tol, out);
@@ -730,14 +783,26 @@ impl<'a> Pruned<'a> {
                 (lo, hi)
             }
             Pruned::Blend { kind, mode, r: br, n, children } => {
-                let mut los = Vec::with_capacity(children.len());
-                let mut his = Vec::with_capacity(children.len());
-                for x in children {
-                    let (clo, chi) = x.interval_over_ball(c, r);
-                    los.push(clo);
-                    his.push(chi);
+                let m = children.len();
+                if m <= CHILD_VALS_INLINE {
+                    let mut los = [0.0f64; CHILD_VALS_INLINE];
+                    let mut his = [0.0f64; CHILD_VALS_INLINE];
+                    for (i, x) in children.iter().enumerate() {
+                        let (clo, chi) = x.interval_over_ball(c, r);
+                        los[i] = clo;
+                        his[i] = chi;
+                    }
+                    blend_interval(*kind, *mode, *br, *n, &los[..m], &his[..m])
+                } else {
+                    let mut los = Vec::with_capacity(m);
+                    let mut his = Vec::with_capacity(m);
+                    for x in children {
+                        let (clo, chi) = x.interval_over_ball(c, r);
+                        los.push(clo);
+                        his.push(chi);
+                    }
+                    blend_interval(*kind, *mode, *br, *n, &los, &his)
                 }
-                blend_interval(*kind, *mode, *br, *n, &los, &his)
             }
         }
     }
@@ -840,7 +905,8 @@ impl<'a> Pruned<'a> {
                 d
             }
             Pruned::Min(ch) => {
-                let ds: Vec<f64> = ch.iter().map(|c| c.f(p)).collect();
+                let ds = ChildVals::eval(ch.len(), |i| ch[i].f(p));
+                let ds = ds.as_slice();
                 let best = ds.iter().cloned().fold(f64::INFINITY, f64::min);
                 for (i, c) in ch.iter().enumerate() {
                     if (ds[i] - best).abs() <= tol {
@@ -850,7 +916,8 @@ impl<'a> Pruned<'a> {
                 best
             }
             Pruned::Max(ch) => {
-                let ds: Vec<f64> = ch.iter().map(|c| c.f(p)).collect();
+                let ds = ChildVals::eval(ch.len(), |i| ch[i].f(p));
+                let ds = ds.as_slice();
                 let best = ds.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
                 for (i, c) in ch.iter().enumerate() {
                     if (ds[i] - best).abs() <= tol {
@@ -860,8 +927,9 @@ impl<'a> Pruned<'a> {
                 best
             }
             Pruned::Blend { kind, mode, r, n, children } => {
-                let ds: Vec<f64> = children.iter().map(|c| c.f(p)).collect();
-                let value = blend_value_of(*kind, *mode, *r, *n, &ds);
+                let ds = ChildVals::eval(children.len(), |i| children[i].f(p));
+                let ds = ds.as_slice();
+                let value = blend_value_of(*kind, *mode, *r, *n, ds);
                 for (i, c) in children.iter().enumerate() {
                     if (ds[i] - value).abs() <= tol {
                         c.collect_owners(p, tol, out);

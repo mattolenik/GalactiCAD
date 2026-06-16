@@ -523,12 +523,9 @@ pub fn classify_cell_features(
             corner_in_cell = cid as i64;
         }
     }
-    // The corner's incident curve-end ids, if a corner is in the cell.
-    let corner_curves: Option<HashSet<usize>> = if corner_in_cell >= 0 {
-        Some(features.corners[corner_in_cell as usize].curve_ends.iter().map(|e| e.0).collect())
-    } else {
-        None
-    };
+    // (No HashSet of the corner's incident curve-ends — a corner cell touches only
+    // a few curves, so the membership test below is a direct linear scan over
+    // `curve_ends`, which avoids a per-corner-cell heap allocation.)
 
     let mut through_curve: i64 = -1;
     let mut curve_ids = features.index.curves_in_box(qmin, qmax);
@@ -537,8 +534,9 @@ pub fn classify_cell_features(
         let curve = &features.curves[curve_id];
         let mut total = 0usize;
         // Faces with exactly one crossing — collected as (axis, coord) for the pin
-        // certificate. At most 6 faces.
-        let mut crossing_faces: Vec<(usize, f64)> = Vec::new();
+        // certificate. At most 6 faces → fixed stack array, no per-curve heap alloc.
+        let mut crossing_faces: [(usize, f64); 6] = [(0, 0.0); 6];
+        let mut crossing_face_count = 0usize;
         for axis in 0..3usize {
             for side in 0..2usize {
                 let coord = box_[axis + if side == 1 { 3 } else { 0 }];
@@ -569,7 +567,8 @@ pub fn classify_cell_features(
                     return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // (ii)
                 }
                 if per_face == 1 {
-                    crossing_faces.push((axis, coord));
+                    crossing_faces[crossing_face_count] = (axis, coord);
+                    crossing_face_count += 1;
                 }
                 total += per_face;
             }
@@ -581,7 +580,7 @@ pub fn classify_cell_features(
         // crossing) and the pin cannot be routed: split.
         if total == 2 {
             let mut pin_split = false;
-            'pin: for &(axis, coord) in &crossing_faces {
+            'pin: for &(axis, coord) in &crossing_faces[..crossing_face_count] {
                 for &sid in &curve.adjacent_strata {
                     let st = &features.strata[sid];
                     let mut neg = false;
@@ -634,10 +633,13 @@ pub fn classify_cell_features(
             }
             continue; // index false positive — curve does not touch the cell
         }
-        if let Some(cc) = &corner_curves {
+        if corner_in_cell >= 0 {
             // Corner cell: every touching curve must be one of the corner's
-            // incident curves, entering once (its other end is the corner).
-            if !cc.contains(&curve_id) || total != 1 {
+            // incident curves, entering once (its other end is the corner). Linear
+            // scan over the few incident curve-ends (was a HashSet membership test).
+            let incident =
+                features.corners[corner_in_cell as usize].curve_ends.iter().any(|e| e.0 == curve_id);
+            if !incident || total != 1 {
                 return FeatureCellClass { split: true, curve: curve_id as i64, corner: corner_in_cell };
             }
             continue;

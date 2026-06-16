@@ -48,6 +48,44 @@ fn blend_cell_extent(cell_size: f64) -> f64 {
     cell_size
 }
 
+/// Position-aware cap on the per-cell blend normal swing (lever-2 refinement): the
+/// fillet normal interpolates between its two carriers, so the swing can't exceed
+/// the angle between the carrier normals at `p`. Returns that max pairwise angle
+/// (radians); `f64::INFINITY` when <2 carriers are retrievable (→ no cap). SOUND for
+/// any `tol`: extra/over-wide carriers only LOOSEN the cap. Cheaper than the sampled
+/// ∇f cone (one owner query + carrier normals, no per-corner grad cone).
+fn local_swing_bound<T: SdfQuery + ?Sized>(tree: &T, p: [f64; 3], tol: f64) -> f64 {
+    let owners = tree.active_owners_at(p, tol);
+    if owners.len() < 2 {
+        return f64::INFINITY;
+    }
+    let mut ns = [[0.0f64; 3]; 8];
+    let mut k = 0usize;
+    for o in owners.iter().take(8) {
+        let n = o.leaf.normal(p);
+        let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if l < 1e-12 {
+            continue;
+        }
+        ns[k] = [n[0] / l, n[1] / l, n[2] / l];
+        k += 1;
+    }
+    if k < 2 {
+        return f64::INFINITY;
+    }
+    let mut max_ang = 0.0f64;
+    for i in 0..k {
+        for j in (i + 1)..k {
+            let d = (ns[i][0] * ns[j][0] + ns[i][1] * ns[j][1] + ns[i][2] * ns[j][2]).clamp(-1.0, 1.0);
+            let a = d.acos();
+            if a > max_ang {
+                max_ang = a;
+            }
+        }
+    }
+    max_ang
+}
+
 /// Probe data for one cell: the 8 corners (then the center) world positions and
 /// `f` values. Corner f comes from the octree's shared sample cache; the center
 /// f is evaluated directly (not lattice-keyed, never shared).
@@ -272,26 +310,39 @@ pub fn tree_blend_band_curvature_ok_analytic<T: SdfQuery + ?Sized>(
 ) -> bool {
     // θ from cos θ = min_cos. Split iff the per-cell normal variation can exceed θ.
     let theta = min_cos.clamp(-1.0, 1.0).acos();
-    if kappa_bound * blend_cell_extent(probe.cell_size) <= theta {
+    let extent_var = kappa_bound * blend_cell_extent(probe.cell_size);
+    if extent_var <= theta {
         return true; // even the worst-case fillet curvature fits within θ → ok
     }
-    // The curvature CAN exceed θ over this cell extent; refine iff the cell actually
-    // contains blend-band surface (a zero-owner near-surface probe). One owner query
-    // per near-surface probe, short-circuiting on the first band probe found — no
-    // ∇f cone, no per-point gradient normalization, no O(k²) pairwise loop.
+    // The κ·extent bound CAN exceed θ; refine iff the cell actually contains
+    // blend-band surface (zero-owner near-surface probe). Position-aware cap: at each
+    // band probe also bound the swing by the local carrier dihedral — the cell's
+    // realized variation ≤ min(κ·extent, max_band_swing). split iff that > θ.
     let reach = SQRT_3 * probe.cell_size * grad_bound;
+    let mut found_band = false;
+    let mut max_swing = 0.0f64;
     for i in 0..9 {
         if probe.f[i].abs() >= reach {
             continue;
         }
-        let x = probe.pts[i * 3];
-        let y = probe.pts[i * 3 + 1];
-        let z = probe.pts[i * 3 + 2];
-        if tree.active_owners_at([x, y, z], 0.0).is_empty() {
-            return false; // a blend-band probe whose curvature can exceed θ ⇒ split
+        let p = [probe.pts[i * 3], probe.pts[i * 3 + 1], probe.pts[i * 3 + 2]];
+        if !tree.active_owners_at(p, 0.0).is_empty() {
+            continue; // analytic owner ⇒ not a blend-band point
+        }
+        found_band = true;
+        // Retrieve the nearby carriers (band points are zero-owner at tol 0) to bound
+        // the local dihedral. tol = cell_size catches the flanking carriers; sound for
+        // any tol (only loosens). Track the WIDEST → conservative cell-wide cap.
+        let s = local_swing_bound(tree, p, probe.cell_size);
+        if s > max_swing {
+            max_swing = s;
         }
     }
-    true
+    if !found_band {
+        return true; // no band surface in this cell → nothing to certify
+    }
+    // ok (don't split) iff the capped variation fits within θ.
+    extent_var.min(max_swing) <= theta
 }
 
 /// Shared pairwise-dot gate over the first `k` unit normals in a flat buffer.
@@ -346,7 +397,11 @@ pub fn needs_split_smooth<T: SdfQuery + ?Sized>(
             // the analytic test needs no owner query here — κ alone certifies it).
             Some(kappa) => {
                 let theta = opts.blend_normal_variation_cos.clamp(-1.0, 1.0).acos();
-                kappa * blend_cell_extent(probe.cell_size) > theta
+                // Position-aware cap: the whole cell is band, so bound the swing by the
+                // local carrier dihedral at the centre (sound; only tightens).
+                let center = [probe.pts[24], probe.pts[25], probe.pts[26]];
+                let swing = local_swing_bound(tree, center, probe.cell_size);
+                (kappa * blend_cell_extent(probe.cell_size)).min(swing) > theta
             }
             None => !tree_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound),
         };

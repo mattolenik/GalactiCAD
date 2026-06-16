@@ -16,7 +16,8 @@
 //! (`cell.feature_curve`, `mesh_edge_cell`), and analytic-curve polyline sampling.
 
 use crate::math::grid::{cell_aabb, face_axes, pack_point, stride_at_level, SfccLattice};
-use crate::sdf::CsgNode;
+use crate::sdf::{CsgNode, Pruned, SdfQuery};
+use crate::sfcc::octree::LEVER1_MIN_LEAVES;
 use crate::sfcc::feature_curves::{CurveKind, FeatureCurve};
 use crate::sfcc::feature_set::{SfccCorner, SfccFeatureSet};
 use crate::sfcc::face_contour::{FacePin, FaceRecord};
@@ -160,6 +161,9 @@ pub fn mesh_all_cells(
     let mut segs: Vec<Seg> = Vec::new();
     let mut pins: Vec<FacePin> = Vec::new();
 
+    // Lever 1: per-cell pruning gate (default OFF; see lever1_should_prune).
+    let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
+
     for cell in &oct.leaves {
         segs.clear();
         pins.clear();
@@ -243,6 +247,24 @@ pub fn mesh_all_cells(
 
         let cbox = cell_aabb(&lat, cell.level, cell.ix, cell.iy, cell.iz);
 
+        // Lever 1: one pruned view per cell, reused across this cell's interior-
+        // vertex projection / fan evals. Every `tree.f`/`tree.grad` in the meshers
+        // is guarded `in_box(cell_box, ·, margin)` (margin = 0.1·cell_size), so all
+        // query points lie within the cell box inflated by that margin — prune over
+        // exactly that inflated box so the pruned view stays bit-exact there.
+        let pruned: Option<Pruned> = if prune {
+            let cs = cbox[3] - cbox[0];
+            let half = cs * 0.6; // cell_size/2 + margin(0.1·cell_size), with headroom
+            let c = [(cbox[0] + cbox[3]) * 0.5, (cbox[1] + cbox[4]) * 0.5, (cbox[2] + cbox[5]) * 0.5];
+            Some(tree.prune_to_box(c, [half, half, half]))
+        } else {
+            None
+        };
+        let q: &dyn SdfQuery = match &pruned {
+            Some(p) => p,
+            None => tree,
+        };
+
         let mut meshed_loops: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
         if let (true, Some(features)) = (cell.feature_corner >= 0, opts.features) {
@@ -292,7 +314,7 @@ pub fn mesh_all_cells(
                         &my_pins[1],
                         cell,
                         &cbox,
-                        tree,
+                        q,
                         points,
                         opts,
                         features,
@@ -315,7 +337,7 @@ pub fn mesh_all_cells(
             if meshed_loops.contains(&li) {
                 continue;
             }
-            triangulate_loop(loop_pts, tree, points, &cbox, opts, &mut tris);
+            triangulate_loop(loop_pts, q, points, &cbox, opts, &mut tris);
         }
     }
 
@@ -331,9 +353,9 @@ pub fn mesh_all_cells(
 }
 
 /// Triangulate one closed loop as a disk. Port of `triangulateLoop`.
-fn triangulate_loop(
+fn triangulate_loop<T: SdfQuery + ?Sized>(
     loop_pts: &[usize],
-    tree: &CsgNode,
+    tree: &T,
     points: &mut PointTable,
     cell_box: &[f64; 6],
     o: &CellMeshOptions,
@@ -530,13 +552,13 @@ fn hypot3(x: f64, y: f64, z: f64) -> f64 {
 /// from an interior vertex projected onto that side's smooth carrier. Port of
 /// `meshEdgeCell`.
 #[allow(clippy::too_many_arguments)]
-fn mesh_edge_cell(
+fn mesh_edge_cell<T: SdfQuery + ?Sized>(
     loop_pts: &[usize],
     pin_a: &FacePin,
     pin_b: &FacePin,
     cell: &SfccCell,
     cell_box: &[f64; 6],
-    tree: &CsgNode,
+    tree: &T,
     points: &mut PointTable,
     opts: &CellMeshOptions,
     features: &SfccFeatureSet,
@@ -708,11 +730,11 @@ fn sample_in_cell_arc(
 
 /// Fan a disk from an interior vertex projected onto the side's smooth carrier.
 /// Port of `fanFromStratumVertex`.
-fn fan_from_stratum_vertex(
+fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(
     boundary: &[usize],
     stratum: &Stratum,
     cell_box: &[f64; 6],
-    tree: &CsgNode,
+    tree: &T,
     points: &mut PointTable,
     opts: &CellMeshOptions,
     out_tris: &mut Vec<usize>,

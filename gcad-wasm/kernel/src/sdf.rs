@@ -480,6 +480,41 @@ impl CsgNode {
     }
 }
 
+/// Lever-1 conditional gate for per-region CSG pruning. DEFAULT: OFF.
+///
+/// The intent of the lever was that pruning a region down to the 2–3 carriers it
+/// touches would amortize across that region's many evals (root-finds, certificate
+/// grads, owner queries). The full A/B integration sweep (`examples/lever1_bench`,
+/// octree / contour / cell-mesh each isolatable) found the OPPOSITE on EVERY blend
+/// scene measured — shallow N-ary blobs AND deep nested chains — pruning is
+/// net-NEGATIVE (e.g. a 32-sphere nested chain: 1146 ms full → 3406 ms pruned, 3×
+/// slower; a 48-sphere blob: 1377 → 1714, +24%). Two structural reasons:
+///  1. `prune_to_box` calls the (recursive, O(subtree)) `interval_over_ball` at
+///     every node, rebuilt FRESH per region — O(tree²) for unbalanced chains — and
+///     allocates a new `Pruned` tree each time.
+///  2. The build is paid for EVERY cell/face, but most have few or zero crossings,
+///     so the eval savings never amortize the per-region build + the indirection of
+///     `Pruned::f` (pointer-chased leaves) vs the cache-friendly `Vec<CsgNode>`
+///     tight loop of the full `f`.
+///
+/// The simple/twist scenes are correctly UNAFFECTED (their numbers match full-tree
+/// within noise) — the gate just never won, so it ships off.
+///
+/// The integration stays wired (the eval surface is trait-abstracted, the pruned
+/// view is bit-exact and proven by `lever1_prune_parity`) so a future CHEAPER prune
+/// — bottom-up O(tree) interval, arena-allocated or in-place node reuse, or a lazy
+/// build gated on an actual crossing — can flip this gate on without re-plumbing.
+/// `SFCC_LEVER1=1` (native only) force-enables it for those experiments;
+/// `SFCC_LEVER1=0` force-disables. `min_leaves` is retained for that future gate.
+pub fn lever1_should_prune(_tree: &CsgNode, _min_leaves: usize) -> bool {
+    // Measurement / experiment escape hatch (native only). Absent ⇒ default OFF.
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Ok(v) = std::env::var("SFCC_LEVER1") {
+        return v != "0";
+    }
+    false
+}
+
 /// A borrowed, region-pruned view of a [`CsgNode`] (Lever 1). Reports `f` and
 /// interval BIT-EXACT to the full tree for points within the prune ball, so any
 /// computation it feeds is unchanged. Cull rules (each interval-/f-exact because
@@ -595,6 +630,132 @@ impl<'a> Pruned<'a> {
         self.interval_over_ball(c, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt())
     }
 
+    /// One-sided unit gradient — same winner routing / smin-weighted mix as
+    /// [`CsgNode::grad`], over the pruned children. BIT-EXACT to the full tree for
+    /// points inside the prune ball: a dropped child can never be the argmin/argmax
+    /// (Min/Max) nor enter the nearest-pair (Blend) at any point in the ball, so the
+    /// winner(s) routing `grad` selects are always among the kept children.
+    pub fn grad(&self, p: [f64; 3]) -> (f64, [f64; 3]) {
+        match self {
+            Pruned::Leaf(l) => (l.f(p), l.normal(p)),
+            Pruned::Min(ch) => {
+                let mut bi = 0;
+                let mut best = f64::INFINITY;
+                for (i, c) in ch.iter().enumerate() {
+                    let d = c.f(p);
+                    if d < best {
+                        best = d;
+                        bi = i;
+                    }
+                }
+                ch[bi].grad(p)
+            }
+            Pruned::Max(ch) => {
+                let mut bi = 0;
+                let mut best = f64::NEG_INFINITY;
+                for (i, c) in ch.iter().enumerate() {
+                    let d = c.f(p);
+                    if d > best {
+                        best = d;
+                        bi = i;
+                    }
+                }
+                ch[bi].grad(p)
+            }
+            Pruned::Blend { kind, mode, r, n, children } => {
+                let sgn = if *kind == BlendKind::Smax { -1.0 } else { 1.0 };
+                let (ia, ib, va, vb) = if children.len() == 2 {
+                    (0, 1, sgn * children[0].f(p), sgn * children[1].f(p))
+                } else {
+                    let (mut ia, mut ib) = (0usize, 0usize);
+                    let (mut va, mut vb) = (f64::INFINITY, f64::INFINITY);
+                    for (i, c) in children.iter().enumerate() {
+                        let v = sgn * c.f(p);
+                        if v < va {
+                            ib = ia;
+                            vb = va;
+                            ia = i;
+                            va = v;
+                        } else if v < vb {
+                            ib = i;
+                            vb = v;
+                        }
+                    }
+                    (ia, ib, va, vb)
+                };
+                let value = sgn * smin(*mode, va, vb, *r, *n);
+                let [wa, wb] = smin_grad_weights(*mode, va, vb, *r, *n);
+                if wb == 0.0 {
+                    return (value, children[ia].grad(p).1);
+                }
+                if wa == 0.0 {
+                    return (value, children[ib].grad(p).1);
+                }
+                let ga = children[ia].grad(p).1;
+                let gb = children[ib].grad(p).1;
+                let gx = wa * ga[0] + wb * gb[0];
+                let gy = wa * ga[1] + wb * gb[1];
+                let gz = wa * ga[2] + wb * gb[2];
+                let len = (gx * gx + gy * gy + gz * gz).sqrt();
+                if len > 1e-12 {
+                    (value, [gx / len, gy / len, gz / len])
+                } else {
+                    (value, if wa >= wb { ga } else { gb })
+                }
+            }
+        }
+    }
+
+    /// CSG-aware winner set — same fold as [`CsgNode::active_owners_at`], over the
+    /// pruned children. BIT-EXACT for points inside the prune ball: a dropped child
+    /// is strictly non-winning everywhere in the ball, so for the certificate
+    /// callers (`tol == 0`, exact winner only) it could never have been collected.
+    pub fn active_owners_at(&self, p: [f64; 3], tol: f64) -> Vec<ActiveOwner<'a>> {
+        let mut out = Vec::new();
+        self.collect_owners(p, tol, &mut out);
+        out
+    }
+
+    fn collect_owners(&self, p: [f64; 3], tol: f64, out: &mut Vec<ActiveOwner<'a>>) -> f64 {
+        match self {
+            Pruned::Leaf(l) => {
+                let d = l.f(p);
+                out.push(ActiveOwner { leaf: l, d });
+                d
+            }
+            Pruned::Min(ch) => {
+                let ds: Vec<f64> = ch.iter().map(|c| c.f(p)).collect();
+                let best = ds.iter().cloned().fold(f64::INFINITY, f64::min);
+                for (i, c) in ch.iter().enumerate() {
+                    if (ds[i] - best).abs() <= tol {
+                        c.collect_owners(p, tol, out);
+                    }
+                }
+                best
+            }
+            Pruned::Max(ch) => {
+                let ds: Vec<f64> = ch.iter().map(|c| c.f(p)).collect();
+                let best = ds.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                for (i, c) in ch.iter().enumerate() {
+                    if (ds[i] - best).abs() <= tol {
+                        c.collect_owners(p, tol, out);
+                    }
+                }
+                best
+            }
+            Pruned::Blend { kind, mode, r, n, children } => {
+                let ds: Vec<f64> = children.iter().map(|c| c.f(p)).collect();
+                let value = blend_value_of(*kind, *mode, *r, *n, &ds);
+                for (i, c) in children.iter().enumerate() {
+                    if (ds[i] - value).abs() <= tol {
+                        c.collect_owners(p, tol, out);
+                    }
+                }
+                value
+            }
+        }
+    }
+
     /// Refine to a (sub-)box, dropping children that cannot affect `f`/interval
     /// over the box's circumscribing ball.
     pub fn prune_to_box(&self, c: [f64; 3], half: [f64; 3]) -> Pruned<'a> {
@@ -649,6 +810,51 @@ impl<'a> Pruned<'a> {
                 Pruned::Blend { kind: *kind, mode: *mode, r: *br, n: *n, children }
             }
         }
+    }
+}
+
+/// The shared eval surface of the SFCC hot path. Both the full [`CsgNode`] and the
+/// Lever-1 region-pruned [`Pruned`] view implement it, so the contour root-finds,
+/// the cell-mesh interior projection, and the per-cell refine certificates can run
+/// against EITHER — the pruned view eliminating the dropped-leaf work while staying
+/// bit-exact for every point inside the prune ball it was built over. The query
+/// methods (`f`/`grad`/`interval`/`active_owners_at`) are the ones the hot path
+/// actually calls; `grad_bound`/`has_blend` are tree-level advisories that callers
+/// hoist once from the full tree (so they are NOT on this trait).
+pub trait SdfQuery {
+    fn f(&self, p: [f64; 3]) -> f64;
+    fn grad(&self, p: [f64; 3]) -> (f64, [f64; 3]);
+    fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64);
+    fn active_owners_at(&self, p: [f64; 3], tol: f64) -> Vec<ActiveOwner<'_>>;
+}
+
+impl SdfQuery for CsgNode {
+    fn f(&self, p: [f64; 3]) -> f64 {
+        CsgNode::f(self, p)
+    }
+    fn grad(&self, p: [f64; 3]) -> (f64, [f64; 3]) {
+        CsgNode::grad(self, p)
+    }
+    fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
+        CsgNode::interval_over_box(self, c, half)
+    }
+    fn active_owners_at(&self, p: [f64; 3], tol: f64) -> Vec<ActiveOwner<'_>> {
+        CsgNode::active_owners_at(self, p, tol)
+    }
+}
+
+impl SdfQuery for Pruned<'_> {
+    fn f(&self, p: [f64; 3]) -> f64 {
+        Pruned::f(self, p)
+    }
+    fn grad(&self, p: [f64; 3]) -> (f64, [f64; 3]) {
+        Pruned::grad(self, p)
+    }
+    fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
+        Pruned::interval_over_box(self, c, half)
+    }
+    fn active_owners_at(&self, p: [f64; 3], tol: f64) -> Vec<ActiveOwner<'_>> {
+        Pruned::active_owners_at(self, p, tol)
     }
 }
 

@@ -92,6 +92,41 @@ fn pruned_is_bit_exact_over_random_scenes() {
 }
 
 #[test]
+fn pruned_grad_and_owners_bit_exact() {
+    // grad() and active_owners_at() feed the contour root-finds, the interior-vertex
+    // projection, and the refine certificates — they must be bit-exact too, or the
+    // integration would change geometry.
+    let mut rng = Lcg(0x0bad_c0de_dead_beef);
+    for _ in 0..400 {
+        let tree = scene(&mut rng, 3);
+        let c = [rng.range(-5.0, 5.0), rng.range(-5.0, 5.0), rng.range(-5.0, 5.0)];
+        let half = [rng.range(0.2, 3.0), rng.range(0.2, 3.0), rng.range(0.2, 3.0)];
+        let pruned = tree.prune_to_box(c, half);
+        for _ in 0..16 {
+            let p = [
+                c[0] + rng.range(-half[0], half[0]),
+                c[1] + rng.range(-half[1], half[1]),
+                c[2] + rng.range(-half[2], half[2]),
+            ];
+            let (fv, g) = tree.grad(p);
+            let (pfv, pg) = pruned.grad(p);
+            assert_eq!(fv.to_bits(), pfv.to_bits(), "grad-f drift at {p:?}");
+            for k in 0..3 {
+                assert_eq!(g[k].to_bits(), pg[k].to_bits(), "grad[{k}] drift at {p:?}");
+            }
+            // Certificate callers use tol == 0 (exact winner only).
+            let fo = tree.active_owners_at(p, 0.0);
+            let po = pruned.active_owners_at(p, 0.0);
+            assert_eq!(fo.len(), po.len(), "owner count drift at {p:?}");
+            for (a, b) in fo.iter().zip(po.iter()) {
+                assert_eq!(a.d.to_bits(), b.d.to_bits(), "owner d drift at {p:?}");
+                assert!(std::ptr::eq(a.leaf, b.leaf), "owner leaf identity drift at {p:?}");
+            }
+        }
+    }
+}
+
+#[test]
 fn roi_blended_union_of_many_parts() {
     // A row of 24 smoothly-unioned spheres — the "many blended unions" signature.
     let mut parts = Vec::new();

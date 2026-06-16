@@ -404,6 +404,8 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
 
     let grad_bound = tree.grad_bound();
     let has_blend = tree.has_blend();
+    // Lever 1: per-cell CSG pruning gate (default OFF; see lever1_should_prune).
+    let prune = crate::sdf::lever1_should_prune(tree, crate::sfcc::octree::LEVER1_MIN_LEAVES);
     let smooth_opts = SmoothCriteriaOptions {
         normal_variation_cos: (tuning.normal_variation_deg * PI / 180.0).cos(),
         blend_normal_variation_cos: if tuning.blend_curvature_refine {
@@ -502,9 +504,23 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
                     // the serial path either, so keep them unset).
                     return CellDecision { split: true, feature_curve: -1, feature_corner: -1 };
                 }
+                // Lever 1: one pruned view over this cell's box, reused across the
+                // certificate evals (all query points lie inside the cell box, where
+                // the pruned view is bit-exact). Prune FRESH per cell.
+                let pruned: Option<crate::sdf::Pruned> = if prune {
+                    let half = cell_size_at_level(&lat, cell.level) / 2.0;
+                    let c = crate::math::grid::cell_center_world(&lat, cell.level, cell.ix, cell.iy, cell.iz);
+                    Some(tree.prune_to_box(c, [half, half, half]))
+                } else {
+                    None
+                };
+                let q: &dyn crate::sdf::SdfQuery = match &pruned {
+                    Some(p) => p,
+                    None => tree,
+                };
                 let probe = make_probe(
                     &lat,
-                    tree,
+                    q,
                     |gx, gy, gz| sampler.sample_at(gx, gy, gz),
                     cell.level,
                     cell.ix,
@@ -518,7 +534,7 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
                 if cls.curve >= 0 && !has_corner_sign_change(&probe) {
                     return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
                 }
-                let split = needs_split_smooth(tree, &probe, &smooth_opts, grad_bound, has_blend);
+                let split = needs_split_smooth(q, &probe, &smooth_opts, grad_bound, has_blend);
                 CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
             },
         );

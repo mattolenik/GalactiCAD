@@ -26,8 +26,9 @@
 use crate::math::grid::{
     collect_edge_interior_offsets, face_axes, pack_point, point_to_world, stride_at_level, SfccLattice,
 };
-use crate::sdf::CsgNode;
+use crate::sdf::{CsgNode, Pruned, SdfQuery};
 use crate::sfcc::feature_set::SfccFeatureSet;
+use crate::sfcc::octree::LEVER1_MIN_LEAVES;
 use crate::sfcc::octree::SfccOctree;
 use crate::sfcc::point_table::{crossing_key, PointTable};
 use std::collections::HashMap;
@@ -135,8 +136,8 @@ struct FeatureCaches {
 /// Call sites should use [`canonical_edge_root`] so the result is independent of
 /// endpoint order.
 #[allow(clippy::too_many_arguments)]
-pub fn find_root(
-    tree: &CsgNode,
+pub fn find_root<T: SdfQuery + ?Sized>(
+    tree: &T,
     ax: f64,
     ay: f64,
     az: f64,
@@ -177,8 +178,8 @@ pub fn find_root(
 /// Iso-crossing on an axis-aligned sub-edge, computed INDEPENDENTLY of the
 /// direction the caller discovered the edge. Port of `canonicalEdgeRoot`.
 #[allow(clippy::too_many_arguments)]
-pub fn canonical_edge_root(
-    tree: &CsgNode,
+pub fn canonical_edge_root<T: SdfQuery + ?Sized>(
+    tree: &T,
     ax: f64,
     ay: f64,
     az: f64,
@@ -201,12 +202,13 @@ pub fn canonical_edge_root(
 /// Compute (once, cached) the recovered per-stratum boundary crossings of a
 /// sub-edge with no tree-f sign change. Port of `recoveredCrossingsFor`.
 #[allow(clippy::too_many_arguments)]
-fn recovered_crossings_for(
+fn recovered_crossings_for<T: SdfQuery + ?Sized>(
     cache: &mut HashMap<i64, Vec<RecoveredCrossing>>,
     cache_key: i64,
     a_world: [f64; 3], // canonical sub-edge min endpoint (world)
     b_world: [f64; 3], // canonical sub-edge max endpoint (world)
-    tree: &CsgNode,
+    tree: &T,
+    grad_bound: f64,
     points: &mut PointTable,
     features: &SfccFeatureSet,
     root_tol: f64,
@@ -254,7 +256,6 @@ fn recovered_crossings_for(
     }
     let mut cand: Vec<Cand> = Vec::new();
     let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
-    let grad_bound = tree.grad_bound();
     for cid in &curve_ids {
         for &sid in &features.curves[*cid].adjacent_strata {
             if !seen.insert(sid) {
@@ -420,12 +421,12 @@ fn recovered_crossings_for(
 
 /// Stratum tag for a visible (tree-f) crossing. Port of `stratumTagFor`.
 #[allow(clippy::too_many_arguments)]
-fn stratum_tag_for(
+fn stratum_tag_for<T: SdfQuery + ?Sized>(
     cache: &mut HashMap<usize, i64>,
     id: usize,
     a_world: [f64; 3],
     b_world: [f64; 3],
-    tree: &CsgNode,
+    tree: &T,
     points: &PointTable,
     features: &SfccFeatureSet,
     root_tol: f64,
@@ -503,6 +504,8 @@ struct Crossing {
 fn contour_face(
     oct: &SfccOctree,
     tree: &CsgNode,
+    grad_bound: f64,
+    prune: bool,
     points: &mut PointTable,
     axis: usize,
     gx: i64,
@@ -515,6 +518,32 @@ fn contour_face(
     let lat: &SfccLattice = &oct.lat;
     let [u, v] = face_axes(axis);
     let key = pack_point(lat, gx, gy, gz);
+
+    // Lever 1: build ONE pruned view over this face's box and reuse it across every
+    // per-face eval (the sub-edge root-finds + grads, the face-center / stratum-tag
+    // / recovery / split-midpoint queries). All those query points lie on the face
+    // or — for the Newton-projected split midpoint — within `seg_len + root_tol·8`
+    // of a face point (seg_len ≤ face diagonal). Prune over the face box inflated by
+    // ~2.5 face widths + that drift so the pruned view stays bit-exact everywhere it
+    // is queried. Prune FRESH per face (the centered-form interval is not nested
+    // across centers; a parent prune is unsound for a child box).
+    let face_w = len as f64 * lat.step;
+    let face_center = {
+        let mut w = point_to_world(lat, gx, gy, gz);
+        w[u] += face_w * 0.5;
+        w[v] += face_w * 0.5;
+        w
+    };
+    let pruned: Option<Pruned> = if prune {
+        let half = 2.5 * face_w + opts.root_tol * 8.0;
+        Some(tree.prune_to_box(face_center, [half, half, half]))
+    } else {
+        None
+    };
+    let q: &dyn SdfQuery = match &pruned {
+        Some(p) => p,
+        None => tree,
+    };
 
     let walks = [
         Walk { du: 0, dv: 0, ax: u, dir: 1 },
@@ -583,7 +612,7 @@ fn contour_face(
                 let wb = point_to_world(lat, p1[0], p1[1], p1[2]);
                 let id = points.get_or_create(sub_key, || {
                     canonical_edge_root(
-                        tree, wa[0], wa[1], wa[2], wb[0], wb[1], wb[2], f0, f1, opts.root_tol, &mut scratch,
+                        q, wa[0], wa[1], wa[2], wb[0], wb[1], wb[2], f0, f1, opts.root_tol, &mut scratch,
                     );
                     scratch
                 });
@@ -594,7 +623,7 @@ fn contour_face(
                     // (the curve query box).
                     let wa = point_to_world(lat, p0[0], p0[1], p0[2]);
                     let wb = point_to_world(lat, p1[0], p1[1], p1[2]);
-                    let tag = stratum_tag_for(&mut c.stratum_tags, id, wa, wb, tree, points, features, opts.root_tol);
+                    let tag = stratum_tag_for(&mut c.stratum_tags, id, wa, wb, q, points, features, opts.root_tol);
                     if tag >= 0 {
                         node_stratum.insert(id, tag as usize);
                     }
@@ -610,7 +639,8 @@ fn contour_face(
                     sub_key,
                     wa,
                     wb,
-                    tree,
+                    q,
+                    grad_bound,
                     points,
                     features,
                     opts.root_tol,
@@ -745,7 +775,7 @@ fn contour_face(
         let mut w = point_to_world(lat, gx, gy, gz);
         w[u] += half * lat.step;
         w[v] += half * lat.step;
-        center_inside = tree.f([w[0], w[1], w[2]]) < 0.0;
+        center_inside = q.f([w[0], w[1], w[2]]) < 0.0;
     }
     let n = crossings.len();
 
@@ -781,7 +811,7 @@ fn contour_face(
                 let mx = (points.x(ea) + points.x(xa)) / 2.0;
                 let my = (points.y(ea) + points.y(xa)) / 2.0;
                 let mz = (points.z(ea) + points.z(xa)) / 2.0;
-                if tree.f([mx, my, mz]).abs() > ext * 0.05 {
+                if q.f([mx, my, mz]).abs() > ext * 0.05 {
                     continue;
                 }
                 matched_enter[enters[0]] = true;
@@ -833,7 +863,7 @@ fn contour_face(
         let se = node_side.get(&c.id).copied();
         if let (Some(p), Some(s)) = (partner, se) {
             if Some(s) == node_side.get(&p).copied() {
-                let mid = split_midpoint(tree, points, c.id, p, opts.root_tol);
+                let mid = split_midpoint(q, points, c.id, p, opts.root_tol);
                 record.segments.push(FaceSegment { a: c.id, b: mid });
                 record.segments.push(FaceSegment { a: mid, b: p });
                 record.consumed_fwd.push(0);
@@ -936,7 +966,7 @@ fn point_segment_dist(points: &PointTable, px: f64, py: f64, pz: f64, a: usize, 
 /// Face-owned midpoint between two crossings, Newton-projected onto the surface.
 /// Port of `splitMidpoint` (the `axis` arg is unused in TS too — full 3D
 /// projection is deliberate).
-fn split_midpoint(tree: &CsgNode, points: &mut PointTable, a_id: usize, b_id: usize, root_tol: f64) -> usize {
+fn split_midpoint<T: SdfQuery + ?Sized>(tree: &T, points: &mut PointTable, a_id: usize, b_id: usize, root_tol: f64) -> usize {
     let mx = (points.x(a_id) + points.x(b_id)) / 2.0;
     let my = (points.y(a_id) + points.y(b_id)) / 2.0;
     let mz = (points.z(a_id) + points.z(b_id)) / 2.0;
@@ -982,6 +1012,13 @@ pub fn contour_all_faces(
     let mut boundary_violations = 0usize;
     let mut key_collisions = 0usize;
 
+    // Lever 1: tree-level advisory hoisted once + the per-cell prune gate (the same
+    // gate the octree certificates use). `contour_face` builds a fresh per-face
+    // pruned view when `prune` is set.
+    let grad_bound = tree.grad_bound();
+    // Lever 1: per-face pruning gate (default OFF; see lever1_should_prune).
+    let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
+
     // Shared sub-edge recovery + stratum-tag caches for this contouring pass.
     let mut caches = opts
         .features
@@ -1011,6 +1048,8 @@ pub fn contour_all_faces(
                 let rec = contour_face(
                     oct,
                     tree,
+                    grad_bound,
+                    prune,
                     points,
                     axis,
                     g[0],

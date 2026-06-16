@@ -26,7 +26,7 @@ use crate::math::grid::{
     cell_aabb, cell_center_world, cell_key, cell_size_at_level, pack_point, point_to_world, stride_at_level,
     SfccLattice,
 };
-use crate::sdf::CsgNode;
+use crate::sdf::{CsgNode, Pruned};
 use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::sfcc::refine_criteria::{
     classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
@@ -201,6 +201,13 @@ impl<'a> SfccOctree<'a> {
         self.internal_by_level[lvl as usize].contains(&cell_key(&self.lat, lvl, ix, iy, iz))
     }
 }
+
+/// Lever 1 hard-tree leaf threshold, retained for a future (cheaper) prune gate.
+/// The shipping gate ([`crate::sdf::lever1_should_prune`]) is OFF by default because
+/// the measured integration was net-negative; this constant is the leaf count a
+/// re-enabled hard-tree gate would key on. Below it the per-cell prune-build cost
+/// outweighs the leaves eliminated, so simple scenes stay on the full tree.
+pub(crate) const LEVER1_MIN_LEAVES: usize = 12;
 
 /// Face neighbors (6) and edge neighbors (12) as coordinate offsets.
 const FACE_NEIGHBORS: [[i64; 3]; 6] =
@@ -486,6 +493,9 @@ pub fn build_octree_feature_aware<'a>(
     // Tree-level advisories hoisted once (the callback is hot).
     let grad_bound = tree.grad_bound();
     let has_blend = tree.has_blend();
+    // Lever 1: per-cell CSG pruning gate (default OFF — the integration is wired and
+    // bit-exact but measured net-negative; see `crate::sdf::lever1_should_prune`).
+    let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
 
     build_octree(tree, lat, opts, |cell, sampler| {
         // Feature criteria (i)/(ii) first; on pass they classify the cell.
@@ -524,9 +534,25 @@ pub fn build_octree_feature_aware<'a>(
             return CellDecision { split: true, feature_curve: cls.curve, feature_corner };
         }
         // (forcedSplit markers are empty at round 0 — omitted.)
+        // Lever 1: build ONE pruned view over this cell's box and reuse it across
+        // every certificate eval (center f + the per-stratum / blend-band ∇f and
+        // owner queries) — all of which query points inside the cell box, where the
+        // pruned view is bit-exact to the full tree. Prune FRESH per cell (the
+        // centered-form interval is not nested across centers).
+        let pruned: Option<Pruned> = if prune {
+            let half = cell_size_at_level(lat, cell.level) / 2.0;
+            let c = cell_center_world(lat, cell.level, cell.ix, cell.iy, cell.iz);
+            Some(tree.prune_to_box(c, [half, half, half]))
+        } else {
+            None
+        };
+        let q: &dyn crate::sdf::SdfQuery = match &pruned {
+            Some(p) => p,
+            None => tree,
+        };
         let probe = make_probe(
             lat,
-            tree,
+            q,
             |gx, gy, gz| sampler.sample_at(gx, gy, gz),
             cell.level,
             cell.ix,
@@ -545,7 +571,7 @@ pub fn build_octree_feature_aware<'a>(
         if cls.curve >= 0 && !has_corner_sign_change(&probe) {
             return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
         }
-        let split = needs_split_smooth(tree, &probe, smooth_opts, grad_bound, has_blend);
+        let split = needs_split_smooth(q, &probe, smooth_opts, grad_bound, has_blend);
         CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
     })
 }

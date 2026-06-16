@@ -25,7 +25,7 @@ use crate::math::grid::{
     cell_aabb, cell_center_world, cell_size_at_level, corner_offset, point_to_world, stride_at_level, SfccLattice,
     CELL_EDGES,
 };
-use crate::sdf::CsgNode;
+use crate::sdf::SdfQuery;
 use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::strata::Stratum;
 use std::collections::HashSet;
@@ -46,9 +46,9 @@ pub struct RefineProbe {
 
 /// Build the probe data for a cell. Corner f values come from the octree's
 /// shared sampler `sample_at(gx, gy, gz)`. Port of `makeProbe`.
-pub fn make_probe<F: Fn(i64, i64, i64) -> f64>(
+pub fn make_probe<F: Fn(i64, i64, i64) -> f64, T: SdfQuery + ?Sized>(
     lat: &SfccLattice,
-    tree: &CsgNode,
+    tree: &T,
     sample_at: F,
     level: u32,
     ix: i64,
@@ -91,7 +91,7 @@ pub fn has_corner_sign_change(probe: &RefineProbe) -> bool {
 /// Strata active near this cell: for each probe point within √3·cellSize·gradBound
 /// of the surface, the winning leaf's closest patch. Deduplicated by stratum id,
 /// in first-encounter order. Port of `activeStrata`.
-pub fn active_strata<'a>(tree: &'a CsgNode, probe: &RefineProbe, grad_bound: f64) -> Vec<&'a Stratum> {
+pub fn active_strata<'a, T: SdfQuery + ?Sized>(tree: &'a T, probe: &RefineProbe, grad_bound: f64) -> Vec<&'a Stratum> {
     let mut out: Vec<&Stratum> = Vec::new();
     let mut seen: HashSet<usize> = HashSet::new();
     let reach = SQRT_3 * probe.cell_size * grad_bound;
@@ -177,7 +177,7 @@ pub fn stratum_edge_crossings_ok(stratum: &Stratum, probe: &RefineProbe) -> bool
 /// (iii-d) blend-region curvature: max pairwise deviation of the TREE's own ∇f
 /// over near-surface probe points. Port of `treeNormalVariationOk`. Only used
 /// where `active_strata` is empty (the blend band).
-pub fn tree_normal_variation_ok(tree: &CsgNode, probe: &RefineProbe, min_cos: f64, grad_bound: f64) -> bool {
+pub fn tree_normal_variation_ok<T: SdfQuery + ?Sized>(tree: &T, probe: &RefineProbe, min_cos: f64, grad_bound: f64) -> bool {
     let reach = SQRT_3 * probe.cell_size * grad_bound;
     let mut ns = [0.0f64; 27];
     let mut k = 0usize;
@@ -200,7 +200,12 @@ pub fn tree_normal_variation_ok(tree: &CsgNode, probe: &RefineProbe, min_cos: f6
 
 /// (iii-d, mixed-cell variant) blend curvature restricted to "blend-band" probe
 /// points (zero analytic owners). Port of `treeBlendBandNormalVariationOk`.
-pub fn tree_blend_band_normal_variation_ok(tree: &CsgNode, probe: &RefineProbe, min_cos: f64, grad_bound: f64) -> bool {
+pub fn tree_blend_band_normal_variation_ok<T: SdfQuery + ?Sized>(
+    tree: &T,
+    probe: &RefineProbe,
+    min_cos: f64,
+    grad_bound: f64,
+) -> bool {
     let reach = SQRT_3 * probe.cell_size * grad_bound;
     let mut ns = [0.0f64; 27];
     let mut k = 0usize;
@@ -252,8 +257,8 @@ pub struct SmoothCriteriaOptions {
 /// Combined P3 criteria: returns true when the cell needs splitting. Port of
 /// `needsSplitSmooth`. `grad_bound` / `has_blend` are the tree-level advisories
 /// (`CsgNode::grad_bound` / `CsgNode::has_blend`), hoisted by the caller.
-pub fn needs_split_smooth(
-    tree: &CsgNode,
+pub fn needs_split_smooth<T: SdfQuery + ?Sized>(
+    tree: &T,
     probe: &RefineProbe,
     opts: &SmoothCriteriaOptions,
     grad_bound: f64,

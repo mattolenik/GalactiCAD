@@ -198,6 +198,33 @@ judgement:
 
 ---
 
+## Outcome — rayon-in-wasm tested and rejected (2026-06-16)
+
+The threading path (§1/§4) was built (M6a–M6d) and the rayon hypothesis re-tested at
+**deep octree depth in real wasm32**, in the actual deployment path (render worker +
+10-thread rayon pool, `crossOriginIsolated`), driven through the dev server
+(`GCAD_AGENT_PAGE_QUERY=sfccThreads=1`; `runSfccRs` already logs `exportMs`/`threaded`).
+Threaded (atomics build, 10 threads) vs single-thread (non-atomics `pkg/`), min-of-2,
+byte-identical meshes:
+
+| scene | depth | tris | ST ms | MT ms | MT/ST |
+|---|---|---|---|---|---|
+| car | d8 | 63,324 | 1425 | 5370 | **0.27×** |
+| car | d9 | 330,922 | 7798 | 27706 | **0.28×** |
+| mech | d8 | 243,164 | 11269 | 13422 | **0.84×** |
+
+**Net-negative everywhere; depth does not rescue it (car d8→d9 flat).** The atomics build
+is ~3.6× slower per-op than the non-atomics build, and rayon parallelizes only the refine
+frontier (`decide_frontier`) — 10-way parallelism on one phase can't overcome a tax spread
+across all the serial phases. Non-atomics wasm is only ~1.2× native-serial (the port is
+healthy); the threading is the problem. The only path to net-positive would be parallelizing
+nearly the whole pipeline (large/uncertain). **Banked win = the single-thread port itself**
+(~1.2× native-serial, ~6× over TS on large scenes, deterministic). Do not pursue rayon
+further as architected. Earlier perf benchmarks were native Rust (no atomics tax) and
+*overstated* threading — measure in wasm.
+
+---
+
 ## Sources
 
 Primary (verified 3-0 unless noted):

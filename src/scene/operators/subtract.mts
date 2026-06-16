@@ -6,12 +6,19 @@ import {
     Node,
     type BlendMode,
     type IntersectionType,
+    type IsoSelectFn,
 } from "../base.mjs"
 import type { AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
-import { f32Wgsl } from "../scene-params.mjs"
+import { bvhCenterWgsl, bvhHalfWgsl, f32Wgsl } from "../scene-params.mjs"
 import type { ContourBuffer } from "../contour-buffer.mjs"
 import type { FeatureGraphBuilder } from "../feature-graph-buffer.mjs"
+
+/** Indent every non-empty line by `spaces` (cf. Union._indent). */
+function indentLines(code: string, spaces: number): string {
+    const pad = " ".repeat(spaces)
+    return code.split("\n").map(l => (l.length > 0 ? pad + l : l)).join("\n")
+}
 
 export class Subtract extends BinaryOperator {
     override getShapeType(): string {
@@ -114,18 +121,71 @@ export class Subtract extends BinaryOperator {
         }
     }
 
+    /**
+     * The cutter (`rh`) gets an AABB skip-guard iff it was assigned a BVH bounds
+     * slot. `#assignBvhBoundsSlots` only does that when `bvhEnabled` and the
+     * cutter is expensive (codegenCost >= BVH_MIN_COST) and bounded — the exact
+     * predicate captured in the structural fingerprint via `rh`'s own
+     * `structuralBvhSlot()` — so a flipped offset always forces a full rebuild.
+     */
+    private _shouldBoundRh(): boolean {
+        return this.rh.bvhBoundsOffset >= 0
+    }
+
+    /**
+     * Emit the difference, wrapping the cutter in an AABB skip-guard when `rh`
+     * qualifies. The cutter only changes the result near its surface: `sdBound`
+     * is the exact AABB SDF and the cutter's shape is contained in that AABB, so
+     * `sdBound(p) <= rh.d` everywhere. Hence wherever
+     * `sdBound(p) >= -body.d (+ blendRadius)` we have `-rh.d <= body.d (- r)` and
+     * `max(body, -rh)` (rounded by `r`) equals `body` exactly. We therefore
+     * evaluate the cutter — and its own prelude — only inside that band. This is
+     * provably result-identical to the un-guarded form (same contract Union
+     * relies on); it just skips the per-sample cutter eval far from the cut.
+     * Sibling implementation: `Union._emitChildBlock` (operators/union.mts).
+     */
+    private _compileGuarded(
+        lhResult: CompileResult,
+        rhResult: CompileResult,
+        diff: (l: string, r: string) => string,
+        selectFn: IsoSelectFn,
+    ): CompileResult {
+        if (!this._shouldBoundRh()) {
+            const varName = `d_${lhResult.varName}__${rhResult.varName}`
+            return binaryIsoCompileResult(this, varName, lhResult, rhResult, diff, selectFn)
+        }
+        const center = bvhCenterWgsl(this.rh.bvhBoundsOffset, this.rh.previewBvhVec3Slot)
+        const half = bvhHalfWgsl(this.rh.bvhBoundsOffset, this.rh.previewBvhVec3Slot)
+        const rText = (rhResult.prelude ? rhResult.varName ?? rhResult.text : rhResult.text)!
+        const r = this.radius ?? 0
+        // Distance field is `d` on every result variant (FastSDFResult / SDFResult
+        // / SDFResultMid), matching Union's distField.
+        const guard = (acc: string): string => {
+            const threshold =
+                r > 0 ? `-${acc}.d + ${f32Wgsl(this.paramOffset, this.previewF32Slot)}` : `-${acc}.d`
+            const body = indentLines((rhResult.prelude ?? "") + `${acc} = ${diff(acc, rText)};\n`, 4)
+            return `if (sdBound(p, ${center}, ${half}) < (${threshold})) {\n${body}}\n`
+        }
+        if (lhResult.prelude) {
+            // The body already materialised an accumulator var — mutate it in
+            // place rather than copying (cf. warpIsoResult / chained subtracts).
+            const acc = lhResult.varName!
+            return { varName: acc, text: acc, prelude: lhResult.prelude + guard(acc) }
+        }
+        const varName = `d_${lhResult.varName}__${rhResult.varName}`
+        return { varName, text: varName, prelude: `var ${varName} = ${lhResult.text!};\n` + guard(varName) }
+    }
+
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)
-        const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => this._diffEx(l, r), "selectSDF")
+        return this._compileGuarded(lhResult, rhResult, (l, r) => this._diffEx(l, r), "selectSDF")
     }
 
     override compileFast(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileFast(indentLevel)
         const rhResult = this.rh.compileFast(indentLevel)
-        const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => this._diffFast(l, r), "selectFast")
+        return this._compileGuarded(lhResult, rhResult, (l, r) => this._diffFast(l, r), "selectFast")
     }
 
     protected override computeBoundsCore(): AABB | null {
@@ -134,8 +194,7 @@ export class Subtract extends BinaryOperator {
     override compileMid(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compileMid(indentLevel)
         const rhResult = this.rh.compileMid(indentLevel)
-        const varName = `d_${lhResult.varName}__${rhResult.varName}`
-        return binaryIsoCompileResult(this, varName, lhResult, rhResult, (l, r) => this._diffMid(l, r), "selectMid")
+        return this._compileGuarded(lhResult, rhResult, (l, r) => this._diffMid(l, r), "selectMid")
     }
 
     override appendStructuralFingerprint(parts: string[]): void {

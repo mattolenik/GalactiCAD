@@ -108,6 +108,12 @@ export class Intersect extends BinaryOperator {
         }
     }
 
+    // No per-operand BVH skip-guard here (unlike Subtract / Union): intersect is
+    // `max(lh.d, rh.d)`, so the result is dominated by the *farther* operand.
+    // `sdBound` only gives a lower bound on an operand's distance, which can't
+    // prove an operand is the smaller (non-dominating) one — so neither side is
+    // safely skippable. The whole intersect node is still culled by its parent
+    // Union via the (tighter) `aabbIntersect` bounds from `computeBoundsCore`.
     override compile(indentLevel = 0): CompileResult {
         const lhResult = this.lh.compile(indentLevel)
         const rhResult = this.rh.compile(indentLevel)

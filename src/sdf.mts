@@ -795,7 +795,10 @@ export class SDFRenderer {
         const node = this.#pushPullNodes.get(nodeId)
         if (!node) return false
         const hitVec = vec3(hitPos[0], hitPos[1], hitPos[2])
-        if (node.type === "extrude" && (node.twistDegrees ?? 0) === 0) {
+        if (node.type === "extrude") {
+            // Twisted extrudes are supported: the controller un-twists the hit
+            // into polygon (profile) space, so side-face selection + push/pull
+            // work through the twist.
             this.#pushPullController.selectFace(node as unknown as Parameters<PushPullController["selectFace"]>[0], hitVec)
             this.#pushSelectionInfo()
             return true
@@ -834,7 +837,8 @@ export class SDFRenderer {
         const node = this.#pushPullNodes.get(nodeId)
         if (!node) return false
         const hitVec = vec3(hitPos[0], hitPos[1], hitPos[2])
-        if (node.type === "extrude" && (node.twistDegrees ?? 0) === 0) {
+        if (node.type === "extrude") {
+            // Twisted extrudes supported — see #handleObjectDoubleClick.
             this.#pushPullController.highlightSideFace(node as unknown as Parameters<PushPullController["highlightSideFace"]>[0], hitVec)
             this.#pushSelectionInfo()
             return true

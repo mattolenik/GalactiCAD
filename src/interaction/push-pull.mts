@@ -35,8 +35,12 @@ export interface PushPullHost {
 interface FaceState {
     extrude: Extrude
     faceIndex: number
+    /** Outward edge normal in 2D polygon (profile) space — drives the vertex edit. */
     normal2D: Vec2f
+    /** `normal2D` rotated into world space by the twist angle at the hit height — used only for drag→screen projection. */
     normal3D: Vec3f
+    /** Twist angle (radians) applied to the profile at the hit height; 0 when untwisted. */
+    angle: number
     originalVertices: [number, number][]
 }
 
@@ -56,8 +60,8 @@ export class PushPullController {
     #cap: CapState | null = null
     /** Cap surface highlight only (single-click) — visual selection without push/pull activation. */
     #capHighlightOnly: { node: PushPullCapNode; isTop: boolean } | null = null
-    /** Side face highlight only (single-click) — visual selection without push/pull activation. */
-    #sideHighlightOnly: { extrude: Extrude; faceIndex: number } | null = null
+    /** Side face highlight only (single-click) — visual selection without push/pull activation. `angle` = twist at the hit height. */
+    #sideHighlightOnly: { extrude: Extrude; faceIndex: number; angle: number } | null = null
     /** Primitive face highlight only (Box, Cylinder, Cone). */
     #primitiveHighlightOnly: { node: Box | Cylinder | Cone; faceIndex: number } | null = null
     #dragging = false
@@ -81,32 +85,13 @@ export class PushPullController {
     highlightSideFace(extrude: Extrude, hitPos: Vec3f): void {
         this.#capHighlightOnly = null
         this.#primitiveHighlightOnly = null
-        const localPos = vec3(
-            hitPos.x - extrude.pos.x,
-            hitPos.y - extrude.pos.y,
-            hitPos.z - extrude.pos.z,
-        )
-        const px = localPos.x
-        const pz = localPos.z
+        // Un-twist the world hit into polygon (profile) space so the edge match
+        // works "through" the twist; angle = 0 when the extrude isn't twisted.
+        const angle = twistAngleAt(extrude, hitPos.y)
+        const [px, pz] = toProfileXZ(hitPos.x - extrude.pos.x, hitPos.z - extrude.pos.z, angle)
         const verts = extrude.child.vertices
-        const N = verts.length
-        let minDist = Infinity
-        let closestEdge = 0
-        for (let j = N - 1, i = 0; i < N; j = i, i++) {
-            const ex = verts[i][0] - verts[j][0]
-            const ey = verts[i][1] - verts[j][1]
-            const wx = px - verts[j][0]
-            const wy = pz - verts[j][1]
-            const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey)))
-            const bx = wx - ex * t
-            const by = wy - ey * t
-            const dd = bx * bx + by * by
-            if (dd < minDist) {
-                minDist = dd
-                closestEdge = j
-            }
-        }
-        this.#sideHighlightOnly = { extrude, faceIndex: closestEdge }
+        const closestEdge = closestPolygonEdge(verts, px, pz)
+        this.#sideHighlightOnly = { extrude, faceIndex: closestEdge, angle }
         this.#writeFaceSelection(extrude.id, closestEdge, 0, 0)
         const selData = new Uint32Array(1024)
         selData[FACE_HIGHLIGHT_ID] = 1
@@ -176,54 +161,22 @@ export class PushPullController {
     selectFace(extrude: Extrude, hitPos: Vec3f): void {
         this.#sideHighlightOnly = null
         this.#primitiveHighlightOnly = null
-        const localPos = vec3(
-            hitPos.x - extrude.pos.x,
-            hitPos.y - extrude.pos.y,
-            hitPos.z - extrude.pos.z,
-        )
 
-        // Project to XZ plane (polygon lives in XZ)
-        const px = localPos.x
-        const pz = localPos.z
+        // Un-twist the world hit into polygon (profile) space (polygon lives in
+        // XZ). angle = 0 when the extrude isn't twisted, so this is a no-op then.
+        const angle = twistAngleAt(extrude, hitPos.y)
+        const [px, pz] = toProfileXZ(hitPos.x - extrude.pos.x, hitPos.z - extrude.pos.z, angle)
 
         const verts = extrude.child.vertices
-        const N = verts.length
-
-        // Find closest edge
-        let minDist = Infinity
-        let closestEdge = 0
-        for (let j = N - 1, i = 0; i < N; j = i, i++) {
-            const ex = verts[i][0] - verts[j][0]
-            const ey = verts[i][1] - verts[j][1]
-            const wx = px - verts[j][0]
-            const wy = pz - verts[j][1]
-            const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey)))
-            const bx = wx - ex * t
-            const by = wy - ey * t
-            const dd = bx * bx + by * by
-            if (dd < minDist) {
-                minDist = dd
-                closestEdge = j
-            }
-        }
-
-        // Compute outward normal for the edge
-        const i0 = closestEdge
-        const i1 = (closestEdge + 1) % N
-        const edgeX = verts[i1][0] - verts[i0][0]
-        const edgeY = verts[i1][1] - verts[i0][1]
-        const edgeLen = Math.sqrt(edgeX * edgeX + edgeY * edgeY)
-
-        // Perpendicular: rotate 90 degrees. Determine outward direction from polygon winding.
-        const windingSign = computeSignedArea(verts) < 0 ? -1 : 1
-        const nx = windingSign * edgeY / edgeLen
-        const ny = windingSign * -edgeX / edgeLen
+        const closestEdge = closestPolygonEdge(verts, px, pz)
+        const { normal2D, normal3D } = faceFrame(verts, closestEdge, angle)
 
         this.#face = {
             extrude,
             faceIndex: closestEdge,
-            normal2D: vec2(nx, ny),
-            normal3D: vec3(nx, 0, ny),
+            normal2D,
+            normal3D,
+            angle,
             originalVertices: verts.map(v => [v[0], v[1]] as [number, number]),
         }
 
@@ -293,10 +246,10 @@ export class PushPullController {
     /** Drop from active push/pull back to highlight-only, keeping the surface visually selected. */
     dropToHighlight(): void {
         if (this.#face) {
-            const { extrude, faceIndex } = this.#face
+            const { extrude, faceIndex, angle } = this.#face
             this.#face = null
             this.#dragging = false
-            this.#sideHighlightOnly = { extrude, faceIndex }
+            this.#sideHighlightOnly = { extrude, faceIndex, angle }
             this.#writeFaceSelection(extrude.id, faceIndex, 0, 0)
             const selData = new Uint32Array(1024)
             selData[FACE_HIGHLIGHT_ID] = 1
@@ -320,23 +273,16 @@ export class PushPullController {
     promoteToActive(): boolean {
         if (this.isActive) return true
         if (this.#sideHighlightOnly) {
-            const { extrude, faceIndex } = this.#sideHighlightOnly
+            const { extrude, faceIndex, angle } = this.#sideHighlightOnly
             this.#sideHighlightOnly = null
             const verts = extrude.child.vertices
-            const N = verts.length
-            const i0 = faceIndex
-            const i1 = (i0 + 1) % N
-            const edgeX = verts[i1][0] - verts[i0][0]
-            const edgeY = verts[i1][1] - verts[i0][1]
-            const edgeLen = Math.sqrt(edgeX * edgeX + edgeY * edgeY)
-            const windingSign = computeSignedArea(verts) < 0 ? -1 : 1
-            const nx = windingSign * edgeY / edgeLen
-            const ny = windingSign * -edgeX / edgeLen
+            const { normal2D, normal3D } = faceFrame(verts, faceIndex, angle)
             this.#face = {
                 extrude,
                 faceIndex,
-                normal2D: vec2(nx, ny),
-                normal3D: vec3(nx, 0, ny),
+                normal2D,
+                normal3D,
+                angle,
                 originalVertices: verts.map(v => [v[0], v[1]] as [number, number]),
             }
             this.#writeFaceSelection(extrude.id, faceIndex, 0, 0)
@@ -707,6 +653,75 @@ export class PushPullController {
         this.#host.writeBuffers({ polygonVertices: { offset: poly.bufferOffset * 8, data: data.buffer } })
     }
 
+}
+
+/**
+ * Twist angle (radians) applied to the extrude profile at world height `worldY`.
+ * Mirrors the extrude SDF exactly: `angle = twistRad * clamp((localY + h) / (2h), 0, 1)`,
+ * with `localY = worldY - pos.y` and `h` the half-height. Returns 0 when the
+ * extrude isn't twisted (or h is degenerate), making the un-twist a no-op.
+ */
+export function twistAngleAt(extrude: Extrude, worldY: number): number {
+    const twistRad = ((extrude.twistDegrees ?? 0) * Math.PI) / 180
+    if (twistRad === 0) return 0
+    const h = extrude.h
+    if (!(Math.abs(h) > 1e-6)) return 0
+    const localY = worldY - extrude.pos.y
+    const t = Math.max(0, Math.min(1, (localY + h) / (2 * h)))
+    return twistRad * t
+}
+
+/**
+ * Rotate a local XZ point into profile (polygon) space by twist `angle`, matching
+ * the extrude WGSL `twisted = vec2(ca*x + sa*z, -sa*x + ca*z)`. The inverse rotation
+ * (profile→world) is applied in {@link faceFrame} for the face normal.
+ */
+export function toProfileXZ(localX: number, localZ: number, angle: number): [number, number] {
+    if (angle === 0) return [localX, localZ]
+    const ca = Math.cos(angle), sa = Math.sin(angle)
+    return [ca * localX + sa * localZ, -sa * localX + ca * localZ]
+}
+
+/** Index of the polygon edge (start-vertex index) closest to profile-space point (px, pz). */
+export function closestPolygonEdge(verts: [number, number][], px: number, pz: number): number {
+    const N = verts.length
+    let minDist = Infinity
+    let closestEdge = 0
+    for (let j = N - 1, i = 0; i < N; j = i, i++) {
+        const ex = verts[i][0] - verts[j][0]
+        const ey = verts[i][1] - verts[j][1]
+        const wx = px - verts[j][0]
+        const wy = pz - verts[j][1]
+        const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey)))
+        const bx = wx - ex * t
+        const by = wy - ey * t
+        const dd = bx * bx + by * by
+        if (dd < minDist) {
+            minDist = dd
+            closestEdge = j
+        }
+    }
+    return closestEdge
+}
+
+/**
+ * Build the frame for an edge: its outward normal in 2D profile space (drives the
+ * polygon vertex edit, twist-invariant) and that normal rotated into world space by
+ * the twist `angle` at the hit height (used only for drag→screen projection). The
+ * world rotation is the inverse twist `R(-angle)`: `world.xz = (ca*nx - sa*ny, sa*nx + ca*ny)`.
+ */
+export function faceFrame(verts: [number, number][], faceIndex: number, angle: number): { normal2D: Vec2f; normal3D: Vec3f } {
+    const N = verts.length
+    const i0 = faceIndex
+    const i1 = (i0 + 1) % N
+    const edgeX = verts[i1][0] - verts[i0][0]
+    const edgeY = verts[i1][1] - verts[i0][1]
+    const edgeLen = Math.sqrt(edgeX * edgeX + edgeY * edgeY) || 1
+    const windingSign = computeSignedArea(verts) < 0 ? -1 : 1
+    const nx = windingSign * edgeY / edgeLen
+    const ny = windingSign * -edgeX / edgeLen
+    const ca = Math.cos(angle), sa = Math.sin(angle)
+    return { normal2D: vec2(nx, ny), normal3D: vec3(ca * nx - sa * ny, 0, sa * nx + ca * ny) }
 }
 
 /** Compute signed area of a 2D polygon. Positive = CCW, Negative = CW. */

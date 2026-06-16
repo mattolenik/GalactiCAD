@@ -278,12 +278,28 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let n = select(nCap, nSide, onSide);
     let capId = select(${capBottomId}u, ${capTopId}u, capY > 0.0);
     var resultId = select(capId, id, onSide);
-    if (!onSide && faceSelection.nodeId == id && faceSelection.mode >= 2u) {
-        let isTopFace = capY > 0.0;
-        if (faceSelection.mode == 2u && isTopFace) {
-            resultId = FACE_HIGHLIGHT_TOP;
-        } else if (faceSelection.mode == 3u && !isTopFace) {
-            resultId = FACE_HIGHLIGHT_BOTTOM;
+    if (faceSelection.nodeId == id) {
+        if (onSide && faceSelection.mode == 0u) {
+            // Side-face highlight under twist. combined.y is the closest
+            // polygon-edge index evaluated in PROFILE space (the twisted
+            // coordinate), so it matches faceSelection.faceIndex: the CPU
+            // picker un-twists the world hit into the same profile space at
+            // the hit's height, so both agree on which edge was grabbed. The
+            // highlight then sweeps that edge up the full helical side strip.
+            // (Live push/pull slide keeps mode 0 on the GPU and re-extrudes
+            // the edited polygon through twist; the mode-1 extrude-bump preview
+            // is not rendered under twist.)
+            let edge = u32(combined.y);
+            if (edge == faceSelection.faceIndex) {
+                resultId = FACE_HIGHLIGHT_ID;
+            }
+        } else if (!onSide && faceSelection.mode >= 2u) {
+            let isTopFace = capY > 0.0;
+            if (faceSelection.mode == 2u && isTopFace) {
+                resultId = FACE_HIGHLIGHT_TOP;
+            } else if (faceSelection.mode == 3u && !isTopFace) {
+                resultId = FACE_HIGHLIGHT_BOTTOM;
+            }
         }
     }
     return sdfR(d, 0.8, resultId, n);

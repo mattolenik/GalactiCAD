@@ -763,6 +763,7 @@ fn primitiveFaceIndexFromNormal(n: vec3f, mode: u32) -> u32 {
 struct ShadeResult {
     color: vec3f,
     faceSelected: f32,
+    lit: f32,   // surface diffuse*AO term, so the selection crosshatch can be lit by the scene
 }
 
 // Match mesh-viewer opaque: RGB from scene-space shading normal (± for front/back).
@@ -807,7 +808,7 @@ fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, hit
         }
         let selectedColor = nrm * selectionStyles.faceDarken + selectionStyles.faceTint;
         let color = nrm * (1.0 - selBlend) + selectedColor * selBlend;
-        return ShadeResult(color, selBlend);
+        return ShadeResult(color, selBlend, 1.0);   // render-normals mode: full-bright hatch
     }
     // AO should sample away from the actual surface, not the x-ray lighting normal.
     // For back/exit surfaces, the flipped shading normal points into the solid and
@@ -849,7 +850,7 @@ fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, hit
     }
     let selectedColor = shadedColor * selectionStyles.faceDarken + selectionStyles.faceTint;
     let color = shadedColor * (1.0 - selBlend) + selectedColor * selBlend;
-    return ShadeResult(color, selBlend);
+    return ShadeResult(color, selBlend, diffuse * ao);
 }
 
 // Debug heatmap: map cumulative `sceneSDF_fast` calls per pixel to a coarse
@@ -890,11 +891,11 @@ fn applyFaceDottedPattern(color: vec3f, pixelCoord: vec2f) -> vec3f {
 // and "push/pull active" read as related but different. Kept light (low tint) so
 // it reads as a subtle wash. `sel` confines it to the selected surface and fades
 // it through blend regions.
-fn applySelectionPattern(color: vec3f, pixelCoord: vec2f, sel: f32) -> vec3f {
-    let scale = max(selectionStyles.resolutionScale, 0.25);
+fn applySelectionPattern(color: vec3f, pixelCoord: vec2f, sel: f32, lit: f32) -> vec3f {
+    let scale = selectionStyles.resolutionScale;
     let p = pixelCoord / scale;
-    let spacing = selectionStyles.faceDotSpacing * 2.4;            // hatch line spacing
-    let halfWidth = max(selectionStyles.faceDotRadius * 1.4, 1.0); // half line thickness
+    let spacing = selectionStyles.faceDotSpacing * 1.4;            // hatch line spacing
+    let halfWidth = max(selectionStyles.faceDotRadius * 1.0, 0.8); // half line thickness (thinner hatch)
     // Two perpendicular 45° line sets → cross-hatch. For each, distance (in the
     // diagonal coordinate) to the nearest line.
     let d1 = p.x + p.y;
@@ -907,27 +908,28 @@ fn applySelectionPattern(color: vec3f, pixelCoord: vec2f, sel: f32) -> vec3f {
     let cover1 = 1.0 - smoothstep(halfWidth - 0.7, halfWidth + 0.7, dist1);
     let cover2 = 1.0 - smoothstep(halfWidth - 0.7, halfWidth + 0.7, dist2);
     let cover = max(cover1, cover2);
-    // Muted, dimmer hatch color: desaturate the selection color toward its luma
-    // (less yellow), then scale it down (dimmer). Scoped to this pattern so the
-    // edge-selection highlight keeps the full `edgeColor`.
+    // Hatch lines take the FULL selection color, LIT by the scene (`lit` = the
+    // surface's diffuse*AO) so the crosshatch reads as part of the shaded object
+    // and brightens with the lighting — but with a brightness floor (0.75) so it
+    // never sinks into shadow. This is why selected objects stay legible in dark
+    // areas where the old fixed dim color faded out.
     let ec = selectionStyles.edgeColor;
-    let luma = dot(ec, vec3f(0.299, 0.587, 0.114));
-    let hatchColor = (ec * 0.45 + vec3f(luma) * 0.55) * 0.6;
-    // Light tint toward the hatch color. Explicit lerp: Tint rejects
+    let litHatch = ec * (0.75 + 0.85 * clamp(lit, 0.0, 1.35));
+    // Lerp toward the lit hatch color. Explicit lerp: Tint rejects
     // `mix(vec3, vec3, f32)` on this Dawn build.
-    let t = 0.3 * clamp(sel, 0.0, 1.0) * cover;
-    return color * (1.0 - t) + hatchColor * t;
+    let t = 0.1 * clamp(sel, 0.0, 1.0) * cover;   // hatch opacity
+    return color * (1.0 - t) + litHatch * t;
 }
 
 // Dispatch the selected-surface overlay: push/pull mode keeps its darkened-dot
 // dither; plain selection uses the distinct selection-color pattern above. Both
 // are confined to the selected surface (sel > 0).
-fn applySelectionOverlay(color: vec3f, pixelCoord: vec2f, sel: f32) -> vec3f {
+fn applySelectionOverlay(color: vec3f, pixelCoord: vec2f, sel: f32, lit: f32) -> vec3f {
     if (sel <= 0.0) { return color; }
     if (faceSelection.pushPullActive != 0u) {
         return applyFaceDottedPattern(color, pixelCoord);
     }
-    return applySelectionPattern(color, pixelCoord, sel);
+    return applySelectionPattern(color, pixelCoord, sel, lit);
 }
 
 @fragment
@@ -1106,7 +1108,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         // storage read shadeHit would otherwise repeat, so reuse it here.
         var frontResult = shadeHit(hit, false, viewDir, aoPos, selFloat, &stepCount);
         var shadedColor = frontResult.color;
-        shadedColor = applySelectionOverlay(shadedColor, pixelCoord, frontResult.faceSelected);
+        shadedColor = applySelectionOverlay(shadedColor, pixelCoord, frontResult.faceSelected, frontResult.lit);
         shadedColor = applySelectedEdgeHighlight(shadedColor, hitPos, hit, wppu);
 
         // X-ray mode: front surface transparent over the visible back surface.
@@ -1115,7 +1117,7 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
                 let backSel = f32(selectedObjectIds[backHit.id] != 0u);
                 var backResult = shadeHit(backHit, true, viewDir, backAoPos, backSel, &stepCount);
                 var backColor = backResult.color;
-                backColor = applySelectionOverlay(backColor, pixelCoord, backResult.faceSelected);
+                backColor = applySelectionOverlay(backColor, pixelCoord, backResult.faceSelected, backResult.lit);
                 let backPos = transformedOrigin + transformedDir * backHit.t;
                 backColor = applySelectedEdgeHighlight(backColor, backPos, backHit, wppu);
                 let frontAlpha = 0.4;

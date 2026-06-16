@@ -9,9 +9,27 @@
 
 use crate::sfcc::newton::{carrier_pair_tangent, project_to_carrier_pair};
 use crate::strata::Stratum;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::f64::consts::PI;
+use std::rc::Rc;
 
 const TAU: f64 = 2.0 * PI;
+
+/// Per-thread memo for [`FeatureCurve::axis_plane_crossings`], keyed
+/// `(curve_id, axis, coord.to_bits())` and scoped to one feature-set `run_id`:
+/// the map is cleared the instant a new `run_id` is seen, bounding memory to a
+/// single export. Thread-local so it is correct (and a win) under BOTH the serial
+/// shipping build and the rayon `threads` build — each thread memoizes
+/// independently and the returned `Rc` never crosses a thread boundary.
+struct XpcCache {
+    run_id: u64,
+    map: HashMap<(usize, usize, u64), Rc<Vec<CurveFaceCrossing>>>,
+}
+
+thread_local! {
+    static XPC_CACHE: RefCell<XpcCache> = RefCell::new(XpcCache { run_id: 0, map: HashMap::new() });
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CurveKind {
@@ -244,6 +262,32 @@ impl FeatureCurve {
             v += TAU;
         }
         self.t_min + v
+    }
+
+    /// Memoized [`Self::axis_plane_crossings`] for the per-cell classify hot path
+    /// (~67% of slow exports). `curve_id`/`run_id` identify this curve within the
+    /// compiled [`crate::sfcc::feature_set::SfccFeatureSet`] so the thread-local
+    /// memo is reused across re-refine rounds (same lattice ⇒ same `coord` bits)
+    /// yet invalidated across separate exports. Byte-identical to the uncached
+    /// call — only the redundant root-find / trig is skipped.
+    pub fn axis_plane_crossings_cached(&self, axis: usize, coord: f64, curve_id: usize, run_id: u64) -> Rc<Vec<CurveFaceCrossing>> {
+        let key = (curve_id, axis, coord.to_bits());
+        let hit = XPC_CACHE.with(|c| {
+            let mut c = c.borrow_mut();
+            if c.run_id != run_id {
+                c.map.clear();
+                c.run_id = run_id;
+            }
+            c.map.get(&key).cloned()
+        });
+        if let Some(v) = hit {
+            return v;
+        }
+        let v = Rc::new(self.axis_plane_crossings(axis, coord));
+        XPC_CACHE.with(|c| {
+            c.borrow_mut().map.insert(key, Rc::clone(&v));
+        });
+        v
     }
 
     /// All crossings of the curve with the plane {p[axis] = coord}.

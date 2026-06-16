@@ -40,12 +40,25 @@ pub struct SfccCorner {
     pub curve_ends: Vec<(usize, u8)>,
 }
 
+/// Monotonic id stamped onto every compiled [`SfccFeatureSet`] (its `run_id`).
+/// Sole use: cache-keying the per-run `axis_plane_crossings` memo so a later
+/// export's curve ids can't be served stale crossings from a prior run. Starts at
+/// 1 (the memo treats 0 as "unset"); wraparound is harmless (4e18 exports).
+static NEXT_FEATURE_SET_RUN_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn next_feature_set_run_id() -> u64 {
+    NEXT_FEATURE_SET_RUN_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 pub struct SfccFeatureSet {
     pub curves: Vec<FeatureCurve>,
     pub corners: Vec<SfccCorner>,
     pub index: SfccSpatialIndex,
     /// All strata of the compiled tree (curve.adjacent_strata index into this).
     pub strata: Vec<Stratum>,
+    /// Unique per compiled set; keys the per-run `axis_plane_crossings` memo (see
+    /// [`FeatureCurve::axis_plane_crossings_cached`]). Set via [`next_feature_set_run_id`].
+    pub run_id: u64,
 }
 
 fn collect_leaves<'a>(node: &'a CsgNode, out: &mut Vec<&'a Leaf>) {
@@ -914,7 +927,7 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
     for c in &corners {
         index.insert_corner(c.id, c.x, c.y, c.z);
     }
-    SfccFeatureSet { curves, corners, index, strata: all_strata }
+    SfccFeatureSet { curves, corners, index, strata: all_strata, run_id: next_feature_set_run_id() }
 }
 
 /// Index cell-size heuristic: scene diagonal / 32. Mirrors `indexCellSize`.
@@ -962,7 +975,13 @@ pub fn compile_feature_set(
     for c in &trimmed.corners {
         index.insert_corner(c.id, c.x, c.y, c.z);
     }
-    let fs = SfccFeatureSet { curves: trimmed.curves, corners: trimmed.corners, index, strata: tree.strata };
+    let fs = SfccFeatureSet {
+        curves: trimmed.curves,
+        corners: trimmed.corners,
+        index,
+        strata: tree.strata,
+        run_id: next_feature_set_run_id(),
+    };
     (fs, diagnostics)
 }
 

@@ -543,8 +543,8 @@ pub fn classify_cell_features(
             for side in 0..2usize {
                 let coord = box_[axis + if side == 1 { 3 } else { 0 }];
                 let mut per_face = 0usize;
-                let crossings = curve.axis_plane_crossings(axis, coord);
-                for cr in &crossings {
+                let crossings = curve.axis_plane_crossings_cached(axis, coord, curve_id, features.run_id);
+                for cr in crossings.iter() {
                     // In-rect test on the other two axes (closed interval).
                     let px = [cr.x, cr.y, cr.z];
                     let mut inside = true;

@@ -545,6 +545,13 @@ export class SourceParser {
 
         if (!ALL_SHAPE_FUNCTIONS.has(funcName)) return
 
+        // Dedup: a chained modifier (e.g. `union(a,b).scale(2)`) makes #ensureChainCallsCreated
+        // pre-create the inner call before the AST visitor reaches it. callStart is the call's source
+        // offset, so it uniquely identifies a call — skip if we've already emitted this one. Without
+        // this, composites like union get a duplicate ParsedShapeCall at the same location, which
+        // surfaces as two stacked indicator icons when the composite expands to multiple scene nodes.
+        if (this.#callMap.has(callStart)) return
+
         const startPos = rootExpr.getStart()
         const endPos = rootExpr.getEnd()
         const startLoc = tsPosToUser(sourceFile, startPos)

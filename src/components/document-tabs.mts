@@ -395,15 +395,25 @@ export class DocumentTabs extends HTMLElement {
     }
 
     /** Creates a new document, prompting the user for a name. Returns the name, or undefined if user aborts.
-     *  When suggestedName is provided and docs.size is 0, uses it without prompting. */
-    async newDocument(content = defaultContent, language = "typescript", suggestedName?: string): Promise<string | undefined> {
+     *  When suggestedName is provided and docs.size is 0, uses it without prompting.
+     *  Pass { prompt: false } to skip the prompt entirely and use suggestedName (deduped on collision). */
+    async newDocument(
+        content = defaultContent,
+        language = "typescript",
+        suggestedName?: string,
+        options?: { prompt?: boolean },
+    ): Promise<string | undefined> {
         this.#topUntitledIndex =
             Array.from(this.#docs.keys())
                 .map(s => parseInt(s.match(/^new scene (\d+)$/)?.map((v, i, arr) => arr[i])[1]!) || 0)
                 .reduce((p, c) => Math.max(p, c), 0) + 1
 
         const defaultName = suggestedName ?? `new scene ${this.#topUntitledIndex}`
-        const name = this.#docs.size > 0 ? window.prompt("Give the new scene a name", defaultName)?.trim() : defaultName
+        const name = options?.prompt === false
+            ? this.#uniqueDocName(defaultName)
+            : this.#docs.size > 0
+            ? window.prompt("Give the new scene a name", defaultName)?.trim()
+            : defaultName
         if (!name) return undefined
 
         const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
@@ -413,6 +423,15 @@ export class DocumentTabs extends HTMLElement {
         await this.switchTo(name)
         await this.#updateStoredOrder()
         return name
+    }
+
+    /** Return name if free, else append " 2", " 3", … until unique among open documents. */
+    #uniqueDocName(base: string): string {
+        if (!this.#docs.has(base)) return base
+        for (let i = 2;; i++) {
+            const candidate = `${base} ${i}`
+            if (!this.#docs.has(candidate)) return candidate
+        }
     }
 
     /** Load all .gcad files from a directory. Clears current docs. Persists the folder handle for restore on reload. */

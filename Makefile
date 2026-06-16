@@ -115,7 +115,7 @@ stop: stop-browser stop-agent
 
 .PHONY: kill-agent-browsers
 kill-agent-browsers: stop-agent
-	jq -r '.browser_pids[]' < .devserver.agent.run | xargs kill -9 2> /dev/null || echo 'No dangling browser PIDs found in .devserver.agent.run'
+	jq -r '.browser_pids[]?' < .devserver.agent.run | xargs kill -9 2> /dev/null || echo 'No dangling browser PIDs found in .devserver.agent.run'
 	pkill -f '$(PWD)/\.browsers' || true
 
 .PHONY: restart

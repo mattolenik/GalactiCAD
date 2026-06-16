@@ -43,6 +43,7 @@
         "js-yaml": "^4.2.0",
         "meshoptimizer": "^1.1.1",
         "monaco-editor": "^0.55.1",
+        "openscad-parser": "^0.6.3",
         "quaternion": "^2.2.0",
         "rxjs": "^7.8.2",
         "typescript": "^5.9.3"
